@@ -62,8 +62,8 @@ The template mechanism is the ONE place templates are used in this system.
 
 ```cpp
 auto& bs = conf.Result<BiotSavartResult>();
-if (conf.HasResult<XtbChargeResult>()) {
-    auto& xtb = conf.Result<XtbChargeResult>();
+if (conf.HasResult<MopacResult>()) {
+    auto& mopac = conf.Result<MopacResult>();
 }
 ```
 
@@ -386,8 +386,8 @@ a diagnostic.
 ### Missing T2 features to include
 
 Per-type PiQuadrupole T2 (8 L2 features), per-type RingSusceptibility
-T2 (8 L2 features), xTB polarisability anisotropy T2 (1 L2 feature).
-All already computed and stored. 189 features becomes 206.
+T2 (8 L2 features). MOPAC orbital populations (s_pop, p_pop) provide
+per-atom electronic structure but are L=0 features, not L=2 tensors.
 
 ### Additional tuneable parameters
 
@@ -676,7 +676,7 @@ Do not remove it; do not add arbitrary scaling. If two fields are
 compared (e.g., solvent = APBS − vacuum), they must be in the
 same units.
 
-**No fallbacks.** If an external tool (APBS, xTB, DSSP) fails,
+**No fallbacks.** If an external tool (APBS, MOPAC, DSSP) fails,
 the result is absent, not faked. Substituting a different physical
 quantity (vacuum Coulomb for solvated PB) silently corrupts
 downstream analysis. Return nullptr. The pipeline checks

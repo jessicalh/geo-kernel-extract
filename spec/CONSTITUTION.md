@@ -308,7 +308,7 @@ automatically.
     auto& bs = conformation.Result<BiotSavartResult>();
 
     // Safe existence check
-    if (conformation.HasResult<XtbChargeResult>()) { ... }
+    if (conformation.HasResult<MopacResult>()) { ... }
 
     // Iteration over all attached results
     for (auto& [type_id, result] : conformation.AllResults()) {
@@ -356,17 +356,20 @@ EnrichmentResult              requires: nothing
 OrcaShieldingResult           requires: nothing (loaded from files)
 SpatialIndexResult            requires: GeometryResult
 ApbsFieldResult               requires: ChargeAssignmentResult
-XtbChargeResult               requires: nothing (external tool)
+MopacResult                   requires: nothing (external tool, runs early as
+                                conformation electronic structure precondition)
 MolecularGraphResult          requires: SpatialIndexResult
 BiotSavartResult              requires: SpatialIndexResult, GeometryResult
 HaighMallionResult            requires: SpatialIndexResult, GeometryResult
 McConnellResult               requires: SpatialIndexResult, GeometryResult
 CoulombResult                 requires: ChargeAssignmentResult, SpatialIndexResult
+MopacCoulombResult            requires: MopacResult, SpatialIndexResult
+MopacMcConnellResult          requires: MopacResult, SpatialIndexResult, GeometryResult
 HBondResult                   requires: DsspResult, SpatialIndexResult
 DispersionResult              requires: SpatialIndexResult, GeometryResult
 PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
-ParameterCorrectionResult     requires: ApbsFieldResult, XtbChargeResult, DsspResult, OrcaShieldingResult
+ParameterCorrectionResult     requires: ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
 FeatureExtractionResult       requires: all physics results (enumerated in OBJECT_MODEL.md)
 PredictionResult              requires: FeatureExtractionResult
 ```
@@ -1450,36 +1453,44 @@ The ConformationResult framework handles this naturally: two Protein
 instances, each with their conformations and results, queried and
 differenced at the feature level.
 
-## xTB Charges
+## MOPAC Conformation Electronic Structure
 
-GFN2-xTB charges are computed for every protein and every mutant
-as a ConformationResult (XtbChargeResult). These are quantum-informed
-charges that capture polarisation effects the force field misses.
-The Coulomb E-field from xTB charges is more physical than from ff14SB.
+MOPAC PM7+MOZYME computes QM-derived electronic properties for every
+conformation as a ConformationResult (MopacResult). These are quantum-
+informed charges and bond orders that capture polarisation and electron
+sharing that the force field cannot represent. MOPAC runs as a
+conformation electronic structure precondition — early in the pipeline,
+before the geometric kernel calculators that depend on its output.
 
-xTB is available (xtb 6.7.1, conda-forge, ARM-compatible, ~0.6s per
-dipeptide, ~2-3s per residue fragment). Run per-residue or per-tripeptide
-fragment for whole proteins.
+MOPAC PM7+MOZYME runs in ~45 seconds on 889-atom proteins via
+subprocess (`/home/jessica/micromamba/envs/mm/bin/mopac`).
 
-Both ff14SB and xTB charges should be available as separate
-ConformationResult types. The feature extractor can use either or both.
+Both ff14SB charges (from ChargeAssignmentResult) and MOPAC charges
+are available. Feature extractors and downstream calculators can use
+either or both. MopacCoulombResult and MopacMcConnellResult depend
+on MopacResult for QM charges and bond orders respectively.
 
-### XtbChargeResult
+### MopacResult
 
-A ConformationResult that stores GFN2-xTB computed properties per atom.
-Requires: nothing (external tool invocation).
-Named accessor: conformation.Result<XtbChargeResult>()
+A ConformationResult that stores PM7+MOZYME computed properties.
+Requires: nothing (external tool invocation, runs early).
+Named accessor: conformation.Result<MopacResult>()
 
 Stores per atom:
 - Mulliken charge (double, elementary charge units)
-- HOMO-LUMO gap (double, eV)
-- Wiberg bond orders per bond (double, dimensionless)
-- Polarisability tensor (Mat3, if requested)
-- Polarisability anisotropy (SphericalTensor)
+- s-orbital population (double)
+- p-orbital population (double)
+- Valency — sum of Wiberg bond orders (double)
+- Bond neighbours with continuous Wiberg bond orders (vector)
 
-Both ff14SB charges (from ChargeAssignmentResult) and xTB charges
-are available. Feature extractors can use either or both. The
-ParameterCorrectionResult requires XtbChargeResult.
+Stores per bond:
+- Wiberg bond order (double, 0.01–3.0, continuous)
+- O(1) lookup by atom pair: BondOrder(atom_a, atom_b)
+- Topology bridge: TopologyBondOrders() parallel to protein.Bonds()
+
+Stores per molecule:
+- Heat of formation (double, kcal/mol)
+- Dipole moment (Vec3)
 
 ## Mutation Delta: ConformationResult on the WT
 
@@ -1548,9 +1559,8 @@ captured, it isn't adding physics.
 - L=1 (1e): E-field vector (3 components)
 - L=2 (2e): EFG tensor (5 components via sphericart)
 
-**xTB GFN2 (per atom):**
-- L=0: Mulliken charge, HOMO-LUMO gap, Wiberg bond orders
-- L=2: polarisability tensor (if requested)
+**MOPAC PM7 (per atom):**
+- L=0: Mulliken charge, s/p orbital populations, Wiberg bond orders
 
 **DSSP (per residue, projected to atoms):**
 - L=0: secondary structure one-hot, phi, psi, SASA
@@ -1564,16 +1574,16 @@ captured, it isn't adding physics.
 
 ### Environment tools set the floor
 
-The external tools (APBS, xTB, DSSP, ORCA DFT) provide tensor data at
-all irrep levels. The ParameterCorrectionResult is trained on this data.
-Its prediction already incorporates everything these tools provide,
-including their L=2 angular structure.
+The external tools (APBS, MOPAC, DSSP, ORCA DFT) provide tensor data
+at multiple irrep levels. The ParameterCorrectionResult is trained on
+this data. Its prediction already incorporates everything these tools
+provide, including their angular structure.
 
 When a classical calculator's shielding contribution is subtracted from
 the residual, we are measuring what the calculator adds BEYOND what the
 environment data already captured. If the T2 residual after attaching
 BiotSavartResult is the same as before — Biot-Savart's angular physics
-didn't tell the model anything APBS EFG and xTB polarisability hadn't
+didn't tell the model anything APBS EFG and MOPAC charges hadn't
 already told it.
 
 This is the true bar: not "does the calculator produce T2?" (trivially
@@ -1582,12 +1592,12 @@ REDUCE the residual beyond what environment tensors already explain?"
 
 Environment tensor data by tool:
 - **APBS**: E-field (L=1, Vec3), EFG (L=2, Mat3 + sphericart)
-- **xTB**: polarisability tensor (L=2, Mat3 + sphericart)
+- **MOPAC**: charges, orbital populations, bond orders (L=0 scalars)
 - **ORCA DFT**: full shielding tensor (L=0+L=1+L=2, feature input)
 - **DSSP**: L=0 only (SS, phi, psi, SASA)
 - **Charge assignment**: L=0 only (partial charges)
 
-The L=2 data from APBS and xTB means the model already sees angular
+The L=2 data from APBS means the model already sees angular
 environment structure. A classical calculator must add angular physics
 that these tools CANNOT capture — ring-specific geometry, bond-specific
 anisotropy, distance-dependent dispersion — to justify its existence
@@ -1598,7 +1608,7 @@ at L=2.
 Each classical calculator must produce FULL TENSOR output (Mat3 +
 sphericart, all irrep levels). Its contribution is measured by:
 does adding this calculator's output as a feature improve the model's
-prediction of the mutant delta, beyond what APBS + xTB + DSSP + DFT
+prediction of the mutant delta, beyond what APBS + MOPAC + DSSP + DFT
 baseline already capture?
 
 If yes: the calculator adds physics the environment data missed.
@@ -1629,14 +1639,14 @@ nothing to do with NMR chemical shift prediction.
 
 ### What it is
 A trained e3nn model that predicts mutant delta tensors from
-environment data alone (APBS E-field, xTB charges, DSSP structure,
+environment data alone (APBS E-field, MOPAC charges, DSSP structure,
 non-mutant DFT shielding tensor). No classical ring current physics.
 No Biot-Savart. No McConnell. Just the electronic environment.
 
 This model is trained as part of the foundation (after Layer 0
 external tool results are computed, before classical calculator
 agents run). It becomes a ConformationResult:
-ParameterCorrectionResult, requiring ApbsFieldResult, XtbChargeResult,
+ParameterCorrectionResult, requiring ApbsFieldResult, MopacResult,
 DsspResult, and OrcaShieldingResult.
 
 ### What it provides to calculator agents
@@ -1697,9 +1707,9 @@ value stands without it.
 ### Training the parameter correction model
 
 Input features (per atom):
-- L=0: DFT isotropic, xTB charge, HOMO-LUMO gap, SASA, phi, psi, SS
+- L=0: DFT isotropic, MOPAC charge, s/p orbital populations, SASA, phi, psi, SS
 - L=1: APBS E-field, DFT T1
-- L=2: APBS EFG, DFT T2, xTB polarisability anisotropy
+- L=2: APBS EFG, DFT T2
 
 Target: mutant delta tensor (L=0 + L=1 + L=2), full sphericart
 
@@ -1715,7 +1725,7 @@ development.
 Two additional passes for the parameter correction model:
 
 **Pass 5**: Parameter correction model training. Requires all Layer 0
-results (DFT, APBS, xTB, DSSP) on the training set. Produces a
+results (DFT, APBS, MOPAC, DSSP) on the training set. Produces a
 trained e3nn checkpoint.
 
 **Pass 5R**: Review. Does the parameter correction model capture

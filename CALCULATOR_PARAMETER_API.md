@@ -3,7 +3,7 @@
 How the parameter correction e3nn model provides corrected parameters to each
 classical calculator. The parameter correction model exists BEFORE classical
 calculators run. It is trained on environment data (APBS E-field,
-xTB charges, DSSP, non-mutant DFT shielding tensor) and outputs
+MOPAC charges, DSSP, non-mutant DFT shielding tensor) and outputs
 parameter corrections as L=0 scalars alongside its tensor predictions.
 
 This document defines the interface between the model and the physics
@@ -524,8 +524,8 @@ ratios above follow chemical reasoning but are approximate. The
 parameter correction model refines these.
 
 The Coulomb calculator itself (charge summation) has no tuneable
-parameters. The charges come from ChargeAssignmentResult (ff14SB
-or xTB). What the parameter correction model tunes is how the E-field/EFG
+parameters. The charges come from ChargeAssignmentResult (ff14SB)
+or MopacResult (PM7 Mulliken). What the parameter correction model tunes is how the E-field/EFG
 TRANSLATES into shielding perturbation.
 
 ### What the parameter correction model provides
@@ -1104,9 +1104,9 @@ heads branch off the final hidden layer.
 
 ```
 Input features (per atom):
-  L=0: DFT isotropic, xTB charge, HOMO-LUMO gap, SASA, phi, psi, SS
+  L=0: DFT isotropic, MOPAC charge, s/p orbital populations, SASA, phi, psi, SS
   L=1: APBS E-field, DFT T1
-  L=2: APBS EFG, DFT T2, xTB polarisability
+  L=2: APBS EFG, DFT T2
 
      |
      v
@@ -1178,7 +1178,7 @@ calculator code. No model inference at parameter-correction time.
 ```
 ParameterCorrectionResult    requires: ApbsFieldResult, DsspResult,
                                  OrcaShieldingResult
-                                 (and XtbChargeResult when available)
+                                 (and MopacResult when available)
 
 BiotSavartResult       requires: SpatialIndexResult, GeometryResult
                                  OPTIONAL: ParameterCorrectionResult

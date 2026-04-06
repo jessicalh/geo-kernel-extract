@@ -192,7 +192,7 @@ V_ab = sum_j [ q_j * (3*(r_j-r_i)_a*(r_j-r_i)_b / |r_j-r_i|^5
 ```
 
 Element-dependent coefficients. E-field from ChargeAssignmentResult
-(ff14SB or xTB). E-field decomposed: backbone, sidechain, aromatic,
+(ff14SB) or MopacResult (PM7 Mulliken). E-field decomposed: backbone, sidechain, aromatic,
 solvent (APBS - vacuum).
 
 #### 5. Pi-quadrupole EFG
@@ -269,23 +269,26 @@ If the inputs are wrong, the calculators are precisely wrong.
 - Verify E_solvated != E_vacuum (solvation effect present)
 - Spot-check against published APBS results for a standard protein
 
-### xTB (GFN2 quantum-informed charges)
+### MOPAC (PM7+MOZYME conformation electronic structure)
 
-**Provides:** Per-atom Mulliken charges, HOMO-LUMO gap, Wiberg bond
-orders, polarisability tensor
-**Used by:** CoulombResult (alternative to ff14SB charges),
-ParameterCorrectionResult (input feature), feature extraction
+**Provides:** Per-atom Mulliken charges, s/p orbital populations,
+per-bond Wiberg bond orders, heat of formation
+**Used by:** MopacCoulombResult (QM-charge EFG kernel),
+MopacMcConnellResult (bond-order-weighted anisotropy kernel),
+ParameterCorrectionResult (input feature), feature extraction,
+MutationDeltaResult (delta_mopac_charge)
 **Must be correct:**
-- Charges sum to net protein charge (within tolerance)
-- HOMO-LUMO gap is positive
+- Charges reasonable (|q| < 3.0 per atom)
 - Wiberg bond orders: ~1 for single bonds, ~2 for double, ~1.5 for aromatic
-- Polarisability tensor is symmetric and positive semi-definite
+- Orbital populations: s_pop > 0 for all atoms, p_pop > 0 for heavy atoms
+- Heat of formation negative for proteins
 
 **Validation:**
-- Total charge check
+- Charge range check on 1UBQ (1231 atoms, ~80s)
 - Bond order sanity check on known bonds
-- Compare xTB charges to ff14SB charges — they should correlate but differ
-  (xTB captures polarisation, ff14SB does not)
+- Compare MOPAC charges to ff14SB charges — they should correlate but differ
+  (MOPAC captures polarisation, ff14SB does not)
+- TopologyBondOrder(bi) agrees with BondOrder(atom_a, atom_b) for all bonds
 
 ### DSSP (secondary structure)
 
@@ -321,12 +324,12 @@ ParameterCorrectionResult (input feature), feature extraction
 
 ## The Environment Floor (what classical calculators must beat)
 
-The ParameterCorrectionResult is trained on APBS + xTB + DSSP + DFT.
+The ParameterCorrectionResult is trained on APBS + MOPAC + DSSP + DFT.
 Its prediction already incorporates environment tensor data at all
 irrep levels:
 
 - APBS EFG: L=2 angular structure of solvation environment
-- xTB polarisability: L=2 electron cloud shape
+- MOPAC charges and bond orders: L=0 conformation electronic structure
 - DFT shielding: L=0+L=1+L=2 full tensor baseline
 
 A classical calculator earns its place by REDUCING the residual beyond
@@ -385,8 +388,10 @@ compared to the DFT delta.
 - [x] ff14SB charges: total charge is integer on protonated structures
       (DONE — PrmtopChargeSource on ORCA prmtop gives -4.0 exact;
       GmxTprChargeSource on CHARMM .tpr gives -2.0 exact)
-- [x] xTB charges run, total charge sums correctly (DONE, 3 tests)
-- [ ] xTB bond orders are reasonable (verify)
+- [x] MOPAC charges computed on 1UBQ (DONE — 1231 atoms, charges
+      reasonable, heat of formation negative, bond orders present)
+- [x] MOPAC bond orders reasonable (DONE — covalent bonds > 0.1,
+      topology bridge verified, sorted descending per atom)
 - [x] Protonation detection matches hydrogen atoms (DONE, 11 tests —
       works on PDB-standard and CHARMM naming, PROPKA agreement tested)
 - [x] ORCA shielding tensors load correctly (DONE — dia+para+total,

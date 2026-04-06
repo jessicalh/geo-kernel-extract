@@ -84,10 +84,11 @@ Do NOT read FEEDBACK.md first — most items are resolved.
 - **/mnt/extfast/2026thesis/consolidated/** — 734 WT+ALA protein pairs
 - **/mnt/extfast/fleet_results/** — GROMACS CHARMM36m fleet data
 
-## Current Status (2026-04-03, late)
+## Current Status (2026-04-06)
 
-**Layer 0 complete + all 8 calculators + builder unification +
-CLI entry point.** 263 tests (3 KaML skipped).
+**Layer 0 complete + 10 calculators (8 classical + 2 MOPAC-derived) +
+MOPAC electronic structure + builder unification + CLI entry point.**
+260 tests (3 KaML skipped).
 
 ### What exists in code
 
@@ -100,31 +101,42 @@ CLI entry point.** 263 tests (3 KaML skipped).
 
 **OperationRunner**: single home for all ordered sequences.
 Run (standard), RunMutantComparison, RunEnsemble. Replaces
-both Pipeline and CalculationRunner. xTB and APBS run
+both Pipeline and CalculationRunner. MOPAC and APBS run
 automatically when charges are available.
 
 **nmr_extract**: CLI entry point for all 4 use cases
 (--pdb, --orca, --mutant, --fleet). See spec/USE_CASES.md.
 
-**8/8 classical calculators**, batch-validated on 723 proteins:
-McConnell, Coulomb, RingSusceptibility, HBond, BiotSavart,
-HaighMallion, PiQuadrupole, Dispersion. Full Mat3+SphericalTensor
-output. T2 independence verified.
+**8 classical geometric kernel calculators**, batch-validated on
+723 proteins: McConnell, Coulomb, RingSusceptibility, HBond,
+BiotSavart, HaighMallion, PiQuadrupole, Dispersion. Full
+Mat3+SphericalTensor output. T2 independence verified.
+
+**2 MOPAC-derived calculators** using conformation electronic
+structure from MopacResult: MopacCoulombResult (EFG from QM
+charges), MopacMcConnellResult (bond anisotropy weighted by
+Wiberg bond order). Both produce independent T2 angular features.
+
+**MOPAC electronic structure** (MopacResult): PM7+MOZYME
+semiempirical calculation provides per-atom Mulliken charges,
+s/p orbital populations, and per-bond Wiberg bond orders for
+every conformation. Runs as a conformation electronic structure
+precondition before calculators that depend on it.
 
 **Infrastructure**: CovalentTopology (geometry-to-topology boundary),
-WriteFeatures (~29 NPY arrays per conformation), KernelFilterSet
+WriteFeatures (46 NPY arrays per conformation), KernelFilterSet
 with 4 filters (DipolarNearField, SelfSource, SequentialExclusion,
 RingBondedExclusion), typed conformation hierarchy (Crystal,
 Prediction, MDFrame, Derived).
 
 **External tools**: DSSP (libdssp), APBS (PB solve, first-class),
-xTB (GFN2, first-class with size gate), reduce (linked C++ library
-for protonation), OpenBabel (bond perception).
+MOPAC (PM7+MOZYME, conformation electronic structure), reduce
+(linked C++ library for protonation), OpenBabel (bond perception).
 
 ### What does NOT yet exist in code
 
 - ParameterCorrectionResult (e3nn model)
-- FeatureExtractionResult (189-feature manifest as ConformationResult)
+- FeatureExtractionResult (feature manifest as ConformationResult)
 - PredictionResult (ML inference)
 - Copy-and-modify / rebuild pattern for re-protonation
 - Filter TOML configuration
