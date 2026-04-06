@@ -135,6 +135,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         Mat3 M_total = Mat3::Zero();
 
         // Nearest CO and CN tracking (bond-order-weighted scalar)
+        int zero_bo_this_atom = 0;
         double best_co_dist = NO_DATA_SENTINEL;
         double best_cn_dist = NO_DATA_SENTINEL;
         double best_co_f_weighted = 0.0;
@@ -148,17 +149,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
             // MOPAC Wiberg bond order for this topology bond
             double bo = mopac.TopologyBondOrder(bi);
-            if (bo < 1e-6) {
-                // ---- GeometryChoice: bond order floor ----
-                choices.Record(CalculatorId::McConnell, bi, "mopac bond order floor",
-                    [&bond, &ca, ai, bo](GeometryChoice& gc) {
-                        AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Excluded,
-                                "bond_order_floor");
-                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
-                        AddNumber(gc, "bond_order", bo, "");
-                    });
-                zero_bo_skipped++; continue;
-            }
+            if (bo < 1e-6) { zero_bo_skipped++; zero_bo_this_atom++; continue; }
 
             Vec3 midpoint = conf.bond_midpoints[bi];
             Vec3 direction = conf.bond_directions[bi];
@@ -274,10 +265,11 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
         // ---- GeometryChoice: bond anisotropy ----
         choices.Record(CalculatorId::McConnell, ai, "mopac bond anisotropy",
-            [&ca, ai, best_co_dist, best_cn_dist](GeometryChoice& gc) {
+            [&ca, ai, best_co_dist, best_cn_dist, zero_bo_this_atom](GeometryChoice& gc) {
                 AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
                 AddNumber(gc, "nearest_CO_dist", best_co_dist, "A");
                 AddNumber(gc, "nearest_CN_dist", best_cn_dist, "A");
+                AddNumber(gc, "zero_bo_skipped", static_cast<double>(zero_bo_this_atom), "count");
             });
     }
 

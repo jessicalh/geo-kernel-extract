@@ -118,6 +118,8 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         Mat3 EFG_sidechain = Mat3::Zero();
         Mat3 EFG_aromatic = Mat3::Zero();
 
+        int charge_floor_skipped = 0;
+
         for (size_t j = 0; j < n_atoms; ++j) {
             KernelEvaluationContext ctx;
             ctx.atom_index = i;
@@ -127,17 +129,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
             // MOPAC QM charge instead of ff14SB fixed charge
             double q_j = conf.AtomAt(j).mopac_charge;
-            if (std::abs(q_j) < 1e-15) {
-                // ---- GeometryChoice: charge noise floor ----
-                choices.Record(CalculatorId::Coulomb, j, "mopac charge noise floor",
-                    [&conf, i, j, q_j](GeometryChoice& gc) {
-                        AddAtom(gc, &conf.AtomAt(j), j, EntityRole::Source, EntityOutcome::Excluded,
-                                "charge_noise_floor");
-                        AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Included);
-                        AddNumber(gc, "mopac_charge", q_j, "e");
-                    });
-                continue;
-            }
+            if (std::abs(q_j) < 1e-15) { charge_floor_skipped++; continue; }
 
             Vec3 r = pos_i - conf.PositionAt(j);
             double r_mag = r.norm();
@@ -259,6 +251,15 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         // Pure T2 (EFG is traceless). gamma converts this to shielding.
         ca.mopac_coulomb_shielding_contribution =
             SphericalTensor::Decompose(EFG_total);
+
+        // ---- GeometryChoice: charge noise floor count ----
+        if (charge_floor_skipped > 0) {
+            choices.Record(CalculatorId::Coulomb, i, "mopac charge floor",
+                [&ca, i, charge_floor_skipped](GeometryChoice& gc) {
+                    AddAtom(gc, &ca, i, EntityRole::Target, EntityOutcome::Included);
+                    AddNumber(gc, "zero_charge_skipped", static_cast<double>(charge_floor_skipped), "count");
+                });
+        }
     }
 
     OperationLog::Info(LogCalcOther, "MopacCoulombResult::Compute",
