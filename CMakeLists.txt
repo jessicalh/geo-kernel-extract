@@ -149,6 +149,7 @@ add_library(nmr_shielding
     src/OperationLog.cpp
     src/OperationRunner.cpp
     src/ConformationResult.cpp
+    src/GeometryChoice.cpp
     src/ReduceProtonation.cpp
 )
 
