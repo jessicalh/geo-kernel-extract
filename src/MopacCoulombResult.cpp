@@ -204,7 +204,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
             double scale = APBS_SANITY_LIMIT / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
-            choices.Record(CalculatorId::Coulomb, i, "mopac E-field clamp",
+            choices.Record(CalculatorId::MopacCoulomb, i, "mopac E-field clamp",
                 [&conf, i, E_mag, scale](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
                     AddNumber(gc, "actual_E_magnitude", E_mag, "V/A");
@@ -254,7 +254,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
         // ---- GeometryChoice: charge noise floor count ----
         if (charge_floor_skipped > 0) {
-            choices.Record(CalculatorId::Coulomb, i, "mopac charge floor",
+            choices.Record(CalculatorId::MopacCoulomb, i, "mopac charge floor",
                 [&ca, i, charge_floor_skipped](GeometryChoice& gc) {
                     AddAtom(gc, &ca, i, EntityRole::Target, EntityOutcome::Included);
                     AddNumber(gc, "zero_charge_skipped", static_cast<double>(charge_floor_skipped), "count");

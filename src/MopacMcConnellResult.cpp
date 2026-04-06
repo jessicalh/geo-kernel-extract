@@ -164,7 +164,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
             ctx.source_atom_b = bond.atom_index_b;
             if (!filters.AcceptAll(ctx)) {
                 // ---- GeometryChoice: filter exclusion ----
-                choices.Record(CalculatorId::McConnell, bi, "filter exclusion",
+                choices.Record(CalculatorId::MopacMcConnell, bi, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Included);
                         AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
@@ -264,7 +264,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         ca.mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total);
 
         // ---- GeometryChoice: bond anisotropy ----
-        choices.Record(CalculatorId::McConnell, ai, "mopac bond anisotropy",
+        choices.Record(CalculatorId::MopacMcConnell, ai, "mopac bond anisotropy",
             [&ca, ai, best_co_dist, best_cn_dist, zero_bo_this_atom](GeometryChoice& gc) {
                 AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
                 AddNumber(gc, "nearest_CO_dist", best_co_dist, "A");
