@@ -401,12 +401,10 @@ Write the remaining concrete types. Priority order:
 5. Verify binary identical extraction output (full 725-protein run, diff
    all .npy files).
 
-### Phase 3: Factory and integration
+### Phase 3: Integration (TBD — user decides how areas enter the pipeline)
 
-1. Write factory function that creates all ~39 CalculationArea instances.
-2. Each instance gets its physics comment in the factory.
-3. Wire into the extraction pipeline (areas are queryable at runtime).
-4. UI integration (draw spheres, highlight excluded atoms).
+How CalculationArea objects get instantiated and consumed by calculators
+is an open design question. No factory function assumed.
 
 ### Phase 4: Calibration campaign (the reason all of this exists)
 
