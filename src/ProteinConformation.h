@@ -17,6 +17,7 @@
 #include "Types.h"
 #include "ConformationAtom.h"
 #include "ConformationResult.h"
+#include "GeometryChoice.h"
 #include "Ring.h"
 #include <vector>
 #include <map>
@@ -136,6 +137,10 @@ public:
     std::map<RingTypeIndex, std::vector<size_t>> rings_by_type;
     std::map<BondCategory, std::vector<size_t>> bonds_by_category;
     std::map<AminoAcid, std::vector<size_t>> residues_by_type;
+
+    // Geometric decisions recorded by calculators during Compute().
+    // Flat list, append-only. Populated via GeometryChoiceBuilder::Commit().
+    std::vector<GeometryChoice> geometry_choices;
 
 protected:
     const Protein* protein_;
