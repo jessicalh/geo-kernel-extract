@@ -70,26 +70,27 @@ class T2Dataset(Dataset):
             # Delta DFT T2 = WT - ALA (effect of the ring being present)
             dft_t2 = T2(wt.orca[wt_idx] - ala.orca[ala_idx])  # (M, 5)
 
-            # Scalar features from WT (ring proximity, element — these describe
-            # the atom's environment WITH the ring present)
-            # 13 features: 3 element one-hots (C/N/O — no H in heavy-atom matching),
+            # Scalar features from WT (ring proximity, element, residue type)
+            # 33 features: 3 element one-hots, 20 residue type one-hot,
             # 4 ring proximity counts, 6 per-protein-normalized kernel magnitudes
-            s = np.zeros((M, 13))
+            s = np.zeros((M, 33))
             s[:, 0] = (wt.element[wt_idx] == 6).astype(float)
             s[:, 1] = (wt.element[wt_idx] == 7).astype(float)
             s[:, 2] = (wt.element[wt_idx] == 8).astype(float)
-            s[:, 3:7] = wt.ring_counts[wt_idx] / 10.0
+            for aa in range(20):
+                s[:, 3 + aa] = (wt.residue_type[wt_idx] == aa).astype(float)
+            s[:, 23:27] = wt.ring_counts[wt_idx] / 10.0
             # Magnitude scalars: per-protein normalized (matching clean backup approach)
             def _pnorm(v):
                 """Per-protein normalization: divide by own std."""
                 st = v.std()
                 return v / (st + 1e-8)
-            s[:, 7] = _pnorm(np.sqrt(np.sum(T2(wt.mc[wt_idx] - ala.mc[ala_idx])**2, axis=1)))
-            s[:, 8] = _pnorm(np.sqrt(np.sum(T2(wt.coulomb[wt_idx] - ala.coulomb[ala_idx])**2, axis=1)))
-            s[:, 9] = _pnorm(np.sqrt(np.sum(T2(wt.bs[wt_idx] - ala.bs[ala_idx])**2, axis=1)))
-            s[:, 10] = _pnorm(np.sqrt(np.sum(T2(wt.hbond[wt_idx] - ala.hbond[ala_idx])**2, axis=1)))
-            s[:, 11] = _pnorm(np.sqrt(np.sum(T2(wt.mopac_coulomb[wt_idx] - ala.mopac_coulomb[ala_idx])**2, axis=1)))
-            s[:, 12] = _pnorm(np.sqrt(np.sum(T2(wt.mopac_mc[wt_idx] - ala.mopac_mc[ala_idx])**2, axis=1)))
+            s[:, 27] = _pnorm(np.sqrt(np.sum(T2(wt.mc[wt_idx] - ala.mc[ala_idx])**2, axis=1)))
+            s[:, 28] = _pnorm(np.sqrt(np.sum(T2(wt.coulomb[wt_idx] - ala.coulomb[ala_idx])**2, axis=1)))
+            s[:, 29] = _pnorm(np.sqrt(np.sum(T2(wt.bs[wt_idx] - ala.bs[ala_idx])**2, axis=1)))
+            s[:, 30] = _pnorm(np.sqrt(np.sum(T2(wt.hbond[wt_idx] - ala.hbond[ala_idx])**2, axis=1)))
+            s[:, 31] = _pnorm(np.sqrt(np.sum(T2(wt.mopac_coulomb[wt_idx] - ala.mopac_coulomb[ala_idx])**2, axis=1)))
+            s[:, 32] = _pnorm(np.sqrt(np.sum(T2(wt.mopac_mc[wt_idx] - ala.mopac_mc[ala_idx])**2, axis=1)))
 
             # Delta kernel T2s: 46 kernels × 5 components
             kernels = np.zeros((M, 46, 5))
@@ -252,7 +253,7 @@ def train(args):
         "n_val_atoms": len(val_ds),
         "target_std_ppm": train_ds.target_std.item(),
         "n_kernels": 46,
-        "n_scalar_features": 13,
+        "n_scalar_features": 33,
         "epochs": args.epochs,
         "warmup_epochs": args.warmup_epochs,
         "batch_size": args.batch_size,
@@ -282,7 +283,7 @@ def train(args):
     val_loader = DataLoader(val_ds, batch_size=args.batch_size)
 
     model = make_model(
-        n_scalar_features=13, n_kernels=46,
+        n_scalar_features=33, n_kernels=46,
         use_correction=args.correction
     ).to(device)
 
@@ -366,8 +367,8 @@ def train(args):
     model.eval()
     target_std = train_ds.target_std
 
-    r2_train, rmse_train = compute_r2(model, train_ds, target_std, device)
-    r2_val, rmse_val = compute_r2(model, val_ds, target_std, device)
+    r2_train, rmse_train = compute_r2(model, train_ds, train_ds.target_std, device)
+    r2_val, rmse_val = compute_r2(model, val_ds, val_ds.target_std, device)
 
     print(f"Train R²: {r2_train:.4f}  RMSE: {rmse_train:.4f} ppm")
     print(f"Val R²:   {r2_val:.4f}  RMSE: {rmse_val:.4f} ppm")

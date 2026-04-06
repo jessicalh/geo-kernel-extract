@@ -156,7 +156,7 @@ class ShieldingT2Model(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
-def make_model(n_scalar_features=13, n_kernels=46,
+def make_model(n_scalar_features=33, n_kernels=46,
                use_correction=True) -> ShieldingT2Model:
     """Create model with sensible defaults."""
     model = ShieldingT2Model(

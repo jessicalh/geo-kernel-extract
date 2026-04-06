@@ -64,9 +64,11 @@ was on raw WT, Round 2 is the first real delta result.
 
 ### Round 2: 10 calculators with MOPAC (K=46) — CURRENT
 
-**Status:** Extraction running (2026-04-06), 167/1450 jobs done.
-Early Ridge (Level A) result on 81 proteins: **R^2 = 0.35** on
-delta T2. MopacCoulomb is the #1 Ridge contributor.
+**Status:** Extraction running (2026-04-06), ~480/1450 jobs done.
+Ridge (Level A): **R^2 = 0.37** on delta T2 (~240 proteins).
+Equivariant mixing: **Val R^2 = 0.60** (33 scalars with residue
+type, 46 kernels, ~240 proteins, 200 epochs, best at epoch 171).
+MopacCoulomb is the #1 Ridge contributor.
 
 **What changed from Round 1:**
 - MopacCoulombResult: Coulomb EFG from PM7 Mulliken charges (1 feature)
@@ -144,5 +146,14 @@ filter parameters. Round 2 R^2 is the "did we break anything" baseline.
 - **Round 1 target: R²=0.71 on T2 deltas** (per user). The clean
   backup trains on raw WT T2 and predates the delta switch. The
   0.71 came after switching to deltas in-session — that code did
-  not survive. Our 0.55 on 200 proteins is partial data; the full
+  not survive. Our 0.60 on ~240 proteins is partial data; the full
   725-protein run will show whether we reach 0.71.
+- **Residue type one-hot (20 AA)** moved Val R² from 0.55 to 0.60.
+  Train/val gap narrowed from 0.06 to 0.03. The MLP needs local
+  chemical context independent of the kernels it's weighting.
+- **Val R² bug fixed**: val targets were unscaled with train_std
+  instead of val_std. Sub-1% impact but now correct.
+- Agent review (AGENT_REVIEW_20260406.md) confirms architecture is
+  sound, equivariance is correct, per-protein normalization is right.
+  The 40% residual is dominated by paramagnetic contributions
+  (~15-20%) that no classical kernel models.
