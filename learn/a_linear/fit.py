@@ -21,47 +21,39 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from load import (load_conformation, list_proteins, T2, T0,
+from load import (load_pair, list_proteins, T2, T0,
                   FEATURES_DIR, RING_TYPES)
+from delta import match_atoms
 
 
 def build_features_and_targets(protein_ids):
-    """Build the stacked regression matrix.
+    """Build the stacked regression matrix from WT-ALA deltas.
+
+    The mutation delta isolates the ring effect. Target is delta DFT T2,
+    features are delta kernel T2s.
 
     Returns:
-        X: (N_total * 5, K) — each row is one T2 component of all K kernels for one atom
-        y: (N_total * 5,) — corresponding DFT T2 component
+        X: (M_total * 5, K) — each row is one T2 component of all K kernels for one matched atom
+        y: (M_total * 5,) — corresponding delta DFT T2 component
         meta: list of (protein_id, atom_index, t2_component) per row
         feature_names: list of K kernel names
     """
-    # Feature columns: per-ring-type T2 for ring calculators,
-    # per-category T2 for McConnell, total T2 for Coulomb/HBond/RingSusc
     feature_names = []
-    # BS: 8 ring types
     for rt in RING_TYPES:
         feature_names.append(f"BS_{rt}")
-    # HM: 8 ring types
     for rt in RING_TYPES:
         feature_names.append(f"HM_{rt}")
-    # PiQuad: 8 ring types
     for rt in RING_TYPES:
         feature_names.append(f"PQ_{rt}")
-    # Dispersion: 8 ring types
     for rt in RING_TYPES:
         feature_names.append(f"Disp_{rt}")
-    # McConnell: 5 bond categories
     mc_cats = ["CO", "CN", "BB_other", "SC_CO", "Aromatic"]
     for cat in mc_cats:
         feature_names.append(f"MC_{cat}")
-    # Coulomb EFG total
     feature_names.append("Coulomb")
-    # RingSusc total
     feature_names.append("RingSusc")
-    # HBond total
     feature_names.append("HBond")
-    # MOPAC Coulomb EFG total (QM charges)
     feature_names.append("MopacCoulomb")
-    # MOPAC bond-order-weighted McConnell: 5 categories
     for cat in mc_cats:
         feature_names.append(f"MopacMC_{cat}")
 
@@ -72,52 +64,51 @@ def build_features_and_targets(protein_ids):
     all_meta = []
 
     for pid in protein_ids:
-        wt = load_conformation(pid, "wt")
-        if wt is None or wt.orca is None:
+        wt, ala = load_pair(pid)
+        if wt is None or ala is None:
+            continue
+        if wt.orca is None or ala.orca is None:
             continue
 
-        N = wt.n_atoms
-        dft_t2 = T2(wt.orca)  # (N, 5)
+        wt_idx, ala_idx, _ = match_atoms(
+            wt.pos, wt.element, ala.pos, ala.element
+        )
+        if len(wt_idx) < 10:
+            continue
 
-        # Build per-atom feature matrix: (N, K, 5)
-        # Each feature k gives a T2 vector (5 components) per atom
-        features = np.zeros((N, K, 5))
+        M = len(wt_idx)
+        dft_t2 = T2(wt.orca[wt_idx] - ala.orca[ala_idx])  # (M, 5)
 
-        # BS per-type: (N, 40) = 8 types × 5 components
+        features = np.zeros((M, K, 5))
+
+        # Delta per-type T2s
+        d_bs = wt.bs_type_T2[wt_idx] - ala.bs_type_T2[ala_idx]
         for t in range(8):
-            features[:, t, :] = wt.bs_type_T2[:, t*5:(t+1)*5]
-        # HM per-type
+            features[:, t, :] = d_bs[:, t*5:(t+1)*5]
+        d_hm = wt.hm_type_T2[wt_idx] - ala.hm_type_T2[ala_idx]
         for t in range(8):
-            features[:, 8+t, :] = wt.hm_type_T2[:, t*5:(t+1)*5]
-        # PQ per-type
+            features[:, 8+t, :] = d_hm[:, t*5:(t+1)*5]
+        d_pq = wt.pq_type_T2[wt_idx] - ala.pq_type_T2[ala_idx]
         for t in range(8):
-            features[:, 16+t, :] = wt.pq_type_T2[:, t*5:(t+1)*5]
-        # Disp per-type
+            features[:, 16+t, :] = d_pq[:, t*5:(t+1)*5]
+        d_disp = wt.disp_type_T2[wt_idx] - ala.disp_type_T2[ala_idx]
         for t in range(8):
-            features[:, 24+t, :] = wt.disp_type_T2[:, t*5:(t+1)*5]
-        # McConnell categories: (N, 25) = 5 cats × 5 components
+            features[:, 24+t, :] = d_disp[:, t*5:(t+1)*5]
+        d_mc = wt.mc_category_T2[wt_idx] - ala.mc_category_T2[ala_idx]
         for c in range(5):
-            features[:, 32+c, :] = wt.mc_category_T2[:, c*5:(c+1)*5]
-        # Coulomb total T2
-        features[:, 37, :] = T2(wt.coulomb)
-        # RingSusc total T2
-        features[:, 38, :] = T2(wt.ringchi)
-        # HBond total T2
-        features[:, 39, :] = T2(wt.hbond)
-        # MOPAC Coulomb total T2 (optional — absent in pre-MOPAC extractions)
-        if wt.mopac_coulomb is not None:
-            features[:, 40, :] = T2(wt.mopac_coulomb)
-        # MOPAC bond-order-weighted McConnell categories (optional)
-        if wt.mopac_mc_category_T2 is not None:
-            for c in range(5):
-                features[:, 41+c, :] = wt.mopac_mc_category_T2[:, c*5:(c+1)*5]
+            features[:, 32+c, :] = d_mc[:, c*5:(c+1)*5]
+        features[:, 37, :] = T2(wt.coulomb[wt_idx] - ala.coulomb[ala_idx])
+        features[:, 38, :] = T2(wt.ringchi[wt_idx] - ala.ringchi[ala_idx])
+        features[:, 39, :] = T2(wt.hbond[wt_idx] - ala.hbond[ala_idx])
+        features[:, 40, :] = T2(wt.mopac_coulomb[wt_idx] - ala.mopac_coulomb[ala_idx])
+        d_mopac_mc = wt.mopac_mc_category_T2[wt_idx] - ala.mopac_mc_category_T2[ala_idx]
+        for c in range(5):
+            features[:, 41+c, :] = d_mopac_mc[:, c*5:(c+1)*5]
 
-        # Stack: for equivariant regression, each T2 component is a separate observation
-        # with the SAME weight. X shape: (N*5, K), y shape: (N*5,)
         for m in range(5):
-            all_X.append(features[:, :, m])  # (N, K)
-            all_y.append(dft_t2[:, m])        # (N,)
-            for i in range(N):
+            all_X.append(features[:, :, m])
+            all_y.append(dft_t2[:, m])
+            for i in range(M):
                 all_meta.append((pid, i, m))
 
     X = np.vstack(all_X)

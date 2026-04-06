@@ -58,6 +58,10 @@ class KernelMixingHead(nn.Module):
         returns: (batch, 5) — weighted sum of kernel T2s
         """
         weights = self.mlp(scalars)  # (batch, n_kernels)
+        # Scale weights so initial output std ≈ 1 (matches target std after normalization).
+        # Without this, summing n_kernels terms with std~1 gives output std~sqrt(n_kernels).
+        import math
+        weights = weights / math.sqrt(self.n_kernels)
         # Weighted sum: each weight is a scalar multiplying an L=2 vector
         out = torch.einsum("bk,bkm->bm", weights, kernel_t2s)
         return out
@@ -78,9 +82,9 @@ class EquivariantCorrectionHead(nn.Module):
     def __init__(self, n_scalar_features: int, n_kernels: int, hidden: int = 32):
         super().__init__()
         # Input irreps: n_kernels × L=2 tensors + scalars
-        # We keep it simple: take the sum of all kernel T2s as one L=2 input,
-        # plus the top 3 individual kernels (MC, Coulomb, BS) as separate L=2
-        self.input_irreps = o3.Irreps(f"{n_scalar_features}x0e + 4x2e")
+        # Sum of all kernel T2s as one L=2 input, plus top individual kernels:
+        # MC, Coulomb, BS, MopacCoulomb (QM charge EFG — independent angular info)
+        self.input_irreps = o3.Irreps(f"{n_scalar_features}x0e + 5x2e")
         self.hidden_irreps = o3.Irreps(f"{hidden}x0e + {hidden}x2e")
         self.output_irreps = o3.Irreps("1x2e")
 
@@ -91,15 +95,16 @@ class EquivariantCorrectionHead(nn.Module):
             self.hidden_irreps, self.hidden_irreps, self.output_irreps
         )
 
-    def forward(self, scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2):
+    def forward(self, scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2, mopac_coulomb_t2):
         """
         scalars: (batch, n_scalar_features)
         kernel_t2_sum: (batch, 5) — sum of all calculator T2s
-        mc_t2, coulomb_t2, bs_t2: (batch, 5) — top 3 individual T2s
+        mc_t2, coulomb_t2, bs_t2: (batch, 5) — top 3 classical T2s
+        mopac_coulomb_t2: (batch, 5) — QM charge EFG T2
         returns: (batch, 5) — L=2 correction
         """
-        # Pack into irreps format
-        x = torch.cat([scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2], dim=-1)
+        x = torch.cat([scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2,
+                        mopac_coulomb_t2], dim=-1)
         h = self.tp1(x, x)
         out = self.tp2(h, h)
         return out
@@ -130,18 +135,20 @@ class ShieldingT2Model(nn.Module):
             # how much L=2 structure is beyond linear kernel mixing.
             self.correction_scale = nn.Parameter(torch.tensor(0.1))
 
-    def forward(self, scalars, kernel_t2s, mc_t2, coulomb_t2, bs_t2):
+    def forward(self, scalars, kernel_t2s, mc_t2, coulomb_t2, bs_t2, mopac_coulomb_t2):
         """
         scalars: (batch, n_scalar_features)
         kernel_t2s: (batch, n_kernels, 5) — all kernel T2 vectors
-        mc_t2, coulomb_t2, bs_t2: (batch, 5) — individual top kernels
+        mc_t2, coulomb_t2, bs_t2: (batch, 5) — individual top classical kernels
+        mopac_coulomb_t2: (batch, 5) — QM charge EFG kernel
         returns: (batch, 5) — predicted DFT T2
         """
         mixed = self.mixing(scalars, kernel_t2s)
 
         if self.use_correction:
             kernel_sum = kernel_t2s.sum(dim=1)  # (batch, 5)
-            corr = self.correction(scalars, kernel_sum, mc_t2, coulomb_t2, bs_t2)
+            corr = self.correction(scalars, kernel_sum, mc_t2, coulomb_t2, bs_t2,
+                                   mopac_coulomb_t2)
             return mixed + self.correction_scale * corr
         return mixed
 
@@ -149,7 +156,7 @@ class ShieldingT2Model(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
-def make_model(n_scalar_features=12, n_kernels=40,
+def make_model(n_scalar_features=13, n_kernels=46,
                use_correction=True) -> ShieldingT2Model:
     """Create model with sensible defaults."""
     model = ShieldingT2Model(
@@ -162,25 +169,23 @@ def make_model(n_scalar_features=12, n_kernels=40,
 
 if __name__ == "__main__":
     # Smoke test
-    model = make_model(n_scalar_features=12, n_kernels=40, use_correction=False)
-    print(f"Mixing-only model: {model.parameter_count()} parameters")
-
-    # Test forward pass
     batch = 32
-    scalars = torch.randn(batch, 12)
-    kernels = torch.randn(batch, 40, 5)
+    scalars = torch.randn(batch, 14)
+    kernels = torch.randn(batch, 46, 5)
     mc = torch.randn(batch, 5)
     co = torch.randn(batch, 5)
     bs = torch.randn(batch, 5)
+    mopac_co = torch.randn(batch, 5)
 
-    out = model(scalars, kernels, mc, co, bs)
+    model = make_model(use_correction=False)
+    print(f"Mixing-only model: {model.parameter_count()} parameters")
+    out = model(scalars, kernels, mc, co, bs, mopac_co)
     print(f"Output shape: {out.shape}  (should be [{batch}, 5])")
 
     # With correction
-    model_full = make_model(n_scalar_features=12, n_kernels=40, use_correction=True)
+    model_full = make_model(use_correction=True)
     print(f"Full model: {model_full.parameter_count()} parameters")
-
-    out_full = model_full(scalars, kernels, mc, co, bs)
+    out_full = model_full(scalars, kernels, mc, co, bs, mopac_co)
     print(f"Output shape: {out_full.shape}")
 
     # GPU test
@@ -188,6 +193,6 @@ if __name__ == "__main__":
         model_full = model_full.cuda()
         out_gpu = model_full(
             scalars.cuda(), kernels.cuda(),
-            mc.cuda(), co.cuda(), bs.cuda()
+            mc.cuda(), co.cuda(), bs.cuda(), mopac_co.cuda()
         )
         print(f"GPU output: {out_gpu.shape}, device={out_gpu.device}")

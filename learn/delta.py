@@ -92,17 +92,22 @@ def analyze_delta(protein_id: str):
     delta_disp = wt.disp[wt_idx] - ala.disp[ala_idx]
     delta_hbond = wt.hbond[wt_idx] - ala.hbond[ala_idx]
 
+    delta_mopac_coulomb = wt.mopac_coulomb[wt_idx] - ala.mopac_coulomb[ala_idx]
+    delta_mopac_mc = wt.mopac_mc[wt_idx] - ala.mopac_mc[ala_idx]
+
     # T2 of deltas
     dft_t2 = T2(delta_dft)
     calcs = {
-        "BS":         T2(delta_bs),
-        "HM":         T2(delta_hm),
-        "McConnell":  T2(delta_mc),
-        "Coulomb":    T2(delta_coulomb),
-        "RingSusc":   T2(delta_ringchi),
-        "PiQuad":     T2(delta_pq),
-        "Dispersion": T2(delta_disp),
-        "HBond":      T2(delta_hbond),
+        "BS":           T2(delta_bs),
+        "HM":           T2(delta_hm),
+        "McConnell":    T2(delta_mc),
+        "Coulomb":      T2(delta_coulomb),
+        "RingSusc":     T2(delta_ringchi),
+        "PiQuad":       T2(delta_pq),
+        "Dispersion":   T2(delta_disp),
+        "HBond":        T2(delta_hbond),
+        "MopacCoulomb": T2(delta_mopac_coulomb),
+        "MopacMC":      T2(delta_mopac_mc),
     }
 
     def t2_norm(v):
@@ -229,7 +234,8 @@ def main():
     print(f"  {'Calculator':12s} {'|cos|':>8s} {'signed cos':>12s} {'|ΔT2|':>10s}")
     print("  " + "-" * 46)
     calc_names = ["BS", "HM", "McConnell", "RingSusc", "PiQuad",
-                  "Dispersion", "Coulomb", "HBond"]
+                  "Dispersion", "Coulomb", "HBond",
+                  "MopacCoulomb", "MopacMC"]
     for name in calc_names:
         abs_cos = np.mean([r[f"align_{name}"] for r in results])
         sign_cos = np.mean([r[f"sign_{name}"] for r in results])

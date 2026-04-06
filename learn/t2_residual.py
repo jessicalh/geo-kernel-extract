@@ -52,14 +52,16 @@ def analyze_protein(protein_id: str):
 
     # T2 from each source
     calcs = {
-        "BS":         T2(wt.bs),
-        "HM":         T2(wt.hm),
-        "McConnell":  T2(wt.mc),
-        "RingSusc":   T2(wt.ringchi),
-        "PiQuad":     T2(wt.pq),
-        "Dispersion": T2(wt.disp),
-        "Coulomb":    T2(wt.coulomb),
-        "HBond":      T2(wt.hbond),
+        "BS":           T2(wt.bs),
+        "HM":           T2(wt.hm),
+        "McConnell":    T2(wt.mc),
+        "RingSusc":     T2(wt.ringchi),
+        "PiQuad":       T2(wt.pq),
+        "Dispersion":   T2(wt.disp),
+        "Coulomb":      T2(wt.coulomb),
+        "HBond":        T2(wt.hbond),
+        "MopacCoulomb": T2(wt.mopac_coulomb),
+        "MopacMC":      T2(wt.mopac_mc),
     }
     dft_t2 = T2(wt.orca)
 
@@ -109,12 +111,10 @@ def analyze_protein(protein_id: str):
     t1_norm = np.sqrt(np.sum(dft_t1**2, axis=1))
     result["dft_t1_mean"] = t1_norm.mean()
 
-    # Which calculators produce T1?
-    for name in ["BS", "McConnell", "RingSusc", "HBond"]:
-        t1 = T1(calcs[name] if name != "BS" else wt.bs)
-        # Reload full tensor for T1
+    # Which calculators produce T1? (magnetic interactions → asymmetric tensors)
     for name, arr in [("BS", wt.bs), ("McConnell", wt.mc),
-                       ("RingSusc", wt.ringchi), ("HBond", wt.hbond)]:
+                       ("RingSusc", wt.ringchi), ("HBond", wt.hbond),
+                       ("MopacMC", wt.mopac_mc)]:
         t1 = T1(arr)
         t1n = np.sqrt(np.sum(t1**2, axis=1))
         result[f"t1_{name}"] = t1n.mean()
@@ -162,13 +162,15 @@ def main():
     print("   They show the raw magnitude of each geometric kernel.\n")
 
     calc_names = ["BS", "HM", "McConnell", "RingSusc", "PiQuad",
-                  "Dispersion", "Coulomb", "HBond", "DFT"]
+                  "Dispersion", "Coulomb", "HBond",
+                  "MopacCoulomb", "MopacMC", "DFT"]
+    units = {"BS": "dimless", "HM": "dimless", "McConnell": "Å⁻³",
+             "RingSusc": "Å⁻³", "PiQuad": "Å⁻⁵", "Dispersion": "Å⁻⁶",
+             "Coulomb": "V/Å²", "HBond": "Å⁻³",
+             "MopacCoulomb": "V/Å²", "MopacMC": "Å⁻³", "DFT": "ppm"}
     for name in calc_names:
         vals = [r[f"scale_{name}"] for r in results]
-        unit = {"BS": "dimless", "HM": "dimless", "McConnell": "Å⁻³",
-                "RingSusc": "Å⁻³", "PiQuad": "Å⁻⁵", "Dispersion": "Å⁻⁶",
-                "Coulomb": "V/Å²", "HBond": "Å⁻³", "DFT": "ppm"}[name]
-        print(f"  {name:12s}: {np.mean(vals):10.6f}  ±{np.std(vals):.6f}  ({unit})")
+        print(f"  {name:14s}: {np.mean(vals):10.6f}  ±{np.std(vals):.6f}  ({units[name]})")
     print()
 
     # ========================================================
@@ -181,10 +183,11 @@ def main():
     print("=" * 70 + "\n")
 
     for name in ["BS", "HM", "McConnell", "RingSusc", "PiQuad",
-                 "Dispersion", "Coulomb", "HBond"]:
+                 "Dispersion", "Coulomb", "HBond",
+                 "MopacCoulomb", "MopacMC"]:
         vals = [r[f"align_{name}"] for r in results]
         bar = "#" * int(np.mean(vals) * 50)
-        print(f"  {name:12s}: {np.mean(vals):.4f}  ±{np.std(vals):.4f}  {bar}")
+        print(f"  {name:14s}: {np.mean(vals):.4f}  ±{np.std(vals):.4f}  {bar}")
     print()
 
     # ========================================================
@@ -237,9 +240,9 @@ def main():
 
     dft_t1_vals = [r["dft_t1_mean"] for r in results]
     print(f"  DFT |T1|:       {np.mean(dft_t1_vals):.4f} ppm")
-    for name in ["BS", "McConnell", "RingSusc", "HBond"]:
+    for name in ["BS", "McConnell", "RingSusc", "HBond", "MopacMC"]:
         vals = [r[f"t1_{name}"] for r in results]
-        print(f"  {name:12s} |T1|: {np.mean(vals):.6f}")
+        print(f"  {name:14s} |T1|: {np.mean(vals):.6f}")
     print()
 
     # ========================================================
