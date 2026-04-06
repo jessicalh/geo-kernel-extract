@@ -5,6 +5,7 @@
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
+#include "Types.h"
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -31,12 +32,18 @@ RestServer::RestServer(MainWindow* mainWindow, quint16 port, QObject* parent)
     connect(server_, &QTcpServer::newConnection,
             this, &RestServer::onNewConnection);
 
-    if (server_->listen(QHostAddress::LocalHost, port)) {
-        std::cout << "REST server listening on localhost:" << port << "\n";
-    } else {
-        std::cerr << "REST server failed to bind port " << port
-                  << ": " << server_->errorString().toStdString() << "\n";
+    // Try requested port, then up to 9 more (9147, 9148, ..., 9156)
+    for (quint16 p = port; p < port + 10; ++p) {
+        if (server_->listen(QHostAddress::LocalHost, p)) {
+            actualPort_ = p;
+            std::cout << "REST server listening on localhost:" << p;
+            if (p != port) std::cout << " (requested " << port << " was in use)";
+            std::cout << "\n";
+            return;
+        }
     }
+    std::cerr << "REST server: could not bind ports " << port
+              << "-" << (port + 9) << "\n";
 }
 
 void RestServer::onNewConnection() {
@@ -120,6 +127,10 @@ QJsonObject RestServer::cmdStatus() {
     resp["ok"] = true;
     QJsonObject result;
 
+    // Report computation state
+    result["computing"] = (mainWindow_->workerThread_ != nullptr &&
+                           mainWindow_->workerThread_->isRunning());
+
     // Read directly from the library protein model
     auto& protein = mainWindow_->protein_;
     if (protein) {
@@ -129,18 +140,14 @@ QJsonObject RestServer::cmdStatus() {
         result["n_rings"] = (int)protein->RingCount();
         result["n_residues"] = (int)protein->ResidueCount();
 
-        // Heuristic counts computed from library fields
+        // Tier counts: read from library (set by PredictionResult)
         int nReport = 0, nPass = 0, nSilent = 0;
         for (size_t i = 0; i < conf.AtomCount(); ++i) {
-            const auto& atom = conf.AtomAt(i);
-            double ringSum = std::abs(
-                atom.bs_shielding_contribution.T0 + atom.hm_shielding_contribution.T0 +
-                atom.piquad_shielding_contribution.T0 +
-                atom.ringchi_shielding_contribution.T0 +
-                atom.disp_shielding_contribution.T0);
-            if (ringSum > 0.3) nReport++;
-            else if (ringSum > 0.05) nPass++;
-            else nSilent++;
+            switch (conf.AtomAt(i).tier) {
+                case HeuristicTier::REPORT: nReport++; break;
+                case HeuristicTier::PASS:   nPass++;   break;
+                case HeuristicTier::SILENT: nSilent++; break;
+            }
         }
         result["n_report"] = nReport;
         result["n_pass"] = nPass;
@@ -166,16 +173,7 @@ QJsonObject RestServer::cmdLoadPdb(const QJsonObject& cmd) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
     mainWindow_->loadPdb(path.toStdString());
-
-    // Process events to let the compute finish
-    for (int i = 0; i < 600; i++) {
-        QApplication::processEvents();
-        if (mainWindow_->protein_)
-            break;
-        QThread::msleep(100);
-    }
-
-    return cmdStatus();
+    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"status", "loading"}}}};
 }
 
 QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
@@ -184,15 +182,7 @@ QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
     mainWindow_->loadProteinDir(path.toStdString());
-
-    for (int i = 0; i < 600; i++) {
-        QApplication::processEvents();
-        if (mainWindow_->protein_)
-            break;
-        QThread::msleep(100);
-    }
-
-    return cmdStatus();
+    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"status", "loading"}}}};
 }
 
 QJsonObject RestServer::cmdSetOverlay(const QJsonObject& cmd) {

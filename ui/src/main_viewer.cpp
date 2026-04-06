@@ -85,6 +85,10 @@ int main(int argc, char* argv[]) {
     RestServer* restServer = nullptr;
     if (restPort > 0) {
         restServer = new RestServer(&window, restPort, &app);
+        if (restServer->actualPort() > 0) {
+            window.setWindowTitle(QString("Protein Tensor Viewer — REST :%1")
+                .arg(restServer->actualPort()));
+        }
     }
 
     // 6. Deferred auto-load — event loop must be running first

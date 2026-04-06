@@ -21,6 +21,8 @@ public:
     explicit RestServer(MainWindow* mainWindow, quint16 port = 9147,
                         QObject* parent = nullptr);
 
+    quint16 actualPort() const { return actualPort_; }
+
 private slots:
     void onNewConnection();
     void onReadyRead();
@@ -51,4 +53,5 @@ private:
     QTcpServer* server_;
     MainWindow* mainWindow_;
     QList<QTcpSocket*> clients_;
+    quint16 actualPort_ = 0;
 };

@@ -28,6 +28,8 @@ class QTimer;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QDockWidget;
+class QPlainTextEdit;
+class QUdpSocket;
 
 namespace nmr {
 class Protein;
@@ -63,6 +65,7 @@ private slots:
     void onCurrentScaleChanged(int value);
     void onShowRingsToggled(bool checked);
     void onShowPeptideBondsToggled(bool checked);
+    void onShowBondOrderToggled(bool checked);
     void onShowButterflyToggled(bool checked);
     void onPhysicsCheckChanged();
     void onVizModeChanged(int index);
@@ -85,6 +88,10 @@ private:
     // Atom picking and inspection
     void pickAtom(int displayX, int displayY);
     void populateAtomInfo(size_t atomIndex);
+
+    // Bond picking and inspection
+    void pickBond(int displayX, int displayY);
+    void populateBondInfo(size_t bondIndex);
 
     // Helpers: sum checked calculator contributions for one atom (by index)
     double checkedCalcT0(size_t atomIndex) const;
@@ -135,6 +142,7 @@ private:
     QSlider* currentScaleSlider_;
     QCheckBox* showRingsCheck_;
     QCheckBox* showPeptideBondsCheck_;
+    QCheckBox* showBondOrderCheck_;
     QCheckBox* showButterflyCheck_;
 
     // Physics contribution checkboxes (8 calculators)
@@ -147,6 +155,19 @@ private:
     // Atom info panel — shows full object model for picked atom
     QDockWidget* atomInfoDock_;
     QTreeWidget* atomInfoTree_;
+
+    // Bond info panel — shows full bond data including MOPAC order
+    QDockWidget* bondInfoDock_;
+    QTreeWidget* bondInfoTree_;
+
+    // Bond order color overlay (tubes colored by Wiberg order)
+    vtkSmartPointer<vtkActor> bondOrderActor_;
+
+    // Operations log panel — shows library log stream via UDP
+    QDockWidget* logDock_;
+    QPlainTextEdit* logText_;
+    QUdpSocket* logSocket_;
+    void onLogDatagramReady();
 
     // Pending load state (set by loadPdb/loadProteinDir, consumed by startCompute)
     ViewerLoadRequest pendingRequest_;
