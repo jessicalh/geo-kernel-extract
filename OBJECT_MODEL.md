@@ -597,16 +597,17 @@ principle.
 |----------|------|------|---------------|-------------|
 | position | Vec3 | Angstroms | (construction) | In conformation coordinate frame |
 
-#### Charges and radii (from ChargeAssignmentResult, XtbChargeResult)
+#### Charges and radii (from ChargeAssignmentResult, MopacResult)
 
 | Property | Type | Unit | Source result | Description |
 |----------|------|------|---------------|-------------|
 | partial_charge | double | elementary charge (e) | ChargeAssignmentResult | ff14SB force field |
 | vdw_radius | double | Angstroms | ChargeAssignmentResult | ff14SB force field |
-| xtb_charge | double | elementary charge (e) | XtbChargeResult | GFN2-xTB Mulliken charge |
-| xtb_homo_lumo_gap | double | eV | XtbChargeResult | Per-atom HOMO-LUMO gap |
-| xtb_polarisability | Mat3 | Bohr^3 | XtbChargeResult | Atomic polarisability tensor |
-| xtb_polarisability_spherical | SphericalTensor | Bohr^3 | XtbChargeResult | Decomposition of polarisability |
+| mopac_charge | double | elementary charge (e) | MopacResult | PM7 Mulliken charge |
+| mopac_s_pop | double | electrons | MopacResult | s-orbital population |
+| mopac_p_pop | double | electrons | MopacResult | p-orbital population |
+| mopac_valency | double | dimensionless | MopacResult | Sum of Wiberg bond orders |
+| mopac_bond_neighbours | vector&lt;MopacBondNeighbour&gt; | - | MopacResult | Sorted descending by order |
 
 ### Spatial neighbourhood (on ProteinConformation)
 
@@ -1125,7 +1126,7 @@ Results are accessed via C++ templates. Adding a new ConformationResult
 does NOT require modifying ProteinConformation.
 
     auto& bs = conformation.Result<BiotSavartResult>();
-    if (conformation.HasResult<XtbChargeResult>()) { ... }
+    if (conformation.HasResult<MopacResult>()) { ... }
     for (auto& [type_id, result] : conformation.AllResults()) { ... }
 
 The named accessors below are convenience wrappers, not the mechanism:
@@ -1150,7 +1151,9 @@ The named accessors below are convenience wrappers, not the mechanism:
 | `PiQuadrupole()` | `PiQuadrupoleResult&` | Quadrupole EFG |
 | `RingSusceptibility()` | `RingSusceptibilityResult&` | Ring susceptibility anisotropy |
 | `OrcaShielding()` | `OrcaShieldingResult&` | DFT shielding tensors |
-| `Result<XtbChargeResult>()` | `XtbChargeResult&` | xTB charges, HOMO-LUMO, polarisability |
+| `Result<MopacResult>()` | `MopacResult&` | MOPAC charges, orbital pops, bond orders |
+| `Result<MopacCoulombResult>()` | `MopacCoulombResult&` | Coulomb EFG from QM charges |
+| `Result<MopacMcConnellResult>()` | `MopacMcConnellResult&` | Bond-order-weighted anisotropy |
 | `Result<ParameterCorrectionResult>()` | `ParameterCorrectionResult&` | Corrected calculator parameters, residual |
 | `FeatureExtraction()` | `FeatureExtractionResult&` | Feature vectors |
 | `Prediction()` | `PredictionResult&` | ML predictions |
@@ -1338,7 +1341,8 @@ prior results and stores its own properties. Once attached, permanent.
 GeometryResult                requires: nothing
 DsspResult                    requires: nothing
 ChargeAssignmentResult        requires: nothing
-XtbChargeResult               requires: nothing (external tool)
+MopacResult                   requires: nothing (conformation electronic structure,
+                                runs early as precondition for MOPAC-derived calculators)
 EnrichmentResult              requires: nothing
 SpatialIndexResult            requires: GeometryResult
 ApbsFieldResult               requires: ChargeAssignmentResult
@@ -1347,12 +1351,14 @@ BiotSavartResult              requires: SpatialIndexResult, GeometryResult
 HaighMallionResult            requires: SpatialIndexResult, GeometryResult
 McConnellResult               requires: SpatialIndexResult, GeometryResult
 CoulombResult                 requires: ChargeAssignmentResult, SpatialIndexResult
+MopacCoulombResult            requires: MopacResult, SpatialIndexResult
+MopacMcConnellResult          requires: MopacResult, SpatialIndexResult, GeometryResult
 HBondResult                   requires: DsspResult, SpatialIndexResult
 DispersionResult              requires: SpatialIndexResult, GeometryResult
 PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
 OrcaShieldingResult           requires: nothing (loaded from files)
-ParameterCorrectionResult     requires: ApbsFieldResult, XtbChargeResult, DsspResult, OrcaShieldingResult
+ParameterCorrectionResult     requires: ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
 FeatureExtractionResult       requires: all physics results
 PredictionResult              requires: FeatureExtractionResult
 ```
@@ -1372,7 +1378,8 @@ tables above for exactly what each result stores.
 
 Every classical calculator ConformationResult (BiotSavartResult,
 HaighMallionResult, McConnellResult, CoulombResult, PiQuadrupoleResult,
-RingSusceptibilityResult, DispersionResult, HBondResult) must produce
+RingSusceptibilityResult, DispersionResult, HBondResult,
+MopacCoulombResult, MopacMcConnellResult) must produce
 TWO kinds of output:
 
 ### 1. Geometric output (for features and reuse)
@@ -1770,32 +1777,65 @@ SASA (Angstroms^2), H-bond acceptors[2], H-bond donors[2].
 ### ChargeAssignmentResult (requires: nothing)
 Per-atom: partial charge (e), VdW radius (Angstroms).
 
-### XtbChargeResult
+### MopacResult
 
-**Requires:** nothing (external tool invocation)
-**Accessor:** `conformation.Result<XtbChargeResult>()`
+**Requires:** nothing (external tool, conformation electronic structure precondition)
+**Accessor:** `conformation.Result<MopacResult>()`
 
 #### What it computes
-GFN2-xTB quantum-informed charges and electronic properties per atom.
-Run via xtb 6.7.1 on per-residue or per-tripeptide fragments.
+PM7+MOZYME semiempirical electronic structure for the full protein.
+Calls MOPAC as subprocess (~45s for 889 atoms). Provides conformation-
+dependent charges and bond orders that downstream calculators draw on.
 
 #### Input
-Atom positions, element types from Protein.
+Atom positions and elements from ProteinConformation, net charge.
 
-#### What it stores (per atom)
-- xtb_charge: double, Mulliken charge (elementary charge units)
-- xtb_homo_lumo_gap: double, HOMO-LUMO gap (eV)
-- xtb_polarisability: Mat3, atomic polarisability tensor (Bohr^3)
-- xtb_polarisability_spherical: SphericalTensor of polarisability
+#### What it stores (per atom on ConformationAtom)
+- mopac_charge: double, Mulliken charge (elementary charge units)
+- mopac_s_pop: double, s-orbital population (electrons)
+- mopac_p_pop: double, p-orbital population (electrons)
+- mopac_valency: double, sum of Wiberg bond orders
+- mopac_bond_neighbours: vector of MopacBondNeighbour, sorted descending by order
 
-#### What it stores (per bond)
-- xtb_wiberg_bond_order: double, Wiberg bond order (dimensionless)
+#### What it stores (on the result object)
+- Per-bond Wiberg bond orders: O(1) lookup via BondOrder(atom_a, atom_b)
+- Topology bridge: TopologyBondOrders() parallel to protein.Bonds()
+- Heat of formation (kcal/mol), dipole moment (Vec3)
 
 #### Physics query methods
 - `ChargeAt(atom_index) -> double`
-- `HOMOLUMOGap(atom_index) -> double`
-- `PolarisabilityAt(atom_index) -> Mat3`
-- `BondOrder(bond_index) -> double`
+- `SPopAt(atom_index) -> double`
+- `PPopAt(atom_index) -> double`
+- `ValencyAt(atom_index) -> double`
+- `BondOrder(atom_a, atom_b) -> double` (O(1), symmetric, 0.0 if no bond)
+- `TopologyBondOrder(bond_index) -> double` (parallel to protein.Bonds())
+- `HeatOfFormation() -> double`
+
+### MopacCoulombResult
+
+**Requires:** MopacResult, SpatialIndexResult
+**Accessor:** `conformation.Result<MopacCoulombResult>()`
+
+Coulomb EFG from MOPAC QM charges. Same kernel as CoulombResult
+(Calculator 4 in GEOMETRIC_KERNEL_CATALOGUE.md), different charge source.
+See Calculator 9 in the catalogue for full description.
+
+**TBD:** ConformationAtom field table, per-atom storage details,
+WriteFeatures output manifest. Fields exist in code (ConformationAtom.h,
+mopac_coulomb_ prefix). See src/MopacCoulombResult.cpp for implementation.
+
+### MopacMcConnellResult
+
+**Requires:** MopacResult, SpatialIndexResult, GeometryResult
+**Accessor:** `conformation.Result<MopacMcConnellResult>()`
+
+McConnell bond anisotropy tensor weighted by MOPAC Wiberg bond order.
+Same kernel as McConnellResult (Calculator 3), each bond weighted by
+measured electron sharing. See Calculator 10 in the catalogue.
+
+**TBD:** ConformationAtom field table, per-atom storage details,
+WriteFeatures output manifest. Fields exist in code (ConformationAtom.h,
+mopac_mc_ prefix). See src/MopacMcConnellResult.cpp for implementation.
 
 ### EnrichmentResult (requires: nothing)
 Per-atom: role (AtomRole), hybridisation (Hybridisation), categorical
@@ -1875,19 +1915,19 @@ separate Proteins. Comparison is MutantProteinConformationComparison.
 
 ### ParameterCorrectionResult
 
-**Requires:** ApbsFieldResult, XtbChargeResult, DsspResult, OrcaShieldingResult
+**Requires:** ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
 **Accessor:** `conformation.Result<ParameterCorrectionResult>()`
 
 A trained e3nn model that predicts mutant delta tensors from environment
 data and outputs corrected parameters for classical calculators. This
-model is trained on APBS E-field, xTB charges, DSSP structure, and
+model is trained on APBS E-field, MOPAC charges, DSSP structure, and
 non-mutant DFT shielding tensors. It has NOTHING to do with NMR
 chemical shift prediction. Its job is to learn better values for
 classical physics parameters (ring current intensities, bond
 anisotropies, Buckingham coefficients).
 
 See CALCULATOR_PARAMETER_API.md for the full parameter correction
-interface for all 8 classical calculators.
+interface for all 10 classical calculators.
 
 #### What it provides
 

@@ -47,6 +47,8 @@ DsspResult                   requires: nothing
 ChargeAssignmentResult       requires: nothing
 EnrichmentResult             requires: nothing
 OrcaShieldingResult          requires: nothing
+MopacResult                  requires: nothing (conformation electronic
+                               structure — runs early as precondition)
     |
     v
 SpatialIndexResult           requires: GeometryResult
@@ -61,6 +63,8 @@ PiQuadrupoleResult           requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult     requires: SpatialIndexResult, GeometryResult
 DispersionResult             requires: SpatialIndexResult, GeometryResult
 CoulombResult                requires: ChargeAssignmentResult, SpatialIndexResult
+MopacCoulombResult           requires: MopacResult, SpatialIndexResult
+MopacMcConnellResult         requires: MopacResult, SpatialIndexResult, GeometryResult
 HBondResult                  requires: DsspResult, SpatialIndexResult
     |
     v
@@ -76,18 +80,24 @@ The following is one valid execution order. Other topological sorts
 are equally valid -- the pipeline only guarantees that dependencies
 are satisfied before a result runs.
 
-**Tier 0 (no dependencies -- can run in parallel):**
+**Foundation (no dependencies -- can run in parallel):**
 - GeometryResult
 - DsspResult
 - ChargeAssignmentResult
 - EnrichmentResult
 - OrcaShieldingResult
 
-**Tier 1 (depends on Tier 0 results):**
+**Conformation electronic structure (no formal dependencies, but
+runs after charges are available so net charge is known):**
+- MopacResult (PM7+MOZYME — provides QM charges and bond orders
+  that downstream MOPAC-derived calculators depend on)
+
+**Spatial infrastructure (depends on foundation):**
 - SpatialIndexResult (requires GeometryResult)
 - ApbsFieldResult (requires ChargeAssignmentResult)
 
-**Tier 2 (depends on Tier 0-1 results -- can run in parallel):**
+**Geometric kernel calculators (depend on foundation + spatial --
+can run in parallel):**
 - MolecularGraphResult (requires SpatialIndexResult)
 - BiotSavartResult (requires SpatialIndexResult, GeometryResult)
 - HaighMallionResult (requires SpatialIndexResult, GeometryResult)
@@ -96,13 +106,21 @@ are satisfied before a result runs.
 - RingSusceptibilityResult (requires SpatialIndexResult, GeometryResult)
 - DispersionResult (requires SpatialIndexResult, GeometryResult)
 - CoulombResult (requires ChargeAssignmentResult, SpatialIndexResult)
+- MopacCoulombResult (requires MopacResult, SpatialIndexResult)
+- MopacMcConnellResult (requires MopacResult, SpatialIndexResult, GeometryResult)
 - HBondResult (requires DsspResult, SpatialIndexResult)
 
-**Tier 3 (depends on all physics results):**
+**Feature aggregation (depends on all physics results):**
 - FeatureExtractionResult
 
-**Tier 4 (depends on features):**
+**Prediction (depends on features):**
 - PredictionResult
+
+**TBD:** Per-result feature sections for MopacResult, MopacCoulombResult,
+MopacMcConnellResult. Feature manifest count needs updating (was 189,
+now includes MOPAC-derived arrays — 46 NPY arrays per conformation).
+See src/MopacResult.cpp, MopacCoulombResult.cpp, MopacMcConnellResult.cpp
+WriteFeatures() for current output.
 
 ---
 
