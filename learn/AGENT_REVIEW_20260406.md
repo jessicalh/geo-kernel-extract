@@ -43,26 +43,20 @@ uses KD-tree with bijection enforcement and second-chance passes.
 Estimated impact: ~1% R^2. Not the gap source, but should move to C++
 for correctness (MutationDeltaResult.WriteFeatures — next session).
 
-### What the 45% residual likely contains
+### The residual
 
-| Source | Estimated share | Notes |
-|--------|----------------|-------|
-| Paramagnetic contributions | 15-20% | Excited-state mixing; no classical kernel models this |
-| Charge redistribution | 10-15% | QM reorganisation beyond fixed WT/ALA charges |
-| Geometry noise | 5-10% | Different optimisations shift atoms sub-Angstrom |
-| DFT convergence | 2-5% | Irreducible noise in targets |
-| Missing angular structure | ~5% | L=2 patterns the 46 kernels can't represent |
+The residual is what we haven't explained yet. It contains a mix of
+paramagnetic contributions, charge redistribution, geometry effects,
+and possibly missing angular structure. The relative shares are
+unknown and determining them is part of the ongoing work. Do not
+treat any breakdown as a ceiling — it is an open question how much
+of the residual is recoverable with better modeling.
 
-The physics ceiling from paramagnetic effects is real — the kernels
-compute diamagnetic mechanisms, and the DFT delta includes both.
-
-### Recommended diagnostics if R^2 plateaus
+### Useful diagnostics (when ready)
 
 - Per-component R^2: which of the 5 T2 m-values is worst?
-- Per-distance-zone R^2: near-ring (< 5A) vs far. Are near-ring
-  atoms well-predicted while far atoms contribute noise?
-- These would reveal whether the residual is uniform or concentrated
-  where specific kernels are weakest.
+- Per-distance-zone R^2: near-ring (< 5A) vs far.
+- These help understand WHERE to improve, not WHETHER to improve.
 
 ---
 
