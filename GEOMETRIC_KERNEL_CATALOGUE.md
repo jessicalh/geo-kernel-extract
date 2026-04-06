@@ -592,6 +592,172 @@ distributions.
 
 ---
 
+## Calculator 9: MOPAC Coulomb EFG
+
+**Physical picture**: Same as Calculator 4 — partial charges create an
+electric field E and electric field gradient tensor V at each atom via
+the Coulomb interaction. The difference is the charge source.
+CoulombResult uses ff14SB fixed charges (one value per atom type,
+invariant across conformations). MopacCoulombResult uses PM7 Mulliken
+charges from MOPAC — quantum-mechanically derived charges that respond
+to the local electronic environment at each conformation. A backbone
+nitrogen near a charged sidechain has a different MOPAC charge than the
+same nitrogen far from charged groups. ff14SB cannot see this.
+
+**Geometric kernel**: Identical to Calculator 4:
+
+Electric field (rank-1, Vec3):
+```
+E_a(i) = ke * sum_{j!=i} q_mopac_j * (r_i - r_j)_a / |r_i - r_j|^3
+```
+
+Electric field gradient (rank-2, Mat3, TRACELESS by Gauss's law):
+```
+V_ab(i) = ke * sum_{j!=i} q_mopac_j * [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|^5
+                                        - delta_ab / |r_i-r_j|^3]
+```
+
+The charges q_mopac_j are different from q_ff14sb_j. Because the charge
+distribution differs, the angular pattern of the summed EFG differs —
+which atoms dominate the sum at each field point changes. This is not a
+re-parameterization of Coulomb. It is a different kernel — the field
+that nature produces at this geometry given the actual electron
+distribution, not the force field's approximation of it.
+
+**Units**: V/A (E-field), V/A^2 (EFG). Same as CoulombResult.
+
+**T2 structure**: V_ab is traceless symmetric — pure T2 (same as
+Calculator 4). The T2 of the MOPAC EFG encodes the angular asymmetry
+of the QM charge distribution around the atom. Where ff14SB assigns
+uniform charges to all GLY CA atoms regardless of environment, MOPAC
+captures the charge redistribution from nearby polar groups, aromatic
+rings, and hydrogen bonds.
+
+**T2 independence** (verified on A0A062V9G2, 732 atoms):
+MopacCoulomb vs ff14SB Coulomb: |cos| = 0.85. Highly correlated (same
+underlying geometry) but not redundant — 15% angular difference from
+charge polarisation. The model can distinguish them.
+
+**Decomposition**: Same as Calculator 4:
+- Backbone atoms: E_backbone, V_backbone
+- Sidechain atoms: E_sidechain, V_sidechain
+- Aromatic atoms: E_aromatic, V_aromatic
+No APBS solvent subtraction (APBS was solved with ff14SB charges; the
+MOPAC-charge solvent field would require a separate PB solve).
+
+**Shielding contribution** (Buckingham 1960, same form as Calculator 4):
+```
+sigma_iso = A_elem * E_z + B_elem * E_z^2      (T0, ppm)
+sigma_T2 = gamma_mopac * V_T2                   (T2, ppm)
+```
+
+The model learns gamma_mopac — the Buckingham coupling coefficient for
+the QM-charge EFG. The comparison between the ff14SB gamma and MOPAC
+gamma weights is itself a finding about whether charge polarisation
+matters for the angular structure of shielding.
+
+**Relationship to Calculator 4**: CoulombResult and MopacCoulombResult
+compute the same physics with different input data. CoulombResult is the
+force field baseline — what you get from fixed charges. MopacCoulombResult
+is the QM-derived version — what you get from charges that respond to
+conformation. The delta between them isolates the effect of charge
+polarisation on the angular EFG pattern. Near a mutation site where
+the aromatic ring's removal redistributes electron density, the two
+EFGs diverge. That divergence is the charge redistribution signal.
+
+**Dependencies**: MopacResult (conformation electronic structure,
+provides mopac_charge on ConformationAtom), SpatialIndexResult.
+
+**Filter set**: SelfSourceFilter (field undefined at source itself).
+No spatial cutoff — N^2 sum over all atoms, same as Calculator 4.
+
+---
+
+## Calculator 10: MOPAC Bond-Order-Weighted Anisotropy
+
+**Physical picture**: Same as Calculator 3 — bond magnetic
+susceptibility anisotropy creates a dipolar shielding field at nearby
+nuclei. The kernel is the same full McConnell tensor M_ab / r^3. The
+difference is that each bond's contribution is weighted by its MOPAC
+Wiberg bond order — a continuous quantum-mechanical measure of how
+much electron density the two bonded atoms share.
+
+**Geometric kernel** (per bond, at atom position r):
+
+```
+total_ab = sum_bonds  bond_order_k * M_ab_k / r_k^3
+```
+
+where M_ab is the full McConnell tensor from Calculator 3:
+
+```
+M_ab = 9 cos_theta * d_hat_a * b_hat_b
+     - 3 b_hat_a * b_hat_b
+     - (3 d_hat_a * d_hat_b - delta_ab)
+```
+
+The bond order is not a parameter. It is a measured property of the
+bond at this conformation — part of the geometric reality, like the
+charge in Calculator 9. A C=O with bond order 1.85 contributes 1.85×
+the kernel of a C=O with order 1.0. Bonds with negligible electron
+sharing (order < 0.01) are skipped — they are electronically
+insignificant.
+
+**Units**: Angstrom^-3 (same as Calculator 3, before Dchi multiplication).
+
+**What bond-order weighting changes physically**:
+
+In unweighted McConnell, every C=O contributes equally regardless of
+its actual electron distribution. In bond-order-weighted McConnell,
+double bonds dominate over single bonds. The key consequence: the
+RELATIVE contributions of individual bonds to the angular sum change.
+A strong C=O near the field atom may now dominate where previously it
+was one among many equal contributors. This changes the total T2
+angular pattern — the direction of the summed tensor rotates because
+different bonds carry different weight.
+
+Near a mutation site where bond character changes (the aromatic ring's
+influence on nearby C=O bonds), the weighted and unweighted sums
+diverge. This divergence IS the electron redistribution signal in the
+bond anisotropy channel.
+
+**Tensor structure** (per bond): Same as Calculator 3 — asymmetric,
+non-traceless, T0+T1+T2 all non-zero. The bond-order weighting is a
+scalar multiplier on each bond's tensor, so it does not change the
+irrep structure of individual terms. It changes the linear combination
+of terms in the sum.
+
+**T2 independence** (verified on A0A062V9G2, 732 atoms):
+MopacMcConnell vs unweighted McConnell: |cos| = 0.55. Substantially
+different angular patterns — well above random (0.36) but well below
+redundant (1.0). Bond-order weighting does not merely rescale
+McConnell; it reweights which bonds matter, producing genuinely
+different angular structure.
+
+**Per-category decomposition**: Same 5 categories as Calculator 3
+(PeptideCO, PeptideCN, BackboneOther, SidechainCO, Aromatic). Each
+category accumulates the bond-order-weighted kernel sum. The model
+learns Delta_chi_mopac per category.
+
+The comparison between unweighted and weighted McConnell at each bond
+category answers: does a continuous description of bond character
+improve the angular structure beyond categorical Delta_chi? If the
+weighted kernel reduces the T2 residual, fixed Delta_chi per category
+was the bottleneck — the actual anisotropy varies with electron
+distribution, and MOPAC measures that variation.
+
+**Dependencies**: MopacResult (conformation electronic structure,
+provides TopologyBondOrder(bond_index) for each covalent bond),
+SpatialIndexResult (bond midpoint search within cutoff),
+GeometryResult (bond midpoints and directions).
+
+**Filter set**: SelfSourceFilter + DipolarNearFieldFilter (source
+extent = bond length). Same as Calculator 3.
+
+**Cutoff**: 10.0 A from bond midpoint (same as Calculator 3).
+
+---
+
 ## The T2 Hierarchy (what we expect, to be verified)
 
 The old bilinear model's alpha coefficients suggested a ranking of
@@ -612,6 +778,8 @@ produce the actual ranking.
 | Pi-quadrupole | Quadrupole EFG from ring | 1/r^4 decay, ring-normal dependence | height_offset |
 | Dispersion | 1/r^8 anisotropy | Small anisotropic contribution | (small) |
 | H-bond | Full dipolar tensor from partner | Fewer sources than McConnell | backbone/sidechain weight |
+| MOPAC Coulomb | QM-charge EFG asymmetry | Charge polarisation changes angular EFG | gamma_mopac |
+| MOPAC McConnell | Bond-order-weighted dipolar | Electron sharing reweights bond contributions | Delta_chi_mopac |
 
 McConnell should dominate T2 because: (a) there are hundreds of
 bonds vs a few rings, (b) 1/r^3 decay is steep so nearby bonds
