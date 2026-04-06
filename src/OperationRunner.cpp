@@ -7,6 +7,8 @@
 #include "DsspResult.h"
 #include "ChargeAssignmentResult.h"
 #include "MopacResult.h"
+#include "MopacCoulombResult.h"
+#include "MopacMcConnellResult.h"
 #include "ApbsFieldResult.h"
 #include "BiotSavartResult.h"
 #include "HaighMallionResult.h"
@@ -127,6 +129,13 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (conf.HasResult<ChargeAssignmentResult>()) {
         if (!Attach(conf, CoulombResult::Compute(conf),
                     "CoulombResult", out)) return out;
+    }
+
+    if (conf.HasResult<MopacResult>()) {
+        if (!Attach(conf, MopacCoulombResult::Compute(conf),
+                    "MopacCoulombResult", out)) return out;
+        if (!Attach(conf, MopacMcConnellResult::Compute(conf),
+                    "MopacMcConnellResult", out)) return out;
     }
 
     if (conf.HasResult<DsspResult>()) {

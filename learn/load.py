@@ -83,6 +83,16 @@ class Conformation:
     # xTB charges (may be absent)
     xtb_charges: np.ndarray = None   # (N,) or None
 
+    # MOPAC Coulomb EFG from QM charges (may be absent)
+    mopac_coulomb: np.ndarray = None           # (N, 9) or None
+    mopac_coulomb_E: np.ndarray = None         # (N, 3) or None
+    mopac_coulomb_efg_backbone: np.ndarray = None  # (N, 9) or None
+    mopac_coulomb_efg_aromatic: np.ndarray = None  # (N, 9) or None
+
+    # MOPAC bond-order-weighted McConnell (may be absent)
+    mopac_mc: np.ndarray = None                # (N, 9) or None
+    mopac_mc_category_T2: np.ndarray = None    # (N, 25) or None
+
     # Ring proximity counts
     ring_counts: np.ndarray = None   # (N, 4)
 
@@ -146,6 +156,14 @@ def load_conformation(protein_id: str, variant: str,
     c.apbs_E = _load_optional(d / "apbs_E.npy")
     c.apbs_efg = _load_optional(d / "apbs_efg.npy")
     c.xtb_charges = _load_optional(d / "xtb_charges.npy")
+
+    # MOPAC-derived kernels (optional — absent in pre-MOPAC extractions)
+    c.mopac_coulomb = _load_optional(d / "mopac_coulomb_shielding.npy")
+    c.mopac_coulomb_E = _load_optional(d / "mopac_coulomb_E.npy")
+    c.mopac_coulomb_efg_backbone = _load_optional(d / "mopac_coulomb_efg_backbone.npy")
+    c.mopac_coulomb_efg_aromatic = _load_optional(d / "mopac_coulomb_efg_aromatic.npy")
+    c.mopac_mc = _load_optional(d / "mopac_mc_shielding.npy")
+    c.mopac_mc_category_T2 = _load_optional(d / "mopac_mc_category_T2.npy")
 
     return c
 

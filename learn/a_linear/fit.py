@@ -59,6 +59,11 @@ def build_features_and_targets(protein_ids):
     feature_names.append("RingSusc")
     # HBond total
     feature_names.append("HBond")
+    # MOPAC Coulomb EFG total (QM charges)
+    feature_names.append("MopacCoulomb")
+    # MOPAC bond-order-weighted McConnell: 5 categories
+    for cat in mc_cats:
+        feature_names.append(f"MopacMC_{cat}")
 
     K = len(feature_names)
 
@@ -99,6 +104,13 @@ def build_features_and_targets(protein_ids):
         features[:, 38, :] = T2(wt.ringchi)
         # HBond total T2
         features[:, 39, :] = T2(wt.hbond)
+        # MOPAC Coulomb total T2 (optional — absent in pre-MOPAC extractions)
+        if wt.mopac_coulomb is not None:
+            features[:, 40, :] = T2(wt.mopac_coulomb)
+        # MOPAC bond-order-weighted McConnell categories (optional)
+        if wt.mopac_mc_category_T2 is not None:
+            for c in range(5):
+                features[:, 41+c, :] = wt.mopac_mc_category_T2[:, c*5:(c+1)*5]
 
         # Stack: for equivariant regression, each T2 component is a separate observation
         # with the SAME weight. X shape: (N*5, K), y shape: (N*5,)

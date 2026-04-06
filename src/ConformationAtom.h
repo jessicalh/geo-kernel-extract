@@ -152,6 +152,22 @@ public:
     Vec3 dir_nearest_CO = Vec3::Zero();
     SphericalTensor mc_shielding_contribution;
 
+    // === MOPAC bond-order-weighted anisotropy (MopacMcConnellResult) ===
+    // Same kernel as McConnellResult, each bond weighted by MOPAC Wiberg order.
+    double mopac_mc_co_sum = 0.0;
+    double mopac_mc_cn_sum = 0.0;
+    double mopac_mc_sidechain_sum = 0.0;
+    double mopac_mc_aromatic_sum = 0.0;
+    double mopac_mc_co_nearest = 0.0;
+    double mopac_mc_nearest_CO_dist = 0.0;
+    double mopac_mc_nearest_CN_dist = 0.0;
+    SphericalTensor mopac_mc_T2_CO_nearest;
+    SphericalTensor mopac_mc_T2_CN_nearest;
+    SphericalTensor mopac_mc_T2_backbone_total;
+    SphericalTensor mopac_mc_T2_sidechain_total;
+    SphericalTensor mopac_mc_T2_aromatic_total;
+    SphericalTensor mopac_mc_shielding_contribution;
+
     // === Coulomb field totals (CoulombResult) ===
     Vec3 coulomb_E_total = Vec3::Zero();
     Vec3 coulomb_E_backbone = Vec3::Zero();
@@ -172,6 +188,24 @@ public:
     double aromatic_E_bond_proj = 0.0;
     int aromatic_n_sidechain_atoms = 0;
     SphericalTensor coulomb_shielding_contribution;
+
+    // === MOPAC Coulomb field totals (MopacCoulombResult) ===
+    // Same kernel as CoulombResult but with MOPAC QM charges.
+    // Units: V/A (E-field), V/A^2 (EFG).
+    Vec3 mopac_coulomb_E_total = Vec3::Zero();
+    Vec3 mopac_coulomb_E_backbone = Vec3::Zero();
+    Vec3 mopac_coulomb_E_sidechain = Vec3::Zero();
+    Vec3 mopac_coulomb_E_aromatic = Vec3::Zero();
+    Mat3 mopac_coulomb_EFG_total = Mat3::Zero();
+    SphericalTensor mopac_coulomb_EFG_total_spherical;
+    Mat3 mopac_coulomb_EFG_backbone = Mat3::Zero();
+    SphericalTensor mopac_coulomb_EFG_backbone_spherical;
+    Mat3 mopac_coulomb_EFG_aromatic = Mat3::Zero();
+    SphericalTensor mopac_coulomb_EFG_aromatic_spherical;
+    double mopac_coulomb_E_magnitude = 0.0;
+    double mopac_coulomb_E_bond_proj = 0.0;
+    double mopac_coulomb_E_backbone_frac = 0.0;
+    SphericalTensor mopac_coulomb_shielding_contribution;
 
     // === APBS solvated fields (ApbsFieldResult) ===
     // Units: V/A (E-field), V/A^2 (EFG). Converted from APBS kT/(e*A)

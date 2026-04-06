@@ -140,6 +140,8 @@ add_library(nmr_shielding
     src/DispersionResult.cpp
     src/KernelEvaluationFilter.cpp
     src/MopacResult.cpp
+    src/MopacCoulombResult.cpp
+    src/MopacMcConnellResult.cpp
     src/SpatialIndexResult.cpp
     src/EnrichmentResult.cpp
     src/MolecularGraphResult.cpp
