@@ -139,7 +139,7 @@ public:
     std::map<AminoAcid, std::vector<size_t>> residues_by_type;
 
     // Geometric decisions recorded by calculators during Compute().
-    // Flat list, append-only. Populated via GeometryChoiceBuilder::Commit().
+    // Flat list, append-only. Populated via GeometryChoiceBuilder::Record().
     std::vector<GeometryChoice> geometry_choices;
 
 protected:

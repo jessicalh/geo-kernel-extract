@@ -4,11 +4,13 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <cmath>
 #include <array>
+#include <set>
 
 namespace nmr {
 
@@ -207,11 +209,15 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
     // Filter set: DipolarNearFieldFilter with source_extent = ring diameter,
     // plus RingBondedExclusionFilter for topological exclusion.
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcHaighMal, "HaighMallionResult::Compute",
         "filter set: " + filters.Describe());
+
+    GeometryChoiceBuilder choices(conf);
+    std::set<size_t> recorded_rings;
 
     int total_pairs = 0;
 
@@ -227,8 +233,17 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
+            // ---- GeometryChoice: surface integral ----
+            if (recorded_rings.find(ri) == recorded_rings.end()) {
+                recorded_rings.insert(ri);
+                choices.Record(CalculatorId::HaighMallion, ri, "surface integral",
+                    [&ring](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        // TODO: HM sampler needs AccumulateTensor refactor
+                    });
+            }
+
             double distance = (atom_pos - geom.center).norm();
-            if (distance < MIN_DISTANCE) continue;
 
             // Apply filter
             KernelEvaluationContext ctx;
@@ -236,7 +251,30 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
-            if (!filters.AcceptAll(ctx)) continue;
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: near-field exclusion ----
+                choices.Record(CalculatorId::HaighMallion, ri, "near-field exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                continue;
+            }
+
+            // ---- GeometryChoice: adaptive refinement ----
+            if (distance < HM_SUBDIV_THRESHOLD_L1) {
+                choices.Record(CalculatorId::HaighMallion, ri, "adaptive refinement",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Triggered);
+                        AddNumber(gc, "distance", distance, "A");
+                        AddNumber(gc, "L1_threshold", HM_SUBDIV_THRESHOLD_L1, "A");
+                        AddNumber(gc, "L2_threshold", HM_SUBDIV_THRESHOLD_L2, "A");
+                    });
+            }
 
             // Step 1: Raw surface integral H_ab (symmetric, traceless, A^-1)
             Mat3 H = SurfaceIntegral(atom_pos, geom);

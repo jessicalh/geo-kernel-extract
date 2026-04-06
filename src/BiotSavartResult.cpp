@@ -4,10 +4,12 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
 #include <cmath>
+#include <set>
 
 namespace nmr {
 
@@ -145,11 +147,15 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
     // plus RingBondedExclusionFilter for topological exclusion of ring
     // vertices and their bonded neighbours.
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcBiotSavart, "BiotSavartResult::Compute",
         "filter set: " + filters.Describe());
+
+    GeometryChoiceBuilder choices(conf);
+    std::set<size_t> recorded_rings;
 
     int total_pairs = 0;
 
@@ -168,8 +174,29 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
             if (geom.vertices.size() < 3) continue;
 
+            // ---- GeometryChoice: ring current ----
+            if (recorded_rings.find(ri) == recorded_rings.end()) {
+                recorded_rings.insert(ri);
+                auto verts_copy = geom.vertices;
+                Vec3 normal_copy = geom.normal;
+                double lobe_copy = ring.JBLobeOffset();
+                choices.Record(CalculatorId::BiotSavart, ri, "ring current",
+                    [&ring, verts_copy, normal_copy, lobe_copy](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddNumber(gc, "intensity", ring.Intensity(), "nA");
+                        AddNumber(gc, "lobe_offset", ring.JBLobeOffset(), "A");
+                        SetSampler(gc, [verts_copy, normal_copy, lobe_copy](Vec3 pt) -> SphericalTensor {
+                            Vec3 B = JohnsonBoveyField(verts_copy, normal_copy, lobe_copy, 1.0, pt);
+                            Mat3 G;
+                            for (int a = 0; a < 3; ++a)
+                                for (int b = 0; b < 3; ++b)
+                                    G(a, b) = -normal_copy(b) * B(a) * PPM_FACTOR;
+                            return SphericalTensor::Decompose(G);
+                        });
+                    });
+            }
+
             double distance = (atom_pos - geom.center).norm();
-            if (distance < MIN_DISTANCE) continue;
 
             // Apply filter: source extent = ring diameter (2 * radius)
             KernelEvaluationContext ctx;
@@ -177,7 +204,18 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
-            if (!filters.AcceptAll(ctx)) continue;
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: near-field exclusion ----
+                choices.Record(CalculatorId::BiotSavart, ri, "near-field exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                continue;
+            }
 
             // B-field from JB model with unit current (1.0 nA).
             // The geometric kernel is independent of intensity.
@@ -273,6 +311,16 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             if (rn.distance_to_center <= RING_COUNT_SHELL_3) ca.n_rings_within_8A++;
             if (rn.distance_to_center <= RING_COUNT_SHELL_4) ca.n_rings_within_12A++;
         }
+
+        // ---- GeometryChoice: ring shells ----
+        choices.Record(CalculatorId::BiotSavart, ai, "ring shells",
+            [&ca, ai](GeometryChoice& gc) {
+                AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
+                AddNumber(gc, "n_within_3A", static_cast<double>(ca.n_rings_within_3A), "count");
+                AddNumber(gc, "n_within_5A", static_cast<double>(ca.n_rings_within_5A), "count");
+                AddNumber(gc, "n_within_8A", static_cast<double>(ca.n_rings_within_8A), "count");
+                AddNumber(gc, "n_within_12A", static_cast<double>(ca.n_rings_within_12A), "count");
+            });
     }
 
     OperationLog::Info(LogCalcBiotSavart, "BiotSavartResult::Compute",

@@ -5,6 +5,7 @@
 #include "ApbsFieldResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -109,7 +110,10 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     // Filter set: SelfSourceFilter (field undefined at source itself).
     // Coulomb is a point-source sum — no DipolarNearFieldFilter needed.
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
+
+    GeometryChoiceBuilder choices(conf);
 
     int aromatic_source_count = 0;
     for (size_t j = 0; j < n_atoms; ++j)
@@ -143,8 +147,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
             Vec3 r = pos_i - conf.PositionAt(j);
             double r_mag = r.norm();
-
-            if (r_mag < MIN_DISTANCE) continue;
 
             double r3 = r_mag * r_mag * r_mag;
             double r5 = r3 * r_mag * r_mag;
@@ -219,6 +221,15 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         double E_mag = E_total.norm();
         if (E_mag > APBS_SANITY_LIMIT) {
             double scale = APBS_SANITY_LIMIT / E_mag;
+
+            // ---- GeometryChoice: E-field clamp ----
+            choices.Record(CalculatorId::Coulomb, i, "E-field clamp",
+                [&conf, i, E_mag, scale](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
+                    AddNumber(gc, "actual_E_magnitude", E_mag, "V/A");
+                    AddNumber(gc, "scale_factor", scale, "");
+                });
+
             E_total     *= scale;
             E_backbone  *= scale;
             E_sidechain *= scale;

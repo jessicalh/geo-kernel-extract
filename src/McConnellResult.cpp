@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -117,11 +118,14 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
     // Filter set: SelfSourceFilter (atom is bond endpoint) +
     // DipolarNearFieldFilter (source extent = bond length).
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
 
     OperationLog::Info(LogCalcMcConnell, "McConnellResult::Compute",
         "filter set: " + filters.Describe());
+
+    GeometryChoiceBuilder choices(conf);
 
     int total_pairs = 0;
     int filtered_out = 0;
@@ -155,7 +159,6 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             Vec3 direction = conf.bond_directions[bi];
 
             BondKernelResult kernel = ComputeBondKernel(atom_pos, midpoint, direction);
-            if (kernel.distance < MIN_DISTANCE) continue;
 
             // Build evaluation context and apply filter set
             KernelEvaluationContext ctx;
@@ -164,7 +167,18 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             ctx.atom_index = ai;
             ctx.source_atom_a = bond.atom_index_a;
             ctx.source_atom_b = bond.atom_index_b;
-            if (!filters.AcceptAll(ctx)) { filtered_out++; continue; }
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: filter exclusion ----
+                choices.Record(CalculatorId::McConnell, bi, "filter exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                filtered_out++; continue;
+            }
 
             // Store in BondNeighbourhood
             BondNeighbourhood bn;
@@ -271,6 +285,14 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
         // Full McConnell shielding contribution (from the full M tensor sum)
         ca.mc_shielding_contribution = SphericalTensor::Decompose(M_total);
+
+        // ---- GeometryChoice: bond anisotropy ----
+        choices.Record(CalculatorId::McConnell, ai, "bond anisotropy",
+            [&ca, ai, best_co_dist, best_cn_dist](GeometryChoice& gc) {
+                AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
+                AddNumber(gc, "nearest_CO_dist", best_co_dist, "A");
+                AddNumber(gc, "nearest_CN_dist", best_cn_dist, "A");
+            });
     }
 
     OperationLog::Info(LogCalcMcConnell, "McConnellResult::Compute",

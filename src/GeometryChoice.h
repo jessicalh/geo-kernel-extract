@@ -96,6 +96,7 @@ class GeometryChoice {
     friend void AddBond(GeometryChoice&, const Bond*,
                         EntityRole, EntityOutcome, const char*);
     friend void AddNumber(GeometryChoice&, const char*, double, const char*);
+    friend void SetSampler(GeometryChoice&, std::function<SphericalTensor(Vec3)>);
 
 public:
     // Read-only access for the UI
@@ -105,6 +106,15 @@ public:
     const std::vector<GeometryEntity>& Entities() const { return entities_; }
     const std::vector<NamedNumber>&    Numbers()  const { return numbers_; }
 
+    // Optional field sampler: evaluates this choice's physics at any 3D point.
+    // Captures the source geometry (ring vertices, bond midpoint, etc.) so
+    // the UI can draw field lines, isosurfaces, or probe values interactively.
+    // Returns SphericalTensor at the given point. Null if not applicable.
+    bool HasSampler() const { return sampler_ != nullptr; }
+    SphericalTensor SampleAt(Vec3 point) const {
+        return sampler_ ? sampler_(point) : SphericalTensor{};
+    }
+
 private:
     GeometryChoice() = default;
 
@@ -113,6 +123,7 @@ private:
     size_t group_key_ = 0;
     std::vector<GeometryEntity> entities_;
     std::vector<NamedNumber>    numbers_;
+    std::function<SphericalTensor(Vec3)> sampler_;
 };
 
 
@@ -205,6 +216,12 @@ inline void AddNumber(GeometryChoice& gc,
                       const char* unit)
 {
     gc.numbers_.push_back({name, value, unit});
+}
+
+inline void SetSampler(GeometryChoice& gc,
+                       std::function<SphericalTensor(Vec3)> sampler)
+{
+    gc.sampler_ = std::move(sampler);
 }
 
 

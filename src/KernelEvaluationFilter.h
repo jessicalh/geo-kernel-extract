@@ -24,6 +24,7 @@
 // papering over a bug.
 //
 
+#include "PhysicalConstants.h"
 #include <vector>
 #include <set>
 #include <memory>
@@ -132,6 +133,41 @@ public:
 //   With filter:  max |T2| = 0.78 A^-3
 //   Without:      max |T2| = 1908 A^-3  (atoms 0.2A from H-bond midpoint)
 // ============================================================================
+
+// ============================================================================
+// MinDistanceFilter
+//
+// Physics: at distances below 0.1 A the field point is essentially on top
+// of the source. The 1/r^n kernels diverge numerically. The kernel helpers
+// (ComputeBondKernel, AccumulateTensor, etc.) also guard internally, but
+// this filter prevents the evaluation from starting at all and provides
+// a named rejection for GeometryChoice recording.
+//
+// Criterion: distance >= MIN_DISTANCE (0.1 A).
+// ============================================================================
+
+class MinDistanceFilter : public KernelEvaluationFilter {
+public:
+    bool Accept(const KernelEvaluationContext& ctx) const override {
+        return ctx.distance >= MIN_DISTANCE;
+    }
+
+    const char* Name() const override {
+        return "MinDistanceFilter";
+    }
+
+    const char* Description() const override {
+        return "Singularity guard: 1/r^n kernels diverge below 0.1 A";
+    }
+
+    std::string RejectReason(const KernelEvaluationContext& ctx) const override {
+        return std::string("MinDistanceFilter: atom=")
+            + std::to_string(ctx.atom_index)
+            + " distance=" + std::to_string(ctx.distance)
+            + "A < " + std::to_string(MIN_DISTANCE) + "A";
+    }
+};
+
 
 class DipolarNearFieldFilter : public KernelEvaluationFilter {
 public:
@@ -326,6 +362,7 @@ public:
         for (size_t i = 0; i < filters_.size(); ++i) {
             if (!filters_[i]->Accept(ctx)) {
                 rejection_counts_[i]++;
+                last_rejector_ = filters_[i]->Name();
                 if (log_rejections_) {
                     rejections_.push_back({
                         filters_[i]->Name(),
@@ -350,6 +387,10 @@ public:
 
     // Number of filters in the set.
     size_t Size() const { return filters_.size(); }
+
+    // Name of the filter that rejected the most recent AcceptAll() call.
+    // Only meaningful after AcceptAll() returns false.
+    const char* LastRejectorName() const { return last_rejector_; }
 
     // Access for logging/reporting.
     const KernelEvaluationFilter& FilterAt(size_t i) const {
@@ -414,6 +455,7 @@ private:
     std::vector<int> rejection_counts_;
     std::vector<RejectionRecord> rejections_;
     std::vector<std::string> rejection_reasons_;
+    const char* last_rejector_ = nullptr;
     bool log_rejections_ = false;
 };
 
