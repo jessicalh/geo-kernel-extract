@@ -4,6 +4,7 @@
 #include "SpatialIndexResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -99,7 +100,10 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
     // ------------------------------------------------------------------
 
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
+
+    GeometryChoiceBuilder choices(conf);
 
     for (size_t i = 0; i < n_atoms; ++i) {
         Vec3 pos_i = conf.PositionAt(i);
@@ -123,12 +127,20 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
             // MOPAC QM charge instead of ff14SB fixed charge
             double q_j = conf.AtomAt(j).mopac_charge;
-            if (std::abs(q_j) < 1e-15) continue;
+            if (std::abs(q_j) < 1e-15) {
+                // ---- GeometryChoice: charge noise floor ----
+                choices.Record(CalculatorId::Coulomb, j, "mopac charge noise floor",
+                    [&conf, i, j, q_j](GeometryChoice& gc) {
+                        AddAtom(gc, &conf.AtomAt(j), j, EntityRole::Source, EntityOutcome::Excluded,
+                                "charge_noise_floor");
+                        AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Included);
+                        AddNumber(gc, "mopac_charge", q_j, "e");
+                    });
+                continue;
+            }
 
             Vec3 r = pos_i - conf.PositionAt(j);
             double r_mag = r.norm();
-
-            if (r_mag < MIN_DISTANCE) continue;
 
             double r3 = r_mag * r_mag * r_mag;
             double r5 = r3 * r_mag * r_mag;
@@ -198,6 +210,15 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         double E_mag = E_total.norm();
         if (E_mag > APBS_SANITY_LIMIT) {
             double scale = APBS_SANITY_LIMIT / E_mag;
+
+            // ---- GeometryChoice: E-field clamp ----
+            choices.Record(CalculatorId::Coulomb, i, "mopac E-field clamp",
+                [&conf, i, E_mag, scale](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
+                    AddNumber(gc, "actual_E_magnitude", E_mag, "V/A");
+                    AddNumber(gc, "scale_factor", scale, "");
+                });
+
             E_total     *= scale;
             E_backbone  *= scale;
             E_sidechain *= scale;

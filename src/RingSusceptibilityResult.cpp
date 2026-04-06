@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -125,11 +126,14 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
     // most ring atoms by geometry, but the topology check is unambiguous
     // at the boundary (ring atoms sit at exactly the distance threshold).
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
     filters.Add(std::make_unique<RingBondedExclusionFilter>(protein));
 
     OperationLog::Info(LogCalcOther, "RingSusceptibilityResult::Compute",
         "filter set: " + filters.Describe());
+
+    GeometryChoiceBuilder choices(conf);
 
     int total_pairs = 0;
 
@@ -149,15 +153,24 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
             RingChiKernelResult kernel = ComputeRingChiKernel(
                 atom_pos, geom.center, geom.normal);
 
-            if (kernel.distance < MIN_DISTANCE) continue;
-
             // Apply filter: source extent = ring diameter (2 * radius)
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
-            if (!filters.AcceptAll(ctx)) continue;
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: filter exclusion ----
+                choices.Record(CalculatorId::RingSusceptibility, ri, "filter exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                continue;
+            }
 
             // Find or create RingNeighbourhood entry for this ring.
             // The ring_neighbours vector may already have an entry from

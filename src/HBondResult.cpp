@@ -4,6 +4,7 @@
 #include "SpatialIndexResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -121,6 +122,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     auto result_ptr = std::make_unique<HBondResult>();
     result_ptr->conf_ = &conf;
 
+    GeometryChoiceBuilder choices(conf);
+
     // ------------------------------------------------------------------
     // Step 1: Resolve DSSP H-bond partners to atom positions.
     //
@@ -139,6 +142,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
     // Use a set to deduplicate: (donor_N, acceptor_O) pairs
     std::set<std::pair<size_t, size_t>> seen;
+    size_t resolution_key = 0;
 
     for (size_t ri = 0; ri < n_residues; ++ri) {
         const auto& dr = dssp.AllResidues()[ri];
@@ -153,7 +157,17 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (res.N == Residue::NONE || acc_res.O == Residue::NONE) continue;
 
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(acc_ri));
-            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) continue;
+            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) {
+                // ---- GeometryChoice: hbond resolution ----
+                choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
+                    [ri, acc_ri, seq_sep](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(acc_ri), "index");
+                        AddNumber(gc, "sequence_separation", static_cast<double>(seq_sep), "residues");
+                        AddNumber(gc, "rejection", 1.0, "seq_sep_too_small");
+                    });
+                continue;
+            }
 
             auto key = std::make_pair(res.N, acc_res.O);
             if (seen.count(key)) continue;
@@ -164,7 +178,17 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) continue;
+            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) {
+                // ---- GeometryChoice: hbond resolution ----
+                choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
+                    [ri, acc_ri, dist](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(acc_ri), "index");
+                        AddNumber(gc, "distance", dist, "A");
+                        AddNumber(gc, "rejection", 1.0, "distance_out_of_range");
+                    });
+                continue;
+            }
 
             ResolvedHBond hb;
             hb.donor_N = res.N;
@@ -187,7 +211,17 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (don_res.N == Residue::NONE || res.O == Residue::NONE) continue;
 
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(don_ri));
-            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) continue;
+            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) {
+                // ---- GeometryChoice: hbond resolution ----
+                choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
+                    [ri, don_ri, seq_sep](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(don_ri), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "sequence_separation", static_cast<double>(seq_sep), "residues");
+                        AddNumber(gc, "rejection", 1.0, "seq_sep_too_small");
+                    });
+                continue;
+            }
 
             auto key = std::make_pair(don_res.N, res.O);
             if (seen.count(key)) continue;
@@ -198,7 +232,17 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) continue;
+            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) {
+                // ---- GeometryChoice: hbond resolution ----
+                choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
+                    [don_ri, ri, dist](GeometryChoice& gc) {
+                        AddNumber(gc, "donor_residue", static_cast<double>(don_ri), "index");
+                        AddNumber(gc, "acceptor_residue", static_cast<double>(ri), "index");
+                        AddNumber(gc, "distance", dist, "A");
+                        AddNumber(gc, "rejection", 1.0, "distance_out_of_range");
+                    });
+                continue;
+            }
 
             ResolvedHBond hb;
             hb.donor_N = don_res.N;
@@ -238,6 +282,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     // ------------------------------------------------------------------
 
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
 
@@ -270,8 +315,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             HBondKernelResult kernel = ComputeHBondKernel(
                 atom_pos, hb.midpoint, hb.h_hat);
 
-            if (kernel.distance < MIN_DISTANCE) continue;
-
             // Build evaluation context from already-computed geometry
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
@@ -288,6 +331,18 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ctx.sequence_separation = std::min(sep_don, sep_acc);
 
             if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: filter exclusion ----
+                choices.Record(CalculatorId::HBond, hi, "filter exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddAtom(gc, &conf.AtomAt(hb.donor_N), hb.donor_N,
+                                EntityRole::Context, EntityOutcome::Included);
+                        AddAtom(gc, &conf.AtomAt(hb.acceptor_O), hb.acceptor_O,
+                                EntityRole::Context, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
                 filtered_out++;
                 continue;
             }
@@ -307,6 +362,13 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         }
 
         ca.hbond_count_within_3_5A = count_3_5;
+
+        // ---- GeometryChoice: hbond neighbourhood ----
+        choices.Record(CalculatorId::HBond, ai, "hbond neighbourhood",
+            [&ca, ai, count_3_5](GeometryChoice& gc) {
+                AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
+                AddNumber(gc, "hbond_count_within_3_5A", static_cast<double>(count_3_5), "count");
+            });
 
         if (nearest_hb_idx != SIZE_MAX) {
             const auto& nearest_hb = hbonds[nearest_hb_idx];

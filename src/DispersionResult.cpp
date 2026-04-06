@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -196,6 +197,9 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
         "] A, switch onset=" + std::to_string(DISP_VERTEX_R_SWITCH) + " A" +
         " | through-bond vertex exclusion: yes");
 
+    GeometryChoiceBuilder choices(conf);
+    std::set<size_t> recorded_rings;
+
     // Pre-build bonded-to-vertex sets for each ring (once, not per atom).
     std::vector<std::set<size_t>> ring_bonded(n_rings);
     for (size_t ri = 0; ri < n_rings; ++ri)
@@ -226,14 +230,43 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             ctx.distance = dist_to_center;
             ctx.source_extent = 2.0 * geom.radius;  // ring diameter (A)
             ctx.atom_index = ai;
-            if (!filters.AcceptAll(ctx)) continue;
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: near-field exclusion ----
+                choices.Record(CalculatorId::Dispersion, ri, "near-field exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", dist_to_center, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                continue;
+            }
 
             // Through-bond exclusion: skip this ring entirely if the
             // field atom is bonded to any vertex (it's part of or
             // immediately adjacent to the ring).
             if (ring_bonded[ri].count(ai)) {
+                // ---- GeometryChoice: through-bond exclusion ----
+                choices.Record(CalculatorId::Dispersion, ri, "through-bond exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                "ring_bonded");
+                        AddNumber(gc, "distance", dist_to_center, "A");
+                    });
                 bonded_exclusions++;
                 continue;
+            }
+
+            // ---- GeometryChoice: dispersion taper ----
+            if (recorded_rings.insert(ri).second) {
+                choices.Record(CalculatorId::Dispersion, ri, "dispersion taper",
+                    [&ring](GeometryChoice& gc) {
+                        AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                        AddNumber(gc, "switch_onset", DISP_VERTEX_R_SWITCH, "A");
+                        AddNumber(gc, "cutoff", DISP_VERTEX_R_CUT, "A");
+                    });
             }
 
             // Sum dispersion kernel over ring vertices
@@ -246,7 +279,20 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 double r = (atom_pos - vpos).norm();
 
                 DispVertexResult vr = ComputeDispVertex(atom_pos, vpos, r);
-                if (!vr.valid) continue;
+                if (!vr.valid) {
+                    // ---- GeometryChoice: switching function noise floor ----
+                    // Only fires when r is in the taper range but S < 1e-15
+                    if (r > DISP_VERTEX_R_SWITCH && r < DISP_VERTEX_R_CUT) {
+                        choices.Record(CalculatorId::Dispersion, ri, "switching noise floor",
+                            [&ring, &ca, ai, r](GeometryChoice& gc) {
+                                AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
+                                AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                        "switching_noise_floor");
+                                AddNumber(gc, "vertex_distance", r, "A");
+                            });
+                    }
+                    continue;
+                }
 
                 K_ring += vr.K;
                 s_ring += vr.scalar;

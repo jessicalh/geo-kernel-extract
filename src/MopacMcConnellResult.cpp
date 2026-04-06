@@ -5,6 +5,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -110,8 +111,11 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
     result_ptr->conf_ = &conf;
 
     KernelFilterSet filters;
+    filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
+
+    GeometryChoiceBuilder choices(conf);
 
     int total_pairs = 0;
     int filtered_out = 0;
@@ -144,13 +148,22 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
             // MOPAC Wiberg bond order for this topology bond
             double bo = mopac.TopologyBondOrder(bi);
-            if (bo < 1e-6) { zero_bo_skipped++; continue; }
+            if (bo < 1e-6) {
+                // ---- GeometryChoice: bond order floor ----
+                choices.Record(CalculatorId::McConnell, bi, "mopac bond order floor",
+                    [&bond, &ca, ai, bo](GeometryChoice& gc) {
+                        AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Excluded,
+                                "bond_order_floor");
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
+                        AddNumber(gc, "bond_order", bo, "");
+                    });
+                zero_bo_skipped++; continue;
+            }
 
             Vec3 midpoint = conf.bond_midpoints[bi];
             Vec3 direction = conf.bond_directions[bi];
 
             MopacBondKernelResult kernel = ComputeBondKernel(atom_pos, midpoint, direction);
-            if (kernel.distance < MIN_DISTANCE) continue;
 
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
@@ -158,7 +171,18 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
             ctx.atom_index = ai;
             ctx.source_atom_a = bond.atom_index_a;
             ctx.source_atom_b = bond.atom_index_b;
-            if (!filters.AcceptAll(ctx)) { filtered_out++; continue; }
+            if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: filter exclusion ----
+                choices.Record(CalculatorId::McConnell, bi, "filter exclusion",
+                    [&](GeometryChoice& gc) {
+                        AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Included);
+                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                                filters.LastRejectorName());
+                        AddNumber(gc, "distance", kernel.distance, "A");
+                        AddNumber(gc, "source_extent", ctx.source_extent, "A");
+                    });
+                filtered_out++; continue;
+            }
 
             // Bond-order-weighted accumulation
             Mat3 weighted_M = bo * kernel.M_over_r3;
@@ -247,6 +271,14 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
         // Full shielding contribution
         ca.mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total);
+
+        // ---- GeometryChoice: bond anisotropy ----
+        choices.Record(CalculatorId::McConnell, ai, "mopac bond anisotropy",
+            [&ca, ai, best_co_dist, best_cn_dist](GeometryChoice& gc) {
+                AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
+                AddNumber(gc, "nearest_CO_dist", best_co_dist, "A");
+                AddNumber(gc, "nearest_CN_dist", best_cn_dist, "A");
+            });
     }
 
     OperationLog::Info(LogCalcMcConnell, "MopacMcConnellResult::Compute",
