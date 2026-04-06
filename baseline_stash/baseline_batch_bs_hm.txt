@@ -1,0 +1,56 @@
+Running main() from /mnt/extfast/2026thesis/nmr-shielding/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BatchBiotSavartHaighMallion*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BatchBiotSavartHaighMallion
+[ RUN      ] BatchBiotSavartHaighMallion.AllCleanPairs
+
+=== Batch BiotSavart + HaighMallion Summary ===
+  Processed: 720  Skipped: 4  Failed: 0
+
+  PER-RING-TYPE BREAKDOWN:
+    Type     Rings   Pairs    BS mean|T0|  HM mean|T0|  BS mean|T2|  HM mean|T2|  HM max|Tr|   HM max asym
+    PHE       818   288229    3.119e-03    3.141e-03    1.232e-02    1.239e-02    2.220e-16    8.092e-17
+    TYR       779   266318    3.378e-03    3.427e-03    1.308e-02    1.321e-02    2.776e-16    1.178e-16
+    TRP6      273    92427    3.282e-03    3.332e-03    1.221e-02    1.226e-02    1.804e-16    8.092e-17
+    TRP5      273    94152    2.565e-03    2.621e-03    9.506e-03    9.643e-03    1.527e-16    7.972e-17
+    TRP9      273    92281    5.062e-03    5.046e-03    1.946e-02    1.940e-02    2.220e-16    8.832e-17
+    HIE       599   192346    2.135e-03    2.149e-03    8.401e-03    8.452e-03    1.249e-16    7.850e-17
+
+  BS-HM CONVERGENCE BY DISTANCE:
+    Bin      Pairs    BS <|T0|>   HM <|T0|>  T0 ratio(mean+/-sd)  T2 |cos|(BS,HM)
+    2-4A      25948   3.224e-02   3.289e-02      1.35 +/-   4.97    0.9972 (25948)
+    4-6A      99431   1.048e-02   1.054e-02      1.40 +/-  25.66    0.9990 (99431)
+    6-8A     160386   3.717e-03   3.746e-03      1.31 +/-  46.66    0.9998 (160386)
+    8-12A    426358   1.363e-03   1.369e-03      1.10 +/-  16.88    0.9999 (426358)
+    12-15A   313630   5.265e-04   5.277e-04      1.09 +/-  21.41    1.0000 (313630)
+
+  FUSED RING (TRP): T0(TRP5)+T0(TRP6) vs T0(TRP9)
+    BS:  <|T0(5)+T0(6)|> = 0.0053  <|T0(9)|> = 0.0053  ratio = 1.0004
+    HM:  <|T0(5)+T0(6)|> = 0.0053  <|T0(9)|> = 0.0053  ratio = 0.9999
+    (87234 atom-TRP triplets)
+
+  T2 INDEPENDENCE (mean |cos| in 5D, random=0.36, parallel=1.0):
+    BiotSavart vs HaighMallion: 0.9995 (385542 atoms)
+    BiotSavart vs McConnell:    0.3751 (385542 atoms)
+    BiotSavart vs Coulomb:      0.3736 (385542 atoms)
+    BiotSavart vs RingSuscept:  0.6273 (385542 atoms)
+    BiotSavart vs HBond:        0.3776 (385542 atoms)
+    HaighMallion vs McConnell:  0.3754 (385542 atoms)
+    HaighMallion vs Coulomb:    0.3736 (385542 atoms)
+    HaighMallion vs RingSuscept:0.6274 (385542 atoms)
+    HaighMallion vs HBond:      0.3776 (385542 atoms)
+
+  DFT PROXIMITY (signal near vs far from mutation sites, <8A):
+    BiotSavart |T0|:
+      Near: 0.0100  Far: 0.0011  Ratio: 8.9233
+    HaighMallion |T0|:
+      Near: 0.0101  Far: 0.0011  Ratio: 8.8970
+    (720 proteins, 203442 near / 244360 far atoms)
+
+[       OK ] BatchBiotSavartHaighMallion.AllCleanPairs (68064 ms)
+[----------] 1 test from BatchBiotSavartHaighMallion (68064 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (68064 ms total)
+[  PASSED  ] 1 test.

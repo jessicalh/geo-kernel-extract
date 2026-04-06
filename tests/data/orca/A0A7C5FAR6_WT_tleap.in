@@ -1,0 +1,5 @@
+source leaprc.protein.ff14SB
+source leaprc.water.fb3
+mol = loadpdb /shared/orca_calibration/results/A0A7C5FAR6_WT_amber.pdb
+saveamberparm mol /shared/orca_calibration/results/A0A7C5FAR6_WT.prmtop /shared/orca_calibration/results/A0A7C5FAR6_WT.inpcrd
+quit

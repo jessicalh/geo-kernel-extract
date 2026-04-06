@@ -1,0 +1,51 @@
+Running main() from /mnt/extfast/2026thesis/nmr-shielding/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BatchPiQuadDisp*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BatchPiQuadDisp
+[ RUN      ] BatchPiQuadDisp.AllCleanPairs
+
+  === Batch PiQuadrupole + Dispersion ===
+  Processed: 723 Skipped: 1 Failed: 0
+
+  PiQuadrupole:
+    Total atom-ring pairs: 1034697
+    Global max |Tr|: 7.49401e-16
+    Global max |T2|: 0.663242 A^-5
+
+    Per-ring-type (PQ scalar and T2):
+      Type     Pairs  Mean|scalar|   Max|scalar|      Mean|T2|       Max|T2|       Max|Tr|
+       PHE    292672    0.00033708     0.0952185    0.00158227       0.66322  7.494005e-16
+       TYR    267419      0.000383      0.076996      0.001814      0.606645  3.191891e-16
+      TRP6     93401      0.000375      0.067210      0.001676      0.428239  3.469447e-16
+      TRP5     95049      0.000482      0.061112      0.002325      0.383630  2.498002e-16
+      TRP9     93205      0.000346      0.054562      0.001593      0.340577  3.885781e-16
+       HIE    192951      0.000396      0.066006      0.001981      0.414193  2.636780e-16
+
+  Dispersion:
+    Total atom-ring pairs with contacts: 124179
+    Total vertex contacts: 393062
+    Global max |T2|: 0.122290 A^-6
+
+  T2 independence (mean |cos| in 5D, random~0.36):
+           PQ vs McConnell: mean|cos| = 0.378 (n=311037)
+             PQ vs Coulomb: mean|cos| = 0.372 (n=311037)
+             PQ vs RingChi: mean|cos| = 0.382 (n=311037)
+          PQ vs BiotSavart: mean|cos| = 0.564 (n=311037)
+         Disp vs McConnell: mean|cos| = 0.373 (n=79331)
+           Disp vs Coulomb: mean|cos| = 0.386 (n=79331)
+           Disp vs RingChi: mean|cos| = 0.459 (n=79331)
+        Disp vs BiotSavart: mean|cos| = 0.733 (n=79331)
+            Disp vs PiQuad: mean|cos| = 0.600 (n=79331)
+
+  DFT proximity analysis (near < 8.000A from mutation site CA):
+    Pairs with DFT: 720 Near atoms: 203442 Far atoms: 244360
+    PQ  mean|T2|: near=0.0068 far=0.0002 ratio=28.9518
+    Disp mean|T2|: near=0.0020 far=0.0000 ratio=203.5846
+
+[       OK ] BatchPiQuadDisp.AllCleanPairs (37879 ms)
+[----------] 1 test from BatchPiQuadDisp (37879 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (37879 ms total)
+[  PASSED  ] 1 test.

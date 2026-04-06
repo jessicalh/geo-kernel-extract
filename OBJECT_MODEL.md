@@ -1,0 +1,1934 @@
+# Object Model: NMR Shielding Tensor Prediction System
+
+This is the concrete object model. Every class, every property, every type,
+every unit, every dependency. Implementation agents code from this.
+If a property is not in this document, it does not exist in the code.
+
+**NOTE (2026-04-03): This document is not aspirational. The library is
+mature for this functionality — 8 calculators, 3 builders, 4 use cases,
+275 tests passing. Read the code before assuming any section is current.**
+
+**Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
+this document are design history. The pattern was originally proposed for
+pH scanning and re-protonation but was never needed for the actual use
+cases (A-D in USE_CASES.md). The system creates one Protein per input
+source with N conformations, each independently enriched. There is no
+protein copying. Do not implement copy-and-modify. The sections remain
+as design history documenting how the Protein/ProteinConformation
+separation evolved — the distinction they enforced is real and load-bearing,
+the mechanism described is not.
+
+**ParameterCorrectionResult: FUTURE RELEASE.** The e3nn model integration
+described in this document is planned but not in this release. The
+ConformationAtom fields for it exist (zero-initialised, harmless) but
+no code populates them. Do not implement or depend on
+ParameterCorrectionResult in current work.
+
+Aligned with CONSTITUTION.md (2026-03-29 revision). Key changes from prior
+version: Environment replaced by ProteinBuildContext, flat Conformation
+replaced by typed ProteinConformation hierarchy, manual phases replaced by
+dependency-graph-driven ConformationResult singletons, results accessed by
+name with physics query methods.
+
+---
+
+## Core Types (from Eigen, used everywhere)
+
+```
+Vec3 = Eigen::Vector3d     // 3-component vector
+Mat3 = Eigen::Matrix3d     // 3x3 matrix
+```
+
+### SphericalTensor
+Irreducible decomposition of a 3x3 tensor via sphericart.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| T0 | double | Isotropic component (trace / 3) |
+| T1 | array<double, 3> | Antisymmetric (pseudovector) components |
+| T2 | array<double, 5> | Traceless symmetric components (m = -2..+2) |
+
+Static methods:
+- `Decompose(Mat3) -> SphericalTensor`: via sphericart, canonical normalization
+- `Reconstruct() -> Mat3`: inverse
+
+Both Mat3 AND SphericalTensor are stored. No conversion at point of use.
+
+### FieldValue
+A calculator result attributed to a specific source.
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| tensor | Mat3 | depends on calculator | Full 3x3 tensor |
+| spherical | SphericalTensor | same | Sphericart decomposition |
+| source_calculator | CalculatorId enum | - | Which calculator |
+| source_index | size_t | - | Index of source ring/bond/atom |
+
+Note: no string identifier for the source. CalculatorId enum is
+sufficient. Strings for identity are forbidden (see PATTERNS.md).
+
+### KernelEvaluationFilter (ABC) and KernelFilterSet
+
+Every calculator that evaluates a geometric kernel holds a
+KernelFilterSet: an ordered list of KernelEvaluationFilter objects.
+Before computing a kernel at a field point, the calculator assembles a
+KernelEvaluationContext from the evaluation geometry and passes it to
+the filter set. All filters must accept for the kernel to proceed.
+
+Filters exist for first-principles physics reasons, not for empirical
+tuning. The test for a filter: the calculator works but not as well
+without it. A filter that changes nothing is dead code.
+
+```
+KernelEvaluationContext
+    distance           double     field point to source center (A)
+    source_extent      double     spatial extent of source (A)
+    sequence_separation int       residue seq distance (-1 if N/A)
+    atom_index         size_t     field point atom
+    source_atom_a      size_t     first source atom (SIZE_MAX if N/A)
+    source_atom_b      size_t     second source atom (SIZE_MAX if N/A)
+
+KernelEvaluationFilter (ABC)
+    Accept(ctx) -> bool           should this evaluation proceed?
+    Name() -> const char*         identifier for logging and TOML
+    Description() -> const char*  physics reason this filter exists
+    RejectReason(ctx) -> string   what/where/which for this rejection
+                                  (specific values from ctx, not generic)
+
+KernelFilterSet
+    Add(filter)                   add a filter (ownership transferred)
+    AcceptAll(ctx) -> bool        all must accept; tracks rejections
+    ReportRejections() -> string  per-filter rejection counts
+    SetLogRejections(bool)        enable per-rejection detail logging
+    RejectionReasons() -> vector<string>  human-readable what/where/which
+```
+
+Concrete filters (KernelEvaluationFilter.h):
+
+| Filter | Criterion | Physics |
+|--------|-----------|---------|
+| DipolarNearFieldFilter | distance > source_extent/2 | Multipole expansion invalid inside source distribution |
+| SelfSourceFilter | atom_index ∉ {source_a, source_b} | Field undefined at source itself |
+| SequentialExclusionFilter | seq_separation >= min_sep | Through-bond coupling not modelled by through-space kernel |
+
+Filter sets per calculator:
+
+| Calculator | Filters | Source extent |
+|------------|---------|---------------|
+| McConnell | SelfSource + DipolarNearField | bond length |
+| CoulombResult | SelfSource (i≠j only) | 0 (point source) |
+| RingSusceptibility | DipolarNearField | ring diameter |
+| HBondResult | SelfSource + DipolarNearField | N...O distance |
+| BiotSavartResult | DipolarNearField | ring diameter |
+| HaighMallionResult | DipolarNearField | ring diameter |
+
+Filter sets are configurable from TOML. Rejection counts are logged
+per filter per calculator invocation. Per-rejection detail (which atom,
+which source, at what distance) is available when diagnostic logging
+is enabled.
+
+---
+
+## Element (enum)
+
+```
+enum class Element { H, C, N, O, S, Unknown };
+```
+
+Properties (compile-time, per element):
+| Element | Atomic number | Covalent radius (A) | Electronegativity (Pauling) |
+|---------|---------------|--------------------|-----------------------------|
+| H | 1 | 0.31 | 2.20 |
+| C | 6 | 0.76 | 2.55 |
+| N | 7 | 0.71 | 3.04 |
+| O | 8 | 0.66 | 3.44 |
+| S | 16 | 1.05 | 2.58 |
+
+---
+
+## Hybridisation (enum)
+
+```
+enum class Hybridisation { sp, sp2, sp3, Unassigned };
+```
+
+Set by OpenBabel during enrichment. Const after enrichment.
+
+---
+
+## AtomRole (enum)
+
+```
+enum class AtomRole {
+    // Heavy backbone
+    BackboneN,      // peptide nitrogen
+    BackboneCA,     // alpha carbon
+    BackboneC,      // carbonyl carbon
+    BackboneO,      // carbonyl oxygen
+
+    // Heavy sidechain
+    SidechainC,     // sidechain carbon (non-aromatic)
+    SidechainN,     // sidechain nitrogen
+    SidechainO,     // sidechain oxygen
+    SidechainS,     // sulfur (CYS, MET)
+    AromaticC,      // carbon in an aromatic ring
+    AromaticN,      // nitrogen in an aromatic ring (HIS, TRP)
+
+    // Hydrogen (by NMR-relevant environment)
+    AmideH,         // bonded to backbone peptide N
+    AlphaH,         // bonded to CA
+    MethylH,        // bonded to terminal CH3 carbon
+    AromaticH,      // bonded to aromatic ring carbon
+    HydroxylH,      // bonded to OH (SER, THR, TYR)
+    OtherH,         // all other hydrogens
+
+    Unknown
+};
+```
+
+### Assignment criteria (from enrichment, no string parsing)
+
+| Role | Element | Bond connectivity | Residue context |
+|------|---------|-------------------|-----------------|
+| BackboneN | N | bonded to CA of same residue and C of previous residue | backbone position from Residue.N index |
+| BackboneCA | C | bonded to backbone N and backbone C | backbone position from Residue.CA index |
+| BackboneC | C | bonded to backbone O (double bond) and backbone N+1 | backbone position from Residue.C index |
+| BackboneO | O | bonded to backbone C (double bond) | backbone position from Residue.O index |
+| SidechainC | C | not backbone, not in aromatic ring | all other carbons |
+| SidechainN | N | not backbone, not in aromatic ring | sidechain nitrogens |
+| SidechainO | O | not backbone | sidechain oxygens |
+| SidechainS | S | any | CYS SG, MET SD |
+| AromaticC | C | member of an AromaticRing vertex set | detected from ring membership |
+| AromaticN | N | member of an AromaticRing vertex set | HIS ND1/NE2, TRP NE1 |
+| AmideH | H | bonded to BackboneN | Residue.H index (not PRO) |
+| AlphaH | H | bonded to BackboneCA | Residue.HA index (or HA2 for GLY) |
+| MethylH | H | bonded to a terminal sp3 carbon with 3 H neighbours | parent C has exactly 3 H bonds and 1 C/S bond |
+| AromaticH | H | bonded to AromaticC | parent is ring member |
+| HydroxylH | H | bonded to O that is bonded to C | SER OG, THR OG1, TYR OH |
+| OtherH | H | none of the above | remaining hydrogens |
+
+---
+
+## BondCategory (enum)
+
+```
+enum class BondCategory {
+    PeptideCO,      // backbone C=O (C to O, double bond)
+    PeptideCN,      // backbone C-N (C to N+1, partial double)
+    BackboneOther,  // N-CA, CA-C, CA-CB
+    SidechainCO,    // sidechain C=O (ASN, ASP, GLN, GLU)
+    Aromatic,       // within aromatic ring
+    Disulfide,      // S-S crosslink
+    SidechainOther, // all other sidechain bonds
+    Unknown
+};
+```
+
+Note: The constitution specifies five categories (PeptideCO, PeptideCN,
+Sidechain, Aromatic, Disulfide). We retain the finer granularity
+(BackboneOther, SidechainCO, SidechainOther) because McConnell bond
+anisotropy calculations require distinguishing double-bond sidechain
+carbonyls from single-bond sidechain connections, and backbone N-CA/CA-C
+bonds from peptide bonds. The coarser groupings can be derived from
+these at query time.
+
+### Assignment criteria (from bond detection)
+
+| Category | Atom A role | Atom B role | Bond order |
+|----------|-------------|-------------|------------|
+| PeptideCO | BackboneC | BackboneO | Double |
+| PeptideCN | BackboneC (residue i) | BackboneN (residue i+1) | Peptide |
+| BackboneOther | any backbone | any backbone | Single |
+| SidechainCO | SidechainC | SidechainO | Double |
+| Aromatic | AromaticC/AromaticN | AromaticC/AromaticN | Aromatic |
+| Disulfide | SidechainS | SidechainS | Single (crosslink) |
+| SidechainOther | any sidechain | any sidechain | any |
+
+---
+
+## HeuristicTier (enum)
+
+```
+enum class HeuristicTier { REPORT, PASS, SILENT };
+```
+
+---
+
+## ProteinBuildContext
+
+How this protein instance was built. Immutable once constructed.
+Records provenance (what happened), not experimental conditions
+(which live on the ProteinConformation subtype metadata).
+
+**Why this contract exists (for agents creating new build contexts):**
+Every protein instance needs a build context because it is the mutable
+part of a protein definition. When we copy a protein to test different
+protonation, the build context tells us what changed. When we compare
+WT and mutant, it tells us which is which. When we serialise results,
+it is the provenance record. Future work you can't see will need to
+rely on this. Provide the basics so downstream consumers don't invent
+their own tracking.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| pdb_source | string | - | PDB ID or file path |
+| deposition_date | string | - | PDB deposition date (if known) |
+| organism | string | - | Source organism (if known) |
+| crystal_resolution | double | Angstroms | NaN if not crystallographic |
+| protonation_tool | string | - | "PROPKA 3.5.1", "KaML 1.0", "Manual" |
+| protonation_pH | double | - | pH used for protonation prediction |
+| force_field | string | - | "ff14SB", "CHARMM36m", etc. |
+| stripped | vector<string> | - | What was removed ("waters", "heteroatoms") |
+| assumptions | vector<string> | - | What was assumed ("missing loops rebuilt") |
+
+### Query methods
+- `Clone() -> unique_ptr<ProteinBuildContext>`
+- `Describe() -> string`: human-readable provenance summary
+
+### Copy semantics
+Deep copy. All properties preserved.
+
+---
+
+## ProtonationState
+
+Per-protein protonation decisions. Value type. Created by a Protonator
+(PROPKA, KaML, tleap default) and consumed by a topology builder to
+produce a Protein with the correct hydrogen atoms. Changing protonation
+means a new Protein (copy-and-modify), not mutation of an existing one.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| name | string | - | e.g. "propka_pH7.0" |
+| pH | double | - | NaN for default |
+| tool | ProtonationTool enum | - | PROPKA, KaML, TLeap, Manual |
+| tool_version | string | - | "PROPKA 3.5.1", "KaML-CBTrees" |
+| residues | vector<ResidueProtonation> | - | Per-residue decisions |
+
+### ResidueProtonation (value type)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| residue_index | size_t | Into protein's residue list |
+| amino_acid | AminoAcid enum | Typed, not string |
+| variant_index | int | Into AminoAcidType::variants, -1 = default |
+| pKa | double | Predicted pKa (NaN if not computed) |
+| is_charged | bool | Carries formal charge in this state |
+
+### Query methods
+- `ForResidue(size_t) -> const ResidueProtonation*`
+- `NetDecisionCharge() -> int` (only counts explicit decisions)
+- `NetChargeForProtein(vector<AminoAcid>) -> int` (full protein including non-titratable)
+- `Describe() -> string`
+
+### Copy semantics
+Value type. Full copy.
+
+## ChargeSource (typed hierarchy)
+
+Where per-atom charges come from. The force field determines charges,
+naming, and VdW parameters. Each source is a distinct type, not a
+string-dispatched function.
+
+```
+ChargeSource (abstract)
+├── ParamFileChargeSource   — ff14SB from flat parameter file (fallback)
+├── PrmtopChargeSource      — ff14SB/ff19SB from AMBER prmtop (authoritative)
+├── GmxTprChargeSource      — CHARMM36m from GROMACS .tpr (fleet data)
+└── StubChargeSource        — uniform test charges
+```
+
+ChargeAssignmentResult::Compute(conf, ChargeSource&) is the typed factory.
+The param-file and stub convenience factories delegate to it.
+
+### ForceField (enum)
+
+```
+enum class ForceField { Amber_ff14SB, Amber_ff19SB, CHARMM36m, Unknown };
+```
+
+Recorded in ProteinBuildContext as provenance.
+
+---
+
+## Protein
+
+Sequence and science data. What the molecule IS, independent of geometry.
+Does NOT hold positions. Does NOT hold computed properties.
+
+The protein owns its conformation list. Conformations are created
+through typed factory methods on the protein:
+
+```
+protein.AddCrystalConformation(positions, metadata) -> CrystalConformation&
+protein.AddNMRConformation(positions, metadata) -> NMRConformation&
+protein.AddMDFrame(positions, metadata) -> MDFrameConformation&
+protein.AddPrediction(positions, metadata) -> PredictionConformation&
+protein.AddMinimised(positions, metadata) -> MinimisedConformation&
+protein.AddDerived(parent, description) -> DerivedConformation&
+
+protein.CrystalConformation()    // exactly one or throws
+protein.NMRConformations()       // typed collection
+protein.MDFrames()               // typed collection
+protein.Predictions()            // typed collection
+protein.Conformations()          // all, heterogeneous
+```
+
+No agent creates a ProteinConformation directly. No loose conformations.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Set at |
+|----------|------|------|--------|
+| residues | vector<Residue> | - | construction |
+| atoms | vector<unique_ptr<Atom>> | - | construction |
+| aromatic_rings | vector<Ring> | - | construction (topology only) |
+| covalent_bonds | vector<Bond> | - | construction |
+| build_context | unique_ptr<ProteinBuildContext> | - | construction |
+| conformations | vector<unique_ptr<ProteinConformation>> | - | via factory methods |
+
+### Query methods
+- `AtomAt(size_t) -> const Atom&`
+- `ResidueAt(size_t) -> const Residue&`
+- `RingAt(size_t) -> const Ring&`
+- `BondAt(size_t) -> const Bond&`
+- `AtomCount() -> size_t`
+- `ResidueCount() -> size_t`
+- `RingCount() -> size_t`
+- `BondCount() -> size_t`
+
+### Construction: FinalizeConstruction
+
+Every loader must call `FinalizeConstruction(positions)` after adding
+all atoms and residues. This single call performs, in order:
+1. `CacheResidueBackboneIndices()` — backbone N/CA/C/O/H/HA indices
+2. `DetectAromaticRings()` — from AminoAcidType + atom presence
+3. `DetectCovalentBonds(positions)` — via OpenBabel bond perception
+
+Order matters: rings need backbone cache (to know residue types),
+bonds need rings (to classify aromatic bonds). Call BEFORE creating
+any ProteinConformation.
+
+### Ownership and lifetime
+Protein is non-movable and non-copyable. It lives on the heap via
+unique_ptr, created by LoadProtein() which returns unique_ptr<Protein>
+in a LoadResult. Conformations hold a raw Protein* back-pointer that
+is valid for the Protein's lifetime. Non-movable means the pointer
+never dangles. No move constructors, no move assignment.
+
+For the copy-and-modify pattern (pH scanning, mutant comparison):
+use a Copy() factory method that creates a NEW Protein on the heap
+with modified protonation/build context:
+- `Copy(new_protonation)`: new protein, applies new protonation,
+  invalidates ring types for titratable residues, invalidates charges
+- `Copy(new_build_context)`: new protein, applies new build context
+- Geometry-only properties (positions, distances) transfer on copy.
+  Charge-dependent properties (APBS, Coulomb, features) invalidated.
+
+### Relationship to other objects
+- Owns Residues, Atoms, Rings, Bonds, ProteinBuildContext, ProteinConformations
+- Does NOT own computed properties (those live on ProteinConformations
+  as ConformationResult objects)
+
+---
+
+## Residue
+
+One amino acid at a sequence position.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| type | AminoAcid enum | - | Standard amino acid type |
+| sequence_number | int | - | PDB sequence number |
+| chain_id | string | - | Chain addressing (not entity) |
+| insertion_code | string | - | PDB column 27 (e.g. "A", "B") |
+| atom_indices | vector<size_t> | - | Into protein atom list |
+| protonation_variant_index | int | - | -1 if not titratable |
+| N | size_t | - | Backbone N atom index, NONE if absent |
+| CA | size_t | - | Alpha carbon atom index |
+| C | size_t | - | Carbonyl carbon atom index |
+| O | size_t | - | Carbonyl oxygen atom index |
+| H | size_t | - | Amide H atom index, NONE for PRO |
+| HA | size_t | - | Alpha H atom index (HA2 for GLY) |
+| CB | size_t | - | Beta carbon atom index, NONE for GLY |
+| chi[4] | ChiAtoms | - | Dihedral atom indices |
+
+DSSP properties are conformation-dependent. They live on the
+DsspResult ConformationResult, accessed via conformation.Dssp().
+
+### Query methods
+- `IsAromatic() -> bool` (from AminoAcidType)
+- `IsTitratable() -> bool`
+- `HasAmideH() -> bool`
+- `ChiAngleCount() -> int`
+- `SequenceAddress() -> (chain_id, sequence_number, insertion_code)`
+
+### Copy semantics
+Value type within Protein. Copies with Protein.
+
+---
+
+## Atom
+
+Each atom in the protein. Identity only -- no position.
+Position lives in a ProteinConformation.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| element | Element enum | - | Atomic element |
+| pdb_atom_name | string | - | Display/serialisation ONLY |
+| residue_index | size_t | - | Into protein's residue list |
+| bond_indices | vector<size_t> | - | Into protein's bond list |
+
+Element-derived properties (non-virtual, from free functions in Types.h):
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| CovalentRadius() | double | Angstroms | From element |
+| Electronegativity() | double | Pauling | From element |
+| IsHBondDonorElement() | bool | - | N, O return true |
+| IsHBondAcceptorElement() | bool | - | N, O return true |
+| parent_atom_index | size_t | - | Nearest bonded heavy atom (SIZE_MAX if not H) |
+
+Note: there is NO Atom subclass hierarchy. One flat Atom class.
+CovalentRadius() etc. dispatch on the element enum via free functions.
+parent_atom_index is on the base class, SIZE_MAX for non-hydrogen atoms.
+This was a deliberate simplification from Pass 1: the old subclasses
+(HydrogenAtom, CarbonAtom, etc.) added virtual dispatch for no benefit.
+
+### Enrichment properties (set once, append-only)
+
+Set by enrichment ConformationResult objects during attachment.
+Once set, never overwritten or removed within a ProteinConformation.
+Each property records its source result type.
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| role | AtomRole enum | - | EnrichmentResult | NMR-relevant classification |
+| hybridisation | Hybridisation enum | - | EnrichmentResult | From OpenBabel |
+| is_backbone | bool | - | EnrichmentResult | role in backbone set |
+| is_amide_H | bool | - | EnrichmentResult | role == AmideH |
+| is_alpha_H | bool | - | EnrichmentResult | role == AlphaH |
+| is_methyl | bool | - | EnrichmentResult | role == MethylH |
+| is_aromatic_H | bool | - | EnrichmentResult | role == AromaticH |
+| is_on_aromatic_residue | bool | - | EnrichmentResult | residue.IsAromatic() |
+| is_hbond_donor | bool | - | EnrichmentResult | H bonded to N or O |
+| is_hbond_acceptor | bool | - | EnrichmentResult | N or O with lone pair |
+| parent_is_sp2 | bool | - | EnrichmentResult | For H: parent hybridisation == sp2 |
+
+### ConformationAtom: the per-atom computed data store
+
+Each ProteinConformation holds a `vector<ConformationAtom>` parallel to
+the Protein's atom list. ConformationAtom has typed, named fields for
+every per-atom result. Fields are declared upfront with default values.
+ConformationResult objects fill them in during Attach().
+
+**Construction and ownership:**
+
+ConformationAtom has a PRIVATE constructor. Only ProteinConformation can
+create them. The vector is built once in the ProteinConformation
+constructor from the Protein's atom count and the provided positions,
+and is never resized. You cannot construct a ConformationAtom outside
+of a ProteinConformation. The compiler enforces this.
+
+```cpp
+class ConformationAtom {
+    friend class ProteinConformation;
+public:
+    Vec3 Position() const { return position_; }
+
+    // Computed fields below — written by ConformationResult::Attach(),
+    // read by feature extraction and query methods. Public because the
+    // singleton guarantee means each field has exactly one writer.
+    AtomRole role = AtomRole::Unknown;
+    // ... all fields listed in tables below ...
+
+private:
+    explicit ConformationAtom(Vec3 pos) : position_(pos) {}
+    const Vec3 position_;  // set once at construction, never changed
+};
+```
+
+**Identity goes through Protein, not ConformationAtom.** Element, bonds,
+residue membership, ring membership — these are identity properties on
+the Protein's Atom objects. ConformationAtom does NOT duplicate them.
+Query identity through the ProteinConformation's back-pointer to Protein:
+
+```cpp
+// Identity (from Protein — never changes with geometry)
+const auto& identity = conf.Protein().AtomAt(42);
+Element elem = identity.element;
+for (size_t bi : identity.bond_indices) {
+    const auto& bond = conf.Protein().BondAt(bi);
+}
+
+// Computed data (from ConformationAtom — geometry-dependent)
+const auto& ca = conf.AtomAt(42);
+double charge = ca.partial_charge;
+Vec3 B = ca.total_B_field;
+SphericalTensor bs = ca.bs_shielding_contribution;
+```
+
+**T2 completeness rule:** Every field that stores a scalar (T0) quantity
+derived from a tensor MUST have a companion SphericalTensor field storing
+the full decomposition. If a calculator produces a Mat3, the
+SphericalTensor is stored alongside it. No data is left on the floor.
+Upstream models will explore this data for physics work — they need full
+tensor information at every irrep level (L=0, L=1, L=2), not just
+scalars. A ConformationAtom with scalar-only fields is INCOMPLETE.
+
+**Adding new fields:** If a new layer's ConformationResult produces
+per-atom data, you may add new fields to ConformationAtom. Do not
+arbitrarily subdivide by physics categories — keep typed by the
+functional analysis performed. BiotSavartResult fields, McConnellResult
+fields, CoulombResult fields. The result type is the organising
+principle.
+
+#### Core geometry
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| position | Vec3 | Angstroms | (construction) | In conformation coordinate frame |
+
+#### Charges and radii (from ChargeAssignmentResult, XtbChargeResult)
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| partial_charge | double | elementary charge (e) | ChargeAssignmentResult | ff14SB force field |
+| vdw_radius | double | Angstroms | ChargeAssignmentResult | ff14SB force field |
+| xtb_charge | double | elementary charge (e) | XtbChargeResult | GFN2-xTB Mulliken charge |
+| xtb_homo_lumo_gap | double | eV | XtbChargeResult | Per-atom HOMO-LUMO gap |
+| xtb_polarisability | Mat3 | Bohr^3 | XtbChargeResult | Atomic polarisability tensor |
+| xtb_polarisability_spherical | SphericalTensor | Bohr^3 | XtbChargeResult | Decomposition of polarisability |
+
+### Spatial neighbourhood (on ProteinConformation)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| spatial_neighbours | vector<AtomNeighbour> | - | All atoms within 15A |
+
+AtomNeighbour:
+| Field | Type | Unit |
+|-------|------|------|
+| atom_index | size_t | - |
+| distance | double | Angstroms |
+| direction | Vec3 | normalised |
+
+### Ring neighbourhood (structured per nearby ring)
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| ring_neighbours | vector<RingNeighbourhood> | - | BiotSavartResult et al. | Per nearby ring |
+
+See RingNeighbourhood class below.
+
+### Bond neighbourhood (structured per nearby bond)
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| bond_neighbours | vector<BondNeighbourhood> | - | McConnellResult | Per nearby bond |
+
+See BondNeighbourhood class below.
+
+### Field accumulation (from ConformationResult objects)
+
+Ring current totals (populated by BiotSavartResult, HaighMallionResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| total_B_field | Vec3 | dimensionless | BiotSavartResult |
+| total_G_tensor | Mat3 | dimensionless | BiotSavartResult |
+| total_G_spherical | SphericalTensor | dimensionless | BiotSavartResult |
+| per_type_G_T0_sum | array<double, 8> | dimensionless | BiotSavartResult |
+| per_type_G_T2_sum | array<array<double,5>, 8> | dimensionless | BiotSavartResult |
+| per_type_hm_T0_sum | array<double, 8> | dimensionless | HaighMallionResult |
+| per_type_hm_T2_sum | array<array<double,5>, 8> | dimensionless | HaighMallionResult |
+| hm_shielding_contribution | SphericalTensor | ppm | HaighMallionResult | total shielding from HM |
+| n_rings_within_3A | int | - | BiotSavartResult |
+| n_rings_within_5A | int | - | BiotSavartResult |
+| n_rings_within_8A | int | - | BiotSavartResult |
+| n_rings_within_12A | int | - | BiotSavartResult |
+| mean_ring_distance | double | Angstroms | BiotSavartResult |
+| nearest_ring_atom_distance | double | Angstroms | BiotSavartResult |
+| G_iso_exp_sum | double | dimensionless | BiotSavartResult |
+| G_T2_exp_sum | array<double, 5> | dimensionless | BiotSavartResult |
+| G_iso_var_8A | double | dimensionless | BiotSavartResult |
+| bs_shielding_contribution | SphericalTensor | ppm | BiotSavartResult | total shielding from all rings (intensity-weighted sum of G_spherical over all rings) |
+
+Bond anisotropy totals (populated by McConnellResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| mcconnell_co_sum | double | Angstrom^-3 | McConnellResult |
+| mcconnell_cn_sum | double | Angstrom^-3 | McConnellResult |
+| mcconnell_sidechain_sum | double | Angstrom^-3 | McConnellResult |
+| mcconnell_aromatic_sum | double | Angstrom^-3 | McConnellResult |
+| mcconnell_co_nearest | double | Angstrom^-3 | McConnellResult |
+| nearest_CO_midpoint | Vec3 | Angstroms | McConnellResult |
+| nearest_CO_dist | double | Angstroms | McConnellResult |
+| nearest_CN_dist | double | Angstroms | McConnellResult |
+| T2_CO_nearest | SphericalTensor | Angstrom^-3 | McConnellResult |
+| T2_CN_nearest | SphericalTensor | Angstrom^-3 | McConnellResult |
+| T2_backbone_total | SphericalTensor | Angstrom^-3 | McConnellResult |
+| T2_sidechain_total | SphericalTensor | Angstrom^-3 | McConnellResult |
+| T2_aromatic_total | SphericalTensor | Angstrom^-3 | McConnellResult |
+| dir_nearest_CO | Vec3 | normalised | McConnellResult |
+| mc_shielding_contribution | SphericalTensor | Angstrom^-3 | McConnellResult | total shielding from bond anisotropy — sum of FULL McConnell tensors M_ab/r^3 (asymmetric, non-traceless, T0+T1+T2). See GEOMETRIC_KERNEL_CATALOGUE.md for derivation. |
+
+Coulomb field totals (populated by CoulombResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| coulomb_E_total | Vec3 | V/Angstrom | CoulombResult |
+| coulomb_E_backbone | Vec3 | V/Angstrom | CoulombResult |
+| coulomb_E_sidechain | Vec3 | V/Angstrom | CoulombResult |
+| coulomb_E_aromatic | Vec3 | V/Angstrom | CoulombResult |
+| coulomb_EFG_total | Mat3 | V/Angstrom^2 | CoulombResult |
+| coulomb_EFG_total_spherical | SphericalTensor | V/Angstrom^2 | CoulombResult |
+| coulomb_EFG_backbone | Mat3 | V/Angstrom^2 | CoulombResult |
+| coulomb_EFG_backbone_spherical | SphericalTensor | V/Angstrom^2 | CoulombResult |
+| coulomb_EFG_aromatic | Mat3 | V/Angstrom^2 | CoulombResult |
+| coulomb_EFG_aromatic_spherical | SphericalTensor | V/Angstrom^2 | CoulombResult |
+| coulomb_E_solvent | Vec3 | V/Angstrom | CoulombResult (= apbs - vacuum) |
+| coulomb_EFG_solvent | Mat3 | V/Angstrom^2 | CoulombResult (= apbs - vacuum) |
+| coulomb_E_magnitude | double | V/Angstrom | CoulombResult |
+| coulomb_E_bond_proj | double | V/Angstrom | CoulombResult |
+| coulomb_E_backbone_frac | double | dimensionless | CoulombResult |
+| aromatic_E_magnitude | double | V/Angstrom | CoulombResult |
+| aromatic_E_bond_proj | double | V/Angstrom | CoulombResult |
+| aromatic_n_sidechain_atoms | int | - | CoulombResult |
+| coulomb_shielding_contribution | SphericalTensor | ppm | CoulombResult | Buckingham shielding from E-field (A*E_z + B*E_z^2 for T0, gamma*EFG for T2) |
+
+Note: coulomb_E_ring_proj (E_total . nearest_ring_normal) is computed
+at feature extraction time, not in CoulombResult, because it depends
+on ring geometry data from BiotSavartResult.
+
+APBS fields (populated by ApbsFieldResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| apbs_efield | Vec3 | V/Angstrom | ApbsFieldResult |
+| apbs_efg | Mat3 | V/Angstrom^2 | ApbsFieldResult |
+| apbs_efg_spherical | SphericalTensor | V/Angstrom^2 | ApbsFieldResult |
+
+H-bond properties (populated by HBondResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| hbond_nearest_dist | double | Angstroms | HBondResult |
+| hbond_nearest_dir | Vec3 | normalised | HBondResult |
+| hbond_nearest_tensor | Mat3 | Angstrom^-3 | HBondResult |
+| hbond_nearest_spherical | SphericalTensor | Angstrom^-3 | HBondResult |
+| hbond_inv_d3 | double | Angstrom^-3 | HBondResult |
+| hbond_is_backbone | bool | - | HBondResult |
+| hbond_count_within_3_5A | int | - | HBondResult |
+| hbond_is_donor | bool | - | HBondResult |
+| hbond_is_acceptor | bool | - | HBondResult |
+| hbond_shielding_contribution | SphericalTensor | ppm | HBondResult | H-bond dipolar shielding |
+
+Ring-based shielding contributions (per-atom totals, populated by respective results):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| piquad_shielding_contribution | SphericalTensor | ppm | PiQuadrupoleResult | quadrupole shielding contribution |
+| ringchi_shielding_contribution | SphericalTensor | ppm | RingSusceptibilityResult | ring susceptibility shielding |
+| disp_shielding_contribution | SphericalTensor | ppm | DispersionResult | dispersion shielding contribution |
+
+Graph topology (populated by MolecularGraphResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| graph_dist_ring | int | bonds | MolecularGraphResult |
+| graph_dist_N | int | bonds | MolecularGraphResult |
+| graph_dist_O | int | bonds | MolecularGraphResult |
+| eneg_sum_1 | double | Pauling units | MolecularGraphResult |
+| eneg_sum_2 | double | Pauling units | MolecularGraphResult |
+| n_pi_bonds_3 | int | - | MolecularGraphResult |
+| is_conjugated | bool | - | MolecularGraphResult |
+| bfs_to_nearest_ring_atom | int | bonds | MolecularGraphResult |
+| bfs_decay | double | dimensionless | MolecularGraphResult |
+
+ORCA DFT shielding (populated by OrcaShieldingResult):
+
+Each protein gets its own OrcaShieldingResult on its own conformation.
+WT and mutant are separate Proteins. Comparison (delta computation) is
+done by MutantProteinConformationComparison, not stored on ConformationAtom.
+
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| orca_shielding_total | Mat3 | ppm | OrcaShieldingResult |
+| orca_shielding_total_spherical | SphericalTensor | ppm | OrcaShieldingResult |
+| orca_shielding_diamagnetic | Mat3 | ppm | OrcaShieldingResult |
+| orca_shielding_diamagnetic_spherical | SphericalTensor | ppm | OrcaShieldingResult |
+| orca_shielding_paramagnetic | Mat3 | ppm | OrcaShieldingResult |
+| orca_shielding_paramagnetic_spherical | SphericalTensor | ppm | OrcaShieldingResult |
+| has_orca_shielding | bool | - | OrcaShieldingResult |
+
+Note: diamagnetic and paramagnetic stored separately (not just total).
+The dia/para decomposition is physics the ParameterCorrectionResult can
+use as a feature — paramagnetic contribution correlates with ring current
+effects.
+
+Parameter correction model (populated by ParameterCorrectionResult):
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| correction_predicted_delta | SphericalTensor | ppm | ParameterCorrectionResult |
+| correction_predicted_delta_mat3 | Mat3 | ppm | ParameterCorrectionResult |
+| correction_residual_T0 | double | ppm | ParameterCorrectionResult |
+| correction_residual_T1 | array<double,3> | ppm | ParameterCorrectionResult |
+| correction_residual_T2 | array<double,5> | ppm | ParameterCorrectionResult |
+| correction_sigma_T0 | double | ppm | ParameterCorrectionResult |
+| correction_sigma_T2 | double | ppm | ParameterCorrectionResult |
+
+### Predictions (from PredictionResult)
+
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| predicted_T0 | double | ppm | PredictionResult |
+| predicted_T2 | array<double, 5> | ppm | PredictionResult |
+| confidence | double | ppm (sigma) | PredictionResult |
+| tier | HeuristicTier enum | - | PredictionResult |
+
+### Query methods
+- `IsHydrogen() -> bool`: element == Element::H
+- `IsHeavy() -> bool`: element != Element::H
+- `IsBackbone() -> bool`: is_backbone enrichment property
+- `ParentAtom() -> size_t`: for H atoms, parent_atom_index
+- `BondDirection(conformation) -> Vec3`: for H atoms, direction from parent to H
+
+### Copy semantics
+- Static properties: always preserved
+- Enrichment properties: preserved if what-changed does not affect them
+  (e.g., hybridisation preserved unless bonds change)
+- Conformation-dependent properties: invalidated on copy with new
+  foundational properties. Specifically:
+  - Change protonation -> invalidate: charges, APBS, Coulomb, ring types,
+    all ConformationResult fields, features, predictions
+  - Change charges -> invalidate: APBS, Coulomb, features, predictions
+  - Change geometry -> invalidate: ALL dynamic properties
+  - Same protein same geometry -> preserve: spatial neighbours, DSSP
+
+---
+
+## Bond
+
+Typed covalent bond between two atoms.
+
+### Static properties (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| atom_index_a | size_t | - | First atom in protein's atom list |
+| atom_index_b | size_t | - | Second atom in protein's atom list |
+| order | BondOrder enum | - | Single, Double, Triple, Aromatic, Peptide |
+| category | BondCategory enum | - | From bond detection |
+| is_rotatable | bool | - | From bond detection |
+
+### Geometry methods (take positions, conformation-dependent)
+- `Midpoint(positions) -> Vec3`: 0.5 * (A + B), Angstroms
+- `Length(positions) -> double`: |B - A|, Angstroms
+- `Direction(positions) -> Vec3`: normalised (B - A)
+
+### Query methods
+- `IsPeptideBond() -> bool`: order == Peptide
+- `IsPeptideCO() -> bool`: category == PeptideCO
+- `IsBackbone() -> bool`: category in {PeptideCO, PeptideCN, BackboneOther}
+- `IsAromatic() -> bool`: category == Aromatic
+
+### Copy semantics
+Value type. Always preserved on copy (topology does not change with
+protonation for most bonds). Exception: disulfide bonds may change
+if CYS protonation changes to CYX.
+
+---
+
+## Ring (class hierarchy)
+
+Ring types ARE classes with physics properties baked in. Each type provides
+const properties derived from the ring's identity, not from a lookup table.
+
+**Why this contract exists (for agents creating new ring types):**
+The ring current calculators evaluate every ring the same way: vertices,
+center, normal, intensity. Your ring type's specific physics (how much
+current, what lobe offset, whether nitrogen is present) is what makes
+the Biot-Savart result DIFFERENT for your type vs others. If you don't
+provide it through the typed interface, someone will hardcode it as a
+string comparison. Later, when we refine intensities from mutant data
+or add a new ring type, the typed interface means the refinement
+propagates everywhere automatically.
+
+### Base class: Ring
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| atom_indices | vector<size_t> | - | Vertex atoms in protein's atom list |
+| type_index | RingTypeIndex enum | - | Specific type identifier |
+| parent_residue_index | size_t | - | Into protein's residue list |
+| parent_residue_number | int | - | PDB sequence number (display only) |
+| fused_partner_index | size_t | - | SIZE_MAX if not fused |
+
+Virtual const properties (overridden by each type class):
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| intensity | double | nA/T | DFT-calibrated effective ring current intensity |
+| literature_intensity | double | nA/T | Giessner-Prettre 1969 literature value |
+| jb_lobe_offset | double | Angstroms | Johnson-Bovey pi-electron lobe offset |
+| nitrogen_count | int | - | Number of nitrogen atoms in ring |
+| aromaticity | RingAromaticity enum | - | Full, Reduced, Weak |
+| ring_size | int | - | Number of vertex atoms (5, 6, or 9) |
+| type_name | string | - | "PHE", "TYR", etc. |
+
+### Ring type class hierarchy
+
+```
+Ring (abstract base)
+|
++-- SixMemberedRing (abstract, ring_size = 6)
+|   |
+|   +-- PheBenzeneRing
+|   |     intensity = -12.0 nA/T
+|   |     literature_intensity = -12.0 nA/T
+|   |     jb_lobe_offset = 0.64 A
+|   |     nitrogen_count = 0
+|   |     aromaticity = Full
+|   |     ring_size = 6
+|   |     type_index = PheBenzene
+|   |
+|   +-- TyrPhenolRing
+|   |     intensity = -11.28 nA/T
+|   |     literature_intensity = -11.28 nA/T
+|   |     jb_lobe_offset = 0.64 A
+|   |     nitrogen_count = 0
+|   |     aromaticity = Full
+|   |     ring_size = 6
+|   |     type_index = TyrPhenol
+|   |
+|   +-- TrpBenzeneRing
+|         intensity = -12.48 nA/T
+|         literature_intensity = -12.48 nA/T
+|         jb_lobe_offset = 0.64 A
+|         nitrogen_count = 0
+|         aromaticity = Full
+|         ring_size = 6
+|         type_index = TrpBenzene
+|
++-- FiveMemberedRing (abstract, ring_size = 5)
+|   |
+|   +-- TrpPyrroleRing
+|   |     intensity = -6.72 nA/T
+|   |     literature_intensity = -6.72 nA/T
+|   |     jb_lobe_offset = 0.52 A
+|   |     nitrogen_count = 1
+|   |     aromaticity = Reduced
+|   |     ring_size = 5
+|   |     type_index = TrpPyrrole
+|   |
+|   +-- HisImidazoleRing
+|   |     intensity = -5.16 nA/T
+|   |     literature_intensity = -5.16 nA/T
+|   |     jb_lobe_offset = 0.50 A
+|   |     nitrogen_count = 2
+|   |     aromaticity = Weak
+|   |     ring_size = 5
+|   |     type_index = HisImidazole
+|   |     NOTE: unspecified tautomer. Both ND1 and NE2 may carry H.
+|   |     Used when protonation state is unknown or ambiguous.
+|   |
+|   +-- HidImidazoleRing
+|   |     intensity = -5.16 nA/T
+|   |     literature_intensity = -5.16 nA/T
+|   |     jb_lobe_offset = 0.50 A
+|   |     nitrogen_count = 2
+|   |     aromaticity = Weak
+|   |     ring_size = 5
+|   |     type_index = HidImidazole
+|   |     NOTE: N-delta protonated tautomer. ND1 carries H, NE2 is
+|   |     the unprotonated nitrogen. Sparse training data -- type
+|   |     exists in the science even if the training set exercises it
+|   |     infrequently. DO NOT OMIT.
+|   |
+|   +-- HieImidazoleRing
+|         intensity = -5.16 nA/T
+|         literature_intensity = -5.16 nA/T
+|         jb_lobe_offset = 0.50 A
+|         nitrogen_count = 2
+|         aromaticity = Weak
+|         ring_size = 5
+|         type_index = HieImidazole
+|         NOTE: N-epsilon protonated tautomer. NE2 carries H, ND1 is
+|         the unprotonated nitrogen. Sparse training data -- type
+|         exists in the science. DO NOT OMIT.
+|
++-- FusedRing (abstract)
+    |
+    +-- IndolePerimeterRing
+          intensity = -19.2 nA/T
+          literature_intensity = -19.2 nA/T
+          jb_lobe_offset = 0.60 A
+          nitrogen_count = 1
+          aromaticity = Full
+          ring_size = 9
+          type_index = TrpPerimeter
+          NOTE: The 9-atom TRP indole perimeter. This is the physical
+          ring current path. TRP5+TRP6 are the sub-rings; TRP9 is
+          the perimeter that carries the actual current. v1 did not
+          have this type (7 types). Rewrite has 8.
+```
+
+Rings accumulate properties over extraction passes. After each full
+pass over the ring's atoms, a ring-level property update runs.
+If a geometric or field property can be precomputed for the ring
+as a whole, it is computed and stored on the ring at the end of that
+pass, ready for the next ConformationResult.
+
+It is NOT forbidden to traverse the atoms of a specific ring to
+harvest properties for calculation. Ring-specific atomic traversal
+is how ring properties are built.
+
+### RingTypeIndex (enum)
+
+```
+enum class RingTypeIndex {
+    PheBenzene    = 0,
+    TyrPhenol     = 1,
+    TrpBenzene    = 2,
+    TrpPyrrole    = 3,
+    TrpPerimeter  = 4,
+    HisImidazole  = 5,
+    HidImidazole  = 6,
+    HieImidazole  = 7,
+    Count         = 8
+};
+```
+
+### Ring geometry (conformation-dependent, on ProteinConformation)
+
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| center | Vec3 | Angstroms | GeometryResult |
+| normal | Vec3 | normalised | GeometryResult (from SVD of vertex positions) |
+| radius | double | Angstroms | GeometryResult |
+| vertices | vector<Vec3> | Angstroms | GeometryResult |
+
+### Accumulated ring properties (dynamic, set by ConformationResult post-pass updates)
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| total_B_at_center | Vec3 | dimensionless | BiotSavartResult | Sum of B from all OTHER rings at this ring's center |
+| intensity_used | double | nA/T | BiotSavartResult | The ring type's effective intensity |
+| total_G_T0_diagnostic | double | dimensionless | BiotSavartResult | Sum of |G_T0| over all nearby atoms |
+| mutual_B_from | map<size_t, Vec3> | dimensionless | BiotSavartResult | B-field at this ring's center from ring[key] |
+
+### Query methods
+- `IsFused() -> bool`: fused_partner_index != SIZE_MAX
+- `Size() -> RingSize`: FiveMembered or SixMembered
+- `Aromaticity() -> RingAromaticity`: from type class
+- `NitrogenCount() -> int`: from type class
+- `TypeIndexAsInt() -> int`: for one-hot encoding
+- `ComputeGeometry(positions) -> Ring::Geometry`
+
+### Copy semantics
+- Static properties (type, vertices, parent): always preserved
+- Ring type: INVALIDATED if protonation changes HIS tautomer
+  (HIS -> HID or HIE changes the ring type class)
+- Geometry: INVALIDATED if conformation changes
+- Accumulated properties: INVALIDATED on any foundational property change
+
+---
+
+## ProteinConformation (typed hierarchy)
+
+A conformation without its protein is meaningless. One geometric
+instance. Outside of a ProteinConformation, no geometric computation
+is allowed. Holds exactly one set of atomic positions.
+
+A ProteinConformation always holds a valid pointer to its owning
+Protein. This pointer is set at construction and never null.
+Conformations are never orphaned. Do not add reference counting,
+weak pointers, or null checks. The Protein's lifetime always
+exceeds its conformations'.
+
+**Positions are const after construction.** New geometry = new
+ProteinConformation. Spatial index is never stale.
+
+ALL computed properties live on the ProteinConformation as typed
+ConformationResult objects, or on its atoms and rings (stored there
+by those result objects). This is where ALL work happens. Every
+extractor operates within a ProteinConformation.
+
+**Why this contract exists (for agents creating new conformation types):**
+Future agents will attach ConformationResults you don't know about yet.
+They need spatial queries, atom access, and result attachment to work
+identically on your conformation type as on every other type. Your
+metadata is what makes your type WORTH having -- it distinguishes your
+conformation from others in the protein's list. The base class machinery
+is what makes it USABLE by everyone who comes after you. You are building
+for people you haven't met.
+
+### Class hierarchy (self-type-reporting)
+
+```
+ProteinConformation (base -- NOT abstract, fully functional)
++-- ExperimentalConformation
+|   +-- CrystalConformation
+|   |     resolution_angstroms, r_factor, temperature_kelvin, pdb_id
+|   +-- NMRConformation
+|         ensemble_member, restraint_count
++-- ComputedConformation
+|   +-- PredictionConformation
+|   |     tool (AlphaFold/OpenFold3/ESMFold), confidence_per_residue
+|   +-- MinimisedConformation
+|   |     parent, method, force_field, energy, converged
+|   +-- MDFrameConformation
+|         frame_index, time_picoseconds, walker_index, boltzmann_weight
++-- DerivedConformation
+      parent, derivation_description, properties_invalidated
+```
+
+The base class does the heavy lifting: holds positions (const),
+provides spatial queries, accumulates ConformationResult objects,
+supports the full extraction pipeline. Subclasses add source-specific
+metadata.
+
+### Core geometry (const after construction)
+
+| Property | Type | Unit | Description |
+|----------|------|------|-------------|
+| atom_positions | vector<Vec3> | Angstroms | One position per atom in protein |
+| protonation | ProtonationState | - | Protonation state for this conformation |
+
+### ConformationResult storage
+
+Results are named singletons on the ProteinConformation. Accessed by
+name, not by iteration. Each accessor returns the real typed object.
+Throws if not yet computed.
+
+```
+auto& dssp = conformation.Dssp();           // DsspResult&
+auto& apbs = conformation.ApbsField();      // ApbsFieldResult&
+auto& bs = conformation.BiotSavart();       // BiotSavartResult&
+auto& coulomb = conformation.Coulomb();     // CoulombResult&
+```
+
+Results have physics query methods, not raw data getters:
+
+```
+bs.SumT0ByRingType(atomIdx, PheBenzene)
+hm.NearestRingContribution(atomIdx)
+coulomb.BackboneField(atomIdx)
+coulomb.SidechainField(atomIdx)
+```
+
+### Result access mechanism
+
+Results are accessed via C++ templates. Adding a new ConformationResult
+does NOT require modifying ProteinConformation.
+
+    auto& bs = conformation.Result<BiotSavartResult>();
+    if (conformation.HasResult<XtbChargeResult>()) { ... }
+    for (auto& [type_id, result] : conformation.AllResults()) { ... }
+
+The named accessors below are convenience wrappers, not the mechanism:
+
+### Named result accessors
+
+| Accessor | Returns | Description |
+|----------|---------|-------------|
+| `Dssp()` | `DsspResult&` | Secondary structure, phi/psi, SASA, H-bonds |
+| `ChargeAssignment()` | `ChargeAssignmentResult&` | Partial charges, VdW radii |
+| `SpatialIndex()` | `SpatialIndexResult&` | KD-trees, neighbour lists |
+| `GeometryData()` | `GeometryResult&` | Ring/bond geometry, collections |
+| `Enrichment()` | `EnrichmentResult&` | Atom roles, categoricals |
+| `ApbsField()` | `ApbsFieldResult&` | Solvated E-field and EFG |
+| `MolecularGraph()` | `MolecularGraphResult&` | BFS topology, graph features |
+| `BiotSavart()` | `BiotSavartResult&` | Ring current geometric kernels |
+| `HaighMallion()` | `HaighMallionResult&` | Surface integral tensors |
+| `McConnell()` | `McConnellResult&` | Bond anisotropy tensors |
+| `Coulomb()` | `CoulombResult&` | Coulomb E-field and EFG |
+| `HBond()` | `HBondResult&` | H-bond geometry and tensors |
+| `Dispersion()` | `DispersionResult&` | London dispersion tensors |
+| `PiQuadrupole()` | `PiQuadrupoleResult&` | Quadrupole EFG |
+| `RingSusceptibility()` | `RingSusceptibilityResult&` | Ring susceptibility anisotropy |
+| `OrcaShielding()` | `OrcaShieldingResult&` | DFT shielding tensors |
+| `Result<XtbChargeResult>()` | `XtbChargeResult&` | xTB charges, HOMO-LUMO, polarisability |
+| `Result<ParameterCorrectionResult>()` | `ParameterCorrectionResult&` | Corrected calculator parameters, residual |
+| `FeatureExtraction()` | `FeatureExtractionResult&` | Feature vectors |
+| `Prediction()` | `PredictionResult&` | ML predictions |
+
+### Result attachment
+
+```
+conformation.AttachResult(unique_ptr<ConformationResult> result);
+```
+
+At attach time:
+1. Dependencies are checked. Missing dependency = immediate logged error.
+2. The result computes its values and stores properties on atoms/rings.
+3. Once attached, permanent. Nothing is removed.
+4. Results accumulate. The next result type finds prior data already there.
+
+### Derived geometry (cached by GeometryResult)
+
+| Property | Type | Unit | Source |
+|----------|------|------|--------|
+| ring_geometries | vector<Ring::Geometry> | Angstroms | GeometryResult |
+| bond_lengths | vector<double> | Angstroms | GeometryResult |
+| bond_directions | vector<Vec3> | normalised | GeometryResult |
+| bond_midpoints | vector<Vec3> | Angstroms | GeometryResult |
+| bounding_min | Vec3 | Angstroms | GeometryResult |
+| bounding_max | Vec3 | Angstroms | GeometryResult |
+| center_of_geometry | Vec3 | Angstroms | GeometryResult |
+| radius_of_gyration | double | Angstroms | GeometryResult |
+
+### Spatial indices (built by SpatialIndexResult)
+
+| Property | Type | Source |
+|----------|------|--------|
+| atom_kd_tree | nanoflann::KDTreeSingleIndexAdaptor | SpatialIndexResult |
+| ring_center_kd_tree | nanoflann::KDTreeSingleIndexAdaptor | SpatialIndexResult |
+| bond_midpoint_kd_tree | nanoflann::KDTreeSingleIndexAdaptor | SpatialIndexResult |
+
+### Pre-built collections (built by GeometryResult)
+
+| Property | Type | Source |
+|----------|------|--------|
+| atoms_by_role | map<AtomRole, vector<size_t>> | EnrichmentResult |
+| rings_by_type | map<RingTypeIndex, vector<size_t>> | GeometryResult |
+| bonds_by_category | map<BondCategory, vector<size_t>> | GeometryResult |
+| residues_by_type | map<AminoAcid, vector<size_t>> | GeometryResult |
+
+### Ring pair properties (built by GeometryResult)
+
+| Property | Type | Source |
+|----------|------|--------|
+| ring_pairs | vector<RingPair> | GeometryResult |
+
+RingPair:
+| Field | Type | Unit |
+|-------|------|------|
+| ring_a | size_t | ring index |
+| ring_b | size_t | ring index |
+| center_distance | double | Angstroms |
+| normal_dot | double | dimensionless |
+| normal_cross_mag | double | dimensionless |
+| is_fused | bool | - |
+
+### Seven query patterns (Constitution requirement)
+
+1. **Nearest N rings by distance from point**
+   `NearestRings(Vec3 point, int n) -> vector<RingQueryResult>`
+   Returns: ring objects sorted by distance, each carrying geometry,
+   type properties, direction and distance FROM query point, cylindrical
+   coordinates of point in ring frame.
+
+2. **All rings filtered by type**
+   `RingsByType(RingTypeIndex type) -> const vector<size_t>&`
+   Returns: pre-built collection.
+
+3. **Ring pairs by mutual geometry**
+   `RingPairs() -> const vector<RingPair>&`
+   Returns: pre-built pairs.
+
+4. **Atoms filtered by role near point**
+   `AtomsByRole(AtomRole role, Vec3 point, double radius) -> vector<AtomQueryResult>`
+   Returns: intersection of role collection and spatial query.
+
+5. **Bonds filtered by category near point**
+   `BondsByCategory(BondCategory cat, Vec3 point, double radius) -> vector<BondQueryResult>`
+   Returns: intersection of category collection and spatial query.
+
+6. **Graph neighbours by bond count**
+   `GraphNeighbours(size_t atom, int max_bonds) -> vector<GraphNeighbour>`
+   Returns: atoms reachable within N bonds, with bond count and path.
+
+7. **Atoms filtered by element within radius**
+   `AtomsByElement(Element elem, Vec3 point, double radius) -> vector<AtomQueryResult>`
+
+### Query result types
+
+RingQueryResult:
+| Field | Type | Unit | Description |
+|-------|------|------|-------------|
+| ring_index | size_t | - | Into protein's ring list |
+| ring | const Ring& | - | Full ring object |
+| geometry | const Ring::Geometry& | - | This conformation's geometry |
+| distance | double | Angstroms | From query point to ring center |
+| direction | Vec3 | normalised | From query point to ring center |
+| rho | double | Angstroms | Cylindrical radial distance in ring frame |
+| z | double | Angstroms | Signed height above ring plane |
+| theta | double | radians | Angle from ring normal |
+| ring_neighbourhood | const RingNeighbourhood* | - | If accumulated, pointer to stored data |
+
+AtomQueryResult:
+| Field | Type | Unit | Description |
+|-------|------|------|-------------|
+| atom_index | size_t | - | Into protein's atom list |
+| atom | const Atom& | - | Full atom object |
+| distance | double | Angstroms | From query point |
+| direction | Vec3 | normalised | From query point |
+
+BondQueryResult:
+| Field | Type | Unit | Description |
+|-------|------|------|-------------|
+| bond_index | size_t | - | Into protein's bond list |
+| bond | const Bond& | - | Full bond object |
+| distance | double | Angstroms | From query point to bond midpoint |
+| direction | Vec3 | normalised | From query point to bond midpoint |
+
+GraphNeighbour:
+| Field | Type | Description |
+|-------|------|-------------|
+| atom_index | size_t | Target atom |
+| bond_count | int | BFS distance |
+| path | vector<size_t> | Bond indices along path |
+
+### Copy policies
+
+**GeometryOnly**: copy positions, clear all ConformationResult objects.
+Use when foundational properties (protonation, charges) have changed
+and all computed results must be recomputed.
+
+**Full**: copy everything including all attached ConformationResult
+objects. Only valid if ProteinBuildContext is unchanged. Use for
+creating working copies where results are still valid.
+
+### Copy semantics
+- Atom positions: always preserved (these ARE the conformation)
+- Bond connectivity / neighbour lists / distances: preserved (purely geometric)
+- DSSP: preserved (backbone geometry unchanged)
+- Partial charges: INVALIDATED if protonation changes
+- APBS fields: INVALIDATED if charges change
+- All ConformationResult objects: INVALIDATED if charges or ring types change
+- Features: INVALIDATED if any ConformationResult changes
+- Predictions: INVALIDATED if features change
+
+---
+
+## ConformationResult (ABC)
+
+Base class for all computed results that attach to a ProteinConformation.
+Each result type is a named singleton. Accessed by name, checked at
+attach time.
+
+```
+class ConformationResult {
+public:
+    virtual ~ConformationResult() = default;
+    virtual string Name() const = 0;
+    virtual vector<type_index> Dependencies() const = 0;
+};
+```
+
+Note: the ABC does NOT have an Attach() method. Computation happens
+in the static Compute() factory on each subclass. The framework calls
+AttachResult() on the ProteinConformation, which checks dependencies
+via the type_index vector. Dependencies are compile-time type-safe,
+not string-matched.
+
+**WHY this contract exists:** Results accumulate on a ProteinConformation
+over the extraction pipeline. Each result declares what it needs (other
+results that must already be attached) and what it provides (properties
+on atoms/rings). The dependency graph replaces manual phase ordering.
+The attach method is where computation happens: the result reads from
+prior results and stores its own properties. Once attached, permanent.
+
+### Known result types (with dependencies)
+
+```
+GeometryResult                requires: nothing
+DsspResult                    requires: nothing
+ChargeAssignmentResult        requires: nothing
+XtbChargeResult               requires: nothing (external tool)
+EnrichmentResult              requires: nothing
+SpatialIndexResult            requires: GeometryResult
+ApbsFieldResult               requires: ChargeAssignmentResult
+MolecularGraphResult          requires: SpatialIndexResult
+BiotSavartResult              requires: SpatialIndexResult, GeometryResult
+HaighMallionResult            requires: SpatialIndexResult, GeometryResult
+McConnellResult               requires: SpatialIndexResult, GeometryResult
+CoulombResult                 requires: ChargeAssignmentResult, SpatialIndexResult
+HBondResult                   requires: DsspResult, SpatialIndexResult
+DispersionResult              requires: SpatialIndexResult, GeometryResult
+PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
+RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
+OrcaShieldingResult           requires: nothing (loaded from files)
+ParameterCorrectionResult     requires: ApbsFieldResult, XtbChargeResult, DsspResult, OrcaShieldingResult
+FeatureExtractionResult       requires: all physics results
+PredictionResult              requires: FeatureExtractionResult
+```
+
+### What each result stores on atoms/rings
+
+Each result type, when attached, populates properties on the atoms
+and rings of the ProteinConformation. The next result type in the
+resolved order finds these properties already present.
+
+See the per-result sections below and the Atom field accumulation
+tables above for exactly what each result stores.
+
+---
+
+## Calculator Shielding Contribution Contract
+
+Every classical calculator ConformationResult (BiotSavartResult,
+HaighMallionResult, McConnellResult, CoulombResult, PiQuadrupoleResult,
+RingSusceptibilityResult, DispersionResult, HBondResult) must produce
+TWO kinds of output:
+
+### 1. Geometric output (for features and reuse)
+The raw geometric kernel or field in the calculator's natural units
+(dimensionless for ring current kernels, Angstrom^-3 for dipolar tensors,
+V/Angstrom for E-fields, etc.). Stored per atom per source (ring/bond).
+This is what the feature extractor reads. It can be reused with different
+parameters without recomputing geometry.
+
+### 2. Shielding contribution (for residual tracking, in ppm)
+The total shielding contribution from this calculator, per atom, as a
+SphericalTensor in ppm. This is the geometric output multiplied by the
+appropriate parameter (intensity, anisotropy, Buckingham coefficient, etc.):
+
+- BiotSavart: sigma_atom = Sum_rings[ I_type * G_tensor ]
+- HaighMallion: sigma_atom = Sum_rings[ J_type * HM_tensor ]
+- McConnell: sigma_atom = Sum_bonds[ Dchi_cat * dipolar_tensor ]
+- Coulomb: sigma_atom = A_elem * E_z + B_elem * E_z^2 (T0) + gamma_elem * EFG (T2)
+- PiQuadrupole: sigma_atom = Sum_rings[ Q_type * quad_tensor ]
+- RingSusceptibility: sigma_atom = Sum_rings[ Dchi_ring_type * chi_tensor ]
+- Dispersion: sigma_atom = Sum_rings[ alpha_disp_elem * disp_tensor ]
+- HBond: sigma_atom = eta_elem * hbond_tensor
+
+### Residual update call
+
+At the end of Attach(), if the ParameterCorrectionResult is present,
+the calculator subtracts its shielding contribution from the residual:
+
+    if (conf.HasResult<ParameterCorrectionResult>()) {
+        conf.Result<ParameterCorrectionResult>().SubtractCalculatorContribution(
+            Name(), shielding_contributions);
+    }
+
+The calculator works correctly WITHOUT the ParameterCorrectionResult.
+The residual update is a diagnostic enhancement, not a dependency.
+
+### What this enables
+
+After all classical calculators have attached, the T2 residual at each
+atom shows where the classical angular physics fails to explain what the
+environment-trained model predicted. This is a first-class thesis result.
+
+The shielding contribution is stored per atom as:
+| Property | Type | Unit | Source result |
+|----------|------|------|---------------|
+| shielding_contribution | SphericalTensor | ppm | each calculator |
+
+This is SEPARATE from the geometric output. Both are stored. The geometric
+output feeds features; the shielding contribution feeds the residual.
+
+### Per-calculator shielding contribution (what gets subtracted)
+
+| Calculator | Formula | Parameter source |
+|------------|---------|-----------------|
+| BiotSavart | I_type * G_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
+| HaighMallion | J_type * HM_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
+| McConnell | Dchi_cat * dipolar_T0/T1/T2 | Bond category defaults or ParameterCorrectionResult |
+| Coulomb | A*E + B*E^2 (T0), gamma*EFG (T2) | Element defaults or ParameterCorrectionResult |
+| PiQuadrupole | Q_type * quad_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
+| RingSusceptibility | Dchi_ring * chi_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
+| Dispersion | alpha_elem * disp_T0/T1/T2 | Element defaults or ParameterCorrectionResult |
+| HBond | eta_elem * hbond_T0/T1/T2 | Element defaults or ParameterCorrectionResult |
+
+---
+
+### Unit Test Contract for Classical Calculators
+
+Every classical calculator must have unit tests that verify:
+
+1. **Full tensor output with DEFAULT parameters against known analytical values.**
+   Not just T0. Specific T2 components must match analytical predictions
+   for a known test geometry (e.g., proton at specific position relative
+   to a PHE ring). This proves the physics is correct independent of
+   any model.
+
+2. **Shielding contribution in ppm.** The intensity-weighted / parameter-weighted
+   total must match the analytical prediction.
+
+3. **Two-path consistency.** Default and corrected paths produce the same
+   output when corrected parameters equal default parameters.
+
+A test that only checks T0 allows the agent to skip T2 computation.
+A test that checks specific T2[0..4] values forces full tensor implementation.
+
+---
+
+## Per-Result Minimum Output (Constitution contract)
+
+**BiotSavartResult:**
+- Mat3: full geometric kernel G_ab per atom per ring
+- sphericart: T0, T1[3], T2[5] decomposition of G_ab
+- Vec3: magnetic field B at the point per ring
+- Per-ring attribution
+- Ring-frame cylindrical B-field: B_n, B_rho, B_phi
+- Post-pass: total B, per-type sums, ring counts, ring distances
+
+**HaighMallionResult:**
+- Mat3: raw surface integral H per atom per ring (symmetric, traceless, A^-1)
+- SphericalTensor of H: pure T2 (T0=0, T1=0 by construction)
+- Vec3: effective B-field V = H·n per ring (A^-1)
+- Full shielding kernel G = -n⊗V accumulated into hm_shielding_contribution
+  (rank-1, same structure as BS, sign convention: sigma = I × G)
+- Per-ring attribution
+- Post-pass: per-type sums
+
+**McConnellResult:**
+- Mat3: dipolar tensor per bond per atom
+- sphericart: T0, T1[3], T2[5]
+- Per-bond-category subtotals (peptide CO, CN, sidechain, aromatic)
+  as separate Mat3 + sphericart each
+- Scalar factor derived FROM tensor trace, not computed instead
+
+**CoulombResult:**
+- Vec3: E-field at each atom
+- Mat3: EFG tensor V_ab at each atom
+- sphericart: T0, T1[3], T2[5] of V_ab
+- Decomposed: backbone vs sidechain vs solvent contributions
+
+**PiQuadrupoleResult:**
+- Mat3: quadrupole EFG tensor per atom per ring
+- sphericart: T0, T1[3], T2[5]
+- Per-ring attribution
+
+**RingSusceptibilityResult:**
+- Mat3: dipolar tensor from ring center per atom per ring
+- sphericart: T0, T1[3], T2[5]
+- Per-ring attribution
+
+**DispersionResult:**
+- Mat3: anisotropic dispersion tensor per ring (summed over vertices)
+- double: isotropic 1/r^6 contribution
+- sphericart: T0, T1[3], T2[5]
+- Contact count per ring
+
+**HBondResult:**
+- Mat3: dipolar tensor to H-bond partner(s)
+- sphericart: T0, T1[3], T2[5]
+- double: isotropic cos^2 theta / r^3 contribution
+- Geometry: distance, D-H-A angle, donor/acceptor classification
+
+**ApbsFieldResult:**
+- Vec3: solvated E-field from APBS
+- Mat3: solvated EFG from APBS
+- sphericart: T0, T1[3], T2[5] of EFG
+
+**OrcaShieldingResult:**
+- Per-atom shielding tensors: diamagnetic, paramagnetic, total
+  (Mat3 + sphericart each)
+- Element-verified atom ordering (ORCA nucleus element must match protein atom)
+- One result per protein per conformation. WT and mutant are separate Proteins.
+- Mutant comparison (atom matching, delta computation) is a separate
+  static operation (MutantProteinConformationComparison), not part of this result.
+
+---
+
+## RingNeighbourhood
+
+Per-atom, per-ring structured result. One entry per aromatic ring
+within range of an atom. Built by ring current ConformationResult objects.
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| ring_index | size_t | - | BiotSavartResult | Into protein's ring list |
+| ring_type | RingTypeIndex | - | BiotSavartResult | Type of the source ring |
+| distance_to_center | double | Angstroms | BiotSavartResult | |r - center| |
+| direction_to_center | Vec3 | normalised | BiotSavartResult | (center - r) / |center - r| |
+| rho | double | Angstroms | BiotSavartResult | Cylindrical radial in ring frame |
+| z | double | Angstroms | BiotSavartResult | Signed height above ring plane |
+| theta | double | radians | BiotSavartResult | atan2(rho, z) |
+| G_tensor | Mat3 | dimensionless | BiotSavartResult | BS geometric kernel G=-n⊗B×PPM (rank-1) |
+| G_spherical | SphericalTensor | dimensionless | BiotSavartResult | Decomposition of G |
+| B_field | Vec3 | Tesla | BiotSavartResult | JB B-field from unit current (1 nA) |
+| B_cylindrical | Vec3 | Tesla | BiotSavartResult | (B_rho, 0, B_z) in ring frame |
+| hm_tensor | Mat3 | Angstrom^-1 | HaighMallionResult | Raw surface integral H (symmetric, traceless) |
+| hm_spherical | SphericalTensor | Angstrom^-1 | HaighMallionResult | Decomposition of H (pure T2) |
+| hm_B_field | Vec3 | Angstrom^-1 | HaighMallionResult | Effective B-field V = H·n |
+| quad_tensor | Mat3 | Angstrom^-4 | PiQuadrupoleResult | Quadrupole EFG |
+| quad_spherical | SphericalTensor | Angstrom^-4 | PiQuadrupoleResult | |
+| quad_scalar | double | Angstrom^-4 | PiQuadrupoleResult | (3cos^2 theta - 1)/r^4 |
+| chi_tensor | Mat3 | Angstrom^-3 | RingSusceptibilityResult | Ring susceptibility dipolar tensor |
+| chi_spherical | SphericalTensor | Angstrom^-3 | RingSusceptibilityResult | |
+| chi_scalar | double | Angstrom^-3 | RingSusceptibilityResult | (3cos^2 theta - 1)/r^3 |
+| disp_tensor | Mat3 | Angstrom^-6 | DispersionResult | London dispersion tensor |
+| disp_spherical | SphericalTensor | Angstrom^-6 | DispersionResult | |
+| disp_scalar | double | Angstrom^-6 | DispersionResult | Sum of 1/r^6 over vertices |
+| disp_contacts | int | - | DispersionResult | Count of vertex contacts in range |
+| gaussian_density | double | dimensionless | BiotSavartResult | Learned per-type spatial envelope |
+
+---
+
+## BondNeighbourhood
+
+Per-atom, per-bond structured result. One entry per bond within range
+of an atom. Built by McConnellResult.
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| bond_index | size_t | - | McConnellResult | Into protein's bond list |
+| bond_category | BondCategory | - | McConnellResult | Category of source bond |
+| distance_to_midpoint | double | Angstroms | McConnellResult | |r - midpoint| |
+| direction_to_midpoint | Vec3 | normalised | McConnellResult | (midpoint - r) / d |
+| dipolar_tensor | Mat3 | Angstrom^-3 | McConnellResult | Full dipolar tensor |
+| dipolar_spherical | SphericalTensor | Angstrom^-3 | McConnellResult | Decomposition |
+| mcconnell_scalar | double | Angstrom^-3 | McConnellResult | Derived from tensor trace |
+
+---
+
+## AtomNeighbourhood
+
+Per-atom, per-atom spatial relationship. Built by SpatialIndexResult.
+
+| Property | Type | Unit | Source result | Description |
+|----------|------|------|---------------|-------------|
+| atom_index | size_t | - | SpatialIndexResult | Into protein's atom list |
+| distance | double | Angstroms | SpatialIndexResult | |r_a - r_b| |
+| direction | Vec3 | normalised | SpatialIndexResult | (r_b - r_a) / d |
+
+---
+
+## SpatialIndex
+
+Wrapper around nanoflann KD-tree. Three instances on each
+ProteinConformation, built by SpatialIndexResult.
+
+### Atom spatial index
+- Built from: atom_positions (vector<Vec3>)
+- Query: `RadiusSearch(Vec3 point, double radius) -> vector<pair<size_t, double>>`
+- Query: `KNearestSearch(Vec3 point, int k) -> vector<pair<size_t, double>>`
+
+### Ring center spatial index
+- Built from: ring_geometries[i].center for all rings
+- Same query interface
+
+### Bond midpoint spatial index
+- Built from: bond_midpoints for all bonds
+- Same query interface
+
+All spatial queries through these indices. No linear scans over atoms.
+Constitution Rule 4.
+
+---
+
+## Feature (base class)
+
+Each feature is a subclass. Adding a feature = writing a class.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| name | string | Unique identifier for manifest |
+| irrep | IrrepType enum | L0, L1e, L1o, L2e |
+| components | int | 1 (L0), 3 (L1), 5 (L2) |
+
+### IrrepType enum
+```
+enum class IrrepType { L0, L1e, L1o, L2e };
+```
+
+### Virtual method
+```
+virtual void Compute(size_t atom_index,
+                     const ProteinConformation& conf,
+                     FeatureOutput& out) const = 0;
+```
+
+Features ONLY READ from ConformationResult objects on the
+ProteinConformation. They do NOT compute physics. They do NOT access
+raw positions or charges directly. They read what prior
+ConformationResult objects stored.
+
+### FeatureOutput
+```
+struct FeatureOutput {
+    vector<double> L0;          // scalar features
+    vector<Vec3> L1;            // vector features
+    vector<IrrepType> L1_parity; // e or o per L1 feature
+    vector<array<double,5>> L2; // tensor features
+};
+```
+
+---
+
+## Framework Store Interface
+
+ConformationResult objects store properties on atoms and rings through
+the ProteinConformation's typed store interface:
+
+```
+conformation.StoreRingContribution(atom_index, ring_index, result);
+conformation.StoreBondContribution(atom_index, bond_index, result);
+conformation.StoreAtomProperty(atom_index, property_name, value);
+```
+
+Each store operation:
+- Is typed (cannot store double where Mat3 goes)
+- Is logged (UDP log entry emitted automatically)
+- Is append-only (writing to a filled slot is WARNING)
+
+Each retrieval:
+- Is typed (returns correct type)
+- Is checked (empty slot is ERROR)
+
+### Enforcement: The Framework Stores, Not the Extractor
+
+An extractor does not directly write `atom.someProperty = value`.
+The ConformationResult, during attachment, stores properties on
+atoms and rings through the typed store interface.
+
+---
+
+## Static vs Dynamic Object Properties
+
+### Static: determined by what the object IS
+- An atom's element is static.
+- A ring's type (PheBenzene, HisImidazole) is static after
+  protonation state is applied.
+- A residue's amino acid type is static.
+- A bond's category is static after bond detection.
+
+Static properties are set at construction or enrichment and are
+const thereafter. They travel with copies.
+
+### Dynamic: determined by computation within a ProteinConformation
+- An atom's partial charge is dynamic (from ChargeAssignmentResult)
+- An atom's ring neighbourhood tensors are dynamic (from
+  BiotSavartResult et al.)
+- A ring's accumulated field properties are dynamic
+
+Dynamic properties are set by ConformationResult attachments and are
+ProteinConformation-specific. They do NOT travel with GeometryOnly
+copies. They travel with Full copies only if the ProteinBuildContext
+is unchanged.
+
+---
+
+## UDP Logging (mandatory, automatic)
+
+Every property store operation emits a UDP log entry. This is not
+optional. It is not per-extractor. The framework does it.
+
+Log entry format:
+```json
+{
+  "result_type": "BiotSavartResult",
+  "target": "atom",
+  "index": 42,
+  "source": "ring PHE-7 (index 3)",
+  "property": "G_tensor",
+  "T0": -0.0234,
+  "stored": true
+}
+```
+
+If a property is stored twice (overwrite attempt):
+```json
+{
+  "result_type": "McConnellResult",
+  "target": "atom",
+  "index": 42,
+  "property": "G_tensor",
+  "WARNING": "slot already filled by BiotSavartResult",
+  "stored": false
+}
+```
+
+If a property is read before being stored:
+```json
+{
+  "result_type": "FeatureExtractionResult",
+  "target": "atom",
+  "index": 42,
+  "property": "apbs_efield",
+  "ERROR": "property not set -- ApbsFieldResult not attached?",
+  "retrieved": null
+}
+```
+
+---
+
+## Complete property flow: which ConformationResult sets what
+
+### Construction (PDB loading)
+Protein: residues, atoms, rings (topology), bonds (topology), build context
+ProteinConformation: positions, protonation state
+
+### GeometryResult (requires: nothing)
+Ring geometry (center, normal, radius, vertices), bond geometry (midpoint,
+length, direction), bounding box, center of geometry, radius of gyration,
+pre-built collections (rings_by_type, bonds_by_category, residues_by_type),
+ring pair properties.
+
+### DsspResult (requires: nothing)
+Per-residue: secondary structure (char), phi (radians), psi (radians),
+SASA (Angstroms^2), H-bond acceptors[2], H-bond donors[2].
+
+### ChargeAssignmentResult (requires: nothing)
+Per-atom: partial charge (e), VdW radius (Angstroms).
+
+### XtbChargeResult
+
+**Requires:** nothing (external tool invocation)
+**Accessor:** `conformation.Result<XtbChargeResult>()`
+
+#### What it computes
+GFN2-xTB quantum-informed charges and electronic properties per atom.
+Run via xtb 6.7.1 on per-residue or per-tripeptide fragments.
+
+#### Input
+Atom positions, element types from Protein.
+
+#### What it stores (per atom)
+- xtb_charge: double, Mulliken charge (elementary charge units)
+- xtb_homo_lumo_gap: double, HOMO-LUMO gap (eV)
+- xtb_polarisability: Mat3, atomic polarisability tensor (Bohr^3)
+- xtb_polarisability_spherical: SphericalTensor of polarisability
+
+#### What it stores (per bond)
+- xtb_wiberg_bond_order: double, Wiberg bond order (dimensionless)
+
+#### Physics query methods
+- `ChargeAt(atom_index) -> double`
+- `HOMOLUMOGap(atom_index) -> double`
+- `PolarisabilityAt(atom_index) -> Mat3`
+- `BondOrder(bond_index) -> double`
+
+### EnrichmentResult (requires: nothing)
+Per-atom: role (AtomRole), hybridisation (Hybridisation), categorical
+booleans (is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H,
+is_on_aromatic_residue, is_hbond_donor, is_hbond_acceptor, parent_is_sp2).
+Pre-built collection: atoms_by_role.
+
+### SpatialIndexResult (requires: GeometryResult)
+KD-trees (atom positions, ring centers, bond midpoints), neighbour lists
+(all atoms within 15A, with stored distance and direction).
+
+### ApbsFieldResult (requires: ChargeAssignmentResult)
+Per-atom: APBS solvated E-field (Vec3), APBS EFG (Mat3 + SphericalTensor).
+
+### MolecularGraphResult (requires: SpatialIndexResult)
+Per-atom: graph_dist_ring, graph_dist_N, graph_dist_O, eneg_sum_1,
+eneg_sum_2, n_pi_bonds_3, is_conjugated, bfs_to_nearest_ring_atom,
+bfs_decay.
+
+### BiotSavartResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-ring (RingNeighbourhood): G_tensor, G_spherical, B_field,
+B_cylindrical, gaussian_density.
+Per-atom totals: total_B_field, total_G_tensor, total_G_spherical,
+per_type_G_T0_sum, per_type_G_T2_sum, ring counts, ring distances,
+exp-weighted sums, variance.
+Per-ring: total_B_at_center, intensity_used, diagnostics, mutual B.
+Per-atom shielding: bs_shielding_contribution (SphericalTensor, ppm).
+
+### HaighMallionResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-ring (RingNeighbourhood): hm_tensor, hm_spherical, hm_B_field.
+Per-atom totals: per_type_hm_T0_sum, per_type_hm_T2_sum.
+Per-atom shielding: hm_shielding_contribution (SphericalTensor, ppm).
+
+### PiQuadrupoleResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-ring (RingNeighbourhood): quad_tensor, quad_spherical,
+quad_scalar.
+Per-atom shielding: piquad_shielding_contribution (SphericalTensor, ppm).
+
+### RingSusceptibilityResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-ring (RingNeighbourhood): chi_tensor, chi_spherical,
+chi_scalar.
+Per-atom shielding: ringchi_shielding_contribution (SphericalTensor, ppm).
+
+### DispersionResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-ring (RingNeighbourhood): disp_tensor, disp_spherical,
+disp_scalar, disp_contacts.
+Per-atom shielding: disp_shielding_contribution (SphericalTensor, ppm).
+
+### McConnellResult (requires: SpatialIndexResult, GeometryResult)
+Per-atom per-bond (BondNeighbourhood): dipolar_tensor, dipolar_spherical,
+mcconnell_scalar.
+Per-atom totals: mcconnell_co_sum, mcconnell_cn_sum,
+mcconnell_sidechain_sum, mcconnell_aromatic_sum, mcconnell_co_nearest,
+T2_CO_nearest, T2_CN_nearest, T2_backbone_total, T2_sidechain_total,
+T2_aromatic_total, nearest_CO_midpoint, nearest_CO_dist, nearest_CN_dist,
+dir_nearest_CO.
+Per-atom shielding: mc_shielding_contribution (SphericalTensor, ppm).
+
+### CoulombResult (requires: ChargeAssignmentResult, SpatialIndexResult)
+Per-atom: coulomb_E_total, _backbone, _sidechain, _aromatic,
+coulomb_EFG_total (+ spherical), _backbone (+ spherical), _aromatic
+(+ spherical), _solvent (derived: APBS - vacuum), coulomb_E_magnitude,
+_bond_proj, _backbone_frac, aromatic_E_magnitude, _bond_proj,
+aromatic_n_sidechain_atoms.
+Per-atom shielding: coulomb_shielding_contribution (SphericalTensor, ppm).
+
+### HBondResult (requires: DsspResult, SpatialIndexResult)
+Per-atom: hbond_nearest_dist, _dir, _tensor, _spherical, _inv_d3,
+_is_backbone, _count_within_3_5A, _is_donor, _is_acceptor.
+Per-atom shielding: hbond_shielding_contribution (SphericalTensor, ppm).
+
+### OrcaShieldingResult (requires: nothing)
+Per-atom: diamagnetic + paramagnetic + total shielding tensors (Mat3 +
+SphericalTensor each). Parsed from ORCA NMR output with element-verified
+atom ordering. Each protein gets its own result — WT and mutant are
+separate Proteins. Comparison is MutantProteinConformationComparison.
+
+### ParameterCorrectionResult
+
+**Requires:** ApbsFieldResult, XtbChargeResult, DsspResult, OrcaShieldingResult
+**Accessor:** `conformation.Result<ParameterCorrectionResult>()`
+
+A trained e3nn model that predicts mutant delta tensors from environment
+data and outputs corrected parameters for classical calculators. This
+model is trained on APBS E-field, xTB charges, DSSP structure, and
+non-mutant DFT shielding tensors. It has NOTHING to do with NMR
+chemical shift prediction. Its job is to learn better values for
+classical physics parameters (ring current intensities, bond
+anisotropies, Buckingham coefficients).
+
+See CALCULATOR_PARAMETER_API.md for the full parameter correction
+interface for all 8 classical calculators.
+
+#### What it provides
+
+**Full tensor predictions per atom:**
+- predicted_delta: SphericalTensor (L=0 + L=1 + L=2)
+- predicted_delta_mat3: Mat3
+
+**Per-calculator parameter corrections (L=0 scalars, global not per-atom):**
+- BiotSavartParams: 8 intensities + 8 lobe offsets + stacking_scale
+- HaighMallionParams: 8 intensities + crossover_distance
+- McConnellParams: 6 delta_chi + 6 midpoint_shift
+- CoulombParams: 5 A + 5 B + 5 gamma + charge_scale
+- PiQuadrupoleParams: 8 Q + 8 height_offset
+- RingSusceptParams: 8 delta_chi
+- DispersionParams: 5 alpha_disp + r_min + r_cut
+- HBondParams: 5 eta + distance_exponent + w_backbone + w_sidechain
+
+**Residual tracking (updates as classical results attach):**
+- residual_T0: double per atom (shrinks as calculators attach)
+- residual_T1: array<3> per atom
+- residual_T2: array<5> per atom
+
+#### Physics query methods
+- `PredictedDelta(atom_index) -> SphericalTensor`
+- `ResidualT0(atom_index) -> double`
+- `ResidualT2(atom_index) -> array<double,5>`
+- `ResidualMagnitude(atom_index, IrrepType) -> double`
+- `SigmaT0(atom_index) -> double` (model confidence)
+- `SigmaT2(atom_index) -> double`
+- `BiotSavartCorrections() -> BiotSavartParams`
+- `HaighMallionCorrections() -> HaighMallionParams`
+- `McConnellCorrections() -> McConnellParams`
+- `CoulombCorrections() -> CoulombParams`
+- `PiQuadrupoleCorrections() -> PiQuadrupoleParams`
+- `RingSusceptCorrections() -> RingSusceptParams`
+- `DispersionCorrections() -> DispersionParams`
+- `HBondCorrections() -> HBondParams`
+- `SubtractCalculatorContribution(name, per_atom_tensors) -> void`
+
+### FeatureExtractionResult (requires: all physics results)
+Per-atom: FeatureOutput (L0, L1, L2 vectors).
+
+### PredictionResult (requires: FeatureExtractionResult)
+Per-atom: predicted_T0, predicted_T2, confidence, tier.

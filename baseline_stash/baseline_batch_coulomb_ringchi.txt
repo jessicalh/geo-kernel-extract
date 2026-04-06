@@ -1,0 +1,67 @@
+Running main() from /mnt/extfast/2026thesis/nmr-shielding/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BatchCoulombRingChi*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BatchCoulombRingChi
+[ RUN      ] BatchCoulombRingChi.AllCleanPairs
+
+=== Batch Coulomb + RingSusceptibility Summary ===
+  Processed: 720  Skipped: 4  Failed: 0
+
+  COULOMB:
+    Grand mean |E|: 2.80774 V/A
+    Global max |E|: 36.3946 V/A
+    Max |EFG trace|: 1.42109e-14
+    Max |E decomp err|: 3.21957e-14
+    Mean backbone proj: 1.48588 V/A
+    Non-integer charge: 0 / 720
+
+  RING SUSCEPTIBILITY:
+    Total ring-atom pairs: 1025753
+    Max |T0 - f| across all: 8.32667e-17
+    Mean max |T0|: 0.0807563 A^-3
+    Mean max |T2|: 0.116492 A^-3
+    WT has more ring neighbours than ALA: 720 / 720
+
+  PER-RING-TYPE BREAKDOWN:
+    Type       Rings   Pairs    Mean|T0|   Max|T0|   Mean|T2|   Max|T2|
+    PHE         818   288229    0.001820    0.1502    0.004581    0.1856
+    TYR         779   266318    0.001969    0.1630    0.004912    0.2178
+    TRP6        273    92427    0.001918    0.1563    0.004613    0.1923
+    TRP5        273    94152    0.002287    0.1451    0.005645    0.1791
+    TRP9        273    92281    0.001822    0.1322    0.004383    0.1646
+    HIE         599   192346    0.001997    0.1548    0.005068    0.1897
+
+  DFT PROXIMITY (signal near vs far from mutation sites, <8A test threshold):
+    Ring Chi |T0|:
+      Near mutation: 0.0058 A^-3
+      Far:           0.0008 A^-3
+      Ratio near/far: 7.0448
+    Coulomb aromatic |E|:
+      Near mutation: 0.3376 V/A
+      Far:           0.1328 V/A
+      Ratio near/far: 2.5423
+    (720 proteins with near/far data)
+
+  First 10 proteins:
+    Q6B8L0 atoms=544 rings=3/0 mean|E|=2.6721 max|E|=10.4947 q=1.0000 rchi_T0=0.1302 rchi_T2=0.1640 rn_wt=191 rn_ala=0
+    A0A7C5ZT79 atoms=708 rings=3/0 mean|E|=2.7519 max|E|=10.5592 q=-2.0000 rchi_T0=0.0588 rchi_T2=0.0833 rn_wt=652 rn_ala=0
+    A0A662Q049 atoms=669 rings=4/0 mean|E|=2.9147 max|E|=10.1126 q=-0.0000 rchi_T0=0.0509 rchi_T2=0.0703 rn_wt=540 rn_ala=0
+    A0A7C5TK25 atoms=750 rings=6/0 mean|E|=2.7672 max|E|=10.1804 q=-1.0000 rchi_T0=0.1008 rchi_T2=0.1520 rn_wt=730 rn_ala=0
+    A0A662Q584 atoms=719 rings=4/0 mean|E|=2.8193 max|E|=10.0494 q=-0.0000 rchi_T0=0.0841 rchi_T2=0.1098 rn_wt=605 rn_ala=0
+    A0A523SSL6 atoms=552 rings=2/0 mean|E|=2.6383 max|E|=9.5637 q=6.0000 rchi_T0=0.0447 rchi_T2=0.0748 rn_wt=318 rn_ala=0
+    A0A662T3H2 atoms=690 rings=3/0 mean|E|=2.7797 max|E|=10.0267 q=-0.0000 rchi_T0=0.0932 rchi_T2=0.1159 rn_wt=565 rn_ala=0
+    Q2JI37 atoms=451 rings=1/0 mean|E|=2.6665 max|E|=10.3279 q=-0.0000 rchi_T0=0.0275 rchi_T2=0.0613 rn_wt=237 rn_ala=0
+    A0A2R6D1W6 atoms=878 rings=6/0 mean|E|=2.9555 max|E|=10.5888 q=12.0000 rchi_T0=0.2823 rchi_T2=0.3579 rn_wt=576 rn_ala=0
+    A0A7G9YP82 atoms=541 rings=1/0 mean|E|=2.8848 max|E|=10.5165 q=-4.0000 rchi_T0=0.0581 rchi_T2=0.0804 rn_wt=505 rn_ala=0
+  T2 INDEPENDENCE (mean |cos| in 5D, 0=orthogonal, 1=parallel):
+    McConnell vs Coulomb EFG:     0.4751 (475116 atoms)
+    McConnell vs Ring Chi:        0.3849 (385542 atoms)
+    Coulomb EFG vs Ring Chi:      0.3798 (385542 atoms)
+
+[       OK ] BatchCoulombRingChi.AllCleanPairs (37271 ms)
+[----------] 1 test from BatchCoulombRingChi (37271 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (37271 ms total)
+[  PASSED  ] 1 test.

@@ -1,0 +1,26 @@
+# Test data paths for batcave.
+# Edit when syncing to a different machine.
+
+# Protonated 1UBQ (in-tree test data)
+ubq_protonated = "/shared/2026Thesis/nmr-shielding/tests/data/1ubq_protonated.pdb"
+
+# Unprotonated 1UBQ crystal structure
+ubq_crystal    = "/shared/2026Thesis/nmr-shielding/tests/data/external/1UBQ.pdb"
+
+# GROMACS protonated test PDB
+gmx_protonated = "/shared/2026Thesis/nmr-shielding/tests/data/external/1OKH_4587_protonated.pdb"
+
+# ORCA mutant pair directory (A0A7C5FAR6 WT + ALA)
+orca_dir       = "/shared/2026Thesis/nmr-shielding/tests/data/orca/"
+
+# 734 WT+ALA consolidated mutant pairs (year of DFT compute)
+consolidated   = "/shared/2026Thesis/consolidated/"
+
+# Fleet test data (in-tree, 2 proteins x 10 poses)
+fleet_data     = "/shared/2026Thesis/nmr-shielding/tests/data/fleet"
+
+# ff14SB parameter file (for tests that create their own ChargeSource)
+ff14sb_params  = "/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"
+
+# Baseline NPY features for regression
+baseline_features = "/shared/2026Thesis/nmr-shielding/baseline_features/P84477"

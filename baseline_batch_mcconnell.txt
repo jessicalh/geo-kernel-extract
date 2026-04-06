@@ -1,0 +1,34 @@
+Running main() from /mnt/extfast/2026thesis/nmr-shielding/build/_deps/googletest-src/googletest/src/gtest_main.cc
+Note: Google Test filter = BatchMcConnell*
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from BatchMcConnell
+[ RUN      ] BatchMcConnell.AllCleanPairs
+
+=== Batch McConnell + MutationDelta Summary ===
+  Processed: 720  Skipped (missing files): 4  Failed: 0
+
+  Grand mean |delta T0|: 0.337549 ppm
+  Grand mean |T2|: 1.13581
+  Global max |delta T0|: 56.3827 ppm
+  Total matched atoms: 447802
+  Mean max |McConnell T0|: 0.744163 A^-3
+  Mean max |McConnell T2|: 1.02313 A^-3
+
+  First 10 proteins:
+    Q6B8L0 WT=544 ALA=530 matched=529 mutations=1 mean|dT0|=0.10384 max|dT0|=13.203 MC_T0=0.75218 MC_T2=1.05623
+    A0A7C5ZT79 WT=708 ALA=680 matched=677 mutations=3 mean|dT0|=0.251026 max|dT0|=22.0593 MC_T0=0.711118 MC_T2=0.966255
+    A0A662Q049 WT=669 ALA=627 matched=623 mutations=4 mean|dT0|=0.384673 max|dT0|=22.5017 MC_T0=0.762197 MC_T2=0.982847
+    A0A7C5TK25 WT=750 ALA=708 matched=704 mutations=4 mean|dT0|=0.337487 max|dT0|=20.7977 MC_T0=0.800196 MC_T2=1.03697
+    A0A662Q584 WT=719 ALA=676 matched=672 mutations=4 mean|dT0|=0.356124 max|dT0|=24.5597 MC_T0=0.740267 MC_T2=1.15754
+    A0A523SSL6 WT=552 ALA=534 matched=532 mutations=2 mean|dT0|=0.189889 max|dT0|=19.1567 MC_T0=0.791168 MC_T2=0.92917
+    A0A662T3H2 WT=690 ALA=661 matched=658 mutations=3 mean|dT0|=0.250538 max|dT0|=22.327 MC_T0=0.802296 MC_T2=0.997139
+    Q2JI37 WT=451 ALA=441 matched=440 mutations=1 mean|dT0|=0.14868 max|dT0|=21.633 MC_T0=0.694931 MC_T2=0.846239
+    A0A2R6D1W6 WT=878 ALA=850 matched=848 mutations=2 mean|dT0|=0.160673 max|dT0|=12.3263 MC_T0=0.750213 MC_T2=0.99743
+    A0A7G9YP82 WT=541 ALA=530 matched=529 mutations=1 mean|dT0|=0.187413 max|dT0|=20.085 MC_T0=0.691162 MC_T2=1.0434
+[       OK ] BatchMcConnell.AllCleanPairs (30837 ms)
+[----------] 1 test from BatchMcConnell (30837 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (30837 ms total)
+[  PASSED  ] 1 test.

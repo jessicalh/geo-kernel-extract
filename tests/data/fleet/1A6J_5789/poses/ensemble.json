@@ -1,0 +1,18 @@
+{
+  "protein_id": "1A6J_5789",
+  "temperature_K": 308,
+  "n_poses": 10,
+  "method": "boltzmann_reweighted_metad",
+  "poses": [
+    {"pose": 1, "walker": 1, "time_ps": 70.0, "rmsd_nm": 1.1695, "rg_nm": 1.4828, "rbias_kJmol": 21.9590, "weight": 2.595111e-01},
+    {"pose": 2, "walker": 1, "time_ps": 120.0, "rmsd_nm": 1.1726, "rg_nm": 1.4906, "rbias_kJmol": 22.2474, "weight": 2.904403e-01},
+    {"pose": 3, "walker": 1, "time_ps": 1080.0, "rmsd_nm": 1.4789, "rg_nm": 1.4953, "rbias_kJmol": 17.2937, "weight": 4.197288e-02},
+    {"pose": 4, "walker": 1, "time_ps": 8330.0, "rmsd_nm": 2.4877, "rg_nm": 1.4833, "rbias_kJmol": 17.6434, "weight": 4.811454e-02},
+    {"pose": 5, "walker": 2, "time_ps": 140.0, "rmsd_nm": 0.6759, "rg_nm": 1.4856, "rbias_kJmol": 16.3253, "weight": 2.875598e-02},
+    {"pose": 6, "walker": 2, "time_ps": 1930.0, "rmsd_nm": 1.1458, "rg_nm": 1.4812, "rbias_kJmol": 18.1215, "weight": 5.798924e-02},
+    {"pose": 7, "walker": 3, "time_ps": 1390.0, "rmsd_nm": 1.1351, "rg_nm": 1.4822, "rbias_kJmol": 14.0661, "weight": 1.190137e-02},
+    {"pose": 8, "walker": 3, "time_ps": 3470.0, "rmsd_nm": 1.2657, "rg_nm": 1.4843, "rbias_kJmol": 14.8714, "weight": 1.629895e-02},
+    {"pose": 9, "walker": 4, "time_ps": 220.0, "rmsd_nm": 1.1847, "rg_nm": 1.4921, "rbias_kJmol": 21.1873, "weight": 1.919925e-01},
+    {"pose": 10, "walker": 4, "time_ps": 490.0, "rmsd_nm": 1.1387, "rg_nm": 1.4963, "rbias_kJmol": 17.8922, "weight": 5.302320e-02}
+  ]
+}
