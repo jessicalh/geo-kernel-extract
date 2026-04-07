@@ -8,6 +8,7 @@
 #include <vtkMolecule.h>
 #include "ComputeWorker.h"
 
+class BackboneRibbonOverlay;
 class RingCurrentOverlay;
 class PeptideBondOverlay;
 class TensorGlyph;
@@ -100,6 +101,7 @@ private:
     vtkSmartPointer<vtkActor> molActor_;
 
     // Overlays
+    BackboneRibbonOverlay* ribbonOverlay_ = nullptr;
     RingCurrentOverlay* ringOverlay_;
     PeptideBondOverlay* peptideBondOverlay_;
     TensorGlyph* tensorGlyph_;
@@ -127,6 +129,7 @@ private:
 
     // UI Controls — sidebar
     QComboBox* renderModeCombo_;
+    QCheckBox* showRibbonCheck_;
     QSlider* glyphScaleSlider_;
     QSlider* opacitySlider_;
     QSlider* currentScaleSlider_;

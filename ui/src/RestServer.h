@@ -53,6 +53,7 @@ private:
     QJsonObject cmdLookAtRing(const QJsonObject& cmd);
     QJsonObject cmdLookAtAtom(const QJsonObject& cmd);
     QJsonObject cmdListRings(const QJsonObject& cmd);
+    QJsonObject cmdGetLog(const QJsonObject& cmd);
 
     void sendResponse(QTcpSocket* socket, const QJsonObject& response);
 

@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "BackboneRibbonOverlay.h"
 #include "RingCurrentOverlay.h"
 #include "PeptideBondOverlay.h"
 #include "TensorGlyph.h"
@@ -255,12 +256,12 @@ void MainWindow::setupUI() {
                 this, &MainWindow::onRenderModeChanged);
         lay->addWidget(renderModeCombo_);
 
-        // TODO: Residue type coloring — vtkOpenGLMoleculeMapper impostor
-        // shaders crash when switching color arrays at runtime. The impostor
-        // pipeline (vtkOpenGLSphereMapper) reads atomic numbers for CPK colors
-        // via a shader path that doesn't support runtime scalar array swaps.
-        // Needs either a non-impostor fallback or a pre-built second actor.
-        // Parked; element CPK is the working mode.
+        showRibbonCheck_ = new QCheckBox("Backbone ribbon");
+        showRibbonCheck_->setChecked(false);
+        connect(showRibbonCheck_, &QCheckBox::toggled, this, [this](bool checked) {
+            if (ribbonOverlay_) { ribbonOverlay_->setVisible(checked); renderWindow_->Render(); }
+        });
+        lay->addWidget(showRibbonCheck_);
     }
 
     // --- Ring Currents ---
@@ -481,6 +482,7 @@ void MainWindow::loadMolecule(const std::string& pdbPath) {
     renderer_->RemoveAllViewProps();
 
     // Clean up old overlays (will be rebuilt in onComputeFinished)
+    if (ribbonOverlay_) { delete ribbonOverlay_; ribbonOverlay_ = nullptr; }
     if (ringOverlay_) { delete ringOverlay_; ringOverlay_ = nullptr; }
     if (tensorGlyph_) { delete tensorGlyph_; tensorGlyph_ = nullptr; }
     if (ellipsoidGlyph_) { delete ellipsoidGlyph_; ellipsoidGlyph_ = nullptr; }
@@ -650,6 +652,10 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     }
 
     // Overlays — added AFTER the molecule actor so they render on top.
+    if (ribbonOverlay_) { delete ribbonOverlay_; ribbonOverlay_ = nullptr; }
+    ribbonOverlay_ = new BackboneRibbonOverlay(renderer_, protein, conf);
+    ribbonOverlay_->setVisible(showRibbonCheck_->isChecked());
+
     if (ringOverlay_) { delete ringOverlay_; ringOverlay_ = nullptr; }
     ringOverlay_ = new RingCurrentOverlay(renderer_, protein, conf);
 

@@ -294,6 +294,7 @@ if(Qt6_FOUND AND VTK_FOUND)
         ui/src/MainWindow.cpp
         ui/src/ComputeWorker.cpp
         ui/src/RestServer.cpp
+        ui/src/BackboneRibbonOverlay.cpp
         ui/src/ButterflyOverlay.cpp
         ui/src/TensorGlyph.cpp
         ui/src/EllipsoidGlyph.cpp

@@ -19,6 +19,7 @@
 #include <QCheckBox>
 #include <QSlider>
 #include <QDoubleSpinBox>
+#include <QPlainTextEdit>
 #include <QThread>
 #include <vtkRenderWindow.h>
 #include <vtkWindowToImageFilter.h>
@@ -124,6 +125,7 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
     if (action == "look_at_ring")     return cmdLookAtRing(cmd);
     if (action == "look_at_atom")     return cmdLookAtAtom(cmd);
     if (action == "list_rings")       return cmdListRings(cmd);
+    if (action == "get_log")          return cmdGetLog(cmd);
 
     QJsonObject resp;
     resp["ok"] = false;
@@ -519,4 +521,36 @@ QJsonObject RestServer::cmdListRings(const QJsonObject&) {
         rings.append(r);
     }
     return QJsonObject{{"ok", true}, {"result", rings}};
+}
+
+QJsonObject RestServer::cmdGetLog(const QJsonObject& cmd) {
+    QString text = mainWindow_->logText_->toPlainText();
+    QStringList all = text.split('\n');
+    int total = all.size();
+
+    // "lines":N — last N lines (convenience for tail)
+    // "first":F, "last":L — specific range [F, L] inclusive, 0-based
+    // No args — everything
+    int first = 0, last = total - 1;
+    if (cmd.contains("lines")) {
+        int n = cmd["lines"].toInt(50);
+        first = std::max(0, total - n);
+    } else if (cmd.contains("first") || cmd.contains("last")) {
+        first = cmd.value("first").toInt(0);
+        last = cmd.value("last").toInt(total - 1);
+    }
+    first = std::max(0, std::min(first, total - 1));
+    last = std::max(first, std::min(last, total - 1));
+
+    QJsonArray lines;
+    for (int i = first; i <= last; ++i)
+        lines.append(all[i]);
+
+    QJsonObject result;
+    result["total_lines"] = total;
+    result["first"] = first;
+    result["last"] = last;
+    result["returned"] = lines.size();
+    result["lines"] = lines;
+    return QJsonObject{{"ok", true}, {"result", result}};
 }
