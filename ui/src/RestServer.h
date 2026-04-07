@@ -47,6 +47,12 @@ private:
     QJsonObject cmdSetGlyphScale(const QJsonObject& cmd);
     QJsonObject cmdSetOpacity(const QJsonObject& cmd);
     QJsonObject cmdSetIsoThreshold(const QJsonObject& cmd);
+    QJsonObject cmdShowFieldGrid(const QJsonObject& cmd);
+    QJsonObject cmdGetCamera(const QJsonObject& cmd);
+    QJsonObject cmdSetCamera(const QJsonObject& cmd);
+    QJsonObject cmdLookAtRing(const QJsonObject& cmd);
+    QJsonObject cmdLookAtAtom(const QJsonObject& cmd);
+    QJsonObject cmdListRings(const QJsonObject& cmd);
 
     void sendResponse(QTcpSocket* socket, const QJsonObject& response);
 

@@ -5,10 +5,15 @@
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "ConformationAtom.h"
+#include "Ring.h"
+#include "Atom.h"
+#include "Residue.h"
 #include "Types.h"
+#include "FieldGridOverlay.h"
 
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QApplication>
 #include <QComboBox>
 #include <QCheckBox>
@@ -113,6 +118,12 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
     if (action == "set_glyph_scale")  return cmdSetGlyphScale(cmd);
     if (action == "set_opacity")      return cmdSetOpacity(cmd);
     if (action == "set_iso_threshold") return cmdSetIsoThreshold(cmd);
+    if (action == "show_field_grid")  return cmdShowFieldGrid(cmd);
+    if (action == "get_camera")       return cmdGetCamera(cmd);
+    if (action == "set_camera")       return cmdSetCamera(cmd);
+    if (action == "look_at_ring")     return cmdLookAtRing(cmd);
+    if (action == "look_at_atom")     return cmdLookAtAtom(cmd);
+    if (action == "list_rings")       return cmdListRings(cmd);
 
     QJsonObject resp;
     resp["ok"] = false;
@@ -163,6 +174,24 @@ QJsonObject RestServer::cmdStatus() {
     }
 
     result["overlay_mode"] = 0;  // overlay modes removed
+    result["n_field_grids"] = (int)mainWindow_->fieldGrids_.size();
+    result["n_butterfly_grids"] = (int)mainWindow_->butterflyFields_.size();
+    result["field_grid_overlay"] = (mainWindow_->fieldGridOverlay_ != nullptr);
+    result["butterfly_overlay"] = (mainWindow_->butterflyOverlay_ != nullptr);
+    if (!mainWindow_->fieldGrids_.empty()) {
+        double gmin = 1e30, gmax = -1e30;
+        int nz = 0;
+        for (const auto& g : mainWindow_->fieldGrids_) {
+            for (double v : g.T0) {
+                if (v < gmin) gmin = v;
+                if (v > gmax) gmax = v;
+                if (std::abs(v) > 1e-10) nz++;
+            }
+        }
+        result["grid_T0_min"] = gmin;
+        result["grid_T0_max"] = gmax;
+        result["grid_T0_nonzero"] = nz;
+    }
     resp["result"] = result;
     return resp;
 }
@@ -213,15 +242,12 @@ QJsonObject RestServer::cmdScreenshot(const QJsonObject& cmd) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
 
-    int scale = cmd.value("scale").toInt(2);
-
-    mainWindow_->renderWindow_->Render();
-
     auto filter = vtkSmartPointer<vtkWindowToImageFilter>::New();
     filter->SetInput(mainWindow_->renderWindow_);
-    filter->SetScale(scale);
+    filter->SetScale(1);
     filter->SetInputBufferTypeToRGBA();
-    filter->ReadFrontBufferOff();
+    filter->ReadFrontBufferOn();
+    filter->ShouldRerenderOff();
     filter->Update();
 
     auto writer = vtkSmartPointer<vtkPNGWriter>::New();
@@ -232,8 +258,8 @@ QJsonObject RestServer::cmdScreenshot(const QJsonObject& cmd) {
     int* sz = mainWindow_->renderWindow_->GetSize();
     QJsonObject result;
     result["path"] = path;
-    result["width"] = sz[0] * scale;
-    result["height"] = sz[1] * scale;
+    result["width"] = sz[0];
+    result["height"] = sz[1];
     return QJsonObject{{"ok", true}, {"result", result}};
 }
 
@@ -304,7 +330,193 @@ QJsonObject RestServer::cmdSetOpacity(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdSetIsoThreshold(const QJsonObject& cmd) {
-    Q_UNUSED(cmd);
-    // Iso threshold removed — per-calculator isosurfaces will have own controls
+    double threshold = cmd["value"].toDouble(0.1);
+    int sliderVal = static_cast<int>(threshold * 100);
+    mainWindow_->isoThresholdSlider_->setValue(sliderVal);
+    mainWindow_->onIsoThresholdChanged();
     return QJsonObject{{"ok", true}};
+}
+
+QJsonObject RestServer::cmdShowFieldGrid(const QJsonObject& cmd) {
+    if (cmd.contains("shielded")) {
+        bool vis = cmd["shielded"].toBool(true);
+        mainWindow_->showFieldGridCheck_->setChecked(vis);
+        if (mainWindow_->fieldGridOverlay_)
+            mainWindow_->fieldGridOverlay_->setShieldedVisible(vis);
+    }
+    if (cmd.contains("deshielded")) {
+        bool vis = cmd["deshielded"].toBool(true);
+        mainWindow_->showDeshieldedCheck_->setChecked(vis);
+        if (mainWindow_->fieldGridOverlay_)
+            mainWindow_->fieldGridOverlay_->setDeshieldedVisible(vis);
+    }
+    if (!cmd.contains("shielded") && !cmd.contains("deshielded")) {
+        bool vis = cmd["visible"].toBool(true);
+        mainWindow_->showFieldGridCheck_->setChecked(vis);
+        mainWindow_->showDeshieldedCheck_->setChecked(vis);
+        if (mainWindow_->fieldGridOverlay_)
+            mainWindow_->fieldGridOverlay_->setVisible(vis);
+    }
+    mainWindow_->renderWindow_->Render();
+    return QJsonObject{{"ok", true}};
+}
+
+QJsonObject RestServer::cmdGetCamera(const QJsonObject&) {
+    auto* camera = mainWindow_->renderer_->GetActiveCamera();
+    double pos[3], foc[3], up[3];
+    camera->GetPosition(pos);
+    camera->GetFocalPoint(foc);
+    camera->GetViewUp(up);
+
+    QJsonObject result;
+    result["position"] = QJsonArray{pos[0], pos[1], pos[2]};
+    result["focal_point"] = QJsonArray{foc[0], foc[1], foc[2]};
+    result["view_up"] = QJsonArray{up[0], up[1], up[2]};
+    result["distance"] = camera->GetDistance();
+    result["view_angle"] = camera->GetViewAngle();
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+QJsonObject RestServer::cmdSetCamera(const QJsonObject& cmd) {
+    auto* camera = mainWindow_->renderer_->GetActiveCamera();
+
+    if (cmd.contains("position")) {
+        QJsonArray p = cmd["position"].toArray();
+        camera->SetPosition(p[0].toDouble(), p[1].toDouble(), p[2].toDouble());
+    }
+    if (cmd.contains("focal_point")) {
+        QJsonArray f = cmd["focal_point"].toArray();
+        camera->SetFocalPoint(f[0].toDouble(), f[1].toDouble(), f[2].toDouble());
+    }
+    if (cmd.contains("view_up")) {
+        QJsonArray u = cmd["view_up"].toArray();
+        camera->SetViewUp(u[0].toDouble(), u[1].toDouble(), u[2].toDouble());
+    }
+    camera->OrthogonalizeViewUp();
+    mainWindow_->renderWindow_->Render();
+    return QJsonObject{{"ok", true}};
+}
+
+QJsonObject RestServer::cmdLookAtRing(const QJsonObject& cmd) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    int ringIdx = cmd["ring"].toInt(-1);
+    if (ringIdx < 0 || ringIdx >= (int)protein->RingCount())
+        return QJsonObject{{"ok", false}, {"error", "invalid ring index"}};
+
+    const auto& conf = protein->Conformation();
+    const auto& geo = conf.ring_geometries[ringIdx];
+    const auto& ring = protein->RingAt(ringIdx);
+
+    Vec3 center = geo.center;
+    Vec3 normal = geo.normal.normalized();
+
+    // Build orthonormal basis in ring plane
+    Vec3 arbitrary = (std::abs(normal.x()) < 0.9) ? Vec3(1,0,0) : Vec3(0,1,0);
+    Vec3 u = normal.cross(arbitrary).normalized();
+    Vec3 v = normal.cross(u);
+
+    // View direction: default "side" (perpendicular to normal, sees butterfly lobes)
+    // "top" looks down the normal, "edge" looks along the other in-plane axis
+    QString view = cmd.value("view").toString("side");
+    double distance = cmd.value("distance").toDouble(15.0);
+
+    Vec3 camDir;
+    Vec3 upVec;
+    if (view == "top") {
+        camDir = normal;
+        upVec = u;
+    } else if (view == "edge") {
+        camDir = v;
+        upVec = normal;
+    } else {  // "side"
+        camDir = u;
+        upVec = normal;
+    }
+
+    Vec3 camPos = center + distance * camDir;
+
+    auto* camera = mainWindow_->renderer_->GetActiveCamera();
+    camera->SetPosition(camPos.x(), camPos.y(), camPos.z());
+    camera->SetFocalPoint(center.x(), center.y(), center.z());
+    camera->SetViewUp(upVec.x(), upVec.y(), upVec.z());
+    camera->OrthogonalizeViewUp();
+    mainWindow_->renderer_->ResetCameraClippingRange();
+    mainWindow_->renderWindow_->Render();
+
+    QJsonObject result;
+    result["ring_index"] = ringIdx;
+    result["ring_type"] = QString::fromStdString(ring.TypeName());
+    result["center"] = QJsonArray{center.x(), center.y(), center.z()};
+    result["normal"] = QJsonArray{normal.x(), normal.y(), normal.z()};
+    result["view"] = view;
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+QJsonObject RestServer::cmdLookAtAtom(const QJsonObject& cmd) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    int atomIdx = cmd["atom"].toInt(-1);
+    if (atomIdx < 0 || atomIdx >= (int)protein->AtomCount())
+        return QJsonObject{{"ok", false}, {"error", "invalid atom index"}};
+
+    const auto& conf = protein->Conformation();
+    Vec3 pos = conf.AtomAt(atomIdx).Position();
+    double distance = cmd.value("distance").toDouble(15.0);
+
+    // Keep current camera direction, just re-center on this atom
+    auto* camera = mainWindow_->renderer_->GetActiveCamera();
+    double camPos[3], foc[3];
+    camera->GetPosition(camPos);
+    camera->GetFocalPoint(foc);
+    Vec3 dir(camPos[0] - foc[0], camPos[1] - foc[1], camPos[2] - foc[2]);
+    dir.normalize();
+
+    Vec3 newCam = pos + distance * dir;
+    camera->SetFocalPoint(pos.x(), pos.y(), pos.z());
+    camera->SetPosition(newCam.x(), newCam.y(), newCam.z());
+    camera->OrthogonalizeViewUp();
+    mainWindow_->renderer_->ResetCameraClippingRange();
+    mainWindow_->renderWindow_->Render();
+
+    const auto& id = protein->AtomAt(atomIdx);
+    const auto& res = protein->ResidueAt(id.residue_index);
+    QJsonObject result;
+    result["atom_index"] = atomIdx;
+    result["element"] = QString::fromStdString(SymbolForElement(id.element));
+    result["pdb_name"] = QString::fromStdString(id.pdb_atom_name);
+    result["residue"] = QString("%1-%2").arg(
+        QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
+        .arg(res.sequence_number);
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+QJsonObject RestServer::cmdListRings(const QJsonObject&) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    const auto& conf = protein->Conformation();
+    QJsonArray rings;
+    for (size_t i = 0; i < protein->RingCount(); ++i) {
+        const auto& ring = protein->RingAt(i);
+        const auto& geo = conf.ring_geometries[i];
+        const auto& res = protein->ResidueAt(ring.parent_residue_index);
+        QJsonObject r;
+        r["index"] = (int)i;
+        r["type"] = QString::fromStdString(ring.TypeName());
+        r["residue"] = QString("%1-%2").arg(
+            QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
+            .arg(res.sequence_number);
+        r["center"] = QJsonArray{geo.center.x(), geo.center.y(), geo.center.z()};
+        r["normal"] = QJsonArray{geo.normal.x(), geo.normal.y(), geo.normal.z()};
+        r["radius"] = geo.radius;
+        r["intensity"] = ring.Intensity();
+        rings.append(r);
+    }
+    return QJsonObject{{"ok", true}, {"result", rings}};
 }

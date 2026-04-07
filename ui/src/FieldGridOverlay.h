@@ -28,11 +28,14 @@ public:
                  double threshold, double opacity, int mode = 0);
     void clear();
     void setVisible(bool visible);
+    void setShieldedVisible(bool visible);
+    void setDeshieldedVisible(bool visible);
     void setThreshold(double threshold);
 
 private:
     vtkSmartPointer<vtkRenderer> renderer_;
-    std::vector<vtkSmartPointer<vtkActor>> actors_;
+    std::vector<vtkSmartPointer<vtkActor>> shieldedActors_;    // T0 > 0 (blue)
+    std::vector<vtkSmartPointer<vtkActor>> deshieldedActors_;  // T0 < 0 (coral)
     std::vector<ViewerFieldGrid> grids_;  // cached for threshold updates
     double opacity_ = 0.4;
     int mode_ = 0;

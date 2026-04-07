@@ -150,7 +150,26 @@ MainWindow::MainWindow(const QString& initialDir, QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
+    // Destructor may fire after QApplication is gone — minimal work only.
+    // Heavy cleanup happens in shutdown().
+}
+
+void MainWindow::shutdown() {
+    udp_log("[lifecycle] shutdown() entered\n");
+
+    // 1. Stop all timers
+    const auto timers = findChildren<QTimer*>();
+    for (auto* timer : timers)
+        timer->stop();
+
+    // 2. Stop async workers
     cancelCompute();
+
+    // 3. Finalize VTK before Qt tears down the GL context
+    if (renderWindow_)
+        renderWindow_->Finalize();
+
+    udp_log("[lifecycle] shutdown() done\n");
 }
 
 void MainWindow::setupMenuBar() {
@@ -176,10 +195,11 @@ void MainWindow::setupUI() {
     renderer_ = vtkSmartPointer<vtkRenderer>::New();
     renderWindow_->AddRenderer(renderer_);
 
-    renderer_->SetBackground(0.1, 0.1, 0.15);
+    renderer_->SetBackground(1.0, 1.0, 1.0);
+    renderer_->SetUseFXAA(true);
     renderer_->SetUseDepthPeeling(0);
     renderWindow_->SetAlphaBitPlanes(1);
-    renderWindow_->SetMultiSamples(0);
+    renderWindow_->SetMultiSamples(0);  // MSAA off — conflicts with translucency; FXAA handles AA
 
     vtkNew<vtkInteractorStyleTrackballCamera> style;
     renderWindow_->GetInteractor()->SetInteractorStyle(style);
@@ -228,11 +248,19 @@ void MainWindow::setupUI() {
     // --- Rendering ---
     {
         auto* lay = makeSection("Rendering", true);
+
         renderModeCombo_ = new QComboBox();
         renderModeCombo_->addItems({"Ball & Stick", "Liquorice"});
         connect(renderModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, &MainWindow::onRenderModeChanged);
         lay->addWidget(renderModeCombo_);
+
+        // TODO: Residue type coloring — vtkOpenGLMoleculeMapper impostor
+        // shaders crash when switching color arrays at runtime. The impostor
+        // pipeline (vtkOpenGLSphereMapper) reads atomic numbers for CPK colors
+        // via a shader path that doesn't support runtime scalar array swaps.
+        // Needs either a non-impostor fallback or a pre-built second actor.
+        // Parked; element CPK is the working mode.
     }
 
     // --- Ring Currents ---
@@ -243,16 +271,48 @@ void MainWindow::setupUI() {
         connect(showRingsCheck_, &QCheckBox::toggled, this, &MainWindow::onShowRingsToggled);
         lay->addWidget(showRingsCheck_);
 
-        showButterflyCheck_ = new QCheckBox("BS butterfly isosurface");
+        showFieldGridCheck_ = new QCheckBox("Shielded lobes (blue)");
+        showFieldGridCheck_->setChecked(true);
+        connect(showFieldGridCheck_, &QCheckBox::toggled, this, [this](bool checked) {
+            if (fieldGridOverlay_) { fieldGridOverlay_->setShieldedVisible(checked); renderWindow_->Render(); }
+        });
+        lay->addWidget(showFieldGridCheck_);
+
+        showDeshieldedCheck_ = new QCheckBox("Deshielded lobes (coral)");
+        showDeshieldedCheck_->setChecked(true);
+        connect(showDeshieldedCheck_, &QCheckBox::toggled, this, [this](bool checked) {
+            if (fieldGridOverlay_) { fieldGridOverlay_->setDeshieldedVisible(checked); renderWindow_->Render(); }
+        });
+        lay->addWidget(showDeshieldedCheck_);
+
+        showButterflyCheck_ = new QCheckBox("B-field streamlines");
         showButterflyCheck_->setChecked(false);
         connect(showButterflyCheck_, &QCheckBox::toggled, this, &MainWindow::onShowButterflyToggled);
         lay->addWidget(showButterflyCheck_);
 
-        lay->addWidget(new QLabel("Current scale:"));
+        isoThresholdLabel_ = new QLabel("Iso threshold: 0.10 ppm");
+        lay->addWidget(isoThresholdLabel_);
+        isoThresholdSlider_ = new QSlider(Qt::Horizontal);
+        isoThresholdSlider_->setRange(1, 100);  // 0.01 to 1.00 ppm
+        isoThresholdSlider_->setValue(10);       // default 0.10 ppm
+        connect(isoThresholdSlider_, &QSlider::valueChanged, this, [this](int value) {
+            isoThresholdLabel_->setText(QString("Iso threshold: %1 ppm").arg(value / 100.0, 0, 'f', 2));
+        });
+        connect(isoThresholdSlider_, &QSlider::sliderReleased, this, &MainWindow::onIsoThresholdChanged);
+        lay->addWidget(isoThresholdSlider_);
+
+        lay->addWidget(new QLabel("Iso opacity:"));
         currentScaleSlider_ = new QSlider(Qt::Horizontal);
-        currentScaleSlider_->setRange(1, 200);
-        currentScaleSlider_->setValue(100);
-        connect(currentScaleSlider_, &QSlider::valueChanged, this, &MainWindow::onCurrentScaleChanged);
+        currentScaleSlider_->setRange(5, 80);  // 0.05 to 0.80
+        currentScaleSlider_->setValue(35);      // default 0.35
+        connect(currentScaleSlider_, &QSlider::sliderReleased, this, [this]() {
+            if (fieldGridOverlay_ && !fieldGrids_.empty()) {
+                double opacity = currentScaleSlider_->value() / 100.0;
+                double threshold = isoThresholdSlider_->value() / 100.0;
+                fieldGridOverlay_->setData(fieldGrids_, threshold, opacity, 0);
+                renderWindow_->Render();
+            }
+        });
         lay->addWidget(currentScaleSlider_);
     }
 
@@ -367,6 +427,7 @@ void MainWindow::setupUI() {
 void MainWindow::loadPdb(const std::string& pdbPath) {
     pendingRequest_ = {};
     pendingRequest_.pdbPath = pdbPath;
+    pendingRequest_.computeButterfly = true;
     loadMolecule(pdbPath);
 }
 
@@ -398,6 +459,7 @@ void MainWindow::loadProteinDir(const std::string& dirPath) {
 
     pendingRequest_ = {};
     pendingRequest_.pdbPath = wt_pdb;
+    pendingRequest_.computeButterfly = true;
     if (!ala_pdb.empty()) {
         pendingRequest_.comparisonMode = true;
         pendingRequest_.wtXyz = wt_xyz;
@@ -535,6 +597,11 @@ void MainWindow::onComputeFinished(ComputeResult result) {
 
     if (!protein_) {
         statusLabel_->setText("Load failed");
+        QMessageBox::critical(this, "Load Failed",
+            QString("Failed to load protein from:\n%1\n\n"
+                    "Check that the file exists and is a valid PDB.")
+                .arg(QString::fromStdString(pendingRequest_.pdbPath)));
+        QApplication::exit(EXIT_FAILURE);
         return;
     }
 
@@ -544,29 +611,8 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     udp_log("[diag] protein: %zu atoms, %zu bonds, %zu rings\n",
             protein.AtomCount(), protein.BondCount(), protein.RingCount());
 
-    // Build ring and peptide bond overlays from library objects directly
-    if (ringOverlay_) { delete ringOverlay_; ringOverlay_ = nullptr; }
-    ringOverlay_ = new RingCurrentOverlay(renderer_, protein, conf);
-
-    if (peptideBondOverlay_) { delete peptideBondOverlay_; peptideBondOverlay_ = nullptr; }
-    peptideBondOverlay_ = new PeptideBondOverlay(renderer_, protein, conf);
-    peptideBondOverlay_->setVisible(showPeptideBondsCheck_->isChecked());
-
-    // Butterfly overlay
-    if (!butterflyFields_.empty()) {
-        butterflyOverlay_ = new ButterflyOverlay(renderer_);
-        butterflyOverlay_->setData(butterflyFields_);
-        butterflyOverlay_->setVisible(showButterflyCheck_->isChecked());
-    }
-
-    // Field grid overlay — available for per-calculator isosurfaces later
-    if (!fieldGrids_.empty()) {
-        udp_log("[diag] %zu field grids available for isosurface rendering\n", fieldGrids_.size());
-        if (fieldGridOverlay_) { delete fieldGridOverlay_; fieldGridOverlay_ = nullptr; }
-        fieldGridOverlay_ = new FieldGridOverlay(renderer_);
-    }
-
-    // Build vtkMolecule from the library object model — no adapter
+    // Build vtkMolecule FIRST — RemoveAllViewProps clears the renderer,
+    // so this must happen before any overlay actors are added.
     {
         molecule_ = vtkSmartPointer<vtkMolecule>::New();
 
@@ -601,6 +647,32 @@ void MainWindow::onComputeFinished(ComputeResult result) {
 
         udp_log("[diag] vtkMolecule built: %d atoms, %d bonds\n",
                 (int)molecule_->GetNumberOfAtoms(), (int)molecule_->GetNumberOfBonds());
+    }
+
+    // Overlays — added AFTER the molecule actor so they render on top.
+    if (ringOverlay_) { delete ringOverlay_; ringOverlay_ = nullptr; }
+    ringOverlay_ = new RingCurrentOverlay(renderer_, protein, conf);
+
+    if (peptideBondOverlay_) { delete peptideBondOverlay_; peptideBondOverlay_ = nullptr; }
+    peptideBondOverlay_ = new PeptideBondOverlay(renderer_, protein, conf);
+    peptideBondOverlay_->setVisible(showPeptideBondsCheck_->isChecked());
+
+    // Butterfly overlay (B-field streamlines)
+    udp_log("[diag] butterfly fields: %zu grids\n", butterflyFields_.size());
+    if (!butterflyFields_.empty()) {
+        butterflyOverlay_ = new ButterflyOverlay(renderer_);
+        butterflyOverlay_->setData(butterflyFields_);
+        butterflyOverlay_->setVisible(showButterflyCheck_->isChecked());
+    }
+
+    // Field grid overlay — T0 shielding isosurface around each ring
+    if (!fieldGrids_.empty()) {
+        udp_log("[diag] %zu field grids, T0 range shown in status\n", fieldGrids_.size());
+        if (fieldGridOverlay_) { delete fieldGridOverlay_; fieldGridOverlay_ = nullptr; }
+        fieldGridOverlay_ = new FieldGridOverlay(renderer_);
+        double threshold = isoThresholdSlider_->value() / 100.0;
+        fieldGridOverlay_->setData(fieldGrids_, threshold, 0.35, 0);
+        fieldGridOverlay_->setVisible(showFieldGridCheck_->isChecked());
     }
 
     // Bond order color overlay — tubes colored by MOPAC Wiberg order
@@ -708,9 +780,10 @@ void MainWindow::saveScreenshot() {
 
     vtkNew<vtkWindowToImageFilter> filter;
     filter->SetInput(renderWindow_);
-    filter->SetScale(2);
+    filter->SetScale(1);
     filter->SetInputBufferTypeToRGBA();
-    filter->ReadFrontBufferOff();
+    filter->ReadFrontBufferOn();
+    filter->ShouldRerenderOff();
     filter->Update();
 
     vtkNew<vtkPNGWriter> writer;
@@ -724,12 +797,13 @@ void MainWindow::saveScreenshot() {
 void MainWindow::updateOverlay() {
     // Per-calculator visualizations will replace this. For now, just ensure
     // the glyph infrastructure stays clear when no calculator viz is active.
+    // Field grid and butterfly overlays are managed by their own toggles —
+    // do NOT clear them here.
     if (!tensorGlyph_ || !ellipsoidGlyph_ || !protein_) return;
     tensorGlyph_->clear();
     ellipsoidGlyph_->clear();
     if (isosurfaceOverlay_) isosurfaceOverlay_->clear();
     if (isosurfaceOverlayPass_) isosurfaceOverlayPass_->clear();
-    if (fieldGridOverlay_) fieldGridOverlay_->clear();
     renderWindow_->Render();
 }
 
@@ -740,17 +814,6 @@ void MainWindow::onRenderModeChanged(int index) {
         case 1: molMapper_->UseLiquoriceStickSettings(); break;
     }
     renderWindow_->Render();
-}
-
-void MainWindow::onCurrentScaleChanged(int) {
-    if (!sliderDebounce_) {
-        sliderDebounce_ = new QTimer(this);
-        sliderDebounce_->setSingleShot(true);
-        connect(sliderDebounce_, &QTimer::timeout, this, [this]() {
-            updateOverlay();
-        });
-    }
-    sliderDebounce_->start(150);
 }
 
 void MainWindow::onShowRingsToggled(bool checked) {
@@ -777,6 +840,15 @@ void MainWindow::onShowButterflyToggled(bool checked) {
     if (butterflyOverlay_)
         butterflyOverlay_->setVisible(checked);
     renderWindow_->Render();
+}
+
+void MainWindow::onIsoThresholdChanged() {
+    if (fieldGridOverlay_ && !fieldGrids_.empty()) {
+        double threshold = isoThresholdSlider_->value() / 100.0;
+        double opacity = currentScaleSlider_->value() / 100.0;
+        fieldGridOverlay_->setData(fieldGrids_, threshold, opacity, 0);
+        renderWindow_->Render();
+    }
 }
 
 // ================================================================

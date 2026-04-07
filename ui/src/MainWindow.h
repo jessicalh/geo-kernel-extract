@@ -45,6 +45,10 @@ public:
     explicit MainWindow(const QString& initialDir = QString(), QWidget* parent = nullptr);
     ~MainWindow() override;
 
+    // Orderly shutdown while QApplication is still alive.
+    // Called from aboutToQuit handler — stops timers, workers, VTK.
+    void shutdown();
+
     // Load a PDB directly (for command-line usage)
     void loadPdb(const std::string& pdbPath);
     void loadProteinDir(const std::string& dirPath);
@@ -62,7 +66,7 @@ private slots:
     void onShowPeptideBondsToggled(bool checked);
     void onShowBondOrderToggled(bool checked);
     void onShowButterflyToggled(bool checked);
-    void onCurrentScaleChanged(int value);
+    void onIsoThresholdChanged();
 
     // Async compute slots
     void onComputeProgress(int current, int total, QString phase);
@@ -120,8 +124,6 @@ private:
     ComputeWorker* worker_ = nullptr;
     QProgressDialog* progressDialog_ = nullptr;
 
-    // Slider debounce
-    QTimer* sliderDebounce_ = nullptr;
 
     // UI Controls — sidebar
     QComboBox* renderModeCombo_;
@@ -132,6 +134,10 @@ private:
     QCheckBox* showPeptideBondsCheck_;
     QCheckBox* showBondOrderCheck_;
     QCheckBox* showButterflyCheck_;
+    QCheckBox* showFieldGridCheck_;
+    QCheckBox* showDeshieldedCheck_;
+    QSlider* isoThresholdSlider_;
+    QLabel* isoThresholdLabel_;
     QLabel* statusLabel_;
 
     // Atom info panel — shows full object model for picked atom

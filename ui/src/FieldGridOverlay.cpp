@@ -18,13 +18,26 @@ FieldGridOverlay::FieldGridOverlay(vtkSmartPointer<vtkRenderer> renderer)
 FieldGridOverlay::~FieldGridOverlay() { clear(); }
 
 void FieldGridOverlay::clear() {
-    for (auto& actor : actors_)
+    for (auto& actor : shieldedActors_)
         renderer_->RemoveActor(actor);
-    actors_.clear();
+    for (auto& actor : deshieldedActors_)
+        renderer_->RemoveActor(actor);
+    shieldedActors_.clear();
+    deshieldedActors_.clear();
 }
 
 void FieldGridOverlay::setVisible(bool visible) {
-    for (auto& actor : actors_)
+    setShieldedVisible(visible);
+    setDeshieldedVisible(visible);
+}
+
+void FieldGridOverlay::setShieldedVisible(bool visible) {
+    for (auto& actor : shieldedActors_)
+        actor->SetVisibility(visible ? 1 : 0);
+}
+
+void FieldGridOverlay::setDeshieldedVisible(bool visible) {
+    for (auto& actor : deshieldedActors_)
         actor->SetVisibility(visible ? 1 : 0);
 }
 
@@ -48,26 +61,15 @@ void FieldGridOverlay::setData(const std::vector<ViewerFieldGrid>& grids,
         if (nPoints == 0) continue;
 
         const std::vector<double>& values = (mode == 1) ? grid.bsT0 : grid.T0;
-        if (values.empty()) {
-            OperationLog::Info(LogViewer, "FieldGridOverlay", "Empty values, skipping");
-            continue;
-        }
+        if (values.empty()) continue;
 
         double vmin = 1e30, vmax = -1e30;
-        int nNonZero = 0;
         for (double v : values) {
             if (v < vmin) vmin = v;
             if (v > vmax) vmax = v;
-            if (std::abs(v) > 1e-10) nNonZero++;
         }
 
-        OperationLog::Info(LogViewer, "FieldGridOverlay",
-            "Range: [" + std::to_string(vmin) + ", " + std::to_string(vmax) +
-            "], nonzero=" + std::to_string(nNonZero) +
-            ", threshold=" + std::to_string(threshold));
-
         // Build VTK structured grid (vtkImageData)
-        OperationLog::Info(LogViewer, "FieldGridOverlay", "Creating vtkImageData...");
         vtkNew<vtkImageData> imageData;
         imageData->SetDimensions(nx, ny, nz);
         imageData->SetOrigin(grid.origin[0], grid.origin[1], grid.origin[2]);
@@ -80,57 +82,49 @@ void FieldGridOverlay::setData(const std::vector<ViewerFieldGrid>& grids,
             scalars->SetValue(i, static_cast<float>(values[i]));
         imageData->GetPointData()->SetScalars(scalars);
 
-        OperationLog::Info(LogViewer, "FieldGridOverlay", "vtkImageData created, running contours...");
-
-        // Use vtkTrivialProducer to properly connect imageData into the pipeline
-        // (SetInputData on pipeline algorithms can crash -- use SetInputConnection)
         vtkNew<vtkTrivialProducer> producer;
         producer->SetOutput(imageData);
 
-        // Positive isosurface (deshielded — warm red)
-        if (vmax > threshold) {
-            OperationLog::Info(LogViewer, "FieldGridOverlay", "Creating positive contour...");
-            vtkNew<vtkContourFilter> contourPos;
-            contourPos->SetInputConnection(producer->GetOutputPort());
-            contourPos->SetValue(0, threshold);
-            contourPos->Update();
+        // Shielded isosurface (T0 < -threshold, above/below ring — sky blue)
+        if (vmin < -threshold) {
+            vtkNew<vtkContourFilter> contour;
+            contour->SetInputConnection(producer->GetOutputPort());
+            contour->SetValue(0, -threshold);
+            contour->Update();
 
-            vtkNew<vtkPolyDataMapper> mapperPos;
-            mapperPos->SetInputConnection(contourPos->GetOutputPort());
-            mapperPos->ScalarVisibilityOff();
+            vtkNew<vtkPolyDataMapper> mapper;
+            mapper->SetInputConnection(contour->GetOutputPort());
+            mapper->ScalarVisibilityOff();
 
-            auto actorPos = vtkSmartPointer<vtkActor>::New();
-            actorPos->SetMapper(mapperPos);
-            actorPos->GetProperty()->SetColor(0.706, 0.016, 0.150);  // Moreland warm red
-            actorPos->GetProperty()->SetOpacity(opacity);
-            actorPos->GetProperty()->SetInterpolationToPhong();
-            actorPos->SetForceTranslucent(true);
-            renderer_->AddActor(actorPos);
-            actors_.push_back(actorPos);
-            OperationLog::Info(LogViewer, "FieldGridOverlay", "Positive contour added");
+            auto actor = vtkSmartPointer<vtkActor>::New();
+            actor->SetMapper(mapper);
+            actor->GetProperty()->SetColor(0.50, 0.70, 0.95);  // pastel sky blue
+            actor->GetProperty()->SetOpacity(opacity);
+            actor->GetProperty()->SetInterpolationToPhong();
+            actor->SetForceTranslucent(true);
+            renderer_->AddActor(actor);
+            shieldedActors_.push_back(actor);
         }
 
-        // Negative isosurface (shielded — cool blue)
-        if (vmin < -threshold) {
-            OperationLog::Info(LogViewer, "FieldGridOverlay", "Creating negative contour...");
-            vtkNew<vtkContourFilter> contourNeg;
-            contourNeg->SetInputConnection(producer->GetOutputPort());
-            contourNeg->SetValue(0, -threshold);
-            contourNeg->Update();
+        // Deshielded isosurface (T0 > +threshold, in ring plane — coral)
+        if (vmax > threshold) {
+            vtkNew<vtkContourFilter> contour;
+            contour->SetInputConnection(producer->GetOutputPort());
+            contour->SetValue(0, threshold);
+            contour->Update();
 
-            vtkNew<vtkPolyDataMapper> mapperNeg;
-            mapperNeg->SetInputConnection(contourNeg->GetOutputPort());
-            mapperNeg->ScalarVisibilityOff();
+            vtkNew<vtkPolyDataMapper> mapper;
+            mapper->SetInputConnection(contour->GetOutputPort());
+            mapper->ScalarVisibilityOff();
 
-            auto actorNeg = vtkSmartPointer<vtkActor>::New();
-            actorNeg->SetMapper(mapperNeg);
-            actorNeg->GetProperty()->SetColor(0.230, 0.299, 0.754);  // Moreland cool blue
-            actorNeg->GetProperty()->SetOpacity(opacity);
-            actorNeg->GetProperty()->SetInterpolationToPhong();
-            actorNeg->SetForceTranslucent(true);
-            renderer_->AddActor(actorNeg);
-            actors_.push_back(actorNeg);
-            OperationLog::Info(LogViewer, "FieldGridOverlay", "Negative contour added");
+            auto actor = vtkSmartPointer<vtkActor>::New();
+            actor->SetMapper(mapper);
+            actor->GetProperty()->SetColor(0.95, 0.55, 0.45);  // pastel coral
+            actor->GetProperty()->SetOpacity(opacity);
+            actor->GetProperty()->SetInterpolationToPhong();
+            actor->SetForceTranslucent(true);
+            renderer_->AddActor(actor);
+            deshieldedActors_.push_back(actor);
         }
     }
 }

@@ -15,6 +15,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QCommandLineParser>
+#include <QMessageBox>
 #include <QVTKOpenGLNativeWidget.h>
 
 #include "MainWindow.h"
@@ -78,6 +79,7 @@ int main(int argc, char* argv[]) {
 
     // 5. Create and show window
     MainWindow window(initialDir);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &window, &MainWindow::shutdown);
     window.show();
 
     // 5b. REST API server for programmatic control
@@ -91,7 +93,19 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // 6. Deferred auto-load — event loop must be running first
+    // 6. Validate paths before deferring load
+    if (!loadPdb.isEmpty() && !QFileInfo::exists(loadPdb)) {
+        QMessageBox::critical(&window, "File Not Found",
+            QString("PDB file does not exist:\n%1").arg(loadPdb));
+        return EXIT_FAILURE;
+    }
+    if (!loadProteinDir.isEmpty() && !QDir(loadProteinDir).exists()) {
+        QMessageBox::critical(&window, "Directory Not Found",
+            QString("Protein directory does not exist:\n%1").arg(loadProteinDir));
+        return EXIT_FAILURE;
+    }
+
+    // Deferred auto-load — event loop must be running first
     if (!loadProteinDir.isEmpty()) {
         nmr::OperationLog::Info(nmr::LogViewer, "main",
             "auto-loading protein dir: " + loadProteinDir.toStdString());
