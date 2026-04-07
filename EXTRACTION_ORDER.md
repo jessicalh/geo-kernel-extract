@@ -66,12 +66,10 @@ CoulombResult                requires: ChargeAssignmentResult, SpatialIndexResul
 MopacCoulombResult           requires: MopacResult, SpatialIndexResult
 MopacMcConnellResult         requires: MopacResult, SpatialIndexResult, GeometryResult
 HBondResult                  requires: DsspResult, SpatialIndexResult
-    |
-    v
-FeatureExtractionResult      requires: all physics results above
-    |
-    v
-PredictionResult             requires: FeatureExtractionResult
+
+(Feature extraction is distributed: each ConformationResult implements
+WriteFeatures(). ConformationResult::WriteAllFeatures() traverses all
+attached results and exports NPY arrays for the calibration pipeline.)
 ```
 
 ### Resolved order (one valid topological sort)
@@ -110,15 +108,10 @@ can run in parallel):**
 - MopacMcConnellResult (requires MopacResult, SpatialIndexResult, GeometryResult)
 - HBondResult (requires DsspResult, SpatialIndexResult)
 
-**Feature aggregation (depends on all physics results):**
-- FeatureExtractionResult
-
-**Prediction (depends on features):**
-- PredictionResult
-
-**TBD:** Per-result feature sections for MopacResult, MopacCoulombResult,
-MopacMcConnellResult. Feature manifest count needs updating (was 189,
-now includes MOPAC-derived arrays — 46 NPY arrays per conformation).
+**Feature export (after all physics results):**
+Each ConformationResult writes its own NPY arrays via WriteFeatures().
+ConformationResult::WriteAllFeatures() traverses all attached results.
+46 NPY arrays per conformation (includes MOPAC-derived arrays).
 See src/MopacResult.cpp, MopacCoulombResult.cpp, MopacMcConnellResult.cpp
 WriteFeatures() for current output.
 
@@ -444,8 +437,9 @@ Replaces ops 313-323 (apbs_field_features input).
 - Input: Bond topology, ring atom indices
 - Output per atom:
   - bfs_to_nearest_ring_atom: int, minimum bond count to any aromatic ring atom
-  - bfs_decay: double, e^{-lambda * n} where lambda is a learned parameter
-    and n is the BFS distance. Lambda initialized to ln(2)/3 (half at 3 bonds).
+  - bfs_decay: double, e^{-lambda * n} where lambda is a TOML-calibrated
+    constant and n is the BFS distance. Lambda initialized to ln(2)/3
+    (half at 3 bonds).
 
 This is the through-bond proxy feature. It provides through-bond distance
 information that through-space distance alone cannot capture (e.g., cis vs
@@ -486,7 +480,7 @@ For each ring in the protein:
   - G_spherical: SphericalTensor of G_tensor
   - B_field: Vec3, magnetic field at atom from this ring (dimensionless)
   - B_cylindrical: Vec3 (B_n, B_rho, B_phi) in ring frame
-  - gaussian_density: double, learned per-type spatial envelope
+  - gaussian_density: double, per-type spatial envelope (width from ring type class)
 
 ### Ring property post-pass (after all atoms processed for one ring)
 - R.total_B_field_at_center: Vec3, sum of B-field from all OTHER rings
@@ -836,13 +830,15 @@ This is the ground truth that the ML model learns to predict.
 
 ---
 
-## FeatureExtractionResult
+## Feature Manifest (exported via WriteFeatures)
 
-**Requires:** all physics ConformationResult types
-**Accessor:** `conformation.FeatureExtraction()`
+Feature extraction is distributed: each ConformationResult implements
+WriteFeatures() and writes its own NPY arrays. There is no centralized
+FeatureExtractionResult class. ConformationResult::WriteAllFeatures()
+traverses all attached results. The manifest below describes the full
+set of features across all results.
 
-### What it computes
-Each feature is a subclass of Feature with:
+Each feature has:
 - name: string (for manifest and serialisation)
 - irrep: IrrepType enum (L0, L1e, L1o, L2e)
 - compute(atom_index, conformation): returns the feature value
@@ -1101,36 +1097,6 @@ calculators, not at feature time. All features inherit the correct convention.
 Final e3nn irreps string: `137x0e+6x1e+10x1o+36x2e`
 
 ---
-
-## PredictionResult
-
-**Requires:** FeatureExtractionResult
-**Accessor:** `conformation.Prediction()`
-
-### What it computes
-- Pack features into tensors (L0, L1e, L1o, L2e vectors)
-- Run TorchScript model (inference via LibTorch)
-- Unpack predictions
-
-### What it stores (per atom)
-- predicted_T0: double, isotropic shielding prediction (ppm)
-- predicted_T2: array<5>, anisotropic shielding prediction
-- confidence: double, heteroscedastic learned uncertainty (sigma)
-- tier: HeuristicTier enum (REPORT, PASS, SILENT)
-
-### Tier classification criteria
-- REPORT: confidence < threshold_report AND element == H
-  AND is_amide_H (the primary training target)
-- PASS: confidence < threshold_pass (broader threshold, any atom type
-  that has training data)
-- SILENT: everything else (atoms with no training data, or predictions
-  the model is not confident about)
-
-### Physics query methods
-- `PredictedT0At(atom_index) -> double`
-- `PredictedT2At(atom_index) -> array<double, 5>`
-- `ConfidenceAt(atom_index) -> double`
-- `TierAt(atom_index) -> HeuristicTier`
 
 ---
 

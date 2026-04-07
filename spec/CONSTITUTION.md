@@ -369,9 +369,9 @@ HBondResult                   requires: DsspResult, SpatialIndexResult
 DispersionResult              requires: SpatialIndexResult, GeometryResult
 PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
-ParameterCorrectionResult     requires: ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
-FeatureExtractionResult       requires: all physics results (enumerated in OBJECT_MODEL.md)
-PredictionResult              requires: FeatureExtractionResult
+
+(Feature extraction is distributed: each ConformationResult implements
+WriteFeatures(). See ConformationResult.h.)
 ```
 
 ### What each result stores on atoms/rings
@@ -546,8 +546,8 @@ proceeds to implement result types (Layer 2 and beyond). Specifically:
 - **libdssp**: secondary structure, H-bonds
 - **OpenBabel**: bond perception, hybridisation
 - **APBS**: Poisson-Boltzmann solvation
-- **e3nn**: equivariant neural network (Python)
-- **LibTorch**: TorchScript inference (C++)
+- **e3nn**: equivariant neural network (Python-side calibration model,
+  learn/c_equivariant/ — not linked into C++)
 
 ---
 
@@ -795,7 +795,7 @@ For each aromatic ring within range of this atom, a structure:
 - Per-calculator contributions from this ring:
   - G tensor (Mat3) + sphericart decomposition (T0, T1[3], T2[5])
   - B-field (Vec3) + cylindrical components (B_n, B_rho, B_phi)
-  Built by BiotSavartResult et al. Read by FeatureExtractionResult.
+  Built by BiotSavartResult et al. Exported via WriteFeatures().
 
 ### Bond neighbourhood (structured, per nearby bond)
 For each bond within range:
@@ -804,7 +804,7 @@ For each bond within range:
 - McConnell geometry (angle theta, factor (3cos^2 theta - 1)/r^3)
 - Per-calculator contribution:
   - Dipolar tensor (Mat3) + sphericart decomposition
-  Built by McConnellResult. Read by FeatureExtractionResult.
+  Built by McConnellResult. Exported via WriteFeatures().
 
 ### Field accumulation (from calculator ConformationResults)
 - Per-calculator total tensor: Mat3 + sphericart decomposition
@@ -813,10 +813,9 @@ For each bond within range:
 - Coulomb vacuum E-field (Vec3) + decomposed (backbone/sidechain)
 - H-bond geometry and tensor
 
-### Predictions (from PredictionResult)
-- ML T0, T2 predictions
-- Confidence (sigma)
-- Heuristic tier (REPORT/PASS/SILENT)
+### Feature export
+All per-atom tensor data is exported via WriteFeatures() for the
+calibration pipeline and upstream e3nn prediction model.
 
 ---
 
@@ -1004,7 +1003,7 @@ If a property is stored twice (overwrite attempt):
 If a property is read before being stored:
 ```json
 {
-  "result_type": "FeatureExtractionResult",
+  "result_type": "CoulombResult",
   "target": "atom",
   "index": 42,
   "property": "apbs_efield",
@@ -1575,16 +1574,16 @@ captured, it isn't adding physics.
 ### Environment tools set the floor
 
 The external tools (APBS, MOPAC, DSSP, ORCA DFT) provide tensor data
-at multiple irrep levels. The ParameterCorrectionResult is trained on
-this data. Its prediction already incorporates everything these tools
-provide, including their angular structure.
+at multiple irrep levels. The calibration pipeline trains on this data.
+Its prediction already incorporates everything these tools provide,
+including their angular structure.
 
-When a classical calculator's shielding contribution is subtracted from
-the residual, we are measuring what the calculator adds BEYOND what the
-environment data already captured. If the T2 residual after attaching
-BiotSavartResult is the same as before — Biot-Savart's angular physics
-didn't tell the model anything APBS EFG and MOPAC charges hadn't
-already told it.
+A classical calculator earns its place by explaining T2 structure
+BEYOND what the environment data already captures. The measure: does
+adding a calculator's T2 to the feature set reduce the residual
+against DFT deltas? If not — the calculator's angular physics didn't
+tell the calibration model anything APBS EFG and MOPAC charges hadn't
+already provided.
 
 This is the true bar: not "does the calculator produce T2?" (trivially
 yes — the equations produce full tensors) but "does the calculator's T2
@@ -1630,59 +1629,24 @@ Mixing is OK because:
 - Model knows which method via ProteinBuildContext metadata
 - NEVER subtract across methods (r2SCAN-3c minus r2SCAN = garbage)
 
-## Parameter Correction Model: The Prior for Classical Calculators
+## Calibration: How Parameters Are Tuned
 
-The name 'ParameterCorrection' reflects its purpose: learning corrected
-values for classical physics parameters (ring current intensities, bond
-anisotropies, Buckingham coefficients) from DFT training data. It has
-nothing to do with NMR chemical shift prediction.
+The ~93 tuneable calculator parameters (ring current intensities, bond
+anisotropies, Buckingham coefficients — see CALCULATOR_PARAMETER_API.md)
+are calibrated by the external Python e3nn model (learn/c_equivariant/)
+against DFT WT-ALA delta tensors. Calibrated values enter the C++
+system as TOML configuration overriding literature defaults.
 
-### What it is
-A trained e3nn model that predicts mutant delta tensors from
-environment data alone (APBS E-field, MOPAC charges, DSSP structure,
-non-mutant DFT shielding tensor). No classical ring current physics.
-No Biot-Savart. No McConnell. Just the electronic environment.
-
-This model is trained as part of the foundation (after Layer 0
-external tool results are computed, before classical calculator
-agents run). It becomes a ConformationResult:
-ParameterCorrectionResult, requiring ApbsFieldResult, MopacResult,
-DsspResult, and OrcaShieldingResult.
-
-### What it provides to calculator agents
-
-Every classical calculator agent can query the parameter correction
-model to understand what their physics needs to add:
-
-```
-auto& pc = conformation.Result<ParameterCorrectionResult>();
-pc.PredictedDelta(atomIdx)       → full SphericalTensor
-pc.Residual(atomIdx)             → what's left to explain
-pc.Sigma(atomIdx, irrep)         → model's confidence per irrep
-pc.ResidualMagnitude(atomIdx, irrep) → how much is left per irrep
-```
-
-The residual UPDATES as classical results attach. It starts as the
-full predicted delta. Each attached calculator's contribution is
-subtracted. The residual shrinks as more physics is added.
-
-### The bar for classical calculators
-
-A classical calculator earns its place by REDUCING the parameter
-correction residual. If adding BiotSavartResult doesn't shrink the
-residual at atoms near aromatic rings, Biot-Savart isn't adding
-information beyond what the environment already provided. The
-calculator must improve the TENSOR prediction (not just T0) at the
-atoms where it claims to be relevant.
-
-This is measured automatically: residual magnitude before and after
-attaching the result, per atom, per irrep level.
+The C++ system is a transparent instrument: it computes geometric
+kernels, loads DFT reference tensors when available, and exports both
+via WriteFeatures() as NPY arrays. The calibration comparison happens
+in the Python pipeline.
 
 ### The T2 residual: where classical angular physics breaks down
 
-After classical calculators run with corrected T0 parameters, the L=2
-residual (model_T2_prediction minus classical_T2_output) reveals where
-the classical equations get the ANGULAR structure wrong, not just the
+After classical calculators run with calibrated parameters, the L=2
+residual (DFT delta T2 minus classical kernel T2) reveals where the
+classical equations get the ANGULAR structure wrong, not just the
 magnitude. This is a first-class thesis result:
 
 - T2 residual small → classical angular physics is correct. The
@@ -1697,45 +1661,3 @@ magnitude. This is a first-class thesis result:
 The T2 residual map across proteins, per ring type, per calculator,
 is a diagnostic no one has produced before. It tells us not just
 WHETHER classical models work, but WHERE and WHY they fail angularly.
-
-The residual is already tracked per irrep level in the
-ParameterCorrectionResult. No additional architecture is needed for
-this analysis. A future training phase (Layer 1+) may add a per-atom
-L=2 correction head trained on this residual, but the diagnostic
-value stands without it.
-
-### Training the parameter correction model
-
-Input features (per atom):
-- L=0: DFT isotropic, MOPAC charge, s/p orbital populations, SASA, phi, psi, SS
-- L=1: APBS E-field, DFT T1
-- L=2: APBS EFG, DFT T2
-
-Target: mutant delta tensor (L=0 + L=1 + L=2), full sphericart
-
-Architecture: e3nn (equivariant by construction for tensor targets)
-
-Trained on the existing ~553 protein WT-ALA mutant set. Validated
-on held-out proteins. The model is frozen after training and used
-as a FEATURE SOURCE, not updated during classical calculator
-development.
-
-### Layer 0 addition
-
-Two additional passes for the parameter correction model:
-
-**Pass 5**: Parameter correction model training. Requires all Layer 0
-results (DFT, APBS, MOPAC, DSSP) on the training set. Produces a
-trained e3nn checkpoint.
-
-**Pass 5R**: Review. Does the parameter correction model capture
-environment effects? Are the residuals largest where we expect
-classical physics to matter (near aromatic rings, near charged
-residues)?
-
-**Pass 6**: ParameterCorrectionResult integration. Load the trained
-model as a ConformationResult type. Verify the query API works.
-Verify the residual update mechanism.
-
-**Pass 6R**: Review. Can a mock calculator attach and see the
-residual decrease? Is the per-irrep breakdown correct?

@@ -35,11 +35,12 @@ Training against the DFT meter learns two things:
 
 ## What flows back
 
-The trained model does not leave the system. It feeds back into the
-C++ extractor as a ParameterCorrectionResult — a conformation result
-like any other, with declared dependencies on the calculator results
-it corrects. The next extraction pass produces better features because
-the calculators now account for environment.
+The trained model feeds back into the C++ system as TOML-calibrated
+parameter values — and potentially as an internal e3nn parameter
+correction model (ParameterCorrectionResult) that would attach as a
+conformation result with declared dependencies on the calculator results
+it corrects. Either way, the next extraction pass produces better
+features because the calculators now account for environment.
 
 This is not a black box replacing physics. It is a calibrated
 correction to physics calculators, bounded by the geometric kernels

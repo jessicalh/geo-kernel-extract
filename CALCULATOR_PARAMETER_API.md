@@ -1,13 +1,14 @@
-# Calculator Parameter Correction API
+# Calculator Parameter API
 
-How the parameter correction e3nn model provides corrected parameters to each
-classical calculator. The parameter correction model exists BEFORE classical
-calculators run. It is trained on environment data (APBS E-field,
-MOPAC charges, DSSP, non-mutant DFT shielding tensor) and outputs
-parameter corrections as L=0 scalars alongside its tensor predictions.
+How tuneable parameters enter each classical calculator. Each calculator
+has a typed parameter struct with literature defaults. The calibration
+pipeline (Python e3nn in learn/c_equivariant/) discovers optimal values
+by training against DFT WT-ALA delta tensors across 723 proteins.
+Calibrated values enter the C++ system as TOML configuration overriding
+the literature defaults.
 
-This document defines the interface between the model and the physics
-for all 8 classical calculators.
+This document defines the parameters, their equations, and their
+physical meaning for all 8 classical calculators (+ 2 MOPAC-derived).
 
 Aligned with CONSTITUTION.md (2026-03-29 revision) and OBJECT_MODEL.md.
 
@@ -15,91 +16,55 @@ Aligned with CONSTITUTION.md (2026-03-29 revision) and OBJECT_MODEL.md.
 
 ## Architecture Overview
 
-The parameter correction model is a ConformationResult (ParameterCorrectionResult) that
-attaches before any classical calculator. It provides:
+Each calculator defines a typed parameter struct (e.g., BiotSavartParams).
+Literature defaults are the starting point. TOML configuration can
+override any parameter. The calculator does not know or care where the
+values came from — it computes the geometric kernel with whatever
+parameters it receives.
 
-1. Full tensor predictions per atom (L=0 + L=1 + L=2)
-2. Per-calculator parameter corrections (L=0 scalars)
-3. A residual that updates as classical results attach
-
-Each calculator has two code paths:
-
+The calibration loop:
 ```
-calculator.Run(conformation)                          // DEFAULT path
-calculator.Run(conformation, corrected_params)        // CORRECTED path
+C++ geometric kernels → NPY features (via WriteFeatures)
+→ Python e3nn calibration against DFT WT-ALA deltas
+→ TOML parameter file → C++ (next extraction run)
 ```
 
-Both paths produce identical output types: full Mat3 + SphericalTensor
-per atom, per source. The difference between the two outputs IS the
-model's contribution to that calculator. This is built in from the start.
+The typed parameter interface is designed to support parameter delivery
+from any source — currently TOML configuration from the external
+calibration pipeline, potentially an internal e3nn model
+(ParameterCorrectionResult) in future. This design discipline ensures
+full tensor output and T2 completeness: every calculator MUST produce
+the same typed output regardless of where its parameters came from.
+
+All code paths produce identical output types: full Mat3 + SphericalTensor
+per atom, per source. Changing parameters does not change the output
+structure — only the tensor values.
 
 ---
 
 ## CalculatorParameters: The Type
 
-Each calculator defines a nested CalculatorParameters struct. This is
-NOT a generic map. It is a typed, compile-time-checked struct specific
-to each calculator. The parameter correction model populates it; the calculator
-consumes it.
+Each calculator defines a typed parameter struct. This is NOT a generic
+map. It is a typed, compile-time-checked struct specific to each
+calculator.
 
 ```cpp
-struct CorrectedParameters {
-    bool has_corrections = false;  // false = use literature defaults
-
-    // Per-calculator-specific fields below
-    // ...
+struct BiotSavartParams {
+    // Per-calculator-specific fields with literature defaults
+    array<double, 8> intensity;   // from ring type class
+    array<double, 8> lobe_offset; // from ring type class
+    double stacking_scale = 1.0;
 };
 ```
 
-When `has_corrections == false`, the calculator uses its own
-`DefaultParameters()` method, which returns literature values with
-references. The delta between Default and Corrected output tensors
-is logged per atom per calculator.
+Each calculator has a `DefaultParameters()` method returning literature
+values with references. TOML configuration can override any field.
 
----
-
-## ParameterCorrectionResult Query API
-
-```cpp
-class ParameterCorrectionResult : public ConformationResult {
-public:
-    // Full tensor prediction
-    SphericalTensor PredictedDelta(size_t atom_idx) const;
-    Mat3            PredictedDeltaMat3(size_t atom_idx) const;
-
-    // Per-irrep residual (updates as calculators attach)
-    double          ResidualT0(size_t atom_idx) const;
-    array<double,3> ResidualT1(size_t atom_idx) const;
-    array<double,5> ResidualT2(size_t atom_idx) const;
-    double          ResidualMagnitude(size_t atom_idx, IrrepType irrep) const;
-
-    // Per-irrep confidence
-    double          SigmaT0(size_t atom_idx) const;
-    double          SigmaT2(size_t atom_idx) const;
-
-    // Parameter corrections for each calculator
-    BiotSavartParams      BiotSavartCorrections() const;    // global (not per-atom)
-    HaighMallionParams    HaighMallionCorrections() const;  // global
-    McConnellParams       McConnellCorrections() const;     // global
-    CoulombParams         CoulombCorrections() const;       // per-element
-    PiQuadrupoleParams    PiQuadrupoleCorrections() const;  // global
-    RingSusceptParams     RingSusceptCorrections() const;   // global
-    DispersionParams      DispersionCorrections() const;    // global
-    HBondParams           HBondCorrections() const;         // global
-
-    // Residual update (called by framework after each calculator attaches)
-    void SubtractCalculatorContribution(
-        const string& calculator_name,
-        const vector<pair<size_t, SphericalTensor>>& per_atom_tensors);
-};
-```
-
-Parameter corrections are GLOBAL (per ring type, per bond category,
-per element) not per-atom. The parameter correction model learns that "PHE ring
-current intensity should be -11.3 nA/T instead of -12.0 nA/T" --
-a single number that applies to every PHE ring in every protein.
-Per-atom variation is handled by the geometry, not by per-atom
-parameter tuning.
+Parameters are GLOBAL (per ring type, per bond category, per element),
+not per-atom. The calibration pipeline discovers that "PHE ring current
+intensity should be -11.3 nA/T instead of -12.0 nA/T" — a single
+number that applies to every PHE ring in every protein. Per-atom
+variation is handled by the geometry, not by per-atom parameter tuning.
 
 ---
 
@@ -162,7 +127,7 @@ Total: 16 parameters (8 intensities + 8 lobe offsets).
 Ring current is element-INDEPENDENT (same B-field regardless of
 observing nucleus). These 16 parameters apply to ALL atoms.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct BiotSavartParams {
@@ -183,62 +148,56 @@ struct BiotSavartParams {
 };
 ```
 
-The parameter correction model learns these as L=0 outputs from its final layer.
-The model sees DFT mutant deltas and the geometric kernels G, and
-discovers what intensity values best explain the data.
+The calibration pipeline discovers these by fitting against DFT WT-ALA
+delta tensors. The pipeline sees the geometric kernels G and learns
+what intensity values best explain the data. Calibrated values override
+the literature defaults via TOML configuration.
 
 ### How the calculator uses it
 
+The calculator reads its parameter struct (from TOML or defaults) and
+computes the kernel. It does not know where the values came from:
+
 ```cpp
-void BiotSavartResult::Attach(ProteinConformation& conf) {
-    auto params = has_baseline
-        ? conf.ParameterCorrection().BiotSavartCorrections()
-        : DefaultBiotSavartParams();
+auto params = LoadBiotSavartParams(toml_config);  // or DefaultParams()
 
-    for (auto& ring : conf.AllRings()) {
-        int type = ring.TypeIndexAsInt();
-        double I = params.intensity[type];
-        double d = params.lobe_offset[type];
+for (auto& ring : conf.AllRings()) {
+    int type = ring.TypeIndexAsInt();
+    double I = params.intensity[type];
+    double d = params.lobe_offset[type];
 
-        // Compute B-field with corrected I and d
-        for (auto& atom : conf.AtomsNear(ring.center, 15.0)) {
-            Vec3 B = JohnsonBoveyBField(atom.position, ring, d);
-            Mat3 G = GeometricKernel(B, ring.normal, I);
-            // ... store G_tensor, G_spherical, B_field ...
-        }
-
-        // Apply stacking correction if multiple rings nearby
-        if (ring_count_8A > 1) {
-            G *= params.stacking_scale;
-        }
+    for (auto& atom : conf.AtomsNear(ring.center, 15.0)) {
+        Vec3 B = JohnsonBoveyBField(atom.position, ring, d);
+        Mat3 G = GeometricKernel(B, ring.normal, I);
+        // ... store G_tensor, G_spherical, B_field ...
     }
 }
 ```
 
-### Default vs Corrected: measuring the model's contribution
+### Measuring calibration effect
+
+Running the pipeline with default parameters and again with calibrated
+parameters produces a per-atom delta:
 
 ```
-delta_BS[atom] = BS_corrected[atom].T0 - BS_default[atom].T0
+delta_BS[atom] = BS_calibrated[atom].T0 - BS_default[atom].T0
 ```
 
-This delta, per atom, per ring type, is logged and stored. It answers:
-"How much did the parameter correction model change the ring current prediction at
-this atom?" If it is zero everywhere, the model found the literature
-values optimal. If it is consistently nonzero for a specific ring type,
-the model has discovered a systematic correction to that ring type's
-intensity.
+If zero everywhere, the literature values are optimal. If consistently
+nonzero for a specific ring type, the calibration pipeline has
+discovered a systematic correction to that ring type's intensity.
 
 ### Can T2 corrections feed back into the calculation?
 
-**Partially, through lobe offset.** The T2 output of the parameter correction model
+**Partially, through lobe offset.** The T2 output of the calibration pipeline
 encodes the angular pattern of shielding around each ring. The JB lobe
 offset d controls the angular shape of the B-field (higher d = more
 concentrated lobes, sharper angular dependence). If the model's T2
 prediction for atoms near a ring systematically shows sharper angular
 variation than the default d produces, this constrains d.
 
-The constraint is indirect: the model outputs a corrected d (L=0 scalar),
-not a T2-dependent d. But the model LEARNED d by fitting its T2 predictions
+The constraint is indirect: the calibration model outputs a corrected d (L=0 scalar),
+not a T2-dependent d. But the calibration model learned d by fitting its T2 predictions
 to the DFT T2, so the T2 physics IS encoded in the corrected d value.
 
 **Direct T2 feedback is not computationally useful here.** The Biot-Savart
@@ -285,13 +244,13 @@ predictions at the same geometry (INTERFACE_AND_PHYSICS_NOTES finding).
 Total: 9 parameters (8 intensities + 1 quadrature order).
 
 Note: HM intensities are traditionally set equal to BS intensities.
-The parameter correction model can learn DIFFERENT HM intensities, which would
+The calibration pipeline can learn DIFFERENT HM intensities, which would
 mean the surface integral model benefits from different effective
 current strengths than the line integral model. This is physically
 reasonable: the two models approximate different aspects of the
 actual current distribution.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct HaighMallionParams {
@@ -303,7 +262,7 @@ struct HaighMallionParams {
     // BS/HM blending weight (dimensionless, 0.0 to 1.0)
     // At what distance does HM dominate BS?
     // Default: not used (both run independently)
-    // The parameter correction model can learn that for atoms within X Angstroms,
+    // The calibration pipeline can learn that for atoms within X Angstroms,
     // HM is more accurate, and beyond X, BS is more accurate.
     // This is expressed as a distance-decay crossover length.
     double crossover_distance;  // Angstroms, default: 0.0 (disabled)
@@ -313,21 +272,17 @@ struct HaighMallionParams {
 ### How the calculator uses it
 
 ```cpp
-void HaighMallionResult::Attach(ProteinConformation& conf) {
-    auto params = has_baseline
-        ? conf.ParameterCorrection().HaighMallionCorrections()
-        : DefaultHaighMallionParams();
+auto params = LoadHaighMallionParams(toml_config);  // or DefaultParams()
 
-    for (auto& ring : conf.AllRings()) {
-        int type = ring.TypeIndexAsInt();
-        double J = params.intensity[type];
+for (auto& ring : conf.AllRings()) {
+    int type = ring.TypeIndexAsInt();
+    double J = params.intensity[type];
 
-        for (auto& atom : conf.AtomsNear(ring.center, 15.0)) {
-            Mat3 hm_tensor = HaighMallionSurfaceIntegral(
-                atom.position, ring.geometry, N_QUAD);
-            hm_tensor *= J;
-            // ... store hm_tensor, hm_spherical, hm_B_field ...
-        }
+    for (auto& atom : conf.AtomsNear(ring.center, 15.0)) {
+        Mat3 hm_tensor = HaighMallionSurfaceIntegral(
+            atom.position, ring.geometry, N_QUAD);
+        hm_tensor *= J;
+        // ... store hm_tensor, hm_spherical, hm_B_field ...
     }
 }
 ```
@@ -336,9 +291,9 @@ void HaighMallionResult::Attach(ProteinConformation& conf) {
 
 **Yes, indirectly through intensity separation.** The key finding from
 INTERFACE_AND_PHYSICS_NOTES is that BS and HM make opposing T2
-predictions. The parameter correction model, by learning separate I_BS and I_HM
+predictions. The calibration pipeline, by learning separate I_BS and I_HM
 intensities, effectively learns the optimal blend of the two models'
-T2 patterns. If the model sets I_HM higher than I_BS for a ring type,
+T2 patterns. If the calibration model sets I_HM higher than I_BS for a ring type,
 it is saying "the surface integral's angular pattern is more accurate
 than the line integral's for this ring type."
 
@@ -393,7 +348,7 @@ Total: 5 parameters (one per BondCategory that has anisotropy).
 Note: Delta_chi values from gas-phase measurements on small molecules.
 Protein environment may modify effective anisotropy.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct McConnellParams {
@@ -418,30 +373,25 @@ struct McConnellParams {
 ### How the calculator uses it
 
 ```cpp
-void McConnellResult::Attach(ProteinConformation& conf) {
-    auto params = has_baseline
-        ? conf.ParameterCorrection().McConnellCorrections()
-        : DefaultMcConnellParams();
+auto params = LoadMcConnellParams(toml_config);  // or DefaultParams()
 
-    for (auto& bond : conf.AllBonds()) {
-        int cat = static_cast<int>(bond.category);
-        double dchi = params.delta_chi[cat];
-        double shift = params.midpoint_shift[cat];
+for (auto& bond : conf.AllBonds()) {
+    int cat = static_cast<int>(bond.category);
+    double dchi = params.delta_chi[cat];
+    double shift = params.midpoint_shift[cat];
 
-        Vec3 midpoint = bond.Midpoint(positions);
-        if (shift != 1.0) {
-            // Shift effective dipole center along bond axis
-            Vec3 dir = bond.Direction(positions);
-            midpoint += (shift - 1.0) * 0.5 * bond.Length(positions) * dir;
-        }
+    Vec3 midpoint = bond.Midpoint(positions);
+    if (shift != 1.0) {
+        Vec3 dir = bond.Direction(positions);
+        midpoint += (shift - 1.0) * 0.5 * bond.Length(positions) * dir;
+    }
 
-        for (auto& atom : conf.AtomsNear(midpoint, 10.0)) {
-            Vec3 d = atom.position - midpoint;
-            double r = d.norm();
-            Mat3 T = dchi * (3.0 * d * d.transpose() / pow(r, 5)
-                           - Mat3::Identity() / pow(r, 3));
-            // ... store T, SphericalTensor, mcconnell_scalar ...
-        }
+    for (auto& atom : conf.AtomsNear(midpoint, 10.0)) {
+        Vec3 d = atom.position - midpoint;
+        double r = d.norm();
+        Mat3 T = dchi * (3.0 * d * d.transpose() / pow(r, 5)
+                       - Mat3::Identity() / pow(r, 3));
+        // ... store T, SphericalTensor, mcconnell_scalar ...
     }
 }
 ```
@@ -450,20 +400,20 @@ void McConnellResult::Attach(ProteinConformation& conf) {
 
 **Yes, through midpoint_shift.** The McConnell equation's T2 pattern is
 controlled by where the effective dipole center sits along the bond.
-If the parameter correction model's T2 prediction for atoms near a C=O bond shows
+If the calibration pipeline's T2 prediction for atoms near a C=O bond shows
 a systematic tilt relative to what the midpoint geometry predicts, the
 model can encode this as a midpoint_shift parameter. This changes the
 angular pattern of the (3cos^2 theta - 1) / r^3 term without changing
 the equation's form.
 
 **Also through Delta_chi itself.** Different Delta_chi values produce
-different T2 magnitudes. The T2 output gives the model a stronger
+different T2 magnitudes. The T2 output gives the calibration model a stronger
 constraint on Delta_chi than T0 alone, because T2 depends on both
 the magnitude AND the angular distribution of the anisotropy.
 
 This is the calculator where T2 feedback is MOST useful. McConnell
 was identified as the dominant T2 contributor (|alpha| = 3.61 in
-the INTERFACE_AND_PHYSICS_NOTES analysis), meaning the model has
+the INTERFACE_AND_PHYSICS_NOTES analysis), meaning the calibration model has
 the most T2 signal to learn from here.
 
 ---
@@ -525,10 +475,10 @@ parameter correction model refines these.
 
 The Coulomb calculator itself (charge summation) has no tuneable
 parameters. The charges come from ChargeAssignmentResult (ff14SB)
-or MopacResult (PM7 Mulliken). What the parameter correction model tunes is how the E-field/EFG
+or MopacResult (PM7 Mulliken). What the calibration pipeline tunes is how the E-field/EFG
 TRANSLATES into shielding perturbation.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct CoulombParams {
@@ -545,7 +495,7 @@ struct CoulombParams {
     array<double, 5> gamma;
 
     // Charge scaling factor (dimensionless)
-    // If the parameter correction model finds that ff14SB charges systematically
+    // If the calibration pipeline finds that ff14SB charges systematically
     // over/underestimate the effective E-field, this global scale
     // corrects for it. Default: 1.0
     double charge_scale;
@@ -592,11 +542,11 @@ parameter correction model's T2 prediction provides a direct constraint on gamma
 T2_predicted = gamma_elem * EFG_T2_computed
 ```
 
-If the model predicts a specific T2 pattern at an atom where the
+If the calibration model predicts a specific T2 pattern at an atom where the
 computed EFG_T2 is known, gamma is determined by the ratio. This is
 the most direct T2-to-parameter feedback in the entire system.
 
-**Also through charge_scale.** If the parameter correction model finds that the
+**Also through charge_scale.** If the calibration pipeline finds that the
 ff14SB E-field is systematically too large (or too small), the
 charge_scale corrects this. The T2 pattern is preserved (EFG geometry
 does not change with scaling), but the magnitude changes.
@@ -647,7 +597,7 @@ are sparse. Literature values are for benzene (Q = -8.48 D*A from
 Battaglia et al.). Protein ring values are estimated by analogy.
 These are prime candidates for parameter correction model correction.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct PiQuadrupoleParams {
@@ -670,7 +620,7 @@ struct PiQuadrupoleParams {
 **Yes, through height_offset.** The T2 pattern of the quadrupole EFG
 depends sensitively on the effective height of the quadrupole source.
 An in-plane quadrupole (height=0) produces a different angular T2
-pattern than an offset quadrupole (height=0.3A). The parameter correction model's
+pattern than an offset quadrupole (height=0.3A). The calibration pipeline's
 T2 prediction constrains this parameter.
 
 **Also through Q magnitude.** The T2 magnitude is proportional to Q.
@@ -719,7 +669,7 @@ Total: 8 parameters (one per ring type).
 Note: the benzene experimental value is -94.0e-6 cm^3/mol. Protein
 ring values are scaled by ring size and electron count.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct RingSusceptParams {
@@ -741,10 +691,10 @@ source has a fixed angular pattern: (3cos^2 theta - 1)/r^3 is purely
 geometric. Delta_chi scales the magnitude uniformly. There is no
 parameter that changes the angular pattern.
 
-However, if the parameter correction model's T2 prediction systematically deviates
+However, if the calibration pipeline's T2 prediction systematically deviates
 from the point-dipole angular pattern, this signals that the point-dipole
 approximation is inadequate for that ring type. The correction would be
-to extend the model (e.g., use a distributed dipole over the ring atoms
+to extend the physical model (e.g., use a distributed dipole over the ring atoms
 rather than a point at the center), not to tune a parameter.
 
 ---
@@ -784,7 +734,7 @@ The tuneable physics is alpha_disp: how much does a given 1/r^6
 dispersion contact actually perturb the shielding? This is poorly
 known experimentally.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct DispersionParams {
@@ -805,7 +755,7 @@ struct DispersionParams {
 **Minimally.** Dispersion is primarily isotropic (1/r^6 dominates
 over the anisotropic 3*d_a*d_b/r^8 - delta_ab/r^6 term). The T2
 component exists but is typically small compared to other calculators.
-The parameter correction model's T2 prediction near aromatic rings is dominated by
+The calibration pipeline's T2 prediction near aromatic rings is dominated by
 ring current and McConnell T2, making it difficult to isolate the
 dispersion T2 contribution.
 
@@ -849,10 +799,10 @@ where:
 Total: 6 parameters.
 
 Note: the classical form uses cos^2(alpha)/r^3 but the actual
-distance and angular dependence may differ. The parameter correction model can
+distance and angular dependence may differ. The calibration pipeline can
 learn effective exponents.
 
-### What the parameter correction model provides
+### TOML-configurable parameters
 
 ```cpp
 struct HBondParams {
@@ -863,7 +813,7 @@ struct HBondParams {
     array<double, 5> eta;  // index by Element of the observed atom
 
     // Effective distance exponent (default: 3.0, classical dipolar)
-    // The parameter correction model may learn that 1/r^2.8 or 1/r^3.2 fits
+    // The calibration pipeline may learn that 1/r^2.8 or 1/r^3.2 fits
     // better than the strict 1/r^3 dipolar form.
     double distance_exponent;
 
@@ -877,7 +827,7 @@ struct HBondParams {
 
 **Yes, through the angular function.** The T2 pattern of the H-bond
 dipolar tensor is controlled by the angular distribution of shielding.
-If the parameter correction model predicts a T2 that deviates from cos^2(alpha)
+If the calibration pipeline predicts a T2 that deviates from cos^2(alpha)
 angular dependence, this constrains the effective angular function.
 However, changing the angular function (e.g., cos^1.8 instead of
 cos^2) would require modifying the equation form, not just a parameter.
@@ -928,18 +878,18 @@ Similar parameter count, but physically correct decomposition.
 
 ---
 
-## The Two-Path Architecture in Detail
+## Parameter Delivery
 
-Every calculator implements both paths. The framework enforces this.
+Each calculator has a `DefaultParams()` method returning literature values.
+TOML configuration can override any field. The calculator receives a
+parameter struct and computes — it does not know whether the values are
+literature defaults or calibrated overrides.
 
 ```cpp
 class BiotSavartResult : public ConformationResult {
 public:
-    // Run with default (literature) parameters
     static BiotSavartParams DefaultParams() {
         BiotSavartParams p;
-        p.has_corrections = false;
-        // PHE: I=-12.0, d=0.64 from ring type class
         for (int t = 0; t < 8; t++) {
             p.intensity[t] = RingTypeDefaults::Intensity(t);
             p.lobe_offset[t] = RingTypeDefaults::LobeOffset(t);
@@ -948,48 +898,11 @@ public:
         return p;
     }
 
-    void Attach(ProteinConformation& conf) override {
-        // Choose parameter source
-        BiotSavartParams params = conf.HasResult<ParameterCorrectionResult>()
-            ? conf.ParameterCorrection().BiotSavartCorrections()
-            : DefaultParams();
-
-        // BOTH paths store the parameter source for logging
-        params_used_ = params;
-
-        // Compute with chosen parameters
-        ComputeAllRings(conf, params);
-
-        // If baseline exists, ALSO compute with defaults for delta
-        if (params.has_corrections) {
-            BiotSavartParams defaults = DefaultParams();
-            ComputeAllRingsDefault(conf, defaults);
-            ComputeDeltas(conf);  // per-atom delta stored
-        }
-    }
-
-private:
-    BiotSavartParams params_used_;
-
-    // Both paths produce identical output types
+    // params may come from DefaultParams() or TOML configuration
     void ComputeAllRings(ProteinConformation& conf,
                          const BiotSavartParams& params);
-    void ComputeAllRingsDefault(ProteinConformation& conf,
-                                const BiotSavartParams& params);
-    void ComputeDeltas(ProteinConformation& conf);
 };
 ```
-
-The delta between corrected and default is stored per atom:
-
-```
-delta_G_T0[atom][ring_type] = G_corrected.T0 - G_default.T0
-delta_G_T2[atom][ring_type] = G_corrected.T2 - G_default.T2
-```
-
-This delta IS the parameter correction model's contribution to this calculator
-at this atom. It is a training signal, a diagnostic, and an
-interpretability tool.
 
 ---
 
@@ -997,7 +910,7 @@ interpretability tool.
 
 ### The question
 
-Can the parameter correction model's T2 (L=2, anisotropy) output feed BACK into
+Can the calibration pipeline's T2 (L=2, anisotropy) output feed BACK into
 the classical calculations, not just compare against them?
 
 ### The answer: it depends on the calculator's parameterisation
@@ -1020,12 +933,12 @@ the classical calculations, not just compare against them?
 **Indirect T2 feedback (T2 constrains a parameter through fitting):**
 
 4. **Biot-Savart**: T2 constrains lobe_offset d through the angular
-   shape of the B-field. The model learns d by fitting its T2 predictions
+   shape of the B-field. The calibration model learns d by fitting its T2 predictions
    to DFT T2. The constraint is mediated through the fitting process,
    not through a direct formula.
 
 5. **Haigh-Mallion**: T2 constrains the BS/HM intensity ratio. Since
-   BS and HM produce opposing T2 patterns, the model's T2 prediction
+   BS and HM produce opposing T2 patterns, the calibration model's T2 prediction
    determines the optimal blend.
 
 **No T2 feedback (parameter does not affect angular pattern):**
@@ -1050,26 +963,21 @@ computing a Biot-Savart field that is not actually a Biot-Savart field.
 The correct flow is:
 
 ```
-Baseline model -> L=0 parameter corrections -> Calculator runs physics
-                                                 |
-                                                 v
-                                           Full tensor output
-                                                 |
-                                                 v
-                                   Compare with parameter correction model T2
-                                   (training signal, not computation input)
+C++ calculators → full tensor output (NPY)
+                       |
+DFT delta tensors → also exported (NPY)
+                       |
+                       v
+Python calibration pipeline: compare calculator T2 vs DFT T2
+                       |
+                       v
+Calibrated parameters (TOML) → C++ (next run)
 ```
 
-The T2 output of the parameter correction model lives ALONGSIDE the calculator output
-as a separate feature for the downstream e3nn model. The downstream model
-sees both:
-- Calculator T2 (from physics with corrected parameters)
-- Baseline T2 (from environment-only prediction)
-- The RESIDUAL T2 (what the baseline predicted minus what classical explains)
-
-This residual T2 is information: it tells the downstream model what
+The T2 residual (DFT delta T2 minus classical kernel T2) is computed
+in the calibration pipeline. It tells the downstream e3nn model what
 physics the classical calculators are NOT capturing. The calculators
-do not consume it. The downstream model does.
+produce it; they do not consume it.
 
 ### The exception: the multiplicative stacking scale
 
@@ -1078,11 +986,11 @@ a calculation: the stacking_scale parameter in BiotSavartParams.
 
 When two rings are stacked (normal-normal dot product near 1.0,
 center distance < 5A), their mutual magnetic susceptibility changes.
-The parameter correction model can learn a stacking_scale > 1.0 or < 1.0 that
+The calibration pipeline can learn a stacking_scale > 1.0 or < 1.0 that
 modifies the effective ring current when multiple rings overlap.
 
 This stacking_scale is a scalar (L=0) derived from the baseline
-model's analysis of ring-stacking T2 patterns. The model notices
+calibration model's analysis of ring-stacking T2 patterns. The calibration model notices
 that stacked-ring T2 predictions are systematically different from
 the sum of individual ring T2 predictions, and encodes this as
 a multiplicative correction.
@@ -1093,148 +1001,32 @@ L=0 parameters, not directly into the calculation.
 
 ---
 
-## Training the Baseline Model to Produce Parameter Corrections
+## Calibration Pipeline (learn/c_equivariant/)
 
-### Architecture
+The calibration pipeline is a Python e3nn equivariant model. It reads
+the NPY feature arrays that the C++ system writes (via WriteFeatures)
+and trains against DFT WT-ALA delta tensors. See learn/JOURNAL.md for
+training rounds and results.
 
-The parameter correction model is a standard e3nn with additional L=0 output heads
-for each parameter set. The main architecture predicts mutant delta
-tensors (the same task as the constitution describes). The parameter
-heads branch off the final hidden layer.
+The pipeline discovers optimal parameter values. After training, the
+calibrated parameters are written to a TOML configuration file that the
+C++ system reads on the next extraction run. No model inference happens
+inside the C++ library.
 
-```
-Input features (per atom):
-  L=0: DFT isotropic, MOPAC charge, s/p orbital populations, SASA, phi, psi, SS
-  L=1: APBS E-field, DFT T1
-  L=2: APBS EFG, DFT T2
-
-     |
-     v
-  e3nn equivariant layers (message passing over spatial graph)
-     |
-     v
-  Shared hidden representation
-     |
-     +---> Delta tensor head (L=0 + L=1 + L=2 per atom)
-     |
-     +---> Ring current intensity head (8 x L=0, GLOBAL output)
-     |
-     +---> Ring current lobe offset head (8 x L=0, GLOBAL)
-     |
-     +---> Buckingham coefficient head (15 x L=0, GLOBAL)
-     |
-     +---> McConnell anisotropy head (12 x L=0, GLOBAL)
-     |
-     +---> ... (other parameter heads)
-```
-
-GLOBAL means: these parameters are protein-wide, not per-atom. The
-model aggregates its per-atom representations (e.g., mean pooling over
-atoms near rings of type t) to produce one intensity per ring type per
-protein. During training, these are constrained to be CONSISTENT across
-proteins (shared parameters with per-protein noise).
-
-### Loss function
-
-The training loss has two terms:
-
-1. **Delta tensor loss**: standard MSE on predicted vs DFT mutant delta
-   tensors, decomposed by irrep (L=0 + L=1 + L=2 with learned weights).
-
-2. **Parameter consistency loss**: penalty for parameter variance across
-   the training set. If I_PHE varies wildly across proteins, the model
-   is overfitting. The regulariser encourages a single I_PHE value.
+### What the pipeline sees
 
 ```
-L = L_tensor + lambda * L_consistency
-L_consistency = sum_params [ Var(param across proteins) ]
+Input: per-atom NPY arrays from C++ (46 arrays per conformation)
+  - L=0 scalars: ring counts, distances, McConnell, etc.
+  - L=2 tensors: per-calculator T2 components
+  - DFT delta tensors (when available via OrcaShieldingResult)
+
+Target: DFT WT-ALA delta T2
+Measure: T2 R² across 723 proteins
 ```
 
-The lambda hyperparameter controls the tradeoff between fitting
-individual proteins perfectly (low L_tensor, high L_consistency)
-and finding universal parameters (high L_tensor, low L_consistency).
+### How parameters flow back
 
-### Initialisation
-
-All parameter heads are initialised to output the literature default
-values. The model starts from the classical physics and learns
-corrections. If the corrections are zero, the literature values are
-optimal.
-
-### Freezing
-
-After training, the parameter corrections are extracted as fixed
-numbers and embedded in the CalculatorParams structs. The baseline
-model's tensor predictions become a ConformationResult; the parameter
-corrections become compile-time or config-file constants in the
-calculator code. No model inference at parameter-correction time.
-
----
-
-## Integration with the ConformationResult Framework
-
-### Dependency graph update
-
-```
-ParameterCorrectionResult    requires: ApbsFieldResult, DsspResult,
-                                 OrcaShieldingResult
-                                 (and MopacResult when available)
-
-BiotSavartResult       requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-HaighMallionResult     requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-McConnellResult        requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-CoulombResult          requires: ChargeAssignmentResult, SpatialIndexResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-PiQuadrupoleResult     requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-RingSusceptResult      requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-DispersionResult       requires: SpatialIndexResult, GeometryResult
-                                 OPTIONAL: ParameterCorrectionResult
-
-HBondResult            requires: DsspResult, SpatialIndexResult
-                                 OPTIONAL: ParameterCorrectionResult
-```
-
-The ParameterCorrectionResult is OPTIONAL for all calculators. This means:
-- If ParameterCorrectionResult is attached: calculators use corrected params
-- If ParameterCorrectionResult is NOT attached: calculators use defaults
-- The dependency graph does not require ParameterCorrectionResult
-- The pipeline works identically either way
-
-This is the two-path architecture: the parameter correction model is an enhancement,
-not a requirement.
-
-### Residual update protocol
-
-When a calculator attaches, it calls:
-
-```cpp
-void BiotSavartResult::Attach(ProteinConformation& conf) {
-    // ... compute tensors ...
-
-    // Update baseline residual if available
-    if (conf.HasResult<ParameterCorrectionResult>()) {
-        vector<pair<size_t, SphericalTensor>> contributions;
-        for (auto& [atom_idx, tensor] : per_atom_totals_) {
-            contributions.push_back({atom_idx, tensor});
-        }
-        conf.ParameterCorrection().SubtractCalculatorContribution(
-            "BiotSavart", contributions);
-    }
-}
-```
-
-The residual shrinks as each calculator explains part of the delta.
-After all 8 calculators have attached, the remaining residual is what
-classical physics CANNOT explain. This is the signal for the downstream
-e3nn model.
+Calibrated values are extracted from the trained model as fixed numbers
+and written to TOML. The C++ system reads them at startup. If no TOML
+override exists for a parameter, the literature default is used.

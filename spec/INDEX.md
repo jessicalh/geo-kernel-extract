@@ -103,9 +103,8 @@ how well calibrated classical kernels reproduce the angular
 structure of DFT shielding. This is what makes the system a
 calibrated scientific instrument.
 
-### Also not yet implemented
-- FeatureExtractionResult (feature manifest as ConformationResult)
-- Copy-and-modify / rebuild pattern for re-protonation
-- ParameterCorrectionResult (learned correction model — may or
-  may not be the calibration mechanism; the geometric kernels
-  and their T2 structure are the foundation either way)
+Feature extraction is distributed: each ConformationResult implements
+WriteFeatures(), and ConformationResult::WriteAllFeatures() traverses
+all attached results. This exports the full tensor data (geometric
+kernels + DFT reference when available) as NPY arrays for the
+calibration pipeline.

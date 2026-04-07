@@ -102,11 +102,9 @@ conf.AttachResult(std::move(bs));
 
 Every classical calculator stores BOTH geometric output (natural units,
 for features and reuse) AND a shielding_contribution SphericalTensor
-(ppm, for residual tracking). When ParameterCorrectionResult is
-implemented, it will use these to subtract each calculator's
-contribution from the residual. The calculator works correctly without
-the correction model — the shielding contribution is stored, ready
-for future residual tracking.
+(ppm, for calibration comparison). Both are exported via WriteFeatures()
+as NPY arrays. The calibration pipeline reads these alongside DFT
+delta tensors to tune parameters and measure the T2 residual.
 
 ### 7. Fields typed by functional analysis
 
@@ -175,9 +173,9 @@ atom.total_G_spherical = SphericalTensor::Decompose(G);
 ### 12. Ring type virtual interface
 
 Calculator code is ring-type-agnostic. Use `ring.Intensity()`, not a
-switch statement. When the ParameterCorrectionResult provides a
-corrected intensity, it is indexed by `ring.TypeIndexAsInt()`. The
-calculator does not need to know which ring type it is processing.
+switch statement. When TOML-calibrated intensities override literature
+defaults, they are indexed by `ring.TypeIndexAsInt()`. The calculator
+does not need to know which ring type it is processing.
 
 ```cpp
 double I = ring.Intensity();         // -12.0 for PHE, -5.16 for HIS
@@ -352,10 +350,10 @@ constexpr double RING_CURRENT_CUTOFF_A = 15.0;
 The ~80-93 tuneable calculator parameters are the exception — they
 are genuinely tuneable, calibrated against T2 R² on DFT WT-ALA
 deltas. These are what make the system a calibrated scientific
-instrument rather than a collection of literature defaults. They
-may come from a learned model (ParameterCorrectionResult) or from
-TOML-configured parameter sweeps; either way, the geometric kernels
-and their T2 structure are the foundation.
+instrument rather than a collection of literature defaults. The
+calibration pipeline (Python e3nn in learn/c_equivariant/) discovers
+optimal values; they enter the C++ system as TOML configuration.
+The geometric kernels and their T2 structure are the foundation.
 
 ### Over-decomposing into tiny functions
 

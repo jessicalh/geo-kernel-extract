@@ -147,7 +147,9 @@ KaML     →  ~/KaML/      (optional ML pKa predictor)
 
 ---
 
-## Not Yet Used (future)
+## Python-Side Dependencies (not linked into C++)
 
-- **e3nn** (Python): equivariant neural network for ParameterCorrectionResult
-- **LibTorch** (C++): TorchScript inference for C++ model integration
+- **e3nn** (Python): equivariant neural network for the calibration
+  model (learn/c_equivariant/). Reads NPY features exported by the C++
+  system, trains against DFT WT-ALA delta tensors, produces calibrated
+  parameter values as TOML configuration.

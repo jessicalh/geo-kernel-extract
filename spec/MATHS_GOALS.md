@@ -71,10 +71,11 @@ cannot silently lose protonation state.
 
 ### Pillar 1: T0 parameter corrections (scalar tuning)
 
-The ParameterCorrectionResult (e3nn model) learns corrected scalar
-parameters for each classical calculator. These are L=0 outputs:
-ring current intensities, bond anisotropies, Buckingham coefficients.
-93 parameters total (CALCULATOR_PARAMETER_API.md).
+The calibration pipeline (Python e3nn in learn/c_equivariant/) tunes
+scalar parameters for each classical calculator: ring current
+intensities, bond anisotropies, Buckingham coefficients. 93 parameters
+total (CALCULATOR_PARAMETER_API.md). Calibrated values enter the C++
+system as TOML configuration.
 
 **What must be correct:**
 - Each parameter connects to a real physical quantity with known units
@@ -279,7 +280,7 @@ If the inputs are wrong, the calculators are precisely wrong.
 per-bond Wiberg bond orders, heat of formation
 **Used by:** MopacCoulombResult (QM-charge EFG kernel),
 MopacMcConnellResult (bond-order-weighted anisotropy kernel),
-ParameterCorrectionResult (input feature), feature extraction,
+calibration pipeline (input feature), feature extraction,
 MutationDeltaResult (delta_mopac_charge)
 **Must be correct:**
 - Charges reasonable (|q| < 3.0 per atom)
@@ -297,7 +298,7 @@ MutationDeltaResult (delta_mopac_charge)
 ### DSSP (secondary structure)
 
 **Provides:** Per-residue SS assignment, phi/psi angles, SASA, H-bond partners
-**Used by:** Feature extraction (structural context), ParameterCorrectionResult
+**Used by:** Feature extraction (structural context), calibration pipeline
 **Must be correct:**
 - SS assignments match published 1UBQ secondary structure
 - Phi/psi in radians, range [-pi, pi]
@@ -328,7 +329,7 @@ MutationDeltaResult (delta_mopac_charge)
 
 ## The Environment Floor (what classical calculators must beat)
 
-The ParameterCorrectionResult is trained on APBS + MOPAC + DSSP + DFT.
+The calibration model is trained on APBS + MOPAC + DSSP + DFT.
 Its prediction already incorporates environment tensor data at all
 irrep levels:
 
@@ -408,14 +409,14 @@ compared to the DFT delta.
       pipeline per frame, 283 tests pass)
 
 ### For each classical calculator (Layer 1+):
-All 8 calculators pass items 1-6. Item 7 awaits ParameterCorrectionResult.
+All 8 calculators pass items 1-6. Item 7 requires calibrated parameters.
 - [x] Equation matches literature reference
 - [x] Sign convention matches (proton above PHE → sigma > 0)
 - [x] Full rank-2 tensor output (T2 non-zero near relevant sources)
 - [x] Default parameters from published sources (geometric kernels only)
 - [x] Analytical test geometry produces correct value
 - [x] Shielding contribution stored on ConformationAtom
-- [ ] Residual decreases when calculator attaches (needs ParameterCorrectionResult)
+- [ ] Residual decreases when calculator attaches (needs calibrated parameters)
 
 ### McConnell (first calculator, 2026-04-02):
 - [x] Equation: full asymmetric tensor M from first-principles derivation
@@ -426,7 +427,7 @@ All 8 calculators pass items 1-6. Item 7 awaits ParameterCorrectionResult.
 - [x] Analytical test geometry: atom at (3,0,0), bond at origin along z.
       f = -1/27, K traceless, T0 = f verified at machine precision.
 - [x] Shielding contribution stored: mc_shielding_contribution on ConformationAtom
-- [ ] Residual decrease (needs ParameterCorrectionResult)
+- [ ] Residual decrease (needs calibrated parameters)
 - [x] Batch validated: 465 proteins, 288,741 matched atoms, 0 failures
 - [x] KernelFilterSet: SelfSourceFilter + DipolarNearFieldFilter(bond_length)
 
@@ -501,11 +502,10 @@ All 8 calculators pass items 1-6. Item 7 awaits ParameterCorrectionResult.
 - [x] T2 independence verified (small T2 contribution, dominated by others)
 - [x] Batch validated: 723 proteins, 124K contact pairs, 0 failures
 
-### For the ParameterCorrectionResult (not yet implemented):
-- [ ] Environment features correctly extracted
-- [ ] Model predicts full tensor (L=0+L=1+L=2)
-- [ ] 93 parameter corrections are physically reasonable
-- [ ] Residual tracking per irrep works
+### For the calibration pipeline (learn/c_equivariant/):
+- [x] Environment features extracted as NPY (via WriteFeatures)
+- [x] Model trains on delta T2 (Round 2: val R^2 = 0.60)
+- [ ] 93 calibrated parameters are physically reasonable
 - [ ] T2 residual analysis produces interpretable patterns
 
 ### For the complete system:

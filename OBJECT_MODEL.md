@@ -18,11 +18,11 @@ as design history documenting how the Protein/ProteinConformation
 separation evolved — the distinction they enforced is real and load-bearing,
 the mechanism described is not.
 
-**ParameterCorrectionResult: FUTURE RELEASE.** The e3nn model integration
-described in this document is planned but not in this release. The
-ConformationAtom fields for it exist (zero-initialised, harmless) but
-no code populates them. Do not implement or depend on
-ParameterCorrectionResult in current work.
+**Calibration pipeline.** The ~93 tuneable calculator parameters are
+calibrated externally by the Python e3nn model (learn/c_equivariant/)
+against DFT WT-ALA delta tensors. Calibrated values enter the C++
+system as TOML configuration overriding literature defaults. There is
+no embedded model in the C++ library.
 
 Aligned with CONSTITUTION.md (2026-03-29 revision). Key changes from prior
 version: Environment replaced by ProteinBuildContext, flat Conformation
@@ -766,29 +766,9 @@ done by MutantProteinConformationComparison, not stored on ConformationAtom.
 | has_orca_shielding | bool | - | OrcaShieldingResult |
 
 Note: diamagnetic and paramagnetic stored separately (not just total).
-The dia/para decomposition is physics the ParameterCorrectionResult can
-use as a feature — paramagnetic contribution correlates with ring current
-effects.
-
-Parameter correction model (populated by ParameterCorrectionResult):
-| Property | Type | Unit | Source result |
-|----------|------|------|---------------|
-| correction_predicted_delta | SphericalTensor | ppm | ParameterCorrectionResult |
-| correction_predicted_delta_mat3 | Mat3 | ppm | ParameterCorrectionResult |
-| correction_residual_T0 | double | ppm | ParameterCorrectionResult |
-| correction_residual_T1 | array<double,3> | ppm | ParameterCorrectionResult |
-| correction_residual_T2 | array<double,5> | ppm | ParameterCorrectionResult |
-| correction_sigma_T0 | double | ppm | ParameterCorrectionResult |
-| correction_sigma_T2 | double | ppm | ParameterCorrectionResult |
-
-### Predictions (from PredictionResult)
-
-| Property | Type | Unit | Source result |
-|----------|------|------|---------------|
-| predicted_T0 | double | ppm | PredictionResult |
-| predicted_T2 | array<double, 5> | ppm | PredictionResult |
-| confidence | double | ppm (sigma) | PredictionResult |
-| tier | HeuristicTier enum | - | PredictionResult |
+The dia/para decomposition is physics — the paramagnetic contribution
+correlates with ring current effects. Both are exported as features
+via WriteFeatures() for the calibration pipeline.
 
 ### Query methods
 - `IsHydrogen() -> bool`: element == Element::H
@@ -1154,9 +1134,6 @@ The named accessors below are convenience wrappers, not the mechanism:
 | `Result<MopacResult>()` | `MopacResult&` | MOPAC charges, orbital pops, bond orders |
 | `Result<MopacCoulombResult>()` | `MopacCoulombResult&` | Coulomb EFG from QM charges |
 | `Result<MopacMcConnellResult>()` | `MopacMcConnellResult&` | Bond-order-weighted anisotropy |
-| `Result<ParameterCorrectionResult>()` | `ParameterCorrectionResult&` | Corrected calculator parameters, residual |
-| `FeatureExtraction()` | `FeatureExtractionResult&` | Feature vectors |
-| `Prediction()` | `PredictionResult&` | ML predictions |
 
 ### Result attachment
 
@@ -1358,9 +1335,10 @@ DispersionResult              requires: SpatialIndexResult, GeometryResult
 PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
 OrcaShieldingResult           requires: nothing (loaded from files)
-ParameterCorrectionResult     requires: ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
-FeatureExtractionResult       requires: all physics results
-PredictionResult              requires: FeatureExtractionResult
+
+(Feature extraction is distributed: each ConformationResult implements
+WriteFeatures(). ConformationResult::WriteAllFeatures() traverses all
+attached results and exports NPY arrays for the calibration pipeline.)
 ```
 
 ### What each result stores on atoms/rings
@@ -1403,10 +1381,14 @@ V/Angstrom for E-fields, etc.). Stored per atom per source (ring/bond).
 This is what the feature extractor reads. It can be reused with different
 parameters without recomputing geometry.
 
-### 2. Shielding contribution (for residual tracking, in ppm)
+### 2. Shielding contribution (for calibration and upstream models, in ppm)
 The total shielding contribution from this calculator, per atom, as a
 SphericalTensor in ppm. This is the geometric output multiplied by the
-appropriate parameter (intensity, anisotropy, Buckingham coefficient, etc.):
+appropriate parameter (intensity, anisotropy, Buckingham coefficient, etc.).
+Both representations are exported via WriteFeatures() as NPY arrays — the
+calibration pipeline uses them to tune parameters against DFT deltas, and
+the upstream e3nn prediction model consumes them as physics-grounded
+tensor features at all irrep levels (T0, T1, T2):
 
 - BiotSavart: sigma_atom = Sum_rings[ I_type * G_tensor ]
 - HaighMallion: sigma_atom = Sum_rings[ J_type * HM_tensor ]
@@ -1417,45 +1399,35 @@ appropriate parameter (intensity, anisotropy, Buckingham coefficient, etc.):
 - Dispersion: sigma_atom = Sum_rings[ alpha_disp_elem * disp_tensor ]
 - HBond: sigma_atom = eta_elem * hbond_tensor
 
-### Residual update call
-
-At the end of Attach(), if the ParameterCorrectionResult is present,
-the calculator subtracts its shielding contribution from the residual:
-
-    if (conf.HasResult<ParameterCorrectionResult>()) {
-        conf.Result<ParameterCorrectionResult>().SubtractCalculatorContribution(
-            Name(), shielding_contributions);
-    }
-
-The calculator works correctly WITHOUT the ParameterCorrectionResult.
-The residual update is a diagnostic enhancement, not a dependency.
-
 ### What this enables
-
-After all classical calculators have attached, the T2 residual at each
-atom shows where the classical angular physics fails to explain what the
-environment-trained model predicted. This is a first-class thesis result.
 
 The shielding contribution is stored per atom as:
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
 | shielding_contribution | SphericalTensor | ppm | each calculator |
 
-This is SEPARATE from the geometric output. Both are stored. The geometric
-output feeds features; the shielding contribution feeds the residual.
+This is SEPARATE from the geometric output. Both are stored. The
+geometric output feeds features; the shielding contribution provides
+the parameterised tensor for calibration comparison and for the
+upstream e3nn prediction model that consumes full tensor features.
 
-### Per-calculator shielding contribution (what gets subtracted)
+After all calculators attach, the T2 residual between classical
+kernel output and DFT delta tensors shows where the angular physics
+fails. This comparison happens in the calibration pipeline (Python),
+which reads both sets of NPY arrays.
+
+### Per-calculator shielding contribution
 
 | Calculator | Formula | Parameter source |
 |------------|---------|-----------------|
-| BiotSavart | I_type * G_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
-| HaighMallion | J_type * HM_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
-| McConnell | Dchi_cat * dipolar_T0/T1/T2 | Bond category defaults or ParameterCorrectionResult |
-| Coulomb | A*E + B*E^2 (T0), gamma*EFG (T2) | Element defaults or ParameterCorrectionResult |
-| PiQuadrupole | Q_type * quad_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
-| RingSusceptibility | Dchi_ring * chi_T0/T1/T2 | Ring type defaults or ParameterCorrectionResult |
-| Dispersion | alpha_elem * disp_T0/T1/T2 | Element defaults or ParameterCorrectionResult |
-| HBond | eta_elem * hbond_T0/T1/T2 | Element defaults or ParameterCorrectionResult |
+| BiotSavart | I_type * G_T0/T1/T2 | Ring type defaults or TOML-calibrated values |
+| HaighMallion | J_type * HM_T0/T1/T2 | Ring type defaults or TOML-calibrated values |
+| McConnell | Dchi_cat * dipolar_T0/T1/T2 | Bond category defaults or TOML-calibrated values |
+| Coulomb | A*E + B*E^2 (T0), gamma*EFG (T2) | Element defaults or TOML-calibrated values |
+| PiQuadrupole | Q_type * quad_T0/T1/T2 | Ring type defaults or TOML-calibrated values |
+| RingSusceptibility | Dchi_ring * chi_T0/T1/T2 | Ring type defaults or TOML-calibrated values |
+| Dispersion | alpha_elem * disp_T0/T1/T2 | Element defaults or TOML-calibrated values |
+| HBond | eta_elem * hbond_T0/T1/T2 | Element defaults or TOML-calibrated values |
 
 ---
 
@@ -1761,7 +1733,7 @@ If a property is stored twice (overwrite attempt):
 If a property is read before being stored:
 ```json
 {
-  "result_type": "FeatureExtractionResult",
+  "result_type": "CoulombResult",
   "target": "atom",
   "index": 42,
   "property": "apbs_efield",
@@ -1927,62 +1899,20 @@ SphericalTensor each). Parsed from ORCA NMR output with element-verified
 atom ordering. Each protein gets its own result — WT and mutant are
 separate Proteins. Comparison is MutantProteinConformationComparison.
 
-### ParameterCorrectionResult
+### Calibration Pipeline (external — not a ConformationResult)
 
-**Requires:** ApbsFieldResult, MopacResult, DsspResult, OrcaShieldingResult
-**Accessor:** `conformation.Result<ParameterCorrectionResult>()`
+The ~93 tuneable calculator parameters are calibrated by the Python
+e3nn model (learn/c_equivariant/) against DFT WT-ALA delta tensors.
+The flow is: C++ geometric kernels → NPY features (via WriteFeatures)
+→ Python e3nn calibration → TOML parameters → C++ (next run).
 
-A trained e3nn model that predicts mutant delta tensors from environment
-data and outputs corrected parameters for classical calculators. This
-model is trained on APBS E-field, MOPAC charges, DSSP structure, and
-non-mutant DFT shielding tensors. It has NOTHING to do with NMR
-chemical shift prediction. Its job is to learn better values for
-classical physics parameters (ring current intensities, bond
-anisotropies, Buckingham coefficients).
+The calibrated values override literature defaults for ring current
+intensities, bond anisotropies, Buckingham coefficients, and other
+calculator-specific parameters. See CALCULATOR_PARAMETER_API.md for
+the full parameter set (93 parameters with equations and references).
 
-See CALCULATOR_PARAMETER_API.md for the full parameter correction
-interface for all 10 classical calculators.
-
-#### What it provides
-
-**Full tensor predictions per atom:**
-- predicted_delta: SphericalTensor (L=0 + L=1 + L=2)
-- predicted_delta_mat3: Mat3
-
-**Per-calculator parameter corrections (L=0 scalars, global not per-atom):**
-- BiotSavartParams: 8 intensities + 8 lobe offsets + stacking_scale
-- HaighMallionParams: 8 intensities + crossover_distance
-- McConnellParams: 6 delta_chi + 6 midpoint_shift
-- CoulombParams: 5 A + 5 B + 5 gamma + charge_scale
-- PiQuadrupoleParams: 8 Q + 8 height_offset
-- RingSusceptParams: 8 delta_chi
-- DispersionParams: 5 alpha_disp + r_min + r_cut
-- HBondParams: 5 eta + distance_exponent + w_backbone + w_sidechain
-
-**Residual tracking (updates as classical results attach):**
-- residual_T0: double per atom (shrinks as calculators attach)
-- residual_T1: array<3> per atom
-- residual_T2: array<5> per atom
-
-#### Physics query methods
-- `PredictedDelta(atom_index) -> SphericalTensor`
-- `ResidualT0(atom_index) -> double`
-- `ResidualT2(atom_index) -> array<double,5>`
-- `ResidualMagnitude(atom_index, IrrepType) -> double`
-- `SigmaT0(atom_index) -> double` (model confidence)
-- `SigmaT2(atom_index) -> double`
-- `BiotSavartCorrections() -> BiotSavartParams`
-- `HaighMallionCorrections() -> HaighMallionParams`
-- `McConnellCorrections() -> McConnellParams`
-- `CoulombCorrections() -> CoulombParams`
-- `PiQuadrupoleCorrections() -> PiQuadrupoleParams`
-- `RingSusceptCorrections() -> RingSusceptParams`
-- `DispersionCorrections() -> DispersionParams`
-- `HBondCorrections() -> HBondParams`
-- `SubtractCalculatorContribution(name, per_atom_tensors) -> void`
-
-### FeatureExtractionResult (requires: all physics results)
-Per-atom: FeatureOutput (L0, L1, L2 vectors).
-
-### PredictionResult (requires: FeatureExtractionResult)
-Per-atom: predicted_T0, predicted_T2, confidence, tier.
+Feature extraction is distributed: each ConformationResult writes its
+own NPY arrays via WriteFeatures(). ConformationResult::WriteAllFeatures()
+traverses all attached results. There is no centralized
+FeatureExtractionResult — the pattern is simpler and keeps each
+result responsible for its own output.
