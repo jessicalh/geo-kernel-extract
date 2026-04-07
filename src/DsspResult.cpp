@@ -1,6 +1,7 @@
 #include "DsspResult.h"
 #include "Protein.h"
 #include "PhysicalConstants.h"
+#include "NpyWriter.h"
 
 #include <cif++.hpp>
 #include <cif++/pdb/pdb2cif.hpp>
@@ -186,6 +187,44 @@ double DsspResult::Psi(size_t residue_index) const {
 double DsspResult::SASA(size_t residue_index) const {
     if (residue_index >= residues_.size()) return 0.0;
     return residues_[residue_index].sasa;
+}
+
+
+// ============================================================================
+// WriteFeatures: dssp_backbone.npy (N, 5)
+//
+// Per-atom, broadcast from per-residue via Protein atom→residue mapping.
+//
+// Columns: phi (rad), psi (rad), sasa (A^2), ss_helix (0/1), ss_sheet (0/1)
+//
+// DSSP secondary structure alphabet: H(alpha-helix), G(3_10-helix),
+// I(pi-helix), E(extended strand), B(isolated bridge), T(turn), S(bend),
+// C(coil). For NMR purposes these collapse to helix(H/G/I), sheet(E/B),
+// other(T/S/C) — the "other" case is implicit (both columns zero).
+// ============================================================================
+
+int DsspResult::WriteFeatures(const ProteinConformation& conf,
+                               const std::string& output_dir) const {
+    const Protein& protein = conf.ProteinRef();
+    const size_t N = conf.AtomCount();
+
+    std::vector<double> data(N * 5, 0.0);
+
+    for (size_t i = 0; i < N; ++i) {
+        size_t ri = protein.AtomAt(i).residue_index;
+        if (ri < residues_.size()) {
+            const auto& dr = residues_[ri];
+            data[i*5 + 0] = dr.phi;
+            data[i*5 + 1] = dr.psi;
+            data[i*5 + 2] = dr.sasa;
+            char ss = dr.secondary_structure;
+            data[i*5 + 3] = (ss == 'H' || ss == 'G' || ss == 'I') ? 1.0 : 0.0;
+            data[i*5 + 4] = (ss == 'E' || ss == 'B') ? 1.0 : 0.0;
+        }
+    }
+
+    NpyWriter::WriteFloat64(output_dir + "/dssp_backbone.npy", data.data(), N, 5);
+    return 1;
 }
 
 }  // namespace nmr

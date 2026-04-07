@@ -35,6 +35,8 @@ class DsspResult : public ConformationResult {
 public:
     std::string Name() const override { return "DsspResult"; }
     std::vector<std::type_index> Dependencies() const override { return {}; }
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
 
     // Factory: run DSSP on the conformation and return the result.
     // Returns nullptr on failure (writes diagnostic to stderr).
