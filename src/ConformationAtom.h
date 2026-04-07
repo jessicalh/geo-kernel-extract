@@ -262,15 +262,6 @@ public:
     SphericalTensor orca_shielding_paramagnetic_spherical;
     bool has_orca_shielding = false;
 
-    // === Parameter correction (ParameterCorrectionResult) ===
-    SphericalTensor correction_predicted_delta;
-    Mat3 correction_predicted_delta_mat3 = Mat3::Zero();
-    double correction_residual_T0 = 0.0;
-    std::array<double, 3> correction_residual_T1 = {};
-    std::array<double, 5> correction_residual_T2 = {};
-    double correction_sigma_T0 = 0.0;
-    double correction_sigma_T2 = 0.0;
-
     // === Predictions (PredictionResult) ===
     double predicted_T0 = 0.0;
     std::array<double, 5> predicted_T2 = {};

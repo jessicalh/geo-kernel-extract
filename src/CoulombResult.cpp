@@ -300,7 +300,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         // There is no single "full tensor" that unifies them.
         //
         // This field stores Decompose(EFG) only. When Buckingham parameters
-        // are available (from ParameterCorrectionResult), the full shielding
+        // are available (from TOML-calibrated Buckingham coefficients), the full shielding
         // contribution including T0 from E should be computed and stored.
         ca.coulomb_shielding_contribution = SphericalTensor::Decompose(EFG_total);
     }

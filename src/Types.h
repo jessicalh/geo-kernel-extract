@@ -253,7 +253,7 @@ struct SphericalTensor {
 enum class CalculatorId {
     BiotSavart, HaighMallion, McConnell, Coulomb,
     PiQuadrupole, RingSusceptibility, Dispersion, HBond,
-    APBS, Orca, Mopac, MopacCoulomb, MopacMcConnell, ParameterCorrection
+    APBS, Orca, Mopac, MopacCoulomb, MopacMcConnell
 };
 
 struct FieldValue {

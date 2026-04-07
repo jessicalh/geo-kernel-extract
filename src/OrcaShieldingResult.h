@@ -6,7 +6,7 @@
 //
 // Stores per-atom shielding tensors (diamagnetic, paramagnetic, total)
 // as Mat3 + SphericalTensor on ConformationAtom. This is a feature input
-// for the ParameterCorrectionResult and for training.
+// for calibration against DFT and for T2 residual analysis.
 //
 // Each protein gets its own OrcaShieldingResult on its own conformation.
 // WT and mutant are separate proteins with separate results. Comparison
