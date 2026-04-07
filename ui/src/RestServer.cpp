@@ -162,7 +162,7 @@ QJsonObject RestServer::cmdStatus() {
         result["n_silent"] = 0;
     }
 
-    result["overlay_mode"] = mainWindow_->overlayModeCombo_->currentIndex();
+    result["overlay_mode"] = 0;  // overlay modes removed
     resp["result"] = result;
     return resp;
 }
@@ -187,25 +187,15 @@ QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdSetOverlay(const QJsonObject& cmd) {
     QString mode = cmd["mode"].toString();
-    static const QMap<QString, int> modes = {
-        {"none", 0}, {"heuristic", 1}, {"classical", 2},
-        {"dft_delta", 3}, {"residual", 4}
-    };
-    auto it = modes.find(mode);
-    if (it == modes.end()) {
-        return QJsonObject{{"ok", false},
-            {"error", QString("unknown mode: %1. Options: none, heuristic, classical, dft_delta, residual").arg(mode)}};
-    }
-    mainWindow_->overlayModeCombo_->setCurrentIndex(it.value());
-    mainWindow_->onOverlayModeChanged(it.value());
-    mainWindow_->renderWindow_->Render();
-    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"mode", mode}}}};
+    // Overlay modes removed — per-calculator visualizations replace them
+    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"mode", "none"},
+        {"note", "overlay modes removed; use per-calculator toggles"}}}};
 }
 
 QJsonObject RestServer::cmdSetRenderMode(const QJsonObject& cmd) {
     QString mode = cmd["mode"].toString();
     static const QMap<QString, int> modes = {
-        {"ball_stick", 0}, {"stick", 1}, {"vdw", 2}, {"backbone", 3}
+        {"ball_stick", 0}, {"stick", 1}, {"liquorice", 1}
     };
     auto it = modes.find(mode);
     if (it == modes.end()) {
@@ -268,15 +258,9 @@ QJsonObject RestServer::cmdResetView(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdSetCalculators(const QJsonObject& cmd) {
-    const char* names[] = {"bs", "hm", "mc", "ld", "ce", "pq", "rsa", "hb"};
-    for (int i = 0; i < 8; i++) {
-        if (cmd.contains(names[i])) {
-            mainWindow_->physicsChecks_[i]->setChecked(cmd[names[i]].toBool());
-        }
-    }
-    mainWindow_->onPhysicsCheckChanged();
-    mainWindow_->renderWindow_->Render();
-    return QJsonObject{{"ok", true}};
+    Q_UNUSED(cmd);
+    // Per-calculator toggles will replace this when visualizations are added
+    return QJsonObject{{"ok", true}, {"note", "calculator toggles pending per-calculator viz"}};
 }
 
 QJsonObject RestServer::cmdShowRings(const QJsonObject& cmd) {
@@ -307,7 +291,6 @@ QJsonObject RestServer::cmdSetGlyphScale(const QJsonObject& cmd) {
     double scale = cmd["scale"].toDouble(0.5);
     int sliderVal = static_cast<int>(scale * 100);
     mainWindow_->glyphScaleSlider_->setValue(sliderVal);
-    mainWindow_->onGlyphScaleChanged(sliderVal);
     mainWindow_->renderWindow_->Render();
     return QJsonObject{{"ok", true}};
 }
@@ -316,15 +299,12 @@ QJsonObject RestServer::cmdSetOpacity(const QJsonObject& cmd) {
     double opacity = cmd["value"].toDouble(0.7);
     int sliderVal = static_cast<int>(opacity * 100);
     mainWindow_->opacitySlider_->setValue(sliderVal);
-    mainWindow_->onOpacityChanged(sliderVal);
     mainWindow_->renderWindow_->Render();
     return QJsonObject{{"ok", true}};
 }
 
 QJsonObject RestServer::cmdSetIsoThreshold(const QJsonObject& cmd) {
-    double threshold = cmd["value"].toDouble(0.5);
-    mainWindow_->isoThreshold_->setValue(threshold);
-    mainWindow_->onIsoThresholdChanged(threshold);
-    mainWindow_->renderWindow_->Render();
+    Q_UNUSED(cmd);
+    // Iso threshold removed — per-calculator isosurfaces will have own controls
     return QJsonObject{{"ok", true}};
 }

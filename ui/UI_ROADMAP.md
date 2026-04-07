@@ -99,21 +99,12 @@ calculation.
 2. Charge comparison surface (MOPAC vs ff14SB delta)
 3. Orbital population display (s/p ratio as hybridization indicator)
 
-### CalculationAreas (future)
+### GeometryChoice visualization (future)
 
-When CalculationArea objects land on ProteinConformation, each one
-describes a spatial region where a specific calculation was applied
-with its cutoff. The viewer displays these as:
-
-1. Region list panel — all CalculationAreas with metadata
-2. Click a region → highlight constituent atoms, show what
-   calculation was applied and its parameters
-3. 3D wireframe/convex hull for each region, color-coded by
-   calculator type
-4. Toggle per-calculator to show/hide its regions
-
-These are self-documenting objects: the conformation knows where
-each calculation reached and what it did. The viewer just shows them.
+See spec/GEOMETRY_CHOICE_BRIEF.md. Each GeometryChoice is drawable:
+spheres for radial thresholds, highlighted atoms for topological
+exclusions, shells for counting boundaries, etc. DomainKind drives
+the visualization type. The viewer walks the conformation's list.
 
 ### Sidebar structure (target)
 
@@ -144,8 +135,8 @@ Replace the current overlay mode + physics checkboxes with:
   □ Bond order coloring
   □ Charge delta (PM7 - ff14SB)
 
-[Regions] (when CalculationAreas arrive)
-  □ Show calculation regions
+[Geometry Choices] (when GeometryChoice arrives)
+  □ Show geometry choices
   Per-calculator toggles
 ```
 
@@ -175,4 +166,4 @@ it is a prerequisite for the per-calculator tensor visualizations.
 4. McConnell tensor glyphs with per-category coloring
 5. E-field arrows for Coulomb and MOPAC Coulomb
 6. Sidebar reorganization (calculators, not prediction modes)
-7. CalculationArea display (when they land in the library)
+7. GeometryChoice display (when they land in the library)

@@ -10,6 +10,7 @@ ubq_crystal    = "/shared/2026Thesis/nmr-shielding/tests/data/external/1UBQ.pdb"
 # GROMACS protonated test PDB
 gmx_protonated = "/shared/2026Thesis/nmr-shielding/tests/data/external/1OKH_4587_protonated.pdb"
 
+
 # ORCA mutant pair directory (A0A7C5FAR6 WT + ALA)
 orca_dir       = "/shared/2026Thesis/nmr-shielding/tests/data/orca/"
 

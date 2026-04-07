@@ -1374,43 +1374,17 @@ tables above for exactly what each result stores.
 
 ---
 
-## CalculationArea (TBD — aspirational, next after calculator tuning)
+## GeometryChoice (TBD — aspirational, next after calculator tuning)
 
-An ABC that will be the first-class object model for handling geometry
-decisions during calculator operations on a conformation. Every
-calculator currently makes implicit geometric choices: distance cutoffs,
-near-field exclusion zones, sequential separation thresholds, shaped
-vs spherical boundaries. These choices are hardcoded constants or
-filter parameters. CalculationArea makes them explicit, typed, and
-self-documenting.
+Every calculator makes implicit geometric choices: distance cutoffs,
+near-field exclusion zones, sequential separation thresholds, ring
+current intensities, lobe offsets. A GeometryChoice is a runtime record
+of one such decision — what was decided, on which model objects, with
+what value, for what physics reason. Created by calculators, deposited
+on the conformation, drawable in the viewer.
 
-A CalculationArea describes WHERE a calculator was evaluated and what
-it decided at each point — not just rejection counts, but a structured
-record of which atoms were included, which were excluded, and why. This
-serves four purposes:
-
-1. **Calibration**: sweep cutoff parameters against DFT residual to find
-   empirically optimal geometric boundaries (see CALIBRATION_CHECKLIST.md).
-2. **Correction**: ParameterCorrectionResult may evolve to inform or be
-   informed by CalculationAreas — the geometry decisions and the parameter
-   corrections are coupled constraints on the same physics.
-3. **Visualisation**: the viewer can show "where was this calculator
-   active?" as a spatial region, not just a number.
-4. **Self-documentation**: each evaluation carries a structured log of
-   its geometric choices, available for AI review alongside the numerical
-   results.
-
-CalculationArea may inform what we do with ParameterCorrectionResult
-as a concept. The current design has ParameterCorrectionResult learning
-scalar parameter corrections. CalculationAreas could extend this to
-geometry-aware corrections — the optimal cutoff or filter threshold
-may itself be environment-dependent, learnable from the same DFT data.
-
-**Status**: Flagged as TBD. Development follows tuning and validation
-of the 10 existing calculators (including the two new MOPAC-derived
-kernels). The MOPAC electronic structure data (charges, bond orders,
-orbital populations) provides the physical basis for informed geometric
-choices — CalculationArea will draw on it.
+See spec/GEOMETRY_CHOICE_BRIEF.md for the full design and per-calculator
+manifest. Prior CalculationArea type vocabulary is in learn/bones/.
 
 ---
 

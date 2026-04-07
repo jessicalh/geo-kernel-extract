@@ -6,6 +6,7 @@
 #include "DsspResult.h"
 #include "MolecularGraphResult.h"
 #include "GeometryResult.h"
+#include "NpyWriter.h"
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
 
@@ -539,6 +540,100 @@ size_t MutationDeltaResult::MutantAtomFor(size_t i) const {
 double MutationDeltaResult::MatchDistanceAt(size_t i) const {
     if (!HasMatch(i)) return 0.0;
     return matched_atoms_[wt_to_matched_[i]].match_distance;
+}
+
+// ============================================================================
+// WriteFeatures: export delta arrays indexed by WT atom index.
+//
+// Unmatched atoms get zeros. Arrays are (N, K) where N = WT atom count.
+// ============================================================================
+
+static void PackST(const SphericalTensor& st, double* out) {
+    out[0] = st.T0;
+    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
+    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
+}
+
+int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
+                                        const std::string& output_dir) const {
+    const size_t N = conf.AtomCount();
+    int written = 0;
+
+    // delta_shielding: (N, 9) — DFT shielding delta as SphericalTensor
+    {
+        std::vector<double> data(N * 9, 0.0);
+        for (size_t i = 0; i < N; ++i)
+            if (HasMatch(i))
+                PackST(matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical, &data[i*9]);
+        NpyWriter::WriteFloat64(output_dir + "/delta_shielding.npy", data.data(), N, 9);
+        written++;
+    }
+
+    // delta_scalars: (N, 6) — [matched, delta_T0, nearest_ring_dist, delta_charge, delta_mopac_charge, match_dist]
+    {
+        std::vector<double> data(N * 6, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            if (HasMatch(i)) {
+                const auto& m = matched_atoms_[wt_to_matched_[i]];
+                data[i*6 + 0] = 1.0;
+                data[i*6 + 1] = m.delta_shielding_spherical.T0;
+                data[i*6 + 2] = m.nearest_removed_ring_dist;
+                data[i*6 + 3] = m.delta_partial_charge;
+                data[i*6 + 4] = m.delta_mopac_charge;
+                data[i*6 + 5] = m.match_distance;
+            }
+        }
+        NpyWriter::WriteFloat64(output_dir + "/delta_scalars.npy", data.data(), N, 6);
+        written++;
+    }
+
+    // delta_apbs: (N, 12) — [delta_E(3), delta_EFG_spherical(9)]
+    if (has_apbs_delta_) {
+        std::vector<double> data(N * 12, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            if (HasMatch(i)) {
+                const auto& m = matched_atoms_[wt_to_matched_[i]];
+                data[i*12 + 0] = m.delta_efield.x();
+                data[i*12 + 1] = m.delta_efield.y();
+                data[i*12 + 2] = m.delta_efield.z();
+                PackST(m.delta_efg_spherical, &data[i*12 + 3]);
+            }
+        }
+        NpyWriter::WriteFloat64(output_dir + "/delta_apbs.npy", data.data(), N, 12);
+        written++;
+    }
+
+    // delta_ring_proximity: (N, R, 6) flattened to (N, R*6) where R = removed ring count
+    // Per removed ring: [distance, z, rho, theta, mcconnell_factor, exp_decay]
+    if (!mutation_sites_.empty()) {
+        size_t total_removed = 0;
+        for (const auto& site : mutation_sites_)
+            total_removed += site.wt_ring_indices.size();
+
+        if (total_removed > 0) {
+            const size_t cols = total_removed * 6;
+            std::vector<double> data(N * cols, 0.0);
+            for (size_t i = 0; i < N; ++i) {
+                if (HasMatch(i)) {
+                    const auto& m = matched_atoms_[wt_to_matched_[i]];
+                    for (size_t r = 0; r < m.removed_ring_proximity.size() && r < total_removed; ++r) {
+                        const auto& rp = m.removed_ring_proximity[r];
+                        size_t base = i * cols + r * 6;
+                        data[base + 0] = rp.distance;
+                        data[base + 1] = rp.z;
+                        data[base + 2] = rp.rho;
+                        data[base + 3] = rp.theta;
+                        data[base + 4] = rp.mcconnell_factor;
+                        data[base + 5] = rp.exp_decay;
+                    }
+                }
+            }
+            NpyWriter::WriteFloat64(output_dir + "/delta_ring_proximity.npy", data.data(), N, cols);
+            written++;
+        }
+    }
+
+    return written;
 }
 
 }  // namespace nmr

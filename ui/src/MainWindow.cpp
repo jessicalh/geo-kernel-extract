@@ -21,6 +21,7 @@
 #include "MopacResult.h"
 #include "MopacCoulombResult.h"
 #include "MopacMcConnellResult.h"
+#include "GeometryChoice.h"
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -64,7 +65,6 @@
 #include <QFont>
 #include <vtkSphereSource.h>
 #include <vtkCellPicker.h>
-#include <vtkLineSource.h>
 #include <vtkTubeFilter.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
@@ -229,7 +229,7 @@ void MainWindow::setupUI() {
     {
         auto* lay = makeSection("Rendering", true);
         renderModeCombo_ = new QComboBox();
-        renderModeCombo_->addItems({"Ball & Stick", "VDW Spheres", "Liquorice"});
+        renderModeCombo_->addItems({"Ball & Stick", "Liquorice"});
         connect(renderModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
                 this, &MainWindow::onRenderModeChanged);
         lay->addWidget(renderModeCombo_);
@@ -238,10 +238,16 @@ void MainWindow::setupUI() {
     // --- Ring Currents ---
     {
         auto* lay = makeSection("Ring Currents", true);
-        showRingsCheck_ = new QCheckBox("Show ring outlines");
+        showRingsCheck_ = new QCheckBox("Ring outlines");
         showRingsCheck_->setChecked(true);
         connect(showRingsCheck_, &QCheckBox::toggled, this, &MainWindow::onShowRingsToggled);
         lay->addWidget(showRingsCheck_);
+
+        showButterflyCheck_ = new QCheckBox("BS butterfly isosurface");
+        showButterflyCheck_->setChecked(false);
+        connect(showButterflyCheck_, &QCheckBox::toggled, this, &MainWindow::onShowButterflyToggled);
+        lay->addWidget(showButterflyCheck_);
+
         lay->addWidget(new QLabel("Current scale:"));
         currentScaleSlider_ = new QSlider(Qt::Horizontal);
         currentScaleSlider_->setRange(1, 200);
@@ -250,98 +256,37 @@ void MainWindow::setupUI() {
         lay->addWidget(currentScaleSlider_);
     }
 
-    // --- Tensor Overlay ---
+    // --- Bond Anisotropy ---
     {
-        auto* lay = makeSection("Tensor Overlay", true);
-        overlayModeCombo_ = new QComboBox();
-        overlayModeCombo_->addItems({
-            "None", "Heuristic Prediction", "Classical Only",
-            "DFT Delta", "Residual"
-        });
-        overlayModeCombo_->setCurrentIndex(0);  // None — no overlay until user asks
-        connect(overlayModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, &MainWindow::onOverlayModeChanged);
-        lay->addWidget(overlayModeCombo_);
-
-        auto* styleRow = new QHBoxLayout();
-        glyphStyleCombo_ = new QComboBox();
-        glyphStyleCombo_->addItems({"Ellipsoid", "SH Surface"});
-        connect(glyphStyleCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, &MainWindow::onGlyphStyleChanged);
-        vizModeCombo_ = new QComboBox();
-        vizModeCombo_->addItems({"Glyphs", "Isosurface"});
-        vizModeCombo_->setCurrentIndex(1);
-        connect(vizModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                this, &MainWindow::onVizModeChanged);
-        styleRow->addWidget(glyphStyleCombo_);
-        styleRow->addWidget(vizModeCombo_);
-        lay->addLayout(styleRow);
-
-        auto* scaleRow = new QHBoxLayout();
-        scaleRow->addWidget(new QLabel("Scale:"));
-        glyphScaleSlider_ = new QSlider(Qt::Horizontal);
-        glyphScaleSlider_->setRange(1, 200);
-        glyphScaleSlider_->setValue(50);
-        connect(glyphScaleSlider_, &QSlider::valueChanged, this, &MainWindow::onGlyphScaleChanged);
-        scaleRow->addWidget(glyphScaleSlider_);
-        scaleRow->addWidget(new QLabel("Op:"));
-        opacitySlider_ = new QSlider(Qt::Horizontal);
-        opacitySlider_->setRange(0, 100);
-        opacitySlider_->setValue(70);
-        connect(opacitySlider_, &QSlider::valueChanged, this, &MainWindow::onOpacityChanged);
-        scaleRow->addWidget(opacitySlider_);
-        lay->addLayout(scaleRow);
-
-        auto* isoRow = new QHBoxLayout();
-        isoRow->addWidget(new QLabel("Iso:"));
-        isoThreshold_ = new QDoubleSpinBox();
-        isoThreshold_->setRange(0.01, 10.0);
-        isoThreshold_->setValue(0.5);
-        isoThreshold_->setSingleStep(0.1);
-        isoThreshold_->setSuffix(" ppm");
-        connect(isoThreshold_, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                this, &MainWindow::onIsoThresholdChanged);
-        isoRow->addWidget(isoThreshold_);
-        isoRow->addWidget(new QLabel("Rad:"));
-        gaussianRadius_ = new QDoubleSpinBox();
-        gaussianRadius_->setRange(0.5, 10.0);
-        gaussianRadius_->setValue(2.0);
-        gaussianRadius_->setSingleStep(0.5);
-        gaussianRadius_->setSuffix(" A");
-        connect(gaussianRadius_, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-                this, &MainWindow::onGaussianRadiusChanged);
-        isoRow->addWidget(gaussianRadius_);
-        lay->addLayout(isoRow);
-    }
-
-    // --- Physics ---
-    {
-        auto* lay = makeSection("Physics", false);
-        showPeptideBondsCheck_ = new QCheckBox("Show peptide bonds");
+        auto* lay = makeSection("Bond Anisotropy", true);
+        showPeptideBondsCheck_ = new QCheckBox("Peptide bond tubes");
         showPeptideBondsCheck_->setChecked(false);
         connect(showPeptideBondsCheck_, &QCheckBox::toggled, this, &MainWindow::onShowPeptideBondsToggled);
         lay->addWidget(showPeptideBondsCheck_);
+    }
 
-        const char* calcNames[8] = {
-            "Biot-Savart", "Haigh-Mallion", "McConnell", "London Dispersion",
-            "Coulomb EFG", "Pi-Quadrupole", "Ring Susceptibility", "Hydrogen Bond"
-        };
-        for (int i = 0; i < 8; ++i) {
-            physicsChecks_[i] = new QCheckBox(calcNames[i]);
-            physicsChecks_[i]->setChecked(true);
-            connect(physicsChecks_[i], &QCheckBox::toggled, this, &MainWindow::onPhysicsCheckChanged);
-            lay->addWidget(physicsChecks_[i]);
-        }
-
-        showBondOrderCheck_ = new QCheckBox("MOPAC bond orders");
+    // --- MOPAC Electronic ---
+    {
+        auto* lay = makeSection("MOPAC Electronic", true);
+        showBondOrderCheck_ = new QCheckBox("Bond order coloring");
         showBondOrderCheck_->setChecked(false);
         connect(showBondOrderCheck_, &QCheckBox::toggled, this, &MainWindow::onShowBondOrderToggled);
         lay->addWidget(showBondOrderCheck_);
+    }
 
-        showButterflyCheck_ = new QCheckBox("Show BS butterfly");
-        showButterflyCheck_->setChecked(false);
-        connect(showButterflyCheck_, &QCheckBox::toggled, this, &MainWindow::onShowButterflyToggled);
-        lay->addWidget(showButterflyCheck_);
+    // --- Tensor Display (global settings for future per-calculator glyphs) ---
+    {
+        auto* lay = makeSection("Tensor Display", false);
+        lay->addWidget(new QLabel("Scale:"));
+        glyphScaleSlider_ = new QSlider(Qt::Horizontal);
+        glyphScaleSlider_->setRange(1, 200);
+        glyphScaleSlider_->setValue(50);
+        lay->addWidget(glyphScaleSlider_);
+        lay->addWidget(new QLabel("Opacity:"));
+        opacitySlider_ = new QSlider(Qt::Horizontal);
+        opacitySlider_->setRange(0, 100);
+        opacitySlider_->setValue(70);
+        lay->addWidget(opacitySlider_);
     }
 
     sidebar->addStretch();
@@ -366,8 +311,8 @@ void MainWindow::setupUI() {
     atomInfoDock_->setWidget(atomInfoTree_);
     addDockWidget(Qt::BottomDockWidgetArea, atomInfoDock_);
 
-    // Bond info panel — shift+double-click a bond to inspect it
-    bondInfoDock_ = new QDockWidget("Bond Inspector", this);
+    // Bond browser panel — tree view of all bonds grouped by category
+    bondInfoDock_ = new QDockWidget("Bonds", this);
     bondInfoDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
     bondInfoDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     bondInfoTree_ = new QTreeWidget();
@@ -377,6 +322,18 @@ void MainWindow::setupUI() {
     bondInfoTree_->setIndentation(16);
     bondInfoDock_->setWidget(bondInfoTree_);
     tabifyDockWidget(atomInfoDock_, bondInfoDock_);
+
+    // GeometryChoice panel — calculator decisions for picked atom
+    gcDock_ = new QDockWidget("Geometry Choices", this);
+    gcDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    gcDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    gcTree_ = new QTreeWidget();
+    gcTree_->setHeaderLabels({"Decision", "Detail"});
+    gcTree_->setColumnWidth(0, 250);
+    gcTree_->setAlternatingRowColors(true);
+    gcTree_->setIndentation(16);
+    gcDock_->setWidget(gcTree_);
+    tabifyDockWidget(atomInfoDock_, gcDock_);
 
     // Operations log panel — listens on UDP for library log stream
     logDock_ = new QDockWidget("Operations Log", this);
@@ -402,6 +359,9 @@ void MainWindow::setupUI() {
             }
         }
     }
+
+    // Start with the log tab visible — it shows computation progress
+    logDock_->raise();
 }
 
 void MainWindow::loadPdb(const std::string& pdbPath) {
@@ -599,23 +559,11 @@ void MainWindow::onComputeFinished(ComputeResult result) {
         butterflyOverlay_->setVisible(showButterflyCheck_->isChecked());
     }
 
-    // Field grid overlay for physically accurate isosurfaces
+    // Field grid overlay — available for per-calculator isosurfaces later
     if (!fieldGrids_.empty()) {
-        udp_log("[diag] creating FieldGridOverlay with %zu grids\n", fieldGrids_.size());
-        try {
-            if (fieldGridOverlay_) { delete fieldGridOverlay_; fieldGridOverlay_ = nullptr; }
-            fieldGridOverlay_ = new FieldGridOverlay(renderer_);
-            int vizMode = vizModeCombo_->currentIndex();
-            if (vizMode == 1) {
-                udp_log("[diag] setting field grid data, threshold=%f\n",
-                        isoThreshold_->value());
-                fieldGridOverlay_->setData(fieldGrids_,
-                    isoThreshold_->value(), opacitySlider_->value() / 100.0);
-                udp_log("[diag] field grid overlay created successfully\n");
-            }
-        } catch (const std::exception& e) {
-            udp_log("[ERROR] FieldGridOverlay crashed: %s\n", e.what());
-        }
+        udp_log("[diag] %zu field grids available for isosurface rendering\n", fieldGrids_.size());
+        if (fieldGridOverlay_) { delete fieldGridOverlay_; fieldGridOverlay_ = nullptr; }
+        fieldGridOverlay_ = new FieldGridOverlay(renderer_);
     }
 
     // Build vtkMolecule from the library object model — no adapter
@@ -751,43 +699,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     udp_log("[diag] onComputeFinished done\n");
 }
 
-// Sum of checked calculator T0 contributions for one atom — reads library directly
-double MainWindow::checkedCalcT0(size_t atomIndex) const {
-    if (!protein_) return 0.0;
-    const auto& atom = protein_->Conformation().AtomAt(atomIndex);
-    double t0 = 0;
-    if (physicsChecks_[0]->isChecked()) t0 += atom.bs_shielding_contribution.T0;
-    if (physicsChecks_[1]->isChecked()) t0 += atom.hm_shielding_contribution.T0;
-    if (physicsChecks_[2]->isChecked()) t0 += atom.mc_shielding_contribution.T0;
-    if (physicsChecks_[3]->isChecked()) t0 += atom.disp_shielding_contribution.T0;
-    if (physicsChecks_[4]->isChecked()) t0 += atom.coulomb_shielding_contribution.T0;
-    if (physicsChecks_[5]->isChecked()) t0 += atom.piquad_shielding_contribution.T0;
-    if (physicsChecks_[6]->isChecked()) t0 += atom.ringchi_shielding_contribution.T0;
-    if (physicsChecks_[7]->isChecked()) t0 += atom.hbond_shielding_contribution.T0;
-    return t0;
-}
-
-// Sum of checked calculator SphericalTensor contributions — reads library directly
-SphericalTensor MainWindow::checkedCalcST(size_t atomIndex) const {
-    if (!protein_) return {};
-    const auto& atom = protein_->Conformation().AtomAt(atomIndex);
-
-    const SphericalTensor* calcs[8] = {
-        &atom.bs_shielding_contribution,  &atom.hm_shielding_contribution,
-        &atom.mc_shielding_contribution,  &atom.disp_shielding_contribution,
-        &atom.coulomb_shielding_contribution, &atom.piquad_shielding_contribution,
-        &atom.ringchi_shielding_contribution, &atom.hbond_shielding_contribution
-    };
-
-    SphericalTensor st{};
-    for (int i = 0; i < 8; ++i) {
-        if (!physicsChecks_[i]->isChecked()) continue;
-        st.T0 += calcs[i]->T0;
-        for (int k = 0; k < 3; ++k) st.T1[k] += calcs[i]->T1[k];
-        for (int k = 0; k < 5; ++k) st.T2[k] += calcs[i]->T2[k];
-    }
-    return st;
-}
+// Placeholder — per-calculator visualizations will replace the old overlay system
 
 void MainWindow::saveScreenshot() {
     QString path = QFileDialog::getSaveFileName(this, "Save Screenshot",
@@ -810,126 +722,14 @@ void MainWindow::saveScreenshot() {
 }
 
 void MainWindow::updateOverlay() {
+    // Per-calculator visualizations will replace this. For now, just ensure
+    // the glyph infrastructure stays clear when no calculator viz is active.
     if (!tensorGlyph_ || !ellipsoidGlyph_ || !protein_) return;
-
-    const auto& conf = protein_->Conformation();
-    size_t N = conf.AtomCount();
-
-    int mode = overlayModeCombo_->currentIndex();
-    int glyphStyle = glyphStyleCombo_->currentIndex();
-    int vizMode = vizModeCombo_->currentIndex();
-    double scale = glyphScaleSlider_->value() / 100.0;
-    double opacity = opacitySlider_->value() / 100.0;
-
     tensorGlyph_->clear();
     ellipsoidGlyph_->clear();
     if (isosurfaceOverlay_) isosurfaceOverlay_->clear();
     if (isosurfaceOverlayPass_) isosurfaceOverlayPass_->clear();
     if (fieldGridOverlay_) fieldGridOverlay_->clear();
-
-    if (mode == 0) {
-        renderWindow_->Render();
-        return;
-    }
-
-    // Two tiers for heuristic modes: REPORT (full) and PASS (reduced)
-    std::vector<Vec3> reportPos, passPos;
-    std::vector<SphericalTensor> reportST, passST;
-    std::vector<double> reportIso, passIso;
-
-    // Single-tier lists for non-heuristic modes
-    std::vector<Vec3> positions;
-    std::vector<SphericalTensor> stensors;
-    std::vector<double> isoValues;
-
-    if (mode == 1) {
-        // Heuristic: read tier from library, split into REPORT/PASS/SILENT
-        for (size_t i = 0; i < N; ++i) {
-            const auto& atom = conf.AtomAt(i);
-            if (atom.tier == HeuristicTier::SILENT) continue;
-
-            SphericalTensor st = checkedCalcST(i);
-            double t0 = checkedCalcT0(i);
-
-            if (atom.tier == HeuristicTier::REPORT) {
-                reportPos.push_back(atom.Position());
-                reportST.push_back(st);
-                reportIso.push_back(t0);
-            } else {
-                passPos.push_back(atom.Position());
-                passST.push_back(st);
-                passIso.push_back(t0);
-            }
-        }
-    } else if (mode == 2) {
-        // Classical Only: all atoms, sum of checked calculators
-        for (size_t i = 0; i < N; ++i) {
-            positions.push_back(conf.AtomAt(i).Position());
-            stensors.push_back(checkedCalcST(i));
-            isoValues.push_back(checkedCalcT0(i));
-        }
-    } else if (mode == 3) {
-        // DFT Delta: only atoms with DFT data
-        for (size_t i = 0; i < N; ++i) {
-            const auto& atom = conf.AtomAt(i);
-            if (!atom.has_orca_shielding) continue;
-            positions.push_back(atom.Position());
-            stensors.push_back(atom.orca_shielding_total_spherical);
-            isoValues.push_back(atom.orca_shielding_total_spherical.T0);
-        }
-    } else if (mode == 4) {
-        // Residual: DFT minus classical prediction
-        for (size_t i = 0; i < N; ++i) {
-            const auto& atom = conf.AtomAt(i);
-            if (!atom.has_orca_shielding) continue;
-            positions.push_back(atom.Position());
-
-            SphericalTensor totalClassical = checkedCalcST(i);
-            SphericalTensor residST;
-            residST.T0 = atom.orca_shielding_total_spherical.T0 - totalClassical.T0;
-            for (int k = 0; k < 3; k++)
-                residST.T1[k] = atom.orca_shielding_total_spherical.T1[k] - totalClassical.T1[k];
-            for (int k = 0; k < 5; k++)
-                residST.T2[k] = atom.orca_shielding_total_spherical.T2[k] - totalClassical.T2[k];
-            stensors.push_back(residST);
-            isoValues.push_back(residST.T0);
-        }
-    }
-
-    auto renderSet = [&](const std::vector<Vec3>& pos,
-                         const std::vector<SphericalTensor>& sts,
-                         const std::vector<double>& iso,
-                         double setScale, double setOpacity,
-                         IsosurfaceOverlay* isoOverlay) {
-        if (pos.empty()) return;
-
-        std::vector<Mat3> mats;
-        mats.reserve(sts.size());
-        for (const auto& st : sts)
-            mats.push_back(st.Reconstruct());
-
-        if (vizMode == 1) {
-            if (fieldGridOverlay_ && !fieldGrids_.empty()) {
-                fieldGridOverlay_->setData(fieldGrids_,
-                    isoThreshold_->value(), setOpacity);
-            } else if (isoOverlay) {
-                isoOverlay->setData(pos, iso,
-                    isoThreshold_->value(), gaussianRadius_->value(), setOpacity);
-            }
-        } else if (glyphStyle == 0) {
-            ellipsoidGlyph_->setData(pos, mats, iso, setScale, setOpacity);
-        } else {
-            tensorGlyph_->setData(pos, sts, setScale, setOpacity);
-        }
-    };
-
-    if (mode == 1) {
-        renderSet(reportPos, reportST, reportIso, scale, opacity, isosurfaceOverlay_);
-        renderSet(passPos, passST, passIso, scale * 0.7, opacity * 0.4, isosurfaceOverlayPass_);
-    } else {
-        renderSet(positions, stensors, isoValues, scale, opacity, isosurfaceOverlay_);
-    }
-
     renderWindow_->Render();
 }
 
@@ -937,19 +737,10 @@ void MainWindow::onRenderModeChanged(int index) {
     if (!molMapper_) return;
     switch (index) {
         case 0: molMapper_->UseBallAndStickSettings(); break;
-        case 1: molMapper_->UseVDWSpheresSettings(); break;
-        case 2: molMapper_->UseLiquoriceStickSettings(); break;
+        case 1: molMapper_->UseLiquoriceStickSettings(); break;
     }
     renderWindow_->Render();
 }
-
-void MainWindow::onOverlayModeChanged(int) { updateOverlay(); }
-void MainWindow::onGlyphStyleChanged(int) { updateOverlay(); }
-void MainWindow::onGlyphScaleChanged(int) { updateOverlay(); }
-void MainWindow::onOpacityChanged(int) { updateOverlay(); }
-void MainWindow::onVizModeChanged(int) { updateOverlay(); }
-void MainWindow::onIsoThresholdChanged(double) { updateOverlay(); }
-void MainWindow::onGaussianRadiusChanged(double) { updateOverlay(); }
 
 void MainWindow::onCurrentScaleChanged(int) {
     if (!sliderDebounce_) {
@@ -988,11 +779,6 @@ void MainWindow::onShowButterflyToggled(bool checked) {
     renderWindow_->Render();
 }
 
-void MainWindow::onPhysicsCheckChanged() {
-    updateOverlay();
-    renderWindow_->Render();
-}
-
 // ================================================================
 // Operations log
 // ================================================================
@@ -1013,10 +799,7 @@ void MainWindow::onLogDatagramReady() {
 bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
     if (obj == vtkWidget_ && event->type() == QEvent::MouseButtonDblClick) {
         auto* me = static_cast<QMouseEvent*>(event);
-        if (me->modifiers() & Qt::ShiftModifier)
-            pickBond(me->pos().x(), me->pos().y());
-        else
-            pickAtom(me->pos().x(), me->pos().y());
+        pickAtom(me->pos().x(), me->pos().y());
         return true;
     }
     return QMainWindow::eventFilter(obj, event);
@@ -1083,6 +866,8 @@ void MainWindow::pickAtom(int displayX, int displayY) {
                 res.sequence_number);
 
         populateAtomInfo(atomIndex);
+        populateAtomBonds(atomIndex);
+        populateGeometryChoices(atomIndex);
         atomInfoDock_->raise();
 
         if (selectionActor_) renderer_->RemoveActor(selectionActor_);
@@ -1358,184 +1143,229 @@ void MainWindow::populateAtomInfo(size_t idx) {
 }
 
 // ================================================================
-// Bond picking and inspection
+// Bond tab — shows bonds for the currently picked atom
 // ================================================================
 
-void MainWindow::pickBond(int displayX, int displayY) {
-    if (!protein_) return;
-
-    double dpr = vtkWidget_->devicePixelRatioF();
-    int vtkX = static_cast<int>(displayX * dpr);
-    int vtkY = static_cast<int>((vtkWidget_->height() - displayY) * dpr);
-
-    udp_log("[pick] pickBond qt=(%d,%d) vtk=(%d,%d)\n",
-            displayX, displayY, vtkX, vtkY);
-
-    auto* camera = renderer_->GetActiveCamera();
-    double camPos[3];
-    camera->GetPosition(camPos);
-    Vec3 rayOrigin(camPos[0], camPos[1], camPos[2]);
-
-    renderer_->SetDisplayPoint(vtkX, vtkY, 0.0);
-    renderer_->DisplayToWorld();
-    double worldPt[4];
-    renderer_->GetWorldPoint(worldPt);
-    Vec3 clickWorld(worldPt[0] / worldPt[3],
-                    worldPt[1] / worldPt[3],
-                    worldPt[2] / worldPt[3]);
-
-    Vec3 rayDir = (clickWorld - rayOrigin).normalized();
-
-    const auto& conf = protein_->Conformation();
-    double bestDist = 1e30;
-    int bestBond = -1;
-
-    for (size_t i = 0; i < protein_->BondCount(); ++i) {
-        Vec3 mid = conf.bond_midpoints[i];
-        Vec3 toMid = mid - rayOrigin;
-        double projLen = toMid.dot(rayDir);
-        if (projLen < 0) continue;
-        Vec3 closest = rayOrigin + projLen * rayDir;
-        double dist = (mid - closest).norm();
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestBond = static_cast<int>(i);
-        }
-    }
-
-    udp_log("[pick] nearest bond %d ray-dist %.3f A\n", bestBond, bestDist);
-
-    if (bestBond >= 0) {
-        populateBondInfo(static_cast<size_t>(bestBond));
-
-        const Bond& bond = protein_->BondAt(bestBond);
-        Vec3 posA = conf.AtomAt(bond.atom_index_a).Position();
-        Vec3 posB = conf.AtomAt(bond.atom_index_b).Position();
-
-        if (selectionActor_) renderer_->RemoveActor(selectionActor_);
-        vtkNew<vtkLineSource> line;
-        line->SetPoint1(posA.data());
-        line->SetPoint2(posB.data());
-        vtkNew<vtkTubeFilter> tube;
-        tube->SetInputConnection(line->GetOutputPort());
-        tube->SetRadius(0.25);
-        tube->SetNumberOfSides(12);
-        vtkNew<vtkPolyDataMapper> mapper;
-        mapper->SetInputConnection(tube->GetOutputPort());
-        selectionActor_ = vtkSmartPointer<vtkActor>::New();
-        selectionActor_->SetMapper(mapper);
-        selectionActor_->GetProperty()->SetColor(1.0, 1.0, 0.0);
-        selectionActor_->GetProperty()->SetOpacity(0.4);
-        renderer_->AddActor(selectionActor_);
-        renderWindow_->Render();
-
-        bondInfoDock_->raise();
-
-        const auto& idA = protein_->AtomAt(bond.atom_index_a);
-        const auto& idB = protein_->AtomAt(bond.atom_index_b);
-        statusLabel_->setText(QString("Bond %1: %2-%3 (%4)")
-            .arg(bestBond)
-            .arg(QString::fromStdString(idA.pdb_atom_name))
-            .arg(QString::fromStdString(idB.pdb_atom_name))
-            .arg(QString::fromStdString(NameForBondCategory(bond.category))));
-
-        udp_log("[pick] selected bond %d: %s-%s (%s)\n", bestBond,
-                idA.pdb_atom_name.c_str(), idB.pdb_atom_name.c_str(),
-                NameForBondCategory(bond.category));
-    }
-}
-
-void MainWindow::populateBondInfo(size_t idx) {
+void MainWindow::populateAtomBonds(size_t idx) {
     bondInfoTree_->clear();
-    if (!protein_ || idx >= protein_->BondCount()) return;
+    if (!protein_ || idx >= protein_->AtomCount()) return;
 
     const auto& protein = *protein_;
     const auto& conf = protein.Conformation();
-    const Bond& bond = protein.BondAt(idx);
+    const auto& id = protein.AtomAt(idx);
+    const auto& ca = conf.AtomAt(idx);
 
-    const auto& idA = protein.AtomAt(bond.atom_index_a);
-    const auto& idB = protein.AtomAt(bond.atom_index_b);
-    const auto& resA = protein.ResidueAt(idA.residue_index);
-    const auto& resB = protein.ResidueAt(idB.residue_index);
+    // ---- Covalent bonds (from topology) ----
+    if (!id.bond_indices.empty()) {
+        auto* covalent = new QTreeWidgetItem({"Covalent bonds",
+            QString::number(id.bond_indices.size())});
+        for (size_t bi : id.bond_indices) {
+            const Bond& bond = protein.BondAt(bi);
+            size_t other = (bond.atom_index_a == idx) ? bond.atom_index_b : bond.atom_index_a;
+            const auto& otherId = protein.AtomAt(other);
+            const auto& otherRes = protein.ResidueAt(otherId.residue_index);
 
-    Vec3 posA = conf.AtomAt(bond.atom_index_a).Position();
-    Vec3 posB = conf.AtomAt(bond.atom_index_b).Position();
-    double length = conf.bond_lengths[idx];
+            QString label = QString("%1 %2-%3 (%4)")
+                .arg(QString::fromStdString(otherId.pdb_atom_name))
+                .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
+                .arg(otherRes.sequence_number)
+                .arg(QString::fromStdString(NameForBondCategory(bond.category)));
 
-    // ---- Identity ----
-    QString header = QString("Bond %1: %2 %3-%4 -- %5 %6-%7")
-        .arg(idx)
-        .arg(QString::fromStdString(idA.pdb_atom_name))
-        .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(resA.type)))
-        .arg(resA.sequence_number)
-        .arg(QString::fromStdString(idB.pdb_atom_name))
-        .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(resB.type)))
-        .arg(resB.sequence_number);
+            auto* bondItem = new QTreeWidgetItem({label,
+                QString::number(conf.bond_lengths[bi], 'f', 3) + " A"});
+            bondItem->addChild(new QTreeWidgetItem({"Direction", vec3Str(conf.bond_directions[bi])}));
 
-    auto* identity = new QTreeWidgetItem({header, ""});
-    identity->addChild(new QTreeWidgetItem({"Category", QString::fromStdString(NameForBondCategory(bond.category))}));
-    identity->addChild(new QTreeWidgetItem({"Topology order",
-        QString::fromStdString([&]{
-            switch (bond.order) {
-                case BondOrder::Single:   return "Single";
-                case BondOrder::Double:   return "Double";
-                case BondOrder::Triple:   return "Triple";
-                case BondOrder::Aromatic: return "Aromatic";
-                case BondOrder::Peptide:  return "Peptide";
-                case BondOrder::Unknown:  return "Unknown";
+            if (conf.HasResult<MopacResult>()) {
+                double bo = conf.Result<MopacResult>().TopologyBondOrder(bi);
+                bondItem->addChild(new QTreeWidgetItem({"Wiberg order", QString::number(bo, 'f', 4)}));
             }
-            return "?";
-        }())}));
-    identity->addChild(new QTreeWidgetItem({"Length", QString::number(length, 'f', 3) + " A"}));
-    identity->addChild(new QTreeWidgetItem({"Rotatable", bond.is_rotatable ? "yes" : "no"}));
-    identity->addChild(new QTreeWidgetItem({"Atom A", QString("%1 (%2 %3-%4)")
-        .arg(bond.atom_index_a)
-        .arg(QString::fromStdString(SymbolForElement(idA.element)))
-        .arg(QString::fromStdString(idA.pdb_atom_name))
-        .arg(resA.sequence_number)}));
-    identity->addChild(new QTreeWidgetItem({"Atom B", QString("%1 (%2 %3-%4)")
-        .arg(bond.atom_index_b)
-        .arg(QString::fromStdString(SymbolForElement(idB.element)))
-        .arg(QString::fromStdString(idB.pdb_atom_name))
-        .arg(resB.sequence_number)}));
-    identity->addChild(new QTreeWidgetItem({"Midpoint", vec3Str(conf.bond_midpoints[idx])}));
-    identity->addChild(new QTreeWidgetItem({"Direction", vec3Str(conf.bond_directions[idx])}));
-    bondInfoTree_->addTopLevelItem(identity);
-    identity->setExpanded(true);
 
-    // ---- MOPAC bond order ----
-    if (conf.HasResult<MopacResult>()) {
-        const auto& mopac = conf.Result<MopacResult>();
-        double bo = mopac.TopologyBondOrder(idx);
-
-        auto* mopacSection = new QTreeWidgetItem({"MOPAC", ""});
-        mopacSection->addChild(new QTreeWidgetItem({"Wiberg bond order", QString::number(bo, 'f', 4)}));
-
-        // Endpoint electronic data
-        const auto& caA = conf.AtomAt(bond.atom_index_a);
-        const auto& caB = conf.AtomAt(bond.atom_index_b);
-        mopacSection->addChild(new QTreeWidgetItem({"Charge A (PM7)", QString::number(caA.mopac_charge, 'f', 4)}));
-        mopacSection->addChild(new QTreeWidgetItem({"Charge B (PM7)", QString::number(caB.mopac_charge, 'f', 4)}));
-        mopacSection->addChild(new QTreeWidgetItem({"Charge delta", QString::number(
-            std::abs(caA.mopac_charge - caB.mopac_charge), 'f', 4)}));
-        mopacSection->addChild(new QTreeWidgetItem({"Valency A", QString::number(caA.mopac_valency, 'f', 3)}));
-        mopacSection->addChild(new QTreeWidgetItem({"Valency B", QString::number(caB.mopac_valency, 'f', 3)}));
-
-        bondInfoTree_->addTopLevelItem(mopacSection);
-        mopacSection->setExpanded(true);
+            covalent->addChild(bondItem);
+        }
+        bondInfoTree_->addTopLevelItem(covalent);
+        covalent->setExpanded(true);
     }
 
-    // ---- McConnell contribution of this bond ----
-    // Find this bond in any atom's bond_neighbours to show its dipolar tensor
-    const auto& caA = conf.AtomAt(bond.atom_index_a);
-    for (const auto& bn : caA.bond_neighbours) {
-        if (bn.bond_index == idx) {
-            auto* mcSection = new QTreeWidgetItem({"McConnell (at atom A)", ""});
-            mcSection->addChild(new QTreeWidgetItem({"Scalar", QString::number(bn.mcconnell_scalar, 'f', 5)}));
-            mcSection->addChild(new QTreeWidgetItem({"Distance to midpoint", QString::number(bn.distance_to_midpoint, 'f', 3) + " A"}));
-            mcSection->addChild(stItem("Dipolar tensor", bn.dipolar_spherical));
-            bondInfoTree_->addTopLevelItem(mcSection);
-            break;
+    // ---- MOPAC bond neighbours (may include non-topology bonds) ----
+    if (!ca.mopac_bond_neighbours.empty()) {
+        auto* mopacBonds = new QTreeWidgetItem({"MOPAC bonds",
+            QString::number(ca.mopac_bond_neighbours.size())});
+        for (const auto& mb : ca.mopac_bond_neighbours) {
+            const auto& otherId = protein.AtomAt(mb.other_atom);
+            const auto& otherRes = protein.ResidueAt(otherId.residue_index);
+            QString label = QString("%1 %2-%3 (BO=%4)")
+                .arg(QString::fromStdString(otherId.pdb_atom_name))
+                .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
+                .arg(otherRes.sequence_number)
+                .arg(mb.wiberg_order, 0, 'f', 3);
+            auto* mbItem = new QTreeWidgetItem({label, ""});
+            if (mb.topology_bond_index != SIZE_MAX) {
+                const Bond& bond = protein.BondAt(mb.topology_bond_index);
+                mbItem->addChild(new QTreeWidgetItem({"Category",
+                    QString::fromStdString(NameForBondCategory(bond.category))}));
+            }
+            mopacBonds->addChild(mbItem);
         }
+        bondInfoTree_->addTopLevelItem(mopacBonds);
+        mopacBonds->setExpanded(true);
+    }
+
+    // ---- McConnell bond neighbours (dipolar, within 10A) ----
+    if (!ca.bond_neighbours.empty()) {
+        auto* mcBonds = new QTreeWidgetItem({"McConnell neighbours",
+            QString::number(ca.bond_neighbours.size())});
+        for (const auto& bn : ca.bond_neighbours) {
+            const Bond& bond = protein.BondAt(bn.bond_index);
+            QString label = QString("Bond %1 (%2, d=%3 A)")
+                .arg(bn.bond_index)
+                .arg(QString::fromStdString(NameForBondCategory(bond.category)))
+                .arg(bn.distance_to_midpoint, 0, 'f', 2);
+            auto* bnItem = new QTreeWidgetItem({label, ""});
+            bnItem->addChild(new QTreeWidgetItem({"McConnell scalar",
+                QString::number(bn.mcconnell_scalar, 'f', 5)}));
+            bnItem->addChild(stItem("Dipolar tensor", bn.dipolar_spherical));
+            mcBonds->addChild(bnItem);
+        }
+        bondInfoTree_->addTopLevelItem(mcBonds);
+    }
+}
+
+// ================================================================
+// GeometryChoice tab — calculator decisions affecting picked atom
+// ================================================================
+
+// GAP: no NameForCalculatorId in library Types.h yet
+static const char* NameForCalculatorId(nmr::CalculatorId id) {
+    using nmr::CalculatorId;
+    switch (id) {
+        case CalculatorId::BiotSavart:        return "Biot-Savart";
+        case CalculatorId::HaighMallion:      return "Haigh-Mallion";
+        case CalculatorId::McConnell:         return "McConnell";
+        case CalculatorId::Coulomb:           return "Coulomb";
+        case CalculatorId::PiQuadrupole:      return "Pi-Quadrupole";
+        case CalculatorId::RingSusceptibility: return "Ring Susceptibility";
+        case CalculatorId::Dispersion:        return "Dispersion";
+        case CalculatorId::HBond:             return "H-Bond";
+        case CalculatorId::MopacCoulomb:      return "MOPAC Coulomb";
+        case CalculatorId::MopacMcConnell:    return "MOPAC McConnell";
+        default:                              return "Other";
+    }
+}
+
+static const char* NameForOutcome(nmr::EntityOutcome o) {
+    switch (o) {
+        case nmr::EntityOutcome::Included:     return "included";
+        case nmr::EntityOutcome::Excluded:     return "EXCLUDED";
+        case nmr::EntityOutcome::Triggered:    return "TRIGGERED";
+        case nmr::EntityOutcome::NotTriggered: return "not triggered";
+    }
+    return "?";
+}
+
+void MainWindow::populateGeometryChoices(size_t atomIndex) {
+    gcTree_->clear();
+    if (!protein_ || atomIndex >= protein_->AtomCount()) return;
+
+    const auto& conf = protein_->Conformation();
+    const auto& choices = conf.geometry_choices;
+
+    // Group choices by calculator where this atom appears as Target
+    using nmr::CalculatorId;
+    using nmr::EntityRole;
+    using nmr::EntityOutcome;
+
+    // Map: calculator → list of (choice index)
+    std::map<CalculatorId, std::vector<size_t>> byCalc;
+
+    for (size_t ci = 0; ci < choices.size(); ++ci) {
+        const auto& gc = choices[ci];
+        for (const auto& ent : gc.Entities()) {
+            if (ent.atom_index == atomIndex && ent.role == EntityRole::Target) {
+                byCalc[gc.Calculator()].push_back(ci);
+                break;
+            }
+        }
+    }
+
+    if (byCalc.empty()) {
+        gcTree_->addTopLevelItem(new QTreeWidgetItem(
+            {"No geometry choices reference this atom", ""}));
+        return;
+    }
+
+    for (const auto& [calcId, indices] : byCalc) {
+        // Count included vs excluded
+        int nIncluded = 0, nExcluded = 0, nTriggered = 0;
+        for (size_t ci : indices) {
+            const auto& gc = choices[ci];
+            for (const auto& ent : gc.Entities()) {
+                if (ent.atom_index != atomIndex) continue;
+                if (ent.outcome == EntityOutcome::Included) ++nIncluded;
+                else if (ent.outcome == EntityOutcome::Excluded) ++nExcluded;
+                else if (ent.outcome == EntityOutcome::Triggered) ++nTriggered;
+            }
+        }
+
+        QString summary = QString("%1 inc, %2 exc").arg(nIncluded).arg(nExcluded);
+        if (nTriggered > 0) summary += QString(", %1 trig").arg(nTriggered);
+
+        auto* calcItem = new QTreeWidgetItem(
+            {NameForCalculatorId(calcId), summary});
+
+        for (size_t ci : indices) {
+            const auto& gc = choices[ci];
+
+            // Find this atom's outcome
+            EntityOutcome atomOutcome = EntityOutcome::Included;
+            QString filterName;
+            for (const auto& ent : gc.Entities()) {
+                if (ent.atom_index == atomIndex) {
+                    atomOutcome = ent.outcome;
+                    if (!ent.filter_name.empty())
+                        filterName = QString::fromStdString(ent.filter_name);
+                    break;
+                }
+            }
+
+            QString label = QString::fromStdString(gc.Label());
+            QString detail = NameForOutcome(atomOutcome);
+            if (!filterName.isEmpty())
+                detail += " (" + filterName + ")";
+
+            auto* choiceItem = new QTreeWidgetItem({label, detail});
+
+            // Source entities (rings/bonds that generated this decision)
+            for (const auto& ent : gc.Entities()) {
+                if (ent.role != EntityRole::Source) continue;
+                if (ent.ring) {
+                    choiceItem->addChild(new QTreeWidgetItem(
+                        {"source ring", QString::fromStdString(ent.ring->TypeName())
+                         + " res " + QString::number(ent.ring->parent_residue_number)}));
+                } else if (ent.bond) {
+                    choiceItem->addChild(new QTreeWidgetItem(
+                        {"source bond", QString::fromStdString(
+                            NameForBondCategory(ent.bond->category))}));
+                }
+            }
+
+            // Named numbers
+            for (const auto& nn : gc.Numbers()) {
+                choiceItem->addChild(new QTreeWidgetItem(
+                    {QString::fromStdString(nn.name),
+                     QString::number(nn.value, 'f', 3)
+                     + (nn.unit.empty() ? "" : " " + QString::fromStdString(nn.unit))}));
+            }
+
+            // Sampler indicator
+            if (gc.HasSampler()) {
+                choiceItem->addChild(new QTreeWidgetItem(
+                    {"sampler", "available (field probe)"}));
+            }
+
+            calcItem->addChild(choiceItem);
+        }
+
+        calcItem->setExpanded(true);
+        gcTree_->addTopLevelItem(calcItem);
     }
 }

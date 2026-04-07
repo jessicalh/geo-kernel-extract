@@ -58,19 +58,11 @@ protected:
 private slots:
     void saveScreenshot();
     void onRenderModeChanged(int index);
-    void onOverlayModeChanged(int index);
-    void onGlyphStyleChanged(int index);
-    void onGlyphScaleChanged(int value);
-    void onOpacityChanged(int value);
-    void onCurrentScaleChanged(int value);
     void onShowRingsToggled(bool checked);
     void onShowPeptideBondsToggled(bool checked);
     void onShowBondOrderToggled(bool checked);
     void onShowButterflyToggled(bool checked);
-    void onPhysicsCheckChanged();
-    void onVizModeChanged(int index);
-    void onIsoThresholdChanged(double value);
-    void onGaussianRadiusChanged(double value);
+    void onCurrentScaleChanged(int value);
 
     // Async compute slots
     void onComputeProgress(int current, int total, QString phase);
@@ -89,13 +81,11 @@ private:
     void pickAtom(int displayX, int displayY);
     void populateAtomInfo(size_t atomIndex);
 
-    // Bond picking and inspection
-    void pickBond(int displayX, int displayY);
-    void populateBondInfo(size_t bondIndex);
+    // Bond tab — shows bonds for the currently picked atom
+    void populateAtomBonds(size_t atomIndex);
 
-    // Helpers: sum checked calculator contributions for one atom (by index)
-    double checkedCalcT0(size_t atomIndex) const;
-    nmr::SphericalTensor checkedCalcST(size_t atomIndex) const;
+    // GeometryChoice tab — shows calculator decisions for picked atom
+    void populateGeometryChoices(size_t atomIndex);
 
     // VTK rendering
     QVTKOpenGLNativeWidget* vtkWidget_;
@@ -133,10 +123,8 @@ private:
     // Slider debounce
     QTimer* sliderDebounce_ = nullptr;
 
-    // UI Controls
+    // UI Controls — sidebar
     QComboBox* renderModeCombo_;
-    QComboBox* overlayModeCombo_;
-    QComboBox* glyphStyleCombo_;
     QSlider* glyphScaleSlider_;
     QSlider* opacitySlider_;
     QSlider* currentScaleSlider_;
@@ -144,21 +132,19 @@ private:
     QCheckBox* showPeptideBondsCheck_;
     QCheckBox* showBondOrderCheck_;
     QCheckBox* showButterflyCheck_;
-
-    // Physics contribution checkboxes (8 calculators)
-    QCheckBox* physicsChecks_[8];  // BS, HM, MC, LD, CE, PQ, RSA, HB
-    QComboBox* vizModeCombo_;
-    QDoubleSpinBox* isoThreshold_;
-    QDoubleSpinBox* gaussianRadius_;
     QLabel* statusLabel_;
 
     // Atom info panel — shows full object model for picked atom
     QDockWidget* atomInfoDock_;
     QTreeWidget* atomInfoTree_;
 
-    // Bond info panel — shows full bond data including MOPAC order
+    // Bond tab — bonds for picked atom
     QDockWidget* bondInfoDock_;
     QTreeWidget* bondInfoTree_;
+
+    // GeometryChoice tab — calculator decisions for picked atom
+    QDockWidget* gcDock_;
+    QTreeWidget* gcTree_;
 
     // Bond order color overlay (tubes colored by Wiberg order)
     vtkSmartPointer<vtkActor> bondOrderActor_;

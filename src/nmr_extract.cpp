@@ -3,11 +3,13 @@
 //
 // Usage:
 //   nmr_extract --pdb FILE [--pH N] --output DIR
-//   nmr_extract --orca DIR --output DIR
-//   nmr_extract --mutant WT_DIR ALA_DIR --output DIR
+//   nmr_extract --orca --xyz FILE --prmtop FILE [--nmr FILE] --output DIR
+//   nmr_extract --mutant --wt-xyz FILE --wt-prmtop FILE [--wt-nmr FILE]
+//                        --ala-xyz FILE --ala-prmtop FILE [--ala-nmr FILE]
+//                        --output DIR
 //   nmr_extract --fleet POSES_DIR TPR_PATH --output DIR
 //
-// See spec/USE_CASES.md for the full description.
+// All file paths are fully qualified. No directory scanning.
 //
 
 #include "PdbFileReader.h"
@@ -31,27 +33,22 @@ static void PrintUsage(const char* prog) {
     fprintf(stderr,
         "Usage:\n"
         "  %s --pdb FILE [--pH N] --output DIR\n"
-        "  %s --orca DIR --output DIR\n"
-        "  %s --mutant WT_DIR ALA_DIR --output DIR\n"
+        "  %s --orca --xyz FILE --prmtop FILE [--nmr FILE] --output DIR\n"
+        "  %s --mutant --wt-xyz FILE --wt-prmtop FILE [--wt-nmr FILE]\n"
+        "              --ala-xyz FILE --ala-prmtop FILE [--ala-nmr FILE]\n"
+        "              --output DIR\n"
         "  %s --fleet POSES_DIR TPR_PATH --output DIR\n",
         prog, prog, prog, prog);
 }
 
 
-// Find ORCA run files in a directory by convention:
-//   *.pdb, *.xyz, *.prmtop, *_nmr.out
-static OrcaRunFiles FindOrcaFiles(const std::string& dir) {
-    OrcaRunFiles files;
-    for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string name = entry.path().filename().string();
-        std::string ext = entry.path().extension().string();
-        if (ext == ".pdb")    files.pdb_path = entry.path().string();
-        if (ext == ".xyz")    files.xyz_path = entry.path().string();
-        if (ext == ".prmtop") files.prmtop_path = entry.path().string();
-        if (name.find("_nmr.out") != std::string::npos)
-            files.nmr_out_path = entry.path().string();
+// Helper: parse a named argument from argv. Returns "" if not found.
+static std::string GetArg(int argc, char* argv[], const char* name) {
+    for (int i = 1; i < argc - 1; ++i) {
+        if (std::strcmp(argv[i], name) == 0)
+            return argv[i + 1];
     }
-    return files;
+    return "";
 }
 
 
@@ -92,14 +89,10 @@ static int RunPdb(const std::string& pdb_path, double pH,
 // Use case B: ORCA DFT → run → write
 // ============================================================================
 
-static int RunOrca(const std::string& orca_dir,
+static int RunOrca(const OrcaRunFiles& files,
                    const std::string& output_dir) {
-    auto files = FindOrcaFiles(orca_dir);
-    if (files.xyz_path.empty()) {
-        fprintf(stderr, "ERROR: no .xyz file in %s\n", orca_dir.c_str());
-        return 1;
-    }
-    fprintf(stderr, "Building from ORCA: %s\n", orca_dir.c_str());
+    fprintf(stderr, "Building from ORCA: xyz=%s prmtop=%s\n",
+            files.xyz_path.c_str(), files.prmtop_path.c_str());
 
     auto build = BuildFromOrca(files);
     if (!build) {
@@ -132,16 +125,11 @@ static int RunOrca(const std::string& orca_dir,
 // Use case C: WT + ALA mutant pair → run both → delta → write
 // ============================================================================
 
-static int RunMutant(const std::string& wt_dir, const std::string& ala_dir,
+static int RunMutant(const OrcaRunFiles& wt_files, const OrcaRunFiles& ala_files,
                      const std::string& output_dir) {
-    auto wt_files = FindOrcaFiles(wt_dir);
-    auto ala_files = FindOrcaFiles(ala_dir);
-    if (wt_files.xyz_path.empty() || ala_files.xyz_path.empty()) {
-        fprintf(stderr, "ERROR: missing .xyz in WT or ALA directory\n");
-        return 1;
-    }
-    fprintf(stderr, "Building mutant pair: WT=%s ALA=%s\n",
-            wt_dir.c_str(), ala_dir.c_str());
+    fprintf(stderr, "Building mutant pair:\n  WT:  xyz=%s prmtop=%s\n  ALA: xyz=%s prmtop=%s\n",
+            wt_files.xyz_path.c_str(), wt_files.prmtop_path.c_str(),
+            ala_files.xyz_path.c_str(), ala_files.prmtop_path.c_str());
 
     auto wt_build = BuildFromOrca(wt_files);
     auto ala_build = BuildFromOrca(ala_files);
@@ -232,18 +220,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::string mode = argv[1];
-    std::string output_dir;
-    double pH = 7.0;
-
-    // Parse --output from end of args
-    for (int i = 1; i < argc - 1; ++i) {
-        if (std::strcmp(argv[i], "--output") == 0) {
-            output_dir = argv[i + 1];
-        }
-        if (std::strcmp(argv[i], "--pH") == 0) {
-            pH = std::atof(argv[i + 1]);
-        }
-    }
+    std::string output_dir = GetArg(argc, argv, "--output");
 
     if (output_dir.empty()) {
         fprintf(stderr, "ERROR: --output DIR required\n");
@@ -252,14 +229,41 @@ int main(int argc, char* argv[]) {
     }
 
     if (mode == "--pdb") {
+        std::string pH_str = GetArg(argc, argv, "--pH");
+        double pH = pH_str.empty() ? 7.0 : std::atof(pH_str.c_str());
         return RunPdb(argv[2], pH, output_dir);
     }
+
     if (mode == "--orca") {
-        return RunOrca(argv[2], output_dir);
+        OrcaRunFiles files;
+        files.xyz_path = GetArg(argc, argv, "--xyz");
+        files.prmtop_path = GetArg(argc, argv, "--prmtop");
+        files.nmr_out_path = GetArg(argc, argv, "--nmr");
+        if (files.xyz_path.empty()) {
+            fprintf(stderr, "ERROR: --xyz FILE required for --orca\n");
+            return 1;
+        }
+        return RunOrca(files, output_dir);
     }
-    if (mode == "--mutant" && argc >= 5) {
-        return RunMutant(argv[2], argv[3], output_dir);
+
+    if (mode == "--mutant") {
+        OrcaRunFiles wt_files;
+        wt_files.xyz_path = GetArg(argc, argv, "--wt-xyz");
+        wt_files.prmtop_path = GetArg(argc, argv, "--wt-prmtop");
+        wt_files.nmr_out_path = GetArg(argc, argv, "--wt-nmr");
+
+        OrcaRunFiles ala_files;
+        ala_files.xyz_path = GetArg(argc, argv, "--ala-xyz");
+        ala_files.prmtop_path = GetArg(argc, argv, "--ala-prmtop");
+        ala_files.nmr_out_path = GetArg(argc, argv, "--ala-nmr");
+
+        if (wt_files.xyz_path.empty() || ala_files.xyz_path.empty()) {
+            fprintf(stderr, "ERROR: --wt-xyz and --ala-xyz required for --mutant\n");
+            return 1;
+        }
+        return RunMutant(wt_files, ala_files, output_dir);
     }
+
     if (mode == "--fleet" && argc >= 5) {
         return RunFleet(argv[2], argv[3], output_dir);
     }

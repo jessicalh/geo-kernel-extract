@@ -128,6 +128,9 @@ public:
 
     std::vector<std::type_index> Dependencies() const override;
 
+    int WriteFeatures(const ProteinConformation& conf,
+                      const std::string& output_dir) const override;
+
     static std::unique_ptr<MutationDeltaResult> Compute(
         ProteinConformation& wt_conf,
         const ProteinConformation& mut_conf);

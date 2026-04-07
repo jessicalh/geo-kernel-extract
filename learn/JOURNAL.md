@@ -93,10 +93,10 @@ ring_proximity, delta per-calculator). Python just loads and trains.
 Clean boundary: C++ owns the physics object model, Python owns learning.
 This matters for any academic use of this system.
 
-### Round 3 (planned): Calibration with geometry areas
+### Round 3 (planned): GeometryChoice documentation
 
-MOPAC-informed geometry cutoffs, CalculationArea objects, calibrated
-filter parameters. Round 2 R^2 is the "did we break anything" baseline.
+GeometryChoice objects on each calculator (see spec/GEOMETRY_CHOICE_BRIEF.md).
+Round 2 R^2 is the "did we break anything" baseline.
 
 ---
 
