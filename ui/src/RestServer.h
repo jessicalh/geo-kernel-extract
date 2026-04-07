@@ -54,6 +54,7 @@ private:
     QJsonObject cmdLookAtAtom(const QJsonObject& cmd);
     QJsonObject cmdListRings(const QJsonObject& cmd);
     QJsonObject cmdGetLog(const QJsonObject& cmd);
+    QJsonObject cmdExportFeatures(const QJsonObject& cmd);
 
     void sendResponse(QTcpSocket* socket, const QJsonObject& response);
 

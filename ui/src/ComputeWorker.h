@@ -3,9 +3,10 @@
 // ComputeWorker: bridge between the NMR field library and the Qt/VTK viewer.
 //
 // Runs all physics calculations on a background QThread:
-//   1. Build protein via BuildFromPdb (protonates, assigns charges)
-//   2. Run OperationRunner::Run (DSSP, geometry, all 8 calculators)
-//   3. Signal completion — MainWindow reads directly from library objects
+//   1. Build protein via the builder matching JobSpec.mode
+//   2. Run OperationRunner (DSSP, geometry, all calculators)
+//   3. Compute viewer-specific grids (field grids, butterfly fields)
+//   4. Signal completion — MainWindow reads directly from library objects
 //
 // After Run completes, the Protein and its ProteinConformation are fully
 // const. shared_ptr<Protein> crosses the thread boundary safely.
@@ -19,25 +20,10 @@
 #include <memory>
 #include <string>
 
+#include "JobSpec.h"
 #include "Types.h"
 
 namespace nmr { class Protein; }
-
-// ---- Input: what to compute ----
-
-struct ViewerLoadRequest {
-    std::string pdbPath;
-
-    // Comparison mode: WT vs ALA ORCA outputs
-    bool comparisonMode = false;
-    std::string wtOrcaOut;
-    std::string wtXyz;
-    std::string alaOrcaOut;
-    std::string alaXyz;
-
-    // Butterfly field computation (expensive — only when requested)
-    bool computeButterfly = false;
-};
 
 // ---- Viewer-specific grid computations (NOT library data copies) ----
 // These sample the BiotSavartResult at arbitrary 3D points for isosurfaces
@@ -74,7 +60,7 @@ struct ComputeResult {
     std::string proteinName;
 };
 
-Q_DECLARE_METATYPE(ViewerLoadRequest)
+Q_DECLARE_METATYPE(nmr::JobSpec)
 Q_DECLARE_METATYPE(ComputeResult)
 
 class ComputeWorker : public QObject {
@@ -83,7 +69,7 @@ public:
     explicit ComputeWorker(QObject* parent = nullptr);
 
 public slots:
-    void computeAll(ViewerLoadRequest request);
+    void computeAll(nmr::JobSpec spec);
     void cancel();
 
 signals:

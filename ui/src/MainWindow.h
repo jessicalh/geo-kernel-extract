@@ -50,12 +50,11 @@ public:
     // Called from aboutToQuit handler — stops timers, workers, VTK.
     void shutdown();
 
-    // Load a PDB directly (for command-line usage)
-    void loadPdb(const std::string& pdbPath);
-    void loadProteinDir(const std::string& dirPath);
+    // Load from a validated JobSpec (all modes: pdb, orca, mutant, fleet)
+    void loadFromJobSpec(const nmr::JobSpec& spec);
 
 signals:
-    void computeRequested(ViewerLoadRequest request);
+    void computeRequested(nmr::JobSpec spec);
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -77,7 +76,8 @@ private:
     QString initialDir_;
     void setupUI();
     void setupMenuBar();
-    void loadMolecule(const std::string& pdbPath);
+    void exportFeatures();
+    void loadMolecule();
     void startCompute();
     void cancelCompute();
     void updateOverlay();
@@ -155,6 +155,9 @@ private:
     QDockWidget* gcDock_;
     QTreeWidget* gcTree_;
 
+    // Menu actions
+    QAction* exportFeaturesAct_ = nullptr;
+
     // Bond order color overlay (tubes colored by Wiberg order)
     vtkSmartPointer<vtkActor> bondOrderActor_;
 
@@ -164,6 +167,6 @@ private:
     QUdpSocket* logSocket_;
     void onLogDatagramReady();
 
-    // Pending load state (set by loadPdb/loadProteinDir, consumed by startCompute)
-    ViewerLoadRequest pendingRequest_;
+    // Pending load state (set by loadFromJobSpec, consumed by startCompute)
+    nmr::JobSpec pendingSpec_;
 };

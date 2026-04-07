@@ -161,6 +161,7 @@ echo '{"cmd":"load_pdb","path":"/path/to/file.pdb"}' | nc -q1 localhost 9147
 echo '{"cmd":"load_protein_dir","path":"/path/to/dir"}' | nc -q1 localhost 9147
 echo '{"cmd":"set_overlay","mode":"classical"}' | nc -q1 localhost 9147
 echo '{"cmd":"set_calculators","bs":true,"hm":false}' | nc -q1 localhost 9147
+echo '{"cmd":"export_features","path":"/tmp/features"}' | nc -q1 localhost 9147
 echo '{"cmd":"orbit","azimuth":30}' | nc -q1 localhost 9147
 ```
 
@@ -169,14 +170,23 @@ viewer is doing — ask it.
 
 ---
 
-## Current state (2026-04-05, session 4)
+## Current state (2026-04-08, session 7)
+
+**Stable.** All five JobSpec modes work end-to-end: PDB,
+protonated PDB, ORCA, mutant, fleet. Command-line parsing is
+shared with nmr_extract via JobSpec (src/JobSpec.h).
+
+**Feature export.** File > Export Features picks a directory and
+writes all NPY arrays via ConformationResult::WriteAllFeatures.
+Fleet mode creates frame_N/ subdirectories. Also available via
+REST: `{"cmd":"export_features","path":"/tmp/out"}`.
 
 **ViewerResults adapter removed.** ComputeWorker holds
 shared_ptr<Protein>. MainWindow reads library objects directly.
 Overlays take (Protein&, ProteinConformation&). No intermediate
-structs. Net -167 lines.
+structs.
 
-**Atom inspector added.** Double-click an atom → QTreeWidget dock
+**Atom inspector.** Double-click an atom → QTreeWidget dock
 shows full object model: identity, charges, all 8 calculator
 SphericalTensors, ring neighbours with G tensors and cylindrical
 coords, bond neighbours with McConnell, vector fields, DSSP, ORCA
@@ -185,15 +195,6 @@ DFT. Yellow selection sphere highlights the picked atom.
 **File menu stripped.** Load from command line only. Crash on
 reload was happening because shared_ptr cleanup races with VTK
 actor lifetime. Removing the reload path eliminates it.
-
-## Rename: "Protein Tensor Viewer"
-
-The window title says "NMR Shielding Tensor Viewer" but the viewer
-mostly shows properties of geometric tensors — McConnell dipolar
-kernels, ring current G tensors, Coulomb EFG, etc. It doesn't get
-as far as NMR spectra. Rename to "Protein Tensor Viewer" in
-MainWindow constructor (setWindowTitle) and main_viewer.cpp
-(setApplicationName).
 
 ## Library gap: enum→string for AtomRole, BondCategory
 
@@ -204,10 +205,12 @@ AtomRole or BondCategory enums. The viewer has local copies
 to Types.h as NameForAtomRole() and NameForBondCategory() in
 the same pattern as the existing enum→string functions.
 
-## Next steps (in order)
+## Next steps
 
-1. **Fix crash on reload** — either fix shared_ptr/VTK cleanup
-   or keep command-line-only loading
-2. **Test loadProteinDir** with consolidated/ ORCA data
-3. **Verify overlay rendering** — toggle modes via REST, screenshot
-4. **Fun graphics** — tensor glyphs, isosurfaces, butterfly fields
+See UI_ROADMAP.md for the forward-looking visualization plan.
+Remaining known issues:
+
+1. **Crash on reload** — command-line-only loading avoids it
+2. **Tensor glyph display broken** — eigenvector rendering needs fix
+3. **Sidebar reorganization** — replace overlay modes with
+   per-calculator toggles (see roadmap)

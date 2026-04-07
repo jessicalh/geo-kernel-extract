@@ -1,0 +1,50 @@
+# Doxygen configuration for Protein Tensor Viewer (Qt6/VTK)
+# Run: cd ui && doxygen
+
+PROJECT_NAME           = "Protein Tensor Viewer"
+PROJECT_BRIEF          = "Qt6/VTK viewer for NMR shielding tensor library"
+OUTPUT_DIRECTORY       = doc/generated/doxygen
+INPUT                  = src
+FILE_PATTERNS          = *.h *.cpp
+RECURSIVE              = NO
+
+# Extract everything, including private members (useful for understanding
+# MainWindow's overlay/data members and signal/slot wiring)
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+# Class diagrams — the main value for a Qt app
+HAVE_DOT               = YES
+CLASS_DIAGRAMS         = YES
+COLLABORATION_GRAPH    = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
+# Qt MOC awareness
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = Q_OBJECT= \
+                         Q_DECLARE_METATYPE(x)= \
+                         signals=public \
+                         slots= \
+                         emit=
+
+# Output formats
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = .
+
+# Keep it focused — don't chase into library or VTK headers
+EXCLUDE_PATTERNS       = */build*/* */extern/*
+SEARCH_INCLUDES        = NO
+
+# Source browsing
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = NO

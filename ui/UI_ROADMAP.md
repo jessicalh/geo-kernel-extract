@@ -1,6 +1,12 @@
 # UI Roadmap: Protein Tensor Viewer
 
-**Written:** 2026-04-06, session 5 (MOPAC UI integration).
+**Written:** 2026-04-06, session 5. **Updated:** 2026-04-08, session 7.
+
+**Status:** The viewer is stable. All five use cases (PDB, protonated
+PDB, ORCA, mutant, fleet) load and compute via JobSpec. Feature export
+works from the File menu and REST API. Nothing below is needed for
+stability — this is a forward-looking design document for visualization
+improvements.
 
 ## What the viewer IS
 
@@ -18,9 +24,11 @@ recomputed or re-derived in the viewer.
 - A second source of truth (if the viewer shows a bond midpoint,
   it reads `conf.bond_midpoints[i]`, it does not compute 0.5*(a+b))
 
-## Current state (session 5)
+## Current state (session 7, 2026-04-08)
 
 **Working:**
+- All five JobSpec modes: `--pdb`, `--protonated-pdb`, `--orca`,
+  `--mutant`, `--fleet` — shared parser with nmr_extract CLI
 - Ball-and-stick rendering with double bonds from topology
 - Atom inspector: double-click → full object model including all 10
   calculator contributions, MOPAC electronic data (charges, orbital
@@ -29,10 +37,15 @@ recomputed or re-derived in the viewer.
   (unweighted and bond-order-weighted)
 - Bond inspector: shift+double-click → bond identity, MOPAC Wiberg
   order, endpoint charges, McConnell contribution
+- GeometryChoice inspector: per-atom calculator decision display
 - Bond order color overlay: tubes colored by Wiberg order on a
   blue→red colormap (single→double)
+- Biot-Savart butterfly field visualization (3D grid around each ring)
+- T0 shielding field isosurfaces (shielded/deshielded toggles)
+- Feature export: File menu and REST `export_features` command
+  (44 NPY arrays per conformation, fleet gets per-frame subdirs)
 - Operations log panel: UDP listener streaming library log in real time
-- REST server with port fallback (tries 9147-9156)
+- REST server with port fallback (tries 9147–9156), 20+ commands
 - REST responds immediately during computation (no blocking spin loop)
 
 **Picking:**
@@ -46,7 +59,6 @@ recomputed or re-derived in the viewer.
   predate the mature kernel catalogue and MOPAC integration. They
   work but are not the right abstraction.
 - Eigenvector/tensor glyph display is broken
-- Isosurface overlay needs rethinking
 - Crash on reload still present (command-line only loading)
 
 ## Vision: calculator-centric visualization
@@ -160,10 +172,10 @@ it is a prerequisite for the per-calculator tensor visualizations.
 
 ## Implementation order
 
-1. Fix picking (this session — screen-space projection)
+1. ~~Fix picking~~ — done (screen-space projection)
 2. Fix tensor glyph display
-3. BS/HM butterfly as first-class isosurface
+3. ~~BS/HM butterfly as first-class isosurface~~ — done (butterfly + T0 field grids)
 4. McConnell tensor glyphs with per-category coloring
 5. E-field arrows for Coulomb and MOPAC Coulomb
 6. Sidebar reorganization (calculators, not prediction modes)
-7. GeometryChoice display (when they land in the library)
+7. ~~GeometryChoice display~~ — done (inspector tab, per-atom)

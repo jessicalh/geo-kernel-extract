@@ -76,12 +76,23 @@ See PATTERNS.md "Numerical Stability" section.
 - **DIRECTORY_SET.md** — directory structure (historical)
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
+### ui/
+- **CLAUDE.md** — UI-specific rules, library API quick-reference,
+  current state, what you own vs read-only
+- **UI_ROADMAP.md** — forward-looking per-calculator visualization plan
+  (stable — nothing here is needed for correctness)
+- **GEOMETRY_CHOICE_UI_NOTES_20260407.md** — library-to-UI handoff
+  for GeometryChoice display (what each calculator records, UI ideas)
+- **src/REST_INTERFACE_SPEC.md** — all 20+ REST commands with parameters
+- **doc/generated/doxygen/** — viewer class diagrams, collaboration graphs
+
 ### Historical (learn/bones/)
 Session notes, early specs, analysis passes, resolved feedback.
 Reference only.
 
 ### Source
 - **src/** — 54 headers, ~14.5K lines
+- **ui/src/** — 14 viewer source files (Qt6/VTK)
 - **tests/** — GTest suite (287 tests, 40 test files, ~2.5 hours with MOPAC)
 - **extern/** — header-only libraries (nanoflann, sphericart)
 

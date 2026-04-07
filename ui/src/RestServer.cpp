@@ -9,7 +9,11 @@
 #include "Atom.h"
 #include "Residue.h"
 #include "Types.h"
+#include "ConformationResult.h"
+#include "JobSpec.h"
 #include "FieldGridOverlay.h"
+
+#include <filesystem>
 
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -126,6 +130,7 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
     if (action == "look_at_atom")     return cmdLookAtAtom(cmd);
     if (action == "list_rings")       return cmdListRings(cmd);
     if (action == "get_log")          return cmdGetLog(cmd);
+    if (action == "export_features")  return cmdExportFeatures(cmd);
 
     QJsonObject resp;
     resp["ok"] = false;
@@ -203,17 +208,26 @@ QJsonObject RestServer::cmdLoadPdb(const QJsonObject& cmd) {
     if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
-    mainWindow_->loadPdb(path.toStdString());
+    nmr::JobSpec spec;
+    spec.mode = nmr::JobMode::Pdb;
+    spec.pdb_path = path.toStdString();
+    mainWindow_->loadFromJobSpec(spec);
     return QJsonObject{{"ok", true}, {"result", QJsonObject{{"status", "loading"}}}};
 }
 
 QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
+    // Deprecated: use --orca --root or --mutant --wt/--ala instead.
+    // For REST backwards compatibility, treat as a PDB load of the first .pdb found.
     QString path = cmd["path"].toString();
     if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
-    mainWindow_->loadProteinDir(path.toStdString());
-    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"status", "loading"}}}};
+    nmr::JobSpec spec;
+    spec.mode = nmr::JobMode::Pdb;
+    spec.pdb_path = path.toStdString();
+    mainWindow_->loadFromJobSpec(spec);
+    return QJsonObject{{"ok", true}, {"result", QJsonObject{{"status", "loading"},
+        {"note", "loadProteinDir deprecated — use --orca --root or --mutant from CLI"}}}};
 }
 
 QJsonObject RestServer::cmdSetOverlay(const QJsonObject& cmd) {
@@ -552,5 +566,41 @@ QJsonObject RestServer::cmdGetLog(const QJsonObject& cmd) {
     result["last"] = last;
     result["returned"] = lines.size();
     result["lines"] = lines;
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+QJsonObject RestServer::cmdExportFeatures(const QJsonObject& cmd) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    QString path = cmd["path"].toString();
+    if (path.isEmpty())
+        return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
+
+    std::string outDir = path.toStdString();
+    int totalArrays = 0;
+
+    if (mainWindow_->pendingSpec_.mode == nmr::JobMode::Fleet) {
+        for (size_t i = 0; i < protein->ConformationCount(); ++i) {
+            auto& conf = protein->ConformationAt(i);
+            std::string frameDir = outDir + "/frame_" +
+                std::to_string(i + 1);
+            std::filesystem::create_directories(frameDir);
+            totalArrays += nmr::ConformationResult::WriteAllFeatures(
+                conf, frameDir);
+        }
+    } else {
+        std::filesystem::create_directories(outDir);
+        auto& conf = protein->Conformation();
+        totalArrays = nmr::ConformationResult::WriteAllFeatures(
+            conf, outDir);
+    }
+
+    QJsonObject result;
+    result["path"] = path;
+    result["arrays"] = totalArrays;
+    if (mainWindow_->pendingSpec_.mode == nmr::JobMode::Fleet)
+        result["frames"] = (int)protein->ConformationCount();
     return QJsonObject{{"ok", true}, {"result", result}};
 }

@@ -23,6 +23,9 @@
 #include "MopacCoulombResult.h"
 #include "MopacMcConnellResult.h"
 #include "GeometryChoice.h"
+#include "ConformationResult.h"
+
+#include <filesystem>
 
 #include <QMenuBar>
 #include <QToolBar>
@@ -179,9 +182,43 @@ void MainWindow::setupMenuBar() {
     auto* screenshotAct = fileMenu->addAction("&Save Screenshot...");
     connect(screenshotAct, &QAction::triggered, this, &MainWindow::saveScreenshot);
 
+    exportFeaturesAct_ = fileMenu->addAction("&Export Features...");
+    exportFeaturesAct_->setEnabled(false);
+    connect(exportFeaturesAct_, &QAction::triggered, this, &MainWindow::exportFeatures);
+
     fileMenu->addSeparator();
     auto* quitAct = fileMenu->addAction("&Quit");
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
+}
+
+void MainWindow::exportFeatures() {
+    if (!protein_) return;
+
+    QString dir = QFileDialog::getExistingDirectory(this, "Export Features",
+        QDir::currentPath());
+    if (dir.isEmpty()) return;
+
+    std::string outDir = dir.toStdString();
+    int totalArrays = 0;
+
+    if (pendingSpec_.mode == nmr::JobMode::Fleet) {
+        for (size_t i = 0; i < protein_->ConformationCount(); ++i) {
+            auto& conf = protein_->ConformationAt(i);
+            std::string frameDir = outDir + "/frame_" +
+                std::to_string(i + 1);
+            std::filesystem::create_directories(frameDir);
+            totalArrays += nmr::ConformationResult::WriteAllFeatures(
+                conf, frameDir);
+        }
+    } else {
+        std::filesystem::create_directories(outDir);
+        auto& conf = protein_->Conformation();
+        totalArrays = nmr::ConformationResult::WriteAllFeatures(
+            conf, outDir);
+    }
+
+    statusLabel_->setText(QString("Exported %1 arrays to %2")
+        .arg(totalArrays).arg(dir));
 }
 
 void MainWindow::setupUI() {
@@ -425,54 +462,33 @@ void MainWindow::setupUI() {
     logDock_->raise();
 }
 
-void MainWindow::loadPdb(const std::string& pdbPath) {
-    pendingRequest_ = {};
-    pendingRequest_.pdbPath = pdbPath;
-    pendingRequest_.computeButterfly = true;
-    loadMolecule(pdbPath);
+void MainWindow::loadFromJobSpec(const nmr::JobSpec& spec) {
+    pendingSpec_ = spec;
+
+    // Derive a display name from the spec
+    switch (spec.mode) {
+    case nmr::JobMode::Pdb:
+    case nmr::JobMode::ProtonatedPdb:
+        currentProteinId_ = QFileInfo(QString::fromStdString(spec.pdb_path)).baseName().toStdString();
+        break;
+    case nmr::JobMode::Orca:
+        currentProteinId_ = QFileInfo(QString::fromStdString(spec.orca_files.xyz_path)).baseName().toStdString();
+        break;
+    case nmr::JobMode::Mutant:
+        currentProteinId_ = QFileInfo(QString::fromStdString(spec.wt_files.xyz_path)).baseName().toStdString();
+        break;
+    case nmr::JobMode::Fleet:
+        currentProteinId_ = QFileInfo(QString::fromStdString(spec.fleet_paths.sampled_poses_dir)).fileName().toStdString();
+        break;
+    case nmr::JobMode::None:
+        return;
+    }
+
+    loadMolecule();
 }
 
-void MainWindow::loadProteinDir(const std::string& dirPath) {
-    QDir dir(QString::fromStdString(dirPath));
-    if (!dir.exists()) return;
-
-    std::string wt_pdb, ala_pdb, wt_xyz, ala_xyz, wt_out, ala_out;
-
-    if (QFileInfo::exists(dir.filePath("protonated.pdb")))
-        wt_pdb = dir.filePath("protonated.pdb").toStdString();
-
-    for (const QFileInfo& fi : dir.entryInfoList(QDir::Files)) {
-        QString name = fi.fileName();
-        // Match _WT.pdb or _WT_amber.pdb (but not _water.pdb, _nonprot.pdb)
-        bool isPdb = name.endsWith(".pdb");
-        bool isWater = name.contains("_water");
-        bool isNonprot = name.contains("_nonprot");
-        if (isPdb && !isWater && !isNonprot) {
-            if (name.contains("_WT") && !name.contains("_ALA")) wt_pdb = fi.absoluteFilePath().toStdString();
-            else if (name.contains("_ALA")) ala_pdb = fi.absoluteFilePath().toStdString();
-        }
-        else if (name.contains("_WT") && name.endsWith(".xyz")) wt_xyz = fi.absoluteFilePath().toStdString();
-        else if (name.contains("_ALA") && name.endsWith(".xyz")) ala_xyz = fi.absoluteFilePath().toStdString();
-        else if (name.contains("_WT_") && name.contains("_nmr.out")) wt_out = fi.absoluteFilePath().toStdString();
-        else if (name.contains("_ALA_") && name.contains("_nmr.out")) ala_out = fi.absoluteFilePath().toStdString();
-    }
-    if (wt_pdb.empty()) return;
-
-    pendingRequest_ = {};
-    pendingRequest_.pdbPath = wt_pdb;
-    pendingRequest_.computeButterfly = true;
-    if (!ala_pdb.empty()) {
-        pendingRequest_.comparisonMode = true;
-        pendingRequest_.wtXyz = wt_xyz;
-        pendingRequest_.alaXyz = ala_xyz;
-        pendingRequest_.wtOrcaOut = wt_out;
-        pendingRequest_.alaOrcaOut = ala_out;
-    }
-    loadMolecule(wt_pdb);
-}
-
-void MainWindow::loadMolecule(const std::string& pdbPath) {
-    udp_log("[lifecycle] loadMolecule entered: %s\n", pdbPath.c_str());
+void MainWindow::loadMolecule() {
+    udp_log("[lifecycle] loadMolecule entered: %s\n", currentProteinId_.c_str());
     QElapsedTimer timer;
     timer.start();
 
@@ -497,14 +513,6 @@ void MainWindow::loadMolecule(const std::string& pdbPath) {
     fieldOverlay_ = new FieldOverlay(renderer_);
     isosurfaceOverlay_ = new IsosurfaceOverlay(renderer_);
     isosurfaceOverlayPass_ = new IsosurfaceOverlay(renderer_);
-
-    // Protein ID from filename
-    std::string filename = QFileInfo(QString::fromStdString(pdbPath)).baseName().toStdString();
-    auto pos = filename.find("_WT");
-    if (pos != std::string::npos)
-        currentProteinId_ = filename.substr(0, pos);
-    else
-        currentProteinId_ = filename;
 
     udp_log("[diag] VTK setup: %lld ms\n", (long long)timer.elapsed());
     timer.restart();
@@ -541,7 +549,7 @@ void MainWindow::startCompute() {
     connect(progressDialog_, &QProgressDialog::canceled, this, &MainWindow::cancelCompute);
 
     workerThread_->start();
-    emit computeRequested(pendingRequest_);
+    emit computeRequested(pendingSpec_);
 }
 
 void MainWindow::cancelCompute() {
@@ -600,12 +608,13 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     if (!protein_) {
         statusLabel_->setText("Load failed");
         QMessageBox::critical(this, "Load Failed",
-            QString("Failed to load protein from:\n%1\n\n"
-                    "Check that the file exists and is a valid PDB.")
-                .arg(QString::fromStdString(pendingRequest_.pdbPath)));
+            QString("Failed to load protein.\n\n"
+                    "Check the command-line arguments and file paths."));
         QApplication::exit(EXIT_FAILURE);
         return;
     }
+
+    exportFeaturesAct_->setEnabled(true);
 
     const auto& protein = *protein_;
     const auto& conf = protein.Conformation();

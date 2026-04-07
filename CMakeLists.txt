@@ -152,6 +152,7 @@ add_library(nmr_shielding
     src/GeometryChoice.cpp
     src/ReduceProtonation.cpp
     src/CalculatorConfig.cpp
+    src/JobSpec.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -270,6 +271,24 @@ include(GoogleTest)
 gtest_add_tests(TARGET nmr_tests)
 
 # ============================================================================
+# JobSpec tests — separate exe (~10 min, not the 2.5-hour full suite)
+# ============================================================================
+
+add_executable(job_spec_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_job_spec.cpp
+)
+target_compile_definitions(job_spec_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(job_spec_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET job_spec_tests)
+
+# ============================================================================
 # Example driver
 # ============================================================================
 
@@ -308,6 +327,9 @@ if(Qt6_FOUND AND VTK_FOUND)
     )
     target_include_directories(nmr-viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/ui/src
+    )
+    target_compile_definitions(nmr-viewer PRIVATE
+        NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
     )
     target_link_libraries(nmr-viewer PRIVATE
         nmr_shielding
