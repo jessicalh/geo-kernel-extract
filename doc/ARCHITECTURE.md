@@ -32,6 +32,11 @@ fail, which directions the residual points, and what physics is
 missing. The calibrated parameters and the T2 residual map across
 hundreds of proteins are the thesis results.
 
+The full tensor output (T0+T1+T2 per calculator per atom) is exported
+as NPY arrays. These serve both the calibration pipeline and an
+upstream equivariant prediction model. T2 completeness is load-bearing
+for both consumers. Do not reduce calculator output to scalars.
+
 ---
 
 ## 1. Protein Model

@@ -383,8 +383,10 @@ pattern that reveals where and why the classical model breaks down.
 If you find yourself reaching for a scalar summary of a calculator's
 output, stop. The scalar is T0. You are discarding T2. The five T2
 components per calculator per atom are the features the calibration
-pipeline tunes against DFT. Without them, the system is a worse
-version of existing chemical shift predictors.
+pipeline tunes against DFT AND the tensor inputs that the upstream
+equivariant prediction model consumes. T2 completeness is load-bearing
+for both. Without it, the system is a worse version of existing
+chemical shift predictors.
 
 ### Per-calculator T2 comparison
 
