@@ -1,13 +1,9 @@
-# Patterns: Implementation Guide for All Agents
-
-This document is given to every implementation agent. It describes how
-to write code in this system. Follow it.
+# Patterns: What Holds This System Together
 
 This is a physics model, not a software system. If the code reads like
 infrastructure, it is wrong. If it reads like equations with data flow,
-it is right. You are writing a model that a physicist would recognise,
-not an enterprise application. Maximise physics depth. Keep the code
-simple, readable, and traceable.
+it is right. Maximise physics depth. Keep the code simple, readable,
+and traceable.
 
 You as an AI read code and act upon the name. Like ancient magic the
 name is the thing. Humans have similar wiring. If the name of a model
@@ -25,11 +21,15 @@ only means something if you already know what it means.
 This is a one-way analysis system. It loads a protein, creates typed
 conformations, and performs successive calculations on them. Each
 calculation is a ConformationResult that attaches to a conformation
-and writes to typed fields on ConformationAtom. A trained e3nn model
-(the ParameterCorrectionResult) provides corrected parameters to the
-classical calculators. The L=2 residual after all calculators shows
-where classical angular physics breaks down. Nothing flows backward.
-Everything accumulates forward.
+and writes to typed fields on ConformationAtom. Classical calculators
+produce geometric kernels — full rank-2 tensors decomposed into
+irreducible representations: T0 (isotropic, 1 component), T1
+(antisymmetric, 3 components), T2 (symmetric traceless, 5 components).
+The T2 angular structure is the thesis's primary result. It shows
+where and in which direction each classical model fails to match DFT.
+A calibration pipeline (~80 parameters tuned against DFT WT-ALA
+deltas) provides the connection between geometric kernels and quantum
+chemistry. Nothing flows backward. Everything accumulates forward.
 
 ---
 
@@ -101,12 +101,12 @@ conf.AttachResult(std::move(bs));
 ### 6. Shielding contribution contract
 
 Every classical calculator stores BOTH geometric output (natural units,
-for features and reuse) AND shielding contribution (ppm SphericalTensor,
-for residual tracking). At the end of Attach(), if the
-ParameterCorrectionResult is present, the calculator calls
-SubtractCalculatorContribution with its shielding output. The calculator
-works correctly without the correction model — the residual update is
-a diagnostic, not a dependency.
+for features and reuse) AND a shielding_contribution SphericalTensor
+(ppm, for residual tracking). When ParameterCorrectionResult is
+implemented, it will use these to subtract each calculator's
+contribution from the residual. The calculator works correctly without
+the correction model — the shielding contribution is stored, ready
+for future residual tracking.
 
 ### 7. Fields typed by functional analysis
 
@@ -174,14 +174,14 @@ atom.total_G_spherical = SphericalTensor::Decompose(G);
 
 ### 12. Ring type virtual interface
 
-Calculator code is ring-type-agnostic. Use `ring.intensity()`, not a
+Calculator code is ring-type-agnostic. Use `ring.Intensity()`, not a
 switch statement. When the ParameterCorrectionResult provides a
 corrected intensity, it is indexed by `ring.TypeIndexAsInt()`. The
 calculator does not need to know which ring type it is processing.
 
 ```cpp
-double I = ring.intensity();         // -12.0 for PHE, -5.16 for HIS
-double d = ring.jb_lobe_offset();    // 0.64 for PHE, 0.50 for HIS
+double I = ring.Intensity();         // -12.0 for PHE, -5.16 for HIS
+double d = ring.JBLobeOffset();    // 0.64 for PHE, 0.50 for HIS
 ```
 
 ---
@@ -255,7 +255,7 @@ data during PDB loading. They ARE the typed boundary.
 An agent that calls `cif::compound_factory` inside a calculator or
 feature extractor is diving back through the string boundary. That
 code will be rejected. If you need to know whether an atom is aromatic,
-call `ring.nitrogen_count()` or check `identity.role`. If you need to
+call `ring.NitrogenCount()` or check `identity.role`. If you need to
 know what protonation variant a HIS is, read the ring type class. The
 typed objects already have the answer.
 
@@ -294,7 +294,7 @@ that does not exist here.
 
 The Result<T>() mechanism is the ONE template pattern. Everything else
 is direct typed access: `atom.total_B_field` is a Vec3 member.
-`ring.intensity()` is a virtual method. No tag dispatch. No policy
+`ring.Intensity()` is a virtual method. No tag dispatch. No policy
 templates. No CRTP. No SFINAE. If you are writing `template<` anywhere
 outside ProteinConformation.h, stop and use a plain function.
 
@@ -323,7 +323,10 @@ Do not create exception classes. Do not inherit from std::exception.
 Do not use std::expected or std::error_code. Return a status. Check it.
 If something fails, say what failed and what the values were. Simple
 control flow. The system is one-way and processes one protein at a time.
-There is nothing to unwind.
+There is nothing to unwind. Four catch blocks exist at external library
+boundaries (cif++ parsing, DSSP, stoi, UDP socket) — these are
+acceptable at the boundary. Do not add catch blocks in calculator,
+result, or pipeline code.
 
 ### The utility namespace
 
@@ -346,9 +349,13 @@ scope with a comment citing the source:
 constexpr double RING_CURRENT_CUTOFF_A = 15.0;
 ```
 
-The 93 tuneable parameters from the ParameterCorrectionResult are the
-exception — they are genuinely tuneable and are passed via typed
-CorrectedParameters structs.
+The ~80-93 tuneable calculator parameters are the exception — they
+are genuinely tuneable, calibrated against T2 R² on DFT WT-ALA
+deltas. These are what make the system a calibrated scientific
+instrument rather than a collection of literature defaults. They
+may come from a learned model (ParameterCorrectionResult) or from
+TOML-configured parameter sweeps; either way, the geometric kernels
+and their T2 structure are the foundation.
 
 ### Over-decomposing into tiny functions
 
@@ -362,37 +369,46 @@ equation in a comment. That IS the appropriate size.
 
 ---
 
-## T2 Completeness
+## T2 Completeness — This Is Not Optional
 
-Every calculator must produce full tensor output at all irrep levels
-(L=0, L=1, L=2). T0-only results are incomplete and will be rejected.
-The T2 angular structure is a first-class thesis result.
+Every calculator must produce full rank-2 tensor output at all irrep
+levels (T0, T1, T2). T0-only results are incomplete and will be
+rejected. The T2 angular structure is not a nice-to-have — it is
+the thesis's primary analytical result.
 
-### Per-calculator T2 explained
+A geometric kernel evaluated at an atom produces a 3x3 tensor. That
+tensor decomposes into T0 (how much), T1 (which way), and T2 (what
+angular shape). T0 is the classical chemical shift — every existing
+NMR predictor computes this. T2 is what this system adds: the angular
+pattern that reveals where and why the classical model breaks down.
 
-Each calculator stores how much T2 residual it reduced. After all
-calculators attach, you can compare: does Biot-Savart or Haigh-Mallion
-better explain the T2 pattern near PHE rings? Without per-calculator
-T2 explained fields, you cannot answer this after the pipeline completes.
+If you find yourself reaching for a scalar summary of a calculator's
+output, stop. The scalar is T0. You are discarding T2. The five T2
+components per calculator per atom are the features the calibration
+pipeline tunes against DFT. Without them, the system is a worse
+version of existing chemical shift predictors.
 
-### BS-HM T2 disagreement
+### Per-calculator T2 comparison
 
-Biot-Savart (line integral, rank-1) and Haigh-Mallion (surface integral,
-rank-2) make opposing T2 predictions at the same geometry. The
-disagreement vector at each atom shows where the two models diverge
-angularly. This is stored on ConformationAtom and is a feature and
-a diagnostic.
+Each calculator stores its T2 contribution. After all calculators
+attach, you can compare: does Biot-Savart or Haigh-Mallion better
+explain the T2 pattern near PHE rings? This comparison is possible
+only because both store full tensors.
 
-### Missing T2 features to include
+### BS-HM T2 redundancy
 
-Per-type PiQuadrupole T2 (8 L2 features), per-type RingSusceptibility
-T2 (8 L2 features). MOPAC orbital populations (s_pop, p_pop) provide
-per-atom electronic structure but are L=0 features, not L=2 tensors.
+Biot-Savart (line integral, rank-1) and Haigh-Mallion (surface
+integral, rank-2) make the same T2 prediction (cosine similarity
+0.999 across 279K atoms). This is a finding, not a bug — it shows
+the two mathematical approximations converge in their angular
+structure despite different formulations.
 
-### Additional tuneable parameters
+### Per-type T2 decomposition
 
-McConnell CO midpoint shift split by H-bond state (+1 parameter).
-H-bond angular exponent (+1 parameter). Total 93 becomes 95.
+Per-ring-type T2 arrays (8 ring types × 5 T2 components) are stored
+for BiotSavart, HaighMallion, PiQuadrupole, RingSusceptibility, and
+Dispersion. These are the features that distinguish which ring type
+produces which angular pattern at which atom.
 
 ---
 
@@ -424,43 +440,40 @@ is a statement about the physics, not defensive programming.
 **Headers:** One class per header. Forward-declare when a pointer or
 reference suffices. No `using namespace std;` in headers.
 
-**CMake:** Modular. Each result type is its own target. Adding a new
-result = new subdirectory + one add_subdirectory line.
+**CMake:** Single library target (nmr_shielding) with all .cpp files
+listed in CMakeLists.txt. Adding a new result = add the .cpp to the
+source list in CMakeLists.txt.
 
 ---
 
-## What To Read For Your Pass
+## What To Read
 
-- **Every agent:** CONSTITUTION.md (principles), OBJECT_MODEL.md
-  (concrete types), this file (patterns).
-- **Your pass specification** from LAYER0_PLAN.md.
-- **Previous pass code** in nmr-shielding/src/.
-- Do NOT read FEEDBACK.md (historical, mostly resolved).
-- Do NOT read DESIGN_REVIEW_PRELIM.md (historical).
+- **CONSTITUTION.md** — principles, sign conventions, inviolable rules.
+- **OBJECT_MODEL.md** — the concrete types. This is what you code against.
+- **This file** — what breaks the system and why.
+- **The code** — src/ is the ground truth. The calculators demonstrate
+  every pattern described here. Read one (e.g. McConnellResult.cpp)
+  before writing another.
+- **learn/bones/** — historical design docs. Reference only.
 
 ---
 
-## Lessons from Pass 0 Correction
+## Lessons Learned
 
-### 1. Back-pointer fixup on move (BUG: dangling Protein*)
+### 1. Back-pointer safety: Protein is non-movable (Protein.h:32-33)
 
 Protein owns conformations via `vector<unique_ptr<ProteinConformation>>`.
-Each conformation holds a raw `const Protein*` back-pointer set at
-construction time. When a Protein is moved (e.g. `make_unique<Protein>
-(std::move(r.protein))`), the default move constructor transfers the
-conformation vector but does NOT update the back-pointers -- they
-still point to the old (now-destroyed) Protein location.
+Each conformation holds a raw `const Protein*` back-pointer. If the
+Protein moved, the back-pointers would dangle.
 
-The fix: explicit Protein move constructor that calls
-`conf->FixProteinBackPointer(this)` on every owned conformation.
+The fix: `Protein(Protein&&) = delete`. Proteins live on the heap
+via unique_ptr and never move. Since every Protein is constructed by
+a builder function that returns it inside a BuildResult, there is no
+use case for moving a Protein after construction.
 
-**Pattern:** Any class that holds children with raw back-pointers to
-the parent MUST have an explicit move constructor that fixes those
-pointers. The compiler-generated move is insufficient.
-
-**Detection:** Crashes (segfault, bad_alloc) that appear only when
-the owning object is moved (e.g. `make_unique<T>(std::move(value))`
-in test fixtures) but not when accessed in-place.
+**Pattern:** If children hold raw back-pointers to a parent, either
+fix the pointers on move or delete the move constructor. We chose
+delete because the construction pattern makes move unnecessary.
 
 ### 2. Bond classification at the typed boundary
 
@@ -500,8 +513,6 @@ After the boundary, no string work.
 Grep for: `PDB LOADING BOUNDARY` to find all boundary code.
 
 ---
-
-## Lessons from Protonation Pipeline (2026-04-01)
 
 ### 13. Protonation flows through Protein
 
@@ -551,8 +562,6 @@ wt_conf.AttachResult(std::move(delta));
 ```
 
 ---
-
-## Lessons from Calculator Implementation (2026-04-02)
 
 ### 18. FinalizeConstruction: one call, correct order
 
@@ -739,8 +748,129 @@ representation (TRP9).
 
 ---
 
+## Numerical Stability
+
+Structurally correct physics with numerically naive implementation
+produces garbage at critical atom positions. These rules are
+non-negotiable.
+
+### PhysicalConstants.h: the single home for constants and units
+
+All universal constants, unit conversions, and numerical thresholds
+live in PhysicalConstants.h. Only universal constants go here — no
+model-specific parameters (those live on ring type classes and
+calculator parameter structs).
+
+What is there now:
+- SI electromagnetic: mu_0, Biot-Savart prefactor
+- Unit conversions: A→m, nA→A, PPM_FACTOR, COULOMB_KE (14.3996 V·A),
+  KT_OVER_E_298K (0.025693 V for APBS)
+- Numerical thresholds: MIN_DISTANCE (0.1 A), NEAR_ZERO_NORM,
+  NEAR_ZERO_FIELD, APBS_SANITY_LIMIT (100 V/A)
+- Spatial shells: RING_COUNT_SHELL 3/5/8/12 A, RING_CALC_CUTOFF 15 A
+- H-bond: HBOND_COUNT_RADIUS (3.5 A), HBOND_MAX_DIST
+- Sequence: SEQUENTIAL_EXCLUSION_THRESHOLD (2)
+
+Calculator-specific thresholds (e.g., dispersion R_SWITCH/R_CUT) stay
+in the calculator .cpp with their physics documentation. They are not
+global because their values depend on the specific switching function.
+
+If you need a new constant, put it here with a comment citing the
+source. If you need a new threshold, document why that value.
+
+### Singularity guard
+
+All 1/r^n terms use MIN_DISTANCE = 0.1 A (PhysicalConstants.h).
+Below this, the kernel value is numerically meaningless. The
+MinDistanceFilter in KernelFilterSet enforces this before any
+kernel evaluation begins.
+
+### Filter before computing, not after
+
+Every calculator holds a KernelFilterSet. Call AcceptAll() BEFORE
+computing the kernel. Do not compute the kernel and then discard
+the result — the computation itself may overflow. Five concrete
+filters exist (KernelEvaluationFilter.h). Use them.
+
+### Tracelessness after accumulation
+
+Floating-point accumulation across many source terms breaks the
+tracelessness of tensors that are analytically traceless (Coulomb
+EFG, Pi-quadrupole EFG). Apply traceless projection after
+summation: `V -= (V.trace() / 3.0) * Mat3::Identity()`. Do this
+for any tensor where Gauss's law or symmetry guarantees zero trace.
+
+### Unit chains: state them explicitly
+
+Every calculator must document its unit chain in comments. The
+chain from raw sum to stored field must be traceable:
+
+    Coulomb: q in e, r in A → raw sum in e/A² → × ke (14.3996 V·A) → V/A
+    APBS: native kT/(e·A) → × kT/e (0.025693 V) → V/A
+    Biot-Savart: A → m → SI Tesla → × PPM_FACTOR → × I → ppm
+
+If two fields are compared (e.g., solvent = APBS − vacuum), they
+must be in the same units. The Coulomb constant k_e = 14.3996 V·A
+is real physics. Do not remove it. Do not add arbitrary scaling.
+
+### Sign convention: verify analytically
+
+The ring current sign convention is G_ab = -n_b * B_a * PPM_FACTOR.
+The minus sign comes from sigma_ab = -dB_a^sec / dB_{0,b}. With
+this convention, sigma = I * G gives the correct physical sign
+using literature intensities (I < 0 for diamagnetic rings).
+
+The sign was initially wrong. It was caught by an analytical test
+(I=-12, atom 3A above PHE → sigma = +1.40 ppm, shielded), not by
+compilation or unit tests. Always verify sign with a known physical
+scenario before declaring a calculator correct.
+
+### Near-field stability per kernel
+
+- **Dipolar (McConnell, RingSusceptibility, HBond):** 1/r³ leading
+  term. DipolarNearFieldFilter with source_extent = bond length or
+  ring diameter or N...O distance.
+- **Biot-Savart:** Wire segment divergence near endpoints. Thresholds
+  lenA < 1e-25 and crossSq < 1e-70 (SI metres). Work in SI to
+  avoid Angstrom-scale underflow. Johnson-Bovey loops at ±d nearly
+  cancel in the ring plane (z ≈ 0) — precision loss in B_z.
+- **Haigh-Mallion:** Adaptive subdivision at 2.0 A (level 1) and
+  1.0 A (level 2) for atoms near the ring face. 7-point Gaussian
+  quadrature (Stroud T2:5-1). Two subdivision levels max.
+- **Pi-quadrupole:** 1/r⁹ leading term — steepest divergence.
+  DipolarNearFieldFilter plus RingBondedExclusionFilter required.
+  Without: max |T2| = 7.39 A⁻⁵. With: 0.66 A⁻⁵.
+- **Coulomb EFG:** Traceless per term but accumulation breaks it.
+  Apply traceless projection after total. Clamp E magnitude to
+  100 V/A for rare pathological geometries.
+- **Dispersion:** CHARMM switching function (Brooks et al. 1983)
+  tapers smoothly between R_switch=4.3 A and R_cut=5.0 A.
+  Prevents feature discontinuities across MD ensemble frames.
+  Formula: S(r) = (Rc²-r²)²(Rc²+2r²-3Rs²) / (Rc²-Rs²)³.
+- **H-bond:** N...O distance ~2.8 A means midpoint is 1.4 A from
+  endpoints. Without DipolarNearFieldFilter: max |T2| = 1908 A⁻³.
+  With: 0.78 A⁻³. The filter is not optional.
+
+### NaN/Inf: absent, not faked
+
+Sanitise NaN/Inf from near-zero denominators. If an external tool
+(APBS, MOPAC, DSSP) fails, the result is absent (nullptr), not
+faked. Substituting a different physical quantity (vacuum Coulomb
+for solvated PB) silently corrupts downstream analysis. Return
+nullptr. The pipeline checks HasResult<T>().
+
+### When implementing a calculator
+
+You must record GeometryChoices via GeometryChoiceBuilder during
+Compute(). Every inclusion, exclusion, and triggered event gets a
+Record() call inside a lambda. Attach the entities involved (atoms,
+rings, bonds) with their roles and outcomes. Add named numbers
+(distance, intensity, threshold) with units. If a filter rejects,
+call LastRejectorName() and record it. See any existing calculator's
+Compute() for the pattern. See GeometryChoice.h for the API.
+
+---
+
 ## This Document Is Living
 
-After every correction pass, PATTERNS.md is updated with lessons
-learned. If a correction agent finds a new anti-pattern or a pattern
-that worked well, it goes here. The document gets better with each pass.
+When something breaks or a new pattern emerges, it goes here.

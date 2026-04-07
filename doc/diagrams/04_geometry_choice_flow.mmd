@@ -1,0 +1,37 @@
+---
+title: "GeometryChoice: How Calculators Record Decisions"
+---
+sequenceDiagram
+    participant C as Calculator::Compute()
+    participant F as KernelFilterSet
+    participant B as GeometryChoiceBuilder
+    participant GC as GeometryChoice
+    participant PC as ProteinConformation
+    participant UDP as OperationLog (UDP)
+
+    C->>C: outer loop: for each target atom
+    C->>C: inner loop: for each source (ring/bond/atom)
+
+    C->>F: AcceptAll(context)
+    alt Filter rejects
+        F-->>C: false
+        C->>F: LastRejectorName()
+        F-->>C: "DipolarNearField"
+        C->>B: Record(calculator, group, "exclusion", lambda)
+        B->>GC: create choice
+        Note over GC: AddAtom(target, Excluded)<br/>AddRing(source, Excluded)<br/>AddNumber("distance", 2.1, "A")<br/>filter_name = "DipolarNearField"
+        B->>PC: append to geometry_choices
+    else Filter accepts
+        F-->>C: true
+        C->>C: compute kernel T_ab = ...
+        C->>C: accumulate on ConformationAtom
+    end
+
+    opt Triggered event (clamp, refinement)
+        C->>B: Record(calculator, group, "E-field clamp", lambda)
+        Note over GC: AddAtom(target, Triggered)<br/>AddNumber("E_mag", 142.0, "V/A")
+        B->>PC: append to geometry_choices
+    end
+
+    C->>UDP: log filter statistics
+    Note over UDP: streams to UI viewer<br/>for real-time visualisation

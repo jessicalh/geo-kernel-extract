@@ -168,7 +168,7 @@ Each atom in a ProteinConformation knows:
   is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_residue,
   parent_hybridisation, H-bond donor/acceptor role
   (from the categorical analysis: at minimum the 19 classification
-  schemes identified in CATEGORICAL_ANALYSIS_PASS1.md, expressed as
+  schemes from the categorical analysis (now in learn/bones/), expressed as
   typed properties, not strings)
 - If a future extractor needs a property not yet present, it is added
   to the atom's property set properly, with name AND description from

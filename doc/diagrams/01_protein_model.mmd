@@ -1,0 +1,111 @@
+---
+title: "Protein Model: Identity, Topology, and Conformations"
+---
+classDiagram
+    direction TB
+
+    class Protein {
+        +AtomAt(i) : Atom&
+        +ResidueAt(i) : Residue&
+        +BondAt(i) : Bond&
+        +RingAt(i) : Ring&
+        +Conformation() : ProteinConformation&
+        +AddDerived(parent, name, positions)
+        +FinalizeConstruction(positions)
+        -atoms : vector~unique_ptr~Atom~~
+        -residues : vector~Residue~
+        -bonds : vector~Bond~
+        -rings : vector~unique_ptr~Ring~~
+        -conformations : vector~unique_ptr~ProteinConformation~~
+    }
+
+    class Atom {
+        +element : Element
+        +pdb_atom_name : string
+        +residue_index : size_t
+        +CovalentRadius() : double
+    }
+
+    class Residue {
+        +type : AminoAcid
+        +protonation_variant_index : int
+        +N, CA, C, O : size_t
+        +IsAromatic() : bool
+    }
+
+    class Bond {
+        +atom_index_a : size_t
+        +atom_index_b : size_t
+        +category : BondCategory
+    }
+
+    class Ring {
+        <<abstract>>
+        +intensity() : double*
+        +jb_lobe_offset() : double*
+        +TypeName() : string*
+        +VertexAtomIndices() : vector~size_t~*
+    }
+
+    class SixMemberedRing {
+        PheBenzeneRing
+        TyrPhenolRing
+        TrpBenzeneRing
+    }
+
+    class FiveMemberedRing {
+        TrpPyrroleRing
+        HisImidazoleRing
+        HidImidazoleRing
+        HieImidazoleRing
+    }
+
+    class FusedRing {
+        IndolePerimeterRing
+    }
+
+    class ProteinConformation {
+        <<abstract>>
+        +AtomAt(i) : ConformationAtom&
+        +Positions() : vector~Vec3~
+        +AttachResult(unique_ptr~ConformationResult~)
+        +HasResult~T~() : bool
+        +Result~T~() : T&
+        +ring_geometries : vector~RingGeometry~
+        -protein_ : const Protein*
+    }
+
+    class CrystalConformation
+    class PredictionConformation
+    class MDFrameConformation
+    class DerivedConformation
+
+    class ConformationAtom {
+        +Position() : Vec3
+        +role : AtomRole
+        +partial_charge : double
+        +bs_shielding_contribution : SphericalTensor
+        +mc_shielding_contribution : SphericalTensor
+        +coulomb_shielding_contribution : SphericalTensor
+        +total_B_field : Vec3
+        +coulomb_E_total : Vec3
+        «one writer per field»
+    }
+
+    Protein "1" *-- "N" Atom
+    Protein "1" *-- "N" Residue
+    Protein "1" *-- "N" Bond
+    Protein "1" *-- "N" Ring
+    Protein "1" *-- "1..N" ProteinConformation
+
+    Ring <|-- SixMemberedRing
+    Ring <|-- FiveMemberedRing
+    Ring <|-- FusedRing
+
+    ProteinConformation <|-- CrystalConformation
+    ProteinConformation <|-- PredictionConformation
+    ProteinConformation <|-- MDFrameConformation
+    ProteinConformation <|-- DerivedConformation
+
+    ProteinConformation "1" *-- "N" ConformationAtom
+    ProteinConformation --> Protein : const back-pointer

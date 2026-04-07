@@ -1,0 +1,58 @@
+---
+title: "Five Provenance Paths into the System"
+---
+flowchart TB
+    subgraph inputs["Input Data"]
+        PDB_UNK["PDB of unknown provenance"]
+        PDB_GMX["PDB from GROMACS,<br/>externally reprotonated"]
+        ORCA_CAL["ORCA from tleap<br/>(calibration proteins)"]
+        ORCA_GMX["ORCA from GROMACS pose"]
+        GMX_ENS["GROMACS ensemble<br/>(TPR + sampled poses)"]
+    end
+
+    subgraph builders["Builder Functions"]
+        BFP["BuildFromPdb"]
+        BFPP["BuildFromProtonatedPdb"]
+        BFO["BuildFromOrca"]
+        BFG["BuildFromGromacs"]
+    end
+
+    subgraph protonation["Protonation Strategy"]
+        REDUCE["reduce (linked C++)<br/>adds H, optimises flips"]
+        DETECT["ProtonationDetection<br/>reads existing H atoms"]
+        PRMTOP["prmtop defines protonation<br/>(tleap chose it)"]
+        TPR["TPR defines protonation<br/>(GROMACS chose it)"]
+    end
+
+    subgraph charges["Charge Source"]
+        FF14["ParamFileChargeSource<br/>(ff14SB)"]
+        PRM["PrmtopChargeSource<br/>(AMBER prmtop)"]
+        GTPR["GmxTprChargeSource<br/>(CHARMM36m)"]
+    end
+
+    subgraph result["BuildResult"]
+        BR["Protein + ChargeSource + net_charge"]
+    end
+
+    PDB_UNK --> BFP
+    PDB_GMX --> BFPP
+    ORCA_CAL --> BFO
+    ORCA_GMX --> BFO
+    GMX_ENS --> BFG
+
+    BFP --> REDUCE --> FF14
+    BFPP --> DETECT --> FF14
+    BFO --> PRMTOP --> PRM
+    BFG --> TPR --> GTPR
+
+    FF14 --> BR
+    PRM --> BR
+    GTPR --> BR
+
+    BR --> OP["OperationRunner::Run<br/>(same pipeline for all)"]
+
+    style inputs fill:#e8f0fe,stroke:#4285f4
+    style builders fill:#fef7e0,stroke:#f9ab00
+    style protonation fill:#fce8e6,stroke:#ea4335
+    style charges fill:#e6f4ea,stroke:#34a853
+    style result fill:#f3e8fd,stroke:#a142f4

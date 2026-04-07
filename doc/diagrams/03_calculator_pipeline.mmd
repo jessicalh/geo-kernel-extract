@@ -1,0 +1,57 @@
+---
+title: "Calculator Pipeline: OperationRunner Dependency Order"
+---
+flowchart LR
+    subgraph foundation["Foundation Results"]
+        direction TB
+        GR["GeometryResult"]
+        SI["SpatialIndexResult"]
+        EN["EnrichmentResult"]
+        PD["ProtonationDetectionResult"]
+    end
+
+    subgraph external["External Tool Results"]
+        direction TB
+        CA["ChargeAssignmentResult<br/>(ff14SB / prmtop / TPR)"]
+        DSSP["DsspResult<br/>(libdssp)"]
+        APBS["ApbsFieldResult<br/>(Poisson-Boltzmann)"]
+        MG["MolecularGraphResult"]
+        MOPAC["MopacResult<br/>(PM7+MOZYME)"]
+    end
+
+    subgraph classical["8 Classical Geometric Kernel Calculators"]
+        direction TB
+        BS["BiotSavartResult<br/>(Johnson-Bovey B-field)"]
+        HM["HaighMallionResult<br/>(surface integral)"]
+        MC["McConnellResult<br/>(bond anisotropy)"]
+        CO["CoulombResult<br/>(Buckingham EFG)"]
+        RC["RingSusceptibilityResult<br/>(ring dipolar)"]
+        HB["HBondResult<br/>(H-bond dipolar)"]
+        PQ["PiQuadrupoleResult<br/>(axial quadrupole)"]
+        DI["DispersionResult<br/>(London 1/r⁶)"]
+    end
+
+    subgraph mopac_derived["MOPAC-Derived Calculators"]
+        direction TB
+        MCO["MopacCoulombResult<br/>(QM-charge EFG)"]
+        MMC["MopacMcConnellResult<br/>(bond-order-weighted)"]
+    end
+
+    subgraph dft["DFT Reference (when available)"]
+        direction TB
+        ORCA["OrcaShieldingResult"]
+        MUT["MutationDeltaResult"]
+    end
+
+    foundation --> external
+    external --> classical
+    MOPAC --> mopac_derived
+    external --> mopac_derived
+
+    ORCA -.-> MUT
+
+    style foundation fill:#e6f4ea,stroke:#34a853
+    style external fill:#fef7e0,stroke:#f9ab00
+    style classical fill:#e8f0fe,stroke:#4285f4
+    style mopac_derived fill:#fce8e6,stroke:#ea4335
+    style dft fill:#f3e8fd,stroke:#a142f4
