@@ -1,0 +1,554 @@
+{
+  "protein": "A0A7C5FAR6",
+  "mode": "--mutant (WT vs ALA)",
+  "date": "2026-04-07",
+  "commit": "6a39328",
+  "npy_count": 50,
+  "files": {
+    "apbs_E.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "95e08ce37fc8142b6a5c7c1fb503a1b4",
+      "bytes": 13160,
+      "min": -1.5225552200340022,
+      "max": 2.332640433882907
+    },
+    "apbs_efg.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "8e332f2fc99d10ec6fcd7f06d9651cc8",
+      "bytes": 39224,
+      "min": -3.1304709014225875,
+      "max": 3.5440473261893874
+    },
+    "bs_per_type_T0.npy": {
+      "shape": [
+        543,
+        8
+      ],
+      "dtype": "float64",
+      "md5": "b5d78d72d90e1feceb09d9649ad3d665",
+      "bytes": 34880,
+      "min": -0.19496881827467336,
+      "max": 0.05672575882251441
+    },
+    "bs_per_type_T2.npy": {
+      "shape": [
+        543,
+        40
+      ],
+      "dtype": "float64",
+      "md5": "bb7661917838f1c2e16c21b978cc2f7c",
+      "bytes": 173888,
+      "min": -0.41168576533158313,
+      "max": 0.308615493668459
+    },
+    "bs_ring_counts.npy": {
+      "shape": [
+        543,
+        4
+      ],
+      "dtype": "float64",
+      "md5": "3b8f21dfd694b9f9c0f9e7bbf0fdff2d",
+      "bytes": 17504,
+      "min": 0.0,
+      "max": 6.0
+    },
+    "bs_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "6d2a89d155770f06d180f00081f545cc",
+      "bytes": 39224,
+      "min": -0.8193912346526645,
+      "max": 0.621668803202144
+    },
+    "bs_total_B.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "bc5d36c9468b61bad8e2e384ea5f0142",
+      "bytes": 13160,
+      "min": -3.778445374394658e-07,
+      "max": 1.2139611106216378e-06
+    },
+    "coulomb_E.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "32efd051d9f7c2e8fc40e12c6e6f9af2",
+      "bytes": 13160,
+      "min": -7.400780423111312,
+      "max": 10.067461039880799
+    },
+    "coulomb_efg_aromatic.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "cde3675bce64c8e1c635373a33138f26",
+      "bytes": 39224,
+      "min": -7.852453964676533,
+      "max": 5.450253803452275
+    },
+    "coulomb_efg_backbone.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "8786db9c85ed3cb2b5aeaf8c491c315b",
+      "bytes": 39224,
+      "min": -14.689498837141965,
+      "max": 16.593656630405953
+    },
+    "coulomb_scalars.npy": {
+      "shape": [
+        543,
+        4
+      ],
+      "dtype": "float64",
+      "md5": "59a844d945b94a274be5ac65671db19f",
+      "bytes": 17504,
+      "min": -10.47995913680662,
+      "max": 10.481525536306942
+    },
+    "coulomb_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "add005a18ebfbbc2019eb2f57acbeb50",
+      "bytes": 39224,
+      "min": -21.108765987914296,
+      "max": 23.587845735511703
+    },
+    "delta_apbs.npy": {
+      "shape": [
+        543,
+        12
+      ],
+      "dtype": "float64",
+      "md5": "c622814e8d74dc3cd25d8a022789e6b3",
+      "bytes": 52256,
+      "min": -0.6452142391800089,
+      "max": 0.658567774036605
+    },
+    "delta_ring_proximity.npy": {
+      "shape": [
+        543,
+        36
+      ],
+      "dtype": "float64",
+      "md5": "7e9d2ca15e870414342aa7557504ac51",
+      "bytes": 156512,
+      "min": -18.435294424555476,
+      "max": 20.13810565128265
+    },
+    "delta_scalars.npy": {
+      "shape": [
+        543,
+        6
+      ],
+      "dtype": "float64",
+      "md5": "874db1e54763fab5dca82b3fb1dd6156",
+      "bytes": 26192,
+      "min": -20.57433333333334,
+      "max": 13.413702495582642
+    },
+    "delta_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "1c28784534a1a61c588058a278b33d8e",
+      "bytes": 39224,
+      "min": -20.57433333333334,
+      "max": 17.650206589914653
+    },
+    "disp_per_type_T0.npy": {
+      "shape": [
+        543,
+        8
+      ],
+      "dtype": "float64",
+      "md5": "144eaf80537ec97914a10daecf7d7856",
+      "bytes": 34880,
+      "min": 0.0,
+      "max": 0.024253581516606604
+    },
+    "disp_per_type_T2.npy": {
+      "shape": [
+        543,
+        40
+      ],
+      "dtype": "float64",
+      "md5": "8a4c9723f29dd18e5d645ea871b1aa9f",
+      "bytes": 173888,
+      "min": -0.027578135151746466,
+      "max": 0.045568917071114656
+    },
+    "disp_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "ccfd08f72f7564f82232afed875d7d2a",
+      "bytes": 39224,
+      "min": -0.05393707426473677,
+      "max": 0.050794503233980784
+    },
+    "element.npy": {
+      "shape": [
+        543
+      ],
+      "dtype": "int32",
+      "md5": "9b2f227b4d2114d6545e8ce4e794c1fa",
+      "bytes": 2300,
+      "min": null,
+      "max": null
+    },
+    "hbond_scalars.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "e0d1ad62b5019e95b66a4a02a3968b51",
+      "bytes": 13160,
+      "min": 0.0,
+      "max": 9.0
+    },
+    "hbond_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "0d2254806cd6cc702ef8f9f3aa248383",
+      "bytes": 39224,
+      "min": -0.4342092816865021,
+      "max": 0.43256774992991215
+    },
+    "hm_per_type_T0.npy": {
+      "shape": [
+        543,
+        8
+      ],
+      "dtype": "float64",
+      "md5": "829d100cd2c1d1e45f465d1b78af5def",
+      "bytes": 34880,
+      "min": -0.17152760726678504,
+      "max": 0.06568361909591496
+    },
+    "hm_per_type_T2.npy": {
+      "shape": [
+        543,
+        40
+      ],
+      "dtype": "float64",
+      "md5": "33832f445f4d4aee6fff8bd6a59d2787",
+      "bytes": 173888,
+      "min": -0.3611780685719525,
+      "max": 0.2657073967986781
+    },
+    "hm_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "66297fb5a228569b420b7e8c2f4504f3",
+      "bytes": 39224,
+      "min": -0.7065442384919312,
+      "max": 0.5296705597714998
+    },
+    "mc_category_T2.npy": {
+      "shape": [
+        543,
+        25
+      ],
+      "dtype": "float64",
+      "md5": "c9dca123b8cf7759fa642b4ad104f827",
+      "bytes": 108728,
+      "min": -0.7807597746986924,
+      "max": 0.9599111096343734
+    },
+    "mc_scalars.npy": {
+      "shape": [
+        543,
+        6
+      ],
+      "dtype": "float64",
+      "md5": "e87c2f23d4408cef7c256c562e0fe83b",
+      "bytes": 26192,
+      "min": -0.28385612859705767,
+      "max": 7.515606396026869
+    },
+    "mc_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "96d1452dd237525941ea5e41413f031c",
+      "bytes": 39224,
+      "min": -0.9180945573137966,
+      "max": 1.030658989767613
+    },
+    "mopac_bond_orders.npy": {
+      "shape": [
+        551,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "8a41ee2cedfa1c131ba4e29b9d7cb94c",
+      "bytes": 13352,
+      "min": 0.0,
+      "max": 542.0
+    },
+    "mopac_charges.npy": {
+      "shape": [
+        543
+      ],
+      "dtype": "float64",
+      "md5": "c8eebc20417f5443c92be14491cca295",
+      "bytes": 4472,
+      "min": -0.885345,
+      "max": 0.744166
+    },
+    "mopac_coulomb_E.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "c9bd4b29df75342991cc56a81d02c1d4",
+      "bytes": 13160,
+      "min": -6.623712010691873,
+      "max": 7.021414089726221
+    },
+    "mopac_coulomb_efg_aromatic.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "d47bf9957e0fc4234cde539c5ed7295f",
+      "bytes": 39224,
+      "min": -8.24807565288609,
+      "max": 5.74850962207531
+    },
+    "mopac_coulomb_efg_backbone.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "2a8061224be15849ab59a549a0098090",
+      "bytes": 39224,
+      "min": -16.758591076359927,
+      "max": 17.637538009936865
+    },
+    "mopac_coulomb_scalars.npy": {
+      "shape": [
+        543,
+        4
+      ],
+      "dtype": "float64",
+      "md5": "204b5607016f376e130b10dff5b4d594",
+      "bytes": 17504,
+      "min": -7.310701633882472,
+      "max": 7.825366373862433
+    },
+    "mopac_coulomb_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "9a6665a42e099075b07474aee02d66a0",
+      "bytes": 39224,
+      "min": -17.34121988196822,
+      "max": 17.7792295535731
+    },
+    "mopac_global.npy": {
+      "shape": [
+        4
+      ],
+      "dtype": "float64",
+      "md5": "61c21a141a802abeb69da9c815e03ed5",
+      "bytes": 160,
+      "min": -2465.87275,
+      "max": 0.0
+    },
+    "mopac_mc_category_T2.npy": {
+      "shape": [
+        543,
+        25
+      ],
+      "dtype": "float64",
+      "md5": "ba931168955957d195ae2d60e78c2997",
+      "bytes": 108728,
+      "min": -1.0436691123698807,
+      "max": 1.2986955358626882
+    },
+    "mopac_mc_scalars.npy": {
+      "shape": [
+        543,
+        6
+      ],
+      "dtype": "float64",
+      "md5": "d9f6cb668fb622e519ac1acfa4291dd6",
+      "bytes": 26192,
+      "min": -0.3937042315132371,
+      "max": 7.515606396026869
+    },
+    "mopac_mc_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "1cf6ff05312fa43195b2921b7cb43158",
+      "bytes": 39224,
+      "min": -0.9977173725413284,
+      "max": 1.1054216451132253
+    },
+    "mopac_scalars.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "cafc590008d62eae83b7f29dd564f94a",
+      "bytes": 13160,
+      "min": -0.885345,
+      "max": 4.99852
+    },
+    "orca_diamagnetic.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "50aa13e1918eb589e1760e872487e79d",
+      "bytes": 39224,
+      "min": -158.1267539428417,
+      "max": 1141.4606666666666
+    },
+    "orca_paramagnetic.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "cd29483a322c0b8f90c559f93828e0fb",
+      "bytes": 39224,
+      "min": -523.1437596727118,
+      "max": 487.6915469843619
+    },
+    "orca_total.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "f6c93fbcb690468dad6a9a4290bee101",
+      "bytes": 39224,
+      "min": -398.622962612542,
+      "max": 682.291
+    },
+    "pos.npy": {
+      "shape": [
+        543,
+        3
+      ],
+      "dtype": "float64",
+      "md5": "b57bbcefc35d6ed489c391d3e2afb195",
+      "bytes": 13160,
+      "min": -14.356,
+      "max": 13.285
+    },
+    "pq_per_type_T0.npy": {
+      "shape": [
+        543,
+        8
+      ],
+      "dtype": "float64",
+      "md5": "e46aa95d1dca4a1b67a27a9979afd2be",
+      "bytes": 34880,
+      "min": -0.00977262957922895,
+      "max": 0.04159171395718041
+    },
+    "pq_per_type_T2.npy": {
+      "shape": [
+        543,
+        40
+      ],
+      "dtype": "float64",
+      "md5": "3c749988ded10b2549caa692129005c7",
+      "bytes": 173888,
+      "min": -0.17983988691603373,
+      "max": 0.16056845055318242
+    },
+    "pq_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "c78dedd795e81770c292d558809b7841",
+      "bytes": 39224,
+      "min": -0.3229567015923931,
+      "max": 0.1596990955242545
+    },
+    "residue_index.npy": {
+      "shape": [
+        543
+      ],
+      "dtype": "int32",
+      "md5": "137faa01c4f87ef3fa3df463b3d4567e",
+      "bytes": 2300,
+      "min": null,
+      "max": null
+    },
+    "residue_type.npy": {
+      "shape": [
+        543
+      ],
+      "dtype": "int32",
+      "md5": "0d8416bb88489d3771b0e4f554f1c524",
+      "bytes": 2300,
+      "min": null,
+      "max": null
+    },
+    "ringchi_shielding.npy": {
+      "shape": [
+        543,
+        9
+      ],
+      "dtype": "float64",
+      "md5": "bdbe169ba4935719e7e408e8a4ae8601",
+      "bytes": 39224,
+      "min": -0.14509238212176506,
+      "max": 0.24069927233810057
+    }
+  }
+}

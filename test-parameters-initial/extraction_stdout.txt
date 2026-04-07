@@ -1,0 +1,12 @@
+UDP listener PID: 513287
+[1]+  Exit 1                  python3 ui/udp_listen.py > test-parameters-initial/udp_log.jsonl 2>&1
+Building mutant pair:
+  WT:  xyz=/shared/2026Thesis/consolidated/A0A7C5FAR6/A0A7C5FAR6_WT.xyz prmtop=/shared/2026Thesis/consolidated/A0A7C5FAR6/A0A7C5FAR6_WT.prmtop
+  ALA: xyz=/shared/2026Thesis/consolidated/A0A7C5FAR6/A0A7C5FAR6_ALA.xyz prmtop=/shared/2026Thesis/consolidated/A0A7C5FAR6/A0A7C5FAR6_ALA.prmtop
+CovalentTopology::Resolve: OpenBabel detected 551 bonds.
+CovalentTopology::Resolve: OpenBabel detected 504 bonds.
+  Vpbe_ctor:  Using max ion radius (1.81 A) for exclusion function
+  Vpbe_ctor:  Using max ion radius (1.81 A) for exclusion function
+Wrote 50 arrays to /shared/2026Thesis/nmr-shielding/test-parameters-initial/npy
+--- Done ---
+[result-id: r62]
