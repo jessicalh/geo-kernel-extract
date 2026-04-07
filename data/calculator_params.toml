@@ -1,0 +1,59 @@
+# NMR Shielding Calculator Parameters
+# Default values from literature. Calibration pipeline writes optimised values.
+# Flat key = value. Absent key uses compiled default.
+
+# Ring current intensities (nA/T)
+# Giessner-Prettre & Pullman 1969; TRP indole perimeter estimated from component rings
+phe_benzene_ring_current_intensity = -12.0
+tyr_phenol_ring_current_intensity = -11.28
+trp_benzene_ring_current_intensity = -12.48
+trp_pyrrole_ring_current_intensity = -6.72
+his_imidazole_ring_current_intensity = -5.16
+hid_imidazole_ring_current_intensity = -5.16
+hie_imidazole_ring_current_intensity = -5.16
+trp_indole_perimeter_ring_current_intensity = -19.2
+
+# Johnson-Bovey pi-electron lobe offsets above/below ring plane (Angstroms)
+# Johnson & Bovey 1958; TRP indole perimeter estimated
+phe_benzene_jb_lobe_offset = 0.64
+tyr_phenol_jb_lobe_offset = 0.64
+trp_benzene_jb_lobe_offset = 0.64
+trp_pyrrole_jb_lobe_offset = 0.52
+his_imidazole_jb_lobe_offset = 0.50
+hid_imidazole_jb_lobe_offset = 0.50
+hie_imidazole_jb_lobe_offset = 0.50
+trp_indole_perimeter_jb_lobe_offset = 0.60
+
+# Spatial cutoffs — define the reach of each geometric kernel (Angstroms)
+ring_current_spatial_cutoff = 15.0
+mcconnell_bond_anisotropy_cutoff = 10.0
+mopac_mcconnell_bond_anisotropy_cutoff = 10.0
+hbond_dipolar_max_distance = 50.0
+hbond_counting_radius = 3.5
+dispersion_vertex_distance_cutoff = 5.0
+dispersion_switching_onset_distance = 4.3
+singularity_guard_distance = 0.1
+
+# Ring proximity counting shells (Angstroms)
+ring_proximity_shell_1 = 3.0
+ring_proximity_shell_2 = 5.0
+ring_proximity_shell_3 = 8.0
+ring_proximity_shell_4 = 12.0
+
+# Haigh-Mallion adaptive quadrature subdivision thresholds (Angstroms)
+haigh_mallion_subdivision_threshold_l1 = 2.0
+haigh_mallion_subdivision_threshold_l2 = 1.0
+
+# Guard thresholds — algorithmic boundaries
+efield_magnitude_sanity_clamp = 100.0
+hbond_sequential_exclusion_residues = 2
+near_field_exclusion_ratio = 0.5
+
+# Numerical noise floors — below these the value is treated as zero
+near_zero_vector_norm_threshold = 1e-10
+coulomb_charge_noise_floor = 1e-15
+mopac_bond_order_noise_floor = 1e-6
+biot_savart_wire_endpoint_guard = 1e-25
+biot_savart_wire_axis_guard = 1e-70
+haigh_mallion_triangle_area_guard = 1e-20
+dispersion_switching_noise_floor = 1e-15

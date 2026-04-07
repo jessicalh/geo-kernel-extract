@@ -15,7 +15,11 @@ namespace nmr {
 constexpr double PI = 3.14159265358979323846;
 
 // Electromagnetic (SI)
-constexpr double VACUUM_PERMEABILITY = 1.25663706212e-6;   // T*m/A (mu_0)
+// mu_0 = 4*pi*1e-7 T*m/A exactly in pre-2019 SI.
+// 2019 CODATA redefined mu_0 = 1.25663706212e-6 T*m/A (measured, not exact).
+// The Johnson-Bovey wire model in BiotSavartResult uses the pre-2019
+// exact value. Changing this breaks binary reproduction of existing results.
+constexpr double VACUUM_PERMEABILITY = 1.25663706212e-6;   // T*m/A (mu_0, 2019 CODATA)
 
 // Unit conversions
 constexpr double ANGSTROMS_TO_METRES = 1.0e-10;
@@ -31,10 +35,16 @@ constexpr double COULOMB_KE = 14.3996;
 // Converts APBS potential/field from kT/e units to Volts.
 constexpr double KT_OVER_E_298K = 0.025693;
 
-// Biot-Savart prefactor: mu_0/(4*pi) in SI units (T*m/A)
-constexpr double BIOT_SAVART_PREFACTOR = VACUUM_PERMEABILITY / (4.0 * PI);
+// Biot-Savart prefactor: mu_0/(4*pi) in SI units (T*m/A).
+// Pre-2019 SI: exactly 1e-7. This is the value used in the JB wire model.
+// The 2019 CODATA derivation (VACUUM_PERMEABILITY / 4*pi) gives ~1.00000000005e-7,
+// which is NOT what the computation uses. Do not substitute.
+constexpr double BIOT_SAVART_PREFACTOR = 1e-7;
 
 // Constitution: numerical thresholds
+// NOTE: Calculators read these from CalculatorConfig::Get() (TOML-configurable).
+// These constexpr values remain for non-calculator consumers
+// (ApbsFieldResult, MutationDeltaResult, tests).
 constexpr double MIN_DISTANCE = 0.1;            // Angstroms -- singularity cutoff
 constexpr double NO_DATA_SENTINEL = 99.0;       // sentinel for missing data
 constexpr double NEAR_ZERO_NORM = 1e-10;        // near-zero vector norm

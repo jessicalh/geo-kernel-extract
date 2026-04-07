@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -49,15 +50,13 @@ static Vec3 WireSegmentField(
 
     double lenA = dA_m.norm();
     double lenB = dB_m.norm();
-    if (lenA < 1e-25 || lenB < 1e-25) return Vec3::Zero();
+    if (lenA < CalculatorConfig::Get("biot_savart_wire_endpoint_guard") || lenB < CalculatorConfig::Get("biot_savart_wire_endpoint_guard")) return Vec3::Zero();
 
     Vec3 cross = dl_m.cross(dA_m);
     double crossSq = cross.squaredNorm();
-    if (crossSq < 1e-70) return Vec3::Zero();
+    if (crossSq < CalculatorConfig::Get("biot_savart_wire_axis_guard")) return Vec3::Zero();
 
-    // mu_0/(4*pi) = 1e-7 T*m/A (exact in SI)
-    constexpr double mu0_4pi = 1e-7;
-    double factor = mu0_4pi * I_A / crossSq;
+    double factor = BIOT_SAVART_PREFACTOR * I_A / crossSq;
     double dotTerm = dl_m.dot(dA_m) / lenA - dl_m.dot(dB_m) / lenB;
 
     return factor * dotTerm * cross;  // Tesla
@@ -115,7 +114,7 @@ static Vec3 JohnsonBoveyField(
 // ============================================================================
 // BiotSavartResult::Compute
 //
-// For each atom, find rings within RING_CALC_CUTOFF (15A). For each ring:
+// For each atom, find rings within CalculatorConfig::Get("ring_current_spatial_cutoff") (15A). For each ring:
 //   1. Compute B-field from JB double-loop model (unit current, I=1 nA)
 //   2. Construct geometric kernel G_ab = n_b * B_a * PPM_FACTOR
 //   3. Store G, SphericalTensor(G), B, cylindrical coords on RingNeighbourhood
@@ -163,7 +162,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, RING_CALC_CUTOFF);
+        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
         Vec3 B_total = Vec3::Zero();
@@ -276,7 +275,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             Vec3 d_plane = d - z_coord * geom.normal;
             double rho_mag = d_plane.norm();
             Vec3 rho_hat = Vec3::Zero();
-            if (rho_mag > NEAR_ZERO_NORM) rho_hat = d_plane / rho_mag;
+            if (rho_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold")) rho_hat = d_plane / rho_mag;
             rn->B_cylindrical = Vec3(
                 B.dot(rho_hat),        // B_rho
                 0.0,                   // B_phi (zero by axial symmetry choice)
@@ -306,10 +305,10 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
         // Ring proximity counts
         for (const auto& rn : ca.ring_neighbours) {
-            if (rn.distance_to_center <= RING_COUNT_SHELL_1) ca.n_rings_within_3A++;
-            if (rn.distance_to_center <= RING_COUNT_SHELL_2) ca.n_rings_within_5A++;
-            if (rn.distance_to_center <= RING_COUNT_SHELL_3) ca.n_rings_within_8A++;
-            if (rn.distance_to_center <= RING_COUNT_SHELL_4) ca.n_rings_within_12A++;
+            if (rn.distance_to_center <= CalculatorConfig::Get("ring_proximity_shell_1")) ca.n_rings_within_3A++;
+            if (rn.distance_to_center <= CalculatorConfig::Get("ring_proximity_shell_2")) ca.n_rings_within_5A++;
+            if (rn.distance_to_center <= CalculatorConfig::Get("ring_proximity_shell_3")) ca.n_rings_within_8A++;
+            if (rn.distance_to_center <= CalculatorConfig::Get("ring_proximity_shell_4")) ca.n_rings_within_12A++;
         }
 
         // ---- GeometryChoice: ring shells ----
@@ -355,13 +354,13 @@ Vec3 BiotSavartResult::SampleBFieldAt(Vec3 point) const {
         if (geom.vertices.size() < 3) continue;
 
         double distance = (point - geom.center).norm();
-        if (distance < MIN_DISTANCE) continue;
+        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
         // DipolarNearFieldFilter: multipole invalid inside source
         if (distance < geom.radius) continue;
 
         // Distance cutoff
-        if (distance > RING_CALC_CUTOFF) continue;
+        if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         B_total += JohnsonBoveyField(
             geom.vertices, geom.normal,
@@ -385,9 +384,9 @@ SphericalTensor BiotSavartResult::SampleShieldingAt(Vec3 point) const {
         if (geom.vertices.size() < 3) continue;
 
         double distance = (point - geom.center).norm();
-        if (distance < MIN_DISTANCE) continue;
+        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
-        if (distance > RING_CALC_CUTOFF) continue;
+        if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         Vec3 B = JohnsonBoveyField(
             geom.vertices, geom.normal,

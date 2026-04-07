@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -78,14 +79,14 @@ static void AccumulateTensor(
         Mat3& H) {
 
     double triArea = 0.5 * (v1 - v0).cross(v2 - v0).norm();
-    if (triArea < 1e-20) return;
+    if (triArea < CalculatorConfig::Get("haigh_mallion_triangle_area_guard")) return;
 
     for (const auto& qp : qpts) {
         // Surface point in barycentric coordinates
         Vec3 rS = qp.lambda[0] * v0 + qp.lambda[1] * v1 + qp.lambda[2] * v2;
         Vec3 rho = r - rS;
         double rhoMag = rho.norm();
-        if (rhoMag < MIN_DISTANCE) continue;
+        if (rhoMag < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
         double rho3 = rhoMag * rhoMag * rhoMag;
         double rho5 = rho3 * rhoMag * rhoMag;
@@ -109,9 +110,6 @@ static void AccumulateTensor(
 // Max depth: 2 (7 -> 28 -> 112 quadrature points per fan triangle)
 // ============================================================================
 
-constexpr double HM_SUBDIV_THRESHOLD_L1 = 2.0;  // Angstroms
-constexpr double HM_SUBDIV_THRESHOLD_L2 = 1.0;  // Angstroms
-
 static bool NeedsSubdivision(
         const Vec3& v0, const Vec3& v1, const Vec3& v2,
         const Vec3& r, double threshold) {
@@ -128,9 +126,9 @@ static void AccumulateAdaptive(
 
     bool subdivide = false;
     if (level == 0)
-        subdivide = NeedsSubdivision(v0, v1, v2, r, HM_SUBDIV_THRESHOLD_L1);
+        subdivide = NeedsSubdivision(v0, v1, v2, r, CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1"));
     else if (level == 1)
-        subdivide = NeedsSubdivision(v0, v1, v2, r, HM_SUBDIV_THRESHOLD_L2);
+        subdivide = NeedsSubdivision(v0, v1, v2, r, CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l2"));
 
     if (subdivide && level < 2) {
         Vec3 m01 = 0.5 * (v0 + v1);
@@ -177,7 +175,7 @@ static Mat3 SurfaceIntegral(
 // ============================================================================
 // HaighMallionResult::Compute
 //
-// For each atom, find rings within RING_CALC_CUTOFF. For each ring:
+// For each atom, find rings within CalculatorConfig::Get("ring_current_spatial_cutoff"). For each ring:
 //   1. Compute H_ab = surface integral of dipolar kernel (symmetric, traceless)
 //   2. Compute V = H . n (effective B-field from magnetised surface)
 //   3. Construct G_ab = n_b * V_a (full shielding kernel, rank-1)
@@ -225,7 +223,7 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, RING_CALC_CUTOFF);
+        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
 
@@ -265,14 +263,14 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             }
 
             // ---- GeometryChoice: adaptive refinement ----
-            if (distance < HM_SUBDIV_THRESHOLD_L1) {
+            if (distance < CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1")) {
                 choices.Record(CalculatorId::HaighMallion, ri, "adaptive refinement",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
                         AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Triggered);
                         AddNumber(gc, "distance", distance, "A");
-                        AddNumber(gc, "L1_threshold", HM_SUBDIV_THRESHOLD_L1, "A");
-                        AddNumber(gc, "L2_threshold", HM_SUBDIV_THRESHOLD_L2, "A");
+                        AddNumber(gc, "L1_threshold", CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1"), "A");
+                        AddNumber(gc, "L2_threshold", CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l2"), "A");
                     });
             }
 
@@ -370,9 +368,9 @@ SphericalTensor HaighMallionResult::SampleShieldingAt(Vec3 point) const {
         if (geom.vertices.size() < 3) continue;
 
         double distance = (point - geom.center).norm();
-        if (distance < MIN_DISTANCE) continue;
+        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
-        if (distance > RING_CALC_CUTOFF) continue;
+        if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         Mat3 H = SurfaceIntegral(point, geom);
         Vec3 V = H * geom.normal;

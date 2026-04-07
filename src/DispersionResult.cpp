@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -58,15 +59,12 @@ std::vector<std::type_index> DispersionResult::Dependencies() const {
 // The taper width (0.7A) is comparable to atomic position fluctuations
 // in MD (~0.5A RMS), ensuring no atom ever jumps across the entire
 // taper in one frame.
-constexpr double DISP_VERTEX_R_CUT = 5.0;      // Angstroms
-constexpr double DISP_VERTEX_R_SWITCH = 4.3;    // Angstroms
-
 static double DispSwitchingFunction(double r) {
-    if (r <= DISP_VERTEX_R_SWITCH) return 1.0;
-    if (r >= DISP_VERTEX_R_CUT) return 0.0;
+    if (r <= CalculatorConfig::Get("dispersion_switching_onset_distance")) return 1.0;
+    if (r >= CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) return 0.0;
 
-    double rc2 = DISP_VERTEX_R_CUT * DISP_VERTEX_R_CUT;
-    double rs2 = DISP_VERTEX_R_SWITCH * DISP_VERTEX_R_SWITCH;
+    double rc2 = CalculatorConfig::Get("dispersion_vertex_distance_cutoff") * CalculatorConfig::Get("dispersion_vertex_distance_cutoff");
+    double rs2 = CalculatorConfig::Get("dispersion_switching_onset_distance") * CalculatorConfig::Get("dispersion_switching_onset_distance");
     double r2 = r * r;
     double num = (rc2 - r2) * (rc2 - r2) * (rc2 + 2.0 * r2 - 3.0 * rs2);
     double den = (rc2 - rs2) * (rc2 - rs2) * (rc2 - rs2);
@@ -107,10 +105,10 @@ static DispVertexResult ComputeDispVertex(
 
     DispVertexResult result;
 
-    if (r < MIN_DISTANCE || r > DISP_VERTEX_R_CUT) return result;
+    if (r < CalculatorConfig::Get("singularity_guard_distance") || r > CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) return result;
 
     double S = DispSwitchingFunction(r);
-    if (S < 1e-15) return result;  // below switching threshold
+    if (S < CalculatorConfig::Get("dispersion_switching_noise_floor")) return result;  // below switching threshold
 
     Vec3 d = atom_pos - vertex_pos;
     double r2 = r * r;
@@ -192,9 +190,9 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 
     OperationLog::Info(LogCalcOther, "DispersionResult::Compute",
         "filter set: " + filters.Describe() +
-        " | vertex range: [MIN_DISTANCE=" + std::to_string(MIN_DISTANCE) +
-        ", R_CUT=" + std::to_string(DISP_VERTEX_R_CUT) +
-        "] A, switch onset=" + std::to_string(DISP_VERTEX_R_SWITCH) + " A" +
+        " | vertex range: [MIN_DISTANCE=" + std::to_string(CalculatorConfig::Get("singularity_guard_distance")) +
+        ", R_CUT=" + std::to_string(CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) +
+        "] A, switch onset=" + std::to_string(CalculatorConfig::Get("dispersion_switching_onset_distance")) + " A" +
         " | through-bond vertex exclusion: yes");
 
     GeometryChoiceBuilder choices(conf);
@@ -213,7 +211,7 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, RING_CALC_CUTOFF);
+        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 disp_total = Mat3::Zero();
 
@@ -264,8 +262,8 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 choices.Record(CalculatorId::Dispersion, ri, "dispersion taper",
                     [&ring](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
-                        AddNumber(gc, "switch_onset", DISP_VERTEX_R_SWITCH, "A");
-                        AddNumber(gc, "cutoff", DISP_VERTEX_R_CUT, "A");
+                        AddNumber(gc, "switch_onset", CalculatorConfig::Get("dispersion_switching_onset_distance"), "A");
+                        AddNumber(gc, "cutoff", CalculatorConfig::Get("dispersion_vertex_distance_cutoff"), "A");
                     });
             }
 
@@ -282,7 +280,7 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 if (!vr.valid) {
                     // ---- GeometryChoice: switching function noise floor ----
                     // Only fires when r is in the taper range but S < 1e-15
-                    if (r > DISP_VERTEX_R_SWITCH && r < DISP_VERTEX_R_CUT) {
+                    if (r > CalculatorConfig::Get("dispersion_switching_onset_distance") && r < CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) {
                         choices.Record(CalculatorId::Dispersion, ri, "switching noise floor",
                             [&ring, &ca, ai, r](GeometryChoice& gc) {
                                 AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
@@ -315,7 +313,7 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 new_rn.ring_type = ring.type_index;
                 new_rn.distance_to_center = dist_to_center;
                 Vec3 d = atom_pos - geom.center;
-                if (d.norm() > NEAR_ZERO_NORM)
+                if (d.norm() > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
                     new_rn.direction_to_center = d.normalized();
 
                 double z = d.dot(geom.normal);
@@ -373,14 +371,14 @@ SphericalTensor DispersionResult::SampleShieldingAt(Vec3 point) const {
 
         // Ring-level distance check
         double ring_dist = (point - geom.center).norm();
-        if (ring_dist < MIN_DISTANCE) continue;
+        if (ring_dist < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (ring_dist < geom.radius) continue;
-        if (ring_dist > RING_CALC_CUTOFF) continue;
+        if (ring_dist > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         // Sum over ring vertices
         for (const auto& vertex : geom.vertices) {
             double r = (point - vertex).norm();
-            if (r < MIN_DISTANCE || r > DISP_VERTEX_R_CUT) continue;
+            if (r < CalculatorConfig::Get("singularity_guard_distance") || r > CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) continue;
 
             auto vr = ComputeDispVertex(point, vertex, r);
             if (vr.valid) K_total += vr.K;

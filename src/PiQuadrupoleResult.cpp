@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -60,7 +61,7 @@ static PiQuadKernelResult ComputePiQuadKernel(
     Vec3 d = atom_pos - ring_center;
     double r = d.norm();
 
-    if (r < MIN_DISTANCE) return result;
+    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
     result.direction = d / r;
@@ -147,7 +148,7 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, RING_CALC_CUTOFF);
+        auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
 
@@ -245,9 +246,9 @@ SphericalTensor PiQuadrupoleResult::SampleShieldingAt(Vec3 point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
         double distance = (point - geom.center).norm();
-        if (distance < MIN_DISTANCE) continue;
+        if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
-        if (distance > RING_CALC_CUTOFF) continue;
+        if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         auto kernel = ComputePiQuadKernel(point, geom.center, geom.normal);
         G_total += kernel.G;

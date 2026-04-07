@@ -5,6 +5,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -53,7 +54,7 @@ static MopacBondKernelResult ComputeBondKernel(
     Vec3 d = atom_pos - bond_midpoint;
     double r = d.norm();
 
-    if (r < MIN_DISTANCE) return result;
+    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
@@ -125,7 +126,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, MOPAC_MCCONNELL_CUTOFF_A);
+        auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, CalculatorConfig::Get("mopac_mcconnell_bond_anisotropy_cutoff"));
 
         // Per-category accumulators (bond-order-weighted)
         double co_sum = 0.0, cn_sum = 0.0, sidechain_sum = 0.0, aromatic_sum = 0.0;
@@ -149,7 +150,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
             // MOPAC Wiberg bond order for this topology bond
             double bo = mopac.TopologyBondOrder(bi);
-            if (bo < 1e-6) { zero_bo_skipped++; zero_bo_this_atom++; continue; }
+            if (bo < CalculatorConfig::Get("mopac_bond_order_noise_floor")) { zero_bo_skipped++; zero_bo_this_atom++; continue; }
 
             Vec3 midpoint = conf.bond_midpoints[bi];
             Vec3 direction = conf.bond_directions[bi];

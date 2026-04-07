@@ -151,6 +151,7 @@ add_library(nmr_shielding
     src/ConformationResult.cpp
     src/GeometryChoice.cpp
     src/ReduceProtonation.cpp
+    src/CalculatorConfig.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -254,6 +255,7 @@ add_executable(nmr_tests
     tests/test_calculation_runner.cpp
     tests/test_write_features.cpp
     tests/test_fleet_loader.cpp
+    tests/test_calculator_config.cpp
 )
 
 target_compile_definitions(nmr_tests PRIVATE

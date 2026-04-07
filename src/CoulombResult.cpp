@@ -5,6 +5,7 @@
 #include "ApbsFieldResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -92,14 +93,14 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             // H atom: bond direction from parent to H
             Vec3 d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
             double len = d.norm();
-            if (len > NEAR_ZERO_NORM) primary_bond_dir[ai] = d / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         } else if (!atom.bond_indices.empty()) {
             // Heavy atom: first bond direction
             const Bond& b = protein.BondAt(atom.bond_indices[0]);
             size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
             Vec3 d = conf.PositionAt(other) - conf.PositionAt(ai);
             double len = d.norm();
-            if (len > NEAR_ZERO_NORM) primary_bond_dir[ai] = d / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         }
     }
 
@@ -143,7 +144,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             if (!filters.AcceptAll(ctx)) continue;
 
             double q_j = conf.AtomAt(j).partial_charge;
-            if (std::abs(q_j) < 1e-15) continue;
+            if (std::abs(q_j) < CalculatorConfig::Get("coulomb_charge_noise_floor")) continue;
 
             Vec3 r = pos_i - conf.PositionAt(j);
             double r_mag = r.norm();
@@ -219,8 +220,8 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         // Clamp extreme E-field magnitudes
         double E_mag = E_total.norm();
-        if (E_mag > APBS_SANITY_LIMIT) {
-            double scale = APBS_SANITY_LIMIT / E_mag;
+        if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
+            double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::Coulomb, i, "E-field clamp",
@@ -264,7 +265,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         // Backbone projection: component of E_backbone along E_total direction.
         // Positive = backbone field aligned with total; negative = opposed.
         // Bounded by |E_backbone|. Stable near cancellation (unlike |bb|/|total|).
-        if (ca.coulomb_E_magnitude > NEAR_ZERO_NORM) {
+        if (ca.coulomb_E_magnitude > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
             Vec3 E_hat = E_total / ca.coulomb_E_magnitude;
             ca.coulomb_E_backbone_frac = E_backbone.dot(E_hat);
         } else {
@@ -339,11 +340,11 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
 
     for (size_t j = 0; j < conf_->AtomCount(); ++j) {
         double q = conf_->AtomAt(j).partial_charge;
-        if (std::abs(q) < 1e-15) continue;
+        if (std::abs(q) < CalculatorConfig::Get("coulomb_charge_noise_floor")) continue;
 
         Vec3 d = point - conf_->PositionAt(j);
         double r = d.norm();
-        if (r < MIN_DISTANCE) continue;
+        if (r < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
         double r3 = r * r * r;
         E += q * d / r3;

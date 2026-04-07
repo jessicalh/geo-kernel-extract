@@ -4,6 +4,7 @@
 #include "SpatialIndexResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -78,7 +79,7 @@ static HBondKernelResult ComputeHBondKernel(
     Vec3 d = atom_pos - hbond_midpoint;
     double r = d.norm();
 
-    if (r < MIN_DISTANCE) return result;
+    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
     double r3 = r * r * r;
@@ -157,7 +158,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (res.N == Residue::NONE || acc_res.O == Residue::NONE) continue;
 
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(acc_ri));
-            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) {
+            if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
                 // ---- GeometryChoice: hbond resolution ----
                 choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
                     [ri, acc_ri, seq_sep](GeometryChoice& gc) {
@@ -178,7 +179,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) {
+            if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
                 // ---- GeometryChoice: hbond resolution ----
                 choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
                     [ri, acc_ri, dist](GeometryChoice& gc) {
@@ -211,7 +212,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             if (don_res.N == Residue::NONE || res.O == Residue::NONE) continue;
 
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(don_ri));
-            if (seq_sep < SEQUENTIAL_EXCLUSION_THRESHOLD) {
+            if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
                 // ---- GeometryChoice: hbond resolution ----
                 choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
                     [ri, don_ri, seq_sep](GeometryChoice& gc) {
@@ -232,7 +233,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            if (dist < MIN_DISTANCE || dist > HBOND_MAX_DIST) {
+            if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
                 // ---- GeometryChoice: hbond resolution ----
                 choices.Record(CalculatorId::HBond, resolution_key++, "hbond resolution",
                     [don_ri, ri, dist](GeometryChoice& gc) {
@@ -348,7 +349,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             }
 
             // Count H-bonds within 3.5A of this atom
-            if (kernel.distance < HBOND_COUNT_RADIUS) count_3_5++;
+            if (kernel.distance < CalculatorConfig::Get("hbond_counting_radius")) count_3_5++;
 
             // Track nearest (among accepted evaluations only)
             if (kernel.distance < nearest_dist) {
@@ -412,10 +413,10 @@ SphericalTensor HBondResult::SampleShieldingAt(Vec3 point) const {
     for (size_t hi = 0; hi < hbond_midpoints_.size(); ++hi) {
         auto kernel = ComputeHBondKernel(
             point, hbond_midpoints_[hi], hbond_directions_[hi]);
-        if (kernel.distance < MIN_DISTANCE) continue;
+        if (kernel.distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
         // DipolarNearFieldFilter: skip if inside the N...O distribution
-        if (kernel.distance < 0.5 * hbond_distances_[hi]) continue;
+        if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * hbond_distances_[hi]) continue;
 
         M_total += kernel.M_over_r3;
     }

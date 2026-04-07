@@ -4,6 +4,7 @@
 #include "SpatialIndexResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -85,13 +86,13 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         if (atom.element == Element::H && atom.parent_atom_index != SIZE_MAX) {
             Vec3 d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
             double len = d.norm();
-            if (len > NEAR_ZERO_NORM) primary_bond_dir[ai] = d / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         } else if (!atom.bond_indices.empty()) {
             const Bond& b = protein.BondAt(atom.bond_indices[0]);
             size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
             Vec3 d = conf.PositionAt(other) - conf.PositionAt(ai);
             double len = d.norm();
-            if (len > NEAR_ZERO_NORM) primary_bond_dir[ai] = d / len;
+            if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         }
     }
 
@@ -129,7 +130,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
             // MOPAC QM charge instead of ff14SB fixed charge
             double q_j = conf.AtomAt(j).mopac_charge;
-            if (std::abs(q_j) < 1e-15) { charge_floor_skipped++; continue; }
+            if (std::abs(q_j) < CalculatorConfig::Get("coulomb_charge_noise_floor")) { charge_floor_skipped++; continue; }
 
             Vec3 r = pos_i - conf.PositionAt(j);
             double r_mag = r.norm();
@@ -200,8 +201,8 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
         // Clamp extreme E-field magnitudes
         double E_mag = E_total.norm();
-        if (E_mag > APBS_SANITY_LIMIT) {
-            double scale = APBS_SANITY_LIMIT / E_mag;
+        if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
+            double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::MopacCoulomb, i, "mopac E-field clamp",
@@ -240,7 +241,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
 
         ca.mopac_coulomb_E_bond_proj = E_total.dot(primary_bond_dir[i]);
 
-        if (ca.mopac_coulomb_E_magnitude > NEAR_ZERO_NORM) {
+        if (ca.mopac_coulomb_E_magnitude > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
             Vec3 E_hat = E_total / ca.mopac_coulomb_E_magnitude;
             ca.mopac_coulomb_E_backbone_frac = E_backbone.dot(E_hat);
         } else {

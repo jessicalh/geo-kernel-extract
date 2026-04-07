@@ -4,6 +4,7 @@
 #include "GeometryResult.h"
 #include "KernelEvaluationFilter.h"
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
@@ -60,7 +61,7 @@ static BondKernelResult ComputeBondKernel(
     Vec3 d = atom_pos - bond_midpoint;
     double r = d.norm();
 
-    if (r < MIN_DISTANCE) return result;
+    if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
@@ -135,7 +136,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         Vec3 atom_pos = conf.PositionAt(ai);
 
         // Find nearby bonds via spatial index
-        auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, MCCONNELL_CUTOFF_A);
+        auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff"));
 
         // Per-category accumulators
         double co_sum = 0.0, cn_sum = 0.0, sidechain_sum = 0.0, aromatic_sum = 0.0;
@@ -255,7 +256,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
         if (best_co_dist < NO_DATA_SENTINEL) {
             double dir_norm = best_co_direction.norm();
-            ca.dir_nearest_CO = (dir_norm > NEAR_ZERO_NORM)
+            ca.dir_nearest_CO = (dir_norm > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
                 ? Vec3(best_co_direction / dir_norm) : Vec3::Zero();
             ca.T2_CO_nearest = SphericalTensor::Decompose(best_co_kernel.K);
         }
@@ -339,12 +340,12 @@ SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
     for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
         auto kernel = ComputeBondKernel(
             point, conf_->bond_midpoints[bi], conf_->bond_directions[bi]);
-        if (kernel.distance < MIN_DISTANCE) continue;
-        if (kernel.distance > MCCONNELL_CUTOFF_A) continue;
+        if (kernel.distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
+        if (kernel.distance > CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff")) continue;
 
         // DipolarNearFieldFilter: skip if inside the bond
         double bond_len = conf_->bond_lengths[bi];
-        if (kernel.distance < 0.5 * bond_len) continue;
+        if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * bond_len) continue;
 
         M_total += kernel.M_over_r3;
     }

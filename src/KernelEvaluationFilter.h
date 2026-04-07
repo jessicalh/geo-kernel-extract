@@ -25,6 +25,7 @@
 //
 
 #include "PhysicalConstants.h"
+#include "CalculatorConfig.h"
 #include <vector>
 #include <set>
 #include <memory>
@@ -149,7 +150,7 @@ public:
 class MinDistanceFilter : public KernelEvaluationFilter {
 public:
     bool Accept(const KernelEvaluationContext& ctx) const override {
-        return ctx.distance >= MIN_DISTANCE;
+        return ctx.distance >= CalculatorConfig::Get("singularity_guard_distance");
     }
 
     const char* Name() const override {
@@ -164,7 +165,7 @@ public:
         return std::string("MinDistanceFilter: atom=")
             + std::to_string(ctx.atom_index)
             + " distance=" + std::to_string(ctx.distance)
-            + "A < " + std::to_string(MIN_DISTANCE) + "A";
+            + "A < " + std::to_string(CalculatorConfig::Get("singularity_guard_distance")) + "A";
     }
 };
 
@@ -173,7 +174,7 @@ class DipolarNearFieldFilter : public KernelEvaluationFilter {
 public:
     bool Accept(const KernelEvaluationContext& ctx) const override {
         if (ctx.source_extent <= 0.0) return true;  // point source, no near field
-        return ctx.distance > ctx.source_extent * 0.5;
+        return ctx.distance > ctx.source_extent * CalculatorConfig::Get("near_field_exclusion_ratio");
     }
 
     const char* Name() const override {
@@ -189,7 +190,7 @@ public:
         return std::string("DipolarNearFieldFilter: atom=")
             + std::to_string(ctx.atom_index)
             + " distance=" + std::to_string(ctx.distance)
-            + "A < threshold=" + std::to_string(ctx.source_extent * 0.5)
+            + "A < threshold=" + std::to_string(ctx.source_extent * CalculatorConfig::Get("near_field_exclusion_ratio"))
             + "A (source_extent=" + std::to_string(ctx.source_extent) + "A)";
     }
 };
@@ -256,7 +257,8 @@ public:
 
 class SequentialExclusionFilter : public KernelEvaluationFilter {
 public:
-    explicit SequentialExclusionFilter(int min_separation = 2)
+    explicit SequentialExclusionFilter(int min_separation =
+            static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues")))
         : min_separation_(min_separation) {}
 
     bool Accept(const KernelEvaluationContext& ctx) const override {
