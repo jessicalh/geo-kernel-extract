@@ -12,6 +12,7 @@ Commit after every experiment from now on.
 | diagnostics_test | 45 | 30 | Added distance-weighted loss (tau=8Å), naive baselines | 0.05 | 0.09 | Lower than perprot — fewer val proteins? distance weighting? |
 | xkernel_test | 57 | 50 | Added 18 cross-kernel T2 dot products (BS·HM, BS·PQ, BS·MC/Coulomb) | -0.04 | -0.12 | Overfitting. 86 scalars too many for 57 proteins. Stripped. |
 | analysis_driven | 77 | 50 | Mutation identity (4), z/rho cylindrical coords, PQ dropped (40 kernels, 78 scalars) | **0.42** | **0.51** | On track. 4-8Å improved to 0.26. 8-12Å improved from -1.0 to -0.28 |
+| 94prot_500ep | 94 | 500 | Same model as analysis_driven, 500 epochs, distance-weighted | **0.58** | **0.70** | Near 0.60 target at 13% of data. 8-12Å=0.29 (positive!). Median per-protein=0.60. Train-val gap=0.04 |
 
 ## Analytical diagnostics (no learning)
 
