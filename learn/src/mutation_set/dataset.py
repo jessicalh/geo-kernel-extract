@@ -64,6 +64,7 @@ def _build_one(protein_dir: Path, cfg: Config, layout: KernelLayout):
         "kernels": kernels,
         "target": p.delta.shielding.T2[idx],
         "ring_dist": p.delta.scalars.nearest_removed_ring_dist[idx],
+        "element": p.element[idx],
         "scalar_layout": scalar_layout,
     }, None
 
