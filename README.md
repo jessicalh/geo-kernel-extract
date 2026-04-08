@@ -1,4 +1,4 @@
-# NMR Shielding Tensor Prediction
+# Geometric Kernel as Feature Extraction
 
 Classical geometric kernel library for predicting protein NMR
 chemical shielding tensors, calibrated against DFT reference data.
