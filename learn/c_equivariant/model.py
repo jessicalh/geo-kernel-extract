@@ -18,11 +18,17 @@ Architecture:
     calculators already encode the angular physics.
 """
 
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import e3nn
 from e3nn import o3
 from e3nn.nn import FullyConnectedNet
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from c_equivariant.dataset import N_KERNELS, N_SCALAR_FEATURES
 
 # Blackwell (sm_121) workaround: NVRTC JIT doesn't support sm_121.
 # Eager mode is slightly slower but works.
@@ -165,7 +171,7 @@ class ShieldingT2Model(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
 
-def make_model(n_scalar_features=33, n_kernels=46,
+def make_model(n_scalar_features=N_SCALAR_FEATURES, n_kernels=N_KERNELS,
                use_correction=True) -> ShieldingT2Model:
     """Create model with sensible defaults."""
     model = ShieldingT2Model(
