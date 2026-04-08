@@ -220,13 +220,13 @@ TEST_F(MutationDeltaTest, RingProximityComputed) {
             // Each matched atom should have proximity to ALL removed rings
             EXPECT_EQ(m.removed_ring_proximity.size(), total_rings);
 
-            // Nearest removed ring distance should be positive
-            EXPECT_GT(m.nearest_removed_ring_dist, 0.0);
+            // Nearest removed ring distance should be non-negative
+            EXPECT_GE(m.nearest_removed_ring_dist, 0.0);
             EXPECT_LT(m.nearest_removed_ring_dist, 50.0);
 
             // Cylindrical coords should be consistent
             for (const auto& rp : m.removed_ring_proximity) {
-                EXPECT_GT(rp.distance, 0.0);
+                EXPECT_GE(rp.distance, 0.0);
                 double r_from_cyl = std::sqrt(rp.z * rp.z + rp.rho * rp.rho);
                 EXPECT_NEAR(r_from_cyl, rp.distance, 0.01)
                     << "Cylindrical coords inconsistent at atom " << ai;

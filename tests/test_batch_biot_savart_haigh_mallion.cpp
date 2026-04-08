@@ -299,11 +299,11 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
                 double bs_t0 = std::abs(rn.G_spherical.T0);
                 double bs_t2 = rn.G_spherical.T2Magnitude();
-                double hm_t0_raw = std::abs(rn.hm_spherical.T0);  // should be ~0
+                double hm_t0_raw = std::abs(rn.hm_H_spherical.T0);  // should be ~0
 
                 // Reconstruct HM full kernel G from stored data
                 const RingGeometry& geom = wt_conf.ring_geometries[rn.ring_index];
-                Vec3 V = rn.hm_tensor * geom.normal;
+                Vec3 V = rn.hm_H_tensor * geom.normal;
                 double hm_full_t0 = std::abs(geom.normal.dot(V) / 3.0);
 
                 SphericalTensor hm_G_st;
@@ -327,10 +327,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                 ring_stats[ti].max_bs_t2 = std::max(ring_stats[ti].max_bs_t2, bs_t2);
                 ring_stats[ti].max_hm_t2 = std::max(ring_stats[ti].max_hm_t2, hm_full_t2);
                 ring_stats[ti].max_hm_trace = std::max(
-                    ring_stats[ti].max_hm_trace, std::abs(rn.hm_tensor.trace()));
+                    ring_stats[ti].max_hm_trace, std::abs(rn.hm_H_tensor.trace()));
                 ring_stats[ti].max_hm_asym = std::max(
                     ring_stats[ti].max_hm_asym,
-                    (rn.hm_tensor - rn.hm_tensor.transpose()).norm());
+                    (rn.hm_H_tensor - rn.hm_H_tensor.transpose()).norm());
 
                 // Distance-binned BS-HM convergence
                 for (auto& bin : dist_bins) {
@@ -386,7 +386,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                     // HM: same analysis using full kernel
                     auto hm_t0_for = [&](const RingNeighbourhood* rn) {
                         const RingGeometry& g = wt_conf.ring_geometries[rn->ring_index];
-                        Vec3 v = rn->hm_tensor * g.normal;
+                        Vec3 v = rn->hm_H_tensor * g.normal;
                         return g.normal.dot(v) / 3.0;
                     };
                     double hm_sum = hm_t0_for(rn5) + hm_t0_for(rn6);

@@ -319,20 +319,21 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             }
 
             // Store HM results on RingNeighbourhood
-            rn->hm_tensor = H;                                    // raw integral (symmetric, traceless)
-            rn->hm_spherical = SphericalTensor::Decompose(H);     // should be pure T2
-            rn->hm_B_field = V;                                   // effective B-field
+            rn->hm_H_tensor = H;                                  // raw integral (symmetric, traceless, pure T2)
+            rn->hm_H_spherical = SphericalTensor::Decompose(H);   // Decompose(H): T0=0, T1=0
+            rn->hm_B_field = V;                                   // effective B-field V = H . n
+            rn->hm_G_tensor = G;                                  // full shielding kernel (rank-1)
+            rn->hm_G_spherical = SphericalTensor::Decompose(G);   // Decompose(G): T0, T1, T2
 
             // Accumulate the full shielding kernel G
             G_total += G;
 
-            // Per-type T0 and T2 sums (from the full shielding kernel G)
-            SphericalTensor G_st = SphericalTensor::Decompose(G);
+            // Per-type T0 and T2 sums (from the stored shielding kernel G)
             int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
-                ca.per_type_hm_T0_sum[ti] += G_st.T0;
+                ca.per_type_hm_T0_sum[ti] += rn->hm_G_spherical.T0;
                 for (int c = 0; c < 5; ++c)
-                    ca.per_type_hm_T2_sum[ti][c] += G_st.T2[c];
+                    ca.per_type_hm_T2_sum[ti][c] += rn->hm_G_spherical.T2[c];
             }
 
             total_pairs++;

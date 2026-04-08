@@ -35,9 +35,11 @@ struct RingNeighbourhood {
     SphericalTensor G_spherical;
     Vec3 B_field = Vec3::Zero();
     Vec3 B_cylindrical = Vec3::Zero();
-    Mat3 hm_tensor = Mat3::Zero();
-    SphericalTensor hm_spherical;
-    Vec3 hm_B_field = Vec3::Zero();
+    Mat3 hm_H_tensor = Mat3::Zero();           // raw surface integral H (symmetric, traceless, pure T2)
+    SphericalTensor hm_H_spherical;             // Decompose(H) — T0=0, T1=0, all info in T2
+    Vec3 hm_B_field = Vec3::Zero();             // effective B-field V = H . n
+    Mat3 hm_G_tensor = Mat3::Zero();            // full shielding kernel G = -n ⊗ V (rank-1)
+    SphericalTensor hm_G_spherical;             // Decompose(G) — T0, T1, T2 all non-zero
     Mat3 quad_tensor = Mat3::Zero();
     SphericalTensor quad_spherical;
     double quad_scalar = 0.0;

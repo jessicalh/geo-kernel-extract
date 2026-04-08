@@ -1100,7 +1100,8 @@ void MainWindow::populateAtomInfo(size_t idx) {
             rnItem->addChild(new QTreeWidgetItem({"z", QString::number(rn.z, 'f', 3) + " A"}));
             rnItem->addChild(new QTreeWidgetItem({"theta", QString::number(rn.theta * 180.0 / M_PI, 'f', 1) + " deg"}));
             rnItem->addChild(stItem("G (BS kernel)", rn.G_spherical));
-            rnItem->addChild(stItem("HM kernel", rn.hm_spherical));
+            rnItem->addChild(stItem("HM raw integral (H)", rn.hm_H_spherical));
+            rnItem->addChild(stItem("HM shielding (G)", rn.hm_G_spherical));
             rnItem->addChild(new QTreeWidgetItem({"B field", vec3Str(rn.B_field)}));
             rnItem->addChild(new QTreeWidgetItem({"B cylindrical", vec3Str(rn.B_cylindrical)}));
             if (rn.chi_scalar != 0.0)

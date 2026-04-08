@@ -10,7 +10,7 @@
 //      (Stroud T2:5-1 / Dunavant degree-5). Adaptive subdivision at
 //      2.0 A (level 1) and 1.0 A (level 2).
 //      H is SYMMETRIC and TRACELESS (integral of traceless integrand).
-//      Units: Angstrom^-1. Stored as hm_tensor on RingNeighbourhood.
+//      Units: Angstrom^-1. Stored as hm_H_tensor on RingNeighbourhood.
 //
 //   2. Full shielding kernel G_ab = n_b * (H . n)_a where n is the
 //      ring normal. This is the physically correct shielding tensor

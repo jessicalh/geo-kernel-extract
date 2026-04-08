@@ -60,14 +60,14 @@ TEST_F(HaighMallionProteinTest, RawIntegralIsSymmetricTraceless) {
     double max_asym = 0, max_trace = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
-            if (rn.hm_tensor.norm() < 1e-15) continue;
+            if (rn.hm_H_tensor.norm() < 1e-15) continue;
 
             // Symmetry: H_ab = H_ba
-            double asym = (rn.hm_tensor - rn.hm_tensor.transpose()).norm();
+            double asym = (rn.hm_H_tensor - rn.hm_H_tensor.transpose()).norm();
             max_asym = std::max(max_asym, asym);
 
             // Tracelessness: Tr(H) = 0
-            double trace = std::abs(rn.hm_tensor.trace());
+            double trace = std::abs(rn.hm_H_tensor.trace());
             max_trace = std::max(max_trace, trace);
 
             checked++;
@@ -171,7 +171,7 @@ TEST_F(HaighMallionProteinTest, ConvergesToBSAtLargeDistance) {
             // Full kernel G = -n (x) (H.n), so T0 = -n.(H.n)/3.
             // Same minus sign as BS (from sigma = -dB/dB_0).
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
-            Vec3 V = rn.hm_tensor * geom.normal;
+            Vec3 V = rn.hm_H_tensor * geom.normal;
             double hm_t0 = -geom.normal.dot(V) / 3.0;
 
             if (std::abs(hm_t0) < 1e-10) continue;
@@ -229,8 +229,8 @@ TEST(HaighMallionOrcaTest, RunOnProtonatedProtein) {
 
         // Check raw integral tracelessness
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
-            if (rn.hm_tensor.norm() > 1e-15) {
-                max_trace = std::max(max_trace, std::abs(rn.hm_tensor.trace()));
+            if (rn.hm_H_tensor.norm() > 1e-15) {
+                max_trace = std::max(max_trace, std::abs(rn.hm_H_tensor.trace()));
                 with_hm++;
             }
         }
