@@ -119,9 +119,9 @@ def extract_one(protein_id: str, config_path: str | None,
 
 
 def is_extracted(protein_id: str) -> bool:
-    """Check if features already exist (at least pos.npy in wt subdir)."""
+    """Check if features already exist for this protein."""
     d = FEATURES_BASE / _current_run / protein_id
-    return (d / "wt" / "pos.npy").exists() or (d / "pos.npy").exists()
+    return (d / "pos.npy").exists()
 
 # Set by main() from --run argument
 _current_run = ""
@@ -154,8 +154,7 @@ def main():
         sys.exit(1)
 
     if not CALIBRATION.is_dir():
-        print(f"ERROR: {CALIBRATION} not found. Run calibration/populate.py first.",
-              file=sys.stderr)
+        print(f"ERROR: {CALIBRATION} not found.", file=sys.stderr)
         sys.exit(1)
 
     # Build job list from calibration directory
