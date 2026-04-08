@@ -30,12 +30,13 @@ REPO = Path(__file__).resolve().parent.parent.parent
 KERNEL_NAMES = (
     [f"BS_{RingType(t).name}" for t in range(8)] +
     [f"HM_{RingType(t).name}" for t in range(8)] +
-    [f"PQ_{RingType(t).name}" for t in range(8)] +
     [f"Disp_{RingType(t).name}" for t in range(8)] +
     [f"MC_{BondCategory(c).name}" for c in range(5)] +
     [f"MopacMC_{BondCategory(c).name}" for c in range(5)] +
     ["MC_total", "Coulomb_total", "HBond_total",
-     "RingSusc_total", "MopacCoulomb_total", "MopacMC_total"]
+     "RingSusc_total", "MopacCoulomb_total", "MopacMC_total",
+     "EFG_bb", "EFG_aro", "MopacEFG_bb", "MopacEFG_aro",
+     "APBS_EFG", "DeltaAPBS_EFG"]
 )
 
 ELEMENT_NAMES = {1: "H", 6: "C", 7: "N", 8: "O", 16: "S"}
@@ -73,7 +74,7 @@ def load_one(protein_dir):
     p = load_protein(protein_dir)
     idx = np.where(p.delta.scalars.matched_mask)[0]
     return {
-        "kernels": result["kernels"],    # (M, 48, 5) per-protein normalized
+        "kernels": result["kernels"],    # (M, N_KERNELS, 5) per-protein normalized
         "target": result["target"],       # (M, 5)
         "ring_dist": result["ring_dist"], # (M,)
         "element": p.element[idx],
@@ -104,7 +105,8 @@ def analyze(features_dir: Path):
     element = np.concatenate([d["element"] for d in all_data])
 
     N = len(target)
-    print(f"Total atoms: {N}")
+    n_kernels = kernels.shape[1]
+    print(f"Total atoms: {N}, kernels: {n_kernels}")
     print(f"Target T2 std: {target.std():.4f} ppm")
     print(f"Target T2 mean magnitude: {np.linalg.norm(target, axis=1).mean():.4f} ppm\n")
 
@@ -115,7 +117,7 @@ def analyze(features_dir: Path):
     print("-" * 70)
 
     kernel_corrs = []
-    for k in range(48):
+    for k in range(n_kernels):
         r = _corr(kernels[:, k, :].ravel(), target.ravel())
         kernel_corrs.append((KERNEL_NAMES[k], r))
 
@@ -146,7 +148,7 @@ def analyze(features_dir: Path):
         # Best kernel for this element
         best_r = 0
         best_k = ""
-        for k in range(48):
+        for k in range(n_kernels):
             kdat = kernels[mask, k, :]
             if kdat.std() < 1e-10:
                 continue
@@ -223,23 +225,143 @@ def analyze(features_dir: Path):
     for pid, r2, m in protein_r2s[-5:]:
         print(f"    {pid:20s}  R²={r2:.3f}  atoms={m}")
 
-    # ── 5. Residual structure after ridge ────────────────────────
+    # ── 5. Greedy forward kernel selection ─────────────────────────
     print(f"\n{'=' * 70}")
-    print("5. RESIDUAL STRUCTURE AFTER GLOBAL RIDGE FIT")
+    print("5. GREEDY FORWARD KERNEL SELECTION")
+    print("   (add one kernel at a time, pick the one that maximises ridge R²)")
+    print("-" * 70)
+
+    n_kernels = kernels.shape[1]
+    lam = 1e-2
+    remaining = set(range(n_kernels))
+    selected = []
+    cumulative_r2 = []
+
+    for step in range(min(n_kernels, 20)):  # stop at 20 — diminishing returns
+        best_k = -1
+        best_r2 = -np.inf
+        for k in remaining:
+            trial = selected + [k]
+            X = kernels[:, trial, :].reshape(N, -1)
+            try:
+                XtX = X.T @ X + lam * np.eye(X.shape[1])
+                w = np.linalg.solve(XtX, X.T @ target)
+                pred = X @ w
+                r2 = _r2(pred, target)
+            except np.linalg.LinAlgError:
+                r2 = -np.inf
+            if r2 > best_r2:
+                best_r2 = r2
+                best_k = k
+        if best_k < 0:
+            break
+        selected.append(best_k)
+        remaining.remove(best_k)
+        cumulative_r2.append(best_r2)
+        delta = best_r2 - (cumulative_r2[-2] if len(cumulative_r2) > 1 else 0.0)
+        print(f"  {step+1:2d}. +{KERNEL_NAMES[best_k]:30s}  "
+              f"R²={best_r2:.4f}  (+{delta:.4f})")
+
+    print(f"\n  Summary: {len(selected)} kernels shown, "
+          f"first 5 reach R²={cumulative_r2[4]:.4f}, "
+          f"all {len(selected)} reach R²={cumulative_r2[-1]:.4f}")
+
+    # ── 6. Leave-one-out kernel ablation (from full set) ─────────
+    print(f"\n{'=' * 70}")
+    print("6. LEAVE-ONE-OUT KERNEL ABLATION")
+    print("   (R² drop when each kernel is removed from the full ridge)")
     print("-" * 70)
 
     X_all = kernels.reshape(N, -1)
     try:
-        lam = 1e-2
         XtX = X_all.T @ X_all + lam * np.eye(X_all.shape[1])
-        w = np.linalg.solve(XtX, X_all.T @ target)
-        ridge_pred = X_all @ w
-        residual = target - ridge_pred
-        r2_global = _r2(ridge_pred, target)
+        w_full = np.linalg.solve(XtX, X_all.T @ target)
+        r2_full = _r2(X_all @ w_full, target)
+    except np.linalg.LinAlgError:
+        r2_full = float("nan")
 
-        print(f"  Global ridge R²: {r2_global:.4f}")
+    print(f"  Full ridge R² ({n_kernels} kernels): {r2_full:.4f}\n")
+
+    ablations = []
+    for k in range(n_kernels):
+        keep = [j for j in range(n_kernels) if j != k]
+        X = kernels[:, keep, :].reshape(N, -1)
+        try:
+            XtX = X.T @ X + lam * np.eye(X.shape[1])
+            w = np.linalg.solve(XtX, X.T @ target)
+            r2 = _r2(X @ w, target)
+        except np.linalg.LinAlgError:
+            r2 = float("nan")
+        drop = r2_full - r2
+        ablations.append((KERNEL_NAMES[k], drop, r2))
+
+    ablations.sort(key=lambda x: x[1], reverse=True)
+    for name, drop, r2_without in ablations:
+        if drop < 1e-5:
+            bar = ""
+        else:
+            bar = "#" * min(int(drop * 500), 50)
+        print(f"  {name:30s}  drop={drop:+.4f}  R²_without={r2_without:.4f}  {bar}")
+
+    unique = [n for n, d, _ in ablations if d > 0.005]
+    redundant = [n for n, d, _ in ablations if d < 0.0005]
+    print(f"\n  Unique (drop > 0.005):    {', '.join(unique) if unique else 'none'}")
+    print(f"  Redundant (drop < 0.0005): {len(redundant)} kernels")
+
+    # ── 7. Residual subspace projection ─────────────────────────────
+    print(f"\n{'=' * 70}")
+    print("7. RESIDUAL SUBSPACE PROJECTION")
+    print("   (is the unexplained 20% in-span or out-of-span of the kernels?)")
+    print("-" * 70)
+
+    try:
+        ridge_pred = X_all @ w_full
+        residual = target - ridge_pred
+
+        print(f"  Global ridge R²: {r2_full:.4f}")
         print(f"  Residual std:    {residual.std():.4f} ppm")
-        print(f"  Residual range:  [{residual.min():.3f}, {residual.max():.3f}] ppm")
+
+        # Project residual onto each kernel direction per atom
+        print(f"\n  Per-kernel alignment with residual (mean |cos angle|):")
+        kernel_alignments = []
+        for k in range(n_kernels):
+            kv = kernels[:, k, :]  # (N, 5)
+            k_norm = np.linalg.norm(kv, axis=1, keepdims=True)
+            r_norm = np.linalg.norm(residual, axis=1, keepdims=True)
+            valid = ((k_norm > 1e-10) & (r_norm > 1e-10)).ravel()
+            if valid.sum() < 10:
+                kernel_alignments.append((KERNEL_NAMES[k], 0.0, 0))
+                continue
+            cos = np.sum(kv[valid] * residual[valid], axis=1) / (
+                k_norm[valid].ravel() * r_norm[valid].ravel())
+            kernel_alignments.append((KERNEL_NAMES[k], np.mean(np.abs(cos)), int(valid.sum())))
+
+        kernel_alignments.sort(key=lambda x: x[1], reverse=True)
+        for name, mean_cos, nv in kernel_alignments[:15]:
+            bar = "#" * int(mean_cos * 50)
+            print(f"    {name:30s}  |cos|={mean_cos:.3f}  n={nv:6d}  {bar}")
+
+        # Aggregate: what fraction of residual variance is in-span?
+        # Project residual onto the column space of all kernels
+        U, s, Vt = np.linalg.svd(X_all, full_matrices=False)
+        # Rank = number of non-negligible singular values
+        rank = np.sum(s > s[0] * 1e-8)
+        res_flat = residual.ravel()
+        in_span = U[:, :rank] @ (U[:, :rank].T @ res_flat)
+        out_span = res_flat - in_span
+        frac_in = np.sum(in_span ** 2) / np.sum(res_flat ** 2)
+        print(f"\n  Kernel subspace rank: {rank} (of {X_all.shape[1]})")
+        print(f"  Residual variance in-span:  {frac_in:.1%}")
+        print(f"  Residual variance out-of-span: {1 - frac_in:.1%}")
+
+        if frac_in > 0.3:
+            print(f"\n  >> Significant in-span residual ({frac_in:.0%}): the ridge"
+                  f"\n     regularisation is leaving recoverable signal. The MLP"
+                  f"\n     (environment-dependent weights) should capture this.")
+        else:
+            print(f"\n  >> Residual is mostly orthogonal to kernels ({1-frac_in:.0%}"
+                  f" out-of-span).\n     The missing {1-r2_full:.0%} needs new"
+                  f" physics or nonlinear kernel interactions.")
 
         # Residual by element
         print(f"\n  Residual by element:")
