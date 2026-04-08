@@ -46,15 +46,17 @@ def compute_r2(pred: torch.Tensor, tgt: torch.Tensor,
     return result
 
 
-def compute_naive_baselines(ds, cfg: Config) -> dict:
+def compute_naive_baselines(ds, cfg: Config, layout=None) -> dict:
     """Physics baselines requiring no learning."""
     tgt = ds.targets
     kernels = ds.kernels
     ss_tot = torch.sum((tgt - tgt.mean(dim=0, keepdim=True)) ** 2).item()
     result = {}
 
+    # Use layout boundaries when available; fall back for backwards compat.
+    ring_end = layout.ring_type_end if layout else 24
     for name, slc in [("bs_only", slice(0, 8)),
-                       ("ring_sum", slice(0, 24)),
+                       ("ring_sum", slice(0, ring_end)),
                        ("all_sum", slice(None))]:
         pred = kernels[:, slc, :].sum(dim=1)
         ss_res = torch.sum((tgt - pred) ** 2).item()

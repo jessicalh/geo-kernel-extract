@@ -1,0 +1,19 @@
+<map id="src/ProtonationState.h" name="src/ProtonationState.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="229,5,396,31"/>
+<area shape="rect" id="Node000002" href="$Types_8h.html" title=" " alt="" coords="153,79,224,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="294,33,222,74,219,69,291,28"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="213,152,276,177"/>
+<area shape="poly" id="edge8_Node000001_Node000005" title=" " alt="" coords="310,32,258,141,253,138,305,30"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="301,152,359,177"/>
+<area shape="poly" id="edge6_Node000001_Node000006" title=" " alt="" coords="317,31,330,138,324,139,311,31"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="351,79,413,104"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="326,29,363,67,359,71,322,33"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="438,79,497,104"/>
+<area shape="poly" id="edge9_Node000001_Node000008" title=" " alt="" coords="339,28,431,70,429,75,336,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,108,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="169,106,91,148,89,143,166,102"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="133,152,189,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="187,105,173,140,168,138,182,103"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="200,103,229,140,225,143,196,106"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="213,102,296,143,294,148,210,106"/>
+</map>

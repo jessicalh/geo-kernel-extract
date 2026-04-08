@@ -1,0 +1,10 @@
+<map id="src/BuildResult.h" name="src/BuildResult.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="199,5,330,31"/>
+<area shape="rect" id="Node000002" href="$GromacsEnsembleLoader_8h.html" title=" " alt="" coords="5,79,228,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="230,39,142,81,140,76,228,34"/>
+<area shape="rect" id="Node000003" href="$OrcaRunLoader_8h.html" title=" " alt="" coords="243,152,398,177"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="273,44,292,103,316,151,312,153,288,105,268,45"/>
+<area shape="rect" id="Node000004" href="$PdbFileReader_8h.html" title=" " alt="" coords="302,79,451,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="296,36,360,76,357,81,293,40"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="361,117,332,154,328,150,357,113"/>
+</map>

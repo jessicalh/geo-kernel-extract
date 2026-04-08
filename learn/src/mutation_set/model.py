@@ -7,6 +7,10 @@ kernels' own physics (1/r^3 falloff, cutoffs) rather than from a
 training hyperparameter.
 
 Equivariance: scalar_function(scalars) x L=2_tensor = L=2_tensor.
+
+Distance dependence emerges from the kernels' own physics: 1/r^3 dipolar
+(BS, HM, McConnell, ring susceptibility, H-bond), 1/r^5 quadrupolar
+(pi-quadrupole), and short-range switching (dispersion).
 """
 
 from __future__ import annotations

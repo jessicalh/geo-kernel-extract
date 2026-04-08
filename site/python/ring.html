@@ -1,0 +1,378 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Per-Ring Data &mdash; nmr_extract 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Calculator Groups" href="groups.html" />
+    <link rel="prev" title="Tensor Types" href="tensors.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            nmr_extract
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="loading.html">Loading</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tensors.html">Tensor Types</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Per-Ring Data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#ringcontributions">RingContributions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.RingContributions"><code class="docutils literal notranslate"><span class="pre">RingContributions</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.data"><code class="docutils literal notranslate"><span class="pre">RingContributions.data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.n_pairs"><code class="docutils literal notranslate"><span class="pre">RingContributions.n_pairs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.atom_index"><code class="docutils literal notranslate"><span class="pre">RingContributions.atom_index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.ring_index"><code class="docutils literal notranslate"><span class="pre">RingContributions.ring_index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.ring_type"><code class="docutils literal notranslate"><span class="pre">RingContributions.ring_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.distance"><code class="docutils literal notranslate"><span class="pre">RingContributions.distance</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.rho"><code class="docutils literal notranslate"><span class="pre">RingContributions.rho</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.z"><code class="docutils literal notranslate"><span class="pre">RingContributions.z</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.theta"><code class="docutils literal notranslate"><span class="pre">RingContributions.theta</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.mcconnell_factor"><code class="docutils literal notranslate"><span class="pre">RingContributions.mcconnell_factor</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.exp_decay"><code class="docutils literal notranslate"><span class="pre">RingContributions.exp_decay</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.bs"><code class="docutils literal notranslate"><span class="pre">RingContributions.bs</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.hm_H"><code class="docutils literal notranslate"><span class="pre">RingContributions.hm_H</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.hm"><code class="docutils literal notranslate"><span class="pre">RingContributions.hm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.pq"><code class="docutils literal notranslate"><span class="pre">RingContributions.pq</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.chi"><code class="docutils literal notranslate"><span class="pre">RingContributions.chi</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.disp_scalar"><code class="docutils literal notranslate"><span class="pre">RingContributions.disp_scalar</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.disp_contacts"><code class="docutils literal notranslate"><span class="pre">RingContributions.disp_contacts</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.gaussian_density"><code class="docutils literal notranslate"><span class="pre">RingContributions.gaussian_density</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.for_atom"><code class="docutils literal notranslate"><span class="pre">RingContributions.for_atom()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingContributions.for_ring_type"><code class="docutils literal notranslate"><span class="pre">RingContributions.for_ring_type()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#ringgeometry">RingGeometry</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.RingGeometry"><code class="docutils literal notranslate"><span class="pre">RingGeometry</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.data"><code class="docutils literal notranslate"><span class="pre">RingGeometry.data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.n_rings"><code class="docutils literal notranslate"><span class="pre">RingGeometry.n_rings</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.ring_index"><code class="docutils literal notranslate"><span class="pre">RingGeometry.ring_index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.ring_type"><code class="docutils literal notranslate"><span class="pre">RingGeometry.ring_type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.residue_index"><code class="docutils literal notranslate"><span class="pre">RingGeometry.residue_index</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.center"><code class="docutils literal notranslate"><span class="pre">RingGeometry.center</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.normal"><code class="docutils literal notranslate"><span class="pre">RingGeometry.normal</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#nmr_extract.RingGeometry.radius"><code class="docutils literal notranslate"><span class="pre">RingGeometry.radius</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="groups.html">Calculator Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="enums.html">Enums</a></li>
+<li class="toctree-l1"><a class="reference internal" href="catalog.html">Catalog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">nmr_extract</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Per-Ring Data</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/ring.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="per-ring-data">
+<h1>Per-Ring Data<a class="headerlink" href="#per-ring-data" title="Link to this heading"></a></h1>
+<p>Sparse (P, 57) table of per-(atom, ring) pair contributions, plus a
+(R, 10) ring geometry reference table.</p>
+<section id="ringcontributions">
+<h2>RingContributions<a class="headerlink" href="#ringcontributions" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RingContributions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.RingContributions" title="Link to this definition"></a></dt>
+<dd><p>Sparse per-(atom, ring) pair contributions.</p>
+<p>Shape <code class="docutils literal notranslate"><span class="pre">(P,</span> <span class="pre">57)</span></code> where P = number of evaluated (atom, ring) pairs.
+Each row carries geometry, all ring current kernels as
+<a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract.SphericalTensor"><code class="xref py py-class docutils literal notranslate"><span class="pre">SphericalTensor</span></code></a> views, and dispersion scalars.</p>
+<p>Use <a class="reference internal" href="#nmr_extract.RingContributions.for_atom" title="nmr_extract.RingContributions.for_atom"><code class="xref py py-meth docutils literal notranslate"><span class="pre">for_atom()</span></code></a> and <a class="reference internal" href="#nmr_extract.RingContributions.for_ring_type" title="nmr_extract.RingContributions.for_ring_type"><code class="xref py py-meth docutils literal notranslate"><span class="pre">for_ring_type()</span></code></a> to filter rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – numpy array of shape <code class="docutils literal notranslate"><span class="pre">(P,</span> <span class="pre">57)</span></code>.</p>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.data">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">data</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.n_pairs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_pairs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#nmr_extract.RingContributions.n_pairs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.atom_index">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">atom_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.atom_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.ring_index">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ring_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.ring_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.ring_type">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ring_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.ring_type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.distance">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">distance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.distance" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.rho">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">rho</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.rho" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.z">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">z</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.z" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.theta">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">theta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.theta" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.mcconnell_factor">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">mcconnell_factor</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.mcconnell_factor" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.exp_decay">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">exp_decay</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.exp_decay" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.bs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">bs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract._tensors.SphericalTensor"><span class="pre">SphericalTensor</span></a></span><a class="headerlink" href="#nmr_extract.RingContributions.bs" title="Link to this definition"></a></dt>
+<dd><p>Biot-Savart shielding kernel G. Cols 9-17.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.hm_H">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">hm_H</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract._tensors.SphericalTensor"><span class="pre">SphericalTensor</span></a></span><a class="headerlink" href="#nmr_extract.RingContributions.hm_H" title="Link to this definition"></a></dt>
+<dd><p>Haigh-Mallion raw surface integral H (pure T2). Cols 18-26.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.hm">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">hm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract._tensors.SphericalTensor"><span class="pre">SphericalTensor</span></a></span><a class="headerlink" href="#nmr_extract.RingContributions.hm" title="Link to this definition"></a></dt>
+<dd><p>Haigh-Mallion shielding kernel G (intensity * H). Cols 27-35.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.pq">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">pq</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract._tensors.SphericalTensor"><span class="pre">SphericalTensor</span></a></span><a class="headerlink" href="#nmr_extract.RingContributions.pq" title="Link to this definition"></a></dt>
+<dd><p>Pi-quadrupole kernel. Cols 36-44.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.chi">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">chi</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.SphericalTensor" title="nmr_extract._tensors.SphericalTensor"><span class="pre">SphericalTensor</span></a></span><a class="headerlink" href="#nmr_extract.RingContributions.chi" title="Link to this definition"></a></dt>
+<dd><p>Ring susceptibility kernel. Cols 45-53.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.disp_scalar">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">disp_scalar</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.disp_scalar" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.disp_contacts">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">disp_contacts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.disp_contacts" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.gaussian_density">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">gaussian_density</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingContributions.gaussian_density" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.for_atom">
+<span class="sig-name descname"><span class="pre">for_atom</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idx</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.RingContributions.for_atom" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#nmr_extract.RingContributions" title="nmr_extract._ring.RingContributions"><code class="xref py py-class docutils literal notranslate"><span class="pre">RingContributions</span></code></a></span></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>idx</strong> (<em>int</em>)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="nmr_extract.RingContributions.for_ring_type">
+<span class="sig-name descname"><span class="pre">for_ring_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.RingContributions.for_ring_type" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#nmr_extract.RingContributions" title="nmr_extract._ring.RingContributions"><code class="xref py py-class docutils literal notranslate"><span class="pre">RingContributions</span></code></a></span></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>rt</strong> (<a class="reference internal" href="enums.html#nmr_extract.RingType" title="nmr_extract._types.RingType"><em>RingType</em></a>)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<p>Column layout:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>     <span class="n">atom_index</span>
+<span class="p">[</span><span class="mi">1</span><span class="p">]</span>     <span class="n">ring_index</span>
+<span class="p">[</span><span class="mi">2</span><span class="p">]</span>     <span class="n">ring_type</span>           <span class="mi">0</span><span class="o">-</span><span class="mi">7</span>
+<span class="p">[</span><span class="mi">3</span><span class="p">]</span>     <span class="n">distance</span>            <span class="n">Angstroms</span>
+<span class="p">[</span><span class="mi">4</span><span class="p">]</span>     <span class="n">rho</span>                 <span class="n">Angstroms</span>
+<span class="p">[</span><span class="mi">5</span><span class="p">]</span>     <span class="n">z</span>                   <span class="n">Angstroms</span> <span class="p">(</span><span class="n">signed</span><span class="p">)</span>
+<span class="p">[</span><span class="mi">6</span><span class="p">]</span>     <span class="n">theta</span>               <span class="n">radians</span>
+<span class="p">[</span><span class="mi">7</span><span class="p">]</span>     <span class="n">mcconnell_factor</span>    <span class="p">(</span><span class="mi">3</span><span class="n">cos</span><span class="o">^</span><span class="mi">2</span> <span class="n">theta</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">r</span><span class="o">^</span><span class="mi">3</span>
+<span class="p">[</span><span class="mi">8</span><span class="p">]</span>     <span class="n">exp_decay</span>           <span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">distance</span> <span class="o">/</span> <span class="mf">4.0</span><span class="p">)</span>
+<span class="p">[</span><span class="mi">9</span><span class="p">:</span><span class="mi">18</span><span class="p">]</span>  <span class="n">bs_G</span>                <span class="n">SphericalTensor</span> <span class="o">--</span> <span class="n">BS</span> <span class="n">shielding</span> <span class="n">kernel</span>
+<span class="p">[</span><span class="mi">18</span><span class="p">:</span><span class="mi">27</span><span class="p">]</span> <span class="n">hm_H</span>                <span class="n">SphericalTensor</span> <span class="o">--</span> <span class="n">HM</span> <span class="n">raw</span> <span class="n">integral</span> <span class="p">(</span><span class="n">pure</span> <span class="n">T2</span><span class="p">)</span>
+<span class="p">[</span><span class="mi">27</span><span class="p">:</span><span class="mi">36</span><span class="p">]</span> <span class="n">hm_G</span>                <span class="n">SphericalTensor</span> <span class="o">--</span> <span class="n">HM</span> <span class="n">shielding</span> <span class="n">kernel</span>
+<span class="p">[</span><span class="mi">36</span><span class="p">:</span><span class="mi">45</span><span class="p">]</span> <span class="n">pq_G</span>                <span class="n">SphericalTensor</span>
+<span class="p">[</span><span class="mi">45</span><span class="p">:</span><span class="mi">54</span><span class="p">]</span> <span class="n">chi_G</span>               <span class="n">SphericalTensor</span>
+<span class="p">[</span><span class="mi">54</span><span class="p">]</span>    <span class="n">disp_scalar</span>         <span class="mi">1</span><span class="o">/</span><span class="n">r</span><span class="o">^</span><span class="mi">6</span>
+<span class="p">[</span><span class="mi">55</span><span class="p">]</span>    <span class="n">disp_contacts</span>       <span class="n">vertex</span> <span class="n">contact</span> <span class="n">count</span>
+<span class="p">[</span><span class="mi">56</span><span class="p">]</span>    <span class="n">gaussian_density</span>    <span class="p">(</span><span class="n">placeholder</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="ringgeometry">
+<h2>RingGeometry<a class="headerlink" href="#ringgeometry" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">RingGeometry</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.RingGeometry" title="Link to this definition"></a></dt>
+<dd><p>Per-ring geometry reference table.</p>
+<p>Shape <code class="docutils literal notranslate"><span class="pre">(R,</span> <span class="pre">10)</span></code> where R = number of rings in the protein.
+One row per ring: index, type, residue, center, normal, radius.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<span class="sphinx_autodoc_typehints-type"><code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code></span>) – numpy array of shape <code class="docutils literal notranslate"><span class="pre">(R,</span> <span class="pre">10)</span></code>.</p>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.data">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">data</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.n_rings">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_rings</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.n_rings" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.ring_index">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ring_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.ring_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.ring_type">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">ring_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.ring_type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.residue_index">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">residue_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.residue_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.center">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">center</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.center" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.normal">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">normal</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.normal" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="nmr_extract.RingGeometry.radius">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">radius</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.RingGeometry.radius" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="tensors.html" class="btn btn-neutral float-left" title="Tensor Types" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="groups.html" class="btn btn-neutral float-right" title="Calculator Groups" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

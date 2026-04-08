@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Geometric Kernel Catalogue &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html" class="active">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>Geometric Kernel Catalogue</h1>
+    <p>
+      What each classical calculator computes, why, and what angular
+      structure (T2) it produces. Parameter values are not specified
+      here &mdash; they are learnable weights on these geometric kernels.
+      <strong>The kernels are the physics.</strong>
+    </p>
+
+    <!-- Unit Convention -->
+    <h2>Unit Convention</h2>
+    <table>
+      <thead><tr><th>Quantity</th><th>Unit</th></tr></thead>
+      <tbody>
+        <tr><td>Positions</td><td>&#8491;ngstr&#246;ms</td></tr>
+        <tr><td>Ring current intensity</td><td>nanoamperes</td></tr>
+        <tr><td>B-field (Biot-Savart, internal)</td><td>Tesla (SI)</td></tr>
+        <tr><td>Geometric kernel G</td><td>dimensionless (after PPM_FACTOR)</td></tr>
+        <tr><td>Dipolar kernel K</td><td>&#8491;<sup>&minus;3</sup></td></tr>
+        <tr><td>EFG</td><td>V/&#8491;<sup>2</sup></td></tr>
+        <tr><td>Shielding contribution</td><td>ppm (kernel &times; parameter)</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Shared Dipolar Kernel -->
+    <h2>The Shared Dipolar Kernel</h2>
+    <p>Four of eight calculators share one geometric core:</p>
+    <div class="equation">
+      K<sub>ab</sub>(d) = 3 d<sub>a</sub> d<sub>b</sub> / r<sup>5</sup>
+      &minus; &delta;<sub>ab</sub> / r<sup>3</sup>
+    </div>
+    <p>where d = r<sub>atom</sub> &minus; r<sub>source</sub>, r = |d|.</p>
+    <p><strong>Properties:</strong> symmetric, traceless (pure T2, 5 components),
+      units &#8491;<sup>&minus;3</sup>. This is &nabla;<sub>a</sub>&nabla;<sub>b</sub>(1/r)
+      &mdash; the same tensor appearing in magnetic dipole fields, electric
+      field gradients, and any point-source dipolar interaction.</p>
+
+    <table>
+      <thead><tr><th>Calculator</th><th>Source point</th><th>Reference direction</th><th>Physical constant</th></tr></thead>
+      <tbody>
+        <tr><td>McConnell</td><td>bond midpoint</td><td>bond axis</td><td>&Delta;&chi; per bond category</td></tr>
+        <tr><td>Ring Susceptibility</td><td>ring centre</td><td>ring normal</td><td>&Delta;&chi;<sub>ring</sub> per ring type</td></tr>
+        <tr><td>H-Bond</td><td>H-bond partner</td><td>D-H&middot;&middot;&middot;A direction</td><td>&eta; per element</td></tr>
+        <tr><td>Coulomb EFG</td><td>each charged atom</td><td>(none &mdash; sum)</td><td>charges from ff14SB/xTB</td></tr>
+      </tbody>
+    </table>
+
+    <!-- BS -->
+    <h2>1. Biot-Savart Ring Current</h2>
+    <p>
+      Johnson &amp; Bovey (1958). &pi;-electrons above and below an aromatic
+      ring modelled as two current loops at height &plusmn;d from the ring
+      plane. Each carries I/2.
+    </p>
+    <div class="equation">
+      G<sub>ab</sub> = &minus;n<sub>b</sub> &middot; B<sub>a</sub> &middot; PPM_FACTOR
+    </div>
+    <p>
+      B is computed by numerical integration of the Biot-Savart law around
+      both loops (SI: metres, amperes &rarr; Tesla). G is dimensionless.
+    </p>
+    <p><strong>T2 structure:</strong> G = n &otimes; B is rank-1. T0 = n&middot;B&middot;PPM_FACTOR/3
+      (the isotropic ring current shift). T1 &ne; 0 (G is not symmetric). T2
+      depends on the direction of B relative to n, the lobe offset d, and ring geometry.
+      T2 does <em>not</em> depend on intensity I &mdash; so T2 constrains the
+      <em>geometric</em> parameters while T0 constrains magnitude.</p>
+
+    <h3>Fused Rings (TRP)</h3>
+    <p>
+      TRP produces three ring objects: TRP5 (pyrrole, I=&minus;6.72),
+      TRP6 (benzene, I=&minus;12.48), TRP9 (indole perimeter, I=&minus;19.2).
+      BS superposition is exact: T0(TRP5)+T0(TRP6)/T0(TRP9) = 1.000.
+      Verified on 720 proteins (87,234 atom-TRP triplets).
+    </p>
+
+    <!-- HM -->
+    <h2>2. Haigh-Mallion Ring Current</h2>
+    <p>
+      Haigh &amp; Mallion (1973). &pi;-electron cloud as a uniformly
+      magnetised disk. Surface integral of the dipolar kernel over the
+      ring polygon, via 7-point Gaussian quadrature on a fan triangulation.
+    </p>
+    <div class="equation">
+      H<sub>ab</sub>(r) = &int;&int; [3&rho;<sub>a</sub>&rho;<sub>b</sub>/&rho;<sup>5</sup>
+      &minus; &delta;<sub>ab</sub>/&rho;<sup>3</sup>] dS
+    </div>
+    <p>
+      H is symmetric and traceless (pure T2). Verified at machine precision
+      (max asymmetry 3.9&times;10<sup>&minus;17</sup>, max |Tr| 1.2&times;10<sup>&minus;14</sup>).
+      Units: &#8491;<sup>&minus;1</sup>.
+    </p>
+    <div class="equation">
+      G<sub>ab</sub> = n<sub>b</sub> &middot; (H &middot; n)<sub>a</sub>
+    </div>
+    <p>
+      The full shielding kernel G is rank-1 (same structure as BS), with
+      non-zero T0, T1, T2.
+    </p>
+
+    <!-- McConnell -->
+    <h2>3. McConnell Bond Anisotropy</h2>
+    <p>
+      McConnell (1957). Each bond has anisotropic magnetic susceptibility,
+      creating a dipolar shielding field. The <em>full</em> tensor (not the
+      commonly cited traceless K):
+    </p>
+    <div class="equation">
+      &sigma;<sub>ab</sub> = (&Delta;&chi;/3) &middot; M<sub>ab</sub>/r<sup>3</sup>
+    </div>
+    <p>where the McConnell tensor M<sub>ab</sub> is:</p>
+    <div class="equation">
+      M<sub>ab</sub> = 9 cos&theta; &middot; d&#770;<sub>a</sub> b&#770;<sub>b</sub>
+      &minus; 3 b&#770;<sub>a</sub> b&#770;<sub>b</sub>
+      &minus; (3 d&#770;<sub>a</sub> d&#770;<sub>b</sub> &minus; &delta;<sub>ab</sub>)
+    </div>
+    <p><strong>Three terms, three roles:</strong></p>
+    <table>
+      <thead><tr><th>Term</th><th>Symmetry</th><th>Irrep</th></tr></thead>
+      <tbody>
+        <tr><td>9 cos&theta; d&#770;<sub>a</sub> b&#770;<sub>b</sub></td><td>asymmetric</td><td>&rarr; T1</td></tr>
+        <tr><td>&minus;3 b&#770;<sub>a</sub> b&#770;<sub>b</sub></td><td>symmetric</td><td>&rarr; T0</td></tr>
+        <tr><td>&minus;(3 d&#770;<sub>a</sub> d&#770;<sub>b</sub> &minus; &delta;<sub>ab</sub>)</td><td>sym. traceless</td><td>&rarr; T2 (dipolar kernel K)</td></tr>
+      </tbody>
+    </table>
+    <p>
+      T0 = (&Delta;&chi;/3)(3cos<sup>2</sup>&theta; &minus; 1)/r<sup>3</sup> &mdash;
+      the McConnell isotropic shift. The tensor is <em>asymmetric</em>: T1 &ne; 0.
+    </p>
+    <p>
+      <strong>Per-category decomposition:</strong> PeptideCO, PeptideCN,
+      BackboneOther, SidechainCO, Aromatic, SidechainOther &mdash; each with
+      separate &Delta;&chi;. The <code>midpoint_shift</code> parameter moves
+      the effective dipole centre along the bond axis.
+    </p>
+
+    <!-- Coulomb -->
+    <h2>4. Coulomb / Buckingham EFG</h2>
+    <p>
+      Buckingham (1960). Partial charges create an E-field and EFG at each atom.
+    </p>
+    <div class="equation">
+      E<sub>a</sub>(i) = k<sub>e</sub> &sum;<sub>j</sub> q<sub>j</sub>
+      (r<sub>i</sub> &minus; r<sub>j</sub>)<sub>a</sub> / |r<sub>i</sub> &minus; r<sub>j</sub>|<sup>3</sup>
+    </div>
+    <div class="equation">
+      V<sub>ab</sub>(i) = k<sub>e</sub> &sum;<sub>j</sub> q<sub>j</sub>
+      [3(r<sub>i</sub>&minus;r<sub>j</sub>)<sub>a</sub>(r<sub>i</sub>&minus;r<sub>j</sub>)<sub>b</sub>
+      / |r<sub>i</sub>&minus;r<sub>j</sub>|<sup>5</sup>
+      &minus; &delta;<sub>ab</sub> / |r<sub>i</sub>&minus;r<sub>j</sub>|<sup>3</sup>]
+    </div>
+    <p>
+      V is the dipolar kernel K weighted by charge and summed &mdash; traceless
+      by Gauss's law (pure T2). Decomposed into backbone, sidechain, aromatic,
+      and solvent (APBS minus vacuum) contributions.
+    </p>
+    <div class="equation">
+      &sigma;<sub>iso</sub> = A &middot; E<sub>z</sub> + B &middot; E<sub>z</sub><sup>2</sup>
+      &emsp;&emsp;
+      &sigma;<sub>T2</sub> = &gamma; &middot; V<sub>T2</sub>
+    </div>
+
+    <!-- PQ -->
+    <h2>5. Pi-Quadrupole EFG</h2>
+    <p>
+      Buckingham (1959), Stone T-tensor formalism. The &pi;-electron cloud
+      creates a quadrupole E-field. EFG from a point axial quadrupole
+      &Theta; along ring normal n:
+    </p>
+    <div class="equation">
+      G<sub>ab</sub> = 105 d<sub>n</sub><sup>2</sup> d<sub>a</sub> d<sub>b</sub> / r<sup>9</sup>
+      &minus; 30 d<sub>n</sub> (n<sub>a</sub> d<sub>b</sub> + n<sub>b</sub> d<sub>a</sub>) / r<sup>7</sup>
+      &minus; 15 d<sub>a</sub> d<sub>b</sub> / r<sup>7</sup>
+      + 6 n<sub>a</sub> n<sub>b</sub> / r<sup>5</sup>
+      + &delta;<sub>ab</sub> (3/r<sup>5</sup> &minus; 15 d<sub>n</sub><sup>2</sup>/r<sup>7</sup>)
+    </div>
+    <p>
+      Symmetric, traceless (Laplace), pure T2. Leading radial decay 1/r<sup>5</sup>.
+      Verified on 723 proteins (1.03M atom-ring pairs, max |Tr| = 5.1&times;10<sup>&minus;15</sup>).
+    </p>
+
+    <!-- Ring Chi -->
+    <h2>6. Ring Susceptibility Anisotropy</h2>
+    <p>
+      McConnell (1957) with b&#770; &rarr; n&#770;. Whole-ring diamagnetic
+      susceptibility as a point dipole at ring centre.
+    </p>
+    <div class="equation">
+      &sigma;<sub>ab</sub> = (&Delta;&chi;<sub>ring</sub>/3) &middot;
+      [9 cos&theta; d&#770;<sub>a</sub> n<sub>b</sub>
+      &minus; 3 n<sub>a</sub> n<sub>b</sub>
+      &minus; (3 d&#770;<sub>a</sub> d&#770;<sub>b</sub> &minus; &delta;<sub>ab</sub>)]
+      / r<sup>3</sup>
+    </div>
+    <p>
+      Same structure as McConnell &mdash; asymmetric, non-traceless: T0, T1, T2
+      all non-zero. Only adjustable parameter is &Delta;&chi;<sub>ring</sub>.
+      No geometric parameter changes the angular shape.
+    </p>
+
+    <!-- Dispersion -->
+    <h2>7. London Dispersion</h2>
+    <p>London (1937). Van der Waals 1/r<sup>6</sup> summed over ring vertices
+      with CHARMM switching function (R<sub>switch</sub> = 4.3 &#8491;,
+      R<sub>cut</sub> = 5.0 &#8491;).</p>
+    <div class="equation">
+      K<sub>disp,ab</sub> = &sum;<sub>vertices</sub> C<sub>6</sub> &middot;
+      (3 d<sub>a</sub> d<sub>b</sub> / r<sup>8</sup> &minus; &delta;<sub>ab</sub> / r<sup>6</sup>)
+    </div>
+    <p>T2 present but typically dominated by McConnell and ring current T2.</p>
+
+    <!-- HBond -->
+    <h2>8. H-Bond Dipolar</h2>
+    <p>
+      Barfield &amp; Karplus (1969), Cornilescu &amp; Bax (1999). Dipolar
+      tensor to H-bond partner (DSSP Kabsch-Sander criterion). Same
+      derivation as McConnell with b&#770; &rarr; h&#770; (H-bond direction).
+    </p>
+    <div class="equation">
+      &sigma;<sub>ab</sub> = (&eta;/3) &middot;
+      [9 cos&theta; d&#770;<sub>a</sub> h<sub>b</sub>
+      &minus; 3 h<sub>a</sub> h<sub>b</sub>
+      &minus; (3 d&#770;<sub>a</sub> d&#770;<sub>b</sub> &minus; &delta;<sub>ab</sub>)]
+      / r<sup>3</sup>
+    </div>
+    <p>Asymmetric, non-traceless. T0, T1, T2 all non-zero.</p>
+
+    <!-- MOPAC-derived -->
+    <h2>9 &amp; 10. MOPAC-Derived Calculators</h2>
+    <h3>9. MOPAC Coulomb EFG</h3>
+    <p>
+      Same Coulomb kernel as Calculator 4, but charges are PM7 Mulliken
+      charges from MOPAC instead of ff14SB fixed charges. Captures charge
+      polarisation that the fixed-charge force field cannot.
+    </p>
+    <p>
+      T2 independence verified: MopacCoulomb vs ff14SB Coulomb |cos| = 0.85.
+      Highly correlated but not redundant &mdash; 15% angular difference
+      from charge polarisation.
+    </p>
+
+    <h3>10. MOPAC McConnell (Bond-Order-Weighted)</h3>
+    <p>
+      Same McConnell kernel as Calculator 3, but each bond's contribution
+      weighted by MOPAC Wiberg bond order. Double bonds dominate over single
+      bonds; the relative contributions change, rotating the total T2 pattern.
+    </p>
+    <div class="equation">
+      total<sub>ab</sub> = &sum;<sub>bonds</sub> bond_order<sub>k</sub>
+      &middot; M<sub>ab,k</sub> / r<sub>k</sub><sup>3</sup>
+    </div>
+    <p>
+      T2 independence: MopacMcConnell vs unweighted McConnell |cos| = 0.55.
+      Substantially different angular patterns &mdash; bond-order weighting
+      produces genuinely different structure.
+    </p>
+
+    <!-- T2 Hierarchy -->
+    <h2>Expected T2 Hierarchy</h2>
+    <p>
+      From physical reasoning (to be verified empirically against DFT):
+    </p>
+    <table>
+      <thead>
+        <tr><th>Calculator</th><th>T2 Mechanism</th><th>Key Geometric Parameter</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>McConnell</td><td>Full dipolar tensor from bonds (many, steep 1/r<sup>3</sup>)</td><td>midpoint_shift</td></tr>
+        <tr><td>Coulomb EFG</td><td>Charge environment asymmetry (pure T2)</td><td>&gamma;</td></tr>
+        <tr><td>Biot-Savart</td><td>n &otimes; B outer product (near rings)</td><td>lobe_offset d</td></tr>
+        <tr><td>Haigh-Mallion</td><td>Surface integral (same physics, different approx.)</td><td>(intensity)</td></tr>
+        <tr><td>Ring Susceptibility</td><td>Dipolar from ring centre</td><td>(pure geometry)</td></tr>
+        <tr><td>Pi-Quadrupole</td><td>Quadrupole EFG, 1/r<sup>5</sup></td><td>height_offset</td></tr>
+        <tr><td>Dispersion</td><td>1/r<sup>8</sup> anisotropy (small)</td><td>&mdash;</td></tr>
+        <tr><td>H-Bond</td><td>Dipolar from partner</td><td>bb/sc weight</td></tr>
+        <tr><td>MOPAC Coulomb</td><td>QM-charge EFG</td><td>&gamma;<sub>mopac</sub></td></tr>
+        <tr><td>MOPAC McConnell</td><td>Bond-order-weighted dipolar</td><td>&Delta;&chi;<sub>mopac</sub></td></tr>
+      </tbody>
+    </table>
+    <p>
+      McConnell is expected to dominate T2: hundreds of bonds (vs few rings),
+      steep 1/r<sup>3</sup> decay, each bond with a different direction creating
+      complex angular patterns, and large &Delta;&chi; for C=O bonds.
+    </p>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

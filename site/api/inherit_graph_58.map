@@ -1,0 +1,25 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classnmr_1_1Ring.html" title=" " alt="" coords="5,203,91,228"/>
+<area shape="rect" id="Node000001" href="$classnmr_1_1FiveMemberedRing.html" title=" " alt="" coords="139,104,321,129"/>
+<area shape="poly" id="edge38_Node000000_Node000001" title=" " alt="" coords="83,194,204,127,206,132,85,199"/>
+<area shape="rect" id="Node000006" href="$classnmr_1_1FusedRing.html" title=" " alt="" coords="169,203,291,228"/>
+<area shape="poly" id="edge43_Node000000_Node000006" title=" " alt="" coords="104,213,169,213,169,218,104,218"/>
+<area shape="rect" id="Node000008" href="$classnmr_1_1SixMemberedRing.html" title=" " alt="" coords="143,276,317,301"/>
+<area shape="poly" id="edge45_Node000000_Node000008" title=" " alt="" coords="94,231,198,273,196,278,92,236"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1HidImidazoleRing.html" title=" " alt="" coords="379,5,549,31"/>
+<area shape="poly" id="edge39_Node000001_Node000002" title=" " alt="" coords="261,95,311,66,368,40,403,28,405,33,370,44,313,71,264,99"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1HieImidazoleRing.html" title=" " alt="" coords="379,55,549,80"/>
+<area shape="poly" id="edge40_Node000001_Node000003" title=" " alt="" coords="304,99,402,77,403,83,305,104"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1HisImidazoleRing.html" title=" " alt="" coords="379,104,549,129"/>
+<area shape="poly" id="edge41_Node000001_Node000004" title=" " alt="" coords="335,114,378,114,378,119,335,119"/>
+<area shape="rect" id="Node000005" href="$classnmr_1_1TrpPyrroleRing.html" title=" " alt="" coords="389,153,539,179"/>
+<area shape="poly" id="edge42_Node000001_Node000005" title=" " alt="" coords="305,130,403,151,402,156,304,135"/>
+<area shape="rect" id="Node000007" href="$classnmr_1_1IndolePerimeterRing.html" title=" " alt="" coords="369,203,559,228"/>
+<area shape="poly" id="edge44_Node000006_Node000007" title=" " alt="" coords="305,213,369,213,369,218,305,218"/>
+<area shape="rect" id="Node000009" href="$classnmr_1_1PheBenzeneRing.html" title=" " alt="" coords="381,252,547,277"/>
+<area shape="poly" id="edge46_Node000008_Node000009" title=" " alt="" coords="331,276,381,270,381,276,331,281"/>
+<area shape="rect" id="Node000010" href="$classnmr_1_1TrpBenzeneRing.html" title=" " alt="" coords="384,301,544,327"/>
+<area shape="poly" id="edge47_Node000008_Node000010" title=" " alt="" coords="331,297,384,303,383,308,331,302"/>
+<area shape="rect" id="Node000011" href="$classnmr_1_1TyrPhenolRing.html" title=" " alt="" coords="390,351,538,376"/>
+<area shape="poly" id="edge48_Node000008_Node000011" title=" " alt="" coords="278,304,370,335,414,348,412,353,369,341,276,309"/>
+</map>

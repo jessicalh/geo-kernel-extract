@@ -1,0 +1,24 @@
+<map id="src/PropkaProtonator.h" name="src/PropkaProtonator.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="226,5,394,31"/>
+<area shape="rect" id="Node000002" href="$Protonator_8h.html" title=" " alt="" coords="259,79,361,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="313,31,313,65,307,65,307,31"/>
+<area shape="rect" id="Node000003" href="$ProtonationState_8h.html" title=" " alt="" coords="180,152,323,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="302,106,271,143,267,140,298,103"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="331,299,390,324"/>
+<area shape="poly" id="edge12_Node000002_Node000008" title=" " alt="" coords="318,103,338,151,352,187,362,225,365,285,360,285,357,226,347,189,333,153,313,105"/>
+<area shape="rect" id="Node000004" href="$Types_8h.html" title=" " alt="" coords="83,225,153,251"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="231,180,153,221,151,216,229,175"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="5,299,68,324"/>
+<area shape="poly" id="edge10_Node000003_Node000007" title=" " alt="" coords="181,177,123,195,96,209,72,227,53,255,43,286,38,284,48,253,68,224,93,204,121,190,179,172"/>
+<area shape="poly" id="edge8_Node000003_Node000008" title=" " alt="" coords="277,175,309,195,337,224,353,254,360,285,355,286,348,256,333,227,305,199,274,180"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="177,225,240,251"/>
+<area shape="poly" id="edge9_Node000003_Node000009" title=" " alt="" coords="247,179,225,215,220,212,242,176"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="265,225,323,251"/>
+<area shape="poly" id="edge11_Node000003_Node000010" title=" " alt="" coords="261,176,282,212,278,215,256,179"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="173,299,276,324"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="137,248,197,289,194,293,134,253"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="93,299,149,324"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="121,251,122,285,117,285,116,251"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="107,253,62,292,58,288,103,249"/>
+<area shape="poly" id="edge7_Node000004_Node000008" title=" " alt="" coords="155,247,319,295,318,300,153,252"/>
+</map>

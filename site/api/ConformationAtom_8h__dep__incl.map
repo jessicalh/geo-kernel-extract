@@ -1,0 +1,44 @@
+<map id="src/ConformationAtom.h" name="src/ConformationAtom.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="616,5,797,31"/>
+<area shape="rect" id="Node000002" href="$ProteinConformation_8h.html" title=" " alt="" coords="611,79,803,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="709,44,709,79,704,79,704,44"/>
+<area shape="rect" id="Node000003" href="$ApbsFieldResult_8h.html" title=" " alt="" coords="75,240,237,265"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="597,97,528,103,452,113,373,130,297,154,174,242,171,238,295,150,371,125,451,108,528,97,597,92"/>
+<area shape="rect" id="Node000004" href="$ChargeAssignmentResult_8h.html" title=" " alt="" coords="5,159,227,185"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="602,108,246,155,194,162,193,157,245,149,601,103"/>
+<area shape="rect" id="Node000005" href="$DemoResult_8h.html" title=" " alt="" coords="353,313,490,339"/>
+<area shape="poly" id="edge5_Node000002_Node000005" title=" " alt="" coords="609,109,549,126,488,152,460,170,434,190,411,214,393,241,389,260,394,279,414,312,409,315,389,281,384,260,388,239,407,211,430,186,457,165,486,148,547,121,608,104"/>
+<area shape="rect" id="Node000006" href="$DsspResult_8h.html" title=" " alt="" coords="941,159,1072,185"/>
+<area shape="poly" id="edge6_Node000002_Node000006" title=" " alt="" coords="764,105,964,157,962,162,763,110"/>
+<area shape="rect" id="Node000007" href="$EnrichmentResult_8h.html" title=" " alt="" coords="1097,159,1269,185"/>
+<area shape="poly" id="edge7_Node000002_Node000007" title=" " alt="" coords="797,103,1084,149,1125,157,1124,162,1084,155,796,109"/>
+<area shape="rect" id="Node000008" href="$GeometryResult_8h.html" title=" " alt="" coords="403,240,565,265"/>
+<area shape="poly" id="edge8_Node000002_Node000008" title=" " alt="" coords="654,111,610,129,568,154,544,176,523,200,493,242,489,238,519,196,540,172,565,150,608,124,652,106"/>
+<area shape="rect" id="Node000009" href="$SpatialIndexResult_8h.html" title=" " alt="" coords="515,313,693,339"/>
+<area shape="poly" id="edge24_Node000002_Node000009" title=" " alt="" coords="661,112,634,130,613,153,604,174,598,196,594,242,598,283,604,313,598,314,593,283,589,242,592,195,599,172,608,151,631,125,658,108"/>
+<area shape="rect" id="Node000010" href="$MolecularGraphResult_8h.html" title=" " alt="" coords="358,387,559,412"/>
+<area shape="poly" id="edge12_Node000002_Node000010" title=" " alt="" coords="600,109,499,128,457,140,428,154,377,195,356,216,340,238,330,261,326,284,329,310,342,337,355,353,372,366,410,384,408,389,369,371,352,357,338,340,324,311,320,284,324,259,336,235,352,213,374,191,425,150,455,135,497,122,599,103"/>
+<area shape="rect" id="Node000011" href="$MopacResult_8h.html" title=" " alt="" coords="1293,159,1435,185"/>
+<area shape="poly" id="edge13_Node000002_Node000011" title=" " alt="" coords="816,97,1032,117,1282,149,1319,157,1318,162,1281,155,1032,122,816,103"/>
+<area shape="rect" id="Node000012" href="$OperationRunner_8h.html" title=" " alt="" coords="623,159,790,185"/>
+<area shape="poly" id="edge14_Node000002_Node000012" title=" " alt="" coords="709,118,709,159,704,159,704,118"/>
+<area shape="rect" id="Node000014" href="$OrcaShieldingResult_8h.html" title=" " alt="" coords="1459,159,1647,185"/>
+<area shape="poly" id="edge16_Node000002_Node000014" title=" " alt="" coords="817,96,1102,115,1275,130,1447,149,1495,157,1494,162,1446,155,1274,135,1102,120,816,101"/>
+<area shape="rect" id="Node000015" href="$Protein_8h.html" title=" " alt="" coords="814,159,917,185"/>
+<area shape="poly" id="edge17_Node000002_Node000015" title=" " alt="" coords="743,108,843,157,841,162,741,112"/>
+<area shape="rect" id="Node000018" href="$ProtonationDetectionResult_8h.html" title=" " alt="" coords="1671,152,1854,192"/>
+<area shape="poly" id="edge23_Node000002_Node000018" title=" " alt="" coords="816,93,1191,109,1425,126,1660,149,1671,151,1671,156,1660,155,1425,131,1191,114,816,98"/>
+<area shape="poly" id="edge4_Node000004_Node000003" title=" " alt="" coords="131,196,152,239,148,241,126,198"/>
+<area shape="poly" id="edge9_Node000008_Node000005" title=" " alt="" coords="467,277,433,315,429,311,463,274"/>
+<area shape="poly" id="edge10_Node000008_Node000009" title=" " alt="" coords="517,270,586,311,583,315,514,275"/>
+<area shape="poly" id="edge11_Node000009_Node000010" title=" " alt="" coords="570,347,484,389,481,384,567,342"/>
+<area shape="rect" id="Node000013" href="$GromacsEnsembleLoader_8h.html" title=" " alt="" coords="639,240,862,265"/>
+<area shape="poly" id="edge15_Node000012_Node000013" title=" " alt="" coords="722,195,746,238,742,241,718,198"/>
+<area shape="poly" id="edge18_Node000015_Node000008" title=" " alt="" coords="816,191,802,195,672,222,557,243,556,237,671,217,801,189,815,186"/>
+<area shape="poly" id="edge19_Node000015_Node000013" title=" " alt="" coords="839,195,769,242,766,238,836,190"/>
+<area shape="rect" id="Node000016" href="$OrcaRunLoader_8h.html" title=" " alt="" coords="877,313,1032,339"/>
+<area shape="poly" id="edge20_Node000015_Node000016" title=" " alt="" coords="881,195,950,312,946,315,877,198"/>
+<area shape="rect" id="Node000017" href="$PdbFileReader_8h.html" title=" " alt="" coords="936,240,1085,265"/>
+<area shape="poly" id="edge21_Node000015_Node000017" title=" " alt="" coords="900,189,990,237,988,242,897,194"/>
+<area shape="poly" id="edge22_Node000017_Node000016" title=" " alt="" coords="995,278,966,315,962,312,991,275"/>
+</map>

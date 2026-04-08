@@ -1,0 +1,16 @@
+<map id="src/ConformationAtom.h" name="src/ConformationAtom.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="47,5,228,31"/>
+<area shape="rect" id="Node000002" href="$Types_8h.html" title=" " alt="" coords="102,79,173,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="140,31,140,65,135,65,135,31"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,152,61,177"/>
+<area shape="poly" id="edge7_Node000001_Node000004" title=" " alt="" coords="130,33,93,80,50,142,46,139,89,77,126,29"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="197,79,259,104"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="154,29,204,68,201,72,150,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="86,152,189,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="140,104,140,138,135,138,135,104"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="122,106,63,146,60,142,119,102"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="213,152,275,177"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="156,102,217,142,214,147,153,106"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="300,152,359,177"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="169,102,288,145,286,150,167,107"/>
+</map>

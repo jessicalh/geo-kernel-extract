@@ -1,0 +1,5 @@
+<map id="nmr::RingNeighbourhood" name="nmr::RingNeighbourhood">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,332,181,597"/>
+<area shape="rect" id="Node000002" href="$structnmr_1_1SphericalTensor.html" title=" " alt="" coords="9,5,178,211"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="96,211,96,315,91,315,91,211"/>
+</map>

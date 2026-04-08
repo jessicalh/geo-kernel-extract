@@ -1,0 +1,21 @@
+var searchData=
+[
+  ['vacuum_5fpermeability_0',['VACUUM_PERMEABILITY',['../namespacenmr.html#ad99d1f4cc19c2dbbf78ad6dbded6e237',1,'nmr']]],
+  ['val_1',['VAL',['../namespacenmr.html#a5bbacc34dc32f94dbd8e59710c8f5524adc62baefdb2838f1e2a64f8115940ce4',1,'nmr']]],
+  ['valencies_5f_2',['valencies_',['../classnmr_1_1MopacResult.html#acb814d69d58824acdd91106e66028f7e',1,'nmr::MopacResult']]],
+  ['valencyat_3',['ValencyAt',['../classnmr_1_1MopacResult.html#a00737395c06286194163f1dc23f3c321',1,'nmr::MopacResult']]],
+  ['valid_4',['Valid',['../structnmr_1_1Residue_1_1ChiAtoms.html#ad25c32cb768e60d729988d2ac6aa5063',1,'nmr::Residue::ChiAtoms']]],
+  ['validate_5',['Validate',['../classnmr_1_1IupacAtomIdentity.html#af2515340251d7d200d99262e1b116096',1,'nmr::IupacAtomIdentity']]],
+  ['validatevariantindices_6',['ValidateVariantIndices',['../namespacenmr.html#ac97f7b4dbc599eeeb486e5eabd04ce7e',1,'nmr']]],
+  ['value_7',['value',['../structnmr_1_1NamedNumber.html#a55a87ef03bebfd758b749ae69f1efc39',1,'nmr::NamedNumber']]],
+  ['variant_8',['variant',['../structnmr_1_1NamingRegistry_1_1ContextKey.html#a1861366c2c0e2f43637c39b0ed236686',1,'nmr::NamingRegistry::ContextKey']]],
+  ['variant_5findex_9',['variant_index',['../structnmr_1_1ResidueProtonation.html#a7837f880109e751d68450c31e787dd6d',1,'nmr::ResidueProtonation']]],
+  ['variant_5fnames_5f_10',['variant_names_',['../classnmr_1_1ProtonationDetectionResult.html#a2921ad1657436d2956080d8c73e2d398',1,'nmr::ProtonationDetectionResult']]],
+  ['variantnameat_11',['VariantNameAt',['../classnmr_1_1ProtonationDetectionResult.html#a71607811ca722fd57b7987344c8aeaa0',1,'nmr::ProtonationDetectionResult']]],
+  ['variantresiduename_12',['VariantResidueName',['../classnmr_1_1ChargeAssignmentResult.html#a2dda73dbf5c5f3423bc849eccb7c0cac',1,'nmr::ChargeAssignmentResult']]],
+  ['variants_13',['variants',['../classnmr_1_1AminoAcidType.html#a7ac8f85ea306e4fcce839a8462cb2f28',1,'nmr::AminoAcidType']]],
+  ['vdw_5fradius_14',['vdw_radius',['../classnmr_1_1ConformationAtom.html#a66ecd7eb3338256ebdcd97e86c808b42',1,'nmr::ConformationAtom']]],
+  ['vec3_15',['Vec3',['../namespacenmr.html#ae4a2a57d8f25b7509638b7d3fbd2d2de',1,'nmr']]],
+  ['verify_16',['Verify',['../classnmr_1_1RuntimeEnvironment.html#a6cdb235320cc53fc0f93fc3000cc4e54',1,'nmr::RuntimeEnvironment']]],
+  ['vertices_17',['vertices',['../structnmr_1_1RingGeometry.html#a9e9a91c315a97db3e83ae5620a9973bc',1,'nmr::RingGeometry']]]
+];

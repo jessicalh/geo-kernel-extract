@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protein Model &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>1. Protein Model</h1>
+    <p>
+      Sequence, topology, and conformation ownership. A <code>Protein</code>
+      owns atoms, residues, bonds (classified by <code>BondCategory</code>),
+      and rings (typed class hierarchy). Non-movable, non-copyable.
+      Four typed conformation subclasses record provenance.
+    </p>
+    <p><a href="architecture.html">&larr; Back to Architecture</a></p>
+    <figure class="diagram-full">
+      <img src="img/diagrams/01_protein_model.svg" alt="Protein model class hierarchy">
+    </figure>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

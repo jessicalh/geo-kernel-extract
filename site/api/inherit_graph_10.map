@@ -1,0 +1,11 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classnmr_1_1ChargeSource.html" title=" " alt="" coords="5,80,152,105"/>
+<area shape="rect" id="Node000001" href="$classnmr_1_1GmxTprChargeSource.html" title=" " alt="" coords="206,5,405,31"/>
+<area shape="poly" id="edge1_Node000000_Node000001" title=" " alt="" coords="118,72,199,39,240,28,242,33,201,45,120,76"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ParamFileChargeSource.html" title=" " alt="" coords="200,55,411,80"/>
+<area shape="poly" id="edge2_Node000000_Node000002" title=" " alt="" coords="165,80,200,76,200,82,166,86"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1PreloadedChargeSource.html" title=" " alt="" coords="200,104,411,129"/>
+<area shape="poly" id="edge3_Node000000_Node000003" title=" " alt="" coords="166,99,200,103,200,108,165,104"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1PrmtopChargeSource.html" title=" " alt="" coords="209,153,402,179"/>
+<area shape="poly" id="edge4_Node000000_Node000004" title=" " alt="" coords="122,108,201,138,246,151,245,156,199,143,120,113"/>
+</map>

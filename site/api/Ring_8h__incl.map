@@ -1,0 +1,20 @@
+<map id="src/Ring.h" name="src/Ring.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="208,5,295,31"/>
+<area shape="rect" id="Node000002" href="$Types_8h.html" title=" " alt="" coords="125,79,196,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="238,33,188,72,185,68,235,29"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,108,177"/>
+<area shape="poly" id="edge6_Node000001_Node000003" title=" " alt="" coords="210,33,162,52,116,81,89,110,70,141,66,138,85,107,112,77,160,47,208,28"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="220,79,283,104"/>
+<area shape="poly" id="edge7_Node000001_Node000007" title=" " alt="" coords="254,31,254,65,249,65,249,31"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="307,79,358,104"/>
+<area shape="poly" id="edge8_Node000001_Node000008" title=" " alt="" coords="266,29,311,68,307,72,263,33"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="382,79,459,104"/>
+<area shape="poly" id="edge9_Node000001_Node000009" title=" " alt="" coords="280,28,381,71,379,76,278,33"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="145,106,87,146,84,142,142,102"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="133,152,189,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="163,104,163,138,158,138,158,104"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="213,152,276,177"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="176,102,222,141,219,145,172,106"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="301,152,359,177"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="189,102,291,144,289,149,187,106"/>
+</map>

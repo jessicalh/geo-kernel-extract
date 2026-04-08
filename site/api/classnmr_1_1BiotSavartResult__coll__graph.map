@@ -1,0 +1,9 @@
+<map id="nmr::BiotSavartResult" name="nmr::BiotSavartResult">
+<area shape="rect" id="Node000001" title=" " alt="" coords="77,1201,239,1367"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ConformationResult.html" title=" " alt="" coords="5,743,185,889"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="109,902,150,1201,144,1201,104,903"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1ProteinConformation.html" title=" " alt="" coords="209,493,395,1139"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="212,1118,191,1186,185,1185,207,1117"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1Protein.html" title=" " alt="" coords="224,5,380,431"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="305,431,305,477,299,477,299,431"/>
+</map>

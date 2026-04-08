@@ -1,0 +1,16 @@
+<map id="nmr::MutationDeltaResult" name="nmr::MutationDeltaResult">
+<area shape="rect" id="Node000001" title=" " alt="" coords="407,1216,615,1641"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ConformationResult.html" title=" " alt="" coords="5,758,185,903"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="112,917,124,972,143,1033,167,1094,199,1152,245,1212,299,1267,355,1316,409,1358,406,1362,351,1320,295,1271,241,1216,194,1155,163,1097,138,1035,119,973,106,918"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1ProteinConformation.html" title=" " alt="" coords="209,508,395,1153"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="397,1120,409,1152,426,1200,421,1201,403,1154,392,1122"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1Protein.html" title=" " alt="" coords="224,5,380,431"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="305,431,305,491,299,491,299,431"/>
+<area shape="rect" id="Node000005" href="$structnmr_1_1DeltaSummary.html" title=" " alt="" coords="419,748,604,913"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="514,914,514,1200,509,1200,509,914"/>
+<area shape="rect" id="Node000006" href="$structnmr_1_1SphericalTensor.html" title=" " alt="" coords="635,115,804,321"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="700,321,667,508,657,606,652,690,652,832,651,901,647,974,637,1057,618,1154,606,1201,601,1199,613,1153,631,1056,642,974,646,901,647,832,647,690,652,606,662,508,695,320"/>
+<area shape="rect" id="Node000007" href="$structnmr_1_1MatchedAtomData.html" title=" " alt="" coords="787,698,958,963"/>
+<area shape="poly" id="edge7_Node000007_Node000006" title=" " alt="" coords="747,320,838,681,833,683,742,321"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="847,964,816,1060,795,1109,771,1155,740,1202,704,1247,629,1328,626,1324,700,1244,736,1199,766,1152,790,1106,811,1058,842,963"/>
+</map>

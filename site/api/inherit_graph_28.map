@@ -1,0 +1,13 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classnmr_1_1KernelEvaluationFilter.html" title=" " alt="" coords="5,112,204,137"/>
+<area shape="rect" id="Node000001" href="$classnmr_1_1DipolarNearFieldFilter.html" title=" " alt="" coords="252,5,451,31"/>
+<area shape="poly" id="edge27_Node000000_Node000001" title=" " alt="" coords="134,102,187,70,251,40,286,28,288,33,253,44,190,75,137,107"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1MinDistanceFilter.html" title=" " alt="" coords="266,55,437,80"/>
+<area shape="poly" id="edge28_Node000000_Node000002" title=" " alt="" coords="173,106,295,77,297,83,174,111"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1RingBondedExclusionFilter.html" title=" " alt="" coords="253,105,449,145"/>
+<area shape="poly" id="edge29_Node000000_Node000003" title=" " alt="" coords="218,122,253,122,253,127,218,127"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1SelfSourceFilter.html" title=" " alt="" coords="272,169,431,195"/>
+<area shape="poly" id="edge30_Node000000_Node000004" title=" " alt="" coords="174,138,297,167,295,172,173,143"/>
+<area shape="rect" id="Node000005" href="$classnmr_1_1SequentialExclusionFilter.html" title=" " alt="" coords="258,219,445,259"/>
+<area shape="poly" id="edge31_Node000000_Node000005" title=" " alt="" coords="139,142,192,173,253,204,287,217,285,222,251,208,189,177,136,147"/>
+</map>

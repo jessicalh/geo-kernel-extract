@@ -1,0 +1,9 @@
+<map id="src/GeometryResult.h" name="src/GeometryResult.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="83,5,246,31"/>
+<area shape="rect" id="Node000002" href="$DemoResult_8h.html" title=" " alt="" coords="5,79,143,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="141,41,90,81,87,76,138,37"/>
+<area shape="rect" id="Node000003" href="$SpatialIndexResult_8h.html" title=" " alt="" coords="167,79,346,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="192,37,243,76,240,81,188,41"/>
+<area shape="rect" id="Node000004" href="$MolecularGraphResult_8h.html" title=" " alt="" coords="156,152,357,177"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="259,118,259,152,254,152,254,118"/>
+</map>

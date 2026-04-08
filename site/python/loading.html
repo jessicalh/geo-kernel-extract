@@ -1,0 +1,296 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Loading &mdash; nmr_extract 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Tensor Types" href="tensors.html" />
+    <link rel="prev" title="nmr_extract" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            nmr_extract
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Loading</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#nmr_extract.load"><code class="docutils literal notranslate"><span class="pre">load()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#nmr_extract.Protein"><code class="docutils literal notranslate"><span class="pre">Protein</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.protein_id"><code class="docutils literal notranslate"><span class="pre">Protein.protein_id</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.n_atoms"><code class="docutils literal notranslate"><span class="pre">Protein.n_atoms</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.pos"><code class="docutils literal notranslate"><span class="pre">Protein.pos</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.element"><code class="docutils literal notranslate"><span class="pre">Protein.element</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.residue_type"><code class="docutils literal notranslate"><span class="pre">Protein.residue_type</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.residue_index"><code class="docutils literal notranslate"><span class="pre">Protein.residue_index</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.biot_savart"><code class="docutils literal notranslate"><span class="pre">Protein.biot_savart</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.haigh_mallion"><code class="docutils literal notranslate"><span class="pre">Protein.haigh_mallion</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.pi_quadrupole"><code class="docutils literal notranslate"><span class="pre">Protein.pi_quadrupole</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.dispersion"><code class="docutils literal notranslate"><span class="pre">Protein.dispersion</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.ring_susceptibility"><code class="docutils literal notranslate"><span class="pre">Protein.ring_susceptibility</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.ring_contributions"><code class="docutils literal notranslate"><span class="pre">Protein.ring_contributions</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.ring_geometry"><code class="docutils literal notranslate"><span class="pre">Protein.ring_geometry</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.mcconnell"><code class="docutils literal notranslate"><span class="pre">Protein.mcconnell</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.coulomb"><code class="docutils literal notranslate"><span class="pre">Protein.coulomb</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.hbond"><code class="docutils literal notranslate"><span class="pre">Protein.hbond</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.dssp"><code class="docutils literal notranslate"><span class="pre">Protein.dssp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.mopac"><code class="docutils literal notranslate"><span class="pre">Protein.mopac</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.apbs"><code class="docutils literal notranslate"><span class="pre">Protein.apbs</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.orca"><code class="docutils literal notranslate"><span class="pre">Protein.orca</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#nmr_extract.Protein.delta"><code class="docutils literal notranslate"><span class="pre">Protein.delta</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tensors.html">Tensor Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ring.html">Per-Ring Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="groups.html">Calculator Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="enums.html">Enums</a></li>
+<li class="toctree-l1"><a class="reference internal" href="catalog.html">Catalog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">nmr_extract</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Loading</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/loading.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="loading">
+<h1>Loading<a class="headerlink" href="#loading" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="nmr_extract.load">
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.load" title="Link to this definition"></a></dt>
+<dd><p>Load an extraction directory into a fully typed Protein.</p>
+<p>Validates every file against the catalog. Warns on unregistered files
+(forward-compatible). Errors on missing required files.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><span class="sphinx_autodoc_typehints-type"><a class="reference internal" href="#nmr_extract.Protein" title="nmr_extract._protein.Protein"><code class="xref py py-class docutils literal notranslate"><span class="pre">Protein</span></code></a></span></p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>path</strong> (<em>str</em><em> | </em><em>Path</em>)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="nmr_extract.Protein">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">Protein</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">protein_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residue_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residue_index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">biot_savart</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">haigh_mallion</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pi_quadrupole</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dispersion</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ring_susceptibility</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ring_contributions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ring_geometry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mcconnell</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coulomb</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hbond</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dssp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mopac</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apbs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orca</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">delta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#nmr_extract.Protein" title="Link to this definition"></a></dt>
+<dd><p>All extracted features for one protein conformation.</p>
+<p>Every field is typed. Optional groups are None when the extractor
+did not produce them (MOPAC, APBS, Orca, Delta).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>protein_id</strong> (<em>str</em>)</p></li>
+<li><p><strong>n_atoms</strong> (<em>int</em>)</p></li>
+<li><p><strong>pos</strong> (<a class="reference internal" href="tensors.html#nmr_extract.VectorField" title="nmr_extract._tensors.VectorField"><em>VectorField</em></a>)</p></li>
+<li><p><strong>element</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>residue_type</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>residue_index</strong> (<em>ndarray</em>)</p></li>
+<li><p><strong>biot_savart</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.BiotSavartGroup" title="nmr_extract._protein.BiotSavartGroup"><em>BiotSavartGroup</em></a>)</p></li>
+<li><p><strong>haigh_mallion</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><em>RingKernelGroup</em></a>)</p></li>
+<li><p><strong>pi_quadrupole</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><em>RingKernelGroup</em></a>)</p></li>
+<li><p><strong>dispersion</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><em>RingKernelGroup</em></a>)</p></li>
+<li><p><strong>ring_susceptibility</strong> (<a class="reference internal" href="tensors.html#nmr_extract.ShieldingTensor" title="nmr_extract._tensors.ShieldingTensor"><em>ShieldingTensor</em></a>)</p></li>
+<li><p><strong>ring_contributions</strong> (<a class="reference internal" href="ring.html#nmr_extract.RingContributions" title="nmr_extract._ring.RingContributions"><em>RingContributions</em></a>)</p></li>
+<li><p><strong>ring_geometry</strong> (<a class="reference internal" href="ring.html#nmr_extract.RingGeometry" title="nmr_extract._ring.RingGeometry"><em>RingGeometry</em></a>)</p></li>
+<li><p><strong>mcconnell</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.McConnellGroup" title="nmr_extract._protein.McConnellGroup"><em>McConnellGroup</em></a>)</p></li>
+<li><p><strong>coulomb</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.CoulombGroup" title="nmr_extract._protein.CoulombGroup"><em>CoulombGroup</em></a>)</p></li>
+<li><p><strong>hbond</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.HBondGroup" title="nmr_extract._protein.HBondGroup"><em>HBondGroup</em></a>)</p></li>
+<li><p><strong>dssp</strong> (<em>DsspScalars</em>)</p></li>
+<li><p><strong>mopac</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.MopacGroup" title="nmr_extract._protein.MopacGroup"><em>MopacGroup</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>apbs</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.APBSGroup" title="nmr_extract._protein.APBSGroup"><em>APBSGroup</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>orca</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.OrcaGroup" title="nmr_extract._protein.OrcaGroup"><em>OrcaGroup</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>delta</strong> (<a class="reference internal" href="groups.html#nmr_extract._protein.DeltaGroup" title="nmr_extract._protein.DeltaGroup"><em>DeltaGroup</em></a><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.protein_id">
+<span class="sig-name descname"><span class="pre">protein_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#nmr_extract.Protein.protein_id" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.n_atoms">
+<span class="sig-name descname"><span class="pre">n_atoms</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#nmr_extract.Protein.n_atoms" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.pos">
+<span class="sig-name descname"><span class="pre">pos</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.VectorField" title="nmr_extract._tensors.VectorField"><span class="pre">VectorField</span></a></span><a class="headerlink" href="#nmr_extract.Protein.pos" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.element">
+<span class="sig-name descname"><span class="pre">element</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.Protein.element" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.residue_type">
+<span class="sig-name descname"><span class="pre">residue_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.Protein.residue_type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.residue_index">
+<span class="sig-name descname"><span class="pre">residue_index</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ndarray</span></span><a class="headerlink" href="#nmr_extract.Protein.residue_index" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.biot_savart">
+<span class="sig-name descname"><span class="pre">biot_savart</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.BiotSavartGroup" title="nmr_extract._protein.BiotSavartGroup"><span class="pre">BiotSavartGroup</span></a></span><a class="headerlink" href="#nmr_extract.Protein.biot_savart" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.haigh_mallion">
+<span class="sig-name descname"><span class="pre">haigh_mallion</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><span class="pre">RingKernelGroup</span></a></span><a class="headerlink" href="#nmr_extract.Protein.haigh_mallion" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.pi_quadrupole">
+<span class="sig-name descname"><span class="pre">pi_quadrupole</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><span class="pre">RingKernelGroup</span></a></span><a class="headerlink" href="#nmr_extract.Protein.pi_quadrupole" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.dispersion">
+<span class="sig-name descname"><span class="pre">dispersion</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup" title="nmr_extract._protein.RingKernelGroup"><span class="pre">RingKernelGroup</span></a></span><a class="headerlink" href="#nmr_extract.Protein.dispersion" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.ring_susceptibility">
+<span class="sig-name descname"><span class="pre">ring_susceptibility</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="tensors.html#nmr_extract.ShieldingTensor" title="nmr_extract._tensors.ShieldingTensor"><span class="pre">ShieldingTensor</span></a></span><a class="headerlink" href="#nmr_extract.Protein.ring_susceptibility" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.ring_contributions">
+<span class="sig-name descname"><span class="pre">ring_contributions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="ring.html#nmr_extract.RingContributions" title="nmr_extract._ring.RingContributions"><span class="pre">RingContributions</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.ring_contributions" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.ring_geometry">
+<span class="sig-name descname"><span class="pre">ring_geometry</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="ring.html#nmr_extract.RingGeometry" title="nmr_extract._ring.RingGeometry"><span class="pre">RingGeometry</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.ring_geometry" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.mcconnell">
+<span class="sig-name descname"><span class="pre">mcconnell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.McConnellGroup" title="nmr_extract._protein.McConnellGroup"><span class="pre">McConnellGroup</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.mcconnell" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.coulomb">
+<span class="sig-name descname"><span class="pre">coulomb</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.CoulombGroup" title="nmr_extract._protein.CoulombGroup"><span class="pre">CoulombGroup</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.coulomb" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.hbond">
+<span class="sig-name descname"><span class="pre">hbond</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.HBondGroup" title="nmr_extract._protein.HBondGroup"><span class="pre">HBondGroup</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.hbond" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.dssp">
+<span class="sig-name descname"><span class="pre">dssp</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">DsspScalars</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.dssp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.mopac">
+<span class="sig-name descname"><span class="pre">mopac</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.MopacGroup" title="nmr_extract._protein.MopacGroup"><span class="pre">MopacGroup</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.mopac" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.apbs">
+<span class="sig-name descname"><span class="pre">apbs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.APBSGroup" title="nmr_extract._protein.APBSGroup"><span class="pre">APBSGroup</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.apbs" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.orca">
+<span class="sig-name descname"><span class="pre">orca</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.OrcaGroup" title="nmr_extract._protein.OrcaGroup"><span class="pre">OrcaGroup</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.orca" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="nmr_extract.Protein.delta">
+<span class="sig-name descname"><span class="pre">delta</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="groups.html#nmr_extract._protein.DeltaGroup" title="nmr_extract._protein.DeltaGroup"><span class="pre">DeltaGroup</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#nmr_extract.Protein.delta" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="nmr_extract" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="tensors.html" class="btn btn-neutral float-right" title="Tensor Types" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

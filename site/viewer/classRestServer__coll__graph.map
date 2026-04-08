@@ -1,0 +1,30 @@
+<map id="RestServer" name="RestServer">
+<area shape="rect" id="Node000001" title=" " alt="" coords="764,105,857,131"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,7,80,32"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="94,10,105,10,213,8,297,4,381,4,488,17,572,34,654,58,779,103,777,108,652,63,571,39,488,22,381,10,298,9,213,13,105,15,94,15"/>
+<area shape="rect" id="Node000014" href="$classComputeWorker.html" title=" " alt="" coords="157,32,284,57"/>
+<area shape="poly" id="edge14_Node000014_Node000002" title=" " alt="" coords="94,24,158,33,157,38,94,29"/>
+<area shape="rect" id="Node000003" href="$classMainWindow.html" title=" " alt="" coords="512,252,619,277"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="598,242,787,128,789,133,601,247"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="163,81,279,107"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="292,82,339,82,391,86,442,99,490,122,520,152,542,188,556,223,564,251,559,253,551,225,537,190,516,155,486,127,440,104,390,92,339,87,292,88"/>
+<area shape="rect" id="Node000005" href="$classBackboneRibbonOverlay.html" title=" " alt="" coords="129,131,312,156"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="326,140,408,151,450,163,489,180,512,195,531,214,558,250,554,253,527,217,508,199,487,184,448,168,407,156,325,145"/>
+<area shape="rect" id="Node000006" href="$classRingCurrentOverlay.html" title=" " alt="" coords="145,180,296,205"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="310,196,397,207,489,227,542,249,540,254,487,232,396,212,309,201"/>
+<area shape="rect" id="Node000007" href="$classPeptideBondOverlay.html" title=" " alt="" coords="143,229,298,255"/>
+<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="312,245,512,258,512,264,312,250"/>
+<area shape="rect" id="Node000008" href="$classTensorGlyph.html" title=" " alt="" coords="169,279,272,304"/>
+<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="286,288,381,285,488,277,511,273,512,278,488,282,381,290,286,294"/>
+<area shape="rect" id="Node000009" href="$classEllipsoidGlyph.html" title=" " alt="" coords="163,328,278,353"/>
+<area shape="poly" id="edge8_Node000003_Node000009" title=" " alt="" coords="292,338,386,330,437,321,487,307,519,293,545,275,548,280,521,297,489,312,439,326,387,335,292,343"/>
+<area shape="rect" id="Node000010" href="$classFieldOverlay.html" title=" " alt="" coords="169,377,273,403"/>
+<area shape="poly" id="edge9_Node000003_Node000010" title=" " alt="" coords="286,393,333,392,385,387,437,376,487,356,510,338,529,317,555,276,560,279,534,320,514,342,489,360,439,381,385,393,333,398,286,398"/>
+<area shape="rect" id="Node000011" href="$classIsosurfaceOverlay.html" title=" " alt="" coords="151,439,291,464"/>
+<area shape="poly" id="edge10_Node000003_Node000011" title=" " alt="" coords="282,464,330,471,383,473,438,465,463,455,486,442,506,426,521,405,544,358,556,312,560,277,566,278,561,313,549,360,526,408,510,429,490,447,465,460,439,470,384,478,329,477,281,469"/>
+<area shape="rect" id="Node000012" href="$classButterflyOverlay.html" title=" " alt="" coords="156,488,285,513"/>
+<area shape="poly" id="edge11_Node000003_Node000012" title=" " alt="" coords="276,514,325,523,380,526,436,518,462,509,486,494,510,472,528,444,542,413,551,382,560,321,562,277,567,278,566,321,556,383,547,415,533,447,514,475,490,499,465,513,438,523,381,531,324,528,275,519"/>
+<area shape="rect" id="Node000013" href="$classFieldGridOverlay.html" title=" " alt="" coords="155,537,286,563"/>
+<area shape="poly" id="edge12_Node000003_Node000013" title=" " alt="" coords="273,564,322,574,379,578,436,571,462,561,486,547,501,528,515,498,537,419,552,336,560,277,565,278,557,337,542,420,520,500,506,531,490,551,465,566,437,576,379,584,322,579,272,569"/>
+<area shape="poly" id="edge13_Node000003_Node000014" title=" " alt="" coords="298,35,344,36,395,43,445,58,490,84,509,102,525,124,547,171,560,217,565,251,560,252,554,218,542,173,520,126,505,106,486,88,443,63,394,48,344,41,297,40"/>
+</map>

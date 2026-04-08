@@ -1,0 +1,13 @@
+<map id="nmr::GeometryEntity" name="nmr::GeometryEntity">
+<area shape="rect" id="Node000001" title=" " alt="" coords="228,872,379,997"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ConformationAtom.html" title=" " alt="" coords="5,484,188,789"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="188,788,201,808,240,858,236,861,197,811,184,791"/>
+<area shape="rect" id="Node000003" href="$structnmr_1_1SphericalTensor.html" title=" " alt="" coords="12,5,181,211"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="99,211,99,468,94,468,94,211"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1Ring.html" title=" " alt="" coords="212,464,395,809"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="306,809,306,855,301,855,301,809"/>
+<area shape="rect" id="Node000005" href="$structnmr_1_1RingAccumulated.html" title=" " alt="" coords="218,45,391,171"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="307,171,306,448,301,448,302,171"/>
+<area shape="rect" id="Node000006" href="$structnmr_1_1Bond.html" title=" " alt="" coords="419,504,551,769"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="432,771,410,811,373,861,369,858,405,808,427,768"/>
+</map>

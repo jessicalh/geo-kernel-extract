@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>System Architecture</h1>
+    <p>
+      Every claim here is derived from headers in <code>src/</code> and
+      verified against the test suite (287 tests, 0 failures).
+      See <a href="api/index.html">C++ API docs</a> for full class-level
+      UML with collaboration graphs.
+    </p>
+
+    <div class="diagram-grid">
+      <a href="diagram-protein-model.html">
+        <figure>
+          <img src="img/diagrams/01_protein_model.png" alt="Protein model class hierarchy">
+          <figcaption>1. Protein model &mdash; sequence, topology, conformations</figcaption>
+        </figure>
+      </a>
+      <a href="diagram-provenance-paths.html">
+        <figure>
+          <img src="img/diagrams/02_provenance_paths.png" alt="Five provenance paths">
+          <figcaption>2. Provenance paths &mdash; five data entry paths converge</figcaption>
+        </figure>
+      </a>
+      <a href="diagram-calculator-pipeline.html">
+        <figure>
+          <img src="img/diagrams/03_calculator_pipeline.png" alt="Calculator pipeline">
+          <figcaption>3. Calculator pipeline &mdash; dependency-ordered execution</figcaption>
+        </figure>
+      </a>
+      <a href="diagram-geometry-choice.html">
+        <figure>
+          <img src="img/diagrams/04_geometry_choice_flow.png" alt="Geometry choice flow">
+          <figcaption>4. GeometryChoice &mdash; filter and recording flow</figcaption>
+        </figure>
+      </a>
+    </div>
+
+    <!-- Section 1 -->
+    <h2>1. Protein Model</h2>
+    <p>
+      A <code>Protein</code> holds what a molecule <em>is</em>, independent
+      of geometry. It owns atoms, residues, bonds (classified by
+      <code>BondCategory</code> enum), and rings (typed class hierarchy, not
+      string annotations).
+    </p>
+    <p>
+      <code>Protein</code> is non-movable and non-copyable &mdash; the
+      back-pointer safety guarantee. Conformations hold a raw
+      <code>const Protein*</code> valid for the Protein's lifetime.
+    </p>
+
+    <h3>Conformations</h3>
+    <p>
+      A <code>ProteinConformation</code> is one geometric instance.
+      Positions are const after construction. Four typed subclasses record provenance:
+    </p>
+    <table>
+      <thead>
+        <tr><th>Type</th><th>Created by</th><th>Metadata</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>CrystalConformation</td><td>BuildFromPdb</td><td>resolution, R-factor, temperature</td></tr>
+        <tr><td>PredictionConformation</td><td>BuildFromOrca</td><td>method, confidence</td></tr>
+        <tr><td>MDFrameConformation</td><td>BuildFromGromacs</td><td>walker, time, Boltzmann weight</td></tr>
+        <tr><td>DerivedConformation</td><td>Protein::AddDerived</td><td>description string</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ring Type Hierarchy</h3>
+    <p>
+      Ring types are <em>classes</em>, not data. Calculator code is
+      ring-type-agnostic: <code>ring.Intensity()</code>,
+      <code>ring.JBLobeOffset()</code>. No switch statements on ring type.
+    </p>
+    <p>
+      Eight types in three size categories: PheBenzene, TyrPhenol,
+      TrpBenzene (6-membered); TrpPyrrole, HisImidazole, HidImidazole,
+      HieImidazole (5-membered); IndolePerimeter (fused 9-atom).
+      The three histidine variants encode protonation state in the type system.
+    </p>
+
+    <!-- Section 2 -->
+    <h2>2. Provenance Paths</h2>
+    <p>
+      Five kinds of data enter the system. Each has a different protonation
+      strategy and charge source. All produce the same
+      <code>BuildResult</code>: a Protein, a ChargeSource, and a net charge.
+      After building, <code>OperationRunner::Run</code> processes every
+      protein identically.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Path</th><th>Builder</th><th>Protonation</th><th>Charges</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Bare PDB</td><td><code>BuildFromPdb</code></td><td>reduce (rebuilds H at pH)</td><td>ff14SB</td></tr>
+        <tr><td>Pre-protonated PDB</td><td><code>BuildFromProtonatedPdb</code></td><td>existing H atoms kept</td><td>ff14SB</td></tr>
+        <tr><td>ORCA (tleap)</td><td><code>BuildFromOrca</code></td><td>tleap chose</td><td>prmtop</td></tr>
+        <tr><td>ORCA (GROMACS)</td><td><code>BuildFromOrca</code></td><td>tleap chose</td><td>prmtop</td></tr>
+        <tr><td>GROMACS ensemble</td><td><code>BuildFromGromacs</code></td><td>TPR topology</td><td>CHARMM36m</td></tr>
+      </tbody>
+    </table>
+    <p>
+      The <code>ChargeSource</code> hierarchy enforces convergence:
+      ParamFileChargeSource (ff14SB), PrmtopChargeSource (AMBER),
+      GmxTprChargeSource (GROMACS), PreloadedChargeSource (pre-read).
+    </p>
+
+    <!-- Section 3 -->
+    <h2>3. Calculator Pipeline</h2>
+    <p>
+      <code>OperationRunner::Run</code> sequences all results in dependency
+      order. It does not hold state or decide what to compute.
+    </p>
+
+    <h3>Tier 0: Foundation</h3>
+    <table>
+      <thead>
+        <tr><th>Result</th><th>Provides</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>GeometryResult</td><td>Ring geometry (SVD normals), bond geometry</td></tr>
+        <tr><td>SpatialIndexResult</td><td>15&#8491; neighbour lists (nanoflann k-d tree)</td></tr>
+        <tr><td>EnrichmentResult</td><td>AtomRole, hybridisation, boolean properties</td></tr>
+        <tr><td>ChargeAssignmentResult</td><td>Per-atom charges from ChargeSource</td></tr>
+        <tr><td>DsspResult</td><td>Secondary structure, &phi;/&psi;, SASA, H-bonds</td></tr>
+        <tr><td>ApbsFieldResult</td><td>Solvated E-field and EFG (Poisson-Boltzmann)</td></tr>
+        <tr><td>MopacResult</td><td>PM7 Mulliken charges, Wiberg bond orders</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Tier 1: Classical Geometric Kernel Calculators</h3>
+    <p>
+      Eight calculators, each producing full rank-2 tensor output
+      (<code>Mat3</code> + <code>SphericalTensor</code>) at every atom.
+      A SphericalTensor holds the irreducible decomposition:
+      T0 (1 component), T1 (3 components), T2 (5 components).
+    </p>
+    <table>
+      <thead>
+        <tr><th>Calculator</th><th>Physical Effect</th><th>Source</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Biot-Savart</td><td>Ring current (double-loop wire)</td><td>Ring vertices</td></tr>
+        <tr><td>Haigh-Mallion</td><td>Ring current (surface integral)</td><td>Ring face</td></tr>
+        <tr><td>McConnell</td><td>Bond magnetic anisotropy</td><td>Bond midpoints</td></tr>
+        <tr><td>Coulomb</td><td>Electric field gradient</td><td>All charges</td></tr>
+        <tr><td>Ring Susceptibility</td><td>Whole-ring diamagnetic susceptibility</td><td>Ring centers</td></tr>
+        <tr><td>H-bond Dipolar</td><td>H-bond dipolar tensor</td><td>DSSP H-bond pairs</td></tr>
+        <tr><td>Pi-Quadrupole</td><td>&pi;-electron EFG (Stone T-tensor)</td><td>Ring centers</td></tr>
+        <tr><td>Dispersion</td><td>van der Waals 1/r<sup>6</sup></td><td>Ring vertices</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Two additional MOPAC-derived calculators use the same geometric
+      kernels with quantum-chemical weights: MopacCoulomb (PM7 Mulliken
+      charges) and MopacMcConnell (Wiberg bond order weighting).
+    </p>
+    <p>
+      See the <a href="kernels.html">Geometric Kernel Catalogue</a> for
+      full mathematical derivations.
+    </p>
+
+    <!-- Section 4 -->
+    <h2>4. Filters and GeometryChoice</h2>
+    <p>
+      Every calculator holds a <code>KernelFilterSet</code>.
+      Before computing a kernel, the calculator builds a
+      <code>KernelEvaluationContext</code> and passes it to
+      <code>AcceptAll()</code>. All five filters must accept:
+    </p>
+    <table>
+      <thead>
+        <tr><th>Filter</th><th>Criterion</th><th>Physics</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>MinDistanceFilter</td><td>distance &ge; 0.1 &#8491;</td><td>1/r<sup>n</sup> divergence</td></tr>
+        <tr><td>DipolarNearFieldFilter</td><td>distance &gt; extent/2</td><td>Multipole expansion invalid inside source</td></tr>
+        <tr><td>SelfSourceFilter</td><td>atom &ne; source</td><td>Field undefined at source</td></tr>
+        <tr><td>SequentialExclusionFilter</td><td>seq. separation &ge; 2</td><td>Through-bond dominates</td></tr>
+        <tr><td>RingBondedExclusionFilter</td><td>not bonded to ring</td><td>Through-bond, not through-space</td></tr>
+      </tbody>
+    </table>
+
+    <h3>GeometryChoice Recording</h3>
+    <p>
+      During <code>Compute()</code>, calculators record geometric decisions
+      via <code>GeometryChoiceBuilder</code>: which entities were involved,
+      their roles and outcomes, named numbers with units, which filter
+      rejected if any, and an optional field sampler for UI visualisation.
+    </p>
+
+    <!-- Section 5 -->
+    <h2>5. Feature Export</h2>
+    <p>
+      Each <code>ConformationResult</code> implements
+      <code>WriteFeatures()</code>. The full tensor data (geometric kernels
+      + DFT reference when available) is exported as NPY arrays.
+      The <a href="python/index.html">Python SDK</a> provides typed access
+      to these arrays with <code>e3nn.o3.Irreps</code>, <code>torch.Tensor</code>,
+      and numpy access.
+    </p>
+
+    <h2>Key Entry Points</h2>
+    <table>
+      <thead>
+        <tr><th>Header</th><th>Purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>Protein.h</code></td><td>Sequence, topology, conformation ownership</td></tr>
+        <tr><td><code>ProteinConformation.h</code></td><td>Positions, ConformationAtom, result attachment</td></tr>
+        <tr><td><code>ConformationAtom.h</code></td><td>All per-atom computed fields (one writer each)</td></tr>
+        <tr><td><code>BuildResult.h</code></td><td>Common output of all builders</td></tr>
+        <tr><td><code>OperationRunner.h</code></td><td>Run, RunMutantComparison, RunEnsemble</td></tr>
+        <tr><td><code>ChargeSource.h</code></td><td>Four typed charge source implementations</td></tr>
+        <tr><td><code>KernelEvaluationFilter.h</code></td><td>Five filters, KernelFilterSet</td></tr>
+        <tr><td><code>Ring.h</code></td><td>Ring type hierarchy (8 types, 3 size categories)</td></tr>
+        <tr><td><code>Types.h</code></td><td>Vec3, Mat3, SphericalTensor, all enums</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

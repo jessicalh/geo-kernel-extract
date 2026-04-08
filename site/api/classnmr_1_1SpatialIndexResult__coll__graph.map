@@ -1,0 +1,11 @@
+<map id="nmr::SpatialIndexResult" name="nmr::SpatialIndexResult">
+<area shape="rect" id="Node000001" title=" " alt="" coords="217,1231,387,1456"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ConformationResult.html" title=" " alt="" coords="5,743,185,889"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="120,901,154,1015,199,1138,242,1229,237,1231,194,1140,149,1016,115,903"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1ProteinConformation.html" title=" " alt="" coords="209,493,395,1139"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="305,1139,305,1214,299,1214,299,1139"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1Protein.html" title=" " alt="" coords="224,5,380,431"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="305,431,305,477,299,477,299,431"/>
+<area shape="rect" id="Node000005" href="$structnmr_1_1PointCloud.html" title=" " alt="" coords="419,763,611,869"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="503,870,464,994,410,1140,373,1217,369,1215,405,1138,459,992,498,868"/>
+</map>

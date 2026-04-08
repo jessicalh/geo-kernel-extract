@@ -27,7 +27,7 @@ src/mutation_set/               → training pipeline (config-driven, SDK-based)
    arithmetic.  e3nn Irreps on every tensor.
 
 3. **Dataset**: `src/mutation_set/dataset.py` orchestrates:
-   - `kernels.py` assembles 46 T2 kernels via SDK `.as_block()` accessors.
+   - `kernels.py` assembles 85 T2 kernels via SDK `.as_block()` accessors.
      Named KernelLayout registry — no hardcoded indices.
    - `scalars.py` assembles 190 scalar features as named ScalarBlocks.
      Categorical columns tracked by name, not position.
@@ -68,7 +68,7 @@ src/mutation_set/               → training pipeline (config-driven, SDK-based)
 - Do not add DSSP/backbone features — mechanical mutants.
 - Do not use global kernel normalization — per-protein is correct.
 - Do not hardcode column indices — use SDK named accessors.
-- Do not treat this as large-scale ML.  46 kernels, ~450K atoms.
+- Do not treat this as large-scale ML.  85 kernels, ~450K atoms.
 - Do not vibe-code with hyperparameters — diagnose before sweeping.
 
 ## Files

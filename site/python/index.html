@@ -1,0 +1,172 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nmr_extract &mdash; nmr_extract 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Loading" href="loading.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            nmr_extract
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="loading.html">Loading</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tensors.html">Tensor Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ring.html">Per-Ring Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="groups.html">Calculator Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="enums.html">Enums</a></li>
+<li class="toctree-l1"><a class="reference internal" href="catalog.html">Catalog</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">nmr_extract</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">nmr_extract</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="nmr-extract">
+<h1>nmr_extract<a class="headerlink" href="#nmr-extract" title="Link to this heading"></a></h1>
+<p>Typed reader for NMR shielding tensor extraction data.  Loads NPY files
+produced by the C++ extractor into Python objects with <code class="docutils literal notranslate"><span class="pre">e3nn.o3.Irreps</span></code>,
+<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code>, and <code class="docutils literal notranslate"><span class="pre">numpy</span></code> access.</p>
+<p>Install:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pip</span> <span class="n">install</span> <span class="o">-</span><span class="n">e</span> <span class="o">/</span><span class="n">path</span><span class="o">/</span><span class="n">to</span><span class="o">/</span><span class="n">nmr</span><span class="o">-</span><span class="n">shielding</span><span class="o">/</span><span class="n">python</span>
+</pre></div>
+</div>
+<p>Quick start:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">nmr_extract</span> <span class="kn">import</span> <span class="n">load</span>
+
+<span class="n">p</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="s2">&quot;path/to/extraction/directory&quot;</span><span class="p">)</span>
+<span class="n">p</span><span class="o">.</span><span class="n">biot_savart</span><span class="o">.</span><span class="n">shielding</span><span class="o">.</span><span class="n">T2</span>      <span class="c1"># ndarray (N, 5)</span>
+<span class="n">p</span><span class="o">.</span><span class="n">biot_savart</span><span class="o">.</span><span class="n">shielding</span><span class="o">.</span><span class="n">irreps</span>  <span class="c1"># Irreps(&quot;1x0e+1x1o+1x2e&quot;)</span>
+<span class="n">p</span><span class="o">.</span><span class="n">biot_savart</span><span class="o">.</span><span class="n">shielding</span><span class="o">.</span><span class="n">torch</span><span class="p">()</span> <span class="c1"># torch.Tensor (N, 9)</span>
+<span class="n">p</span><span class="o">.</span><span class="n">ring_contributions</span><span class="o">.</span><span class="n">bs</span><span class="o">.</span><span class="n">T2</span>      <span class="c1"># ndarray (P, 5), per-ring</span>
+</pre></div>
+</div>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="loading.html">Loading</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="loading.html#nmr_extract.load"><code class="docutils literal notranslate"><span class="pre">load()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="loading.html#nmr_extract.Protein"><code class="docutils literal notranslate"><span class="pre">Protein</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tensors.html">Tensor Types</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="tensors.html#sphericaltensor">SphericalTensor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tensors.html#vectorfield">VectorField</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tensors.html#per-type-decompositions">Per-type decompositions</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ring.html">Per-Ring Data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="ring.html#ringcontributions">RingContributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ring.html#ringgeometry">RingGeometry</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="groups.html">Calculator Groups</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.BiotSavartGroup"><code class="docutils literal notranslate"><span class="pre">BiotSavartGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.RingKernelGroup"><code class="docutils literal notranslate"><span class="pre">RingKernelGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.McConnellGroup"><code class="docutils literal notranslate"><span class="pre">McConnellGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.CoulombGroup"><code class="docutils literal notranslate"><span class="pre">CoulombGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.HBondGroup"><code class="docutils literal notranslate"><span class="pre">HBondGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.MopacGroup"><code class="docutils literal notranslate"><span class="pre">MopacGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.MopacCoreGroup"><code class="docutils literal notranslate"><span class="pre">MopacCoreGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.MopacCoulombGroup"><code class="docutils literal notranslate"><span class="pre">MopacCoulombGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.MopacMcConnellGroup"><code class="docutils literal notranslate"><span class="pre">MopacMcConnellGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.APBSGroup"><code class="docutils literal notranslate"><span class="pre">APBSGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.OrcaGroup"><code class="docutils literal notranslate"><span class="pre">OrcaGroup</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="groups.html#nmr_extract._protein.DeltaGroup"><code class="docutils literal notranslate"><span class="pre">DeltaGroup</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="enums.html">Enums</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="enums.html#nmr_extract.RingType"><code class="docutils literal notranslate"><span class="pre">RingType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="enums.html#nmr_extract.BondCategory"><code class="docutils literal notranslate"><span class="pre">BondCategory</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="catalog.html">Catalog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="catalog.html#nmr_extract.ArraySpec"><code class="docutils literal notranslate"><span class="pre">ArraySpec</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="loading.html" class="btn btn-neutral float-right" title="Loading" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['n_0',['N',['../classnmr_1_1Residue.html#a4984e66aea6126ab6bdcf83470d122b0',1,'nmr::Residue']]],
+  ['n_5fpi_5fbonds_5f3_1',['n_pi_bonds_3',['../classnmr_1_1ConformationAtom.html#a15ee274bc2f9767e8a184306b54a3e20',1,'nmr::ConformationAtom']]],
+  ['n_5frings_5fwithin_5f12a_2',['n_rings_within_12A',['../classnmr_1_1ConformationAtom.html#a6a66477ea7ac02bb6bcfeba51da8befd',1,'nmr::ConformationAtom']]],
+  ['n_5frings_5fwithin_5f3a_3',['n_rings_within_3A',['../classnmr_1_1ConformationAtom.html#ad3c4765809c342ab03c122899673ac6b',1,'nmr::ConformationAtom']]],
+  ['n_5frings_5fwithin_5f5a_4',['n_rings_within_5A',['../classnmr_1_1ConformationAtom.html#a3f69ffd6af8328f791c65b9e8a75366c',1,'nmr::ConformationAtom']]],
+  ['n_5frings_5fwithin_5f8a_5',['n_rings_within_8A',['../classnmr_1_1ConformationAtom.html#ade8995914e2e0c8c1433865a5cc83c29',1,'nmr::ConformationAtom']]],
+  ['name_6',['name',['../structnmr_1_1IupacAtom.html#a5620ac2b940aecceb2433788478ebd0f',1,'nmr::IupacAtom::name'],['../structnmr_1_1NamedNumber.html#a5ff44acf079e14220580b77cb26b77d4',1,'nmr::NamedNumber::name'],['../structnmr_1_1ProtonationVariant.html#a906a4e364d2e9731e3258db70ec87bfc',1,'nmr::ProtonationVariant::name'],['../structnmr_1_1AminoAcidAtom.html#adc1a39b7c2eb592a0f9fccb043a6df4e',1,'nmr::AminoAcidAtom::name']]],
+  ['name_5f_7',['name_',['../classnmr_1_1ProtonationState.html#afab44e2d5ed1850fb704d2f0a07ce69b',1,'nmr::ProtonationState']]],
+  ['nanoamperes_5fto_5famperes_8',['NANOAMPERES_TO_AMPERES',['../namespacenmr.html#a88360e2593a3180a08bdae230a61a7dc',1,'nmr']]],
+  ['near_5fzero_5ffield_9',['NEAR_ZERO_FIELD',['../namespacenmr.html#aa9599ff7863d91c705e7e852797e5a74',1,'nmr']]],
+  ['near_5fzero_5fnorm_10',['NEAR_ZERO_NORM',['../namespacenmr.html#aeb32a41bb2be7bc5a022f58c6ff15a9e',1,'nmr']]],
+  ['nearest_5fcn_5fdist_11',['nearest_CN_dist',['../classnmr_1_1ConformationAtom.html#a8b6703a8fd17946040839b17f9ee1124',1,'nmr::ConformationAtom']]],
+  ['nearest_5fco_5fdist_12',['nearest_CO_dist',['../classnmr_1_1ConformationAtom.html#a57f6fa530a94e2d9524cce9d8cbc95b1',1,'nmr::ConformationAtom']]],
+  ['nearest_5fco_5fmidpoint_13',['nearest_CO_midpoint',['../classnmr_1_1ConformationAtom.html#a5b994798a20f466cbd28128721f962fd',1,'nmr::ConformationAtom']]],
+  ['nearest_5fremoved_5fring_14',['nearest_removed_ring',['../structnmr_1_1MatchedAtomData.html#a9a5089377bfb20a85265b84d752b2965',1,'nmr::MatchedAtomData']]],
+  ['nearest_5fremoved_5fring_5fdist_15',['nearest_removed_ring_dist',['../structnmr_1_1MatchedAtomData.html#ad4a4a96a2f4c7d4f01a04dc4c84b824a',1,'nmr::MatchedAtomData']]],
+  ['nearest_5fring_5fatom_5fdistance_16',['nearest_ring_atom_distance',['../classnmr_1_1ConformationAtom.html#a3b1625c5e8fab886a80ded33a8e4ef29',1,'nmr::ConformationAtom']]],
+  ['net_5fcharge_17',['net_charge',['../structnmr_1_1RunOptions.html#a1abd23a8ff56df08ba65567b7dcff6e0',1,'nmr::RunOptions::net_charge'],['../structnmr_1_1BuildResult.html#a4c9de7679708f338d1b8e11f32812f95',1,'nmr::BuildResult::net_charge']]],
+  ['nmr_5fout_5fpath_18',['nmr_out_path',['../structnmr_1_1OrcaRunFiles.html#a8fe553406f8685674f830b354f407c9f',1,'nmr::OrcaRunFiles']]],
+  ['no_5fdata_5fsentinel_19',['NO_DATA_SENTINEL',['../namespacenmr.html#af3295b18fa03ef6dd2eab75bb64c2644',1,'nmr']]],
+  ['none_20',['NONE',['../classnmr_1_1Residue.html#abd09891fe6952712d8d1ff155ff5e5cd',1,'nmr::Residue']]],
+  ['normal_21',['normal',['../structnmr_1_1RingGeometry.html#ab58e5283cbb6dcb8719ea64150e0d0ed',1,'nmr::RingGeometry']]],
+  ['normal_5fcross_5fmag_22',['normal_cross_mag',['../structnmr_1_1ProteinConformation_1_1RingPair.html#a92c84d9602de239c491f2f1ce3b13c41',1,'nmr::ProteinConformation::RingPair']]],
+  ['normal_5fdot_23',['normal_dot',['../structnmr_1_1ProteinConformation_1_1RingPair.html#aa6182e12193d28b23bc3214255f7773b',1,'nmr::ProteinConformation::RingPair']]],
+  ['numbers_5f_24',['numbers_',['../classnmr_1_1GeometryChoice.html#aaa9aa25493426a9bdeffe5d5ad174e7f',1,'nmr::GeometryChoice']]]
+];

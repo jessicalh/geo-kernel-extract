@@ -90,7 +90,7 @@ def train(cfg, run_name: str, notes: str = ""):
     # Baselines
     print(f"\n{'─' * 60}")
     for name, ds in [("train", train_ds), ("val", val_ds)]:
-        bl = compute_naive_baselines(ds, cfg)
+        bl = compute_naive_baselines(ds, cfg, layout)
         print(f"  {name}: ridge={bl['r2_ridge']:.4f}  "
               f"ring_sum={bl['r2_ring_sum']:.4f}  "
               f"bs_only={bl['r2_bs_only']:.4f}")

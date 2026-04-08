@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CLI &amp; REST &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="cli.html" class="active">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>Command Line &amp; REST Interface</h1>
+    <p>
+      Both <code>nmr_extract</code> (headless extraction) and
+      <code>nmr-viewer</code> (Qt/VTK viewer) share the same
+      <code>JobSpec</code> parser. All five modes work with both binaries.
+    </p>
+
+    <h2>Five Modes</h2>
+
+    <h3>1. Bare PDB</h3>
+    <p>reduce protonates at the specified pH, ff14SB charges assigned.</p>
+    <pre><code>nmr-viewer --pdb path/to/protein.pdb
+nmr_extract --pdb path/to/protein.pdb --output /tmp/features</code></pre>
+
+    <h3>2. Pre-protonated PDB</h3>
+    <p>From reduce, tleap, GROMACS, etc. Existing H atoms are kept.</p>
+    <pre><code>nmr-viewer --protonated-pdb path/to/protein.pdb</code></pre>
+
+    <h3>3. ORCA DFT Run</h3>
+    <p>
+      Expects <code>{root}.xyz</code>, <code>{root}.prmtop</code>,
+      optional <code>{root}_nmr.out</code>. Charges from prmtop.
+    </p>
+    <pre><code>nmr-viewer --orca --root path/to/A0A7C5FAR6_WT</code></pre>
+
+    <h3>4. WT + ALA Mutant Pair</h3>
+    <p>Each root expands independently. Computes mutation delta tensors.</p>
+    <pre><code>nmr-viewer --mutant --wt path/to/WT --ala path/to/ALA</code></pre>
+
+    <h3>5. GROMACS Ensemble</h3>
+    <p>TPR topology + pose directory. Full pipeline runs per frame.</p>
+    <pre><code>nmr-viewer --fleet --tpr path/to/prod.tpr --poses path/to/poses</code></pre>
+
+    <h2>Common Flags</h2>
+    <table>
+      <thead>
+        <tr><th>Flag</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>--config path/to/params.toml</code></td>
+          <td>Override calculator parameters (see CALCULATOR_PARAMETER_API.md)</td>
+        </tr>
+        <tr>
+          <td><code>--output DIR</code></td>
+          <td>Write NPY feature arrays to directory (required for nmr_extract, optional for viewer)</td>
+        </tr>
+        <tr>
+          <td><code>--rest-port 0</code></td>
+          <td>Disable REST server (viewer only, default port 9147)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Launch Script</h2>
+    <p>
+      The script <code>ui/launch_viewer.sh</code> starts a UDP log listener
+      in the background, sets <code>DISPLAY=:1</code>, and passes all
+      arguments through to <code>nmr-viewer</code>.
+    </p>
+    <pre><code>bash ui/launch_viewer.sh                              # 1ubq protonated (default)
+bash ui/launch_viewer.sh --pdb myprotein.pdb          # bare PDB
+bash ui/launch_viewer.sh --orca --root path/to/root   # ORCA DFT</code></pre>
+
+    <h2>Prerequisites</h2>
+    <p>
+      <code>RuntimeEnvironment::Load()</code> reads
+      <code>~/.nmr_tools.toml</code> at startup. This file must point to
+      valid paths for mopac, reduce, OpenBabel, mkdssp, xtb, and the
+      ff14SB parameter file.
+    </p>
+
+    <!-- REST Interface -->
+    <h1 class="mt-0" style="margin-top: 3rem;">REST Interface</h1>
+    <p>
+      The viewer listens on <strong>TCP port 9147</strong> (tries 9147&ndash;9156)
+      for newline-delimited JSON commands. Synchronous within the Qt event loop.
+      Starts automatically; disable with <code>--rest-port 0</code>.
+    </p>
+    <pre><code># Quick test
+echo '{"cmd":"status"}' | nc -q1 localhost 9147</code></pre>
+
+    <h2>Response Format</h2>
+    <pre><code>{"ok": true,  "result": { ... }}
+{"ok": false, "error": "description"}</code></pre>
+
+    <h2>Session Commands</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>status</code></td>
+          <td>Protein name, atom/ring/residue counts, compute state, overlay visibility</td>
+        </tr>
+        <tr>
+          <td><code>load_pdb</code></td>
+          <td>Build JobSpec with mode=Pdb, trigger compute. Params: <code>path</code></td>
+        </tr>
+        <tr>
+          <td><code>export_features</code></td>
+          <td>Write all NPY arrays to directory. Fleet creates <code>frame_N/</code> subdirs. Params: <code>path</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Camera Commands</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>get_camera</code></td>
+          <td>&mdash;</td>
+          <td>Returns position, focal_point, view_up, distance, view_angle</td>
+        </tr>
+        <tr>
+          <td><code>set_camera</code></td>
+          <td><code>position</code>, <code>focal_point</code>, <code>view_up</code> (all optional)</td>
+          <td>Update camera; omitted fields keep current value</td>
+        </tr>
+        <tr>
+          <td><code>orbit</code></td>
+          <td><code>azimuth</code>, <code>elevation</code> (degrees)</td>
+          <td>Rotate camera around focal point</td>
+        </tr>
+        <tr>
+          <td><code>reset_view</code></td>
+          <td>&mdash;</td>
+          <td>Reset to default view</td>
+        </tr>
+        <tr>
+          <td><code>look_at_ring</code></td>
+          <td><code>ring</code> (index), <code>view</code> (side/top/edge), <code>distance</code></td>
+          <td>Frame camera on aromatic ring</td>
+        </tr>
+        <tr>
+          <td><code>look_at_atom</code></td>
+          <td><code>atom</code> (index), <code>distance</code></td>
+          <td>Re-centre camera on atom</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Rendering Commands</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>set_render_mode</code></td>
+          <td><code>mode</code>: ball_stick, stick (alias liquorice)</td>
+          <td>Molecular representation</td>
+        </tr>
+        <tr>
+          <td><code>set_glyph_scale</code></td>
+          <td><code>scale</code> (float)</td>
+          <td>Atom/bond glyph size</td>
+        </tr>
+        <tr>
+          <td><code>set_opacity</code></td>
+          <td><code>value</code> (0&ndash;1)</td>
+          <td>Global opacity</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Overlay Commands</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>show_rings</code></td><td><code>visible</code></td><td>Aromatic ring overlay</td></tr>
+        <tr><td><code>show_bonds</code></td><td><code>visible</code></td><td>Peptide bond overlay</td></tr>
+        <tr><td><code>show_butterfly</code></td><td><code>visible</code></td><td>Biot-Savart magnetic field visualisation</td></tr>
+        <tr>
+          <td><code>show_field_grid</code></td>
+          <td><code>shielded</code>, <code>deshielded</code> (or <code>visible</code> for both)</td>
+          <td>Isosurface regions</td>
+        </tr>
+        <tr><td><code>set_iso_threshold</code></td><td><code>value</code> (0&ndash;1)</td><td>Isosurface contour level</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Data &amp; Output Commands</h2>
+    <table>
+      <thead>
+        <tr><th>Command</th><th>Parameters</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>list_rings</code></td>
+          <td>&mdash;</td>
+          <td>Array of ring objects: index, type, residue, center, normal, radius, intensity</td>
+        </tr>
+        <tr>
+          <td><code>get_log</code></td>
+          <td><code>lines</code> (or <code>first</code>/<code>last</code>)</td>
+          <td>Operations log panel contents</td>
+        </tr>
+        <tr>
+          <td><code>screenshot</code></td>
+          <td><code>path</code></td>
+          <td>Save current render as PNG. Returns path, width, height</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Scripting Example</h2>
+    <pre><code># Load a protein, wait for compute, take a screenshot
+echo '{"cmd":"load_pdb","path":"/data/1ubq.pdb"}' | nc -q1 localhost 9147
+sleep 10
+echo '{"cmd":"status"}' | nc -q1 localhost 9147
+echo '{"cmd":"show_butterfly","visible":true}' | nc -q1 localhost 9147
+echo '{"cmd":"look_at_ring","ring":0,"view":"side","distance":12}' | nc -q1 localhost 9147
+echo '{"cmd":"screenshot","path":"/tmp/butterfly.png"}' | nc -q1 localhost 9147
+echo '{"cmd":"export_features","path":"/tmp/features"}' | nc -q1 localhost 9147</code></pre>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

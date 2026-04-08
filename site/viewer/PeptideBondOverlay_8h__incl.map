@@ -1,0 +1,11 @@
+<map id="src/PeptideBondOverlay.h" name="src/PeptideBondOverlay.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="194,5,382,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,144,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="255,33,123,77,121,72,253,28"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="169,79,282,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="280,33,247,70,243,66,276,29"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="307,79,395,104"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="300,29,333,66,329,70,296,33"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="419,79,482,104"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="315,28,413,71,410,75,313,33"/>
+</map>

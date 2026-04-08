@@ -1,0 +1,7 @@
+<map id="nmr::CrystalConformation" name="nmr::CrystalConformation">
+<area shape="rect" id="Node000001" title=" " alt="" coords="7,1188,189,1393"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ProteinConformation.html" title=" " alt="" coords="5,493,191,1139"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="101,1152,101,1188,95,1188,95,1152"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1Protein.html" title=" " alt="" coords="20,5,176,431"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="101,431,101,477,95,477,95,431"/>
+</map>

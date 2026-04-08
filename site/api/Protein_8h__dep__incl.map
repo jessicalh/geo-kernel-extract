@@ -1,0 +1,18 @@
+<map id="src/Protein.h" name="src/Protein.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="326,5,429,31"/>
+<area shape="rect" id="Node000002" href="$GeometryResult_8h.html" title=" " alt="" coords="5,79,168,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="318,37,134,81,133,76,317,31"/>
+<area shape="rect" id="Node000006" href="$GromacsEnsembleLoader_8h.html" title=" " alt="" coords="193,79,415,104"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="357,42,318,80,314,77,354,38"/>
+<area shape="rect" id="Node000007" href="$OrcaRunLoader_8h.html" title=" " alt="" coords="432,152,587,177"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="399,40,501,150,497,154,396,43"/>
+<area shape="rect" id="Node000008" href="$PdbFileReader_8h.html" title=" " alt="" coords="489,79,639,104"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="421,33,534,76,533,81,419,38"/>
+<area shape="rect" id="Node000003" href="$DemoResult_8h.html" title=" " alt="" coords="14,152,151,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="88,118,86,152,81,152,83,118"/>
+<area shape="rect" id="Node000004" href="$SpatialIndexResult_8h.html" title=" " alt="" coords="176,152,355,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="129,106,237,149,235,154,127,111"/>
+<area shape="rect" id="Node000005" href="$MolecularGraphResult_8h.html" title=" " alt="" coords="165,225,366,251"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="268,191,268,225,263,225,263,191"/>
+<area shape="poly" id="edge8_Node000008_Node000007" title=" " alt="" coords="549,117,520,154,516,150,545,113"/>
+</map>

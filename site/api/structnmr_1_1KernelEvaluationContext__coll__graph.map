@@ -1,0 +1,7 @@
+<map id="nmr::KernelEvaluationContext" name="nmr::KernelEvaluationContext">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,1201,215,1387"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1ProteinConformation.html" title=" " alt="" coords="17,493,203,1139"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="113,1139,113,1185,107,1185,107,1139"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1Protein.html" title=" " alt="" coords="32,5,188,431"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="113,431,113,477,107,477,107,431"/>
+</map>

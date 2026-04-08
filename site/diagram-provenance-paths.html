@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Provenance Paths &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>2. Provenance Paths</h1>
+    <p>
+      Five data entry paths converge to the same <code>BuildResult</code>.
+      Each has a different protonation strategy and charge source.
+      After building, <code>OperationRunner::Run</code> processes every
+      protein identically.
+    </p>
+    <p><a href="architecture.html">&larr; Back to Architecture</a></p>
+    <figure class="diagram-full">
+      <img src="img/diagrams/02_provenance_paths.svg" alt="Five provenance paths">
+    </figure>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

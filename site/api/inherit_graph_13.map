@@ -1,0 +1,47 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classnmr_1_1ConformationResult.html" title=" " alt="" coords="5,524,192,549"/>
+<area shape="rect" id="Node000001" href="$classnmr_1_1ApbsFieldResult.html" title=" " alt="" coords="270,5,430,31"/>
+<area shape="poly" id="edge5_Node000000_Node000001" title=" " alt="" coords="101,510,119,407,148,266,167,194,189,129,212,76,238,40,269,22,271,27,242,44,217,79,193,131,172,196,153,267,124,408,106,511"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1BiotSavartResult.html" title=" " alt="" coords="267,55,433,80"/>
+<area shape="poly" id="edge6_Node000000_Node000002" title=" " alt="" coords="97,510,102,428,109,373,121,314,138,253,163,193,196,138,238,89,265,73,268,78,242,93,200,141,168,196,143,255,126,315,114,374,107,428,102,510"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1ChargeAssignmentResult.html" title=" " alt="" coords="240,104,460,129"/>
+<area shape="poly" id="edge7_Node000000_Node000003" title=" " alt="" coords="98,510,106,436,127,336,145,282,169,230,199,181,238,139,255,127,258,132,242,143,204,184,173,232,150,284,132,337,111,437,104,511"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1CoulombResult.html" title=" " alt="" coords="273,153,427,179"/>
+<area shape="poly" id="edge8_Node000000_Node000004" title=" " alt="" coords="100,510,110,444,134,357,152,311,175,266,203,224,238,188,271,171,274,175,242,192,207,227,179,268,156,313,139,359,116,445,105,511"/>
+<area shape="rect" id="Node000005" href="$classnmr_1_1DemoResult.html" title=" " alt="" coords="282,203,418,228"/>
+<area shape="poly" id="edge9_Node000000_Node000005" title=" " alt="" coords="102,509,115,452,141,378,159,340,181,302,207,267,238,237,259,225,281,218,283,223,261,230,242,241,211,271,185,305,163,342,146,380,120,454,107,511"/>
+<area shape="rect" id="Node000006" href="$classnmr_1_1DispersionResult.html" title=" " alt="" coords="267,252,433,277"/>
+<area shape="poly" id="edge10_Node000000_Node000006" title=" " alt="" coords="104,510,121,462,148,401,187,339,211,311,238,286,265,273,268,277,242,291,215,314,191,342,152,403,126,463,109,512"/>
+<area shape="rect" id="Node000007" href="$classnmr_1_1DsspResult.html" title=" " alt="" coords="285,301,415,327"/>
+<area shape="poly" id="edge11_Node000000_Node000007" title=" " alt="" coords="108,510,127,471,155,423,193,376,239,336,261,324,284,317,286,322,263,329,241,340,197,379,160,426,132,473,113,512"/>
+<area shape="rect" id="Node000008" href="$classnmr_1_1EnrichmentResult.html" title=" " alt="" coords="265,351,435,376"/>
+<area shape="poly" id="edge12_Node000000_Node000008" title=" " alt="" coords="114,511,164,447,199,413,239,385,265,374,267,378,241,390,202,417,168,451,118,514"/>
+<area shape="rect" id="Node000009" href="$classnmr_1_1GeometryResult.html" title=" " alt="" coords="269,400,431,425"/>
+<area shape="poly" id="edge13_Node000000_Node000009" title=" " alt="" coords="122,513,174,472,205,452,239,434,272,423,273,428,241,439,208,456,177,477,126,517"/>
+<area shape="rect" id="Node000010" href="$classnmr_1_1HBondResult.html" title=" " alt="" coords="280,449,420,475"/>
+<area shape="poly" id="edge14_Node000000_Node000010" title=" " alt="" coords="144,516,239,483,284,472,285,477,241,489,145,521"/>
+<area shape="rect" id="Node000011" href="$classnmr_1_1HaighMallionResult.html" title=" " alt="" coords="259,499,441,524"/>
+<area shape="poly" id="edge15_Node000000_Node000011" title=" " alt="" coords="205,523,258,518,259,523,206,529"/>
+<area shape="rect" id="Node000012" href="$classnmr_1_1McConnellResult.html" title=" " alt="" coords="267,548,433,573"/>
+<area shape="poly" id="edge16_Node000000_Node000012" title=" " alt="" coords="206,544,267,550,267,555,205,550"/>
+<area shape="rect" id="Node000013" href="$classnmr_1_1MolecularGraphResult.html" title=" " alt="" coords="250,597,450,623"/>
+<area shape="poly" id="edge17_Node000000_Node000013" title=" " alt="" coords="148,552,241,582,290,595,289,600,239,587,146,557"/>
+<area shape="rect" id="Node000014" href="$classnmr_1_1MopacCoulombResult.html" title=" " alt="" coords="251,647,449,672"/>
+<area shape="poly" id="edge18_Node000000_Node000014" title=" " alt="" coords="126,556,177,595,241,632,278,644,276,649,239,636,174,599,123,560"/>
+<area shape="rect" id="Node000015" href="$classnmr_1_1MopacMcConnellResult.html" title=" " alt="" coords="246,696,454,721"/>
+<area shape="poly" id="edge19_Node000000_Node000015" title=" " alt="" coords="118,559,168,621,203,654,241,681,270,693,268,698,239,686,199,658,165,625,114,563"/>
+<area shape="rect" id="Node000016" href="$classnmr_1_1MopacResult.html" title=" " alt="" coords="280,745,420,771"/>
+<area shape="poly" id="edge20_Node000000_Node000016" title=" " alt="" coords="113,561,132,599,161,646,197,692,241,730,281,747,278,752,239,735,193,696,156,649,128,602,109,564"/>
+<area shape="rect" id="Node000017" href="$classnmr_1_1MutationDeltaResult.html" title=" " alt="" coords="255,795,445,820"/>
+<area shape="poly" id="edge21_Node000000_Node000017" title=" " alt="" coords="110,562,126,610,153,669,191,729,215,756,242,780,264,792,261,797,238,784,211,760,187,733,148,671,121,612,105,564"/>
+<area shape="rect" id="Node000018" href="$classnmr_1_1OrcaShieldingResult.html" title=" " alt="" coords="257,844,443,869"/>
+<area shape="poly" id="edge22_Node000000_Node000018" title=" " alt="" coords="107,562,121,619,146,691,164,729,186,766,211,800,242,829,262,842,260,846,238,833,207,804,181,769,159,732,141,693,116,620,102,564"/>
+<area shape="rect" id="Node000019" href="$classnmr_1_1PiQuadrupoleResult.html" title=" " alt="" coords="258,893,442,919"/>
+<area shape="poly" id="edge23_Node000000_Node000019" title=" " alt="" coords="105,562,116,627,139,713,157,758,180,803,208,843,242,879,262,891,259,896,238,883,204,847,175,805,152,761,134,715,111,628,100,563"/>
+<area shape="rect" id="Node000020" href="$classnmr_1_1ProtonationDetectionResult.html" title=" " alt="" coords="253,943,447,983"/>
+<area shape="poly" id="edge24_Node000000_Node000020" title=" " alt="" coords="104,562,113,635,135,733,152,786,176,837,205,886,242,928,260,941,257,945,238,932,201,889,171,840,147,788,129,734,108,635,99,563"/>
+<area shape="rect" id="Node000021" href="$classnmr_1_1RingSusceptibilityResult.html" title=" " alt="" coords="243,1008,457,1033"/>
+<area shape="poly" id="edge25_Node000000_Node000021" title=" " alt="" coords="102,563,106,647,113,702,124,763,142,826,166,887,199,944,242,993,260,1006,257,1010,238,997,195,947,162,889,137,827,119,764,108,703,101,647,97,563"/>
+<area shape="rect" id="Node000022" href="$classnmr_1_1SpatialIndexResult.html" title=" " alt="" coords="261,1057,439,1083"/>
+<area shape="poly" id="edge26_Node000000_Node000022" title=" " alt="" coords="106,563,123,668,153,813,172,886,193,953,216,1007,242,1043,262,1056,259,1061,238,1047,212,1009,188,955,166,888,148,814,118,669,101,564"/>
+</map>

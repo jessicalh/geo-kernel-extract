@@ -1,0 +1,21 @@
+var searchData=
+[
+  ['index_0',['index',['../classnmr_1_1AminoAcidType.html#a0b48bd7f118242972533c6c1f7412483',1,'nmr::AminoAcidType']]],
+  ['insertion_5fcode_1',['insertion_code',['../classnmr_1_1Residue.html#aea56fee65c8340e67ac78debbd2d1ad5',1,'nmr::Residue::insertion_code'],['../structnmr_1_1Residue_1_1SequenceAddress.html#ada46c580ad7f49b3cb30ce3cfec6d101',1,'nmr::Residue::SequenceAddress::insertion_code']]],
+  ['intensity_5fused_2',['intensity_used',['../structnmr_1_1RingAccumulated.html#ac1c079a2b2c993ef031dfa1464862c6c',1,'nmr::RingAccumulated']]],
+  ['is_5falpha_5fh_3',['is_alpha_H',['../classnmr_1_1ConformationAtom.html#a46b058f319383d8640bd42586e554f80',1,'nmr::ConformationAtom']]],
+  ['is_5famide_5fh_4',['is_amide_H',['../classnmr_1_1ConformationAtom.html#a7c86d8c06e96ba5b49672f266a242c0d',1,'nmr::ConformationAtom']]],
+  ['is_5faromatic_5',['is_aromatic',['../classnmr_1_1AminoAcidType.html#a8de103efdecf34c9531ca9ac0fbc2663',1,'nmr::AminoAcidType']]],
+  ['is_5faromatic_5fh_6',['is_aromatic_H',['../classnmr_1_1ConformationAtom.html#a70acc3f743581010e4865c63819dbcbe',1,'nmr::ConformationAtom']]],
+  ['is_5fbackbone_7',['is_backbone',['../structnmr_1_1MatchedAtomData.html#a96f4325930e717c8126a99b0d298574b',1,'nmr::MatchedAtomData::is_backbone'],['../structnmr_1_1IupacAtom.html#ae2da2e6d14c8bdb3f634ba00cd71974d',1,'nmr::IupacAtom::is_backbone'],['../classnmr_1_1ConformationAtom.html#ae32a7fad968bbe10deb75fafd8722e00',1,'nmr::ConformationAtom::is_backbone'],['../structnmr_1_1AminoAcidAtom.html#ac1acd8c030fb6a56dcea2361b74dd633',1,'nmr::AminoAcidAtom::is_backbone']]],
+  ['is_5fcharged_8',['is_charged',['../structnmr_1_1ResidueProtonation.html#a74b786045e3c61e8dd009d1ed7c0c9c6',1,'nmr::ResidueProtonation']]],
+  ['is_5fconjugated_9',['is_conjugated',['../classnmr_1_1ConformationAtom.html#adbd07206d3ac257a0dfb0ca61081ffcf',1,'nmr::ConformationAtom']]],
+  ['is_5ffused_10',['is_fused',['../structnmr_1_1ProteinConformation_1_1RingPair.html#a16e508fcb3154c7f0072c6cdc724fad6',1,'nmr::ProteinConformation::RingPair']]],
+  ['is_5fhbond_5facceptor_11',['is_hbond_acceptor',['../classnmr_1_1ConformationAtom.html#af8080913f1bcb60d26d9d1944e0498cf',1,'nmr::ConformationAtom']]],
+  ['is_5fhbond_5fdonor_12',['is_hbond_donor',['../classnmr_1_1ConformationAtom.html#a23afe29ee82d573aac7d359ec70d2715',1,'nmr::ConformationAtom']]],
+  ['is_5fmethyl_13',['is_methyl',['../classnmr_1_1ConformationAtom.html#afe6ce8e646b4481a9cf9bed8c18b7341',1,'nmr::ConformationAtom']]],
+  ['is_5fon_5faromatic_5fresidue_14',['is_on_aromatic_residue',['../classnmr_1_1ConformationAtom.html#a772223954b5350b334b1a93c1168432c',1,'nmr::ConformationAtom']]],
+  ['is_5fring_5fmember_15',['is_ring_member',['../structnmr_1_1IupacAtom.html#a74d91f14e3199053515b1808ec65c1aa',1,'nmr::IupacAtom']]],
+  ['is_5frotatable_16',['is_rotatable',['../structnmr_1_1Bond.html#a71a59467b40d6826d4ec0694aad986be',1,'nmr::Bond']]],
+  ['is_5ftitratable_17',['is_titratable',['../classnmr_1_1AminoAcidType.html#aaf2a19a7d9189f5d549793a35cf291e7',1,'nmr::AminoAcidType']]]
+];

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GeometryChoice Flow &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <h1>4. GeometryChoice Flow</h1>
+    <p>
+      Every calculator holds a <code>KernelFilterSet</code>. Before evaluating
+      a kernel, five filters must accept. During <code>Compute()</code>,
+      calculators record geometric decisions via <code>GeometryChoiceBuilder</code>:
+      entities, roles, outcomes, named numbers with units, rejection reasons,
+      and optional field samplers for UI visualisation.
+    </p>
+    <p><a href="architecture.html">&larr; Back to Architecture</a></p>
+    <figure class="diagram-full">
+      <img src="img/diagrams/04_geometry_choice_flow.svg" alt="Geometry choice flow">
+    </figure>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

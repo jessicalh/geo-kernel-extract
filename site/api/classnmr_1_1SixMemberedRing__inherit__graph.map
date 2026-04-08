@@ -1,0 +1,11 @@
+<map id="nmr::SixMemberedRing" name="nmr::SixMemberedRing">
+<area shape="rect" id="Node000001" title=" " alt="" coords="184,419,351,484"/>
+<area shape="rect" id="Node000003" href="$classnmr_1_1PheBenzeneRing.html" title=" " alt="" coords="5,532,164,717"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="221,495,177,534,166,544,163,540,174,530,218,491"/>
+<area shape="rect" id="Node000004" href="$classnmr_1_1TrpBenzeneRing.html" title=" " alt="" coords="188,532,347,717"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="270,498,270,532,265,532,265,498"/>
+<area shape="rect" id="Node000005" href="$classnmr_1_1TyrPhenolRing.html" title=" " alt="" coords="371,532,529,717"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="317,491,361,530,372,540,368,544,358,534,313,495"/>
+<area shape="rect" id="Node000002" href="$classnmr_1_1Ring.html" title=" " alt="" coords="176,5,359,371"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="270,384,270,418,265,418,265,384"/>
+</map>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Geometric Kernel Extraction &mdash; NMR Shielding Tensor System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <a class="logo" href="index.html">NMR Shielding</a>
+    <nav>
+      <a href="index.html" class="active">Home</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="cli.html">CLI &amp; REST</a>
+      <a href="kernels.html">Kernels</a>
+      <a href="api/index.html">C++ API</a>
+      <a href="viewer/index.html">Viewer API</a>
+      <a href="python/index.html">Python SDK</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="container">
+    <div class="hero">
+      <h1>Geometric Kernel Extraction</h1>
+      <p class="subtitle">
+        Classical electromagnetic geometric kernels from protein structures &mdash;
+        ring currents, bond anisotropy, electric field gradients &mdash; as
+        full rank-2 tensors, calibrated against DFT.
+      </p>
+    </div>
+
+    <div class="cards">
+      <a class="card" href="architecture.html">
+        <h3>Architecture</h3>
+        <p>Protein model, provenance paths, calculator pipeline, dependency
+           enforcement. Verified against 287 tests.</p>
+        <span class="tag">System Design</span>
+      </a>
+
+      <a class="card" href="cli.html">
+        <h3>CLI &amp; REST Interface</h3>
+        <p>Five JobSpec modes for extraction and viewing. TCP/JSON REST
+           commands for automation and scripting.</p>
+        <span class="tag">Usage</span>
+      </a>
+
+      <a class="card" href="kernels.html">
+        <h3>Geometric Kernel Catalogue</h3>
+        <p>Full derivations for 8 classical calculators: Biot-Savart,
+           Haigh-Mallion, McConnell, Coulomb, and more. The kernels are the physics.</p>
+        <span class="tag">Mathematics</span>
+      </a>
+
+      <a class="card" href="api/index.html">
+        <h3>C++ Library API</h3>
+        <p>Doxygen-generated class documentation with UML collaboration
+           graphs and include dependency trees. 54 headers, ~14.5K lines.</p>
+        <span class="tag">Doxygen</span>
+      </a>
+
+      <a class="card" href="viewer/index.html">
+        <h3>Viewer API</h3>
+        <p>Qt6/VTK protein tensor viewer: overlays, atom inspector,
+           butterfly visualisation. Doxygen class reference.</p>
+        <span class="tag">Doxygen</span>
+      </a>
+
+      <a class="card" href="python/index.html">
+        <h3>Python SDK &mdash; nmr_extract</h3>
+        <p>Typed reader for extraction data. Loads NPY files into Python
+           objects with e3nn Irreps, torch Tensor, and numpy access.</p>
+        <span class="tag">Sphinx</span>
+      </a>
+    </div>
+
+    <!-- Overview section -->
+    <h2>What This System Does</h2>
+    <p>
+      This system computes classical electromagnetic geometric kernels at every
+      atom of a protein, as full rank-2 tensors. Each tensor decomposes into
+      T0&nbsp;(isotropic), T1&nbsp;(antisymmetric), and T2&nbsp;(symmetric
+      traceless, 5&nbsp;components).
+    </p>
+    <p>
+      10&nbsp;calculators (8&nbsp;classical + 2&nbsp;MOPAC-derived) produce full tensor
+      output per atom. An equivariant calibration pipeline tunes ~80 kernel
+      parameters against DFT WT&ndash;ALA deltas across 723 proteins. The
+      primary measure is T2&nbsp;R&sup2; &mdash; how well the calibrated
+      classical kernels reproduce the angular structure of DFT shielding.
+    </p>
+    <p>
+      This is not a chemical shift predictor. T0 is what existing predictors
+      compute. This system's contribution is <strong>T2</strong>: the angular
+      pattern that reveals where classical models succeed and fail.
+    </p>
+
+    <h2>Components</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Language</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>src/</code></td>
+          <td>C++</td>
+          <td>Core library: protein model, 10 calculators, pipeline, feature export</td>
+        </tr>
+        <tr>
+          <td><code>ui/</code></td>
+          <td>C++ (Qt6/VTK)</td>
+          <td>Interactive viewer with overlays, atom inspector, REST API</td>
+        </tr>
+        <tr>
+          <td><code>python/</code></td>
+          <td>Python</td>
+          <td>nmr_extract SDK: typed reader for NPY extraction data</td>
+        </tr>
+        <tr>
+          <td><code>tests/</code></td>
+          <td>C++ (GTest)</td>
+          <td>287 tests across 40 test files</td>
+        </tr>
+        <tr>
+          <td><code>learn/</code></td>
+          <td>Python</td>
+          <td>Equivariant calibration pipeline (e3nn, PyTorch)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Dependencies</h2>
+    <table>
+      <thead>
+        <tr><th>Category</th><th>Packages</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>System</td><td>Eigen3, libdssp, libcifpp, APBS, FETK</td></tr>
+        <tr><td>Conda</td><td>OpenBabel, PROPKA, xTB</td></tr>
+        <tr><td>Build from source</td><td>GROMACS 2026.0, reduce 4.10</td></tr>
+        <tr><td>Test</td><td>GTest 1.14.0 (CMake FetchContent)</td></tr>
+        <tr><td>Python</td><td>e3nn, NumPy, PyTorch, sphinx_rtd_theme</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    NMR Shielding Tensor System &mdash; Geometric Kernel Extraction
+  </div>
+</footer>
+
+</body>
+</html>

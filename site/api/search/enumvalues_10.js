@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['s_0',['S',['../namespacenmr.html#a7631d3e4c00af4d2cb42d4001ecb2e3ba5dbc98dcc983a70728bd082d1a47546e',1,'nmr']]],
+  ['ser_1',['SER',['../namespacenmr.html#a5bbacc34dc32f94dbd8e59710c8f5524a145b18e0cb047d3fb5504472ebd1ffed',1,'nmr']]],
+  ['sidechainc_2',['SidechainC',['../namespacenmr.html#a492aa1d53f127ce919ab84e8d2a278a2a742d924aab0934e80be45483bb411e1c',1,'nmr']]],
+  ['sidechainco_3',['SidechainCO',['../namespacenmr.html#af1d34c8631a2e6418dabf1c3d34d02ada18fcc786d67fecb0d1484fa3dc3da80d',1,'nmr']]],
+  ['sidechainn_4',['SidechainN',['../namespacenmr.html#a492aa1d53f127ce919ab84e8d2a278a2aa94fce92bdfda13cb7ba571a4d405788',1,'nmr']]],
+  ['sidechaino_5',['SidechainO',['../namespacenmr.html#a492aa1d53f127ce919ab84e8d2a278a2a65c84b521cdd96945dc70b9acc57605e',1,'nmr']]],
+  ['sidechainother_6',['SidechainOther',['../namespacenmr.html#af1d34c8631a2e6418dabf1c3d34d02ada00b34fce7424d95fa8555ad8f1fc8564',1,'nmr']]],
+  ['sidechains_7',['SidechainS',['../namespacenmr.html#a492aa1d53f127ce919ab84e8d2a278a2a81b7c68776794a06f10c6e5b61984c49',1,'nmr']]],
+  ['silent_8',['SILENT',['../namespacenmr.html#a3d333c9978bc9d42fcf4d8927a17a6fca7e92d833d7720dbe631730a6cea03346',1,'nmr']]],
+  ['single_9',['Single',['../namespacenmr.html#a52aeb1947e994960f996aae3010f8b9da66ba162102bbf6ae31b522aec561735e',1,'nmr']]],
+  ['sixmembered_10',['SixMembered',['../namespacenmr.html#a15c9d098025897c90b4834f5a165d041a70bb7da6dbee87b691dd4934801c2d96',1,'nmr']]],
+  ['source_11',['Source',['../namespacenmr.html#aea9c59ff1b5fa65f4452715e48f6ffc4af31bbdd1b3e85bccd652680e16935819',1,'nmr']]],
+  ['sp_12',['sp',['../namespacenmr.html#a9b64c052c7712864bd1c71b4f0bd4001a1952a01898073d1e561b9b4f2e42cbd7',1,'nmr']]],
+  ['sp2_13',['sp2',['../namespacenmr.html#a9b64c052c7712864bd1c71b4f0bd4001a33cfd1ff8df9b5eb8d2dd008a71d6e15',1,'nmr']]],
+  ['sp3_14',['sp3',['../namespacenmr.html#a9b64c052c7712864bd1c71b4f0bd4001a0df6f113d2652eb9bc62b370aaf8e7cc',1,'nmr']]],
+  ['standard_15',['Standard',['../namespacenmr.html#abdd0c685ce98e84980d8affacf18c25daeb6d8ae6f20283755b339c0dc273988b',1,'nmr']]]
+];
