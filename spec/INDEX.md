@@ -52,6 +52,18 @@ You must:
 
 See PATTERNS.md "Numerical Stability" section.
 
+### When adding or changing WriteFeatures output
+
+Any new NPY file must be registered in the Python reader SDK so
+consumers can load it.  See **spec/EXTRACTION_SDK.md** for the
+design and **python/API.md** for the full column-level reference.
+
+The reader lives at `python/nmr_extract/`.  The format contract is
+`python/nmr_extract/_catalog.py` — one `ArraySpec` per NPY file.
+If you add a column to `ring_contributions.npy` or create a new
+array, update `_catalog.py` and the corresponding wrapper class,
+then run `python -m pytest python/tests/` to verify.
+
 ## All Documents
 
 ### Top-level
@@ -85,6 +97,13 @@ See PATTERNS.md "Numerical Stability" section.
   for GeometryChoice display (what each calculator records, UI ideas)
 - **src/REST_INTERFACE_SPEC.md** — all 20+ REST commands with parameters
 - **doc/generated/doxygen/** — viewer class diagrams, collaboration graphs
+
+### python/ — Extraction Reader SDK
+- **spec/EXTRACTION_SDK.md** — design intent, trust boundary, what it covers
+- **python/API.md** — consumer reference: every type, field, column
+- **python/nmr_extract/_catalog.py** — format contract (one entry per NPY)
+- **python/doc/** — Sphinx autodoc source (build with `sphinx-build`)
+- **python/tests/test_load.py** — 79 tests against real extractions
 
 ### Historical (learn/bones/)
 Session notes, early specs, analysis passes, resolved feedback.
