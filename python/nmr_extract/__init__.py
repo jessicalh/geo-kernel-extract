@@ -1,0 +1,45 @@
+"""nmr_extract — typed reader for NMR shielding extraction data.
+
+    from nmr_extract import load
+    p = load("path/to/extraction")
+
+    p.biot_savart.shielding.T2          # (N, 5)
+    p.biot_savart.shielding.irreps      # Irreps("1x0e + 1x1o + 1x2e")
+    p.biot_savart.shielding.torch()     # torch.Tensor (N, 9)
+    p.ring_contributions.bs.T2          # (P, 5), per-ring
+"""
+
+from e3nn.o3 import Irreps
+
+from ._protein import load, Protein
+from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
+from ._tensors import (
+    SphericalTensor,
+    ShieldingTensor,
+    EFGTensor,
+    VectorField,
+    PerRingTypeT0,
+    PerRingTypeT2,
+    PerBondCategoryT2,
+)
+from ._ring import RingContributions, RingGeometry
+from ._catalog import CATALOG, ArraySpec
+
+__all__ = [
+    "load",
+    "Protein",
+    "Irreps",
+    "RingType",
+    "BondCategory",
+    "SphericalTensor",
+    "ShieldingTensor",
+    "EFGTensor",
+    "VectorField",
+    "PerRingTypeT0",
+    "PerRingTypeT2",
+    "PerBondCategoryT2",
+    "RingContributions",
+    "RingGeometry",
+    "CATALOG",
+    "ArraySpec",
+]

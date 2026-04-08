@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nmr-extract"
+version = "0.2.0"
+description = "Typed reader for NMR shielding tensor extraction data"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "torch>=2.0",
+    "e3nn>=0.5",
+]
+
+[project.optional-dependencies]
+pyg = ["torch-geometric>=2.4"]
+
+[tool.setuptools.packages.find]
+include = ["nmr_extract*"]
