@@ -1,12 +1,15 @@
 # Geometric Kernel as Feature Extraction
 
-Extracts geometric kernel features from protein structures for
-downstream NMR shielding tensor prediction.
+Computes geometric kernel tensors from protein structures — ring
+currents, electric field gradients, peptide bond anisotropy, and
+other classical contributions to NMR shielding.  These are geometric
+features, not shielding tensors themselves (unless DFT reference
+data from ORCA is supplied alongside the structure).
 
-![Shielding tensor ellipsoids on a protein structure](projectillustration.png)
+![Geometric kernel tensors visualised on a protein structure](projectillustration.png)
 
 10 calculators (8 classical + 2 MOPAC-derived) produce full rank-2
-tensor features per atom.  An equivariant calibration pipeline tunes
+tensor output per atom.  An equivariant calibration pipeline tunes
 ~80 kernel parameters against DFT WT-ALA deltas across 723 proteins.
 
 See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
