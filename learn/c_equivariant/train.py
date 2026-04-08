@@ -68,6 +68,15 @@ def train(args):
 
     train_ds, val_ds, n_proteins = build_datasets(args.extraction_run)
 
+    if args.shuffle_targets:
+        print("*** SANITY CHECK: targets randomly permuted ***")
+        perm = torch.randperm(len(train_ds))
+        train_ds.targets = train_ds.targets[perm]
+        train_ds.ring_dist = train_ds.ring_dist[perm]
+        perm_v = torch.randperm(len(val_ds))
+        val_ds.targets = val_ds.targets[perm_v]
+        val_ds.ring_dist = val_ds.ring_dist[perm_v]
+
     header = {
         "run_name": run_name,
         "extraction_run": args.extraction_run,
@@ -83,6 +92,7 @@ def train(args):
         "lr": args.lr,
         "use_correction": args.correction,
         "distance_weighted": args.distance_weighted,
+        "shuffle_targets": args.shuffle_targets,
         "notes": args.notes or "",
     }
 
@@ -131,14 +141,15 @@ def train(args):
         dist_weights_train /= dist_weights_train.mean()
         dist_weights_val /= dist_weights_val.mean()
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size,
-                              shuffle=True, drop_last=False)
-
     model = make_model(
         n_scalar_features=N_SCALAR_FEATURES,
         n_kernels=N_KERNELS,
         use_correction=args.correction,
-    ).to(device)
+    )
+    # Set per-kernel gate thresholds from training data
+    model.mixing.set_gate_thresholds(
+        torch.tensor(train_ds.norm_stats.gate_threshold, dtype=torch.float32))
+    model = model.to(device)
 
     print(f"Model: {'mixing + correction' if args.correction else 'mixing only'}")
     print(f"Parameters: {model.parameter_count()}\n")
@@ -155,37 +166,37 @@ def train(args):
     best_val_loss = float("inf")
     best_epoch = 0
 
+    # All data already on GPU — skip DataLoader, shuffle indices on device
+    N_train = len(train_ds)
+    N_val = len(val_ds)
+    bs = args.batch_size
+
     for epoch in range(args.epochs):
         model.train()
+        perm = torch.randperm(N_train, device=device)
         train_loss = 0.0
-        n_train = 0
-        batch_start = 0
-        for s, k, tgt in train_loader:
+        for i in range(0, N_train, bs):
+            idx = perm[i:i+bs]
+            s = train_ds.scalars[idx]
+            k = train_ds.kernels[idx]
+            tgt = train_ds.targets[idx]
             pred = model(s, k)
             if dist_weights_train is not None:
-                # Per-atom weighted MSE
-                w = dist_weights_train[batch_start:batch_start + len(s)]
-                per_atom = ((pred - tgt) ** 2).mean(dim=1)  # (batch,)
+                w = dist_weights_train[idx]
+                per_atom = ((pred - tgt) ** 2).mean(dim=1)
                 loss = (per_atom * w).mean()
-                batch_start += len(s)
             else:
                 loss = nn.functional.mse_loss(pred, tgt)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            train_loss += loss.item() * len(s)
-            n_train += len(s)
-        train_loss /= n_train
+            train_loss += loss.item() * len(idx)
+        train_loss /= N_train
 
         model.eval()
-        val_loss = 0.0
-        n_val = 0
         with torch.no_grad():
-            for s, k, tgt in DataLoader(val_ds, batch_size=4096):
-                pred = model(s, k)
-                val_loss += nn.functional.mse_loss(pred, tgt).item() * len(s)
-                n_val += len(s)
-        val_loss /= n_val
+            val_pred = model(val_ds.scalars, val_ds.kernels)
+            val_loss = nn.functional.mse_loss(val_pred, val_ds.targets).item()
         scheduler.step()
 
         is_best = val_loss < best_val_loss
@@ -204,14 +215,19 @@ def train(args):
             "lr": scheduler.get_last_lr()[0],
             "best": is_best,
         }
+        if args.correction and hasattr(model, "correction_scale"):
+            entry["correction_scale"] = round(model.correction_scale.item(), 6)
         with open(log_path, "a") as f:
             f.write(json_mod.dumps(entry) + "\n")
 
         if (epoch + 1) % 10 == 0 or epoch == 0 or is_best:
             marker = " *" if is_best else ""
+            corr_str = ""
+            if args.correction and hasattr(model, "correction_scale"):
+                corr_str = f"  cs={model.correction_scale.item():.4f}"
             print(f"  epoch {epoch+1:4d}  train={train_ppm:.4f} ppm  "
                   f"val={val_ppm:.4f} ppm  lr={scheduler.get_last_lr()[0]:.1e}"
-                  f"{marker}")
+                  f"{corr_str}{marker}")
 
     # ── Final evaluation ─────────────────────────────────────────
     print(f"\n{'=' * 60}")
@@ -265,12 +281,22 @@ def train(args):
     if args.correction:
         print(f"\nCorrection scale: {model.correction_scale.item():.4f}")
 
-    # ── Save kernel weights for inspection ───────────────────────
+    # ── Save kernel diagnostics for inspection ─────────────────────
     with torch.no_grad():
         sample_s = train_ds.scalars[:1000]
-        sample_weights = model.mixing.mlp(sample_s)  # (1000, N_KERNELS)
-        summary["kernel_weight_mean"] = sample_weights.mean(dim=0).cpu().tolist()
-        summary["kernel_weight_std"] = sample_weights.std(dim=0).cpu().tolist()
+        sample_k = train_ds.kernels[:1000]
+        # MLP relative weights (before gating)
+        sample_relative = model.mixing.mlp(sample_s)  # (1000, N_KERNELS)
+        summary["kernel_weight_mean"] = sample_relative.mean(dim=0).cpu().tolist()
+        summary["kernel_weight_std"] = sample_relative.std(dim=0).cpu().tolist()
+        # Kernel self-reported magnitudes (the gate signal)
+        sample_magnitude = sample_k.norm(dim=-1)  # (1000, N_KERNELS)
+        summary["kernel_magnitude_mean"] = sample_magnitude.mean(dim=0).cpu().tolist()
+        summary["kernel_magnitude_std"] = sample_magnitude.std(dim=0).cpu().tolist()
+        # Gated weights (what actually drives prediction)
+        sample_gated = sample_relative * sample_magnitude
+        summary["kernel_gated_mean"] = sample_gated.mean(dim=0).cpu().tolist()
+        summary["kernel_gated_std"] = sample_gated.std(dim=0).cpu().tolist()
 
     with open(this_run / "summary.json", "w") as f:
         json_mod.dump(summary, f, indent=2)
@@ -288,10 +314,13 @@ def main():
     parser.add_argument("--correction", action="store_true",
                         help="use equivariant correction head")
     parser.add_argument("--distance-weighted", action="store_true",
-                        help="weight loss by exp(-d/8A) from nearest removed ring")
+                        help="DEPRECATED: weight loss by exp(-d/8A). "
+                             "Superseded by kernel self-gating in the mixing head.")
     parser.add_argument("--run-name", type=str, default=None,
                         help="name for this run (default: timestamped)")
     parser.add_argument("--notes", type=str, default=None)
+    parser.add_argument("--shuffle-targets", action="store_true",
+                        help="permute targets as sanity check (R² should go negative)")
     args = parser.parse_args()
     train(args)
 

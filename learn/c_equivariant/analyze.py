@@ -342,26 +342,31 @@ def analyze(features_dir: Path):
             print(f"    {name:30s}  |cos|={mean_cos:.3f}  n={nv:6d}  {bar}")
 
         # Aggregate: what fraction of residual variance is in-span?
-        # Project residual onto the column space of all kernels
-        U, s, Vt = np.linalg.svd(X_all, full_matrices=False)
-        # Rank = number of non-negligible singular values
-        rank = np.sum(s > s[0] * 1e-8)
-        res_flat = residual.ravel()
-        in_span = U[:, :rank] @ (U[:, :rank].T @ res_flat)
-        out_span = res_flat - in_span
-        frac_in = np.sum(in_span ** 2) / np.sum(res_flat ** 2)
-        print(f"\n  Kernel subspace rank: {rank} (of {X_all.shape[1]})")
-        print(f"  Residual variance in-span:  {frac_in:.1%}")
-        print(f"  Residual variance out-of-span: {1 - frac_in:.1%}")
+        # Compare OLS R² (no regularisation) vs ridge R². The gap is
+        # in-span signal that ridge suppresses; (1 - OLS R²) is truly
+        # out-of-span. Uses lstsq which handles rank-deficiency via SVD
+        # on the smaller (K*5, K*5) normal equations, not the full matrix.
+        ols_pred = np.zeros_like(target)
+        for comp in range(5):
+            w_ols, res_ols, rank_ols, sv = np.linalg.lstsq(X_all, target[:, comp], rcond=1e-8)
+            ols_pred[:, comp] = X_all @ w_ols
+        r2_ols = _r2(ols_pred, target)
+        ols_residual = target - ols_pred
+        in_span_frac = (r2_ols - r2_full) / (1 - r2_full) if r2_full < 1.0 else 0.0
+        print(f"\n  OLS R² (no regularisation): {r2_ols:.4f}")
+        print(f"  Ridge R² (λ=0.01):         {r2_full:.4f}")
+        print(f"  Effective rank: {rank_ols} (of {X_all.shape[1]})")
+        print(f"  In-span residual (OLS-ridge gap): {r2_ols - r2_full:.4f} "
+              f"({in_span_frac:.1%} of unexplained)")
+        print(f"  Out-of-span (1 - OLS R²):        {1 - r2_ols:.4f}")
 
-        if frac_in > 0.3:
-            print(f"\n  >> Significant in-span residual ({frac_in:.0%}): the ridge"
-                  f"\n     regularisation is leaving recoverable signal. The MLP"
-                  f"\n     (environment-dependent weights) should capture this.")
+        if in_span_frac > 0.15:
+            print(f"\n  >> Ridge is leaving {in_span_frac:.0%} of the residual on the table."
+                  f"\n     The MLP (environment-dependent weights) should recover this.")
         else:
-            print(f"\n  >> Residual is mostly orthogonal to kernels ({1-frac_in:.0%}"
-                  f" out-of-span).\n     The missing {1-r2_full:.0%} needs new"
-                  f" physics or nonlinear kernel interactions.")
+            print(f"\n  >> Regularisation costs little. The missing {1-r2_ols:.0%}"
+                  f" is truly out-of-span.\n     Needs new physics or nonlinear"
+                  f" kernel interactions (correction head).")
 
         # Residual by element
         print(f"\n  Residual by element:")

@@ -41,21 +41,36 @@ except AttributeError:
 class KernelMixingHead(nn.Module):
     """Learn scalar mixing weights from scalar features, apply to L=2 kernels.
 
-    This is the equivariant generalisation of Level A: instead of global
-    scalar weights, the weights depend on local environment (ring proximity,
-    element type, etc.) through a small MLP on scalar features.
+    Each kernel gates its own weight via its per-atom T2 magnitude.  A kernel
+    that reports zero signal at an atom contributes nothing regardless of what
+    the MLP outputs.  The MLP only decides relative importance among kernels
+    that self-report as active.
 
-    Equivariant because: scalar_function(scalars) × L=2_tensor = L=2_tensor.
+    This replaces ad-hoc distance weighting in the loss: distance dependence
+    emerges from the kernels' own physics (1/r³ falloff, switching functions,
+    cutoff radii) rather than from a training hyperparameter.
+
+    Equivariant because: scalar_function(scalars) × L=2_tensor = L=2_tensor,
+    and ||L=2_tensor|| is a rotation-invariant scalar.
     """
 
     def __init__(self, n_scalar_features: int, n_kernels: int, hidden: int = 64):
         super().__init__()
         self.n_kernels = n_kernels
-        # MLP: scalar features → one weight per kernel
+        # MLP: scalar features → one relative weight per kernel
         self.mlp = FullyConnectedNet(
             [n_scalar_features, hidden, hidden, n_kernels],
             act=torch.nn.functional.silu,
         )
+        # Per-kernel gate threshold: median magnitude of nonzero values from
+        # training data. Each kernel defines its own noise floor. Set by
+        # set_gate_thresholds() before training; defaults to 1.0.
+        self.register_buffer(
+            "gate_threshold", torch.ones(n_kernels))
+
+    def set_gate_thresholds(self, thresholds: torch.Tensor):
+        """Set per-kernel gate thresholds from training data statistics."""
+        self.gate_threshold.copy_(thresholds)
 
     def forward(self, scalars, kernel_t2s):
         """
@@ -63,13 +78,17 @@ class KernelMixingHead(nn.Module):
         kernel_t2s: (batch, n_kernels, 5) — L=2 input from each calculator
         returns: (batch, 5) — weighted sum of kernel T2s
         """
-        weights = self.mlp(scalars)  # (batch, n_kernels)
-        # Scale weights so initial output std ≈ 1 (matches target std after normalization).
-        # Without this, summing n_kernels terms with std~1 gives output std~sqrt(n_kernels).
-        import math
-        weights = weights / math.sqrt(self.n_kernels)
+        relative_weights = self.mlp(scalars)  # (batch, n_kernels)
+        # Each kernel gates its own weight by its T2 magnitude at this atom.
+        # The gate threshold is the kernel's own median magnitude — its noise
+        # floor. Whisper kernels (sparse, low magnitude) get a low threshold;
+        # shouter kernels (dense, high magnitude) get a high one.
+        # gate = x / (x + threshold_k): bounded [0, 1), no squaring.
+        kernel_magnitude = kernel_t2s.norm(dim=-1)  # (batch, n_kernels)
+        gate = kernel_magnitude / (kernel_magnitude + self.gate_threshold)
+        gated_weights = relative_weights * gate
         # Weighted sum: each weight is a scalar multiplying an L=2 vector
-        out = torch.einsum("bk,bkm->bm", weights, kernel_t2s)
+        out = torch.einsum("bk,bkm->bm", gated_weights, kernel_t2s)
         return out
 
 
@@ -88,21 +107,22 @@ class EquivariantCorrectionHead(nn.Module):
         kernel_sum                                         — overall signal
     """
 
-    # Kernel indices for the L=2 channels (from dataset.py layout)
+    # Kernel indices for the L=2 channels (from dataset.py layout).
+    # Selected by analyze.py diagnostics: forward selection rank,
+    # ablation drop, and residual alignment (|cos| with ridge residual).
     L2_KERNEL_INDICES = [
-        0,   # BS PHE
-        1,   # BS TYR
-        2,   # BS TRP_benzene
-        4,   # BS TRP_perimeter
-        24,  # MC backbone_total
-        26,  # MC aromatic_total
-        35,  # Coulomb total
-        38,  # MopacCoulomb total
-        40,  # Coulomb EFG backbone
-        41,  # Coulomb EFG aromatic
-        45,  # Delta APBS EFG (electrostatic change from mutation)
+        0,   # BS PHE          — top ring-current kernel
+        1,   # BS TYR          — second ring-current kernel
+        24,  # MC backbone     — bond anisotropy (unique angular structure)
+        26,  # MC aromatic     — aromatic bond anisotropy
+        29,  # Disp PHE        — highest residual alignment (|cos|=0.57)
+        31,  # Disp HIE        — highest residual alignment (|cos|=0.58)
+        37,  # RingSusc total  — 3rd in forward selection
+        41,  # EFG aromatic    — 2nd in forward selection, ablation drop 0.016
+        43,  # MopacEFG aro    — dominant kernel: R²=0.27 alone, ablation drop 0.070
+        45,  # Delta APBS EFG  — electrostatic change from mutation
     ]
-    N_L2_INPUTS = len(L2_KERNEL_INDICES) + 1  # +1 for kernel_sum = 12
+    N_L2_INPUTS = len(L2_KERNEL_INDICES) + 1  # +1 for kernel_sum = 11
 
     def __init__(self, n_scalar_features: int, n_kernels: int, hidden: int = 32):
         super().__init__()

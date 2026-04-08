@@ -123,10 +123,17 @@ def _build_features(protein_dir: Path):
     # Per-protein kernel normalization: isolates angular structure,
     # strips magnitude (which varies with ring count/distance/protein size).
     # Scalar divisor → preserves equivariance.
+    # The normalization factors are preserved as scalar features so the MLP
+    # knows the scale it was stripped of — bridging per-protein and global.
+    kernel_scales = np.zeros(N_KERNELS, dtype=np.float64)
     for k in range(N_KERNELS):
         kstd = kernels[:, k, :].std()
         if kstd > 1e-10:
             kernels[:, k, :] /= kstd
+            kernel_scales[k] = kstd
+
+    # Broadcast per-protein kernel scales to all atoms in this protein
+    s_kernel_scales = np.tile(kernel_scales, (M, 1))  # (M, N_KERNELS)
 
     # ── Scalar features ──────────────────────────────────────────
     # Element one-hot (H=1, C=6, N=7, O=8, S=16)
@@ -186,10 +193,11 @@ def _build_features(protein_dir: Path):
         t1_mags[:, 8] = np.linalg.norm(p.mopac.coulomb.shielding.T1[idx], axis=-1)
         t1_mags[:, 9] = np.linalg.norm(p.mopac.mcconnell.shielding.T1[idx], axis=-1)
 
-    # Ring proximity detail — top-3 nearest removed rings
-    # Per ring: [mcconnell_factor, exp_decay, 1/dist, z, rho] + n_rings
-    TOP_K_RINGS = 3
-    RING_COLS = 5
+    # Ring proximity detail — top-6 nearest removed rings (62% of proteins
+    # have >3 rings; top-3 was discarding most of the ring environment).
+    # Per ring: [mcconnell_factor, exp_decay, 1/dist, z, rho, theta] + n_rings
+    TOP_K_RINGS = 6
+    RING_COLS = 6
     s_ringprox = np.zeros((M, TOP_K_RINGS * RING_COLS + 1), dtype=np.float64)
     if p.delta.ring_proximity is not None:
         nr = p.delta.ring_proximity.n_removed_rings
@@ -208,12 +216,17 @@ def _build_features(protein_dir: Path):
                 s_ringprox[atom_j, base + 2] = 1.0 / (d + 1e-3)
                 s_ringprox[atom_j, base + 3] = p.delta.ring_proximity.z(ri)[aj]
                 s_ringprox[atom_j, base + 4] = p.delta.ring_proximity.rho(ri)[aj]
+                s_ringprox[atom_j, base + 5] = p.delta.ring_proximity.theta(ri)[aj]
 
-    # Per-atom max bond order (1)
-    s_maxbo = np.zeros((M, 1), dtype=np.float64)
+    # Per-atom bond order features (4)
+    s_bond = np.zeros((M, 4), dtype=np.float64)
     if p.mopac:
         bo_dense = p.mopac.core.bond_orders.to_dense(p.n_atoms)
-        s_maxbo[:, 0] = bo_dense[idx].max(axis=1)
+        per_atom = bo_dense[idx]
+        s_bond[:, 0] = per_atom.max(axis=1)                     # max bond order
+        s_bond[:, 1] = (per_atom > 0.01).sum(axis=1).astype(float)  # n_bonds
+        s_bond[:, 2] = per_atom.sum(axis=1)                     # total bond order
+        s_bond[:, 3] = (per_atom > 1.2).sum(axis=1).astype(float)   # n_aromatic (pi)
 
     # Mutation identity — which aromatic residue was removed (4 one-hot)
     # Inferred from which ring-type kernels are non-zero in this protein.
@@ -245,6 +258,31 @@ def _build_features(protein_dir: Path):
         s_mopac_elec[:, 0] = p.mopac.core.scalars.s_pop[idx]
         s_mopac_elec[:, 1] = p.mopac.core.scalars.p_pop[idx]
 
+    # T0 (isotropic) magnitudes per calculator — large T0 with small T2 means
+    # strong isotropic effect with weak angular structure, different physics.
+    s_t0_mags = np.zeros((M, 6), dtype=np.float64)
+    s_t0_mags[:, 0] = np.abs(p.mcconnell.shielding.isotropic[idx])
+    s_t0_mags[:, 1] = np.abs(p.coulomb.shielding.isotropic[idx])
+    s_t0_mags[:, 2] = np.abs(p.biot_savart.shielding.isotropic[idx])
+    s_t0_mags[:, 3] = np.abs(p.hbond.shielding.isotropic[idx])
+    if p.mopac:
+        s_t0_mags[:, 4] = np.abs(p.mopac.coulomb.shielding.isotropic[idx])
+        s_t0_mags[:, 5] = np.abs(p.mopac.mcconnell.shielding.isotropic[idx])
+
+    # MOPAC Coulomb scalars — parallel to s_coul but with PM7 charges
+    s_mopac_coul = np.zeros((M, 4), dtype=np.float64)
+    if p.mopac:
+        s_mopac_coul = p.mopac.coulomb.scalars.data[idx]
+
+    # MOPAC McConnell scalars — parallel to s_mc but with Wiberg bond orders
+    s_mopac_mc = np.zeros((M, 6), dtype=np.float64)
+    if p.mopac:
+        s_mopac_mc = p.mopac.mcconnell.scalars.data[idx].copy()
+        s_mopac_mc[:, 4] = np.where(s_mopac_mc[:, 4] > 90, 0.0,
+                                     1.0 / (s_mopac_mc[:, 4] + 1e-3))
+        s_mopac_mc[:, 5] = np.where(s_mopac_mc[:, 5] > 90, 0.0,
+                                     1.0 / (s_mopac_mc[:, 5] + 1e-3))
+
     scalars = np.concatenate([
         s_elem,       # 5
         s_restype,    # 20
@@ -255,14 +293,18 @@ def _build_features(protein_dir: Path):
         s_delta,      # 4
         s_mopac,      # 1
         t1_mags,      # 10
-        s_ringprox,   # 16
-        s_maxbo,      # 1
+        s_ringprox,   # 37
+        s_bond,       # 4
         s_mutid,      # 4
         s_t0_bs,      # 8
         s_t0_hm,      # 8
         s_t0_disp,    # 8
         s_mopac_elec, # 2
-    ], axis=1)        # total: 104
+        s_t0_mags,    # 6
+        s_mopac_coul,    # 4
+        s_mopac_mc,      # 6
+        s_kernel_scales, # 46 — per-protein norm factors (magnitude the kernels were stripped of)
+    ], axis=1)           # total: 190
 
     return {
         "scalars": scalars,
@@ -272,25 +314,26 @@ def _build_features(protein_dir: Path):
     }, None
 
 
-N_SCALAR_FEATURES = 104
+N_SCALAR_FEATURES = 190
 
 # Columns that are one-hot / categorical — skip z-score for these
-_ONEHOT_COLS = list(range(25)) + list(range(74, 78))  # 5 elem + 20 restype + 4 mutid
+_ONEHOT_COLS = list(range(25)) + list(range(98, 102))  # 5 elem + 20 restype + 4 mutid
 
 
 @dataclass
 class NormStats:
     """Normalization statistics computed from training set, shared with val."""
     target_std: float
-    scalar_mean: np.ndarray  # (N_SCALAR_FEATURES,)
-    scalar_std: np.ndarray   # (N_SCALAR_FEATURES,)
+    scalar_mean: np.ndarray   # (N_SCALAR_FEATURES,)
+    scalar_std: np.ndarray    # (N_SCALAR_FEATURES,)
+    gate_threshold: np.ndarray  # (N_KERNELS,) — per-kernel median magnitude
 
 
 class CalibrationDataset(Dataset):
     """WT-ALA delta T2 dataset from typed protein features.
 
     Target: delta_shielding T2 (5 components) from MutationDeltaResult.
-    Inputs: 48 kernel T2s (L=2) + 68 scalar features (L=0).
+    Inputs: 46 kernel T2s (L=2) + 138 scalar features (L=0).
 
     Normalization:
       - Kernels: per-protein per-kernel std (isolates angular structure)
@@ -356,10 +399,21 @@ class CalibrationDataset(Dataset):
             scalar_std[_ONEHOT_COLS] = 1.0
             scalar_std = np.maximum(scalar_std, 1e-8)
 
+            # Per-kernel gate threshold: median magnitude of nonzero atoms.
+            # Each kernel's noise floor is set by its own distribution —
+            # whisper kernels get a low threshold, shouters get a high one.
+            kernel_mags = np.linalg.norm(kernels_np, axis=-1)  # (N, K)
+            gate_threshold = np.ones(N_KERNELS)
+            for k in range(N_KERNELS):
+                nonzero = kernel_mags[:, k][kernel_mags[:, k] > 1e-8]
+                if len(nonzero) > 100:
+                    gate_threshold[k] = float(np.median(nonzero))
+
             self.norm_stats = NormStats(
                 target_std=target_std,
                 scalar_mean=scalar_mean,
                 scalar_std=scalar_std,
+                gate_threshold=gate_threshold,
             )
         else:
             self.norm_stats = norm_stats
