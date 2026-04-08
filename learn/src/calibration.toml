@@ -1,0 +1,64 @@
+# Calibration pipeline configuration.
+# Every number in the pipeline traces to this file.
+
+[paths]
+features = "/shared/2026Thesis/nmr-shielding/calibration/features/GatedCalibration"
+runs     = "/shared/2026Thesis/nmr-shielding/learn/runs"
+sdk      = "/shared/2026Thesis/nmr-shielding/python"
+
+[data]
+min_matched_atoms = 10
+val_fraction      = 0.2
+seed              = 42
+max_proteins      = 40  # 0 = all available; >0 = partial run (during extraction)
+
+[kernels]
+# Ring-type T2: 3 calculators x 8 ring types = 24 kernels
+ring_calculators       = ["biot_savart", "haigh_mallion", "dispersion"]
+# Bond-category T2: 2 calculators x 5 categories = 10 kernels
+bond_calculators       = ["mcconnell"]
+bond_calculators_mopac = ["mopac.mcconnell"]
+# Calculator total T2: 6 kernels
+total_calculators = [
+    "mcconnell", "coulomb", "hbond",
+    "ring_susceptibility", "mopac.coulomb", "mopac.mcconnell",
+]
+# EFG T2: 6 kernels
+efg_calculators = [
+    "coulomb.efg_backbone", "coulomb.efg_aromatic",
+    "mopac.coulomb.efg_backbone", "mopac.coulomb.efg_aromatic",
+    "apbs.efg", "delta.apbs.delta_efg",
+]
+
+[scalars]
+top_k_rings       = 6
+sentinel_distance = 90.0    # Angstroms; marks "not found" in distance fields
+inverse_epsilon   = 1e-3    # floor for 1/d transforms
+bond_order_floor  = 0.01    # below this, bond is absent
+bond_order_pi     = 1.2     # above this, bond has pi character
+
+[normalization]
+kernel_std_floor        = 1e-10  # below this, kernel is dead
+scalar_std_floor        = 1e-8   # floor for z-score denominator
+gate_threshold_min_atoms = 100   # minimum nonzero atoms to compute gate median
+
+[training]
+epochs       = 500
+batch_size   = 512
+lr           = 1e-3
+weight_decay = 1e-4
+scheduler    = "cosine"
+
+[model]
+hidden_mix            = 64
+hidden_corr           = 32
+use_correction        = false
+correction_scale_init = 0.1
+# L2 kernel indices for correction head (from analyze.py diagnostics)
+correction_l2_kernels = [0, 1, 24, 26, 29, 31, 37, 41, 43, 45]
+
+[analysis]
+ridge_lambda       = 1e-2
+distance_bands     = [[0, 4], [4, 8], [8, 12], [12, 999]]
+max_forward_steps  = 20
+min_atoms_per_band = 10

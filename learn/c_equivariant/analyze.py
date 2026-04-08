@@ -22,8 +22,13 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from protein import load_protein, list_proteins
-from features import RingType, BondCategory
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "python"))
+from nmr_extract import load as load_protein, RingType, BondCategory
+
+
+def list_proteins(run_dir):
+    return sorted(d.name for d in run_dir.iterdir()
+                  if d.is_dir() and (d / "pos.npy").exists())
 
 REPO = Path(__file__).resolve().parent.parent.parent
 

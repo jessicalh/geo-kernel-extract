@@ -1,5 +1,8 @@
 # learn/ — Calibration Model for NMR Shielding Tensors
 
+**NEVER USE SYMLINKS.** Copy data or point at the real path. Symlink trees
+mix old and new extractions and break the SDK's required-file validation.
+
 This is Goal 1: calibrate classical geometric kernels against DFT using
 WT-ALA mutation deltas.  NOT a GNN.  NOT the upstream RefDB predictor.
 

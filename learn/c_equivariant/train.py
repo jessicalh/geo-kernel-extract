@@ -29,7 +29,11 @@ from c_equivariant.dataset import (
     compute_r2, compute_naive_baselines, compute_per_protein_r2,
 )
 from c_equivariant.model import make_model
-from protein import list_proteins
+def list_proteins(run_dir: Path) -> list[str]:
+    """Protein IDs with complete extracted features in a run directory."""
+    return sorted(d.name for d in run_dir.iterdir()
+                  if d.is_dir() and (d / "pos.npy").exists()
+                  and (d / "ring_contributions.npy").exists())
 
 REPO = Path(__file__).resolve().parent.parent.parent
 DEFAULT_FEATURES = REPO / "calibration" / "features"
