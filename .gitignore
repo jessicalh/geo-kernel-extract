@@ -28,5 +28,8 @@ calibration/*/
 learn/bones/old_extractions/
 learn/runs/
 
+# MOPAC/APBS solver output
+*.mc
+
 # Stale git backup
 .git-old/
