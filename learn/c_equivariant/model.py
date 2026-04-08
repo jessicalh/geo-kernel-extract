@@ -88,7 +88,7 @@ class EquivariantCorrectionHead(nn.Module):
         kernel_sum                                         — overall signal
     """
 
-    # Kernel indices for the L=2 channels (from dataset.py layout, PQ dropped)
+    # Kernel indices for the L=2 channels (from dataset.py layout)
     L2_KERNEL_INDICES = [
         0,   # BS PHE
         1,   # BS TYR
@@ -98,8 +98,11 @@ class EquivariantCorrectionHead(nn.Module):
         26,  # MC aromatic_total
         35,  # Coulomb total
         38,  # MopacCoulomb total
+        40,  # Coulomb EFG backbone
+        41,  # Coulomb EFG aromatic
+        45,  # Delta APBS EFG (electrostatic change from mutation)
     ]
-    N_L2_INPUTS = len(L2_KERNEL_INDICES) + 1  # +1 for kernel_sum = 9
+    N_L2_INPUTS = len(L2_KERNEL_INDICES) + 1  # +1 for kernel_sum = 12
 
     def __init__(self, n_scalar_features: int, n_kernels: int, hidden: int = 32):
         super().__init__()
@@ -185,16 +188,17 @@ def make_model(n_scalar_features=N_SCALAR_FEATURES, n_kernels=N_KERNELS,
 if __name__ == "__main__":
     # Smoke test
     batch = 32
-    scalars = torch.randn(batch, 78)
-    kernels = torch.randn(batch, 40, 5)
+    scalars = torch.randn(batch, N_SCALAR_FEATURES)
+    kernels = torch.randn(batch, N_KERNELS, 5)
 
-    model = make_model(n_scalar_features=78, n_kernels=40, use_correction=False)
-    print(f"Mixing-only model: {model.parameter_count()} parameters")
+    model = make_model(use_correction=False)
+    print(f"Mixing-only: {model.parameter_count()} params, "
+          f"{N_SCALAR_FEATURES} scalars, {N_KERNELS} kernels")
     out = model(scalars, kernels)
     print(f"Output shape: {out.shape}  (should be [{batch}, 5])")
 
-    model_full = make_model(n_scalar_features=78, n_kernels=40, use_correction=True)
-    print(f"Full model: {model_full.parameter_count()} parameters")
+    model_full = make_model(use_correction=True)
+    print(f"Full model: {model_full.parameter_count()} params")
     out_full = model_full(scalars, kernels)
     print(f"Output shape: {out_full.shape}")
 

@@ -13,6 +13,7 @@ Commit after every experiment from now on.
 | xkernel_test | 57 | 50 | Added 18 cross-kernel T2 dot products (BS·HM, BS·PQ, BS·MC/Coulomb) | -0.04 | -0.12 | Overfitting. 86 scalars too many for 57 proteins. Stripped. |
 | analysis_driven | 77 | 50 | Mutation identity (4), z/rho cylindrical coords, PQ dropped (40 kernels, 78 scalars) | **0.42** | **0.51** | On track. 4-8Å improved to 0.26. 8-12Å improved from -1.0 to -0.28 |
 | 94prot_500ep | 94 | 500 | Same model as analysis_driven, 500 epochs, distance-weighted | **0.58** | **0.70** | Near 0.60 target at 13% of data. 8-12Å=0.29 (positive!). Median per-protein=0.60. Train-val gap=0.04 |
+| efg_kernels_104s | ~105 | 500 | +6 EFG T2 kernels (46 total), +24 per-type T0 scalars, +2 MOPAC s/p pop (104 scalars) | **0.625** | **0.72** | Past 0.60 barrier. EFG angular structure is real signal. 8-12Å train=0.52. Per-protein median=0.64 |
 
 ## Analytical diagnostics (no learning)
 

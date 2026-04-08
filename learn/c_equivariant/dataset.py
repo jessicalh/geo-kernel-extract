@@ -41,13 +41,21 @@ from features import RingType, BondCategory
 # 37      RingSusc total T2
 # 38      MopacCoulomb total T2
 # 39      MopacMC total T2
+# --- EFG T2 kernels (anisotropic electric environment) ---
+# 40      Coulomb EFG backbone T2
+# 41      Coulomb EFG aromatic T2
+# 42      MopacCoulomb EFG backbone T2
+# 43      MopacCoulomb EFG aromatic T2
+# 44      APBS EFG T2
+# 45      Delta APBS EFG T2 (WT-ALA electrostatic change)
 #
 # PQ (Pople-Karplus) dropped: r < 0.03 across all ring types in analysis.
 
 N_RING_TYPE_KERNELS = 24  # 3 calculators (BS, HM, Disp) × 8 ring types
 N_CATEGORY_KERNELS = 10   # 2 calculators × 5 bond categories
 N_TOTAL_KERNELS = 6       # MC, Coulomb, HBond, RingSusc, MopacCoulomb, MopacMC
-N_KERNELS = N_RING_TYPE_KERNELS + N_CATEGORY_KERNELS + N_TOTAL_KERNELS  # 40
+N_EFG_KERNELS = 6         # EFG T2: backbone/aromatic × ff14SB/MOPAC + APBS + delta APBS
+N_KERNELS = N_RING_TYPE_KERNELS + N_CATEGORY_KERNELS + N_TOTAL_KERNELS + N_EFG_KERNELS  # 46
 
 
 def _build_features(protein_dir: Path):
@@ -100,6 +108,17 @@ def _build_features(protein_dir: Path):
     if p.mopac:
         kernels[:, 38, :] = p.mopac.coulomb.shielding.T2[idx]
         kernels[:, 39, :] = p.mopac.mcconnell.shielding.T2[idx]
+
+    # EFG T2 kernels — anisotropic electric environment
+    kernels[:, 40, :] = p.coulomb.efg_backbone.T2[idx]
+    kernels[:, 41, :] = p.coulomb.efg_aromatic.T2[idx]
+    if p.mopac:
+        kernels[:, 42, :] = p.mopac.coulomb.efg_backbone.T2[idx]
+        kernels[:, 43, :] = p.mopac.coulomb.efg_aromatic.T2[idx]
+    if p.apbs:
+        kernels[:, 44, :] = p.apbs.efg.T2[idx]
+    if p.delta and p.delta.apbs is not None:
+        kernels[:, 45, :] = p.delta.apbs.delta_efg.T2[idx]
 
     # Per-protein kernel normalization: isolates angular structure,
     # strips magnitude (which varies with ring count/distance/protein size).
@@ -214,20 +233,36 @@ def _build_features(protein_dir: Path):
            RingType.HID, RingType.HIE]):
         s_mutid[:, 3] = 1.0
 
+    # Per-ring-type T0 from all calculators — how strongly each calculator
+    # sees each ring type at this atom (scalar context for weighting T2 kernels)
+    s_t0_bs = p.biot_savart.per_type_T0.data[idx]       # (M, 8)
+    s_t0_hm = p.haigh_mallion.per_type_T0.data[idx]     # (M, 8)
+    s_t0_disp = p.dispersion.per_type_T0.data[idx]      # (M, 8)
+
+    # MOPAC electronic structure detail
+    s_mopac_elec = np.zeros((M, 2), dtype=np.float64)
+    if p.mopac:
+        s_mopac_elec[:, 0] = p.mopac.core.scalars.s_pop[idx]
+        s_mopac_elec[:, 1] = p.mopac.core.scalars.p_pop[idx]
+
     scalars = np.concatenate([
-        s_elem,      # 5
-        s_restype,   # 20
-        s_ring,      # 4
-        s_mc,        # 6
-        s_coul,      # 4
-        s_hb,        # 3
-        s_delta,     # 4
-        s_mopac,     # 1
-        t1_mags,     # 10
-        s_ringprox,  # 16  (3 rings × 5 features + 1 count)
-        s_maxbo,     # 1
-        s_mutid,     # 4
-    ], axis=1)       # total: 78
+        s_elem,       # 5
+        s_restype,    # 20
+        s_ring,       # 4
+        s_mc,         # 6
+        s_coul,       # 4
+        s_hb,         # 3
+        s_delta,      # 4
+        s_mopac,      # 1
+        t1_mags,      # 10
+        s_ringprox,   # 16
+        s_maxbo,      # 1
+        s_mutid,      # 4
+        s_t0_bs,      # 8
+        s_t0_hm,      # 8
+        s_t0_disp,    # 8
+        s_mopac_elec, # 2
+    ], axis=1)        # total: 104
 
     return {
         "scalars": scalars,
@@ -237,7 +272,7 @@ def _build_features(protein_dir: Path):
     }, None
 
 
-N_SCALAR_FEATURES = 78
+N_SCALAR_FEATURES = 104
 
 # Columns that are one-hot / categorical — skip z-score for these
 _ONEHOT_COLS = list(range(25)) + list(range(74, 78))  # 5 elem + 20 restype + 4 mutid
