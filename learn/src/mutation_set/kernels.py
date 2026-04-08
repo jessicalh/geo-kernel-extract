@@ -9,8 +9,8 @@ Kernel groups:
     bond_cat    — MC/MopacMC per 5 bond categories = 10
     total       — calculator totals = 7
     efg         — electric field gradient = 6
-    per_ring    — individual ring BS/HM/Chi/PQ/HM_H for top-K nearest = 5 × K
-    TOTAL = 55 + 5K  (K from config, default 6 → 85 kernels)
+    per_ring    — individual ring BS/HM/Chi/PQ/HM_H/DispChi for top-K nearest = 6 × K
+    TOTAL = 55 + 6K  (K from config, default 6 → 91 kernels)
 """
 
 from __future__ import annotations

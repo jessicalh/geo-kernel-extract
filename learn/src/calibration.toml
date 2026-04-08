@@ -62,19 +62,20 @@ hidden_mix            = 64
 hidden_corr           = 32
 use_correction        = false
 correction_scale_init = 0.1
-# L2 kernel indices for correction head (from analyze.py 2026-04-08, 85-kernel layout).
+# L2 kernel indices for correction head (from analyze.py 2026-04-08, 91-kernel layout).
 # Selected by: forward selection rank, ablation drop, residual alignment.
+# Re-derive with analyze.py after any kernel layout change.
 correction_l2_kernels = [
-    49,  # MopacEFG_aro  — dominant: R²=0.29 alone, ablation drop 0.080
-    51,  # EFG_aro       — ablation drop 0.012
-    55,  # HM_H_ring0    — ablation drop 0.011, raw surface integral
-    48,  # RingSusc_total — forward selection #2
-    36,  # HM_HIE        — forward selection #4
-    9,   # BS_TYR        — forward selection #6
-    57,  # BS_ring0      — forward selection #7, per-ring
-    32,  # MC_aromatic   — forward selection #9
-    46,  # PQ_total      — forward selection #10, 1/r^5 basis
-    53,  # DeltaAPBS_EFG — electrostatic change from mutation
+    52,  # MopacEFG_aro    — dominant: R²=0.29 alone, ablation drop 0.080
+    50,  # EFG_aro         — ablation drop 0.012
+    59,  # HM_H_ring0      — ablation drop 0.011, raw surface integral
+    45,  # RingSusc_total   — forward selection #2
+    15,  # HM_HIE          — forward selection #4
+    1,   # BS_TYR          — forward selection #6
+    55,  # BS_ring0         — forward selection #7, per-ring
+    34,  # MC_aromatic_total — forward selection #9
+    46,  # PQ_total         — forward selection #10, 1/r^5 basis
+    54,  # DeltaAPBS_EFG    — electrostatic change from mutation
 ]
 
 [analysis]
