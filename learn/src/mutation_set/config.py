@@ -40,6 +40,8 @@ class KernelsConfig:
     bond_calculators_mopac: list[str]
     total_calculators: list[str]
     efg_calculators: list[str]
+    per_ring_calculators: list[str]
+    per_ring_k: int
 
 
 @dataclass(frozen=True)

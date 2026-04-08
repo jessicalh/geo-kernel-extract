@@ -9,7 +9,8 @@ Kernel groups:
     bond_cat    — MC/MopacMC per 5 bond categories = 10
     total       — calculator totals = 6
     efg         — electric field gradient = 6
-    TOTAL = 46
+    per_ring    — individual ring BS/HM/Chi for top-K nearest = 3 × K
+    TOTAL = 46 + 3K  (K from config, default 6 → 64 kernels)
 """
 
 from __future__ import annotations
@@ -55,6 +56,12 @@ _EFG_SHORT = {
     "delta.apbs.delta_efg":       "DeltaAPBS_EFG",
 }
 
+_PER_RING_CALC_SHORT = {
+    "bs":  "BS",
+    "hm":  "HM",
+    "chi": "Chi",
+}
+
 
 @dataclass(frozen=True)
 class KernelLayout:
@@ -65,6 +72,9 @@ class KernelLayout:
     ring_type_end: int
     bond_cat_end: int
     total_end: int
+    efg_end: int
+    per_ring_k: int            # number of nearest rings
+    per_ring_calcs: list[str]  # calculator names for per-ring kernels
 
     @staticmethod
     def from_config(cfg: Config) -> KernelLayout:
@@ -93,6 +103,19 @@ class KernelLayout:
         # EFG
         for calc in cfg.kernels.efg_calculators:
             names.append(_EFG_SHORT[calc])
+        efg_end = len(names)
+
+        # Per-ring: individual ring T2 for top-K nearest rings.
+        # Each ring gets one kernel per calculator (BS, HM, Chi).
+        # Ordered by distance: ring0 is nearest, ring5 is 6th nearest.
+        # The gating handles sparsity — atoms with fewer than K rings
+        # have zero magnitude in the distant slots.
+        per_ring_calcs = cfg.kernels.per_ring_calculators
+        K = cfg.kernels.per_ring_k
+        for ri in range(K):
+            for calc in per_ring_calcs:
+                prefix = _PER_RING_CALC_SHORT[calc]
+                names.append(f"{prefix}_ring{ri}")
 
         return KernelLayout(
             names=names,
@@ -100,6 +123,9 @@ class KernelLayout:
             ring_type_end=ring_type_end,
             bond_cat_end=bond_cat_end,
             total_end=total_end,
+            efg_end=efg_end,
+            per_ring_k=K,
+            per_ring_calcs=per_ring_calcs,
         )
 
     def index(self, name: str) -> int:
@@ -170,6 +196,22 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
     if obj is not None:
         K[:, col, :] = obj.T2[idx]
     col += 1
+
+    # Per-ring T2: individual ring contributions for top-K nearest rings.
+    # Each atom gets its own K nearest rings from ring_contributions.
+    # The T2 comes from the ring's own physics — not summed across types.
+    rc = p.ring_contributions
+    if rc is not None and rc.n_pairs > 0:
+        for j in range(M):
+            atom_rc = rc.for_atom(idx[j])
+            if atom_rc.n_pairs == 0:
+                continue
+            order = np.argsort(atom_rc.distance)
+            for ri_slot, ri in enumerate(order[:layout.per_ring_k]):
+                for ci, calc_name in enumerate(layout.per_ring_calcs):
+                    kernel_col = col + ri_slot * len(layout.per_ring_calcs) + ci
+                    K[j, kernel_col, :] = getattr(atom_rc, calc_name).T2[ri]
+    col += layout.per_ring_k * len(layout.per_ring_calcs)
 
     assert col == layout.n_kernels, f"Built {col}, expected {layout.n_kernels}"
     return K

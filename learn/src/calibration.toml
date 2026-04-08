@@ -29,6 +29,11 @@ efg_calculators = [
     "mopac.coulomb.efg_backbone", "mopac.coulomb.efg_aromatic",
     "apbs.efg", "delta.apbs.delta_efg",
 ]
+# Per-ring T2: individual ring contributions for top-K nearest rings.
+# These are the individual ring T2 tensors that the per-type sums collapse.
+# Gating handles sparsity — far rings have small magnitude and gate to zero.
+per_ring_calculators = ["bs", "hm", "chi"]
+per_ring_k = 6
 
 [scalars]
 top_k_rings       = 6
