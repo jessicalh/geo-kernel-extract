@@ -1,94 +1,102 @@
 # learn/ — Calibration Model for NMR Shielding Tensors
 
-**NEVER USE SYMLINKS.** Copy data or point at the real path. Symlink trees
-mix old and new extractions and break the SDK's required-file validation.
+**NEVER USE SYMLINKS.** Copy data or point at the real path.
 
 This is Goal 1: calibrate classical geometric kernels against DFT using
 WT-ALA mutation deltas.  NOT a GNN.  NOT the upstream RefDB predictor.
 
 ## Current pipeline
 
+All configuration in `src/calibration.toml`.  All data access via `nmr_extract` SDK.
+
 ```
-calibration/populate.py     → symlink tree from consolidated/
-learn/extract.py            → nmr_extract --mutant → calibration/features/{run}/{ID}/
-learn/c_equivariant/        → training pipeline
+calibration/{ID}/               → real prmtop, xyz, nmr.out per protein
+learn/extract.py                → nmr_extract --mutant → calibration/features/{run}/{ID}/
+src/mutation_set/               → training pipeline (config-driven, SDK-based)
 ```
 
 ### Data flow
 
-1. **Extract**: `extract.py --run CalibrationExtractionTest` calls
-   `nmr_extract --mutant --wt ROOT --ala ROOT` for each protein.
-   Produces 51 NPY arrays per protein in a flat directory.  C++ computes
-   the WT-ALA delta (delta_shielding, delta_scalars, delta_ring_proximity).
+1. **Extract**: `extract.py` calls `nmr_extract --mutant` for each protein.
+   Produces 53 NPY arrays per protein including `ring_contributions.npy`
+   (per-ring T2 tensors) and `ring_geometry.npy`.
 
-2. **Load**: `protein.load_protein(path)` returns a typed `ProteinFeatures`
-   with physics-grouped access.  All 51 arrays are wrapped in typed classes
-   from `features.py` (ShieldingTensor, EFGTensor, PerRingTypeT2, etc.).
-   Shape-validated on construction.  Fails on unregistered files.
+2. **Load**: `nmr_extract.load(path)` returns a typed `Protein` with
+   every array wrapped in SDK types (ShieldingTensor, EFGTensor,
+   RingContributions, etc.).  Named properties throughout — no index
+   arithmetic.  e3nn Irreps on every tensor.
 
-3. **Dataset**: `c_equivariant/dataset.py` builds `CalibrationDataset`:
-   - 40 kernel T2 vectors (L=2): BS/HM/Disp per-ring-type + MC/MopacMC
-     bond-categories + calculator totals.  PQ dropped (r < 0.03).
-   - 78 scalar features (L=0): element, residue type, ring proximity,
-     McConnell/Coulomb/HBond scalars, MOPAC charge, T1 magnitudes,
-     per-ring cylindrical geometry, mutation identity, max bond order.
-   - Per-protein kernel normalization (angular structure preserved).
+3. **Dataset**: `src/mutation_set/dataset.py` orchestrates:
+   - `kernels.py` assembles 46 T2 kernels via SDK `.as_block()` accessors.
+     Named KernelLayout registry — no hardcoded indices.
+   - `scalars.py` assembles 190 scalar features as named ScalarBlocks.
+     Categorical columns tracked by name, not position.
+   - Per-protein kernel normalization + kernel scale factors as scalars.
    - Scalar z-score (train stats shared to val).
 
-4. **Model**: `c_equivariant/model.py` — KernelMixingHead (scalar MLP →
-   per-kernel weights × L=2 kernels) + optional EquivariantCorrectionHead
-   (e3nn tensor products on 9 individual L=2 inputs).
+4. **Model**: `src/mutation_set/model.py` — gated KernelMixingHead
+   (MLP → per-kernel weights, gated by kernel self-reported magnitude,
+   scaled by sqrt(n_kernels)) + optional EquivariantCorrectionHead.
 
-5. **Train**: `c_equivariant/train.py` — per-component R² (m=-2..+2),
-   distance-stratified R² (0-4/4-8/8-12/12+ Å), per-protein R²,
-   naive physics baselines (ridge, unweighted sums), kernel weight logging.
-   `--distance-weighted` flag for exp(-d/8Å) loss weighting.
+5. **Train**: `src/mutation_set/train.py` — GPU-resident loop (no
+   DataLoader overhead), cosine annealing, per-component and distance-
+   stratified R², per-protein R², correction_scale logging.
+   Config-driven via calibration.toml with CLI overrides.
 
-6. **Analyze**: `c_equivariant/analyze.py` — cold analytical diagnostic.
-   Per-kernel correlation, per-element breakdown, per-distance ridge R²,
-   per-protein ridge R², residual structure.  No learning.
+6. **Analyze**: `src/mutation_set/analyze.py` — cold analytical diagnostic.
+   7 sections: kernel correlation, per-element breakdown, distance signal,
+   per-protein ridge, greedy forward selection, leave-one-out ablation,
+   residual subspace projection.
 
 ## Key physics constraints
 
 - **T2 is sacred**: never collapse to scalar.  The angular residual IS the thesis.
 - **Per-protein kernel normalization**: isolates angular structure, strips
-  magnitude.  The calibration question is about direction, not scale.
+  magnitude.  Kernel scale factors passed as scalars so the MLP knows
+  what was stripped (bridges per-protein and global).
+- **Kernel self-gating**: each kernel gates its own weight by its T2
+  magnitude.  Distance dependence emerges from the kernels' own physics
+  (1/r³ falloff, cutoffs) not from a training hyperparameter.
 - **Mechanical mutants**: backbone doesn't change.  No DSSP/dihedral features.
 - **WT features only**: ring kernels ARE the delta (ALA has no rings).
-  Non-ring kernels provide environment context for the MLP.
-- **Equivariance**: scalar × L=2 = L=2.  T1 used as magnitude only (rotation-invariant).
+- **Equivariance**: scalar × L=2 = L=2.  T1 used as magnitude only.
 
 ## What NOT to do
 
-- Do not use `load.py` — it's deprecated (old wt/ala subdirectory layout).
-- Do not use `delta.py` for atom matching — C++ handles this now.
-- Do not add graph structure or message passing — this is calibration,
-  not the upstream GNN.  Per-atom independence is the assumption.
-- Do not add DSSP/backbone features — see "mechanical mutants" above.
-- Do not use global kernel normalization — per-protein is correct for
-  the calibration angular-structure question.
-- Do not treat this as a large-scale ML problem.  48 physics-derived
-  kernels, ~150K atoms.  Every feature should encode physics.
+- Do not use symlinks for data.
+- Do not add graph structure or message passing — per-atom independence.
+- Do not add DSSP/backbone features — mechanical mutants.
+- Do not use global kernel normalization — per-protein is correct.
+- Do not hardcode column indices — use SDK named accessors.
+- Do not treat this as large-scale ML.  46 kernels, ~450K atoms.
+- Do not vibe-code with hyperparameters — diagnose before sweeping.
 
 ## Files
 
-### Current (use these)
-- `features.py` — typed wrappers: SphericalTensor, ShieldingTensor, etc.
-- `protein.py` — feature registry + load_protein() → ProteinFeatures
-- `extract.py` — batch extraction to calibration/features/
-- `c_equivariant/dataset.py` — CalibrationDataset, compute_r2, baselines
-- `c_equivariant/model.py` — KernelMixingHead + EquivariantCorrectionHead
-- `c_equivariant/train.py` — training loop with full diagnostics
-- `c_equivariant/analyze.py` — cold analytical diagnostic
+### Active pipeline (use these)
+- `src/calibration.toml` — single config: paths, features, training, analysis
+- `src/mutation_set/config.py` — TOML → frozen Config dataclass
+- `src/mutation_set/kernels.py` — KernelLayout registry + assembly
+- `src/mutation_set/scalars.py` — ScalarLayout + named block assembly
+- `src/mutation_set/dataset.py` — CalibrationDataset orchestrator
+- `src/mutation_set/model.py` — ShieldingT2Model (gated mixing + correction)
+- `src/mutation_set/train.py` — training entry point
+- `src/mutation_set/evaluate.py` — R², baselines, per-protein metrics
+- `src/mutation_set/analyze.py` — cold 7-section diagnostic
+- `extract.py` — batch extraction driver
 
-### Deprecated (do not use for new code)
-- `load.py` — old loader, assumes wt/ala subdirs
-- `delta.py` — old Python atom matching, replaced by C++ delta
-- `status.py` — old diagnostic, uses deprecated loader
-- `t2_residual.py` — old analysis, uses deprecated loader
+### Data
+- `calibration/{ID}/` — real prmtop, xyz, nmr.out (723 proteins)
+- `calibration/features/GatedCalibration/` — current extraction with ring_contributions
+- `runs/` — training run outputs (header.json, epochs.jsonl, summary.json)
 
 ### Reference
 - `JOURNAL.md` — learning progress record
+- `EXPERIMENTS.md` — experiment log with results table
 - `ARGUMENT.md` — thesis argument for validation approach
 - `CALIBRATION_CHECKLIST.md` — parameter validation plan
-- `bones/` — historical session notes and exploratory work
+
+### Historical (do not use for new code)
+- `bones/pre_sdk/` — old c_equivariant pipeline, protein.py, features.py
+- `bones/old_extractions/` — CalibrationExtractionTest, FirstExtraction
+- `bones/` — session notes and exploratory work
