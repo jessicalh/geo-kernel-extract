@@ -5,12 +5,12 @@ is a named registry — no magic indices.  Assembly uses the SDK's
 .as_block() and named accessors throughout.
 
 Kernel groups:
-    ring_type   — BS/HM/Disp per 8 ring types = 24
+    ring_type   — BS/HM/Disp/PQ per 8 ring types = 32
     bond_cat    — MC/MopacMC per 5 bond categories = 10
-    total       — calculator totals = 6
+    total       — calculator totals = 7
     efg         — electric field gradient = 6
-    per_ring    — individual ring BS/HM/Chi for top-K nearest = 3 × K
-    TOTAL = 46 + 3K  (K from config, default 6 → 64 kernels)
+    per_ring    — individual ring BS/HM/Chi/PQ/HM_H for top-K nearest = 5 × K
+    TOTAL = 55 + 5K  (K from config, default 6 → 85 kernels)
 """
 
 from __future__ import annotations
@@ -28,9 +28,10 @@ from .config import Config
 _RING_TYPE_NAMES = [rt.name for rt in RingType]
 
 _CALC_PREFIXES = {
-    "biot_savart":  "BS",
+    "biot_savart":   "BS",
     "haigh_mallion": "HM",
     "dispersion":    "Disp",
+    "pi_quadrupole": "PQ",
 }
 
 _BOND_CAT_NAMES = [
@@ -39,12 +40,13 @@ _BOND_CAT_NAMES = [
 ]
 
 _TOTAL_SHORT = {
-    "mcconnell":          "MC_total",
-    "coulomb":            "Coulomb_total",
-    "hbond":              "HBond_total",
-    "ring_susceptibility": "RingSusc_total",
-    "mopac.coulomb":      "MopacCoulomb_total",
-    "mopac.mcconnell":    "MopacMC_total",
+    "mcconnell":              "MC_total",
+    "coulomb":                "Coulomb_total",
+    "hbond":                  "HBond_total",
+    "ring_susceptibility":    "RingSusc_total",
+    "pi_quadrupole.shielding": "PQ_total",
+    "mopac.coulomb":          "MopacCoulomb_total",
+    "mopac.mcconnell":        "MopacMC_total",
 }
 
 _EFG_SHORT = {
@@ -57,9 +59,12 @@ _EFG_SHORT = {
 }
 
 _PER_RING_CALC_SHORT = {
-    "bs":  "BS",
-    "hm":  "HM",
-    "chi": "Chi",
+    "bs":       "BS",
+    "hm":       "HM",
+    "chi":      "Chi",
+    "pq":       "PQ",
+    "hm_H":     "HM_H",
+    "disp_chi": "DispChi",  # computed: disp_scalar × chi.T2
 }
 
 
@@ -106,7 +111,7 @@ class KernelLayout:
         efg_end = len(names)
 
         # Per-ring: individual ring T2 for top-K nearest rings.
-        # Each ring gets one kernel per calculator (BS, HM, Chi).
+        # Each ring gets one kernel per calculator (BS, HM, Chi, PQ, HM_H).
         # Ordered by distance: ring0 is nearest, ring5 is 6th nearest.
         # The gating handles sparsity — atoms with fewer than K rings
         # have zero magnitude in the distant slots.
@@ -154,7 +159,7 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
     col = 0
 
     # Ring-type T2: each calculator provides (N, 8, 5) via .as_block()
-    for calc_name in ["biot_savart", "haigh_mallion", "dispersion"]:
+    for calc_name in ["biot_savart", "haigh_mallion", "dispersion", "pi_quadrupole"]:
         group = getattr(p, calc_name)
         block = group.per_type_T2.as_block()[idx]  # (M, 8, 5)
         K[:, col:col + N_RING_TYPES, :] = block
@@ -169,7 +174,8 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
 
     # Calculator totals
     for dotpath in ["mcconnell.shielding", "coulomb.shielding",
-                    "hbond.shielding", "ring_susceptibility"]:
+                    "hbond.shielding", "ring_susceptibility",
+                    "pi_quadrupole.shielding"]:
         obj = _resolve(p, dotpath)
         K[:, col, :] = obj.T2[idx]
         col += 1
@@ -208,11 +214,12 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
     # The gating handles zeros naturally: zero residual = zero magnitude
     # = gate suppresses the kernel.
     #
-    # Map calculator names to per-type-sum column blocks (0-23):
+    # Map calculator names to per-type-sum column blocks (0-31):
     #   bs  → columns 0-7   (BS per-ring-type)
     #   hm  → columns 8-15  (HM per-ring-type)
-    #   chi → uses ring_susceptibility total (col 37), no per-type decomposition
-    _PERRING_CALC_TO_TYPE_BLOCK = {"bs": 0, "hm": 8}
+    #   pq  → columns 24-31 (PQ per-ring-type)
+    #   chi, hm_H, disp_chi → no per-type decomposition available, use raw
+    _PERRING_CALC_TO_TYPE_BLOCK = {"bs": 0, "hm": 8, "pq": 24}
 
     rc = p.ring_contributions
     if rc is not None and rc.n_pairs > 0:
@@ -232,17 +239,23 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
                 ring_type = int(atom_rc.ring_type[ri])
                 for ci, calc_name in enumerate(layout.per_ring_calcs):
                     kernel_col = col + ri_slot * len(layout.per_ring_calcs) + ci
-                    ring_t2 = getattr(atom_rc, calc_name).T2[ri]
 
-                    if calc_name in _PERRING_CALC_TO_TYPE_BLOCK:
+                    if calc_name == "disp_chi":
+                        # Dispersion-weighted Chi: disp_scalar × chi.T2
+                        # scalar × L=2 = L=2, equivariant by construction.
+                        # Encodes angular position weighted by vertex contact.
+                        K[j, kernel_col, :] = (atom_rc.disp_scalar[ri]
+                                               * atom_rc.chi.T2[ri])
+                    elif calc_name in _PERRING_CALC_TO_TYPE_BLOCK:
                         # Subtract per-type mean: type_sum / n_rings_of_type
+                        ring_t2 = getattr(atom_rc, calc_name).T2[ri]
                         type_col = _PERRING_CALC_TO_TYPE_BLOCK[calc_name] + ring_type
                         n_of_type = max(rings_per_type[ring_type], 1)
                         type_mean = K[j, type_col, :] / n_of_type
                         K[j, kernel_col, :] = ring_t2 - type_mean
                     else:
-                        # Chi: no per-type decomposition available, use raw
-                        K[j, kernel_col, :] = ring_t2
+                        # Chi, hm_H: no per-type decomposition, use raw
+                        K[j, kernel_col, :] = getattr(atom_rc, calc_name).T2[ri]
     col += layout.per_ring_k * len(layout.per_ring_calcs)
 
     assert col == layout.n_kernels, f"Built {col}, expected {layout.n_kernels}"

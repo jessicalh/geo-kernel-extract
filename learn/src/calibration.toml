@@ -34,7 +34,8 @@ efg_calculators = [
 # These are the individual ring T2 tensors that the per-type sums collapse.
 # Gating handles sparsity — far rings have small magnitude and gate to zero.
 # pq = pi-quadrupole (1/r^5, pure T2); hm_H = raw HM surface integral (pure T2)
-per_ring_calculators = ["bs", "hm", "chi", "pq", "hm_H"]
+# disp_chi = disp_scalar × chi T2 (dispersion-weighted ring susceptibility)
+per_ring_calculators = ["bs", "hm", "chi", "pq", "hm_H", "disp_chi"]
 per_ring_k = 6
 
 [scalars]

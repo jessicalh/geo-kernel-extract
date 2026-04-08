@@ -122,13 +122,18 @@ def _t1_magnitudes(p, idx, M) -> list[ScalarBlock]:
 
 
 def _ring_proximity(p, idx, M, cfg) -> list[ScalarBlock]:
-    """Per-ring geometry for top-K nearest rings (K*6 + 1).
+    """Per-ring geometry + dispersion scalars for top-K nearest rings.
 
-    Uses ring_contributions from SDK: named per-ring accessors
-    instead of flat column indices.
+    Per ring: [mcconnell_factor, exp_decay, 1/dist, z, rho, theta,
+               disp_scalar, disp_contacts] + n_rings count.
+
+    disp_scalar encodes vertex proximity asymmetry: same center-distance
+    but different disp_scalar means the atom sees an edge vs a face.
+    disp_contacts is the effective solid angle (how many vertices in range).
     """
     K = cfg.top_k_rings
-    rp = np.zeros((M, K * 6 + 1), dtype=np.float64)
+    COLS = 8  # 6 geometry + disp_scalar + disp_contacts
+    rp = np.zeros((M, K * COLS + 1), dtype=np.float64)
 
     rc = p.ring_contributions
     if rc is not None and rc.n_pairs > 0:
@@ -138,13 +143,15 @@ def _ring_proximity(p, idx, M, cfg) -> list[ScalarBlock]:
                 continue
             order = np.argsort(atom_rc.distance)
             for ki, ri in enumerate(order[:K]):
-                base = ki * 6
+                base = ki * COLS
                 rp[j, base]     = atom_rc.mcconnell_factor[ri]
                 rp[j, base + 1] = atom_rc.exp_decay[ri]
                 rp[j, base + 2] = 1.0 / (atom_rc.distance[ri] + cfg.inverse_epsilon)
                 rp[j, base + 3] = atom_rc.z[ri]
                 rp[j, base + 4] = atom_rc.rho[ri]
                 rp[j, base + 5] = atom_rc.theta[ri]
+                rp[j, base + 6] = atom_rc.disp_scalar[ri]
+                rp[j, base + 7] = atom_rc.disp_contacts[ri]
             rp[j, -1] = atom_rc.n_pairs
 
     return [ScalarBlock("ring_proximity", rp)]
