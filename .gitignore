@@ -1,4 +1,7 @@
 build/
+build-ui/
+build-check/
+build-forensic/
 *.o
 *.a
 *.so
@@ -10,5 +13,20 @@ cmake_install.cmake
 Makefile
 *.npy
 
-# Calibration protein data and extracted features (regenerable from consolidated/)
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+python/doc/_build/
+
+# Generated documentation (doxygen, sphinx)
+doc/generated/
+ui/doc/generated/
+
+# Large data — regenerable from consolidated/ via batch_extract.sh
 calibration/*/
+learn/bones/old_extractions/
+learn/runs/
+
+# Stale git backup
+.git-old/
