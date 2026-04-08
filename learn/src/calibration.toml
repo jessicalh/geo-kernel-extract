@@ -13,15 +13,16 @@ seed              = 42
 max_proteins      = 40  # 0 = all available; >0 = partial run (during extraction)
 
 [kernels]
-# Ring-type T2: 3 calculators x 8 ring types = 24 kernels
-ring_calculators       = ["biot_savart", "haigh_mallion", "dispersion"]
+# Ring-type T2: 4 calculators x 8 ring types = 32 kernels
+ring_calculators       = ["biot_savart", "haigh_mallion", "dispersion", "pi_quadrupole"]
 # Bond-category T2: 2 calculators x 5 categories = 10 kernels
 bond_calculators       = ["mcconnell"]
 bond_calculators_mopac = ["mopac.mcconnell"]
-# Calculator total T2: 6 kernels
+# Calculator total T2: 7 kernels
 total_calculators = [
     "mcconnell", "coulomb", "hbond",
-    "ring_susceptibility", "mopac.coulomb", "mopac.mcconnell",
+    "ring_susceptibility", "pi_quadrupole.shielding",
+    "mopac.coulomb", "mopac.mcconnell",
 ]
 # EFG T2: 6 kernels
 efg_calculators = [
@@ -32,7 +33,8 @@ efg_calculators = [
 # Per-ring T2: individual ring contributions for top-K nearest rings.
 # These are the individual ring T2 tensors that the per-type sums collapse.
 # Gating handles sparsity — far rings have small magnitude and gate to zero.
-per_ring_calculators = ["bs", "hm", "chi"]
+# pq = pi-quadrupole (1/r^5, pure T2); hm_H = raw HM surface integral (pure T2)
+per_ring_calculators = ["bs", "hm", "chi", "pq", "hm_H"]
 per_ring_k = 6
 
 [scalars]
@@ -59,8 +61,20 @@ hidden_mix            = 64
 hidden_corr           = 32
 use_correction        = false
 correction_scale_init = 0.1
-# L2 kernel indices for correction head (from analyze.py diagnostics)
-correction_l2_kernels = [0, 1, 24, 26, 29, 31, 37, 41, 43, 45]
+# L2 kernel indices for correction head (from analyze.py 2026-04-08, 85-kernel layout).
+# Selected by: forward selection rank, ablation drop, residual alignment.
+correction_l2_kernels = [
+    49,  # MopacEFG_aro  — dominant: R²=0.29 alone, ablation drop 0.080
+    51,  # EFG_aro       — ablation drop 0.012
+    55,  # HM_H_ring0    — ablation drop 0.011, raw surface integral
+    48,  # RingSusc_total — forward selection #2
+    36,  # HM_HIE        — forward selection #4
+    9,   # BS_TYR        — forward selection #6
+    57,  # BS_ring0      — forward selection #7, per-ring
+    32,  # MC_aromatic   — forward selection #9
+    46,  # PQ_total      — forward selection #10, 1/r^5 basis
+    53,  # DeltaAPBS_EFG — electrostatic change from mutation
+]
 
 [analysis]
 ridge_lambda       = 1e-2
