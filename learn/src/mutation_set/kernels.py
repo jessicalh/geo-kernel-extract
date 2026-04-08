@@ -197,20 +197,52 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
         K[:, col, :] = obj.T2[idx]
     col += 1
 
-    # Per-ring T2: individual ring contributions for top-K nearest rings.
-    # Each atom gets its own K nearest rings from ring_contributions.
-    # The T2 comes from the ring's own physics — not summed across types.
+    # Per-ring T2 RESIDUALS: individual ring T2 minus per-type mean.
+    #
+    # For single-ring-per-type proteins (the common case), the per-type
+    # sum IS the single ring's contribution, so the residual is zero —
+    # correctly indicating no new information beyond the summed kernel.
+    # For multi-ring proteins, the residual captures the angular structure
+    # unique to each ring that the type sum collapses.
+    #
+    # The gating handles zeros naturally: zero residual = zero magnitude
+    # = gate suppresses the kernel.
+    #
+    # Map calculator names to per-type-sum column blocks (0-23):
+    #   bs  → columns 0-7   (BS per-ring-type)
+    #   hm  → columns 8-15  (HM per-ring-type)
+    #   chi → uses ring_susceptibility total (col 37), no per-type decomposition
+    _PERRING_CALC_TO_TYPE_BLOCK = {"bs": 0, "hm": 8}
+
     rc = p.ring_contributions
     if rc is not None and rc.n_pairs > 0:
+        # Count rings per type for this protein (for computing per-type mean)
+        rg = p.ring_geometry
+        rings_per_type = np.zeros(N_RING_TYPES, dtype=int)
+        if rg is not None:
+            for rt in rg.ring_type.astype(int):
+                rings_per_type[rt] += 1
+
         for j in range(M):
             atom_rc = rc.for_atom(idx[j])
             if atom_rc.n_pairs == 0:
                 continue
             order = np.argsort(atom_rc.distance)
             for ri_slot, ri in enumerate(order[:layout.per_ring_k]):
+                ring_type = int(atom_rc.ring_type[ri])
                 for ci, calc_name in enumerate(layout.per_ring_calcs):
                     kernel_col = col + ri_slot * len(layout.per_ring_calcs) + ci
-                    K[j, kernel_col, :] = getattr(atom_rc, calc_name).T2[ri]
+                    ring_t2 = getattr(atom_rc, calc_name).T2[ri]
+
+                    if calc_name in _PERRING_CALC_TO_TYPE_BLOCK:
+                        # Subtract per-type mean: type_sum / n_rings_of_type
+                        type_col = _PERRING_CALC_TO_TYPE_BLOCK[calc_name] + ring_type
+                        n_of_type = max(rings_per_type[ring_type], 1)
+                        type_mean = K[j, type_col, :] / n_of_type
+                        K[j, kernel_col, :] = ring_t2 - type_mean
+                    else:
+                        # Chi: no per-type decomposition available, use raw
+                        K[j, kernel_col, :] = ring_t2
     col += layout.per_ring_k * len(layout.per_ring_calcs)
 
     assert col == layout.n_kernels, f"Built {col}, expected {layout.n_kernels}"
