@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-04-06T14:54:07.531170",
+  "n_proteins_extracted": 172,
+  "n_valid_proteins": 171,
+  "n_matched_atoms": 52483,
+  "delta_dft_t2_mean_ppm": 1.6599,
+  "delta_dft_t0_mean_ppm": 0.6235,
+  "ridge_r2": 0.3711,
+  "ridge_alpha": 1.0,
+  "n_kernels": 46,
+  "top_contributors": [
+    {
+      "name": "MopacCoulomb",
+      "weight": -4.0257,
+      "contribution": 1.0928
+    },
+    {
+      "name": "RingSusc",
+      "weight": -82.1461,
+      "contribution": 0.514
+    },
+    {
+      "name": "MC_CN",
+      "weight": -21.4059,
+      "contribution": 0.4273
+    },
+    {
+      "name": "MC_BB_other",
+      "weight": -17.377,
+      "contribution": 0.3408
+    },
+    {
+      "name": "Coulomb",
+      "weight": 2.9731,
+      "contribution": 0.3315
+    },
+    {
+      "name": "BS_TRP9",
+      "weight": -34.0361,
+      "contribution": 0.2281
+    },
+    {
+      "name": "HM_TRP9",
+      "weight": -30.9035,
+      "contribution": 0.2018
+    },
+    {
+      "name": "BS_PHE",
+      "weight": -20.4622,
+      "contribution": 0.1579
+    },
+    {
+      "name": "HM_PHE",
+      "weight": -20.6771,
+      "contribution": 0.157
+    },
+    {
+      "name": "HM_TYR",
+      "weight": -18.7165,
+      "contribution": 0.1549
+    }
+  ],
+  "independence": {
+    "Coulomb_vs_MopacCoulomb": 0.8478,
+    "MC_vs_MopacMC": 0.5309,
+    "BS_vs_HM": 0.9994
+  }
+}

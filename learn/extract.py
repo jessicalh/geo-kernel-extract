@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
 """
-Batch feature extraction for 723 calibration proteins.
+Batch feature extraction for calibration proteins.
 
-Runs nmr_extract --mutant on each WT+ALA pair from the calibration/
-directory, producing feature directories under learn/features/{run}/{protein_id}/.
+Runs nmr_extract --mutant on each WT+ALA pair from calibration/{ID}/,
+producing NPY feature directories under calibration/features/{run}/{ID}/.
 
-The calibration/ tree is a symlink farm populated by calibration/populate.py.
-Each protein dir has files named for ExpandOrcaRoot:
+Each protein dir has real files (no symlinks):
     {ID}_WT.xyz, {ID}_WT.prmtop, {ID}_WT_nmr.out
     {ID}_ALA.xyz, {ID}_ALA.prmtop, {ID}_ALA_nmr.out
 
-Extraction runs:
-    FirstExtraction           — inaugural run, default parameters
-    CalibrationExtractionTest — sweep experiments, exploratory
-    CalibrationExtractionKeep — validated/optimised parameters
-    SubmissionExtraction      — final thesis run
-
 Usage:
-    python learn/extract.py --run CalibrationExtractionTest
-    python learn/extract.py --run CalibrationExtractionTest --protein P84477
-    python learn/extract.py --run CalibrationExtractionTest --dry-run
-    python learn/extract.py --run CalibrationExtractionTest --resume
-    python learn/extract.py --run CalibrationExtractionTest --config params.toml
+    python learn/extract.py --run GatedCalibration
+    python learn/extract.py --run GatedCalibration --protein P84477
+    python learn/extract.py --run GatedCalibration --dry-run
+    python learn/extract.py --run GatedCalibration --resume
+    python learn/extract.py --run GatedCalibration --config params.toml
 """
 
 import argparse
@@ -42,6 +35,7 @@ KNOWN_RUNS = [
     "FirstExtraction",
     "CalibrationExtractionTest",
     "CalibrationExtractionKeep",
+    "GatedCalibration",
     "SubmissionExtraction",
 ]
 

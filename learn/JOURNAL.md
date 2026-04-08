@@ -157,3 +157,66 @@ Round 2 R^2 is the "did we break anything" baseline.
   sound, equivariance is correct, per-protein normalization is right.
   The 40% residual is dominated by paramagnetic contributions
   (~15-20%) that no classical kernel models.
+
+---
+
+## 2026-04-08 session 2: SDK migration + gated kernels + cleanup
+
+### Key discoveries
+
+- **Kernel normalization scales are load-bearing.** Per-protein
+  normalization strips magnitude (correct for angular structure) but
+  the MLP never saw what was stripped. Adding the 46 normalization
+  std values as scalar features broke the 0.625 ceiling immediately.
+  Val R² jumped from 0.575 (720 proteins, 144 scalars) to 0.657
+  (720 proteins, 190 scalars). The MLP needs to know "how strong
+  are the kernels in this protein" to set environment-dependent weights.
+
+- **Correction head is dead.** Self-TP (tp(x,x)) can only learn
+  quadratic kernel interactions. correction_scale converged to 0.0002
+  (essentially zero). Section 7 diagnostic confirms: 100% of the
+  ridge residual is out-of-span — no combination of existing kernels
+  (linear or quadratic) can reach it. Needs new kernels.
+
+- **Output scale bug.** Gating replaced sqrt(n_kernels) normalization
+  but both are needed. Without sqrt(n_kernels), initial output
+  std ~2.5x target std. At near-full-batch (3 steps/epoch), the
+  model can't correct fast enough → R²=-0.34. With the fix → R²=0.647.
+
+- **Batch size × scheduler interaction.** CosineAnnealingLR decays
+  per epoch, not per step. bs=8192 on 19K atoms = 3 steps/epoch =
+  1500 total steps. bs=512 = 39 steps/epoch = 19500 steps. The model
+  needs gradient steps, not epochs.
+
+### Pipeline rewrite
+
+Replaced c_equivariant/ with src/mutation_set/:
+- All config in calibration.toml (paths, features, training, analysis)
+- All data access via nmr_extract SDK (named properties, not indices)
+- KernelLayout registry — named kernels, no hardcoded index arithmetic
+- ScalarLayout with named blocks — categorical columns tracked by name
+- Gated kernel mixing: gate = magnitude / (magnitude + threshold)
+- GPU-resident training loop (no DataLoader overhead)
+- 7-section cold diagnostic (analyze.py)
+- Equivariance rotation test (verified all irreps correct)
+
+C++ fix: per-ring T2 tensors now written to ring_contributions.npy
+(53 arrays per protein, up from 51). New extraction GatedCalibration
+running with SDK-compatible output.
+
+### Results
+
+| Run | Proteins | Scalars | Val R² | Notes |
+|---|---|---|---|---|
+| full_144s_mixing | 720 | 144 | 0.575 | Old features, lr=1e-4, bs=2048 |
+| full_190s_kernscales_v2 | 720 | 190 | **0.657** | +kernel scales, lr=1e-3, bs=8192 |
+| full_190s_correction | 720 | 190 | 0.643 | +correction head → cs=0.0002, dead |
+| sdk_fix_scale_bs512 | 31 | 190 | **0.647** | New SDK pipeline, 31 proteins only |
+
+### Cleanup
+
+- Old code → bones/pre_sdk/ (c_equivariant, protein.py, features.py, etc.)
+- Old extractions → bones/old_extractions/
+- Removed 12,069 prep/ symlinks from calibration/
+- CLAUDE.md rewritten for new pipeline
+- Zero symlinks remaining in project
