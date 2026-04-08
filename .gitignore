@@ -9,3 +9,6 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 *.npy
+
+# Calibration protein data and extracted features (regenerable from consolidated/)
+calibration/*/

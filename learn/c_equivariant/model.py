@@ -70,21 +70,35 @@ class KernelMixingHead(nn.Module):
 class EquivariantCorrectionHead(nn.Module):
     """Learn an L=2 correction from scalar and L=2 inputs via tensor products.
 
-    This captures physics that NO linear combination of existing kernels
-    can represent — genuinely new angular structure from the local environment.
+    Captures angular structure that NO linear combination of existing kernels
+    can represent.  The tensor product of per-type L=2 inputs produces new
+    angular patterns from pairwise kernel interactions — e.g. TP(BS_PHE, MC_backbone)
+    yields L=2 structure that neither kernel alone could produce.
 
-    Architecture:
-        1. Tensor product of L=2 kernels with themselves → new L=2 features
-        2. Scalar gating from environment features
-        3. Output: L=2 correction tensor
+    L=2 inputs (9 individual channels):
+        BS_PHE, BS_TYR, BS_TRP_benzene, BS_TRP_perimeter  — dominant ring types
+        MC_backbone, MC_aromatic                           — bond contributions
+        Coulomb total, MopacCoulomb total                  — electrostatic
+        kernel_sum                                         — overall signal
     """
+
+    # Kernel indices for the L=2 channels (from dataset.py layout, PQ dropped)
+    L2_KERNEL_INDICES = [
+        0,   # BS PHE
+        1,   # BS TYR
+        2,   # BS TRP_benzene
+        4,   # BS TRP_perimeter
+        24,  # MC backbone_total
+        26,  # MC aromatic_total
+        35,  # Coulomb total
+        38,  # MopacCoulomb total
+    ]
+    N_L2_INPUTS = len(L2_KERNEL_INDICES) + 1  # +1 for kernel_sum = 9
 
     def __init__(self, n_scalar_features: int, n_kernels: int, hidden: int = 32):
         super().__init__()
-        # Input irreps: n_kernels × L=2 tensors + scalars
-        # Sum of all kernel T2s as one L=2 input, plus top individual kernels:
-        # MC, Coulomb, BS, MopacCoulomb (QM charge EFG — independent angular info)
-        self.input_irreps = o3.Irreps(f"{n_scalar_features}x0e + 5x2e")
+        self.input_irreps = o3.Irreps(
+            f"{n_scalar_features}x0e + {self.N_L2_INPUTS}x2e")
         self.hidden_irreps = o3.Irreps(f"{hidden}x0e + {hidden}x2e")
         self.output_irreps = o3.Irreps("1x2e")
 
@@ -95,16 +109,15 @@ class EquivariantCorrectionHead(nn.Module):
             self.hidden_irreps, self.hidden_irreps, self.output_irreps
         )
 
-    def forward(self, scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2, mopac_coulomb_t2):
+    def forward(self, scalars, kernel_t2s):
         """
         scalars: (batch, n_scalar_features)
-        kernel_t2_sum: (batch, 5) — sum of all calculator T2s
-        mc_t2, coulomb_t2, bs_t2: (batch, 5) — top 3 classical T2s
-        mopac_coulomb_t2: (batch, 5) — QM charge EFG T2
+        kernel_t2s: (batch, n_kernels, 5) — full kernel array
         returns: (batch, 5) — L=2 correction
         """
-        x = torch.cat([scalars, kernel_t2_sum, mc_t2, coulomb_t2, bs_t2,
-                        mopac_coulomb_t2], dim=-1)
+        l2_parts = [kernel_t2s[:, i, :] for i in self.L2_KERNEL_INDICES]
+        l2_parts.append(kernel_t2s.sum(dim=1))  # kernel_sum
+        x = torch.cat([scalars] + l2_parts, dim=-1)
         h = self.tp1(x, x)
         out = self.tp2(h, h)
         return out
@@ -135,20 +148,16 @@ class ShieldingT2Model(nn.Module):
             # how much L=2 structure is beyond linear kernel mixing.
             self.correction_scale = nn.Parameter(torch.tensor(0.1))
 
-    def forward(self, scalars, kernel_t2s, mc_t2, coulomb_t2, bs_t2, mopac_coulomb_t2):
+    def forward(self, scalars, kernel_t2s):
         """
         scalars: (batch, n_scalar_features)
         kernel_t2s: (batch, n_kernels, 5) — all kernel T2 vectors
-        mc_t2, coulomb_t2, bs_t2: (batch, 5) — individual top classical kernels
-        mopac_coulomb_t2: (batch, 5) — QM charge EFG kernel
         returns: (batch, 5) — predicted DFT T2
         """
         mixed = self.mixing(scalars, kernel_t2s)
 
         if self.use_correction:
-            kernel_sum = kernel_t2s.sum(dim=1)  # (batch, 5)
-            corr = self.correction(scalars, kernel_sum, mc_t2, coulomb_t2, bs_t2,
-                                   mopac_coulomb_t2)
+            corr = self.correction(scalars, kernel_t2s)
             return mixed + self.correction_scale * corr
         return mixed
 
@@ -170,29 +179,20 @@ def make_model(n_scalar_features=33, n_kernels=46,
 if __name__ == "__main__":
     # Smoke test
     batch = 32
-    scalars = torch.randn(batch, 14)
-    kernels = torch.randn(batch, 46, 5)
-    mc = torch.randn(batch, 5)
-    co = torch.randn(batch, 5)
-    bs = torch.randn(batch, 5)
-    mopac_co = torch.randn(batch, 5)
+    scalars = torch.randn(batch, 78)
+    kernels = torch.randn(batch, 40, 5)
 
-    model = make_model(use_correction=False)
+    model = make_model(n_scalar_features=78, n_kernels=40, use_correction=False)
     print(f"Mixing-only model: {model.parameter_count()} parameters")
-    out = model(scalars, kernels, mc, co, bs, mopac_co)
+    out = model(scalars, kernels)
     print(f"Output shape: {out.shape}  (should be [{batch}, 5])")
 
-    # With correction
-    model_full = make_model(use_correction=True)
+    model_full = make_model(n_scalar_features=78, n_kernels=40, use_correction=True)
     print(f"Full model: {model_full.parameter_count()} parameters")
-    out_full = model_full(scalars, kernels, mc, co, bs, mopac_co)
+    out_full = model_full(scalars, kernels)
     print(f"Output shape: {out_full.shape}")
 
-    # GPU test
     if torch.cuda.is_available():
         model_full = model_full.cuda()
-        out_gpu = model_full(
-            scalars.cuda(), kernels.cuda(),
-            mc.cuda(), co.cuda(), bs.cuda(), mopac_co.cuda()
-        )
+        out_gpu = model_full(scalars.cuda(), kernels.cuda())
         print(f"GPU output: {out_gpu.shape}, device={out_gpu.device}")

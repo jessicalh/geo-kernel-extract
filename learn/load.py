@@ -1,7 +1,16 @@
 """
-Data loading for learn/.
+DEPRECATED — use protein.py + features.py instead.
 
-Loads extracted .npy features for WT/ALA pairs.
+This loader assumes the old wt/ala subdirectory layout from --orca
+extraction.  The current pipeline uses --mutant mode which produces
+a flat directory with 51 arrays including C++-computed deltas.
+
+Modern usage:
+    from protein import load_protein
+    p = load_protein("calibration/features/CalibrationExtractionTest/ID")
+    p.delta.shielding.T2   # DFT delta, no Python matching needed
+
+Old: loads extracted .npy features for WT/ALA pairs.
 Handles the SphericalTensor packing: [T0, T1[3], T2[5]] = 9 doubles.
 Provides T2 extraction and scaling.
 """
