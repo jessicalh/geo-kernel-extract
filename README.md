@@ -1,12 +1,12 @@
 # Geometric Kernel as Feature Extraction
 
-Classical geometric kernel library for predicting protein NMR
-chemical shielding tensors, calibrated against DFT reference data.
+Extracts geometric kernel features from protein structures for
+downstream NMR shielding tensor prediction.
 
 ![Shielding tensor ellipsoids on a protein structure](projectillustration.png)
 
 10 calculators (8 classical + 2 MOPAC-derived) produce full rank-2
-tensor output per atom.  An equivariant calibration pipeline tunes
+tensor features per atom.  An equivariant calibration pipeline tunes
 ~80 kernel parameters against DFT WT-ALA deltas across 723 proteins.
 
 See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
