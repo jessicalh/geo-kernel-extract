@@ -1,7 +1,7 @@
 Per-Ring Data
 =============
 
-Sparse (P, 57) table of per-(atom, ring) pair contributions, plus a
+Sparse (P, 59) table of per-(atom, ring) pair contributions, plus a
 (R, 10) ring geometry reference table.
 
 RingContributions
@@ -31,6 +31,8 @@ Column layout::
    [54]    disp_scalar         1/r^6
    [55]    disp_contacts       vertex contact count
    [56]    gaussian_density    (placeholder)
+   [57]    cos_phi             azimuthal angle cosine (relative to vertex 0)
+   [58]    sin_phi             azimuthal angle sine (relative to vertex 0)
 
 RingGeometry
 ------------

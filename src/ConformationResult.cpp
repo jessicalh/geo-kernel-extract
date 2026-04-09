@@ -53,17 +53,17 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     }
 
     // Per-ring contributions — sparse (atom, ring) pair array.
-    // Shape (P, 57) where P = total evaluated (atom, ring) pairs.
+    // Shape (P, 59) where P = total evaluated (atom, ring) pairs.
     // Columns: [0-8] geometry, [9-17] BS G, [18-26] HM H (pure T2),
     //          [27-35] HM G (shielding), [36-44] quad, [45-53] chi,
-    //          [54-56] dispersion.
+    //          [54-56] dispersion, [57-58] azimuthal angle.
     {
         size_t P = 0;
         for (size_t i = 0; i < N; ++i)
             P += conf.AtomAt(i).ring_neighbours.size();
 
         if (P > 0) {
-            const size_t C = 57;
+            const size_t C = 59;
             std::vector<double> data(P * C, 0.0);
             size_t row = 0;
             for (size_t i = 0; i < N; ++i) {
@@ -93,6 +93,8 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     r[54] = rn.disp_scalar;
                     r[55] = static_cast<double>(rn.disp_contacts);
                     r[56] = rn.gaussian_density;
+                    r[57] = rn.cos_phi;
+                    r[58] = rn.sin_phi;
                     row++;
                 }
             }

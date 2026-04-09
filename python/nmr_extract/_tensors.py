@@ -456,13 +456,13 @@ class DsspScalars:
 
 
 class MopacScalars:
-    """(*, 3) MOPAC per-atom: charge, s_pop, p_pop."""
+    """(*, 4) MOPAC per-atom: charge, s_pop, p_pop, valency."""
 
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
-        if data.shape[-1] != 3:
-            raise ValueError(f"MopacScalars: last dim must be 3, got {data.shape}")
+        if data.shape[-1] != 4:
+            raise ValueError(f"MopacScalars: last dim must be 4, got {data.shape}")
         self._data = data
 
     @property
@@ -481,12 +481,17 @@ class MopacScalars:
     def p_pop(self) -> np.ndarray:
         return self._data[..., 2]
 
+    @property
+    def valency(self) -> np.ndarray:
+        """Sum of Wiberg bond orders (QM coordination number)."""
+        return self._data[..., 3]
+
     def __repr__(self) -> str:
         return f"MopacScalars(shape={self._data.shape})"
 
 
 class MopacGlobal:
-    """(4,) graph-level MOPAC scalars."""
+    """(4,) graph-level MOPAC scalars: [hof, dipole_x, dipole_y, dipole_z]."""
 
     __slots__ = ("_data",)
 
@@ -503,8 +508,18 @@ class MopacGlobal:
     def heat_of_formation(self) -> float:
         return float(self._data[0])
 
+    @property
+    def dipole(self) -> np.ndarray:
+        """Molecular dipole vector (Debye), shape (3,)."""
+        return self._data[1:4]
+
+    @property
+    def dipole_magnitude(self) -> float:
+        return float(np.linalg.norm(self._data[1:4]))
+
     def __repr__(self) -> str:
-        return f"MopacGlobal(hof={self.heat_of_formation:.1f} kcal/mol)"
+        return (f"MopacGlobal(hof={self.heat_of_formation:.1f} kcal/mol, "
+                f"|dipole|={self.dipole_magnitude:.2f} D)")
 
 
 class BondOrders:

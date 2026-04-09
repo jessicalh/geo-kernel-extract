@@ -55,7 +55,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("element",          "identity",   np.ndarray,        None, True,  "Atomic number (int32)"),
     ArraySpec("residue_index",    "identity",   np.ndarray,        None, True,  "Residue index (int32)"),
     ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)"),
-    ArraySpec("ring_contributions","identity",  RingContributions, 57,   True,  "Per-(atom,ring) pair contributions"),
+    ArraySpec("ring_contributions","identity",  RingContributions, 59,   True,  "Per-(atom,ring) pair contributions"),
     ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference"),
 
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
@@ -104,7 +104,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── MOPAC core (MopacResult.cpp) ─────────────────────────────
     ArraySpec("mopac_charges",    "mopac_core", np.ndarray,        None, False, "MOPAC Mulliken charges"),
-    ArraySpec("mopac_scalars",    "mopac_core", MopacScalars,      3,    False, "MOPAC per-atom scalars"),
+    ArraySpec("mopac_scalars",    "mopac_core", MopacScalars,      4,    False, "MOPAC per-atom scalars"),
     ArraySpec("mopac_bond_orders","mopac_core", BondOrders,        3,    False, "MOPAC Wiberg bond orders"),
     ArraySpec("mopac_global",     "mopac_core", MopacGlobal,       4,    False, "MOPAC graph-level scalars"),
 

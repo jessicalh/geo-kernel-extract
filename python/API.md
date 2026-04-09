@@ -57,7 +57,7 @@ p.ring_susceptibility   ShieldingTensor (N, 9)
 ### Per-ring sparse data
 
 ```
-p.ring_contributions    RingContributions (P, 48)
+p.ring_contributions    RingContributions (P, 59)
 p.ring_geometry         RingGeometry (R, 10)
 ```
 
@@ -90,9 +90,9 @@ p.dssp                  DsspScalars (N, 5)
 ```
 p.mopac                 MopacGroup | None
   .core.charges         ndarray (N,)
-  .core.scalars         MopacScalars (N, 3)
+  .core.scalars         MopacScalars (N, 4)
   .core.bond_orders     BondOrders (B, 3)
-  .core.global_         MopacGlobal (4,)
+  .core.global_         MopacGlobal (4,)    — [hof, dipole_x, dipole_y, dipole_z]
   .coulomb              MopacCoulombGroup — same as CoulombGroup
   .mcconnell            MopacMcConnellGroup — same as McConnellGroup
 
@@ -173,7 +173,7 @@ mc.as_block()           # ndarray (N, 5, 5)
 
 ## RingContributions
 
-Sparse (P, 57) table — one row per (atom, ring) pair.
+Sparse (P, 59) table — one row per (atom, ring) pair.
 
 ```python
 rc = p.ring_contributions
@@ -184,6 +184,7 @@ rc.ring_index           # ndarray (P,) int
 rc.ring_type            # ndarray (P,) int — RingType enum values
 rc.distance             # ndarray (P,) — Angstroms
 rc.rho, rc.z, rc.theta  # cylindrical coordinates in ring frame
+rc.cos_phi, rc.sin_phi  # azimuthal angle in ring plane (relative to vertex 0)
 
 # Physics kernels — each is a SphericalTensor (P, 9)
 rc.bs                   # Biot-Savart shielding kernel G
@@ -202,7 +203,7 @@ rc.for_atom(42)         # RingContributions — rows for atom 42
 rc.for_ring_type(RingType.PHE)  # rows for PHE rings only
 ```
 
-### Column layout (57 columns)
+### Column layout (59 columns)
 
 ```
 [0]     atom_index
@@ -222,6 +223,8 @@ rc.for_ring_type(RingType.PHE)  # rows for PHE rings only
 [54]    disp_scalar         1/r^6
 [55]    disp_contacts       vertex contact count
 [56]    gaussian_density    (placeholder)
+[57]    cos_phi             azimuthal angle cosine (relative to vertex 0)
+[58]    sin_phi             azimuthal angle sine (relative to vertex 0)
 ```
 
 ## RingGeometry

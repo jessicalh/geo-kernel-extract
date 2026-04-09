@@ -260,6 +260,19 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 new_rn.rho = rho;
                 new_rn.theta = theta;
 
+                // Azimuthal angle: in-plane angle from center→vertex0.
+                // Encodes position relative to ring frame — distinguishes
+                // nitrogen side from carbon side on asymmetric rings (HIE, TRP).
+                Vec3 ref = geom.vertices[0] - geom.center;
+                Vec3 ref_plane = ref - ref.dot(geom.normal) * geom.normal;
+                double ref_norm = ref_plane.norm();
+                if (rho > 1e-10 && ref_norm > 1e-10) {
+                    Vec3 d_hat = d_plane / rho;
+                    Vec3 ref_hat = ref_plane / ref_norm;
+                    new_rn.cos_phi = d_hat.dot(ref_hat);
+                    new_rn.sin_phi = d_hat.cross(ref_hat).dot(geom.normal);
+                }
+
                 ca.ring_neighbours.push_back(new_rn);
                 rn = &ca.ring_neighbours.back();
             }

@@ -54,6 +54,9 @@ See PATTERNS.md "Numerical Stability" section.
 
 ### When adding or changing WriteFeatures output
 
+Validate with `./smoke_tests` (~80s), not individual calculator tests.
+See **spec/TEST_FRAMEWORK.md** for the full test tier decision tree.
+
 Any new NPY file must be registered in the Python reader SDK so
 consumers can load it.  See **spec/EXTRACTION_SDK.md** for the
 design and **python/API.md** for the full column-level reference.
@@ -86,6 +89,7 @@ then run `python -m pytest python/tests/` to verify.
 - **GEOMETRY_CHOICE_BRIEF.md** — GeometryChoice recording spec
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
+- **TEST_FRAMEWORK.md** — test tiers, what to run when, smoke test design
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/

@@ -17,6 +17,7 @@
 #include "ChargeSource.h"
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nmr {
 
@@ -28,6 +29,12 @@ struct BuildResult {
     int net_charge = 0;                     // formal charge (integer)
     bool ok = false;
     std::string error;
+
+    // Per-conformation names from source PDB filenames (sans extension).
+    // Empty for PDB/ORCA builds. Populated by BuildFromGromacs when
+    // PDBs have descriptive names (e.g. fes-sampler output).
+    // RunFleet uses these as output subdirectory bases when present.
+    std::vector<std::string> pose_names;
 
     // Convenience: check success
     bool Ok() const { return ok && protein != nullptr; }

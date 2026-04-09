@@ -1,0 +1,39 @@
+{
+  "protein_id": "1I8X_4351",
+  "temperature_K": 288,
+  "chain_id": "A",
+  "n_poses": 6,
+  "method": "dihedral_variance_selection",
+  "method_description": "Pose 0 is the Boltzmann minimum (highest reweighted probability from well-tempered metadynamics). Remaining poses are selected at the thermal extremes of the most variable backbone dihedral angles, spanning the support of the Boltzmann distribution along its most mobile degrees of freedom.",
+  "weight_floor_fraction": 0.05,
+  "mobile_angles": [
+    {"residue": 1, "type": "S", "variance": 0.031847, "rank": 49},
+    {"residue": 2, "type": "P", "variance": 0.051621, "rank": 38},
+    {"residue": 2, "type": "S", "variance": 0.038643, "rank": 44},
+    {"residue": 3, "type": "P", "variance": 0.077669, "rank": 25},
+    {"residue": 3, "type": "S", "variance": 0.183381, "rank": 14},
+    {"residue": 4, "type": "P", "variance": 0.171765, "rank": 15},
+    {"residue": 4, "type": "S", "variance": 0.223999, "rank": 7},
+    {"residue": 5, "type": "P", "variance": 0.125272, "rank": 19},
+    {"residue": 5, "type": "S", "variance": 0.222904, "rank": 8},
+    {"residue": 6, "type": "P", "variance": 0.232146, "rank": 6},
+    {"residue": 6, "type": "S", "variance": 0.160469, "rank": 16},
+    {"residue": 7, "type": "P", "variance": 0.274381, "rank": 4},
+    {"residue": 7, "type": "S", "variance": 0.424861, "rank": 0},
+    {"residue": 8, "type": "P", "variance": 0.266136, "rank": 5},
+    {"residue": 8, "type": "S", "variance": 0.102105, "rank": 23},
+    {"residue": 9, "type": "P", "variance": 0.125035, "rank": 20},
+    {"residue": 9, "type": "S", "variance": 0.076530, "rank": 27},
+    {"residue": 10, "type": "P", "variance": 0.051747, "rank": 37},
+    {"residue": 10, "type": "S", "variance": 0.038129, "rank": 46},
+    {"residue": 11, "type": "P", "variance": 0.052519, "rank": 36}
+  ],
+  "poses": [
+    {"pose": 1, "frame": 4019, "walker": 4, "time_ps": 150.0, "weight": 2.330404e-02, "reason": "boltzmann_minimum"},
+    {"pose": 2, "frame": 183, "walker": 0, "time_ps": 1830.0, "weight": 2.032932e-03, "reason": "max_dev_psi_7", "angle_residue": 7, "angle_type": "S", "angle_value_deg": 154.482, "angle_deviation_deg": 179.890},
+    {"pose": 3, "frame": 1067, "walker": 1, "time_ps": 660.0, "weight": 1.193256e-02, "reason": "max_dev_psi_20", "angle_residue": 20, "angle_type": "S", "angle_value_deg": -172.066, "angle_deviation_deg": 176.891},
+    {"pose": 4, "frame": 4078, "walker": 4, "time_ps": 740.0, "weight": 1.297433e-03, "reason": "max_dev_phi_22", "angle_residue": 22, "angle_type": "P", "angle_value_deg": -101.822, "angle_deviation_deg": 169.467},
+    {"pose": 5, "frame": 4069, "walker": 4, "time_ps": 650.0, "weight": 4.576597e-04, "reason": "max_dev_phi_20", "angle_residue": 20, "angle_type": "P", "angle_value_deg": 129.171, "angle_deviation_deg": 178.675},
+    {"pose": 6, "frame": 765, "walker": 0, "time_ps": 7650.0, "weight": 1.572239e-03, "reason": "max_dev_phi_7", "angle_residue": 7, "angle_type": "P", "angle_value_deg": 87.618, "angle_deviation_deg": 178.535}
+  ]
+}

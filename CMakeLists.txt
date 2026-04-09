@@ -15,9 +15,9 @@ find_package(dssp REQUIRED)  # brings cifpp::cifpp with mm module
 # OpenBabel3 for bond perception and hybridisation
 # Installed in miniforge3. The cmake config is there but does not
 # export include dirs properly, so we set them explicitly.
-set(OPENBABEL_INCLUDE "/home/jessicalh/miniforge3/include/openbabel3"
+set(OPENBABEL_INCLUDE "/usr/include/openbabel3"
     CACHE PATH "OpenBabel3 include directory")
-set(OPENBABEL_LIB "/home/jessicalh/miniforge3/lib/libopenbabel.so"
+set(OPENBABEL_LIB "/usr/lib/x86_64-linux-gnu/libopenbabel.so"
     CACHE FILEPATH "OpenBabel3 library")
 if(NOT EXISTS ${OPENBABEL_LIB})
     message(FATAL_ERROR "OpenBabel3 not found at ${OPENBABEL_LIB}")
@@ -27,11 +27,11 @@ message(STATUS "OpenBabel3: ${OPENBABEL_LIB}")
 # GROMACS 2026 for TPR reading (fleet loader)
 # Linked against the installed libgromacs.so; internal headers from
 # the source tree because GROMACS does not install them as public API.
-set(GROMACS_LIB "/home/jessicalh/gromacs/lib/libgromacs.so"
+set(GROMACS_LIB "/home/jessica/gromacs/build/gromacs-2026/lib/libgromacs_mpi.so"
     CACHE FILEPATH "GROMACS library")
-set(GROMACS_SRC "/home/jessicalh/builds/gromacs-2026.0/src"
+set(GROMACS_SRC "/home/jessica/gromacs/src/gromacs-2026.0/src"
     CACHE PATH "GROMACS source tree (for internal headers)")
-set(GROMACS_BUILD "/home/jessicalh/builds/gromacs-2026.0/build"
+set(GROMACS_BUILD "/home/jessica/gromacs/build/gromacs-2026"
     CACHE PATH "GROMACS build tree (for generated headers)")
 if(NOT EXISTS ${GROMACS_LIB})
     message(WARNING "libgromacs not found — fleet loader will not link")
@@ -39,14 +39,14 @@ endif()
 message(STATUS "GROMACS: ${GROMACS_LIB}")
 
 # Richardson lab reduce (hydrogen placement for protonation)
-# Pre-built as static library from /home/jessicalh/builds/reduce-src
-set(REDUCE_SRC "/home/jessicalh/builds/reduce-src"
+# Pre-built as static library from /home/jessica/builds/reduce-src
+set(REDUCE_SRC "/home/jessica/builds/reduce-src"
     CACHE PATH "reduce source tree")
-set(REDUCE_LIB "/home/jessicalh/builds/reduce-src/build/reduce_src/libreducelib.a"
+set(REDUCE_LIB "/home/jessica/builds/reduce-src/build/reduce_src/libreducelib.a"
     CACHE FILEPATH "reduce static library")
-set(REDUCE_LIBPDB "/home/jessicalh/builds/reduce-src/build/libpdb/libpdb++.a"
+set(REDUCE_LIBPDB "/home/jessica/builds/reduce-src/build/libpdb/libpdb++.a"
     CACHE FILEPATH "reduce libpdb++ static library")
-set(REDUCE_TOOLCLASSES "/home/jessicalh/builds/reduce-src/build/toolclasses/libtoolclasses.a"
+set(REDUCE_TOOLCLASSES "/home/jessica/builds/reduce-src/build/toolclasses/libtoolclasses.a"
     CACHE FILEPATH "reduce toolclasses static library")
 set(REDUCE_HET_DICT "${REDUCE_SRC}/reduce_wwPDB_het_dict.txt"
     CACHE FILEPATH "reduce het dictionary")
@@ -271,6 +271,42 @@ include(GoogleTest)
 gtest_add_tests(TARGET nmr_tests)
 
 # ============================================================================
+# Smoke tests — end-to-end pipeline validation (~5 min)
+# ============================================================================
+
+add_executable(smoke_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_smoke.cpp
+)
+target_compile_definitions(smoke_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(smoke_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET smoke_tests)
+
+# ============================================================================
+# Fleet smoke test — separate exe (~40 min, 10 GROMACS poses x full pipeline)
+# ============================================================================
+
+add_executable(fleet_smoke_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_smoke_fleet.cpp
+)
+target_compile_definitions(fleet_smoke_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(fleet_smoke_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET fleet_smoke_tests)
+
+# ============================================================================
 # JobSpec tests — separate exe (~10 min, not the 2.5-hour full suite)
 # ============================================================================
 
@@ -287,6 +323,24 @@ target_link_libraries(job_spec_tests PRIVATE
     GTest::gtest
 )
 gtest_add_tests(TARGET job_spec_tests)
+
+# ============================================================================
+# FES fleet smoke test — fes-sampler naming, 2 proteins x 6 poses (~15 min)
+# ============================================================================
+
+add_executable(fes_fleet_smoke_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_smoke_fes_fleet.cpp
+)
+target_compile_definitions(fes_fleet_smoke_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(fes_fleet_smoke_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET fes_fleet_smoke_tests)
 
 # ============================================================================
 # Example driver

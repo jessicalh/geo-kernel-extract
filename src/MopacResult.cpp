@@ -80,6 +80,7 @@ struct MopacParsed {
     std::vector<double> p_pop;
     std::vector<MopacBondOrder> bond_orders;
     double heat_of_formation = 0.0;
+    Vec3 dipole = Vec3::Zero();
     bool success = false;
     std::string error;
 };
@@ -208,6 +209,32 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
         }
     }
 
+    // --- DIPOLE (Debye) ---
+    // Table format:
+    //           DIPOLE           X         Y         Z       TOTAL
+    //  POINT-CHG.        ...
+    //  HYBRID            ...
+    //  SUM               dx        dy        dz        total
+    {
+        auto pos = text.find("DIPOLE           X");
+        if (pos != std::string::npos) {
+            std::istringstream section(text.substr(pos));
+            std::string line;
+            std::getline(section, line);  // header
+            while (std::getline(section, line)) {
+                if (line.find("SUM") != std::string::npos) {
+                    std::istringstream ss(line);
+                    std::string label;
+                    double dx, dy, dz;
+                    if (ss >> label >> dx >> dy >> dz) {
+                        result.dipole = Vec3(dx, dy, dz);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     result.success = true;
     return result;
 }
@@ -320,6 +347,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     result->s_pop_ = std::move(parsed.s_pop);
     result->p_pop_ = std::move(parsed.p_pop);
     result->heat_of_formation_ = parsed.heat_of_formation;
+    result->dipole_ = parsed.dipole;
     result->bond_orders_ = std::move(parsed.bond_orders);
 
     // Build valencies from bond orders (sum of orders per atom = valency)
@@ -446,9 +474,9 @@ double MopacResult::TopologyBondOrder(size_t bond_index) const {
 // WriteFeatures: compatible with mopac_extract.py output format.
 //
 //   mopac_charges.npy     — (N,)   Mulliken charges
-//   mopac_scalars.npy     — (N, 3) [charge, s_pop, p_pop]
+//   mopac_scalars.npy     — (N, 4) [charge, s_pop, p_pop, valency]
 //   mopac_bond_orders.npy — (B, 3) [atom_i, atom_j, bond_order]
-//   mopac_global.npy      — (4,)   [heat_of_formation, 0, 0, 0]
+//   mopac_global.npy      — (4,)   [heat_of_formation, dipole_x, dipole_y, dipole_z]
 // ============================================================================
 
 int MopacResult::WriteFeatures(const ProteinConformation& conf,
@@ -463,15 +491,16 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/mopac_charges.npy", data.data(), N);
     }
 
-    // mopac_scalars: (N, 3) — [charge, s_pop, p_pop]
+    // mopac_scalars: (N, 4) — [charge, s_pop, p_pop, valency]
     {
-        std::vector<double> data(N * 3);
+        std::vector<double> data(N * 4);
         for (size_t i = 0; i < N; ++i) {
-            data[i*3 + 0] = conf.AtomAt(i).mopac_charge;
-            data[i*3 + 1] = conf.AtomAt(i).mopac_s_pop;
-            data[i*3 + 2] = conf.AtomAt(i).mopac_p_pop;
+            data[i*4 + 0] = conf.AtomAt(i).mopac_charge;
+            data[i*4 + 1] = conf.AtomAt(i).mopac_s_pop;
+            data[i*4 + 2] = conf.AtomAt(i).mopac_p_pop;
+            data[i*4 + 3] = conf.AtomAt(i).mopac_valency;
         }
-        NpyWriter::WriteFloat64(output_dir + "/mopac_scalars.npy", data.data(), N, 3);
+        NpyWriter::WriteFloat64(output_dir + "/mopac_scalars.npy", data.data(), N, 4);
     }
 
     // mopac_bond_orders: (B, 3) — [atom_i, atom_j, bond_order]
@@ -497,10 +526,9 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         }
     }
 
-    // mopac_global: (4,) — [heat_of_formation, 0, 0, 0]
-    // Slot 1 was HOMO-LUMO gap (not available from libmopac API)
+    // mopac_global: (4,) — [heat_of_formation, dipole_x, dipole_y, dipole_z]
     {
-        double data[4] = { heat_of_formation_, 0.0, 0.0, 0.0 };
+        double data[4] = { heat_of_formation_, dipole_.x(), dipole_.y(), dipole_.z() };
         NpyWriter::WriteFloat64(output_dir + "/mopac_global.npy", data, 4);
     }
 

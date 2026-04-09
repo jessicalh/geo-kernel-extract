@@ -122,17 +122,19 @@ def _t1_magnitudes(p, idx, M) -> list[ScalarBlock]:
 
 
 def _ring_proximity(p, idx, M, cfg) -> list[ScalarBlock]:
-    """Per-ring geometry + dispersion scalars for top-K nearest rings.
+    """Per-ring geometry + dispersion + azimuthal + signed T0 for top-K nearest rings.
 
     Per ring: [mcconnell_factor, exp_decay, 1/dist, z, rho, theta,
-               disp_scalar, disp_contacts] + n_rings count.
+               disp_scalar, disp_contacts, cos_phi, sin_phi] + n_rings count.
 
     disp_scalar encodes vertex proximity asymmetry: same center-distance
     but different disp_scalar means the atom sees an edge vs a face.
     disp_contacts is the effective solid angle (how many vertices in range).
+    cos_phi/sin_phi encode in-plane position relative to ring vertex 0 —
+    distinguishes nitrogen side from carbon side on asymmetric rings (HIE, TRP).
     """
     K = cfg.top_k_rings
-    COLS = 8  # 6 geometry + disp_scalar + disp_contacts
+    COLS = 10  # 6 geometry + disp_scalar + disp_contacts + cos_phi + sin_phi
     rp = np.zeros((M, K * COLS + 1), dtype=np.float64)
 
     rc = p.ring_contributions
@@ -152,6 +154,8 @@ def _ring_proximity(p, idx, M, cfg) -> list[ScalarBlock]:
                 rp[j, base + 5] = atom_rc.theta[ri]
                 rp[j, base + 6] = atom_rc.disp_scalar[ri]
                 rp[j, base + 7] = atom_rc.disp_contacts[ri]
+                rp[j, base + 8] = atom_rc.cos_phi[ri]
+                rp[j, base + 9] = atom_rc.sin_phi[ri]
             rp[j, -1] = atom_rc.n_pairs
 
     return [ScalarBlock("ring_proximity", rp)]
@@ -193,12 +197,21 @@ def _per_type_t0(p, idx, M) -> list[ScalarBlock]:
 
 
 def _mopac_electronic(p, idx, M) -> list[ScalarBlock]:
-    """MOPAC s/p orbital populations (2)."""
-    elec = np.zeros((M, 2), dtype=np.float64)
+    """MOPAC s/p orbital populations + valency (3)."""
+    elec = np.zeros((M, 3), dtype=np.float64)
     if p.mopac:
         elec[:, 0] = p.mopac.core.scalars.s_pop[idx]
         elec[:, 1] = p.mopac.core.scalars.p_pop[idx]
+        elec[:, 2] = p.mopac.core.scalars.valency[idx]
     return [ScalarBlock("mopac_electronic", elec)]
+
+
+def _mopac_dipole(p, idx, M) -> list[ScalarBlock]:
+    """MOPAC molecular dipole magnitude (1), broadcast to all atoms."""
+    dip = np.zeros((M, 1), dtype=np.float64)
+    if p.mopac:
+        dip[:, 0] = p.mopac.core.global_.dipole_magnitude
+    return [ScalarBlock("mopac_dipole", dip)]
 
 
 def _t0_magnitudes(p, idx, M) -> list[ScalarBlock]:
@@ -275,6 +288,7 @@ def assemble_scalars(protein, idx: np.ndarray, kernel_scales: np.ndarray,
     blocks += _mutation_identity(p, idx, M)
     blocks += _per_type_t0(p, idx, M)
     blocks += _mopac_electronic(p, idx, M)
+    blocks += _mopac_dipole(p, idx, M)
     blocks += _t0_magnitudes(p, idx, M)
     blocks += _mopac_calculator_scalars(p, idx, M, sc)
     blocks.append(ScalarBlock("kernel_scales", np.tile(kernel_scales, (M, 1))))

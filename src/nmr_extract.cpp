@@ -209,11 +209,20 @@ static int RunFleet(const JobSpec& spec) {
     int total_arrays = 0;
     for (size_t i = 0; i < build.protein->ConformationCount(); ++i) {
         auto& conf = build.protein->ConformationAt(i);
-        char frame_dir[512];
-        std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%03zu",
-                      spec.output_dir.c_str(), i + 1);
-        fs::create_directories(frame_dir);
-        total_arrays += ConformationResult::WriteAllFeatures(conf, frame_dir);
+        std::string subdir;
+        if (i < build.pose_names.size() && !build.pose_names[i].empty()) {
+            // Carry the source PDB name through, append our frame tag
+            char tag[32];
+            std::snprintf(tag, sizeof(tag), "_frame%03zu", i + 1);
+            subdir = spec.output_dir + "/" + build.pose_names[i] + tag;
+        } else {
+            char frame_dir[512];
+            std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%03zu",
+                          spec.output_dir.c_str(), i + 1);
+            subdir = frame_dir;
+        }
+        fs::create_directories(subdir);
+        total_arrays += ConformationResult::WriteAllFeatures(conf, subdir);
     }
 
     fprintf(stderr, "Wrote %d arrays across %zu frames to %s\n",

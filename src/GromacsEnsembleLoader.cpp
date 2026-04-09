@@ -74,14 +74,19 @@ static bool ParseEnsembleJson(const std::string& path,
     }
 
     std::string line;
-    std::regex re_pose(
+    // Full format (fleet production): pose, walker, time_ps, rmsd_nm, rg_nm, weight
+    std::regex re_full(
         R"(\{\"pose\":\s*(\d+).*\"walker\":\s*(\d+).*\"time_ps\":\s*([0-9.eE+-]+))"
         R"(.*\"rmsd_nm\":\s*([0-9.eE+-]+).*\"rg_nm\":\s*([0-9.eE+-]+))"
+        R"(.*\"weight\":\s*([0-9.eE+-]+))");
+    // Minimal format (fes-sampler): pose, walker, time_ps, weight (no rmsd/rg)
+    std::regex re_minimal(
+        R"(\{\"pose\":\s*(\d+).*\"walker\":\s*(\d+).*\"time_ps\":\s*([0-9.eE+-]+))"
         R"(.*\"weight\":\s*([0-9.eE+-]+))");
     std::smatch m;
 
     while (std::getline(in, line)) {
-        if (std::regex_search(line, m, re_pose)) {
+        if (std::regex_search(line, m, re_full)) {
             PoseInfo pi;
             pi.pose = std::stoi(m[1].str());
             pi.walker = std::stoi(m[2].str());
@@ -89,6 +94,13 @@ static bool ParseEnsembleJson(const std::string& path,
             pi.rmsd_nm = std::stod(m[4].str());
             pi.rg_nm = std::stod(m[5].str());
             pi.weight = std::stod(m[6].str());
+            poses.push_back(pi);
+        } else if (std::regex_search(line, m, re_minimal)) {
+            PoseInfo pi;
+            pi.pose = std::stoi(m[1].str());
+            pi.walker = std::stoi(m[2].str());
+            pi.time_ps = std::stod(m[3].str());
+            pi.weight = std::stod(m[4].str());
             poses.push_back(pi);
         }
     }
@@ -188,6 +200,37 @@ static int VariantFromCharmmResidueName(const std::string& charmm_name,
     }
 
     return -1;
+}
+
+
+// ============================================================================
+// Resolve a pose PDB filename in the poses directory.
+//
+// Try pose_%03d.pdb first (legacy naming). If not found, scan for any PDB
+// whose name contains _%02d_ matching the pose number (fes-sampler naming).
+// Returns empty string on failure.
+// ============================================================================
+
+static std::string ResolvePosePdb(const std::string& dir, int pose_num) {
+    // Try legacy naming first
+    char legacy[32];
+    std::snprintf(legacy, sizeof(legacy), "pose_%03d.pdb", pose_num);
+    std::string legacy_path = dir + "/" + legacy;
+    if (fs::exists(legacy_path)) return legacy_path;
+
+    // Scan for fes-sampler naming: {protein_id}_{NN}_{reason}_{weight}.pdb
+    // Match _%02d_ in the first half of the filename (before the reason
+    // field, which can also contain numbers like max_dev_phi_7).
+    char tag[8];
+    std::snprintf(tag, sizeof(tag), "_%02d_", pose_num);
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (entry.path().extension() != ".pdb") continue;
+        std::string name = entry.path().filename().string();
+        auto pos = name.find(tag);
+        if (pos != std::string::npos && pos < name.size() / 2)
+            return entry.path().string();
+    }
+    return "";
 }
 
 
@@ -346,9 +389,13 @@ BuildResult BuildFromGromacs(const FleetPaths& paths) {
     // ---------------------------------------------------------------
     // 4. Read first pose positions and finalize construction
     // ---------------------------------------------------------------
-    char pose_filename[32];
-    std::snprintf(pose_filename, sizeof(pose_filename), "pose_%03d.pdb", poses[0].pose);
-    std::string first_pose_path = paths.sampled_poses_dir + "/" + pose_filename;
+    std::string first_pose_path = ResolvePosePdb(paths.sampled_poses_dir, poses[0].pose);
+    if (first_pose_path.empty()) {
+        result.error = "pose PDB not found for pose " +
+                       std::to_string(poses[0].pose) + " in " +
+                       paths.sampled_poses_dir;
+        return result;
+    }
 
     auto first_positions = ReadPdbPositions(first_pose_path, n_protein_atoms,
                                             result.error);
@@ -366,15 +413,31 @@ BuildResult BuildFromGromacs(const FleetPaths& paths) {
     // ---------------------------------------------------------------
     // 5. Create MDFrameConformations for all poses
     // ---------------------------------------------------------------
+    // Store pose names from PDB filenames when they carry descriptive
+    // identity (fes-sampler output).  Legacy pose_NNN.pdb names are
+    // not stored — RunFleet falls back to frame_%03zu for those.
+    auto store_pose_name = [&](const std::string& pdb_path) {
+        std::string stem = fs::path(pdb_path).stem().string();
+        if (stem.rfind("pose_", 0) != 0)  // not legacy naming
+            result.pose_names.push_back(stem);
+    };
+    store_pose_name(first_pose_path);
+
     for (const auto& pose : poses) {
         std::vector<Vec3> positions;
 
         if (pose.pose == poses[0].pose) {
             positions = first_positions;
         } else {
-            std::snprintf(pose_filename, sizeof(pose_filename),
-                          "pose_%03d.pdb", pose.pose);
-            std::string pose_path = paths.sampled_poses_dir + "/" + pose_filename;
+            std::string pose_path = ResolvePosePdb(
+                paths.sampled_poses_dir, pose.pose);
+            if (pose_path.empty()) {
+                result.error = "pose PDB not found for pose " +
+                               std::to_string(pose.pose) + " in " +
+                               paths.sampled_poses_dir;
+                return result;
+            }
+            store_pose_name(pose_path);
             positions = ReadPdbPositions(pose_path, n_protein_atoms, result.error);
             if (positions.empty()) return result;
         }

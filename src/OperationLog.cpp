@@ -17,6 +17,8 @@ std::string OperationLog::host_;
 int OperationLog::port_ = 0;
 int OperationLog::socket_ = -1;
 bool OperationLog::udpConfigured_ = false;
+std::ofstream OperationLog::fileStream_;
+bool OperationLog::fileConfigured_ = false;
 uint32_t OperationLog::channelMask_ = LogAll;
 
 
@@ -37,6 +39,29 @@ void OperationLog::ConfigureUdp(const std::string& host, int port) {
 
 
 bool OperationLog::IsUdpConfigured() { return udpConfigured_; }
+bool OperationLog::IsFileConfigured() { return fileConfigured_; }
+
+
+void OperationLog::ConfigureFile(const std::string& path) {
+    if (fileConfigured_) CloseFile();
+    fileStream_.open(path, std::ios::out | std::ios::trunc);
+    if (fileStream_.is_open()) {
+        fileConfigured_ = true;
+        Log(Level::Info, "OperationLog::ConfigureFile",
+            "file logging to " + path);
+    } else {
+        Log(Level::Error, "OperationLog::ConfigureFile",
+            "failed to open " + path);
+    }
+}
+
+
+void OperationLog::CloseFile() {
+    if (fileConfigured_) {
+        fileStream_.close();
+        fileConfigured_ = false;
+    }
+}
 
 
 static std::string CurrentTimestamp() {
@@ -87,6 +112,8 @@ static std::string BuildJson(OperationLog::Level level,
 void OperationLog::Log(Level level, const std::string& operation,
                         const std::string& detail) {
     std::string json = BuildJson(level, operation, detail);
+    if (fileConfigured_)
+        SendFile(json);
     if (udpConfigured_)
         SendUdp(json);
     else
@@ -176,6 +203,12 @@ void OperationLog::SendUdp(const std::string& json) {
     inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
     sendto(socket_, json.c_str(), json.size(), 0,
            reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
+}
+
+
+void OperationLog::SendFile(const std::string& json) {
+    fileStream_ << json << "\n";
+    fileStream_.flush();
 }
 
 

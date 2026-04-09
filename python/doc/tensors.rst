@@ -46,3 +46,14 @@ Per-type decompositions
    :members:
    :undoc-members:
    :exclude-members: IRREPS
+
+MOPAC scalars
+-------------
+
+.. autoclass:: nmr_extract.MopacScalars
+   :members:
+   :undoc-members:
+
+.. autoclass:: nmr_extract.MopacGlobal
+   :members:
+   :undoc-members:

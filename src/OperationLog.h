@@ -24,6 +24,7 @@
 //
 
 #include <string>
+#include <fstream>
 #include <chrono>
 #include <cstdint>
 
@@ -65,6 +66,11 @@ public:
     // Configure UDP destination. Call once at startup.
     // If not called, logs go to stderr.
     static void ConfigureUdp(const std::string& host, int port);
+
+    // Configure file output. Writes JSON-lines to the given path.
+    // Can coexist with UDP — both receive every message.
+    static void ConfigureFile(const std::string& path);
+    static void CloseFile();
 
     // Set the channel mask. Only Info on enabled channels is emitted.
     // Warn and Error ALWAYS emit regardless of mask.
@@ -112,15 +118,19 @@ public:
     };
 
     static bool IsUdpConfigured();
+    static bool IsFileConfigured();
 
 private:
     static void SendUdp(const std::string& json);
+    static void SendFile(const std::string& json);
     static void SendStderr(const std::string& json);
 
     static std::string host_;
     static int port_;
     static int socket_;
     static bool udpConfigured_;
+    static std::ofstream fileStream_;
+    static bool fileConfigured_;
     static uint32_t channelMask_;
 };
 
