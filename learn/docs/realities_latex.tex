@@ -1,0 +1,319 @@
+% The Tensor Decomposition of the Shielding Perturbation: 723 Mutants
+% Standalone section for \input{} into thesis chapter.
+% Requires: booktabs, siunitx, amsmath
+
+\section{The Tensor Decomposition of the Shielding Perturbation: 723 Mutants}
+\label{sec:tensor-decomposition}
+
+The NMR shielding extractor computes 121 geometric kernels---rank-2
+spherical tensors ($L=2$, five components)---at each atom in a protein,
+decomposing the shielding perturbation from aromatic ring deletion into
+its physical sources.  Before using these kernels for calibration, we
+verify that they reproduce 28 known properties of the shielding
+interaction, drawn from the NMR and physics literature.
+
+All measurements are on WT-ALA mechanical mutants: backbone coordinates
+fixed, aromatic sidechain replaced with alanine.  The DFT shielding
+tensor difference $\Delta\sigma_{T_2}$ is the reference throughout.
+The dataset comprises 110 proteins and 69{,}080 matched atoms.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Distance Dependence}
+\label{ssec:distance}
+
+The multipole expansion determines the radial falloff of each kernel
+family.  A magnetic dipole (ring current) falls off as $r^{-3}$
+\cite{johnson1958}; an electric quadrupole as $r^{-5}$
+\cite{stone2013}.  Log-log regression on 58{,}193 atom--ring pairs
+($r > \SI{2}{\angstrom}$) gives the slopes listed in
+Table~\ref{tab:distance-slopes}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Distance falloff of kernel $T_2$ magnitude.  Expected slopes
+    from multipolar theory; measured slopes from log-log regression.}
+  \label{tab:distance-slopes}
+  \begin{tabular}{llcc}
+    \toprule
+    Kernel & Physical source & Expected & Measured \\
+    \midrule
+    Biot--Savart    & Magnetic dipole (ring current) & $-3$ & $-3.04$ \\
+    Haigh--Mallion  & Surface integral (ring current) & $-3$ & $-3.06$ \\
+    Pi-Quadrupole   & Electric quadrupole             & $-5$ & $-5.05$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Three-significant-figure agreement with multipolar theory.  The
+distance dependence is not fitted---it is encoded in the geometry of
+the kernel computation (Biot--Savart law \cite{johnson1958},
+Stone $T$-tensor formalism \cite{stone2013}).
+See Figure~\ref{fig:distance_falloff}.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Angular Dependence}
+\label{ssec:angular}
+
+The Biot--Savart kernel magnitude depends on the polar angle $\theta$
+relative to the ring normal.  The $(1 - 3\cos^2\theta)$ angular pattern
+of a magnetic dipole \cite{pople1956} predicts axial enhancement, which
+is observed directly (Figure~\ref{fig:angular_peaking}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Biot--Savart $T_2$ magnitude by polar angle bin.}
+  \label{tab:angular-bins}
+  \begin{tabular}{ccc}
+    \toprule
+    Angle range & Mean BS magnitude & Relative \\
+    \midrule
+    \SIrange{0}{17}{\degree}  & 0.0385 & 1.00 \\
+    \SIrange{17}{34}{\degree} & 0.0331 & 0.86 \\
+    \SIrange{34}{52}{\degree} & 0.0237 & 0.62 \\
+    \SIrange{52}{69}{\degree} & 0.0172 & 0.45 \\
+    \SIrange{69}{90}{\degree} & 0.0139 & 0.36 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Monotonic decrease with a $2.8\times$ axial-to-equatorial ratio,
+consistent with $\lvert 1 - 3\cos^2\theta \rvert$ over the
+corresponding angular ranges \cite{case1995}.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Element Dependence}
+\label{ssec:element}
+
+The literature predicts that ring current dominates proton shielding
+\cite{boyd2002} while the electric field gradient dominates heavy-atom
+shielding \cite{sahakyan2013}.  These predictions concern isotropic
+shifts; we test them in the $T_2$ (anisotropic) channel.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Ridge $R^2$ by kernel family and element.  Bold entries mark
+    the dominant mechanism for each element.}
+  \label{tab:element-r2}
+  \begin{tabular}{lrcccc}
+    \toprule
+    Element & $n$ & Ring current & EFG & Bond aniso & All \\
+    \midrule
+    H & 35{,}080 & \textbf{0.909} & 0.770 & 0.139 & 0.935 \\
+    C & 20{,}673 & 0.156 & \textbf{0.431} & 0.041 & 0.546 \\
+    N &  6{,}100 & \textbf{0.325} & 0.100 & 0.070 & 0.434 \\
+    O &  6{,}927 & \textbf{0.317} & 0.196 & 0.055 & 0.387 \\
+    \midrule
+    Pooled & 69{,}080 & 0.213 & 0.318 & 0.027 & 0.385 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The pooled row suggests EFG dominance---a composition artefact.
+Per-element analysis reveals that H atoms respond predominantly to ring
+current ($R^2 = 0.909$) while C atoms respond to the electric field
+gradient ($R^2 = 0.431$).  N and O show multi-mechanism behaviour
+(Section~\ref{ssec:nitrogen}).  The weighted per-element $R^2$ with all
+kernels is 0.718, exceeding the pooled value by 0.333
+(Figure~\ref{fig:element_r2}).
+
+The tensor alignment (cosine similarity between the EFG kernel $T_2$
+and the DFT target $T_2$) confirms the element ordering without any
+fitting: mean $\lvert\cos\rvert = 0.930$ for H, $0.863$ for C, $0.790$
+for N, $0.737$ for O (Figure~\ref{fig:efg_cos_by_element}).  Forward
+selection results are shown in Figure~\ref{fig:forward_selection}.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Nitrogen}
+\label{ssec:nitrogen}
+
+Nitrogen does not fit the ring-current-versus-EFG dichotomy.  No single
+kernel family dominates: the largest single-kernel $R^2$ is 0.080, and
+five mechanisms each contribute 0.015--0.080 in forward selection (EFG,
+pi-quadrupole, Biot--Savart, McConnell bond anisotropy, ring
+susceptibility).
+
+This is consistent with four observations from the literature:
+
+\begin{enumerate}
+  \item ${}^{15}$N CSA is large (${\sim}\SI{166}{ppm}$) and
+    site-variable ($\pm\SI{20}{ppm}$), dominated by backbone angles and
+    hydrogen bonding \cite{yao2010,hall2006}.  In mechanical mutants
+    these are held constant; the residual comes from secondary
+    mechanisms.
+
+  \item ${}^{15}$N shielding is paramagnetic-term-dominated
+    \cite{saito2010}, making it sensitive to multiple perturbation
+    channels simultaneously.
+
+  \item The isotropic ring current effect on ${}^{15}$N is negligible
+    ($<0.6\%$ of variance) \cite{han2011}, but this does not preclude
+    an anisotropic ($T_2$) effect.  Hall \& Fushman \cite{hall2006}
+    noted aromatic residues as ${}^{15}$N CSA outliers in protein~GB3.
+
+  \item MopacMC entering the N forward selection at rank~4 reflects
+    electronic coupling through the peptide bond (partial double-bond
+    character, Wiberg bond order ${\sim}1.3$--$1.5$).
+\end{enumerate}
+
+
+%%% ---------------------------------------------------------------
+\subsection{Model Agreement: Biot--Savart and Haigh--Mallion}
+\label{ssec:bs-hm}
+
+The Biot--Savart \cite{johnson1958} and Haigh--Mallion
+\cite{haighmallion1979} models compute the same physical effect---the
+ring current magnetic field---with different mathematics (wire-loop
+segments versus surface integral).  Case \cite{case1995} found no
+significant difference between them for isotropic shifts.  We extend
+the comparison to the $T_2$ channel.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Biot--Savart versus Haigh--Mallion agreement in the $T_2$
+    channel.}
+  \label{tab:bs-hm}
+  \begin{tabular}{lcc}
+    \toprule
+    Property & Value & Agreement \\
+    \midrule
+    Distance slope (BS / HM) & $-3.04$ / $-3.06$ & identical \\
+    $T_2$ magnitude ratio (per atom) & $1.009 \pm 0.037$ & $1\%$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The $T_2$ angular agreement (cosine similarity) is distance-dependent:
+$\langle\lvert\cos\rvert\rangle = 0.9977$ in the near field
+($r < \SI{5}{\angstrom}$) and $0.9999$ in the far field
+($r > \SI{8}{\angstrom}$).  Both models converge to the magnetic dipole
+limit at long range; the 0.2\% near-field disagreement reflects the
+difference between wire-loop and surface geometry at close range
+(Figure~\ref{fig:bs_hm_ratio}, Figure~\ref{fig:bs_hm_convergence}).
+
+
+%%% ---------------------------------------------------------------
+\subsection{Ring-Type Dependence}
+\label{ssec:ring-type}
+
+Each aromatic ring type is fitted independently with its four
+ring-specific kernels (Biot--Savart, Haigh--Mallion, EFG, susceptibility).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Self-fit $R^2$ by ring type (ring-specific kernels only).}
+  \label{tab:ring-type-r2}
+  \begin{tabular}{lc}
+    \toprule
+    Ring type & $R^2$ \\
+    \midrule
+    TRP (perimeter)  & 0.125 \\
+    TRP (benzene)    & 0.114 \\
+    TYR              & 0.106 \\
+    PHE              & 0.098 \\
+    TRP (pyrrole)    & 0.095 \\
+    HIE (imidazole)  & 0.062 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The PHE/TYR $R^2$ ratio is 0.84, consistent with their similar ring
+current intensities ($I_{\text{PHE}} = 1.46$, $I_{\text{TYR}} = 1.24$
+in the Haigh--Mallion model \cite{case1995}).
+
+HIE is worst: the circular-loop Biot--Savart model fails for the
+asymmetric five-membered ring with two nitrogen positions.  Ring current
+kernels alone are never sufficient ($R^2 = 0.06$--$0.13$); they require
+the EFG and other kernel families.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Mechanical Mutant Controls}
+\label{ssec:controls}
+
+Two negative controls verify that the kernels respond to the aromatic
+ring deletion, not to the unchanged backbone.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Negative control kernels.  Both are consistent with zero
+    response to the mechanical mutation.}
+  \label{tab:controls}
+  \begin{tabular}{llcc}
+    \toprule
+    Test & Kernel & $R^2$ & Expected \\
+    \midrule
+    H-bond unchanged   & HBond total    & 0.002 & ${\approx}0$ \\
+    Solvation minor    & DeltaAPBS EFG  & 0.005 & $\ll$ EFG$_{\text{aro}}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Hydrogen-bond shielding (backbone N--H$\cdots$O=C) does not change in a
+mechanical mutant; the kernel correctly returns zero.  The solvation
+correction (APBS continuum minus vacuum Coulomb) is 2\% of the direct
+aromatic EFG ($R^2 = 0.230$), confirming that the aromatic shielding
+perturbation is a local, through-space effect.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Inter-Kernel Geometry}
+\label{ssec:inter-kernel}
+
+\paragraph{Three effective dimensions.}
+The 91-kernel $T_2$ space has three effective dimensions at 98\%
+variance (eigenspectrum analysis), corresponding to three physical
+source geometries: (i)~the ring current magnetic dipole (Biot--Savart,
+Haigh--Mallion, ring susceptibility); (ii)~the electric field gradient
+(Coulomb EFG, MOPAC EFG); and (iii)~bond magnetic anisotropy
+(McConnell).
+
+\paragraph{BS--EFG angular independence.}
+The mean $\lvert\cos(\text{BS}, \text{EFG})\rvert = 0.684$ across
+58{,}193 atom--ring pairs.  This lies between collinear (1.0) and
+random in five dimensions (0.45): the two kernel families share
+geometric information (both depend on the ring position) but encode
+different angular patterns (magnetic dipole versus electric quadrupole).
+
+\paragraph{BS additivity for fused rings.}
+For tryptophan's fused ring system,
+$T_2(\text{TRP}_5) + T_2(\text{TRP}_6) = T_2(\text{TRP}_9)$ at machine
+precision.  The wire-segment Biot--Savart law is exactly additive for
+non-overlapping current loops.
+
+
+%%% ---------------------------------------------------------------
+\subsection{Limitations}
+\label{ssec:limitations}
+
+\begin{enumerate}
+  \item \textbf{Per-protein ceiling.}  Per-protein ridge $R^2 = 0.81$;
+    global (cross-protein) ridge $R^2 = 0.35$; MLP $R^2 = 0.61$.  The
+    gap represents per-protein structural variation (bulk electrostatic
+    environment, protein shape) that local geometric kernels do not
+    capture.
+
+  \item \textbf{Near-field accuracy.}  The Biot--Savart and
+    Haigh--Mallion models approximate the true $\pi$-electron current
+    distribution.  At $r < \SI{4}{\angstrom}$ the wire-loop and
+    surface-integral models diverge from the quantum-mechanical
+    current density.  Per-ring kernels partially address this, but the
+    functional form is fixed.
+
+  \item \textbf{HIE modelling.}  The worst ring type (self-fit
+    $R^2 = 0.062$).  The symmetric circular-loop approximation fails
+    for the asymmetric five-membered ring.
+
+  \item \textbf{Isotropic gap.}  These kernels describe the $T_2$
+    (anisotropic) shielding perturbation.  The $T_0$ (isotropic shift)
+    requires the Buckingham $A$ coefficient \cite{buckingham1960} and
+    ring current intensity as additional parameters, fitted separately.
+
+  \item \textbf{No structural relaxation.}  Mechanical mutants hold the
+    backbone fixed.  Real mutations cause structural rearrangement that
+    changes the kernel geometry.  The calibrated kernels apply to a
+    fixed structure, not to a mutation experiment.
+\end{enumerate}

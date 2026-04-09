@@ -61,6 +61,19 @@ src/mutation_set/               → training pipeline (config-driven, SDK-based)
 - **WT features only**: ring kernels ARE the delta (ALA has no rings).
 - **Equivariance**: scalar × L=2 = L=2.  T1 used as magnitude only.
 
+## Calibration result (2026-04-10)
+
+The calibration is settled.  Per-element ridge regression on 55 core
+kernels (per-protein normalised) with kernel scale factors and mutation
+type identity as fair categorical scalars.  Weighted R² = 0.818.
+
+The MLP (hidden=64, 261 scalars, gating) gets 0.61 pooled — worse
+than per-element ridge.  The ridge coefficients are the calibrated
+physical constants.  No MLP needed.
+
+The physics scripts are in `src/actual_physics/` (see OVERVIEW.md).
+The validation document is `docs/twenty_eight_realities_2026-04-10.md`.
+
 ## What NOT to do
 
 - Do not use symlinks for data.
@@ -68,33 +81,47 @@ src/mutation_set/               → training pipeline (config-driven, SDK-based)
 - Do not add DSSP/backbone features — mechanical mutants.
 - Do not use global kernel normalization — per-protein is correct.
 - Do not hardcode column indices — use SDK named accessors.
-- Do not treat this as large-scale ML.  91 kernels, ~450K atoms.
+- Do not treat this as large-scale ML.  55 kernels, ~70K atoms.
 - Do not vibe-code with hyperparameters — diagnose before sweeping.
+- **Do not try to improve R².**  0.818 is the answer.
+- **Do not add scalar features.**  Valence, bond order, dipole add zero.
+- **Do not train MLPs.**  Ridge IS the model.  The coefficients are the output.
+- **Do not pool elements.**  The physics is element-dependent.  Always stratify.
 
 ## Files
 
-### Active pipeline (use these)
-- `src/calibration.toml` — single config: paths, features, training, analysis
+### Physics analysis (use these)
+- `src/actual_physics/` — 7 analysis scripts, see OVERVIEW.md
+- `R/twenty_eight_realities.R` — 7 publication figures
+- `docs/twenty_eight_realities_2026-04-10.md` — full validation
+- `docs/realities_latex.tex` — thesis LaTeX section
+- `docs/next_session_2026-04-11.md` — continuation prompt
+
+### Pipeline infrastructure
+- `src/calibration.toml` — single config: paths, features, analysis
 - `src/mutation_set/config.py` — TOML → frozen Config dataclass
 - `src/mutation_set/kernels.py` — KernelLayout registry + assembly
 - `src/mutation_set/scalars.py` — ScalarLayout + named block assembly
 - `src/mutation_set/dataset.py` — CalibrationDataset orchestrator
+- `src/mutation_set/analyze.py` — cold 7-section diagnostic (steal sections 6+7)
+- `extract.py` — batch extraction driver
+
+### MLP pipeline (historical — superseded by per-element ridge)
 - `src/mutation_set/model.py` — ShieldingT2Model (gated mixing + correction)
 - `src/mutation_set/train.py` — training entry point
 - `src/mutation_set/evaluate.py` — R², baselines, per-protein metrics
-- `src/mutation_set/analyze.py` — cold 7-section diagnostic
-- `extract.py` — batch extraction driver
+- `runs/` — training run outputs (header.json, epochs.jsonl, summary.json)
 
 ### Data
 - `calibration/{ID}/` — real prmtop, xyz, nmr.out (723 proteins)
-- `calibration/features/GatedCalibration/` — current extraction with ring_contributions
-- `runs/` — training run outputs (header.json, epochs.jsonl, summary.json)
+- `calibration/features/AzimuthalExtraction/` — current extraction (112/723 done)
+- `calibration/features/GatedCalibration/` — previous full extraction (723 proteins)
 
 ### Reference
-- `JOURNAL.md` — learning progress record
-- `EXPERIMENTS.md` — experiment log with results table
+- `EXPERIMENTS.md` — experiment log with results table (through 2026-04-10)
 - `ARGUMENT.md` — thesis argument for validation approach
-- `CALIBRATION_CHECKLIST.md` — parameter validation plan
+- `docs/element_physics_2026-04-10.md` — per-element decomposition
+- `docs/calibrated_weights_2026-04-10.md` — weight vector analysis
 
 ### Historical (do not use for new code)
 - `bones/pre_sdk/` — old c_equivariant pipeline, protein.py, features.py

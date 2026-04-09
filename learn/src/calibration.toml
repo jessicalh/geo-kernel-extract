@@ -2,7 +2,7 @@
 # Every number in the pipeline traces to this file.
 
 [paths]
-features = "/shared/2026Thesis/nmr-shielding/calibration/features/GatedCalibration"
+features = "/shared/2026Thesis/nmr-shielding/calibration/features/AzimuthalExtraction"
 runs     = "/shared/2026Thesis/nmr-shielding/learn/runs"
 sdk      = "/shared/2026Thesis/nmr-shielding/python"
 
@@ -10,7 +10,7 @@ sdk      = "/shared/2026Thesis/nmr-shielding/python"
 min_matched_atoms = 10
 val_fraction      = 0.2
 seed              = 42
-max_proteins      = 40  # 0 = all available; >0 = partial run (during extraction)
+max_proteins      = 0   # 0 = all available; >0 = partial run (during extraction)
 
 [kernels]
 # Ring-type T2: 4 calculators x 8 ring types = 32 kernels
@@ -35,8 +35,25 @@ efg_calculators = [
 # Gating handles sparsity — far rings have small magnitude and gate to zero.
 # pq = pi-quadrupole (1/r^5, pure T2); hm_H = raw HM surface integral (pure T2)
 # disp_chi = disp_scalar × chi T2 (dispersion-weighted ring susceptibility)
-per_ring_calculators = ["bs", "hm", "chi", "pq", "hm_H", "disp_chi"]
+# Radial basis: rbf_bs_near/mid/far = gaussian(r; r0, sigma) × bs.T2
+# Angular basis: ang_bs_axial/equat = legendre_weight(theta) × bs.T2
+# These partition EXISTING kernel signal by spatial region — L=0 × L=2 = L=2.
+per_ring_calculators = [
+    "bs", "hm", "chi", "pq", "hm_H", "disp_chi",
+    "rbf_bs_near", "rbf_bs_mid", "rbf_bs_far",
+    "ang_bs_axial", "ang_bs_equatorial",
+]
 per_ring_k = 6
+
+# Radial basis function centers and width (Angstroms).
+# Shells placed where kernel signal lives: 0-4A is strong (R²~0.7),
+# 4-8A moderate (R²~0.3), 8-12A marginal (R²~0.04), 12+A noise.
+rbf_centers = [3.0, 6.0, 10.0]     # near / mid / far
+rbf_sigma   = 2.0                   # gaussian width
+
+# Angular basis: axial = atoms above/below ring, equatorial = atoms in plane
+# Boundary at magic angle ~54.7° (where 3cos²θ-1 = 0), theta = atan2(rho,|z|)
+ang_magic_theta = 0.9553            # atan2(sqrt(2), 1) ≈ 54.7°
 
 [scalars]
 top_k_rings       = 6
@@ -51,7 +68,7 @@ scalar_std_floor        = 1e-8   # floor for z-score denominator
 gate_threshold_min_atoms = 100   # minimum nonzero atoms to compute gate median
 
 [training]
-epochs       = 500
+epochs       = 700
 batch_size   = 512
 lr           = 1e-3
 weight_decay = 1e-4
@@ -62,24 +79,19 @@ hidden_mix            = 64
 hidden_corr           = 32
 use_correction        = false
 correction_scale_init = 0.1
-# L2 kernel indices for correction head (from analyze.py 2026-04-08, 91-kernel layout).
-# Selected by: forward selection rank, ablation drop, residual alignment.
-# Re-derive with analyze.py after any kernel layout change.
-correction_l2_kernels = [
-    52,  # MopacEFG_aro    — dominant: R²=0.29 alone, ablation drop 0.080
-    50,  # EFG_aro         — ablation drop 0.012
-    59,  # HM_H_ring0      — ablation drop 0.011, raw surface integral
-    45,  # RingSusc_total   — forward selection #2
-    15,  # HM_HIE          — forward selection #4
-    1,   # BS_TYR          — forward selection #6
-    55,  # BS_ring0         — forward selection #7, per-ring
-    34,  # MC_aromatic_total — forward selection #9
-    46,  # PQ_total         — forward selection #10, 1/r^5 basis
-    54,  # DeltaAPBS_EFG    — electrostatic change from mutation
-]
+# L2 kernel indices for correction head.
+# STALE after kernel layout change (91 → 127 kernels, 2026-04-09).
+# Re-derive with: python -m mutation_set.analyze --config calibration.toml
+# after first successful training run on new extraction.
+correction_l2_kernels = []
 
 [analysis]
 ridge_lambda       = 1e-2
 distance_bands     = [[0, 4], [4, 8], [8, 12], [12, 999]]
 max_forward_steps  = 20
 min_atoms_per_band = 10
+
+[secondary]
+output_dir           = "output/secondary"
+strata               = ["hie_only", "phe_only", "tyr_only", "trp_only", "no_hie", "all"]
+redundancy_threshold = 0.95

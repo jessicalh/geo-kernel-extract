@@ -37,6 +37,7 @@ KNOWN_RUNS = [
     "CalibrationExtractionKeep",
     "GatedCalibration",
     "SubmissionExtraction",
+    "AzimuthalExtraction",
 ]
 
 

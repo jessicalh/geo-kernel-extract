@@ -31,5 +31,17 @@ learn/runs/
 # MOPAC/APBS solver output
 *.mc
 
+# Smoke test output (timestamped runs + blessed baselines are machine-local)
+tests/golden/smoke/
+tests/golden/blessed/
+
+# Build artifacts (CMake fetch)
+_deps/
+CTestTestfile.cmake
+.qt/
+
+# Analysis outputs (regenerable from scripts)
+learn/src/output/
+
 # Stale git backup
 .git-old/

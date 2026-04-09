@@ -42,6 +42,9 @@ class KernelsConfig:
     efg_calculators: list[str]
     per_ring_calculators: list[str]
     per_ring_k: int
+    rbf_centers: list[float] = None
+    rbf_sigma: float = 2.0
+    ang_magic_theta: float = 0.9553
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,14 @@ class AnalysisConfig:
 
 
 @dataclass(frozen=True)
+class SecondaryConfig:
+    output_dir: Path
+    strata: list[str]
+    redundancy_threshold: float
+    ridge_lambda: float
+
+
+@dataclass(frozen=True)
 class Config:
     paths: PathsConfig
     data: DataConfig
@@ -96,6 +107,25 @@ class Config:
     training: TrainingConfig
     model: ModelConfig
     analysis: AnalysisConfig
+    secondary: SecondaryConfig
+
+
+_SECONDARY_DEFAULTS = {
+    "output_dir": "output/secondary",
+    "strata": ["hie_only", "phe_only", "tyr_only", "trp_only", "no_hie", "all"],
+    "redundancy_threshold": 0.95,
+}
+
+
+def _load_secondary(raw_sec: dict, raw_all: dict) -> SecondaryConfig:
+    """Build SecondaryConfig with defaults for missing keys."""
+    merged = {**_SECONDARY_DEFAULTS, **raw_sec}
+    return SecondaryConfig(
+        output_dir=Path(merged["output_dir"]),
+        strata=merged["strata"],
+        redundancy_threshold=merged["redundancy_threshold"],
+        ridge_lambda=raw_all.get("analysis", {}).get("ridge_lambda", 0.01),
+    )
 
 
 def load_config(path: str | Path) -> Config:
@@ -126,4 +156,5 @@ def load_config(path: str | Path) -> Config:
             max_forward_steps=raw["analysis"]["max_forward_steps"],
             min_atoms_per_band=raw["analysis"]["min_atoms_per_band"],
         ),
+        secondary=_load_secondary(raw.get("secondary", {}), raw),
     )

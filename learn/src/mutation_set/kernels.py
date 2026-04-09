@@ -59,12 +59,17 @@ _EFG_SHORT = {
 }
 
 _PER_RING_CALC_SHORT = {
-    "bs":       "BS",
-    "hm":       "HM",
-    "chi":      "Chi",
-    "pq":       "PQ",
-    "hm_H":     "HM_H",
-    "disp_chi": "DispChi",  # computed: disp_scalar × chi.T2
+    "bs":                "BS",
+    "hm":                "HM",
+    "chi":               "Chi",
+    "pq":                "PQ",
+    "hm_H":              "HM_H",
+    "disp_chi":          "DispChi",          # disp_scalar × chi.T2
+    "rbf_bs_near":       "RbfBsNear",        # gaussian(r; near) × bs.T2
+    "rbf_bs_mid":        "RbfBsMid",         # gaussian(r; mid) × bs.T2
+    "rbf_bs_far":        "RbfBsFar",         # gaussian(r; far) × bs.T2
+    "ang_bs_axial":      "AngBsAxial",       # axial weight × bs.T2
+    "ang_bs_equatorial": "AngBsEquat",       # equatorial weight × bs.T2
 }
 
 
@@ -80,6 +85,10 @@ class KernelLayout:
     efg_end: int
     per_ring_k: int            # number of nearest rings
     per_ring_calcs: list[str]  # calculator names for per-ring kernels
+    # Radial/angular basis parameters (None = not configured)
+    rbf_centers: list[float] = None
+    rbf_sigma: float = 2.0
+    ang_magic_theta: float = 0.9553
 
     @staticmethod
     def from_config(cfg: Config) -> KernelLayout:
@@ -131,6 +140,9 @@ class KernelLayout:
             efg_end=efg_end,
             per_ring_k=K,
             per_ring_calcs=per_ring_calcs,
+            rbf_centers=getattr(cfg.kernels, 'rbf_centers', None),
+            rbf_sigma=getattr(cfg.kernels, 'rbf_sigma', 2.0),
+            ang_magic_theta=getattr(cfg.kernels, 'ang_magic_theta', 0.9553),
         )
 
     def index(self, name: str) -> int:
@@ -219,7 +231,24 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
     #   hm  → columns 8-15  (HM per-ring-type)
     #   pq  → columns 24-31 (PQ per-ring-type)
     #   chi, hm_H, disp_chi → no per-type decomposition available, use raw
+    #   rbf_bs_* → radial basis: gaussian(r; r0, sigma) × bs.T2
+    #   ang_bs_* → angular basis: axial/equatorial weight × bs.T2
     _PERRING_CALC_TO_TYPE_BLOCK = {"bs": 0, "hm": 8, "pq": 24}
+
+    # Radial basis function kernels: partition BS signal by distance shell.
+    # gaussian(r; r0, sigma) × bs.T2 — same L=2 direction, distance-localized.
+    _RBF_KERNELS = {}
+    if layout.rbf_centers is not None:
+        _rbf_names = ["rbf_bs_near", "rbf_bs_mid", "rbf_bs_far"]
+        for name, r0 in zip(_rbf_names, layout.rbf_centers):
+            _RBF_KERNELS[name] = ("bs", r0, layout.rbf_sigma)
+
+    # Angular basis kernels: partition BS signal by axial vs equatorial.
+    # Axial = above/below ring (theta < magic angle), equatorial = in plane.
+    _ANG_KERNELS = {}
+    _magic = layout.ang_magic_theta
+    _ANG_KERNELS["ang_bs_axial"] = ("bs", "axial", _magic)
+    _ANG_KERNELS["ang_bs_equatorial"] = ("bs", "equatorial", _magic)
 
     rc = p.ring_contributions
     if rc is not None and rc.n_pairs > 0:
@@ -242,10 +271,29 @@ def assemble_kernels(protein, idx: np.ndarray, layout: KernelLayout
 
                     if calc_name == "disp_chi":
                         # Dispersion-weighted Chi: disp_scalar × chi.T2
-                        # scalar × L=2 = L=2, equivariant by construction.
-                        # Encodes angular position weighted by vertex contact.
                         K[j, kernel_col, :] = (atom_rc.disp_scalar[ri]
                                                * atom_rc.chi.T2[ri])
+                    elif calc_name in _RBF_KERNELS:
+                        # Radial basis: gaussian(r; r0, sigma) × bs.T2
+                        # Partitions the BS signal by distance shell.
+                        base_calc, r0, sigma = _RBF_KERNELS[calc_name]
+                        dist = atom_rc.distance[ri]
+                        weight = np.exp(-0.5 * ((dist - r0) / sigma) ** 2)
+                        base_t2 = getattr(atom_rc, base_calc).T2[ri]
+                        K[j, kernel_col, :] = weight * base_t2
+                    elif calc_name in _ANG_KERNELS:
+                        # Angular basis: smooth axial/equatorial partition.
+                        # axial: cos²(theta * pi/(2*magic)), peaks at theta=0
+                        # equatorial: sin²(...), peaks at theta=pi/2
+                        base_calc, region, magic = _ANG_KERNELS[calc_name]
+                        theta = atom_rc.theta[ri]
+                        t_scaled = np.clip(theta / magic, 0, 1) * (np.pi / 2)
+                        if region == "axial":
+                            weight = np.cos(t_scaled) ** 2
+                        else:
+                            weight = np.sin(t_scaled) ** 2
+                        base_t2 = getattr(atom_rc, base_calc).T2[ri]
+                        K[j, kernel_col, :] = weight * base_t2
                     elif calc_name in _PERRING_CALC_TO_TYPE_BLOCK:
                         # Subtract per-type mean: type_sum / n_rings_of_type
                         ring_t2 = getattr(atom_rc, calc_name).T2[ri]
