@@ -39,6 +39,13 @@ struct RunOptions {
     // Skip DSSP (and therefore HBond).
     bool skip_dssp = false;
 
+    // Skip MOPAC semiempirical (and therefore MopacCoulomb, MopacMcConnell).
+    // For geometry-only fleet runs where MOPAC cost is prohibitive.
+    bool skip_mopac = false;
+
+    // Skip APBS Poisson-Boltzmann.
+    bool skip_apbs = false;
+
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;
 };

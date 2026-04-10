@@ -90,6 +90,7 @@ then run `python -m pytest python/tests/` to verify.
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
 - **TEST_FRAMEWORK.md** — test tiers, what to run when, smoke test design
+- **ENSEMBLE_MODEL.md** — planned EnsembleConformation object model for trajectory analysis
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/

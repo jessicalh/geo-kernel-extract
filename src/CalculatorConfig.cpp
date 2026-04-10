@@ -50,6 +50,7 @@ void CalculatorConfig::InitDefaults() {
     add("ring_current_spatial_cutoff",              15.0, "A", "ring current spatial cutoff");
     add("mcconnell_bond_anisotropy_cutoff",         10.0, "A", "McConnell bond anisotropy cutoff");
     add("mopac_mcconnell_bond_anisotropy_cutoff",   10.0, "A", "MOPAC McConnell bond anisotropy cutoff");
+    add("coulomb_efield_cutoff",                    20.0, "A", "Coulomb E-field spatial cutoff");
     add("hbond_dipolar_max_distance",               50.0, "A", "H-bond dipolar maximum distance");
     add("hbond_counting_radius",                     3.5, "A", "H-bond counting radius");
     add("dispersion_vertex_distance_cutoff",         5.0, "A", "dispersion vertex distance cutoff");

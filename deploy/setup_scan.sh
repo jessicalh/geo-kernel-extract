@@ -8,27 +8,57 @@
 #   - libmopac at ~/micromamba/envs/mm/lib/
 #   - cmake, g++, make, git
 #
-# This script installs missing apt packages, builds reduce from source,
-# clones nmr-shielding, and builds nmr_extract.
+# Ubuntu 22.04 differences from 24.04:
+#   - No libdssp-dev (must build dssp+cifpp from source)
+#   - No libfetk-dev (use libmaloc-dev for APBS link)
 #
 # Usage:
 #   ssh scan1
-#   bash /path/to/setup_scan.sh
+#   bash ~/nmr-shielding/deploy/setup_scan.sh
 #
 # After running, nmr_extract is at ~/nmr-shielding/build/nmr_extract
 #
 
 set -euo pipefail
 
+# Disable broken kitware repo if present
+if [ -f /etc/apt/sources.list.d/kitware.list ]; then
+    sudo mv /etc/apt/sources.list.d/kitware.list /etc/apt/sources.list.d/kitware.list.disabled
+fi
+
 echo "=== Installing apt packages ==="
+export DEBIAN_FRONTEND=noninteractive
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
     libopenbabel-dev \
-    libdssp-dev libcifpp-dev \
-    libapbs-dev libfetk-dev
+    libcifpp-dev \
+    libapbs-dev libmaloc-dev \
+    libboost-dev
 
-echo "=== Building reduce from source ==="
+# ============================================================================
+# Build dssp from source (no libdssp-dev on 22.04)
+# ============================================================================
+echo "=== Building dssp from source ==="
 mkdir -p ~/builds
+if [ ! -f /usr/local/lib/libdssp.a ] && [ ! -f /usr/local/lib/libdssp.so ]; then
+    cd ~/builds
+    if [ ! -d dssp-src ]; then
+        git clone https://github.com/PDB-REDO/dssp.git dssp-src
+    fi
+    cd dssp-src
+    mkdir -p build && cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local 2>&1 | tail -5
+    make -j$(nproc) 2>&1 | tail -5
+    sudo make install 2>&1 | tail -3
+    echo "dssp installed"
+else
+    echo "dssp already installed"
+fi
+
+# ============================================================================
+# Build reduce from source
+# ============================================================================
+echo "=== Building reduce from source ==="
 if [ ! -f ~/builds/reduce-src/build/reduce_src/libreducelib.a ]; then
     cd ~/builds
     if [ ! -d reduce-src ]; then
@@ -43,16 +73,11 @@ else
     echo "reduce already built"
 fi
 
-echo "=== Cloning nmr-shielding ==="
-cd ~
-if [ ! -d nmr-shielding ]; then
-    git clone /shared/2026Thesis/nmr-shielding nmr-shielding 2>/dev/null \
-        || git clone git@github.com:USER/nmr-shielding.git nmr-shielding
-fi
-cd nmr-shielding
-git pull --ff-only 2>/dev/null || true
-
+# ============================================================================
+# Configure and build nmr_extract
+# ============================================================================
 echo "=== Configuring CMake ==="
+cd ~/nmr-shielding
 mkdir -p build && cd build
 
 # Paths for this machine
@@ -90,8 +115,8 @@ cmake .. \
     -DREDUCE_TOOLCLASSES="$REDUCE_TOOLCLASSES" \
     2>&1 | tail -20
 
-echo "=== Building nmr_extract ==="
-make -j$(nproc) nmr_extract 2>&1 | tail -10
+echo "=== Building nmr_extract + fes_fleet_smoke_tests ==="
+make -j$(nproc) nmr_extract fes_fleet_smoke_tests 2>&1 | tail -10
 
 echo ""
 echo "=== Done ==="
@@ -99,4 +124,4 @@ echo "Binary: $(pwd)/nmr_extract"
 echo ""
 echo "Test with:"
 echo "  LD_LIBRARY_PATH=$HOME/micromamba/envs/mm/lib:/opt/gromacs/2026.0/lib \\"
-echo "    ./nmr_extract --help"
+echo "    ./fes_fleet_smoke_tests"

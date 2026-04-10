@@ -28,6 +28,7 @@ trp_indole_perimeter_jb_lobe_offset = 0.60
 ring_current_spatial_cutoff = 15.0
 mcconnell_bond_anisotropy_cutoff = 10.0
 mopac_mcconnell_bond_anisotropy_cutoff = 10.0
+coulomb_efield_cutoff = 20.0
 hbond_dipolar_max_distance = 50.0
 hbond_counting_radius = 3.5
 dispersion_vertex_distance_cutoff = 5.0

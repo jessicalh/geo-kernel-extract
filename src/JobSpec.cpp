@@ -59,6 +59,8 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     // Common optional flags
     spec.output_dir  = GetArg(argc, argv, "--output");
     spec.config_path = GetArg(argc, argv, "--config");
+    spec.skip_mopac  = HasFlag(argc, argv, "--no-mopac");
+    spec.skip_apbs   = HasFlag(argc, argv, "--no-apbs");
 
     // ---- Mode dispatch ----
 
@@ -304,6 +306,8 @@ void PrintJobSpecUsage(const char* prog) {
         "Common options:\n"
         "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
         "  --config FILE    TOML file with calculator parameter overrides\n"
+        "  --no-mopac       Skip MOPAC semiempirical (and MopacCoulomb, MopacMcConnell)\n"
+        "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
         "  --help, -h       Show this message\n",
         prog, prog, prog, prog, prog);
 }

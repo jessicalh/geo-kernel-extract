@@ -105,7 +105,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     }
 
     // ------------------------------------------------------------------
-    // Main N^2 Coulomb sum
+    // Coulomb sum with spatial cutoff
     // ------------------------------------------------------------------
 
     // Filter set: SelfSourceFilter (field undefined at source itself).
@@ -115,6 +115,9 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     filters.Add(std::make_unique<SelfSourceFilter>());
 
     GeometryChoiceBuilder choices(conf);
+
+    const auto& spatial = conf.Result<SpatialIndexResult>();
+    const double coulomb_cutoff = CalculatorConfig::Get("coulomb_efield_cutoff");
 
     int aromatic_source_count = 0;
     for (size_t j = 0; j < n_atoms; ++j)
@@ -135,7 +138,11 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         int n_sidechain_aromatic_sources = 0;
 
-        for (size_t j = 0; j < n_atoms; ++j) {
+        auto neighbours = spatial.AtomsWithinRadius(pos_i, coulomb_cutoff);
+        int sources_beyond_cutoff = static_cast<int>(n_atoms) - 1
+                                  - static_cast<int>(neighbours.size());
+
+        for (size_t j : neighbours) {
             // Self-exclusion via filter framework (not inline check)
             KernelEvaluationContext ctx;
             ctx.atom_index = i;
@@ -235,6 +242,18 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             E_backbone  *= scale;
             E_sidechain *= scale;
             E_aromatic  *= scale;
+        }
+
+        // ---- GeometryChoice: cutoff summary ----
+        if (sources_beyond_cutoff > 0) {
+            int sources_within = static_cast<int>(neighbours.size());
+            choices.Record(CalculatorId::Coulomb, i, "coulomb cutoff",
+                [&conf, i, sources_within, sources_beyond_cutoff, coulomb_cutoff](GeometryChoice& gc) {
+                    AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Included);
+                    AddNumber(gc, "sources_within_cutoff", static_cast<double>(sources_within), "count");
+                    AddNumber(gc, "sources_beyond_cutoff", static_cast<double>(sources_beyond_cutoff), "count");
+                    AddNumber(gc, "cutoff_distance", coulomb_cutoff, "A");
+                });
         }
 
         // ------------------------------------------------------------------

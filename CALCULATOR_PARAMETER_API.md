@@ -499,6 +499,13 @@ struct CoulombParams {
     // over/underestimate the effective E-field, this global scale
     // corrects for it. Default: 1.0
     double charge_scale;
+
+    // Spatial cutoff (Angstroms). Default: 20.0
+    // E ~ 1/r^2, EFG ~ 1/r^3. At 20A with 0.5e charge, E = 0.018 V/A.
+    // Uses SpatialIndexResult::AtomsWithinRadius for the inner loop
+    // instead of the N^2 all-pairs sum. Set to 999 for full sum.
+    // TOML key: coulomb_efield_cutoff
+    double efield_cutoff;  // default: 20.0
 };
 ```
 

@@ -10,7 +10,21 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ============================================================================
 
 find_package(Eigen3 REQUIRED)
-find_package(dssp REQUIRED)  # brings cifpp::cifpp with mm module
+find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
+if(NOT dssp_FOUND)
+    # Manual fallback for machines without dssp cmake config (Ubuntu 22.04).
+    # Requires libdssp.a + dssp.hpp installed to /usr/local, cifpp from apt.
+    find_library(DSSP_LIB dssp PATHS /usr/local/lib REQUIRED)
+    find_path(DSSP_INCLUDE dssp.hpp PATHS /usr/local/include REQUIRED)
+    find_package(cifpp REQUIRED)
+    add_library(dssp::dssp STATIC IMPORTED)
+    set_target_properties(dssp::dssp PROPERTIES
+        IMPORTED_LOCATION "${DSSP_LIB}"
+        INTERFACE_INCLUDE_DIRECTORIES "${DSSP_INCLUDE}"
+        INTERFACE_LINK_LIBRARIES "cifpp::cifpp"
+    )
+    message(STATUS "dssp: manual fallback — ${DSSP_LIB}")
+endif()
 
 # OpenBabel3 for bond perception and hybridisation
 # Installed in miniforge3. The cmake config is there but does not
@@ -97,9 +111,18 @@ target_include_directories(apbs_bridge PRIVATE
     /usr/include/fetk
     /usr/include/maloc
 )
-target_link_libraries(apbs_bridge PRIVATE
-    apbs_routines apbs_mg apbs_generic apbs_pmgc mc punc maloc
-)
+# FETK libs (mc, punc) are separate on Ubuntu 24.04 but bundled
+# inside libapbs on 22.04.  Link them only if found.
+find_library(FETK_MC mc)
+find_library(FETK_PUNC punc)
+set(APBS_LIBS apbs_routines apbs_mg apbs_generic apbs_pmgc maloc)
+if(FETK_MC)
+    list(APPEND APBS_LIBS ${FETK_MC})
+endif()
+if(FETK_PUNC)
+    list(APPEND APBS_LIBS ${FETK_PUNC})
+endif()
+target_link_libraries(apbs_bridge PRIVATE ${APBS_LIBS})
 
 # ============================================================================
 # Main library
@@ -173,7 +196,7 @@ target_include_directories(nmr_shielding PUBLIC
     ${GROMACS_SRC}/../api/legacy/include
 )
 
-target_compile_options(nmr_shielding PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(nmr_shielding PRIVATE -Wall -Wextra -Wpedantic -march=native -flto)
 target_compile_definitions(nmr_shielding PUBLIC
     NMR_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
     HAS_OPENBABEL=1

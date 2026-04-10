@@ -119,6 +119,33 @@ should not say how that might look.
 
 ---
 
+## Geometry-only mode (--no-mopac --no-apbs)
+
+For large ensembles (e.g. 5000 MD frames at 4000 atoms),
+MOPAC (~10 min/frame) and APBS (~15-30 s/frame) dominate wall
+time. The `--no-mopac` and `--no-apbs` flags skip these external
+solvers while retaining all purely geometric calculators.
+
+**What runs:** Geometry, SpatialIndex, Enrichment, DSSP,
+BiotSavart, HaighMallion, McConnell, RingSusceptibility,
+PiQuadrupole, Dispersion, Coulomb (topology charges), HBond.
+8 calculators, sub-second per frame.
+
+**What is skipped:** MopacResult, MopacCoulombResult,
+MopacMcConnellResult, ApbsFieldResult. The Python SDK handles
+absent MOPAC/APBS arrays — those groups are `None` on the
+Protein dataclass.
+
+**Typical invocation (fleet):**
+
+    nmr_extract --fleet --tpr topology.tpr --poses /path/to/poses \
+                --no-mopac --no-apbs --output /path/to/output
+
+Both flags are available for all modes (PDB, ORCA, mutant, fleet)
+and in both the CLI and UI.
+
+---
+
 ## Corollaries
 
 1. At least one protonation option and charge assignment mechanism

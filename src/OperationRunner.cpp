@@ -90,7 +90,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     if (conf.HasResult<ChargeAssignmentResult>()) {
         // MOPAC: PM7+MOZYME semiempirical charges + bond orders
-        {
+        if (!opts.skip_mopac) {
             auto mopac = MopacResult::Compute(conf, opts.net_charge);
             if (mopac) {
                 Attach(conf, std::move(mopac), "MopacResult", out);
@@ -102,12 +102,14 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         }
 
         // APBS: solvated Poisson-Boltzmann E-field
-        auto apbs = ApbsFieldResult::Compute(conf);
-        if (apbs) {
-            Attach(conf, std::move(apbs), "ApbsFieldResult", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "APBS failed — solvated fields unavailable");
+        if (!opts.skip_apbs) {
+            auto apbs = ApbsFieldResult::Compute(conf);
+            if (apbs) {
+                Attach(conf, std::move(apbs), "ApbsFieldResult", out);
+            } else {
+                OperationLog::Error("OperationRunner",
+                    "APBS failed — solvated fields unavailable");
+            }
         }
     }
 

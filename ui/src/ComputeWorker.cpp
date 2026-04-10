@@ -133,6 +133,8 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         opts.charge_source = buildResult.charges.get();
         opts.net_charge = buildResult.net_charge;
     }
+    opts.skip_mopac = spec.skip_mopac;
+    opts.skip_apbs  = spec.skip_apbs;
 
     if (spec.mode == JobMode::Mutant) {
         // Mutant: run both WT and ALA, compute delta
@@ -146,6 +148,8 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         RunOptions ala_opts;
         ala_opts.charge_source = alaBuild.charges.get();
         ala_opts.net_charge = alaBuild.net_charge;
+        ala_opts.skip_mopac = spec.skip_mopac;
+        ala_opts.skip_apbs  = spec.skip_apbs;
         if (!spec.ala_files.nmr_out_path.empty())
             ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 

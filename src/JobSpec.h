@@ -53,6 +53,8 @@ struct JobSpec {
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)
     std::string config_path;   // TOML calculator parameter overrides
+    bool skip_mopac = false;   // --no-mopac: skip PM7+MOZYME (and derived calcs)
+    bool skip_apbs  = false;   // --no-apbs:  skip Poisson-Boltzmann
 
     // -- Diagnostics --
     std::vector<std::string> warnings;   // non-fatal (e.g., "NMR .out not found")

@@ -137,8 +137,12 @@ calls them directly. OperationRunner handles them via RunOptions.
 | reduce | During BuildFromPdb (protonation) | automatic |
 | OpenBabel | During BuildFromPdb (bond detection) | automatic |
 | mkdssp | DsspResult (secondary structure) | skip_dssp=false (default) |
-| xtb | XtbChargeResult (semiempirical) | xtb_max_atoms=1000 (size gate) |
-| APBS | ApbsFieldResult (solvated E-field) | automatic when charges present |
+| MOPAC | MopacResult (PM7+MOZYME charges, bond orders) | skip_mopac=false (default) |
+| APBS | ApbsFieldResult (solvated E-field) | skip_apbs=false (default) |
+
+For large ensemble runs (5000+ frames), use `--no-mopac --no-apbs`
+to skip the expensive external solvers. All geometric calculators
+still run. See spec/USE_CASES.md "Geometry-only mode".
 
 All are installed. If a tool fails, OperationRunner logs the error
 and continues — calculators that don't need it still run.
