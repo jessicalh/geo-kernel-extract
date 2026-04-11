@@ -1,6 +1,13 @@
 # Ensemble Object Model
 
-**Status:** Planned. Design established 2026-04-10.
+**Status:** FUTURE DESIGN REFERENCE.  Do not implement.
+Implement all calculators first (AIMNet2Result, SasaResult,
+ChiAngleResult, graph exports).  The ensemble framework is a
+separate project that comes after calculators are working and
+validated.  See `learn/docs/next_session_2026-04-12.md` for
+current scope.
+
+Design established 2026-04-10.
 
 ---
 
