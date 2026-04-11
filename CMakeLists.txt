@@ -99,6 +99,29 @@ add_library(extern_headers INTERFACE)
 target_include_directories(extern_headers INTERFACE ${CMAKE_SOURCE_DIR}/extern)
 
 # ============================================================================
+# xdrfile — XTC trajectory I/O (ported from fes-sampler, GROMACS XDR format)
+# ============================================================================
+
+add_library(xdrfile STATIC
+    ${CMAKE_SOURCE_DIR}/extern/xdrfile/xdrfile.c
+    ${CMAKE_SOURCE_DIR}/extern/xdrfile/xdrfile_xtc.c
+)
+target_include_directories(xdrfile PUBLIC ${CMAKE_SOURCE_DIR}/extern/xdrfile)
+
+# ============================================================================
+# libtorch (CUDA) — AIMNet2 neural network charge calculator
+# ============================================================================
+
+set(CMAKE_PREFIX_PATH
+    "/home/jessica/.local/lib/python3.12/site-packages/torch/share/cmake"
+    ${CMAKE_PREFIX_PATH})
+find_package(Torch REQUIRED)
+message(STATUS "Torch: ${TORCH_LIBRARIES}")
+# libtorch headers use some constructs that trigger these warnings
+# Suppress warnings from libtorch headers
+set(TORCH_CXX_FLAGS -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations)
+
+# ============================================================================
 # APBS C bridge — compiled as C, no C++, includes FETK headers
 # ============================================================================
 
@@ -176,6 +199,7 @@ add_library(nmr_shielding
     src/ReduceProtonation.cpp
     src/CalculatorConfig.cpp
     src/JobSpec.cpp
+    src/AIMNet2Result.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -194,9 +218,10 @@ target_include_directories(nmr_shielding PUBLIC
     ${GROMACS_SRC}/gromacs/math/include
     ${GROMACS_BUILD}/api/legacy/include
     ${GROMACS_SRC}/../api/legacy/include
+    ${TORCH_INCLUDE_DIRS}
 )
 
-target_compile_options(nmr_shielding PRIVATE -Wall -Wextra -Wpedantic -march=native -flto)
+target_compile_options(nmr_shielding PRIVATE -Wall -Wextra -Wpedantic -march=native -flto ${TORCH_CXX_FLAGS})
 target_compile_definitions(nmr_shielding PUBLIC
     NMR_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
     HAS_OPENBABEL=1
@@ -222,6 +247,8 @@ target_link_libraries(nmr_shielding PUBLIC
     ${MOPAC_LIB}
     apbs_bridge
     extern_headers
+    xdrfile
+    ${TORCH_LIBRARIES}
 )
 
 # ============================================================================

@@ -272,6 +272,20 @@ public:
     double confidence = 0.0;
     HeuristicTier tier = HeuristicTier::SILENT;
 
+    // === AIMNet2 neural network results (AIMNet2Result) ===
+    // Hirshfeld charge from AIMNet2 wB97M model (elementary charges)
+    double aimnet2_charge = 0.0;
+    // Learned electronic structure embedding (256 dims, geometry-dependent)
+    std::array<double, 256> aimnet2_aim = {};
+    // Coulomb EFG from AIMNet2 charges — same kernel as CoulombResult
+    Mat3 aimnet2_EFG_total = Mat3::Zero();
+    SphericalTensor aimnet2_EFG_total_spherical;
+    Mat3 aimnet2_EFG_backbone = Mat3::Zero();
+    SphericalTensor aimnet2_EFG_backbone_spherical;
+    Mat3 aimnet2_EFG_aromatic = Mat3::Zero();
+    SphericalTensor aimnet2_EFG_aromatic_spherical;
+    SphericalTensor aimnet2_shielding_contribution;
+
     // === DemoResult fields (Pass 0) ===
     double demo_nearest_ring_distance = 0.0;
     Vec3 demo_nearest_ring_direction = Vec3::Zero();

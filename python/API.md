@@ -110,6 +110,14 @@ p.delta                 DeltaGroup | None
   .scalars              DeltaScalars (N, 6)
   .apbs                 DeltaAPBS (N, 12) | None
   .ring_proximity       DeltaRingProximity (N, R*6)
+
+p.aimnet2               AIMNet2Group | None
+  .charges              AIMNet2Charges (N,) — Hirshfeld charges
+  .aim                  AIMNet2AimEmbedding (N, 256) — electronic structure embedding
+  .efg                  EFGTensor (N, 9) — Coulomb EFG from AIMNet2 charges
+  .efg_aromatic         EFGTensor (N, 9) — aromatic decomposition
+  .efg_backbone         EFGTensor (N, 9) — backbone decomposition
+  .charge_sensitivity   AIMNet2ChargeSensitivity (N,) — intrinsic polarisability proxy
 ```
 
 ## Tensor types

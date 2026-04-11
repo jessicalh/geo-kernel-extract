@@ -33,6 +33,9 @@ from ._tensors import (
     DeltaScalars,
     DeltaAPBS,
     DeltaRingProximity,
+    AIMNet2Charges,
+    AIMNet2AimEmbedding,
+    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG
@@ -132,6 +135,16 @@ class DeltaGroup:
     ring_proximity: DeltaRingProximity
 
 
+@dataclass(frozen=True)
+class AIMNet2Group:
+    charges: AIMNet2Charges
+    aim: AIMNet2AimEmbedding
+    efg: EFGTensor
+    efg_aromatic: EFGTensor
+    efg_backbone: EFGTensor
+    charge_sensitivity: AIMNet2ChargeSensitivity
+
+
 # ── Top-level protein container ─────────────────────────────────────
 
 
@@ -173,6 +186,7 @@ class Protein:
     apbs: Optional[APBSGroup] = None
     orca: Optional[OrcaGroup] = None
     delta: Optional[DeltaGroup] = None
+    aimnet2: Optional[AIMNet2Group] = None
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -314,6 +328,18 @@ def load(path: str | Path) -> Protein:
             ring_proximity=get("delta_ring_proximity"),
         )
 
+    # AIMNet2 (optional)
+    aimnet2 = None
+    if "aimnet2_charges" in available:
+        aimnet2 = AIMNet2Group(
+            charges=get("aimnet2_charges"),
+            aim=get("aimnet2_aim"),
+            efg=get("aimnet2_efg"),
+            efg_aromatic=get("aimnet2_efg_aromatic"),
+            efg_backbone=get("aimnet2_efg_backbone"),
+            charge_sensitivity=get("aimnet2_charge_sensitivity"),
+        )
+
     return Protein(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -336,4 +362,5 @@ def load(path: str | Path) -> Protein:
         apbs=apbs,
         orca=orca,
         delta=delta,
+        aimnet2=aimnet2,
     )

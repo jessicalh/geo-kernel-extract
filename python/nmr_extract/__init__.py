@@ -24,6 +24,8 @@ from ._tensors import (
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
+from ._tensors import AIMNet2Charges, AIMNet2AimEmbedding, AIMNet2ChargeSensitivity
+from ._protein import AIMNet2Group
 
 __all__ = [
     "load",
@@ -42,4 +44,8 @@ __all__ = [
     "RingGeometry",
     "CATALOG",
     "ArraySpec",
+    "AIMNet2Charges",
+    "AIMNet2AimEmbedding",
+    "AIMNet2ChargeSensitivity",
+    "AIMNet2Group",
 ]

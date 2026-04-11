@@ -664,3 +664,74 @@ class DeltaRingProximity:
 
     def __repr__(self) -> str:
         return f"DeltaRingProximity(shape={self._data.shape}, n_rings={self._n_rings})"
+
+
+# ── AIMNet2 types ──────────────────────────────────────────────────────
+
+
+class AIMNet2Charges:
+    """(N,) per-atom Hirshfeld charges from AIMNet2 wB97M model."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def charges(self) -> np.ndarray:
+        return self._data
+
+    def __repr__(self) -> str:
+        return f"AIMNet2Charges(n={len(self._data)})"
+
+
+class AIMNet2AimEmbedding:
+    """(N, 256) learned electronic structure embedding per atom.
+
+    Geometry-dependent: changes per frame.  Encodes hybridisation,
+    polarisability, conjugation, charge transfer.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim == 2 and data.shape[-1] != 256:
+            raise ValueError(f"AIMNet2AimEmbedding: expected 256 dims, got {data.shape[-1]}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def __repr__(self) -> str:
+        return f"AIMNet2AimEmbedding(shape={self._data.shape})"
+
+
+class AIMNet2ChargeSensitivity:
+    """(N,) per-atom intrinsic polarisability proxy.
+
+    Per-atom charge variance under 0.1A bulk perturbations.  Computed
+    once on first AIMNet2 use, then permanent.  112x variation across
+    carbon atoms.  The interaction term (sensitivity x kernel T2) adds
+    +0.08 R^2 for carbon.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def sensitivity(self) -> np.ndarray:
+        return self._data
+
+    def __repr__(self) -> str:
+        return f"AIMNet2ChargeSensitivity(n={len(self._data)})"

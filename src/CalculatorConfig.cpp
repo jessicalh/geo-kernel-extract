@@ -72,6 +72,14 @@ void CalculatorConfig::InitDefaults() {
     add("hbond_sequential_exclusion_residues",    2.0, "residues", "H-bond sequence exclusion");
     add("near_field_exclusion_ratio",             0.5, "",         "near-field exclusion ratio");
 
+    // AIMNet2 neural network charge calculator
+    add("aimnet2_cutoff_lr",                       15.0, "A",    "AIMNet2 long-range DSF Coulomb cutoff");
+    add("aimnet2_max_nb",                         128.0, "",     "AIMNet2 max short-range neighbours");
+    add("aimnet2_max_nb_lr",                     4096.0, "",     "AIMNet2 max long-range neighbours");
+    add("aimnet2_coulomb_efg_cutoff",              20.0, "A",    "AIMNet2 Coulomb EFG cutoff");
+    add("aimnet2_sensitivity_n_perturbations",     10.0, "",     "charge sensitivity perturbation count");
+    add("aimnet2_sensitivity_displacement",         0.1, "A",    "charge sensitivity displacement magnitude");
+
     // Numerical noise floors — below these the value is treated as zero
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");
     add("coulomb_charge_noise_floor",          1e-15, "",    "Coulomb charge noise floor");

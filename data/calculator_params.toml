@@ -50,6 +50,19 @@ efield_magnitude_sanity_clamp = 100.0
 hbond_sequential_exclusion_residues = 2
 near_field_exclusion_ratio = 0.5
 
+# AIMNet2 neural network charge calculator
+# Short-range cutoff read from .jpt model attribute (not overridable here).
+# Long-range DSF Coulomb cutoff (Angstroms) — inf in model default, we use DSF.
+aimnet2_cutoff_lr = 15.0
+# Maximum neighbours per atom in short-range and long-range neighbour matrices.
+aimnet2_max_nb = 128
+aimnet2_max_nb_lr = 4096
+# Coulomb EFG cutoff for AIMNet2 charges (Angstroms)
+aimnet2_coulomb_efg_cutoff = 20.0
+# Charge sensitivity: number of bulk perturbations and displacement magnitude
+aimnet2_sensitivity_n_perturbations = 10
+aimnet2_sensitivity_displacement = 0.1
+
 # Numerical noise floors — below these the value is treated as zero
 near_zero_vector_norm_threshold = 1e-10
 coulomb_charge_noise_floor = 1e-15

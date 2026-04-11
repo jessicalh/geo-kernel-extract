@@ -33,6 +33,9 @@ from ._tensors import (
     DeltaScalars,
     DeltaAPBS,
     DeltaRingProximity,
+    AIMNet2Charges,
+    AIMNet2AimEmbedding,
+    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 
@@ -134,5 +137,13 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info"),
     ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta E + EFG"),
     ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)"),
+
+    # ── AIMNet2 (AIMNet2Result.cpp) ─────────────────────────────
+    ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, False, "AIMNet2 Hirshfeld charges"),
+    ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  False, "AIMNet2 256-dim electronic embedding"),
+    ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG total"),
+    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG aromatic"),
+    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG backbone"),
+    ArraySpec("aimnet2_charge_sensitivity",  "aimnet2", AIMNet2ChargeSensitivity,  None, False, "AIMNet2 intrinsic polarisability proxy"),
 ]}
 # fmt: on

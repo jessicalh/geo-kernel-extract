@@ -28,6 +28,12 @@ public:
     // SIZE_MAX when not hydrogen (or when parent not yet assigned).
     size_t parent_atom_index = SIZE_MAX;
 
+    // AIMNet2 charge sensitivity — intrinsic polarisability proxy.
+    // Per-atom charge variance under 0.1A bulk perturbations.
+    // Computed once on first AIMNet2Result::Compute, then permanent.
+    // -1.0 means not yet computed.
+    double aimnet2_charge_sensitivity = -1.0;
+
     // Element properties -- dispatch to free functions in Types.h.
     // No virtual dispatch, no subclass override.
     double CovalentRadius() const { return CovalentRadiusForElement(element); }

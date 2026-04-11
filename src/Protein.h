@@ -40,6 +40,7 @@ public:
 
     size_t AtomCount() const { return atoms_.size(); }
     const Atom& AtomAt(size_t i) const { return *atoms_[i]; }
+    Atom& MutableAtomAt(size_t i) { return *atoms_[i]; }
     const std::vector<std::unique_ptr<Atom>>& Atoms() const { return atoms_; }
     size_t AddAtom(std::unique_ptr<Atom> atom);
 
