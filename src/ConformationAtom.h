@@ -20,6 +20,11 @@
 
 namespace nmr {
 
+// AIMNet2 aim embedding dimensionality.
+// Defined here (not AIMNet2Result.h) because ConformationAtom needs it
+// for the array extent, and ConformationAtom.h must not include torch headers.
+static constexpr size_t AIMNET2_AIM_DIMS = 256;
+
 class ProteinConformation;
 
 // Per-atom, per-ring structured result (placeholder for future ring calculators)
@@ -276,7 +281,7 @@ public:
     // Hirshfeld charge from AIMNet2 wB97M model (elementary charges)
     double aimnet2_charge = 0.0;
     // Learned electronic structure embedding (256 dims, geometry-dependent)
-    std::array<double, 256> aimnet2_aim = {};
+    std::array<double, AIMNET2_AIM_DIMS> aimnet2_aim = {};
     // Coulomb EFG from AIMNet2 charges — same kernel as CoulombResult
     Mat3 aimnet2_EFG_total = Mat3::Zero();
     SphericalTensor aimnet2_EFG_total_spherical;

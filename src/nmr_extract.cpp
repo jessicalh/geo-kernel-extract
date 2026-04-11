@@ -130,6 +130,7 @@ static int RunOrca(const JobSpec& spec) {
     opts.net_charge = build.net_charge;
     opts.skip_mopac = spec.skip_mopac;
     opts.skip_apbs  = spec.skip_apbs;
+    opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
 
@@ -171,6 +172,7 @@ static int RunMutant(const JobSpec& spec) {
     wt_opts.net_charge = wt_build.net_charge;
     wt_opts.skip_mopac = spec.skip_mopac;
     wt_opts.skip_apbs  = spec.skip_apbs;
+    wt_opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
 
@@ -179,6 +181,7 @@ static int RunMutant(const JobSpec& spec) {
     ala_opts.net_charge = ala_build.net_charge;
     ala_opts.skip_mopac = spec.skip_mopac;
     ala_opts.skip_apbs  = spec.skip_apbs;
+    ala_opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 

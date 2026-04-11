@@ -234,6 +234,14 @@ bool ValidateJobSpec(JobSpec& spec) {
             "config TOML: " + spec.config_path + " (ok)");
     }
 
+    // AIMNet2 model — optional, but if specified must exist
+    if (!spec.aimnet2_model_path.empty()) {
+        if (!RequireFile(spec, spec.aimnet2_model_path,
+                         "AIMNet2 .jpt model")) return false;
+        OperationLog::Info(LogFileIO, "JobSpec",
+            "AIMNet2 model: " + spec.aimnet2_model_path + " (ok)");
+    }
+
     // Output directory — create if needed (non-fatal if empty = viewer mode)
     if (!spec.output_dir.empty()) {
         OperationLog::Info(LogFileIO, "JobSpec",

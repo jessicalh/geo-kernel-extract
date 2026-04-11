@@ -2,7 +2,7 @@
 //
 // AIMNet2Result: AIMNet2 neural network charge calculator via libtorch.
 //
-// Produces per-atom Hirshfeld charges, 256-dim aim embedding, and
+// Produces per-atom Hirshfeld charges, aim embedding, and
 // Coulomb EFG tensor from AIMNet2 charges. Decomposes EFG by source
 // (backbone, aromatic) using the same kernel as CoulombResult.
 //
@@ -10,11 +10,17 @@
 // The .jpt model is loaded once and shared across all conformations.
 //
 // charge_sensitivity: computed on first Compute call, stored on Atom
-// (Protein level, permanent). 10 bulk 0.1A perturbations, per-atom
+// (Protein level, permanent). Bulk perturbations, per-atom
 // charge variance. An intrinsic property of the atom's chemical
 // identity — 112x variation across carbon atoms.
 //
 // CUDA mandatory. No CPU fallback.
+//
+// FAILURE POLICY: if AIMNet2 is requested and anything goes wrong
+// (CUDA unavailable, model corrupt, aim embedding missing, unknown
+// elements), Compute returns nullptr and OperationRunner logs an
+// error. Silent degradation is NOT acceptable — a 4-week fleet
+// run with silently missing features means no thesis.
 //
 
 #include "ConformationResult.h"
@@ -32,6 +38,10 @@ namespace nmr {
 class ProteinConformation;
 class Protein;
 
+// AIMNET2_AIM_DIMS is defined in ConformationAtom.h (the canonical location,
+// because the array extent depends on it and ConformationAtom.h must not
+// include torch headers).
+
 // Loaded AIMNet2 model — created once, shared across all conformations.
 // Holds the TorchScript module on GPU and the model's short-range cutoff.
 struct AIMNet2Model {
@@ -39,11 +49,13 @@ struct AIMNet2Model {
     double cutoff = 5.0;        // short-range, read from model attribute
     double cutoff_lr = 15.0;    // long-range DSF Coulomb, from TOML
     int max_nb = 128;           // max short-range neighbours per atom
-    int max_nb_lr = 512;        // max long-range neighbours per atom
+    int max_nb_lr = 4096;       // max long-range neighbours per atom
     torch::Device device = torch::kCUDA;
 
     // Load model from .jpt file. Reads cutoff from model attribute.
     // cutoff_lr, max_nb, max_nb_lr from CalculatorConfig (TOML).
+    // Returns nullptr on failure (CUDA unavailable, file not found, etc.)
+    // with a clear error logged.
     static std::unique_ptr<AIMNet2Model> Load(const std::string& jpt_path);
 };
 
@@ -55,6 +67,7 @@ public:
 
     // Factory: compute AIMNet2 charges, aim embedding, and Coulomb EFG.
     // model is the shared loaded model (created once at startup).
+    // Returns nullptr on any failure — never silently degrades.
     static std::unique_ptr<AIMNet2Result> Compute(
         ProteinConformation& conf,
         AIMNet2Model& model);
