@@ -55,6 +55,7 @@ struct JobSpec {
     std::string config_path;   // TOML calculator parameter overrides
     bool skip_mopac = false;   // --no-mopac: skip PM7+MOZYME (and derived calcs)
     bool skip_apbs  = false;   // --no-apbs:  skip Poisson-Boltzmann
+    std::string aimnet2_model_path;  // --aimnet2 MODEL: path to .jpt file (empty = skip)
 
     // -- Diagnostics --
     std::vector<std::string> warnings;   // non-fatal (e.g., "NMR .out not found")

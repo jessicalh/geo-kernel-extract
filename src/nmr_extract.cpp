@@ -13,6 +13,7 @@
 #include "GromacsEnsembleLoader.h"
 #include "OperationRunner.h"
 #include "ConformationResult.h"
+#include "AIMNet2Result.h"
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
@@ -22,6 +23,9 @@
 
 namespace fs = std::filesystem;
 using namespace nmr;
+
+// AIMNet2 model: loaded once in main, shared across all use cases.
+static std::unique_ptr<AIMNet2Model> g_aimnet2_model;
 
 
 // ============================================================================
@@ -46,6 +50,7 @@ static int RunPdb(const JobSpec& spec) {
     opts.net_charge = build.net_charge;
     opts.skip_mopac = spec.skip_mopac;
     opts.skip_apbs  = spec.skip_apbs;
+    opts.aimnet2_model = g_aimnet2_model.get();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -85,6 +90,7 @@ static int RunProtonatedPdb(const JobSpec& spec) {
     opts.net_charge = build.net_charge;
     opts.skip_mopac = spec.skip_mopac;
     opts.skip_apbs  = spec.skip_apbs;
+    opts.aimnet2_model = g_aimnet2_model.get();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -214,6 +220,7 @@ static int RunFleet(const JobSpec& spec) {
     opts.net_charge = build.net_charge;
     opts.skip_mopac = spec.skip_mopac;
     opts.skip_apbs  = spec.skip_apbs;
+    opts.aimnet2_model = g_aimnet2_model.get();
 
     auto results = OperationRunner::RunEnsemble(*build.protein, opts);
 
@@ -283,6 +290,16 @@ int main(int argc, char* argv[]) {
     // Load calculator config if specified
     if (!spec.config_path.empty())
         CalculatorConfig::Load(spec.config_path);
+
+    // Load AIMNet2 model if specified (once, shared across all conformations)
+    if (!spec.aimnet2_model_path.empty()) {
+        g_aimnet2_model = AIMNet2Model::Load(spec.aimnet2_model_path);
+        if (!g_aimnet2_model) {
+            fprintf(stderr, "ERROR: Failed to load AIMNet2 model: %s\n",
+                    spec.aimnet2_model_path.c_str());
+            return 1;
+        }
+    }
 
     switch (spec.mode) {
         case JobMode::Pdb:           return RunPdb(spec);

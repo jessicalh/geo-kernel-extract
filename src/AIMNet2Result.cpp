@@ -223,6 +223,14 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     input_dict.insert("nbmat_lr",  to_gpu(nbmat_lr_cpu));
     input_dict.insert("cutoff_lr", to_gpu(cutoff_lr_tensor));
 
+    // Debug: log tensor shapes before forward pass
+    OperationLog::Info(LogCalcOther, "AIMNet2Result",
+        "coord=" + std::to_string(coord_cpu.size(0)) + "x" + std::to_string(coord_cpu.size(1)) +
+        " numbers=" + std::to_string(numbers_cpu.size(0)) +
+        " mol_idx=" + std::to_string(mol_idx_cpu.size(0)) +
+        " nbmat=" + std::to_string(nbmat_cpu.size(0)) + "x" + std::to_string(nbmat_cpu.size(1)) +
+        " nbmat_lr=" + std::to_string(nbmat_lr_cpu.size(0)) + "x" + std::to_string(nbmat_lr_cpu.size(1)));
+
     // Forward pass
     auto output = model.module.forward({input_dict});
 
@@ -403,8 +411,10 @@ void AIMNet2Result::ComputeChargeSensitivity(
     std::mt19937 rng(42);  // deterministic seed for reproducibility
     std::normal_distribution<double> dist(0.0, displacement);
 
-    // Build static inputs that don't change across perturbations
-    auto numbers_cpu = torch::zeros({static_cast<int64_t>(N)}, torch::kInt64);
+    // Build static inputs that don't change across perturbations.
+    // All atom-level tensors padded to N+1 (same as Compute).
+    const int64_t N1 = static_cast<int64_t>(N + 1);
+    auto numbers_cpu = torch::zeros({N1}, torch::kInt64);
     auto num_acc = numbers_cpu.accessor<int64_t, 1>();
     for (size_t i = 0; i < N; ++i) {
         switch (protein.AtomAt(i).element) {
@@ -418,14 +428,14 @@ void AIMNet2Result::ComputeChargeSensitivity(
     }
     auto numbers_gpu = numbers_cpu.to(model.device);
     auto charge_gpu = torch::zeros({1}, torch::dtype(torch::kFloat32).device(model.device));
-    auto mol_idx_gpu = torch::zeros({static_cast<int64_t>(N)},
+    auto mol_idx_gpu = torch::zeros({N1},
                                      torch::dtype(torch::kInt64).device(model.device));
     auto cutoff_lr_gpu = torch::tensor({static_cast<float>(model.cutoff_lr)},
                                         torch::dtype(torch::kFloat32).device(model.device));
 
     for (int p = 0; p < n_perturb; ++p) {
-        // Perturb all coordinates simultaneously
-        auto coord_cpu = torch::zeros({static_cast<int64_t>(N), 3}, torch::kFloat32);
+        // Perturb all coordinates simultaneously (padded to N+1)
+        auto coord_cpu = torch::zeros({N1, 3}, torch::kFloat32);
         auto coord_acc = coord_cpu.accessor<float, 2>();
         for (size_t i = 0; i < N; ++i) {
             Vec3 pos = conf.PositionAt(i);

@@ -30,6 +30,8 @@ namespace nmr {
 
 class Protein;
 
+struct AIMNet2Model;  // forward declaration (AIMNet2Result.h)
+
 struct RunOptions {
     // Charges — required for real physics.
     // Null = no Coulomb, no APBS, no MOPAC.
@@ -45,6 +47,10 @@ struct RunOptions {
 
     // Skip APBS Poisson-Boltzmann.
     bool skip_apbs = false;
+
+    // AIMNet2: loaded model for neural network charges + EFG.
+    // Null = skip AIMNet2. Loaded once, shared across all conformations.
+    AIMNet2Model* aimnet2_model = nullptr;
 
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;

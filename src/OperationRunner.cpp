@@ -20,6 +20,7 @@
 #include "HBondResult.h"
 #include "OrcaShieldingResult.h"
 #include "MutationDeltaResult.h"
+#include "AIMNet2Result.h"
 #include "OperationLog.h"
 
 namespace nmr {
@@ -143,6 +144,18 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (conf.HasResult<DsspResult>()) {
         if (!Attach(conf, HBondResult::Compute(conf),
                     "HBondResult", out)) return out;
+    }
+
+    // AIMNet2: neural network charges + EFG (geometry-only, CUDA)
+    if (opts.aimnet2_model) {
+        auto aimnet2 = AIMNet2Result::Compute(conf, *opts.aimnet2_model);
+        if (aimnet2) {
+            Attach(conf, std::move(aimnet2), "AIMNet2Result", out);
+        } else {
+            OperationLog::Error("OperationRunner",
+                "AIMNet2Result failed (atoms=" +
+                std::to_string(conf.AtomCount()) + ")");
+        }
     }
 
     // --- Tier 2: DFT comparison (optional) ---
