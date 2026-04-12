@@ -1,14 +1,29 @@
 #pragma once
 //
-// GromacsProtein: wraps a real Protein for trajectory processing.
+// GromacsProtein: trajectory manager. NOT a feature extractor.
+//
+// This is trajectory lifecycle management + accumulation, not physics.
+// Feature extraction happens in ConformationResult subclasses
+// (WaterFieldResult, HydrationShellResult, etc.) which take a
+// ProteinConformation + SolventEnvironment and know nothing about
+// this class.
 //
 // Owns the immutable Protein (topology + conformation 0 via AddMDFrame).
-// Streaming conformations are free-standing — created from the Protein's
-// topology but never added to its conformations_ vector.
+// Free-standing conformations are created from the Protein's topology
+// but never added to its conformations_ vector — they live for one
+// frame and die.
 //
-// Holds trajectory-specific state: frame manifest, accumulation buffers.
-// GromacsFrameHandler processes each frame.
-// GromacsFinalResult writes the output.
+// Holds trajectory-specific state:
+//   - frame manifest (where frame outputs were written)
+//   - per-atom Welford accumulators (GromacsProteinAtom) updated by
+//     GromacsFrameHandler after each frame
+//   - charges from TPR
+//
+// The accumulators survive across all frames and are written to
+// atom_catalog.csv by GromacsFinalResult at the end.
+//
+// Future: rename to TrajectoryProtein / TrajectoryProteinAtom when
+// the GROMACS-specific loader is factored out.
 //
 
 #include "Protein.h"

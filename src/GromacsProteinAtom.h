@@ -2,18 +2,19 @@
 //
 // GromacsProteinAtom: per-atom accumulated data across trajectory frames.
 //
+// This is trajectory-level accumulation, NOT feature extraction.
+// Feature extraction writes to ConformationAtom (per-frame, dies
+// with the frame). This class accumulates statistics ACROSS frames
+// by reading from ConformationAtom after each frame's calculators
+// have run. The Welford accumulators live for the whole trajectory.
+//
 // Private constructor -- only GromacsProtein can create these.
 // Atom identity (element, residue, name) goes through the Protein
 // back-pointer, NOT duplicated here.
 //
-// All accumulator fields are public and default-initialised.
-// GromacsFrameHandler updates them as frames stream through.
-// After the scan, they hold the full trajectory statistics for
-// each atom — used by frame selection and written to the catalog.
+// Written to atom_catalog.csv by GromacsFinalResult at the end.
 //
-// This parallels ConformationAtom (per-frame) at the trajectory
-// level (cross-frame). ConformationAtom lives and dies with each
-// frame. GromacsProteinAtom lives for the whole trajectory.
+// Future: rename to TrajectoryProteinAtom.
 //
 
 #include <cmath>
