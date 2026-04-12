@@ -201,21 +201,9 @@ void MainWindow::exportFeatures() {
     std::string outDir = dir.toStdString();
     int totalArrays = 0;
 
-    if (pendingSpec_.mode == nmr::JobMode::Fleet) {
-        for (size_t i = 0; i < protein_->ConformationCount(); ++i) {
-            auto& conf = protein_->ConformationAt(i);
-            std::string frameDir = outDir + "/frame_" +
-                std::to_string(i + 1);
-            std::filesystem::create_directories(frameDir);
-            totalArrays += nmr::ConformationResult::WriteAllFeatures(
-                conf, frameDir);
-        }
-    } else {
-        std::filesystem::create_directories(outDir);
-        auto& conf = protein_->Conformation();
-        totalArrays = nmr::ConformationResult::WriteAllFeatures(
-            conf, outDir);
-    }
+    std::filesystem::create_directories(outDir);
+    auto& conf = protein_->Conformation();
+    totalArrays = nmr::ConformationResult::WriteAllFeatures(conf, outDir);
 
     statusLabel_->setText(QString("Exported %1 arrays to %2")
         .arg(totalArrays).arg(dir));
@@ -444,18 +432,26 @@ void MainWindow::setupUI() {
     logDock_->setWidget(logText_);
     tabifyDockWidget(atomInfoDock_, logDock_);
 
-    // Bind UDP listener on port 9998 (same port OperationLog sends to)
+    // Bind UDP listener on port 9998 (same port OperationLog sends to).
+    //
+    // DESIGN: udp_listen.py must NOT be running alongside the viewer.
+    // Both bind 9998, and Linux unicast UDP delivers each datagram to
+    // exactly one socket (the last to bind). If udp_listen.py grabbed
+    // 9998 first without SO_REUSEADDR, this bind fails and the tab is
+    // silent. See ui/launch_viewer.sh for the correct usage contract.
+    //
+    // There is intentionally NO fallback to ports 9999+. A fallback
+    // would silently bind the wrong port (library always sends to 9998),
+    // making the tab appear to work while receiving nothing. Fail visibly
+    // instead so the cause is obvious.
     logSocket_ = new QUdpSocket(this);
     if (logSocket_->bind(QHostAddress::LocalHost, 9998, QUdpSocket::ShareAddress)) {
         connect(logSocket_, &QUdpSocket::readyRead, this, &MainWindow::onLogDatagramReady);
     } else {
-        // Try next ports if 9998 is taken
-        for (quint16 p = 9999; p < 10008; ++p) {
-            if (logSocket_->bind(QHostAddress::LocalHost, p, QUdpSocket::ShareAddress)) {
-                connect(logSocket_, &QUdpSocket::readyRead, this, &MainWindow::onLogDatagramReady);
-                break;
-            }
-        }
+        logText_->appendPlainText(
+            QStringLiteral("** Log tab inactive: failed to bind UDP port 9998. **\n"
+                           "Is udp_listen.py already running? Stop it before launching the viewer.\n"
+                           "See ui/launch_viewer.sh for correct usage."));
     }
 
     // Start with the log tab visible — it shows computation progress
@@ -477,9 +473,9 @@ void MainWindow::loadFromJobSpec(const nmr::JobSpec& spec) {
     case nmr::JobMode::Mutant:
         currentProteinId_ = QFileInfo(QString::fromStdString(spec.wt_files.xyz_path)).baseName().toStdString();
         break;
-    case nmr::JobMode::Fleet:
-        currentProteinId_ = QFileInfo(QString::fromStdString(spec.fleet_paths.sampled_poses_dir)).fileName().toStdString();
-        break;
+    case nmr::JobMode::Trajectory:
+        // Trajectory mode is CLI-only; not loaded via viewer.
+        return;
     case nmr::JobMode::None:
         return;
     }

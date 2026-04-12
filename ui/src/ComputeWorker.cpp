@@ -6,6 +6,8 @@
 //
 // The viewer reads the library objects directly. No copy into flat structs.
 
+#include "AIMNet2Result.h"   // must precede any GROMACS headers (DIM macro conflict)
+
 #include "ComputeWorker.h"
 
 #include "Protein.h"
@@ -15,7 +17,6 @@
 #include "BuildResult.h"
 #include "OperationRunner.h"
 #include "OrcaRunLoader.h"
-#include "GromacsEnsembleLoader.h"
 #include "CalculatorConfig.h"
 #include "BiotSavartResult.h"
 #include "ConformationResult.h"
@@ -91,12 +92,11 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         }
         break;
 
-    case JobMode::Fleet:
-        OperationLog::Info(LogViewer, "ComputeWorker",
-            "Phase1: BuildFromGromacs poses=" + spec.fleet_paths.sampled_poses_dir);
-        result.proteinName = spec.fleet_paths.sampled_poses_dir;
-        buildResult = BuildFromGromacs(spec.fleet_paths);
-        break;
+    case JobMode::Trajectory:
+        // Trajectory mode is CLI-only (two-pass batch over full-system XTC).
+        // Use nmr_extract --trajectory. Not loadable interactively.
+        emit finished(result);
+        return;
 
     case JobMode::None:
         emit finished(result);
@@ -128,13 +128,38 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
     // ================================================================
     emit progress(10, 100, QStringLiteral("Computing shielding tensors..."));
 
+    // AIMNet2: priority order: spec path → AIMNET2_MODEL env → TOML config → not loaded.
+    // Loaded on first protein; reused for all subsequent loads in this session.
+    static std::unique_ptr<AIMNet2Model> s_aimnet2_model;
+    static std::string s_aimnet2_path;
+    {
+        std::string want = spec.aimnet2_model_path;
+        if (want.empty()) {
+            const char* env = std::getenv("AIMNET2_MODEL");
+            if (env) want = env;
+        }
+        if (want.empty())
+            want = CalculatorConfig::GetString("aimnet2_model_path");
+        if (!want.empty() && want != s_aimnet2_path) {
+            OperationLog::Info(LogViewer, "ComputeWorker",
+                "Loading AIMNet2 model: " + want);
+            s_aimnet2_model = AIMNet2Model::Load(want);
+            s_aimnet2_path  = want;
+            if (!s_aimnet2_model)
+                OperationLog::Warn("ComputeWorker",
+                    "AIMNet2 model failed to load: " + want);
+        }
+    }
+
     RunOptions opts;
     if (buildResult.charges) {
         opts.charge_source = buildResult.charges.get();
         opts.net_charge = buildResult.net_charge;
     }
-    opts.skip_mopac = spec.skip_mopac;
-    opts.skip_apbs  = spec.skip_apbs;
+    opts.skip_mopac    = true;                // MOPAC is batch/calibration-only
+    opts.skip_coulomb  = true;                // APBS preferred (6x faster, better physics)
+    opts.skip_apbs     = spec.skip_apbs;      // APBS runs unless --no-apbs
+    opts.aimnet2_model = s_aimnet2_model.get();
 
     if (spec.mode == JobMode::Mutant) {
         // Mutant: run both WT and ALA, compute delta
@@ -148,8 +173,10 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         RunOptions ala_opts;
         ala_opts.charge_source = alaBuild.charges.get();
         ala_opts.net_charge = alaBuild.net_charge;
-        ala_opts.skip_mopac = spec.skip_mopac;
-        ala_opts.skip_apbs  = spec.skip_apbs;
+        ala_opts.skip_mopac    = true;
+        ala_opts.skip_coulomb  = true;
+        ala_opts.skip_apbs     = spec.skip_apbs;
+        ala_opts.aimnet2_model = s_aimnet2_model.get();
         if (!spec.ala_files.nmr_out_path.empty())
             ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 
@@ -158,12 +185,6 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         OperationLog::Info(LogViewer, "ComputeWorker",
             std::string("RunMutantComparison ok=") + (runResult.Ok() ? "true" : "false") +
             " attached=" + std::to_string(runResult.attached.size()));
-
-    } else if (spec.mode == JobMode::Fleet) {
-        // Fleet: run all conformations
-        auto results = OperationRunner::RunEnsemble(protein, opts);
-        OperationLog::Info(LogViewer, "ComputeWorker",
-            "RunEnsemble: " + std::to_string(results.size()) + " frames");
 
     } else {
         // Single conformation: PDB, ProtonatedPdb, Orca
@@ -186,14 +207,7 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
     // Write features if output dir specified
     if (!spec.output_dir.empty()) {
         fs::create_directories(spec.output_dir);
-        if (spec.mode == JobMode::Fleet) {
-            for (size_t i = 0; i < protein.ConformationCount(); ++i) {
-                auto& conf = protein.ConformationAt(i);
-                std::string frame_dir = spec.output_dir + "/frame_" + std::to_string(i + 1);
-                fs::create_directories(frame_dir);
-                ConformationResult::WriteAllFeatures(conf, frame_dir);
-            }
-        } else {
+        {
             auto& conf = protein.Conformation();
             ConformationResult::WriteAllFeatures(conf, spec.output_dir);
         }

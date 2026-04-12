@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launch the viewer with UDP logging.
+# Launch the viewer.
 #
 # Usage:
 #   ui/launch_viewer.sh                                        # 1ubq protonated
@@ -7,7 +7,23 @@
 #   ui/launch_viewer.sh --protonated-pdb path/to/protein.pdb   # pre-protonated
 #   ui/launch_viewer.sh --orca --root path/to/A0A7C5FAR6_WT    # ORCA DFT
 #   ui/launch_viewer.sh --mutant --wt path/to/WT --ala path/to/ALA
-#   ui/launch_viewer.sh --fleet --tpr path/to/prod.tpr --poses path/to/poses
+#
+# AIMNet2 (auto-detected from env, no flag needed):
+#   AIMNET2_MODEL=/path/to/aimnet2_wb97m_0.jpt ui/launch_viewer.sh
+#   export AIMNET2_MODEL=data/models/aimnet2_wb97m_0.jpt  # persist in shell
+#
+# Viewer always skips MOPAC and Coulomb (batch/calibration paths, not interactive).
+# APBS runs by default. Pass --no-apbs to skip.
+#
+# LOG TAB: The viewer binds UDP port 9998 for its own log tab. Do NOT run
+# udp_listen.py alongside the viewer — both would bind 9998 and Linux unicast
+# UDP delivers each datagram to exactly one socket (the last to bind). If
+# udp_listen.py binds first, the viewer log tab will be silent.
+#
+# udp_listen.py is for batch/CLI sessions without an open viewer. It is a
+# "safe" listener (SO_REUSEADDR + SO_REUSEPORT) and will not block the viewer
+# from binding, but it will not receive viewer-session datagrams if the viewer
+# bound 9998 after it.
 #
 # REST commands (port 9147):
 #   echo '{"cmd":"status"}' | nc -q1 localhost 9147
@@ -17,11 +33,6 @@
 
 set -e
 cd "$(dirname "$0")/.."
-
-# Start UDP listener in background
-python3 ui/udp_listen.py &
-UDP_PID=$!
-trap "kill $UDP_PID 2>/dev/null" EXIT
 
 # Default: protonated 1ubq. Otherwise pass all args through to JobSpec.
 if [ $# -eq 0 ]; then

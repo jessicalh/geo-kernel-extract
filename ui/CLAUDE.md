@@ -1,42 +1,10 @@
 # UI Directory Rules
 
-**STATUS (2026-04-05): Recovery in progress.** A previous session
-destroyed two days of working UI source by copying stale gotham files
-over it. The code has been partially reconstructed. Some files may
-still reflect the old broken implementation. Files known to be stale
-are quarantined in `warning_in_progress_ui_deletion_recovery/`.
-
 **DO NOT modify any files outside of ui/**
 
 This directory contains the Qt/VTK viewer. It links against the
 nmr_shielding library as a consumer. The library is not your code.
 You read its headers, you call its API, you do not change it.
-
----
-
-## CRITICAL: Architecture fix required
-
-The current viewer uses a `ViewerResults` buffer — ComputeWorker
-copies every atom, bond, ring, and tensor into plain structs, then
-the GUI thread reads from those structs. This is an adapter layer
-that the CONSTITUTION explicitly forbids ("No ViewerProtein adapter
-wrapping Protein").
-
-**The fix:** ComputeWorker should hold the `shared_ptr<Protein>`
-(from BuildResult). After OperationRunner::Run completes, the
-Protein and its ProteinConformation are fully const. The worker
-signals completion, and the MainWindow reads directly from the
-library's const objects: `protein.AtomAt(i)`, `conf.AtomAt(i)`,
-`protein.BondAt(i)`, `conf.ring_geometries[i]`, etc.
-
-This is a one-way process — load, compute, then read. Nothing
-flows backward. Everything is const after Run. There is no
-threading hazard. The buffer adds complexity and loses information
-(e.g., bond atom indices were converted to positions and then
-O(N²) matched back — now fixed but the pattern is wrong).
-
-**Do this FIRST before adding features.** Building on the buffer
-makes the mess worse.
 
 ---
 
@@ -132,17 +100,20 @@ if (conf.HasResult<BiotSavartResult>()) {
 The library manages all external tool calls. The viewer never
 calls them directly. OperationRunner handles them via RunOptions.
 
-| Tool | When | RunOptions field |
-|------|------|-----------------|
-| reduce | During BuildFromPdb (protonation) | automatic |
-| OpenBabel | During BuildFromPdb (bond detection) | automatic |
-| mkdssp | DsspResult (secondary structure) | skip_dssp=false (default) |
-| MOPAC | MopacResult (PM7+MOZYME charges, bond orders) | skip_mopac=false (default) |
-| APBS | ApbsFieldResult (solvated E-field) | skip_apbs=false (default) |
+| Tool | In viewer | In CLI (nmr_extract) |
+|------|-----------|----------------------|
+| reduce | automatic (BuildFromPdb) | automatic (BuildFromPdb) |
+| OpenBabel | automatic (BuildFromPdb) | automatic (BuildFromPdb) |
+| mkdssp | runs (skip_dssp=false) | runs (skip_dssp=false) |
+| MOPAC | **never** — hardcoded off in ComputeWorker | runs unless `--no-mopac` |
+| Coulomb | **never** — hardcoded off in ComputeWorker | runs unless `--no-coulomb` |
+| APBS | runs unless `--no-apbs` | runs unless `--no-apbs` |
+| AIMNet2 | auto from `AIMNET2_MODEL` env var | auto from `AIMNET2_MODEL` env var |
 
-For large ensemble runs (5000+ frames), use `--no-mopac --no-apbs`
-to skip the expensive external solvers. All geometric calculators
-still run. See spec/USE_CASES.md "Geometry-only mode".
+MOPAC (~10 min/protein) and Coulomb (vacuum charges, 25s) are both
+suppressed in the viewer. APBS (solvated Poisson-Boltzmann, 4s) is
+the canonical electrostatics path. AIMNet2 is loaded once and cached
+across reloads within a session.
 
 All are installed. If a tool fails, OperationRunner logs the error
 and continues — calculators that don't need it still run.
@@ -152,7 +123,6 @@ and continues — calculators that don't need it still run.
 ## Fast feedback loop
 
 ```bash
-# Launch with UDP logging
 bash ui/launch_viewer.sh                    # default: 1ubq
 bash ui/launch_viewer.sh path/to/file.pdb   # specific PDB
 bash ui/launch_viewer.sh path/to/dir/       # protein directory
@@ -174,16 +144,30 @@ viewer is doing — ask it.
 
 ---
 
-## Current state (2026-04-08, session 7)
+## Current state (2026-04-12)
 
-**Stable.** All five JobSpec modes work end-to-end: PDB,
-protonated PDB, ORCA, mutant, fleet. Command-line parsing is
-shared with nmr_extract via JobSpec (src/JobSpec.h).
+**Stable.** Four interactive JobSpec modes: PDB, ProtonatedPDB,
+ORCA, Mutant. Command-line parsing shared with nmr_extract via
+JobSpec (src/JobSpec.h). Trajectory mode is CLI-only (two-pass
+batch over full-system XTC) — ComputeWorker returns immediately
+if Trajectory mode is dispatched. Fleet mode removed 2026-04-12;
+use `nmr_extract --trajectory` for GROMACS ensemble extraction.
 
-**Feature export.** File > Export Features picks a directory and
-writes all NPY arrays via ConformationResult::WriteAllFeatures.
-Fleet mode creates frame_N/ subdirectories. Also available via
-REST: `{"cmd":"export_features","path":"/tmp/out"}`.
+**Calculator profile (viewer).** MOPAC and Coulomb are hardcoded
+off in ComputeWorker — they are batch/calibration-path tools, not
+interactive. APBS (solvated Poisson-Boltzmann) is the canonical
+electrostatics path and runs by default. AIMNet2 is auto-detected
+from the `AIMNET2_MODEL` environment variable, loaded once, and
+cached for the session. Pass `--no-apbs` to skip APBS.
+
+**Log tab.** MainWindow binds UDP port 9998 directly and shows the
+library log stream in real time. Do NOT run `udp_listen.py`
+alongside the viewer — both compete for port 9998, and Linux
+unicast UDP delivers each datagram to exactly one socket. See
+ui/launch_viewer.sh. `udp_listen.py` is for batch/CLI sessions.
+
+**Feature export.** Available via REST:
+`{"cmd":"export_features","path":"/tmp/out"}`.
 
 **ViewerResults adapter removed.** ComputeWorker holds
 shared_ptr<Protein>. MainWindow reads library objects directly.
@@ -196,9 +180,8 @@ SphericalTensors, ring neighbours with G tensors and cylindrical
 coords, bond neighbours with McConnell, vector fields, DSSP, ORCA
 DFT. Yellow selection sphere highlights the picked atom.
 
-**File menu stripped.** Load from command line only. Crash on
-reload was happening because shared_ptr cleanup races with VTK
-actor lifetime. Removing the reload path eliminates it.
+**Load from CLI only.** File menu stripped. Crash on reload was
+happening because shared_ptr cleanup races with VTK actor lifetime.
 
 ## Library gap: enum→string for AtomRole, BondCategory
 

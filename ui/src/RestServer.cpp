@@ -581,26 +581,12 @@ QJsonObject RestServer::cmdExportFeatures(const QJsonObject& cmd) {
     std::string outDir = path.toStdString();
     int totalArrays = 0;
 
-    if (mainWindow_->pendingSpec_.mode == nmr::JobMode::Fleet) {
-        for (size_t i = 0; i < protein->ConformationCount(); ++i) {
-            auto& conf = protein->ConformationAt(i);
-            std::string frameDir = outDir + "/frame_" +
-                std::to_string(i + 1);
-            std::filesystem::create_directories(frameDir);
-            totalArrays += nmr::ConformationResult::WriteAllFeatures(
-                conf, frameDir);
-        }
-    } else {
-        std::filesystem::create_directories(outDir);
-        auto& conf = protein->Conformation();
-        totalArrays = nmr::ConformationResult::WriteAllFeatures(
-            conf, outDir);
-    }
+    std::filesystem::create_directories(outDir);
+    auto& conf = protein->Conformation();
+    totalArrays = nmr::ConformationResult::WriteAllFeatures(conf, outDir);
 
     QJsonObject result;
     result["path"] = path;
     result["arrays"] = totalArrays;
-    if (mainWindow_->pendingSpec_.mode == nmr::JobMode::Fleet)
-        result["frames"] = (int)protein->ConformationCount();
     return QJsonObject{{"ok", true}, {"result", result}};
 }
