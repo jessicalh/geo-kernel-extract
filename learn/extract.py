@@ -19,17 +19,35 @@ Usage:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
+# PyTorch's pip package bundles CUDA libraries (nvrtc-builtins etc.) that
+# the system linker can't find at runtime. Point LD_LIBRARY_PATH at them
+# so nmr_extract (which links libtorch) can load AIMNet2 .jpt models.
+_nvrtc_lib = Path(sys.prefix, "lib", "python" + sys.version[:4],
+                  "site-packages", "nvidia", "cu13", "lib")
+if not _nvrtc_lib.is_dir():
+    # Fall back to user site-packages
+    _nvrtc_lib = Path.home() / ".local" / "lib" / ("python" + sys.version[:4]) \
+                 / "site-packages" / "nvidia" / "cu13" / "lib"
+if _nvrtc_lib.is_dir():
+    os.environ["LD_LIBRARY_PATH"] = str(_nvrtc_lib) + ":" + \
+        os.environ.get("LD_LIBRARY_PATH", "")
+
 # Paths
 REPO = Path(__file__).resolve().parent.parent
 CALIBRATION = REPO / "calibration"
 FEATURES_BASE = CALIBRATION / "features"
 NMR_EXTRACT = REPO / "build" / "nmr_extract"
+
+# Default calculator config: passes AIMNet2 model path and all tuned parameters.
+# Override with --config to use a different TOML.
+DEFAULT_CONFIG = str(REPO / "data" / "calculator_params.toml")
 
 KNOWN_RUNS = [
     "FirstExtraction",
@@ -38,6 +56,8 @@ KNOWN_RUNS = [
     "GatedCalibration",
     "SubmissionExtraction",
     "AzimuthalExtraction",
+    "FinalExtraction",     # full feature set: APBS + MOPAC + AIMNet2
+    "Stage1Results",       # thesis stage 1: full feature set, 2026-04-13
 ]
 
 
@@ -82,7 +102,8 @@ def extract_one(protein_id: str, config_path: str | None,
 
     if dry_run:
         result["ok"] = True
-        result["error"] = f"[dry-run] --wt {wt_root}  --ala {ala_root}  --output {output_dir}"
+        config_str = f"  --config {config_path}" if config_path else ""
+        result["error"] = f"[dry-run] --wt {wt_root}  --ala {ala_root}  --output {output_dir}{config_str}"
         return result
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -140,8 +161,9 @@ def main():
                         help="show what would run")
     parser.add_argument("--resume", action="store_true",
                         help="skip already-extracted")
-    parser.add_argument("--config", type=str, default=None,
-                        help="TOML config file for calculator parameter overrides")
+    parser.add_argument("--config", type=str, default=DEFAULT_CONFIG,
+                        help="TOML config file for calculator parameter overrides "
+                             "(default: data/calculator_params.toml)")
     args = parser.parse_args()
 
     global _current_run
