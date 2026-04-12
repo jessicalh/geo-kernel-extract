@@ -1,10 +1,6 @@
 //
-// test_gromacs_streaming: proof of concept for trajectory streaming.
-//
-// Loads a fleet protein from TPR, opens the walker_0 XTC trajectory,
-// creates free-standing conformations for 10 frames, runs geometry
-// calculators on each, logs what was computed, and frees the
-// conformation. Proves the pattern works end-to-end.
+// test_gromacs_streaming: tests for GromacsProtein fleet path and
+// GromacsFrameHandler trajectory path.
 //
 
 #include "GromacsProtein.h"
@@ -16,6 +12,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <iostream>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -26,12 +23,17 @@ namespace fs = std::filesystem;
 static const std::string FLEET_DIR =
     std::string(NMR_TEST_DATA_DIR) + "/fleet_test_large";
 
+static const std::string FULLSYS_DIR =
+    std::string(NMR_TEST_DATA_DIR) + "/fleet_test_fullsys/1ZR7_6721";
 
-TEST(GromacsStreaming, LoadAndStream10Frames) {
-    // Enable all log channels so we see what happens
+
+// ============================================================================
+// Fleet path: Build from pre-extracted PDB poses
+// ============================================================================
+
+TEST(GromacsStreaming, FleetBuildAndCompute) {
     nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
 
-    // --- 1. Build GromacsProtein from TPR + first pose ---
     nmr::FleetPaths paths;
     paths.sampled_poses_dir = FLEET_DIR + "/initial-samples";
     paths.tpr_path = FLEET_DIR + "/run_params/prod.tpr";
@@ -40,84 +42,182 @@ TEST(GromacsStreaming, LoadAndStream10Frames) {
     nmr::GromacsProtein gp;
     ASSERT_TRUE(gp.Build(paths)) << gp.error();
 
-    std::cout << "\n=== GromacsProtein ==="
-              << "\n  protein_id: " << gp.protein_id()
-              << "\n  atoms:      " << gp.protein().AtomCount()
-              << "\n  residues:   " << gp.protein().ResidueCount()
-              << "\n  poses:      " << gp.protein().ConformationCount()
-              << "\n  net_charge: " << gp.net_charge()
-              << std::endl;
-
     ASSERT_GT(gp.protein().AtomCount(), 0u);
+    ASSERT_EQ(gp.AtomCount(), gp.protein().AtomCount());
 
-    // --- 2. Run geometry calculators on conformation 0 ---
-    // This is the root — it lives in the Protein's vector.
+    // Run calculators on conformation 0
     nmr::RunOptions opts;
     opts.skip_mopac = true;
     opts.skip_coulomb = true;
-    // APBS runs — canonical electrostatics path (4s, faster than Coulomb)
-    // DSSP runs on every frame
     opts.charge_source = gp.charges();
-    // .edr for per-frame GROMACS energy extraction
-    opts.edr_path = FLEET_DIR + "/walker_0/md.edr";
 
-    auto& conf0 = gp.protein().Conformation();
-    nmr::RunResult rr0 = nmr::OperationRunner::Run(conf0, opts);
-    ASSERT_TRUE(rr0.Ok()) << rr0.error;
+    auto& conf0 = gp.protein().ConformationAt(0);
+    nmr::RunResult rr = nmr::OperationRunner::Run(conf0, opts);
+    ASSERT_TRUE(rr.Ok()) << rr.error;
 
-    std::cout << "\n=== Conformation 0 (root) ==="
-              << "\n  attached: ";
-    for (const auto& name : rr0.attached)
-        std::cout << name << " ";
-    std::cout << std::endl;
+    std::cout << "Fleet: " << gp.protein().AtomCount() << " atoms, "
+              << gp.protein().ConformationCount() << " poses, "
+              << rr.attached.size() << " results\n";
+}
 
-    // --- 3. Open XTC trajectory ---
-    nmr::GromacsFrameHandler handler(gp, opts);
 
-    std::string xtc_path = FLEET_DIR + "/walker_0/md.xtc";
-    std::string tpr_path = FLEET_DIR + "/walker_0/md.tpr";
+// ============================================================================
+// Trajectory path: full-system XTC with water + ions
+// ============================================================================
 
-    ASSERT_TRUE(handler.OpenTrajectory(xtc_path, tpr_path))
-        << handler.error();
+TEST(GromacsStreaming, TrajectoryBuildAndScan) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
 
-    std::cout << "\n=== Trajectory ==="
-              << "\n  frames: " << handler.FrameCount()
-              << std::endl;
+    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
+    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
 
-    ASSERT_GT(handler.FrameCount(), 0u);
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
 
-    // --- 4. Process 10 frames ---
-    std::string temp_dir = "/tmp/nmr_streaming_test_" +
+    // --- 1. Build adapter from TPR ---
+    nmr::GromacsProtein gp;
+    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+
+    // Protein not finalized yet — no bonds, no rings
+    EXPECT_EQ(gp.protein().AtomCount(), 479u);
+    EXPECT_EQ(gp.protein().BondCount(), 0u);
+
+    // --- 2. Open trajectory (finalizes protein from first frame) ---
+    nmr::GromacsFrameHandler handler(gp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+
+    // Protein finalized: bonds, rings, conformation 0
+    EXPECT_GT(gp.protein().BondCount(), 0u);
+    EXPECT_GT(gp.protein().RingCount(), 0u);
+    EXPECT_EQ(gp.protein().ConformationCount(), 1u);
+    EXPECT_EQ(gp.AtomCount(), 479u);
+
+    std::cout << "Trajectory: " << gp.protein().AtomCount() << " atoms, "
+              << gp.protein().BondCount() << " bonds, "
+              << gp.protein().RingCount() << " rings\n";
+
+    // --- 3. Scan 10 more frames (lightweight, no NPY) ---
+    nmr::RunOptions scan_opts;
+    scan_opts.charge_source = gp.charges();
+    scan_opts.skip_mopac = true;
+    scan_opts.skip_apbs = true;
+    scan_opts.skip_coulomb = true;
+    scan_opts.skip_dssp = true;
+
+    size_t scanned = 0;
+    for (int i = 0; i < 10; ++i) {
+        if (!handler.Next(scan_opts)) break;
+        ++scanned;
+    }
+    ASSERT_GT(scanned, 0u);
+
+    std::cout << "Scanned " << scanned << " frames after frame 0\n";
+
+    // --- 4. Check accumulators have data ---
+    // Frame 0 + scanned frames should all be accumulated
+    size_t expected_frames = 1 + scanned;
+    EXPECT_EQ(gp.AtomAt(0).sasa.count, static_cast<int>(expected_frames));
+    EXPECT_EQ(gp.AtomAt(0).water_n_first.count,
+              static_cast<int>(expected_frames));
+
+    // RMSF should be non-negative
+    EXPECT_GE(gp.AtomAt(0).RMSF(), 0.0);
+
+    // --- 5. Write catalog ---
+    std::string temp_dir = "/tmp/nmr_trajectory_test_" +
                            std::to_string(getpid());
     fs::create_directories(temp_dir);
 
-    size_t n_processed = handler.ProcessFrames(10, temp_dir);
+    std::string catalog = temp_dir + "/atom_catalog.csv";
+    gp.WriteCatalog(catalog);
+    ASSERT_TRUE(fs::exists(catalog));
+    EXPECT_GT(fs::file_size(catalog), 1000u);
 
-    std::cout << "\n=== Processed ==="
-              << "\n  frames: " << n_processed
-              << "\n  frame_paths: " << gp.frame_paths().size()
-              << "\n  conformations in Protein: "
-              << gp.protein().ConformationCount()
-              << " (should still be " << gp.protein().ConformationCount()
-              << " — streaming frames are free-standing)"
-              << std::endl;
-
-    ASSERT_GT(n_processed, 0u);
-
-    // Verify streaming frames did NOT add to the Protein's vector.
-    // The Protein should still have only the poses from BuildFromGromacs.
-    // (ConformationCount includes the original poses, not streaming frames.)
-
-    // --- 5. Finalize ---
-    nmr::GromacsFinalResult final_result(gp);
-    ASSERT_TRUE(final_result.Finalize(temp_dir + "/output", temp_dir))
-        << final_result.error();
+    std::cout << "Catalog: " << fs::file_size(catalog) << " bytes\n";
 
     // --- 6. Clean up ---
-    // fs::remove_all resolves to libtorch's broken std::filesystem stub
-    // when linked against libtorch. Use POSIX rm instead.
     std::string rm_cmd = "rm -rf " + temp_dir;
     (void)system(rm_cmd.c_str());
+}
 
-    std::cout << "\n=== Done ===" << std::endl;
+
+// ============================================================================
+// Trajectory pass 2: reopen and extract selected frames with NPY
+// ============================================================================
+
+TEST(GromacsStreaming, TrajectoryExtractSelectedFrames) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+
+    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
+    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
+
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    // Build + open
+    nmr::GromacsProtein gp;
+    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+
+    nmr::GromacsFrameHandler handler(gp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+
+    // Scan 20 frames
+    nmr::RunOptions scan_opts;
+    scan_opts.charge_source = gp.charges();
+    scan_opts.skip_mopac = true;
+    scan_opts.skip_apbs = true;
+    scan_opts.skip_coulomb = true;
+    scan_opts.skip_dssp = true;
+
+    size_t total = 1;  // frame 0
+    while (total < 20 && handler.Next(scan_opts)) ++total;
+
+    std::cout << "Scanned " << total << " frames\n";
+
+    // Reopen for pass 2
+    ASSERT_TRUE(handler.Reopen()) << handler.error();
+
+    // Extract frames 3 and 7 with full calculators
+    std::set<size_t> selected = {3, 7};
+    std::string temp_dir = "/tmp/nmr_extract_test_" +
+                           std::to_string(getpid());
+    fs::create_directories(temp_dir);
+
+    nmr::RunOptions extract_opts;
+    extract_opts.charge_source = gp.charges();
+    extract_opts.skip_mopac = true;
+    extract_opts.skip_coulomb = true;
+
+    size_t extracted = 0;
+    for (size_t fi = 1; fi < total; ++fi) {
+        if (selected.count(fi)) {
+            ASSERT_TRUE(handler.Next(extract_opts, temp_dir))
+                << "failed to extract frame " << fi;
+            ++extracted;
+        } else {
+            handler.Skip();
+        }
+    }
+
+    EXPECT_EQ(extracted, 2u);
+
+    // Verify NPY directories exist
+    EXPECT_TRUE(fs::exists(temp_dir + "/frame_0003"));
+    EXPECT_TRUE(fs::exists(temp_dir + "/frame_0007"));
+
+    // Verify NPY files were written
+    size_t npy_count = 0;
+    for (auto& entry : fs::recursive_directory_iterator(temp_dir)) {
+        if (entry.path().extension() == ".npy") ++npy_count;
+    }
+    EXPECT_GT(npy_count, 0u);
+
+    std::cout << "Extracted " << extracted << " frames, "
+              << npy_count << " NPY files\n";
+
+    // Clean up
+    std::string rm_cmd = "rm -rf " + temp_dir;
+    (void)system(rm_cmd.c_str());
 }

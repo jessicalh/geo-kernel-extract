@@ -121,16 +121,17 @@ TEST(JobSpecParse, MutantMode) {
     EXPECT_EQ(spec.ala_files.prmtop_path, "/data/FOO_ALA.prmtop");
 }
 
-TEST(JobSpecParse, FleetMode) {
+TEST(JobSpecParse, FleetModeReturnsError) {
+    // --fleet was removed 2026-04-12. Passing it should give a clear error
+    // pointing to --trajectory as the replacement.
     FakeArgv a{"nmr_extract", "--fleet",
                "--tpr", "/data/prod.tpr", "--poses", "/data/poses",
                "--output", "/tmp/out"};
     auto spec = ParseJobSpec(a.argc(), a.argv());
 
-    EXPECT_TRUE(spec.Ok());
-    EXPECT_EQ(spec.mode, JobMode::Fleet);
-    EXPECT_EQ(spec.fleet_paths.tpr_path, "/data/prod.tpr");
-    EXPECT_EQ(spec.fleet_paths.sampled_poses_dir, "/data/poses");
+    EXPECT_FALSE(spec.Ok());
+    EXPECT_NE(spec.error.find("removed"), std::string::npos);
+    EXPECT_NE(spec.error.find("--trajectory"), std::string::npos);
 }
 
 TEST(JobSpecParse, MissingModeFails) {
@@ -221,15 +222,8 @@ TEST(JobSpecValidate, MutantValid) {
     EXPECT_TRUE(ValidateJobSpec(spec));
 }
 
-TEST(JobSpecValidate, FleetValid) {
-    std::string tpr   = DATA + "/fleet/1A6J_5789/params/prod.tpr";
-    std::string poses = DATA + "/fleet/1A6J_5789/poses";
-    FakeArgv a{"test", "--fleet", "--tpr", tpr.c_str(), "--poses", poses.c_str(),
-               "--output", "/tmp/jobspec_test_fleet"};
-    auto spec = ParseJobSpec(a.argc(), a.argv());
-    ASSERT_TRUE(spec.Ok());
-    EXPECT_TRUE(ValidateJobSpec(spec));
-}
+// JobSpecValidate::FleetValid removed 2026-04-12 — --fleet mode removed.
+// BuildFromGromacs library path is exercised by FleetLibraryDirect below.
 
 
 // ============================================================================
@@ -372,18 +366,19 @@ TEST_F(JobSpecE2E, MutantEndToEnd) {
 }
 
 
-TEST_F(JobSpecE2E, FleetEndToEnd) {
+TEST_F(JobSpecE2E, FleetLibraryDirect) {
+    // --fleet CLI mode removed 2026-04-12, but BuildFromGromacs stays in the
+    // library for backward compatibility with pre-extracted PDB pose data.
+    // This test calls it directly, bypassing JobSpec.
     std::string tpr   = DATA + "/fleet/1A6J_5789/params/prod.tpr";
     std::string poses = DATA + "/fleet/1A6J_5789/poses";
     std::string out   = "/tmp/jobspec_e2e_fleet";
-    FakeArgv a{"test", "--fleet", "--tpr", tpr.c_str(),
-               "--poses", poses.c_str(), "--output", out.c_str()};
 
-    auto spec = ParseJobSpec(a.argc(), a.argv());
-    ASSERT_TRUE(spec.Ok());
-    ASSERT_TRUE(ValidateJobSpec(spec));
+    FleetPaths paths;
+    paths.tpr_path          = tpr;
+    paths.sampled_poses_dir = poses;
 
-    auto build = BuildFromGromacs(spec.fleet_paths);
+    auto build = BuildFromGromacs(paths);
     ASSERT_TRUE(build.Ok()) << build.error;
 
     EXPECT_GT(build.protein->ConformationCount(), 1u);
