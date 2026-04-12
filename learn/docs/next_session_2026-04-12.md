@@ -53,13 +53,12 @@ for filesystem ops in code linked against libtorch.
 
 ## What to do NEXT
 
-### 1. SDK updates (Python)
-Register new NPY files in python/nmr_extract/_catalog.py:
-- atom_sasa (SasaResult)
-- dssp_ss8, dssp_hbond_energy, dssp_chi (DsspResult)
-- Remove aimnet2_charge_sensitivity (no longer written by calculator)
-
-Update python/API.md with the new arrays.
+### 1. SDK updates (Python) — DONE (2026-04-12)
+New arrays registered in _catalog.py: atom_sasa, dssp_ss8,
+dssp_hbond_energy, dssp_chi. aimnet2_charge_sensitivity kept as
+LEGACY entry for backward compat with old extractions.
+Still needed: update python/API.md with the new arrays, run
+`python -m pytest python/tests/` to verify.
 
 ### 2. HighFive integration
 Add HighFive (header-only C++ HDF5 wrapper) to extern/.

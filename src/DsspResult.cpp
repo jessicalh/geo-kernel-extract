@@ -191,16 +191,14 @@ double DsspResult::SASA(size_t residue_index) const {
 
 
 // ============================================================================
-// WriteFeatures: dssp_backbone.npy (N, 5)
+// WriteFeatures: 4 NPY files
 //
-// Per-atom, broadcast from per-residue via Protein atom→residue mapping.
+// All per-atom, broadcast from per-residue via Protein atom→residue mapping.
 //
-// Columns: phi (rad), psi (rad), sasa (A^2), ss_helix (0/1), ss_sheet (0/1)
-//
-// DSSP secondary structure alphabet: H(alpha-helix), G(3_10-helix),
-// I(pi-helix), E(extended strand), B(isolated bridge), T(turn), S(bend),
-// C(coil). For NMR purposes these collapse to helix(H/G/I), sheet(E/B),
-// other(T/S/C) — the "other" case is implicit (both columns zero).
+// 1. dssp_backbone.npy (N, 5) — phi, psi, sasa, ss_helix, ss_sheet
+// 2. dssp_ss8.npy (N, 8) — full 8-class SS one-hot (H/G/I/E/B/T/S/C)
+// 3. dssp_hbond_energy.npy (N, 4) — H-bond energies (acc0/acc1/don0/don1)
+// 4. dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists (4 angles × 3 cols)
 // ============================================================================
 
 int DsspResult::WriteFeatures(const ProteinConformation& conf,
