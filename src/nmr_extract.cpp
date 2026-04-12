@@ -11,12 +11,14 @@
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "GromacsEnsembleLoader.h"
+#include "GromacsProtein.h"
 #include "OperationRunner.h"
 #include "ConformationResult.h"
 #include "AIMNet2Result.h"
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
+#include "xtc_reader.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -265,6 +267,95 @@ static int RunFleet(const JobSpec& spec) {
 
 
 // ============================================================================
+// Use case E: full-system GROMACS trajectory
+//
+// Pass 1 — scan: lightweight calculators on all frames, accumulate
+//          per-atom Welford stats.  No NPY.
+// Finalize — write atom_catalog.csv, select frames.
+// Pass 2 — extract: full calculators on selected frames, write NPY.
+//
+// Process control stays here. Data + computation on GromacsProtein.
+// ============================================================================
+
+static int RunTrajectory(const JobSpec& spec) {
+    OperationLog::Info(LogFileIO, "nmr_extract",
+        "trajectory mode: tpr=" + spec.traj_tpr +
+        " xtc=" + spec.traj_xtc + " ref=" + spec.traj_ref);
+
+    // Build trajectory manager
+    GromacsProtein gp;
+    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_ref)) {
+        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
+        return 1;
+    }
+
+    // Load trajectory
+    if (!gp.LoadTrajectory(spec.traj_xtc)) {
+        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
+        return 1;
+    }
+    fprintf(stderr, "Loaded %zu frames, %zu protein atoms\n",
+            gp.FrameCount(), gp.AtomCount());
+
+    // ── Pass 1: scan ─────────────────────────────────────────────
+
+    RunOptions scan_opts;
+    scan_opts.charge_source = gp.charges();
+    scan_opts.skip_mopac   = true;
+    scan_opts.skip_apbs    = true;
+    scan_opts.skip_coulomb = true;
+    scan_opts.skip_dssp    = true;
+
+    fprintf(stderr, "\n=== Pass 1: scan %zu frames ===\n", gp.FrameCount());
+    for (size_t fi = 0; fi < gp.FrameCount(); ++fi) {
+        if (fi % 100 == 0)
+            fprintf(stderr, "  scan %zu / %zu\n", fi, gp.FrameCount());
+        gp.ScanFrame(fi, scan_opts);
+    }
+
+    // ── Finalize: catalog + frame selection ───────────────────────
+
+    fs::create_directories(spec.output_dir);
+    std::string catalog_path = spec.output_dir + "/atom_catalog.csv";
+    gp.WriteCatalog(catalog_path);
+    fprintf(stderr, "\nWrote %s\n", catalog_path.c_str());
+
+    auto selected = gp.SelectFrames(200);
+    fprintf(stderr, "Selected %zu frames for extraction\n", selected.size());
+
+    if (selected.empty()) {
+        fprintf(stderr, "Scan complete — no frames selected.\n");
+        return 0;
+    }
+
+    // ── Pass 2: extract selected frames ──────────────────────────
+
+    RunOptions extract_opts;
+    extract_opts.charge_source = gp.charges();
+    extract_opts.skip_mopac   = spec.skip_mopac;
+    extract_opts.skip_apbs    = spec.skip_apbs;
+    extract_opts.skip_coulomb = spec.skip_coulomb;
+    extract_opts.aimnet2_model = g_aimnet2_model.get();
+    if (!spec.traj_edr.empty())
+        extract_opts.edr_path = spec.traj_edr;
+
+    fprintf(stderr, "\n=== Pass 2: extract %zu frames ===\n", selected.size());
+    int total_arrays = 0;
+    for (size_t si = 0; si < selected.size(); ++si) {
+        size_t fi = selected[si];
+        fprintf(stderr, "  extract frame %zu (%zu/%zu)\n",
+                fi, si + 1, selected.size());
+        int n = gp.ExtractFrame(fi, extract_opts, spec.output_dir);
+        if (n >= 0) total_arrays += n;
+    }
+
+    fprintf(stderr, "\nDone: %d arrays, %zu frames, %s\n",
+            total_arrays, selected.size(), spec.output_dir.c_str());
+    return 0;
+}
+
+
+// ============================================================================
 // main
 // ============================================================================
 
@@ -316,6 +407,7 @@ int main(int argc, char* argv[]) {
         case JobMode::Orca:          return RunOrca(spec);
         case JobMode::Mutant:        return RunMutant(spec);
         case JobMode::Fleet:         return RunFleet(spec);
+        case JobMode::Trajectory:    return RunTrajectory(spec);
         case JobMode::None:          return 1;  // unreachable
     }
     return 1;

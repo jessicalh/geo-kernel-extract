@@ -28,7 +28,8 @@ enum class JobMode {
     ProtonatedPdb,   // already-protonated PDB — detect state from H atoms
     Orca,            // single ORCA DFT (root → .xyz + .prmtop + optional _nmr.out)
     Mutant,          // WT + ALA ORCA pair (two roots)
-    Fleet,           // GROMACS ensemble (TPR + poses dir)
+    Fleet,           // GROMACS ensemble (TPR + poses dir, pre-extracted PDBs)
+    Trajectory,      // full-system GROMACS trajectory (TPR + XTC + ref PDB)
     None             // parse failed or --help
 };
 
@@ -49,6 +50,12 @@ struct JobSpec {
 
     // -- Fleet mode --
     FleetPaths fleet_paths;
+
+    // -- Trajectory mode --
+    std::string traj_tpr;        // full-system TPR (topology + charges)
+    std::string traj_xtc;        // full-system XTC (protein + water + ions)
+    std::string traj_ref;        // reference PDB (protein only, for topology)
+    std::string traj_edr;        // .edr energy file (optional)
 
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)

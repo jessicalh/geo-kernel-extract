@@ -132,8 +132,30 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         return spec;
     }
 
+    if (HasFlag(argc, argv, "--trajectory")) {
+        spec.mode = JobMode::Trajectory;
+        spec.traj_tpr = GetArg(argc, argv, "--tpr");
+        spec.traj_xtc = GetArg(argc, argv, "--xtc");
+        spec.traj_ref = GetArg(argc, argv, "--ref");
+        spec.traj_edr = GetArg(argc, argv, "--edr");
+
+        if (spec.traj_tpr.empty()) {
+            spec.error = "--trajectory requires --tpr FILE (full-system topology)";
+            return spec;
+        }
+        if (spec.traj_xtc.empty()) {
+            spec.error = "--trajectory requires --xtc FILE (full-system trajectory)";
+            return spec;
+        }
+        if (spec.traj_ref.empty()) {
+            spec.error = "--trajectory requires --ref FILE (reference PDB, protein only)";
+            return spec;
+        }
+        return spec;
+    }
+
     spec.error = std::string("unknown mode: ") + argv[1] +
-                 "\n  valid modes: --pdb, --protonated-pdb, --orca, --mutant, --fleet";
+                 "\n  valid modes: --pdb, --protonated-pdb, --orca, --mutant, --fleet, --trajectory";
     return spec;
 }
 
@@ -221,7 +243,8 @@ bool ValidateJobSpec(JobSpec& spec) {
             spec.mode == JobMode::ProtonatedPdb  ? "--protonated-pdb" :
             spec.mode == JobMode::Orca           ? "--orca" :
             spec.mode == JobMode::Mutant         ? "--mutant" :
-            spec.mode == JobMode::Fleet          ? "--fleet" : "unknown") +
+            spec.mode == JobMode::Fleet          ? "--fleet" :
+            spec.mode == JobMode::Trajectory    ? "--trajectory" : "unknown") +
         " job");
 
     // Config TOML — optional
@@ -273,6 +296,19 @@ bool ValidateJobSpec(JobSpec& spec) {
                         "GROMACS poses directory")) return false;
         return true;
 
+    case JobMode::Trajectory:
+        if (!RequireFile(spec, spec.traj_tpr,
+                         "full-system TPR (topology + charges)")) return false;
+        if (!RequireFile(spec, spec.traj_xtc,
+                         "full-system XTC (protein + water + ions)")) return false;
+        if (!RequireFile(spec, spec.traj_ref,
+                         "reference PDB (protein only)")) return false;
+        if (!spec.traj_edr.empty()) {
+            if (!RequireFile(spec, spec.traj_edr,
+                             "GROMACS .edr energy file")) return false;
+        }
+        return true;
+
     case JobMode::None:
         spec.error = "no mode specified";
         return false;
@@ -309,9 +345,17 @@ void PrintJobSpecUsage(const char* prog) {
         "      Runs both conformations and computes WT-ALA delta tensors.\n"
         "\n"
         "  %s --fleet --tpr FILE --poses DIR [--config FILE] --output DIR\n"
-        "      Load a GROMACS ensemble. TPR provides topology and CHARMM36m\n"
-        "      charges. Poses directory contains ensemble.json and pose PDBs.\n"
-        "      Runs all conformations independently.\n"
+        "      Load a GROMACS ensemble from pre-extracted PDB poses. TPR provides\n"
+        "      topology and CHARMM36m charges. Poses directory contains ensemble.json\n"
+        "      and pose PDBs. Runs all conformations independently.\n"
+        "\n"
+        "  %s --trajectory --tpr FILE --xtc FILE --ref FILE [--edr FILE] --output DIR\n"
+        "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
+        "      TPR: full-system topology. XTC: full-system trajectory. REF: protein-\n"
+        "      only reference PDB for topology construction. EDR: optional energy\n"
+        "      file for per-frame Coulomb/LJ/temperature extraction.\n"
+        "      Runs all calculators including explicit solvent (WaterField,\n"
+        "      HydrationShell). Writes per-atom trajectory catalog at the end.\n"
         "\n"
         "Common options:\n"
         "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
@@ -321,7 +365,7 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
         "  --help, -h       Show this message\n",
-        prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog, prog);
 }
 
 
