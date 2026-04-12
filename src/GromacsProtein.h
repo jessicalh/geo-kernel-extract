@@ -12,6 +12,7 @@
 //
 
 #include "Protein.h"
+#include "GromacsProteinAtom.h"
 #include "GromacsEnsembleLoader.h"
 #include "OperationRunner.h"
 #include <memory>
@@ -48,11 +49,21 @@ public:
     // Pose names from PDB filenames (fes-sampler naming).
     const std::vector<std::string>& pose_names() const { return pose_names_; }
 
+    // Per-atom trajectory accumulators. Created by InitAtoms().
+    // One per protein atom, indexed same as Protein::AtomAt().
+    GromacsProteinAtom& AtomAt(size_t i) { return atoms_[i]; }
+    const GromacsProteinAtom& AtomAt(size_t i) const { return atoms_[i]; }
+    size_t AtomCount() const { return atoms_.size(); }
+
+    // Call after Build() to allocate per-atom accumulators.
+    void InitAtoms();
+
 private:
     std::unique_ptr<Protein> protein_;
     std::unique_ptr<ChargeSource> charges_;
     std::vector<std::string> frame_paths_;
     std::vector<std::string> pose_names_;
+    std::vector<GromacsProteinAtom> atoms_;
     std::string protein_id_;
     std::string error_;
     int net_charge_ = 0;

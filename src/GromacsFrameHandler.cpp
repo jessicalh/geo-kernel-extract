@@ -105,6 +105,32 @@ size_t GromacsFrameHandler::ProcessFrames(
         (void)system(mkdir_cmd.c_str());
         int n_files = ConformationResult::WriteAllFeatures(*conf, frame_dir);
 
+        // Accumulate per-atom trajectory statistics
+        int frame_idx = static_cast<int>(fi);
+        for (size_t ai = 0; ai < N; ++ai) {
+            const auto& ca = conf->AtomAt(ai);
+            auto& ga = gp_.AtomAt(ai);
+
+            ga.sasa.Update(ca.atom_sasa, frame_idx);
+            ga.water_n_first.Update(
+                static_cast<double>(ca.water_n_first), frame_idx);
+            ga.water_n_second.Update(
+                static_cast<double>(ca.water_n_second), frame_idx);
+            ga.water_emag.Update(ca.water_efield.norm(), frame_idx);
+            ga.water_emag_first.Update(ca.water_efield_first.norm(), frame_idx);
+            ga.half_shell.Update(ca.half_shell_asymmetry, frame_idx);
+            ga.dipole_cos.Update(ca.mean_water_dipole_cos, frame_idx);
+            ga.nearest_ion_dist.Update(ca.nearest_ion_distance, frame_idx);
+
+            Vec3 pos = ca.Position();
+            ga.position_x.Update(pos.x(), frame_idx);
+            ga.position_y.Update(pos.y(), frame_idx);
+            ga.position_z.Update(pos.z(), frame_idx);
+
+            if (ca.water_n_first == 0) ga.n_frames_dry++;
+            if (ca.water_n_first >= 4) ga.n_frames_exposed++;
+        }
+
         // Record the path
         gp_.AddFramePath(frame_dir);
 
