@@ -25,9 +25,14 @@ public:
     // Empty path → defaults only (no file read).
     static void Load(const std::string& path = "");
 
-    // Get a parameter value. Returns override if loaded, else default.
+    // Get a numeric parameter value. Returns override if loaded, else default.
     // Aborts on unknown key (programming error).
     static double Get(const std::string& key);
+
+    // Get a string value from the config file (e.g. model paths).
+    // Returns defaultVal if the key was not set.
+    static std::string GetString(const std::string& key,
+                                 const std::string& defaultVal = "");
 
     // Validate the loaded configuration.
     // Logs every parameter: key, value, source (toml/default), unit.
@@ -48,6 +53,7 @@ private:
 
     static std::unordered_map<std::string, ParamEntry> defaults_;
     static std::unordered_map<std::string, double> overrides_;
+    static std::unordered_map<std::string, std::string> string_overrides_;
     static bool loaded_;
     static bool defaults_initialised_;
 };

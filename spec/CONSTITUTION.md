@@ -74,6 +74,10 @@ protein.Conformations()          // all, heterogeneous
 ```
 
 No agent creates a ProteinConformation directly. No loose conformations.
+**Exception:** trajectory streaming (GromacsFrameHandler) creates
+free-standing conformations via the public constructor. These point at
+the Protein for topology but are never added to its conformations\_
+vector. They live for one frame and die. See spec/ENSEMBLE\_MODEL.md.
 
 ### ProteinConformation (typed hierarchy)
 

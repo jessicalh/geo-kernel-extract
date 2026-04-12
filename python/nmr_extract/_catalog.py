@@ -91,12 +91,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mc_category_T2",   "mcconnell", PerBondCategoryT2,  25,   True,  "McConnell T2 per bond category"),
     ArraySpec("mc_scalars",       "mcconnell", McConnellScalars,   6,    True,  "McConnell scalar sums + distances"),
 
-    # ── Coulomb (CoulombResult.cpp) ──────────────────────────────
-    ArraySpec("coulomb_shielding",      "coulomb", ShieldingTensor, 9,   True,  "Coulomb E-field shielding"),
-    ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   True,  "Coulomb total E-field"),
-    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       9,   True,  "Coulomb EFG backbone"),
-    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       9,   True,  "Coulomb EFG aromatic"),
-    ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   True,  "Coulomb E-field scalars"),
+    # ── Coulomb (CoulombResult.cpp) — optional via --no-coulomb ──
+    ArraySpec("coulomb_shielding",      "coulomb", ShieldingTensor, 9,   False, "Coulomb E-field shielding"),
+    ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field"),
+    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       9,   False, "Coulomb EFG backbone"),
+    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       9,   False, "Coulomb EFG aromatic"),
+    ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Coulomb E-field scalars"),
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_shielding",  "hbond", ShieldingTensor,        9,    True,  "H-bond shielding"),
@@ -110,6 +110,19 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── SASA (SasaResult.cpp) ───────────────────────────────────
     ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, False, "Per-atom Shrake-Rupley SASA (A^2)"),
+
+    # ── Explicit water (WaterFieldResult.cpp) ───────────────────
+    ArraySpec("water_efield",       "water_field", VectorField,    3,    False, "Water E-field total (V/A)"),
+    ArraySpec("water_efield_first", "water_field", VectorField,    3,    False, "Water E-field first shell <3.5A (V/A)"),
+    ArraySpec("water_efg",          "water_field", EFGTensor,      9,    False, "Water EFG total (SphericalTensor)"),
+    ArraySpec("water_efg_first",    "water_field", EFGTensor,      9,    False, "Water EFG first shell (SphericalTensor)"),
+    ArraySpec("water_shell_counts", "water_field", np.ndarray,     2,    False, "Water shell counts [n_first, n_second]"),
+
+    # ── Hydration shell (HydrationShellResult.cpp) ──────────────
+    ArraySpec("hydration_shell",    "hydration",   np.ndarray,     4,    False, "Hydration geometry [asymmetry, dipole_cos, ion_dist, ion_charge]"),
+
+    # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
+    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,      9,   False, "Per-frame energy [t,Coul_SR,Coul_recip,Coul_14,LJ,pot,T,P,V]"),
 
     # ── MOPAC core (MopacResult.cpp) ─────────────────────────────
     ArraySpec("mopac_charges",    "mopac_core", np.ndarray,        None, False, "MOPAC Mulliken charges"),

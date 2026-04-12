@@ -1,14 +1,22 @@
 #pragma once
 //
-// GromacsFrameHandler: reads GROMACS trajectory, creates conformations,
-// runs calculators, writes results.
+// GromacsFrameHandler: reads GROMACS trajectory frames one at a time,
+// runs calculators, feeds results into GromacsProtein accumulators.
 //
-// Owns the XTC reader and PBC fixer. Creates free-standing
-// ProteinConformations that point at the GromacsProtein's Protein
-// for topology but are never added to its conformations_ vector.
+// Owns: XTC stream, MoleculeWholer (PBC fix).
+// Borrows: GromacsProtein (for accumulation + sys_reader + protein).
 //
-// Each frame: read XTC → PBC fix → nm→A → create conformation →
-// run OperationRunner → write NPY → log → conformation dies.
+// Frame lifecycle per frame:
+//   1. Read full-system XTC frame (streaming, one at a time)
+//   2. Extract protein float coords, PBC fix via MoleculeWholer
+//   3. Put fixed coords back, split via FullSystemReader
+//   4. Create free-standing ProteinConformation
+//   5. Run calculators via OperationRunner
+//   6. gp.AccumulateFrame(conf, frame_idx)
+//   7. Conformation dies — memory freed
+//
+// First frame is special: finalizes protein (bond detection) and
+// creates conformation 0 (permanent, lives in Protein's vector).
 //
 
 #include "GromacsProtein.h"
@@ -17,37 +25,54 @@
 #include "pbc_whole.h"
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace nmr {
 
 class GromacsFrameHandler {
 public:
-    // Construct with the GromacsProtein (topology source) and run options.
-    GromacsFrameHandler(GromacsProtein& gp, const RunOptions& opts);
+    // Construct with the GromacsProtein that accumulates results.
+    explicit GromacsFrameHandler(GromacsProtein& gp);
 
-    // Open a trajectory. Loads all XTC frames from a walker directory,
-    // applies PBC fix. Returns false on error (check error()).
-    bool OpenTrajectory(const std::string& xtc_path,
-                        const std::string& tpr_path);
+    // Open trajectory for streaming. Creates MoleculeWholer from TPR.
+    // Reads first frame to finalize protein (bond detection, conformation 0).
+    // Returns false on error (check error()).
+    bool Open(const std::string& xtc_path, const std::string& tpr_path);
 
-    // Process up to max_frames frames. Creates free-standing conformations,
-    // runs geometry calculators, writes NPY to temp_dir/frame_{i}/.
-    // Returns number of frames processed.
-    // Frame 0 is skipped here — it's already in the Protein via AddMDFrame.
-    size_t ProcessFrames(size_t max_frames,
-                         const std::string& temp_dir);
+    // Process the next frame: read from XTC, PBC fix, split, create
+    // conformation, run calculators, accumulate. Returns false at EOF.
+    // If output_dir is non-empty, writes NPY to output_dir/frame_NNNN/.
+    // Set accumulate=false in pass 2 to avoid double-counting frames
+    // that were already accumulated during pass 1.
+    bool Next(const RunOptions& opts, const std::string& output_dir = "",
+              bool accumulate = true);
 
-    // Number of frames available in the trajectory.
-    size_t FrameCount() const { return frames_.size(); }
+    // Skip one frame without processing. Returns false at EOF.
+    bool Skip();
+
+    // Reopen XTC from the start for pass 2.
+    bool Reopen();
+
+    // Frame index of the frame most recently processed by Next().
+    size_t frame_index() const { return frame_idx_; }
+
+    // Total frames seen after a complete pass.
+    size_t total_frames() const { return total_frames_; }
 
     const std::string& error() const { return error_; }
 
 private:
     GromacsProtein& gp_;
-    RunOptions opts_;
-    std::vector<XtcFrame> frames_;
+    XtcStreamReader reader_;
+    std::unique_ptr<MoleculeWholer> wholer_;
+    size_t frame_idx_ = 0;
+    size_t total_frames_ = 0;
+    bool first_frame_done_ = false;
     std::string error_;
+
+    // Process one full-system XTC frame. Common path for first and
+    // subsequent frames.
+    bool ProcessFrame(const XtcFrame& frame, const RunOptions& opts,
+                      const std::string& output_dir, bool accumulate);
 };
 
 }  // namespace nmr

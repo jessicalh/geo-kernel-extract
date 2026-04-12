@@ -74,6 +74,13 @@ physical constants.  No MLP needed.
 The physics scripts are in `src/actual_physics/` (see OVERVIEW.md).
 The validation document is `docs/twenty_eight_realities_2026-04-10.md`.
 
+## Stage 1 thesis work (2026-04-12 onward)
+
+The thesis chapter is being prepared in `stage1-mutations/`.  Read
+`docs/stage1_plan.md` for the full plan, argument structure,
+literature status, and rigour requirements.  The working notes are
+in `stage1-mutations/notes/`.
+
 ## What NOT to do
 
 - Do not use symlinks for data.

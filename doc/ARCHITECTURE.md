@@ -2,7 +2,7 @@
 
 This document describes the system as it exists in code. Every claim
 is derived from the headers in src/ and verified against the test
-suite (287 tests, 0 failures as of 2026-04-07). Diagrams are in
+suite (293 tests, 0 failures as of 2026-04-13). Diagrams are in
 doc/diagrams/ and were generated from the code structure.
 
 See also: doc/generated/doxygen/ for full class-level UML with members,
@@ -109,7 +109,7 @@ cache — typed properties, not string comparisons.
 
 **Diagram:** doc/diagrams/02_provenance_paths (svg, png, mmd source)
 
-Five kinds of data enter the system. Each has a different protonation
+Six kinds of data enter the system. Each has a different protonation
 strategy and charge source. All produce the same BuildResult
 (BuildResult.h): a Protein, a ChargeSource, and an integer net charge.
 After building, the same OperationRunner::Run pipeline processes every
@@ -153,26 +153,61 @@ structure is a GROMACS MD snapshot rather than an AlphaFold
 prediction. The ORCA run and prmtop were still prepared via tleap.
 From the loader's perspective, the data format is identical.
 
-### Path 5: GROMACS ensemble (trajectory)
+### Path 5a: GROMACS fleet (pre-extracted PDB poses)
 
 **Builder:** `BuildFromGromacs(paths)` (GromacsEnsembleLoader.h:50)
 
 The TPR binary topology (read via libgromacs) provides atom names
-(CHARMM naming), residues, and per-atom charges. Charges are
-wrapped in a PreloadedChargeSource (ChargeSource.h:174).
+(CHARMM naming), residues, and per-atom charges (CHARMM36m).
+Charges are wrapped in a PreloadedChargeSource (ChargeSource.h:174).
 ForceField is declared by the caller (FleetPaths.force_field),
 not inferred from the data.
 
 Pose PDBs provide positions only — one MDFrameConformation per
-pose. A typical ensemble has 10 frames. The full pipeline
-(including MOPAC) runs independently on each frame.
+pose. GromacsProtein::Build wraps this builder. A typical
+ensemble has 10 frames. The full pipeline (including MOPAC) runs
+independently on each frame. This path is used for paper tests
+and backward compatibility with pre-extracted snapshots.
+
+### Path 5b: GROMACS trajectory (full-system XTC)
+
+**Builder:** `BuildProteinFromTpr(tpr_path, protein_id)`
+(GromacsEnsembleLoader.h:57)
+
+The TPR is the sole authority for protein construction — there is
+no reference PDB. FullSystemReader (FullSystemReader.h) reads the
+same TPR to identify atom ranges (protein, water, ions) in the
+full-system frame. Charges are again PreloadedChargeSource from
+the TPR.
+
+XTC frames are streamed one at a time by GromacsFrameHandler
+(GromacsFrameHandler.h). The first frame finalizes the protein
+(bond detection via FinalizeConstruction) and creates conformation
+0 (permanent, lives in the Protein). Subsequent frames produce
+free-standing conformations: GromacsFrameHandler creates the
+conformation, runs calculators via OperationRunner, accumulates
+results into GromacsProteinAtom Welford accumulators
+(GromacsProtein::AccumulateFrame), and frees the conformation.
+
+PBC fix is applied per frame via MoleculeWholer (verbatim port
+of fes-sampler's pbc_whole.h). SolventEnvironment carries
+water and ion positions to solvent calculators through
+RunOptions.solvent.
+
+Two-pass architecture: pass 1 scans all frames (lightweight
+calculators, accumulation), then SelectFrames chooses frames for
+full extraction. Pass 2 reopens the XTC and re-reads only the
+selected frames for full output.
 
 ### Convergence
 
-All five paths produce the same types: a Protein with typed
+All six paths produce the same types: a Protein with typed
 conformations, a ChargeSource matched to that Protein's atoms, and
 a net charge. OperationRunner::Run does not know or care which
-builder created the protein.
+builder created the protein. Path 5b additionally produces
+per-atom trajectory statistics (Welford means and variances) via
+GromacsProteinAtom, but the per-frame calculator pipeline is
+identical to every other path.
 
 The ChargeSource hierarchy (ChargeSource.h) enforces this:
 ParamFileChargeSource (ff14SB), PrmtopChargeSource (AMBER prmtop),

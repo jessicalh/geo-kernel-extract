@@ -9,150 +9,203 @@ namespace fs = std::filesystem;
 
 namespace nmr {
 
-GromacsFrameHandler::GromacsFrameHandler(
-        GromacsProtein& gp, const RunOptions& opts)
-    : gp_(gp), opts_(opts)
+GromacsFrameHandler::GromacsFrameHandler(GromacsProtein& gp)
+    : gp_(gp)
 {}
 
 
-bool GromacsFrameHandler::OpenTrajectory(
+bool GromacsFrameHandler::Open(
         const std::string& xtc_path,
         const std::string& tpr_path) {
 
-    OperationLog::Scope scope("GromacsFrameHandler::OpenTrajectory", xtc_path);
+    OperationLog::Scope scope("GromacsFrameHandler::Open", xtc_path);
 
-    // Read all XTC frames
+    // Open streaming reader
+    if (!reader_.Open(xtc_path)) {
+        error_ = "cannot open XTC: " + xtc_path;
+        return false;
+    }
+
+    // PBC fixer from TPR (trimmed to protein topology, verbatim
+    // from fes-sampler — do not modify)
     try {
-        frames_ = read_all_xtc_frames(xtc_path);
+        wholer_ = std::make_unique<MoleculeWholer>(tpr_path);
     } catch (const std::exception& e) {
-        error_ = e.what();
+        error_ = std::string("MoleculeWholer: ") + e.what();
         return false;
     }
 
-    if (frames_.empty()) {
-        error_ = "no frames in " + xtc_path;
+    // Verify protein atom count agreement between MoleculeWholer
+    // (which trims TPR to protein blocks) and FullSystemReader
+    // (which parsed atom ranges from the same TPR).
+    const auto& topo = gp_.sys_reader().Topology();
+    if (static_cast<size_t>(wholer_->natoms()) != topo.protein_count) {
+        error_ = "protein atom count mismatch: MoleculeWholer=" +
+                 std::to_string(wholer_->natoms()) +
+                 " FullSystemReader=" +
+                 std::to_string(topo.protein_count);
         return false;
     }
 
-    // Verify atom count matches protein
-    size_t protein_atoms = gp_.protein().AtomCount();
-    if (static_cast<size_t>(frames_[0].natoms) != protein_atoms) {
-        error_ = "atom count mismatch: protein=" +
-                 std::to_string(protein_atoms) +
-                 " xtc=" + std::to_string(frames_[0].natoms);
+    // Read and process first frame — finalizes protein
+    XtcFrame first_frame;
+    if (!reader_.ReadNext(first_frame)) {
+        error_ = "cannot read first frame from " + xtc_path;
         return false;
     }
 
-    // PBC fix — make protein whole in each frame
-    try {
-        MoleculeWholer wholer(tpr_path);
-        for (auto& frame : frames_)
-            wholer.make_whole(frame);
-    } catch (const std::exception& e) {
-        error_ = std::string("PBC fix failed: ") + e.what();
+    // PBC fix on protein portion of full-system frame
+    const size_t pstart = topo.protein_start;
+    const size_t pcount = topo.protein_count;
+    std::vector<float> protein_coords(
+        first_frame.x.begin() + pstart * 3,
+        first_frame.x.begin() + (pstart + pcount) * 3);
+    wholer_->make_whole(protein_coords, first_frame.box);
+
+    // Write fixed coords back into full frame
+    std::copy(protein_coords.begin(), protein_coords.end(),
+              first_frame.x.begin() + pstart * 3);
+
+    // Split into protein positions + solvent
+    std::vector<Vec3> protein_pos;
+    SolventEnvironment solvent;
+    if (!gp_.sys_reader().ExtractFrame(first_frame.x, protein_pos, solvent)) {
+        error_ = "failed to extract first frame";
         return false;
     }
 
-    OperationLog::Info(LogCalcOther, "GromacsFrameHandler::OpenTrajectory",
-        std::to_string(frames_.size()) + " frames, " +
-        std::to_string(protein_atoms) + " atoms");
+    // Finalize protein: bond detection + conformation 0 + accumulators
+    gp_.FinalizeProtein(protein_pos, static_cast<double>(first_frame.time));
+
+    // Run calculators on conformation 0
+    auto& conf0 = gp_.protein().ConformationAt(0);
+    RunOptions init_opts;
+    init_opts.charge_source = gp_.charges();
+    init_opts.solvent = &solvent;
+    init_opts.frame_time_ps = static_cast<double>(first_frame.time);
+    OperationRunner::Run(conf0, init_opts);
+
+    // Accumulate frame 0
+    gp_.AccumulateFrame(conf0, 0);
+
+    first_frame_done_ = true;
+    frame_idx_ = 0;
+    total_frames_ = 1;
+
+    OperationLog::Info(LogCalcOther, "GromacsFrameHandler::Open",
+        std::to_string(reader_.natoms()) + " atoms/frame, " +
+        std::to_string(pcount) + " protein, " +
+        std::to_string(topo.water_count) + " water, " +
+        std::to_string(topo.ion_count) + " ions");
 
     return true;
 }
 
 
-size_t GromacsFrameHandler::ProcessFrames(
-        size_t max_frames,
-        const std::string& temp_dir) {
+bool GromacsFrameHandler::Next(
+        const RunOptions& opts, const std::string& output_dir,
+        bool accumulate) {
 
-    const size_t N = gp_.protein().AtomCount();
-    size_t n_processed = 0;
-    size_t n_to_process = std::min(max_frames, frames_.size());
-
-    for (size_t fi = 0; fi < n_to_process; ++fi) {
-        const XtcFrame& frame = frames_[fi];
-
-        // Convert nm → Angstrom and build position vector
-        std::vector<Vec3> positions(N);
-        for (size_t ai = 0; ai < N; ++ai) {
-            positions[ai] = Vec3(
-                static_cast<double>(frame.x[ai * 3 + 0]) * 10.0,
-                static_cast<double>(frame.x[ai * 3 + 1]) * 10.0,
-                static_cast<double>(frame.x[ai * 3 + 2]) * 10.0);
-        }
-
-        // Create free-standing conformation — NOT in the Protein's vector
-        auto conf = std::make_unique<MDFrameConformation>(
-            &gp_.protein(), std::move(positions),
-            0,                                    // walker
-            static_cast<double>(frame.time),      // time_ps
-            1.0,                                  // weight (default, COLVAR later)
-            0.0,                                  // rmsd_nm
-            0.0);                                 // rg_nm
-
-        // Set frame time for GromacsEnergyResult matching
-        RunOptions frame_opts = opts_;
-        frame_opts.frame_time_ps = static_cast<double>(frame.time);
-
-        // Run calculators
-        RunResult rr = OperationRunner::Run(*conf, frame_opts);
-
-        // Write features to temp directory
-        std::string frame_dir = temp_dir + "/frame_" + std::to_string(fi);
-        // Use POSIX mkdir — fs::create_directories resolves to libtorch's
-        // broken std::filesystem stub when linked against libtorch.
-        std::string mkdir_cmd = "mkdir -p " + frame_dir;
-        (void)system(mkdir_cmd.c_str());
-        int n_files = ConformationResult::WriteAllFeatures(*conf, frame_dir);
-
-        // Accumulate per-atom trajectory statistics
-        int frame_idx = static_cast<int>(fi);
-        for (size_t ai = 0; ai < N; ++ai) {
-            const auto& ca = conf->AtomAt(ai);
-            auto& ga = gp_.AtomAt(ai);
-
-            ga.sasa.Update(ca.atom_sasa, frame_idx);
-            ga.water_n_first.Update(
-                static_cast<double>(ca.water_n_first), frame_idx);
-            ga.water_n_second.Update(
-                static_cast<double>(ca.water_n_second), frame_idx);
-            ga.water_emag.Update(ca.water_efield.norm(), frame_idx);
-            ga.water_emag_first.Update(ca.water_efield_first.norm(), frame_idx);
-            ga.half_shell.Update(ca.half_shell_asymmetry, frame_idx);
-            ga.dipole_cos.Update(ca.mean_water_dipole_cos, frame_idx);
-            ga.nearest_ion_dist.Update(ca.nearest_ion_distance, frame_idx);
-
-            Vec3 pos = ca.Position();
-            ga.position_x.Update(pos.x(), frame_idx);
-            ga.position_y.Update(pos.y(), frame_idx);
-            ga.position_z.Update(pos.z(), frame_idx);
-
-            if (ca.water_n_first == 0) ga.n_frames_dry++;
-            if (ca.water_n_first >= 4) ga.n_frames_exposed++;
-        }
-
-        // Record the path
-        gp_.AddFramePath(frame_dir);
-
-        OperationLog::Info(LogCalcOther, "GromacsFrameHandler::ProcessFrames",
-            "frame " + std::to_string(fi) +
-            " t=" + std::to_string(frame.time) + "ps" +
-            " atoms=" + std::to_string(N) +
-            " files=" + std::to_string(n_files) +
-            " attached=[" + [&]{
-                std::string s;
-                for (size_t ri = 0; ri < rr.attached.size(); ++ri) {
-                    if (ri) s += ", ";
-                    s += rr.attached[ri];
-                }
-                return s;
-            }() + "]");
-
-        // Conformation dies here — memory freed
-        ++n_processed;
+    XtcFrame frame;
+    if (!reader_.ReadNext(frame)) {
+        total_frames_ = frame_idx_ + 1;
+        return false;
     }
 
-    return n_processed;
+    ++frame_idx_;
+    ++total_frames_;
+
+    return ProcessFrame(frame, opts, output_dir, accumulate);
+}
+
+
+bool GromacsFrameHandler::Skip() {
+    if (!reader_.Skip()) {
+        total_frames_ = frame_idx_ + 1;
+        return false;
+    }
+    ++frame_idx_;
+    ++total_frames_;
+    return true;
+}
+
+
+bool GromacsFrameHandler::Reopen() {
+    if (!reader_.Reopen()) {
+        error_ = "failed to reopen XTC";
+        return false;
+    }
+    frame_idx_ = 0;
+    total_frames_ = 1;  // frame 0 already counted
+
+    // Skip first frame — already processed during Open
+    XtcFrame discard;
+    if (!reader_.ReadNext(discard)) {
+        error_ = "cannot re-read first frame";
+        return false;
+    }
+
+    return true;
+}
+
+
+bool GromacsFrameHandler::ProcessFrame(
+        const XtcFrame& frame, const RunOptions& opts,
+        const std::string& output_dir, bool accumulate) {
+
+    const auto& topo = gp_.sys_reader().Topology();
+    const size_t pstart = topo.protein_start;
+    const size_t pcount = topo.protein_count;
+
+    // PBC fix on protein coordinates (in nm, in-place on a copy)
+    std::vector<float> protein_coords(
+        frame.x.begin() + pstart * 3,
+        frame.x.begin() + (pstart + pcount) * 3);
+    wholer_->make_whole(protein_coords, frame.box);
+
+    // Build a modified frame with fixed protein coords for ExtractFrame
+    std::vector<float> fixed_xyz = frame.x;
+    std::copy(protein_coords.begin(), protein_coords.end(),
+              fixed_xyz.begin() + pstart * 3);
+
+    // Split into protein positions (Angstroms) + solvent
+    std::vector<Vec3> protein_pos;
+    SolventEnvironment solvent;
+    if (!gp_.sys_reader().ExtractFrame(fixed_xyz, protein_pos, solvent)) {
+        error_ = "frame " + std::to_string(frame_idx_) + " extract failed";
+        return false;
+    }
+
+    // Create free-standing conformation (NOT in Protein's vector)
+    ProteinConformation conf(&gp_.protein(), std::move(protein_pos));
+
+    // Run calculators
+    RunOptions frame_opts = opts;
+    frame_opts.solvent = &solvent;
+    frame_opts.frame_time_ps = static_cast<double>(frame.time);
+    RunResult rr = OperationRunner::Run(conf, frame_opts);
+
+    // Accumulate into GromacsProtein (skip in pass 2 — already counted)
+    if (accumulate)
+        gp_.AccumulateFrame(conf, static_cast<int>(frame_idx_));
+
+    // Write NPY if requested
+    if (!output_dir.empty()) {
+        char frame_dir[512];
+        std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%04zu",
+                      output_dir.c_str(), frame_idx_);
+        fs::create_directories(frame_dir);
+        int n_files = ConformationResult::WriteAllFeatures(conf, frame_dir);
+        gp_.AddFramePath(frame_dir);
+
+        OperationLog::Info(LogCalcOther, "GromacsFrameHandler",
+            "frame " + std::to_string(frame_idx_) +
+            " t=" + std::to_string(frame.time) + "ps" +
+            " files=" + std::to_string(n_files));
+    }
+
+    // Conformation dies here — memory freed
+    return true;
 }
 
 }  // namespace nmr

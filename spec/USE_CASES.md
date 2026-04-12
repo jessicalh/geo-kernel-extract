@@ -137,18 +137,19 @@ MopacMcConnellResult, CoulombResult. The Python SDK handles
 absent MOPAC/Coulomb arrays — those groups are `None` on the
 Protein dataclass.
 
-**Typical invocation (fleet):**
+**Typical invocation (trajectory):**
 
-    nmr_extract --fleet --tpr topology.tpr --poses /path/to/poses \
+    nmr_extract --trajectory --tpr topology.tpr --xtc trajectory.xtc \
                 --no-mopac --no-coulomb --output /path/to/output
 
 **Typical invocation (single protein):**
 
     nmr_extract --pdb protein.pdb --no-mopac --no-coulomb --output /path/to/output
 
-All skip flags are available for all modes (PDB, ORCA, mutant, fleet)
-and in both the CLI and UI. See spec/TIMING_4876_ATOMS.md for
-measured per-calculator times on 4876-atom protein.
+All skip flags are available for all modes (PDB, ORCA, mutant, trajectory)
+and in the CLI. The viewer hardcodes MOPAC and Coulomb off; use `--no-apbs`
+to skip APBS. See spec/TIMING_4876_ATOMS.md for measured per-calculator
+times on 4876-atom protein.
 
 ---
 

@@ -67,6 +67,11 @@ aimnet2_coulomb_efg_cutoff = 20.0
 sasa_probe_radius = 1.4
 sasa_n_points = 92
 
+# AIMNet2 model file path
+# Set this to the .jpt file to enable neural network charge calculation.
+# Non-silent: if set and the model fails to load, nmr_extract aborts.
+aimnet2_model_path = "/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt"
+
 # Numerical noise floors — below these the value is treated as zero
 near_zero_vector_norm_threshold = 1e-10
 coulomb_charge_noise_floor = 1e-15

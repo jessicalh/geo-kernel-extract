@@ -2,42 +2,33 @@
 //
 // GromacsProtein: trajectory manager. NOT a feature extractor.
 //
-// This is trajectory lifecycle management + accumulation, not physics.
+// This is an adapter around a real Protein + its trajectory-level state.
 // Feature extraction happens in ConformationResult subclasses
 // (WaterFieldResult, HydrationShellResult, etc.) which take a
 // ProteinConformation + SolventEnvironment and know nothing about
 // this class.
 //
 // Owns the immutable Protein (topology + conformation 0 via AddMDFrame).
-// Free-standing conformations are created from the Protein's topology
-// but never added to its conformations_ vector — they live for one
-// frame and die.
+// Conformation 0 is permanent — it feeds the .h5 master file.
+// All other frames are free-standing conformations created by
+// GromacsFrameHandler, processed, accumulated, then freed.
 //
 // Holds trajectory-specific state:
-//   - frame manifest (where frame outputs were written)
 //   - per-atom Welford accumulators (GromacsProteinAtom) updated by
-//     GromacsFrameHandler after each frame
+//     GromacsFrameHandler after each frame via AccumulateFrame()
 //   - charges from TPR
+//   - FullSystemReader (topology + frame splitting)
 //
-// The accumulators survive across all frames and are written to
-// atom_catalog.csv by GromacsFinalResult at the end.
-//
-// Future: rename to TrajectoryProtein / TrajectoryProteinAtom when
-// the GROMACS-specific loader is factored out.
+// Does NOT read XTC. Does NOT create conformations. Does NOT run
+// calculators. Those are GromacsFrameHandler's job.
 //
 
 #include "Protein.h"
 #include "GromacsProteinAtom.h"
 #include "GromacsEnsembleLoader.h"
 #include "FullSystemReader.h"
-#include "OperationRunner.h"
 
-// XtcFrame is defined in xtc_reader.h which includes xdrfile.h (C).
-// xdrfile.h conflicts with GROMACS/torch C++ headers, so we can't
-// include it here. The frame storage is opaque — managed in .cpp.
-struct XtcFrame;
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -53,10 +44,18 @@ public:
     // Build from fleet paths (pre-extracted PDB poses).
     bool Build(const FleetPaths& paths);
 
-    // Build from full-system trajectory (TPR + reference PDB).
-    // Does NOT read the XTC — frames come later via ScanFrame/ExtractFrame.
-    bool BuildFromTrajectory(const std::string& tpr_path,
-                             const std::string& ref_pdb_path);
+    // Build from full-system trajectory (TPR only).
+    // Reads topology for atom ranges (protein/water/ion), builds
+    // Protein from TPR. Does NOT finalize — FinalizeProtein() must
+    // be called after the first XTC frame provides positions.
+    bool BuildFromTrajectory(const std::string& tpr_path);
+
+    // Finalize protein construction using first frame positions.
+    // Calls FinalizeConstruction (bond detection) + AddMDFrame
+    // (conformation 0) + InitAtoms (accumulators).
+    // Called by GromacsFrameHandler after reading the first frame.
+    void FinalizeProtein(std::vector<Vec3> first_frame_positions,
+                         double time_ps);
 
     // ── Identity ─────────────────────────────────────────────────
 
@@ -68,26 +67,21 @@ public:
     const std::string& error() const { return error_; }
     const std::vector<std::string>& pose_names() const { return pose_names_; }
 
+    // ── Trajectory infrastructure ────────────────────────────────
+
+    // FullSystemReader: topology + frame splitting. Borrowed by
+    // GromacsFrameHandler for ExtractFrame on each frame.
+    const FullSystemReader& sys_reader() const { return sys_reader_; }
+
     // ── Per-atom trajectory accumulators ─────────────────────────
 
     GromacsProteinAtom& AtomAt(size_t i) { return atoms_[i]; }
     const GromacsProteinAtom& AtomAt(size_t i) const { return atoms_[i]; }
     size_t AtomCount() const { return atoms_.size(); }
 
-    // ── Trajectory processing ────────────────────────────────────
-
-    // Load all frames from a full-system XTC. Call after BuildFromTrajectory.
-    bool LoadTrajectory(const std::string& xtc_path);
-    size_t FrameCount() const;
-
-    // Scan one frame: run lightweight calculators, accumulate stats.
-    // No NPY output. Returns false on error.
-    bool ScanFrame(size_t frame_idx, const RunOptions& scan_opts);
-
-    // Extract one frame: run full calculators, write NPY to output_dir.
-    // Returns number of NPY files written, or -1 on error.
-    int ExtractFrame(size_t frame_idx, const RunOptions& extract_opts,
-                     const std::string& output_dir);
+    // Accumulate per-atom stats from one frame's computed conformation.
+    // Called by GromacsFrameHandler after running calculators.
+    void AccumulateFrame(const ProteinConformation& conf, int frame_idx);
 
     // Write the per-atom trajectory catalog CSV.
     void WriteCatalog(const std::string& path) const;
@@ -103,13 +97,10 @@ public:
 
 private:
     void InitAtoms();
-    void AccumulateFrame(const ProteinConformation& conf, int frame_idx);
 
     std::unique_ptr<Protein> protein_;
     std::unique_ptr<ChargeSource> charges_;
     FullSystemReader sys_reader_;
-    struct FrameStorage;                  // pimpl for XtcFrame vector
-    std::unique_ptr<FrameStorage> frames_;
     std::vector<GromacsProteinAtom> atoms_;
     std::vector<std::string> frame_paths_;
     std::vector<std::string> pose_names_;

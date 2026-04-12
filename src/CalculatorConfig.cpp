@@ -13,6 +13,7 @@ namespace nmr {
 // Static members
 std::unordered_map<std::string, CalculatorConfig::ParamEntry> CalculatorConfig::defaults_;
 std::unordered_map<std::string, double> CalculatorConfig::overrides_;
+std::unordered_map<std::string, std::string> CalculatorConfig::string_overrides_;
 bool CalculatorConfig::loaded_ = false;
 bool CalculatorConfig::defaults_initialised_ = false;
 
@@ -147,9 +148,11 @@ void CalculatorConfig::Load(const std::string& path) {
         char* end = nullptr;
         double d = std::strtod(val.c_str(), &end);
         if (end == val.c_str()) {
-            OperationLog::Warn("CalculatorConfig::Load",
-                path + ":" + std::to_string(line_num)
-                + " cannot parse as double: " + key + " = " + val);
+            // Not a number — store as string (strip surrounding quotes if present)
+            std::string s = val;
+            if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+                s = s.substr(1, s.size() - 2);
+            string_overrides_[key] = s;
             continue;
         }
 
@@ -181,6 +184,14 @@ double CalculatorConfig::Get(const std::string& key) {
         key.c_str());
     std::abort();
     return 0.0;  // unreachable
+}
+
+
+std::string CalculatorConfig::GetString(const std::string& key,
+                                        const std::string& defaultVal) {
+    auto it = string_overrides_.find(key);
+    if (it != string_overrides_.end()) return it->second;
+    return defaultVal;
 }
 
 

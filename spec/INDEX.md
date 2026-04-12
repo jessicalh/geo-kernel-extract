@@ -86,7 +86,7 @@ then run `python -m pytest python/tests/` to verify.
 - **INDEX.md** — this file
 - **CONSTITUTION.md** — supreme constraint
 - **MATHS_GOALS.md** — mathematical validation plan
-- **USE_CASES.md** — the 4 use cases (--pdb, --orca, --mutant, --fleet)
+- **USE_CASES.md** — the 4 use cases (--pdb, --orca, --mutant, --trajectory)
 - **GEOMETRY_CHOICE_BRIEF.md** — GeometryChoice recording spec
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
@@ -94,6 +94,7 @@ then run `python -m pytest python/tests/` to verify.
 - **ENSEMBLE_MODEL.md** — GromacsProtein trajectory-based model (revised 2026-04-12, replaces old EnsembleConformation design)
 - **TRAJECTORY_EXTRACTION.md** — full-system trajectory path: explicit solvent E-field, water packing, ion field calculators (design, 2026-04-12)
 - **TIMING_4876_ATOMS.md** — measured per-calculator times on 4876-atom protein (2026-04-12)
+- **OUTSTANDING_GROMACS_PATH.md** — open items for trajectory extraction path (GeometryChoice, KernelFilterSet, TOML, SDK tests)
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/
@@ -129,17 +130,20 @@ Reference only.
 
 ## Current Status (2026-04-12)
 
-15 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA, plus
-foundation: Geometry, SpatialIndex, Enrichment). DSSP extended with
-8-class SS, H-bond energies, chi1-4. SasaResult (Shrake-Rupley)
-added. Calibration settled at R²=0.818 (per-element ridge, 55
-kernels). Streaming trajectory processing via GromacsProtein
-pattern — tested on 10 XTC frames.
+17 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
+WaterField, HydrationShell, GromacsEnergy, plus foundation:
+Geometry, SpatialIndex, Enrichment). DSSP extended with 8-class SS,
+H-bond energies, chi1-4. Calibration settled at R²=0.818
+(per-element ridge, 55 kernels).
 
-### Next: ensemble accumulation + .h5 master file
+Two-pass trajectory streaming: GromacsProtein (adapter +
+accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
+frame lifecycle). Tested end-to-end on 1ZR7_6721 (479 atoms, 3525
+water, 25 ions). 60 NPY arrays registered in SDK catalog.
 
-GromacsFrameHandler streams XTC frames as free-standing
-conformations. Next step: Welford accumulators for per-atom
-quantities, ridge-informed frame selection, and the {protein_id}.h5
-master file (topology + EnrichmentResult from conformation 0).
-See spec/ENSEMBLE_MODEL.md for the revised design.
+### Next: .h5 master file + GeometryChoice on solvent calculators
+
+GromacsFinalResult needs .h5 writing (HighFive integration).
+WaterFieldResult and HydrationShellResult need GeometryChoice
+recording and KernelFilterSet registration. See
+spec/OUTSTANDING_GROMACS_PATH.md for the full punch list.

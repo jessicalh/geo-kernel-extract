@@ -1,7 +1,4 @@
 #include "GromacsProtein.h"
-#include "xtc_reader.h"
-#include "PdbFileReader.h"
-#include "ConformationResult.h"
 #include "OperationLog.h"
 #include "Types.h"
 
@@ -11,11 +8,6 @@
 
 namespace fs = std::filesystem;
 namespace nmr {
-
-// Pimpl: hides XtcFrame vector from the header (C/C++ header conflict).
-struct GromacsProtein::FrameStorage {
-    std::vector<XtcFrame> frames;
-};
 
 
 GromacsProtein::GromacsProtein() = default;
@@ -52,9 +44,7 @@ bool GromacsProtein::Build(const FleetPaths& paths) {
 
 // ── Build (trajectory path — TPR is authoritative) ───────────────
 
-bool GromacsProtein::BuildFromTrajectory(
-        const std::string& tpr_path,
-        const std::string& /* ref_pdb_path — unused, TPR is authoritative */) {
+bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path) {
 
     // Full-system topology for frame splitting (protein/water/ion ranges)
     if (!sys_reader_.ReadTopology(tpr_path)) {
@@ -74,9 +64,9 @@ bool GromacsProtein::BuildFromTrajectory(
     charges_ = std::move(build.charges);
     net_charge_ = build.net_charge;
 
-    // NOTE: Protein is not finalized yet — FinalizeConstruction needs
-    // positions from the first XTC frame for bond detection. Call
-    // LoadTrajectory() next, which reads the XTC and finalizes.
+    // NOTE: Protein is not finalized yet — FinalizeProtein() needs
+    // positions from the first XTC frame for bond detection. Called
+    // by GromacsFrameHandler after reading the first frame.
 
     OperationLog::Info(LogCalcOther, "GromacsProtein::BuildFromTrajectory",
         protein_id_ + ": " +
@@ -85,6 +75,30 @@ bool GromacsProtein::BuildFromTrajectory(
         std::to_string(sys_reader_.Topology().ion_count) + " ions");
 
     return true;
+}
+
+
+// ── FinalizeProtein ──────────────────────────────────────────────
+
+void GromacsProtein::FinalizeProtein(
+        std::vector<Vec3> first_frame_positions, double time_ps) {
+    // 1. Bond detection from first frame geometry
+    protein_->FinalizeConstruction(first_frame_positions);
+
+    // 2. Conformation 0 — permanent, lives in the Protein
+    protein_->AddMDFrame(std::move(first_frame_positions),
+                         /*walker=*/0, time_ps, /*weight=*/1.0,
+                         /*rmsd_nm=*/0.0, /*rg_nm=*/0.0);
+
+    // 3. Accumulators
+    InitAtoms();
+
+    OperationLog::Info(LogCalcOther, "GromacsProtein::FinalizeProtein",
+        protein_id_ + ": " +
+        std::to_string(protein_->AtomCount()) + " atoms, " +
+        std::to_string(protein_->BondCount()) + " bonds, " +
+        std::to_string(protein_->RingCount()) + " rings, " +
+        "conf0 at t=" + std::to_string(time_ps) + "ps");
 }
 
 
@@ -126,122 +140,6 @@ void GromacsProtein::AccumulateFrame(
         if (ca.water_n_first == 0) ga.n_frames_dry++;
         if (ca.water_n_first >= 4) ga.n_frames_exposed++;
     }
-}
-
-
-// ── LoadTrajectory ───────────────────────────────────────────────
-
-bool GromacsProtein::LoadTrajectory(const std::string& xtc_path) {
-    frames_ = std::make_unique<FrameStorage>();
-    try {
-        frames_->frames = read_all_xtc_frames(xtc_path);
-    } catch (const std::exception& e) {
-        error_ = e.what();
-        return false;
-    }
-
-    if (frames_->frames.empty()) {
-        error_ = "no frames in " + xtc_path;
-        return false;
-    }
-
-    // Finalize protein construction using first frame positions.
-    // FinalizeConstruction needs positions for CovalentTopology::Resolve
-    // (bond detection from distances). The TPR built the atoms and
-    // residues; the first frame provides the geometry.
-    if (protein_ && protein_->AtomCount() > 0 && protein_->BondCount() == 0) {
-        std::vector<Vec3> first_pos;
-        SolventEnvironment discard;
-        if (!sys_reader_.ExtractFrame(frames_->frames[0].x, first_pos, discard)) {
-            error_ = "failed to extract first frame for finalization";
-            return false;
-        }
-        protein_->FinalizeConstruction(first_pos);
-        InitAtoms();
-    }
-
-    OperationLog::Info(LogCalcOther, "GromacsProtein::LoadTrajectory",
-        std::to_string(frames_->frames.size()) + " frames, " +
-        std::to_string(frames_->frames[0].natoms) +
-        " atoms/frame, protein=" +
-        std::to_string(protein_ ? protein_->AtomCount() : 0) +
-        " bonds=" + std::to_string(protein_ ? protein_->BondCount() : 0));
-    return true;
-}
-
-
-// ── FrameCount ───────────────────────────────────────────────────
-
-size_t GromacsProtein::FrameCount() const {
-    return frames_ ? frames_->frames.size() : 0;
-}
-
-
-// ── ScanFrame ────────────────────────────────────────────────────
-
-bool GromacsProtein::ScanFrame(
-        size_t frame_idx, const RunOptions& scan_opts) {
-
-    if (!frames_ || frame_idx >= frames_->frames.size()) return false;
-    const auto& frame = frames_->frames[frame_idx];
-
-    std::vector<Vec3> protein_pos;
-    SolventEnvironment solvent;
-    if (!sys_reader_.ExtractFrame(frame.x, protein_pos, solvent)) {
-        error_ = "frame " + std::to_string(frame_idx) + " extract failed";
-        return false;
-    }
-
-    ProteinConformation conf(protein_.get(), std::move(protein_pos));
-
-    RunOptions frame_opts = scan_opts;
-    frame_opts.solvent = &solvent;
-    OperationRunner::Run(conf, frame_opts);
-
-    AccumulateFrame(conf, static_cast<int>(frame_idx));
-    return true;
-}
-
-
-// ── ExtractFrame ─────────────────────────────────────────────────
-
-int GromacsProtein::ExtractFrame(
-        size_t frame_idx, const RunOptions& extract_opts,
-        const std::string& output_dir) {
-
-    if (!frames_ || frame_idx >= frames_->frames.size()) return -1;
-    const auto& frame = frames_->frames[frame_idx];
-
-    std::vector<Vec3> protein_pos;
-    SolventEnvironment solvent;
-    if (!sys_reader_.ExtractFrame(frame.x, protein_pos, solvent)) {
-        error_ = "frame " + std::to_string(frame_idx) + " extract failed";
-        return -1;
-    }
-
-    ProteinConformation conf(protein_.get(), std::move(protein_pos));
-
-    RunOptions frame_opts = extract_opts;
-    frame_opts.solvent = &solvent;
-    frame_opts.frame_time_ps = static_cast<double>(frame.time);
-
-    RunResult rr = OperationRunner::Run(conf, frame_opts);
-    if (!rr.Ok()) {
-        error_ = "frame " + std::to_string(frame_idx) + ": " + rr.error;
-        return -1;
-    }
-
-    AccumulateFrame(conf, static_cast<int>(frame_idx));
-
-    char frame_dir[512];
-    std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%04zu",
-                  output_dir.c_str(), frame_idx);
-    std::string mkdir_cmd = std::string("mkdir -p ") + frame_dir;
-    (void)system(mkdir_cmd.c_str());
-
-    int n_files = ConformationResult::WriteAllFeatures(conf, frame_dir);
-    frame_paths_.push_back(frame_dir);
-    return n_files;
 }
 
 

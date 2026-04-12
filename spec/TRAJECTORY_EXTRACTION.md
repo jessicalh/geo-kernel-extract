@@ -16,6 +16,9 @@ The strategy is: extract everything we can per frame, write NPY,
 let the calibration pipeline (per-element ridge) find the
 dimensions.  Cost per frame may increase; that trades against
 being more selective about which frames to extract.
+(IMPLEMENTED 2026-04-12: GromacsProtein::SelectFrames() uses
+Welford variance stats from the scan pass to select up to N
+representative frames. See src/GromacsProtein.h.)
 
 ## What the full-system trajectory gives us (per protein atom)
 
@@ -172,4 +175,4 @@ backward compatibility.
 
 The trajectory-driven path is new.  It reads the full-system
 trajectory, runs all calculators (existing + solvent), writes
-an expanded NPY set.  Frame selection TBD.
+an expanded NPY set.  Frame selection: IMPLEMENTED 2026-04-12.

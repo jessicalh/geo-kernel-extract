@@ -5,17 +5,20 @@ every unit, every dependency. Implementation agents code from this.
 If a property is not in this document, it does not exist in the code.
 
 **NOTE (2026-04-03): This document is not aspirational. The library is
-mature for this functionality — 3 builders, 4 use cases,
-287 tests passing. Read the code before assuming any section is current.**
+mature for this functionality — 4 builders, 4 use cases,
+293 tests passing. Read the code before assuming any section is current.**
 
-**UPDATE PENDING (2026-04-12):** SasaResult, AIMNet2Result,
-GromacsProtein, GromacsFrameHandler, GromacsFinalResult, and the
-extended DsspResult (8-class SS, H-bond energies, chi1-4) are
-implemented and tested but not yet documented here. See
-spec/ENSEMBLE_MODEL.md for the trajectory streaming classes. This
-document remains correct for the PDB, Orca, mutant, and fleet
-(non-streaming) paths — all properties and types for those paths are
-current.
+**NOTE (2026-04-13):** SasaResult, AIMNet2Result, WaterFieldResult,
+HydrationShellResult, GromacsEnergyResult, and the extended DsspResult
+(8-class SS, H-bond energies, chi1-4) are now documented in
+"Complete property flow" below.
+
+**GROMACS trajectory classes pending documentation here:** GromacsProtein,
+GromacsProteinAtom, GromacsFrameHandler, SolventEnvironment, and
+GromacsFrameCatalog are implemented, tested, and actively used. Their
+object model documentation will be added to this file as the trajectory
+path stabilises. For now see spec/ENSEMBLE_MODEL.md (design) and
+spec/OUTSTANDING_GROMACS_PATH.md (remaining work).
 
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
@@ -1344,6 +1347,11 @@ DispersionResult              requires: SpatialIndexResult, GeometryResult
 PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
 OrcaShieldingResult           requires: nothing (loaded from files)
+SasaResult                    requires: SpatialIndexResult
+AIMNet2Result                 requires: SpatialIndexResult (model loaded externally)
+WaterFieldResult              requires: SpatialIndexResult + SolventEnvironment (runtime)
+HydrationShellResult          requires: SpatialIndexResult + SolventEnvironment (runtime)
+GromacsEnergyResult           requires: nothing (reads from .edr file at runtime)
 
 (Feature extraction is distributed: each ConformationResult implements
 WriteFeatures(). ConformationResult::WriteAllFeatures() traverses all
@@ -1766,8 +1774,17 @@ pre-built collections (rings_by_type, bonds_by_category, residues_by_type),
 ring pair properties.
 
 ### DsspResult (requires: nothing)
-Per-residue: secondary structure (char), phi (radians), psi (radians),
-SASA (Angstroms^2), H-bond acceptors[2], H-bond donors[2].
+Per-residue: secondary structure (1-char, H/G/I/E/B/T/S/C), phi (radians),
+psi (radians), SASA (Angstroms^2), H-bond acceptors[2] with energy
+(kcal/mol), H-bond donors[2] with energy (kcal/mol).
+
+**WriteFeatures output:**
+- `dssp_backbone.npy` (N, 5): per-atom backbone geometry
+- `dssp_ss8.npy` (N, 8): 8-class secondary structure one-hot
+  (H=α-helix, G=3₁₀-helix, I=π-helix, E=strand, B=isolated bridge,
+  T=turn, S=bend, C=coil)
+- `dssp_hbond_energy.npy` (N, 4): H-bond energies (acc0, acc1, don0, don1)
+- `dssp_chi.npy` (N, 12): chi1-4 dihedral angles as (cos, sin, exists) × 4
 
 ### ChargeAssignmentResult (requires: nothing)
 Per-atom: partial charge (e), VdW radius (Angstroms).
@@ -1907,6 +1924,90 @@ Per-atom: diamagnetic + paramagnetic + total shielding tensors (Mat3 +
 SphericalTensor each). Parsed from ORCA NMR output with element-verified
 atom ordering. Each protein gets its own result — WT and mutant are
 separate Proteins. Comparison is MutantProteinConformationComparison.
+
+### SasaResult (requires: SpatialIndexResult)
+Per-atom Shrake-Rupley solvent-accessible surface area using a Fibonacci
+sphere (~92 points, r_vdW + r_probe). Each point checked for occlusion
+by nearby atoms via SpatialIndexResult. SASA = fraction_exposed × sphere_area.
+
+**Parameters:** `sasa_probe_radius` (default 1.4 Å), `sasa_n_points` (default 92).
+**Physics query:** `AtomSASA(i) -> double`, `AllSASA() -> vector<double>`.
+**WriteFeatures output:** `atom_sasa.npy` (N,) float64, Angstroms² per atom.
+
+### AIMNet2Result (requires: SpatialIndexResult; model loaded externally)
+Neural network charges and EFG via AIMNet2 (libtorch, CUDA mandatory).
+Produces per-atom Hirshfeld charges, 256-dim AIM embedding, and Coulomb
+EFG decomposed by source using the same dipolar kernel as CoulombResult.
+The model (.jpt) is loaded once at startup and shared across conformations.
+Failure is non-silent — returns nullptr and logs an error.
+
+**CUDA required.** No CPU fallback. Unknown elements → nullptr.
+
+**charge_sensitivity:** computed via autograd (d(charges)/d(positions)) only
+if `aimnet2_sensitivity_mode = "autograd"` in TOML. Default: not computed.
+The perturbation approach was removed — it produced conformation-specific
+values that don't generalise.
+
+**WriteFeatures output:**
+- `aimnet2_charges.npy` (N,): Hirshfeld charges (elementary charge)
+- `aimnet2_aim.npy` (N, 256): electronic embedding
+- `aimnet2_efg.npy` (N, 9): Coulomb EFG total (SphericalTensor)
+- `aimnet2_efg_aromatic.npy` (N, 9): Coulomb EFG from aromatic atoms
+- `aimnet2_efg_backbone.npy` (N, 9): Coulomb EFG from backbone atoms
+
+### WaterFieldResult (requires: SpatialIndexResult + SolventEnvironment)
+Per-atom explicit-water E-field and EFG. Same Coulomb kernel as
+CoulombResult but summing over water charges (TIP3P: O = -0.834e,
+H = +0.417e). Builds its own spatial index over water oxygen positions.
+Available in trajectory mode only (requires SolventEnvironment with water
+positions for the frame).
+
+**What it captures that APBS doesn't:** water orientation fluctuations,
+bridging water, structural water, cavity effects.
+
+**WriteFeatures output:**
+- `water_efield.npy` (N, 3): total E-field from all water within cutoff (V/Å)
+- `water_efield_first.npy` (N, 3): first-shell E-field (< 3.5 Å from O)
+- `water_efg.npy` (N, 9): total EFG (SphericalTensor)
+- `water_efg_first.npy` (N, 9): first-shell EFG
+- `water_shell_counts.npy` (N, 2): [n_first, n_second] water O counts
+
+### HydrationShellResult (requires: SpatialIndexResult + SolventEnvironment)
+Per-atom hydration shell geometry from explicit water positions. Characterises
+the local dielectric environment that no geometry-only kernel can see.
+
+**What it computes:**
+- Half-shell asymmetry: fraction of first-shell waters on the solvent-exposed
+  side vs the protein interior (UCSB method).
+- Mean water dipole orientation: cos(angle) between water dipole and
+  atom→water O vector, averaged over first shell (water order parameter).
+- Nearest ion distance and charge.
+
+**WriteFeatures output:**
+- `hydration_shell.npy` (N, 4): [asymmetry, dipole_cos, ion_dist, ion_charge]
+
+### GromacsEnergyResult (requires: nothing; reads .edr file at runtime)
+Per-frame aggregate energy terms from the GROMACS simulation. Reads the .edr
+energy file and finds the frame nearest to the conformation's time (ps).
+Whole-system quantities (not per-atom).
+
+**GromacsEnergy struct fields:**
+| Field | Unit | Description |
+|-------|------|-------------|
+| time_ps | ps | Frame time |
+| coulomb_sr | kJ/mol | PME real-space Coulomb |
+| coulomb_recip | kJ/mol | PME reciprocal-space Coulomb |
+| coulomb_14 | kJ/mol | 1-4 intramolecular Coulomb |
+| lj_sr | kJ/mol | Lennard-Jones short-range |
+| potential | kJ/mol | Total potential energy |
+| temperature | K | System temperature |
+| pressure | bar | System pressure |
+| volume | nm³ | Box volume |
+
+`CoulombTotal() = coulomb_sr + coulomb_recip` (excludes 1-4).
+
+**WriteFeatures output:**
+- `gromacs_energy.npy` (1, 9): [t, Coul_SR, Coul_recip, Coul_14, LJ, pot, T, P, V]
 
 ### Calibration Pipeline (external — not a ConformationResult)
 

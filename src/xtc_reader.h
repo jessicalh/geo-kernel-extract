@@ -28,6 +28,107 @@ struct XtcFrame {
     float              box[3][3];
 };
 
+
+// Streaming XTC reader: holds an open XDRFILE* handle and reads one
+// frame at a time. For trajectories that don't fit in memory.
+//
+// Usage:
+//   XtcStreamReader reader;
+//   reader.Open("traj.xtc");
+//   XtcFrame frame;
+//   while (reader.ReadNext(frame)) { ... process frame ... }
+//   reader.Reopen();  // for pass 2
+//
+class XtcStreamReader {
+public:
+    ~XtcStreamReader() { Close(); }
+
+    XtcStreamReader() = default;
+    XtcStreamReader(const XtcStreamReader&) = delete;
+    XtcStreamReader& operator=(const XtcStreamReader&) = delete;
+
+    bool Open(const std::string& path) {
+        Close();
+        path_ = path;
+
+        int na = 0;
+        if (read_xtc_natoms(cpath(path_), &na) != exdrOK)
+            return false;
+        natoms_ = na;
+
+        xd_ = xdrfile_open(cpath(path_), "r");
+        if (!xd_) return false;
+
+        buf_.resize(natoms_ * 3);
+        frames_read_ = 0;
+        return true;
+    }
+
+    // Read next frame into `frame`. Returns false at EOF or error.
+    // Reuses internal buffer — the XtcFrame gets a copy of the coords.
+    bool ReadNext(XtcFrame& frame) {
+        if (!xd_) return false;
+
+        auto* coords = reinterpret_cast<rvec*>(buf_.data());
+        int step;
+        float time, prec;
+        matrix box;
+
+        if (read_xtc(xd_, natoms_, &step, &time, box, coords, &prec) != exdrOK)
+            return false;
+
+        frame.time   = time;
+        frame.step   = step;
+        frame.natoms = natoms_;
+        frame.x.assign(buf_.begin(), buf_.end());
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                frame.box[i][j] = box[i][j];
+
+        ++frames_read_;
+        return true;
+    }
+
+    // Skip one frame without copying coordinates. Returns false at EOF.
+    bool Skip() {
+        if (!xd_) return false;
+
+        auto* coords = reinterpret_cast<rvec*>(buf_.data());
+        int step;
+        float time, prec;
+        matrix box;
+
+        if (read_xtc(xd_, natoms_, &step, &time, box, coords, &prec) != exdrOK)
+            return false;
+
+        ++frames_read_;
+        return true;
+    }
+
+    void Close() {
+        if (xd_) { xdrfile_close(xd_); xd_ = nullptr; }
+    }
+
+    // Reopen from the start (for pass 2).
+    bool Reopen() {
+        Close();
+        xd_ = xdrfile_open(cpath(path_), "r");
+        if (!xd_) return false;
+        frames_read_ = 0;
+        return true;
+    }
+
+    int natoms() const { return natoms_; }
+    size_t frames_read() const { return frames_read_; }
+
+private:
+    XDRFILE* xd_ = nullptr;
+    int natoms_ = 0;
+    size_t frames_read_ = 0;
+    std::string path_;
+    std::vector<float> buf_;
+};
+
 // Read a specific frame from an .xtc file by matching target time (ps).
 // Reads sequentially from the start — call once per file with sorted times
 // for efficiency. For our use case (~1000 frames, <15 MB), this is fast.

@@ -62,10 +62,6 @@ struct Welford {
 class GromacsProteinAtom {
     friend class GromacsProtein;
 public:
-    // Public construction for use in RunTrajectory (nmr_extract.cpp).
-    // GromacsProtein::InitAtoms() is the normal creation path.
-    explicit GromacsProteinAtom(size_t idx) : atom_index_(idx) {}
-
     // Index into the Protein's atom list (for identity lookup).
     size_t atom_index() const { return atom_index_; }
 
@@ -104,6 +100,7 @@ public:
     double energy_at_water_max = 0.0;
 
 private:
+    explicit GromacsProteinAtom(size_t idx) : atom_index_(idx) {}
     const size_t atom_index_;
 };
 

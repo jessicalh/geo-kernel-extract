@@ -1,9 +1,10 @@
 # Ensemble Extraction Model
 
-**Status:** IMPLEMENTED (partial). GromacsProtein + GromacsFrameHandler +
-GromacsFinalResult are built and tested. Streaming test passes on
-1Q8K_10023 (10 XTC frames, 14 results per frame, 36 NPY arrays).
-Accumulation logic and .h5 writer are next.
+**Status:** IMPLEMENTED and TESTED. Two-pass streaming architecture
+works end-to-end. Three tests pass on 1ZR7_6721 full-system data
+(479 protein atoms, 3525 water molecules, 25 ions). .h5 master file
+writing is NOT yet implemented (logs what happened; HighFive not
+integrated).
 
 Design revised 2026-04-11/12 after critical review of original
 EnsembleConformation/observer design. See memory:
@@ -14,19 +15,44 @@ EnsembleConformation/observer design. See memory:
 ## Architecture: GromacsProtein pattern
 
 No abstract EnsembleConformation. No observer/accumulator ABC.
-Three concrete classes married to GROMACS:
+Four concrete classes married to GROMACS:
 
 ### GromacsProtein
 
-Wraps a real Protein. Conformation 0 (GROMACS frame 0) lives in
-the Protein's conformations_ vector via AddMDFrame. It is permanent
-and feeds the .h5 master file.
+Wraps a real Protein. NOT a feature extractor.
+
+Two build paths:
+
+- **Build(FleetPaths)**: pre-extracted PDB poses. Protein is fully
+  constructed (bonds, rings, conformations) immediately. InitAtoms()
+  called at the end.
+
+- **BuildFromTrajectory(tpr_path)**: reads TPR topology via
+  FullSystemReader (protein/water/ion atom ranges) and builds Protein
+  from TPR via BuildProteinFromTpr. Does NOT finalize the protein --
+  FinalizeProtein() must be called after the first XTC frame provides
+  real coordinates for bond detection.
+
+**Deferred finalization pattern (trajectory path):**
+
+1. `BuildFromTrajectory` reads TPR: atom count known, topology known,
+   charges loaded. Protein has atoms but NO bonds, NO rings, NO
+   conformations.
+2. `GromacsFrameHandler::Open` reads first XTC frame, PBC-fixes
+   protein coordinates via MoleculeWholer, splits via FullSystemReader.
+3. `gp.FinalizeProtein(positions, time_ps)`:
+   - `protein_->FinalizeConstruction(positions)` -- bond detection
+   - `protein_->AddMDFrame(positions, ...)` -- conformation 0 (permanent)
+   - `InitAtoms()` -- creates GromacsProteinAtom Welford accumulators
+
+After finalization, conformation 0 lives in the Protein's
+conformations_ vector. It is permanent and feeds the .h5 master file.
 
 Streaming frames are **free-standing ProteinConformations** created
-via the public constructor with a `const Protein*` back-pointer.
-They are NOT added to the Protein's conformations_ vector. They
-point at the Protein for topology lookups, are computed on by all
-calculators, then freed.
+by GromacsFrameHandler via the public constructor with a
+`const Protein*` back-pointer. They are NOT added to the Protein's
+conformations_ vector. They point at the Protein for topology lookups,
+are computed on by all calculators, then freed.
 
 This works because:
 - ProteinConformation constructor is public, no side effects
@@ -34,31 +60,152 @@ This works because:
 - OperationRunner::Run takes ProteinConformation& directly
 - Verified: zero hidden coupling in all calculators and loaders
 
-Holds: the real Protein, ChargeSource from TPR, frame manifest
-(paths or indices), accumulation state.
+Holds: the real Protein, ChargeSource from TPR, FullSystemReader
+(topology + frame splitting), per-atom GromacsProteinAtom accumulators.
+
+**AccumulateFrame(conf, frame_idx)**: called by GromacsFrameHandler
+after each frame's calculators have run. Reads ConformationAtom fields
+(positions, SASA, water counts, E-field magnitudes, hydration geometry)
+into per-atom Welford accumulators. Also tracks dry/exposed frame counts.
+
+**WriteCatalog(path)**: writes atom_catalog.csv with per-atom Welford
+summaries (mean, std, min/max with frame indices) for all tracked
+quantities.
+
+**SelectFrames(max_frames)**: selects frames for full extraction from
+accumulated stats. Returns sorted, deduplicated frame indices.
+
+### FullSystemReader
+
+Reads the full-system GROMACS TPR topology to identify atom ranges
+and splits full-system XTC frames into protein + solvent.
+
+**ReadTopology(tpr_path)**: parses the TPR to build a SystemTopology:
+- `protein_start`, `protein_count` -- atom range in full-system frame
+- `water_O_start`, `water_count` -- water molecules (3 atoms each)
+- `ion_start`, `ion_count` -- counter-ions
+- `total_atoms`
+- Per-water charges (`water_O_charge`, `water_H_charge`)
+- Per-ion charges and atomic numbers
+
+**ExtractFrame(full_frame_xyz, protein_positions, solvent)**: given
+a full-system XTC frame (all atoms, in nm), extracts:
+- `protein_positions` -- protein atom coords converted to Angstroms
+- `solvent` -- SolventEnvironment with waters and ions
+
+Owned by GromacsProtein. Borrowed by GromacsFrameHandler via
+`gp.sys_reader()` for each frame.
+
+### SolventEnvironment
+
+Per-frame explicit solvent data, built by FullSystemReader::ExtractFrame.
+
+- **WaterMolecule**: O/H1/H2 positions (Angstroms) + O_charge + H_charge
+  (elementary charges, from TPR, typically TIP3P: O=-0.834, H=+0.417).
+  Has `Dipole()` method returning the molecular dipole vector.
+
+- **Ion**: position (Angstroms) + charge + atomic_number
+  (e.g. Na+=11/+1, Cl-=17/-1).
+
+- **SolventEnvironment**: vectors of WaterMolecule + Ion, plus
+  `water_O_positions` for spatial indexing. `Empty()`/`WaterCount()`/
+  `IonCount()` accessors.
+
+Passed to calculators via `RunOptions.solvent` (pointer, null = no
+solvent calculators). WaterFieldResult and HydrationShellResult check
+`opts.solvent && !opts.solvent->Empty()` before computing.
 
 ### GromacsFrameHandler
 
-Opens XTC trajectory, applies PBC fix (MoleculeWholer from
-fes-sampler, VERBATIM), converts nm→A, creates free-standing
-MDFrameConformations. For each frame:
+Owns the XTC stream and MoleculeWholer (PBC fix). Borrows GromacsProtein
+for accumulation, sys_reader, and protein access.
 
-1. Read XTC frame, PBC fix, build positions
-2. Create free-standing MDFrameConformation(&protein, positions, ...)
-3. OperationRunner::Run — all calculators attach
-4. Extract what accumulation needs from the live conformation
-5. Conformation dies — memory freed
+**Open(xtc_path, tpr_path)**: opens XTC for streaming, creates
+MoleculeWholer from TPR, verifies protein atom count agreement between
+MoleculeWholer and FullSystemReader. Reads first frame to finalize
+protein:
 
-No disk writes during streaming (unless debugging). The handler
-accumulates in memory. Winners are re-loaded from XTC at the end.
+1. Read first XTC frame
+2. PBC fix on protein portion via `wholer_->make_whole()`
+3. Write fixed coords back into full frame
+4. Split via `gp.sys_reader().ExtractFrame()` -> protein_pos + solvent
+5. `gp.FinalizeProtein(protein_pos, time_ps)`
+6. Run all calculators on conformation 0 via `OperationRunner::Run`
+7. `gp.AccumulateFrame(conf0, 0)` -- frame 0 into Welford accumulators
+
+**Next(opts, output_dir, accumulate)**: processes the next frame:
+
+1. Read full-system XTC frame (streaming, one at a time)
+2. PBC fix on protein coordinates via MoleculeWholer
+3. Put fixed coords back, split via FullSystemReader
+4. Create free-standing `ProteinConformation(&protein, positions)`
+5. Run calculators via `OperationRunner::Run` with `opts.solvent = &solvent`
+6. If `accumulate=true`: `gp.AccumulateFrame(conf, frame_idx)`
+7. If `output_dir` non-empty: write NPY to `output_dir/frame_NNNN/`
+8. Conformation dies -- memory freed
+
+Returns false at EOF.
+
+**Skip()**: skip one frame without processing. Returns false at EOF.
+
+**Reopen()**: reopen XTC from the start for pass 2. Skips first frame
+(already processed during Open). Resets frame_idx to 0.
+
+**Two-pass scan/extract pattern:**
+
+- **Pass 1 (scan)**: `Open()` + `Next(scan_opts)` in a loop. Lightweight
+  calculators only (skip MOPAC, APBS, Coulomb, DSSP). Welford
+  accumulators collect per-atom statistics. No NPY written.
+
+- **Between passes**: `SelectFrames()` picks winner frame indices from
+  accumulated stats. `Reopen()` resets XTC to start.
+
+- **Pass 2 (extract)**: loop through frames. For selected frames:
+  `Next(extract_opts, output_dir, /*accumulate=*/false)` runs full
+  calculators and writes NPY. For others: `Skip()`. The
+  `accumulate=false` flag prevents double-counting frames already
+  accumulated during pass 1.
 
 ### GromacsFinalResult
 
-Runs after all frames. Computes final statistics from accumulated
-state. Writes:
-- `{protein_id}.h5` — topology + EnrichmentResult from conformation 0
-- Ensemble NPY files (Welford means/variances, DSSP histograms, etc.)
-- Winner frames: re-load from XTC, run calculators, WriteAllFeatures
+Runs after all frames. Currently:
+- Writes `atom_catalog.csv` from GromacsProtein's per-atom Welford
+  accumulators (RMSF, water_n_first, water_emag, SASA, half_shell,
+  dipole_cos, nearest_ion -- each with mean/std/min/max/frame indices,
+  plus dry/exposed frame counts).
+- Logs what was processed (protein_id, frame count, atom count,
+  conformation count).
+
+NOT yet implemented:
+- `{protein_id}.h5` master file from conformation 0 + Protein topology
+  (HighFive not integrated)
+- Winner frame selection/movement from temp to output
+- Temp directory cleanup
+
+The .h5 spec (topology + EnrichmentResult from conformation 0) is
+still the plan. See "Master file" section below.
+
+### GromacsProteinAtom
+
+Per-atom trajectory-level Welford accumulators. Private constructor --
+only GromacsProtein can create these via InitAtoms(). Atom identity
+goes through the Protein back-pointer, NOT duplicated here.
+
+Tracked quantities (all using Welford online accumulator with
+mean/variance/min/max/frame indices):
+
+- Water environment: `water_n_first` (first-shell count, within 3.5A),
+  `water_n_second` (second-shell, 3.5-5.5A), `water_emag` (E-field
+  magnitude), `water_emag_first` (first-shell E-field)
+- Solvent exposure: `sasa` (Shrake-Rupley, A^2)
+- Hydration geometry: `half_shell` (asymmetry, 0-1), `dipole_cos`
+  (water dipole orientation), `nearest_ion_dist` (distance to closest ion)
+- Positional dynamics: `position_x`/`y`/`z` for RMSF computation
+
+Frame counters: `n_frames_dry` (water_n_first == 0), `n_frames_exposed`
+(water_n_first >= 4).
+
+`RMSF()` returns sqrt(var_x + var_y + var_z).
 
 ---
 
@@ -79,9 +226,13 @@ accessed by GromacsFrameHandler methods.
 ## Conformation 0
 
 0 is 0. First GROMACS frame. No Boltzmann minimum selection.
-Lives in the Protein's conformations_ vector via AddMDFrame.
-Always valid, always in memory. EnrichmentResult from conformation 0
-feeds the .h5 master file (atom_role, hybridisation, etc.).
+
+In the trajectory path, conformation 0 is created during
+`FinalizeProtein()` after the first XTC frame provides PBC-fixed
+positions. Bond detection runs on these positions. Lives in the
+Protein's conformations_ vector via AddMDFrame. Always valid,
+always in memory. EnrichmentResult from conformation 0 feeds the
+.h5 master file (atom_role, hybridisation, etc.).
 
 For `--pdb` or `--mutant` modes: everything works exactly as before.
 The existing path is untouched.
@@ -91,12 +242,12 @@ The existing path is untouched.
 ## Master file: {protein_id}.h5
 
 HDF5 file containing protein-level data that no calculator writes
-as NPY. Written once by GromacsFinalResult from conformation 0 +
-Protein topology.
+as NPY. NOT yet implemented (HighFive not integrated). Written once
+by GromacsFinalResult from conformation 0 + Protein topology.
 
 ```
 {protein_id}.h5
-├── topology/          ← from Protein object
+├── topology/          <- from Protein object
 │   ├── element          (N,) int32
 │   ├── residue_type     (N,) int32
 │   ├── atom_to_residue  (N,) int32
@@ -104,12 +255,12 @@ Protein topology.
 │   ├── bond_type        (B,) int32
 │   ├── ring_atoms       (P, 2) int32
 │   └── ring_type        (R,) int32
-├── classification/    ← from EnrichmentResult on conformation 0
+├── classification/    <- from EnrichmentResult on conformation 0
 │   ├── atom_role        (N,) int32
 │   ├── hybridisation    (N,) int32
 │   ├── graph_dist_ring  (N,) int32
 │   └── is_conjugated    (N,) int8
-├── graph/             ← from SpatialIndexResult on conformation 0
+├── graph/             <- from SpatialIndexResult on conformation 0
 │   ├── radius_edges     (E, 2) int32
 │   └── radius_distances (E,) float64
 └── attrs: n_atoms, n_residues, n_rings, pdb_id
@@ -117,6 +268,29 @@ Protein topology.
 
 The SDK (nmr_extract) reads both .h5 and NPY files, presents one
 typed object. One SDK, one load() call.
+
+---
+
+## Solvent calculators
+
+WaterFieldResult and HydrationShellResult are BUILT and produce
+NPY files per frame when run via OperationRunner:
+
+**WaterFieldResult** (5 NPY files):
+- `water_efield.npy` -- (N, 3) per-atom E-field vector from all waters
+- `water_efg.npy` -- (N, 9) per-atom EFG tensor from all waters
+- `water_efg_first.npy` -- (N, 9) EFG from first-shell waters only
+- `water_efield_first.npy` -- (N, 3) E-field from first-shell only
+- `water_shell_counts.npy` -- (N, 2) first/second shell water counts
+
+**HydrationShellResult** (1 NPY file):
+- `hydration_shell.npy` -- (N, 4) half-shell asymmetry, dipole cos,
+  nearest ion distance, and shell density
+
+SolventEnvironment reaches these calculators via
+`RunOptions.solvent` pointer, set by GromacsFrameHandler in
+ProcessFrame. OperationRunner checks
+`opts.solvent && !opts.solvent->Empty()` before dispatching.
 
 ---
 
@@ -132,11 +306,11 @@ about solvation when applied to other conformations.
 
 Two quantities replace it, both computed by GromacsFrameHandler:
 
-1. **Ensemble charge variance** — Welford on aimnet2_charge across
+1. **Ensemble charge variance** -- Welford on aimnet2_charge across
    all frames. Free (charges already computed per frame). Output:
    `ensemble_charges_var.npy`.
 
-2. **Autograd charge sensitivity** — d(charges)/d(positions) via
+2. **Autograd charge sensitivity** -- d(charges)/d(positions) via
    backward pass through the .jpt model. Deterministic, exact,
    per-conformation. Validated: the model supports autograd on
    coords. Cost: N backward passes per frame (~5s for 5000 atoms).
@@ -161,25 +335,44 @@ Two quantities replace it, both computed by GromacsFrameHandler:
 The following concepts from the original 2026-04-10 design were
 evaluated and rejected during the 2026-04-11/12 review:
 
-- **EnsembleConformation / EnsembleAtom** — replaced by accumulation
+- **EnsembleConformation / EnsembleAtom** -- replaced by accumulation
   state on GromacsProtein. No separate object model needed.
-- **EnsembleResult / observer ABC** — replaced by direct methods on
+- **EnsembleResult / observer ABC** -- replaced by direct methods on
   GromacsFrameHandler. No virtual dispatch.
-- **TrajectoryObserver / EvaluationAccumulator** — same.
-- **ConformationList with invalidation** — replaced by free-standing
+- **TrajectoryObserver / EvaluationAccumulator** -- same.
+- **ConformationList with invalidation** -- replaced by free-standing
   conformations that die naturally after processing.
-- **GraphExportResult** — bond graph goes in .h5 from Protein topology.
-- **charge_sensitivity on Atom** — moved to evaluator/handler output.
+- **GraphExportResult** -- bond graph goes in .h5 from Protein topology.
+- **charge_sensitivity on Atom** -- moved to evaluator/handler output.
   Perturbation approach deleted.
+- **PDB-based protein building for trajectory** -- BuildProteinFromTpr
+  replaced PDB builder after atom count crash (commit 0b829b7).
 
 ---
 
 ## Test data
 
+1ZR7_6721 (479 protein atoms, 3525 water molecules, 25 ions) at
+`tests/data/fleet_test_fullsys/1ZR7_6721/` with 5 walkers, XTC
+trajectories, run_params (prod_fullsys.tpr).
+
+Three tests in `test_gromacs_streaming.cpp`:
+
+1. **FleetBuildAndCompute** -- fleet-path Build, run calculators
+   on conformation 0.
+
+2. **TrajectoryBuildAndScan** -- BuildFromTrajectory + Open +
+   scan 10 frames with lightweight calculators. Verifies deferred
+   finalization (bonds=0 before Open, bonds>0 after). Checks
+   accumulator frame counts match. Writes atom_catalog.csv.
+
+3. **TrajectoryExtractSelectedFrames** -- full two-pass pattern.
+   Scan 20 frames, Reopen, extract frames 3 and 7 with full
+   calculators and NPY output. Verifies frame_0003/ and frame_0007/
+   directories contain NPY files.
+
 1Q8K_10023 (4876 atoms, 26 rings) at `tests/data/fleet_test_large/`
-with 5 walkers, XTC trajectories, initial-samples (6 PDB poses),
-run_params. Streaming test processes 10 XTC frames with all 14
-calculators (including SasaResult) at ~45s/frame.
+for fleet-path testing with 5 walkers and initial-samples PDB poses.
 
 The fleet tree is at `/shared/fleet/clean_fleet/results/`.
 Do not modify it.

@@ -122,6 +122,19 @@ p.aimnet2               AIMNet2Group | None
   .efg_aromatic         EFGTensor (N, 9) — aromatic decomposition
   .efg_backbone         EFGTensor (N, 9) — backbone decomposition
   .charge_sensitivity   AIMNet2ChargeSensitivity (N,) — intrinsic polarisability proxy
+
+p.water_field           WaterFieldGroup | None — trajectory path only
+  .efield               VectorField (N, 3) — total water E-field (V/A)
+  .efield_first         VectorField (N, 3) — first-shell E-field (<3.5A)
+  .efg                  EFGTensor (N, 9) — total water EFG (SphericalTensor)
+  .efg_first            EFGTensor (N, 9) — first-shell EFG
+  .shell_counts         ndarray (N, 2) — [n_first_shell, n_second_shell]
+
+p.hydration             HydrationGroup | None — trajectory path only
+  .data                 ndarray (N, 4) — [asymmetry, dipole_cos, ion_dist, ion_charge]
+
+p.gromacs_energy        ndarray (1, 9) | None — per-frame GROMACS energy
+                        [time_ps, Coul_SR, Coul_recip, Coul_14, LJ_SR, potential, T, P, V]
 ```
 
 ## Tensor types

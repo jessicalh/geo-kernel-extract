@@ -17,7 +17,6 @@
 //
 
 #include "OrcaRunLoader.h"       // OrcaRunFiles
-#include "GromacsEnsembleLoader.h" // FleetPaths
 #include <string>
 #include <vector>
 
@@ -28,8 +27,11 @@ enum class JobMode {
     ProtonatedPdb,   // already-protonated PDB — detect state from H atoms
     Orca,            // single ORCA DFT (root → .xyz + .prmtop + optional _nmr.out)
     Mutant,          // WT + ALA ORCA pair (two roots)
-    Fleet,           // GROMACS ensemble (TPR + poses dir, pre-extracted PDBs)
-    Trajectory,      // full-system GROMACS trajectory (TPR + XTC + ref PDB)
+    // Fleet removed 2026-04-12. Pre-extracted PDB pose path superseded by
+    // full-system trajectory streaming. Use --trajectory for all GROMACS
+    // ensemble extraction. GromacsProtein::Build(FleetPaths) and
+    // BuildFromGromacs remain in the library for tests.
+    Trajectory,      // full-system GROMACS trajectory (TPR + XTC)
     None             // parse failed or --help
 };
 
@@ -48,13 +50,9 @@ struct JobSpec {
     OrcaRunFiles wt_files;
     OrcaRunFiles ala_files;
 
-    // -- Fleet mode --
-    FleetPaths fleet_paths;
-
     // -- Trajectory mode --
     std::string traj_tpr;        // full-system TPR (topology + charges)
     std::string traj_xtc;        // full-system XTC (protein + water + ions)
-    std::string traj_ref;        // reference PDB (protein only, for topology)
     std::string traj_edr;        // .edr energy file (optional)
 
     // -- Common --

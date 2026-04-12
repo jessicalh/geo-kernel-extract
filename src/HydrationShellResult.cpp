@@ -97,7 +97,8 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
                 best_ion_charge = solvent.ions[ii].charge;
             }
         }
-        atom.nearest_ion_distance = (best_ion_dist < ION_CUTOFF) ? best_ion_dist : 0.0;
+        atom.nearest_ion_distance = (best_ion_dist < ION_CUTOFF)
+            ? best_ion_dist : std::numeric_limits<double>::infinity();
         atom.nearest_ion_charge   = (best_ion_dist < ION_CUTOFF) ? best_ion_charge : 0.0;
     }
 

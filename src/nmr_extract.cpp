@@ -18,10 +18,11 @@
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
-#include "xtc_reader.h"
+#include "GromacsFrameHandler.h"
 
 #include <cstdio>
 #include <filesystem>
+#include <set>
 
 namespace fs = std::filesystem;
 using namespace nmr;
@@ -209,95 +210,49 @@ static int RunMutant(const JobSpec& spec) {
 }
 
 
-// ============================================================================
-// Use case D: GROMACS fleet → run all frames → write
-// ============================================================================
-
-static int RunFleet(const JobSpec& spec) {
-    OperationLog::Info(LogFileIO, "nmr_extract",
-        "fleet mode: poses=" + spec.fleet_paths.sampled_poses_dir +
-        " tpr=" + spec.fleet_paths.tpr_path);
-
-    auto build = BuildFromGromacs(spec.fleet_paths);
-    if (!build) {
-        fprintf(stderr, "ERROR: %s\n", build.error.c_str());
-        OperationLog::Error("nmr_extract", build.error);
-        return 1;
-    }
-
-    RunOptions opts;
-    opts.charge_source = build.charges.get();
-    opts.net_charge = build.net_charge;
-    opts.skip_mopac   = spec.skip_mopac;
-    opts.skip_apbs    = spec.skip_apbs;
-    opts.skip_coulomb = spec.skip_coulomb;
-    opts.aimnet2_model = g_aimnet2_model.get();
-
-    auto results = OperationRunner::RunEnsemble(*build.protein, opts);
-
-    fs::create_directories(spec.output_dir);
-    int total_arrays = 0;
-    for (size_t i = 0; i < build.protein->ConformationCount(); ++i) {
-        auto& conf = build.protein->ConformationAt(i);
-        std::string subdir;
-        if (i < build.pose_names.size() && !build.pose_names[i].empty()) {
-            // Carry the source PDB name through, append our frame tag
-            char tag[32];
-            std::snprintf(tag, sizeof(tag), "_frame%03zu", i + 1);
-            subdir = spec.output_dir + "/" + build.pose_names[i] + tag;
-        } else {
-            char frame_dir[512];
-            std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%03zu",
-                          spec.output_dir.c_str(), i + 1);
-            subdir = frame_dir;
-        }
-        fs::create_directories(subdir);
-        total_arrays += ConformationResult::WriteAllFeatures(conf, subdir);
-    }
-
-    fprintf(stderr, "Wrote %d arrays across %zu frames to %s\n",
-            total_arrays, build.protein->ConformationCount(),
-            spec.output_dir.c_str());
-    OperationLog::Info(LogFileIO, "nmr_extract",
-        "wrote " + std::to_string(total_arrays) + " arrays across " +
-        std::to_string(build.protein->ConformationCount()) + " frames to " +
-        spec.output_dir);
-    return 0;
-}
+// RunFleet (--fleet mode) removed 2026-04-12.
+// Pre-extracted PDB pose path superseded by full-system trajectory streaming.
+// For GROMACS ensemble extraction use: nmr_extract --trajectory --tpr FILE --xtc FILE
 
 
 // ============================================================================
-// Use case E: full-system GROMACS trajectory
+// Use case D: full-system GROMACS trajectory
+//
+// GromacsProtein: adapter around Protein + accumulators.
+// GromacsFrameHandler: reads frames, runs calculators, feeds accumulators.
+// This function: orchestrates the two-pass process.
 //
 // Pass 1 — scan: lightweight calculators on all frames, accumulate
-//          per-atom Welford stats.  No NPY.
+//          per-atom Welford stats.  No NPY output.
 // Finalize — write atom_catalog.csv, select frames.
 // Pass 2 — extract: full calculators on selected frames, write NPY.
-//
-// Process control stays here. Data + computation on GromacsProtein.
 // ============================================================================
 
 static int RunTrajectory(const JobSpec& spec) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "trajectory mode: tpr=" + spec.traj_tpr +
-        " xtc=" + spec.traj_xtc + " ref=" + spec.traj_ref);
+        " xtc=" + spec.traj_xtc);
 
-    // Build trajectory manager
+    // Build adapter (Protein from TPR, topology for frame splitting)
     GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_ref)) {
+    if (!gp.BuildFromTrajectory(spec.traj_tpr)) {
         fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
         return 1;
     }
 
-    // Load trajectory
-    if (!gp.LoadTrajectory(spec.traj_xtc)) {
-        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
+    // Open trajectory — reads first frame, finalizes protein
+    // (bond detection, conformation 0), sets up PBC fix
+    GromacsFrameHandler handler(gp);
+    if (!handler.Open(spec.traj_xtc, spec.traj_tpr)) {
+        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
         return 1;
     }
-    fprintf(stderr, "Loaded %zu frames, %zu protein atoms\n",
-            gp.FrameCount(), gp.AtomCount());
+    fprintf(stderr, "Protein: %zu atoms, %zu bonds, %zu rings\n",
+            gp.protein().AtomCount(), gp.protein().BondCount(),
+            gp.protein().RingCount());
 
     // ── Pass 1: scan ─────────────────────────────────────────────
+    // Lightweight calculators, no NPY. Conformation dies each frame.
 
     RunOptions scan_opts;
     scan_opts.charge_source = gp.charges();
@@ -306,12 +261,14 @@ static int RunTrajectory(const JobSpec& spec) {
     scan_opts.skip_coulomb = true;
     scan_opts.skip_dssp    = true;
 
-    fprintf(stderr, "\n=== Pass 1: scan %zu frames ===\n", gp.FrameCount());
-    for (size_t fi = 0; fi < gp.FrameCount(); ++fi) {
-        if (fi % 100 == 0)
-            fprintf(stderr, "  scan %zu / %zu\n", fi, gp.FrameCount());
-        gp.ScanFrame(fi, scan_opts);
+    fprintf(stderr, "\n=== Pass 1: scan ===\n");
+    size_t scan_count = 1;  // frame 0 already processed by Open
+    while (handler.Next(scan_opts)) {
+        ++scan_count;
+        if (scan_count % 100 == 0)
+            fprintf(stderr, "  scan %zu frames\n", scan_count);
     }
+    fprintf(stderr, "  scanned %zu frames total\n", scan_count);
 
     // ── Finalize: catalog + frame selection ───────────────────────
 
@@ -329,6 +286,7 @@ static int RunTrajectory(const JobSpec& spec) {
     }
 
     // ── Pass 2: extract selected frames ──────────────────────────
+    // Re-read XTC from start, process only selected frames.
 
     RunOptions extract_opts;
     extract_opts.charge_source = gp.charges();
@@ -339,18 +297,28 @@ static int RunTrajectory(const JobSpec& spec) {
     if (!spec.traj_edr.empty())
         extract_opts.edr_path = spec.traj_edr;
 
-    fprintf(stderr, "\n=== Pass 2: extract %zu frames ===\n", selected.size());
-    int total_arrays = 0;
-    for (size_t si = 0; si < selected.size(); ++si) {
-        size_t fi = selected[si];
-        fprintf(stderr, "  extract frame %zu (%zu/%zu)\n",
-                fi, si + 1, selected.size());
-        int n = gp.ExtractFrame(fi, extract_opts, spec.output_dir);
-        if (n >= 0) total_arrays += n;
+    if (!handler.Reopen()) {
+        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
+        return 1;
     }
 
-    fprintf(stderr, "\nDone: %d arrays, %zu frames, %s\n",
-            total_arrays, selected.size(), spec.output_dir.c_str());
+    std::set<size_t> sel_set(selected.begin(), selected.end());
+    fprintf(stderr, "\n=== Pass 2: extract %zu frames ===\n", selected.size());
+    size_t extracted = 0;
+    for (size_t fi = 1; fi < scan_count; ++fi) {
+        if (sel_set.count(fi)) {
+            fprintf(stderr, "  extract frame %zu (%zu/%zu)\n",
+                    fi, extracted + 1, selected.size());
+            handler.Next(extract_opts, spec.output_dir,
+                         /*accumulate=*/false);
+            ++extracted;
+        } else {
+            handler.Skip();
+        }
+    }
+
+    fprintf(stderr, "\nDone: %zu frames extracted to %s\n",
+            extracted, spec.output_dir.c_str());
     return 0;
 }
 
@@ -391,7 +359,12 @@ int main(int argc, char* argv[]) {
     if (!spec.config_path.empty())
         CalculatorConfig::Load(spec.config_path);
 
-    // Load AIMNet2 model if specified (once, shared across all conformations)
+    // AIMNet2 model path: CLI --aimnet2 takes priority; TOML fallback if not set.
+    if (spec.aimnet2_model_path.empty())
+        spec.aimnet2_model_path = CalculatorConfig::GetString("aimnet2_model_path");
+
+    // Load AIMNet2 model if path is set (CLI or TOML).
+    // Non-silent: if path is specified and load fails, abort.
     if (!spec.aimnet2_model_path.empty()) {
         g_aimnet2_model = AIMNet2Model::Load(spec.aimnet2_model_path);
         if (!g_aimnet2_model) {
@@ -406,7 +379,6 @@ int main(int argc, char* argv[]) {
         case JobMode::ProtonatedPdb: return RunProtonatedPdb(spec);
         case JobMode::Orca:          return RunOrca(spec);
         case JobMode::Mutant:        return RunMutant(spec);
-        case JobMode::Fleet:         return RunFleet(spec);
         case JobMode::Trajectory:    return RunTrajectory(spec);
         case JobMode::None:          return 1;  // unreachable
     }

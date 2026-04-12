@@ -4,9 +4,13 @@
 
 A Python reader for the NPY files that the C++ extractor produces.
 Typed objects with `e3nn.o3.Irreps`, `torch.Tensor`, and `numpy`
-access.  53 registered arrays covering all 10 calculators, MOPAC,
-APBS, Orca DFT, mutation delta, per-ring sparse contributions,
-and ring geometry.
+access.  70 registered arrays covering identity, all classical
+calculators (BiotSavart, HaighMallion, McConnell, PiQuadrupole,
+Dispersion, RingSusceptibility, HBond, Coulomb, APBS), DSSP + chi
+angles, SASA, AIMNet2 charges + EFG, explicit-water field and
+hydration shell (trajectory), GROMACS energy (trajectory), MOPAC
+core + Coulomb + McConnell, Orca DFT, mutation delta, per-ring
+sparse contributions, and ring geometry.
 
 ## Why it exists
 
@@ -36,11 +40,17 @@ and ring geometry.
 - **Ring geometry**: (R, 10) reference table with centers, normals,
   radii
 - **Bond anisotropy**: McConnell + MOPAC-McConnell per bond category
-- **Electrostatics**: Coulomb + MOPAC-Coulomb E-field + EFG
-- **H-bond, DSSP, MOPAC electronic structure**
+- **Electrostatics**: Coulomb + MOPAC-Coulomb E-field + EFG; APBS
+  solvated E-field + EFG; AIMNet2 Coulomb EFG (backbone + aromatic)
+- **AIMNet2**: Hirshfeld charges, 256-dim AIM embedding, Coulomb EFG
+- **H-bond, DSSP** (8-class SS, H-bond energies, chi1-4 dihedrals),
+  **SASA** (per-atom Shrake-Rupley)
+- **MOPAC electronic structure**: core charges + orbitals + bond orders
 - **Orca DFT reference**: total/diamagnetic/paramagnetic shielding
 - **Mutation delta**: WT-ALA shielding delta, match metadata,
   removed ring geometry
+- **Trajectory-only**: explicit water E-field + EFG (total + first shell),
+  hydration shell geometry, GROMACS energy terms per frame
 
 ## Tensor types
 

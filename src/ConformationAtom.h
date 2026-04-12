@@ -311,7 +311,7 @@ public:
     // === Hydration shell geometry (HydrationShellResult) ===
     double half_shell_asymmetry = 0.0;  // fraction exposed vs buried
     double mean_water_dipole_cos = 0.0; // water orientation order parameter
-    double nearest_ion_distance = 0.0;  // distance to closest ion (A)
+    double nearest_ion_distance = std::numeric_limits<double>::infinity();  // distance to closest ion (A), inf = none within cutoff
     double nearest_ion_charge = 0.0;    // charge of nearest ion (e)
 
     // === DemoResult fields (Pass 0) ===

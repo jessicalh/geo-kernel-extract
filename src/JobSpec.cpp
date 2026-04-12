@@ -117,18 +117,8 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     }
 
     if (HasFlag(argc, argv, "--fleet")) {
-        spec.mode = JobMode::Fleet;
-        spec.fleet_paths.tpr_path          = GetArg(argc, argv, "--tpr");
-        spec.fleet_paths.sampled_poses_dir = GetArg(argc, argv, "--poses");
-
-        if (spec.fleet_paths.tpr_path.empty()) {
-            spec.error = "--fleet requires --tpr FILE";
-            return spec;
-        }
-        if (spec.fleet_paths.sampled_poses_dir.empty()) {
-            spec.error = "--fleet requires --poses DIR";
-            return spec;
-        }
+        spec.error = "--fleet mode removed (2026-04-12). Use --trajectory for "
+                     "GROMACS ensemble extraction: --trajectory --tpr FILE --xtc FILE";
         return spec;
     }
 
@@ -136,7 +126,6 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         spec.mode = JobMode::Trajectory;
         spec.traj_tpr = GetArg(argc, argv, "--tpr");
         spec.traj_xtc = GetArg(argc, argv, "--xtc");
-        spec.traj_ref = GetArg(argc, argv, "--ref");
         spec.traj_edr = GetArg(argc, argv, "--edr");
 
         if (spec.traj_tpr.empty()) {
@@ -147,15 +136,11 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
             spec.error = "--trajectory requires --xtc FILE (full-system trajectory)";
             return spec;
         }
-        if (spec.traj_ref.empty()) {
-            spec.error = "--trajectory requires --ref FILE (reference PDB, protein only)";
-            return spec;
-        }
         return spec;
     }
 
     spec.error = std::string("unknown mode: ") + argv[1] +
-                 "\n  valid modes: --pdb, --protonated-pdb, --orca, --mutant, --fleet, --trajectory";
+                 "\n  valid modes: --pdb, --protonated-pdb, --orca, --mutant, --trajectory";
     return spec;
 }
 
@@ -243,8 +228,7 @@ bool ValidateJobSpec(JobSpec& spec) {
             spec.mode == JobMode::ProtonatedPdb  ? "--protonated-pdb" :
             spec.mode == JobMode::Orca           ? "--orca" :
             spec.mode == JobMode::Mutant         ? "--mutant" :
-            spec.mode == JobMode::Fleet          ? "--fleet" :
-            spec.mode == JobMode::Trajectory    ? "--trajectory" : "unknown") +
+            spec.mode == JobMode::Trajectory     ? "--trajectory" : "unknown") +
         " job");
 
     // Config TOML — optional
@@ -289,20 +273,11 @@ bool ValidateJobSpec(JobSpec& spec) {
         if (!ValidateOrcaFiles(spec, spec.ala_files, "ALA")) return false;
         return true;
 
-    case JobMode::Fleet:
-        if (!RequireFile(spec, spec.fleet_paths.tpr_path,
-                         "GROMACS TPR (topology + charges)")) return false;
-        if (!RequireDir(spec, spec.fleet_paths.sampled_poses_dir,
-                        "GROMACS poses directory")) return false;
-        return true;
-
     case JobMode::Trajectory:
         if (!RequireFile(spec, spec.traj_tpr,
                          "full-system TPR (topology + charges)")) return false;
         if (!RequireFile(spec, spec.traj_xtc,
                          "full-system XTC (protein + water + ions)")) return false;
-        if (!RequireFile(spec, spec.traj_ref,
-                         "reference PDB (protein only)")) return false;
         if (!spec.traj_edr.empty()) {
             if (!RequireFile(spec, spec.traj_edr,
                              "GROMACS .edr energy file")) return false;
@@ -344,18 +319,13 @@ void PrintJobSpecUsage(const char* prog) {
         "      Load a WT + ALA mutant pair. Each root expands as above.\n"
         "      Runs both conformations and computes WT-ALA delta tensors.\n"
         "\n"
-        "  %s --fleet --tpr FILE --poses DIR [--config FILE] --output DIR\n"
-        "      Load a GROMACS ensemble from pre-extracted PDB poses. TPR provides\n"
-        "      topology and CHARMM36m charges. Poses directory contains ensemble.json\n"
-        "      and pose PDBs. Runs all conformations independently.\n"
-        "\n"
-        "  %s --trajectory --tpr FILE --xtc FILE --ref FILE [--edr FILE] --output DIR\n"
+        "  %s --trajectory --tpr FILE --xtc FILE [--edr FILE] --output DIR\n"
         "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
-        "      TPR: full-system topology. XTC: full-system trajectory. REF: protein-\n"
-        "      only reference PDB for topology construction. EDR: optional energy\n"
-        "      file for per-frame Coulomb/LJ/temperature extraction.\n"
-        "      Runs all calculators including explicit solvent (WaterField,\n"
-        "      HydrationShell). Writes per-atom trajectory catalog at the end.\n"
+        "      TPR: full-system topology and protein construction. XTC: full-system\n"
+        "      trajectory. EDR: optional energy file.\n"
+        "      Pass 1: scan all frames with lightweight calculators, accumulate stats.\n"
+        "      Pass 2: extract selected frames with full calculators, write NPY.\n"
+        "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"
         "\n"
         "Common options:\n"
         "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
@@ -365,7 +335,7 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
         "  --help, -h       Show this message\n",
-        prog, prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog);
 }
 
 

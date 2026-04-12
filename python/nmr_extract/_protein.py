@@ -145,6 +145,22 @@ class AIMNet2Group:
     charge_sensitivity: AIMNet2ChargeSensitivity
 
 
+@dataclass(frozen=True)
+class WaterFieldGroup:
+    """Explicit water E-field and EFG from full-system trajectory."""
+    efield: VectorField             # (N, 3) total water E-field
+    efield_first: VectorField       # (N, 3) first-shell E-field
+    efg: EFGTensor                  # (N, 9) total water EFG
+    efg_first: EFGTensor            # (N, 9) first-shell EFG
+    shell_counts: np.ndarray        # (N, 2) [n_first, n_second]
+
+
+@dataclass(frozen=True)
+class HydrationGroup:
+    """Per-atom hydration shell geometry."""
+    data: np.ndarray                # (N, 4) [asymmetry, dipole_cos, ion_dist, ion_charge]
+
+
 # ── Top-level protein container ─────────────────────────────────────
 
 
@@ -191,6 +207,11 @@ class Protein:
     orca: Optional[OrcaGroup] = None
     delta: Optional[DeltaGroup] = None
     aimnet2: Optional[AIMNet2Group] = None
+
+    # Explicit solvent (trajectory path only)
+    water_field: Optional[WaterFieldGroup] = None
+    hydration: Optional[HydrationGroup] = None
+    gromacs_energy: Optional[np.ndarray] = None
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -344,6 +365,22 @@ def load(path: str | Path) -> Protein:
             charge_sensitivity=get("aimnet2_charge_sensitivity"),
         )
 
+    # Water field (trajectory path — optional)
+    water_field = None
+    if "water_efield" in available:
+        water_field = WaterFieldGroup(
+            efield=get("water_efield"),
+            efield_first=get("water_efield_first"),
+            efg=get("water_efg"),
+            efg_first=get("water_efg_first"),
+            shell_counts=get("water_shell_counts"),
+        )
+
+    # Hydration shell (trajectory path — optional)
+    hydration = None
+    if "hydration_shell" in available:
+        hydration = HydrationGroup(data=get("hydration_shell"))
+
     return Protein(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -371,4 +408,7 @@ def load(path: str | Path) -> Protein:
         orca=orca,
         delta=delta,
         aimnet2=aimnet2,
+        water_field=water_field,
+        hydration=hydration,
+        gromacs_energy=get("gromacs_energy"),
     )
