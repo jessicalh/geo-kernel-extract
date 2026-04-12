@@ -36,7 +36,8 @@ Skimming these is worse than not reading them.
    parameter corrections, T2 angular residual, classical calculation
    correctness. Validation checklist.
 8. **GEOMETRIC_KERNEL_CATALOGUE.md** — full derivations for the 8
-   classical calculators. McConnell tensor from first principles.
+   classical + 2 MOPAC-derived calculators. McConnell tensor from
+   first principles.
 
 ### When implementing a calculator
 
@@ -90,7 +91,9 @@ then run `python -m pytest python/tests/` to verify.
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
 - **TEST_FRAMEWORK.md** — test tiers, what to run when, smoke test design
-- **ENSEMBLE_MODEL.md** — GromacsProtein streaming model (revised 2026-04-12, replaces old EnsembleConformation design)
+- **ENSEMBLE_MODEL.md** — GromacsProtein trajectory-based model (revised 2026-04-12, replaces old EnsembleConformation design)
+- **TRAJECTORY_EXTRACTION.md** — full-system trajectory path: explicit solvent E-field, water packing, ion field calculators (design, 2026-04-12)
+- **TIMING_4876_ATOMS.md** — measured per-calculator times on 4876-atom protein (2026-04-12)
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/

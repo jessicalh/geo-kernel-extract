@@ -104,12 +104,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
     ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry"),
-    ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    True,  "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)"),
-    ArraySpec("dssp_hbond_energy","dssp", np.ndarray,              4,    True,  "DSSP H-bond energies (acc0/acc1/don0/don1)"),
-    ArraySpec("dssp_chi",         "dssp", np.ndarray,              12,   True,  "Chi1-4 cos/sin/exists (4 x 3 cols)"),
+    ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    False, "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)"),
+    ArraySpec("dssp_hbond_energy","dssp", np.ndarray,              4,    False, "DSSP H-bond energies (acc0/acc1/don0/don1)"),
+    ArraySpec("dssp_chi",         "dssp", np.ndarray,              12,   False, "Chi1-4 cos/sin/exists (4 x 3 cols)"),
 
     # ── SASA (SasaResult.cpp) ───────────────────────────────────
-    ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, True,  "Per-atom Shrake-Rupley SASA (A^2)"),
+    ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, False, "Per-atom Shrake-Rupley SASA (A^2)"),
 
     # ── MOPAC core (MopacResult.cpp) ─────────────────────────────
     ArraySpec("mopac_charges",    "mopac_core", np.ndarray,        None, False, "MOPAC Mulliken charges"),

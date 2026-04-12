@@ -53,8 +53,9 @@ struct JobSpec {
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)
     std::string config_path;   // TOML calculator parameter overrides
-    bool skip_mopac = false;   // --no-mopac: skip PM7+MOZYME (and derived calcs)
-    bool skip_apbs  = false;   // --no-apbs:  skip Poisson-Boltzmann
+    bool skip_mopac   = false;   // --no-mopac:   skip PM7+MOZYME (and derived calcs)
+    bool skip_apbs    = false;   // --no-apbs:    skip Poisson-Boltzmann
+    bool skip_coulomb = false;   // --no-coulomb:  skip vacuum Coulomb EFG (APBS preferred)
     std::string aimnet2_model_path;  // --aimnet2 MODEL: path to .jpt file (empty = skip)
 
     // -- Diagnostics --

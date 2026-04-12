@@ -83,6 +83,10 @@ p.hbond                 HBondGroup
   .scalars              HBondScalars (N, 3)
 
 p.dssp                  DsspScalars (N, 5)
+p.dssp_ss8              ndarray (N, 8) | None — 8-class SS one-hot (H/G/I/E/B/T/S/C)
+p.dssp_hbond_energy     ndarray (N, 4) | None — H-bond energies (acc0/acc1/don0/don1, kcal/mol)
+p.dssp_chi              ndarray (N, 12) | None — chi1-4 cos/sin/exists (4 x 3 cols)
+p.sasa                  ndarray (N,) | None — per-atom Shrake-Rupley SASA (A^2)
 ```
 
 ### Optional groups (None if not extracted)

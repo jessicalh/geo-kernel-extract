@@ -48,8 +48,9 @@ static int RunPdb(const JobSpec& spec) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
-    opts.skip_mopac = spec.skip_mopac;
-    opts.skip_apbs  = spec.skip_apbs;
+    opts.skip_mopac   = spec.skip_mopac;
+    opts.skip_apbs    = spec.skip_apbs;
+    opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = g_aimnet2_model.get();
 
     auto result = OperationRunner::Run(conf, opts);
@@ -88,8 +89,9 @@ static int RunProtonatedPdb(const JobSpec& spec) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
-    opts.skip_mopac = spec.skip_mopac;
-    opts.skip_apbs  = spec.skip_apbs;
+    opts.skip_mopac   = spec.skip_mopac;
+    opts.skip_apbs    = spec.skip_apbs;
+    opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = g_aimnet2_model.get();
 
     auto result = OperationRunner::Run(conf, opts);
@@ -128,8 +130,9 @@ static int RunOrca(const JobSpec& spec) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
-    opts.skip_mopac = spec.skip_mopac;
-    opts.skip_apbs  = spec.skip_apbs;
+    opts.skip_mopac   = spec.skip_mopac;
+    opts.skip_apbs    = spec.skip_apbs;
+    opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
@@ -170,8 +173,9 @@ static int RunMutant(const JobSpec& spec) {
     RunOptions wt_opts;
     wt_opts.charge_source = wt_build.charges.get();
     wt_opts.net_charge = wt_build.net_charge;
-    wt_opts.skip_mopac = spec.skip_mopac;
-    wt_opts.skip_apbs  = spec.skip_apbs;
+    wt_opts.skip_mopac   = spec.skip_mopac;
+    wt_opts.skip_apbs    = spec.skip_apbs;
+    wt_opts.skip_coulomb = spec.skip_coulomb;
     wt_opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
@@ -179,8 +183,9 @@ static int RunMutant(const JobSpec& spec) {
     RunOptions ala_opts;
     ala_opts.charge_source = ala_build.charges.get();
     ala_opts.net_charge = ala_build.net_charge;
-    ala_opts.skip_mopac = spec.skip_mopac;
-    ala_opts.skip_apbs  = spec.skip_apbs;
+    ala_opts.skip_mopac   = spec.skip_mopac;
+    ala_opts.skip_apbs    = spec.skip_apbs;
+    ala_opts.skip_coulomb = spec.skip_coulomb;
     ala_opts.aimnet2_model = g_aimnet2_model.get();
     if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
@@ -221,8 +226,9 @@ static int RunFleet(const JobSpec& spec) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
-    opts.skip_mopac = spec.skip_mopac;
-    opts.skip_apbs  = spec.skip_apbs;
+    opts.skip_mopac   = spec.skip_mopac;
+    opts.skip_apbs    = spec.skip_apbs;
+    opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = g_aimnet2_model.get();
 
     auto results = OperationRunner::RunEnsemble(*build.protein, opts);

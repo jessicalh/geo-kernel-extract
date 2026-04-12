@@ -5,8 +5,17 @@ every unit, every dependency. Implementation agents code from this.
 If a property is not in this document, it does not exist in the code.
 
 **NOTE (2026-04-03): This document is not aspirational. The library is
-mature for this functionality — 8 calculators, 3 builders, 4 use cases,
-275 tests passing. Read the code before assuming any section is current.**
+mature for this functionality — 3 builders, 4 use cases,
+287 tests passing. Read the code before assuming any section is current.**
+
+**UPDATE PENDING (2026-04-12):** SasaResult, AIMNet2Result,
+GromacsProtein, GromacsFrameHandler, GromacsFinalResult, and the
+extended DsspResult (8-class SS, H-bond energies, chi1-4) are
+implemented and tested but not yet documented here. See
+spec/ENSEMBLE_MODEL.md for the trajectory streaming classes. This
+document remains correct for the PDB, Orca, mutant, and fleet
+(non-streaming) paths — all properties and types for those paths are
+current.
 
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for

@@ -22,6 +22,9 @@
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
 #include "SasaResult.h"
+#include "GromacsEnergyResult.h"
+#include "WaterFieldResult.h"
+#include "HydrationShellResult.h"
 #include "OperationLog.h"
 
 namespace nmr {
@@ -130,7 +133,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (!Attach(conf, DispersionResult::Compute(conf),
                 "DispersionResult", out)) return out;
 
-    if (conf.HasResult<ChargeAssignmentResult>()) {
+    if (conf.HasResult<ChargeAssignmentResult>() && !opts.skip_coulomb) {
         if (!Attach(conf, CoulombResult::Compute(conf),
                     "CoulombResult", out)) return out;
     }
@@ -160,6 +163,35 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             OperationLog::Error("OperationRunner",
                 "AIMNet2Result failed (atoms=" +
                 std::to_string(conf.AtomCount()) + ")");
+        }
+    }
+
+    // Explicit solvent calculators (trajectory path with full-system .xtc)
+    if (opts.solvent && !opts.solvent->Empty()) {
+        auto water_field = WaterFieldResult::Compute(conf, *opts.solvent);
+        if (water_field) {
+            Attach(conf, std::move(water_field), "WaterFieldResult", out);
+        } else {
+            OperationLog::Error("OperationRunner", "WaterFieldResult failed");
+        }
+
+        auto hydration = HydrationShellResult::Compute(conf, *opts.solvent);
+        if (hydration) {
+            Attach(conf, std::move(hydration), "HydrationShellResult", out);
+        } else {
+            OperationLog::Error("OperationRunner", "HydrationShellResult failed");
+        }
+    }
+
+    // GROMACS energy: per-frame energy terms from .edr (trajectory path only)
+    if (!opts.edr_path.empty()) {
+        auto gmx_energy = GromacsEnergyResult::Compute(
+            conf, opts.edr_path, opts.frame_time_ps);
+        if (gmx_energy) {
+            Attach(conf, std::move(gmx_energy), "GromacsEnergyResult", out);
+        } else {
+            OperationLog::Error("OperationRunner",
+                "GromacsEnergyResult failed for " + opts.edr_path);
         }
     }
 

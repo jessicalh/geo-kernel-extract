@@ -23,6 +23,7 @@
 
 #include "ProteinConformation.h"
 #include "ChargeSource.h"
+#include "SolventEnvironment.h"
 #include <vector>
 #include <string>
 
@@ -42,15 +43,28 @@ struct RunOptions {
     bool skip_dssp = false;
 
     // Skip MOPAC semiempirical (and therefore MopacCoulomb, MopacMcConnell).
-    // For geometry-only fleet runs where MOPAC cost is prohibitive.
     bool skip_mopac = false;
 
     // Skip APBS Poisson-Boltzmann.
     bool skip_apbs = false;
 
+    // Skip vacuum Coulomb EFG (home-rolled, O(N*k), 25s at 4800 atoms).
+    // APBS is faster and solvated — preferred for all production work.
+    // Coulomb retained for special comparison tests only.
+    bool skip_coulomb = false;
+
     // AIMNet2: loaded model for neural network charges + EFG.
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     AIMNet2Model* aimnet2_model = nullptr;
+
+    // GROMACS .edr energy file for per-frame energy extraction.
+    std::string edr_path;
+    double frame_time_ps = 0.0;
+
+    // Explicit solvent: water + ion positions for this frame.
+    // Null = no solvent calculators (protein-only trajectory).
+    // Set by the full-system trajectory reader.
+    const SolventEnvironment* solvent = nullptr;
 
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;
@@ -73,8 +87,8 @@ public:
     //         Charges (if charge_source provided)
     //         MOPAC (if charges available)
     //         APBS (if charges)
-    // Tier 1: 8 classical calculators
-    //         Coulomb (if charges), HBond (if DSSP)
+    // Tier 1: classical calculators
+    //         Coulomb (if charges and not skip_coulomb), HBond (if DSSP)
     // Tier 2: ORCA DFT (if orca_nmr_path provided)
     // =================================================================
 

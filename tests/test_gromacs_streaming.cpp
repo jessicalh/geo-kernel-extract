@@ -54,9 +54,12 @@ TEST(GromacsStreaming, LoadAndStream10Frames) {
     // This is the root — it lives in the Protein's vector.
     nmr::RunOptions opts;
     opts.skip_mopac = true;
-    opts.skip_apbs = true;
-    // DSSP runs on every frame — part of geometry-only extraction
+    opts.skip_coulomb = true;
+    // APBS runs — canonical electrostatics path (4s, faster than Coulomb)
+    // DSSP runs on every frame
     opts.charge_source = gp.charges();
+    // .edr for per-frame GROMACS energy extraction
+    opts.edr_path = FLEET_DIR + "/walker_0/md.edr";
 
     auto& conf0 = gp.protein().Conformation();
     nmr::RunResult rr0 = nmr::OperationRunner::Run(conf0, opts);

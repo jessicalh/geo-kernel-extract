@@ -398,7 +398,7 @@ The core correspondences:
 
 | PATTERNS.md pattern | Where it lives in the architecture |
 |--------------------|------------------------------------|
-| ConformationAtom: private construction, typed fields | ConformationAtom.h:285 — private constructor, friend ProteinConformation |
+| ConformationAtom: private construction, typed fields | ConformationAtom.h:299 — private constructor, friend ProteinConformation |
 | Template result access | ProteinConformation.h:66-101 — Result\<T\>(), HasResult\<T\>() |
 | Singleton guarantee | ProteinConformation.h:150 — results_ map keyed by type_index |
 | Dependency declaration | ConformationResult.h:31 — Dependencies() returns type_index vector |

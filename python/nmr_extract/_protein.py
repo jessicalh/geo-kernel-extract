@@ -180,6 +180,10 @@ class Protein:
     coulomb: CoulombGroup = None
     hbond: HBondGroup = None
     dssp: DsspScalars = None
+    dssp_ss8: np.ndarray = None
+    dssp_hbond_energy: np.ndarray = None
+    dssp_chi: np.ndarray = None
+    sasa: np.ndarray = None
 
     # Optional calculator groups
     mopac: Optional[MopacGroup] = None
@@ -358,6 +362,10 @@ def load(path: str | Path) -> Protein:
         coulomb=coulomb,
         hbond=hbond,
         dssp=get("dssp_backbone"),
+        dssp_ss8=get("dssp_ss8"),
+        dssp_hbond_energy=get("dssp_hbond_energy"),
+        dssp_chi=get("dssp_chi"),
+        sasa=get("atom_sasa"),
         mopac=mopac,
         apbs=apbs,
         orca=orca,

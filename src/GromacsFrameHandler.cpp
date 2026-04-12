@@ -90,8 +90,12 @@ size_t GromacsFrameHandler::ProcessFrames(
             0.0,                                  // rmsd_nm
             0.0);                                 // rg_nm
 
-        // Run geometry calculators
-        RunResult rr = OperationRunner::Run(*conf, opts_);
+        // Set frame time for GromacsEnergyResult matching
+        RunOptions frame_opts = opts_;
+        frame_opts.frame_time_ps = static_cast<double>(frame.time);
+
+        // Run calculators
+        RunResult rr = OperationRunner::Run(*conf, frame_opts);
 
         // Write features to temp directory
         std::string frame_dir = temp_dir + "/frame_" + std::to_string(fi);

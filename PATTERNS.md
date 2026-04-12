@@ -16,6 +16,13 @@ only means something if you already know what it means.
 
 ---
 
+**UPDATE PENDING (2026-04-12):** The GromacsProtein streaming
+trajectory pattern (free-standing conformations, GromacsFrameHandler,
+frame-at-a-time processing) is implemented and tested but not yet
+documented here. SasaResult and AIMNet2Result are likewise absent.
+See spec/ENSEMBLE_MODEL.md for the streaming design. All patterns
+documented below remain correct for the PDB, Orca, and mutant paths.
+
 ## The System in One Paragraph
 
 This is a one-way analysis system. It loads a protein, creates typed

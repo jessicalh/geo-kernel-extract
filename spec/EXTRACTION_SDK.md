@@ -30,9 +30,9 @@ and ring geometry.
 - **Ring current kernels**: Biot-Savart, Haigh-Mallion, pi-quadrupole,
   dispersion, ring susceptibility — each with per-type T0/T2
   decompositions by ring type
-- **Per-ring sparse contributions**: (P, 57) table, one row per
+- **Per-ring sparse contributions**: (P, 59) table, one row per
   (atom, ring) pair, carrying geometry + all 5 kernel
-  SphericalTensors + dispersion scalars
+  SphericalTensors + dispersion scalars + azimuthal angle
 - **Ring geometry**: (R, 10) reference table with centers, normals,
   radii
 - **Bond anisotropy**: McConnell + MOPAC-McConnell per bond category
@@ -63,7 +63,7 @@ calibration pipeline absorbs this.
 |------|------|
 | `_catalog.py` | Format contract: stem → ArraySpec |
 | `_tensors.py` | SphericalTensor, VectorField, scalar types |
-| `_ring.py` | RingContributions (P, 57), RingGeometry (R, 10) |
+| `_ring.py` | RingContributions (P, 59), RingGeometry (R, 10) |
 | `_protein.py` | Protein dataclass + `load()` |
 | `_types.py` | RingType, BondCategory enums |
 
@@ -76,7 +76,7 @@ property, with code examples.
 
 Update the SDK when:
 - A new `WriteFeatures` method adds an NPY file → add to `_catalog.py`
-- A column layout changes (e.g. ring_contributions grew from 48→57) →
+- A column layout changes (e.g. ring_contributions grew from 48→59) →
   update `_ring.py` column indices + `_catalog.py` cols
 - A new calculator is added → add wrapper class, catalog entries,
   group dataclass, wire into `load()`

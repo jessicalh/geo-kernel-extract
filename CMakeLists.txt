@@ -178,6 +178,10 @@ add_library(nmr_shielding
     src/GromacsProtein.cpp
     src/GromacsFrameHandler.cpp
     src/GromacsFinalResult.cpp
+    src/GromacsEnergyResult.cpp
+    src/FullSystemReader.cpp
+    src/WaterFieldResult.cpp
+    src/HydrationShellResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
     src/McConnellResult.cpp

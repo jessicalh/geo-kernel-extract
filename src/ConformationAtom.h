@@ -291,6 +291,26 @@ public:
     SphericalTensor aimnet2_EFG_aromatic_spherical;
     SphericalTensor aimnet2_shielding_contribution;
 
+    // === Explicit solvent fields (WaterFieldResult) ===
+    // Electric field at this atom from water charges within cutoff (V/A)
+    Vec3 water_efield = Vec3::Zero();
+    // Electric field gradient from water (V/A^2)
+    Mat3 water_efg = Mat3::Zero();
+    SphericalTensor water_efg_spherical;
+    // First hydration shell (water O within 3.5A): E-field and EFG
+    Vec3 water_efield_first = Vec3::Zero();
+    Mat3 water_efg_first = Mat3::Zero();
+    SphericalTensor water_efg_first_spherical;
+    // Shell counts
+    int water_n_first = 0;    // water O within 3.5A
+    int water_n_second = 0;   // water O within 3.5-5.5A
+
+    // === Hydration shell geometry (HydrationShellResult) ===
+    double half_shell_asymmetry = 0.0;  // fraction exposed vs buried
+    double mean_water_dipole_cos = 0.0; // water orientation order parameter
+    double nearest_ion_distance = 0.0;  // distance to closest ion (A)
+    double nearest_ion_charge = 0.0;    // charge of nearest ion (e)
+
     // === DemoResult fields (Pass 0) ===
     double demo_nearest_ring_distance = 0.0;
     Vec3 demo_nearest_ring_direction = Vec3::Zero();

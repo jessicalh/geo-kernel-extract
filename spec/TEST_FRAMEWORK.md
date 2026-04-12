@@ -294,9 +294,11 @@ validates that all of these attach in order and produce the expected NPY output.
 15. MopacCoulombResult (if MOPAC: Coulomb from semiempirical charges)
 16. MopacMcConnellResult (if MOPAC: McConnell from semiempirical bond orders)
 17. HBondResult (if DSSP: hydrogen bond shielding)
+18. SasaResult (Shrake-Rupley per-atom SASA)
+19. AIMNet2Result (if AIMNet2 model: neural network charges + Coulomb EFG)
 
 ### Tier 2 — DFT comparison (optional)
-18. OrcaShieldingResult (ORCA DFT shielding tensors, if path provided)
+20. OrcaShieldingResult (ORCA DFT shielding tensors, if path provided)
 
 
 ## NPY Output Files

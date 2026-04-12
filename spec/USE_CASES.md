@@ -119,30 +119,36 @@ should not say how that might look.
 
 ---
 
-## Geometry-only mode (--no-mopac --no-apbs)
+## Canonical extraction mode (--no-mopac --no-coulomb)
 
-For large ensembles (e.g. 5000 MD frames at 4000 atoms),
-MOPAC (~10 min/frame) and APBS (~15-30 s/frame) dominate wall
-time. The `--no-mopac` and `--no-apbs` flags skip these external
-solvers while retaining all purely geometric calculators.
+APBS (solvated Poisson-Boltzmann) is the preferred electrostatic
+calculator. It is faster than vacuum Coulomb at N > 1000 atoms
+(4s vs 25s at 4800 atoms — fixed 161^3 grid vs O(N*k) pairwise)
+and produces solvated fields. Vacuum Coulomb is retained for
+comparison tests only.
 
 **What runs:** Geometry, SpatialIndex, Enrichment, DSSP,
 BiotSavart, HaighMallion, McConnell, RingSusceptibility,
-PiQuadrupole, Dispersion, Coulomb (topology charges), HBond.
-8 calculators, sub-second per frame.
+PiQuadrupole, Dispersion, APBS (solvated E-field + EFG),
+HBond, SASA.  AIMNet2 if model provided.
 
 **What is skipped:** MopacResult, MopacCoulombResult,
-MopacMcConnellResult, ApbsFieldResult. The Python SDK handles
-absent MOPAC/APBS arrays — those groups are `None` on the
+MopacMcConnellResult, CoulombResult. The Python SDK handles
+absent MOPAC/Coulomb arrays — those groups are `None` on the
 Protein dataclass.
 
 **Typical invocation (fleet):**
 
     nmr_extract --fleet --tpr topology.tpr --poses /path/to/poses \
-                --no-mopac --no-apbs --output /path/to/output
+                --no-mopac --no-coulomb --output /path/to/output
 
-Both flags are available for all modes (PDB, ORCA, mutant, fleet)
-and in both the CLI and UI.
+**Typical invocation (single protein):**
+
+    nmr_extract --pdb protein.pdb --no-mopac --no-coulomb --output /path/to/output
+
+All skip flags are available for all modes (PDB, ORCA, mutant, fleet)
+and in both the CLI and UI. See spec/TIMING_4876_ATOMS.md for
+measured per-calculator times on 4876-atom protein.
 
 ---
 
