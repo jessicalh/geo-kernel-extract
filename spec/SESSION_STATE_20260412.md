@@ -45,6 +45,55 @@
 - spec/TEST_FRAMEWORK.md — SasaResult + AIMNet2Result added to pipeline order
 - doc/ARCHITECTURE.md — line number fix
 
+## Late session additions
+
+- **SASA on ConformationAtom**: atom_sasa field, SasaResult writes
+  to it during Compute. Private vector killed. One path.
+- **1ZR7_6721 full-system test data**: 479 protein atoms, 3525 water
+  molecules, 25 ions, ~1001 frames per walker, 5 walkers.
+  First explicit solvent extraction PASSED — 7s/frame, all 17
+  calculators including WaterFieldResult + HydrationShellResult.
+- **Literature search**: per-atom explicit water features for NMR
+  prediction is novel. Nobody has done this.
+- **Harvest bug found**: compressed-x-grps = Protein in prod.mdp
+  stripped water from .xtc. Fleet re-run needed with System.
+  Runbook at fleet-manager-tasks/RERUN_FULL_SYSTEM.md.
+- **Disk budget**: 22 MB/frame at 4876 atoms (ring_contributions
+  dominates). 5000 frames × large protein = 116 GB. Scout mode
+  needed for frame selection before full extraction.
+
+## Next session: --scout mode in nmr_extract
+
+The scout is a run mode, not a separate tool. Same JobSpec, same
+OperationRunner. It:
+1. Reads full-system XTC + TPR
+2. Streams all frames with minimal pipeline (skip APBS/Coulomb/MOPAC)
+3. Per atom: Welford accumulators for water shell count, water
+   E-field magnitude, SASA
+4. Writes one CSV catalog: per-atom statistics with min/max frame
+   indices for targeted frame selection
+5. User inspects catalog in R, picks 50 frames for DFT
+6. Then runs full extraction on those 50 frames only
+
+Frame selection strategy: 40 by water diversity (atoms with biggest
+solvation changes, frames at their extremes) + 10 by Boltzmann
+weight. COLVAR has RMSD/Rg/rbias for free. .edr has Coulomb/LJ
+energies for free.
+
+## KNOWN BUG: --trajectory atom count mismatch
+
+BuildFromTrajectory uses BuildFromProtonatedPdb to construct the
+Protein, which drops atoms the TPR has (479 in TPR, 461 from PDB
+builder). ScanFrame creates a ProteinConformation with 479 positions
+from the XTC but the Protein has 461 atoms. Segfault.
+
+**Fix**: BuildFromTrajectory should use GromacsEnsembleLoader's
+TPR-based protein construction (which already handles CHARMM36m
+naming, all atom types). The TPR is authoritative, not the PDB.
+This is the same builder the fleet path uses. The reference PDB
+should not be the protein construction source for the trajectory
+path.
+
 ## What is NOT done
 
 ### Solvent calculators need full-system .xtc
