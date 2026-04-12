@@ -49,6 +49,15 @@ struct FleetPaths {
 // the returned BuildResult. Net charge computed from the TPR charge sum.
 BuildResult BuildFromGromacs(const FleetPaths& paths);
 
+// Build a Protein from TPR topology only (no poses, no conformations).
+// Returns a Protein with residues + atoms but no conformations.
+// Caller provides positions separately for FinalizeConstruction.
+// Charges are in the BuildResult.
+// This is the shared core of BuildFromGromacs and BuildFromTrajectory.
+BuildResult BuildProteinFromTpr(const std::string& tpr_path,
+                                const std::string& protein_id,
+                                ForceField force_field = ForceField::CHARMM36m);
+
 
 // Run all frames through the standard sequence.
 // Delegates to OperationRunner::RunEnsemble.

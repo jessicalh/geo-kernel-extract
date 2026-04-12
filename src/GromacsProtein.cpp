@@ -50,29 +50,33 @@ bool GromacsProtein::Build(const FleetPaths& paths) {
 }
 
 
-// ── Build (trajectory path — TPR + reference PDB) ────────────────
+// ── Build (trajectory path — TPR is authoritative) ───────────────
 
 bool GromacsProtein::BuildFromTrajectory(
         const std::string& tpr_path,
-        const std::string& ref_pdb_path) {
+        const std::string& /* ref_pdb_path — unused, TPR is authoritative */) {
 
+    // Full-system topology for frame splitting (protein/water/ion ranges)
     if (!sys_reader_.ReadTopology(tpr_path)) {
-        error_ = "TPR: " + sys_reader_.error();
+        error_ = "TPR topology: " + sys_reader_.error();
         return false;
     }
 
-    auto build = BuildFromProtonatedPdb(ref_pdb_path);
+    // Protein construction from TPR (same builder as fleet path)
+    protein_id_ = fs::path(tpr_path).stem().string();
+    auto build = BuildProteinFromTpr(tpr_path, protein_id_);
     if (!build.Ok()) {
-        error_ = "ref PDB: " + build.error;
+        error_ = "TPR protein: " + build.error;
         return false;
     }
 
     protein_ = std::move(build.protein);
     charges_ = std::move(build.charges);
     net_charge_ = build.net_charge;
-    protein_id_ = fs::path(ref_pdb_path).stem().string();
 
-    InitAtoms();
+    // NOTE: Protein is not finalized yet — FinalizeConstruction needs
+    // positions from the first XTC frame for bond detection. Call
+    // LoadTrajectory() next, which reads the XTC and finalizes.
 
     OperationLog::Info(LogCalcOther, "GromacsProtein::BuildFromTrajectory",
         protein_id_ + ": " +
@@ -136,10 +140,32 @@ bool GromacsProtein::LoadTrajectory(const std::string& xtc_path) {
         return false;
     }
 
+    if (frames_->frames.empty()) {
+        error_ = "no frames in " + xtc_path;
+        return false;
+    }
+
+    // Finalize protein construction using first frame positions.
+    // FinalizeConstruction needs positions for CovalentTopology::Resolve
+    // (bond detection from distances). The TPR built the atoms and
+    // residues; the first frame provides the geometry.
+    if (protein_ && protein_->AtomCount() > 0 && protein_->BondCount() == 0) {
+        std::vector<Vec3> first_pos;
+        SolventEnvironment discard;
+        if (!sys_reader_.ExtractFrame(frames_->frames[0].x, first_pos, discard)) {
+            error_ = "failed to extract first frame for finalization";
+            return false;
+        }
+        protein_->FinalizeConstruction(first_pos);
+        InitAtoms();
+    }
+
     OperationLog::Info(LogCalcOther, "GromacsProtein::LoadTrajectory",
         std::to_string(frames_->frames.size()) + " frames, " +
-        std::to_string(frames_->frames.empty() ? 0 : frames_->frames[0].natoms) +
-        " atoms/frame");
+        std::to_string(frames_->frames[0].natoms) +
+        " atoms/frame, protein=" +
+        std::to_string(protein_ ? protein_->AtomCount() : 0) +
+        " bonds=" + std::to_string(protein_ ? protein_->BondCount() : 0));
     return true;
 }
 
