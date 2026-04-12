@@ -174,6 +174,10 @@ add_library(nmr_shielding
     src/ChargeSource.cpp
     src/OrcaRunLoader.cpp
     src/GromacsEnsembleLoader.cpp
+    src/SasaResult.cpp
+    src/GromacsProtein.cpp
+    src/GromacsFrameHandler.cpp
+    src/GromacsFinalResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
     src/McConnellResult.cpp
@@ -373,6 +377,24 @@ target_link_libraries(job_spec_tests PRIVATE
     GTest::gtest
 )
 gtest_add_tests(TARGET job_spec_tests)
+
+# ============================================================================
+# Gromacs streaming test — trajectory streaming proof of concept
+# ============================================================================
+
+add_executable(gromacs_streaming_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_gromacs_streaming.cpp
+)
+target_compile_definitions(gromacs_streaming_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(gromacs_streaming_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET gromacs_streaming_tests)
 
 # ============================================================================
 # FES fleet smoke test — fes-sampler naming, 2 proteins x 6 poses (~15 min)

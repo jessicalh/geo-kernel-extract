@@ -1,206 +1,185 @@
-# Ensemble Object Model
+# Ensemble Extraction Model
 
-**Status:** FUTURE DESIGN REFERENCE.  Do not implement.
-Implement all calculators first (AIMNet2Result, SasaResult,
-ChiAngleResult, graph exports).  The ensemble framework is a
-separate project that comes after calculators are working and
-validated.  See `learn/docs/next_session_2026-04-12.md` for
-current scope.
+**Status:** IMPLEMENTED (partial). GromacsProtein + GromacsFrameHandler +
+GromacsFinalResult are built and tested. Streaming test passes on
+1Q8K_10023 (10 XTC frames, 14 results per frame, 36 NPY arrays).
+Accumulation logic and .h5 writer are next.
 
-Design established 2026-04-10.
-
----
-
-## Three lifetimes
-
-The system has three distinct object lifetimes for per-atom data:
-
-| Object | Lifetime | Holds | Example |
-|---|---|---|---|
-| Protein / Atom | Eternal | Identity, topology, residue, bonds, rings | element, pdb_atom_name, residue_index |
-| ProteinConformation / ConformationAtom | One frame | Positions, instantaneous computed fields | bs_shielding_contribution, coulomb_E_total |
-| **EnsembleConformation / EnsembleAtom** | **Across all frames** | **Accumulated statistics** | **Boltzmann-weighted kernel T2 mean, variance** |
-
-Protein owns what doesn't change. ConformationAtom owns what one
-geometry produces. EnsembleConformation owns what 5005 geometries
-collectively reveal.
-
-**Atom index is the join key across all three.**
+Design revised 2026-04-11/12 after critical review of original
+EnsembleConformation/observer design. See memory:
+`project_ensemble_design_decisions.md`.
 
 ---
 
-## EnsembleConformation
+## Architecture: GromacsProtein pattern
 
-Parallel to ProteinConformation. Same atom count, same indexing.
-Attaches to the Protein the same way a ProteinConformation does.
+No abstract EnsembleConformation. No observer/accumulator ABC.
+Three concrete classes married to GROMACS:
 
-Where a ProteinConformation holds positions and computed fields
-from one frame, an EnsembleConformation holds the reduced
-statistics from all frames: means, variances, counts, extrema,
-correlation matrices — whatever the EnsembleResults computed.
+### GromacsProtein
 
-It does not hold positions (there is no single position for an
-ensemble). It does not duplicate identity (that's on Protein).
+Wraps a real Protein. Conformation 0 (GROMACS frame 0) lives in
+the Protein's conformations_ vector via AddMDFrame. It is permanent
+and feeds the .h5 master file.
+
+Streaming frames are **free-standing ProteinConformations** created
+via the public constructor with a `const Protein*` back-pointer.
+They are NOT added to the Protein's conformations_ vector. They
+point at the Protein for topology lookups, are computed on by all
+calculators, then freed.
+
+This works because:
+- ProteinConformation constructor is public, no side effects
+- No calculator accesses conformations through the Protein's vector
+- OperationRunner::Run takes ProteinConformation& directly
+- Verified: zero hidden coupling in all calculators and loaders
+
+Holds: the real Protein, ChargeSource from TPR, frame manifest
+(paths or indices), accumulation state.
+
+### GromacsFrameHandler
+
+Opens XTC trajectory, applies PBC fix (MoleculeWholer from
+fes-sampler, VERBATIM), converts nm→A, creates free-standing
+MDFrameConformations. For each frame:
+
+1. Read XTC frame, PBC fix, build positions
+2. Create free-standing MDFrameConformation(&protein, positions, ...)
+3. OperationRunner::Run — all calculators attach
+4. Extract what accumulation needs from the live conformation
+5. Conformation dies — memory freed
+
+No disk writes during streaming (unless debugging). The handler
+accumulates in memory. Winners are re-loaded from XTC at the end.
+
+### GromacsFinalResult
+
+Runs after all frames. Computes final statistics from accumulated
+state. Writes:
+- `{protein_id}.h5` — topology + EnrichmentResult from conformation 0
+- Ensemble NPY files (Welford means/variances, DSSP histograms, etc.)
+- Winner frames: re-load from XTC, run calculators, WriteAllFeatures
 
 ---
 
-## EnsembleResult
+## Three lifetimes (unchanged)
 
-Parallel to ConformationResult. Same patterns:
-
-- `Dependencies()` — declares what other EnsembleResults it reads
-- `WriteFeatures()` — writes NPY arrays
-- Attaches to EnsembleConformation
-- Chaining works: EnsembleResult B can depend on EnsembleResult A
-
-The difference: a ConformationResult is populated by a single
-`Compute(conf)` call. An EnsembleResult is populated by many
-`Observe(conf, frame_i, weight)` calls followed by one
-`Finalize()`.
-
-### Concrete EnsembleResults (planned)
-
-| Result | Accumulates | Output arrays |
+| Object | Lifetime | Holds |
 |---|---|---|
-| BoltzmannKernelMoments | Per-atom Welford mean + M2 for each kernel T2, weighted by Boltzmann probability | (N, K, 5) mean, (N, K, 5) variance |
-| DsspEnsembleStats | Per-residue backbone angle circular statistics | (R, 5) mean phi/psi/sasa + circular variance |
-| RingGeometryStats | Per-ring center/normal distributions | (rings, 6) mean center + normal, (rings, 6) variance |
-| CoulombFieldMoments | Per-atom E-field and EFG statistics | (N, 3) mean E, (N, 9) mean EFG, variances |
-| FrameDiversityScores | Per-frame Mahalanobis distance from running kernel mean | (F,) score per frame |
+| Protein / Atom | Eternal | Identity, topology, bonds, rings |
+| ProteinConformation / ConformationAtom | One frame | Positions, computed fields |
+| GromacsProtein accumulation state | Across frames | Welford means, histograms, frame indices |
+
+The third lifetime is NOT a separate object model (no EnsembleAtom,
+no EnsembleConformation). It's internal state on GromacsProtein,
+accessed by GromacsFrameHandler methods.
 
 ---
 
-## The streaming loop
+## Conformation 0
+
+0 is 0. First GROMACS frame. No Boltzmann minimum selection.
+Lives in the Protein's conformations_ vector via AddMDFrame.
+Always valid, always in memory. EnrichmentResult from conformation 0
+feeds the .h5 master file (atom_role, hybridisation, etc.).
+
+For `--pdb` or `--mutant` modes: everything works exactly as before.
+The existing path is untouched.
+
+---
+
+## Master file: {protein_id}.h5
+
+HDF5 file containing protein-level data that no calculator writes
+as NPY. Written once by GromacsFinalResult from conformation 0 +
+Protein topology.
 
 ```
-protein = BuildFromGromacs(tpr)
-ensemble = EnsembleConformation(protein)  // same atom count
-
-for each XTC frame:
-    conf = make_conformation(protein, frame_coords)
-    OperationRunner::Run(conf, opts)      // geometric stack
-
-    for each observer on ensemble:
-        observer.Observe(conf, frame_i, boltzmann_weight)
-
-    // conf discarded here (unless a filter claims it)
-
-for each observer on ensemble:
-    observer.Finalize()
-
-ensemble.WriteAllFeatures(output_dir)     // same pattern as ProteinConformation
+{protein_id}.h5
+├── topology/          ← from Protein object
+│   ├── element          (N,) int32
+│   ├── residue_type     (N,) int32
+│   ├── atom_to_residue  (N,) int32
+│   ├── bonds            (B, 2) int32
+│   ├── bond_type        (B,) int32
+│   ├── ring_atoms       (P, 2) int32
+│   └── ring_type        (R,) int32
+├── classification/    ← from EnrichmentResult on conformation 0
+│   ├── atom_role        (N,) int32
+│   ├── hybridisation    (N,) int32
+│   ├── graph_dist_ring  (N,) int32
+│   └── is_conjugated    (N,) int8
+├── graph/             ← from SpatialIndexResult on conformation 0
+│   ├── radius_edges     (E, 2) int32
+│   └── radius_distances (E,) float64
+└── attrs: n_atoms, n_residues, n_rings, pdb_id
 ```
 
-The Protein is built once from the TPR. Each XTC frame produces
-a temporary ProteinConformation that is fully computed (all
-geometric calculators attached), observed by the ensemble, then
-discarded. The EnsembleConformation survives with the accumulated
-statistics.
+The SDK (nmr_extract) reads both .h5 and NPY files, presents one
+typed object. One SDK, one load() call.
 
 ---
 
-## Filters: observers that keep survivors
+## Charge sensitivity
 
-A filter is an observer that sometimes holds onto a
-ProteinConformation instead of letting it be discarded:
+Per-atom charge sensitivity is NOT a calculator feature. It is NOT
+on Atom (topology) and NOT on ConformationAtom.
 
-```
-void KernelDiversityFilter::Observe(conf, frame_i, weight) {
-    score = score_diversity(conf)
-    if score > worst_survivor:
-        evict worst
-        adopt conf into buffer
-```
+The perturbation approach (10 random bulk displacements, Welford
+variance) was removed. It produced conformation-specific values
+via random splats that were non-comparable across frames and lied
+about solvation when applied to other conformations.
 
-The filter's buffer holds 10-20 full ProteinConformations with
-all ConformationResults attached. These survivors are first-class
-citizens:
+Two quantities replace it, both computed by GromacsFrameHandler:
 
-- A second-pass calculator can attach new results to them
-  (e.g. run MOPAC on just the 20 winners)
-- An EnsembleResult can read across the survivors to compute
-  cross-conformation statistics on the diverse subset
-- WriteAllFeatures works on each survivor individually
+1. **Ensemble charge variance** — Welford on aimnet2_charge across
+   all frames. Free (charges already computed per frame). Output:
+   `ensemble_charges_var.npy`.
 
-The buffer size is bounded: 10-20 conformations at ~464 MB
-worst case (4876 atoms) = 5-10 GB. Fits in 64 GB.
-
----
-
-## Memory model
-
-| Component | Memory | Notes |
-|---|---|---|
-| Protein (topology) | ~50 MB | Atoms, bonds, rings, residues. Built once. |
-| One ProteinConformation | ~464 MB | Largest protein (4876 atoms). Transient per frame. |
-| EnsembleConformation accumulators | ~20 MB | Welford mean + M2, independent of frame count. |
-| Filter buffer (20 survivors) | ~5-10 GB | Full conformations with results. |
-| COLVAR weights | ~1 MB | 5005 doubles. |
-
-Total steady state during streaming: Protein + one transient
-conformation + accumulators + filter buffer. Well within 64 GB.
-
----
-
-## Boltzmann weights
-
-Read directly from walker COLVAR files (6-column text).
-Temperature from plumed.dat. Weight = exp(rbias / kT),
-normalised via log-sum-exp.
-
-No fes-sampler dependency. The COLVAR format is the contract.
-fes-sampler's dihedral selection remains a standalone tool;
-its 6 picks are the control for the ensemble experiment.
-
----
-
-## Output and downstream
-
-EnsembleConformation participates in WriteAllFeatures the
-same way ProteinConformation does. Produces NPY arrays.
-The Python SDK loads them. Atom index joins to identity
-arrays (element.npy, residue_type.npy).
-
-Downstream consumers:
-
-- **R ridge regression**: ensemble-averaged kernels + RefDB
-  experimental shifts, per element per atom type
-- **learn/src analysis tools**: same iter_proteins pattern,
-  reading ensemble features instead of single-pose features
-- **GNN graph builder** (nmr-training Piece 3): ensemble
-  features as additional node attributes
-
----
-
-## Test data
-
-The largest fleet protein (1Q8K_10023, 4876 atoms, 26 rings) is
-copied to `tests/data/fleet_test_large/` with all 5 walkers,
-COLVAR files, XTC trajectories, initial-samples (6 fes-sampler
-poses), and run_params. This is the benchmark protein for memory
-and timing measurements.
-
-Empirical measurements (2026-04-10, batcave, Ryzen 9950X 128 GB):
-- Per-conformation RSS: ~464 MB (geometry-only, no MOPAC/APBS)
-- Per-frame wall time: ~1.3s (with 20A Coulomb cutoff)
-- Filter buffer of 20 survivors: ~9 GB worst case
-
-The fleet tree is at `/shared/fleet/clean_fleet/results/`.
-Do not modify it. The test copy is the safe playground.
+2. **Autograd charge sensitivity** — d(charges)/d(positions) via
+   backward pass through the .jpt model. Deterministic, exact,
+   per-conformation. Validated: the model supports autograd on
+   coords. Cost: N backward passes per frame (~5s for 5000 atoms).
+   Run on selected frames only (conformation 0, survivors).
 
 ---
 
 ## What does NOT change
 
 - Protein / Atom: untouched
-- ConformationAtom: untouched (still holds one frame's data)
-- ConformationResult: untouched (still computes from one frame)
-- OperationRunner::Run: untouched (still sequences one frame)
+- ConformationAtom: untouched (one frame's data)
+- ConformationResult: untouched (computes from one frame)
+- OperationRunner::Run: untouched (sequences one frame)
 - WriteFeatures per calculator: untouched
-- Python SDK: loads whatever NPY files are present; new arrays
-  get new ArraySpec entries in _catalog.py
+- Python SDK: loads whatever NPY files are present
+- Existing `--pdb`, `--mutant`, `--orca` modes: untouched
 
-The wall between Protein and ConformationAtom stays exactly
-where it is. EnsembleConformation is the third object on the
-other side of a new wall: across-frame statistics that belong
-to neither identity nor any single geometry.
+---
+
+## Superseded designs (historical)
+
+The following concepts from the original 2026-04-10 design were
+evaluated and rejected during the 2026-04-11/12 review:
+
+- **EnsembleConformation / EnsembleAtom** — replaced by accumulation
+  state on GromacsProtein. No separate object model needed.
+- **EnsembleResult / observer ABC** — replaced by direct methods on
+  GromacsFrameHandler. No virtual dispatch.
+- **TrajectoryObserver / EvaluationAccumulator** — same.
+- **ConformationList with invalidation** — replaced by free-standing
+  conformations that die naturally after processing.
+- **GraphExportResult** — bond graph goes in .h5 from Protein topology.
+- **charge_sensitivity on Atom** — moved to evaluator/handler output.
+  Perturbation approach deleted.
+
+---
+
+## Test data
+
+1Q8K_10023 (4876 atoms, 26 rings) at `tests/data/fleet_test_large/`
+with 5 walkers, XTC trajectories, initial-samples (6 PDB poses),
+run_params. Streaming test processes 10 XTC frames with all 14
+calculators (including SasaResult) at ~45s/frame.
+
+The fleet tree is at `/shared/fleet/clean_fleet/results/`.
+Do not modify it.

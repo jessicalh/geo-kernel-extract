@@ -319,11 +319,13 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     }
 
     // ------------------------------------------------------------------
-    // 6. Charge sensitivity: lazy init on Atom (topology, permanent)
+    // 6. Charge sensitivity: per-conformation, if enabled in TOML
     // ------------------------------------------------------------------
-    if (protein.AtomAt(0).aimnet2_charge_sensitivity < 0.0) {
-        ComputeChargeSensitivity(conf, model);
-    }
+    // aimnet2_sensitivity_mode: "none" (default) or "autograd"
+    // Perturbation approach removed — it produced conformation-specific
+    // values via random splats that were non-comparable across frames
+    // and lied about solvation when applied to other conformations.
+    // TODO: autograd path — validate .jpt supports requires_grad on coords
 
     // ------------------------------------------------------------------
     // 7. Coulomb EFG from AIMNet2 charges
@@ -440,108 +442,25 @@ void AIMNet2Result::ComputeCoulombEFG(
 
 
 // ============================================================================
-// Charge sensitivity: bulk perturbations, per-atom variance → Atom
+// Charge sensitivity: autograd path (future)
 // ============================================================================
-
-void AIMNet2Result::ComputeChargeSensitivity(
-        ProteinConformation& conf,
-        AIMNet2Model& model) {
-
-    OperationLog::Scope scope("AIMNet2Result::ChargeSensitivity",
-        "atoms=" + std::to_string(conf.AtomCount()));
-
-    // const_cast is sanctioned here: charge_sensitivity is an intrinsic
-    // property of the atom's chemical identity, stored once on Atom
-    // (Protein level). This is the one place a calculator writes to Protein.
-    Protein& protein = const_cast<Protein&>(conf.ProteinRef());
-    const size_t N = conf.AtomCount();
-    const int n_perturb = static_cast<int>(
-        CalculatorConfig::Get("aimnet2_sensitivity_n_perturbations"));
-    const double displacement = CalculatorConfig::Get("aimnet2_sensitivity_displacement");
-
-    // Accumulate per-atom charge mean and M2 (Welford online)
-    std::vector<double> mean(N, 0.0);
-    std::vector<double> M2(N, 0.0);
-
-    std::mt19937 rng(42);  // deterministic seed for reproducibility
-    std::normal_distribution<double> dist(0.0, displacement);
-
-    // Build static inputs that don't change across perturbations.
-    // All atom-level tensors padded to N+1 (same as Compute).
-    const int64_t N1 = static_cast<int64_t>(N + 1);
-    auto numbers_cpu = torch::zeros({N1}, torch::kInt64);
-    auto num_acc = numbers_cpu.accessor<int64_t, 1>();
-    for (size_t i = 0; i < N; ++i) {
-        switch (protein.AtomAt(i).element) {
-            case Element::H:  num_acc[i] = 1;  break;
-            case Element::C:  num_acc[i] = 6;  break;
-            case Element::N:  num_acc[i] = 7;  break;
-            case Element::O:  num_acc[i] = 8;  break;
-            case Element::S:  num_acc[i] = 16; break;
-            default: break;  // unreachable: Compute guards for Unknown
-        }
-    }
-    auto numbers_gpu = numbers_cpu.to(model.device);
-    auto charge_gpu = torch::zeros({1}, torch::dtype(torch::kFloat32).device(model.device));
-    auto mol_idx_gpu = torch::zeros({N1},
-                                     torch::dtype(torch::kInt64).device(model.device));
-    auto cutoff_lr_gpu = torch::tensor({static_cast<float>(model.cutoff_lr)},
-                                        torch::dtype(torch::kFloat32).device(model.device));
-
-    // Build neighbour matrices ONCE (0.1A perturbations do not change
-    // the neighbour set at 5A cutoff — validated empirically).
-    auto nbmat_gpu = BuildNeighbourMatrix(conf,
-        model.cutoff * model.cutoff, model.max_nb).to(model.device);
-    auto nbmat_lr_gpu = BuildNeighbourMatrix(conf,
-        model.cutoff_lr * model.cutoff_lr, model.max_nb_lr).to(model.device);
-
-    torch::NoGradGuard no_grad;
-
-    for (int p = 0; p < n_perturb; ++p) {
-        // Perturb all coordinates simultaneously (padded to N+1)
-        auto coord_cpu = torch::zeros({N1, 3}, torch::kFloat32);
-        auto coord_acc = coord_cpu.accessor<float, 2>();
-        for (size_t i = 0; i < N; ++i) {
-            Vec3 pos = conf.PositionAt(i);
-            coord_acc[i][0] = static_cast<float>(pos.x() + dist(rng));
-            coord_acc[i][1] = static_cast<float>(pos.y() + dist(rng));
-            coord_acc[i][2] = static_cast<float>(pos.z() + dist(rng));
-        }
-
-        c10::Dict<std::string, torch::Tensor> input_dict;
-        input_dict.insert("coord",     coord_cpu.to(model.device));
-        input_dict.insert("numbers",   numbers_gpu);
-        input_dict.insert("charge",    charge_gpu);
-        input_dict.insert("mol_idx",   mol_idx_gpu);
-        input_dict.insert("nbmat",     nbmat_gpu);
-        input_dict.insert("nbmat_lr",  nbmat_lr_gpu);
-        input_dict.insert("cutoff_lr", cutoff_lr_gpu);
-
-        auto output = model.module.forward({input_dict});
-        auto output_dict = output.toGenericDict();
-        auto charges = output_dict.at("charges").toTensor().to(torch::kCPU, torch::kFloat64);
-        auto q_acc = charges.accessor<double, 1>();
-
-        // Welford online update
-        for (size_t i = 0; i < N; ++i) {
-            double q = q_acc[i];
-            double delta = q - mean[i];
-            mean[i] += delta / (p + 1);
-            double delta2 = q - mean[i];
-            M2[i] += delta * delta2;
-        }
-    }
-
-    // Store variance on Atom (permanent)
-    for (size_t i = 0; i < N; ++i) {
-        protein.MutableAtomAt(i).aimnet2_charge_sensitivity =
-            (n_perturb > 1) ? M2[i] / (n_perturb - 1) : 0.0;
-    }
-
-    OperationLog::Info(LogCalcOther, "AIMNet2Result::ChargeSensitivity",
-        std::to_string(n_perturb) + " perturbations, " +
-        std::to_string(N) + " atoms");
-}
+//
+// The perturbation approach (10 random bulk displacements, Welford variance)
+// was removed. It was wrong: each perturbation set was random and conformation-
+// specific, so the sensitivity from conformation A was non-comparable to
+// conformation B. Worse, applying A's sensitivity to B lies about solvation.
+//
+// The correct approach is autograd: d(charges)/d(positions) via one backward
+// pass through the TorchScript model. This is deterministic, per-conformation,
+// and physically correct. It requires the .jpt model to support requires_grad
+// on the coordinate tensor — validation pending.
+//
+// When implemented, ComputeChargeSensitivityAutograd will:
+//   1. Run forward with requires_grad=True on coords (no NoGradGuard)
+//   2. Backward on sum(charges) to get coord.grad (N, 3)
+//   3. Per-atom sensitivity = norm of the (3,) gradient vector
+//   4. Store on conf.MutableAtomAt(i).aimnet2_charge_sensitivity
+//
 
 
 // ============================================================================
@@ -607,15 +526,10 @@ int AIMNet2Result::WriteFeatures(
         files_written++;
     }
 
-    // aimnet2_charge_sensitivity.npy — (N,) float64, from Atom (topology)
-    {
-        std::vector<double> data(N);
-        for (size_t i = 0; i < N; ++i)
-            data[i] = protein.AtomAt(i).aimnet2_charge_sensitivity;
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_charge_sensitivity.npy",
-                                data.data(), N);
-        files_written++;
-    }
+    // aimnet2_charge_sensitivity.npy is NOT written here.
+    // Charge sensitivity = per-atom charge variance across the ensemble,
+    // computed by ChargeSensitivityEvaluator from the charges already
+    // on each ConformationAtom. The ensemble IS the perturbation experiment.
 
     return files_written;
 }

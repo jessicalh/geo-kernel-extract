@@ -104,6 +104,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────
     ArraySpec("dssp_backbone",    "dssp", DsspScalars,             5,    True,  "DSSP backbone geometry"),
+    ArraySpec("dssp_ss8",         "dssp", np.ndarray,              8,    True,  "DSSP 8-class SS one-hot (H/G/I/E/B/T/S/C)"),
+    ArraySpec("dssp_hbond_energy","dssp", np.ndarray,              4,    True,  "DSSP H-bond energies (acc0/acc1/don0/don1)"),
+    ArraySpec("dssp_chi",         "dssp", np.ndarray,              12,   True,  "Chi1-4 cos/sin/exists (4 x 3 cols)"),
+
+    # ── SASA (SasaResult.cpp) ───────────────────────────────────
+    ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, True,  "Per-atom Shrake-Rupley SASA (A^2)"),
 
     # ── MOPAC core (MopacResult.cpp) ─────────────────────────────
     ArraySpec("mopac_charges",    "mopac_core", np.ndarray,        None, False, "MOPAC Mulliken charges"),
@@ -144,6 +150,12 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG total"),
     ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG aromatic"),
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG backbone"),
-    ArraySpec("aimnet2_charge_sensitivity",  "aimnet2", AIMNet2ChargeSensitivity,  None, False, "AIMNet2 intrinsic polarisability proxy"),
+    # aimnet2_charge_sensitivity: REMOVED from calculator output (2026-04-12).
+    # Perturbation approach deleted. Charge sensitivity is now computed
+    # by GromacsFrameHandler as ensemble charge variance (Welford on
+    # aimnet2_charge across frames) and optionally autograd on selected
+    # frames. The SDK entry is kept for backward compatibility with old
+    # extractions that have the file.
+    ArraySpec("aimnet2_charge_sensitivity",  "aimnet2", AIMNet2ChargeSensitivity,  None, False, "LEGACY: per-atom charge sensitivity (old perturbation method)"),
 ]}
 # fmt: on

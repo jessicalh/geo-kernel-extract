@@ -59,9 +59,13 @@ aimnet2_max_nb = 128
 aimnet2_max_nb_lr = 4096
 # Coulomb EFG cutoff for AIMNet2 charges (Angstroms)
 aimnet2_coulomb_efg_cutoff = 20.0
-# Charge sensitivity: number of bulk perturbations and displacement magnitude
-aimnet2_sensitivity_n_perturbations = 10
-aimnet2_sensitivity_displacement = 0.1
+# Charge sensitivity: computed by ChargeSensitivityEvaluator as per-atom
+# charge variance across the ensemble. No parameters — the ensemble IS
+# the perturbation. The old bulk-perturbation params were removed.
+
+# SASA (Shrake-Rupley per-atom solvent-accessible surface area)
+sasa_probe_radius = 1.4
+sasa_n_points = 92
 
 # Numerical noise floors — below these the value is treated as zero
 near_zero_vector_norm_threshold = 1e-10

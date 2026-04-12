@@ -77,8 +77,12 @@ void CalculatorConfig::InitDefaults() {
     add("aimnet2_max_nb",                         128.0, "",     "AIMNet2 max short-range neighbours");
     add("aimnet2_max_nb_lr",                     4096.0, "",     "AIMNet2 max long-range neighbours");
     add("aimnet2_coulomb_efg_cutoff",              20.0, "A",    "AIMNet2 Coulomb EFG cutoff");
-    add("aimnet2_sensitivity_n_perturbations",     10.0, "",     "charge sensitivity perturbation count");
-    add("aimnet2_sensitivity_displacement",         0.1, "A",    "charge sensitivity displacement magnitude");
+    // charge sensitivity: no calculator params — computed by
+    // GromacsFrameHandler as per-atom charge variance across ensemble
+
+    // SASA (Shrake-Rupley per-atom solvent-accessible surface area)
+    add("sasa_probe_radius",                        1.4, "A",    "SASA water probe radius (Bondi)");
+    add("sasa_n_points",                           92.0, "",     "SASA Fibonacci sphere point count");
 
     // Numerical noise floors — below these the value is treated as zero
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");

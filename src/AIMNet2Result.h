@@ -9,10 +9,11 @@
 // Married to AIMNet2 — no abstract interface, no factory pattern.
 // The .jpt model is loaded once and shared across all conformations.
 //
-// charge_sensitivity: computed on first Compute call, stored on Atom
-// (Protein level, permanent). Bulk perturbations, per-atom
-// charge variance. An intrinsic property of the atom's chemical
-// identity — 112x variation across carbon atoms.
+// charge_sensitivity: per-conformation, on ConformationAtom.
+// Computed via autograd (d(charges)/d(positions)) if enabled in TOML
+// (aimnet2_sensitivity_mode = "autograd"). Default: "none" (not computed).
+// The perturbation approach was removed — it produced conformation-
+// specific values that lied when applied to other conformations.
 //
 // CUDA mandatory. No CPU fallback.
 //
@@ -90,8 +91,9 @@ private:
         ProteinConformation& conf,
         double cutoff);
 
-    // Compute charge sensitivity on first run (lazy, stored on Atom).
-    static void ComputeChargeSensitivity(
+    // Compute charge sensitivity via autograd (if enabled in TOML).
+    // Stores on ConformationAtom, per-conformation.
+    static void ComputeChargeSensitivityAutograd(
         ProteinConformation& conf,
         AIMNet2Model& model);
 };

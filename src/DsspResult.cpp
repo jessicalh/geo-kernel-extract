@@ -224,7 +224,105 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     }
 
     NpyWriter::WriteFloat64(output_dir + "/dssp_backbone.npy", data.data(), N, 5);
-    return 1;
+    int files_written = 1;
+
+    // dssp_ss8.npy — (N, 8) float64, full 8-class one-hot
+    // Column order: H(alpha), G(3_10), I(pi), E(strand), B(bridge), T(turn), S(bend), C(coil)
+    {
+        static const char SS_CLASSES[] = "HGIEBTS C";
+        // Map: H=0, G=1, I=2, E=3, B=4, T=5, S=6, C=7
+        auto ss_col = [](char ss) -> int {
+            switch (ss) {
+                case 'H': return 0;
+                case 'G': return 1;
+                case 'I': return 2;
+                case 'E': return 3;
+                case 'B': return 4;
+                case 'T': return 5;
+                case 'S': return 6;
+                default:  return 7; // C / coil
+            }
+        };
+
+        std::vector<double> ss8(N * 8, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            size_t ri = protein.AtomAt(i).residue_index;
+            if (ri < residues_.size())
+                ss8[i * 8 + ss_col(residues_[ri].secondary_structure)] = 1.0;
+            else
+                ss8[i * 8 + 7] = 1.0; // default coil
+        }
+        NpyWriter::WriteFloat64(output_dir + "/dssp_ss8.npy", ss8.data(), N, 8);
+        files_written++;
+    }
+
+    // dssp_hbond_energy.npy — (N, 4) float64, per-atom (broadcast from residue)
+    // Columns: acceptor0_energy, acceptor1_energy, donor0_energy, donor1_energy
+    // Units: kcal/mol. 0.0 if no H-bond partner.
+    {
+        std::vector<double> hb(N * 4, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            size_t ri = protein.AtomAt(i).residue_index;
+            if (ri < residues_.size()) {
+                const auto& dr = residues_[ri];
+                hb[i * 4 + 0] = dr.acceptors[0].energy;
+                hb[i * 4 + 1] = dr.acceptors[1].energy;
+                hb[i * 4 + 2] = dr.donors[0].energy;
+                hb[i * 4 + 3] = dr.donors[1].energy;
+            }
+        }
+        NpyWriter::WriteFloat64(output_dir + "/dssp_hbond_energy.npy", hb.data(), N, 4);
+        files_written++;
+    }
+
+    // dssp_chi.npy — (N, 12) float64, per-atom (broadcast from residue)
+    // Per chi angle (1-4): cos, sin, exists (1.0/0.0)
+    // Chi angles computed from Residue::chi[k] atom indices + conformation positions.
+    // NaN for residues without that chi angle (GLY, ALA, etc.)
+    {
+        std::vector<double> chi_data(N * 12, 0.0);
+        for (size_t i = 0; i < N; ++i) {
+            size_t ri = protein.AtomAt(i).residue_index;
+            if (ri >= protein.ResidueCount()) continue;
+            const auto& res = protein.ResidueAt(ri);
+
+            for (int k = 0; k < 4; ++k) {
+                int base = i * 12 + k * 3;
+                if (res.chi[k].Valid()) {
+                    Vec3 p0 = conf.PositionAt(res.chi[k].a[0]);
+                    Vec3 p1 = conf.PositionAt(res.chi[k].a[1]);
+                    Vec3 p2 = conf.PositionAt(res.chi[k].a[2]);
+                    Vec3 p3 = conf.PositionAt(res.chi[k].a[3]);
+
+                    // Dihedral angle via atan2
+                    Vec3 b1 = p1 - p0;
+                    Vec3 b2 = p2 - p1;
+                    Vec3 b3 = p3 - p2;
+                    Vec3 n1 = b1.cross(b2);
+                    Vec3 n2 = b2.cross(b3);
+                    double n1_norm = n1.norm();
+                    double n2_norm = n2.norm();
+                    if (n1_norm > 1e-10 && n2_norm > 1e-10) {
+                        n1 /= n1_norm;
+                        n2 /= n2_norm;
+                        double cos_angle = n1.dot(n2);
+                        // clamp for numerical safety
+                        cos_angle = std::max(-1.0, std::min(1.0, cos_angle));
+                        Vec3 m1 = n1.cross(b2.normalized());
+                        double sin_angle = m1.dot(n2);
+                        chi_data[base + 0] = cos_angle;
+                        chi_data[base + 1] = sin_angle;
+                        chi_data[base + 2] = 1.0; // exists
+                    }
+                }
+                // else: cos=0, sin=0, exists=0 (default)
+            }
+        }
+        NpyWriter::WriteFloat64(output_dir + "/dssp_chi.npy", chi_data.data(), N, 12);
+        files_written++;
+    }
+
+    return files_written;
 }
 
 }  // namespace nmr

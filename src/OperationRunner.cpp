@@ -21,6 +21,7 @@
 #include "OrcaShieldingResult.h"
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
+#include "SasaResult.h"
 #include "OperationLog.h"
 
 namespace nmr {
@@ -145,6 +146,10 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         if (!Attach(conf, HBondResult::Compute(conf),
                     "HBondResult", out)) return out;
     }
+
+    // SASA: per-atom Shrake-Rupley (needs SpatialIndexResult)
+    if (!Attach(conf, SasaResult::Compute(conf),
+                "SasaResult", out)) return out;
 
     // AIMNet2: neural network charges + EFG (geometry-only, CUDA)
     if (opts.aimnet2_model) {

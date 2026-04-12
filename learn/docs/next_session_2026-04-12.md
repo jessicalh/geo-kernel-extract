@@ -1,159 +1,139 @@
-# Next Session Prompt (after 2026-04-11 design sessions)
+# Next Session Prompt (after 2026-04-11/12 design + implementation sessions)
 
-## Reading order — DO THIS FIRST
+## What is DONE
 
-### 1. Understand the system (before touching AIMNet2)
+### AIMNet2Result — COMPLETE
+Implemented, binary-validated, wired into OperationRunner. Runs at
+0.17s/frame on RTX 5090. Produces charges, aim embedding (256-dim),
+Coulomb EFG (total/backbone/aromatic). 5 NPY files.
 
-Read the spec index for orientation:
-- `spec/INDEX.md` — reading order, document tiers, what to read when
+### charge_sensitivity — RESOLVED
+- Removed from Atom (was violating the topology wall)
+- Removed from ConformationAtom (not a per-frame calculator output)
+- Perturbation approach DELETED (random splats non-comparable across
+  conformations, lies about solvation)
+- Replaced by two quantities in GromacsFrameHandler:
+  1. Ensemble charge variance (Welford on aimnet2_charge, free)
+  2. Autograd d(charges)/d(positions) on selected frames (validated:
+     .jpt supports backward(), N backward passes per frame)
+- Field removed from Atom.h. Perturbation code removed from
+  AIMNet2Result.cpp. TOML params removed.
 
-Then read an existing calculator to learn the ConformationResult pattern:
-- `src/CoulombResult.h` + `src/CoulombResult.cpp` — the closest
-  analog to AIMNet2Result.  Understand Dependencies(), Compute(),
-  WriteFeatures().  See how it queries SpatialIndexResult for
-  neighbour lists, stores results on ConformationAtom, decomposes
-  EFG by source (backbone/aromatic).
-- `src/ConformationResult.h` — base class interface
-- `src/ConformationAtom.h` — where per-frame computed fields live.
-  All `aimnet2_*` fields will be added here.
-- `src/SpatialIndexResult.h` + `.cpp` — nanoflann KD-tree.
-  AIMNet2 neighbour lists are built from this.
-- `src/EnrichmentResult.h` + `.cpp` — backbone/aromatic/sidechain
-  classification.  AIMNet2 EFG decomposition depends on this.
+### PBC + XTC infrastructure — PORTED
+xdrfile (static lib), xtc_reader.h, pbc_whole.h all from fes-sampler.
+Built and linked. Used by GromacsFrameHandler.
 
-Understand the object model walls:
-- `spec/OBJECT_MODEL.md` — every class, property, type, unit.
-  Code against this.
-- **Protein = identity/topology ONLY.  Never put geometry on it.**
-  Geometry lives on ProteinConformation.  The wall is absolute.
-- charge_sensitivity is the ONE exception: an intrinsic property
-  of the atom (like hybridisation) that is computed from geometry
-  but stored permanently on Atom.  See design rationale below.
+### Streaming trajectory processing — WORKING
+GromacsProtein + GromacsFrameHandler + GromacsFinalResult.
+- Free-standing conformations (public constructor, const Protein*)
+- NOT in the Protein's conformations_ vector
+- All 14 calculators run per frame (including SasaResult)
+- 36 NPY arrays written per frame
+- Conformation freed after each frame
+- Tested: 10 XTC frames of 1Q8K_10023 (4876 atoms), PASSED
 
-Understand the parameter discipline:
-- `data/calculator_params.toml` — every cutoff, radius, threshold.
-  AIMNet2 params go here.
-- `spec/GEOMETRY_CHOICE_BRIEF.md` — GeometryChoice recording spec.
-  Every parameter used during Compute() gets a GeometryChoice entry.
+### SasaResult — NEW CALCULATOR
+Per-atom Shrake-Rupley SASA. Bondi radii, Fibonacci sphere (92 pts),
+TOML params (sasa_probe_radius, sasa_n_points). GeometryChoice recorded.
+Wired into OperationRunner. Writes atom_sasa.npy.
 
-### 2. Understand the AIMNet2 spec
+### DsspResult extension — NEW OUTPUT
+Was: 1 file (dssp_backbone.npy, 5 cols). Now: 4 files:
+- dssp_backbone.npy (N, 5) — unchanged
+- dssp_ss8.npy (N, 8) — full 8-class SS one-hot
+- dssp_hbond_energy.npy (N, 4) — H-bond energies
+- dssp_chi.npy (N, 12) — chi1-4 cos/sin/exists
 
-- `learn/docs/cpp_marching_orders_2026-04-11.md` — the full spec.
-  Read Change 1 (AIMNet2Result) thoroughly.  Changes 2-5 (SASA,
-  chi, graphs) are separate work.  Change 6 (ensemble observers)
-  is FUTURE — do not implement.
-
-### 3. Understand the PBC fix to port
-
-- `/shared/2026Thesis/fes-sampler/src/pbc_whole.h` — MoleculeWholer.
-  Port VERBATIM.  Do not redesign.
-- `/shared/2026Thesis/fes-sampler/src/xtc_reader.h` — XTC frame I/O.
-  Port VERBATIM.
-- `/shared/2026Thesis/fes-sampler/xdrfile/` — bundled C library.
-  Copy as-is.
-- `/shared/2026Thesis/fes-sampler/CLAUDE.md` — context on the fix
-  (frankenmolecule PBC failures on 685 proteins).
+### libtorch filesystem clash — IDENTIFIED
+libtorch ships its own std::filesystem that shadows the system one.
+fs::remove_all resolves to a broken stub. Use POSIX system() calls
+for filesystem ops in code linked against libtorch.
 
 ---
 
-## What to build: AIMNet2Result calculator
+## What to do NEXT
 
-**AIMNet2Result is a ConformationResult.  It runs on any single
-ProteinConformation.  Same pattern as CoulombResult.  Nothing more.**
+### 1. SDK updates (Python)
+Register new NPY files in python/nmr_extract/_catalog.py:
+- atom_sasa (SasaResult)
+- dssp_ss8, dssp_hbond_energy, dssp_chi (DsspResult)
+- Remove aimnet2_charge_sensitivity (no longer written by calculator)
 
-### DO NOT implement
+Update python/API.md with the new arrays.
 
-- Streaming loops, frame iteration, ensemble processing
-- Welford accumulators, EnsembleConformation, EnsembleResult
-- "Conformation zero" as a concept
-- Abstract NeuralChargeProvider interfaces, factories, or pluggable
-  abstractions of any kind
-- Model-passing ceremonies — the model is loaded once as a static
-  resource
+### 2. HighFive integration
+Add HighFive (header-only C++ HDF5 wrapper) to extern/.
+Write the .h5 master file in GromacsFinalResult::Finalize.
 
-### Design decisions (settled, non-negotiable)
+### 3. Accumulation in GromacsFrameHandler
+Add Welford accumulators for per-atom quantities:
+- aimnet2_charge → ensemble_charges_{mean,var}.npy
+- Kernel T2 tensors → ensemble_kernel_{mean,var}.npy
+- aim embedding → ensemble_aim_{mean,var}.npy
+- SASA → ensemble_sasa_{mean,var}.npy
+- DSSP counts → ensemble_dssp_histogram.npy
 
-- **Married to AIMNet2.**  No abstractions.  Direct `aimnet2_*`
-  named fields everywhere.  If a better model arrives, write a
-  new calculator.  A plugin swap hides the differences.
-- **CUDA mandatory.**  `find_package(Torch REQUIRED)`.  No CPU
-  fallback.  RTX 5090 is the target.
-- **charge_sensitivity on Atom.**  First Compute checks if Atom
-  has it.  If not, runs 10 bulk perturbations (~2s), stores on
-  Atom permanently.  One if statement.  Not a framework.
-- **PBC from fes-sampler VERBATIM.**  Copy the fix.  Do not
-  redesign.  The multi-chain handling, topology trimming, and
-  do_pbc_mtop call were validated on 685 production proteins.
-- **Binary validation gate.**  C++ must match Python AIMNet2 to
-  1e-5 for charges, binary-identical for EFG.
+Ridge-informed frame selection using calibration coefficients.
 
-### Implementation order
+### 4. Constitution + Object Model docs
+Update to reflect:
+- charge_sensitivity no longer on Atom
+- SasaResult as new calculator
+- DsspResult extended output
+- GromacsProtein pattern (not EnsembleConformation)
 
-1. Port fes-sampler PBC infrastructure into nmr-shielding
-   (xdrfile as static lib, xtc_reader.h, pbc_whole.h)
-2. libtorch CUDA CMake integration + model load + toy forward pass
-3. Neighbour list construction from nanoflann (nbmat + nbmat_lr,
-   half-list, padded, sentinel=N)
-4. AIMNet2Result::Compute — build input tensors, forward pass,
-   extract charges + aim embedding, compute Coulomb EFG.
-   Store all on ConformationAtom.  Record GeometryChoices.
-5. charge_sensitivity lazy-init on Atom
-6. WriteFeatures (6 NPY files)
-7. Binary validation against Python reference
-   (tests/validate_aimnet2.py)
+### 5. Full fleet extraction
+685 proteins x ~500 frames on 4 machines.
 
-### Key references
+---
+
+## Key design decisions (settled 2026-04-11/12)
+
+### Free-standing conformations
+Streaming frames are created via the public ProteinConformation
+constructor with a const Protein* back-pointer. They are never
+added to the Protein's conformations_ vector. This was verified:
+zero hidden coupling in all calculators and loaders. The Protein
+stays immutable. No ConformationList, no invalidation, no records.
+
+### GromacsProtein pattern (not evaluator ABC)
+No abstract observer/evaluator interface. Three concrete classes
+married to GROMACS. If another trajectory format appears, write
+its own cousin, not a framework.
+
+### {protein_id}.h5 master file
+HDF5 containing topology + EnrichmentResult classifications from
+conformation 0. Bond graph from Protein, not a ConformationResult.
+SDK reads both .h5 and NPY, presents one typed object.
+
+### Conformation 0
+0 is 0. First GROMACS frame. No selection. Always valid, always in
+memory, feeds the .h5. For --pdb/--mutant modes: untouched.
+
+### No disk during streaming
+Don't write every frame to disk. Accumulate what the handler needs
+from the live conformation, then free it. Winners are re-loaded
+from XTC at the end.
+
+---
+
+## Key references
 
 | What | Where |
 |------|-------|
-| Closest analog calculator | `src/CoulombResult.h/.cpp` |
-| Base class | `src/ConformationResult.h/.cpp` |
-| Per-frame atom fields | `src/ConformationAtom.h` |
-| Nanoflann KD-tree | `src/SpatialIndexResult.h/.cpp` |
-| Backbone/aromatic classification | `src/EnrichmentResult.h/.cpp` |
-| Object model | `spec/OBJECT_MODEL.md` |
-| Parameter patterns | `data/calculator_params.toml` |
-| GeometryChoice spec | `spec/GEOMETRY_CHOICE_BRIEF.md` |
-| NPY writer | `src/NpyWriter.h` |
-| Operation runner | `src/OperationRunner.h/.cpp` |
-| PBC fix | `/shared/2026Thesis/fes-sampler/src/pbc_whole.h` |
-| XTC reader | `/shared/2026Thesis/fes-sampler/src/xtc_reader.h` |
-| xdrfile library | `/shared/2026Thesis/fes-sampler/xdrfile/` |
-| CMake build | `CMakeLists.txt` |
-| AIMNet2 full spec | `learn/docs/cpp_marching_orders_2026-04-11.md` |
-| AIMNet2 Python ref | `/tmp/aimnet2_repo/` (github.com/isayevlab/AIMNet2) |
-| AIMNet2 model | `aimnet2_wb97m_0.jpt` (auto-downloads on first use) |
-| Model cutoff API | `model->attr("cutoff").toDouble()` = 5.0 |
-| Test protein | `tests/data/fleet_test_large/` (1Q8K_10023, 4876 atoms) |
-
-### AIMNet2 Python environment
-
-- Venv: `/tmp/dxtb_test/` (may need reinstall if ephemeral)
-- Install: `pip install torch torch-cluster numba requests ase`
-  then `pip install -e /tmp/aimnet2_repo`
-- Or clone fresh: `github.com/isayevlab/AIMNet2`
-
----
-
-## Context (why, not what to implement)
-
-### What happened on 2026-04-11
-
-Session 1 established mathematical foundation for ensemble NMR
-prediction (6 findings — see ensemble_session_2026-04-11.md).
-Key result: AIMNet2 recovers carbon EFG dimension (cos 0.71→0.97
-vs MOPAC) at 0.17s/frame.
-
-Session 2 refined the implementation plan:
-- Separated calculator from ensemble/accumulator scope
-- Married to AIMNet2 (no abstractions)
-- charge_sensitivity on Atom (topology-like)
-- PBC from fes-sampler verbatim
-- Eliminated streaming loop from current scope
-
-### Future work (NOT current scope)
-
-- Ensemble observer framework (spec/ENSEMBLE_MODEL.md — reference only)
-- Streaming XTC loop
-- Welford accumulators
-- Full fleet extraction (685 proteins)
+| Ensemble design decisions | memory: project_ensemble_design_decisions.md |
+| Ensemble model spec | spec/ENSEMBLE_MODEL.md (updated) |
+| Streaming test | tests/test_gromacs_streaming.cpp |
+| GromacsProtein | src/GromacsProtein.h/.cpp |
+| GromacsFrameHandler | src/GromacsFrameHandler.h/.cpp |
+| GromacsFinalResult | src/GromacsFinalResult.h/.cpp |
+| SasaResult | src/SasaResult.h/.cpp |
+| AIMNet2Result | src/AIMNet2Result.h/.cpp |
+| DsspResult (extended) | src/DsspResult.cpp (WriteFeatures) |
+| XTC reader | src/xtc_reader.h |
+| PBC fixer | src/pbc_whole.h |
+| Calculator params | data/calculator_params.toml |
+| SDK catalog | python/nmr_extract/_catalog.py |
+| Marching orders (historical) | learn/docs/cpp_marching_orders_2026-04-11.md |
+| Autograd test | learn/src/actual_physics/test_aimnet2_autograd.py |
+| Test protein | tests/data/fleet_test_large/ (1Q8K_10023) |

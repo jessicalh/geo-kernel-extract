@@ -90,7 +90,7 @@ then run `python -m pytest python/tests/` to verify.
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
 - **TEST_FRAMEWORK.md** — test tiers, what to run when, smoke test design
-- **ENSEMBLE_MODEL.md** — planned EnsembleConformation object model for trajectory analysis
+- **ENSEMBLE_MODEL.md** — GromacsProtein streaming model (revised 2026-04-12, replaces old EnsembleConformation design)
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/
@@ -124,22 +124,19 @@ Reference only.
 - **/shared/2026Thesis/consolidated/** — 723 WT+ALA protein pairs
 - **tests/data/fleet** — GROMACS CHARMM36m ensemble
 
-## Current Status (2026-04-07)
+## Current Status (2026-04-12)
 
-10 calculators (8 classical + 2 MOPAC-derived), MOPAC electronic
-structure, three builders, OperationRunner, CLI entry point.
-287 tests pass, 0 failures.
+15 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA, plus
+foundation: Geometry, SpatialIndex, Enrichment). DSSP extended with
+8-class SS, H-bond energies, chi1-4. SasaResult (Shrake-Rupley)
+added. Calibration settled at R²=0.818 (per-element ridge, 55
+kernels). Streaming trajectory processing via GromacsProtein
+pattern — tested on 10 XTC frames.
 
-### Next: calibration pipeline
+### Next: ensemble accumulation + .h5 master file
 
-~80 calculator parameters externalised to TOML, swept against
-DFT WT-ALA deltas across 723 proteins. The measure is T2 R² —
-how well calibrated classical kernels reproduce the angular
-structure of DFT shielding. This is what makes the system a
-calibrated scientific instrument.
-
-Feature extraction is distributed: each ConformationResult implements
-WriteFeatures(), and ConformationResult::WriteAllFeatures() traverses
-all attached results. This exports the full tensor data (geometric
-kernels + DFT reference when available) as NPY arrays for the
-calibration pipeline.
+GromacsFrameHandler streams XTC frames as free-standing
+conformations. Next step: Welford accumulators for per-atom
+quantities, ridge-informed frame selection, and the {protein_id}.h5
+master file (topology + EnrichmentResult from conformation 0).
+See spec/ENSEMBLE_MODEL.md for the revised design.
