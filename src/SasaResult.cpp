@@ -58,7 +58,7 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
     auto unit_sphere = FibonacciSphere(n_points);
 
     auto result = std::make_unique<SasaResult>();
-    result->sasa_.resize(N, 0.0);
+    result->conf_ = &conf;
 
     // GeometryChoice: record the parameters used
     GeometryChoiceBuilder choices(conf);
@@ -90,7 +90,8 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
             if (!occluded) ++exposed;
         }
 
-        result->sasa_[i] = sphere_area * static_cast<double>(exposed) / n_points;
+        conf.MutableAtomAt(i).atom_sasa =
+            sphere_area * static_cast<double>(exposed) / n_points;
     }
 
     // Record a single GeometryChoice summarising the SASA parameters
@@ -112,15 +113,25 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
 
 
 double SasaResult::AtomSASA(size_t atom_index) const {
-    if (atom_index >= sasa_.size()) return 0.0;
-    return sasa_[atom_index];
+    return conf_->AtomAt(atom_index).atom_sasa;
 }
 
+const std::vector<double>& SasaResult::AllSASA() const {
+    // Rebuild from atoms on demand (rare path — WriteFeatures is the normal one)
+    thread_local std::vector<double> buf;
+    buf.resize(conf_->AtomCount());
+    for (size_t i = 0; i < buf.size(); ++i)
+        buf[i] = conf_->AtomAt(i).atom_sasa;
+    return buf;
+}
 
 int SasaResult::WriteFeatures(const ProteinConformation& conf,
                                const std::string& output_dir) const {
-    NpyWriter::WriteFloat64(output_dir + "/atom_sasa.npy",
-                            sasa_.data(), sasa_.size());
+    const size_t N = conf.AtomCount();
+    std::vector<double> data(N);
+    for (size_t i = 0; i < N; ++i)
+        data[i] = conf.AtomAt(i).atom_sasa;
+    NpyWriter::WriteFloat64(output_dir + "/atom_sasa.npy", data.data(), N);
     return 1;
 }
 

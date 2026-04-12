@@ -32,10 +32,10 @@ public:
                       const std::string& output_dir) const override;
 
     double AtomSASA(size_t atom_index) const;
-    const std::vector<double>& AllSASA() const { return sasa_; }
+    const std::vector<double>& AllSASA() const;
 
 private:
-    std::vector<double> sasa_;
+    const ProteinConformation* conf_ = nullptr;
 };
 
 }  // namespace nmr

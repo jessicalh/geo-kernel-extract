@@ -291,6 +291,9 @@ public:
     SphericalTensor aimnet2_EFG_aromatic_spherical;
     SphericalTensor aimnet2_shielding_contribution;
 
+    // === Solvent-accessible surface area (SasaResult) ===
+    double atom_sasa = 0.0;  // Shrake-Rupley SASA (A^2)
+
     // === Explicit solvent fields (WaterFieldResult) ===
     // Electric field at this atom from water charges within cutoff (V/A)
     Vec3 water_efield = Vec3::Zero();
