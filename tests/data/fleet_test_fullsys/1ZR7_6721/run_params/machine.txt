@@ -1,0 +1,6 @@
+machine: batcave
+protein_id: 1ZR7_6721
+run_type: fullsys_rerun
+original_machine: scan2
+change: compressed-x-grps = System (was Protein)
+independent_run: true (fresh metadynamics from NPT state)

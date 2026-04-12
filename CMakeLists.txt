@@ -401,6 +401,24 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
 gtest_add_tests(TARGET gromacs_streaming_tests)
 
 # ============================================================================
+# Water field test — explicit solvent calculators on full-system trajectory
+# ============================================================================
+
+add_executable(water_field_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_water_field.cpp
+)
+target_compile_definitions(water_field_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_link_libraries(water_field_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_add_tests(TARGET water_field_tests)
+
+# ============================================================================
 # FES fleet smoke test — fes-sampler naming, 2 proteins x 6 poses (~15 min)
 # ============================================================================
 
