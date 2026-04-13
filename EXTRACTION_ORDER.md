@@ -66,6 +66,20 @@ CoulombResult                requires: ChargeAssignmentResult, SpatialIndexResul
 MopacCoulombResult           requires: MopacResult, SpatialIndexResult
 MopacMcConnellResult         requires: MopacResult, SpatialIndexResult, GeometryResult
 HBondResult                  requires: DsspResult, SpatialIndexResult
+SasaResult                   requires: SpatialIndexResult
+EeqResult                    requires: nothing (protein geometry + elements only)
+AIMNet2Result                requires: nothing (CUDA, geometry-only neural net)
+
+--- Solvent calculators (need SolventEnvironment from full-system .xtc) ---
+WaterFieldResult             requires: SpatialIndexResult, SolventEnvironment
+HydrationShellResult         requires: SpatialIndexResult, SolventEnvironment
+HydrationGeometryResult      requires: SasaResult, SolventEnvironment
+
+--- Trajectory energy ---
+GromacsEnergyResult          requires: .edr file path
+
+--- DFT comparison ---
+MutationDeltaResult          requires: OrcaShieldingResult on both WT and ALA
 
 (Feature extraction is distributed: each ConformationResult implements
 WriteFeatures(). ConformationResult::WriteAllFeatures() traverses all
@@ -108,12 +122,31 @@ can run in parallel):**
 - MopacMcConnellResult (requires MopacResult, SpatialIndexResult, GeometryResult)
 - HBondResult (requires DsspResult, SpatialIndexResult)
 
+**Standalone calculators (no charge or external tool dependency):**
+- SasaResult (requires SpatialIndexResult)
+- EeqResult (requires nothing — reads protein geometry and element types)
+
+**Neural network charges (CUDA):**
+- AIMNet2Result (requires nothing — geometry-only neural net)
+
+**Solvent calculators (trajectory path — require SolventEnvironment):**
+- WaterFieldResult (requires SpatialIndexResult, SolventEnvironment)
+- HydrationShellResult (requires SpatialIndexResult, SolventEnvironment)
+- HydrationGeometryResult (requires SasaResult, SolventEnvironment)
+
+**Trajectory energy:**
+- GromacsEnergyResult (requires .edr file path)
+
+**DFT comparison (optional):**
+- OrcaShieldingResult (loads ORCA .out)
+- MutationDeltaResult (requires OrcaShieldingResult on both WT and ALA)
+
 **Feature export (after all physics results):**
 Each ConformationResult writes its own NPY arrays via WriteFeatures().
 ConformationResult::WriteAllFeatures() traverses all attached results.
-46 NPY arrays per conformation (includes MOPAC-derived arrays).
-See src/MopacResult.cpp, MopacCoulombResult.cpp, MopacMcConnellResult.cpp
-WriteFeatures() for current output.
+74 NPY arrays registered in the SDK catalog (python/nmr_extract/_catalog.py).
+Not all are present for every extraction — solvent arrays require
+trajectory path, MOPAC arrays require MOPAC, etc.
 
 ---
 
