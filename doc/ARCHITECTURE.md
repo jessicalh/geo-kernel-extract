@@ -240,7 +240,19 @@ These provide the substrate that calculators need:
 | DsspResult | Secondary structure, phi/psi, SASA, H-bond partners (libdssp) | none | runs after GeometryResult |
 | ApbsFieldResult | Solvated E-field and EFG via Poisson-Boltzmann (APBS) | ChargeAssignmentResult | — |
 | MolecularGraphResult | Through-bond distances to rings, N, O via BFS | SpatialIndexResult | — |
+| SasaResult | Per-atom Shrake-Rupley SASA + outward surface normal (Fibonacci lattice) | SpatialIndexResult | — |
+| EeqResult | D4 electronegativity equilibration charges (Caldeweyher 2019, pure C++/Eigen) | none | — |
 | MopacResult | PM7+MOZYME: Mulliken charges, orbital populations, Wiberg bond orders | none | gated on charges |
+
+SasaResult computes solvent-accessible surface area per atom and an
+outward surface normal (average direction of non-occluded test points).
+The surface normal is the reference frame for HydrationGeometryResult.
+
+EeqResult solves the extended electronegativity equilibration (EEQ)
+charge model from the D4 dispersion framework. Minimises E(q) subject
+to charge neutrality using D4 element-specific parameters (chi, eta,
+kappa, r_cov). One N*N Cholesky solve per frame. Pure C++ with Eigen
+-- no external binary, no CUDA dependency. Output: eeq_charges.npy.
 
 MopacResult runs on every conformation. On a 167-atom protein
 (Q9UR66), it takes ~14 seconds. On 1231 atoms (1UBQ), longer.
@@ -346,6 +358,28 @@ that the fixed-charge force field does not.
 **MopacMcConnell.** Same McConnell kernel, but each bond's contribution
 is weighted by the MOPAC Wiberg bond order. Bonds with higher electron
 density contribute proportionally more.
+
+### Solvent calculators (trajectory path)
+
+Three calculators run when SolventEnvironment carries explicit water
+and ion positions (GROMACS trajectory path with full-system XTC).
+Gated on `opts.solvent && !opts.solvent->Empty()` in OperationRunner.
+Failure is hard — a fleet run with silently missing water features
+is unrecoverable.
+
+| Result | What it does | Formal dependencies | Requires |
+|--------|-------------|--------------------|--------------------|
+| WaterFieldResult | Coulomb E-field + EFG from explicit TIP3P water (first/second shell split) | SpatialIndexResult | SolventEnvironment |
+| HydrationShellResult | Half-shell asymmetry, mean water dipole orientation, nearest ion | SpatialIndexResult | SolventEnvironment |
+| HydrationGeometryResult | Water polarisation features using SASA surface normal as reference frame | SasaResult | SolventEnvironment |
+
+HydrationGeometryResult replaces the crude protein-COM direction
+used by HydrationShellResult with the proper per-atom surface
+normal from SasaResult. Output: water_polarization.npy (N, 10) —
+net water dipole vector, surface normal, half-shell asymmetry
+(SASA-normal), dipole alignment, dipole coherence, first-shell
+count. Existing HydrationShellResult stays untouched; the
+COM-based values continue under the same names.
 
 ### DFT reference (when available)
 

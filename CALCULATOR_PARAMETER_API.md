@@ -8,7 +8,7 @@ Calibrated values enter the C++ system as TOML configuration overriding
 the literature defaults.
 
 This document defines the parameters, their equations, and their
-physical meaning for all 8 classical calculators (+ 2 MOPAC-derived).
+physical meaning for all 8 classical calculators (+ 2 MOPAC-derived + EEQ).
 
 Aligned with CONSTITUTION.md (2026-03-29 revision) and OBJECT_MODEL.md.
 
@@ -940,6 +940,77 @@ count, and water count.
 
 ---
 
+## Calculator: EEQ Geometry-Dependent Charges (EeqResult)
+
+### The equation
+
+Extended electronegativity equilibration (Caldeweyher et al., J. Chem.
+Phys. 150, 154122, 2019. DOI: 10.1063/1.5090222).
+
+Minimises the charge energy functional:
+
+```
+E(q) = sum_i chi_eff_i * q_i + 0.5 * sum_i eta_i * q_i^2
+       + 0.5 * sum_{i!=j} q_i * q_j * gamma(R_ij)
+```
+
+subject to charge neutrality: `sum_i q_i = Q_total`.
+
+Coordination number (erfc counting, Eq. 6):
+
+```
+CN_i = sum_{j!=i} 0.5 * erfc(k * (R_ij / (rcov_i + rcov_j) - 1))
+```
+
+Effective electronegativity (CN-dependent):
+
+```
+chi_eff_i = chi_i + kappa_i * sqrt(CN_i + 1e-14)
+```
+
+Coulomb kernel (Ohno-Klopman 1964):
+
+```
+gamma(R) = 1 / sqrt(R^2 + 1 / (eta_i * eta_j))
+```
+
+Solved as an (N+1)x(N+1) linear system via Cholesky with block
+elimination for the Lagrange multiplier (charge constraint).
+
+### Tuneable parameters
+
+| Parameter | TOML key | Default | Unit | Physics |
+|-----------|----------|---------|------|---------|
+| Net system charge | `eeq_total_charge` | 0.0 | e | Total charge constraint (0 = neutral protein) |
+| CN steepness | `eeq_cn_steepness` | 7.5 | - | Error function steepness in CN counting |
+| CN pair cutoff | `eeq_cn_cutoff` | 25.0 | A | Distance cutoff for CN pair counting |
+| Charge magnitude clamp | `eeq_charge_clamp` | 2.0 | e | Per-atom charge magnitude safety clamp |
+
+Total: 4 parameters.
+
+### Reference data
+
+Element parameters (chi, gam, kappa, rcov, rad) are NOT tuneable.
+They are compiled from `data/eeq_d4_reference.toml`, which reproduces
+Table S1 of Caldeweyher et al. (2019).  All values in atomic units
+(Hartree, Bohr).  Covers H, C, N, O, S.
+
+### Output
+
+2 NPY files: `eeq_charges.npy` (N,) and `eeq_cn.npy` (N,).
+
+### KernelFilterSet
+
+None. Charge calculation, not field evaluation — no singularity risk.
+
+### Can T2 corrections feed back?
+
+**No.** EEQ produces scalar charges, not tensors. The charges feed into
+downstream Coulomb EFG calculations where T2 feedback operates through
+the Buckingham gamma parameter.
+
+---
+
 ## Summary: Parameter Count and Classification
 
 ### Element-independent parameters (same for all nuclei)
@@ -953,7 +1024,8 @@ count, and water count.
 | Ring Susceptibility | Delta_chi_ring[8] | 8 |
 | Dispersion | r_min, r_cut | 2 |
 | H-Bond | distance_exponent, w_bb, w_sc | 3 |
-| **Subtotal** | | **67** |
+| EEQ | Q_total, cn_steepness, cn_cutoff, charge_clamp | 4 |
+| **Subtotal** | | **71** |
 
 ### Element-dependent parameters (different per nucleus type)
 
@@ -964,7 +1036,7 @@ count, and water count.
 | H-Bond | eta[5] | 5 |
 | **Subtotal** | | **26** |
 
-### Grand total: 93 parameters
+### Grand total: 97 parameters
 
 This is physically correct: element-independent parameters (ring
 current, bond anisotropy) are NOT multiplied by element count.

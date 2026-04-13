@@ -315,6 +315,18 @@ public:
     double nearest_ion_distance = std::numeric_limits<double>::infinity();  // distance to closest ion (A), inf = none within cutoff
     double nearest_ion_charge = 0.0;    // charge of nearest ion (e)
 
+    // === Hydration geometry — SASA-normal reference frame (HydrationGeometryResult) ===
+    Vec3 water_dipole_vector = Vec3::Zero();   // net first-shell water dipole (Debye-like, unnormalised)
+    Vec3 water_surface_normal = Vec3::Zero();  // copy of sasa_normal for this block
+    double sasa_half_shell_asymmetry = 0.0;    // exposed/total using SASA normal (not COM)
+    double sasa_dipole_alignment = 0.0;        // cos(net dipole, SASA normal)
+    double sasa_dipole_coherence = 0.0;        // |Σ dᵢ| / n — ordered vs random
+    int sasa_first_shell_count = 0;            // first-shell water O count
+
+    // === EEQ charges (EeqResult — Caldeweyher 2019) ===
+    double eeq_charge = 0.0;  // geometry-dependent partial charge (elementary charges)
+    double eeq_cn = 0.0;      // coordination number used to compute eeq_charge
+
     // === DemoResult fields (Pass 0) ===
     double demo_nearest_ring_distance = 0.0;
     Vec3 demo_nearest_ring_direction = Vec3::Zero();

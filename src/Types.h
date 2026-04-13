@@ -254,7 +254,7 @@ enum class CalculatorId {
     BiotSavart, HaighMallion, McConnell, Coulomb,
     PiQuadrupole, RingSusceptibility, Dispersion, HBond,
     APBS, Orca, Mopac, MopacCoulomb, MopacMcConnell, AIMNet2, SASA,
-    WaterField, HydrationShell
+    WaterField, HydrationShell, HydrationGeometry, EEQ
 };
 
 struct FieldValue {

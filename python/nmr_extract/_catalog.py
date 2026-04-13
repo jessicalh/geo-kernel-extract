@@ -122,6 +122,13 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Hydration shell (HydrationShellResult.cpp) ──────────────
     ArraySpec("hydration_shell",    "hydration",   np.ndarray,     4,    False, "Hydration geometry [asymmetry, dipole_cos, ion_dist, ion_charge]"),
 
+    # ── Hydration geometry — SASA-normal (HydrationGeometryResult.cpp) ─
+    ArraySpec("water_polarization", "water_polarization", np.ndarray, 10, False, "Water polarisation [dipole(3), normal(3), asym, align, coher, count]"),
+
+    # ── EEQ charges (EeqResult.cpp — Caldeweyher 2019) ─────────
+    ArraySpec("eeq_charges",        "eeq",         np.ndarray,     None, False, "EEQ geometry-dependent charges (e)"),
+    ArraySpec("eeq_cn",             "eeq",         np.ndarray,     None, False, "EEQ coordination number"),
+
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
     ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,      9,   False, "Per-frame energy [t,Coul_SR,Coul_recip,Coul_14,LJ,pot,T,P,V]"),
 

@@ -82,6 +82,13 @@ hydration_ion_cutoff = 20.0
 # Non-silent: if set and the model fails to load, nmr_extract aborts.
 aimnet2_model_path = "/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt"
 
+# EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
+# D4 geometry-dependent charges.  Pure C++/Eigen, no external binary.
+eeq_total_charge = 0
+eeq_cn_steepness = 7.5
+eeq_cn_cutoff = 25.0
+eeq_charge_clamp = 2.0
+
 # Numerical noise floors — below these the value is treated as zero
 near_zero_vector_norm_threshold = 1e-10
 coulomb_charge_noise_floor = 1e-15

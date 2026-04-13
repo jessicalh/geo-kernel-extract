@@ -25,6 +25,8 @@
 #include "GromacsEnergyResult.h"
 #include "WaterFieldResult.h"
 #include "HydrationShellResult.h"
+#include "HydrationGeometryResult.h"
+#include "EeqResult.h"
 #include "OperationLog.h"
 
 namespace nmr {
@@ -154,6 +156,11 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (!Attach(conf, SasaResult::Compute(conf),
                 "SasaResult", out)) return out;
 
+    // EEQ: geometry-dependent charges (Caldeweyher 2019, pure C++/Eigen).
+    // No dependencies beyond protein geometry and element types.
+    if (!Attach(conf, EeqResult::Compute(conf),
+                "EeqResult", out)) return out;
+
     // AIMNet2: neural network charges + EFG (geometry-only, CUDA)
     // FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
     // Silent degradation on a 4-week fleet run means no thesis.
@@ -171,6 +178,10 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                     "WaterFieldResult", out)) return out;
         if (!Attach(conf, HydrationShellResult::Compute(conf, *opts.solvent),
                     "HydrationShellResult", out)) return out;
+        // HydrationGeometryResult: SASA-normal reference frame for water polarisation.
+        // Depends on SasaResult (attached above) and SolventEnvironment.
+        if (!Attach(conf, HydrationGeometryResult::Compute(conf, *opts.solvent),
+                    "HydrationGeometryResult", out)) return out;
     }
 
     // GROMACS energy: per-frame energy terms from .edr (trajectory path only)

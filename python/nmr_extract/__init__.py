@@ -26,7 +26,7 @@ from ._tensors import (
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
 from ._tensors import AIMNet2Charges, AIMNet2AimEmbedding, AIMNet2ChargeSensitivity
-from ._protein import AIMNet2Group
+from ._protein import AIMNet2Group, WaterPolarizationGroup, EeqGroup
 
 __all__ = [
     "load",
@@ -49,6 +49,8 @@ __all__ = [
     "AIMNet2AimEmbedding",
     "AIMNet2ChargeSensitivity",
     "AIMNet2Group",
+    "WaterPolarizationGroup",
+    "EeqGroup",
     "load_trajectory",
     "TrajectoryData",
     "TrajectoryRollup",

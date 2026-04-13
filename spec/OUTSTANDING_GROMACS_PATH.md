@@ -71,6 +71,23 @@ is now 60 arrays covering 14 calculators (added SASA, WaterField,
 HydrationShell, GromacsEnergy). Update the count and add descriptions
 of the new calculators.
 
+## Must fix: HydrationGeometry + EEQ trajectory integration
+
+HydrationGeometryResult and EeqResult are implemented as single-frame
+calculators but not yet wired into the trajectory streaming path.
+Both need integration into:
+
+- **GromacsFrameHandler** — call HydrationGeometryResult and EeqResult
+  per frame, feed results into Welford accumulators
+- **GromacsProteinAtom** — add accumulator fields for water
+  polarisation columns (dipole vector, asymmetry, coherence, etc.)
+  and EEQ charges + coordination number
+- **H5 master file (WriteH5)** — add rollup columns for the new
+  accumulators (mean + std per atom)
+- **WriteCatalog** — add corresponding CSV columns via AllWelfords()
+- **SDK trajectory loader** — expose the new H5 columns in
+  `load_trajectory()` return type
+
 ## Done
 
 - ~~Double accumulation in pass 2~~ — ProcessFrame takes accumulate flag

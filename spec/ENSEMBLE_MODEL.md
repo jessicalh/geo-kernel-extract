@@ -4,7 +4,7 @@
 works end-to-end. Three tests pass on 1ZR7_6721 full-system data
 (479 protein atoms, 3525 water molecules, 25 ions). .h5 master file
 writing is IMPLEMENTED (2026-04-13, HighFive v2.6.2).
-WriteH5 produces positions (T,N,3), 45-column Welford rollup,
+WriteH5 produces positions (T,N,3), 48-column Welford rollup,
 per-bond stats, frame times. SDK `load_trajectory()` reads it.
 
 Design revised 2026-04-11/12 after critical review of original
@@ -177,14 +177,14 @@ Runs after all frames. Currently:
 - Logs what was processed (protein_id, frame count, atom count,
   conformation count).
 
+IMPLEMENTED (2026-04-13): `{protein_id}.h5` master file written via
+GromacsProtein::WriteH5 (HighFive v2.6.2). Contains positions (T,N,3),
+48-column Welford rollup, per-bond stats, frame times. SDK
+`load_trajectory()` reads it. See "Master file" section below.
+
 NOT yet implemented:
-- `{protein_id}.h5` master file from conformation 0 + Protein topology
-  (HighFive not integrated)
 - Winner frame selection/movement from temp to output
 - Temp directory cleanup
-
-The .h5 spec (topology + EnrichmentResult from conformation 0) is
-still the plan. See "Master file" section below.
 
 ### GromacsProteinAtom
 
@@ -192,19 +192,37 @@ Per-atom trajectory-level Welford accumulators. Private constructor --
 only GromacsProtein can create these via InitAtoms(). Atom identity
 goes through the Protein back-pointer, NOT duplicated here.
 
-Tracked quantities (all using Welford online accumulator with
+48 named Welford accumulators in `AllWelfords()` (single source of
+truth for CSV columns, H5 rollup, and SDK column names). Adding a
+Welford = add the field + one line in AllWelfords(); nothing else
+changes. Categories (all using Welford online accumulator with
 mean/variance/min/max/frame indices):
 
-- Water environment: `water_n_first` (first-shell count, within 3.5A),
-  `water_n_second` (second-shell, 3.5-5.5A), `water_emag` (E-field
-  magnitude), `water_emag_first` (first-shell E-field)
-- Solvent exposure: `sasa` (Shrake-Rupley, A^2)
-- Hydration geometry: `half_shell` (asymmetry, 0-1), `dipole_cos`
-  (water dipole orientation), `nearest_ion_dist` (distance to closest ion)
-- Positional dynamics: `position_x`/`y`/`z` for RMSF computation
+- Ring current (6): `bs_T0`, `bs_T2mag`, `hm_T0`, `hm_T2mag`,
+  `rs_T0`, `rs_T2mag`
+- McConnell (4): `mc_T0`, `mc_T2mag`, `mc_aromatic`, `mc_backbone`
+- PiQuad + Dispersion (4): `pq_T0`, `pq_T2mag`, `disp_T0`, `disp_T2mag`
+- H-bond (2): `hbond_inv_d3`, `hbond_count`
+- APBS (3): `apbs_emag`, `apbs_efg_T0`, `apbs_efg_T2mag`
+- AIMNet2 (3): `aimnet2_charge`, `aimnet2_efg_T0`, `aimnet2_efg_T2mag`
+- SASA (4): `sasa`, `sasa_normal_x`, `sasa_normal_y`, `sasa_normal_z`
+- Water (7): `water_n_first`, `water_n_second`, `water_emag`,
+  `water_emag_first`, `water_efield_x`, `water_efield_y`, `water_efield_z`
+- Hydration (3): `half_shell`, `dipole_cos`, `nearest_ion_dist`
+- DSSP (7): `phi_cos`, `psi_cos`, `dssp_hbond_energy`,
+  `chi1_cos`, `chi2_cos`, `chi3_cos`, `chi4_cos`
+- Bond geometry (1): `mean_bond_angle_cos`
+- Deltas (4): `bs_T0_delta`, `aimnet2_charge_delta`, `sasa_delta`,
+  `water_n_first_delta` (frame-to-frame DeltaTracker inner Welfords)
 
-Frame counters: `n_frames_dry` (water_n_first == 0), `n_frames_exposed`
-(water_n_first >= 4).
+Additional per-atom accumulators NOT in AllWelfords():
+
+- Positional dynamics: `position_x`/`y`/`z` for RMSF computation
+  (separate because WriteH5 writes positions as (T,N,3) not as rollup)
+- Frame counters: `n_frames_dry` (water_n_first == 0),
+  `n_frames_exposed` (water_n_first >= 4)
+- TransitionCounters: `chi_transitions[4]`, `ss8_transitions`
+- `n_bonded_neighbors` (constant across frames, from bond graph)
 
 `RMSF()` returns sqrt(var_x + var_y + var_z).
 
@@ -294,6 +312,19 @@ SolventEnvironment reaches these calculators via
 `RunOptions.solvent` pointer, set by GromacsFrameHandler in
 ProcessFrame. OperationRunner checks
 `opts.solvent && !opts.solvent->Empty()` before dispatching.
+
+**Not yet integrated into the accumulator pattern:**
+
+- **HydrationGeometryResult** -- BUILT. Produces per-atom hydration
+  geometry features (coordination number, tetrahedral order parameter,
+  angular distribution). Needs wiring into AccumulateFrame +
+  corresponding Welfords on GromacsProteinAtom.
+
+- **EeqResult** -- BUILT. Electronegativity-equilibration charges.
+  Needs wiring into AccumulateFrame + corresponding Welfords.
+
+These are the next integration items. See
+`spec/OUTSTANDING_GROMACS_PATH.md` for the full task list.
 
 ---
 

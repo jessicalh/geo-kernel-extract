@@ -193,6 +193,8 @@ add_library(nmr_shielding
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
     src/HydrationShellResult.cpp
+    src/HydrationGeometryResult.cpp
+    src/EeqResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
     src/McConnellResult.cpp

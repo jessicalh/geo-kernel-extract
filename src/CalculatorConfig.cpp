@@ -93,6 +93,12 @@ void CalculatorConfig::InitDefaults() {
     // HydrationShellResult — hydration shell geometry
     add("hydration_ion_cutoff",                    20.0, "A",    "nearest-ion search distance");
 
+    // EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
+    add("eeq_total_charge",                         0.0, "e",    "EEQ net system charge (0 = neutral protein)");
+    add("eeq_cn_steepness",                         7.5, "",     "EEQ coordination number error function steepness");
+    add("eeq_cn_cutoff",                           25.0, "A",    "EEQ coordination number pair cutoff distance");
+    add("eeq_charge_clamp",                         2.0, "e",    "EEQ per-atom charge magnitude clamp");
+
     // Numerical noise floors — below these the value is treated as zero
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");
     add("coulomb_charge_noise_floor",          1e-15, "",    "Coulomb charge noise floor");

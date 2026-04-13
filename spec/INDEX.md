@@ -131,16 +131,17 @@ Reference only.
 
 ## Current Status (2026-04-13)
 
-17 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
-WaterField, HydrationShell, GromacsEnergy, plus foundation:
-Geometry, SpatialIndex, Enrichment). DSSP extended with 8-class SS,
-H-bond energies, chi1-4. Calibration settled at R²=0.818
-(per-element ridge, 55 kernels).
+19 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
+WaterField, HydrationShell, GromacsEnergy, HydrationGeometry, EEQ,
+plus foundation: Geometry, SpatialIndex, Enrichment). DSSP extended
+with 8-class SS, H-bond energies, chi1-4. Calibration settled at
+R²=0.818 (per-element ridge, 55 kernels).
 
 Two-pass trajectory streaming: GromacsProtein (adapter +
 accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
 frame lifecycle). Tested end-to-end on 1ZR7_6721 (479 atoms, 3525
-water, 25 ions). 71 NPY arrays registered in SDK catalog.
+water, 25 ions). 74 NPY arrays registered in SDK catalog (added water_polarization,
+eeq_charges, eeq_cn).
 
 **H5 master file (2026-04-13):** HighFive integration complete.
 WriteH5 produces one file per protein with per-frame positions
@@ -164,7 +165,13 @@ parameters registered. SasaResult extended with surface normal output
 ### Next: polarisability calculators
 
 See **POLARISABILITY_ROADMAP_2026-04-13.md** for 5 planned approaches
-to charge polarisation. SASA surface normal (item 1) is DONE.
-Remaining: HydrationGeometryResult (item 2, depends on SASA normal),
-water-embedded AIMNet2 (item 3), EEQ calculator (item 4), E-field
-variance routing (item 5).
+to charge polarisation. DONE: SASA surface normal (item 1),
+HydrationGeometryResult (item 2, writes water_polarization.npy),
+EEQ calculator (item 4, writes eeq_charges.npy + eeq_cn.npy).
+Remaining: water-embedded AIMNet2 (item 3), E-field variance
+routing (item 5).
+
+**Next work:** Integrate HydrationGeometry and EEQ calculators into
+GromacsProtein output forms (GromacsFrameHandler accumulation,
+GromacsProteinAtom accumulators, H5 master file rollup, WriteCatalog
+CSV, SDK trajectory loader).

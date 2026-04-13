@@ -161,6 +161,49 @@ class HydrationGroup:
     data: np.ndarray                # (N, 4) [asymmetry, dipole_cos, ion_dist, ion_charge]
 
 
+@dataclass(frozen=True)
+class WaterPolarizationGroup:
+    """Water polarisation features using SASA-normal reference frame."""
+    data: np.ndarray                # (N, 10) packed columns
+
+    @property
+    def dipole_vector(self) -> np.ndarray:
+        """Net first-shell water dipole (N, 3)."""
+        return self.data[:, 0:3]
+
+    @property
+    def surface_normal(self) -> np.ndarray:
+        """SASA-derived outward surface normal (N, 3)."""
+        return self.data[:, 3:6]
+
+    @property
+    def asymmetry(self) -> np.ndarray:
+        """Half-shell asymmetry using SASA normal (N,)."""
+        return self.data[:, 6]
+
+    @property
+    def dipole_alignment(self) -> np.ndarray:
+        """cos(net dipole, SASA normal) (N,)."""
+        return self.data[:, 7]
+
+    @property
+    def coherence(self) -> np.ndarray:
+        """Dipole coherence |sum d_i| / n (N,)."""
+        return self.data[:, 8]
+
+    @property
+    def shell_count(self) -> np.ndarray:
+        """First-shell water count (N,)."""
+        return self.data[:, 9]
+
+
+@dataclass(frozen=True)
+class EeqGroup:
+    """EEQ geometry-dependent charges (Caldeweyher et al. 2019)."""
+    charges: np.ndarray             # (N,) partial charges (elementary charges)
+    cn: np.ndarray                  # (N,) coordination number
+
+
 # ── Top-level protein container ─────────────────────────────────────
 
 
@@ -212,7 +255,11 @@ class Protein:
     # Explicit solvent (trajectory path only)
     water_field: Optional[WaterFieldGroup] = None
     hydration: Optional[HydrationGroup] = None
+    water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
+
+    # Geometry-dependent charges
+    eeq: Optional[EeqGroup] = None
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -382,6 +429,19 @@ def load(path: str | Path) -> Protein:
     if "hydration_shell" in available:
         hydration = HydrationGroup(data=get("hydration_shell"))
 
+    # Water polarisation — SASA-normal reference frame (trajectory path — optional)
+    water_polarization = None
+    if "water_polarization" in available:
+        water_polarization = WaterPolarizationGroup(data=get("water_polarization"))
+
+    # EEQ charges (Caldeweyher 2019 — optional)
+    eeq = None
+    if "eeq_charges" in available:
+        eeq = EeqGroup(
+            charges=get("eeq_charges"),
+            cn=get("eeq_cn"),
+        )
+
     return Protein(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -412,5 +472,7 @@ def load(path: str | Path) -> Protein:
         aimnet2=aimnet2,
         water_field=water_field,
         hydration=hydration,
+        water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
+        eeq=eeq,
     )

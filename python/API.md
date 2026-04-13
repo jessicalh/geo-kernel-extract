@@ -134,6 +134,19 @@ p.water_field           WaterFieldGroup | None — trajectory path only
 p.hydration             HydrationGroup | None — trajectory path only
   .data                 ndarray (N, 4) — [asymmetry, dipole_cos, ion_dist, ion_charge]
 
+p.water_polarization    WaterPolarizationGroup | None — trajectory path only
+  .data                 ndarray (N, 10) — packed columns (see below)
+  .dipole_vector        ndarray (N, 3) — net first-shell water dipole (V/A)
+  .surface_normal       ndarray (N, 3) — SASA-derived outward surface normal (unit vector)
+  .asymmetry            ndarray (N,) — half-shell asymmetry using SASA normal
+  .dipole_alignment     ndarray (N,) — cos(net dipole, SASA normal)
+  .coherence            ndarray (N,) — dipole coherence |sum d_i| / n
+  .shell_count          ndarray (N,) — first-shell water count
+
+p.eeq                   EeqGroup | None
+  .charges              ndarray (N,) — EEQ partial charges (elementary charges)
+  .cn                   ndarray (N,) — coordination number (erfc counting)
+
 p.gromacs_energy        ndarray (1, 9) | None — per-frame GROMACS energy
                         [time_ps, Coul_SR, Coul_recip, Coul_14, LJ_SR, potential, T, P, V]
 ```
@@ -289,6 +302,39 @@ BondCategory.aromatic_total   # 2
 BondCategory.CO_nearest       # 3
 BondCategory.CN_nearest       # 4
 ```
+
+## WaterPolarizationGroup
+
+Water polarisation features in the SASA-normal reference frame.
+Produced by HydrationGeometryResult from explicit-solvent trajectory.
+
+### Column layout (10 columns)
+
+```
+[0:3]   dipole_vector      net first-shell water dipole (V/A)
+[3:6]   surface_normal     SASA-derived outward surface normal (unit vector)
+[6]     asymmetry          half-shell asymmetry using SASA normal (0-1)
+[7]     dipole_alignment   cos(net dipole, SASA normal) (-1 to +1)
+[8]     coherence          dipole coherence |sum d_i| / n (0-1)
+[9]     shell_count        first-shell water count
+```
+
+## EeqGroup
+
+Geometry-dependent partial charges from Extended Electronegativity
+Equilibration (Caldeweyher et al. 2019, DOI: 10.1063/1.5090222).
+
+```python
+eeq = p.eeq
+eeq.charges             # ndarray (N,) — partial charges (elementary charges)
+eeq.cn                  # ndarray (N,) — coordination number (erfc counting)
+```
+
+D4 element parameters (chi, gam, kappa, rcov, rad) are compiled from
+`data/eeq_d4_reference.toml` — an auditable reference file containing
+values from Table S1 of Caldeweyher et al. (2019).  All values in
+atomic units (Hartree, Bohr).  These are fixed reference data, not
+tuneable parameters.
 
 ## Catalog
 

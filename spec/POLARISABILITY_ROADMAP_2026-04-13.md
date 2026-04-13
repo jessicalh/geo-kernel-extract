@@ -1,6 +1,6 @@
 # Polarisability Roadmap
 
-2026-04-13.  Status: design, pre-implementation.
+2026-04-13.  Status: items 1, 2, 4 implemented; items 3, 5 remain.
 
 ---
 
@@ -230,19 +230,23 @@ AIMNet2 and EEQ results clarify whether a third approach is needed.
 
 ## Implementation order
 
-1. **SasaResult surface normal** -- small, unblocks (2)
-2. **HydrationGeometryResult** -- new calculator, writes
-   `water_polarization.npy`, depends on (1)
-3. **Water-embedded AIMNet2** -- independent of (1)-(2), but wants
-   the surface normal for validation.  Test on largest fleet protein
-   first.
-4. **EEQ calculator** -- fully independent.  Pure C++.  Can proceed
-   in parallel with (3).
-5. **E-field variance routing** -- after (2) defines the NPY format
+1. **SasaResult surface normal** -- DONE. Writes `sasa_normal.npy`.
+2. **HydrationGeometryResult** -- DONE. Writes
+   `water_polarization.npy` (N, 10). Depends on (1).
+3. **Water-embedded AIMNet2** -- TODO. Independent of (1)-(2), but
+   wants the surface normal for validation.  Test on largest fleet
+   protein first.
+4. **EEQ calculator** -- DONE. Writes `eeq_charges.npy` + `eeq_cn.npy`.
+   Ohno-Klopman kernel (deliberate simplification of dftd4 Gaussian
+   form). Cholesky with diagonal correction.
+5. **E-field variance routing** -- TODO. After (2) defines the NPY
+   format.
 
-Items 1-2 should complete before the fleet re-run starts (Wednesday
-2026-04-15) so the extraction pipeline can produce the new arrays.
-Items 3-4 can proceed in parallel, no deadline dependency.
+Items 1, 2, 4 complete. Next: integrate HydrationGeometry and EEQ
+into GromacsProtein output forms (GromacsFrameHandler per-frame
+accumulation via Welford, GromacsProteinAtom accumulator fields, H5
+master file rollup, WriteCatalog CSV, SDK trajectory loader).
+Items 3 and 5 can proceed in parallel, no deadline dependency.
 
 ---
 
