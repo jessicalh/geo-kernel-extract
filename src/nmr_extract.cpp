@@ -338,6 +338,12 @@ static int RunTrajectory(const JobSpec& spec) {
 int main(int argc, char* argv[]) {
     RuntimeEnvironment::Load();
 
+    // Logging: read [logging] from ~/.nmr_tools.toml.
+    // If udp_host + udp_port are set, hot-path logs go over UDP.
+    // If not, falls back to stderr (startup/summary only in practice).
+    OperationLog::LoadChannelConfig();
+    OperationLog::LogSessionStart();
+
     auto spec = ParseJobSpec(argc, argv);
 
     if (spec.mode == JobMode::None) {

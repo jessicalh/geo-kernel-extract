@@ -85,6 +85,14 @@ void CalculatorConfig::InitDefaults() {
     add("sasa_probe_radius",                        1.4, "A",    "SASA water probe radius (Bondi)");
     add("sasa_n_points",                           92.0, "",     "SASA Fibonacci sphere point count");
 
+    // WaterFieldResult — explicit solvent E-field and EFG
+    add("water_efield_cutoff",                     15.0, "A",    "water E-field summation cutoff (oxygen distance)");
+    add("water_first_shell_cutoff",                 3.5, "A",    "first hydration shell boundary (WaterField + HydrationShell)");
+    add("water_second_shell_cutoff",                5.5, "A",    "second hydration shell boundary");
+
+    // HydrationShellResult — hydration shell geometry
+    add("hydration_ion_cutoff",                    20.0, "A",    "nearest-ion search distance");
+
     // Numerical noise floors — below these the value is treated as zero
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");
     add("coulomb_charge_noise_floor",          1e-15, "",    "Coulomb charge noise floor");

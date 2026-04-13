@@ -140,24 +140,31 @@ H-bond energies, chi1-4. Calibration settled at R²=0.818
 Two-pass trajectory streaming: GromacsProtein (adapter +
 accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
 frame lifecycle). Tested end-to-end on 1ZR7_6721 (479 atoms, 3525
-water, 25 ions). 60 NPY arrays registered in SDK catalog.
+water, 25 ions). 71 NPY arrays registered in SDK catalog.
 
 **H5 master file (2026-04-13):** HighFive integration complete.
 WriteH5 produces one file per protein with per-frame positions
-(T, N, 3), 45-column Welford rollup (mean + std per atom), per-bond
+(T, N, 3), 48-column Welford rollup (mean + std per atom), per-bond
 length statistics, and frame times. SDK `load_trajectory()` reads
 it. WriteCatalog produces the same rollup as CSV. Accumulators
 cover all 6 classical kernel T0+|T2|, AIMNet2 charge + EFG, APBS,
 water E-field (magnitude + 3 components), hydration geometry, DSSP
-phi/psi + chi1-4 + H-bond energy, bond angles, SASA, 4 frame-to-
-frame derivative trackers, and transition counters (chi rotamers,
-SS changes). Hard-fail error handling on AIMNet2, WaterField,
+phi/psi + chi1-4 + H-bond energy, bond angles, SASA + surface normal,
+4 frame-to-frame derivative trackers, and transition counters (chi
+rotamers, SS changes). Hard-fail error handling on AIMNet2, WaterField,
 HydrationShell, GromacsEnergy.
 
-### Next: polarisability calculators + GeometryChoice on solvent
+**Solvent calculator compliance (2026-04-13):** WaterFieldResult and
+HydrationShellResult now under the TOML + GeometryChoice umbrella.
+WaterFieldResult has KernelFilterSet (MinDistanceFilter). 4 new TOML
+parameters registered. SasaResult extended with surface normal output
+(sasa_normal.npy). nmr_extract reads UDP logging config from
+~/.nmr_tools.toml [logging] section.
+
+### Next: polarisability calculators
 
 See **POLARISABILITY_ROADMAP_2026-04-13.md** for 5 planned approaches
-to charge polarisation (SASA normal, HydrationGeometryResult,
-water-embedded AIMNet2, EEQ, E-field variance). WaterFieldResult
-and HydrationShellResult still need GeometryChoice recording and
-KernelFilterSet registration. See OUTSTANDING_GROMACS_PATH.md.
+to charge polarisation. SASA surface normal (item 1) is DONE.
+Remaining: HydrationGeometryResult (item 2, depends on SASA normal),
+water-embedded AIMNet2 (item 3), EEQ calculator (item 4), E-field
+variance routing (item 5).

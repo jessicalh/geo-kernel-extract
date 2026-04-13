@@ -12,7 +12,11 @@
 //   sasa_probe_radius      — water probe radius (default 1.4 A)
 //   sasa_n_points          — Fibonacci lattice points (default 92)
 //
-// Output: atom_sasa.npy — (N,) float64, Angstroms^2 per atom.
+// Output:
+//   atom_sasa.npy    — (N,) float64, SASA in Angstroms^2 per atom
+//   sasa_normal.npy  — (N, 3) float64, outward surface normal (unit vector)
+//                      Average direction of non-occluded Fibonacci test points.
+//                      Zero for fully buried atoms (SASA == 0).
 //
 
 #include "ConformationResult.h"

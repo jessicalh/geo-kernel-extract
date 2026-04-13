@@ -55,6 +55,11 @@ TEST(CalculatorConfig, DefaultsMatchCalculatorConstants) {
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1"),   2.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l2"),   1.0);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("near_field_exclusion_ratio"),               0.5);
+    // WaterFieldResult + HydrationShellResult
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_efield_cutoff"),                    15.0);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_first_shell_cutoff"),                3.5);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("water_second_shell_cutoff"),               5.5);
+    EXPECT_DOUBLE_EQ(CalculatorConfig::Get("hydration_ion_cutoff"),                   20.0);
 }
 
 TEST(CalculatorConfig, DefaultsMatchNoiseFloors) {

@@ -110,6 +110,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── SASA (SasaResult.cpp) ───────────────────────────────────
     ArraySpec("atom_sasa",        "sasa", np.ndarray,              None, False, "Per-atom Shrake-Rupley SASA (A^2)"),
+    ArraySpec("sasa_normal",      "sasa", VectorField,             3,    False, "SASA outward surface normal (unit vector)"),
 
     # ── Explicit water (WaterFieldResult.cpp) ───────────────────
     ArraySpec("water_efield",       "water_field", VectorField,    3,    False, "Water E-field total (V/A)"),

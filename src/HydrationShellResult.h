@@ -17,6 +17,16 @@
 // coordinates alone whether an atom faces a water cavity or a
 // hydrophobic pocket.
 //
+// Parameters (from TOML):
+//   water_first_shell_cutoff — first hydration shell boundary (default 3.5 A)
+//                              Shared with WaterFieldResult.
+//   hydration_ion_cutoff     — nearest-ion search distance (default 20.0 A)
+//
+// No KernelFilterSet — no geometric kernel is evaluated. This calculator
+// counts waters and computes cos angles, not 1/r^n fields.
+//
+// GeometryChoice: one summary record (parameters used).
+//
 // Dependencies: SpatialIndexResult.
 // Requires: SolventEnvironment (passed to Compute).
 //

@@ -22,6 +22,18 @@
 //   water_n_first       int                (water O count in first shell)
 //   water_n_second      int                (water O count in second shell, 3.5-5.5A)
 //
+// Parameters (from TOML):
+//   water_efield_cutoff       — E-field summation cutoff on O distance (default 15.0 A)
+//   water_first_shell_cutoff  — first hydration shell boundary (default 3.5 A)
+//   water_second_shell_cutoff — second hydration shell boundary (default 5.5 A)
+//   singularity_guard_distance — MinDistanceFilter threshold (default 0.1 A)
+//   efield_magnitude_sanity_clamp — E-field magnitude clamp (default 100.0 V/A)
+//
+// KernelFilterSet: MinDistanceFilter (Coulomb 1/r³ singularity guard).
+//
+// GeometryChoice: one summary record (parameters), per-atom records for
+// singularity guard and E-field clamp events.
+//
 // Dependencies: SpatialIndexResult (for protein positions).
 // Requires: SolventEnvironment (passed to Compute).
 //

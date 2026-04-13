@@ -13,34 +13,36 @@ free-standing conformations (done). Full OBJECT_MODEL documentation
 of the streaming classes, their lifetimes, and the accumulation
 pattern is needed.
 
-### WaterFieldResult: no GeometryChoice recording
-WaterFieldResult computes a Coulomb kernel over water atoms but does
-not record GeometryChoices. Every calculator that evaluates a geometric
-kernel must record what was included, excluded, and why — with entities,
-roles, outcomes, and named numbers (distance, cutoff). Without this,
-the UI cannot display the water field evaluation and the TOML cutoff
-is not inspectable.
+### ~~WaterFieldResult: no GeometryChoice recording~~
+~~WaterFieldResult computes a Coulomb kernel over water atoms but does
+not record GeometryChoices.~~ — Done. Parameter summary record +
+per-atom exceptional events (singularity guard, E-field clamp).
+CalculatorId::WaterField added. 2026-04-13
 
-### HydrationShellResult: no GeometryChoice recording
-Same issue. Half-shell asymmetry, dipole orientation, and ion distance
-all involve geometric decisions (cutoff radii, shell boundaries) that
-are not recorded.
+### ~~HydrationShellResult: no GeometryChoice recording~~
+~~Same issue.~~ — Done. Parameter summary record with cutoff values,
+atom count, water count. CalculatorId::HydrationShell added. 2026-04-13
 
-### WaterFieldResult: no KernelFilterSet
-Uses a raw distance cutoff (15A) without the KernelFilterSet pattern.
-Should have MinDistanceFilter at minimum. The SelfSourceFilter is not
-applicable (water atoms are not protein atoms), but DipolarNearFieldFilter
-may be relevant for water molecules very close to protein atoms.
+### ~~WaterFieldResult: no KernelFilterSet~~
+~~Uses a raw distance cutoff (15A) without the KernelFilterSet pattern.~~
+— Done. MinDistanceFilter replaces inline r²<0.01 guard. SelfSource
+not applicable (water ≠ protein atoms). DipolarNearField not applicable
+(point charges, no source extent). 2026-04-13
 
-### HydrationShellResult: no KernelFilterSet
-Uses raw distance cutoffs (3.5A first shell, 5.5A second shell, 20A
-ion cutoff) without filter registration.
+### ~~HydrationShellResult: no KernelFilterSet~~
+~~Uses raw distance cutoffs without filter registration.~~ — Not
+applicable. No geometric kernel evaluated (counting + cos averaging).
+Distance cutoffs are physics boundaries, not singularity guards.
+TOML-registered as named constants. 2026-04-13
 
-### TOML registration for solvent calculator parameters
-The 15A water cutoff, 3.5A first-shell radius, 5.5A second-shell
+### ~~TOML registration for solvent calculator parameters~~
+~~The 15A water cutoff, 3.5A first-shell radius, 5.5A second-shell
 radius, and 20A ion cutoff are physics constants that should be
-registered in CALCULATOR_PARAMETER_API.md and accessible via TOML
-override, matching the existing pattern for ring current calculators.
+registered.~~ — Done. 4 parameters: water_efield_cutoff (15.0 A),
+water_first_shell_cutoff (3.5 A, shared), water_second_shell_cutoff
+(5.5 A), hydration_ion_cutoff (20.0 A). In CalculatorConfig defaults,
+calculator_params.toml, CALCULATOR_PARAMETER_API.md, and test
+assertions. 2026-04-13
 
 ## Should fix
 

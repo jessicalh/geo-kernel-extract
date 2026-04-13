@@ -217,6 +217,9 @@ void GromacsProtein::AccumulateFrame(
 
         // ── SASA ───────────────────────────────────────────────
         ga.sasa.Update(ca.atom_sasa, frame_idx);
+        ga.sasa_normal_x.Update(ca.sasa_normal.x(), frame_idx);
+        ga.sasa_normal_y.Update(ca.sasa_normal.y(), frame_idx);
+        ga.sasa_normal_z.Update(ca.sasa_normal.z(), frame_idx);
         ga.sasa_delta.UpdateDelta(ca.atom_sasa, frame_idx);
 
         // ── Water environment ──────────────────────────────────

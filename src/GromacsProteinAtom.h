@@ -150,6 +150,9 @@ public:
             {"aimnet2_efg_T2mag", &aimnet2_efg_T2mag},
             // SASA
             {"sasa", &sasa},
+            {"sasa_normal_x", &sasa_normal_x},
+            {"sasa_normal_y", &sasa_normal_y},
+            {"sasa_normal_z", &sasa_normal_z},
             // Water
             {"water_n_first", &water_n_first}, {"water_n_second", &water_n_second},
             {"water_emag", &water_emag}, {"water_emag_first", &water_emag_first},
@@ -245,6 +248,9 @@ public:
     // Solvent-accessible surface area (SasaResult)
     // =================================================================
     Welford sasa;
+    Welford sasa_normal_x;       // surface normal x component
+    Welford sasa_normal_y;       // surface normal y component
+    Welford sasa_normal_z;       // surface normal z component
 
     DeltaTracker sasa_delta;     // breathing rate
 

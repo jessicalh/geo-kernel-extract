@@ -200,6 +200,7 @@ class Protein:
     dssp_hbond_energy: np.ndarray = None
     dssp_chi: np.ndarray = None
     sasa: np.ndarray = None
+    sasa_normal: Optional[VectorField] = None  # (N, 3) outward surface normal
 
     # Optional calculator groups
     mopac: Optional[MopacGroup] = None
@@ -403,6 +404,7 @@ def load(path: str | Path) -> Protein:
         dssp_hbond_energy=get("dssp_hbond_energy"),
         dssp_chi=get("dssp_chi"),
         sasa=get("atom_sasa"),
+        sasa_normal=get("sasa_normal"),
         mopac=mopac,
         apbs=apbs,
         orca=orca,

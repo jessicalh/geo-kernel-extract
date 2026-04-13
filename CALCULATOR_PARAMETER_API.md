@@ -847,6 +847,99 @@ weights is constrained by the T2 data.
 
 ---
 
+## Solvent Calculator: WaterFieldResult
+
+### The equation
+
+Same Coulomb kernel as CoulombResult, but summing over water charges
+(TIP3P: O = -0.834e, H = +0.417e) instead of protein partial charges:
+
+```
+E_a(i) = ke * sum_{j in water charges} q_j * (r_i - r_j)_a / |r_i - r_j|^3
+
+V_ab(i) = ke * sum_j q_j * [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|^5
+                             - delta_ab / |r_i-r_j|^3]
+```
+
+ke = 14.3996 V·A/e (Coulomb constant).
+
+Decomposed by shell: total (all waters within cutoff) and first-shell
+(water O within first_shell_cutoff).
+
+### Tuneable parameters
+
+| Parameter | TOML key | Default | Unit | Physics |
+|-----------|----------|---------|------|---------|
+| E-field summation cutoff | `water_efield_cutoff` | 15.0 | A | Max distance from protein atom to water O for E-field sum |
+| First shell boundary | `water_first_shell_cutoff` | 3.5 | A | First hydration shell boundary on O distance. Shared with HydrationShellResult. |
+| Second shell boundary | `water_second_shell_cutoff` | 5.5 | A | Second hydration shell boundary on O distance |
+| Singularity guard | `singularity_guard_distance` | 0.1 | A | MinDistanceFilter threshold (shared with all calculators) |
+| E-field clamp | `efield_magnitude_sanity_clamp` | 100.0 | V/A | Extreme E-field magnitude clamp (shared with CoulombResult) |
+
+Total: 3 water-specific parameters + 2 shared.
+
+### KernelFilterSet
+
+MinDistanceFilter only. SelfSourceFilter not applicable (water atoms
+are not protein atoms). DipolarNearFieldFilter not applicable (water
+charges are point sources with no source extent).
+
+### Output
+
+5 NPY files per extraction: `water_efield.npy` (N, 3), `water_efg.npy`
+(N, 9), `water_efg_first.npy` (N, 9), `water_efield_first.npy` (N, 3),
+`water_shell_counts.npy` (N, 2).
+
+### GeometryChoice
+
+One summary record (`water_field_parameters`) with all cutoff values,
+atom count, and water count. Per-atom records only for exceptional
+events: singularity guard rejections and E-field clamp triggers.
+
+---
+
+## Solvent Calculator: HydrationShellResult
+
+### The physics
+
+Per-atom hydration shell geometry from explicit water positions.
+No geometric kernel is evaluated — this calculator counts waters
+and computes orientation order parameters.
+
+| Quantity | Formula | Physics |
+|----------|---------|---------|
+| Half-shell asymmetry | n_exposed / (n_exposed + n_buried) | Fraction of first-shell waters on solvent-exposed side vs protein interior. Direction from COM. |
+| Mean water dipole cos | mean(d_hat · r_hat) | Water dipole orientation order parameter. Ordered (ice-like) vs disordered (bulk). |
+| Nearest ion distance | min_ions(d) | Distance to closest ion within cutoff. Infinity if none. |
+| Nearest ion charge | q at min_ions(d) | Charge of nearest ion. 0 if none within cutoff. |
+
+### Tuneable parameters
+
+| Parameter | TOML key | Default | Unit | Physics |
+|-----------|----------|---------|------|---------|
+| First shell boundary | `water_first_shell_cutoff` | 3.5 | A | Shared with WaterFieldResult |
+| Ion search cutoff | `hydration_ion_cutoff` | 20.0 | A | Nearest-ion search distance |
+
+Total: 1 hydration-specific parameter + 1 shared.
+
+### KernelFilterSet
+
+None. No 1/r^n kernel is evaluated — counting and cos averaging do
+not diverge. The distance cutoffs are physics boundaries, not
+singularity guards.
+
+### Output
+
+`hydration_shell.npy` (N, 4): [half_shell_asymmetry, mean_water_dipole_cos,
+nearest_ion_distance, nearest_ion_charge].
+
+### GeometryChoice
+
+One summary record (`hydration_parameters`) with cutoff values, atom
+count, and water count.
+
+---
+
 ## Summary: Parameter Count and Classification
 
 ### Element-independent parameters (same for all nuclei)

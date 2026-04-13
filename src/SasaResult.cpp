@@ -69,11 +69,12 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
         double sphere_area = 4.0 * PI * r_i * r_i;
 
         // Find all atoms whose expanded spheres could overlap
-        double max_vdw = 1.80; // S is largest Bondi radius
+        double max_vdw = BondiRadius(Element::S); // largest Bondi radius in table
         double search_radius = r_i + max_vdw + probe_radius;
         auto neighbours = spatial.AtomsWithinRadius(pos_i, search_radius);
 
         int exposed = 0;
+        Vec3 normal_sum = Vec3::Zero();
         for (int p = 0; p < n_points; ++p) {
             Vec3 test_point = pos_i + unit_sphere[p] * r_i;
 
@@ -87,11 +88,22 @@ std::unique_ptr<SasaResult> SasaResult::Compute(ProteinConformation& conf) {
                     break;
                 }
             }
-            if (!occluded) ++exposed;
+            if (!occluded) {
+                ++exposed;
+                normal_sum += unit_sphere[p];
+            }
         }
 
-        conf.MutableAtomAt(i).atom_sasa =
-            sphere_area * static_cast<double>(exposed) / n_points;
+        auto& ca = conf.MutableAtomAt(i);
+        ca.atom_sasa = sphere_area * static_cast<double>(exposed) / n_points;
+
+        // Surface normal: average direction of non-occluded test points.
+        // For fully buried atoms (exposed == 0), normal remains zero.
+        double normal_mag = normal_sum.norm();
+        if (normal_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
+            ca.sasa_normal = normal_sum / normal_mag;
+        else
+            ca.sasa_normal = Vec3::Zero();
     }
 
     // Record a single GeometryChoice summarising the SASA parameters
@@ -128,11 +140,24 @@ const std::vector<double>& SasaResult::AllSASA() const {
 int SasaResult::WriteFeatures(const ProteinConformation& conf,
                                const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
-    std::vector<double> data(N);
+
+    // atom_sasa: (N,)
+    std::vector<double> sasa_data(N);
     for (size_t i = 0; i < N; ++i)
-        data[i] = conf.AtomAt(i).atom_sasa;
-    NpyWriter::WriteFloat64(output_dir + "/atom_sasa.npy", data.data(), N);
-    return 1;
+        sasa_data[i] = conf.AtomAt(i).atom_sasa;
+    NpyWriter::WriteFloat64(output_dir + "/atom_sasa.npy", sasa_data.data(), N);
+
+    // sasa_normal: (N, 3) — outward surface normal from non-occluded test points
+    std::vector<double> normal_data(N * 3);
+    for (size_t i = 0; i < N; ++i) {
+        const auto& n = conf.AtomAt(i).sasa_normal;
+        normal_data[i * 3 + 0] = n.x();
+        normal_data[i * 3 + 1] = n.y();
+        normal_data[i * 3 + 2] = n.z();
+    }
+    NpyWriter::WriteFloat64(output_dir + "/sasa_normal.npy", normal_data.data(), N, 3);
+
+    return 2;
 }
 
 }  // namespace nmr

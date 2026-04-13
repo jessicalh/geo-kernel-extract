@@ -116,7 +116,9 @@ void OperationLog::Log(Level level, const std::string& operation,
         SendFile(json);
     if (udpConfigured_)
         SendUdp(json);
-    else
+    // Warn/Error always go to stderr — cannot be silently lost if listener is down.
+    // Info/Debug go to stderr only as fallback when UDP is not configured.
+    if (!udpConfigured_ || level == Level::Warning || level == Level::Error)
         SendStderr(json);
 }
 
@@ -144,6 +146,10 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
     std::ifstream in(path);
     if (!in.is_open()) return;
 
+    std::string udp_host;
+    int udp_port = 0;
+    std::string log_file;
+
     std::string line;
     bool inLogging = false;
     while (std::getline(in, line)) {
@@ -165,8 +171,22 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
             try {
                 channelMask_ = static_cast<uint32_t>(std::stoul(val, nullptr, 0));
             } catch (...) {}
+        } else if (key == "udp_host") {
+            udp_host = val;
+        } else if (key == "udp_port") {
+            try { udp_port = std::stoi(val); } catch (...) {}
+        } else if (key == "file") {
+            log_file = val;
         }
     }
+
+    // Configure UDP if both host and port are specified.
+    if (!udp_host.empty() && udp_port > 0)
+        ConfigureUdp(udp_host, udp_port);
+
+    // Configure file logging if path is specified.
+    if (!log_file.empty())
+        ConfigureFile(log_file);
 }
 
 void OperationLog::LogSessionStart() {
@@ -208,7 +228,8 @@ void OperationLog::SendUdp(const std::string& json) {
 
 void OperationLog::SendFile(const std::string& json) {
     fileStream_ << json << "\n";
-    fileStream_.flush();
+    // No flush per message — hot-path writes must not block.
+    // OS flushes on buffer fill and on CloseFile().
 }
 
 

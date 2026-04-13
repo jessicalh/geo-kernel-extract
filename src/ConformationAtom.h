@@ -293,6 +293,7 @@ public:
 
     // === Solvent-accessible surface area (SasaResult) ===
     double atom_sasa = 0.0;  // Shrake-Rupley SASA (A^2)
+    Vec3 sasa_normal = Vec3::Zero();  // outward surface normal from non-occluded test points
 
     // === Explicit solvent fields (WaterFieldResult) ===
     // Electric field at this atom from water charges within cutoff (V/A)

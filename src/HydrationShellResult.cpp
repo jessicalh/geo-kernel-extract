@@ -1,4 +1,6 @@
 #include "HydrationShellResult.h"
+#include "CalculatorConfig.h"
+#include "GeometryChoice.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
@@ -6,9 +8,6 @@
 #include <limits>
 
 namespace nmr {
-
-static constexpr double FIRST_SHELL  = 3.5;   // A
-static constexpr double ION_CUTOFF   = 20.0;  // A
 
 
 std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
@@ -31,7 +30,22 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
 
     const size_t N = conf.AtomCount();
     const size_t W = solvent.WaterCount();
-    const double first_sq = FIRST_SHELL * FIRST_SHELL;
+
+    // Named constants from TOML (no buried literals).
+    const double first_shell_cutoff = CalculatorConfig::Get("water_first_shell_cutoff");
+    const double ion_cutoff         = CalculatorConfig::Get("hydration_ion_cutoff");
+    const double first_sq = first_shell_cutoff * first_shell_cutoff;
+
+    GeometryChoiceBuilder choices(conf);
+
+    // GeometryChoice: one summary record for the parameters used
+    choices.Record(CalculatorId::HydrationShell, 0, "hydration_parameters",
+        [first_shell_cutoff, ion_cutoff, N, W](GeometryChoice& gc) {
+            AddNumber(gc, "first_shell_cutoff", first_shell_cutoff, "A");
+            AddNumber(gc, "ion_cutoff", ion_cutoff, "A");
+            AddNumber(gc, "n_atoms", static_cast<double>(N), "count");
+            AddNumber(gc, "n_waters", static_cast<double>(W), "count");
+        });
 
     // Compute protein center of mass (for half-shell direction)
     Vec3 protein_com = Vec3::Zero();
@@ -70,7 +84,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
             // Water dipole orientation relative to atom→water vector
             Vec3 dipole = solvent.waters[wi].Dipole();
             double dip_mag = dipole.norm();
-            if (dip_mag > 1e-10) {
+            if (dip_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
                 dipole_cos_sum += dipole.dot(r_hat) / dip_mag;
                 ++dipole_count;
             }
@@ -97,13 +111,15 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
                 best_ion_charge = solvent.ions[ii].charge;
             }
         }
-        atom.nearest_ion_distance = (best_ion_dist < ION_CUTOFF)
+        atom.nearest_ion_distance = (best_ion_dist < ion_cutoff)
             ? best_ion_dist : std::numeric_limits<double>::infinity();
-        atom.nearest_ion_charge   = (best_ion_dist < ION_CUTOFF) ? best_ion_charge : 0.0;
+        atom.nearest_ion_charge   = (best_ion_dist < ion_cutoff) ? best_ion_charge : 0.0;
     }
 
     OperationLog::Info(LogCalcOther, "HydrationShellResult",
-        "computed hydration shell for " + std::to_string(N) + " atoms");
+        "computed hydration shell for " + std::to_string(N) + " atoms"
+        " first_shell=" + std::to_string(first_shell_cutoff) + "A"
+        " ion_cutoff=" + std::to_string(ion_cutoff) + "A");
 
     return result;
 }
