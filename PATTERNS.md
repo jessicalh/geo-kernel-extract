@@ -878,6 +878,34 @@ Compute() for the pattern. See GeometryChoice.h for the API.
 
 ---
 
+### Data-driven accumulator columns (AllWelfords pattern)
+
+GromacsProteinAtom has ~45 Welford accumulators. WriteCatalog (CSV)
+and WriteH5 both need the column list. A switch statement indexed by
+column number will go wrong the moment someone adds a column.
+
+The fix: `AllWelfords()` returns a `vector<NamedWelford>` with
+`{name, pointer-to-Welford}` pairs. WriteCatalog and WriteH5 iterate
+this — no switch, no manual indexing, no parallel names vector.
+Adding a new Welford = add the field + one line in AllWelfords().
+The CSV header, H5 rollup, and SDK column names all derive from it.
+
+This is not ideal — the accumulation in AccumulateFrame is still
+manual, and the pointers-into-self pattern prevents moving
+GromacsProteinAtom. But it eliminates the 45-case switch statement
+and the duplicate column list, which are the two places where silent
+corruption from misindexing would be hardest to detect. The
+AccumulateFrame code is write-once (change it when you add a new
+calculator); the column serialisation runs on every protein and must
+not drift.
+
+**Pattern:** When you have N named fields that need serialisation,
+return them as a `{name, pointer}` vector from one method. Iterate
+that method in every serialisation path. Never maintain a parallel
+list of names and a switch statement indexed by position.
+
+---
+
 ## This Document Is Living
 
 When something breaks or a new pattern emerges, it goes here.

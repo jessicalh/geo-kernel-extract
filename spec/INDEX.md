@@ -95,6 +95,7 @@ then run `python -m pytest python/tests/` to verify.
 - **TRAJECTORY_EXTRACTION.md** — full-system trajectory path: explicit solvent E-field, water packing, ion field calculators (design, 2026-04-12)
 - **TIMING_4876_ATOMS.md** — measured per-calculator times on 4876-atom protein (2026-04-12)
 - **OUTSTANDING_GROMACS_PATH.md** — open items for trajectory extraction path (GeometryChoice, KernelFilterSet, TOML, SDK tests)
+- **POLARISABILITY_ROADMAP_2026-04-13.md** — charge polarisation proxy approaches: SASA normal, HydrationGeometryResult, water-embedded AIMNet2, EEQ, E-field variance. What was rejected and why.
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/
@@ -128,7 +129,7 @@ Reference only.
 - **/shared/2026Thesis/consolidated/** — 723 WT+ALA protein pairs
 - **tests/data/fleet** — GROMACS CHARMM36m ensemble
 
-## Current Status (2026-04-12)
+## Current Status (2026-04-13)
 
 17 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
 WaterField, HydrationShell, GromacsEnergy, plus foundation:
@@ -141,9 +142,22 @@ accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
 frame lifecycle). Tested end-to-end on 1ZR7_6721 (479 atoms, 3525
 water, 25 ions). 60 NPY arrays registered in SDK catalog.
 
-### Next: .h5 master file + GeometryChoice on solvent calculators
+**H5 master file (2026-04-13):** HighFive integration complete.
+WriteH5 produces one file per protein with per-frame positions
+(T, N, 3), 45-column Welford rollup (mean + std per atom), per-bond
+length statistics, and frame times. SDK `load_trajectory()` reads
+it. WriteCatalog produces the same rollup as CSV. Accumulators
+cover all 6 classical kernel T0+|T2|, AIMNet2 charge + EFG, APBS,
+water E-field (magnitude + 3 components), hydration geometry, DSSP
+phi/psi + chi1-4 + H-bond energy, bond angles, SASA, 4 frame-to-
+frame derivative trackers, and transition counters (chi rotamers,
+SS changes). Hard-fail error handling on AIMNet2, WaterField,
+HydrationShell, GromacsEnergy.
 
-GromacsFinalResult needs .h5 writing (HighFive integration).
-WaterFieldResult and HydrationShellResult need GeometryChoice
-recording and KernelFilterSet registration. See
-spec/OUTSTANDING_GROMACS_PATH.md for the full punch list.
+### Next: polarisability calculators + GeometryChoice on solvent
+
+See **POLARISABILITY_ROADMAP_2026-04-13.md** for 5 planned approaches
+to charge polarisation (SASA normal, HydrationGeometryResult,
+water-embedded AIMNet2, EEQ, E-field variance). WaterFieldResult
+and HydrationShellResult still need GeometryChoice recording and
+KernelFilterSet registration. See OUTSTANDING_GROMACS_PATH.md.

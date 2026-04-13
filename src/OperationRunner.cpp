@@ -155,44 +155,29 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                 "SasaResult", out)) return out;
 
     // AIMNet2: neural network charges + EFG (geometry-only, CUDA)
+    // FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
+    // Silent degradation on a 4-week fleet run means no thesis.
     if (opts.aimnet2_model) {
         auto aimnet2 = AIMNet2Result::Compute(conf, *opts.aimnet2_model);
-        if (aimnet2) {
-            Attach(conf, std::move(aimnet2), "AIMNet2Result", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "AIMNet2Result failed (atoms=" +
-                std::to_string(conf.AtomCount()) + ")");
-        }
+        if (!Attach(conf, std::move(aimnet2), "AIMNet2Result", out))
+            return out;
     }
 
     // Explicit solvent calculators (trajectory path with full-system .xtc)
+    // Explicit solvent calculators: if solvent data is provided, these MUST succeed.
+    // A fleet run with silently missing water features is unrecoverable.
     if (opts.solvent && !opts.solvent->Empty()) {
-        auto water_field = WaterFieldResult::Compute(conf, *opts.solvent);
-        if (water_field) {
-            Attach(conf, std::move(water_field), "WaterFieldResult", out);
-        } else {
-            OperationLog::Error("OperationRunner", "WaterFieldResult failed");
-        }
-
-        auto hydration = HydrationShellResult::Compute(conf, *opts.solvent);
-        if (hydration) {
-            Attach(conf, std::move(hydration), "HydrationShellResult", out);
-        } else {
-            OperationLog::Error("OperationRunner", "HydrationShellResult failed");
-        }
+        if (!Attach(conf, WaterFieldResult::Compute(conf, *opts.solvent),
+                    "WaterFieldResult", out)) return out;
+        if (!Attach(conf, HydrationShellResult::Compute(conf, *opts.solvent),
+                    "HydrationShellResult", out)) return out;
     }
 
     // GROMACS energy: per-frame energy terms from .edr (trajectory path only)
     if (!opts.edr_path.empty()) {
-        auto gmx_energy = GromacsEnergyResult::Compute(
-            conf, opts.edr_path, opts.frame_time_ps);
-        if (gmx_energy) {
-            Attach(conf, std::move(gmx_energy), "GromacsEnergyResult", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "GromacsEnergyResult failed for " + opts.edr_path);
-        }
+        if (!Attach(conf, GromacsEnergyResult::Compute(
+                        conf, opts.edr_path, opts.frame_time_ps),
+                    "GromacsEnergyResult", out)) return out;
     }
 
     // --- Tier 2: DFT comparison (optional) ---

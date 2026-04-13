@@ -12,6 +12,7 @@
 from e3nn.o3 import Irreps
 
 from ._protein import load, Protein
+from ._trajectory import load_trajectory, TrajectoryData, TrajectoryRollup, BondRollup
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
     SphericalTensor,
@@ -48,4 +49,8 @@ __all__ = [
     "AIMNet2AimEmbedding",
     "AIMNet2ChargeSensitivity",
     "AIMNet2Group",
+    "load_trajectory",
+    "TrajectoryData",
+    "TrajectoryRollup",
+    "BondRollup",
 ]

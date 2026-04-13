@@ -16,7 +16,8 @@ GromacsFrameHandler::GromacsFrameHandler(GromacsProtein& gp)
 
 bool GromacsFrameHandler::Open(
         const std::string& xtc_path,
-        const std::string& tpr_path) {
+        const std::string& tpr_path,
+        const RunOptions& caller_opts) {
 
     OperationLog::Scope scope("GromacsFrameHandler::Open", xtc_path);
 
@@ -77,16 +78,22 @@ bool GromacsFrameHandler::Open(
     // Finalize protein: bond detection + conformation 0 + accumulators
     gp_.FinalizeProtein(protein_pos, static_cast<double>(first_frame.time));
 
-    // Run calculators on conformation 0
+    // Run calculators on conformation 0 with the SAME opts as all frames.
+    // Charges come from GromacsProtein (TPR) regardless of caller opts.
     auto& conf0 = gp_.protein().ConformationAt(0);
-    RunOptions init_opts;
+    RunOptions init_opts = caller_opts;
     init_opts.charge_source = gp_.charges();
     init_opts.solvent = &solvent;
     init_opts.frame_time_ps = static_cast<double>(first_frame.time);
-    OperationRunner::Run(conf0, init_opts);
+    RunResult rr = OperationRunner::Run(conf0, init_opts);
+    if (!rr.Ok()) {
+        error_ = "frame 0 calculator failed: " + rr.error;
+        OperationLog::Error("GromacsFrameHandler", error_);
+        return false;
+    }
 
     // Accumulate frame 0
-    gp_.AccumulateFrame(conf0, 0);
+    gp_.AccumulateFrame(conf0, 0, static_cast<double>(first_frame.time));
 
     first_frame_done_ = true;
     frame_idx_ = 0;
@@ -185,9 +192,17 @@ bool GromacsFrameHandler::ProcessFrame(
     frame_opts.frame_time_ps = static_cast<double>(frame.time);
     RunResult rr = OperationRunner::Run(conf, frame_opts);
 
+    if (!rr.Ok()) {
+        error_ = "frame " + std::to_string(frame_idx_) +
+                 " calculator failed: " + rr.error;
+        OperationLog::Error("GromacsFrameHandler", error_);
+        return false;
+    }
+
     // Accumulate into GromacsProtein (skip in pass 2 — already counted)
     if (accumulate)
-        gp_.AccumulateFrame(conf, static_cast<int>(frame_idx_));
+        gp_.AccumulateFrame(conf, static_cast<int>(frame_idx_),
+                            static_cast<double>(frame.time));
 
     // Write NPY if requested
     if (!output_dir.empty()) {

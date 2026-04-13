@@ -81,3 +81,10 @@ of the new calculators.
 - ~~API.md missing new arrays~~ — documented
 - ~~Coulomb marked required but skippable~~ — changed to required=False
 - ~~SDK test_required_count threshold~~ — updated from 30 to 27
+- ~~H5 master file writing~~ — HighFive integration, WriteH5 with positions (T,N,3), 45-column rollup, per-bond stats. 2026-04-13
+- ~~WriteCatalog expansion~~ — 45 columns, data-driven via AllWelfords(). 2026-04-13
+- ~~Hard-fail error handling~~ — AIMNet2, WaterField, HydrationShell, GromacsEnergy all kill run on failure. 2026-04-13
+- ~~Open() takes RunOptions~~ — frame 0 uses same calculator set as all frames. No MOPAC on frame 0. 2026-04-13
+- ~~Production CLI (nmr_extract --trajectory) scan opts~~ — APBS + DSSP + AIMNet2 enabled per frame. 2026-04-13
+- ~~SDK load_trajectory~~ — python/nmr_extract/_trajectory.py, reads H5 master file. 2026-04-13
+- ~~Expanded accumulators~~ — 45 Welfords (6 classical T0+T2, AIMNet2, APBS, water, DSSP, chi1-4, bond angles), 4 DeltaTrackers, TransitionCounters, per-bond length, per-frame positions. 2026-04-13

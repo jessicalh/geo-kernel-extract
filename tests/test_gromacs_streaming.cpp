@@ -3,14 +3,20 @@
 // GromacsFrameHandler trajectory path.
 //
 
+// AIMNet2Result.h MUST come before GROMACS headers — GROMACS defines
+// DIM as a macro which poisons PyTorch template parameters.
+#include "AIMNet2Result.h"
+
 #include "GromacsProtein.h"
 #include "GromacsFrameHandler.h"
 #include "GromacsFinalResult.h"
+#include "CalculatorConfig.h"
 #include "OperationRunner.h"
 #include "OperationLog.h"
 
 #include <gtest/gtest.h>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <set>
 
@@ -139,6 +145,154 @@ TEST(GromacsStreaming, TrajectoryBuildAndScan) {
     // --- 6. Clean up ---
     std::string rm_cmd = "rm -rf " + temp_dir;
     (void)system(rm_cmd.c_str());
+}
+
+
+// ============================================================================
+// Full accumulator test: DSSP + AIMNet2 + all classical kernels + water
+// ============================================================================
+
+TEST(GromacsStreaming, FullAccumulatorScan) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
+    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
+    std::string jpt = std::string(NMR_TEST_DATA_DIR) +
+                       "/../../data/models/aimnet2_wb97m_0.jpt";
+
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    // Load AIMNet2 model — MUST succeed, no silent degradation
+    ASSERT_TRUE(fs::exists(jpt)) << "AIMNet2 model not found: " << jpt;
+    auto aimnet2 = nmr::AIMNet2Model::Load(jpt);
+    ASSERT_NE(aimnet2, nullptr) << "AIMNet2 model failed to load";
+
+    // Build
+    nmr::GromacsProtein gp;
+    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+
+    // Canonical fleet scan opts: everything EXCEPT MOPAC and vacuum Coulomb
+    nmr::RunOptions opts;
+    opts.charge_source = gp.charges();
+    opts.skip_mopac = true;       // 45s — selected frames only
+    opts.skip_coulomb = true;     // APBS replaces this
+    opts.skip_apbs = false;       // solvated PB field runs every frame
+    opts.skip_dssp = false;       // chi angles, SS, H-bond energies
+    opts.aimnet2_model = aimnet2.get();
+
+    // Open with the same opts as all frames — no MOPAC on frame 0
+    nmr::GromacsFrameHandler handler(gp);
+    ASSERT_TRUE(handler.Open(xtc, tpr, opts)) << handler.error();
+
+    size_t total = 1;
+    while (total < 11 && handler.Next(opts)) ++total;
+
+    std::cout << "\nScanned " << total << " frames with full calculators\n";
+
+    // Verify classical kernel accumulators
+    const auto& a0 = gp.AtomAt(0);
+    EXPECT_EQ(a0.bs_T0.count, static_cast<int>(total));
+    EXPECT_EQ(a0.mc_T0.count, static_cast<int>(total));
+    EXPECT_EQ(a0.pq_T0.count, static_cast<int>(total));
+    EXPECT_EQ(a0.disp_T0.count, static_cast<int>(total));
+    EXPECT_EQ(a0.hm_T0.count, static_cast<int>(total));
+    EXPECT_EQ(a0.rs_T0.count, static_cast<int>(total));
+
+    // Water accumulators
+    EXPECT_EQ(a0.water_emag.count, static_cast<int>(total));
+    EXPECT_EQ(a0.water_efield_x.count, static_cast<int>(total));
+
+    // DSSP accumulators (if DSSP ran)
+    EXPECT_EQ(a0.phi_cos.count, static_cast<int>(total));
+    EXPECT_GT(a0.dssp_hbond_energy.count, 0);
+
+    // AIMNet2 — model is required, must have run every frame including
+    // frame 0 (Open now takes the same RunOptions).
+    EXPECT_EQ(a0.aimnet2_charge.count, static_cast<int>(total));
+    EXPECT_GT(a0.aimnet2_charge.Std(), 0.0) << "charge variance should be nonzero";
+
+    // Delta trackers: should have total-1 observations
+    EXPECT_EQ(a0.bs_T0_delta.delta.count, static_cast<int>(total) - 1);
+    EXPECT_EQ(a0.sasa_delta.delta.count, static_cast<int>(total) - 1);
+    EXPECT_EQ(a0.water_n_first_delta.delta.count, static_cast<int>(total) - 1);
+
+    // Print a summary for a ring-adjacent atom
+    auto print = [](const char* name, const nmr::Welford& w) {
+        std::cout << std::setw(25) << std::left << name
+                  << " n=" << std::setw(3) << w.count
+                  << " mean=" << std::setw(12) << w.mean
+                  << " std=" << std::setw(12) << w.Std()
+                  << " range=" << w.Range() << "\n";
+    };
+
+    // Find an atom with ring current signal
+    for (size_t i = 0; i < gp.AtomCount(); ++i) {
+        const auto& a = gp.AtomAt(i);
+        if (a.bs_T0.mean > 0.05 && a.bs_T0.Std() > 0.001) {
+            std::cout << "\n=== Atom " << i << " ("
+                      << gp.protein().AtomAt(i).pdb_atom_name << " "
+                      << nmr::ThreeLetterCodeForAminoAcid(gp.protein().ResidueAt(gp.protein().AtomAt(i).residue_index).type) << ") ===\n";
+            print("bs_T0 (ring current)", a.bs_T0);
+            print("mc_T0 (McConnell)", a.mc_T0);
+            print("mc_T2mag", a.mc_T2mag);
+            print("aimnet2_charge", a.aimnet2_charge);
+            print("sasa", a.sasa);
+            print("water_emag", a.water_emag);
+            print("water_n_first", a.water_n_first);
+            print("phi_cos", a.phi_cos);
+            for (int k = 0; k < 4; ++k) {
+                if (a.chi_cos[k].count == 0) break;
+                char label[16];
+                std::snprintf(label, sizeof(label), "chi%d_cos", k + 1);
+                print(label, a.chi_cos[k]);
+                std::cout << "  chi" << k+1 << " transitions: "
+                          << a.chi_transitions[k].transitions
+                          << "/" << a.chi_transitions[k].frames << "\n";
+            }
+            std::cout << "ss8 transitions: " << a.ss8_transitions.transitions
+                      << "/" << a.ss8_transitions.frames << "\n";
+            break;
+        }
+    }
+
+    // Write H5 master file
+    std::string h5_path = "/tmp/nmr_test_" + std::to_string(getpid()) + ".h5";
+    gp.WriteH5(h5_path);
+    ASSERT_TRUE(fs::exists(h5_path));
+    EXPECT_GT(fs::file_size(h5_path), 1000u);
+    std::cout << "\nH5: " << h5_path << " ("
+              << fs::file_size(h5_path) / 1024 << " KB)\n";
+    std::cout << "Stored " << gp.StoredFrameCount() << " frames x "
+              << gp.AtomCount() << " atoms\n";
+
+    // Write catalog CSV too
+    std::string csv_path = "/tmp/nmr_test_" + std::to_string(getpid()) + "_catalog.csv";
+    gp.WriteCatalog(csv_path);
+    std::cout << "Catalog: " << csv_path << " ("
+              << fs::file_size(csv_path) / 1024 << " KB)\n";
+
+    // Verify H5 with h5py (quick Python check)
+    std::string py_cmd =
+        "HDF5_DISABLE_VERSION_CHECK=2 python3 -c \""
+        "import h5py; f=h5py.File('" + h5_path + "','r'); "
+        "T=f.attrs['positions_shape_T']; N=f.attrs['positions_shape_N']; "
+        "print(f'positions: ({T}, {N}, 3) stored as', f['positions'].shape); "
+        "print('frame_times:', f['frame_times'].shape); "
+        "print('rollup mean:', f['rollup/mean'].shape); "
+        "names=list(f['rollup/names'][:]); "
+        "print(f'rollup columns: {len(names)}:', names[:5], '...'); "
+        "print('bonds:', f['bonds/length_mean'].shape); "
+        "f.close()\"";
+    std::cout << "\n";
+    (void)system(py_cmd.c_str());
+
+    // Clean up
+    fs::remove(h5_path);
+    fs::remove(csv_path);
 }
 
 

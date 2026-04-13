@@ -98,6 +98,17 @@ endif()
 add_library(extern_headers INTERFACE)
 target_include_directories(extern_headers INTERFACE ${CMAKE_SOURCE_DIR}/extern)
 
+# HighFive — header-only HDF5 C++ interface (extern/HighFive)
+# Link HDF5 directly to avoid cmake pulling in curl/ssl transitive deps
+add_library(highfive INTERFACE)
+target_include_directories(highfive INTERFACE
+    ${CMAKE_SOURCE_DIR}/extern/HighFive/include
+    /usr/include/hdf5/serial)
+target_link_libraries(highfive INTERFACE
+    /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so
+    /usr/lib/x86_64-linux-gnu/libcurl.so
+    /usr/lib/x86_64-linux-gnu/libz.so)
+
 # ============================================================================
 # xdrfile — XTC trajectory I/O (ported from fes-sampler, GROMACS XDR format)
 # ============================================================================
@@ -255,6 +266,7 @@ target_link_libraries(nmr_shielding PUBLIC
     ${MOPAC_LIB}
     apbs_bridge
     extern_headers
+    highfive
     xdrfile
     ${TORCH_LIBRARIES}
 )

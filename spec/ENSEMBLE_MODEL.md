@@ -3,8 +3,9 @@
 **Status:** IMPLEMENTED and TESTED. Two-pass streaming architecture
 works end-to-end. Three tests pass on 1ZR7_6721 full-system data
 (479 protein atoms, 3525 water molecules, 25 ions). .h5 master file
-writing is NOT yet implemented (logs what happened; HighFive not
-integrated).
+writing is IMPLEMENTED (2026-04-13, HighFive v2.6.2).
+WriteH5 produces positions (T,N,3), 45-column Welford rollup,
+per-bond stats, frame times. SDK `load_trajectory()` reads it.
 
 Design revised 2026-04-11/12 after critical review of original
 EnsembleConformation/observer design. See memory:
@@ -241,9 +242,11 @@ The existing path is untouched.
 
 ## Master file: {protein_id}.h5
 
-HDF5 file containing protein-level data that no calculator writes
-as NPY. NOT yet implemented (HighFive not integrated). Written once
-by GromacsFinalResult from conformation 0 + Protein topology.
+HDF5 file containing trajectory-level data. IMPLEMENTED 2026-04-13
+via GromacsProtein::WriteH5 (HighFive v2.6.2). The current file
+contains positions, Welford rollup, and bond stats. The topology
+section below is the original plan for conformation-0 data — not
+yet written alongside the trajectory rollup.
 
 ```
 {protein_id}.h5

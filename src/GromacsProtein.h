@@ -79,16 +79,32 @@ public:
     const GromacsProteinAtom& AtomAt(size_t i) const { return atoms_[i]; }
     size_t AtomCount() const { return atoms_.size(); }
 
+    // ── Per-bond trajectory accumulators ─────────────────────────
+
+    GromacsProteinBond& BondAt(size_t i) { return bonds_accum_[i]; }
+    const GromacsProteinBond& BondAt(size_t i) const { return bonds_accum_[i]; }
+    size_t BondAccumCount() const { return bonds_accum_.size(); }
+
     // Accumulate per-atom stats from one frame's computed conformation.
     // Called by GromacsFrameHandler after running calculators.
-    void AccumulateFrame(const ProteinConformation& conf, int frame_idx);
+    void AccumulateFrame(const ProteinConformation& conf, int frame_idx,
+                         double time_ps = 0.0);
 
     // Write the per-atom trajectory catalog CSV.
     void WriteCatalog(const std::string& path) const;
 
+    // Write master HDF5 file: positions, rollup stats, bonds.
+    void WriteH5(const std::string& path) const;
+
     // Select frames for full extraction from accumulated stats.
     // Returns sorted, deduplicated frame indices.
     std::vector<size_t> SelectFrames(size_t max_frames) const;
+
+    // ── Stored frame positions (for movies + training) ────────────
+
+    size_t StoredFrameCount() const { return n_stored_frames_; }
+    const std::vector<double>& FramePositions() const { return frame_positions_; }
+    const std::vector<double>& FrameTimes() const { return frame_times_; }
 
     // ── Frame manifest (fleet path) ──────────────────────────────
 
@@ -102,6 +118,16 @@ private:
     std::unique_ptr<ChargeSource> charges_;
     FullSystemReader sys_reader_;
     std::vector<GromacsProteinAtom> atoms_;
+    std::vector<GromacsProteinBond> bonds_accum_;
+
+    // Per-frame positions: (frame_idx, atom_idx) → Vec3.
+    // Stored flat as [frame0_atom0_x, frame0_atom0_y, frame0_atom0_z,
+    //                 frame0_atom1_x, ...].  N_atoms * 3 doubles per frame.
+    // These enable VTK movie playback and waveform model training.
+    std::vector<double> frame_positions_;   // flat (T * N * 3)
+    std::vector<double> frame_times_;       // (T,) in ps
+    size_t n_stored_frames_ = 0;
+
     std::vector<std::string> frame_paths_;
     std::vector<std::string> pose_names_;
     std::string protein_id_;

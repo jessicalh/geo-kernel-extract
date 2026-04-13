@@ -35,8 +35,10 @@ public:
 
     // Open trajectory for streaming. Creates MoleculeWholer from TPR.
     // Reads first frame to finalize protein (bond detection, conformation 0).
-    // Returns false on error (check error()).
-    bool Open(const std::string& xtc_path, const std::string& tpr_path);
+    // Frame 0 runs with the provided opts (same calculator set as all
+    // subsequent frames). Returns false on error (check error()).
+    bool Open(const std::string& xtc_path, const std::string& tpr_path,
+              const RunOptions& opts = RunOptions());
 
     // Process the next frame: read from XTC, PBC fix, split, create
     // conformation, run calculators, accumulate. Returns false at EOF.

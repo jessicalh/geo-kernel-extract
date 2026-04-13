@@ -240,10 +240,21 @@ static int RunTrajectory(const JobSpec& spec) {
         return 1;
     }
 
-    // Open trajectory — reads first frame, finalizes protein
-    // (bond detection, conformation 0), sets up PBC fix
+    // Canonical fleet scan opts: everything EXCEPT MOPAC and vacuum Coulomb.
+    // APBS, DSSP, AIMNet2 all run every frame for accumulation.
+    // Defined BEFORE Open() so frame 0 uses the same calculator set.
+    RunOptions scan_opts;
+    scan_opts.charge_source = gp.charges();
+    scan_opts.skip_mopac   = true;    // 45s — selected frames only
+    scan_opts.skip_coulomb = true;    // APBS replaces this
+    scan_opts.skip_apbs    = false;   // solvated PB field every frame
+    scan_opts.skip_dssp    = false;   // chi angles, SS, H-bond energies
+    scan_opts.aimnet2_model = g_aimnet2_model.get();  // charges every frame
+
+    // Open trajectory — reads first frame with scan_opts, finalizes
+    // protein (bond detection, conformation 0), sets up PBC fix
     GromacsFrameHandler handler(gp);
-    if (!handler.Open(spec.traj_xtc, spec.traj_tpr)) {
+    if (!handler.Open(spec.traj_xtc, spec.traj_tpr, scan_opts)) {
         fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
         return 1;
     }
@@ -252,14 +263,6 @@ static int RunTrajectory(const JobSpec& spec) {
             gp.protein().RingCount());
 
     // ── Pass 1: scan ─────────────────────────────────────────────
-    // Lightweight calculators, no NPY. Conformation dies each frame.
-
-    RunOptions scan_opts;
-    scan_opts.charge_source = gp.charges();
-    scan_opts.skip_mopac   = true;
-    scan_opts.skip_apbs    = true;
-    scan_opts.skip_coulomb = true;
-    scan_opts.skip_dssp    = true;
 
     fprintf(stderr, "\n=== Pass 1: scan ===\n");
     size_t scan_count = 1;  // frame 0 already processed by Open
@@ -276,6 +279,11 @@ static int RunTrajectory(const JobSpec& spec) {
     std::string catalog_path = spec.output_dir + "/atom_catalog.csv";
     gp.WriteCatalog(catalog_path);
     fprintf(stderr, "\nWrote %s\n", catalog_path.c_str());
+
+    std::string h5_path = spec.output_dir + "/trajectory.h5";
+    gp.WriteH5(h5_path);
+    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms)\n",
+            h5_path.c_str(), gp.StoredFrameCount(), gp.AtomCount());
 
     auto selected = gp.SelectFrames(200);
     fprintf(stderr, "Selected %zu frames for extraction\n", selected.size());
