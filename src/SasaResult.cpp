@@ -11,17 +11,8 @@
 
 namespace nmr {
 
-// Bondi vdW radii (Angstroms). Bondi 1964.
-static double BondiRadius(Element el) {
-    switch (el) {
-        case Element::H: return 1.20;
-        case Element::C: return 1.70;
-        case Element::N: return 1.55;
-        case Element::O: return 1.52;
-        case Element::S: return 1.80;
-        default:         return 1.70;
-    }
-}
+// Bondi vdW radii: see PhysicalConstants.h (BondiVdwRadius). Bondi 1964.
+static double BondiRadius(Element el) { return BondiVdwRadius(el); }
 
 
 // Fibonacci lattice on unit sphere (Gonzalez 2010).

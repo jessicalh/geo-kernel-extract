@@ -330,11 +330,10 @@ eeq.charges             # ndarray (N,) — partial charges (elementary charges)
 eeq.cn                  # ndarray (N,) — coordination number (erfc counting)
 ```
 
-D4 element parameters (chi, gam, kappa, rcov, rad) are compiled from
-`data/eeq_d4_reference.toml` — an auditable reference file containing
-values from Table S1 of Caldeweyher et al. (2019).  All values in
-atomic units (Hartree, Bohr).  These are fixed reference data, not
-tuneable parameters.
+D4 element parameters (chi, gam, kappa, rcov, rad) are in
+`PhysicalConstants.h` (`D4EeqParamsFor()`), from Table S1 of
+Caldeweyher et al. (2019).  All in atomic units (Hartree, Bohr).
+Fixed reference data, not tuneable.
 
 ## Catalog
 

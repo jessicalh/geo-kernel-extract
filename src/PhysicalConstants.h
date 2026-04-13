@@ -1,19 +1,41 @@
 #pragma once
 //
-// Physical constants for NMR field calculations.
+// PhysicalConstants.h — citable constants used by the calculation engine.
 //
-// Only universal constants here -- no model-specific parameters.
-// Model parameters (lobe offsets, ring current intensities) belong
-// on ring type classes and calculator parameter structs.
+// Everything here has a literature source.  If a number comes from a
+// paper, textbook, or standard and is compiled into a calculator, it
+// lives here so the thesis can cite it and the examiner can audit it.
+//
+// Model-tuneable parameters (cutoffs, intensities) go in TOML via
+// CalculatorConfig.  This file is for reference data that is fixed
+// by the publication it came from.
 //
 
+#include "Types.h"
 #include <cmath>
 
 namespace nmr {
 
-// Mathematical
-constexpr double PI = 3.14159265358979323846;
+// ============================================================================
+// Mathematical constants
+// ============================================================================
 
+constexpr double PI = 3.14159265358979323846;
+constexpr double SQRT_2_OVER_PI = 0.79788456080286535588;  // √(2/π)
+
+// ============================================================================
+// Unit conversions
+// ============================================================================
+
+// Bohr radius.  CODATA 2018: a_0 = 0.529177210903(80) A.
+// We use the 2014 value (0.52917721067 A) which is the one coded in
+// dftd4, xTB, and DFTB+.  The difference (4e-11 A) is below any
+// physical significance for EEQ charges.
+constexpr double ANGSTROM_PER_BOHR = 0.52917721067;
+constexpr double BOHR_PER_ANGSTROM = 1.0 / ANGSTROM_PER_BOHR;
+
+
+// ============================================================================
 // Electromagnetic (SI)
 // mu_0 = 4*pi*1e-7 T*m/A exactly in pre-2019 SI.
 // 2019 CODATA redefined mu_0 = 1.25663706212e-6 T*m/A (measured, not exact).
@@ -73,5 +95,64 @@ constexpr double APBS_SANITY_LIMIT = 100.0;     // V/Angstrom
 
 // Constitution: sequence exclusion
 constexpr int SEQUENTIAL_EXCLUSION_THRESHOLD = 2;
+
+
+// ============================================================================
+// Bondi van der Waals radii (Angstroms)
+//
+// Bondi, A. J. Phys. Chem. 68, 441-451 (1964).
+// Used by SasaResult (Shrake-Rupley SASA).
+// ============================================================================
+
+inline double BondiVdwRadius(Element e) {
+    switch (e) {
+        case Element::H: return 1.20;
+        case Element::C: return 1.70;
+        case Element::N: return 1.55;
+        case Element::O: return 1.52;
+        case Element::S: return 1.80;
+        default:         return 1.70;
+    }
+}
+
+
+// ============================================================================
+// D4 EEQ element parameters (atomic units: Hartree, Bohr)
+//
+// Caldeweyher, Ehlert, Hansen, Neugebauer, Spicher, Bannwarth & Grimme,
+// J. Chem. Phys. 150, 154122 (2019).  DOI: 10.1063/1.5090222.
+// Reference implementation: github.com/dftd4/dftd4 (Apache-2.0),
+// src/dftd4/data/{en,hardness,rcov,rad}.f90.
+//
+// Fitted to reproduce Hirshfeld charges from DFT/def2-TZVP.
+// Same parameters used in TURBOMOLE, ORCA D4, xTB, DFTB+.
+//
+// chi   — electronegativity [Hartree]
+// gam   — chemical hardness (Hubbard U) [Hartree]
+// kappa — CN-dependent electronegativity shift [Hartree]
+// rcov  — covalent radius for CN counting [Bohr] (Pyykko 2009)
+// rad   — Gaussian charge width for diagonal correction [Bohr]
+// ============================================================================
+
+struct D4EeqParams {
+    double chi;
+    double gam;
+    double kappa;
+    double rcov;
+    double rad;
+};
+
+inline D4EeqParams D4EeqParamsFor(Element e) {
+    switch (e) {
+        //                      chi           gam          kappa         rcov      rad
+        case Element::H:  return {-0.35015861, 0.47259288, -0.19793756, 0.80628, 1.61478};
+        case Element::C:  return {-0.04726052, 0.25364654,  0.14216971, 1.51718, 2.49988};
+        case Element::N:  return { 0.11527249, 0.28022740,  0.15169154, 1.42165, 2.23456};
+        case Element::O:  return { 0.25136810, 0.36515829,  0.14510449, 1.24854, 1.89247};
+        case Element::S:  return { 0.10789083, 0.25140725,  0.15916035, 2.00000, 3.29733};
+        default:          return { 0.0,        0.30000000,  0.0,        1.50000, 2.50000};
+    }
+}
+
 
 }  // namespace nmr

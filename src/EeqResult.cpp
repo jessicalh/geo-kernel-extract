@@ -1,5 +1,6 @@
 #include "EeqResult.h"
 #include "Protein.h"
+#include "PhysicalConstants.h"
 #include "CalculatorConfig.h"
 #include "GeometryChoice.h"
 #include "NpyWriter.h"
@@ -22,33 +23,8 @@ namespace nmr {
 // TURBOMOLE, ORCA D4, xTB, and DFTB+.
 // ============================================================================
 
-static constexpr double BOHR_PER_ANGSTROM = 1.0 / 0.52917721067;
-
-struct EeqElementParams {
-    double chi;    // electronegativity [Hartree]
-    double gam;    // chemical hardness (Hubbard parameter) [Hartree]
-    double kappa;  // CN-dependent EN shift [Hartree]
-    double rcov;   // covalent radius for CN counting [Bohr] (Pyykko 2009)
-    double rad;    // Gaussian charge width for diagonal correction [Bohr]
-};
-
-// D4 EEQ parameter table (5 protein elements + fallback).
-// Auditable reference: data/eeq_d4_reference.toml (DOI: 10.1063/1.5090222).
-// chi, gam, kappa, rcov: dftd4 src/dftd4/data/{en,hardness,rcov}.f90.
-// rad: Gaussian charge width from dftd4 data/rad.f90.
-// Diagonal: A_ii = gam_i + sqrt(2/pi) / rad_i  (Caldeweyher 2019 Eq. 8).
-// This self-Coulomb correction makes the matrix positive definite.
-static EeqElementParams EeqParamsFor(Element e) {
-    switch (e) {
-        //                      chi           gam          kappa         rcov      rad
-        case Element::H:  return {-0.35015861, 0.47259288, -0.19793756, 0.80628, 1.61478};
-        case Element::C:  return {-0.04726052, 0.25364654,  0.14216971, 1.51718, 2.49988};
-        case Element::N:  return { 0.11527249, 0.28022740,  0.15169154, 1.42165, 2.23456};
-        case Element::O:  return { 0.25136810, 0.36515829,  0.14510449, 1.24854, 1.89247};
-        case Element::S:  return { 0.10789083, 0.25140725,  0.15916035, 2.00000, 3.29733};
-        default:          return { 0.0,        0.30000000,  0.0,        1.50000, 2.50000};
-    }
-}
+// D4 EEQ parameters: see PhysicalConstants.h (D4EeqParams, D4D4EeqParamsFor).
+// Caldeweyher et al. 2019, DOI: 10.1063/1.5090222.
 
 
 std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
@@ -71,11 +47,11 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     // ── Pre-cache per-atom parameters and positions in Bohr ─────────
 
-    std::vector<EeqElementParams> params(N);
+    std::vector<D4EeqParams> params(N);
     int n_fallback = 0;
     for (size_t i = 0; i < N; ++i) {
         Element el = protein.AtomAt(i).element;
-        params[i] = EeqParamsFor(el);
+        params[i] = D4EeqParamsFor(el);
         if (el == Element::Unknown || el == Element::S)
             ++n_fallback;  // S uses real params; Unknown uses fallback
     }
@@ -156,14 +132,12 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     // For our purpose (geometry-responsive charge patterns, not exact
     // reproduction), this is acceptable.
 
-    static constexpr double SQRT2_OVER_SQRTPI = 0.79788456080286535588; // √(2/π)
-
     Eigen::MatrixXd A(N, N);
     for (size_t i = 0; i < N; ++i) {
         // Diagonal: η_i + √(2/π) / r_i (Caldeweyher 2019 Eq. 8)
         // The second term is the self-Coulomb energy of the Gaussian charge
         // distribution.  Makes the matrix diagonally dominant → SPD.
-        A(i, i) = params[i].gam + SQRT2_OVER_SQRTPI / params[i].rad;
+        A(i, i) = params[i].gam + SQRT_2_OVER_PI / params[i].rad;
         for (size_t j = i + 1; j < N; ++j) {
             double dx = pos(i, 0) - pos(j, 0);
             double dy = pos(i, 1) - pos(j, 1);

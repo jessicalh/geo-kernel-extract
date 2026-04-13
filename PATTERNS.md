@@ -362,6 +362,22 @@ calibration pipeline (Python e3nn in learn/c_equivariant/) discovers
 optimal values; they enter the C++ system as TOML configuration.
 The geometric kernels and their T2 structure are the foundation.
 
+### Where citable constants live
+
+Two homes, no exceptions:
+
+- **`calculator_params.toml`** (via `CalculatorConfig::Get()`) — tuneable
+  parameters: cutoffs, intensities, guard thresholds.  These are what
+  the calibration pipeline optimises.
+- **`PhysicalConstants.h`** — reference data from published sources:
+  Bondi radii, D4 EEQ element parameters, unit conversions, quadrature
+  weights.  Not tuneable.  Every entry has a citation comment with
+  author, year, and DOI or ISBN.
+
+If a number comes from a paper and the thesis must cite it, it goes in
+one of these two places.  Nowhere else.  No local `constexpr`, no
+switch statements with unlabelled values, no "reference TOML" files.
+
 ### Over-decomposing into tiny functions
 
 The Johnson-Bovey B-field calculation is ONE physics operation. It

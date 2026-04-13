@@ -37,6 +37,10 @@ struct TriQuadPoint {
     double weight;
 };
 
+// 7-point symmetric Gaussian quadrature on the reference triangle.
+// Stroud, A.H. Approximate Calculation of Multiple Integrals,
+// Prentice-Hall (1971), rule T2:5-1 (degree 5).
+// Also: Dunavant, D.A. Int. J. Numer. Meth. Engng. 21, 1129-1148 (1985).
 static const std::array<TriQuadPoint, 7>& Gauss7() {
     static const double sqrt15 = std::sqrt(15.0);
     static const double a1 = (6.0 - sqrt15) / 21.0;          // ~0.1013

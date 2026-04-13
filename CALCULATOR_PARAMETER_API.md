@@ -991,9 +991,10 @@ Total: 4 parameters.
 ### Reference data
 
 Element parameters (chi, gam, kappa, rcov, rad) are NOT tuneable.
-They are compiled from `data/eeq_d4_reference.toml`, which reproduces
-Table S1 of Caldeweyher et al. (2019).  All values in atomic units
-(Hartree, Bohr).  Covers H, C, N, O, S.
+They live in `PhysicalConstants.h` (`D4EeqParams` struct and
+`D4EeqParamsFor()` lookup) with full citation.  Values from Table S1
+of Caldeweyher et al. (2019).  All in atomic units (Hartree, Bohr).
+Covers H, C, N, O, S.
 
 ### Output
 
