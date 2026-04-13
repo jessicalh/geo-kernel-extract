@@ -146,5 +146,8 @@ run(cfg)
 cd learn/R && Rscript twenty_eight_realities.R
 ```
 
-All numbers are on 110 proteins (AzimuthalExtraction).  Rerun on
-full 723 when extraction completes — same scripts, final numbers.
+All scripts have been run on 720 proteins (Stage1Results extraction,
+446K atoms).  Output in src/output/actual_physics/.  Additional
+scripts added in 2026-04-13: full_space_analysis.py, orca_dia_para.py,
+completeness_checks.py.  Full reproduction via
+stage1-mutations/analysis/run_all.sh.

@@ -55,6 +55,66 @@ argument chain (see working notes).
 
 ---
 
+## The chapter structure
+
+The chapter is a characterisation of the instrument, not a result.
+It answers: what does the tool see at each element, how many
+independent angular dimensions does it resolve, and why?
+
+### What the tool is
+
+10 physical mechanisms expressed as rank-2 tensor kernels.  Each
+mechanism has a known multipolar order (cited: Pople, Johnson-Bovey,
+Buckingham, McConnell, Stone).  Different multipolar orders produce
+different angular symmetries (Stone 2013 Ch. 3).  The kernels
+confirm the predictions at 3 significant figures (BS -3.04, PQ -5.05).
+
+### What the tool sees, per element
+
+The element-dependent dimensionality IS the physics story:
+
+- **H (20 predictive dimensions, R²=0.928):** The tool sees hydrogen
+  richly.  Ring current and EFG both contribute, with 20 independent
+  angular dimensions all carrying small slices of the total.  The
+  prediction lives in the fine angular disagreements between kernel
+  families.
+
+- **C (6 dimensions, R²=0.562):** EFG-dominated.  Charge polarization
+  contributes +0.197 (the largest gap, accessed via MOPAC).  Fewer
+  angular dimensions because one mechanism dominates.
+
+- **N (3 blurred dimensions, R²=0.380):** No single mechanism dominates.
+  Five families each contribute 0.015-0.080.  The 3 dimensions are
+  blurred mixtures.  The tool sees nitrogen in the corner of its eye.
+
+- **O (12 dimensions, R²=0.382):** Dispersion-driven near-field (8 dims
+  at 0-4Å).  Paramagnetic dominance (para/dia ratio 1.20).  Complex
+  angular landscape.
+
+### Why the numbers differ
+
+The electronic structure of each element determines which geometric
+perturbations it responds to.  Diamagnetic-dominated elements (H)
+respond to through-space magnetic fields (ring current) which the
+wire-loop/surface-integral models capture in many angular dimensions.
+Paramagnetic-dominated elements (C, N, O) respond to local electronic
+structure (bond character, orbital symmetry) which the geometric
+kernels capture partially (EFG, McConnell) or barely (N's blurred
+multi-mechanism response).  Cited: Saito et al. 2010 for the
+dia/para distinction; confirmed in the T2 delta channel by our
+dia/para decomposition (para/dia variance ratio H=1.02 → O=1.20).
+
+### What the tool cannot see
+
+Per-protein ceiling: R²=0.81 within a protein, 0.35 across proteins.
+The gap is the global electrostatic environment (protein shape, bulk
+dielectric) that local geometric kernels do not capture.  This
+motivates ensemble conformational sampling (Stage 2).
+
+The charge-polarization dimension (+0.197 for C) is currently
+accessible only via MOPAC (10 min/protein).  For ensemble work,
+Drude-FF MD or EEQ charges provide affordable paths.
+
 ## The argument chain
 
 Every step is either CITED (established physics) or SHOWN (our data).
@@ -70,7 +130,60 @@ Every step is either CITED (established physics) or SHOWN (our data).
 5. The DFT target aligns with the correct mechanism per element.
    **Shown + Cited**: H=ring current (Boyd 2002), C=EFG (Sahakyan 2013).
 6. The calibrated coefficients are physical constants.  **Shown**:
-   per-element ridge, R²=0.818.
+   per-element ridge, weighted R²=0.718 (720 proteins, 446K atoms).
+7. Nonlinear signal follows paramagnetic ordering.  **Shown + Cited**:
+   N=+0.169, C=+0.128, O=+0.013, H=+0.002. Ramsey 1950, Saito 2010.
+
+## Status (2026-04-13)
+
+**Analysis: complete.**  All scripts run on 720 proteins.  All JSONs
+current.  verify_numbers.py passes.  Completeness checks done (LPOCV,
+bootstrap, RF nonlinear).  13 working notes in stage1-mutations/notes/.
+master_chart.md has the full picture.
+
+**Writing: not started.**  The notes are working documents, not thesis
+prose.  Writing dive planned for ~2 months from now.  Will need:
+Ramsey 1950 for the nonlinear argument, per-ring-type detail in the
+dimension tree, Mathematica vetting of ridge algebra, R figures from
+stage1_figures.R.
+
+**This work is WRAPPED.**  stage1-mutations/ is frozen for the thesis.
+New analysis (ensemble, MD, Stage 2) goes in new directories.  The
+numbers here must continue to pass verify_numbers.py.
+
+## Lessons for Stage 2
+
+The following findings from Stage 1 directly inform ensemble analysis:
+
+1. **Per-element everything.**  Never pool.  The physics is
+   element-dependent.  The dimensionality, the dominant groups, the
+   nonlinear structure, the overfitting behaviour — all differ by
+   element.
+
+2. **Normalisation is physics.**  Per-protein normalisation separates
+   magnitude from angular structure.  For ensemble data, per-frame
+   normalisation will play the same role: strip frame-to-frame
+   magnitude variation to reveal conformational angular signal.
+
+3. **Carbon needs charge polarisation.**  +0.197 gap.  Gating
+   recovers +0.128 (nonlinear from geometry alone).  The remaining
+   ~0.07 needs EEQ or Drude charges.  AIMNet2 EFG is orthogonal
+   (cos 0.34) — wrong projection for mutation delta, may be
+   different for conformational variation.
+
+4. **Nitrogen is nonlinear.**  Per-element gated model for N will
+   find signal that ridge misses.  5 mechanism families interact
+   through the paramagnetic term.
+
+5. **Dispersion is real for O after normalisation.**  0.058→0.234.
+   DispChi (dispersion × ring susceptibility) carries angular
+   structure at short range.  For ensemble analysis, this dimension
+   should be preserved.
+
+6. **The cosine independence structure is fixed.**  It doesn't
+   depend on the protein, the element, or the normalisation.
+   The geometry of the kernel space is intrinsic.  Only the
+   projection onto the target changes.
 
 ## Literature status
 
@@ -183,6 +296,23 @@ These are in `stage1-mutations/notes/` (3 files).  Headlines:
 
 5. **Proven zeros.** MOPAC valence, bond order, molecular dipole each
    add +0.000 for every element.  HBond = 0.002.  DeltaAPBS = 0.005.
+
+6. **Dia/para cancellation** (2026-04-13).  Parsed raw orca dia/para
+   from .out files, validated to 0.003 ppm against C++.  Mutation
+   perturbs dia and para by ~7 ppm each; they cancel to ~1-2 ppm
+   total.  Kernels see the net (R²=0.70-0.73 for H) but not the
+   channels individually (R²<0.05).  Para/dia variance ratio
+   1.02→1.06→1.07→1.20 for H→C→N→O confirms Saito 2010 in T2.
+
+7. **AIMNet2 EFG is orthogonal to Coulomb EFG** (2026-04-13).  Cosine
+   ~0.34 (near random in 5D) despite R²=0.53 for H.  ff14SB↔MOPAC
+   EFG cosine = 0.99 (nearly identical on raw aromatic).  AIMNet2
+   sees different physics but adds nothing beyond MOPAC for prediction.
+
+8. **Spherical tensor audit** (2026-04-13).  Full audit of isometric
+   normalization convention across C++, Python SDK, and analysis code.
+   No inconsistencies found.  Convention is T2[m=-2..+2] with sqrt(2)
+   and sqrt(3/2) factors matching Types.cpp.
 
 ---
 

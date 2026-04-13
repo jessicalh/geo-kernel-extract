@@ -2,7 +2,7 @@
 # Every number in the pipeline traces to this file.
 
 [paths]
-features = "/shared/2026Thesis/nmr-shielding/calibration/features/AzimuthalExtraction"
+features = "/shared/2026Thesis/nmr-shielding/calibration/features/Stage1Results"
 runs     = "/shared/2026Thesis/nmr-shielding/learn/runs"
 sdk      = "/shared/2026Thesis/nmr-shielding/python"
 

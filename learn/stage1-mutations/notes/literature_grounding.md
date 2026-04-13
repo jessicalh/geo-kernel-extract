@@ -206,6 +206,17 @@ analysis misses.
 - Haeberlen 1976, High Resolution NMR in Solids, Academic Press.
   ISBN: 978-0120255610.  BOOK — for T0/T1/T2 convention declaration.
 
+### Needed for the nonlinear signal finding
+
+- Ramsey 1950, Phys. Rev. 78, 699.  DOI: 10.1103/PhysRev.78.699
+  The paramagnetic shielding term: sigma_p involves 1/DeltaE energy
+  denominators and orbital angular momentum matrix elements.  The
+  product terms (geometry x geometry / DeltaE) produce nonlinear
+  kernel interactions at paramagnetic-dominated atoms (N, O).
+  This grounds the RF finding: nitrogen's +0.169 nonlinear signal
+  comes from interaction effects in the paramagnetic term that
+  linear ridge cannot capture.  Need at write time.
+
 ### Possible additions (found during search)
 
 - Plasser 2021, Eur. J. Org. Chem. 2021.

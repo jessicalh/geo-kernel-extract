@@ -65,11 +65,14 @@ src/mutation_set/               → training pipeline (config-driven, SDK-based)
 
 The calibration is settled.  Per-element ridge regression on 55 core
 kernels (per-protein normalised) with kernel scale factors and mutation
-type identity as fair categorical scalars.  Weighted R² = 0.818.
+type identity as fair categorical scalars.  Weighted R² = 0.718
+(720 proteins, 446K atoms).  Was 0.818 on 110 proteins — the drop is
+cross-protein generalisation, not changed physics.
 
 The MLP (hidden=64, 261 scalars, gating) gets 0.61 pooled — worse
 than per-element ridge.  The ridge coefficients are the calibrated
-physical constants.  No MLP needed.
+physical constants.  No MLP needed.  But RF finds nonlinear signal
+for N (+0.169) and C (+0.128) — per-element gating for Stage 2.
 
 The physics scripts are in `src/actual_physics/` (see OVERVIEW.md).
 The validation document is `docs/twenty_eight_realities_2026-04-10.md`.
@@ -102,7 +105,7 @@ in `stage1-mutations/notes/`.
 - `R/twenty_eight_realities.R` — 7 publication figures
 - `docs/twenty_eight_realities_2026-04-10.md` — full validation
 - `docs/realities_latex.tex` — thesis LaTeX section
-- `docs/next_session_2026-04-11.md` — continuation prompt
+- `docs/INDEX.md` — document index (start here after CLAUDE.md)
 
 ### Pipeline infrastructure
 - `src/calibration.toml` — single config: paths, features, analysis
