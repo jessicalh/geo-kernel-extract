@@ -1,99 +1,104 @@
-{"ts":"2026-04-12T18:51:50.421","level":"info","op":"OperationLog::ConfigureFile","detail":"file logging to /shared/2026Thesis/nmr-shielding/tests/data/../golden/smoke/2026-04-12_185150/nodft/log.jsonl"}
-{"ts":"2026-04-12T18:51:50.421","level":"info","op":"OperationRunner::Run [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:51:50.423","level":"info","op":"AttachResult","detail":"attached GeometryResult to conformation"}
-{"ts":"2026-04-12T18:51:50.423","level":"info","op":"SpatialIndexResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:51:50.845","level":"info","op":"SpatialIndexResult::Compute","detail":"total_neighbour_pairs=755828 min=92 max=1083 cutoff=15.000000A"}
-{"ts":"2026-04-12T18:51:50.845","level":"info","op":"SpatialIndexResult::Compute [END]","detail":"elapsed=422ms"}
-{"ts":"2026-04-12T18:51:50.845","level":"info","op":"AttachResult","detail":"attached SpatialIndexResult to conformation"}
-{"ts":"2026-04-12T18:51:50.845","level":"info","op":"EnrichmentResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:51:50.846","level":"info","op":"EnrichmentResult::Compute","detail":"roles_assigned total=1231 unknown=0 [0:76 1:76 2:76 3:76 4:205 5:27 6:42 7:1 8:21 9:2 10:72 11:76 12:150 13:17 14:11 15:303]"}
-{"ts":"2026-04-12T18:51:50.846","level":"info","op":"EnrichmentResult::Compute [END]","detail":"elapsed=0ms"}
-{"ts":"2026-04-12T18:51:50.846","level":"info","op":"AttachResult","detail":"attached EnrichmentResult to conformation"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"AttachResult","detail":"attached DsspResult to conformation"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"ChargeAssignmentResult::Compute [BEGIN]","detail":"atoms=1231 source=ff14SB:/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"ChargeAssignmentResult::LoadParamFile","detail":"loaded 422 entries from /shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"ChargeAssignmentResult::Compute","detail":"source=ff14SB:/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat assigned=1227 unassigned=4 total_charge=-0.271900"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"ChargeAssignmentResult::Compute [END]","detail":"elapsed=0ms"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"AttachResult","detail":"attached ChargeAssignmentResult to conformation"}
-{"ts":"2026-04-12T18:51:50.876","level":"info","op":"MopacResult::Compute [BEGIN]","detail":"atoms=1231 charge=0 threads=24"}
-{"ts":"2026-04-12T18:51:50.877","level":"info","op":"MopacResult::Compute","detail":"running PM7+MOZYME 1SCF atoms=1231"}
-{"ts":"2026-04-12T18:52:55.657","level":"info","op":"MopacResult::Compute","detail":"heat=-804.845280 kcal/mol, 1129 bond orders"}
-{"ts":"2026-04-12T18:52:55.657","level":"info","op":"MopacResult::Compute [END]","detail":"elapsed=64780ms"}
-{"ts":"2026-04-12T18:52:55.657","level":"info","op":"AttachResult","detail":"attached MopacResult to conformation"}
-{"ts":"2026-04-12T18:52:55.657","level":"info","op":"ApbsFieldResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:52:55.657","level":"info","op":"ApbsFieldResult","detail":"APBS solve: 1231 atoms, grid=161^3, fine=[71.345000,72.256001,76.616999]A, pdie=4.000000 sdie=78.540000"}
-{"ts":"2026-04-12T18:52:58.498","level":"info","op":"ApbsFieldResult","detail":"Grid cached: 4173281 points, spacing=0.633406A"}
-{"ts":"2026-04-12T18:52:58.526","level":"info","op":"ApbsFieldResult::Compute","detail":"APBS complete: E-field and EFG extracted for 1231 atoms"}
-{"ts":"2026-04-12T18:52:58.526","level":"info","op":"ApbsFieldResult::Compute [END]","detail":"elapsed=2868ms"}
-{"ts":"2026-04-12T18:52:58.526","level":"info","op":"AttachResult","detail":"attached ApbsFieldResult to conformation"}
-{"ts":"2026-04-12T18:52:58.526","level":"info","op":"BiotSavartResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:52:58.526","level":"info","op":"BiotSavartResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
-{"ts":"2026-04-12T18:52:58.605","level":"info","op":"BiotSavartResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:52:58.605","level":"info","op":"BiotSavartResult::Compute [END]","detail":"elapsed=79ms"}
-{"ts":"2026-04-12T18:52:58.605","level":"info","op":"AttachResult","detail":"attached BiotSavartResult to conformation"}
-{"ts":"2026-04-12T18:52:58.605","level":"info","op":"HaighMallionResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:52:58.605","level":"info","op":"HaighMallionResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
-{"ts":"2026-04-12T18:52:58.772","level":"info","op":"HaighMallionResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:52:58.772","level":"info","op":"HaighMallionResult::Compute [END]","detail":"elapsed=166ms"}
-{"ts":"2026-04-12T18:52:58.772","level":"info","op":"AttachResult","detail":"attached HaighMallionResult to conformation"}
-{"ts":"2026-04-12T18:52:58.772","level":"info","op":"McConnellResult::Compute [BEGIN]","detail":"atoms=1231 bonds=1237"}
-{"ts":"2026-04-12T18:52:58.772","level":"info","op":"McConnellResult::Compute","detail":"filter set: MinDistanceFilter, SelfSourceFilter, DipolarNearFieldFilter"}
-{"ts":"2026-04-12T18:53:00.180","level":"info","op":"McConnellResult::Compute","detail":"atom_bond_pairs=317788 rejected={MinDistanceFilter=0, SelfSourceFilter=2474, DipolarNearFieldFilter=0} atoms=1231 bonds=1237"}
-{"ts":"2026-04-12T18:53:00.180","level":"info","op":"McConnellResult::Compute [END]","detail":"elapsed=1408ms"}
-{"ts":"2026-04-12T18:53:00.180","level":"info","op":"AttachResult","detail":"attached McConnellResult to conformation"}
-{"ts":"2026-04-12T18:53:00.180","level":"info","op":"RingSusceptibilityResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.180","level":"info","op":"RingSusceptibilityResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
-{"ts":"2026-04-12T18:53:00.192","level":"info","op":"RingSusceptibilityResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.192","level":"info","op":"RingSusceptibilityResult::Compute [END]","detail":"elapsed=12ms"}
-{"ts":"2026-04-12T18:53:00.192","level":"info","op":"AttachResult","detail":"attached RingSusceptibilityResult to conformation"}
-{"ts":"2026-04-12T18:53:00.192","level":"info","op":"PiQuadrupoleResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.192","level":"info","op":"PiQuadrupoleResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
-{"ts":"2026-04-12T18:53:00.204","level":"info","op":"PiQuadrupoleResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.204","level":"info","op":"PiQuadrupoleResult::Compute [END]","detail":"elapsed=11ms"}
-{"ts":"2026-04-12T18:53:00.204","level":"info","op":"AttachResult","detail":"attached PiQuadrupoleResult to conformation"}
-{"ts":"2026-04-12T18:53:00.204","level":"info","op":"DispersionResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.204","level":"info","op":"DispersionResult::Compute","detail":"filter set: DipolarNearFieldFilter | vertex range: [MIN_DISTANCE=0.100000, R_CUT=5.000000] A, switch onset=4.300000 A | through-bond vertex exclusion: yes"}
-{"ts":"2026-04-12T18:53:00.217","level":"info","op":"DispersionResult::Compute","detail":"atom_ring_pairs=216 vertex_contacts=636 bonded_exclusions=36 rejected={DipolarNearFieldFilter=9} atoms=1231 rings=4"}
-{"ts":"2026-04-12T18:53:00.217","level":"info","op":"DispersionResult::Compute [END]","detail":"elapsed=13ms"}
-{"ts":"2026-04-12T18:53:00.217","level":"info","op":"AttachResult","detail":"attached DispersionResult to conformation"}
-{"ts":"2026-04-12T18:53:00.217","level":"info","op":"CoulombResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:53:05.611","level":"info","op":"CoulombResult::Compute","detail":"atoms=1231 aromatic_sources=23 rejected={MinDistanceFilter=1231, SelfSourceFilter=0}"}
-{"ts":"2026-04-12T18:53:05.611","level":"info","op":"CoulombResult::Compute [END]","detail":"elapsed=5393ms"}
-{"ts":"2026-04-12T18:53:05.611","level":"info","op":"AttachResult","detail":"attached CoulombResult to conformation"}
-{"ts":"2026-04-12T18:53:05.611","level":"info","op":"MopacCoulombResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:53:12.170","level":"info","op":"MopacCoulombResult::Compute","detail":"atoms=1231 rejected={MinDistanceFilter=1231, SelfSourceFilter=0}"}
-{"ts":"2026-04-12T18:53:12.170","level":"info","op":"MopacCoulombResult::Compute [END]","detail":"elapsed=6559ms"}
-{"ts":"2026-04-12T18:53:12.170","level":"info","op":"AttachResult","detail":"attached MopacCoulombResult to conformation"}
-{"ts":"2026-04-12T18:53:12.170","level":"info","op":"MopacMcConnellResult::Compute [BEGIN]","detail":"atoms=1231 bonds=1237"}
-{"ts":"2026-04-12T18:53:12.833","level":"info","op":"MopacMcConnellResult::Compute","detail":"atom_bond_pairs=153806 zero_bo_skipped=165240 rejected={MinDistanceFilter=0, SelfSourceFilter=1216, DipolarNearFieldFilter=0} atoms=1231"}
-{"ts":"2026-04-12T18:53:12.833","level":"info","op":"MopacMcConnellResult::Compute [END]","detail":"elapsed=663ms"}
-{"ts":"2026-04-12T18:53:12.833","level":"info","op":"AttachResult","detail":"attached MopacMcConnellResult to conformation"}
-{"ts":"2026-04-12T18:53:12.833","level":"info","op":"HBondResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:53:12.834","level":"info","op":"HBondResult::Compute","detail":"resolved 161 unique backbone H-bonds from DSSP"}
-{"ts":"2026-04-12T18:53:12.834","level":"info","op":"HBondResult::Compute","detail":"filter set: MinDistanceFilter, SelfSourceFilter, DipolarNearFieldFilter"}
-{"ts":"2026-04-12T18:53:13.317","level":"info","op":"HBondResult::Compute","detail":"atom_hbond_pairs=196002 rejected={MinDistanceFilter=0, SelfSourceFilter=322, DipolarNearFieldFilter=1867} hbonds=161 atoms=1231"}
-{"ts":"2026-04-12T18:53:13.317","level":"info","op":"HBondResult::Compute [END]","detail":"elapsed=483ms"}
-{"ts":"2026-04-12T18:53:13.317","level":"info","op":"AttachResult","detail":"attached HBondResult to conformation"}
-{"ts":"2026-04-12T18:53:13.317","level":"info","op":"SasaResult::Compute [BEGIN]","detail":"atoms=1231"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"SasaResult::Compute","detail":"1231 atoms, probe=1.400000A, points=92"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"SasaResult::Compute [END]","detail":"elapsed=129ms"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"AttachResult","detail":"attached SasaResult to conformation"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"OperationRunner","detail":"Run complete: 18 results"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"OperationRunner::Run [END]","detail":"elapsed=83025ms"}
-{"ts":"2026-04-12T18:53:13.446","level":"info","op":"ConformationResult::WriteAllFeatures [BEGIN]","detail":"atoms=1231 results=18 dir=/shared/2026Thesis/nmr-shielding/tests/data/../golden/smoke/2026-04-12_185150/nodft"}
-{"ts":"2026-04-12T18:53:13.447","level":"info","op":"WriteAllFeatures","detail":"HBondResult wrote 2 arrays"}
-{"ts":"2026-04-12T18:53:13.448","level":"info","op":"WriteAllFeatures","detail":"MopacMcConnellResult wrote 3 arrays"}
-{"ts":"2026-04-12T18:53:13.448","level":"info","op":"WriteAllFeatures","detail":"SasaResult wrote 1 arrays"}
-{"ts":"2026-04-12T18:53:13.448","level":"info","op":"WriteAllFeatures","detail":"MopacCoulombResult wrote 5 arrays"}
-{"ts":"2026-04-12T18:53:13.448","level":"info","op":"WriteAllFeatures","detail":"ApbsFieldResult wrote 2 arrays"}
-{"ts":"2026-04-12T18:53:13.452","level":"info","op":"WriteAllFeatures","detail":"DsspResult wrote 4 arrays"}
-{"ts":"2026-04-12T18:53:13.453","level":"info","op":"WriteAllFeatures","detail":"CoulombResult wrote 5 arrays"}
-{"ts":"2026-04-12T18:53:13.453","level":"info","op":"WriteAllFeatures","detail":"DispersionResult wrote 3 arrays"}
-{"ts":"2026-04-12T18:53:13.454","level":"info","op":"WriteAllFeatures","detail":"MopacResult wrote 4 arrays"}
-{"ts":"2026-04-12T18:53:13.455","level":"info","op":"WriteAllFeatures","detail":"BiotSavartResult wrote 5 arrays"}
-{"ts":"2026-04-12T18:53:13.455","level":"info","op":"WriteAllFeatures","detail":"RingSusceptibilityResult wrote 1 arrays"}
-{"ts":"2026-04-12T18:53:13.455","level":"info","op":"WriteAllFeatures","detail":"HaighMallionResult wrote 3 arrays"}
-{"ts":"2026-04-12T18:53:13.456","level":"info","op":"WriteAllFeatures","detail":"McConnellResult wrote 3 arrays"}
-{"ts":"2026-04-12T18:53:13.456","level":"info","op":"WriteAllFeatures","detail":"PiQuadrupoleResult wrote 3 arrays"}
-{"ts":"2026-04-12T18:53:13.456","level":"info","op":"WriteAllFeatures","detail":"total: 50 arrays"}
-{"ts":"2026-04-12T18:53:13.456","level":"info","op":"ConformationResult::WriteAllFeatures [END]","detail":"elapsed=10ms"}
+{"ts":"2026-04-14T11:20:34.733","level":"info","op":"OperationLog::ConfigureFile","detail":"file logging to /shared/2026Thesis/nmr-shielding/tests/data/../golden/smoke/2026-04-14_112034/nodft/log.jsonl"}
+{"ts":"2026-04-14T11:20:34.733","level":"info","op":"OperationRunner::Run [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:20:34.733","level":"info","op":"AttachResult","detail":"attached GeometryResult to conformation"}
+{"ts":"2026-04-14T11:20:34.733","level":"info","op":"SpatialIndexResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:20:34.763","level":"info","op":"SpatialIndexResult::Compute","detail":"total_neighbour_pairs=755828 min=92 max=1083 cutoff=15.000000A"}
+{"ts":"2026-04-14T11:20:34.763","level":"info","op":"SpatialIndexResult::Compute [END]","detail":"elapsed=30ms"}
+{"ts":"2026-04-14T11:20:34.763","level":"info","op":"AttachResult","detail":"attached SpatialIndexResult to conformation"}
+{"ts":"2026-04-14T11:20:34.763","level":"info","op":"EnrichmentResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:20:34.764","level":"info","op":"EnrichmentResult::Compute","detail":"roles_assigned total=1231 unknown=0 [0:76 1:76 2:76 3:76 4:205 5:27 6:42 7:1 8:21 9:2 10:72 11:76 12:150 13:17 14:11 15:303]"}
+{"ts":"2026-04-14T11:20:34.764","level":"info","op":"EnrichmentResult::Compute [END]","detail":"elapsed=0ms"}
+{"ts":"2026-04-14T11:20:34.764","level":"info","op":"AttachResult","detail":"attached EnrichmentResult to conformation"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"AttachResult","detail":"attached DsspResult to conformation"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"ChargeAssignmentResult::Compute [BEGIN]","detail":"atoms=1231 source=ff14SB:/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"ChargeAssignmentResult::LoadParamFile","detail":"loaded 422 entries from /shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"ChargeAssignmentResult::Compute","detail":"source=ff14SB:/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat assigned=1227 unassigned=4 total_charge=-0.271900"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"ChargeAssignmentResult::Compute [END]","detail":"elapsed=0ms"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"AttachResult","detail":"attached ChargeAssignmentResult to conformation"}
+{"ts":"2026-04-14T11:20:34.793","level":"info","op":"MopacResult::Compute [BEGIN]","detail":"atoms=1231 charge=0 threads=24"}
+{"ts":"2026-04-14T11:20:34.794","level":"info","op":"MopacResult::Compute","detail":"running PM7+MOZYME 1SCF atoms=1231"}
+{"ts":"2026-04-14T11:21:43.624","level":"info","op":"MopacResult::Compute","detail":"heat=-804.845280 kcal/mol, 1129 bond orders"}
+{"ts":"2026-04-14T11:21:43.624","level":"info","op":"MopacResult::Compute [END]","detail":"elapsed=68831ms"}
+{"ts":"2026-04-14T11:21:43.624","level":"info","op":"AttachResult","detail":"attached MopacResult to conformation"}
+{"ts":"2026-04-14T11:21:43.624","level":"info","op":"ApbsFieldResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:43.624","level":"info","op":"ApbsFieldResult","detail":"APBS solve: 1231 atoms, grid=161^3, fine=[71.345000,72.256001,76.616999]A, pdie=4.000000 sdie=78.540000"}
+{"ts":"2026-04-14T11:21:46.306","level":"info","op":"ApbsFieldResult","detail":"Grid cached: 4173281 points, spacing=0.633406A"}
+{"ts":"2026-04-14T11:21:46.308","level":"info","op":"ApbsFieldResult::Compute","detail":"APBS complete: E-field and EFG extracted for 1231 atoms"}
+{"ts":"2026-04-14T11:21:46.308","level":"info","op":"ApbsFieldResult::Compute [END]","detail":"elapsed=2683ms"}
+{"ts":"2026-04-14T11:21:46.308","level":"info","op":"AttachResult","detail":"attached ApbsFieldResult to conformation"}
+{"ts":"2026-04-14T11:21:46.308","level":"info","op":"BiotSavartResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.308","level":"info","op":"BiotSavartResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
+{"ts":"2026-04-14T11:21:46.311","level":"info","op":"BiotSavartResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.311","level":"info","op":"BiotSavartResult::Compute [END]","detail":"elapsed=3ms"}
+{"ts":"2026-04-14T11:21:46.311","level":"info","op":"AttachResult","detail":"attached BiotSavartResult to conformation"}
+{"ts":"2026-04-14T11:21:46.311","level":"info","op":"HaighMallionResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.311","level":"info","op":"HaighMallionResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
+{"ts":"2026-04-14T11:21:46.316","level":"info","op":"HaighMallionResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.316","level":"info","op":"HaighMallionResult::Compute [END]","detail":"elapsed=4ms"}
+{"ts":"2026-04-14T11:21:46.316","level":"info","op":"AttachResult","detail":"attached HaighMallionResult to conformation"}
+{"ts":"2026-04-14T11:21:46.316","level":"info","op":"McConnellResult::Compute [BEGIN]","detail":"atoms=1231 bonds=1237"}
+{"ts":"2026-04-14T11:21:46.316","level":"info","op":"McConnellResult::Compute","detail":"filter set: MinDistanceFilter, SelfSourceFilter, DipolarNearFieldFilter"}
+{"ts":"2026-04-14T11:21:46.363","level":"info","op":"McConnellResult::Compute","detail":"atom_bond_pairs=317788 rejected={MinDistanceFilter=0, SelfSourceFilter=2474, DipolarNearFieldFilter=0} atoms=1231 bonds=1237"}
+{"ts":"2026-04-14T11:21:46.363","level":"info","op":"McConnellResult::Compute [END]","detail":"elapsed=47ms"}
+{"ts":"2026-04-14T11:21:46.363","level":"info","op":"AttachResult","detail":"attached McConnellResult to conformation"}
+{"ts":"2026-04-14T11:21:46.363","level":"info","op":"RingSusceptibilityResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.363","level":"info","op":"RingSusceptibilityResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"RingSusceptibilityResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"RingSusceptibilityResult::Compute [END]","detail":"elapsed=0ms"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"AttachResult","detail":"attached RingSusceptibilityResult to conformation"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"PiQuadrupoleResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"PiQuadrupoleResult::Compute","detail":"filter set: MinDistanceFilter, DipolarNearFieldFilter, RingBondedExclusionFilter"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"PiQuadrupoleResult::Compute","detail":"atom_ring_pairs=2462 rejected={MinDistanceFilter=0, DipolarNearFieldFilter=9, RingBondedExclusionFilter=36} atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"PiQuadrupoleResult::Compute [END]","detail":"elapsed=0ms"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"AttachResult","detail":"attached PiQuadrupoleResult to conformation"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"DispersionResult::Compute [BEGIN]","detail":"atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.364","level":"info","op":"DispersionResult::Compute","detail":"filter set: DipolarNearFieldFilter | vertex range: [MIN_DISTANCE=0.100000, R_CUT=5.000000] A, switch onset=4.300000 A | through-bond vertex exclusion: yes"}
+{"ts":"2026-04-14T11:21:46.366","level":"info","op":"DispersionResult::Compute","detail":"atom_ring_pairs=216 vertex_contacts=636 bonded_exclusions=36 rejected={DipolarNearFieldFilter=9} atoms=1231 rings=4"}
+{"ts":"2026-04-14T11:21:46.366","level":"info","op":"DispersionResult::Compute [END]","detail":"elapsed=1ms"}
+{"ts":"2026-04-14T11:21:46.366","level":"info","op":"AttachResult","detail":"attached DispersionResult to conformation"}
+{"ts":"2026-04-14T11:21:46.366","level":"info","op":"CoulombResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:46.478","level":"info","op":"CoulombResult::Compute","detail":"atoms=1231 aromatic_sources=23 rejected={MinDistanceFilter=1231, SelfSourceFilter=0}"}
+{"ts":"2026-04-14T11:21:46.478","level":"info","op":"CoulombResult::Compute [END]","detail":"elapsed=111ms"}
+{"ts":"2026-04-14T11:21:46.478","level":"info","op":"AttachResult","detail":"attached CoulombResult to conformation"}
+{"ts":"2026-04-14T11:21:46.478","level":"info","op":"MopacCoulombResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:46.573","level":"info","op":"MopacCoulombResult::Compute","detail":"atoms=1231 rejected={MinDistanceFilter=1231, SelfSourceFilter=0}"}
+{"ts":"2026-04-14T11:21:46.573","level":"info","op":"MopacCoulombResult::Compute [END]","detail":"elapsed=95ms"}
+{"ts":"2026-04-14T11:21:46.573","level":"info","op":"AttachResult","detail":"attached MopacCoulombResult to conformation"}
+{"ts":"2026-04-14T11:21:46.573","level":"info","op":"MopacMcConnellResult::Compute [BEGIN]","detail":"atoms=1231 bonds=1237"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"MopacMcConnellResult::Compute","detail":"atom_bond_pairs=153806 zero_bo_skipped=165240 rejected={MinDistanceFilter=0, SelfSourceFilter=1216, DipolarNearFieldFilter=0} atoms=1231"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"MopacMcConnellResult::Compute [END]","detail":"elapsed=32ms"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"AttachResult","detail":"attached MopacMcConnellResult to conformation"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"HBondResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"HBondResult::Compute","detail":"resolved 161 unique backbone H-bonds from DSSP"}
+{"ts":"2026-04-14T11:21:46.605","level":"info","op":"HBondResult::Compute","detail":"filter set: MinDistanceFilter, SelfSourceFilter, DipolarNearFieldFilter"}
+{"ts":"2026-04-14T11:21:46.626","level":"info","op":"HBondResult::Compute","detail":"atom_hbond_pairs=196002 rejected={MinDistanceFilter=0, SelfSourceFilter=322, DipolarNearFieldFilter=1867} hbonds=161 atoms=1231"}
+{"ts":"2026-04-14T11:21:46.626","level":"info","op":"HBondResult::Compute [END]","detail":"elapsed=20ms"}
+{"ts":"2026-04-14T11:21:46.626","level":"info","op":"AttachResult","detail":"attached HBondResult to conformation"}
+{"ts":"2026-04-14T11:21:46.626","level":"info","op":"SasaResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:46.630","level":"info","op":"SasaResult::Compute","detail":"1231 atoms, probe=1.400000A, points=92"}
+{"ts":"2026-04-14T11:21:46.630","level":"info","op":"SasaResult::Compute [END]","detail":"elapsed=4ms"}
+{"ts":"2026-04-14T11:21:46.630","level":"info","op":"AttachResult","detail":"attached SasaResult to conformation"}
+{"ts":"2026-04-14T11:21:46.630","level":"info","op":"EeqResult::Compute [BEGIN]","detail":"atoms=1231"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"EeqResult","detail":"N=1231 Σq=-0.000000 range=[-1.827430,1.190074] clamped=0 cn_pairs=710842"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"EeqResult::Compute [END]","detail":"elapsed=23ms"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"AttachResult","detail":"attached EeqResult to conformation"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"OperationRunner","detail":"Run complete: 19 results"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"OperationRunner::Run [END]","detail":"elapsed=71921ms"}
+{"ts":"2026-04-14T11:21:46.654","level":"info","op":"ConformationResult::WriteAllFeatures [BEGIN]","detail":"atoms=1231 results=19 dir=/shared/2026Thesis/nmr-shielding/tests/data/../golden/smoke/2026-04-14_112034/nodft"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"EeqResult wrote 2 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"HBondResult wrote 2 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"MopacMcConnellResult wrote 3 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"SasaResult wrote 2 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"MopacCoulombResult wrote 5 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"ApbsFieldResult wrote 2 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"DsspResult wrote 4 arrays"}
+{"ts":"2026-04-14T11:21:46.655","level":"info","op":"WriteAllFeatures","detail":"CoulombResult wrote 5 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"DispersionResult wrote 3 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"MopacResult wrote 4 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"BiotSavartResult wrote 5 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"RingSusceptibilityResult wrote 1 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"HaighMallionResult wrote 3 arrays"}
+{"ts":"2026-04-14T11:21:46.656","level":"info","op":"WriteAllFeatures","detail":"McConnellResult wrote 3 arrays"}
+{"ts":"2026-04-14T11:21:46.657","level":"info","op":"WriteAllFeatures","detail":"PiQuadrupoleResult wrote 3 arrays"}
+{"ts":"2026-04-14T11:21:46.657","level":"info","op":"WriteAllFeatures","detail":"total: 53 arrays"}
+{"ts":"2026-04-14T11:21:46.657","level":"info","op":"ConformationResult::WriteAllFeatures [END]","detail":"elapsed=2ms"}

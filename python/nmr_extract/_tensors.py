@@ -456,7 +456,7 @@ class DsspScalars:
 
 
 class MopacScalars:
-    """(*, 4) MOPAC per-atom: charge, s_pop, p_pop, valency."""
+    """``(*, 4)`` MOPAC per-atom: charge, s_pop, p_pop, valency."""
 
     __slots__ = ("_data",)
 

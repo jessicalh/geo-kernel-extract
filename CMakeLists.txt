@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Default build type: optimised with debug symbols.
+# Override with: cmake -DCMAKE_BUILD_TYPE=Release ..
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+    message(STATUS "Build type: RelWithDebInfo (default)")
+endif()
+
 # ============================================================================
 # Dependencies
 # ============================================================================
@@ -282,66 +289,95 @@ target_link_libraries(nmr_extract PRIVATE nmr_shielding)
 
 
 # ============================================================================
-# Unit tests
+# Tests — tiered by cost and use case
+#
+#   unit_tests        <5s    No file I/O, pure logic
+#   structure_tests   ~5min  Static PDB path (1UBQ, P84477), no MOPAC
+#   trajectory_tests  ~5min  GROMACS fleet loader, trajectory path
+#   mopac_tests       ~1hr   MOPAC semiempirical (test_mopac, mutation, pipeline)
+#   batch_tests       ~2hr   Multi-protein sweep across consolidated/
+#
+# Separate executables (unchanged):
+#   smoke_tests, fleet_smoke_tests, fes_fleet_smoke_tests,
+#   job_spec_tests, gromacs_streaming_tests, water_field_tests
 # ============================================================================
 
 enable_testing()
+include(GoogleTest)
 
-add_executable(nmr_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
+# Helper: define a test executable with standard boilerplate
+macro(nmr_test_target NAME)
+    add_executable(${NAME}
+        tests/test_main.cpp
+        tests/TestEnvironment.cpp
+        ${ARGN}
+    )
+    target_compile_definitions(${NAME} PRIVATE
+        NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+    )
+    target_link_libraries(${NAME} PRIVATE nmr_shielding GTest::gtest)
+    gtest_add_tests(TARGET ${NAME})
+endmacro()
+
+# ── Unit tests (<5s) — no protein loading, pure logic ──────────────────
+nmr_test_target(unit_tests
     tests/test_spherical_tensor.cpp
     tests/test_amino_acid.cpp
     tests/test_ring_hierarchy.cpp
     tests/test_object_model.cpp
+    tests/test_naming_registry.cpp
+    tests/test_iupac_atom_identity.cpp
+    tests/test_runtime_environment.cpp
+    tests/test_calculator_config.cpp
+)
+
+# ── Structure tests (~5 min) — static PDB path, no MOPAC ──────────────
+nmr_test_target(structure_tests
     tests/test_pdb_loading.cpp
     tests/test_geometry_result.cpp
     tests/test_demo_result.cpp
     tests/test_two_conformations.cpp
     tests/test_traversal_dump.cpp
-    tests/test_naming_registry.cpp
-    tests/test_iupac_atom_identity.cpp
     tests/test_dssp_result.cpp
+    tests/test_protonation_detection.cpp
+    tests/test_atom_flat.cpp
+    tests/test_foundation_results.cpp
     tests/test_apbs_field_result.cpp
     tests/test_apbs_wired.cpp
-    tests/test_protonation_detection.cpp
-    tests/test_mopac_result.cpp
-    tests/test_atom_flat.cpp
-    tests/test_runtime_environment.cpp
-    tests/test_foundation_results.cpp
     tests/test_apbs_ff14sb.cpp
-    tests/test_full_pipeline.cpp
     tests/test_protonation_pipeline.cpp
-    tests/test_mutation_delta.cpp
     tests/test_mcconnell_result.cpp
-    tests/test_batch_mcconnell.cpp
     tests/test_coulomb_result.cpp
     tests/test_ring_susceptibility_result.cpp
-    tests/test_batch_coulomb_ringchi.cpp
     tests/test_hbond_result.cpp
     tests/test_biot_savart_result.cpp
     tests/test_haigh_mallion_result.cpp
-    tests/test_batch_biot_savart_haigh_mallion.cpp
     tests/test_pi_quadrupole_result.cpp
     tests/test_dispersion_result.cpp
-    tests/test_batch_piquad_disp.cpp
-    tests/test_pipeline_and_sample.cpp
     tests/test_calculation_runner.cpp
+    tests/test_pipeline_and_sample.cpp
     tests/test_write_features.cpp
+)
+
+# ── Trajectory tests (~5 min) — GROMACS fleet loader path ─────────────
+nmr_test_target(trajectory_tests
     tests/test_fleet_loader.cpp
-    tests/test_calculator_config.cpp
 )
 
-target_compile_definitions(nmr_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(nmr_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
+# ── MOPAC tests (~1 hr) — semiempirical charge calculation ────────────
+nmr_test_target(mopac_tests
+    tests/test_mopac_result.cpp
+    tests/test_full_pipeline.cpp
+    tests/test_mutation_delta.cpp
 )
 
-include(GoogleTest)
-gtest_add_tests(TARGET nmr_tests)
+# ── Batch tests (~2 hr) — multi-protein sweep across consolidated ─────
+nmr_test_target(batch_tests
+    tests/test_batch_mcconnell.cpp
+    tests/test_batch_coulomb_ringchi.cpp
+    tests/test_batch_biot_savart_haigh_mallion.cpp
+    tests/test_batch_piquad_disp.cpp
+)
 
 # ============================================================================
 # Smoke tests — end-to-end pipeline validation (~5 min)

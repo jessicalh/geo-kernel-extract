@@ -188,7 +188,7 @@ class WaterPolarizationGroup:
 
     @property
     def coherence(self) -> np.ndarray:
-        """Dipole coherence |sum d_i| / n (N,)."""
+        """Dipole coherence ``|sum d_i| / n`` (N,)."""
         return self.data[:, 8]
 
     @property

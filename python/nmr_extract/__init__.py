@@ -22,10 +22,14 @@ from ._tensors import (
     PerRingTypeT0,
     PerRingTypeT2,
     PerBondCategoryT2,
+    MopacScalars,
+    MopacGlobal,
+    AIMNet2Charges,
+    AIMNet2AimEmbedding,
+    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
-from ._tensors import AIMNet2Charges, AIMNet2AimEmbedding, AIMNet2ChargeSensitivity
 from ._protein import AIMNet2Group, WaterPolarizationGroup, EeqGroup
 
 __all__ = [
@@ -48,6 +52,8 @@ __all__ = [
     "AIMNet2Charges",
     "AIMNet2AimEmbedding",
     "AIMNet2ChargeSensitivity",
+    "MopacScalars",
+    "MopacGlobal",
     "AIMNet2Group",
     "WaterPolarizationGroup",
     "EeqGroup",

@@ -8,8 +8,9 @@ the extractor can produce.
    :members:
 
 ``CATALOG`` is a ``dict[str, ArraySpec]`` mapping every NPY filename
-stem to its metadata.  53 entries covering identity, ring calculators,
-bond calculators, MOPAC, APBS, Orca DFT, and mutation delta arrays.
+stem to its metadata.  74 entries covering identity, ring calculators,
+bond calculators, MOPAC, APBS, Orca DFT, AIMNet2, water field,
+hydration geometry, EEQ, and mutation delta arrays.
 
 ::
 

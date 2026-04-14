@@ -5,29 +5,51 @@ What we actually have, what each test does, and what to run when.
 
 ## Test Executables
 
+### By cost tier
+
 | Executable | Files | Runtime | What it covers |
 |------------|-------|---------|----------------|
-| `smoke_tests` | test_smoke.cpp | ~80 seconds | Single-protein pipeline: NoDft (1UBQ) + WithDft (P84477). All extractors, NPY write, log validation, binary comparison. |
-| `fleet_smoke_tests` | test_smoke_fleet.cpp | ~40 min | Fleet extraction: 1A6J_5789, 10 GROMACS poses, CHARMM36m charges, full pipeline per pose. The production path. |
-| `fes_fleet_smoke_tests` | test_smoke_fes_fleet.cpp | ~15 min | FES-sampler naming: 1I8X_4351 + 1HD6_4820, 6 descriptive-named poses each, verifies named output dirs. Run alone. |
-| `nmr_tests` | 37 test files | ~2.5 hours | Everything: unit tests, all integration tests, batch validation across consolidated proteins |
-| `job_spec_tests` | test_job_spec.cpp | ~10 min | JobSpec 5-mode parser and execution |
+| `unit_tests` | 8 | <5s | Pure logic: spherical tensor, amino acid, ring hierarchy, object model, naming, config. No file I/O. |
+| `structure_tests` | 24 | ~5 min | Static PDB path: 1UBQ + P84477. All classical calculators, APBS, protonation, DSSP, write features. No MOPAC. |
+| `trajectory_tests` | 1 | ~5 min | GROMACS fleet loader: TPR reading, multi-pose PDB, charge extraction. |
+| `smoke_tests` | 1 | ~80s | End-to-end pipeline: NoDft (1UBQ) + WithDft (P84477). NPY write, log validation, binary comparison. |
+| `gromacs_streaming_tests` | 1 | ~5 min | Trajectory streaming: XTC reading, PBC fix, AIMNet2 + H5 write. Critical path for H5 and AIMNet2. |
+| `water_field_tests` | 1 | ~5 min | Explicit solvent calculators on full-system trajectory. |
+| `job_spec_tests` | 1 | ~10 min | JobSpec 6-mode parser and execution. |
+| `fleet_smoke_tests` | 1 | ~40 min | Fleet extraction: 1A6J_5789, 10 GROMACS poses, CHARMM36m charges, full pipeline per pose. |
+| `fes_fleet_smoke_tests` | 1 | ~15 min | FES-sampler naming: 1I8X_4351 + 1HD6_4820, 6 descriptive-named poses each. |
+| `mopac_tests` | 3 | ~1 hr | MOPAC semiempirical: test_mopac_result, test_full_pipeline, test_mutation_delta. |
+| `batch_tests` | 4 | ~2 hr | Multi-protein sweep across consolidated/: all classical calculators on many proteins. |
+
+### By use case
+
+**Static structure** (--pdb, --orca, --mutant):
+`unit_tests`, `structure_tests`, `smoke_tests`, `mopac_tests`, `batch_tests`
+
+**Trajectory analysis** (--trajectory):
+`trajectory_tests`, `gromacs_streaming_tests`, `water_field_tests`,
+`fleet_smoke_tests`, `fes_fleet_smoke_tests`, `job_spec_tests`
 
 ```
-# Quick confidence check (~80s)
-cd build && ./smoke_tests
+# Always run (sub-second)
+cd build && ./unit_tests
 
-# Fleet extraction path (~40 min) — before production batch runs
+# Static structure regression (~5 min)
+./structure_tests
+
+# Trajectory development (~5 min each)
+./trajectory_tests
+./gromacs_streaming_tests    # H5 + AIMNet2 critical path
+./water_field_tests
+
+# Pipeline confidence (~80s, includes MOPAC)
+./smoke_tests
+
+# Before production batch runs (~40 min)
 ./fleet_smoke_tests
 
 # Run everything
 ctest
-
-# Run just the unit tests (no protein loading)
-./nmr_tests --gtest_filter='SphericalTensor*:AminoAcid*:ObjectModel*:NamingRegistry*:IupacAtomIdentity*:RingHierarchy*:RuntimeEnvironment*:CalculatorConfig*'
-
-# Run a specific calculator's tests
-./nmr_tests --gtest_filter='*BiotSavart*'
 ```
 
 
@@ -35,6 +57,10 @@ ctest
 
 This is the decision tree. Before starting a session, identify the change type and
 run the matching test tier.
+
+### Tier 0: Unit tests (always, <5s)
+
+Run `./unit_tests`. Fast sanity check on core logic — run before anything else.
 
 ### Tier 1: Smoke only (~80 seconds)
 
@@ -54,53 +80,44 @@ changed files, so you can distinguish "new output I intended" from "existing
 output that changed when it should not have." Re-bless after confirming the
 new output is correct.
 
-### Tier 2: Smoke + targeted unit tests (~5 min)
+### Tier 2: Structure tests (~5 min)
 
-Run `./smoke_tests && ./nmr_tests --gtest_filter='<pattern>'`.
+Run `./structure_tests`. This replaces the old `--gtest_filter` incantations.
 
-- **Added a new extractor**: smoke verifies pipeline integration. Then run the
-  new extractor's unit tests to verify analytical correctness.
-- **Changed PDB loading or topology**: run `*PdbLoading*:*TraversalDump*:*ObjectModel*`
-- **Changed protonation**: run `*Protonation*`
-- **Changed DSSP or HBond**: run `*Dssp*:*HBond*`
-- **Changed charge assignment**: run `*ApbsFf14sb*:*Foundation*:*Coulomb*`
+- **Added a new extractor**: smoke verifies pipeline integration, structure_tests
+  verifies analytical correctness for all classical calculators.
+- **Changed PDB loading or topology**
+- **Changed protonation, DSSP, HBond, charge assignment**
+- **Changed any classical calculator**
 
-### Tier 2.5: Fleet smoke (~40 min)
+### Tier 2.5: Trajectory tests (~5 min each)
 
-Run `./fleet_smoke_tests`. Required for:
+Run `./trajectory_tests`, `./gromacs_streaming_tests`, `./water_field_tests`.
 
-- **Changed GromacsEnsembleLoader** or TPR reading
-- **Changed OperationRunner::RunEnsemble**
-- **Changed CHARMM36m charge handling** or force field paths
+- **Changed GromacsProtein, GromacsFrameHandler, or accumulators**
+- **Changed AIMNet2 or H5 output** — `gromacs_streaming_tests` is the critical path
+- **Changed WaterField, HydrationShell, or HydrationGeometry** — `water_field_tests`
+- **Changed fleet loader or TPR reading** — `trajectory_tests`
+
+### Tier 2.5b: Fleet smokes (~40 min / ~15 min)
+
+Run `./fleet_smoke_tests` and/or `./fes_fleet_smoke_tests`.
+
 - **Before launching a production batch** (700 proteins x 10 poses)
-- **After changing GROMACS library paths** or updating libgromacs
+- **Changed CHARMM36m charge handling** or force field paths
+- **Changed pose PDB filename resolution** (fes_fleet)
 
-This loads 1A6J_5789 (2480 atoms, 10 poses) through the exact path that
-production extraction uses: BuildFromGromacs -> RunAllFrames -> WriteAllFeatures
-per frame. Binary comparison on frame_001 only (all frames use the same code
-path; one is enough to detect regressions).
+### Tier 3: Full suite
 
-### Tier 2.5b: FES fleet smoke (~15 min)
-
-Run `./fes_fleet_smoke_tests`. Required for:
-
-- **Changed pose PDB filename resolution** (descriptive naming support)
-- **Changed output directory naming** (pose_names passthrough)
-- **Before launching fes-sampler extraction** across scan machines
-
-This loads 1I8X_4351 (422 atoms) + 1HD6_4820 (526 atoms), 6 fes-sampler
-poses each with descriptive names (boltzmann_minimum, max_dev_phi_*, etc.).
-Verifies output directories carry source PDB names with _frame tags.
-Run alone — 12 MOPAC runs.
-
-### Tier 3: Full suite (~2.5 hours)
-
-Run `ctest` or `./nmr_tests`. Required for:
+Run `ctest` or run each target individually. Required for:
 
 - **Changed fundamental data structures** (Atom, Ring, Protein, ProteinConformation)
-- **Changed the batch pipeline** (OperationRunner::RunMutantComparison, RunEnsemble)
 - **Before merging to master** after any non-trivial change
 - **When in doubt**
+
+Individual slow targets:
+- `./mopac_tests` (~1 hr) — MOPAC semiempirical, mutation delta, full pipeline
+- `./batch_tests` (~2 hr) — multi-protein sweep across consolidated/
 
 
 ## Smoke Test Design

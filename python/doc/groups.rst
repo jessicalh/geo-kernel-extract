@@ -38,3 +38,18 @@ Each calculator's outputs are grouped into a frozen dataclass.
 
 .. autoclass:: nmr_extract._protein.DeltaGroup
    :members:
+
+.. autoclass:: nmr_extract._protein.AIMNet2Group
+   :members:
+
+.. autoclass:: nmr_extract._protein.WaterFieldGroup
+   :members:
+
+.. autoclass:: nmr_extract._protein.HydrationGroup
+   :members:
+
+.. autoclass:: nmr_extract._protein.WaterPolarizationGroup
+   :members:
+
+.. autoclass:: nmr_extract._protein.EeqGroup
+   :members:

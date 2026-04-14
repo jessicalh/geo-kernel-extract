@@ -73,20 +73,18 @@ used if present, always.
 
 ---
 
-## Use Case D: Feature extraction for ML
+## Use Case D: Feature extraction for ML (static structures)
 
 I am providing geometry kernel output to a high-level e3nn NMR
 prediction (or other physical prediction model) and am acting as a
 feature extractor. I have an optional DFT, a set of optional PDBs
-which may or may not be protonated, and an optional set of extracted
-poses each with probability (see tests).
+which may or may not be protonated.
 
 If I have a DFT I include it in the path. If I have PDBs that are
 not protonated I protonate them with the method specified on the
-command line. If I have a bunch of trajectory poses I run the
-calculators on all of them. Then I write it all to disk.
+command line. Then I write it all to disk.
 
-**Input:** mix of sources, specified on command line
+**Input:** mix of static structure sources, specified on command line
 **Output:** everything written to disk
 
 For each input item:
@@ -94,8 +92,38 @@ For each input item:
 - If PDB needing protonation: use case A path (protonate with
   CLI-specified method, pipeline), write
 - If PDB already protonated: load, assign charges, pipeline, write
-- If trajectory (GROMACS): load protein once, run pipeline on each
-  frame, write
+
+---
+
+## Use Case E: Trajectory extraction (GROMACS ensemble)
+
+I have a full-system GROMACS trajectory — protein + explicit water
++ ions — and I want to extract geometric kernels across all frames.
+
+**Input:** TPR (topology), XTC (trajectory), optional EDR (energies)
+**Output:** per-frame NPY arrays, per-atom trajectory catalog (CSV),
+H5 master file with Welford rollup statistics
+
+    nmr_extract --trajectory --tpr topology.tpr --xtc trajectory.xtc \
+                --no-mopac --no-coulomb --output /path/to/output
+
+Two-pass architecture:
+1. **Pass 1 (streaming):** GromacsFrameHandler reads all XTC frames,
+   applies PBC fix, runs lightweight calculators per frame (classical
+   kernels, AIMNet2, APBS, DSSP, SASA, WaterField, HydrationShell,
+   HydrationGeometry, EEQ). Accumulators on GromacsProteinAtom track
+   Welford statistics (mean + std) across frames. Frame-to-frame
+   DeltaTrackers monitor charge fluctuation, SASA change, water
+   exchange rate, SS transitions, chi rotamer flips.
+2. **Pass 2 (selected frames):** extract selected representative
+   frames with full calculators, write NPY per frame.
+
+GromacsProtein writes the H5 master file (per-frame positions,
+48-column Welford rollup, bond length statistics, frame times) and
+CSV catalog. The Python SDK reads both via `load_trajectory()`.
+
+This is CLI-only. The viewer returns immediately if trajectory mode
+is dispatched — it is a batch operation, not interactive
 
 ---
 
@@ -116,6 +144,19 @@ what we do, that is what we do.
 If we create a model that calculators can draw on, it will be its
 own thing. This system can generate results for it but does not and
 should not say how that might look.
+
+### Two executables, one parser
+
+Both `nmr_extract` and `nmr-viewer` parse command lines via
+`JobSpec` (src/JobSpec.h). The viewer accepts all the same modes
+as nmr_extract plus `--rest-port`. The difference:
+
+- **nmr_extract:** headless, writes NPY and exits. MOPAC and
+  Coulomb on by default. All 5 modes. The production tool.
+- **nmr-viewer:** Qt/VTK GUI. MOPAC and Coulomb hardcoded off
+  (interactive, not batch). `--output` optional — omit to just
+  visualise. Trajectory mode returns immediately (batch only).
+  REST API on port 9147 for programmatic control.
 
 ---
 

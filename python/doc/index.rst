@@ -23,6 +23,7 @@ Quick start::
    :maxdepth: 2
 
    loading
+   trajectory
    tensors
    ring
    groups

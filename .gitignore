@@ -40,6 +40,18 @@ _deps/
 CTestTestfile.cmake
 .qt/
 
+# HighFive: only include/ is needed; ignore the rest of the upstream tree
+extern/HighFive/CMake/
+extern/HighFive/CMakeLists.txt
+extern/HighFive/CHANGELOG.md
+extern/HighFive/README.md
+extern/HighFive/codecov.yml
+extern/HighFive/doc/
+extern/HighFive/src/
+extern/HighFive/tests/
+extern/HighFive/deps/
+extern/HighFive/.*
+
 # Analysis outputs (regenerable from scripts)
 learn/src/output/
 

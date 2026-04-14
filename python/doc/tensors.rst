@@ -57,3 +57,18 @@ MOPAC scalars
 .. autoclass:: nmr_extract.MopacGlobal
    :members:
    :undoc-members:
+
+AIMNet2
+-------
+
+.. autoclass:: nmr_extract.AIMNet2Charges
+   :members:
+   :undoc-members:
+
+.. autoclass:: nmr_extract.AIMNet2AimEmbedding
+   :members:
+   :undoc-members:
+
+.. autoclass:: nmr_extract.AIMNet2ChargeSensitivity
+   :members:
+   :undoc-members:
