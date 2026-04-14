@@ -27,16 +27,52 @@
 namespace nmr {
 
 // Per-frame energy terms extracted from GROMACS .edr file.
+// All energies in kJ/mol (GROMACS native), all else in stated units.
 struct GromacsEnergy {
     double time_ps       = 0.0;   // frame time (ps)
+
+    // ── Electrostatic ──────────────────────────────────────────
     double coulomb_sr    = 0.0;   // PME real-space Coulomb (kJ/mol)
     double coulomb_recip = 0.0;   // PME reciprocal-space Coulomb (kJ/mol)
     double coulomb_14    = 0.0;   // 1-4 intramolecular Coulomb (kJ/mol)
+
+    // ── Bonded (internal strain) ───────────────────────────────
+    double bond          = 0.0;   // bond stretching (kJ/mol)
+    double angle         = 0.0;   // harmonic angle bending (kJ/mol)
+    double urey_bradley  = 0.0;   // Urey-Bradley 1-3 distance (kJ/mol)
+    double proper_dih    = 0.0;   // proper dihedral (kJ/mol)
+    double improper_dih  = 0.0;   // improper dihedral — planarity (kJ/mol)
+    double cmap_dih      = 0.0;   // CMAP backbone correction (kJ/mol)
+
+    // ── Van der Waals ──────────────────────────────────────────
     double lj_sr         = 0.0;   // Lennard-Jones short-range (kJ/mol)
+    double lj_14         = 0.0;   // 1-4 LJ (kJ/mol)
+    double disper_corr   = 0.0;   // long-range dispersion correction (kJ/mol)
+
+    // ── Thermodynamic state ────────────────────────────────────
     double potential     = 0.0;   // total potential energy (kJ/mol)
+    double kinetic       = 0.0;   // total kinetic energy (kJ/mol)
+    double total_energy  = 0.0;   // potential + kinetic (kJ/mol)
+    double enthalpy      = 0.0;   // H = E + pV (kJ/mol)
     double temperature   = 0.0;   // system temperature (K)
-    double pressure      = 0.0;   // system pressure (bar)
+    double pressure      = 0.0;   // scalar pressure (bar)
     double volume        = 0.0;   // box volume (nm^3)
+    double density       = 0.0;   // system density (kg/m^3)
+
+    // ── Box dimensions (NPT cell breathing) ────────────────────
+    double box_x         = 0.0;   // (nm)
+    double box_y         = 0.0;   // (nm)
+    double box_z         = 0.0;   // (nm)
+
+    // ── Virial tensor (internal stress, 3x3 symmetric) ─────────
+    double vir[9]        = {};    // XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ (kJ/mol)
+
+    // ── Pressure tensor (3x3) ──────────────────────────────────
+    double pres[9]       = {};    // XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ (bar)
+
+    // ── Per-group temperature ──────────────────────────────────
+    double T_protein     = 0.0;   // protein group temperature (K)
+    double T_non_protein = 0.0;   // solvent+ions temperature (K)
 
     // Total Coulomb = SR + reciprocal (excludes 1-4 which is bookkeeping)
     double CoulombTotal() const { return coulomb_sr + coulomb_recip; }
@@ -51,12 +87,10 @@ public:
         return {};  // reads from file, no conformation dependencies
     }
 
-    // Factory: read .edr file, find frame nearest to target_time_ps.
-    // Returns nullptr if .edr cannot be read or no matching frame found.
+    // Factory: create from preloaded energy data (from GromacsRunContext).
     static std::unique_ptr<GromacsEnergyResult> Compute(
         ProteinConformation& conf,
-        const std::string& edr_path,
-        double target_time_ps);
+        const GromacsEnergy& energy);
 
     const GromacsEnergy& Energy() const { return energy_; }
 

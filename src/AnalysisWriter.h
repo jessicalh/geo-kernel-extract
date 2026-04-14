@@ -54,6 +54,14 @@ public:
     // complete or doesn't exist — no partial writes.
     void WriteH5(const std::string& path) const;
 
+    // Write a PDB snapshot of the protein at the given conformation.
+    // Uses PBC-fixed positions already on the conformation — no temp
+    // files, no re-reading the trajectory. For external geometry
+    // validation (MolProbity) independent of our tensor math.
+    static void WritePdb(const Protein& protein,
+                         const ProteinConformation& conf,
+                         const std::string& path);
+
     // Number of frames harvested so far.
     size_t FrameCount() const { return n_frames_; }
 
@@ -233,6 +241,59 @@ private:
     // ── Coulomb shielding SphericalTensor ───────────────────────
     std::vector<double> coulomb_shielding_;        // (T, N, 9)
 
+    // ── Bonded energy group (per-atom, from BondedEnergyResult) ─
+    std::vector<double> bonded_bond_;          // (T, N)
+    std::vector<double> bonded_angle_;         // (T, N)
+    std::vector<double> bonded_ub_;            // (T, N)
+    std::vector<double> bonded_proper_;        // (T, N)
+    std::vector<double> bonded_improper_;      // (T, N)
+    std::vector<double> bonded_cmap_;          // (T, N)
+    std::vector<double> bonded_total_;         // (T, N)
+
+    // ── Energy group (per-frame scalars + tensors from EDR) ────
+    std::vector<double> energy_coulomb_sr_;     // (T,)
+    std::vector<double> energy_coulomb_recip_;  // (T,)
+    std::vector<double> energy_bond_;           // (T,)
+    std::vector<double> energy_angle_;          // (T,)
+    std::vector<double> energy_ub_;             // (T,)
+    std::vector<double> energy_proper_dih_;     // (T,)
+    std::vector<double> energy_improper_dih_;   // (T,)
+    std::vector<double> energy_cmap_;           // (T,)
+    std::vector<double> energy_lj_sr_;          // (T,)
+    std::vector<double> energy_potential_;      // (T,)
+    std::vector<double> energy_kinetic_;        // (T,)
+    std::vector<double> energy_enthalpy_;       // (T,)
+    std::vector<double> energy_temperature_;    // (T,)
+    std::vector<double> energy_pressure_;       // (T,)
+    std::vector<double> energy_volume_;         // (T,)
+    std::vector<double> energy_density_;        // (T,)
+    std::vector<double> energy_box_;            // (T, 3) — box_x, box_y, box_z
+    std::vector<double> energy_virial_;         // (T, 9) — 3x3 tensor
+    std::vector<double> energy_pres_tensor_;    // (T, 9) — 3x3 tensor
+    std::vector<double> energy_T_protein_;      // (T,)
+    std::vector<double> energy_T_non_protein_;  // (T,)
+
+    // ── Dihedrals group (per-residue, T * R) ────────────────────
+    std::vector<double> dih_phi_;          // (T, R) radians
+    std::vector<double> dih_psi_;          // (T, R) radians
+    std::vector<double> dih_omega_;        // (T, R) radians, CA-C-N-CA
+    std::vector<double> dih_chi1_;         // (T, R) radians
+    std::vector<double> dih_chi2_;         // (T, R) radians
+    std::vector<double> dih_chi3_;         // (T, R) radians
+    std::vector<double> dih_chi4_;         // (T, R) radians
+    std::vector<double> dih_chi1_cos_;     // (T, R)
+    std::vector<double> dih_chi1_sin_;     // (T, R)
+    std::vector<double> dih_chi2_cos_;     // (T, R)
+    std::vector<double> dih_chi2_sin_;     // (T, R)
+    std::vector<double> dih_chi3_cos_;     // (T, R)
+    std::vector<double> dih_chi3_sin_;     // (T, R)
+    std::vector<double> dih_chi4_cos_;     // (T, R)
+    std::vector<double> dih_chi4_sin_;     // (T, R)
+
+    // ── DSSP group (per-residue, T * R) ─────────────────────────
+    std::vector<int8_t> dssp_ss8_;         // (T, R) 8-class SS
+    std::vector<double> dssp_hbond_energy_;// (T, R) strongest acceptor energy
+
     // ── Internal helpers (implementation in .cpp) ─────────────────
 
     // Append a SphericalTensor's 9 components to a flat buffer.
@@ -242,6 +303,11 @@ private:
     // Append a Vec3 to a flat buffer.
     static void AppendVec3(std::vector<double>& buf,
                            const Vec3& v);
+
+    // Compute dihedral angle (radians) from four atom positions.
+    // Returns NaN if degenerate (collinear atoms).
+    static double Dihedral(const Vec3& p0, const Vec3& p1,
+                           const Vec3& p2, const Vec3& p3);
 };
 
 }  // namespace nmr

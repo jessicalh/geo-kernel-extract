@@ -121,7 +121,7 @@ Session notes, early specs, analysis passes, resolved feedback.
 Reference only.
 
 ### Source
-- **src/** — 54 headers, ~14.5K lines
+- **src/** — 74 headers, 62 .cpp files
 - **ui/src/** — 14 viewer source files (Qt6/VTK)
 - **tests/** — GTest suite (287 tests, 40 test files, ~2.5 hours with MOPAC)
 - **extern/** — header-only libraries (nanoflann, sphericart)
@@ -130,19 +130,20 @@ Reference only.
 - **/shared/2026Thesis/consolidated/** — 723 WT+ALA protein pairs
 - **tests/data/fleet** — GROMACS CHARMM36m ensemble
 
-## Current Status (2026-04-13)
+## Current Status (2026-04-14)
 
-19 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
+20 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
 WaterField, HydrationShell, GromacsEnergy, HydrationGeometry, EEQ,
-plus foundation: Geometry, SpatialIndex, Enrichment). DSSP extended
-with 8-class SS, H-bond energies, chi1-4. Calibration settled at
-R²=0.818 (per-element ridge, 55 kernels).
+BondedEnergy, plus foundation: Geometry, SpatialIndex, Enrichment).
+DSSP extended with 8-class SS, H-bond energies, chi1-4. Calibration
+settled at R²=0.818 (per-element ridge, 55 kernels).
 
 Two-pass trajectory streaming: GromacsProtein (adapter +
 accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
-frame lifecycle). Tested end-to-end on 1ZR7_6721 (479 atoms, 3525
-water, 25 ions). 74 NPY arrays registered in SDK catalog (added water_polarization,
-eeq_charges, eeq_cn).
+frame lifecycle) + GromacsRunContext (bonded params, EDR energy
+frames, cursor state — read once, O(1) per frame). Tested end-to-end
+on 1ZR7_6721 (479 atoms, 3525 water, 25 ions, 501 frames). 75 NPY
+arrays registered in SDK catalog.
 
 **H5 master file (2026-04-13):** HighFive integration complete.
 WriteH5 produces one file per protein with per-frame positions
@@ -172,8 +173,18 @@ EEQ calculator (item 4, writes eeq_charges.npy + eeq_cn.npy).
 Remaining: water-embedded AIMNet2 (item 3), E-field variance
 routing (item 5).
 
-**Next work:** Analysis trajectory mode (`--trajectory --analysis`).
-See **spec/ANALYSIS_TRAJECTORY_2026-04-14.md** for the tentative
-design: exhaustive per-frame H5 with ridge+MLP predictions and
-projections onto Stage 1 eigenvectors. 10-protein workspace at
-`/shared/2026Thesis/fleet_calibration/`.
+**Analysis trajectory mode (2026-04-14):** AnalysisWriter harvests
+all per-atom and per-residue data from each sampled frame, writes
+`{protein_id}_analysis.h5` at end. 21 H5 groups: raw physics
+(ring_current, efg, bond_aniso, quadrupole, dispersion, hbond,
+sasa, water, charges, aimnet2_embedding, per_ring K=6), per-residue
+dihedrals/ (phi, psi, omega, chi1-4 with cos/sin), dssp/ (ss8,
+hbond_energy), bonded_energy/ (per-atom CHARMM36m bond/angle/UB/
+proper/improper/CMAP decomposition), energy/ (42 EDR terms: bonded
+strain, electrostatic, VdW, thermodynamic state, box dimensions,
+virial tensor, pressure tensor, per-group temperature). PDB + NPY
+snapshots at ~1 ns intervals for MolProbity + SDK cross-check.
+GromacsRunContext holds bonded params + preloaded EDR + cursor state.
+Predictions/ and projections/ groups pending (need Python model export).
+See **spec/ANALYSIS_TRAJECTORY_2026-04-14.md** for full design.
+10-protein workspace at `/shared/2026Thesis/fleet_calibration/`.

@@ -27,6 +27,7 @@
 #include "GromacsProteinAtom.h"
 #include "GromacsEnsembleLoader.h"
 #include "FullSystemReader.h"
+#include "GromacsRunContext.h"
 
 #include <memory>
 #include <string>
@@ -44,11 +45,19 @@ public:
     // Build from fleet paths (pre-extracted PDB poses).
     bool Build(const FleetPaths& paths);
 
-    // Build from full-system trajectory (TPR only).
-    // Reads topology for atom ranges (protein/water/ion), builds
-    // Protein from TPR. Does NOT finalize — FinalizeProtein() must
-    // be called after the first XTC frame provides positions.
-    bool BuildFromTrajectory(const std::string& tpr_path);
+    // Build from full-system trajectory.
+    // Reads TPR for topology (atom ranges, charges, bonded parameters).
+    // Reads EDR if provided (all frames, preloaded for O(1) per-frame lookup).
+    // Does NOT finalize — FinalizeProtein() must be called after the
+    // first XTC frame provides positions for bond detection.
+    bool BuildFromTrajectory(const std::string& tpr_path,
+                             const std::string& edr_path = "");
+
+    // The run context: bonded params, EDR, cursor state.
+    // Lifetime = GromacsProtein lifetime.
+    // Mutable accessor for GromacsFrameHandler to advance the cursor.
+    const GromacsRunContext& run_context() const { return run_ctx_; }
+    GromacsRunContext& run_context_mut() { return run_ctx_; }
 
     // Finalize protein construction using first frame positions.
     // Calls FinalizeConstruction (bond detection) + AddMDFrame
@@ -72,6 +81,9 @@ public:
     // FullSystemReader: topology + frame splitting. Borrowed by
     // GromacsFrameHandler for ExtractFrame on each frame.
     const FullSystemReader& sys_reader() const { return sys_reader_; }
+
+    // Convenience delegates to run_context().
+    const BondedParameters& bonded_params() const { return run_ctx_.bonded_params; }
 
     // ── Per-atom trajectory accumulators ─────────────────────────
 
@@ -116,6 +128,8 @@ private:
 
     std::unique_ptr<Protein> protein_;
     std::unique_ptr<ChargeSource> charges_;
+    int net_charge_ = 0;
+    GromacsRunContext run_ctx_;
     FullSystemReader sys_reader_;
     std::vector<GromacsProteinAtom> atoms_;
     std::vector<GromacsProteinBond> bonds_accum_;
@@ -132,7 +146,6 @@ private:
     std::vector<std::string> pose_names_;
     std::string protein_id_;
     std::string error_;
-    int net_charge_ = 0;
 };
 
 }  // namespace nmr

@@ -61,15 +61,32 @@ output, but no persistent test fixture exists under tests/data/.
 Generate by running a small trajectory extraction and committing the
 output.
 
-### validate_smoke.py does not check new arrays
-The Python smoke validation script does not include the water/hydration/
-energy filenames in its per-atom or tensor validation lists.
+### ~~validate_smoke.py does not check new arrays~~
+~~The Python smoke validation script does not include the water/hydration/
+energy filenames in its per-atom or tensor validation lists.~~
+— Done. Added water, hydration, SASA, EEQ, AIMNet2 arrays to
+per_atom_files list. 2026-04-14
 
-### spec/EXTRACTION_SDK.md stale
-Says "53 registered arrays covering all 10 calculators". Actual count
+### ~~spec/EXTRACTION_SDK.md stale~~
+~~Says "53 registered arrays covering all 10 calculators". Actual count
 is now 60 arrays covering 14 calculators (added SASA, WaterField,
-HydrationShell, GromacsEnergy). Update the count and add descriptions
-of the new calculators.
+HydrationShell, GromacsEnergy).~~ — Done. Updated to 74 arrays,
+added EEQ and HydrationGeometry descriptions. 2026-04-14
+
+### ~~AnalysisWriter missing dihedrals/ and dssp/ groups~~
+~~The analysis H5 spec calls for per-residue (T,R) dihedrals
+(phi, psi, omega, chi1-4 with cos/sin pairs) and DSSP (ss8,
+hbond_energy). Not harvested, not written.~~
+— Done. Dihedral harvesting (phi/psi from DSSP, omega from
+backbone indices, chi1-4 from Residue::chi + positions) and
+DSSP ss8/hbond_energy added to AnalysisWriter. H5 writing for
+both groups. 2026-04-14
+
+### ~~PDB snapshot output for analysis mode~~
+~~No external geometry validation path. MolProbity needs a PDB.~~
+— Done. AnalysisWriter::WritePdb (static, no temp files) writes
+{protein_id}_analysis_{ns}ns.pdb at ~1 ns intervals from
+PBC-fixed positions (do_pbc_mtop via MoleculeWholer). 2026-04-14
 
 ## ~~Must fix: HydrationGeometry + EEQ trajectory integration~~
 

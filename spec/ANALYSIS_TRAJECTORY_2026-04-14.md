@@ -305,6 +305,47 @@ dssp/
   ss8                  (T,R)       int8      # 8-class secondary structure
   hbond_energy         (T,R)       float64   # strongest acceptor energy
 
+bonded_energy/
+  # Per-atom CHARMM36m bonded energy decomposition (kJ/mol,
+  # split evenly among participating atoms).
+  bond                 (T,N)       float64   # harmonic bond stretch
+  angle                (T,N)       float64   # harmonic angle bend
+  urey_bradley         (T,N)       float64   # UB 1-3 distance term
+  proper_dih           (T,N)       float64   # periodic proper dihedral
+  improper_dih         (T,N)       float64   # harmonic improper (planarity)
+  cmap                 (T,N)       float64   # CMAP backbone correction
+  total                (T,N)       float64   # sum of all above
+
+energy/
+  # Per-frame whole-system energy from GROMACS .edr (preloaded).
+  # Electrostatic
+  coulomb_sr           (T,)        float64   # PME real-space (kJ/mol)
+  coulomb_recip        (T,)        float64   # PME reciprocal (kJ/mol)
+  # Bonded (whole-system, for cross-check against per-atom sum)
+  bond                 (T,)        float64
+  urey_bradley         (T,)        float64
+  proper_dih           (T,)        float64
+  improper_dih         (T,)        float64
+  cmap_dih             (T,)        float64
+  # VdW
+  lj_sr                (T,)        float64
+  # Thermodynamic state
+  potential            (T,)        float64
+  kinetic              (T,)        float64
+  enthalpy             (T,)        float64
+  temperature          (T,)        float64   # K
+  pressure             (T,)        float64   # bar
+  volume               (T,)        float64   # nm^3
+  density              (T,)        float64   # kg/m^3
+  # Box dimensions (NPT cell breathing)
+  box                  (T,3)       float64   # nm
+  # Virial and pressure tensors (3x3)
+  virial               (T,9)       float64   # kJ/mol
+  pressure_tensor      (T,9)       float64   # bar
+  # Per-group temperature
+  T_protein            (T,)        float64   # K
+  T_non_protein        (T,)        float64   # K
+
 predictions/
   # Ridge applied to this frame's kernels. Weights from Stage 1
   # calibration (per-element, 55 kernels). Additive: total = sum
@@ -501,17 +542,45 @@ by what the UI can render meaningfully. Not designed here.
 
 ---
 
-## Implementation scope (Phase 1 only)
+## Implementation status (Phase 1)
 
-### C++ changes
+### C++ — DONE (2026-04-14)
 
-1. **AnalysisWriter** class (new). Buffers per-frame data from
-   ConformationAtom. Writes the analysis H5 via HighFive at end.
-   One method per H5 group: `HarvestRingCurrent(conf)`,
-   `HarvestEFG(conf)`, etc. Each reads fixed fields from
-   ConformationAtom / FindResult<T>. No runtime configuration.
+1. **AnalysisWriter** (src/AnalysisWriter.h/cpp). Buffers per-frame
+   data from ConformationAtom + DsspResult + GromacsEnergyResult +
+   BondedEnergyResult. Writes analysis H5 via HighFive at end.
+   Also: `WritePdb()` static method for PDB snapshots, `Dihedral()`
+   helper for omega/chi from four positions. 21 H5 groups written.
 
-2. **RidgePredictor** class (new). Loads calibrated ridge weights
+1b. **GromacsRunContext** (src/GromacsRunContext.h/cpp). Trajectory
+   run context: bonded parameters from TPR, preloaded EDR energy
+   frames (all 42 terms), cursor state (frame index, time, current
+   energy). Owned by GromacsProtein. AdvanceFrame() called by frame
+   handler per frame. O(log T) energy lookup by time.
+
+1c. **BondedEnergyResult** (src/BondedEnergyResult.h/cpp).
+   ConformationResult: per-atom CHARMM36m bonded energy decomposition
+   (bond stretch, angle, Urey-Bradley, proper dihedral, improper,
+   CMAP). Evaluates force field energy functions from positions +
+   parameters extracted from TPR. Split evenly among participating
+   atoms. WriteFeatures produces bonded_energy.npy (N, 7).
+
+1d. **GromacsEnergyResult** expanded from 9 to 42 EDR columns
+   (bonded strain, thermodynamic state, box dimensions, virial
+   tensor, pressure tensor, per-group temperature).
+
+1e. **Default TOML config loading** — nmr_extract loads
+   calculator_params.toml from NMR_DATA_DIR when no --config given.
+   AIMNet2 model path resolved automatically.
+
+1f. **DEG_TO_RAD** in PhysicalConstants.h. GROMACS stores angle
+   equilibrium values in degrees in the TPR iparams.
+
+1g. **PDB + NPY snapshots** at ~1 ns intervals. PDB named
+   `{protein_id}_analysis_{ns}ns.pdb` inside snapshot directory
+   with full NPY extraction from WriteAllFeatures.
+
+2. **RidgePredictor** class (new, PENDING). Loads calibrated ridge weights
    from a file (exported from Python calibration — per-element
    weight vectors, normalization statistics). Per frame: assembles
    the 55 kernel T2 vectors from ConformationAtom, applies

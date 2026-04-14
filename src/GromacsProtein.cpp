@@ -7,6 +7,7 @@
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -49,11 +50,18 @@ bool GromacsProtein::Build(const FleetPaths& paths) {
 
 // ── Build (trajectory path — TPR is authoritative) ───────────────
 
-bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path) {
+bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path,
+                                         const std::string& edr_path) {
 
     // Full-system topology for frame splitting (protein/water/ion ranges)
     if (!sys_reader_.ReadTopology(tpr_path)) {
         error_ = "TPR topology: " + sys_reader_.error();
+        return false;
+    }
+
+    // Run context: bonded params + EDR, using the already-parsed reader.
+    if (!run_ctx_.Build(sys_reader_, tpr_path, edr_path)) {
+        error_ = "run context: " + run_ctx_.error;
         return false;
     }
 
@@ -69,8 +77,6 @@ bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path) {
     }
 
     protein_ = std::move(build.protein);
-    charges_ = std::move(build.charges);
-    net_charge_ = build.net_charge;
 
     // NOTE: Protein is not finalized yet — FinalizeProtein() needs
     // positions from the first XTC frame for bond detection. Called
@@ -80,7 +86,10 @@ bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path) {
         protein_id_ + ": " +
         std::to_string(protein_->AtomCount()) + " protein, " +
         std::to_string(sys_reader_.Topology().water_count) + " water, " +
-        std::to_string(sys_reader_.Topology().ion_count) + " ions");
+        std::to_string(sys_reader_.Topology().ion_count) + " ions" +
+        (run_ctx_.HasEdr() ? ", EDR loaded" : "") +
+        (run_ctx_.HasBondedParams() ?
+            ", " + std::to_string(run_ctx_.bonded_params.interactions.size()) + " bonded" : ""));
 
     return true;
 }

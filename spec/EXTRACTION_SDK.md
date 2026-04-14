@@ -4,13 +4,14 @@
 
 A Python reader for the NPY files that the C++ extractor produces.
 Typed objects with `e3nn.o3.Irreps`, `torch.Tensor`, and `numpy`
-access.  70 registered arrays covering identity, all classical
+access.  75 registered arrays covering identity, all classical
 calculators (BiotSavart, HaighMallion, McConnell, PiQuadrupole,
 Dispersion, RingSusceptibility, HBond, Coulomb, APBS), DSSP + chi
-angles, SASA, AIMNet2 charges + EFG, explicit-water field and
-hydration shell (trajectory), GROMACS energy (trajectory), MOPAC
-core + Coulomb + McConnell, Orca DFT, mutation delta, per-ring
-sparse contributions, and ring geometry.
+angles, SASA + surface normal, AIMNet2 charges + EFG + embedding,
+EEQ charges + coordination number, explicit-water field and
+hydration shell + hydration geometry (trajectory), GROMACS energy
+(trajectory), MOPAC core + Coulomb + McConnell, Orca DFT,
+mutation delta, per-ring sparse contributions, and ring geometry.
 
 ## Why it exists
 

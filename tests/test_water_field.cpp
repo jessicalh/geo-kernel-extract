@@ -95,8 +95,6 @@ TEST(WaterField, ReadTopologyAndExtractFrame) {
     opts.skip_coulomb = true;
     opts.charge_source = build.charges.get();
     opts.solvent = &solvent;
-    opts.edr_path = FULLSYS_DIR + "/walker_0/md.edr";
-    opts.frame_time_ps = static_cast<double>(frames[0].time);
 
     nmr::RunResult rr = nmr::OperationRunner::Run(conf, opts);
     ASSERT_TRUE(rr.Ok()) << rr.error;

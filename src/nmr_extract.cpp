@@ -234,15 +234,18 @@ static int RunTrajectory(const JobSpec& spec) {
         "trajectory mode: tpr=" + spec.traj_tpr +
         " xtc=" + spec.traj_xtc);
 
-    // Build adapter (Protein from TPR, topology for frame splitting)
+    // Build adapter (Protein from TPR, run context from TPR + EDR)
     GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_tpr)) {
+    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_edr)) {
         fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
         return 1;
     }
 
+    const auto& ctx = gp.run_context();
+
     // Canonical fleet scan opts: everything EXCEPT MOPAC and vacuum Coulomb.
     // APBS, DSSP, AIMNet2 all run every frame for accumulation.
+    // Bonded energy from run context. EDR via context cursor (set by frame handler).
     // Defined BEFORE Open() so frame 0 uses the same calculator set.
     RunOptions scan_opts;
     scan_opts.charge_source = gp.charges();
@@ -251,6 +254,8 @@ static int RunTrajectory(const JobSpec& spec) {
     scan_opts.skip_apbs    = false;   // solvated PB field every frame
     scan_opts.skip_dssp    = false;   // chi angles, SS, H-bond energies
     scan_opts.aimnet2_model = g_aimnet2_model.get();  // charges every frame
+    if (ctx.HasBondedParams())
+        scan_opts.bonded_params = &ctx.bonded_params;
 
     // Open trajectory — reads first frame with scan_opts, finalizes
     // protein (bond detection, conformation 0), sets up PBC fix
@@ -303,8 +308,9 @@ static int RunTrajectory(const JobSpec& spec) {
     extract_opts.skip_apbs    = spec.skip_apbs;
     extract_opts.skip_coulomb = spec.skip_coulomb;
     extract_opts.aimnet2_model = g_aimnet2_model.get();
-    if (!spec.traj_edr.empty())
-        extract_opts.edr_path = spec.traj_edr;
+    if (ctx.HasBondedParams())
+        extract_opts.bonded_params = &ctx.bonded_params;
+    // EDR energy per frame is set by the frame handler from the context cursor.
 
     if (!handler.Reopen()) {
         fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
@@ -347,15 +353,18 @@ static int RunAnalysis(const JobSpec& spec) {
         "analysis mode: tpr=" + spec.traj_tpr +
         " xtc=" + spec.traj_xtc);
 
-    // Build adapter (Protein from TPR)
+    // Build adapter (Protein from TPR, run context from TPR + EDR)
     GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_tpr)) {
+    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_edr)) {
         fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
         return 1;
     }
 
+    const auto& ctx = gp.run_context();
+
     // Analysis always runs everything except MOPAC and vacuum Coulomb.
     // APBS and AIMNet2 are mandatory — no opt-out.
+    // EDR and bonded energy from run context — free data per frame.
     RunOptions opts;
     opts.charge_source = gp.charges();
     opts.skip_mopac   = true;     // too expensive per frame
@@ -363,6 +372,8 @@ static int RunAnalysis(const JobSpec& spec) {
     opts.skip_apbs    = false;    // always
     opts.skip_dssp    = false;    // always
     opts.aimnet2_model = g_aimnet2_model.get();  // always
+    if (ctx.HasBondedParams())
+        opts.bonded_params = &ctx.bonded_params;
 
     if (!g_aimnet2_model) {
         fprintf(stderr, "ERROR: --analysis requires --aimnet2 MODEL\n");
@@ -398,6 +409,31 @@ static int RunAnalysis(const JobSpec& spec) {
     fprintf(stderr, "\n=== Analysis: single pass, stride %zu ===\n", STRIDE);
     size_t total_read = 1;   // frame 0 counted
     size_t harvested  = 1;   // frame 0 harvested
+    size_t pdbs_written = 0;
+
+    // PDB snapshots at ~1 ns intervals for external geometry validation
+    // (MolProbity). Positions are PBC-fixed by MoleculeWholer — the same
+    // GROMACS do_pbc_mtop that walks the bond graph to make molecules
+    // whole. No temp files; write directly from the live conformation.
+    constexpr double PDB_INTERVAL_PS = 1000.0;  // 1 ns
+    double next_pdb_time = 0.0;  // write frame 0 immediately
+
+    // Write frame 0 PDB + NPY snapshot
+    {
+        fs::create_directories(spec.output_dir);
+        int ns = static_cast<int>(handler.frame_time() / 1000.0 + 0.5);
+        std::string snap_name = gp.protein_id() + "_analysis_" +
+            std::to_string(ns) + "ns";
+        std::string snap_dir = spec.output_dir + "/" + snap_name;
+        fs::create_directories(snap_dir);
+        AnalysisWriter::WritePdb(gp.protein(),
+            gp.protein().ConformationAt(0),
+            snap_dir + "/" + snap_name + ".pdb");
+        ConformationResult::WriteAllFeatures(
+            gp.protein().ConformationAt(0), snap_dir);
+        ++pdbs_written;
+        next_pdb_time = PDB_INTERVAL_PS;
+    }
 
     while (true) {
         // Skip (STRIDE - 1) frames
@@ -419,13 +455,29 @@ static int RunAnalysis(const JobSpec& spec) {
                             handler.frame_time());
         ++harvested;
 
+        // Write PDB + NPY snapshot at ~1 ns intervals
+        if (handler.frame_time() >= next_pdb_time) {
+            int ns = static_cast<int>(handler.frame_time() / 1000.0 + 0.5);
+            std::string snap_name = gp.protein_id() + "_analysis_" +
+                std::to_string(ns) + "ns";
+            std::string snap_dir = spec.output_dir + "/" + snap_name;
+            fs::create_directories(snap_dir);
+            AnalysisWriter::WritePdb(gp.protein(),
+                handler.conformation(),
+                snap_dir + "/" + snap_name + ".pdb");
+            ConformationResult::WriteAllFeatures(
+                handler.conformation(), snap_dir);
+            ++pdbs_written;
+            next_pdb_time = handler.frame_time() + PDB_INTERVAL_PS;
+        }
+
         if (harvested % 50 == 0)
             fprintf(stderr, "  harvested %zu frames (%zu read)\n",
                     harvested, total_read);
     }
 
-    fprintf(stderr, "  total: %zu frames read, %zu harvested\n",
-            total_read, harvested);
+    fprintf(stderr, "  total: %zu frames read, %zu harvested, %zu PDB snapshots\n",
+            total_read, harvested, pdbs_written);
 
     // Write analysis H5
     fs::create_directories(spec.output_dir);
@@ -476,9 +528,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Load calculator config if specified
-    if (!spec.config_path.empty())
+    // Load calculator config: explicit --config, or default from data dir.
+    if (!spec.config_path.empty()) {
         CalculatorConfig::Load(spec.config_path);
+    } else {
+        std::string default_config =
+            std::string(NMR_DATA_DIR) + "/calculator_params.toml";
+        if (fs::exists(default_config))
+            CalculatorConfig::Load(default_config);
+    }
 
     // AIMNet2 model path: CLI --aimnet2 takes priority; TOML fallback if not set.
     if (spec.aimnet2_model_path.empty())

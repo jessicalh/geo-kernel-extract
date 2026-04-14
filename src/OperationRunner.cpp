@@ -23,6 +23,7 @@
 #include "AIMNet2Result.h"
 #include "SasaResult.h"
 #include "GromacsEnergyResult.h"
+#include "BondedEnergyResult.h"
 #include "WaterFieldResult.h"
 #include "HydrationShellResult.h"
 #include "HydrationGeometryResult.h"
@@ -184,11 +185,16 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                     "HydrationGeometryResult", out)) return out;
     }
 
-    // GROMACS energy: per-frame energy terms from .edr (trajectory path only)
-    if (!opts.edr_path.empty()) {
-        if (!Attach(conf, GromacsEnergyResult::Compute(
-                        conf, opts.edr_path, opts.frame_time_ps),
+    // GROMACS energy: from preloaded EDR via run context (O(1) per frame)
+    if (opts.frame_energy) {
+        if (!Attach(conf, GromacsEnergyResult::Compute(conf, *opts.frame_energy),
                     "GromacsEnergyResult", out)) return out;
+    }
+
+    // Bonded energy: per-atom decomposition from force field parameters
+    if (opts.bonded_params) {
+        if (!Attach(conf, BondedEnergyResult::Compute(conf, *opts.bonded_params),
+                    "BondedEnergyResult", out)) return out;
     }
 
     // --- Tier 2: DFT comparison (optional) ---

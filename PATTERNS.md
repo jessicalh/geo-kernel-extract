@@ -18,7 +18,10 @@ only means something if you already know what it means.
 
 **Trajectory streaming pattern:** GromacsProtein (adapter +
 accumulators), GromacsFrameHandler (frame lifecycle), free-standing
-conformations, two-pass scan/extract. Fully documented in
+conformations, two-pass scan/extract. GromacsRunContext holds
+trajectory-level state (bonded params from TPR, preloaded EDR
+energy frames, cursor position). Owned by GromacsProtein, advanced
+by the frame handler per frame. Fully documented in
 spec/ENSEMBLE_MODEL.md. All patterns below apply to every path
 including trajectory — the streaming classes are infrastructure
 around the same ConformationResult / OperationRunner pipeline.

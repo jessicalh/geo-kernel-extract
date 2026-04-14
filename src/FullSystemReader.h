@@ -17,6 +17,7 @@
 //
 
 #include "SolventEnvironment.h"
+#include "BondedEnergyResult.h"
 
 #include <Eigen/Dense>
 #include <string>
@@ -57,6 +58,14 @@ public:
     bool ExtractFrame(const std::vector<float>& full_frame_xyz,
                       std::vector<Vec3>& protein_positions,
                       SolventEnvironment& solvent) const;
+
+    // Extract bonded interaction parameters for the protein from the TPR.
+    // Must be called after ReadTopology(). Populates params with all
+    // bond, angle, UB, proper dihedral, improper dihedral, and CMAP
+    // interactions for the protein atoms. Atom indices are protein-local
+    // (0-based, same as our Protein).
+    bool ExtractBondedParameters(const std::string& tpr_path,
+                                 BondedParameters& params) const;
 
     const SystemTopology& Topology() const { return topo_; }
     const std::string& error() const { return error_; }

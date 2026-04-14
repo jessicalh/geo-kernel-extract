@@ -75,8 +75,9 @@ WaterFieldResult             requires: SpatialIndexResult, SolventEnvironment
 HydrationShellResult         requires: SpatialIndexResult, SolventEnvironment
 HydrationGeometryResult      requires: SasaResult, SolventEnvironment
 
---- Trajectory energy ---
-GromacsEnergyResult          requires: .edr file path
+--- Trajectory energy + bonded strain ---
+GromacsEnergyResult          requires: preloaded EDR (via GromacsRunContext)
+BondedEnergyResult           requires: BondedParameters (via GromacsRunContext)
 
 --- DFT comparison ---
 MutationDeltaResult          requires: OrcaShieldingResult on both WT and ALA
@@ -144,7 +145,7 @@ can run in parallel):**
 **Feature export (after all physics results):**
 Each ConformationResult writes its own NPY arrays via WriteFeatures().
 ConformationResult::WriteAllFeatures() traverses all attached results.
-74 NPY arrays registered in the SDK catalog (python/nmr_extract/_catalog.py).
+75 NPY arrays registered in the SDK catalog (python/nmr_extract/_catalog.py).
 Not all are present for every extraction — solvent arrays require
 trajectory path, MOPAC arrays require MOPAC, etc.
 

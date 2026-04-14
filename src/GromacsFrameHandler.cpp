@@ -81,10 +81,12 @@ bool GromacsFrameHandler::Open(
     // Run calculators on conformation 0 with the SAME opts as all frames.
     // Charges come from GromacsProtein (TPR) regardless of caller opts.
     auto& conf0 = gp_.protein().ConformationAt(0);
+    gp_.run_context_mut().AdvanceFrame(0, static_cast<double>(first_frame.time));
+
     RunOptions init_opts = caller_opts;
     init_opts.charge_source = gp_.charges();
     init_opts.solvent = &solvent;
-    init_opts.frame_time_ps = static_cast<double>(first_frame.time);
+    init_opts.frame_energy = gp_.run_context().current_energy;
     RunResult rr = OperationRunner::Run(conf0, init_opts);
     if (!rr.Ok()) {
         error_ = "frame 0 calculator failed: " + rr.error;
@@ -191,10 +193,13 @@ bool GromacsFrameHandler::ProcessFrame(
         &gp_.protein(), std::move(protein_pos));
     last_frame_time_ = static_cast<double>(frame.time);
 
+    // Advance run context cursor (updates EDR energy lookup)
+    gp_.run_context_mut().AdvanceFrame(frame_idx_, last_frame_time_);
+
     // Run calculators
     RunOptions frame_opts = opts;
     frame_opts.solvent = &solvent;
-    frame_opts.frame_time_ps = last_frame_time_;
+    frame_opts.frame_energy = gp_.run_context().current_energy;
     RunResult rr = OperationRunner::Run(*last_conf_, frame_opts);
 
     if (!rr.Ok()) {

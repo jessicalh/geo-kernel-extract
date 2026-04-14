@@ -229,6 +229,8 @@ add_library(nmr_shielding
     src/CalculatorConfig.cpp
     src/JobSpec.cpp
     src/AIMNet2Result.cpp
+    src/BondedEnergyResult.cpp
+    src/GromacsRunContext.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC

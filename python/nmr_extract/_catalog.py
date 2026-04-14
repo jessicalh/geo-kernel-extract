@@ -130,7 +130,10 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("eeq_cn",             "eeq",         np.ndarray,     None, False, "EEQ coordination number"),
 
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
-    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,      9,   False, "Per-frame energy [t,Coul_SR,Coul_recip,Coul_14,LJ,pot,T,P,V]"),
+    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     42,   False, "Per-frame energy (42 cols: electrostatic, bonded, VdW, thermo, box, virial, pressure tensor, T_group)"),
+
+    # ── Bonded energy (BondedEnergyResult.cpp) ─────────────────
+    ArraySpec("bonded_energy",      "bonded",      np.ndarray,      7,   False, "Per-atom bonded energy (bond,angle,UB,proper,improper,CMAP,total) kJ/mol"),
 
     # ── MOPAC core (MopacResult.cpp) ─────────────────────────────
     ArraySpec("mopac_charges",    "mopac_core", np.ndarray,        None, False, "MOPAC Mulliken charges"),

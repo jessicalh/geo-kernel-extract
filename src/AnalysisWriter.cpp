@@ -5,6 +5,9 @@
 #include "Ring.h"
 #include "Residue.h"
 #include "AminoAcidType.h"
+#include "DsspResult.h"
+#include "GromacsEnergyResult.h"
+#include "BondedEnergyResult.h"
 #include "Types.h"
 #include "OperationLog.h"
 
@@ -15,7 +18,10 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <limits>
 #include <numeric>
 
 namespace nmr {
@@ -369,6 +375,151 @@ void AnalysisWriter::HarvestFrame(const ProteinConformation& conf,
         }
     }
 
+    // ── Bonded energy (per-atom, from BondedEnergyResult) ──────
+    if (conf.HasResult<BondedEnergyResult>()) {
+        const auto& be = conf.Result<BondedEnergyResult>();
+        for (size_t ai = 0; ai < N; ++ai) {
+            bonded_bond_.push_back(be.BondEnergy()[ai]);
+            bonded_angle_.push_back(be.AngleEnergy()[ai]);
+            bonded_ub_.push_back(be.UBEnergy()[ai]);
+            bonded_proper_.push_back(be.ProperDihEnergy()[ai]);
+            bonded_improper_.push_back(be.ImproperDihEnergy()[ai]);
+            bonded_cmap_.push_back(be.CmapEnergy()[ai]);
+            bonded_total_.push_back(be.TotalBonded()[ai]);
+        }
+    }
+
+    // ── Energy (per-frame, from EDR via GromacsEnergyResult) ────
+    if (conf.HasResult<GromacsEnergyResult>()) {
+        const auto& e = conf.Result<GromacsEnergyResult>().Energy();
+        energy_coulomb_sr_.push_back(e.coulomb_sr);
+        energy_coulomb_recip_.push_back(e.coulomb_recip);
+        energy_bond_.push_back(e.bond);
+        energy_angle_.push_back(e.angle);
+        energy_ub_.push_back(e.urey_bradley);
+        energy_proper_dih_.push_back(e.proper_dih);
+        energy_improper_dih_.push_back(e.improper_dih);
+        energy_cmap_.push_back(e.cmap_dih);
+        energy_lj_sr_.push_back(e.lj_sr);
+        energy_potential_.push_back(e.potential);
+        energy_kinetic_.push_back(e.kinetic);
+        energy_enthalpy_.push_back(e.enthalpy);
+        energy_temperature_.push_back(e.temperature);
+        energy_pressure_.push_back(e.pressure);
+        energy_volume_.push_back(e.volume);
+        energy_density_.push_back(e.density);
+        energy_box_.push_back(e.box_x);
+        energy_box_.push_back(e.box_y);
+        energy_box_.push_back(e.box_z);
+        for (int k = 0; k < 9; ++k)
+            energy_virial_.push_back(e.vir[k]);
+        for (int k = 0; k < 9; ++k)
+            energy_pres_tensor_.push_back(e.pres[k]);
+        energy_T_protein_.push_back(e.T_protein);
+        energy_T_non_protein_.push_back(e.T_non_protein);
+    }
+
+    // ── Dihedrals (per-residue) ─────────────────────────────────
+    {
+        const size_t R = protein_.ResidueCount();
+        const double NaN = std::numeric_limits<double>::quiet_NaN();
+
+        // phi/psi from DsspResult (already computed by DSSP)
+        const DsspResult* dssp = conf.HasResult<DsspResult>()
+            ? &conf.Result<DsspResult>() : nullptr;
+
+        for (size_t ri = 0; ri < R; ++ri) {
+            const Residue& res = protein_.ResidueAt(ri);
+
+            // phi, psi from DSSP
+            double phi = dssp ? dssp->Phi(ri)  : NaN;
+            double psi = dssp ? dssp->Psi(ri) : NaN;
+            dih_phi_.push_back(phi);
+            dih_psi_.push_back(psi);
+
+            // omega: CA(i)-C(i)-N(i+1)-CA(i+1)
+            double omega = NaN;
+            if (ri + 1 < R) {
+                const Residue& next = protein_.ResidueAt(ri + 1);
+                // Only compute within the same chain
+                if (res.chain_id == next.chain_id &&
+                    res.CA != Residue::NONE && res.C != Residue::NONE &&
+                    next.N != Residue::NONE && next.CA != Residue::NONE) {
+                    omega = Dihedral(
+                        conf.PositionAt(res.CA), conf.PositionAt(res.C),
+                        conf.PositionAt(next.N), conf.PositionAt(next.CA));
+                }
+            }
+            dih_omega_.push_back(omega);
+
+            // chi1-4 from Residue::chi atom indices + positions
+            for (int k = 0; k < 4; ++k) {
+                double angle = NaN;
+                double c = NaN;
+                double s = NaN;
+                if (res.chi[k].Valid()) {
+                    angle = Dihedral(
+                        conf.PositionAt(res.chi[k].a[0]),
+                        conf.PositionAt(res.chi[k].a[1]),
+                        conf.PositionAt(res.chi[k].a[2]),
+                        conf.PositionAt(res.chi[k].a[3]));
+                    if (!std::isnan(angle)) {
+                        c = std::cos(angle);
+                        s = std::sin(angle);
+                    }
+                }
+                switch (k) {
+                    case 0: dih_chi1_.push_back(angle);
+                            dih_chi1_cos_.push_back(c);
+                            dih_chi1_sin_.push_back(s); break;
+                    case 1: dih_chi2_.push_back(angle);
+                            dih_chi2_cos_.push_back(c);
+                            dih_chi2_sin_.push_back(s); break;
+                    case 2: dih_chi3_.push_back(angle);
+                            dih_chi3_cos_.push_back(c);
+                            dih_chi3_sin_.push_back(s); break;
+                    case 3: dih_chi4_.push_back(angle);
+                            dih_chi4_cos_.push_back(c);
+                            dih_chi4_sin_.push_back(s); break;
+                }
+            }
+        }
+    }
+
+    // ── DSSP per-residue (ss8, hbond energy) ────────────────────
+    {
+        const size_t R = protein_.ResidueCount();
+        const DsspResult* dssp = conf.HasResult<DsspResult>()
+            ? &conf.Result<DsspResult>() : nullptr;
+
+        for (size_t ri = 0; ri < R; ++ri) {
+            if (dssp) {
+                const auto& dr = dssp->AllResidues()[ri];
+                // Map SS char to int8: H=0,G=1,I=2,E=3,B=4,T=5,S=6,C=7
+                int8_t ss = 7; // default: coil
+                switch (dr.secondary_structure) {
+                    case 'H': ss = 0; break; // alpha helix
+                    case 'G': ss = 1; break; // 3-10 helix
+                    case 'I': ss = 2; break; // pi helix
+                    case 'E': ss = 3; break; // extended strand
+                    case 'B': ss = 4; break; // beta bridge
+                    case 'T': ss = 5; break; // turn
+                    case 'S': ss = 6; break; // bend
+                    case 'C': ss = 7; break; // coil
+                }
+                dssp_ss8_.push_back(ss);
+                // Strongest acceptor H-bond energy
+                double energy = dr.acceptors[0].energy;
+                if (dr.acceptors[1].energy < energy)
+                    energy = dr.acceptors[1].energy;
+                dssp_hbond_energy_.push_back(energy);
+            } else {
+                dssp_ss8_.push_back(7);
+                dssp_hbond_energy_.push_back(0.0);
+            }
+        }
+    }
+
     ++n_frames_;
 }
 
@@ -393,6 +544,85 @@ void AnalysisWriter::AppendVec3(std::vector<double>& buf,
     buf.push_back(v.x());
     buf.push_back(v.y());
     buf.push_back(v.z());
+}
+
+
+// ── Dihedral angle from four positions ─────────────────────────
+// Standard atan2 computation. Returns NaN if any cross product is
+// degenerate (collinear atoms). Same formula as DsspResult::WriteFeatures.
+
+double AnalysisWriter::Dihedral(const Vec3& p0, const Vec3& p1,
+                                const Vec3& p2, const Vec3& p3) {
+    Vec3 b1 = p1 - p0;
+    Vec3 b2 = p2 - p1;
+    Vec3 b3 = p3 - p2;
+    Vec3 n1 = b1.cross(b2);
+    Vec3 n2 = b2.cross(b3);
+    double n1_norm = n1.norm();
+    double n2_norm = n2.norm();
+    if (n1_norm < 1e-10 || n2_norm < 1e-10)
+        return std::numeric_limits<double>::quiet_NaN();
+    n1 /= n1_norm;
+    n2 /= n2_norm;
+    double cos_angle = std::max(-1.0, std::min(1.0, n1.dot(n2)));
+    Vec3 m1 = n1.cross(b2.normalized());
+    double sin_angle = m1.dot(n2);
+    return std::atan2(sin_angle, cos_angle);
+}
+
+
+// ── WritePdb — static, no temp files ───────────────────────────
+// Writes a standard PDB from a Protein + ProteinConformation.
+// Positions are already PBC-fixed and in Angstroms.
+
+void AnalysisWriter::WritePdb(const Protein& protein,
+                              const ProteinConformation& conf,
+                              const std::string& path) {
+    FILE* fp = fopen(path.c_str(), "w");
+    if (!fp) {
+        OperationLog::Error("AnalysisWriter::WritePdb",
+            "cannot open " + path);
+        return;
+    }
+
+    int serial = 1;
+    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
+        const Residue& res = protein.ResidueAt(ri);
+        std::string res_name = ThreeLetterCodeForAminoAcid(res.type);
+        char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
+
+        for (size_t ai : res.atom_indices) {
+            const Atom& atom = protein.AtomAt(ai);
+            Vec3 pos = conf.PositionAt(ai);
+
+            // PDB columns 13-16: atom name
+            char atom_field[5];
+            if (atom.pdb_atom_name.size() <= 3)
+                snprintf(atom_field, sizeof(atom_field), " %-3s",
+                         atom.pdb_atom_name.c_str());
+            else
+                snprintf(atom_field, sizeof(atom_field), "%-4s",
+                         atom.pdb_atom_name.c_str());
+
+            const char* elem_str;
+            switch (atom.element) {
+                case Element::H: elem_str = " H"; break;
+                case Element::C: elem_str = " C"; break;
+                case Element::N: elem_str = " N"; break;
+                case Element::O: elem_str = " O"; break;
+                case Element::S: elem_str = " S"; break;
+                default:         elem_str = " X"; break;
+            }
+
+            fprintf(fp,
+                "ATOM  %5d %4s %3s %c%4d    %8.3f%8.3f%8.3f  1.00  0.00          %2s\n",
+                serial++, atom_field, res_name.c_str(), chain,
+                res.sequence_number,
+                pos.x(), pos.y(), pos.z(), elem_str);
+        }
+    }
+    fprintf(fp, "END\n");
+    fclose(fp);
 }
 
 
@@ -817,6 +1047,99 @@ void AnalysisWriter::WriteH5(const std::string& path) const {
             grp.createDataSet("fields",
                 std::vector<std::string>{"center_x", "center_y", "center_z",
                                          "normal_x", "normal_y", "normal_z", "radius"});
+        }
+    }
+
+    // ── /bonded_energy/ (per-atom, T * N) ────────────────────────
+    if (!bonded_bond_.empty()) {
+        auto grp = file.createGroup("bonded_energy");
+        grp.createAttribute("units", std::string("kJ/mol (split evenly among participating atoms)"));
+        WriteRawDouble(grp, "bond",     bonded_bond_.data(),     {T, N});
+        WriteRawDouble(grp, "angle",    bonded_angle_.data(),    {T, N});
+        WriteRawDouble(grp, "urey_bradley", bonded_ub_.data(),   {T, N});
+        WriteRawDouble(grp, "proper_dih",   bonded_proper_.data(), {T, N});
+        WriteRawDouble(grp, "improper_dih", bonded_improper_.data(), {T, N});
+        WriteRawDouble(grp, "cmap",     bonded_cmap_.data(),     {T, N});
+        WriteRawDouble(grp, "total",    bonded_total_.data(),    {T, N});
+    }
+
+    // ── /energy/ (per-frame scalars + tensors from GROMACS EDR) ──
+    if (!energy_bond_.empty()) {
+        auto grp = file.createGroup("energy");
+        grp.createAttribute("units_energy", std::string("kJ/mol"));
+        grp.createAttribute("units_pressure", std::string("bar"));
+        grp.createAttribute("units_temperature", std::string("K"));
+        grp.createAttribute("units_volume", std::string("nm^3"));
+        grp.createAttribute("units_density", std::string("kg/m^3"));
+        grp.createAttribute("units_box", std::string("nm"));
+        // Electrostatic
+        grp.createDataSet("coulomb_sr", energy_coulomb_sr_);
+        grp.createDataSet("coulomb_recip", energy_coulomb_recip_);
+        // Bonded (internal strain)
+        grp.createDataSet("bond", energy_bond_);
+        grp.createDataSet("angle", energy_angle_);
+        grp.createDataSet("urey_bradley", energy_ub_);
+        grp.createDataSet("proper_dih", energy_proper_dih_);
+        grp.createDataSet("improper_dih", energy_improper_dih_);
+        grp.createDataSet("cmap_dih", energy_cmap_);
+        // VdW
+        grp.createDataSet("lj_sr", energy_lj_sr_);
+        // Thermodynamic state
+        grp.createDataSet("potential", energy_potential_);
+        grp.createDataSet("kinetic", energy_kinetic_);
+        grp.createDataSet("enthalpy", energy_enthalpy_);
+        grp.createDataSet("temperature", energy_temperature_);
+        grp.createDataSet("pressure", energy_pressure_);
+        grp.createDataSet("volume", energy_volume_);
+        grp.createDataSet("density", energy_density_);
+        // Box dimensions
+        WriteRawDouble(grp, "box", energy_box_.data(), {T, size_t{3}});
+        // Virial and pressure tensors (3x3)
+        WriteRawDouble(grp, "virial", energy_virial_.data(), {T, size_t{9}});
+        grp.createDataSet("virial_layout",
+            std::vector<std::string>{"XX","XY","XZ","YX","YY","YZ","ZX","ZY","ZZ"});
+        WriteRawDouble(grp, "pressure_tensor", energy_pres_tensor_.data(), {T, size_t{9}});
+        // Per-group temperature
+        grp.createDataSet("T_protein", energy_T_protein_);
+        grp.createDataSet("T_non_protein", energy_T_non_protein_);
+    }
+
+    // ── /dihedrals/ (per-residue, T * R) ─────────────────────────
+    {
+        const size_t R = protein_.ResidueCount();
+        if (T > 0 && R > 0) {
+            auto grp = file.createGroup("dihedrals");
+            WriteRawDouble(grp, "phi",   dih_phi_.data(),   {T, R});
+            WriteRawDouble(grp, "psi",   dih_psi_.data(),   {T, R});
+            WriteRawDouble(grp, "omega", dih_omega_.data(), {T, R});
+            WriteRawDouble(grp, "chi1",  dih_chi1_.data(),  {T, R});
+            WriteRawDouble(grp, "chi2",  dih_chi2_.data(),  {T, R});
+            WriteRawDouble(grp, "chi3",  dih_chi3_.data(),  {T, R});
+            WriteRawDouble(grp, "chi4",  dih_chi4_.data(),  {T, R});
+            WriteRawDouble(grp, "chi1_cos", dih_chi1_cos_.data(), {T, R});
+            WriteRawDouble(grp, "chi1_sin", dih_chi1_sin_.data(), {T, R});
+            WriteRawDouble(grp, "chi2_cos", dih_chi2_cos_.data(), {T, R});
+            WriteRawDouble(grp, "chi2_sin", dih_chi2_sin_.data(), {T, R});
+            WriteRawDouble(grp, "chi3_cos", dih_chi3_cos_.data(), {T, R});
+            WriteRawDouble(grp, "chi3_sin", dih_chi3_sin_.data(), {T, R});
+            WriteRawDouble(grp, "chi4_cos", dih_chi4_cos_.data(), {T, R});
+            WriteRawDouble(grp, "chi4_sin", dih_chi4_sin_.data(), {T, R});
+            grp.createAttribute("units", std::string("radians"));
+            grp.createAttribute("omega_convention",
+                std::string("CA(i)-C(i)-N(i+1)-CA(i+1)"));
+        }
+    }
+
+    // ── /dssp/ (per-residue, T * R) ────────────────────────────
+    {
+        const size_t R = protein_.ResidueCount();
+        if (T > 0 && R > 0) {
+            auto grp = file.createGroup("dssp");
+            WriteRawInt8(grp, "ss8", dssp_ss8_.data(), {T, R});
+            WriteRawDouble(grp, "hbond_energy", dssp_hbond_energy_.data(), {T, R});
+            grp.createAttribute("ss8_encoding",
+                std::string("0=H(alpha),1=G(310),2=I(pi),3=E(strand),"
+                            "4=B(bridge),5=T(turn),6=S(bend),7=C(coil)"));
         }
     }
 

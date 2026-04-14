@@ -32,6 +32,8 @@ namespace nmr {
 class Protein;
 
 struct AIMNet2Model;  // forward declaration (AIMNet2Result.h)
+struct BondedParameters;  // forward declaration (BondedEnergyResult.h)
+struct GromacsEnergy;     // forward declaration (GromacsEnergyResult.h)
 
 struct RunOptions {
     // Charges — required for real physics.
@@ -57,14 +59,20 @@ struct RunOptions {
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     AIMNet2Model* aimnet2_model = nullptr;
 
-    // GROMACS .edr energy file for per-frame energy extraction.
-    std::string edr_path;
-    double frame_time_ps = 0.0;
+    // Per-frame energy from GROMACS .edr (preloaded by GromacsRunContext).
+    // Null = skip GromacsEnergyResult. O(1) per frame.
+    // Set by GromacsFrameHandler from the context cursor after each frame.
+    const GromacsEnergy* frame_energy = nullptr;
 
     // Explicit solvent: water + ion positions for this frame.
     // Null = no solvent calculators (protein-only trajectory).
     // Set by the full-system trajectory reader.
     const SolventEnvironment* solvent = nullptr;
+
+    // Bonded force field parameters from TPR for per-atom energy
+    // decomposition. Null = skip BondedEnergyResult.
+    // Owned by GromacsProtein, borrowed here per frame.
+    const BondedParameters* bonded_params = nullptr;
 
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;

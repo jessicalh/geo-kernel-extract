@@ -58,6 +58,16 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         "coulomb_E.npy", "apbs_E.npy", "bs_total_B.npy",
         "mopac_charges.npy",
         "mopac_coulomb_shielding.npy", "mopac_mc_shielding.npy",
+        # Trajectory-path arrays (optional — present only with --trajectory)
+        "water_efield.npy", "water_efg.npy",
+        "water_efield_first.npy", "water_efg_first.npy",
+        "water_shell_counts.npy",
+        "hydration_shell.npy",
+        "water_polarization.npy",
+        "atom_sasa.npy", "sasa_normal.npy",
+        "eeq_charges.npy", "eeq_cn.npy",
+        # AIMNet2 (optional — present when --aimnet2 provided)
+        "aimnet2_charges.npy", "aimnet2_efg.npy",
     ]
     for name in per_atom_files:
         if name not in arrays:
