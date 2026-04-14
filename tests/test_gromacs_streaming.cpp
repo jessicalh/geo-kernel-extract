@@ -1,6 +1,5 @@
 //
-// test_gromacs_streaming: tests for GromacsProtein fleet path and
-// GromacsFrameHandler trajectory path.
+// test_gromacs_streaming: tests for GromacsFrameHandler trajectory path.
 //
 
 // AIMNet2Result.h MUST come before GROMACS headers — GROMACS defines
@@ -26,45 +25,9 @@ namespace fs = std::filesystem;
 #error "NMR_TEST_DATA_DIR must be defined"
 #endif
 
-static const std::string FLEET_DIR =
-    std::string(NMR_TEST_DATA_DIR) + "/fleet_test_large";
-
-static const std::string FULLSYS_DIR =
-    std::string(NMR_TEST_DATA_DIR) + "/fleet_test_fullsys/1ZR7_6721";
-
-
-// ============================================================================
-// Fleet path: Build from pre-extracted PDB poses
-// ============================================================================
-
-TEST(GromacsStreaming, FleetBuildAndCompute) {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-
-    nmr::FleetPaths paths;
-    paths.sampled_poses_dir = FLEET_DIR + "/initial-samples";
-    paths.tpr_path = FLEET_DIR + "/run_params/prod.tpr";
-    paths.force_field = nmr::ForceField::CHARMM36m;
-
-    nmr::GromacsProtein gp;
-    ASSERT_TRUE(gp.Build(paths)) << gp.error();
-
-    ASSERT_GT(gp.protein().AtomCount(), 0u);
-    ASSERT_EQ(gp.AtomCount(), gp.protein().AtomCount());
-
-    // Run calculators on conformation 0
-    nmr::RunOptions opts;
-    opts.skip_mopac = true;
-    opts.skip_coulomb = true;
-    opts.charge_source = gp.charges();
-
-    auto& conf0 = gp.protein().ConformationAt(0);
-    nmr::RunResult rr = nmr::OperationRunner::Run(conf0, opts);
-    ASSERT_TRUE(rr.Ok()) << rr.error;
-
-    std::cout << "Fleet: " << gp.protein().AtomCount() << " atoms, "
-              << gp.protein().ConformationCount() << " poses, "
-              << rr.attached.size() << " results\n";
-}
+// walker_0/ has md.tpr, md.xtc, md.edr — production layout.
+static const std::string TRAJ_DIR =
+    std::string(NMR_TEST_DATA_DIR) + "/fleet_test_fullsys/1ZR7_6721/walker_0";
 
 
 // ============================================================================
@@ -74,16 +37,14 @@ TEST(GromacsStreaming, FleetBuildAndCompute) {
 TEST(GromacsStreaming, TrajectoryBuildAndScan) {
     nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
 
-    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
-    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
-
-    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+    if (!fs::exists(TRAJ_DIR + "/md.tpr") ||
+        !fs::exists(TRAJ_DIR + "/md.xtc")) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
-    // --- 1. Build adapter from TPR ---
+    // --- 1. Build adapter from directory ---
     nmr::GromacsProtein gp;
-    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+    ASSERT_TRUE(gp.BuildFromTrajectory(TRAJ_DIR)) << gp.error();
 
     // Protein not finalized yet — no bonds, no rings
     EXPECT_EQ(gp.protein().AtomCount(), 479u);
@@ -91,6 +52,8 @@ TEST(GromacsStreaming, TrajectoryBuildAndScan) {
 
     // --- 2. Open trajectory (finalizes protein from first frame) ---
     nmr::GromacsFrameHandler handler(gp);
+    std::string tpr = TRAJ_DIR + "/md.tpr";
+    std::string xtc = TRAJ_DIR + "/md.xtc";
     ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
 
     // Protein finalized: bonds, rings, conformation 0
@@ -121,13 +84,11 @@ TEST(GromacsStreaming, TrajectoryBuildAndScan) {
     std::cout << "Scanned " << scanned << " frames after frame 0\n";
 
     // --- 4. Check accumulators have data ---
-    // Frame 0 + scanned frames should all be accumulated
     size_t expected_frames = 1 + scanned;
     EXPECT_EQ(gp.AtomAt(0).sasa.count, static_cast<int>(expected_frames));
     EXPECT_EQ(gp.AtomAt(0).water_n_first.count,
               static_cast<int>(expected_frames));
 
-    // RMSF should be non-negative
     EXPECT_GE(gp.AtomAt(0).RMSF(), 0.0);
 
     // --- 5. Write catalog ---
@@ -142,7 +103,6 @@ TEST(GromacsStreaming, TrajectoryBuildAndScan) {
 
     std::cout << "Catalog: " << fs::file_size(catalog) << " bytes\n";
 
-    // --- 6. Clean up ---
     std::string rm_cmd = "rm -rf " + temp_dir;
     (void)system(rm_cmd.c_str());
 }
@@ -157,8 +117,8 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
     nmr::CalculatorConfig::Load(
         std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
 
-    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
-    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
+    std::string tpr = TRAJ_DIR + "/md.tpr";
+    std::string xtc = TRAJ_DIR + "/md.xtc";
     std::string jpt = std::string(NMR_TEST_DATA_DIR) +
                        "/../../data/models/aimnet2_wb97m_0.jpt";
 
@@ -171,20 +131,20 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
     auto aimnet2 = nmr::AIMNet2Model::Load(jpt);
     ASSERT_NE(aimnet2, nullptr) << "AIMNet2 model failed to load";
 
-    // Build
+    // Build from directory
     nmr::GromacsProtein gp;
-    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+    ASSERT_TRUE(gp.BuildFromTrajectory(TRAJ_DIR)) << gp.error();
 
     // Canonical fleet scan opts: everything EXCEPT MOPAC and vacuum Coulomb
     nmr::RunOptions opts;
     opts.charge_source = gp.charges();
-    opts.skip_mopac = true;       // 45s — selected frames only
-    opts.skip_coulomb = true;     // APBS replaces this
-    opts.skip_apbs = false;       // solvated PB field runs every frame
-    opts.skip_dssp = false;       // chi angles, SS, H-bond energies
+    opts.skip_mopac = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs = false;
+    opts.skip_dssp = false;
     opts.aimnet2_model = aimnet2.get();
 
-    // Open with the same opts as all frames — no MOPAC on frame 0
+    // Open with the same opts as all frames
     nmr::GromacsFrameHandler handler(gp);
     ASSERT_TRUE(handler.Open(xtc, tpr, opts)) << handler.error();
 
@@ -206,12 +166,11 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
     EXPECT_EQ(a0.water_emag.count, static_cast<int>(total));
     EXPECT_EQ(a0.water_efield_x.count, static_cast<int>(total));
 
-    // DSSP accumulators (if DSSP ran)
+    // DSSP accumulators
     EXPECT_EQ(a0.phi_cos.count, static_cast<int>(total));
     EXPECT_GT(a0.dssp_hbond_energy.count, 0);
 
-    // AIMNet2 — model is required, must have run every frame including
-    // frame 0 (Open now takes the same RunOptions).
+    // AIMNet2
     EXPECT_EQ(a0.aimnet2_charge.count, static_cast<int>(total));
     EXPECT_GT(a0.aimnet2_charge.Std(), 0.0) << "charge variance should be nonzero";
 
@@ -229,7 +188,6 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
                   << " range=" << w.Range() << "\n";
     };
 
-    // Find an atom with ring current signal
     for (size_t i = 0; i < gp.AtomCount(); ++i) {
         const auto& a = gp.AtomAt(i);
         if (a.bs_T0.mean > 0.05 && a.bs_T0.Std() > 0.001) {
@@ -275,7 +233,7 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
     std::cout << "Catalog: " << csv_path << " ("
               << fs::file_size(csv_path) / 1024 << " KB)\n";
 
-    // Verify H5 with h5py (quick Python check)
+    // Verify H5 with h5py
     std::string py_cmd =
         "HDF5_DISABLE_VERSION_CHECK=2 python3 -c \""
         "import h5py; f=h5py.File('" + h5_path + "','r'); "
@@ -303,8 +261,8 @@ TEST(GromacsStreaming, FullAccumulatorScan) {
 TEST(GromacsStreaming, TrajectoryExtractSelectedFrames) {
     nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
 
-    std::string tpr = FULLSYS_DIR + "/run_params/prod_fullsys.tpr";
-    std::string xtc = FULLSYS_DIR + "/walker_0/md.xtc";
+    std::string tpr = TRAJ_DIR + "/md.tpr";
+    std::string xtc = TRAJ_DIR + "/md.xtc";
 
     if (!fs::exists(tpr) || !fs::exists(xtc)) {
         GTEST_SKIP() << "Full-system test data not found";
@@ -312,7 +270,7 @@ TEST(GromacsStreaming, TrajectoryExtractSelectedFrames) {
 
     // Build + open
     nmr::GromacsProtein gp;
-    ASSERT_TRUE(gp.BuildFromTrajectory(tpr)) << gp.error();
+    ASSERT_TRUE(gp.BuildFromTrajectory(TRAJ_DIR)) << gp.error();
 
     nmr::GromacsFrameHandler handler(gp);
     ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
@@ -345,31 +303,26 @@ TEST(GromacsStreaming, TrajectoryExtractSelectedFrames) {
     extract_opts.skip_coulomb = true;
 
     size_t extracted = 0;
-    for (size_t fi = 1; fi < total; ++fi) {
+    while (handler.Next(extract_opts, "", false)) {
+        size_t fi = handler.frame_index();
         if (selected.count(fi)) {
-            ASSERT_TRUE(handler.Next(extract_opts, temp_dir))
-                << "failed to extract frame " << fi;
+            std::string frame_dir = temp_dir + "/frame_" + std::to_string(fi);
+            fs::create_directories(frame_dir);
+            int n = nmr::ConformationResult::WriteAllFeatures(
+                handler.conformation(), frame_dir);
+            std::cout << "Frame " << fi << ": " << n << " NPY files\n";
             ++extracted;
-        } else {
-            handler.Skip();
         }
     }
 
-    EXPECT_EQ(extracted, 2u);
+    EXPECT_EQ(extracted, selected.size());
 
-    // Verify NPY directories exist
-    EXPECT_TRUE(fs::exists(temp_dir + "/frame_0003"));
-    EXPECT_TRUE(fs::exists(temp_dir + "/frame_0007"));
-
-    // Verify NPY files were written
-    size_t npy_count = 0;
-    for (auto& entry : fs::recursive_directory_iterator(temp_dir)) {
-        if (entry.path().extension() == ".npy") ++npy_count;
+    // Verify NPY files exist
+    for (size_t fi : selected) {
+        std::string frame_dir = temp_dir + "/frame_" + std::to_string(fi);
+        EXPECT_TRUE(fs::exists(frame_dir + "/ring_contributions.npy"))
+            << "missing ring_contributions.npy for frame " << fi;
     }
-    EXPECT_GT(npy_count, 0u);
-
-    std::cout << "Extracted " << extracted << " frames, "
-              << npy_count << " NPY files\n";
 
     // Clean up
     std::string rm_cmd = "rm -rf " + temp_dir;

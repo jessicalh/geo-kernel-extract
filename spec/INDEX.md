@@ -130,7 +130,7 @@ Reference only.
 - **/shared/2026Thesis/consolidated/** — 723 WT+ALA protein pairs
 - **tests/data/fleet** — GROMACS CHARMM36m ensemble
 
-## Current Status (2026-04-14)
+## Current Status (2026-04-15)
 
 20 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
 WaterField, HydrationShell, GromacsEnergy, HydrationGeometry, EEQ,
@@ -138,40 +138,19 @@ BondedEnergy, plus foundation: Geometry, SpatialIndex, Enrichment).
 DSSP extended with 8-class SS, H-bond energies, chi1-4. Calibration
 settled at R²=0.818 (per-element ridge, 55 kernels).
 
+**Single TPR parse (2026-04-14):** FullSystemReader::ReadTopology
+parses the TPR once — atom ranges, bonded parameters, and protein
+construction all from one `read_tpx_state` call. Previously three
+independent parses. `--trajectory DIR` takes a protein directory
+(must contain md.tpr, md.xtc, md.edr — all required). EDR is no
+longer optional. BuildFromTrajectory(dir_path) derives all file
+paths from the directory convention.
+
 Two-pass trajectory streaming: GromacsProtein (adapter +
 accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
 frame lifecycle) + GromacsRunContext (bonded params, EDR energy
-frames, cursor state — read once, O(1) per frame). Tested end-to-end
-on 1ZR7_6721 (479 atoms, 3525 water, 25 ions, 501 frames). 75 NPY
-arrays registered in SDK catalog.
-
-**H5 master file (2026-04-13):** HighFive integration complete.
-WriteH5 produces one file per protein with per-frame positions
-(T, N, 3), 48-column Welford rollup (mean + std per atom), per-bond
-length statistics, and frame times. SDK `load_trajectory()` reads
-it. WriteCatalog produces the same rollup as CSV. Accumulators
-cover all 6 classical kernel T0+|T2|, AIMNet2 charge + EFG, APBS,
-water E-field (magnitude + 3 components), hydration geometry, DSSP
-phi/psi + chi1-4 + H-bond energy, bond angles, SASA + surface normal,
-4 frame-to-frame derivative trackers, and transition counters (chi
-rotamers, SS changes). Hard-fail error handling on AIMNet2, WaterField,
-HydrationShell, GromacsEnergy.
-
-**Solvent calculator compliance (2026-04-13):** WaterFieldResult and
-HydrationShellResult now under the TOML + GeometryChoice umbrella.
-WaterFieldResult has KernelFilterSet (MinDistanceFilter). 4 new TOML
-parameters registered. SasaResult extended with surface normal output
-(sasa_normal.npy). nmr_extract reads UDP logging config from
-~/.nmr_tools.toml [logging] section.
-
-### Next: polarisability calculators
-
-See **POLARISABILITY_ROADMAP_2026-04-13.md** for 5 planned approaches
-to charge polarisation. DONE: SASA surface normal (item 1),
-HydrationGeometryResult (item 2, writes water_polarization.npy),
-EEQ calculator (item 4, writes eeq_charges.npy + eeq_cn.npy).
-Remaining: water-embedded AIMNet2 (item 3), E-field variance
-routing (item 5).
+frames, cursor state). Per-calculator timing via OperationLog::Scope
+on every Compute call. 75 NPY arrays registered in SDK catalog.
 
 **Analysis trajectory mode (2026-04-14):** AnalysisWriter harvests
 all per-atom and per-residue data from each sampled frame, writes
@@ -180,11 +159,22 @@ all per-atom and per-residue data from each sampled frame, writes
 sasa, water, charges, aimnet2_embedding, per_ring K=6), per-residue
 dihedrals/ (phi, psi, omega, chi1-4 with cos/sin), dssp/ (ss8,
 hbond_energy), bonded_energy/ (per-atom CHARMM36m bond/angle/UB/
-proper/improper/CMAP decomposition), energy/ (42 EDR terms: bonded
-strain, electrostatic, VdW, thermodynamic state, box dimensions,
-virial tensor, pressure tensor, per-group temperature). PDB + NPY
-snapshots at ~1 ns intervals for MolProbity + SDK cross-check.
-GromacsRunContext holds bonded params + preloaded EDR + cursor state.
+proper/improper/CMAP decomposition), energy/ (42 EDR terms).
+PDB snapshots at ~1ns intervals — these ARE the ORCA DFT inputs.
 Predictions/ and projections/ groups pending (need Python model export).
-See **spec/ANALYSIS_TRAJECTORY_2026-04-14.md** for full design.
-10-protein workspace at `/shared/2026Thesis/fleet_calibration/`.
+
+**Adversarial validation (2026-04-15):** 1CBH_192 analysis H5
+validated. NPY-vs-H5 bit-identical at 0ns and 12ns. No NaN/Inf.
+Ring current signs correct. Bonded energy sums exact. Charge
+conservation to machine precision. Dihedrals cos²+sin²=1 to
+machine epsilon. MolProbity: 0 twisted peptides across all PDBs,
+Ramachandran outliers typical for MD snapshots (not minimised).
+
+**Fleet extraction (2026-04-15):** 10 proteins at
+`/shared/2026Thesis/fleet_calibration/`. ~25 min per protein at
+~4000 atoms (APBS dominates at ~2.7s/frame). Two proteins run in
+parallel. ORCA launched on PDB snapshots.
+
+**AIMNet2 aim embedding:** float32 (native torch precision) through
+the full path: ConformationAtom, NPY, H5. Fixed 2026-04-15 — prior
+H5 files have float64 (upshifted).

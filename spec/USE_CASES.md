@@ -100,11 +100,11 @@ For each input item:
 I have a full-system GROMACS trajectory — protein + explicit water
 + ions — and I want to extract geometric kernels across all frames.
 
-**Input:** TPR (topology), XTC (trajectory), optional EDR (energies)
+**Input:** protein directory containing md.tpr, md.xtc, md.edr (all required)
 **Output:** per-frame NPY arrays, per-atom trajectory catalog (CSV),
 H5 master file with Welford rollup statistics
 
-    nmr_extract --trajectory --tpr topology.tpr --xtc trajectory.xtc \
+    nmr_extract --trajectory /path/to/protein_dir \
                 --no-mopac --no-coulomb --output /path/to/output
 
 Two-pass architecture:
@@ -135,17 +135,19 @@ full SphericalTensors, enrichment flags, topology — in one
 self-contained H5 file for R analysis, time series model training,
 and GNN message design.
 
-**Input:** TPR (topology), XTC (trajectory), AIMNet2 model (required)
-**Output:** `{protein_id}_analysis.h5` — exhaustive per-frame data
+**Input:** protein directory containing md.tpr, md.xtc, md.edr (all required),
+AIMNet2 model (required)
+**Output:** `{protein_id}_analysis.h5` — exhaustive per-frame data,
+PDB snapshots at ~1ns intervals (ORCA inputs)
 
-    nmr_extract --trajectory --analysis \
-                --tpr topology.tpr --xtc trajectory.xtc \
+    nmr_extract --trajectory --analysis /path/to/protein_dir \
                 --aimnet2 model.jpt --output /path/to/output
 
-Single-pass architecture with stride (every other frame, ~600 of 1250):
+Single-pass architecture with stride 2 (~625 of 1250 frames):
 all calculators run every sampled frame (APBS, AIMNet2 mandatory,
 MOPAC skipped). AnalysisWriter buffers per-frame data in memory,
-writes the complete H5 at end. ~1.6 GB per protein for 335 atoms.
+writes the complete H5 at end. ~1.7 GB per protein at 4000 atoms.
+PDB snapshots written at ~1ns intervals for DFT (ORCA) input.
 
 The H5 is self-contained: typed topology (bonds, rings, enrichment),
 per-frame physics groups (ring_current, efg, bond_aniso, quadrupole,
@@ -209,7 +211,7 @@ Protein dataclass.
 
 **Typical invocation (trajectory):**
 
-    nmr_extract --trajectory --tpr topology.tpr --xtc trajectory.xtc \
+    nmr_extract --trajectory /path/to/protein_dir \
                 --no-mopac --no-coulomb --output /path/to/output
 
 **Typical invocation (single protein):**

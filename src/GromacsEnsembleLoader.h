@@ -53,7 +53,8 @@ BuildResult BuildFromGromacs(const FleetPaths& paths);
 // Returns a Protein with residues + atoms but no conformations.
 // Caller provides positions separately for FinalizeConstruction.
 // Charges are in the BuildResult.
-// This is the shared core of BuildFromGromacs and BuildFromTrajectory.
+// Used by BuildFromGromacs (fleet path). The trajectory path uses
+// FullSystemReader::BuildProtein() which shares the same TPR parse.
 BuildResult BuildProteinFromTpr(const std::string& tpr_path,
                                 const std::string& protein_id,
                                 ForceField force_field = ForceField::CHARMM36m);

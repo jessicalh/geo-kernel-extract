@@ -28,11 +28,12 @@ Two build paths:
   constructed (bonds, rings, conformations) immediately. InitAtoms()
   called at the end.
 
-- **BuildFromTrajectory(tpr_path)**: reads TPR topology via
-  FullSystemReader (protein/water/ion atom ranges) and builds Protein
-  from TPR via BuildProteinFromTpr. Does NOT finalize the protein --
-  FinalizeProtein() must be called after the first XTC frame provides
-  real coordinates for bond detection.
+- **BuildFromTrajectory(dir_path)**: dir_path must contain md.tpr,
+  md.xtc, md.edr. FullSystemReader parses the TPR once — atom ranges,
+  bonded parameters, and protein construction all from one parse.
+  EDR preloaded for O(1) per-frame lookup. Does NOT finalize the
+  protein -- FinalizeProtein() must be called after the first XTC
+  frame provides real coordinates for bond detection.
 
 **Deferred finalization pattern (trajectory path):**
 

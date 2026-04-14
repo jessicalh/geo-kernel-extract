@@ -299,8 +299,8 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
 
     {
         auto aim_gpu = output_dict.at("aim").toTensor();
-        auto aim_cpu = aim_gpu.to(torch::kCPU, torch::kFloat64);
-        auto aim_acc = aim_cpu.accessor<double, 2>();
+        auto aim_cpu = aim_gpu.to(torch::kCPU, torch::kFloat32);
+        auto aim_acc = aim_cpu.accessor<float, 2>();
 
         int64_t model_dims = aim_cpu.size(1);
         if (model_dims != static_cast<int64_t>(AIMNET2_AIM_DIMS)) {
@@ -485,13 +485,13 @@ int AIMNet2Result::WriteFeatures(
         files_written++;
     }
 
-    // aimnet2_aim.npy — (N, AIMNET2_AIM_DIMS) float64
+    // aimnet2_aim.npy — (N, AIMNET2_AIM_DIMS) float32 (native torch precision)
     {
-        std::vector<double> data(N * AIMNET2_AIM_DIMS);
+        std::vector<float> data(N * AIMNET2_AIM_DIMS);
         for (size_t i = 0; i < N; ++i)
             for (size_t d = 0; d < AIMNET2_AIM_DIMS; ++d)
                 data[i * AIMNET2_AIM_DIMS + d] = conf.AtomAt(i).aimnet2_aim[d];
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_aim.npy",
+        NpyWriter::WriteFloat32(output_dir + "/aimnet2_aim.npy",
                                 data.data(), N, AIMNET2_AIM_DIMS);
         files_written++;
     }

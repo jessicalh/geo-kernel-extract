@@ -45,13 +45,13 @@ public:
     // Build from fleet paths (pre-extracted PDB poses).
     bool Build(const FleetPaths& paths);
 
-    // Build from full-system trajectory.
-    // Reads TPR for topology (atom ranges, charges, bonded parameters).
-    // Reads EDR if provided (all frames, preloaded for O(1) per-frame lookup).
+    // Build from full-system trajectory directory.
+    // dir_path must contain md.tpr, md.xtc, md.edr.
+    // Reads TPR once for topology (atom ranges, charges, bonded parameters).
+    // Reads EDR (all frames, preloaded for O(1) per-frame lookup).
     // Does NOT finalize — FinalizeProtein() must be called after the
     // first XTC frame provides positions for bond detection.
-    bool BuildFromTrajectory(const std::string& tpr_path,
-                             const std::string& edr_path = "");
+    bool BuildFromTrajectory(const std::string& dir_path);
 
     // The run context: bonded params, EDR, cursor state.
     // Lifetime = GromacsProtein lifetime.

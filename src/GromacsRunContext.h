@@ -29,11 +29,11 @@ class FullSystemReader;  // forward — only needed in Build impl
 struct GromacsRunContext {
 
     // ── Build ────────────────────────────────────────────────────
-    // Extracts bonded params via the caller's FullSystemReader (already
-    // parsed from the TPR — no re-read). Loads EDR if path non-empty.
+    // Receives bonded params from the FullSystemReader (already
+    // extracted during ReadTopology — no re-read).
+    // Loads EDR if path non-empty.
     // Returns false on error (check error).
-    bool Build(FullSystemReader& reader,
-               const std::string& tpr_path,
+    bool Build(const FullSystemReader& reader,
                const std::string& edr_path = "");
 
     // ── Preloaded data ──────────────────────────────────────────

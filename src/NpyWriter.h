@@ -28,6 +28,15 @@ public:
                                : std::vector<size_t>{rows, cols});
     }
 
+    // Write a 2D array of float32. cols=1 writes as 1D shape (rows,).
+    static bool WriteFloat32(const std::string& path,
+                             const float* data,
+                             size_t rows, size_t cols = 1) {
+        return Write(path, "<f4", data, rows * cols * sizeof(float),
+                     cols == 1 ? std::vector<size_t>{rows}
+                               : std::vector<size_t>{rows, cols});
+    }
+
     // Write a 1D array of int32.
     static bool WriteInt32(const std::string& path,
                            const int32_t* data,

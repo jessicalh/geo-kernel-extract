@@ -51,9 +51,12 @@ struct JobSpec {
     OrcaRunFiles ala_files;
 
     // -- Trajectory mode --
-    std::string traj_tpr;        // full-system TPR (topology + charges)
-    std::string traj_xtc;        // full-system XTC (protein + water + ions)
-    std::string traj_edr;        // .edr energy file (optional)
+    // --trajectory DIR: directory containing md.tpr, md.xtc, md.edr.
+    // All three are required. Paths derived from traj_dir.
+    std::string traj_dir;        // protein directory (e.g. /path/to/1B1V_4292)
+    std::string traj_tpr;        // {traj_dir}/md.tpr
+    std::string traj_xtc;        // {traj_dir}/md.xtc
+    std::string traj_edr;        // {traj_dir}/md.edr
     bool analysis = false;       // --analysis: exhaustive per-frame H5 (see ANALYSIS_TRAJECTORY spec)
 
     // -- Common --

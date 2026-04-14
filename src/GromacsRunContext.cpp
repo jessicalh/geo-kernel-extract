@@ -15,13 +15,11 @@ namespace nmr {
 
 // ── Build ───────────────────────────────────────────────────────
 
-bool GromacsRunContext::Build(FullSystemReader& reader,
-                              const std::string& tpr_path,
+bool GromacsRunContext::Build(const FullSystemReader& reader,
                               const std::string& edr_path) {
-    // Bonded interaction parameters from the caller's already-parsed reader.
-    // ExtractBondedParameters re-reads the TPR for interaction lists
-    // (topology was already parsed for atom ranges).
-    reader.ExtractBondedParameters(tpr_path, bonded_params);
+    // Bonded interaction parameters from the reader's single TPR parse.
+    // ReadTopology() already extracted these — no re-read.
+    bonded_params = reader.BondedParams();
 
     // EDR energy frames (optional)
     if (!edr_path.empty()) {

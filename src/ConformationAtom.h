@@ -280,8 +280,9 @@ public:
     // === AIMNet2 neural network results (AIMNet2Result) ===
     // Hirshfeld charge from AIMNet2 wB97M model (elementary charges)
     double aimnet2_charge = 0.0;
-    // Learned electronic structure embedding (256 dims, geometry-dependent)
-    std::array<double, AIMNET2_AIM_DIMS> aimnet2_aim = {};
+    // Learned electronic structure embedding (256 dims, geometry-dependent).
+    // float32: native torch precision. No upshift to double.
+    std::array<float, AIMNET2_AIM_DIMS> aimnet2_aim = {};
     // Coulomb EFG from AIMNet2 charges — same kernel as CoulombResult
     Mat3 aimnet2_EFG_total = Mat3::Zero();
     SphericalTensor aimnet2_EFG_total_spherical;

@@ -50,33 +50,39 @@ bool GromacsProtein::Build(const FleetPaths& paths) {
 
 // ── Build (trajectory path — TPR is authoritative) ───────────────
 
-bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path,
-                                         const std::string& edr_path) {
+bool GromacsProtein::BuildFromTrajectory(const std::string& dir_path) {
 
-    // Full-system topology for frame splitting (protein/water/ion ranges)
+    // Protein ID from the directory name.
+    // Fleet convention: directory is {PDBID}_{atomcount} (e.g. 1B1V_4292).
+    protein_id_ = fs::path(dir_path).filename().string();
+
+    std::string tpr_path = dir_path + "/md.tpr";
+    std::string edr_path = dir_path + "/md.edr";
+
+    // Single TPR parse: atom ranges, bonded parameters, and stored
+    // topology data for BuildProtein(). One read_tpx_state call.
     if (!sys_reader_.ReadTopology(tpr_path)) {
         error_ = "TPR topology: " + sys_reader_.error();
         return false;
     }
 
-    // Run context: bonded params + EDR, using the already-parsed reader.
-    if (!run_ctx_.Build(sys_reader_, tpr_path, edr_path)) {
+    // Run context: bonded params from reader (already extracted),
+    // EDR energy frames from the .edr file.
+    if (!run_ctx_.Build(sys_reader_, edr_path)) {
         error_ = "run context: " + run_ctx_.error;
         return false;
     }
 
-    // Protein construction from TPR (same builder as fleet path)
-    // Protein ID from the parent directory, not the TPR filename.
-    // Fleet convention: directory is {PDBID}_{atomcount} (e.g. 1B1V_4292).
-    // TPR is always "md.tpr" — useless as an ID.
-    protein_id_ = fs::path(tpr_path).parent_path().filename().string();
-    auto build = BuildProteinFromTpr(tpr_path, protein_id_);
+    // Protein construction from stored TPR parse (no re-read).
+    auto build = sys_reader_.BuildProtein(protein_id_);
     if (!build.Ok()) {
         error_ = "TPR protein: " + build.error;
         return false;
     }
 
     protein_ = std::move(build.protein);
+    charges_ = std::move(build.charges);
+    net_charge_ = build.net_charge;
 
     // NOTE: Protein is not finalized yet — FinalizeProtein() needs
     // positions from the first XTC frame for bond detection. Called
@@ -88,8 +94,8 @@ bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path,
         std::to_string(sys_reader_.Topology().water_count) + " water, " +
         std::to_string(sys_reader_.Topology().ion_count) + " ions" +
         (run_ctx_.HasEdr() ? ", EDR loaded" : "") +
-        (run_ctx_.HasBondedParams() ?
-            ", " + std::to_string(run_ctx_.bonded_params.interactions.size()) + " bonded" : ""));
+        (sys_reader_.HasBondedParams() ?
+            ", " + std::to_string(sys_reader_.BondedParams().interactions.size()) + " bonded" : ""));
 
     return true;
 }

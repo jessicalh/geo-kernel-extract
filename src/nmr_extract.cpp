@@ -213,7 +213,7 @@ static int RunMutant(const JobSpec& spec) {
 
 // RunFleet (--fleet mode) removed 2026-04-12.
 // Pre-extracted PDB pose path superseded by full-system trajectory streaming.
-// For GROMACS ensemble extraction use: nmr_extract --trajectory --tpr FILE --xtc FILE
+// For GROMACS ensemble extraction use: nmr_extract --trajectory DIR
 
 
 // ============================================================================
@@ -231,12 +231,11 @@ static int RunMutant(const JobSpec& spec) {
 
 static int RunTrajectory(const JobSpec& spec) {
     OperationLog::Info(LogFileIO, "nmr_extract",
-        "trajectory mode: tpr=" + spec.traj_tpr +
-        " xtc=" + spec.traj_xtc);
+        "trajectory mode: dir=" + spec.traj_dir);
 
-    // Build adapter (Protein from TPR, run context from TPR + EDR)
+    // Build adapter (single TPR parse: topology, bonded params, protein, EDR)
     GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_edr)) {
+    if (!gp.BuildFromTrajectory(spec.traj_dir)) {
         fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
         return 1;
     }
@@ -350,12 +349,11 @@ static int RunTrajectory(const JobSpec& spec) {
 
 static int RunAnalysis(const JobSpec& spec) {
     OperationLog::Info(LogFileIO, "nmr_extract",
-        "analysis mode: tpr=" + spec.traj_tpr +
-        " xtc=" + spec.traj_xtc);
+        "analysis mode: dir=" + spec.traj_dir);
 
-    // Build adapter (Protein from TPR, run context from TPR + EDR)
+    // Build adapter (single TPR parse: topology, bonded params, protein, EDR)
     GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_tpr, spec.traj_edr)) {
+    if (!gp.BuildFromTrajectory(spec.traj_dir)) {
         fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
         return 1;
     }

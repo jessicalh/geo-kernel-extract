@@ -193,7 +193,7 @@ private:
     std::vector<double> eeq_cn_;                  // (T, N)
 
     // ── AIMNet2 embedding group ─────────────────────────────────
-    std::vector<double> aimnet2_aim_;             // (T, N, 256)
+    std::vector<float> aimnet2_aim_;              // (T, N, 256) float32 native torch
 
     // ── Per-ring group (K=6 nearest rings) ──────────────────────
     static constexpr size_t K_RINGS = 6;

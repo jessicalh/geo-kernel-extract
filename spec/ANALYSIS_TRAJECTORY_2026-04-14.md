@@ -95,12 +95,13 @@ leaner than the analysis H5 — only channels that proved useful.
 
 ### CLI
 
-    nmr_extract --trajectory --analysis \
-                --tpr topology.tpr --xtc trajectory.xtc \
-                --output /path/to/output
+    nmr_extract --trajectory --analysis /path/to/protein_dir \
+                --aimnet2 model.jpt --output /path/to/output
 
+protein_dir must contain md.tpr, md.xtc, md.edr (all required).
 Single pass over XTC with stride. All calculators run on each
-sampled frame. Analysis H5 written at end.
+sampled frame. Analysis H5 written at end. PDB snapshots at ~1ns
+intervals for ORCA DFT input.
 
 ### H5 schema
 

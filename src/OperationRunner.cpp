@@ -34,6 +34,8 @@ namespace nmr {
 
 
 // Helper: attach a result, log failure, accumulate name list.
+// Timing: each Compute is already wrapped by the caller in a lambda
+// that includes the Scope. The Attach itself just moves the pointer.
 static bool Attach(ProteinConformation& conf,
                    std::unique_ptr<ConformationResult> result,
                    const char* name,
@@ -48,6 +50,17 @@ static bool Attach(ProteinConformation& conf,
     }
     out.attached.push_back(name);
     return true;
+}
+
+// Timed compute + attach. The Scope emits [BEGIN] and [END] with
+// elapsed ms over UDP. Every calculator gets an entry in the log
+// so we can see where per-frame time goes.
+template<typename F>
+static bool TimedAttach(ProteinConformation& conf, const char* name,
+                        RunResult& out, F&& compute) {
+    OperationLog::Scope scope(name);
+    auto result = compute();
+    return Attach(conf, std::move(result), name, out);
 }
 
 
@@ -70,15 +83,16 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     // --- Tier 0: foundation ---
 
-    if (!Attach(conf, GeometryResult::Compute(conf),
-                "GeometryResult", out)) return out;
-    if (!Attach(conf, SpatialIndexResult::Compute(conf),
-                "SpatialIndexResult", out)) return out;
-    if (!Attach(conf, EnrichmentResult::Compute(conf),
-                "EnrichmentResult", out)) return out;
+    if (!TimedAttach(conf, "GeometryResult", out, [&]{
+            return GeometryResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "SpatialIndexResult", out, [&]{
+            return SpatialIndexResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "EnrichmentResult", out, [&]{
+            return EnrichmentResult::Compute(conf); })) return out;
 
     // DSSP
     if (!opts.skip_dssp) {
+        OperationLog::Scope dssp_scope("DsspResult");
         auto dssp = DsspResult::Compute(conf);
         if (dssp) {
             Attach(conf, std::move(dssp), "DsspResult", out);
@@ -90,15 +104,15 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     // Charges
     if (opts.charge_source) {
-        if (!Attach(conf, ChargeAssignmentResult::Compute(conf, *opts.charge_source),
-                    "ChargeAssignmentResult", out)) return out;
+        if (!TimedAttach(conf, "ChargeAssignmentResult", out, [&]{
+                return ChargeAssignmentResult::Compute(conf, *opts.charge_source); })) return out;
     }
 
     // --- Tier 0.5: external tools (when charges available) ---
 
     if (conf.HasResult<ChargeAssignmentResult>()) {
-        // MOPAC: PM7+MOZYME semiempirical charges + bond orders
         if (!opts.skip_mopac) {
+            OperationLog::Scope mopac_scope("MopacResult");
             auto mopac = MopacResult::Compute(conf, opts.net_charge);
             if (mopac) {
                 Attach(conf, std::move(mopac), "MopacResult", out);
@@ -109,8 +123,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             }
         }
 
-        // APBS: solvated Poisson-Boltzmann E-field
         if (!opts.skip_apbs) {
+            OperationLog::Scope apbs_scope("ApbsFieldResult");
             auto apbs = ApbsFieldResult::Compute(conf);
             if (apbs) {
                 Attach(conf, std::move(apbs), "ApbsFieldResult", out);
@@ -123,78 +137,67 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     // --- Tier 1: 8 classical calculators ---
 
-    if (!Attach(conf, BiotSavartResult::Compute(conf),
-                "BiotSavartResult", out)) return out;
-    if (!Attach(conf, HaighMallionResult::Compute(conf),
-                "HaighMallionResult", out)) return out;
-    if (!Attach(conf, McConnellResult::Compute(conf),
-                "McConnellResult", out)) return out;
-    if (!Attach(conf, RingSusceptibilityResult::Compute(conf),
-                "RingSusceptibilityResult", out)) return out;
-    if (!Attach(conf, PiQuadrupoleResult::Compute(conf),
-                "PiQuadrupoleResult", out)) return out;
-    if (!Attach(conf, DispersionResult::Compute(conf),
-                "DispersionResult", out)) return out;
+    if (!TimedAttach(conf, "BiotSavartResult", out, [&]{
+            return BiotSavartResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "HaighMallionResult", out, [&]{
+            return HaighMallionResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "McConnellResult", out, [&]{
+            return McConnellResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "RingSusceptibilityResult", out, [&]{
+            return RingSusceptibilityResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "PiQuadrupoleResult", out, [&]{
+            return PiQuadrupoleResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "DispersionResult", out, [&]{
+            return DispersionResult::Compute(conf); })) return out;
 
     if (conf.HasResult<ChargeAssignmentResult>() && !opts.skip_coulomb) {
-        if (!Attach(conf, CoulombResult::Compute(conf),
-                    "CoulombResult", out)) return out;
+        if (!TimedAttach(conf, "CoulombResult", out, [&]{
+                return CoulombResult::Compute(conf); })) return out;
     }
 
     if (conf.HasResult<MopacResult>()) {
-        if (!Attach(conf, MopacCoulombResult::Compute(conf),
-                    "MopacCoulombResult", out)) return out;
-        if (!Attach(conf, MopacMcConnellResult::Compute(conf),
-                    "MopacMcConnellResult", out)) return out;
+        if (!TimedAttach(conf, "MopacCoulombResult", out, [&]{
+                return MopacCoulombResult::Compute(conf); })) return out;
+        if (!TimedAttach(conf, "MopacMcConnellResult", out, [&]{
+                return MopacMcConnellResult::Compute(conf); })) return out;
     }
 
     if (conf.HasResult<DsspResult>()) {
-        if (!Attach(conf, HBondResult::Compute(conf),
-                    "HBondResult", out)) return out;
+        if (!TimedAttach(conf, "HBondResult", out, [&]{
+                return HBondResult::Compute(conf); })) return out;
     }
 
-    // SASA: per-atom Shrake-Rupley (needs SpatialIndexResult)
-    if (!Attach(conf, SasaResult::Compute(conf),
-                "SasaResult", out)) return out;
+    if (!TimedAttach(conf, "SasaResult", out, [&]{
+            return SasaResult::Compute(conf); })) return out;
+    if (!TimedAttach(conf, "EeqResult", out, [&]{
+            return EeqResult::Compute(conf); })) return out;
 
-    // EEQ: geometry-dependent charges (Caldeweyher 2019, pure C++/Eigen).
-    // No dependencies beyond protein geometry and element types.
-    if (!Attach(conf, EeqResult::Compute(conf),
-                "EeqResult", out)) return out;
-
-    // AIMNet2: neural network charges + EFG (geometry-only, CUDA)
-    // FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
-    // Silent degradation on a 4-week fleet run means no thesis.
+    // AIMNet2: FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
     if (opts.aimnet2_model) {
-        auto aimnet2 = AIMNet2Result::Compute(conf, *opts.aimnet2_model);
-        if (!Attach(conf, std::move(aimnet2), "AIMNet2Result", out))
-            return out;
+        if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
+                return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;
     }
 
-    // Explicit solvent calculators (trajectory path with full-system .xtc)
-    // Explicit solvent calculators: if solvent data is provided, these MUST succeed.
-    // A fleet run with silently missing water features is unrecoverable.
+    // Explicit solvent calculators: MUST succeed if solvent provided.
     if (opts.solvent && !opts.solvent->Empty()) {
-        if (!Attach(conf, WaterFieldResult::Compute(conf, *opts.solvent),
-                    "WaterFieldResult", out)) return out;
-        if (!Attach(conf, HydrationShellResult::Compute(conf, *opts.solvent),
-                    "HydrationShellResult", out)) return out;
-        // HydrationGeometryResult: SASA-normal reference frame for water polarisation.
-        // Depends on SasaResult (attached above) and SolventEnvironment.
-        if (!Attach(conf, HydrationGeometryResult::Compute(conf, *opts.solvent),
-                    "HydrationGeometryResult", out)) return out;
+        if (!TimedAttach(conf, "WaterFieldResult", out, [&]{
+                return WaterFieldResult::Compute(conf, *opts.solvent); })) return out;
+        if (!TimedAttach(conf, "HydrationShellResult", out, [&]{
+                return HydrationShellResult::Compute(conf, *opts.solvent); })) return out;
+        if (!TimedAttach(conf, "HydrationGeometryResult", out, [&]{
+                return HydrationGeometryResult::Compute(conf, *opts.solvent); })) return out;
     }
 
     // GROMACS energy: from preloaded EDR via run context (O(1) per frame)
     if (opts.frame_energy) {
-        if (!Attach(conf, GromacsEnergyResult::Compute(conf, *opts.frame_energy),
-                    "GromacsEnergyResult", out)) return out;
+        if (!TimedAttach(conf, "GromacsEnergyResult", out, [&]{
+                return GromacsEnergyResult::Compute(conf, *opts.frame_energy); })) return out;
     }
 
     // Bonded energy: per-atom decomposition from force field parameters
     if (opts.bonded_params) {
-        if (!Attach(conf, BondedEnergyResult::Compute(conf, *opts.bonded_params),
-                    "BondedEnergyResult", out)) return out;
+        if (!TimedAttach(conf, "BondedEnergyResult", out, [&]{
+                return BondedEnergyResult::Compute(conf, *opts.bonded_params); })) return out;
     }
 
     // --- Tier 2: DFT comparison (optional) ---

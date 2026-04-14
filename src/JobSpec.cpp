@@ -117,26 +117,44 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     }
 
     if (HasFlag(argc, argv, "--fleet")) {
-        spec.error = "--fleet mode removed (2026-04-12). Use --trajectory for "
-                     "GROMACS ensemble extraction: --trajectory --tpr FILE --xtc FILE";
+        spec.error = "--fleet mode removed (2026-04-12). Use --trajectory DIR.";
         return spec;
     }
 
     if (HasFlag(argc, argv, "--trajectory")) {
         spec.mode = JobMode::Trajectory;
-        spec.traj_tpr = GetArg(argc, argv, "--tpr");
-        spec.traj_xtc = GetArg(argc, argv, "--xtc");
-        spec.traj_edr = GetArg(argc, argv, "--edr");
         spec.analysis = HasFlag(argc, argv, "--analysis");
 
-        if (spec.traj_tpr.empty()) {
-            spec.error = "--trajectory requires --tpr FILE (full-system topology)";
+        // --trajectory DIR: protein directory containing md.tpr, md.xtc, md.edr.
+        // Find DIR: the first non-flag token after --trajectory.
+        // (GetArg would grab --analysis as the value.)
+        for (int i = 1; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--trajectory") == 0) {
+                for (int j = i + 1; j < argc; ++j) {
+                    if (argv[j][0] != '-') {
+                        spec.traj_dir = argv[j];
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        if (spec.traj_dir.empty()) {
+            spec.error = "--trajectory requires a directory path:\n"
+                         "  --trajectory DIR\n"
+                         "  DIR must contain md.tpr, md.xtc, md.edr";
             return spec;
         }
-        if (spec.traj_xtc.empty()) {
-            spec.error = "--trajectory requires --xtc FILE (full-system trajectory)";
-            return spec;
-        }
+
+        // Derive file paths from directory convention.
+        // No looking around, no extension swapping, no glob.
+        std::string dir = spec.traj_dir;
+        if (!dir.empty() && dir.back() == '/') dir.pop_back();
+        spec.traj_tpr = dir + "/md.tpr";
+        spec.traj_xtc = dir + "/md.xtc";
+        spec.traj_edr = dir + "/md.edr";
+
         return spec;
     }
 
@@ -275,14 +293,13 @@ bool ValidateJobSpec(JobSpec& spec) {
         return true;
 
     case JobMode::Trajectory:
+        if (!RequireDir(spec, spec.traj_dir, "trajectory directory")) return false;
         if (!RequireFile(spec, spec.traj_tpr,
                          "full-system TPR (topology + charges)")) return false;
         if (!RequireFile(spec, spec.traj_xtc,
                          "full-system XTC (protein + water + ions)")) return false;
-        if (!spec.traj_edr.empty()) {
-            if (!RequireFile(spec, spec.traj_edr,
-                             "GROMACS .edr energy file")) return false;
-        }
+        if (!RequireFile(spec, spec.traj_edr,
+                         "GROMACS .edr energy file")) return false;
         return true;
 
     case JobMode::None:
@@ -320,15 +337,14 @@ void PrintJobSpecUsage(const char* prog) {
         "      Load a WT + ALA mutant pair. Each root expands as above.\n"
         "      Runs both conformations and computes WT-ALA delta tensors.\n"
         "\n"
-        "  %s --trajectory --tpr FILE --xtc FILE [--edr FILE] --output DIR\n"
+        "  %s --trajectory DIR --output DIR\n"
         "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
-        "      TPR: full-system topology and protein construction. XTC: full-system\n"
-        "      trajectory. EDR: optional energy file.\n"
+        "      DIR must contain md.tpr, md.xtc, md.edr (all required).\n"
         "      Pass 1: scan all frames with lightweight calculators, accumulate stats.\n"
         "      Pass 2: extract selected frames with full calculators, write NPY.\n"
         "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"
         "\n"
-        "  %s --trajectory --analysis --tpr FILE --xtc FILE --output DIR\n"
+        "  %s --trajectory --analysis DIR --aimnet2 MODEL --output DIR\n"
         "      Analysis mode: single pass, all calculators on every sampled frame.\n"
         "      Writes exhaustive analysis H5 with full per-atom time series,\n"
         "      topology, and physics-group decomposition. ~1.2 GB per protein.\n"

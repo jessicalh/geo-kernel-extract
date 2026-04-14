@@ -789,6 +789,13 @@ void WriteRawDouble(HighFive::Group& grp, const std::string& name,
     ds.write_raw(data);
 }
 
+void WriteRawFloat(HighFive::Group& grp, const std::string& name,
+                   const float* data, std::vector<size_t> shape) {
+    HighFive::DataSpace space(shape);
+    auto ds = grp.createDataSet<float>(name, space);
+    ds.write_raw(data);
+}
+
 // Write a SphericalTensor dataset with layout documentation attribute.
 void WriteSphericalTensor(HighFive::Group& grp, const std::string& name,
                           const double* data, size_t T, size_t N) {
@@ -995,7 +1002,7 @@ void AnalysisWriter::WriteH5(const std::string& path) const {
     // ── /aimnet2_embedding/ ─────────────────────────────────────
     if (T > 0 && N > 0) {
         auto grp = file.createGroup("aimnet2_embedding");
-        WriteRawDouble(grp, "aim", aimnet2_aim_.data(), {T, N, size_t{AIMNET2_AIM_DIMS}});
+        WriteRawFloat(grp, "aim", aimnet2_aim_.data(), {T, N, size_t{AIMNET2_AIM_DIMS}});
     }
 
     // ── /per_ring/ ────────────────────────────────────────────────
