@@ -234,11 +234,38 @@ void GromacsProtein::AccumulateFrame(
         ga.water_efield_y.Update(ca.water_efield.y(), frame_idx);
         ga.water_efield_z.Update(ca.water_efield.z(), frame_idx);
 
-        // ── Hydration geometry ─────────────────────────────────
+        // ── Hydration geometry (HydrationShellResult — COM) ───
         ga.half_shell.Update(ca.half_shell_asymmetry, frame_idx);
         ga.dipole_cos.Update(ca.mean_water_dipole_cos, frame_idx);
         if (ca.nearest_ion_distance < 1e30)  // infinity when no ion within cutoff
             ga.nearest_ion_dist.Update(ca.nearest_ion_distance, frame_idx);
+
+        // ── Water polarisation (HydrationGeometryResult — SASA-normal) ──
+        // Conditional: sasa_first_shell_count > 0 means HydrationGeometry ran
+        // and found water. If no solvent was provided, all fields stay at
+        // defaults (0.0 / Zero) and we skip to avoid poisoning Welfords.
+        if (ca.sasa_first_shell_count > 0) {
+            ga.wp_dipole_x.Update(ca.water_dipole_vector.x(), frame_idx);
+            ga.wp_dipole_y.Update(ca.water_dipole_vector.y(), frame_idx);
+            ga.wp_dipole_z.Update(ca.water_dipole_vector.z(), frame_idx);
+            ga.wp_normal_x.Update(ca.water_surface_normal.x(), frame_idx);
+            ga.wp_normal_y.Update(ca.water_surface_normal.y(), frame_idx);
+            ga.wp_normal_z.Update(ca.water_surface_normal.z(), frame_idx);
+            ga.wp_asymmetry.Update(ca.sasa_half_shell_asymmetry, frame_idx);
+            ga.wp_alignment.Update(ca.sasa_dipole_alignment, frame_idx);
+            ga.wp_coherence.Update(ca.sasa_dipole_coherence, frame_idx);
+            ga.wp_first_shell_n.Update(
+                static_cast<double>(ca.sasa_first_shell_count), frame_idx);
+        }
+
+        // ── EEQ charges (EeqResult) ───────────────────────────
+        // EEQ runs on protein geometry alone (no solvent needed).
+        // Guard: eeq_charge == 0.0 AND eeq_cn == 0.0 means EEQ didn't run.
+        if (ca.eeq_charge != 0.0 || ca.eeq_cn != 0.0) {
+            ga.eeq_charge.Update(ca.eeq_charge, frame_idx);
+            ga.eeq_charge_delta.UpdateDelta(ca.eeq_charge, frame_idx);
+            ga.eeq_cn.Update(ca.eeq_cn, frame_idx);
+        }
 
         // ── DSSP dynamics ──────────────────────────────────────
         if (dssp) {

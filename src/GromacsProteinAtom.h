@@ -159,9 +159,20 @@ public:
             {"water_efield_x", &water_efield_x},
             {"water_efield_y", &water_efield_y},
             {"water_efield_z", &water_efield_z},
-            // Hydration
+            // Hydration (HydrationShellResult — COM-based)
             {"half_shell", &half_shell}, {"dipole_cos", &dipole_cos},
             {"nearest_ion_dist", &nearest_ion_dist},
+            // Water polarisation (HydrationGeometryResult — SASA-normal)
+            {"wp_dipole_x", &wp_dipole_x}, {"wp_dipole_y", &wp_dipole_y},
+            {"wp_dipole_z", &wp_dipole_z},
+            {"wp_normal_x", &wp_normal_x}, {"wp_normal_y", &wp_normal_y},
+            {"wp_normal_z", &wp_normal_z},
+            {"wp_asymmetry", &wp_asymmetry},
+            {"wp_alignment", &wp_alignment},
+            {"wp_coherence", &wp_coherence},
+            {"wp_first_shell_n", &wp_first_shell_n},
+            // EEQ charges (Caldeweyher 2019)
+            {"eeq_charge", &eeq_charge}, {"eeq_cn", &eeq_cn},
             // DSSP
             {"phi_cos", &phi_cos}, {"psi_cos", &psi_cos},
             {"dssp_hbond_energy", &dssp_hbond_energy},
@@ -174,6 +185,7 @@ public:
             {"aimnet2_charge_delta", &aimnet2_charge_delta.delta},
             {"sasa_delta", &sasa_delta.delta},
             {"water_n_first_delta", &water_n_first_delta.delta},
+            {"eeq_charge_delta", &eeq_charge_delta.delta},
         };
     }
 
@@ -268,11 +280,35 @@ public:
     DeltaTracker water_n_first_delta;  // water exchange rate
 
     // =================================================================
-    // Hydration geometry (HydrationShellResult)
+    // Hydration geometry (HydrationShellResult — COM-based)
     // =================================================================
     Welford half_shell;          // half-shell asymmetry (0-1)
     Welford dipole_cos;          // mean water dipole orientation
     Welford nearest_ion_dist;    // distance to closest ion (A)
+
+    // =================================================================
+    // Water polarisation (HydrationGeometryResult — SASA-normal ref)
+    // Self-contained block matching water_polarization.npy / SDK
+    // WaterPolarizationGroup. wp_ prefix = water_polarization group.
+    // =================================================================
+    Welford wp_dipole_x;         // net first-shell water dipole x
+    Welford wp_dipole_y;         // net first-shell water dipole y
+    Welford wp_dipole_z;         // net first-shell water dipole z
+    Welford wp_normal_x;         // SASA surface normal x (self-contained copy)
+    Welford wp_normal_y;         // SASA surface normal y
+    Welford wp_normal_z;         // SASA surface normal z
+    Welford wp_asymmetry;        // half-shell asymmetry (SASA-normal, not COM)
+    Welford wp_alignment;        // cos(net dipole, SASA normal)
+    Welford wp_coherence;        // |Σ dᵢ| / n — ordered vs random
+    Welford wp_first_shell_n;    // first-shell water O count
+
+    // =================================================================
+    // EEQ charges (EeqResult — Caldeweyher 2019)
+    // =================================================================
+    Welford eeq_charge;          // geometry-dependent partial charge (e)
+    Welford eeq_cn;              // coordination number
+
+    DeltaTracker eeq_charge_delta;  // frame-to-frame charge fluctuation
 
     // =================================================================
     // DSSP dynamics (DsspResult — per-residue, broadcast to atoms)

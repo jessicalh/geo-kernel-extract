@@ -465,7 +465,8 @@ reference suffices. No `using namespace std;` in headers.
 
 **CMake:** Single library target (nmr_shielding) with all .cpp files
 listed in CMakeLists.txt. Adding a new result = add the .cpp to the
-source list in CMakeLists.txt.
+source list in CMakeLists.txt. Always build from `build/`, never from
+root (`cd build && cmake .. && make -j$(nproc)`).
 
 ---
 
