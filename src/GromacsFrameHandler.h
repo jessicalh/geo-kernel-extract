@@ -20,6 +20,7 @@
 //
 
 #include "GromacsProtein.h"
+#include "ProteinConformation.h"
 #include "OperationRunner.h"
 #include "xtc_reader.h"
 #include "pbc_whole.h"
@@ -60,12 +61,23 @@ public:
     // Total frames seen after a complete pass.
     size_t total_frames() const { return total_frames_; }
 
+    // The most recently processed conformation with all calculator
+    // results attached. Valid after Next() returns true. Invalidated
+    // by the next Next(), Skip(), or Reopen() call.
+    // This is the per-frame work product — the buffer for everything
+    // the calculators computed on this frame.
+    const ProteinConformation& conformation() const { return *last_conf_; }
+    bool has_conformation() const { return last_conf_ != nullptr; }
+    double frame_time() const { return last_frame_time_; }
+
     const std::string& error() const { return error_; }
 
 private:
     GromacsProtein& gp_;
     XtcStreamReader reader_;
     std::unique_ptr<MoleculeWholer> wholer_;
+    std::unique_ptr<ProteinConformation> last_conf_;
+    double last_frame_time_ = 0.0;
     size_t frame_idx_ = 0;
     size_t total_frames_ = 0;
     bool first_frame_done_ = false;

@@ -127,6 +127,7 @@ bool GromacsFrameHandler::Next(
 
 
 bool GromacsFrameHandler::Skip() {
+    last_conf_.reset();
     if (!reader_.Skip()) {
         total_frames_ = frame_idx_ + 1;
         return false;
@@ -138,6 +139,7 @@ bool GromacsFrameHandler::Skip() {
 
 
 bool GromacsFrameHandler::Reopen() {
+    last_conf_.reset();
     if (!reader_.Reopen()) {
         error_ = "failed to reopen XTC";
         return false;
@@ -183,26 +185,30 @@ bool GromacsFrameHandler::ProcessFrame(
         return false;
     }
 
-    // Create free-standing conformation (NOT in Protein's vector)
-    ProteinConformation conf(&gp_.protein(), std::move(protein_pos));
+    // Create free-standing conformation (NOT in Protein's vector).
+    // Held as last_conf_ — lives until the next ProcessFrame or Skip.
+    last_conf_ = std::make_unique<ProteinConformation>(
+        &gp_.protein(), std::move(protein_pos));
+    last_frame_time_ = static_cast<double>(frame.time);
 
     // Run calculators
     RunOptions frame_opts = opts;
     frame_opts.solvent = &solvent;
-    frame_opts.frame_time_ps = static_cast<double>(frame.time);
-    RunResult rr = OperationRunner::Run(conf, frame_opts);
+    frame_opts.frame_time_ps = last_frame_time_;
+    RunResult rr = OperationRunner::Run(*last_conf_, frame_opts);
 
     if (!rr.Ok()) {
         error_ = "frame " + std::to_string(frame_idx_) +
                  " calculator failed: " + rr.error;
         OperationLog::Error("GromacsFrameHandler", error_);
+        last_conf_.reset();
         return false;
     }
 
     // Accumulate into GromacsProtein (skip in pass 2 — already counted)
     if (accumulate)
-        gp_.AccumulateFrame(conf, static_cast<int>(frame_idx_),
-                            static_cast<double>(frame.time));
+        gp_.AccumulateFrame(*last_conf_, static_cast<int>(frame_idx_),
+                            last_frame_time_);
 
     // Write NPY if requested
     if (!output_dir.empty()) {
@@ -210,7 +216,7 @@ bool GromacsFrameHandler::ProcessFrame(
         std::snprintf(frame_dir, sizeof(frame_dir), "%s/frame_%04zu",
                       output_dir.c_str(), frame_idx_);
         fs::create_directories(frame_dir);
-        int n_files = ConformationResult::WriteAllFeatures(conf, frame_dir);
+        int n_files = ConformationResult::WriteAllFeatures(*last_conf_, frame_dir);
         gp_.AddFramePath(frame_dir);
 
         OperationLog::Info(LogCalcOther, "GromacsFrameHandler",
@@ -219,7 +225,8 @@ bool GromacsFrameHandler::ProcessFrame(
             " files=" + std::to_string(n_files));
     }
 
-    // Conformation dies here — memory freed
+    // Conformation persists in last_conf_ for caller to harvest.
+    // Replaced by the next ProcessFrame call or cleared by Skip/Reopen.
     return true;
 }
 

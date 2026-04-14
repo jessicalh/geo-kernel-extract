@@ -71,22 +71,18 @@ is now 60 arrays covering 14 calculators (added SASA, WaterField,
 HydrationShell, GromacsEnergy). Update the count and add descriptions
 of the new calculators.
 
-## Must fix: HydrationGeometry + EEQ trajectory integration
+## ~~Must fix: HydrationGeometry + EEQ trajectory integration~~
 
-HydrationGeometryResult and EeqResult are implemented as single-frame
-calculators but not yet wired into the trajectory streaming path.
-Both need integration into:
-
-- **GromacsFrameHandler** — call HydrationGeometryResult and EeqResult
-  per frame, feed results into Welford accumulators
-- **GromacsProteinAtom** — add accumulator fields for water
-  polarisation columns (dipole vector, asymmetry, coherence, etc.)
-  and EEQ charges + coordination number
-- **H5 master file (WriteH5)** — add rollup columns for the new
-  accumulators (mean + std per atom)
-- **WriteCatalog** — add corresponding CSV columns via AllWelfords()
-- **SDK trajectory loader** — expose the new H5 columns in
-  `load_trajectory()` return type
+~~HydrationGeometryResult and EeqResult are implemented as single-frame
+calculators but not yet wired into the trajectory streaming path.~~
+— **DONE** (commit 0d71ccc, 2026-04-14). Both calculators wired into:
+- OperationRunner (HydrationGeometryResult after SasaResult+solvent,
+  EeqResult before AIMNet2)
+- AccumulateFrame (wp_* Welfords for HydrationGeometry,
+  eeq_charge/eeq_cn/eeq_charge_delta for EEQ)
+- GromacsProteinAtom AllWelfords() (10 wp_ + 2 eeq_ + 1 delta)
+- WriteH5 and WriteCatalog flow automatically from AllWelfords()
+- SDK catalog: water_polarization.npy, eeq_charges.npy, eeq_cn.npy
 
 ## Done
 

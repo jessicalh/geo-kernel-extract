@@ -86,7 +86,7 @@ then run `python -m pytest python/tests/` to verify.
 - **INDEX.md** — this file
 - **CONSTITUTION.md** — supreme constraint
 - **MATHS_GOALS.md** — mathematical validation plan
-- **USE_CASES.md** — the 4 use cases (--pdb, --orca, --mutant, --trajectory)
+- **USE_CASES.md** — the 5 use cases (--pdb, --orca, --mutant, --trajectory, --trajectory --analysis)
 - **GEOMETRY_CHOICE_BRIEF.md** — GeometryChoice recording spec
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
@@ -96,6 +96,7 @@ then run `python -m pytest python/tests/` to verify.
 - **TIMING_4876_ATOMS.md** — measured per-calculator times on 4876-atom protein (2026-04-12)
 - **OUTSTANDING_GROMACS_PATH.md** — open items for trajectory extraction path (GeometryChoice, KernelFilterSet, TOML, SDK tests)
 - **POLARISABILITY_ROADMAP_2026-04-13.md** — charge polarisation proxy approaches: SASA normal, HydrationGeometryResult, water-embedded AIMNet2, EEQ, E-field variance. What was rejected and why.
+- **ANALYSIS_TRAJECTORY_2026-04-14.md** — analysis trajectory mode: exhaustive per-frame H5, per-ring K=6, ridge+MLP predictions, projections. 10-protein workspace design (tentative, evolving).
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/
@@ -171,7 +172,8 @@ EEQ calculator (item 4, writes eeq_charges.npy + eeq_cn.npy).
 Remaining: water-embedded AIMNet2 (item 3), E-field variance
 routing (item 5).
 
-**Next work:** Integrate HydrationGeometry and EEQ calculators into
-GromacsProtein output forms (GromacsFrameHandler accumulation,
-GromacsProteinAtom accumulators, H5 master file rollup, WriteCatalog
-CSV, SDK trajectory loader).
+**Next work:** Analysis trajectory mode (`--trajectory --analysis`).
+See **spec/ANALYSIS_TRAJECTORY_2026-04-14.md** for the tentative
+design: exhaustive per-frame H5 with ridge+MLP predictions and
+projections onto Stage 1 eigenvectors. 10-protein workspace at
+`/shared/2026Thesis/fleet_calibration/`.

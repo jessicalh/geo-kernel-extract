@@ -58,7 +58,10 @@ bool GromacsProtein::BuildFromTrajectory(const std::string& tpr_path) {
     }
 
     // Protein construction from TPR (same builder as fleet path)
-    protein_id_ = fs::path(tpr_path).stem().string();
+    // Protein ID from the parent directory, not the TPR filename.
+    // Fleet convention: directory is {PDBID}_{atomcount} (e.g. 1B1V_4292).
+    // TPR is always "md.tpr" — useless as an ID.
+    protein_id_ = fs::path(tpr_path).parent_path().filename().string();
     auto build = BuildProteinFromTpr(tpr_path, protein_id_);
     if (!build.Ok()) {
         error_ = "TPR protein: " + build.error;

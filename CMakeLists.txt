@@ -195,6 +195,7 @@ add_library(nmr_shielding
     src/SasaResult.cpp
     src/GromacsProtein.cpp
     src/GromacsFrameHandler.cpp
+    src/AnalysisWriter.cpp
     src/GromacsFinalResult.cpp
     src/GromacsEnergyResult.cpp
     src/FullSystemReader.cpp

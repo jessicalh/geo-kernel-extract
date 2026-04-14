@@ -127,6 +127,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         spec.traj_tpr = GetArg(argc, argv, "--tpr");
         spec.traj_xtc = GetArg(argc, argv, "--xtc");
         spec.traj_edr = GetArg(argc, argv, "--edr");
+        spec.analysis = HasFlag(argc, argv, "--analysis");
 
         if (spec.traj_tpr.empty()) {
             spec.error = "--trajectory requires --tpr FILE (full-system topology)";
@@ -327,6 +328,11 @@ void PrintJobSpecUsage(const char* prog) {
         "      Pass 2: extract selected frames with full calculators, write NPY.\n"
         "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"
         "\n"
+        "  %s --trajectory --analysis --tpr FILE --xtc FILE --output DIR\n"
+        "      Analysis mode: single pass, all calculators on every sampled frame.\n"
+        "      Writes exhaustive analysis H5 with full per-atom time series,\n"
+        "      topology, and physics-group decomposition. ~1.2 GB per protein.\n"
+        "\n"
         "Common options:\n"
         "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
         "  --config FILE    TOML file with calculator parameter overrides\n"
@@ -335,7 +341,7 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
         "  --help, -h       Show this message\n",
-        prog, prog, prog, prog, prog);
+        prog, prog, prog, prog, prog, prog);
 }
 
 

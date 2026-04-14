@@ -19,6 +19,7 @@
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
 #include "GromacsFrameHandler.h"
+#include "AnalysisWriter.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -332,6 +333,112 @@ static int RunTrajectory(const JobSpec& spec) {
 
 
 // ============================================================================
+// Analysis mode: --trajectory --analysis
+//
+// Single pass over the XTC with stride. All calculators run every
+// sampled frame (APBS, AIMNet2 always on). AnalysisWriter buffers
+// per-frame data, writes exhaustive analysis H5 at end.
+//
+// See spec/ANALYSIS_TRAJECTORY_2026-04-14.md for full design.
+// ============================================================================
+
+static int RunAnalysis(const JobSpec& spec) {
+    OperationLog::Info(LogFileIO, "nmr_extract",
+        "analysis mode: tpr=" + spec.traj_tpr +
+        " xtc=" + spec.traj_xtc);
+
+    // Build adapter (Protein from TPR)
+    GromacsProtein gp;
+    if (!gp.BuildFromTrajectory(spec.traj_tpr)) {
+        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
+        return 1;
+    }
+
+    // Analysis always runs everything except MOPAC and vacuum Coulomb.
+    // APBS and AIMNet2 are mandatory — no opt-out.
+    RunOptions opts;
+    opts.charge_source = gp.charges();
+    opts.skip_mopac   = true;     // too expensive per frame
+    opts.skip_coulomb = true;     // APBS replaces
+    opts.skip_apbs    = false;    // always
+    opts.skip_dssp    = false;    // always
+    opts.aimnet2_model = g_aimnet2_model.get();  // always
+
+    if (!g_aimnet2_model) {
+        fprintf(stderr, "ERROR: --analysis requires --aimnet2 MODEL\n");
+        return 1;
+    }
+
+    // Open trajectory — first frame finalizes protein
+    GromacsFrameHandler handler(gp);
+    if (!handler.Open(spec.traj_xtc, spec.traj_tpr, opts)) {
+        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
+        return 1;
+    }
+    fprintf(stderr, "Protein: %zu atoms, %zu bonds, %zu rings\n",
+            gp.protein().AtomCount(), gp.protein().BondCount(),
+            gp.protein().RingCount());
+
+    // Estimate frame count for buffer pre-allocation.
+    // Stride 2: sample every other frame → ~600 of 1250.
+    constexpr size_t STRIDE = 2;
+    const size_t n_atoms = gp.protein().AtomCount();
+
+    AnalysisWriter writer(gp.protein(), gp.protein_id());
+    writer.BeginTrajectory(700, n_atoms, STRIDE);  // slight overestimate
+
+    // Frame 0 already processed by Open — harvest it.
+    // Open runs calculators on conf0 which is in the Protein's vector,
+    // but the handler also holds it as last_conf_ now.
+    {
+        const auto& conf0 = gp.protein().ConformationAt(0);
+        writer.HarvestFrame(conf0, 0, handler.frame_time());
+    }
+
+    fprintf(stderr, "\n=== Analysis: single pass, stride %zu ===\n", STRIDE);
+    size_t total_read = 1;   // frame 0 counted
+    size_t harvested  = 1;   // frame 0 harvested
+
+    while (true) {
+        // Skip (STRIDE - 1) frames
+        bool eof = false;
+        for (size_t s = 0; s < STRIDE - 1; ++s) {
+            if (!handler.Skip()) { eof = true; break; }
+            ++total_read;
+        }
+        if (eof) break;
+
+        // Process the next frame (all calculators, no accumulation)
+        if (!handler.Next(opts, "", /*accumulate=*/false)) break;
+        ++total_read;
+
+        // Harvest from the live conformation — all calculator results
+        // are attached, conformation persists until next Next() or Skip().
+        writer.HarvestFrame(handler.conformation(),
+                            handler.frame_index(),
+                            handler.frame_time());
+        ++harvested;
+
+        if (harvested % 50 == 0)
+            fprintf(stderr, "  harvested %zu frames (%zu read)\n",
+                    harvested, total_read);
+    }
+
+    fprintf(stderr, "  total: %zu frames read, %zu harvested\n",
+            total_read, harvested);
+
+    // Write analysis H5
+    fs::create_directories(spec.output_dir);
+    std::string h5_path = spec.output_dir + "/" + gp.protein_id() + "_analysis.h5";
+    writer.WriteH5(h5_path);
+    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms)\n",
+            h5_path.c_str(), writer.FrameCount(), n_atoms);
+
+    return 0;
+}
+
+
+// ============================================================================
 // main
 // ============================================================================
 
@@ -393,7 +500,8 @@ int main(int argc, char* argv[]) {
         case JobMode::ProtonatedPdb: return RunProtonatedPdb(spec);
         case JobMode::Orca:          return RunOrca(spec);
         case JobMode::Mutant:        return RunMutant(spec);
-        case JobMode::Trajectory:    return RunTrajectory(spec);
+        case JobMode::Trajectory:
+            return spec.analysis ? RunAnalysis(spec) : RunTrajectory(spec);
         case JobMode::None:          return 1;  // unreachable
     }
     return 1;

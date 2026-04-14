@@ -174,27 +174,36 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
         ca.is_hbond_acceptor = (identity.element == Element::N ||
                                 identity.element == Element::O);
 
-        // parent_is_sp2: for H atoms, check if parent has sp2 hybridisation.
-        // Hybridisation is approximated from bond environment:
-        // - Aromatic atoms are sp2
-        // - Backbone C (carbonyl) is sp2
-        // - Backbone N (peptide) is sp2
+        // --- Hybridisation (heavy atoms only) ---
+        // Approximated from bond environment and role:
+        //   sp2: aromatic atoms, backbone C (carbonyl), backbone N (peptide)
+        //   sp3: all other heavy C/N/O atoms (CA, CB, sidechain CH2, etc.)
+        //   Unassigned: H, S, and anything we can't classify
+        if (identity.element != Element::H && identity.element != Element::S) {
+            if (aromatic_atom_set.count(ai) > 0) {
+                ca.hybridisation = Hybridisation::sp2;
+            } else if (ai == res.C) {
+                ca.hybridisation = Hybridisation::sp2;  // carbonyl C
+            } else if (ai == res.N) {
+                ca.hybridisation = Hybridisation::sp2;  // peptide N
+            } else {
+                ca.hybridisation = Hybridisation::sp3;
+            }
+        }
+
+        // parent_is_sp2: for H atoms, check parent hybridisation.
+        // Heavy atoms are processed before their hydrogens in the
+        // residue atom list, so parent hybridisation is already set.
         if (identity.element == Element::H &&
             identity.parent_atom_index != SIZE_MAX) {
             size_t parent = identity.parent_atom_index;
             bool parent_sp2 = false;
-            // Aromatic parent is sp2
-            if (aromatic_atom_set.count(parent) > 0) {
+            if (aromatic_atom_set.count(parent) > 0)
                 parent_sp2 = true;
-            }
-            // Backbone C is sp2 (carbonyl)
-            else if (parent == res.C) {
+            else if (parent == res.C)
                 parent_sp2 = true;
-            }
-            // Backbone N: sp2 character from peptide bond (except PRO)
-            else if (parent == res.N) {
+            else if (parent == res.N)
                 parent_sp2 = true;
-            }
             ca.parent_is_sp2 = parent_sp2;
         } else {
             ca.parent_is_sp2 = false;

@@ -140,10 +140,17 @@ protein:
 2. PBC fix on protein coordinates via MoleculeWholer
 3. Put fixed coords back, split via FullSystemReader
 4. Create free-standing `ProteinConformation(&protein, positions)`
+   held as `last_conf_` member (unique_ptr)
 5. Run calculators via `OperationRunner::Run` with `opts.solvent = &solvent`
 6. If `accumulate=true`: `gp.AccumulateFrame(conf, frame_idx)`
 7. If `output_dir` non-empty: write NPY to `output_dir/frame_NNNN/`
-8. Conformation dies -- memory freed
+8. Conformation persists in `last_conf_` until next Next() or Skip()
+
+**conformation()**: returns const ref to the most recently processed
+conformation with all calculator results attached. Valid after Next()
+returns true, invalidated by next Next(), Skip(), or Reopen().
+This is how AnalysisWriter harvests per-frame data — it calls
+`handler.conformation()` between Next() calls.
 
 Returns false at EOF.
 

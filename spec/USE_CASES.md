@@ -127,6 +127,35 @@ is dispatched — it is a batch operation, not interactive
 
 ---
 
+## Use Case F: Analysis trajectory (exhaustive per-frame H5)
+
+I have a GROMACS trajectory and I want to see EVERYTHING — every
+calculator's output at every sampled frame, per-ring decompositions,
+full SphericalTensors, enrichment flags, topology — in one
+self-contained H5 file for R analysis, time series model training,
+and GNN message design.
+
+**Input:** TPR (topology), XTC (trajectory), AIMNet2 model (required)
+**Output:** `{protein_id}_analysis.h5` — exhaustive per-frame data
+
+    nmr_extract --trajectory --analysis \
+                --tpr topology.tpr --xtc trajectory.xtc \
+                --aimnet2 model.jpt --output /path/to/output
+
+Single-pass architecture with stride (every other frame, ~600 of 1250):
+all calculators run every sampled frame (APBS, AIMNet2 mandatory,
+MOPAC skipped). AnalysisWriter buffers per-frame data in memory,
+writes the complete H5 at end. ~1.6 GB per protein for 335 atoms.
+
+The H5 is self-contained: typed topology (bonds, rings, enrichment),
+per-frame physics groups (ring_current, efg, bond_aniso, quadrupole,
+dispersion, hbond, sasa, water, charges), per-ring K=6 decomposition,
+AIMNet2 256-dim embedding, per-frame ring geometry, positions.
+
+See **spec/ANALYSIS_TRAJECTORY_2026-04-14.md** for the full design.
+
+---
+
 ## Common observations
 
 Effectively we are either a library that is run on something in a

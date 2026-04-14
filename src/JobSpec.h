@@ -54,6 +54,7 @@ struct JobSpec {
     std::string traj_tpr;        // full-system TPR (topology + charges)
     std::string traj_xtc;        // full-system XTC (protein + water + ions)
     std::string traj_edr;        // .edr energy file (optional)
+    bool analysis = false;       // --analysis: exhaustive per-frame H5 (see ANALYSIS_TRAJECTORY spec)
 
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)
