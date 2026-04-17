@@ -140,6 +140,26 @@ substitute for charge polarisation.
 
 ---
 
+---
+
+## Atom-type stratification (2026-04-15)
+
+The nonlinear signal above is pooled across atom types within each
+element.  The atom-type analysis (atom_type_stratification.md) shows
+that sidechain N reaches R²=0.887 with linear ridge alone.  The
+pooled N RF delta of +0.169 may be concentrated in backbone N (where
+linear ridge gets only 0.387) while sidechain N (already 0.887)
+has little nonlinear headroom.
+
+Similarly, carbon's +0.128 nonlinear signal should be decomposed:
+C=O (0.463 fair) likely has the most nonlinear headroom, while
+sidechain C (0.729 fair) may already be near ceiling.
+
+Re-running RF per atom type would clarify where nonlinear models
+are worth the complexity.
+
+---
+
 ## TODO
 
 - [ ] Per-element MLP/gating comparison on 720 proteins
@@ -148,3 +168,7 @@ substitute for charge polarisation.
   gain most from nonlinear treatment?)
 - [ ] Geometry-only RF for carbon (without MOPAC kernels) to
   quantify how much of the +0.128 is geo-only accessible
+- [ ] RF per atom type (especially N bb vs N side, C=O vs C side)
+  to localise nonlinear signal
+- [ ] Charge-polarisation gap per carbon type (is the +0.197
+  concentrated in C=O?)

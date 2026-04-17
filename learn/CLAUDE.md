@@ -74,6 +74,11 @@ than per-element ridge.  The ridge coefficients are the calibrated
 physical constants.  No MLP needed.  But RF finds nonlinear signal
 for N (+0.169) and C (+0.128) — per-element gating for Stage 2.
 
+Per-atom-type stratification (2026-04-15): element-pooled numbers
+hide backbone/sidechain variation.  N side=0.887, C side=0.729,
+C=O=0.463, N bb=0.387.  "Nitrogen is hard" was wrong — backbone N
+is hard, sidechain N is excellent.  Always stratify by atom type.
+
 The physics scripts are in `src/actual_physics/` (see OVERVIEW.md).
 The validation document is `docs/twenty_eight_realities_2026-04-10.md`.
 
@@ -97,6 +102,8 @@ in `stage1-mutations/notes/`.
 - **Do not add scalar features.**  Valence, bond order, dipole add zero.
 - **Do not train MLPs.**  Ridge IS the model.  The coefficients are the output.
 - **Do not pool elements.**  The physics is element-dependent.  Always stratify.
+- **Do not pool atom types.**  CA ≠ C=O ≠ CB ≠ C_side.  N_bb ≠ N_side.
+  Always stratify by atom type (AMBER name) within each element.
 
 ## Files
 

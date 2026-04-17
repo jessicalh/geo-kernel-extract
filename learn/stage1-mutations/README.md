@@ -42,6 +42,7 @@ notes/
   physics_analysis_bridge.md    — bridging table: groups × elements
   reproducible_analysis_plan.md — 4-phase defensible methodology
   completeness_and_nonlinear.md — LPOCV, bootstrap, RF nonlinear check
+  atom_type_stratification.md   — per-atom-type ridge (2026-04-15)
 
 figures/                        — PDFs from stage1_figures.R
 references/                     — papers (to be populated)
@@ -58,6 +59,22 @@ references/                     — papers (to be populated)
 
 RF nonlinear signal follows paramagnetic ordering (Saito 2010):
 N > C >> O > H.  All 20/20 bootstrap stable.
+
+### Per-atom-type (2026-04-15)
+
+Element-pooled numbers hide backbone/sidechain differences.
+
+| Atom type | n | Raw R² | Fair R² |
+|-----------|---------|--------|---------|
+| C=O | 29,944 | 0.361 | 0.463 |
+| C side | 46,171 | 0.660 | **0.729** |
+| N bb | 29,944 | 0.212 | 0.387 |
+| N side | 10,010 | 0.588 | **0.887** |
+| O bb | 29,944 | 0.253 | 0.422 |
+| O side | 12,485 | 0.241 | **0.566** |
+
+Sidechain N is the second-best atom type after H.  C=O drags
+carbon's average.  Full analysis: `notes/atom_type_stratification.md`.
 
 ## Do not modify
 

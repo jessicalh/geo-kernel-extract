@@ -254,3 +254,31 @@ diversity.  H held well (0.949→0.928).  Heavy atoms dropped:
 the per-protein ceiling (0.81 within) hasn't changed — the gap
 is cross-protein variation that local geometric kernels cannot
 and should not capture.
+
+---
+
+## Per-atom-type numbers (2026-04-15)
+
+The element-pooled numbers above hide large variation between atom
+types.  Stratifying by AMBER atom name from the prmtop:
+
+| Atom type | n | Raw R² | Fair R² |
+|-----------|---------|--------|---------|
+| H | 230,135 | 0.921 | 0.928 |
+| C all | 133,488 | 0.514 | 0.562 |
+|   CA | 29,944 | 0.541 | 0.627 |
+|   C=O | 29,944 | 0.361 | 0.463 |
+|   CB | 27,429 | 0.578 | 0.647 |
+|   C side | 46,171 | 0.660 | **0.729** |
+| N all | 39,954 | 0.210 | 0.380 |
+|   N bb | 29,944 | 0.212 | 0.387 |
+|   N side | 10,010 | 0.588 | **0.887** |
+| O all | 42,429 | 0.231 | 0.382 |
+|   O bb | 29,944 | 0.253 | 0.422 |
+|   O side | 12,485 | 0.241 | **0.566** |
+
+Sidechain N at 0.887 is the second-best atom type after H.
+"Nitrogen is hard" was wrong — backbone N is hard, sidechain N
+is excellent.  Carbonyl C (0.463) drags the carbon average down
+from what is otherwise 0.63-0.73.  Full analysis in
+`atom_type_stratification.md`.

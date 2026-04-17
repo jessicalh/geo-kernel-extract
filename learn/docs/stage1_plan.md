@@ -91,6 +91,27 @@ The element-dependent dimensionality IS the physics story:
   at 0-4Å).  Paramagnetic dominance (para/dia ratio 1.20).  Complex
   angular landscape.
 
+### What the tool sees, per atom type (2026-04-15)
+
+The element-pooled numbers hide large variation between backbone
+and sidechain atoms.  Stratifying by AMBER atom name:
+
+- **C=O (R²=0.463):** The hardest carbon.  Paramagnetic sp2 with
+  C=O π* excitation.  Drags the carbon average down from 0.63-0.73
+  for other carbon types.
+- **C side (R²=0.729):** Sidechain carbons (CG/CD/CE/CZ).  Best
+  predicted carbon type — closest to the removed ring.
+- **N bb (R²=0.387):** Backbone amide nitrogen.  This is what made
+  "nitrogen" look hard.
+- **N side (R²=0.887):** Sidechain nitrogen (HIS/ARG/LYS).  Second-
+  best atom type after hydrogen.  Extremely sensitive to mutation
+  type (+0.150 from ring identity alone).
+- **O side (R²=0.566):** Sidechain oxygen.  Most sensitive to ring
+  identity of any atom type (+0.209 from mutation type).
+
+The atom-type decomposition must be presented alongside the element
+numbers.  See `atom_type_stratification.md` for full tables.
+
 ### Why the numbers differ
 
 The electronic structure of each element determines which geometric

@@ -69,7 +69,19 @@ with fair physics only.
 
 Output: `output/actual_physics/physics_calibration/`
 
-### 7. per_element_calibration.py — MLP comparison (historical)
+### 7. atom_type_calibration.py — Per-atom-type ridge (2026-04-15)
+
+Stratifies C, N, O by AMBER atom name from the prmtop (CA, C=O,
+CB, C side, N bb, N side, O bb, O side).  Runs raw and normalised
+ridge with scales and mutation type interaction per atom type.
+
+**Key finding:** Sidechain N = 0.887 fair (second-best after H).
+Carbonyl C = 0.463 (drags the carbon average).  "Nitrogen is hard"
+was wrong — backbone N is hard, sidechain N is excellent.
+
+Output: `output/actual_physics/atom_type_calibration/`
+
+### 8. per_element_calibration.py — MLP comparison (historical)
 
 Trains tiny per-element models (hidden=4) to compare gated MLP
 against ridge.  Shows the MLP adds nothing for H, modest gains for

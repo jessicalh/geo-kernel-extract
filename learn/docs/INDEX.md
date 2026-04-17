@@ -69,6 +69,9 @@ Session-by-session working notes live in
 - **completeness_and_nonlinear.md** — LPOCV, bootstrap, nonlinear.
   N=+0.169, C=+0.128, O=+0.013, H=+0.002.  Nonlinear signal follows
   paramagnetic ordering (Saito 2010 / Ramsey 1950).
+- **atom_type_stratification.md** — Per-atom-type ridge (CA, C=O, CB,
+  C side, N bb, N side, O bb, O side).  Sidechain N = 0.887,
+  carbonyl C = 0.463.  "Nitrogen is hard" was wrong.
 - **master_chart.md** — The complete picture.  Per-element tree with
   all physics groups, R², cosines, dimensionality, nonlinear signal,
   dia/para, proven zeros, limitations.  Citation map at end.
