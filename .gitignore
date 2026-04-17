@@ -57,3 +57,14 @@ learn/src/output/
 
 # Stale git backup
 .git-old/
+
+# Claude Code per-session metadata (worktrees, shell history) — machine-local.
+.claude/
+
+# Analysis H5 fixtures — regenerable via nmr_extract --trajectory --analysis;
+# individual files are 1-3 GB, total ~42 GB. Will not fit on GitHub.
+fileformat/test/**/*.h5
+
+# Salvaged demo binary from an older build. Kept on disk as reference,
+# not committed (a checked-in binary goes stale the moment it's pushed).
+bad-builds/nmr_pass0_demo
