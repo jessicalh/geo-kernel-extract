@@ -29,6 +29,7 @@
 #include <QElapsedTimer>
 #include <cmath>
 #include <filesystem>
+#include <stdexcept>    // for AnalysisFile::ReadH5 boundary (HighFive throws)
 
 namespace fs = std::filesystem;
 using namespace nmr;
@@ -213,6 +214,116 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         }
         OperationLog::Info(LogViewer, "ComputeWorker",
             "features written to " + spec.output_dir);
+    }
+
+    if (cancelled_.load()) { emit finished(result); return; }
+
+    // ================================================================
+    // Phase 2b: Load companion analysis H5 (read-only).
+    //
+    // The viewer never writes H5 or triggers new extractions. If the
+    // spec carries a path, the file was proven to exist by
+    // ValidateJobSpec. Here we read it, verify atom-count + per-index
+    // element agreement against the library Protein, and publish the
+    // result as shared_ptr<const AnalysisFile>. Identity mismatch =
+    // leave null and log the specific discrepancy; the viewer renders
+    // the protein normally, the Time Series tab is empty.
+    //
+    // HDF5/HighFive is an external library boundary: exceptions are
+    // caught here and converted to log lines (same pattern as DSSP,
+    // cif++, UDP socket in the library).
+    // ================================================================
+    if (!spec.analysis_h5_path.empty()) {
+        emit progress(40, 100, QStringLiteral("Loading analysis H5..."));
+        OperationLog::Info(LogViewer, "ComputeWorker",
+            "Phase2b: ReadH5 " + spec.analysis_h5_path);
+        auto af = std::make_shared<AnalysisFile>();
+        bool ok = false;
+        try {
+            af->ReadH5(spec.analysis_h5_path);
+            ok = true;
+        } catch (const std::exception& e) {
+            OperationLog::Error("ComputeWorker",
+                std::string("AnalysisFile::ReadH5 failed for ") +
+                spec.analysis_h5_path + ": " + e.what());
+        }
+
+        if (ok) {
+            // Identity check: atom count + per-index element.  Writer stores
+            // AtomicNumberForElement (int32) at atoms.element; see
+            // AnalysisWriter.cpp:659.  If this fails, the H5 describes a
+            // different protein than the one we built and every time-series
+            // value would land on the wrong atom.
+            const size_t n_lib = protein.AtomCount();
+            if (af->n_atoms != n_lib) {
+                OperationLog::Error("ComputeWorker",
+                    "analysis H5 atom-count mismatch: h5.n_atoms=" +
+                    std::to_string(af->n_atoms) + " library.AtomCount=" +
+                    std::to_string(n_lib) +
+                    " — time series will not be attached");
+            } else {
+                size_t first_bad = SIZE_MAX;
+                int bad_h5 = 0, bad_lib = 0;
+                for (size_t i = 0; i < n_lib; ++i) {
+                    int lib_z = AtomicNumberForElement(protein.AtomAt(i).element);
+                    if (af->atoms.element[i] != lib_z) {
+                        first_bad = i;
+                        bad_h5 = af->atoms.element[i];
+                        bad_lib = lib_z;
+                        break;
+                    }
+                }
+                if (first_bad != SIZE_MAX) {
+                    OperationLog::Error("ComputeWorker",
+                        "analysis H5 element mismatch at atom " +
+                        std::to_string(first_bad) +
+                        ": h5=" + std::to_string(bad_h5) +
+                        " library=" + std::to_string(bad_lib) +
+                        " — time series will not be attached");
+                } else {
+                    OperationLog::Info(LogViewer, "ComputeWorker",
+                        "analysis H5 identity check ok: n_atoms=" +
+                        std::to_string(n_lib) + " n_frames=" +
+                        std::to_string(af->n_frames) + " n_residues=" +
+                        std::to_string(af->n_residues));
+
+                    // Build the AnalysisBinding: identity map + logged
+                    // name mismatches.  This is the read-side contract
+                    // every UI consumer routes through.
+                    AnalysisBinding binding;
+                    binding.h5 = af;
+                    binding.libToH5.resize(n_lib);
+                    for (size_t i = 0; i < n_lib; ++i)
+                        binding.libToH5[i] = i;   // identity — documented contract
+
+                    // Collect expected CHARMM-vs-ff14SB name deltas.  The
+                    // mapping still holds (elements and order match); the
+                    // names just come from different conventions.  Writer
+                    // contract: atoms.atom_name has n_atoms entries, which
+                    // we already verified equals n_lib, so no guard here.
+                    for (size_t i = 0; i < n_lib; ++i) {
+                        const std::string& libName = protein.AtomAt(i).pdb_atom_name;
+                        const std::string& h5Name  = af->atoms.atom_name[i];
+                        if (libName != h5Name)
+                            binding.nameMismatches.push_back({i, libName, h5Name});
+                    }
+                    OperationLog::Info(LogViewer, "ComputeWorker",
+                        "AnalysisBinding: identity libToH5, " +
+                        std::to_string(binding.nameMismatches.size()) +
+                        " atom-name mismatch(es) (expected: ff14SB vs CHARMM)");
+                    const size_t show = std::min<size_t>(5,
+                        binding.nameMismatches.size());
+                    for (size_t k = 0; k < show; ++k) {
+                        const auto& nm = binding.nameMismatches[k];
+                        OperationLog::Info(LogViewer, "ComputeWorker",
+                            "  atom " + std::to_string(nm.idx) +
+                            ": lib='" + nm.lib + "' h5='" + nm.h5 + "'");
+                    }
+
+                    result.analysisBinding = std::move(binding);
+                }
+            }
+        }
     }
 
     if (cancelled_.load()) { emit finished(result); return; }

@@ -7,6 +7,7 @@
 #include <vtkOpenGLMoleculeMapper.h>
 #include <vtkMolecule.h>
 #include "ComputeWorker.h"
+#include "analysis_file.h"  // read-only time-series companion data
 
 class BackboneRibbonOverlay;
 class RingCurrentOverlay;
@@ -92,6 +93,10 @@ private:
     // GeometryChoice tab — shows calculator decisions for picked atom
     void populateGeometryChoices(size_t atomIndex);
 
+    // Time Series tab — per-atom, frame-0 slice of the companion analysis H5.
+    // Populates only when analysisFile_ is set AND atomIndex is in range.
+    void populateTimeSeries(size_t atomIndex);
+
     // VTK rendering
     QVTKOpenGLNativeWidget* vtkWidget_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
@@ -120,6 +125,13 @@ private:
     std::vector<ViewerFieldGrid> fieldGrids_;
     std::vector<ViewerButterflyData> butterflyFields_;
     std::string currentProteinId_;
+
+    // Companion time-series binding.  The viewer never writes H5 files
+    // and never triggers a new extraction run.  Valid() iff --analysis-h5
+    // was supplied AND the identity check passed.  All time-series reads
+    // route through analysisBinding_.H5IndexFor(libAtomIdx) — one call
+    // site to grow if a future producer emits non-identity ordering.
+    AnalysisBinding analysisBinding_;
 
     // Async computation
     QThread* workerThread_ = nullptr;
@@ -154,6 +166,10 @@ private:
     // GeometryChoice tab — calculator decisions for picked atom
     QDockWidget* gcDock_;
     QTreeWidget* gcTree_;
+
+    // Time Series tab — frame-0 values from the analysis H5 for picked atom
+    QDockWidget* timeSeriesDock_ = nullptr;
+    QTreeWidget* timeSeriesTree_ = nullptr;
 
     // Menu actions
     QAction* exportFeaturesAct_ = nullptr;

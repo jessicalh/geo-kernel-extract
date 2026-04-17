@@ -183,6 +183,18 @@ DFT. Yellow selection sphere highlights the picked atom.
 **Load from CLI only.** File menu stripped. Crash on reload was
 happening because shared_ptr cleanup races with VTK actor lifetime.
 
+**Analysis H5 companion (2026-04-16).** `--analysis-h5 PATH` loads a
+read-only analysis H5 alongside the protein. When the flag is given
+without an explicit mode, the ns0 PDB pose is derived from the H5 path
+by convention (`{dir}/{stem}_0ns/{stem}_0ns.pdb`) and loaded via
+`BuildFromProtonatedPdb`. Per-atom values appear in the **Time Series
+(H5)** dock tab at frame 0 (tabified with Atom Inspector / Bonds /
+Geometry Choices / Log). `AnalysisBinding::H5IndexFor()` is the single
+translation point between library atom index and H5 atom index —
+identity today, grows to a real mapping if a future producer emits
+non-identity ordering. Viewer is strictly read-only w.r.t. H5: never
+writes, never triggers extraction.
+
 ## Library gap: enum→string for AtomRole, BondCategory
 
 Types.h has SymbolForElement, ThreeLetterCodeForAminoAcid,

@@ -456,6 +456,20 @@ void MainWindow::setupUI() {
 
     // Start with the log tab visible — it shows computation progress
     logDock_->raise();
+
+    // Time Series (H5) panel — read-only per-atom frame-0 slice of the
+    // companion analysis H5 when --analysis-h5 was supplied on the
+    // command line. The viewer never writes H5 files.
+    timeSeriesDock_ = new QDockWidget("Time Series (H5)", this);
+    timeSeriesDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    timeSeriesDock_->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    timeSeriesTree_ = new QTreeWidget();
+    timeSeriesTree_->setHeaderLabels({"Property", "Value"});
+    timeSeriesTree_->setColumnWidth(0, 260);
+    timeSeriesTree_->setAlternatingRowColors(true);
+    timeSeriesTree_->setIndentation(16);
+    timeSeriesDock_->setWidget(timeSeriesTree_);
+    tabifyDockWidget(atomInfoDock_, timeSeriesDock_);
 }
 
 void MainWindow::loadFromJobSpec(const nmr::JobSpec& spec) {
@@ -581,6 +595,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     protein_ = std::move(result.protein);
     fieldGrids_ = std::move(result.fieldGrids);
     butterflyFields_ = std::move(result.butterflyFields);
+    analysisBinding_ = std::move(result.analysisBinding);  // Valid() false if no H5
 
     // Stop worker thread
     if (workerThread_ && workerThread_->isRunning()) {
@@ -951,6 +966,7 @@ void MainWindow::pickAtom(int displayX, int displayY) {
         populateAtomInfo(atomIndex);
         populateAtomBonds(atomIndex);
         populateGeometryChoices(atomIndex);
+        populateTimeSeries(atomIndex);
         atomInfoDock_->raise();
 
         if (selectionActor_) renderer_->RemoveActor(selectionActor_);
@@ -1451,5 +1467,264 @@ void MainWindow::populateGeometryChoices(size_t atomIndex) {
 
         calcItem->setExpanded(true);
         gcTree_->addTopLevelItem(calcItem);
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────
+//  Time Series (H5): read-only, frame-0 per-atom slice.
+//
+//  The viewer never writes the H5 or triggers new extractions. Every
+//  dataset here is looked up via flat-vector offsets matching the H5
+//  layout documented in analysis_file.h (row-major C order).
+// ────────────────────────────────────────────────────────────────────
+
+// SphericalTensor at (T, N, 9) base offset: layout T0, T1[3], T2[5].
+// Caller must pass a base that is valid for flat.  ReadH5 fills every
+// (T, N, 9) dataset with T*N*9 doubles exactly, so if the caller reached
+// here via a Valid() AnalysisBinding, bounds are guaranteed.
+static QTreeWidgetItem* tsSphItem(const QString& name,
+                                  const std::vector<double>& flat, size_t base) {
+    auto* item = new QTreeWidgetItem({name,
+        QString("T0=%1").arg(flat[base], 0, 'f', 4)});
+    item->addChild(new QTreeWidgetItem({"T0",
+        QString::number(flat[base], 'f', 6)}));
+    item->addChild(new QTreeWidgetItem({"T1",
+        QString("(%1, %2, %3)")
+            .arg(flat[base+1], 0, 'f', 5)
+            .arg(flat[base+2], 0, 'f', 5)
+            .arg(flat[base+3], 0, 'f', 5)}));
+    item->addChild(new QTreeWidgetItem({"T2",
+        QString("(%1, %2, %3, %4, %5)")
+            .arg(flat[base+4], 0, 'f', 5)
+            .arg(flat[base+5], 0, 'f', 5)
+            .arg(flat[base+6], 0, 'f', 5)
+            .arg(flat[base+7], 0, 'f', 5)
+            .arg(flat[base+8], 0, 'f', 5)}));
+    return item;
+}
+
+// Vec3 at (T, N, 3) base offset.  Same contract as tsSphItem.
+static QTreeWidgetItem* tsVec3Item(const QString& name,
+                                   const std::vector<double>& flat, size_t base) {
+    return new QTreeWidgetItem({name,
+        QString("(%1, %2, %3)")
+            .arg(flat[base],   0, 'f', 5)
+            .arg(flat[base+1], 0, 'f', 5)
+            .arg(flat[base+2], 0, 'f', 5)});
+}
+
+// Scalar at (T, N) offset.
+static QTreeWidgetItem* tsScalarItem(const QString& name, double v, int prec = 5) {
+    return new QTreeWidgetItem({name, QString::number(v, 'f', prec)});
+}
+
+// Populate the Time Series tab from the frame-0 slice of the H5 for one
+// picked atom.  Contracts held by the caller chain:
+//
+//   - ReadH5 succeeded → every H5 array is sized per its (T, N, R, ...)
+//     declaration.  No size guards needed on reads inside.
+//   - AnalysisBinding is populated atomically with the H5 and the
+//     identity libToH5 map, so Valid() iff everything is in place.
+//   - Picker gives a library atom index < protein_->AtomCount() ==
+//     libToH5.size() == h5.n_atoms, so H5IndexFor is always in range.
+//   - AtomicNumberForElement identity check passed at bind time, so
+//     h5.atoms.residue_index[i] is a valid residue in [0, R).
+void MainWindow::populateTimeSeries(size_t idx) {
+    timeSeriesTree_->clear();
+    if (!analysisBinding_.Valid()) {
+        timeSeriesTree_->addTopLevelItem(new QTreeWidgetItem(
+            {QStringLiteral("(no analysis H5 loaded)"),
+             QStringLiteral("pass --analysis-h5 PATH on the command line")}));
+        return;
+    }
+
+    const size_t h5idx = analysisBinding_.H5IndexFor(idx);
+    const AnalysisFile& h5 = *analysisBinding_.h5;
+
+    const size_t T = h5.n_frames;
+    const size_t N = h5.n_atoms;
+    const size_t R = h5.n_residues;
+    const size_t t = 0;                            // frame 0 — session 1
+    const size_t tn  = t * N + h5idx;              // (T, N) base  [H5-indexed]
+    const size_t tn9 = tn * 9;                     // (T, N, 9)
+    const size_t tn3 = tn * 3;                     // (T, N, 3)
+
+    // ── H5 meta + per-atom identity ───────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"H5",
+            QString::fromStdString(h5.meta.protein_id)});
+        g->addChild(new QTreeWidgetItem({"frame",
+            QString("0 of %1").arg(static_cast<qulonglong>(T))}));
+        g->addChild(new QTreeWidgetItem({"frame time (ps)",
+            QString::number(h5.meta.frame_times[t], 'f', 3)}));
+        g->addChild(new QTreeWidgetItem({"stride",
+            QString::number(static_cast<qulonglong>(h5.meta.stride))}));
+        g->addChild(new QTreeWidgetItem({"n_atoms",
+            QString::number(static_cast<qulonglong>(N))}));
+        g->addChild(new QTreeWidgetItem({"n_residues",
+            QString::number(static_cast<qulonglong>(R))}));
+        g->addChild(new QTreeWidgetItem({"library atom index",
+            QString::number(static_cast<qulonglong>(idx))}));
+        g->addChild(new QTreeWidgetItem({"H5 atom index (via H5IndexFor)",
+            QString::number(static_cast<qulonglong>(h5idx))}));
+        g->addChild(new QTreeWidgetItem({"atom element (Z, from H5)",
+            QString::number(h5.atoms.element[h5idx])}));
+        g->addChild(new QTreeWidgetItem({"atom name (H5)",
+            QString::fromStdString(h5.atoms.atom_name[h5idx])}));
+        g->addChild(new QTreeWidgetItem({"atom-name mismatches (total)",
+            QString::number(
+                static_cast<qulonglong>(analysisBinding_.nameMismatches.size()))}));
+        g->setExpanded(true);
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Ring Current ─────────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"Ring Current", QString()});
+        g->addChild(tsSphItem("bs_shielding",  h5.ring_current.bs_shielding,  tn9));
+        g->addChild(tsSphItem("hm_shielding",  h5.ring_current.hm_shielding,  tn9));
+        g->addChild(tsSphItem("rs_shielding",  h5.ring_current.rs_shielding,  tn9));
+        g->addChild(tsVec3Item("total_B_field", h5.ring_current.total_B_field, tn3));
+        g->addChild(tsScalarItem("mean_ring_dist (A)",
+            h5.ring_current.mean_ring_dist[tn]));
+        g->addChild(new QTreeWidgetItem({"rings within 3/5/8/12 A",
+            QString("%1 / %2 / %3 / %4")
+                .arg(h5.ring_current.n_rings_3A[tn])
+                .arg(h5.ring_current.n_rings_5A[tn])
+                .arg(h5.ring_current.n_rings_8A[tn])
+                .arg(h5.ring_current.n_rings_12A[tn])}));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── EFG (electrostatics) ─────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"EFG (electrostatic)", QString()});
+        g->addChild(tsSphItem("coulomb_total",     h5.efg.coulomb_total,     tn9));
+        g->addChild(tsSphItem("coulomb_shielding", h5.efg.coulomb_shielding, tn9));
+        g->addChild(tsSphItem("apbs_efg",          h5.efg.apbs_efg,          tn9));
+        g->addChild(tsSphItem("aimnet2_shielding", h5.efg.aimnet2_shielding, tn9));
+        g->addChild(tsVec3Item("E_total (V/A)",    h5.efg.E_total,           tn3));
+        g->addChild(tsVec3Item("E_solvent (V/A)",  h5.efg.E_solvent,         tn3));
+        g->addChild(tsVec3Item("apbs_efield (V/A)",h5.efg.apbs_efield,       tn3));
+        g->addChild(tsScalarItem("E_magnitude (V/A)", h5.efg.E_magnitude[tn]));
+        g->addChild(tsScalarItem("E_bond_proj",       h5.efg.E_bond_proj[tn]));
+        g->addChild(tsScalarItem("E_backbone_frac",   h5.efg.E_backbone_frac[tn]));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Bond Anisotropy ──────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"Bond Anisotropy", QString()});
+        g->addChild(tsSphItem("mc_shielding", h5.bond_aniso.mc_shielding, tn9));
+        g->addChild(tsSphItem("T2_backbone",  h5.bond_aniso.T2_backbone,  tn9));
+        g->addChild(tsSphItem("T2_sidechain", h5.bond_aniso.T2_sidechain, tn9));
+        g->addChild(tsSphItem("T2_aromatic",  h5.bond_aniso.T2_aromatic,  tn9));
+        g->addChild(tsScalarItem("nearest_CO_dist (A)",
+            h5.bond_aniso.nearest_CO_dist[tn]));
+        g->addChild(tsScalarItem("nearest_CN_dist (A)",
+            h5.bond_aniso.nearest_CN_dist[tn]));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── H-Bond ───────────────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"H-Bond", QString()});
+        g->addChild(tsSphItem("hbond_shielding", h5.hbond.hbond_shielding, tn9));
+        g->addChild(tsScalarItem("nearest_dist (A)", h5.hbond.nearest_dist[tn]));
+        g->addChild(tsScalarItem("inv_d3", h5.hbond.inv_d3[tn]));
+        g->addChild(new QTreeWidgetItem({"count 3.5 A",
+            QString::number(h5.hbond.count_3_5A[tn])}));
+        g->addChild(new QTreeWidgetItem({"is_donor",
+            QString::number(static_cast<int>(h5.hbond.is_donor[tn]))}));
+        g->addChild(new QTreeWidgetItem({"is_acceptor",
+            QString::number(static_cast<int>(h5.hbond.is_acceptor[tn]))}));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── SASA ─────────────────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"SASA", QString()});
+        g->addChild(tsScalarItem("sasa (A^2)", h5.sasa.sasa[tn]));
+        g->addChild(tsVec3Item("normal", h5.sasa.normal, tn3));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Water environment ────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"Water", QString()});
+        g->addChild(tsVec3Item("efield (V/A)", h5.water.efield, tn3));
+        g->addChild(tsSphItem("efg", h5.water.efg, tn9));
+        g->addChild(new QTreeWidgetItem({"n_first",
+            QString::number(h5.water.n_first[tn])}));
+        g->addChild(new QTreeWidgetItem({"n_second",
+            QString::number(h5.water.n_second[tn])}));
+        g->addChild(tsScalarItem("dipole_cos", h5.water.dipole_cos[tn]));
+        g->addChild(tsScalarItem("nearest_ion_dist (A)",
+            h5.water.nearest_ion_dist[tn]));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Charges ──────────────────────────────────────────────────
+    {
+        auto* g = new QTreeWidgetItem({"Charges", QString()});
+        g->addChild(tsScalarItem("aimnet2_charge (e)",
+            h5.charges.aimnet2_charge[tn]));
+        g->addChild(tsScalarItem("eeq_charge (e)",
+            h5.charges.eeq_charge[tn]));
+        g->addChild(tsScalarItem("eeq_cn", h5.charges.eeq_cn[tn]));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── AIMNet2 embedding (256 dims — summary only) ──────────────
+    {
+        const size_t base = tn * AnalysisFile::AIM_DIMS;
+        double n2 = 0.0;
+        for (size_t k = 0; k < AnalysisFile::AIM_DIMS; ++k) {
+            double v = h5.aimnet2_embedding.aim[base + k];
+            n2 += v * v;
+        }
+        auto* g = new QTreeWidgetItem({"AIMNet2 embedding",
+            QString("%1 dims (float32)")
+                .arg(static_cast<qulonglong>(AnalysisFile::AIM_DIMS))});
+        g->addChild(new QTreeWidgetItem({"L2 norm^2",
+            QString::number(n2, 'f', 5)}));
+        g->addChild(new QTreeWidgetItem({"aim[0..3]",
+            QString("%1  %2  %3  %4")
+                .arg(h5.aimnet2_embedding.aim[base + 0], 0, 'f', 4)
+                .arg(h5.aimnet2_embedding.aim[base + 1], 0, 'f', 4)
+                .arg(h5.aimnet2_embedding.aim[base + 2], 0, 'f', 4)
+                .arg(h5.aimnet2_embedding.aim[base + 3], 0, 'f', 4)}));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Residue-level slice (dihedrals + DSSP) ───────────────────
+    {
+        const size_t r  = static_cast<size_t>(h5.atoms.residue_index[h5idx]);
+        const size_t tr = t * R + r;
+        auto* g = new QTreeWidgetItem({"Residue (from H5)",
+            QString::fromStdString(h5.residues.residue_name[r]) + " " +
+            QString::number(h5.residues.residue_number[r])});
+        g->addChild(tsScalarItem("phi (rad)",   h5.dihedrals.phi[tr]));
+        g->addChild(tsScalarItem("psi (rad)",   h5.dihedrals.psi[tr]));
+        g->addChild(tsScalarItem("omega (rad)", h5.dihedrals.omega[tr]));
+        g->addChild(tsScalarItem("chi1 (rad)",  h5.dihedrals.chi1[tr]));
+        g->addChild(new QTreeWidgetItem({"dssp ss8",
+            QString::number(static_cast<int>(h5.dssp.ss8[tr]))}));
+        g->addChild(tsScalarItem("dssp hbond_energy",
+            h5.dssp.hbond_energy[tr]));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── Bonded energy (frame 0, per-atom split) ──────────────────
+    {
+        auto* g = new QTreeWidgetItem({"Bonded energy (kJ/mol)", QString()});
+        g->addChild(tsScalarItem("bond",         h5.bonded_energy.bond[tn]));
+        g->addChild(tsScalarItem("angle",        h5.bonded_energy.angle[tn]));
+        g->addChild(tsScalarItem("urey_bradley", h5.bonded_energy.urey_bradley[tn]));
+        g->addChild(tsScalarItem("proper_dih",   h5.bonded_energy.proper_dih[tn]));
+        g->addChild(tsScalarItem("improper_dih", h5.bonded_energy.improper_dih[tn]));
+        g->addChild(tsScalarItem("cmap",         h5.bonded_energy.cmap[tn]));
+        g->addChild(tsScalarItem("total",        h5.bonded_energy.total[tn]));
+        timeSeriesTree_->addTopLevelItem(g);
     }
 }

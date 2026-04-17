@@ -7,6 +7,7 @@
 #   ui/launch_viewer.sh --protonated-pdb path/to/protein.pdb   # pre-protonated
 #   ui/launch_viewer.sh --orca --root path/to/A0A7C5FAR6_WT    # ORCA DFT
 #   ui/launch_viewer.sh --mutant --wt path/to/WT --ala path/to/ALA
+#   ui/launch_viewer.sh --analysis-h5 path/to/{X}_analysis.h5   # ns0 pose auto-derived
 #
 # AIMNet2 (auto-detected from env, no flag needed):
 #   AIMNET2_MODEL=/path/to/aimnet2_wb97m_0.jpt ui/launch_viewer.sh

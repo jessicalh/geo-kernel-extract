@@ -24,6 +24,47 @@ recomputed or re-derived in the viewer.
 - A second source of truth (if the viewer shows a bond midpoint,
   it reads `conf.bond_midpoints[i]`, it does not compute 0.5*(a+b))
 
+## Session N (2026-04-16): Time Series (H5) bridge
+
+Viewer consumes the analysis H5 via `--analysis-h5 PATH` with the ns0
+pose derived by convention. Read-only throughout — the viewer never
+writes H5 and never triggers extraction. A new **Time Series (H5)**
+dock tab shows per-atom frame-0 slices. `AnalysisBinding` carries the
+`shared_ptr<const AnalysisFile>` plus a `libToH5` identity map plus
+logged name mismatches; every time-series read routes through
+`H5IndexFor()`, a single translation point ready to grow if a future
+producer emits non-identity ordering.
+
+**Scope for this viewer (decided 2026-04-16):** nmr-viewer stays
+bounded to single protein, single conformation, with the library's
+typed objects (`Protein` / `ProteinConformation` / `ConformationResult`)
+consumed directly by the renderer. That direct consumption is
+load-bearing — it is the internal code check that validates the object
+model against what the physics actually looks like on a real protein.
+A duplicate protein model in the viewer would dissolve that check, so
+Qt-native trajectory types are not introduced here. Protein animation
+would require either those Qt-native types (breaks the validation
+property) or library changes (risks the mission-critical extractor),
+so animation of the rendered protein is not part of this viewer's
+scope.
+
+The H5 enters this viewer only as *data*, not as a protein model. The
+Time Series (H5) tab displays per-atom frame-0 values as values.
+Future extensions along the same axis — per-atom time-series plots,
+per-residue dihedral traces, ensemble-averaged scalars — stay data
+visualizations next to the library-object-model render.
+
+Protein animation lives in a separate future app (a trajectory / ML
+pipeline hub feeding Python readers, posters, consolidators, and
+learning-model feeders) that will **copy** the rendering code from
+this viewer rather than factor it. That copy can diverge freely
+without touching this viewer's identity as the object-model validator.
+App 2's Python core extends the object-model discipline (typed
+`Protein` with 1:M `Conformation`) across the HDF5 boundary so
+downstream Python tools consume typed objects rather than flat arrays.
+This viewer's deserialise-proven consumer (session above) stays useful
+there; the app itself is a new project when the time comes.
+
 ## Current state (session 7, 2026-04-08)
 
 **Working:**
