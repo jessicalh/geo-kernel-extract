@@ -171,7 +171,7 @@ machine epsilon. MolProbity: 0 twisted peptides across all PDBs,
 Ramachandran outliers typical for MD snapshots (not minimised).
 
 **Fleet extraction (2026-04-15):** 10 proteins at
-`/shared/2026Thesis/fleet_calibration/`. ~25 min per protein at
+`/shared/2026Thesis/fleet_calibration-working/`. ~25 min per protein at
 ~4000 atoms (APBS dominates at ~2.7s/frame). Two proteins run in
 parallel. ORCA launched on PDB snapshots.
 

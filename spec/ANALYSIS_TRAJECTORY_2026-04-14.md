@@ -9,7 +9,7 @@
 
 A 10-protein workspace that carries us from exploratory analysis
 through to runnable models. The directory at
-`/shared/2026Thesis/fleet_calibration/` holds 10 proteins, each
+`/shared/2026Thesis/fleet_calibration-working/` holds 10 proteins, each
 with a 25 ns plain MD trajectory (1,250 frames, ~335-5000 protein
 atoms, full-system XTC with explicit water and ions).
 
