@@ -1,0 +1,71 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+
+    "configurePresets": [
+        {
+            "name": "linux-gcc",
+            "displayName": "Linux — GCC, RelWithDebInfo",
+            "description": "Default Linux development build with symbols",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/linux-gcc",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "linux-gcc-debug",
+            "displayName": "Linux — GCC, Debug",
+            "description": "Debug build with assertions and sanitizer-friendly flags",
+            "inherits": "linux-gcc",
+            "binaryDir": "${sourceDir}/build/linux-gcc-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "mac-clang",
+            "displayName": "macOS — Clang, RelWithDebInfo",
+            "description": "macOS development build. VTK may need -DVTK_DIR=...",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/mac-clang",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
+            "name": "win-msvc",
+            "displayName": "Windows — MSVC, RelWithDebInfo",
+            "description": "Windows build. Launch from x64 Native Tools cmd prompt.",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/win-msvc",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        }
+    ],
+
+    "buildPresets": [
+        { "name": "linux-gcc",       "configurePreset": "linux-gcc" },
+        { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
+        { "name": "mac-clang",       "configurePreset": "mac-clang" },
+        { "name": "win-msvc",        "configurePreset": "win-msvc" }
+    ]
+}
