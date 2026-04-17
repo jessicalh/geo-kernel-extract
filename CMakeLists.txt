@@ -526,15 +526,28 @@ if(Qt6_FOUND AND VTK_FOUND)
         ui/src/IsosurfaceOverlay.cpp
         ui/src/RingCurrentOverlay.cpp
         ui/src/PeptideBondOverlay.cpp
+        # Standalone analysis H5 reader (read-only consumer of the viewer).
+        # Library stays Qt-free; Qt binding happens in ComputeWorker/MainWindow.
+        fileformat/analysis_file.cpp
     )
     target_include_directories(nmr-viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/ui/src
+        ${CMAKE_SOURCE_DIR}/fileformat
+    )
+    # HighFive reads the HDF5 header version and picks between H5Dvlen_reclaim
+    # (<1.12) and H5Treclaim (>=1.12).  OpenBabel's transitive micromamba
+    # include path contributes HDF5 1.14 headers; the link library is the
+    # system libhdf5 1.10 which lacks H5Treclaim.  Prepending system HDF5
+    # here keeps HighFive emitting the old API matching the link library.
+    target_include_directories(nmr-viewer BEFORE PRIVATE
+        /usr/include/hdf5/serial
     )
     target_compile_definitions(nmr-viewer PRIVATE
         NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
     )
     target_link_libraries(nmr-viewer PRIVATE
         nmr_shielding
+        highfive
         Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network
         ${VTK_LIBRARIES}
     )

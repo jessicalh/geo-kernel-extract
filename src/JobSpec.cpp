@@ -63,6 +63,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     spec.skip_apbs    = HasFlag(argc, argv, "--no-apbs");
     spec.skip_coulomb = HasFlag(argc, argv, "--no-coulomb");
     spec.aimnet2_model_path = GetArg(argc, argv, "--aimnet2");
+    spec.analysis_h5_path   = GetArg(argc, argv, "--analysis-h5");
 
     // ---- Mode dispatch ----
 
@@ -155,6 +156,29 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         spec.traj_xtc = dir + "/md.xtc";
         spec.traj_edr = dir + "/md.edr";
 
+        return spec;
+    }
+
+    // No explicit mode flag, but --analysis-h5 is set: derive the ns0 pose
+    // by convention and route through the existing ProtonatedPdb path.
+    //
+    //   analysis_h5: .../analysis_output/{stem}.h5                where stem = {pid}_analysis
+    //   derived ns0: .../analysis_output/{stem}_0ns/{stem}_0ns.pdb
+    //
+    // Protonation comes from the ns0 PDB (GROMACS-written, so already
+    // protonated). No file discovery — one deterministic convention, log
+    // the derived path, ValidateJobSpec fails hard if the file is missing.
+    if (!spec.analysis_h5_path.empty()) {
+        fs::path h5(spec.analysis_h5_path);
+        std::string stem = h5.stem().string();            // "{pid}_analysis"
+        fs::path ns0_pdb = h5.parent_path() /
+                           (stem + "_0ns") /
+                           (stem + "_0ns.pdb");
+        spec.mode     = JobMode::ProtonatedPdb;
+        spec.pdb_path = ns0_pdb.string();
+        OperationLog::Info(LogFileIO, "JobSpec",
+            "--analysis-h5 given without mode; derived ns0 pose: " +
+            spec.pdb_path);
         return spec;
     }
 
@@ -269,6 +293,13 @@ bool ValidateJobSpec(JobSpec& spec) {
             "AIMNet2 model: " + spec.aimnet2_model_path + " (ok)");
     }
 
+    // Analysis H5 — optional, but if specified must exist (fatal startup abort).
+    // Viewer-only; nmr_extract accepts the flag without reading the file.
+    if (!spec.analysis_h5_path.empty()) {
+        if (!RequireFile(spec, spec.analysis_h5_path,
+                         "analysis H5 (time-series)")) return false;
+    }
+
     // Output directory — create if needed (non-fatal if empty = viewer mode)
     if (!spec.output_dir.empty()) {
         OperationLog::Info(LogFileIO, "JobSpec",
@@ -356,6 +387,7 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
+        "  --analysis-h5 FILE  Companion analysis H5 (viewer only; ignored by nmr_extract)\n"
         "  --help, -h       Show this message\n",
         prog, prog, prog, prog, prog, prog);
 }
