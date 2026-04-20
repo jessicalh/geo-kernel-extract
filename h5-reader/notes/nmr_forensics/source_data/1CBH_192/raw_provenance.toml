@@ -1,0 +1,25 @@
+# Raw-source provenance for per-protein experimental-shift inputs.
+# Auto-written by fetch_bmrb.py / extract_refdb.py. Do not hand-edit;
+# re-run the fetch scripts to refresh.
+
+protein_tag = "1CBH_192"
+
+[[sources]]
+kind = "bmrb_nmr_star_3"
+filename = "bmr192_3.str"
+url = "https://bmrb.io/ftp/pub/bmrb/entry_directories/bmr192/bmr192_3.str"
+sha256 = "a6b341ece11d2e65e1ab5038acf0bde3c61959912da1f31c92a855bbabffc0be"
+size_bytes = 50951
+fetched_at = "2026-04-20T00:50:47.737331+00:00"
+status = "new"
+
+[[sources]]
+kind = "refdb_nmr_star_2_corr"
+filename = "bmr192.str.corr"
+url = "refdb_2016_snapshot/RefDB_files.tar.gz"
+tar_member = "data/www/lib/RefDB/RefDB/corrdata/bmr192.str.corr"
+tarball_sha256 = "829613f591345b5c0547ddb05429ee3ca5e59dfc9fbabfe31cf83af2d9b5e2ad"
+sha256 = "72c1af124b8c95257bdf3fee7a356e598d06e7b9a62aaea7bfb9c9b3dad1615a"
+size_bytes = 23130
+extracted_at = "2026-04-20T00:52:24.891313+00:00"
+status = "new"

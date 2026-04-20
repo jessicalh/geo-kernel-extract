@@ -1,0 +1,1112 @@
+data_192
+
+#######################
+#  Entry information  #
+#######################
+
+save_entry_information
+   _Entry.Sf_category                    entry_information
+   _Entry.Sf_framecode                   entry_information
+   _Entry.ID                             192
+   _Entry.Title                         
+;
+Determination of the Three-Dimensional Solution Structure of the C-Terminal 
+Domain of CellobiohydrolOCe I from Trichodermi reesi. A Study using NMR and 
+Hybrid distance Geometry-Dynamical Simulated Annealing.
+;
+   _Entry.Type                           macromolecule
+   _Entry.Version_type                   update
+   _Entry.Submission_date                1995-07-31
+   _Entry.Accession_date                 1996-04-13
+   _Entry.Last_release_date              .
+   _Entry.Original_release_date          .
+   _Entry.Origination                    BMRB
+   _Entry.NMR_STAR_version               3.1.1.61
+   _Entry.Original_NMR_STAR_version      2.1
+   _Entry.Experimental_method            NMR
+   _Entry.Experimental_method_subtype    .
+   _Entry.Details                        .
+   _Entry.BMRB_internal_directory_name   .
+
+   loop_
+      _Entry_author.Ordinal
+      _Entry_author.Given_name
+      _Entry_author.Family_name
+      _Entry_author.First_initial
+      _Entry_author.Middle_initials
+      _Entry_author.Family_title
+      _Entry_author.Entry_ID
+
+      1 Per      Kraulis    . J.     . 192 
+      2 G.       Clore      . Marius . 192 
+      3 Michael  Nilges     . .      . 192 
+      4 Alwyn    Jones      . .      . 192 
+      5 Goran    Petterson  . .      . 192 
+      6 Jonathan Knowles    . .      . 192 
+      7 Angela   Gronenborn . M.     . 192 
+
+   stop_
+
+   loop_
+      _Data_set.Type
+      _Data_set.Count
+      _Data_set.Entry_ID
+
+      assigned_chemical_shifts 1 192 
+
+   stop_
+
+   loop_
+      _Datum.Type
+      _Datum.Count
+      _Datum.Entry_ID
+
+      '1H chemical shifts' 218 192 
+
+   stop_
+
+   loop_
+      _Release.Release_number
+      _Release.Format_type
+      _Release.Format_version
+      _Release.Date
+      _Release.Submission_date
+      _Release.Type
+      _Release.Author
+      _Release.Detail
+      _Release.Entry_ID
+
+      5 . . 2010-06-10 . revision BMRB 'Complete natural source information'                    192 
+      4 . . 1999-06-14 . revision BMRB 'Converted to BMRB NMR-STAR V 2.1 format'                192 
+      3 . . 1996-04-13 . revision BMRB 'Link to the Protein Data Bank added'                    192 
+      2 . . 1996-03-25 . reformat BMRB 'Converted to the BMRB 1996-03-01 STAR flat-file format' 192 
+      1 . . 1995-07-31 . original BMRB 'Last release in original BMRB flat-file format'         192 
+
+   stop_
+
+save_
+
+
+###############
+#  Citations  #
+###############
+
+save_entry_citation
+   _Citation.Sf_category                  citations
+   _Citation.Sf_framecode                 entry_citation
+   _Citation.Entry_ID                     192
+   _Citation.ID                           1
+   _Citation.Class                       'entry citation'
+   _Citation.CAS_abstract_code            .
+   _Citation.MEDLINE_UI_code              .
+   _Citation.DOI                          .
+   _Citation.PubMed_ID                    .
+   _Citation.Full_citation               
+;
+ Kraulis, Per J., Clore, G. Marius, Nilges, Michael, Jones, Alwyn, 
+ Petterson, Goran, Knowles, Jonathan, Gronenborn, Angela M., 
+ "Determination of the Three-Dimensional Solution Structure of the 
+ C-Terminal Domain of CellobiohydrolOCe I from Trichodermi reesi. A Study 
+ using NMR and Hybrid distance Geometry-Dynamical Simulated Annealing.,"
+ Biochemistry 28, 7241-7257 (1989).
+;
+   _Citation.Title                       
+;
+Determination of the Three-Dimensional Solution Structure of the C-Terminal 
+Domain of CellobiohydrolOCe I from Trichodermi reesi. A Study using NMR and 
+Hybrid distance Geometry-Dynamical Simulated Annealing.
+;
+   _Citation.Status                       published
+   _Citation.Type                         journal
+   _Citation.Journal_abbrev               Biochemistry
+   _Citation.Journal_name_full            .
+   _Citation.Journal_volume               28
+   _Citation.Journal_issue                .
+   _Citation.Journal_ASTM                 .
+   _Citation.Journal_ISSN                 .
+   _Citation.Journal_CSD                  .
+   _Citation.Book_title                   .
+   _Citation.Book_chapter_title           .
+   _Citation.Book_volume                  .
+   _Citation.Book_series                  .
+   _Citation.Book_publisher               .
+   _Citation.Book_publisher_city          .
+   _Citation.Book_ISBN                    .
+   _Citation.Conference_title             .
+   _Citation.Conference_site              .
+   _Citation.Conference_state_province    .
+   _Citation.Conference_country           .
+   _Citation.Conference_start_date        .
+   _Citation.Conference_end_date          .
+   _Citation.Conference_abstract_number   .
+   _Citation.Thesis_institution           .
+   _Citation.Thesis_institution_city      .
+   _Citation.Thesis_institution_country   .
+   _Citation.WWW_URL                      .
+   _Citation.Page_first                   7241
+   _Citation.Page_last                    7257
+   _Citation.Year                         1989
+   _Citation.Details                      .
+
+   loop_
+      _Citation_author.Ordinal
+      _Citation_author.Given_name
+      _Citation_author.Family_name
+      _Citation_author.First_initial
+      _Citation_author.Middle_initials
+      _Citation_author.Family_title
+      _Citation_author.Entry_ID
+      _Citation_author.Citation_ID
+
+      1 Per      Kraulis    . J.     . 192 1 
+      2 G.       Clore      . Marius . 192 1 
+      3 Michael  Nilges     . .      . 192 1 
+      4 Alwyn    Jones      . .      . 192 1 
+      5 Goran    Petterson  . .      . 192 1 
+      6 Jonathan Knowles    . .      . 192 1 
+      7 Angela   Gronenborn . M.     . 192 1 
+
+   stop_
+
+save_
+
+
+#############################################
+#  Molecular system (assembly) description  #
+#############################################
+
+save_system_cellobiohydrolase
+   _Assembly.Sf_category                       assembly
+   _Assembly.Sf_framecode                      system_cellobiohydrolase
+   _Assembly.Entry_ID                          192
+   _Assembly.ID                                1
+   _Assembly.Name                              cellobiohydrolase
+   _Assembly.BMRB_code                         .
+   _Assembly.Number_of_components              .
+   _Assembly.Organic_ligands                   .
+   _Assembly.Metal_ions                        .
+   _Assembly.Non_standard_bonds                .
+   _Assembly.Ambiguous_conformational_states   .
+   _Assembly.Ambiguous_chem_comp_sites         .
+   _Assembly.Molecules_in_chemical_exchange    .
+   _Assembly.Paramagnetic                      .
+   _Assembly.Thiol_state                       .
+   _Assembly.Molecular_mass                    .
+   _Assembly.Enzyme_commission_number          .
+   _Assembly.Details                           .
+   _Assembly.DB_query_date                     .
+   _Assembly.DB_query_revised_last_date        .
+
+   loop_
+      _Entity_assembly.ID
+      _Entity_assembly.Entity_assembly_name
+      _Entity_assembly.Entity_ID
+      _Entity_assembly.Entity_label
+      _Entity_assembly.Asym_ID
+      _Entity_assembly.PDB_chain_ID
+      _Entity_assembly.Experimental_data_reported
+      _Entity_assembly.Physical_state
+      _Entity_assembly.Conformational_isomer
+      _Entity_assembly.Chemical_exchange_state
+      _Entity_assembly.Magnetic_equivalence_group_code
+      _Entity_assembly.Role
+      _Entity_assembly.Details
+      _Entity_assembly.Entry_ID
+      _Entity_assembly.Assembly_ID
+
+      1 cellobiohydrolase 1 $cellobiohydrolase . . . . . . . . . 192 1 
+
+   stop_
+
+   loop_
+      _Assembly_common_name.Name
+      _Assembly_common_name.Type
+      _Assembly_common_name.Entry_ID
+      _Assembly_common_name.Assembly_ID
+
+      cellobiohydrolase system 192 1 
+
+   stop_
+
+save_
+
+
+    ####################################
+    #  Biological polymers and ligands #
+    ####################################
+
+save_cellobiohydrolase
+   _Entity.Sf_category                       entity
+   _Entity.Sf_framecode                      cellobiohydrolase
+   _Entity.Entry_ID                          192
+   _Entity.ID                                1
+   _Entity.BMRB_code                         .
+   _Entity.Name                              cellobiohydrolase
+   _Entity.Type                              polymer
+   _Entity.Polymer_common_type               .
+   _Entity.Polymer_type                      polypeptide(L)
+   _Entity.Polymer_type_details              .
+   _Entity.Polymer_strand_ID                 .
+   _Entity.Polymer_seq_one_letter_code_can  
+;
+TQSHYGQCGGIGYSGPTVCA
+SGTTCQVLNPYYSQCL
+;
+   _Entity.Polymer_seq_one_letter_code      
+;
+TQSHYGQCGGIGYSGPTVCA
+SGTTCQVLNPYYSQCL
+;
+   _Entity.Target_identifier                 .
+   _Entity.Polymer_author_defined_seq        .
+   _Entity.Polymer_author_seq_details        .
+   _Entity.Ambiguous_conformational_states   .
+   _Entity.Ambiguous_chem_comp_sites         .
+   _Entity.Nstd_monomer                      .
+   _Entity.Nstd_chirality                    .
+   _Entity.Nstd_linkage                      .
+   _Entity.Nonpolymer_comp_ID                .
+   _Entity.Nonpolymer_comp_label             .
+   _Entity.Number_of_monomers                36
+   _Entity.Number_of_nonpolymer_components   .
+   _Entity.Paramagnetic                      .
+   _Entity.Thiol_state                       .
+   _Entity.Src_method                        .
+   _Entity.Parent_entity_ID                  1
+   _Entity.Fragment                          .
+   _Entity.Mutation                          .
+   _Entity.EC_number                         3.2.1.91
+   _Entity.Calc_isoelectric_point            .
+   _Entity.Formula_weight                    .
+   _Entity.Formula_weight_exptl              .
+   _Entity.Formula_weight_exptl_meth         .
+   _Entity.Details                           .
+   _Entity.DB_query_date                     .
+   _Entity.DB_query_revised_last_date        2015-11-25
+
+   loop_
+      _Entity_db_link.Ordinal
+      _Entity_db_link.Author_supplied
+      _Entity_db_link.Database_code
+      _Entity_db_link.Accession_code
+      _Entity_db_link.Entry_mol_code
+      _Entity_db_link.Entry_mol_name
+      _Entity_db_link.Entry_experimental_method
+      _Entity_db_link.Entry_structure_resolution
+      _Entity_db_link.Entry_relation_type
+      _Entity_db_link.Entry_details
+      _Entity_db_link.Chimera_segment_ID
+      _Entity_db_link.Seq_query_to_submitted_percent
+      _Entity_db_link.Seq_subject_length
+      _Entity_db_link.Seq_identity
+      _Entity_db_link.Seq_positive
+      _Entity_db_link.Seq_homology_expectation_val
+      _Entity_db_link.Seq_align_begin
+      _Entity_db_link.Seq_align_end
+      _Entity_db_link.Seq_difference_details
+      _Entity_db_link.Seq_alignment_details
+      _Entity_db_link.Entry_ID
+      _Entity_db_link.Entity_ID
+
+       1 no BMRB          196 .  cellobiohydrolase                                                                                                                . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+       2 no BMRB        25331 .  CBM_2M                                                                                                                           . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+       3 no BMRB        25332 .  CBM_3M                                                                                                                           . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+       4 no BMRB         4057 . "cellulose-binding domain"                                                                                                        . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+       5 no BMRB         4058 . "cellulose-binding domain of Cellobiohydrolase I"                                                                                 . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+       6 no BMRB         4059 . "cellulose-binding domain"                                                                                                        . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+       7 no PDB  1AZ6          . "Three-Dimensional Structures Of Three Engineered Cellulose- Binding Domains Of Cellobiohydrolase I From Trichoderma Reesei, Nmr" . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+       8 no PDB  1AZH          . "Three-Dimensional Structures Of Three Engineered Cellulose- Binding Domains Of Cellobiohydrolase I From Trichoderma Reesei, Nmr" . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+       9 no PDB  1AZJ          . "Three-Dimensional Structures Of Three Engineered Cellulose- Binding Domains Of Cellobiohydrolase I From Trichoderma Reesei, Nmr" . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+      10 no PDB  1AZK          . "Three-Dimensional Structures Of Three Engineered Cellulose- Binding Domains Of Cellobiohydrolase I From Trichoderma Reesei, Nmr" . . . . . 100.00  36  97.22  97.22 1.91e-14 . . . . 192 1 
+      11 no PDB  1CBH          . "Determination Of The Three-Dimensional Structure Of The C- Terminal Domain Of Cellobiohydrolase I From Trichoderma Reesei. A St" . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+      12 no PDB  2CBH          . "Determination Of The Three-Dimensional Structure Of The C- Terminal Domain Of Cellobiohydrolase I From Trichoderma Reesei. A St" . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+      13 no PDB  2MWJ          . "Solution Structure Of Family 1 Carbohydrate-binding Module From Trichoderma Reesei Cel7a With O-mannose Residues At Thr1 And Se" . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+      14 no PDB  2MWK          . "Family 1 Carbohydrate-binding Module From Trichoderma Reesei Cel7a With O-mannose Residues At Thr1, Ser3, And Ser14"             . . . . . 100.00  36 100.00 100.00 2.24e-15 . . . . 192 1 
+      15 no EMBL CAA49596      . "cellulose 1,4-beta-cellobiosidase [Trichoderma koningii]"                                                                        . . . . . 100.00 513 100.00 100.00 1.74e-14 . . . . 192 1 
+      16 no GB   AAG15502      . "CBDCBHI-cohesin hybrid, partial [synthetic construct]"                                                                           . . . . . 100.00 210 100.00 100.00 4.53e-16 . . . . 192 1 
+      17 no GB   AAP57751      . "Cip1 [Trichoderma reesei]"                                                                                                       . . . . . 100.00 316  97.22 100.00 6.62e-15 . . . . 192 1 
+      18 no GB   AAQ76092      . "cellobiohydrolase I [Trichoderma viride]"                                                                                        . . . . . 100.00 514 100.00 100.00 1.98e-14 . . . . 192 1 
+      19 no GB   AEP40512      . "chimeric cellulase FnCel5A-TrCBM1-1 [synthetic construct]"                                                                       . . . . . 100.00 385 100.00 100.00 1.45e-18 . . . . 192 1 
+      20 no GB   AFP58843      . "cellobiohydrolase I, partial [Trichoderma koningii]"                                                                             . . . . . 100.00 497  97.22 100.00 5.15e-14 . . . . 192 1 
+      21 no PIR  S45380        . "cellulose 1,4-beta-cellobiosidase (EC 3.2.1.91) - fungus  (Trichoderma koningii)"                                                . . . . . 100.00 513 100.00 100.00 1.74e-14 . . . . 192 1 
+      22 no PRF  1003195A      . "cellobiohydrolase,beta glucan"                                                                                                   . . . . .  91.67 490  96.97  96.97 9.03e-12 . . . . 192 1 
+      23 no REF  XP_006961566  . "carbohydrate-binding module family 1 [Trichoderma reesei QM6a]"                                                                  . . . . . 100.00 316  97.22 100.00 6.62e-15 . . . . 192 1 
+      24 no REF  XP_006969224  . "glycoside hydrolase family 7 [Trichoderma reesei QM6a]"                                                                          . . . . . 100.00 514 100.00 100.00 1.85e-14 . . . . 192 1 
+      25 no SP   P62694        . "RecName: Full=Exoglucanase 1; AltName: Full=1,4-beta-cellobiohydrolase; AltName: Full=Exocellobiohydrolase I; Short=CBHI; AltNa" . . . . . 100.00 513 100.00 100.00 1.74e-14 . . . . 192 1 
+      26 no SP   P62695        . "RecName: Full=Exoglucanase 1; AltName: Full=1,4-beta-cellobiohydrolase; AltName: Full=Exocellobiohydrolase I; Short=CBHI; AltNa" . . . . . 100.00 513 100.00 100.00 1.74e-14 . . . . 192 1 
+
+   stop_
+
+   loop_
+      _Entity_common_name.Name
+      _Entity_common_name.Type
+      _Entity_common_name.Entry_ID
+      _Entity_common_name.Entity_ID
+
+      '36 aa C terminal' variant 192 1 
+       cellobiohydrolase common  192 1 
+
+   stop_
+
+   loop_
+      _Entity_comp_index.ID
+      _Entity_comp_index.Auth_seq_ID
+      _Entity_comp_index.Comp_ID
+      _Entity_comp_index.Comp_label
+      _Entity_comp_index.Entry_ID
+      _Entity_comp_index.Entity_ID
+
+       1 . THR . 192 1 
+       2 . GLN . 192 1 
+       3 . SER . 192 1 
+       4 . HIS . 192 1 
+       5 . TYR . 192 1 
+       6 . GLY . 192 1 
+       7 . GLN . 192 1 
+       8 . CYS . 192 1 
+       9 . GLY . 192 1 
+      10 . GLY . 192 1 
+      11 . ILE . 192 1 
+      12 . GLY . 192 1 
+      13 . TYR . 192 1 
+      14 . SER . 192 1 
+      15 . GLY . 192 1 
+      16 . PRO . 192 1 
+      17 . THR . 192 1 
+      18 . VAL . 192 1 
+      19 . CYS . 192 1 
+      20 . ALA . 192 1 
+      21 . SER . 192 1 
+      22 . GLY . 192 1 
+      23 . THR . 192 1 
+      24 . THR . 192 1 
+      25 . CYS . 192 1 
+      26 . GLN . 192 1 
+      27 . VAL . 192 1 
+      28 . LEU . 192 1 
+      29 . ASN . 192 1 
+      30 . PRO . 192 1 
+      31 . TYR . 192 1 
+      32 . TYR . 192 1 
+      33 . SER . 192 1 
+      34 . GLN . 192 1 
+      35 . CYS . 192 1 
+      36 . LEU . 192 1 
+
+   stop_
+
+   loop_
+      _Entity_poly_seq.Hetero
+      _Entity_poly_seq.Mon_ID
+      _Entity_poly_seq.Num
+      _Entity_poly_seq.Comp_index_ID
+      _Entity_poly_seq.Entry_ID
+      _Entity_poly_seq.Entity_ID
+
+      . THR  1  1 192 1 
+      . GLN  2  2 192 1 
+      . SER  3  3 192 1 
+      . HIS  4  4 192 1 
+      . TYR  5  5 192 1 
+      . GLY  6  6 192 1 
+      . GLN  7  7 192 1 
+      . CYS  8  8 192 1 
+      . GLY  9  9 192 1 
+      . GLY 10 10 192 1 
+      . ILE 11 11 192 1 
+      . GLY 12 12 192 1 
+      . TYR 13 13 192 1 
+      . SER 14 14 192 1 
+      . GLY 15 15 192 1 
+      . PRO 16 16 192 1 
+      . THR 17 17 192 1 
+      . VAL 18 18 192 1 
+      . CYS 19 19 192 1 
+      . ALA 20 20 192 1 
+      . SER 21 21 192 1 
+      . GLY 22 22 192 1 
+      . THR 23 23 192 1 
+      . THR 24 24 192 1 
+      . CYS 25 25 192 1 
+      . GLN 26 26 192 1 
+      . VAL 27 27 192 1 
+      . LEU 28 28 192 1 
+      . ASN 29 29 192 1 
+      . PRO 30 30 192 1 
+      . TYR 31 31 192 1 
+      . TYR 32 32 192 1 
+      . SER 33 33 192 1 
+      . GLN 34 34 192 1 
+      . CYS 35 35 192 1 
+      . LEU 36 36 192 1 
+
+   stop_
+
+save_
+
+
+    ####################
+    #  Natural source  #
+    ####################
+
+save_natural_source
+   _Entity_natural_src_list.Sf_category    natural_source
+   _Entity_natural_src_list.Sf_framecode   natural_source
+   _Entity_natural_src_list.Entry_ID       192
+   _Entity_natural_src_list.ID             1
+
+   loop_
+      _Entity_natural_src.ID
+      _Entity_natural_src.Entity_ID
+      _Entity_natural_src.Entity_label
+      _Entity_natural_src.Entity_chimera_segment_ID
+      _Entity_natural_src.NCBI_taxonomy_ID
+      _Entity_natural_src.Type
+      _Entity_natural_src.Common
+      _Entity_natural_src.Organism_name_scientific
+      _Entity_natural_src.Organism_name_common
+      _Entity_natural_src.Organism_acronym
+      _Entity_natural_src.ICTVdb_decimal_code
+      _Entity_natural_src.Superkingdom
+      _Entity_natural_src.Kingdom
+      _Entity_natural_src.Genus
+      _Entity_natural_src.Species
+      _Entity_natural_src.Strain
+      _Entity_natural_src.Variant
+      _Entity_natural_src.Subvariant
+      _Entity_natural_src.Organ
+      _Entity_natural_src.Tissue
+      _Entity_natural_src.Tissue_fraction
+      _Entity_natural_src.Cell_line
+      _Entity_natural_src.Cell_type
+      _Entity_natural_src.ATCC_number
+      _Entity_natural_src.Organelle
+      _Entity_natural_src.Cellular_location
+      _Entity_natural_src.Fragment
+      _Entity_natural_src.Fraction
+      _Entity_natural_src.Secretion
+      _Entity_natural_src.Plasmid
+      _Entity_natural_src.Plasmid_details
+      _Entity_natural_src.Gene_mnemonic
+      _Entity_natural_src.Dev_stage
+      _Entity_natural_src.Details
+      _Entity_natural_src.Citation_ID
+      _Entity_natural_src.Citation_label
+      _Entity_natural_src.Entry_ID
+      _Entity_natural_src.Entity_natural_src_list_ID
+
+      1 1 $cellobiohydrolase . 431241 organism . 'Trichoderma reesei' . . . Eukaryota Fungi Trichoderma reesei generic . . . . . . . . . . . . . . . . . . . . 192 1 
+
+   stop_
+
+save_
+
+
+    #########################
+    #  Experimental source  #
+    #########################
+
+save_experimental_source
+   _Entity_experimental_src_list.Sf_category    experimental_source
+   _Entity_experimental_src_list.Sf_framecode   experimental_source
+   _Entity_experimental_src_list.Entry_ID       192
+   _Entity_experimental_src_list.ID             1
+
+   loop_
+      _Entity_experimental_src.ID
+      _Entity_experimental_src.Entity_ID
+      _Entity_experimental_src.Entity_label
+      _Entity_experimental_src.Entity_chimera_segment_ID
+      _Entity_experimental_src.Production_method
+      _Entity_experimental_src.Host_org_scientific_name
+      _Entity_experimental_src.Host_org_name_common
+      _Entity_experimental_src.Host_org_details
+      _Entity_experimental_src.Host_org_NCBI_taxonomy_ID
+      _Entity_experimental_src.Host_org_genus
+      _Entity_experimental_src.Host_org_species
+      _Entity_experimental_src.Host_org_strain
+      _Entity_experimental_src.Host_org_variant
+      _Entity_experimental_src.Host_org_subvariant
+      _Entity_experimental_src.Host_org_organ
+      _Entity_experimental_src.Host_org_tissue
+      _Entity_experimental_src.Host_org_tissue_fraction
+      _Entity_experimental_src.Host_org_cell_line
+      _Entity_experimental_src.Host_org_cell_type
+      _Entity_experimental_src.Host_org_cellular_location
+      _Entity_experimental_src.Host_org_organelle
+      _Entity_experimental_src.Host_org_gene
+      _Entity_experimental_src.Host_org_culture_collection
+      _Entity_experimental_src.Host_org_ATCC_number
+      _Entity_experimental_src.Vector_type
+      _Entity_experimental_src.PDBview_host_org_vector_name
+      _Entity_experimental_src.PDBview_plasmid_name
+      _Entity_experimental_src.Vector_name
+      _Entity_experimental_src.Vector_details
+      _Entity_experimental_src.Vendor_name
+      _Entity_experimental_src.Host_org_dev_stage
+      _Entity_experimental_src.Details
+      _Entity_experimental_src.Citation_ID
+      _Entity_experimental_src.Citation_label
+      _Entity_experimental_src.Entry_ID
+      _Entity_experimental_src.Entity_experimental_src_list_ID
+
+      1 1 $cellobiohydrolase . 'not available' . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 192 1 
+
+   stop_
+
+save_
+
+
+#####################################
+#  Sample contents and methodology  #
+#####################################
+	 
+    ########################
+    #  Sample description  #
+    ########################
+
+save_sample_one
+   _Sample.Sf_category                      sample
+   _Sample.Sf_framecode                     sample_one
+   _Sample.Entry_ID                         192
+   _Sample.ID                               1
+   _Sample.Type                             solution
+   _Sample.Sub_type                         .
+   _Sample.Details                          .
+   _Sample.Aggregate_sample_number          .
+   _Sample.Solvent_system                   .
+   _Sample.Preparation_date                 .
+   _Sample.Preparation_expiration_date      .
+   _Sample.Polycrystallization_protocol     .
+   _Sample.Single_crystal_protocol          .
+   _Sample.Crystal_grow_apparatus           .
+   _Sample.Crystal_grow_atmosphere          .
+   _Sample.Crystal_grow_details             .
+   _Sample.Crystal_grow_method              .
+   _Sample.Crystal_grow_method_cit_ID       .
+   _Sample.Crystal_grow_pH                  .
+   _Sample.Crystal_grow_pH_range            .
+   _Sample.Crystal_grow_pressure            .
+   _Sample.Crystal_grow_pressure_esd        .
+   _Sample.Crystal_grow_seeding             .
+   _Sample.Crystal_grow_seeding_cit_ID      .
+   _Sample.Crystal_grow_temp                .
+   _Sample.Crystal_grow_temp_details        .
+   _Sample.Crystal_grow_temp_esd            .
+   _Sample.Crystal_grow_time                .
+   _Sample.Oriented_sample_prep_protocol    .
+   _Sample.Lyophilization_cryo_protectant   .
+   _Sample.Storage_protocol                 .
+
+save_
+
+
+#######################
+#  Sample conditions  #
+#######################
+
+save_sample_condition_set_one
+   _Sample_condition_list.Sf_category    sample_conditions
+   _Sample_condition_list.Sf_framecode   sample_condition_set_one
+   _Sample_condition_list.Entry_ID       192
+   _Sample_condition_list.ID             1
+   _Sample_condition_list.Details        .
+
+   loop_
+      _Sample_condition_variable.Type
+      _Sample_condition_variable.Val
+      _Sample_condition_variable.Val_err
+      _Sample_condition_variable.Val_units
+      _Sample_condition_variable.Entry_ID
+      _Sample_condition_variable.Sample_condition_list_ID
+
+      pH            3.9 . na 192 1 
+      temperature 300   . K  192 1 
+
+   stop_
+
+save_
+
+
+#########################
+#  Experimental detail  #
+#########################
+
+    ##################################
+    #  NMR Spectrometer definitions  #
+    ##################################
+
+save_spectrometer_list
+   _NMR_spectrometer.Sf_category      NMR_spectrometer
+   _NMR_spectrometer.Sf_framecode     spectrometer_list
+   _NMR_spectrometer.Entry_ID         192
+   _NMR_spectrometer.ID               1
+   _NMR_spectrometer.Details         'spectrometer information not available'
+   _NMR_spectrometer.Manufacturer     unknown
+   _NMR_spectrometer.Model            unknown
+   _NMR_spectrometer.Serial_number    .
+   _NMR_spectrometer.Field_strength   0
+
+save_
+
+
+save_NMR_spectrometer_list
+   _NMR_spectrometer_list.Sf_category    NMR_spectrometer_list
+   _NMR_spectrometer_list.Sf_framecode   NMR_spectrometer_list
+   _NMR_spectrometer_list.Entry_ID       192
+   _NMR_spectrometer_list.ID             1
+
+   loop_
+      _NMR_spectrometer_view.ID
+      _NMR_spectrometer_view.Name
+      _NMR_spectrometer_view.Manufacturer
+      _NMR_spectrometer_view.Model
+      _NMR_spectrometer_view.Serial_number
+      _NMR_spectrometer_view.Field_strength
+      _NMR_spectrometer_view.Details
+      _NMR_spectrometer_view.Citation_ID
+      _NMR_spectrometer_view.Citation_label
+      _NMR_spectrometer_view.Entry_ID
+      _NMR_spectrometer_view.NMR_spectrometer_list_ID
+
+      1 spectrometer_1 unknown unknown . 0 'spectrometer information not available' . . 192 1 
+
+   stop_
+
+save_
+
+
+    #############################
+    #  NMR applied experiments  #
+    #############################
+
+save_experiment_list
+   _Experiment_list.Sf_category    experiment_list
+   _Experiment_list.Sf_framecode   experiment_list
+   _Experiment_list.Entry_ID       192
+   _Experiment_list.ID             1
+   _Experiment_list.Details        .
+
+   loop_
+      _Experiment.ID
+      _Experiment.Name
+      _Experiment.Raw_data_flag
+      _Experiment.NMR_spec_expt_ID
+      _Experiment.NMR_spec_expt_label
+      _Experiment.MS_expt_ID
+      _Experiment.MS_expt_label
+      _Experiment.SAXS_expt_ID
+      _Experiment.SAXS_expt_label
+      _Experiment.FRET_expt_ID
+      _Experiment.FRET_expt_label
+      _Experiment.EMR_expt_ID
+      _Experiment.EMR_expt_label
+      _Experiment.Sample_ID
+      _Experiment.Sample_label
+      _Experiment.Sample_state
+      _Experiment.Sample_volume
+      _Experiment.Sample_volume_units
+      _Experiment.Sample_condition_list_ID
+      _Experiment.Sample_condition_list_label
+      _Experiment.Sample_spinning_rate
+      _Experiment.Sample_angle
+      _Experiment.NMR_tube_type
+      _Experiment.NMR_spectrometer_ID
+      _Experiment.NMR_spectrometer_label
+      _Experiment.NMR_spectrometer_probe_ID
+      _Experiment.NMR_spectrometer_probe_label
+      _Experiment.NMR_spectral_processing_ID
+      _Experiment.NMR_spectral_processing_label
+      _Experiment.Mass_spectrometer_ID
+      _Experiment.Mass_spectrometer_label
+      _Experiment.Xray_instrument_ID
+      _Experiment.Xray_instrument_label
+      _Experiment.Fluorescence_instrument_ID
+      _Experiment.Fluorescence_instrument_label
+      _Experiment.EMR_instrument_ID
+      _Experiment.EMR_instrument_label
+      _Experiment.Chromatographic_system_ID
+      _Experiment.Chromatographic_system_label
+      _Experiment.Chromatographic_column_ID
+      _Experiment.Chromatographic_column_label
+      _Experiment.Entry_ID
+      _Experiment.Experiment_list_ID
+
+      1 . . . . . . . . . . . . 1 $sample_one . . . 1 $sample_condition_set_one . . . 1 $spectrometer_list . . . . . . . . . . . . . . . . 192 1 
+
+   stop_
+
+save_
+
+
+####################
+#  NMR parameters  #
+####################
+
+    ##############################
+    #  Assigned chemical shifts  #
+    ##############################
+
+	################################
+	#  Chemical shift referencing  #
+	################################
+
+save_chem_shift_reference_par_set_one
+   _Chem_shift_reference.Sf_category    chem_shift_reference
+   _Chem_shift_reference.Sf_framecode   chem_shift_reference_par_set_one
+   _Chem_shift_reference.Entry_ID       192
+   _Chem_shift_reference.ID             1
+   _Chem_shift_reference.Details        .
+
+   loop_
+      _Chem_shift_ref.Atom_type
+      _Chem_shift_ref.Atom_isotope_number
+      _Chem_shift_ref.Mol_common_name
+      _Chem_shift_ref.Atom_group
+      _Chem_shift_ref.Concentration_val
+      _Chem_shift_ref.Concentration_units
+      _Chem_shift_ref.Solvent
+      _Chem_shift_ref.Rank
+      _Chem_shift_ref.Chem_shift_units
+      _Chem_shift_ref.Chem_shift_val
+      _Chem_shift_ref.Ref_method
+      _Chem_shift_ref.Ref_type
+      _Chem_shift_ref.Indirect_shift_ratio
+      _Chem_shift_ref.External_ref_loc
+      _Chem_shift_ref.External_ref_sample_geometry
+      _Chem_shift_ref.External_ref_axis
+      _Chem_shift_ref.Indirect_shift_ratio_cit_ID
+      _Chem_shift_ref.Indirect_shift_ratio_cit_label
+      _Chem_shift_ref.Ref_correction_type
+      _Chem_shift_ref.Correction_val
+      _Chem_shift_ref.Correction_val_cit_ID
+      _Chem_shift_ref.Correction_val_cit_label
+      _Chem_shift_ref.Entry_ID
+      _Chem_shift_ref.Chem_shift_reference_ID
+
+      H . DSS . . . . . ppm 0 . . . . . . 1 $entry_citation . . 1 $entry_citation 192 1 
+
+   stop_
+
+save_
+
+
+     ###################################
+     #  Assigned chemical shift lists  #
+     ###################################
+
+###################################################################
+#       Chemical Shift Ambiguity Index Value Definitions          #
+#                                                                 #
+# The values other than 1 are used for those atoms with different #
+# chemical shifts that cannot be assigned to stereospecific atoms #
+# or to specific residues or chains.                              #
+#                                                                 #
+#   Index Value            Definition                             #
+#                                                                 #
+#      1             Unique (including isolated methyl protons,   #
+#                         geminal atoms, and geminal methyl       #
+#                         groups with identical chemical shifts)  #
+#                         (e.g. ILE HD11, HD12, HD13 protons)     #
+#      2             Ambiguity of geminal atoms or geminal methyl #
+#                         proton groups (e.g. ASP HB2 and HB3     #
+#                         protons, LEU CD1 and CD2 carbons, or    #
+#                         LEU HD11, HD12, HD13 and HD21, HD22,    #
+#                         HD23 methyl protons)                    #
+#      3             Aromatic atoms on opposite sides of          #
+#                         symmetrical rings (e.g. TYR HE1 and HE2 #
+#                         protons)                                #
+#      4             Intraresidue ambiguities (e.g. LYS HG and    #
+#                         HD protons or TRP HZ2 and HZ3 protons)  #
+#      5             Interresidue ambiguities (LYS 12 vs. LYS 27) #
+#      6             Intermolecular ambiguities (e.g. ASP 31 CA   #
+#                         in monomer 1 and ASP 31 CA in monomer 2 #
+#                         of an asymmetrical homodimer, duplex    #
+#                         DNA assignments, or other assignments   #
+#                         that may apply to atoms in one or more  #
+#                         molecule in the molecular assembly)     #
+#      9             Ambiguous, specific ambiguity not defined    #
+#                                                                 #
+###################################################################
+save_chemical_shift_assignment_data_set_one
+   _Assigned_chem_shift_list.Sf_category                   assigned_chemical_shifts
+   _Assigned_chem_shift_list.Sf_framecode                 'chemical_shift_assignment_data_set_one'
+   _Assigned_chem_shift_list.Entry_ID                      192
+   _Assigned_chem_shift_list.ID                            1
+   _Assigned_chem_shift_list.Sample_condition_list_ID      1
+   _Assigned_chem_shift_list.Sample_condition_list_label  $sample_condition_set_one
+   _Assigned_chem_shift_list.Chem_shift_reference_ID       1
+   _Assigned_chem_shift_list.Chem_shift_reference_label   $chem_shift_reference_par_set_one
+   _Assigned_chem_shift_list.Chem_shift_1H_err             .
+   _Assigned_chem_shift_list.Chem_shift_13C_err            .
+   _Assigned_chem_shift_list.Chem_shift_15N_err            .
+   _Assigned_chem_shift_list.Chem_shift_31P_err            .
+   _Assigned_chem_shift_list.Chem_shift_2H_err             .
+   _Assigned_chem_shift_list.Chem_shift_19F_err            .
+   _Assigned_chem_shift_list.Error_derivation_method       .
+   _Assigned_chem_shift_list.Details                       .
+   _Assigned_chem_shift_list.Text_data_format              .
+   _Assigned_chem_shift_list.Text_data                     .
+
+   loop_
+      _Chem_shift_experiment.Experiment_ID
+      _Chem_shift_experiment.Experiment_name
+      _Chem_shift_experiment.Sample_ID
+      _Chem_shift_experiment.Sample_label
+      _Chem_shift_experiment.Sample_state
+      _Chem_shift_experiment.Entry_ID
+      _Chem_shift_experiment.Assigned_chem_shift_list_ID
+
+      . . 1 $sample_one . 192 1 
+
+   stop_
+
+   loop_
+      _Atom_chem_shift.ID
+      _Atom_chem_shift.Assembly_atom_ID
+      _Atom_chem_shift.Entity_assembly_ID
+      _Atom_chem_shift.Entity_ID
+      _Atom_chem_shift.Comp_index_ID
+      _Atom_chem_shift.Seq_ID
+      _Atom_chem_shift.Comp_ID
+      _Atom_chem_shift.Atom_ID
+      _Atom_chem_shift.Atom_type
+      _Atom_chem_shift.Atom_isotope_number
+      _Atom_chem_shift.Val
+      _Atom_chem_shift.Val_err
+      _Atom_chem_shift.Assign_fig_of_merit
+      _Atom_chem_shift.Ambiguity_code
+      _Atom_chem_shift.Occupancy
+      _Atom_chem_shift.Resonance_ID
+      _Atom_chem_shift.Auth_entity_assembly_ID
+      _Atom_chem_shift.Auth_asym_ID
+      _Atom_chem_shift.Auth_seq_ID
+      _Atom_chem_shift.Auth_comp_ID
+      _Atom_chem_shift.Auth_atom_ID
+      _Atom_chem_shift.Details
+      _Atom_chem_shift.Entry_ID
+      _Atom_chem_shift.Assigned_chem_shift_list_ID
+
+        1 . 1 1  1  1 THR HA   H 1 3.93 . . 1 . . . . . . . . 192 1 
+        2 . 1 1  1  1 THR HB   H 1 4.12 . . 1 . . . . . . . . 192 1 
+        3 . 1 1  1  1 THR HG21 H 1 1.23 . . 1 . . . . . . . . 192 1 
+        4 . 1 1  1  1 THR HG22 H 1 1.23 . . 1 . . . . . . . . 192 1 
+        5 . 1 1  1  1 THR HG23 H 1 1.23 . . 1 . . . . . . . . 192 1 
+        6 . 1 1  2  2 GLN H    H 1 9.19 . . 1 . . . . . . . . 192 1 
+        7 . 1 1  2  2 GLN HA   H 1 4.76 . . 1 . . . . . . . . 192 1 
+        8 . 1 1  2  2 GLN HB2  H 1 1.83 . . 2 . . . . . . . . 192 1 
+        9 . 1 1  2  2 GLN HB3  H 1 1.9  . . 2 . . . . . . . . 192 1 
+       10 . 1 1  2  2 GLN HG2  H 1 2.23 . . 2 . . . . . . . . 192 1 
+       11 . 1 1  2  2 GLN HG3  H 1 2.63 . . 2 . . . . . . . . 192 1 
+       12 . 1 1  3  3 SER H    H 1 8.78 . . 1 . . . . . . . . 192 1 
+       13 . 1 1  3  3 SER HA   H 1 4.4  . . 1 . . . . . . . . 192 1 
+       14 . 1 1  3  3 SER HB2  H 1 3.88 . . 2 . . . . . . . . 192 1 
+       15 . 1 1  3  3 SER HB3  H 1 3.94 . . 2 . . . . . . . . 192 1 
+       16 . 1 1  4  4 HIS H    H 1 8.73 . . 1 . . . . . . . . 192 1 
+       17 . 1 1  4  4 HIS HA   H 1 4.08 . . 1 . . . . . . . . 192 1 
+       18 . 1 1  4  4 HIS HB2  H 1 2.95 . . 1 . . . . . . . . 192 1 
+       19 . 1 1  4  4 HIS HB3  H 1 3.1  . . 1 . . . . . . . . 192 1 
+       20 . 1 1  4  4 HIS HD2  H 1 6.82 . . 1 . . . . . . . . 192 1 
+       21 . 1 1  4  4 HIS HE1  H 1 8.56 . . 1 . . . . . . . . 192 1 
+       22 . 1 1  5  5 TYR H    H 1 9.31 . . 1 . . . . . . . . 192 1 
+       23 . 1 1  5  5 TYR HA   H 1 4.09 . . 1 . . . . . . . . 192 1 
+       24 . 1 1  5  5 TYR HB2  H 1 3.25 . . 1 . . . . . . . . 192 1 
+       25 . 1 1  5  5 TYR HB3  H 1 3.06 . . 1 . . . . . . . . 192 1 
+       26 . 1 1  5  5 TYR HD1  H 1 6.8  . . 1 . . . . . . . . 192 1 
+       27 . 1 1  5  5 TYR HD2  H 1 6.8  . . 1 . . . . . . . . 192 1 
+       28 . 1 1  5  5 TYR HE1  H 1 6.47 . . 1 . . . . . . . . 192 1 
+       29 . 1 1  5  5 TYR HE2  H 1 6.47 . . 1 . . . . . . . . 192 1 
+       30 . 1 1  6  6 GLY H    H 1 8.8  . . 1 . . . . . . . . 192 1 
+       31 . 1 1  6  6 GLY HA2  H 1 4.23 . . 1 . . . . . . . . 192 1 
+       32 . 1 1  6  6 GLY HA3  H 1 3.52 . . 1 . . . . . . . . 192 1 
+       33 . 1 1  7  7 GLN H    H 1 8.65 . . 1 . . . . . . . . 192 1 
+       34 . 1 1  7  7 GLN HA   H 1 4.28 . . 1 . . . . . . . . 192 1 
+       35 . 1 1  7  7 GLN HB2  H 1 2.07 . . 1 . . . . . . . . 192 1 
+       36 . 1 1  7  7 GLN HB3  H 1 1.69 . . 1 . . . . . . . . 192 1 
+       37 . 1 1  7  7 GLN HG2  H 1 1.05 . . 2 . . . . . . . . 192 1 
+       38 . 1 1  7  7 GLN HG3  H 1 2.28 . . 2 . . . . . . . . 192 1 
+       39 . 1 1  7  7 GLN HE21 H 1 7.16 . . 2 . . . . . . . . 192 1 
+       40 . 1 1  7  7 GLN HE22 H 1 6.98 . . 2 . . . . . . . . 192 1 
+       41 . 1 1  8  8 CYS H    H 1 7.95 . . 1 . . . . . . . . 192 1 
+       42 . 1 1  8  8 CYS HA   H 1 5.2  . . 1 . . . . . . . . 192 1 
+       43 . 1 1  8  8 CYS HB2  H 1 3.47 . . 1 . . . . . . . . 192 1 
+       44 . 1 1  8  8 CYS HB3  H 1 2.82 . . 1 . . . . . . . . 192 1 
+       45 . 1 1  9  9 GLY H    H 1 6.67 . . 1 . . . . . . . . 192 1 
+       46 . 1 1  9  9 GLY HA2  H 1 3.83 . . 2 . . . . . . . . 192 1 
+       47 . 1 1  9  9 GLY HA3  H 1 4.24 . . 2 . . . . . . . . 192 1 
+       48 . 1 1 10 10 GLY H    H 1 8.61 . . 1 . . . . . . . . 192 1 
+       49 . 1 1 10 10 GLY HA2  H 1 3.83 . . 1 . . . . . . . . 192 1 
+       50 . 1 1 10 10 GLY HA3  H 1 4.32 . . 1 . . . . . . . . 192 1 
+       51 . 1 1 11 11 ILE H    H 1 8.4  . . 1 . . . . . . . . 192 1 
+       52 . 1 1 11 11 ILE HA   H 1 3.8  . . 1 . . . . . . . . 192 1 
+       53 . 1 1 11 11 ILE HB   H 1 1.27 . . 1 . . . . . . . . 192 1 
+       54 . 1 1 11 11 ILE HG12 H 1  .97 . . 2 . . . . . . . . 192 1 
+       55 . 1 1 11 11 ILE HG13 H 1 1.5  . . 2 . . . . . . . . 192 1 
+       56 . 1 1 11 11 ILE HG21 H 1  .9  . . 1 . . . . . . . . 192 1 
+       57 . 1 1 11 11 ILE HG22 H 1  .9  . . 1 . . . . . . . . 192 1 
+       58 . 1 1 11 11 ILE HG23 H 1  .9  . . 1 . . . . . . . . 192 1 
+       59 . 1 1 11 11 ILE HD11 H 1  .48 . . 1 . . . . . . . . 192 1 
+       60 . 1 1 11 11 ILE HD12 H 1  .48 . . 1 . . . . . . . . 192 1 
+       61 . 1 1 11 11 ILE HD13 H 1  .48 . . 1 . . . . . . . . 192 1 
+       62 . 1 1 12 12 GLY H    H 1 9.06 . . 1 . . . . . . . . 192 1 
+       63 . 1 1 12 12 GLY HA2  H 1 3.76 . . 1 . . . . . . . . 192 1 
+       64 . 1 1 12 12 GLY HA3  H 1 4.32 . . 1 . . . . . . . . 192 1 
+       65 . 1 1 13 13 TYR H    H 1 7.96 . . 1 . . . . . . . . 192 1 
+       66 . 1 1 13 13 TYR HA   H 1 4.64 . . 1 . . . . . . . . 192 1 
+       67 . 1 1 13 13 TYR HB2  H 1 2.82 . . 1 . . . . . . . . 192 1 
+       68 . 1 1 13 13 TYR HB3  H 1 2.91 . . 1 . . . . . . . . 192 1 
+       69 . 1 1 13 13 TYR HD1  H 1 6.92 . . 1 . . . . . . . . 192 1 
+       70 . 1 1 13 13 TYR HD2  H 1 6.92 . . 1 . . . . . . . . 192 1 
+       71 . 1 1 13 13 TYR HE1  H 1 6.49 . . 1 . . . . . . . . 192 1 
+       72 . 1 1 13 13 TYR HE2  H 1 6.49 . . 1 . . . . . . . . 192 1 
+       73 . 1 1 13 13 TYR HH   H 1 9.01 . . 1 . . . . . . . . 192 1 
+       74 . 1 1 14 14 SER H    H 1 8.43 . . 1 . . . . . . . . 192 1 
+       75 . 1 1 14 14 SER HA   H 1 4.52 . . 1 . . . . . . . . 192 1 
+       76 . 1 1 14 14 SER HB2  H 1 3.79 . . 1 . . . . . . . . 192 1 
+       77 . 1 1 14 14 SER HB3  H 1 3.64 . . 1 . . . . . . . . 192 1 
+       78 . 1 1 15 15 GLY H    H 1 5.16 . . 1 . . . . . . . . 192 1 
+       79 . 1 1 15 15 GLY HA2  H 1 4.06 . . 1 . . . . . . . . 192 1 
+       80 . 1 1 15 15 GLY HA3  H 1 3.63 . . 1 . . . . . . . . 192 1 
+       81 . 1 1 16 16 PRO HA   H 1 4.5  . . 1 . . . . . . . . 192 1 
+       82 . 1 1 16 16 PRO HB2  H 1 1.8  . . 1 . . . . . . . . 192 1 
+       83 . 1 1 16 16 PRO HB3  H 1 2.37 . . 1 . . . . . . . . 192 1 
+       84 . 1 1 16 16 PRO HG2  H 1 2.02 . . 2 . . . . . . . . 192 1 
+       85 . 1 1 16 16 PRO HG3  H 1 2.06 . . 2 . . . . . . . . 192 1 
+       86 . 1 1 16 16 PRO HD2  H 1 3.53 . . 2 . . . . . . . . 192 1 
+       87 . 1 1 16 16 PRO HD3  H 1 3.66 . . 2 . . . . . . . . 192 1 
+       88 . 1 1 17 17 THR H    H 1 8.43 . . 1 . . . . . . . . 192 1 
+       89 . 1 1 17 17 THR HA   H 1 4.74 . . 1 . . . . . . . . 192 1 
+       90 . 1 1 17 17 THR HB   H 1 4.62 . . 1 . . . . . . . . 192 1 
+       91 . 1 1 17 17 THR HG21 H 1 1.32 . . 1 . . . . . . . . 192 1 
+       92 . 1 1 17 17 THR HG22 H 1 1.32 . . 1 . . . . . . . . 192 1 
+       93 . 1 1 17 17 THR HG23 H 1 1.32 . . 1 . . . . . . . . 192 1 
+       94 . 1 1 18 18 VAL H    H 1 7.18 . . 1 . . . . . . . . 192 1 
+       95 . 1 1 18 18 VAL HA   H 1 4.12 . . 1 . . . . . . . . 192 1 
+       96 . 1 1 18 18 VAL HB   H 1 2.01 . . 1 . . . . . . . . 192 1 
+       97 . 1 1 18 18 VAL HG11 H 1  .97 . . 2 . . . . . . . . 192 1 
+       98 . 1 1 18 18 VAL HG12 H 1  .97 . . 2 . . . . . . . . 192 1 
+       99 . 1 1 18 18 VAL HG13 H 1  .97 . . 2 . . . . . . . . 192 1 
+      100 . 1 1 18 18 VAL HG21 H 1  .99 . . 2 . . . . . . . . 192 1 
+      101 . 1 1 18 18 VAL HG22 H 1  .99 . . 2 . . . . . . . . 192 1 
+      102 . 1 1 18 18 VAL HG23 H 1  .99 . . 2 . . . . . . . . 192 1 
+      103 . 1 1 19 19 CYS H    H 1 8.68 . . 1 . . . . . . . . 192 1 
+      104 . 1 1 19 19 CYS HA   H 1 4.65 . . 1 . . . . . . . . 192 1 
+      105 . 1 1 19 19 CYS HB2  H 1 2.26 . . 1 . . . . . . . . 192 1 
+      106 . 1 1 19 19 CYS HB3  H 1 3.65 . . 1 . . . . . . . . 192 1 
+      107 . 1 1 20 20 ALA H    H 1 8.1  . . 1 . . . . . . . . 192 1 
+      108 . 1 1 20 20 ALA HA   H 1 4.06 . . 1 . . . . . . . . 192 1 
+      109 . 1 1 20 20 ALA HB1  H 1 1.32 . . 1 . . . . . . . . 192 1 
+      110 . 1 1 20 20 ALA HB2  H 1 1.32 . . 1 . . . . . . . . 192 1 
+      111 . 1 1 20 20 ALA HB3  H 1 1.32 . . 1 . . . . . . . . 192 1 
+      112 . 1 1 21 21 SER H    H 1 8.44 . . 1 . . . . . . . . 192 1 
+      113 . 1 1 21 21 SER HA   H 1 4.2  . . 1 . . . . . . . . 192 1 
+      114 . 1 1 21 21 SER HB2  H 1 3.86 . . 1 . . . . . . . . 192 1 
+      115 . 1 1 21 21 SER HB3  H 1 3.86 . . 1 . . . . . . . . 192 1 
+      116 . 1 1 22 22 GLY H    H 1 8.88 . . 1 . . . . . . . . 192 1 
+      117 . 1 1 22 22 GLY HA2  H 1 3.62 . . 1 . . . . . . . . 192 1 
+      118 . 1 1 22 22 GLY HA3  H 1 4.31 . . 1 . . . . . . . . 192 1 
+      119 . 1 1 23 23 THR H    H 1 8.14 . . 1 . . . . . . . . 192 1 
+      120 . 1 1 23 23 THR HA   H 1 4.72 . . 1 . . . . . . . . 192 1 
+      121 . 1 1 23 23 THR HB   H 1 3.77 . . 1 . . . . . . . . 192 1 
+      122 . 1 1 23 23 THR HG21 H 1  .48 . . 1 . . . . . . . . 192 1 
+      123 . 1 1 23 23 THR HG22 H 1  .48 . . 1 . . . . . . . . 192 1 
+      124 . 1 1 23 23 THR HG23 H 1  .48 . . 1 . . . . . . . . 192 1 
+      125 . 1 1 24 24 THR H    H 1 9.36 . . 1 . . . . . . . . 192 1 
+      126 . 1 1 24 24 THR HA   H 1 4.5  . . 1 . . . . . . . . 192 1 
+      127 . 1 1 24 24 THR HB   H 1 4.02 . . 1 . . . . . . . . 192 1 
+      128 . 1 1 24 24 THR HG21 H 1 1.13 . . 1 . . . . . . . . 192 1 
+      129 . 1 1 24 24 THR HG22 H 1 1.13 . . 1 . . . . . . . . 192 1 
+      130 . 1 1 24 24 THR HG23 H 1 1.13 . . 1 . . . . . . . . 192 1 
+      131 . 1 1 25 25 CYS H    H 1 8.83 . . 1 . . . . . . . . 192 1 
+      132 . 1 1 25 25 CYS HA   H 1 4.58 . . 1 . . . . . . . . 192 1 
+      133 . 1 1 25 25 CYS HB2  H 1 3.16 . . 1 . . . . . . . . 192 1 
+      134 . 1 1 25 25 CYS HB3  H 1 2.93 . . 1 . . . . . . . . 192 1 
+      135 . 1 1 26 26 GLN H    H 1 9.04 . . 1 . . . . . . . . 192 1 
+      136 . 1 1 26 26 GLN HA   H 1 4.61 . . 1 . . . . . . . . 192 1 
+      137 . 1 1 26 26 GLN HB2  H 1 1.94 . . 1 . . . . . . . . 192 1 
+      138 . 1 1 26 26 GLN HB3  H 1 2.07 . . 1 . . . . . . . . 192 1 
+      139 . 1 1 26 26 GLN HG2  H 1 2.26 . . 2 . . . . . . . . 192 1 
+      140 . 1 1 26 26 GLN HG3  H 1 2.43 . . 2 . . . . . . . . 192 1 
+      141 . 1 1 26 26 GLN HE21 H 1 7.04 . . 1 . . . . . . . . 192 1 
+      142 . 1 1 26 26 GLN HE22 H 1 6.74 . . 1 . . . . . . . . 192 1 
+      143 . 1 1 27 27 VAL H    H 1 8.63 . . 1 . . . . . . . . 192 1 
+      144 . 1 1 27 27 VAL HA   H 1 4.07 . . 1 . . . . . . . . 192 1 
+      145 . 1 1 27 27 VAL HB   H 1 1.93 . . 1 . . . . . . . . 192 1 
+      146 . 1 1 27 27 VAL HG11 H 1  .68 . . 1 . . . . . . . . 192 1 
+      147 . 1 1 27 27 VAL HG12 H 1  .68 . . 1 . . . . . . . . 192 1 
+      148 . 1 1 27 27 VAL HG13 H 1  .68 . . 1 . . . . . . . . 192 1 
+      149 . 1 1 27 27 VAL HG21 H 1  .91 . . 1 . . . . . . . . 192 1 
+      150 . 1 1 27 27 VAL HG22 H 1  .91 . . 1 . . . . . . . . 192 1 
+      151 . 1 1 27 27 VAL HG23 H 1  .91 . . 1 . . . . . . . . 192 1 
+      152 . 1 1 28 28 LEU H    H 1 8.63 . . 1 . . . . . . . . 192 1 
+      153 . 1 1 28 28 LEU HA   H 1 4.72 . . 1 . . . . . . . . 192 1 
+      154 . 1 1 28 28 LEU HB2  H 1 1.8  . . 1 . . . . . . . . 192 1 
+      155 . 1 1 28 28 LEU HB3  H 1 1.91 . . 1 . . . . . . . . 192 1 
+      156 . 1 1 28 28 LEU HG   H 1 1.8  . . 1 . . . . . . . . 192 1 
+      157 . 1 1 28 28 LEU HD11 H 1  .93 . . 2 . . . . . . . . 192 1 
+      158 . 1 1 28 28 LEU HD12 H 1  .93 . . 2 . . . . . . . . 192 1 
+      159 . 1 1 28 28 LEU HD13 H 1  .93 . . 2 . . . . . . . . 192 1 
+      160 . 1 1 28 28 LEU HD21 H 1 1.03 . . 2 . . . . . . . . 192 1 
+      161 . 1 1 28 28 LEU HD22 H 1 1.03 . . 2 . . . . . . . . 192 1 
+      162 . 1 1 28 28 LEU HD23 H 1 1.03 . . 2 . . . . . . . . 192 1 
+      163 . 1 1 29 29 ASN H    H 1 8.62 . . 1 . . . . . . . . 192 1 
+      164 . 1 1 29 29 ASN HA   H 1 4.9  . . 1 . . . . . . . . 192 1 
+      165 . 1 1 29 29 ASN HB2  H 1 3.22 . . 1 . . . . . . . . 192 1 
+      166 . 1 1 29 29 ASN HB3  H 1 3.22 . . 1 . . . . . . . . 192 1 
+      167 . 1 1 29 29 ASN HD21 H 1 7.85 . . 1 . . . . . . . . 192 1 
+      168 . 1 1 29 29 ASN HD22 H 1 7.01 . . 1 . . . . . . . . 192 1 
+      169 . 1 1 30 30 PRO HA   H 1 4.2  . . 1 . . . . . . . . 192 1 
+      170 . 1 1 30 30 PRO HB2  H 1 1.22 . . 1 . . . . . . . . 192 1 
+      171 . 1 1 30 30 PRO HB3  H 1 2.24 . . 1 . . . . . . . . 192 1 
+      172 . 1 1 30 30 PRO HG2  H 1 1.9  . . 2 . . . . . . . . 192 1 
+      173 . 1 1 30 30 PRO HG3  H 1 2.09 . . 2 . . . . . . . . 192 1 
+      174 . 1 1 30 30 PRO HD2  H 1 3.69 . . 2 . . . . . . . . 192 1 
+      175 . 1 1 30 30 PRO HD3  H 1 3.92 . . 2 . . . . . . . . 192 1 
+      176 . 1 1 31 31 TYR H    H 1 8.65 . . 1 . . . . . . . . 192 1 
+      177 . 1 1 31 31 TYR HA   H 1 4.39 . . 1 . . . . . . . . 192 1 
+      178 . 1 1 31 31 TYR HB2  H 1 2.87 . . 1 . . . . . . . . 192 1 
+      179 . 1 1 31 31 TYR HB3  H 1 3.37 . . 1 . . . . . . . . 192 1 
+      180 . 1 1 31 31 TYR HD1  H 1 7.03 . . 1 . . . . . . . . 192 1 
+      181 . 1 1 31 31 TYR HD2  H 1 7.03 . . 1 . . . . . . . . 192 1 
+      182 . 1 1 31 31 TYR HE1  H 1 6.72 . . 1 . . . . . . . . 192 1 
+      183 . 1 1 31 31 TYR HE2  H 1 6.72 . . 1 . . . . . . . . 192 1 
+      184 . 1 1 32 32 TYR H    H 1 7.92 . . 1 . . . . . . . . 192 1 
+      185 . 1 1 32 32 TYR HA   H 1 4.58 . . 1 . . . . . . . . 192 1 
+      186 . 1 1 32 32 TYR HB2  H 1 2.81 . . 1 . . . . . . . . 192 1 
+      187 . 1 1 32 32 TYR HB3  H 1 2.67 . . 1 . . . . . . . . 192 1 
+      188 . 1 1 32 32 TYR HD1  H 1 6.85 . . 1 . . . . . . . . 192 1 
+      189 . 1 1 32 32 TYR HD2  H 1 6.85 . . 1 . . . . . . . . 192 1 
+      190 . 1 1 32 32 TYR HE1  H 1 6.49 . . 1 . . . . . . . . 192 1 
+      191 . 1 1 32 32 TYR HE2  H 1 6.49 . . 1 . . . . . . . . 192 1 
+      192 . 1 1 33 33 SER H    H 1 6.7  . . 1 . . . . . . . . 192 1 
+      193 . 1 1 33 33 SER HA   H 1 5.19 . . 1 . . . . . . . . 192 1 
+      194 . 1 1 33 33 SER HB2  H 1 2.83 . . 1 . . . . . . . . 192 1 
+      195 . 1 1 33 33 SER HB3  H 1 3.54 . . 1 . . . . . . . . 192 1 
+      196 . 1 1 34 34 GLN H    H 1 9.07 . . 1 . . . . . . . . 192 1 
+      197 . 1 1 34 34 GLN HA   H 1 4.81 . . 1 . . . . . . . . 192 1 
+      198 . 1 1 34 34 GLN HB2  H 1 1.61 . . 1 . . . . . . . . 192 1 
+      199 . 1 1 34 34 GLN HB3  H 1 1.88 . . 1 . . . . . . . . 192 1 
+      200 . 1 1 34 34 GLN HG2  H 1 2.05 . . 2 . . . . . . . . 192 1 
+      201 . 1 1 34 34 GLN HG3  H 1 2.13 . . 2 . . . . . . . . 192 1 
+      202 . 1 1 34 34 GLN HE21 H 1 7.68 . . 1 . . . . . . . . 192 1 
+      203 . 1 1 34 34 GLN HE22 H 1 6.66 . . 1 . . . . . . . . 192 1 
+      204 . 1 1 35 35 CYS H    H 1 8.52 . . 1 . . . . . . . . 192 1 
+      205 . 1 1 35 35 CYS HA   H 1 5.05 . . 1 . . . . . . . . 192 1 
+      206 . 1 1 35 35 CYS HB2  H 1 2.89 . . 1 . . . . . . . . 192 1 
+      207 . 1 1 35 35 CYS HB3  H 1 3.03 . . 1 . . . . . . . . 192 1 
+      208 . 1 1 36 36 LEU H    H 1 9.08 . . 1 . . . . . . . . 192 1 
+      209 . 1 1 36 36 LEU HA   H 1 4.49 . . 1 . . . . . . . . 192 1 
+      210 . 1 1 36 36 LEU HB2  H 1 1.56 . . 1 . . . . . . . . 192 1 
+      211 . 1 1 36 36 LEU HB3  H 1 1.6  . . 1 . . . . . . . . 192 1 
+      212 . 1 1 36 36 LEU HG   H 1 1.36 . . 1 . . . . . . . . 192 1 
+      213 . 1 1 36 36 LEU HD11 H 1  .94 . . 2 . . . . . . . . 192 1 
+      214 . 1 1 36 36 LEU HD12 H 1  .94 . . 2 . . . . . . . . 192 1 
+      215 . 1 1 36 36 LEU HD13 H 1  .94 . . 2 . . . . . . . . 192 1 
+      216 . 1 1 36 36 LEU HD21 H 1  .99 . . 2 . . . . . . . . 192 1 
+      217 . 1 1 36 36 LEU HD22 H 1  .99 . . 2 . . . . . . . . 192 1 
+      218 . 1 1 36 36 LEU HD23 H 1  .99 . . 2 . . . . . . . . 192 1 
+
+   stop_
+
+save_
+

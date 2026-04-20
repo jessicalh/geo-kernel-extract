@@ -1,0 +1,201 @@
+# Provenance block — 1DV0_4757 BMRB translation (narrative)
+#
+# See [provenance] structured section below for the machine-checked record.
+# Additional context:
+#
+# Protein: DNA repair protein HHR23A, N-terminal UBA domain.
+# Origin of offset: BMRB deposition used full-construct numbering
+# (expression tag or N-terminal residues absent from our PDB); PDB was
+# re-numbered to 1-based before MD prep.
+#
+# Under naive (no-offset) matching, 140 of 434 BMRB rows (32%) fail:
+# 129 rows with residue-name mismatch against the offset CHARMM residue
+# at that seq index, plus 11 rows for BMRB residues 46-47 that fall
+# outside our 1..45 topology range. Under -2 offset (BMRB seq → CHARMM
+# seq), zero residues drop; every BMRB residue maps cleanly.
+#
+# Residual 1 UNMATCHED row after offset is residue 3 GLN (CHARMM 1)
+# backbone 'H' at 8.86 ppm. CHARMM residue 1 has zwitterionic NH3+
+# (H1/H2/H3). Fundamental sample-vs-force-field mismatch, document-and-
+# carry per PRINCIPLES §6.4.
+
+[provenance]
+protein = "1DV0_4757"
+database = "bmrb"
+reviewed_date = "2026-04-19"
+reviewer = "claude (session 2026-04-19, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE line: 'DNA REPAIR PROTEIN HHR23A in water'",
+    "Full 45-residue sequence match verified against BMRB 4757 residue_name column at seqs 3..47",
+]
+findings_summary = """
+BMRB residue numbering offset +2 from our CHARMM topology. Our residues
+1..45 identical to BMRB residues 3..47 across the entire sequence
+(GLN, GLU, LYS, GLU, ALA, ILE, GLU, ARG, LEU, LYS, ..., ASP, GLU).
+Offset resolved via [residue_seq_offset] offset = -2. After offset:
+433/434 BMRB rows matched. 1 residual UNMATCHED is residue 3 GLN
+backbone H — document-and-carry N-terminal NH3+ pattern.
+"""
+
+[residue_seq_offset]
+# Apply to BMRB residue_seq to align with CHARMM residue_seq.
+# bmrb_to_charmm = BMRB_seq + offset. Here: CHARMM_seq = BMRB_seq - 2.
+offset = -2
+
+# CHARMM → BMRB/IUPAC atom-name translation table.
+#
+# Scope: per-residue declarative map of CHARMM atom names as they appear in
+# our reference.pdb / MD topology, to the atom names BMRB uses. Identity
+# translations are omitted; undeclared atom names fall through to identity
+# (and any resulting mismatch is flagged by the audit tool as
+# NAME_TRANSLATION_FAIL).
+#
+# This table is a knowledge artifact, not a filter. Every translation here
+# is a claim about BMRB conventions. When a protein's audit flags an
+# anomaly, the fix may be: (a) a bug in the BMRB/RefDB entry, (b) a new
+# CHARMM convention we missed, (c) a protonation-state mismatch, (d) a
+# legitimately novel residue-specific naming in a particular BMRB entry.
+# The table is not automatically updated — changes are reviewed.
+#
+# One-to-many notes (pseudo-atoms): when three CHARMM Hs map to one BMRB
+# name (methyls, NH3+, NH2 in Arg guanidinium), the audit tool detects the
+# N-to-1 fan-in and flags every BMRB row for that pseudo as ONE_TO_MANY.
+# No expansion is performed at audit time.
+#
+# Last update: 2026-04-19. Derived from inspection of CHARMM36m naming in
+# reference.pdb files (e.g. 1CBH_192/reference.pdb) against BMRB entries
+# extracted from chemical_shifts_685.csv.
+
+# ---------------------------------------------------------------------------
+# Backbone — applied to ALL residues before residue-specific map.
+# ---------------------------------------------------------------------------
+# CHARMM: HN is the amide proton. BMRB uses H (IUPAC post-2002 convention).
+# Undeclared atoms (N, CA, C, O) fall through to identity.
+[backbone]
+HN = "H"
+
+# ---------------------------------------------------------------------------
+# N-terminal NH3+ protons in CHARMM are H1, H2, H3. BMRB rarely assigns
+# these (fast exchange with solvent). We do NOT translate them — the audit
+# tool leaves them unmatched and complains per convention.
+#
+# C-terminal CHARMM has OT1/OT2. No shifts expected from BMRB for oxygens
+# here but nucleus mismatch is handled by the audit, not this table.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Residue-specific translations
+#
+# For every residue, the mapping is CHARMM_atom_name = "BMRB_atom_name".
+# Atoms not listed use identity.
+# ---------------------------------------------------------------------------
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"
+# Add CYX (disulfide CYS in AMBER) etc. here if encountered.

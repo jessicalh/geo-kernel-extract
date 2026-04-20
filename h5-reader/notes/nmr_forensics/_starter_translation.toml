@@ -1,0 +1,233 @@
+# CHARMM → BMRB/IUPAC atom-name translation table.
+#
+# Scope: per-residue declarative map of CHARMM atom names as they appear in
+# our reference.pdb / MD topology, to the atom names BMRB uses. Identity
+# translations are omitted; undeclared atom names fall through to identity
+# (and any resulting mismatch is flagged by the audit tool as
+# NAME_TRANSLATION_FAIL).
+#
+# This table is a knowledge artifact, not a filter. Every translation here
+# is a claim about BMRB conventions. When a protein's audit flags an
+# anomaly, the fix may be: (a) a bug in the BMRB/RefDB entry, (b) a new
+# CHARMM convention we missed, (c) a protonation-state mismatch, (d) a
+# legitimately novel residue-specific naming in a particular BMRB entry.
+# The table is not automatically updated — changes are reviewed.
+#
+# One-to-many notes (pseudo-atoms): when three CHARMM Hs map to one BMRB
+# name (methyls, NH3+, NH2 in Arg guanidinium), the audit tool detects the
+# N-to-1 fan-in and flags every BMRB row for that pseudo as ONE_TO_MANY.
+# No expansion is performed at audit time.
+#
+# Last update: 2026-04-19. Derived from inspection of CHARMM36m naming in
+# reference.pdb files (e.g. 1CBH_192/reference.pdb) against BMRB entries
+# extracted from chemical_shifts_685.csv.
+
+# ---------------------------------------------------------------------------
+# Backbone — applied to ALL residues before residue-specific map.
+# ---------------------------------------------------------------------------
+# CHARMM: HN is the amide proton. BMRB uses H (IUPAC post-2002 convention).
+# Undeclared atoms (N, CA, C, O) fall through to identity.
+[backbone]
+HN = "H"
+
+# ---------------------------------------------------------------------------
+# N-terminal NH3+ protons in CHARMM are H1, H2, H3. BMRB rarely assigns
+# these (fast exchange with solvent). We do NOT translate them — the audit
+# tool leaves them unmatched and complains per convention.
+#
+# C-terminal CHARMM has OT1/OT2. No shifts expected from BMRB for oxygens
+# here but nucleus mismatch is handled by the audit, not this table.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Residue-specific translations
+#
+# For every residue, the mapping is CHARMM_atom_name = "BMRB_atom_name".
+# Atoms not listed use identity.
+# ---------------------------------------------------------------------------
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.ALA]
+# Methyl group: three CHARMM Hs → one BMRB pseudo "HB"
+HB1 = "HB"
+HB2 = "HB"
+HB3 = "HB"
+
+[residue.VAL]
+# γ1-methyl pseudo + γ2-methyl pseudo
+HG11 = "HG1"
+HG12 = "HG1"
+HG13 = "HG1"
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+
+[residue.LEU]
+# β-methylene
+HB1 = "HB2"
+HB2 = "HB3"
+# δ1-methyl pseudo + δ2-methyl pseudo
+HD11 = "HD1"
+HD12 = "HD1"
+HD13 = "HD1"
+HD21 = "HD2"
+HD22 = "HD2"
+HD23 = "HD2"
+
+[residue.ILE]
+# CHARMM names the δ-carbon CD (no locant); BMRB/IUPAC uses CD1.
+# (Verified 2026-04-19 against 1HS5/9 ILE which had a BMRB entry 'CD1'
+# — CHARMM has no 'CD1', only 'CD'.)
+CD = "CD1"
+# γ1-methylene (HG11/HG12 in CHARMM → HG12/HG13 in BMRB — non-identity even in names)
+HG11 = "HG12"
+HG12 = "HG13"
+# γ2-methyl pseudo
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+# δ-methyl pseudo (three CHARMM Hs → one BMRB 'HD1' pseudo)
+HD1 = "HD1"
+HD2 = "HD1"
+HD3 = "HD1"
+
+[residue.MET]
+# β-methylene
+HB1 = "HB2"
+HB2 = "HB3"
+# γ-methylene
+HG1 = "HG2"
+HG2 = "HG3"
+# ε-methyl pseudo (thiomethyl)
+HE1 = "HE"
+HE2 = "HE"
+HE3 = "HE"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+# HD1, HD2, HE1, HE2, HZ are ring protons — identity translations,
+# but BMRB stereo-ambiguity is common (ambiguity_code=2).
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+# Ring atoms identity: HD1 (on CD1), HE1 (indole NH), HE3 (on CE3),
+# HZ2, HZ3, HH2. No HE2 in TRP (different ring from PHE/TYR).
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+# HD1, HD2, HE1, HE2, HH ring/hydroxyl — identity.
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+# HG hydroxyl — identity (rarely observed in BMRB).
+
+[residue.THR]
+# THR β is a single H (identity HB).
+# γ-methyl pseudo
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+# HG1 hydroxyl — identity.
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+# HG thiol — identity.
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+# Sidechain amide HD21, HD22 identity.
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+# Sidechain amide HE21, HE22 identity.
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+# ζ-NH3+ pseudo
+HZ1 = "HZ"
+HZ2 = "HZ"
+HZ3 = "HZ"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+# HE (guanidinium NH) identity.
+# HH11, HH12, HH21, HH22 identity (guanidinium NH2 pairs — stereo-ambiguity common).
+
+# ---------------------------------------------------------------------------
+# Histidine — CHARMM uses HSP (doubly protonated), HSD (Nδ1-protonated),
+# HSE (Nε2-protonated). BMRB uses HIS for all protonation states. The
+# audit tool flags RESIDUE_NAME_MISMATCH per HIS residue; downstream
+# PROTONATION_INCONSISTENCY check compares CHARMM ring-proton set to
+# which HD1/HE2 shifts BMRB provides.
+#
+# Per-atom translation is identical across the three CHARMM variants —
+# different CHARMM residue types carry different atom sets, but the atom
+# NAMES are the same where they overlap.
+# ---------------------------------------------------------------------------
+
+[residue.HSP]
+# Doubly protonated: ring Hs HD1 (on ND1), HD2 (on CD2), HE1 (on CE1), HE2 (on NE2).
+HB1 = "HB2"
+HB2 = "HB3"
+# HD1, HD2, HE1, HE2 identity.
+
+[residue.HSD]
+# Nδ1-protonated: ring Hs HD1 (on ND1), HD2, HE1. No HE2.
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+# Nε2-protonated: ring Hs HD2, HE1, HE2 (on NE2). No HD1.
+HB1 = "HB2"
+HB2 = "HB3"
+
+# ---------------------------------------------------------------------------
+# Residue name aliases — CHARMM → standard BMRB-compatible
+# ---------------------------------------------------------------------------
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"
+# Add CYX (disulfide CYS in AMBER) etc. here if encountered.

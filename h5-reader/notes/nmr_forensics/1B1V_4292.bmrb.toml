@@ -1,0 +1,178 @@
+# Provenance block — 1B1V_4292 BMRB translation (narrative)
+#
+# Protein: PSP1, plasmatocyte-spreading peptide from Pseudoplusia includens
+# (insect cytokine). 23-residue short peptide; PDB 1B1V deposited 1998-11-23
+# (ENGINEERED YES, no mutation noted; SYNONYM PSP1). tag_alignment.json
+# reports tag_free = true and identity bmrb_sequence = native_sequence
+# (23/23 aa, ENFNGGCLAGYMRTADGRCKPTF).
+#
+# Numbering: identity. offset = 0.
+#
+# BMRB title contains "NMR Structure" only; deposition is 129 H rows, no C,
+# no N. Pure proton-shift spectrum.
+#
+# 2 CYS at residues 7, 19 — likely one disulfide bridge. CHARMM names CYS
+# uniformly; no alias needed (verified in 1HD6 with 6 CYS).
+#
+# 1 PRO at residue 21. No HIS. GLU-1 N-terminus has CHARMM NH3+ (H1/H2/H3);
+# audit will reveal whether BMRB deposits a single `H` (1DV0/1HS5 strategy)
+# or omits it (1HD6 strategy).
+#
+# BMRB CSV is post-RefDB-correction (verified 1DV0, 1HS5, 1HD6); to be
+# re-verified for 1B1V from REFDB_CORRECTED_VALUE_DIFFERS comparison.
+
+[provenance]
+protein = "1B1V_4292"
+database = "bmrb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'PROTEIN (PLASMATOCYTE-SPREADING PEPTIDE) in water'",
+    "Source PDB header (prep/1B1V.pdb): HEADER 'CYTOKINE 23-NOV-98 1B1V'; TITLE 'NMR STRUCTURE OF PSP1, PLASMATOCYTE-SPREADING PEPTIDE FROM PSEUDOPLUSIA INCLUDENS'; COMPND MOL_ID 1, MOLECULE PROTEIN (PLASMATOCYTE-SPREADING PEPTIDE), CHAIN A, SYNONYM PSP1, ENGINEERED YES",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (23aa, ENFNGGCLAGYMRTADGRCKPTF) == native_sequence (23aa); chain A length 23; alignment_matches=23",
+    "BMRB CSV inspection: 129 rows for bmrb_id=4292, all H (no C, no N); residues 1..23 names align with CHARMM 1..23 identity",
+    "BMRB title: 'NMR Structure of PSP1, Plasmatocyte-spreading Peptide from Pseudoplusia includens' — pure proton spectrum",
+]
+findings_summary = """
+1B1V_4292 — PSP1 plasmatocyte-spreading peptide from Pseudoplusia includens
+(insect cytokine), 23-residue peptide. Identity numbering, offset = 0. 129
+BMRB rows all H (pure proton deposition; no C, no N).
+
+Audit run 2026-04-20: 129 rows = 38 MATCHED + 29 MATCHED_WITH_ANOMALIES +
+7 ONE_TO_MANY + 55 STEREO_AMBIGUOUS + 0 UNMATCHED. Anomalies: 80
+NAME_TRANSLATION_APPLIED, 55 STEREO_AMBIGUOUS, 7 ONE_TO_MANY. CHARMM
+coverage: H 143/161 (89%), C/N/O/S all 0 (deposition is proton-only).
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (0 rows): no UNMATCHED. GLU-1 N-terminus follows
+  the 1HD6 strategy — depositor omitted backbone H entirely (rows are HA,
+  HB3, HG2, HG3 only). Same NH3+ physics as 1DV0/1HS5/1HS5 silently
+  handled by deposition.
+- §6.3 deferred (7 rows): ONE_TO_MANY methyl-pseudo expansion (LEU-8 HD1+HD2;
+  ALA-9 HB; ALA-15 HB; THR-14 HG2; THR-22 HG2; LYS-20 HZ).
+- §6.3 deferred (55 rows): STEREO_AMBIGUOUS, all ambig=2. 43% of rows
+  carry stereo flags — high proportion typical of short-peptide H-only
+  depositions where β/γ methylene stereo pairs are routinely unassigned.
+  (Even higher proportionally than 1HD6's 22.5%; both depositions from the
+  same era.) No high-ambiguity (code-4) outliers.
+- §6.1 adjudicated (none): starter table sufficed; no per-protein TOML
+  edits drove resolution.
+
+Cross-cutting BMRB-CSV-is-corrected verification: 0 RefDB corrections (clean
+entry); pattern check is moot but trivially consistent.
+"""
+
+[residue_seq_offset]
+offset = 0
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

@@ -1,0 +1,187 @@
+# Provenance block — 1I8X_4351 BMRB translation (narrative)
+#
+# Protein: Granulin-1 (Carp) N-terminal 30-residue fragment — CG1 1-30
+# peptide. Cytokine family granulin (PDB COMPND: MOLECULE GRANULIN-1,
+# FRAGMENT "N-TERMINUS (RESIDUES 1-30)", ENGINEERED YES, MUTATION YES;
+# from carp). PDB 1I8X deposited 2001-03-16. Structure determined via
+# semi-automatic ARIA NOE assignment.
+# tag_alignment.json: tag_free=true; bmrb_sequence (30aa,
+# VIHCDAATICPDGTTCSLSPYGVWYCSPFS) == native_sequence (30aa); identity.
+#
+# Numbering: identity. offset = 0.
+#
+# **HSP at residue 3** — same residue position as 1G26's HSP-3 (also
+# granulin family). BMRB rows for HIS-3: H, HA, HB2, HB3, HD2 (7.30 ppm),
+# HE1 (8.64 ppm), CA (56.48), CB (30.08). Ring N-Hs (HD1, HE2) absent —
+# protonation untestable from NMR (same pattern as 1G26/1CBH/1I2V).
+# 8 RESIDUE_ALIAS_APPLIED expected (6 H + 2 C rows on HIS-3).
+#
+# VAL-1 N-terminus: CHARMM has H1/H2/H3 (NH3+); BMRB row 1 deposits
+# CA, CB, HA, HB, HG1, HG2 — silent-omit N-term.
+#
+# 4 CYS at residues 4, 10, 16, 26 — likely 2 disulfide bridges. CHARMM
+# CYS uniform.
+#
+# **First H+C deposition** in the latter half of the audit set (53 C
+# rows joining 151 H = 204 total). C coverage adds the diagnostic to
+# spot-check BMRB-CSV-vs-RefDB-corrected pattern on C and H rows
+# separately.
+#
+# 38 of 204 rows have ambig=2; 166 have ambig=1 — depositor deposited
+# ambig codes properly (1HD6/1B1V/1CBH family, not 1G26/1I2V silence).
+
+[provenance]
+protein = "1I8X_4351"
+database = "bmrb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'GRANULIN-1 in water'",
+    "Source PDB header (prep/1I8X.pdb): HEADER 'CYTOKINE 16-MAR-01 1I8X'; TITLE 'SEMI-AUTOMATIC STRUCTURE DETERMINATION OF THE CG1 1-30 PEPTIDE BASED ON ARIA'; COMPND MOL_ID 1, MOLECULE GRANULIN-1, CHAIN A, FRAGMENT 'N-TERMINUS (RESIDUES 1-30)', ENGINEERED YES, MUTATION YES",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (30aa) == native_sequence (30aa); chain A length 30; alignment_matches=30",
+    "BMRB CSV inspection: 204 rows for bmrb_id=4351 (151 H + 53 C); residues 1..30 names align with CHARMM 1..30 identity (modulo HSP→HIS at residue 3)",
+    "HIS-3 BMRB rows: 8 total (H, HA, HB2, HB3, HD2 = 7.30, HE1 = 8.64, CA = 56.48, CB = 30.08) — ring N-Hs absent; protonation untestable",
+    "VAL-1 BMRB rows: CA, CB, HA, HB, HG1, HG2 — silent N-term omit",
+    "Ambig codes: 166 code-1, 38 code-2 (well-deposited)",
+    "Granulin-1 from CARP (vs 1G26 = human Granulin A) — both granulin family, both HSP-3, structurally analogous β-hairpin stack",
+]
+findings_summary = """
+1I8X_4351 — Carp Granulin-1 N-terminal 30-residue fragment (cytokine
+granulin family, ARIA-assigned). Identity numbering, offset = 0. 204 BMRB
+rows (151 H + 53 C).
+
+Audit run 2026-04-20: 204 rows = 104 MATCHED + 47 MATCHED_WITH_ANOMALIES
++ 15 ONE_TO_MANY + 38 STEREO_AMBIGUOUS + 0 UNMATCHED. Anomalies: 80
+NAME_TRANSLATION_APPLIED, 38 STEREO_AMBIGUOUS, 15 ONE_TO_MANY, 8
+RESIDUE_ALIAS_APPLIED (HSP→HIS, 8 BMRB rows on HIS-3). CHARMM coverage:
+H 181/200 (91%), C 53/141 (38% — Cα + Cβ for most residues), N 0/33.
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (0 rows): no UNMATCHED. VAL-1 silent N-term.
+- §6.3 deferred (15 rows): ONE_TO_MANY methyl-pseudo expansion.
+- §6.3 deferred (38 rows): STEREO_AMBIGUOUS (19% of rows, all ambig=2).
+  Depositor put ambig codes on 38 rows; 166 with ambig=1 (well-deposited).
+- §6.3 deferred (8 rows): RESIDUE_ALIAS_APPLIED on HIS-3 (HSP→HIS); 6 H
+  rows + 2 C rows (CA, CB). Same untestable protonation pattern.
+- §6.1 adjudicated (none).
+
+Cross-cutting BMRB-CSV-corrected: 53/53 RefDB corrected rows match BMRB
+shift_value (0 match original). Pattern verified for 4 of 4 proteins
+with non-zero re-referencing (1DV0 125/125, 1HS5 96/96, 1HD6 37/37,
+1I8X 53/53). Robustly confirmed.
+"""
+
+[residue_seq_offset]
+offset = 0
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

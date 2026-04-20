@@ -1,0 +1,192 @@
+# Provenance block — 1BWX_3449 BMRB translation (narrative)
+#
+# Protein: Human Parathyroid Hormone (PTH) — peptide hormone. 39-residue
+# fragment per source PDB COMPND ("FRAGMENT: RESIDUES 1-39", ENGINEERED YES).
+# BMRB title is explicit "Stabilized NMR structure of human parathyroid
+# hormone(1-34)" — BMRB assignments only cover residues 1-34, not the full
+# 39-residue topology in CHARMM.
+#
+# tag_alignment.json: tag_free=true; bmrb_sequence (34aa,
+# SVSEIQLMHNLGKHLNSMERVEWLRKKLQDVHNF) == native_sequence (34aa);
+# alignment_matches=34; chain_length=39 — **5-residue C-terminal extension**
+# in CHARMM (residues 35-39: VAL ALA LEU GLY ALA) is BMRB-silent (PTH(1-39)
+# topology vs PTH(1-34) deposition). Same pattern as 1HS5 (CHARMM 34 vs
+# BMRB 33), but with a 5-residue gap.
+#
+# Numbering: identity for residues 1-34. offset = 0. CHARMM residues 35-39
+# carry no BMRB rows; no anomaly fires (nothing to bind).
+#
+# **3 HSP residues** at positions 9, 14, 32 (CHARMM doubly-protonated; all
+# three with full ring atom set HD1, HD2, HE1, HE2). BMRB rows for each:
+# H, HA, HB2, HB3, HD2, HE1 — six rows × 3 = 18 RESIDUE_ALIAS_APPLIED
+# expected. Ring N-Hs (HD1, HE2) ABSENT for all three; protonation
+# untestable from NMR (cumulative pattern across 1G26/1CBH/1I2V/1I8X/1BWX
+# — five HSP exemplars with the same data gap).
+#
+# SER-1 N-terminus: CHARMM has H1/H2/H3 (NH3+); BMRB row 1 deposits
+# HA, HB2, HB3 only — silent-omit N-term.
+#
+# **No CYS, no PRO** — first reviewed protein without disulfide-rich
+# topology and the first without prolines. The PTH hormone is a flexible
+# soluble hormone, structurally distinct from the cysteine-knot/disulfide
+# peptides reviewed previously (1HD6, 1B1V, 1HA9, 1G26, 1CBH, 1I2V, 1I8X).
+#
+# Ambig codes: 145 code-1, 80 code-2 (well-deposited, 36% stereo-ambig).
+
+[provenance]
+protein = "1BWX_3449"
+database = "bmrb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'PARATHYROID HORMONE in water'",
+    "Source PDB header (prep/1BWX.pdb): HEADER 'PEPTIDE HORMONE 29-SEP-98 1BWX'; TITLE 'THE SOLUTION STRUCTURE OF HUMAN PARATHYROID HORMONE FRAGMENT 1-39, NMR, 10 STRUCTURES'; COMPND MOL_ID 1, MOLECULE PARATHYROID HORMONE, CHAIN A, FRAGMENT 'RESIDUES 1-39', ENGINEERED YES",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (34aa) != native_sequence_length=34; chain A length 39; alignment_matches=34 — 5-residue gap (CHARMM has 35-39: VAL ALA LEU GLY ALA, BMRB silent there)",
+    "BMRB title: 'Stabilized NMR structure of human parathyroid hormone(1-34)' — explicit 1-34 coverage despite PDB topology being 1-39",
+    "BMRB CSV inspection: 225 rows for bmrb_id=3449, all H; residues 1..34 names align with CHARMM 1..34 identity (modulo HSP→HIS at 9, 14, 32); residues 35..39 BMRB-silent",
+    "HIS-9, HIS-14, HIS-32 BMRB rows: 6 each (H, HA, HB2, HB3, HD2, HE1) — all three with ring N-Hs absent",
+    "SER-1 BMRB rows: HA, HB2, HB3 — silent N-term omit",
+    "Ambig codes: 145 code-1, 80 code-2 (36% stereo-ambig)",
+]
+findings_summary = """
+1BWX_3449 — Human Parathyroid Hormone PTH(1-39) peptide hormone fragment.
+PDB topology 1-39 (CHARMM 39 residues); BMRB only deposited 1-34 (5-residue
+C-term silent gap: residues 35-39 = VAL ALA LEU GLY ALA). Identity
+numbering on 1-34 overlap; offset = 0. 225 BMRB rows all H.
+
+Audit run 2026-04-20: 225 rows = 51 MATCHED + 80 MATCHED_WITH_ANOMALIES
++ 20 ONE_TO_MANY + 74 STEREO_AMBIGUOUS + 0 UNMATCHED. Anomalies: 135
+NAME_TRANSLATION_APPLIED, 74 STEREO_AMBIGUOUS (33%), 20 ONE_TO_MANY, 18
+RESIDUE_ALIAS_APPLIED (3 HSP × 6 BMRB rows). CHARMM coverage: H 265/330
+(80% — slightly lower because 5 silent C-term residues count in topology).
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (0 rows): no UNMATCHED. SER-1 silent N-term;
+  C-term residues 35-39 BMRB-silent (no rows, nothing fires).
+- §6.3 deferred (20 rows): ONE_TO_MANY methyl-pseudo expansion.
+- §6.3 deferred (74 rows): STEREO_AMBIGUOUS, all ambig=2 (33% of rows).
+  Depositor put ambig codes on 80 rows; 145 with ambig=1.
+- §6.3 deferred (18 rows): RESIDUE_ALIAS_APPLIED on HIS-9, HIS-14,
+  HIS-32 (HSP→HIS for all three). Same 6-rows-per-HSP pattern; ring
+  N-Hs absent for all three; protonation untestable for all three.
+  Most HSP-heavy of any reviewed protein (3 HSP residues; 1G26/1CBH/
+  1I2V/1I8X each had 1).
+- §6.1 adjudicated (none).
+
+Cross-cutting: 0 RefDB corrections — trivially consistent.
+"""
+
+[residue_seq_offset]
+offset = 0
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

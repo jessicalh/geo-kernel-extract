@@ -1,0 +1,1663 @@
+data_4820
+
+#######################
+#  Entry information  #
+#######################
+
+
+save_entry_information
+  _Entry.Sf_category                   entry_information
+  _Entry.Sf_framecode                  entry_information
+  _Entry.ID                            4820
+  _Entry.Title                         
+;
+1H and 13Ca Chemical Shift Assignments for the Pheromone Er-22
+;
+  _Entry.Type                          macromolecule
+  _Entry.Version_type                  original
+  _Entry.Submission_date               2000-09-06
+  _Entry.Accession_date                2000-09-06
+  _Entry.Last_release_date             2001-01-29
+  _Entry.Original_release_date         2001-01-29
+  _Entry.Origination                   author
+  _Entry.NMR_STAR_version              3.1.1.61
+  _Entry.Original_NMR_STAR_version     2.1
+  _Entry.Experimental_method           NMR
+  _Entry.Experimental_method_subtype   .
+  _Entry.Details                       .
+  _Entry.BMRB_internal_directory_name  .
+
+  loop_
+    _Entry_author.Ordinal
+    _Entry_author.Given_name
+    _Entry_author.Family_name
+    _Entry_author.First_initial
+    _Entry_author.Middle_initials
+    _Entry_author.Family_title
+    _Entry_author.Entry_ID
+
+    1    Aizhuo        Liu          .   .   .   4820    
+    2    Peter         Luginbuhl    .   .   .   4820    
+    3    Oliver        Zerbe        .   .   .   4820    
+    4    Pierangelo    Luporini     .   .   .   4820    
+    5    Kurt          Wuthrich     .   .   .   4820    
+  stop_
+
+  loop_
+    _Data_set.Type
+    _Data_set.Count
+    _Data_set.Entry_ID
+
+    assigned_chemical_shifts    1    4820    
+  stop_
+
+  loop_
+    _Datum.Type
+    _Datum.Count
+    _Datum.Entry_ID
+
+    '13C chemical shifts'  37     4820    
+    '1H chemical shifts'   245    4820    
+  stop_
+
+  loop_
+    _Release.Release_number
+    _Release.Format_type
+    _Release.Format_version
+    _Release.Date
+    _Release.Submission_date
+    _Release.Type
+    _Release.Author
+    _Release.Detail
+    _Release.Entry_ID
+
+    1    .   .   2001-01-29    2000-09-06    original    author    .   4820    
+  stop_
+
+save_
+
+###############
+#  Citations  #
+###############
+
+
+save_entry_citation
+  _Citation.Sf_category                 citations
+  _Citation.Sf_framecode                entry_citation
+  _Citation.Entry_ID                    4820
+  _Citation.ID                          1
+  _Citation.Class                       'entry citation'
+  _Citation.CAS_abstract_code           .
+  _Citation.MEDLINE_UI_code             .
+  _Citation.DOI                         .
+  _Citation.PubMed_ID                   .
+  _Citation.Full_citation               .
+  _Citation.Title                       
+;
+Letter to the Editor:
+NMR structure of the pheromone Er-22 from Euplotes raikovi
+;
+
+  _Citation.Status                      published
+  _Citation.Type                        journal
+  _Citation.Journal_abbrev              'J. Biomol. NMR'
+  _Citation.Journal_name_full           .
+  _Citation.Journal_volume              19
+  _Citation.Journal_issue               1
+  _Citation.Journal_ASTM                .
+  _Citation.Journal_ISSN                .
+  _Citation.Journal_CSD                 .
+  _Citation.Book_title                  .
+  _Citation.Book_chapter_title          .
+  _Citation.Book_volume                 .
+  _Citation.Book_series                 .
+  _Citation.Book_publisher              .
+  _Citation.Book_publisher_city         .
+  _Citation.Book_ISBN                   .
+  _Citation.Conference_title            .
+  _Citation.Conference_site             .
+  _Citation.Conference_state_province   .
+  _Citation.Conference_country          .
+  _Citation.Conference_start_date       .
+  _Citation.Conference_end_date         .
+  _Citation.Conference_abstract_number  .
+  _Citation.Thesis_institution          .
+  _Citation.Thesis_institution_city     .
+  _Citation.Thesis_institution_country  .
+  _Citation.WWW_URL                     .
+  _Citation.Page_first                  75
+  _Citation.Page_last                   78
+  _Citation.Year                        2001
+  _Citation.Details                     .
+
+  loop_
+    _Citation_author.Ordinal
+    _Citation_author.Given_name
+    _Citation_author.Family_name
+    _Citation_author.First_initial
+    _Citation_author.Middle_initials
+    _Citation_author.Family_title
+    _Citation_author.Entry_ID
+    _Citation_author.Citation_ID
+
+    1    Aizhuo        Liu          .   .   .   4820    1    
+    2    Peter         Luginbuhl    .   .   .   4820    1    
+    3    Oliver        Zerbe        .   .   .   4820    1    
+    4    Claudio       Ortenzi      .   .   .   4820    1    
+    5    Pierangelo    Luporini     .   .   .   4820    1    
+    6    Kurt          Wuthrich     .   .   .   4820    1    
+  stop_
+
+save_
+
+save_ref1
+  _Citation.Sf_category                 citations
+  _Citation.Sf_framecode                ref1
+  _Citation.Entry_ID                    4820
+  _Citation.ID                          2
+  _Citation.Class                       'reference citation'
+  _Citation.CAS_abstract_code           .
+  _Citation.MEDLINE_UI_code             .
+  _Citation.DOI                         .
+  _Citation.PubMed_ID                   .
+  _Citation.Full_citation               
+;
+Guntert, Dotsch, Wider, Wuthrich (1992)
+J Biomol NMR 2, 619-629
+;
+
+  _Citation.Title                       .
+  _Citation.Status                      .
+  _Citation.Type                        .
+  _Citation.Journal_abbrev              .
+  _Citation.Journal_name_full           .
+  _Citation.Journal_volume              .
+  _Citation.Journal_issue               .
+  _Citation.Journal_ASTM                .
+  _Citation.Journal_ISSN                .
+  _Citation.Journal_CSD                 .
+  _Citation.Book_title                  .
+  _Citation.Book_chapter_title          .
+  _Citation.Book_volume                 .
+  _Citation.Book_series                 .
+  _Citation.Book_publisher              .
+  _Citation.Book_publisher_city         .
+  _Citation.Book_ISBN                   .
+  _Citation.Conference_title            .
+  _Citation.Conference_site             .
+  _Citation.Conference_state_province   .
+  _Citation.Conference_country          .
+  _Citation.Conference_start_date       .
+  _Citation.Conference_end_date         .
+  _Citation.Conference_abstract_number  .
+  _Citation.Thesis_institution          .
+  _Citation.Thesis_institution_city     .
+  _Citation.Thesis_institution_country  .
+  _Citation.WWW_URL                     .
+  _Citation.Page_first                  .
+  _Citation.Page_last                   .
+  _Citation.Year                        .
+  _Citation.Details                     .
+
+save_
+
+save_ref2
+  _Citation.Sf_category                 citations
+  _Citation.Sf_framecode                ref2
+  _Citation.Entry_ID                    4820
+  _Citation.ID                          3
+  _Citation.Class                       'reference citation'
+  _Citation.CAS_abstract_code           .
+  _Citation.MEDLINE_UI_code             .
+  _Citation.DOI                         .
+  _Citation.PubMed_ID                   .
+  _Citation.Full_citation               
+;
+Bartels, Xia, Billeter, Guntert, Wuthrich (1995)
+J Biomol NMR 5, 1-10
+;
+
+  _Citation.Title                       .
+  _Citation.Status                      .
+  _Citation.Type                        .
+  _Citation.Journal_abbrev              .
+  _Citation.Journal_name_full           .
+  _Citation.Journal_volume              .
+  _Citation.Journal_issue               .
+  _Citation.Journal_ASTM                .
+  _Citation.Journal_ISSN                .
+  _Citation.Journal_CSD                 .
+  _Citation.Book_title                  .
+  _Citation.Book_chapter_title          .
+  _Citation.Book_volume                 .
+  _Citation.Book_series                 .
+  _Citation.Book_publisher              .
+  _Citation.Book_publisher_city         .
+  _Citation.Book_ISBN                   .
+  _Citation.Conference_title            .
+  _Citation.Conference_site             .
+  _Citation.Conference_state_province   .
+  _Citation.Conference_country          .
+  _Citation.Conference_start_date       .
+  _Citation.Conference_end_date         .
+  _Citation.Conference_abstract_number  .
+  _Citation.Thesis_institution          .
+  _Citation.Thesis_institution_city     .
+  _Citation.Thesis_institution_country  .
+  _Citation.WWW_URL                     .
+  _Citation.Page_first                  .
+  _Citation.Page_last                   .
+  _Citation.Year                        .
+  _Citation.Details                     .
+
+save_
+
+save_ref3
+  _Citation.Sf_category                 citations
+  _Citation.Sf_framecode                ref3
+  _Citation.Entry_ID                    4820
+  _Citation.ID                          4
+  _Citation.Class                       'reference citation'
+  _Citation.CAS_abstract_code           .
+  _Citation.MEDLINE_UI_code             .
+  _Citation.DOI                         .
+  _Citation.PubMed_ID                   1847217
+  _Citation.Full_citation               
+;
+Guntert, Braun, Wuthrich (1991)
+J Mol Biol 217, 517-530
+;
+
+  _Citation.Title                       'Efficient computation of three-dimensional protein structures in solution from nuclear magnetic resonance data using the program DIANA and the supporting programs CALIBA, HABAS and GLOMSA.'
+  _Citation.Status                      published
+  _Citation.Type                        journal
+  _Citation.Journal_abbrev              'J. Mol. Biol.'
+  _Citation.Journal_name_full           'Journal of molecular biology'
+  _Citation.Journal_volume              217
+  _Citation.Journal_issue               3
+  _Citation.Journal_ASTM                .
+  _Citation.Journal_ISSN                0022-2836
+  _Citation.Journal_CSD                 .
+  _Citation.Book_title                  .
+  _Citation.Book_chapter_title          .
+  _Citation.Book_volume                 .
+  _Citation.Book_series                 .
+  _Citation.Book_publisher              .
+  _Citation.Book_publisher_city         .
+  _Citation.Book_ISBN                   .
+  _Citation.Conference_title            .
+  _Citation.Conference_site             .
+  _Citation.Conference_state_province   .
+  _Citation.Conference_country          .
+  _Citation.Conference_start_date       .
+  _Citation.Conference_end_date         .
+  _Citation.Conference_abstract_number  .
+  _Citation.Thesis_institution          .
+  _Citation.Thesis_institution_city     .
+  _Citation.Thesis_institution_country  .
+  _Citation.WWW_URL                     .
+  _Citation.Page_first                  517
+  _Citation.Page_last                   530
+  _Citation.Year                        1991
+  _Citation.Details                     
+;
+A novel procedure for efficient computation of three-dimensional protein
+structures from nuclear magnetic resonance (n.m.r.) data in solution is
+described, which is based on using the program DIANA in combination with the
+supporting programs CALIBA, HABAS and GLOMSA. The first part of this paper
+describes the new programs DIANA. CALIBA and GLOMSA. DIANA is a new, fully
+vectorized implementation of the variable target function algorithm for the
+computation of protein structures from n.m.r. data. Its main advantages, when
+compared to previously available programs using the variable target function
+algorithm, are a significant reduction of the computation time, and a novel
+treatment of experimental distance constraints involving diastereotopic groups
+of hydrogen atoms that were not individually assigned. CALIBA converts the
+measured nuclear Overhauser effects into upper distance limits and thus
+prepares the input for the previously described program HABAS and for DIANA.
+GLOMSA is used for obtaining individual assignments for pairs of diastereotopic
+substituents by comparison of the experimental constraints with preliminary
+results of the structure calculations. With its general outlay, the presently
+used combination of the four programs is particularly user-friendly. In the
+second part of the paper, initial results are presented on the influence of the
+novel DIANA treatment of diastereotopic protons on the quality of the
+structures obtained, and a systematic study of the central processing unit
+times needed for the same protein structure calculation on a range of
+different, commonly available computers is described.
+;
+
+
+  loop_
+    _Citation_author.Ordinal
+    _Citation_author.Given_name
+    _Citation_author.Family_name
+    _Citation_author.First_initial
+    _Citation_author.Middle_initials
+    _Citation_author.Family_title
+    _Citation_author.Entry_ID
+    _Citation_author.Citation_ID
+
+    1    P    Guntert     P.    .   .   4820    4    
+    2    W    Braun       W.    .   .   4820    4    
+    3    K    Wuthrich    K.    .   .   4820    4    
+  stop_
+
+save_
+
+save_ref4
+  _Citation.Sf_category                 citations
+  _Citation.Sf_framecode                ref4
+  _Citation.Entry_ID                    4820
+  _Citation.ID                          5
+  _Citation.Class                       'reference citation'
+  _Citation.CAS_abstract_code           .
+  _Citation.MEDLINE_UI_code             .
+  _Citation.DOI                         .
+  _Citation.PubMed_ID                   8914272
+  _Citation.Full_citation               
+;
+Luginbuhl, Guntert, Billeter, Wuthrich (1996)
+J Biomol NMR 8, 136-146
+;
+
+  _Citation.Title                       'The new program OPAL for molecular dynamics simulations and energy refinements of biological macromolecules.'
+  _Citation.Status                      published
+  _Citation.Type                        journal
+  _Citation.Journal_abbrev              'J. Biomol. NMR'
+  _Citation.Journal_name_full           'Journal of biomolecular NMR'
+  _Citation.Journal_volume              8
+  _Citation.Journal_issue               2
+  _Citation.Journal_ASTM                .
+  _Citation.Journal_ISSN                0925-2738
+  _Citation.Journal_CSD                 .
+  _Citation.Book_title                  .
+  _Citation.Book_chapter_title          .
+  _Citation.Book_volume                 .
+  _Citation.Book_series                 .
+  _Citation.Book_publisher              .
+  _Citation.Book_publisher_city         .
+  _Citation.Book_ISBN                   .
+  _Citation.Conference_title            .
+  _Citation.Conference_site             .
+  _Citation.Conference_state_province   .
+  _Citation.Conference_country          .
+  _Citation.Conference_start_date       .
+  _Citation.Conference_end_date         .
+  _Citation.Conference_abstract_number  .
+  _Citation.Thesis_institution          .
+  _Citation.Thesis_institution_city     .
+  _Citation.Thesis_institution_country  .
+  _Citation.WWW_URL                     .
+  _Citation.Page_first                  136
+  _Citation.Page_last                   146
+  _Citation.Year                        1996
+  _Citation.Details                     
+;
+A new program for molecular dynamics (MD) simulation and energy refinement of
+biological macromolecules, OPAL, is introduced. Combined with the supporting
+program TRAJEC for the analysis of MD trajectories, OPAL affords high
+efficiency and flexibility for work with different force fields, and offers a
+user-friendly interface and extensive trajectory analysis capabilities. Salient
+features are computational speeds of up to 1.5 GFlops on vector supercomputers
+such as the NEC SX-3, ellipsoidal boundaries to reduce the system size for
+studies in explicit solvents, and natural treatment of the hydrostatic
+pressure. Practical applications of OPAL are illustrated with MD simulations of
+pure water, energy minimization of the NMR structure of the mixed disulfide of
+a mutant E. coli glutaredoxin with glutathione in different solvent models, and
+MD simulations of a small protein, pheromone Er-2, using either instantaneous
+or time-averaged NMR restraints, or no restraints.
+;
+
+
+  loop_
+    _Citation_author.Ordinal
+    _Citation_author.Given_name
+    _Citation_author.Family_name
+    _Citation_author.First_initial
+    _Citation_author.Middle_initials
+    _Citation_author.Family_title
+    _Citation_author.Entry_ID
+    _Citation_author.Citation_ID
+
+    1    P.    Luginbuhl    P.    .   .   4820    5    
+    2    P.    Guntert      P.    .   .   4820    5    
+    3    M.    Billeter     M.    .   .   4820    5    
+    4    K.    Wuethrich    K.    .   .   4820    5    
+  stop_
+
+save_
+
+#############################################
+#  Molecular system (assembly) description  #
+#############################################
+
+
+save_system_Er-22
+  _Assembly.Sf_category                      assembly
+  _Assembly.Sf_framecode                     system_Er-22
+  _Assembly.Entry_ID                         4820
+  _Assembly.ID                               1
+  _Assembly.Name                             'Pheromone Er-22'
+  _Assembly.BMRB_code                        .
+  _Assembly.Number_of_components             .
+  _Assembly.Organic_ligands                  .
+  _Assembly.Metal_ions                       .
+  _Assembly.Non_standard_bonds               .
+  _Assembly.Ambiguous_conformational_states  .
+  _Assembly.Ambiguous_chem_comp_sites        .
+  _Assembly.Molecules_in_chemical_exchange   .
+  _Assembly.Paramagnetic                     no
+  _Assembly.Thiol_state                      'all disulfide bound'
+  _Assembly.Molecular_mass                   .
+  _Assembly.Enzyme_commission_number         .
+  _Assembly.Details                          .
+  _Assembly.DB_query_date                    .
+  _Assembly.DB_query_revised_last_date       .
+
+  loop_
+    _Assembly_type.Type
+    _Assembly_type.Entry_ID
+    _Assembly_type.Assembly_ID
+
+    monomer    4820    1    
+  stop_
+
+  loop_
+    _Entity_assembly.ID
+    _Entity_assembly.Entity_assembly_name
+    _Entity_assembly.Entity_ID
+    _Entity_assembly.Entity_label
+    _Entity_assembly.Asym_ID
+    _Entity_assembly.PDB_chain_ID
+    _Entity_assembly.Experimental_data_reported
+    _Entity_assembly.Physical_state
+    _Entity_assembly.Conformational_isomer
+    _Entity_assembly.Chemical_exchange_state
+    _Entity_assembly.Magnetic_equivalence_group_code
+    _Entity_assembly.Role
+    _Entity_assembly.Details
+    _Entity_assembly.Entry_ID
+    _Entity_assembly.Assembly_ID
+
+    1    Er-22    1    $Er-22   .   .   .   native    .   .   .   .   .   4820    1    
+  stop_
+
+  loop_
+    _Bond.ID
+    _Bond.Type
+    _Bond.Value_order
+    _Bond.Assembly_atom_ID_1
+    _Bond.Entity_assembly_ID_1
+    _Bond.Entity_assembly_name_1
+    _Bond.Entity_ID_1
+    _Bond.Comp_ID_1
+    _Bond.Comp_index_ID_1
+    _Bond.Seq_ID_1
+    _Bond.Atom_ID_1
+    _Bond.Assembly_atom_ID_2
+    _Bond.Entity_assembly_ID_2
+    _Bond.Entity_assembly_name_2
+    _Bond.Entity_ID_2
+    _Bond.Comp_ID_2
+    _Bond.Comp_index_ID_2
+    _Bond.Seq_ID_2
+    _Bond.Atom_ID_2
+    _Bond.Auth_entity_assembly_ID_1
+    _Bond.Auth_entity_assembly_name_1
+    _Bond.Auth_seq_ID_1
+    _Bond.Auth_comp_ID_1
+    _Bond.Auth_atom_ID_1
+    _Bond.Auth_entity_assembly_ID_2
+    _Bond.Auth_entity_assembly_name_2
+    _Bond.Auth_seq_ID_2
+    _Bond.Auth_comp_ID_2
+    _Bond.Auth_atom_ID_2
+    _Bond.Entry_ID
+    _Bond.Assembly_ID
+
+    1    disulfide    single    .   1    .   1    CYS    3     3     SG    .   1    .   1    CYS    18    18    SG    .   .   .   .   .   .   .   .   .   .   4820    1    
+    2    disulfide    single    .   1    .   1    CYS    10    10    SG    .   1    .   1    CYS    32    32    SG    .   .   .   .   .   .   .   .   .   .   4820    1    
+    3    disulfide    single    .   1    .   1    CYS    15    15    SG    .   1    .   1    CYS    24    24    SG    .   .   .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+  loop_
+    _Assembly_common_name.Name
+    _Assembly_common_name.Type
+    _Assembly_common_name.Entry_ID
+    _Assembly_common_name.Assembly_ID
+
+    Er-22              abbreviation    4820    1    
+    'Pheromone Er-22'  system          4820    1    
+  stop_
+
+save_
+
+    ####################################
+    #  Biological polymers and ligands #
+    ####################################
+
+
+save_Er-22
+  _Entity.Sf_category                      entity
+  _Entity.Sf_framecode                     Er-22
+  _Entity.Entry_ID                         4820
+  _Entity.ID                               1
+  _Entity.BMRB_code                        .
+  _Entity.Name                             'Pheromone Er-22'
+  _Entity.Type                             polymer
+  _Entity.Polymer_common_type              .
+  _Entity.Polymer_type                     polypeptide(L)
+  _Entity.Polymer_type_details             .
+  _Entity.Polymer_strand_ID                .
+  _Entity.Polymer_seq_one_letter_code_can  .
+  _Entity.Polymer_seq_one_letter_code      
+;
+DICDIAIAQCSLTLCQDCEN
+TPICELAVKGSCPPPWS
+;
+
+  _Entity.Target_identifier                .
+  _Entity.Polymer_author_defined_seq       .
+  _Entity.Polymer_author_seq_details       .
+  _Entity.Ambiguous_conformational_states  .
+  _Entity.Ambiguous_chem_comp_sites        .
+  _Entity.Nstd_monomer                     .
+  _Entity.Nstd_chirality                   .
+  _Entity.Nstd_linkage                     .
+  _Entity.Nonpolymer_comp_ID               .
+  _Entity.Nonpolymer_comp_label            .
+  _Entity.Number_of_monomers               37
+  _Entity.Number_of_nonpolymer_components  .
+  _Entity.Paramagnetic                     .
+  _Entity.Thiol_state                      'all disulfide bound'
+  _Entity.Src_method                       .
+  _Entity.Parent_entity_ID                 1
+  _Entity.Fragment                         .
+  _Entity.Mutation                         .
+  _Entity.EC_number                        .
+  _Entity.Calc_isoelectric_point           .
+  _Entity.Formula_weight                   .
+  _Entity.Formula_weight_exptl             .
+  _Entity.Formula_weight_exptl_meth        .
+  _Entity.Details                          .
+  _Entity.DB_query_date                    2008-08-19
+  _Entity.DB_query_revised_last_date       2008-08-19
+
+  loop_
+    _Entity_db_link.Ordinal
+    _Entity_db_link.Author_supplied
+    _Entity_db_link.Database_code
+    _Entity_db_link.Accession_code
+    _Entity_db_link.Entry_mol_code
+    _Entity_db_link.Entry_mol_name
+    _Entity_db_link.Entry_experimental_method
+    _Entity_db_link.Entry_structure_resolution
+    _Entity_db_link.Entry_relation_type
+    _Entity_db_link.Entry_details
+    _Entity_db_link.Chimera_segment_ID
+    _Entity_db_link.Seq_query_to_submitted_percent
+    _Entity_db_link.Seq_subject_length
+    _Entity_db_link.Seq_identity
+    _Entity_db_link.Seq_positive
+    _Entity_db_link.Seq_homology_expectation_val
+    _Entity_db_link.Seq_align_begin
+    _Entity_db_link.Seq_align_end
+    _Entity_db_link.Seq_difference_details
+    _Entity_db_link.Seq_alignment_details
+    _Entity_db_link.Entry_ID
+    _Entity_db_link.Entity_ID
+
+    .   .   PDB           1HD6      .   'Pheromone Er-22, Nmr'                    .   .   .   .   .   100.00    37    100.00    100.00    2.06e-12    .   .   .   .   4820    1    
+    .   .   SWISS-PROT    P58548    .   'Mating pheromone Er-22 (Euplomone R22)'  .   .   .   .   .   100.00    37    100.00    100.00    2.06e-12    .   .   .   .   4820    1    
+  stop_
+
+  loop_
+    _Entity_common_name.Name
+    _Entity_common_name.Type
+    _Entity_common_name.Entry_ID
+    _Entity_common_name.Entity_ID
+
+    Er-22              abbreviation    4820    1    
+    'Pheromone Er-22'  common          4820    1    
+  stop_
+
+  loop_
+    _Entity_comp_index.ID
+    _Entity_comp_index.Auth_seq_ID
+    _Entity_comp_index.Comp_ID
+    _Entity_comp_index.Comp_label
+    _Entity_comp_index.Entry_ID
+    _Entity_comp_index.Entity_ID
+
+    1     .   ASP    .   4820    1    
+    2     .   ILE    .   4820    1    
+    3     .   CYS    .   4820    1    
+    4     .   ASP    .   4820    1    
+    5     .   ILE    .   4820    1    
+    6     .   ALA    .   4820    1    
+    7     .   ILE    .   4820    1    
+    8     .   ALA    .   4820    1    
+    9     .   GLN    .   4820    1    
+    10    .   CYS    .   4820    1    
+    11    .   SER    .   4820    1    
+    12    .   LEU    .   4820    1    
+    13    .   THR    .   4820    1    
+    14    .   LEU    .   4820    1    
+    15    .   CYS    .   4820    1    
+    16    .   GLN    .   4820    1    
+    17    .   ASP    .   4820    1    
+    18    .   CYS    .   4820    1    
+    19    .   GLU    .   4820    1    
+    20    .   ASN    .   4820    1    
+    21    .   THR    .   4820    1    
+    22    .   PRO    .   4820    1    
+    23    .   ILE    .   4820    1    
+    24    .   CYS    .   4820    1    
+    25    .   GLU    .   4820    1    
+    26    .   LEU    .   4820    1    
+    27    .   ALA    .   4820    1    
+    28    .   VAL    .   4820    1    
+    29    .   LYS    .   4820    1    
+    30    .   GLY    .   4820    1    
+    31    .   SER    .   4820    1    
+    32    .   CYS    .   4820    1    
+    33    .   PRO    .   4820    1    
+    34    .   PRO    .   4820    1    
+    35    .   PRO    .   4820    1    
+    36    .   TRP    .   4820    1    
+    37    .   SER    .   4820    1    
+  stop_
+
+  loop_
+    _Entity_poly_seq.Hetero
+    _Entity_poly_seq.Mon_ID
+    _Entity_poly_seq.Num
+    _Entity_poly_seq.Comp_index_ID
+    _Entity_poly_seq.Entry_ID
+    _Entity_poly_seq.Entity_ID
+
+    .   ASP    1     1     4820    1    
+    .   ILE    2     2     4820    1    
+    .   CYS    3     3     4820    1    
+    .   ASP    4     4     4820    1    
+    .   ILE    5     5     4820    1    
+    .   ALA    6     6     4820    1    
+    .   ILE    7     7     4820    1    
+    .   ALA    8     8     4820    1    
+    .   GLN    9     9     4820    1    
+    .   CYS    10    10    4820    1    
+    .   SER    11    11    4820    1    
+    .   LEU    12    12    4820    1    
+    .   THR    13    13    4820    1    
+    .   LEU    14    14    4820    1    
+    .   CYS    15    15    4820    1    
+    .   GLN    16    16    4820    1    
+    .   ASP    17    17    4820    1    
+    .   CYS    18    18    4820    1    
+    .   GLU    19    19    4820    1    
+    .   ASN    20    20    4820    1    
+    .   THR    21    21    4820    1    
+    .   PRO    22    22    4820    1    
+    .   ILE    23    23    4820    1    
+    .   CYS    24    24    4820    1    
+    .   GLU    25    25    4820    1    
+    .   LEU    26    26    4820    1    
+    .   ALA    27    27    4820    1    
+    .   VAL    28    28    4820    1    
+    .   LYS    29    29    4820    1    
+    .   GLY    30    30    4820    1    
+    .   SER    31    31    4820    1    
+    .   CYS    32    32    4820    1    
+    .   PRO    33    33    4820    1    
+    .   PRO    34    34    4820    1    
+    .   PRO    35    35    4820    1    
+    .   TRP    36    36    4820    1    
+    .   SER    37    37    4820    1    
+  stop_
+
+save_
+
+    ####################
+    #  Natural source  #
+    ####################
+
+
+save_natural_source
+  _Entity_natural_src_list.Sf_category   natural_source
+  _Entity_natural_src_list.Sf_framecode  natural_source
+  _Entity_natural_src_list.Entry_ID      4820
+  _Entity_natural_src_list.ID            1
+
+  loop_
+    _Entity_natural_src.ID
+    _Entity_natural_src.Entity_ID
+    _Entity_natural_src.Entity_label
+    _Entity_natural_src.Entity_chimera_segment_ID
+    _Entity_natural_src.NCBI_taxonomy_ID
+    _Entity_natural_src.Type
+    _Entity_natural_src.Common
+    _Entity_natural_src.Organism_name_scientific
+    _Entity_natural_src.Organism_name_common
+    _Entity_natural_src.Organism_acronym
+    _Entity_natural_src.ICTVdb_decimal_code
+    _Entity_natural_src.Superkingdom
+    _Entity_natural_src.Kingdom
+    _Entity_natural_src.Genus
+    _Entity_natural_src.Species
+    _Entity_natural_src.Strain
+    _Entity_natural_src.Variant
+    _Entity_natural_src.Subvariant
+    _Entity_natural_src.Organ
+    _Entity_natural_src.Tissue
+    _Entity_natural_src.Tissue_fraction
+    _Entity_natural_src.Cell_line
+    _Entity_natural_src.Cell_type
+    _Entity_natural_src.ATCC_number
+    _Entity_natural_src.Organelle
+    _Entity_natural_src.Cellular_location
+    _Entity_natural_src.Fragment
+    _Entity_natural_src.Fraction
+    _Entity_natural_src.Secretion
+    _Entity_natural_src.Plasmid
+    _Entity_natural_src.Plasmid_details
+    _Entity_natural_src.Gene_mnemonic
+    _Entity_natural_src.Dev_stage
+    _Entity_natural_src.Details
+    _Entity_natural_src.Citation_ID
+    _Entity_natural_src.Citation_label
+    _Entity_natural_src.Entry_ID
+    _Entity_natural_src.Entity_natural_src_list_ID
+
+    1    1    $Er-22   .   5938    organism    .   'Euplotes raikovi'  .   .   .   Eukaryota    .   Euplotes    raikovi    .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+save_
+
+    #########################
+    #  Experimental source  #
+    #########################
+
+
+save_experimental_source
+  _Entity_experimental_src_list.Sf_category   experimental_source
+  _Entity_experimental_src_list.Sf_framecode  experimental_source
+  _Entity_experimental_src_list.Entry_ID      4820
+  _Entity_experimental_src_list.ID            1
+
+  loop_
+    _Entity_experimental_src.ID
+    _Entity_experimental_src.Entity_ID
+    _Entity_experimental_src.Entity_label
+    _Entity_experimental_src.Entity_chimera_segment_ID
+    _Entity_experimental_src.Production_method
+    _Entity_experimental_src.Host_org_scientific_name
+    _Entity_experimental_src.Host_org_name_common
+    _Entity_experimental_src.Host_org_details
+    _Entity_experimental_src.Host_org_NCBI_taxonomy_ID
+    _Entity_experimental_src.Host_org_genus
+    _Entity_experimental_src.Host_org_species
+    _Entity_experimental_src.Host_org_strain
+    _Entity_experimental_src.Host_org_variant
+    _Entity_experimental_src.Host_org_subvariant
+    _Entity_experimental_src.Host_org_organ
+    _Entity_experimental_src.Host_org_tissue
+    _Entity_experimental_src.Host_org_tissue_fraction
+    _Entity_experimental_src.Host_org_cell_line
+    _Entity_experimental_src.Host_org_cell_type
+    _Entity_experimental_src.Host_org_cellular_location
+    _Entity_experimental_src.Host_org_organelle
+    _Entity_experimental_src.Host_org_gene
+    _Entity_experimental_src.Host_org_culture_collection
+    _Entity_experimental_src.Host_org_ATCC_number
+    _Entity_experimental_src.Vector_type
+    _Entity_experimental_src.PDBview_host_org_vector_name
+    _Entity_experimental_src.PDBview_plasmid_name
+    _Entity_experimental_src.Vector_name
+    _Entity_experimental_src.Vector_details
+    _Entity_experimental_src.Vendor_name
+    _Entity_experimental_src.Host_org_dev_stage
+    _Entity_experimental_src.Details
+    _Entity_experimental_src.Citation_ID
+    _Entity_experimental_src.Citation_label
+    _Entity_experimental_src.Entry_ID
+    _Entity_experimental_src.Entity_experimental_src_list_ID
+
+    1    1    $Er-22   .   'purified from the natural source'  .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+save_
+
+#####################################
+#  Sample contents and methodology  #
+#####################################
+	 
+    ########################
+    #  Sample description  #
+    ########################
+
+
+save_H2O_sample
+  _Sample.Sf_category                     sample
+  _Sample.Sf_framecode                    H2O_sample
+  _Sample.Entry_ID                        4820
+  _Sample.ID                              1
+  _Sample.Type                            solution
+  _Sample.Sub_type                        .
+  _Sample.Details                         .
+  _Sample.Aggregate_sample_number         .
+  _Sample.Solvent_system                  .
+  _Sample.Preparation_date                .
+  _Sample.Preparation_expiration_date     .
+  _Sample.Polycrystallization_protocol    .
+  _Sample.Single_crystal_protocol         .
+  _Sample.Crystal_grow_apparatus          .
+  _Sample.Crystal_grow_atmosphere         .
+  _Sample.Crystal_grow_details            .
+  _Sample.Crystal_grow_method             .
+  _Sample.Crystal_grow_method_cit_ID      .
+  _Sample.Crystal_grow_pH                 .
+  _Sample.Crystal_grow_pH_range           .
+  _Sample.Crystal_grow_pressure           .
+  _Sample.Crystal_grow_pressure_esd       .
+  _Sample.Crystal_grow_seeding            .
+  _Sample.Crystal_grow_seeding_cit_ID     .
+  _Sample.Crystal_grow_temp               .
+  _Sample.Crystal_grow_temp_details       .
+  _Sample.Crystal_grow_temp_esd           .
+  _Sample.Crystal_grow_time               .
+  _Sample.Oriented_sample_prep_protocol   .
+  _Sample.Lyophilization_cryo_protectant  .
+  _Sample.Storage_protocol                .
+
+  loop_
+    _Sample_component.ID
+    _Sample_component.Mol_common_name
+    _Sample_component.Isotopic_labeling
+    _Sample_component.Assembly_ID
+    _Sample_component.Assembly_label
+    _Sample_component.Entity_ID
+    _Sample_component.Entity_label
+    _Sample_component.Product_ID
+    _Sample_component.Type
+    _Sample_component.Concentration_val
+    _Sample_component.Concentration_val_min
+    _Sample_component.Concentration_val_max
+    _Sample_component.Concentration_val_units
+    _Sample_component.Concentration_val_err
+    _Sample_component.Vendor
+    _Sample_component.Vendor_product_name
+    _Sample_component.Vendor_product_code
+    _Sample_component.Entry_ID
+    _Sample_component.Sample_ID
+
+    1    'Pheromone Er-22'  'natural abundance'  .   .   1    $Er-22   .   .   6.5    .   .   mM    .   .   .   .   4820    1    
+    2    H2O                .                    .   .   .    .        .   .   90     .   .   %     .   .   .   .   4820    1    
+    3    D2O                .                    .   .   .    .        .   .   10     .   .   %     .   .   .   .   4820    1    
+  stop_
+
+save_
+
+save_D2O_sample
+  _Sample.Sf_category                     sample
+  _Sample.Sf_framecode                    D2O_sample
+  _Sample.Entry_ID                        4820
+  _Sample.ID                              2
+  _Sample.Type                            solution
+  _Sample.Sub_type                        .
+  _Sample.Details                         .
+  _Sample.Aggregate_sample_number         .
+  _Sample.Solvent_system                  .
+  _Sample.Preparation_date                .
+  _Sample.Preparation_expiration_date     .
+  _Sample.Polycrystallization_protocol    .
+  _Sample.Single_crystal_protocol         .
+  _Sample.Crystal_grow_apparatus          .
+  _Sample.Crystal_grow_atmosphere         .
+  _Sample.Crystal_grow_details            .
+  _Sample.Crystal_grow_method             .
+  _Sample.Crystal_grow_method_cit_ID      .
+  _Sample.Crystal_grow_pH                 .
+  _Sample.Crystal_grow_pH_range           .
+  _Sample.Crystal_grow_pressure           .
+  _Sample.Crystal_grow_pressure_esd       .
+  _Sample.Crystal_grow_seeding            .
+  _Sample.Crystal_grow_seeding_cit_ID     .
+  _Sample.Crystal_grow_temp               .
+  _Sample.Crystal_grow_temp_details       .
+  _Sample.Crystal_grow_temp_esd           .
+  _Sample.Crystal_grow_time               .
+  _Sample.Oriented_sample_prep_protocol   .
+  _Sample.Lyophilization_cryo_protectant  .
+  _Sample.Storage_protocol                .
+
+  loop_
+    _Sample_component.ID
+    _Sample_component.Mol_common_name
+    _Sample_component.Isotopic_labeling
+    _Sample_component.Assembly_ID
+    _Sample_component.Assembly_label
+    _Sample_component.Entity_ID
+    _Sample_component.Entity_label
+    _Sample_component.Product_ID
+    _Sample_component.Type
+    _Sample_component.Concentration_val
+    _Sample_component.Concentration_val_min
+    _Sample_component.Concentration_val_max
+    _Sample_component.Concentration_val_units
+    _Sample_component.Concentration_val_err
+    _Sample_component.Vendor
+    _Sample_component.Vendor_product_name
+    _Sample_component.Vendor_product_code
+    _Sample_component.Entry_ID
+    _Sample_component.Sample_ID
+
+    1    'Pheromone Er-22'  'natural abundance'  .   .   1    $Er-22   .   .   6.5    .   .   mM    .   .   .   .   4820    2    
+    2    D2O                .                    .   .   .    .        .   .   100    .   .   %     .   .   .   .   4820    2    
+  stop_
+
+save_
+
+#######################
+#  Sample conditions  #
+#######################
+
+
+save_Exp-cond
+  _Sample_condition_list.Sf_category   sample_conditions
+  _Sample_condition_list.Sf_framecode  Exp-cond
+  _Sample_condition_list.Entry_ID      4820
+  _Sample_condition_list.ID            1
+  _Sample_condition_list.Details       .
+
+  loop_
+    _Sample_condition_variable.Type
+    _Sample_condition_variable.Val
+    _Sample_condition_variable.Val_err
+    _Sample_condition_variable.Val_units
+    _Sample_condition_variable.Entry_ID
+    _Sample_condition_variable.Sample_condition_list_ID
+
+    pH             5.0    0.1    n/a    4820    1    
+    temperature    296    1      K      4820    1    
+  stop_
+
+save_
+
+############################
+#  Computer software used  #
+############################
+
+
+save_PROSA
+  _Software.Sf_category   software
+  _Software.Sf_framecode  PROSA
+  _Software.Entry_ID      4820
+  _Software.ID            1
+  _Software.Name          PROSA
+  _Software.Version       .
+  _Software.Details       .
+
+  loop_
+    _Task.Task
+    _Task.Entry_ID
+    _Task.Software_ID
+
+    'spectral processing'  4820    1    
+  stop_
+
+  loop_
+    _Software_citation.Citation_ID
+    _Software_citation.Citation_label
+    _Software_citation.Entry_ID
+    _Software_citation.Software_ID
+
+    2    $ref1   4820    1    
+  stop_
+
+save_
+
+save_XEASY
+  _Software.Sf_category   software
+  _Software.Sf_framecode  XEASY
+  _Software.Entry_ID      4820
+  _Software.ID            2
+  _Software.Name          XEASY
+  _Software.Version       .
+  _Software.Details       .
+
+  loop_
+    _Task.Task
+    _Task.Entry_ID
+    _Task.Software_ID
+
+    'resonance assignment'  4820    2    
+  stop_
+
+  loop_
+    _Software_citation.Citation_ID
+    _Software_citation.Citation_label
+    _Software_citation.Entry_ID
+    _Software_citation.Software_ID
+
+    3    $ref2   4820    2    
+  stop_
+
+save_
+
+save_DIANA
+  _Software.Sf_category   software
+  _Software.Sf_framecode  DIANA
+  _Software.Entry_ID      4820
+  _Software.ID            3
+  _Software.Name          DIANA
+  _Software.Version       .
+  _Software.Details       .
+
+  loop_
+    _Task.Task
+    _Task.Entry_ID
+    _Task.Software_ID
+
+    'structure calculation'  4820    3    
+  stop_
+
+  loop_
+    _Software_citation.Citation_ID
+    _Software_citation.Citation_label
+    _Software_citation.Entry_ID
+    _Software_citation.Software_ID
+
+    4    $ref3   4820    3    
+  stop_
+
+save_
+
+save_OPAL
+  _Software.Sf_category   software
+  _Software.Sf_framecode  OPAL
+  _Software.Entry_ID      4820
+  _Software.ID            4
+  _Software.Name          OPAL
+  _Software.Version       .
+  _Software.Details       .
+
+  loop_
+    _Task.Task
+    _Task.Entry_ID
+    _Task.Software_ID
+
+    'restrained energy refinement'  4820    4    
+  stop_
+
+  loop_
+    _Software_citation.Citation_ID
+    _Software_citation.Citation_label
+    _Software_citation.Entry_ID
+    _Software_citation.Software_ID
+
+    5    $ref4   4820    4    
+  stop_
+
+save_
+
+#########################
+#  Experimental detail  #
+#########################
+
+    ##################################
+    #  NMR Spectrometer definitions  #
+    ##################################
+
+
+save_spectrometer_1
+  _NMR_spectrometer.Sf_category     NMR_spectrometer
+  _NMR_spectrometer.Sf_framecode    spectrometer_1
+  _NMR_spectrometer.Entry_ID        4820
+  _NMR_spectrometer.ID              1
+  _NMR_spectrometer.Details         .
+  _NMR_spectrometer.Manufacturer    Bruker
+  _NMR_spectrometer.Model           AMX
+  _NMR_spectrometer.Serial_number   .
+  _NMR_spectrometer.Field_strength  600
+
+save_
+
+save_spectrometer_2
+  _NMR_spectrometer.Sf_category     NMR_spectrometer
+  _NMR_spectrometer.Sf_framecode    spectrometer_2
+  _NMR_spectrometer.Entry_ID        4820
+  _NMR_spectrometer.ID              2
+  _NMR_spectrometer.Details         .
+  _NMR_spectrometer.Manufacturer    Varian
+  _NMR_spectrometer.Model           Unity-plus
+  _NMR_spectrometer.Serial_number   .
+  _NMR_spectrometer.Field_strength  750
+
+save_
+
+save_spectrometer_list
+  _NMR_spectrometer_list.Sf_category   NMR_spectrometer_list
+  _NMR_spectrometer_list.Sf_framecode  spectrometer_list
+  _NMR_spectrometer_list.Entry_ID      4820
+  _NMR_spectrometer_list.ID            1
+
+  loop_
+    _NMR_spectrometer_view.ID
+    _NMR_spectrometer_view.Name
+    _NMR_spectrometer_view.Manufacturer
+    _NMR_spectrometer_view.Model
+    _NMR_spectrometer_view.Serial_number
+    _NMR_spectrometer_view.Field_strength
+    _NMR_spectrometer_view.Details
+    _NMR_spectrometer_view.Citation_ID
+    _NMR_spectrometer_view.Citation_label
+    _NMR_spectrometer_view.Entry_ID
+    _NMR_spectrometer_view.NMR_spectrometer_list_ID
+
+    1    spectrometer_1    Bruker    AMX           .   600    .   .   .   4820    1    
+    2    spectrometer_2    Varian    Unity-plus    .   750    .   .   .   4820    1    
+  stop_
+
+save_
+
+    #############################
+    #  NMR applied experiments  #
+    #############################
+
+
+save_experiment_list
+  _Experiment_list.Sf_category   experiment_list
+  _Experiment_list.Sf_framecode  experiment_list
+  _Experiment_list.Entry_ID      4820
+  _Experiment_list.ID            1
+  _Experiment_list.Details       .
+
+  loop_
+    _Experiment.ID
+    _Experiment.Name
+    _Experiment.Raw_data_flag
+    _Experiment.NMR_spec_expt_ID
+    _Experiment.NMR_spec_expt_label
+    _Experiment.MS_expt_ID
+    _Experiment.MS_expt_label
+    _Experiment.SAXS_expt_ID
+    _Experiment.SAXS_expt_label
+    _Experiment.FRET_expt_ID
+    _Experiment.FRET_expt_label
+    _Experiment.EMR_expt_ID
+    _Experiment.EMR_expt_label
+    _Experiment.Sample_ID
+    _Experiment.Sample_label
+    _Experiment.Sample_state
+    _Experiment.Sample_volume
+    _Experiment.Sample_volume_units
+    _Experiment.Sample_condition_list_ID
+    _Experiment.Sample_condition_list_label
+    _Experiment.Sample_spinning_rate
+    _Experiment.Sample_angle
+    _Experiment.NMR_tube_type
+    _Experiment.NMR_spectrometer_ID
+    _Experiment.NMR_spectrometer_label
+    _Experiment.NMR_spectrometer_probe_ID
+    _Experiment.NMR_spectrometer_probe_label
+    _Experiment.NMR_spectral_processing_ID
+    _Experiment.NMR_spectral_processing_label
+    _Experiment.Mass_spectrometer_ID
+    _Experiment.Mass_spectrometer_label
+    _Experiment.Xray_instrument_ID
+    _Experiment.Xray_instrument_label
+    _Experiment.Fluorescence_instrument_ID
+    _Experiment.Fluorescence_instrument_label
+    _Experiment.EMR_instrument_ID
+    _Experiment.EMR_instrument_label
+    _Experiment.Chromatographic_system_ID
+    _Experiment.Chromatographic_system_label
+    _Experiment.Chromatographic_column_ID
+    _Experiment.Chromatographic_column_label
+    _Experiment.Entry_ID
+    _Experiment.Experiment_list_ID
+
+    1    2QF-COSY       .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+    2    clean-TOCSY    .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+    3    2Q-spectrum    .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+    4    E.COSY         .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+    5    NOESY          .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+    6    '13C-1H HSQC'  .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   1    $Exp-cond   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+save_
+
+####################
+#  NMR parameters  #
+####################
+
+    ##############################
+    #  Assigned chemical shifts  #
+    ##############################
+
+	################################
+	#  Chemical shift referencing  #
+	################################
+
+
+save_chemical_shift_reference
+  _Chem_shift_reference.Sf_category   chem_shift_reference
+  _Chem_shift_reference.Sf_framecode  chemical_shift_reference
+  _Chem_shift_reference.Entry_ID      4820
+  _Chem_shift_reference.ID            1
+  _Chem_shift_reference.Details       .
+
+  loop_
+    _Chem_shift_ref.Atom_type
+    _Chem_shift_ref.Atom_isotope_number
+    _Chem_shift_ref.Mol_common_name
+    _Chem_shift_ref.Atom_group
+    _Chem_shift_ref.Concentration_val
+    _Chem_shift_ref.Concentration_units
+    _Chem_shift_ref.Solvent
+    _Chem_shift_ref.Rank
+    _Chem_shift_ref.Chem_shift_units
+    _Chem_shift_ref.Chem_shift_val
+    _Chem_shift_ref.Ref_method
+    _Chem_shift_ref.Ref_type
+    _Chem_shift_ref.Indirect_shift_ratio
+    _Chem_shift_ref.External_ref_loc
+    _Chem_shift_ref.External_ref_sample_geometry
+    _Chem_shift_ref.External_ref_axis
+    _Chem_shift_ref.Indirect_shift_ratio_cit_ID
+    _Chem_shift_ref.Indirect_shift_ratio_cit_label
+    _Chem_shift_ref.Ref_correction_type
+    _Chem_shift_ref.Correction_val
+    _Chem_shift_ref.Correction_val_cit_ID
+    _Chem_shift_ref.Correction_val_cit_label
+    _Chem_shift_ref.Entry_ID
+    _Chem_shift_ref.Chem_shift_reference_ID
+
+    C    13    DSS    'methyl protons'  .   .   .   .   ppm    0.0    .           indirect    0.251449530    .   .   .   .   .   .   .   .   .   4820    1    
+    H    1     DSS    'methyl protons'  .   .   .   .   ppm    0.0    internal    direct      1.000000000    .   .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+save_
+
+     ###################################
+     #  Assigned chemical shift lists  #
+     ###################################
+
+###################################################################
+#       Chemical Shift Ambiguity Index Value Definitions          #
+#                                                                 #
+# The values other than 1 are used for those atoms with different #
+# chemical shifts that cannot be assigned to stereospecific atoms #
+# or to specific residues or chains.                              #
+#                                                                 #
+#   Index Value            Definition                             #
+#                                                                 #
+#      1             Unique (including isolated methyl protons,   #
+#                         geminal atoms, and geminal methyl       #
+#                         groups with identical chemical shifts)  #
+#                         (e.g. ILE HD11, HD12, HD13 protons)     #
+#      2             Ambiguity of geminal atoms or geminal methyl #
+#                         proton groups (e.g. ASP HB2 and HB3     #
+#                         protons, LEU CD1 and CD2 carbons, or    #
+#                         LEU HD11, HD12, HD13 and HD21, HD22,    #
+#                         HD23 methyl protons)                    #
+#      3             Aromatic atoms on opposite sides of          #
+#                         symmetrical rings (e.g. TYR HE1 and HE2 #
+#                         protons)                                #
+#      4             Intraresidue ambiguities (e.g. LYS HG and    #
+#                         HD protons or TRP HZ2 and HZ3 protons)  #
+#      5             Interresidue ambiguities (LYS 12 vs. LYS 27) #
+#      6             Intermolecular ambiguities (e.g. ASP 31 CA   #
+#                         in monomer 1 and ASP 31 CA in monomer 2 #
+#                         of an asymmetrical homodimer, duplex    #
+#                         DNA assignments, or other assignments   #
+#                         that may apply to atoms in one or more  #
+#                         molecule in the molecular assembly)     #
+#      9             Ambiguous, specific ambiguity not defined    #
+#                                                                 #
+###################################################################
+
+save_13Ca_and_1H_shifts
+  _Assigned_chem_shift_list.Sf_category                  assigned_chemical_shifts
+  _Assigned_chem_shift_list.Sf_framecode                 13Ca_and_1H_shifts
+  _Assigned_chem_shift_list.Entry_ID                     4820
+  _Assigned_chem_shift_list.ID                           1
+  _Assigned_chem_shift_list.Sample_condition_list_ID     1
+  _Assigned_chem_shift_list.Sample_condition_list_label  $Exp-cond
+  _Assigned_chem_shift_list.Chem_shift_reference_ID      1
+  _Assigned_chem_shift_list.Chem_shift_reference_label   $chemical_shift_reference
+  _Assigned_chem_shift_list.Chem_shift_1H_err            .
+  _Assigned_chem_shift_list.Chem_shift_13C_err           .
+  _Assigned_chem_shift_list.Chem_shift_15N_err           .
+  _Assigned_chem_shift_list.Chem_shift_31P_err           .
+  _Assigned_chem_shift_list.Chem_shift_2H_err            .
+  _Assigned_chem_shift_list.Chem_shift_19F_err           .
+  _Assigned_chem_shift_list.Error_derivation_method      .
+  _Assigned_chem_shift_list.Details                      .
+  _Assigned_chem_shift_list.Text_data_format             .
+  _Assigned_chem_shift_list.Text_data                    .
+
+  loop_
+    _Chem_shift_experiment.Experiment_ID
+    _Chem_shift_experiment.Experiment_name
+    _Chem_shift_experiment.Sample_ID
+    _Chem_shift_experiment.Sample_label
+    _Chem_shift_experiment.Sample_state
+    _Chem_shift_experiment.Entry_ID
+    _Chem_shift_experiment.Assigned_chem_shift_list_ID
+
+    .   .   1    $H2O_sample   .   4820    1    
+    .   .   2    $D2O_sample   .   4820    1    
+  stop_
+
+  loop_
+    _Atom_chem_shift.ID
+    _Atom_chem_shift.Assembly_atom_ID
+    _Atom_chem_shift.Entity_assembly_ID
+    _Atom_chem_shift.Entity_ID
+    _Atom_chem_shift.Comp_index_ID
+    _Atom_chem_shift.Seq_ID
+    _Atom_chem_shift.Comp_ID
+    _Atom_chem_shift.Atom_ID
+    _Atom_chem_shift.Atom_type
+    _Atom_chem_shift.Atom_isotope_number
+    _Atom_chem_shift.Val
+    _Atom_chem_shift.Val_err
+    _Atom_chem_shift.Assign_fig_of_merit
+    _Atom_chem_shift.Ambiguity_code
+    _Atom_chem_shift.Occupancy
+    _Atom_chem_shift.Resonance_ID
+    _Atom_chem_shift.Auth_entity_assembly_ID
+    _Atom_chem_shift.Auth_asym_ID
+    _Atom_chem_shift.Auth_seq_ID
+    _Atom_chem_shift.Auth_comp_ID
+    _Atom_chem_shift.Auth_atom_ID
+    _Atom_chem_shift.Details
+    _Atom_chem_shift.Entry_ID
+    _Atom_chem_shift.Assigned_chem_shift_list_ID
+
+    1      .   1    1    1     1     ASP    CA      C    13    52.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    2      .   1    1    1     1     ASP    HA      H    1     4.30     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    3      .   1    1    1     1     ASP    HB2     H    1     3.21     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    4      .   1    1    1     1     ASP    HB3     H    1     2.94     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    5      .   1    1    2     2     ILE    H       H    1     8.76     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    6      .   1    1    2     2     ILE    CA      C    13    62.0     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    7      .   1    1    2     2     ILE    HA      H    1     4.12     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    8      .   1    1    2     2     ILE    HB      H    1     1.92     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    9      .   1    1    2     2     ILE    HG21    H    1     0.89     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    10     .   1    1    2     2     ILE    HG22    H    1     0.89     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    11     .   1    1    2     2     ILE    HG23    H    1     0.89     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    12     .   1    1    2     2     ILE    HG12    H    1     1.49     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    13     .   1    1    2     2     ILE    HG13    H    1     1.40     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    14     .   1    1    2     2     ILE    HD11    H    1     0.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    15     .   1    1    2     2     ILE    HD12    H    1     0.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    16     .   1    1    2     2     ILE    HD13    H    1     0.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    17     .   1    1    3     3     CYS    H       H    1     8.06     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    18     .   1    1    3     3     CYS    CA      C    13    59.2     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    19     .   1    1    3     3     CYS    HA      H    1     4.18     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    20     .   1    1    3     3     CYS    HB2     H    1     3.19     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    21     .   1    1    3     3     CYS    HB3     H    1     3.50     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    22     .   1    1    4     4     ASP    H       H    1     7.54     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    23     .   1    1    4     4     ASP    CA      C    13    57.0     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    24     .   1    1    4     4     ASP    HA      H    1     4.28     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    25     .   1    1    4     4     ASP    HB2     H    1     2.67     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    26     .   1    1    4     4     ASP    HB3     H    1     2.79     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    27     .   1    1    5     5     ILE    H       H    1     7.68     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    28     .   1    1    5     5     ILE    CA      C    13    64.0     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    29     .   1    1    5     5     ILE    HA      H    1     3.72     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    30     .   1    1    5     5     ILE    HB      H    1     1.90     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    31     .   1    1    5     5     ILE    HG21    H    1     0.85     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    32     .   1    1    5     5     ILE    HG22    H    1     0.85     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    33     .   1    1    5     5     ILE    HG23    H    1     0.85     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    34     .   1    1    5     5     ILE    HG12    H    1     1.17     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    35     .   1    1    5     5     ILE    HG13    H    1     1.66     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    36     .   1    1    5     5     ILE    HD11    H    1     0.79     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    37     .   1    1    5     5     ILE    HD12    H    1     0.79     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    38     .   1    1    5     5     ILE    HD13    H    1     0.79     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    39     .   1    1    6     6     ALA    H       H    1     8.37     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    40     .   1    1    6     6     ALA    CA      C    13    55.7     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    41     .   1    1    6     6     ALA    HA      H    1     3.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    42     .   1    1    6     6     ALA    HB1     H    1     1.49     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    43     .   1    1    6     6     ALA    HB2     H    1     1.49     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    44     .   1    1    6     6     ALA    HB3     H    1     1.49     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    45     .   1    1    7     7     ILE    H       H    1     7.43     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    46     .   1    1    7     7     ILE    CA      C    13    64.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    47     .   1    1    7     7     ILE    HA      H    1     3.59     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    48     .   1    1    7     7     ILE    HB      H    1     1.71     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    49     .   1    1    7     7     ILE    HG21    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    50     .   1    1    7     7     ILE    HG22    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    51     .   1    1    7     7     ILE    HG23    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    52     .   1    1    7     7     ILE    HG12    H    1     0.92     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    53     .   1    1    7     7     ILE    HG13    H    1     2.03     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    54     .   1    1    7     7     ILE    HD11    H    1     0.84     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    55     .   1    1    7     7     ILE    HD12    H    1     0.84     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    56     .   1    1    7     7     ILE    HD13    H    1     0.84     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    57     .   1    1    8     8     ALA    H       H    1     7.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    58     .   1    1    8     8     ALA    CA      C    13    54.6     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    59     .   1    1    8     8     ALA    HA      H    1     4.09     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    60     .   1    1    8     8     ALA    HB1     H    1     1.51     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    61     .   1    1    8     8     ALA    HB2     H    1     1.51     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    62     .   1    1    8     8     ALA    HB3     H    1     1.51     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    63     .   1    1    9     9     GLN    H       H    1     8.22     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    64     .   1    1    9     9     GLN    CA      C    13    54.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    65     .   1    1    9     9     GLN    HA      H    1     4.27     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    66     .   1    1    9     9     GLN    HB2     H    1     1.83     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    67     .   1    1    9     9     GLN    HB3     H    1     2.33     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    68     .   1    1    9     9     GLN    HG2     H    1     2.38     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    69     .   1    1    9     9     GLN    HG3     H    1     2.48     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    70     .   1    1    9     9     GLN    HE21    H    1     6.68     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    71     .   1    1    9     9     GLN    HE22    H    1     7.18     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    72     .   1    1    10    10    CYS    H       H    1     8.21     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    73     .   1    1    10    10    CYS    CA      C    13    55.2     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    74     .   1    1    10    10    CYS    HA      H    1     4.30     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    75     .   1    1    10    10    CYS    HB2     H    1     3.24     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    76     .   1    1    10    10    CYS    HB3     H    1     3.57     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    77     .   1    1    11    11    SER    H       H    1     8.61     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    78     .   1    1    11    11    SER    CA      C    13    55.0     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    79     .   1    1    11    11    SER    HA      H    1     4.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    80     .   1    1    11    11    SER    HB2     H    1     3.57     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    81     .   1    1    11    11    SER    HB3     H    1     3.82     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    82     .   1    1    12    12    LEU    H       H    1     8.74     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    83     .   1    1    12    12    LEU    CA      C    13    57.4     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    84     .   1    1    12    12    LEU    HA      H    1     3.84     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    85     .   1    1    12    12    LEU    HB2     H    1     1.80     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    86     .   1    1    12    12    LEU    HB3     H    1     1.48     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    87     .   1    1    12    12    LEU    HG      H    1     1.61     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    88     .   1    1    12    12    LEU    HD11    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    89     .   1    1    12    12    LEU    HD12    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    90     .   1    1    12    12    LEU    HD13    H    1     0.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    91     .   1    1    12    12    LEU    HD21    H    1     0.62     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    92     .   1    1    12    12    LEU    HD22    H    1     0.62     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    93     .   1    1    12    12    LEU    HD23    H    1     0.62     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    94     .   1    1    13    13    THR    H       H    1     8.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    95     .   1    1    13    13    THR    CA      C    13    66.5     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    96     .   1    1    13    13    THR    HA      H    1     3.87     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    97     .   1    1    13    13    THR    HB      H    1     3.95     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    98     .   1    1    13    13    THR    HG21    H    1     1.17     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    99     .   1    1    13    13    THR    HG22    H    1     1.17     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    100    .   1    1    13    13    THR    HG23    H    1     1.17     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    101    .   1    1    14    14    LEU    H       H    1     8.33     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    102    .   1    1    14    14    LEU    CA      C    13    56.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    103    .   1    1    14    14    LEU    HA      H    1     4.21     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    104    .   1    1    14    14    LEU    HB2     H    1     1.43     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    105    .   1    1    14    14    LEU    HB3     H    1     1.64     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    106    .   1    1    14    14    LEU    HG      H    1     1.70     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    107    .   1    1    14    14    LEU    HD11    H    1     0.86     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    108    .   1    1    14    14    LEU    HD12    H    1     0.86     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    109    .   1    1    14    14    LEU    HD13    H    1     0.86     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    110    .   1    1    14    14    LEU    HD21    H    1     0.82     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    111    .   1    1    14    14    LEU    HD22    H    1     0.82     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    112    .   1    1    14    14    LEU    HD23    H    1     0.82     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    113    .   1    1    15    15    CYS    H       H    1     7.63     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    114    .   1    1    15    15    CYS    CA      C    13    54.5     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    115    .   1    1    15    15    CYS    HA      H    1     4.50     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    116    .   1    1    15    15    CYS    HB2     H    1     3.08     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    117    .   1    1    15    15    CYS    HB3     H    1     3.37     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    118    .   1    1    16    16    GLN    H       H    1     7.85     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    119    .   1    1    16    16    GLN    CA      C    13    57.6     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    120    .   1    1    16    16    GLN    HA      H    1     4.03     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    121    .   1    1    16    16    GLN    HB2     H    1     2.27     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    122    .   1    1    16    16    GLN    HB3     H    1     2.11     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    123    .   1    1    16    16    GLN    HG2     H    1     2.66     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    124    .   1    1    16    16    GLN    HG3     H    1     2.53     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    125    .   1    1    16    16    GLN    HE21    H    1     7.54     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    126    .   1    1    16    16    GLN    HE22    H    1     7.09     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    127    .   1    1    17    17    ASP    H       H    1     7.47     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    128    .   1    1    17    17    ASP    CA      C    13    53.5     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    129    .   1    1    17    17    ASP    HA      H    1     4.72     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    130    .   1    1    17    17    ASP    HB2     H    1     2.91     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    131    .   1    1    17    17    ASP    HB3     H    1     2.68     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    132    .   1    1    18    18    CYS    H       H    1     7.15     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    133    .   1    1    18    18    CYS    CA      C    13    54.4     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    134    .   1    1    18    18    CYS    HA      H    1     4.50     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    135    .   1    1    18    18    CYS    HB2     H    1     2.90     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    136    .   1    1    18    18    CYS    HB3     H    1     3.36     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    137    .   1    1    19    19    GLU    H       H    1     8.23     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    138    .   1    1    19    19    GLU    CA      C    13    58.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    139    .   1    1    19    19    GLU    HA      H    1     4.09     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    140    .   1    1    19    19    GLU    HB2     H    1     2.15     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    141    .   1    1    19    19    GLU    HB3     H    1     2.09     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    142    .   1    1    19    19    GLU    HG2     H    1     2.38     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    143    .   1    1    19    19    GLU    HG3     H    1     2.38     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    144    .   1    1    20    20    ASN    H       H    1     7.53     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    145    .   1    1    20    20    ASN    CA      C    13    50.5     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    146    .   1    1    20    20    ASN    HA      H    1     5.10     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    147    .   1    1    20    20    ASN    HB2     H    1     2.53     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    148    .   1    1    20    20    ASN    HB3     H    1     3.02     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    149    .   1    1    20    20    ASN    HD21    H    1     7.68     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    150    .   1    1    20    20    ASN    HD22    H    1     6.78     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    151    .   1    1    21    21    THR    H       H    1     8.37     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    152    .   1    1    21    21    THR    CA      C    13    69.1     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    153    .   1    1    21    21    THR    HA      H    1     3.78     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    154    .   1    1    21    21    THR    HB      H    1     4.14     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    155    .   1    1    21    21    THR    HG21    H    1     1.08     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    156    .   1    1    21    21    THR    HG22    H    1     1.08     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    157    .   1    1    21    21    THR    HG23    H    1     1.08     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    158    .   1    1    22    22    PRO    CA      C    13    66.3     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    159    .   1    1    22    22    PRO    HA      H    1     4.31     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    160    .   1    1    22    22    PRO    HB2     H    1     1.81     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    161    .   1    1    22    22    PRO    HB3     H    1     2.32     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    162    .   1    1    22    22    PRO    HG2     H    1     2.10     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    163    .   1    1    22    22    PRO    HG3     H    1     1.95     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    164    .   1    1    22    22    PRO    HD2     H    1     3.76     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    165    .   1    1    22    22    PRO    HD3     H    1     3.94     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    166    .   1    1    23    23    ILE    H       H    1     6.87     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    167    .   1    1    23    23    ILE    CA      C    13    62.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    168    .   1    1    23    23    ILE    HA      H    1     3.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    169    .   1    1    23    23    ILE    HB      H    1     1.77     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    170    .   1    1    23    23    ILE    HG21    H    1     0.88     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    171    .   1    1    23    23    ILE    HG22    H    1     0.88     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    172    .   1    1    23    23    ILE    HG23    H    1     0.88     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    173    .   1    1    23    23    ILE    HG12    H    1     1.47     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    174    .   1    1    23    23    ILE    HG13    H    1     1.32     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    175    .   1    1    23    23    ILE    HD11    H    1     0.76     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    176    .   1    1    23    23    ILE    HD12    H    1     0.76     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    177    .   1    1    23    23    ILE    HD13    H    1     0.76     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    178    .   1    1    24    24    CYS    H       H    1     7.58     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    179    .   1    1    24    24    CYS    CA      C    13    59.7     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    180    .   1    1    24    24    CYS    HA      H    1     4.13     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    181    .   1    1    24    24    CYS    HB2     H    1     3.22     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    182    .   1    1    24    24    CYS    HB3     H    1     3.51     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    183    .   1    1    25    25    GLU    H       H    1     8.63     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    184    .   1    1    25    25    GLU    CA      C    13    59.6     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    185    .   1    1    25    25    GLU    HA      H    1     3.50     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    186    .   1    1    25    25    GLU    HB2     H    1     1.70     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    187    .   1    1    25    25    GLU    HB3     H    1     2.08     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    188    .   1    1    25    25    GLU    HG2     H    1     1.81     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    189    .   1    1    25    25    GLU    HG3     H    1     2.58     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    190    .   1    1    26    26    LEU    H       H    1     7.58     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    191    .   1    1    26    26    LEU    CA      C    13    57.5     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    192    .   1    1    26    26    LEU    HA      H    1     3.82     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    193    .   1    1    26    26    LEU    HB2     H    1     1.74     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    194    .   1    1    26    26    LEU    HB3     H    1     1.52     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    195    .   1    1    26    26    LEU    HG      H    1     1.72     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    196    .   1    1    26    26    LEU    HD11    H    1     0.84     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    197    .   1    1    26    26    LEU    HD12    H    1     0.84     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    198    .   1    1    26    26    LEU    HD13    H    1     0.84     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    199    .   1    1    26    26    LEU    HD21    H    1     0.81     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    200    .   1    1    26    26    LEU    HD22    H    1     0.81     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    201    .   1    1    26    26    LEU    HD23    H    1     0.81     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    202    .   1    1    27    27    ALA    H       H    1     7.90     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    203    .   1    1    27    27    ALA    CA      C    13    54.6     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    204    .   1    1    27    27    ALA    HA      H    1     4.10     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    205    .   1    1    27    27    ALA    HB1     H    1     1.53     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    206    .   1    1    27    27    ALA    HB2     H    1     1.53     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    207    .   1    1    27    27    ALA    HB3     H    1     1.53     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    208    .   1    1    28    28    VAL    H       H    1     8.36     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    209    .   1    1    28    28    VAL    CA      C    13    66.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    210    .   1    1    28    28    VAL    HA      H    1     3.51     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    211    .   1    1    28    28    VAL    HB      H    1     1.87     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    212    .   1    1    28    28    VAL    HG11    H    1     0.93     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    213    .   1    1    28    28    VAL    HG12    H    1     0.93     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    214    .   1    1    28    28    VAL    HG13    H    1     0.93     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    215    .   1    1    28    28    VAL    HG21    H    1     0.46     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    216    .   1    1    28    28    VAL    HG22    H    1     0.46     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    217    .   1    1    28    28    VAL    HG23    H    1     0.46     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    218    .   1    1    29    29    LYS    H       H    1     8.00     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    219    .   1    1    29    29    LYS    CA      C    13    58.9     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    220    .   1    1    29    29    LYS    HA      H    1     3.34     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    221    .   1    1    29    29    LYS    HB2     H    1     1.31     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    222    .   1    1    29    29    LYS    HB3     H    1     1.35     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    223    .   1    1    29    29    LYS    HG2     H    1     -0.69    .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    224    .   1    1    29    29    LYS    HG3     H    1     0.93     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    225    .   1    1    29    29    LYS    HD2     H    1     1.18     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    226    .   1    1    29    29    LYS    HD3     H    1     1.18     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    227    .   1    1    29    29    LYS    HE2     H    1     2.40     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    228    .   1    1    29    29    LYS    HE3     H    1     2.40     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    229    .   1    1    30    30    GLY    H       H    1     7.86     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    230    .   1    1    30    30    GLY    CA      C    13    45.4     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    231    .   1    1    30    30    GLY    HA2     H    1     4.14     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    232    .   1    1    30    30    GLY    HA3     H    1     3.80     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    233    .   1    1    31    31    SER    H       H    1     7.54     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    234    .   1    1    31    31    SER    CA      C    13    57.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    235    .   1    1    31    31    SER    HA      H    1     4.78     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    236    .   1    1    31    31    SER    HB2     H    1     3.92     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    237    .   1    1    31    31    SER    HB3     H    1     3.92     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    238    .   1    1    32    32    CYS    H       H    1     8.28     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    239    .   1    1    32    32    CYS    CA      C    13    54.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    240    .   1    1    32    32    CYS    HA      H    1     5.33     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    241    .   1    1    32    32    CYS    HB2     H    1     3.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    242    .   1    1    32    32    CYS    HB3     H    1     3.37     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    243    .   1    1    33    33    PRO    CA      C    13    60.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    244    .   1    1    33    33    PRO    HA      H    1     4.90     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    245    .   1    1    33    33    PRO    HB2     H    1     2.29     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    246    .   1    1    33    33    PRO    HB3     H    1     1.94     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    247    .   1    1    33    33    PRO    HG2     H    1     2.20     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    248    .   1    1    33    33    PRO    HG3     H    1     2.13     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    249    .   1    1    33    33    PRO    HD2     H    1     3.98     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    250    .   1    1    33    33    PRO    HD3     H    1     3.96     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    251    .   1    1    34    34    PRO    CA      C    13    60.6     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    252    .   1    1    34    34    PRO    HA      H    1     2.86     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    253    .   1    1    34    34    PRO    HB2     H    1     0.45     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    254    .   1    1    34    34    PRO    HB3     H    1     1.21     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    255    .   1    1    34    34    PRO    HG2     H    1     1.68     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    256    .   1    1    34    34    PRO    HG3     H    1     1.68     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    257    .   1    1    34    34    PRO    HD2     H    1     3.71     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    258    .   1    1    34    34    PRO    HD3     H    1     3.66     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    259    .   1    1    35    35    PRO    CA      C    13    61.3     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    260    .   1    1    35    35    PRO    HA      H    1     3.89     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    261    .   1    1    35    35    PRO    HB2     H    1     2.00     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    262    .   1    1    35    35    PRO    HB3     H    1     2.18     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    263    .   1    1    35    35    PRO    HG2     H    1     1.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    264    .   1    1    35    35    PRO    HG3     H    1     1.81     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    265    .   1    1    35    35    PRO    HD2     H    1     3.49     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    266    .   1    1    35    35    PRO    HD3     H    1     3.30     .   .   2    .   .   .   .   .   .   .   .   4820    1    
+    267    .   1    1    36    36    TRP    H       H    1     8.13     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    268    .   1    1    36    36    TRP    CA      C    13    57.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    269    .   1    1    36    36    TRP    HA      H    1     5.06     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    270    .   1    1    36    36    TRP    HB2     H    1     3.26     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    271    .   1    1    36    36    TRP    HB3     H    1     3.26     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    272    .   1    1    36    36    TRP    HD1     H    1     6.85     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    273    .   1    1    36    36    TRP    HE3     H    1     7.72     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    274    .   1    1    36    36    TRP    HE1     H    1     9.92     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    275    .   1    1    36    36    TRP    HZ3     H    1     7.16     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    276    .   1    1    36    36    TRP    HZ2     H    1     7.68     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    277    .   1    1    36    36    TRP    HH2     H    1     7.25     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    278    .   1    1    37    37    SER    H       H    1     8.61     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    279    .   1    1    37    37    SER    CA      C    13    59.8     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    280    .   1    1    37    37    SER    HA      H    1     4.47     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    281    .   1    1    37    37    SER    HB2     H    1     4.00     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+    282    .   1    1    37    37    SER    HB3     H    1     4.00     .   .   1    .   .   .   .   .   .   .   .   4820    1    
+  stop_
+
+save_
+

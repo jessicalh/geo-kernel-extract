@@ -1,0 +1,25 @@
+# Raw-source provenance for per-protein experimental-shift inputs.
+# Auto-written by fetch_bmrb.py / extract_refdb.py. Do not hand-edit;
+# re-run the fetch scripts to refresh.
+
+protein_tag = "1I8X_4351"
+
+[[sources]]
+kind = "bmrb_nmr_star_3"
+filename = "bmr4351_3.str"
+url = "https://bmrb.io/ftp/pub/bmrb/entry_directories/bmr4351/bmr4351_3.str"
+sha256 = "9cdf1ad994d03fbdcaa8f7bae6048e2d0b08ece83bda5b8ce3fd7fb3d33accf0"
+size_bytes = 55608
+fetched_at = "2026-04-20T00:50:47.737331+00:00"
+status = "new"
+
+[[sources]]
+kind = "refdb_nmr_star_2_corr"
+filename = "bmr4351.str.corr"
+url = "refdb_2016_snapshot/RefDB_files.tar.gz"
+tar_member = "data/www/lib/RefDB/RefDB/corrdata/bmr4351.str.corr"
+tarball_sha256 = "829613f591345b5c0547ddb05429ee3ca5e59dfc9fbabfe31cf83af2d9b5e2ad"
+sha256 = "2dd3647a21c2e39a72e79390dc9966aa41acaa35c267cb5d7c2e9042b3291235"
+size_bytes = 25734
+extracted_at = "2026-04-20T00:52:24.891313+00:00"
+status = "new"

@@ -1,0 +1,48 @@
+# RefDB .str.corr file header metadata (parsed from the # comment block).
+# These fields describe what SHIFTCOR/SHIFTX applied to the original BMRB
+# deposition to produce the re-referenced values in refdb_<id>.csv.
+
+bmrb_id = 4934
+reference_pdb = "1HS5B"
+
+[offsets_applied]
+# Offsets that were ADDED to original BMRB shifts to produce RefDB values.
+# Values: number in ppm, or 'N/A' if no correction applied to that nucleus.
+HA = "N/A"
+CA = "+0.46"
+CB = "+0.46"
+CO = "N/A"
+N = "-2.23"
+HN = "N/A"
+
+[avg_difference_obs_minus_pred]
+# Average chemical-shift difference between corrected observation and
+# SHIFTX prediction, per nucleus (ppm).
+HA = "-0.05"
+CA = "0.28"
+CB = "0.63"
+CO = "N/A"
+N = "-2.23"
+HN = "-0.26"
+
+[[persistent_outliers]]
+nucleus = "HA"
+threshold_ppm = "0.7"
+[[persistent_outliers.rows]]
+residue_seq = "4"
+residue_name_1letter = "Y"
+atom_name = "HA"
+observed_corrected = "5.04"
+predicted = "3.88"
+[[persistent_outliers.rows]]
+residue_seq = "12"
+residue_name_1letter = "R"
+atom_name = "HA"
+observed_corrected = "3.28"
+predicted = "4.11"
+[[persistent_outliers.rows]]
+residue_seq = "32"
+residue_name_1letter = "A"
+atom_name = "HA"
+observed_corrected = "4.30"
+predicted = "3.36"

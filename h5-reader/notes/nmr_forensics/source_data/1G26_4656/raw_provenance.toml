@@ -1,0 +1,25 @@
+# Raw-source provenance for per-protein experimental-shift inputs.
+# Auto-written by fetch_bmrb.py / extract_refdb.py. Do not hand-edit;
+# re-run the fetch scripts to refresh.
+
+protein_tag = "1G26_4656"
+
+[[sources]]
+kind = "bmrb_nmr_star_3"
+filename = "bmr4656_3.str"
+url = "https://bmrb.io/ftp/pub/bmrb/entry_directories/bmr4656/bmr4656_3.str"
+sha256 = "0349f4202a6e5a7eeec0634cf8ffa4a9413c66611fa1ef5c1c89186e22e9d01b"
+size_bytes = 59394
+fetched_at = "2026-04-20T00:50:47.737331+00:00"
+status = "new"
+
+[[sources]]
+kind = "refdb_nmr_star_2_corr"
+filename = "bmr4656.str.corr"
+url = "refdb_2016_snapshot/RefDB_files.tar.gz"
+tar_member = "data/www/lib/RefDB/RefDB/corrdata/bmr4656.str.corr"
+tarball_sha256 = "829613f591345b5c0547ddb05429ee3ca5e59dfc9fbabfe31cf83af2d9b5e2ad"
+sha256 = "9b7f0198af91c40a247f40897c26308b498c5bd9241c888f5c5a25643b2d6187"
+size_bytes = 21755
+extracted_at = "2026-04-20T00:52:24.891313+00:00"
+status = "new"

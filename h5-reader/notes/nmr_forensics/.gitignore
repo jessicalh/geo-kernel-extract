@@ -1,0 +1,13 @@
+# Python virtual environment for pynmrstar / fetcher / parser
+.venv/
+
+# RefDB 2016 tarball (30 MB) — regenerable, kept as local cache only.
+# The extracted per-protein .str.corr files ARE committed (see source_data/).
+refdb_2016_snapshot/RefDB_files.tar.gz
+
+# Working scratch extract locations
+refdb_2016_snapshot/extracted_sample/
+
+# Ephemeral Python bytecode
+__pycache__/
+*.pyc

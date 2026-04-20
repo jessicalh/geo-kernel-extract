@@ -1,0 +1,202 @@
+# Provenance block — 1HS5_4934 BMRB translation (narrative)
+#
+# Protein: designed p53 dimer fragment (PDB 1HS5; chain A used for MD).
+# Source PDB COMPND: "CELLULAR TUMOR ANTIGEN P53", FRAGMENT "RESIDUES 324-357"
+# (34 residues per chain; A and B chains carry identical sequence).
+# tag_alignment.json reports `tag_free = true` and identical bmrb_sequence vs
+# native_sequence (both 33 residues, DGEYFTLQIRGRER...DAQAG). Our CHARMM chain
+# A has 34 residues — the extra C-terminal LYS-34 is unassigned in BMRB 4934
+# (which terminates at GLY-33). Thus BMRB residue_seq 1..33 ≡ CHARMM 1..33
+# identity; CHARMM residue 34 (LYS) is BMRB-silent.
+#
+# Offset: zero. Both sides are 1-based; no construct-numbering correction.
+# (Distinct from 1DV0/4757 which carried a +2 BMRB-vs-PDB offset.)
+#
+# Confirmed N-terminal anomaly: BMRB row (1, ASP, H, 8.29) claims a single
+# backbone amide H at residue 1; CHARMM ASP-1 carries zwitterionic NH3+
+# (H1/H2/H3) and no single H. Same sample-vs-force-field chemistry mismatch
+# observed at 1DV0/GLN-3. Document-and-carry per PRINCIPLES §6.4.
+#
+# CROSS-CUTTING FINDING — chemical_shifts_685.csv carries RefDB-corrected
+# values, not BMRB raw. Verified for 1HS5: of 96 rows where RefDB
+# corrected ≠ original, 96 of the BMRB CSV `shift_value` entries match the
+# corrected value, 0 match the original. Same pattern verified for 1DV0
+# (125/125 → corrected). Implication: BMRB CSV's `shift_value` column is
+# *operationally equivalent to RefDB corrected_value where RefDB exists*.
+# 1DV0 SUMMARY's wording "prefer RefDB corrected over BMRB raw" is
+# misleading; both are the corrected number for re-referenced entries.
+
+[provenance]
+protein = "1HS5_4934"
+database = "bmrb"
+reviewed_date = "2026-04-19"
+reviewer = "claude (session 2026-04-19, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'CELLULAR TUMOR ANTIGEN P53 in water' (fleet_calibration-working/1HS5_4934/reference.pdb)",
+    "Source PDB header (prep/1HS5.pdb): HEADER 'GENE REGULATION 22-DEC-00 1HS5'; TITLE 'NMR SOLUTION STRUCTURE OF DESIGNED P53 DIMER'; COMPND FRAGMENT 'RESIDUES 324-357'; ENGINEERED YES; MUTATION YES",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (33aa) == native_sequence (33aa); chain A length 34; alignment_matches=33",
+    "BMRB CSV inspection: 336 rows for bmrb_id=4934 (204 H + 95 C + 37 N); residues 1..33 names align with CHARMM 1..33 identity; residue 34 (CHARMM LYS) absent from BMRB",
+    "RefDB CSV inspection: 159 rows for bmrb_id=4934; ASP-1 CA original=54.10, corrected=54.56 — BMRB CSV value (54.56) matches corrected, not original. Pattern to verify across all rows.",
+]
+findings_summary = """
+1HS5_4934 — designed p53 tetramerisation-domain dimer (residues 324-357 of
+human p53, NMR solution structure deposited 2000-12-22). Chain A used for
+MD: CHARMM topology 34 residues, BMRB 4934 covers residues 1..33 (336 rows
+= 204 H + 95 C + 37 N). Identity numbering, offset = 0. CHARMM residue 34
+(LYS) is BMRB-silent (no rows pointed at it).
+
+Audit run 2026-04-19: 336 BMRB rows resolved as 184 MATCHED + 129
+MATCHED_WITH_ANOMALIES + 12 ONE_TO_MANY + 10 STEREO_AMBIGUOUS + 1
+UNMATCHED_ROW. CHARMM coverage: C 95/178, H 227/278, N 37/55, O 0/57.
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (1 row): ASP-1 backbone H 8.29 ppm — CHARMM
+  N-terminal NH3+ has H1/H2/H3 only; no single H atom to bind. Same
+  sample-vs-force-field mismatch as 1DV0/GLN-3.
+- §6.3 deferred downstream policy (12 rows): ONE_TO_MANY methyl/pseudo
+  expansion at THR-6 HG2; LEU-7/25/27 HD1+HD2; ILE-9 HD1 + HG2; ALA-24/30/32
+  HB. Audit preserves the BMRB pseudo and the CHARMM atom set; downstream
+  decides expansion (average vs triplicate vs drop).
+- §6.3 deferred (10 rows): STEREO_AMBIGUOUS — sidechain amide / NH2 ambig=2
+  at GLN-8/17/31 HE21+HE22, ASN-22 HD21+HD22; plus ARG-19 HB3 + HG3 with
+  ambiguity_code = 4 (intra-residue ambiguity, atypically high; downstream
+  swap policy must consider 4 a stronger flag than 2).
+- §6.1 adjudicated (none): no TOML edit drove resolution; the starter
+  table sufficed for 1HS5.
+
+CROSS-CUTTING (BMRB CSV referencing): of the 96 RefDB rows where
+corrected ≠ original, 96/96 BMRB CSV `shift_value` entries match the
+corrected value (0 match original). The chemical_shifts_685.csv column is
+the post-RefDB-correction number where RefDB exists. Same pattern verified
+for 1DV0/4757 (125/125 → corrected). 1DV0 SUMMARY wording "prefer RefDB
+corrected over BMRB raw" is misleading; the BMRB CSV is *not* the BMRB raw.
+
+No HIS residues — no HSP protonation adjudication required.
+"""
+
+[residue_seq_offset]
+# Apply to BMRB residue_seq to align with CHARMM residue_seq.
+# bmrb_to_charmm = BMRB_seq + offset. Here: identity (no construct offset).
+offset = 0
+
+# CHARMM → BMRB/IUPAC atom-name translation table (mirror of starter for 1HS5).
+#
+# Identity translations are omitted; undeclared atom names fall through to
+# identity. Every translation here is a claim about BMRB conventions used in
+# entry 4934. Verify per protein when a new naming surprise appears.
+
+[backbone]
+HN = "H"
+
+# N-terminal NH3+ (CHARMM H1/H2/H3) intentionally not translated — see narrative
+# header. The audit tool will flag the BMRB ASP-1 H row UNMATCHED; that is the
+# document-and-carry signal we want preserved.
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

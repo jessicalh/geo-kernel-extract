@@ -1,0 +1,186 @@
+# Provenance block — 1G26_4656 BMRB translation (narrative)
+#
+# Protein: Granulin A N-terminal subdomain, 31-residue designed peptide
+# (PDB COMPND: ENGINEERED YES, MUTATION YES; FRAGMENT "N-TERMINAL DOMAIN
+# (RESIDUES 1-31)"; SYNONYM HGA). PDB 1G26 deposited 2000-10-17.
+# tag_alignment.json: tag_free=true; bmrb_sequence (31aa,
+# VVHCDMEVICPDGYTCCRLPSGAWGCCPFTQ) == native_sequence (31aa); identity.
+#
+# Numbering: identity. offset = 0.
+#
+# **HSP at residue 3** (CHARMM doubly-protonated HIS; +1 charge) — first
+# HSP exemplar in the audit. CHARMM ring atoms: HD1 (on ND1), HD2 (on CD2),
+# HE1 (on CE1), HE2 (on NE2) — all four ring Hs present per HSP topology.
+# BMRB depositor put `HIS` (no protonation indication) and assigned only
+# the ring CARBON Hs (HD2 = 7.28 ppm, HE1 = 8.6 ppm) — NO HD1 (Nδ1-H) and
+# NO HE2 (Nε2-H). The two ring N-Hs are exchangeable in solution and rarely
+# resolved at neutral pH; their absence is conventional, not a signal.
+#
+# Therefore the CHARMM HSP choice CANNOT BE TESTED against the NMR data.
+# The audit will fire RESIDUE_ALIAS_APPLIED on every HIS row at residue 3
+# (HSP→HIS canonicalisation) — that is the loud-and-honest signal that an
+# untested protonation choice is in play. Adjudication: deferred downstream;
+# document the prep-time choice and that NMR cannot constrain it.
+#
+# VAL-1 N-terminus: CHARMM has H1/H2/H3 (NH3+ zwitterion). BMRB row 1
+# deposits HA, HB, HG1, HG2 — silent-omit strategy (1HD6/1B1V family).
+# No N-terminal anomaly fires.
+#
+# 6 CYS at residues 4, 10, 16, 17, 26, 27 — likely 3 disulfide bridges
+# (1G26 is a designed disulfide-stabilised β-hairpin). CHARMM CYS naming
+# uniform; no alias.
+
+[provenance]
+protein = "1G26_4656"
+database = "bmrb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'GRANULIN A in water'",
+    "Source PDB header (prep/1G26.pdb): HEADER 'CYTOKINE 17-OCT-00 1G26'; TITLE 'THE SOLUTION STRUCTURE OF A WELL-FOLDED PEPTIDE BASED ON THE 31-RESIDUE AMINO-TERMINAL SUBDOMAIN OF HUMAN GRANULIN A'; COMPND MOL_ID 1, MOLECULE GRANULIN A, CHAIN A, FRAGMENT 'N-TERMINAL DOMAIN (RESIDUES 1-31)', SYNONYM HGA, ENGINEERED YES, MUTATION YES",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (31aa) == native_sequence (31aa); chain A length 31; alignment_matches=31",
+    "BMRB CSV inspection: 166 rows for bmrb_id=4656, all H; residues 1..31 names align with CHARMM 1..31 identity (modulo HSP→HIS alias at residue 3); BMRB title indicates pure proton deposition",
+    "HIS-3 BMRB rows: H, HA, HB2, HB3, HD2 (7.28), HE1 (8.6) — NO HD1, NO HE2 (ring N-H exchangeables not assigned). Cannot constrain HSP/HSD/HSE protonation from NMR data alone.",
+    "VAL-1 BMRB rows: HA, HB, HG1, HG2 — no backbone H (silent-omit strategy)",
+]
+findings_summary = """
+1G26_4656 — Granulin A N-terminal designed peptide (cytokine fragment),
+31-residue. Identity numbering, offset = 0. 166 BMRB rows all H.
+
+Audit run 2026-04-20: 166 rows = 51 MATCHED + 102 MATCHED_WITH_ANOMALIES
++ 13 ONE_TO_MANY + 0 STEREO_AMBIGUOUS + 0 UNMATCHED. Anomalies: 99
+NAME_TRANSLATION_APPLIED, 13 ONE_TO_MANY, 6 RESIDUE_ALIAS_APPLIED. CHARMM
+coverage: H 192/211 (91%); C/N/O/S 0 (proton-only).
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (0 rows): no UNMATCHED. VAL-1 silent N-term
+  (no backbone H deposited; CHARMM has H1/H2/H3 but nothing to bind).
+- §6.3 deferred (13 rows): ONE_TO_MANY methyl-pseudo expansion.
+- §6.3 deferred (0 rows): no STEREO_AMBIGUOUS — see AI observation on
+  ambiguity-code absence.
+- §6.3 deferred (6 rows): RESIDUE_ALIAS_APPLIED on HIS-3 (HSP → HIS).
+  All 6 BMRB HIS-3 rows (H, HA, HB2, HB3, HD2, HE1) bound correctly to
+  CHARMM HSP atoms via the alias. Adjudication impossible: BMRB did NOT
+  deposit HD1 (Nδ1-H) or HE2 (Nε2-H) — the two ring N-Hs that would
+  distinguish HSP/HSD/HSE. CHARMM's HSP choice is a prep-time decision
+  with no NMR evidence either way. Document-and-carry; downstream
+  policy decides.
+- §6.1 adjudicated (none): starter table sufficed; HSP alias worked.
+
+Cross-cutting: 0 RefDB corrections — trivially consistent.
+"""
+
+[residue_seq_offset]
+offset = 0
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

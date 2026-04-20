@@ -1,0 +1,25 @@
+# Raw-source provenance for per-protein experimental-shift inputs.
+# Auto-written by fetch_bmrb.py / extract_refdb.py. Do not hand-edit;
+# re-run the fetch scripts to refresh.
+
+protein_tag = "1DV0_4757"
+
+[[sources]]
+kind = "bmrb_nmr_star_3"
+filename = "bmr4757_3.str"
+url = "https://bmrb.io/ftp/pub/bmrb/entry_directories/bmr4757/bmr4757_3.str"
+sha256 = "76116e53b08f3f7355abe9853a734f91737e96085301be5a253675082a23490b"
+size_bytes = 98069
+fetched_at = "2026-04-20T00:50:47.737331+00:00"
+status = "new"
+
+[[sources]]
+kind = "refdb_nmr_star_2_corr"
+filename = "bmr4757.str.corr"
+url = "refdb_2016_snapshot/RefDB_files.tar.gz"
+tar_member = "data/www/lib/RefDB/RefDB/corrdata/bmr4757.str.corr"
+tarball_sha256 = "829613f591345b5c0547ddb05429ee3ca5e59dfc9fbabfe31cf83af2d9b5e2ad"
+sha256 = "367400952d6fc1a70d7c6185581880957ddb308dbca55270ee87d59957c39f59"
+size_bytes = 41632
+extracted_at = "2026-04-20T00:52:24.891313+00:00"
+status = "new"

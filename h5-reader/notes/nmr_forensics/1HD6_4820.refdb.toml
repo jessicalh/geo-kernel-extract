@@ -1,0 +1,160 @@
+# Provenance block — 1HD6_4820 RefDB translation (narrative)
+#
+# RefDB inherits BMRB 4820's identity numbering (offset = 0). First-pass
+# tally: ~105 rows, 37 corrections (moderate re-referencing).
+#
+# Cross-cutting (verified 1DV0, 1HS5): chemical_shifts_685.csv shift_value
+# is the RefDB-corrected value where RefDB exists. Re-verify for 1HD6.
+
+[provenance]
+protein = "1HD6_4820"
+database = "refdb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'PHEROMONE ER-22 in water'",
+    "BMRB provenance block above — RefDB inherits the offset = 0 (no construct correction)",
+    "refdb_corrected_shifts_685.csv first-pass: ~105 rows for bmrb_id=4820, 37 with corrected ≠ original",
+]
+findings_summary = """
+RefDB 4820 — 105 rows. Audit run 2026-04-20: 36 MATCHED + 69
+MATCHED_WITH_ANOMALIES + 0 UNMATCHED_ROW. Anomalies: 37
+REFDB_CORRECTED_VALUE_DIFFERS, 32 NAME_TRANSLATION_APPLIED. CHARMM
+coverage matches BMRB (Cα-only C; high H; no N).
+
+Cross-cutting verification: BMRB CSV shift_value matches RefDB
+corrected_value for all 37 corrected rows (0 match original). Third
+confirmation of the BMRB-CSV-is-post-correction pattern.
+"""
+
+[residue_seq_offset]
+offset = 0
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.ALA]
+HB1 = "HB"
+HB2 = "HB"
+HB3 = "HB"
+
+[residue.VAL]
+HG11 = "HG1"
+HG12 = "HG1"
+HG13 = "HG1"
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+HD11 = "HD1"
+HD12 = "HD1"
+HD13 = "HD1"
+HD21 = "HD2"
+HD22 = "HD2"
+HD23 = "HD2"
+
+[residue.ILE]
+CD = "CD1"
+HG11 = "HG12"
+HG12 = "HG13"
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+HD1 = "HD1"
+HD2 = "HD1"
+HD3 = "HD1"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HE1 = "HE"
+HE2 = "HE"
+HE3 = "HE"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.THR]
+HG21 = "HG2"
+HG22 = "HG2"
+HG23 = "HG2"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+HZ1 = "HZ"
+HZ2 = "HZ"
+HZ3 = "HZ"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"

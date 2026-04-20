@@ -1,0 +1,190 @@
+# Provenance block — 1HD6_4820 BMRB translation (narrative)
+#
+# Protein: Pheromone Er-22 from Euplotes raikovi (ciliate). 37-residue
+# disulfide-rich peptide; PDB 1HD6 deposited 2000-11-09 (single chain A,
+# no engineered mutation noted). tag_alignment.json reports tag_free = true
+# and identity bmrb_sequence = native_sequence (37/37 aa).
+#
+# Numbering: identity. CHARMM 1..37 ≡ BMRB 1..37. offset = 0.
+#
+# Disulfide-rich (6 CYS at residues 3, 10, 15, 18, 24, 32). CHARMM names
+# all CYS as CYS regardless of disulfide state (no CYX in CHARMM topology
+# files); no residue alias required. BMRB likely lists them as CYS too —
+# audit will confirm.
+#
+# No HIS residues — no HSP protonation adjudication required.
+#
+# 4 PRO at residues 22, 33, 34, 35 (PRO-PRO-PRO triple at C-term region).
+# PRO β/γ/δ methylene translations covered in starter [residue.PRO].
+#
+# 4 ILE at residues 2, 5, 7, 23 — exercises CHARMM CD → BMRB CD1
+# translation (per 1HS5 verification).
+#
+# BMRB CSV is post-RefDB-correction (verified 1DV0, 1HS5; to be re-verified
+# for 1HD6 from REFDB_CORRECTED_VALUE_DIFFERS comparison after audit).
+
+[provenance]
+protein = "1HD6_4820"
+database = "bmrb"
+reviewed_date = "2026-04-20"
+reviewer = "claude (session 2026-04-20, Opus 4.7)"
+metadata_sources_consulted = [
+    "reference.pdb TITLE: 'PHEROMONE ER-22 in water' (fleet_calibration-working/1HD6_4820/reference.pdb)",
+    "Source PDB header (prep/1HD6.pdb): HEADER 'PHEROMONE 09-NOV-00 1HD6'; TITLE 'PHEROMONE ER-22, NMR'; COMPND MOL_ID 1, MOLECULE PHEROMONE ER-22, CHAIN A",
+    "prep/tag_alignment.json: tag_free=true; bmrb_sequence (37aa, DICDIAIAQCSLTLCQDCENTPICELAVKGSCPPPWS) == native_sequence (37aa); chain A length 37; alignment_matches=37",
+    "BMRB CSV inspection: 240 rows for bmrb_id=4820 (203 H + 37 C, no N); residues 1..37 names align with CHARMM 1..37 identity",
+    "BMRB title: '1H and 13Ca Chemical Shift Assignments for the Pheromone Er-22' — explains H+C-only coverage (no N assignments deposited)",
+]
+findings_summary = """
+1HD6_4820 — Pheromone Er-22, 37-residue disulfide-rich peptide (Euplotes
+raikovi ciliate pheromone). Identity numbering, offset = 0. BMRB deposition
+title confirms H + 13Cα-only assignment — no N rows. 6 CYS (residues 3, 10,
+15, 18, 24, 32) likely disulfide-bridged in the structure but CHARMM names
+all CYS as CYS (no CYX); no residue alias needed.
+
+Audit run 2026-04-20: 240 BMRB rows = 89 MATCHED + 76 MATCHED_WITH_ANOMALIES
++ 21 ONE_TO_MANY + 54 STEREO_AMBIGUOUS + 0 UNMATCHED_ROW. Anomalies: 124
+NAME_TRANSLATION_APPLIED, 54 STEREO_AMBIGUOUS, 21 ONE_TO_MANY. CHARMM
+coverage: C 37/166 (Cα-only as expected from BMRB title), H 245/256 (96%,
+exceptional), N 0/42 (no N deposited), O 0/56, S 0/6.
+
+Resolutions (PRINCIPLES §6):
+- §6.4 document-and-carry (0 rows): no UNMATCHED. Notable contrast with
+  1DV0/1HS5: BMRB 4820 simply omits the residue-1 ASP backbone amide H
+  rather than depositing a (chemically suspect) single-H value at an NH3+
+  N-terminus. Same physical reality (zwitterionic NH3+ in solution),
+  different depositor strategy (silent omission vs single-H deposit).
+  No row to bind, nothing fires UNMATCHED — this is a quieter signal of
+  the same N-terminal physics. Document the strategy difference.
+- §6.3 deferred (21 rows): ONE_TO_MANY methyl-pseudo expansion.
+- §6.3 deferred (54 rows): STEREO_AMBIGUOUS, all ambiguity_code = 2 (no
+  high-ambiguity outliers like 1HS5/ARG-19's code=4). High count driven
+  by extensive Cβ methylene coverage on disulfide-rich peptide where
+  stereo pairs are routinely unassigned.
+- §6.1 adjudicated (none): starter table sufficed; no per-protein TOML
+  edits drove resolution.
+
+Cross-cutting BMRB-CSV-is-corrected verification: of 37 RefDB rows where
+corrected ≠ original, 37/37 BMRB CSV `shift_value` entries match the
+corrected value. Pattern confirmed for 1HD6 (third protein after 1DV0,
+1HS5).
+"""
+
+[residue_seq_offset]
+# Identity numbering — no construct correction.
+offset = 0
+
+# CHARMM → BMRB/IUPAC atom-name translation table (mirror of starter).
+# Identity translations omitted; undeclared atoms fall through to identity.
+
+[backbone]
+HN = "H"
+
+[residue.GLY]
+HA1 = "HA2"
+HA2 = "HA3"
+
+[residue.LEU]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ILE]
+# BMRB 3.x uses expanded methyl names (HG21/HG22/HG23,
+# HD11/HD12/HD13); only methylene renumbering and carbon-locant
+# need mapping.
+CD = "CD1"
+# γ1-methylene: CHARMM HG11/HG12 → BMRB HG12/HG13
+HG11 = "HG12"
+HG12 = "HG13"
+# δ-methyl: CHARMM uses HD1/HD2/HD3 (1-based), BMRB uses HD11/HD12/HD13
+HD1 = "HD11"
+HD2 = "HD12"
+HD3 = "HD13"
+
+[residue.MET]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.PRO]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.PHE]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TRP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.TYR]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.SER]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.CYS]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.ASN]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.GLU]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.GLN]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+
+[residue.LYS]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+HE1 = "HE2"
+HE2 = "HE3"
+
+[residue.ARG]
+HB1 = "HB2"
+HB2 = "HB3"
+HG1 = "HG2"
+HG2 = "HG3"
+HD1 = "HD2"
+HD2 = "HD3"
+
+[residue.HSP]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSD]
+HB1 = "HB2"
+HB2 = "HB3"
+
+[residue.HSE]
+HB1 = "HB2"
+HB2 = "HB3"
+[residue_name_aliases]
+HSP = "HIS"
+HSD = "HIS"
+HSE = "HIS"
