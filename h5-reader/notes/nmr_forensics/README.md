@@ -22,9 +22,10 @@ h5-reader/notes/nmr_forensics/
 └── 1DV0_4757.audit.md           (tool output, human)
 ```
 
-The other 9 calibration proteins have no per-protein tables yet; the
-tool refuses to run on them until each has its own reviewed tables
-derived per the 7-step checklist in `PRINCIPLES.md`.
+All 10 calibration proteins have been reviewed (see TRACKING.md for the
+per-protein table and SUMMARY.md for findings). The 7-step checklist in
+PRINCIPLES.md applies to any new protein added to the set; the audit
+tool refuses to run without per-protein tables.
 
 ## Data source
 
@@ -187,8 +188,11 @@ Example: taking on 1HS5/4934.
 
 ## Downstream consumption — how forensics outputs connect to the Python API
 
-*This section preserves the design intent; the Python CLI spec
-(`PYTHON_CLI_SPEC.md`, pending) will operationalise it.*
+*This section preserves the design intent. The operational artefact
+is `pack_experimental_shifts.py`, which produces per-protein
+`experimental_shifts/` bundles in the calibration trees. See
+`memory:project_h5reader_python_cli` for the in-memory service
+design this work feeds into.*
 
 Each audited protein produces:
 

@@ -247,7 +247,7 @@ void NamingRegistry::InitialiseAtomNameRules() {
     // ----------
     //   spec/ChangesRequiredBeforeProductionH5Run.md    full decision record
     //   h5-reader/notes/nmr_forensics/SUMMARY.md        empirical probe
-    //   memory:project_ile_naming_gap_2026-04-20        session continuity
+    //   memory:project_charmm_iupac_gaps_2026-04-20     session continuity
     //
     // Activation recipe (uncomment all of the below together)
     // -------------------------------------------------------
