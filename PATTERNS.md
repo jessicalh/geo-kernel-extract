@@ -26,6 +26,19 @@ spec/ENSEMBLE_MODEL.md. All patterns below apply to every path
 including trajectory — the streaming classes are infrastructure
 around the same ConformationResult / OperationRunner pipeline.
 
+**NOTE (2026-04-22): trajectory-scope patterns being redesigned in
+`spec/WIP_OBJECT_MODEL.md`.** That document is the source of truth for
+trajectory-scope patterns during this design window —
+`TrajectoryProtein` (replacing `GromacsProtein`'s role),
+`TrajectoryAtom` (replacing `GromacsProteinAtom`'s content),
+`TrajectoryResult` (the modular calculator at trajectory scope,
+parallel to `ConformationResult`), `Trajectory::Run` as orchestrator,
+RunConfiguration as first-class typed object. Patterns there will
+fold into this document when the design settles. Until then, trust
+WIP_OBJECT_MODEL.md over any trajectory-scope guidance elsewhere.
+Conformation-scope patterns below are unchanged and remain
+authoritative.
+
 ## The System in One Paragraph
 
 This is a one-way analysis system. It loads a protein, creates typed

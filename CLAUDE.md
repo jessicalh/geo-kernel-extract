@@ -264,12 +264,19 @@ memory):
   "nitrogen is hard" was an element-pooling artifact: backbone N
   is hard (R² = 0.387), sidechain N is second-best atom type
   (R² = 0.887). See `learn/stage1-mutations/`.
-- **Stage 2 — trajectories.** In progress. Analysis-trajectory
-  mode emits the exhaustive per-frame H5 consumed by the viewer
-  and the reader. 260 DFTs running on the 10-protein calibration
-  workspace (`/shared/2026Thesis/fleet_calibration-working/`).
-  685-protein fleet ensemble (`project_fleet_ensemble`) is the
-  next scale-up.
+- **Stage 2 — trajectories.** In progress. MD protocol is a single
+  non-PLUMED 25 ns run per protein; 600 of ~1200 frames adopted as
+  the baseline. Analysis-trajectory mode emits the exhaustive
+  per-frame H5 consumed by the viewer and the reader. DFT reference
+  structures are 26 per protein at 1 ns intervals (ns0 … ns25).
+  Calibration DFT batch complete 2026-04-18: 260/260 across 10 proteins,
+  0 failures. Results collected into `/shared/2026Thesis/fleet_calibration_dft/`
+  (authoritative staging with per-job PDB + XYZ + .out + meta.json, worker logs,
+  collection manifest) and replicated as orthogonal `dft_output/` siblings into
+  all three calibration copies (`fleet_calibration-{working,stats,backup}/`).
+  Fleet state: 200 of 685 proteins H5-complete; remaining 485 MDs
+  running, PDBs landing ~2026-04-24, all in the same tree. DFTs on
+  the 485 have not been scheduled.
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results. Not
   yet active.
 

@@ -20,6 +20,14 @@ object model documentation will be added to this file as the trajectory
 path stabilises. For now see spec/ENSEMBLE_MODEL.md (design) and
 spec/OUTSTANDING_GROMACS_PATH.md (remaining work).
 
+**NOTE (2026-04-22): trajectory-scope object model being redesigned in
+`spec/WIP_OBJECT_MODEL.md`.** That document is the source of truth for
+the TrajectoryProtein + TrajectoryAtom + TrajectoryResult + Trajectory
++ NmrAtomIdentity design during this pass. Contents there will fold
+into this file (and into PATTERNS.md) when the design settles; until
+then, trust WIP_OBJECT_MODEL.md over any trajectory-scope guidance
+elsewhere.
+
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
 pH scanning and re-protonation but was never needed for the actual use

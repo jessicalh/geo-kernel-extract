@@ -1,5 +1,20 @@
 # Ensemble Extraction Model
 
+**NOTE (2026-04-22): trajectory-scope object model being redesigned
+in `spec/WIP_OBJECT_MODEL.md`.** That document is the active source of
+truth for the object-model side of this work during the current design
+window — it replaces GromacsProtein's role with `TrajectoryProtein`,
+replaces `GromacsProteinAtom`'s hardcoded Welford bag with
+`TrajectoryAtom` as a running buffer, introduces `TrajectoryResult` as
+a modular calculator parallel to `ConformationResult`, and promotes
+the trajectory traversal itself to a typed `Trajectory` entity with
+`Run(tp, ctx)`. Sections of THIS document that describe the
+object-model shape (`GromacsProtein`, `GromacsProteinAtom`, accumulator
+pattern, two-pass scan/extract ownership) are superseded by the WIP.
+Non-object-model content here — EDR handling, streaming mechanics,
+convergence discussion, test coverage — remains relevant. When the
+WIP folds in, this document will be reconciled.
+
 **Status:** IMPLEMENTED and TESTED. Two-pass streaming architecture
 works end-to-end. Three tests pass on 1ZR7_6721 full-system data
 (479 protein atoms, 3525 water molecules, 25 ions). .h5 master file
