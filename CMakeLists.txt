@@ -199,6 +199,10 @@ add_library(nmr_shielding
     src/RunConfiguration.cpp
     src/Session.cpp
     src/BsWelfordTrajectoryResult.cpp
+    src/BsShieldingTimeSeriesTrajectoryResult.cpp
+    src/BsAnomalousAtomMarkerTrajectoryResult.cpp
+    src/BsT0AutocorrelationTrajectoryResult.cpp
+    src/BondLengthStatsTrajectoryResult.cpp
     src/PositionsTimeSeriesTrajectoryResult.cpp
     src/ChiRotamerSelectionTrajectoryResult.cpp
     src/GromacsFrameHandler.cpp

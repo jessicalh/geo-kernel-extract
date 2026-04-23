@@ -35,6 +35,10 @@
 #include "Session.h"
 #include "GromacsFrameHandler.h"
 #include "BsWelfordTrajectoryResult.h"
+#include "BsShieldingTimeSeriesTrajectoryResult.h"
+#include "BsAnomalousAtomMarkerTrajectoryResult.h"
+#include "BsT0AutocorrelationTrajectoryResult.h"
+#include "BondLengthStatsTrajectoryResult.h"
 #include "PositionsTimeSeriesTrajectoryResult.h"
 #include "ChiRotamerSelectionTrajectoryResult.h"
 #include "DenseBuffer.h"
@@ -441,6 +445,120 @@ TEST(GromacsStreaming, PositionsTimeSeriesEndToEnd) {
 
 
 // ============================================================================
+// BsShieldingTimeSeriesTrajectoryResult — SphericalTensor time-series
+// worked example. Same Finalize-only dense-buffer pattern as
+// PositionsTimeSeries, but the payload is a 9-component
+// SphericalTensor per atom per frame. Emission carries the e3nn
+// metadata (irrep_layout / normalization / parity) so Python
+// consumers can construct Irreps("0e+1o+2e") directly.
+// ============================================================================
+
+TEST(GromacsStreaming, BsShieldingTimeSeriesEndToEnd) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+
+    // BiotSavart must run per frame so that
+    // ca.bs_shielding_contribution is populated. It doesn't require
+    // DSSP, charges, APBS, or MOPAC — skip everything except what BS
+    // needs (Geometry, SpatialIndex, Enrichment).
+    nmr::RunOptions opts;
+    opts.charge_source = tp.Charges();
+    opts.skip_mopac    = true;
+    opts.skip_coulomb  = true;
+    opts.skip_apbs     = true;
+    opts.skip_dssp     = true;
+
+    nmr::GromacsFrameHandler handler(tp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
+    tp.Seed(handler.ProteinPositions(), handler.Time());
+
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::BsShieldingTimeSeriesTrajectoryResult::Create(tp)));
+
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+
+    // Frame 0.
+    nmr::SphericalTensor expected_atom_frame0;
+    {
+        auto& conf0 = tp.CanonicalConformation();
+        auto rr = nmr::OperationRunner::Run(conf0, opts);
+        ASSERT_TRUE(rr.Ok()) << rr.error;
+        // Snapshot frame-0 bs_shielding for one atom BEFORE dispatch
+        // so we can verify round-trip into the dense buffer.
+        expected_atom_frame0 = conf0.AtomAt(0).bs_shielding_contribution;
+        tp.DispatchCompute(conf0, traj, 0, handler.Time());
+    }
+
+    // 5 more frames — enough to exercise the growing buffer + final
+    // transfer without running long.
+    size_t total = 1;
+    while (total < 6 && handler.ReadNextFrame()) {
+        auto conf = tp.TickConformation(handler.ProteinPositions());
+        auto rr = nmr::OperationRunner::Run(*conf, opts);
+        ASSERT_TRUE(rr.Ok()) << rr.error;
+        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
+        ++total;
+    }
+
+    tp.FinalizeAllResults(traj);
+    EXPECT_TRUE(tp.IsFinalized());
+
+    // ── Dense buffer owned by tp, indexed by SphericalTensor ──
+    auto* buffer = tp.GetDenseBuffer<nmr::SphericalTensor>(
+        std::type_index(
+            typeid(nmr::BsShieldingTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buffer, nullptr)
+        << "BsShieldingTimeSeriesTrajectoryResult did not transfer";
+
+    EXPECT_EQ(buffer->AtomCount(),     tp.AtomCount());
+    EXPECT_EQ(buffer->StridePerAtom(), total);
+
+    // Frame 0's SphericalTensor survives round-trip bit-identical.
+    const nmr::SphericalTensor& got = buffer->At(0, 0);
+    EXPECT_DOUBLE_EQ(got.T0, expected_atom_frame0.T0);
+    for (int k = 0; k < 3; ++k)
+        EXPECT_DOUBLE_EQ(got.T1[k], expected_atom_frame0.T1[k])
+            << "atom 0 frame 0 T1[" << k << "]";
+    for (int k = 0; k < 5; ++k)
+        EXPECT_DOUBLE_EQ(got.T2[k], expected_atom_frame0.T2[k])
+            << "atom 0 frame 0 T2[" << k << "]";
+
+    // At least one atom shows a non-trivial |T2| across the window
+    // (the protein moves; ring-proximity-dependent BS shielding varies).
+    bool found_varying = false;
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        const auto& st0 = buffer->At(i, 0);
+        const auto& stN = buffer->At(i, total - 1);
+        double delta_t2 = 0.0;
+        for (int k = 0; k < 5; ++k) {
+            const double d = stN.T2[k] - st0.T2[k];
+            delta_t2 += d * d;
+        }
+        if (std::sqrt(delta_t2) > 1e-8) { found_varying = true; break; }
+    }
+    EXPECT_TRUE(found_varying)
+        << "expected non-trivial T2 change across frames "
+           "(ring-proximity-dependent shielding varies with motion)";
+
+    std::cout << "BsShieldingTimeSeries: " << total
+              << " frames x " << tp.AtomCount()
+              << " atoms of SphericalTensor stored in "
+                 "DenseBuffer<SphericalTensor>\n";
+}
+
+
+// ============================================================================
 // ChiRotamerSelectionTrajectoryResult — scan-mode emitter worked example
 //
 // Pushes SelectionRecords to traj.MutableSelections() when any
@@ -549,6 +667,324 @@ TEST(GromacsStreaming, ChiRotamerSelectionEmitsToBag) {
               << " transitions emitted across " << total
               << " frames (first-half: " << (records.size() - late.size())
               << ", second-half: " << late.size() << ")\n";
+}
+
+
+// ============================================================================
+// BondLengthStatsTrajectoryResult — per-bond scope worked example.
+//
+// Per-bond Welford state lives INTERNAL to the Result (option b per
+// WIP §3), not on a first-class TrajectoryBond store. Assert on
+// physical plausibility: bond lengths are ~1-2 Å, std >= 0, atoms
+// actually move across frames so std > 0 for some bonds.
+// ============================================================================
+
+TEST(GromacsStreaming, BondLengthStatsEndToEnd) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+
+    nmr::RunOptions opts;
+    opts.charge_source = tp.Charges();
+    opts.skip_mopac    = true;
+    opts.skip_coulomb  = true;
+    opts.skip_apbs     = true;
+    opts.skip_dssp     = true;
+
+    nmr::GromacsFrameHandler handler(tp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
+    tp.Seed(handler.ProteinPositions(), handler.Time());
+
+    // After Seed, Protein is finalized — BondCount is valid here.
+    ASSERT_GT(tp.ProteinRef().BondCount(), 0u);
+
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::BondLengthStatsTrajectoryResult::Create(tp)));
+
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+
+    // Frame 0 + 9 more.
+    auto& conf0 = tp.CanonicalConformation();
+    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
+    ASSERT_TRUE(rr0.Ok()) << rr0.error;
+    tp.DispatchCompute(conf0, traj, 0, handler.Time());
+    size_t total = 1;
+    while (total < 10 && handler.ReadNextFrame()) {
+        auto conf = tp.TickConformation(handler.ProteinPositions());
+        auto rr = nmr::OperationRunner::Run(*conf, opts);
+        ASSERT_TRUE(rr.Ok()) << rr.error;
+        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
+        ++total;
+    }
+    tp.FinalizeAllResults(traj);
+
+    ASSERT_TRUE(tp.HasResult<nmr::BondLengthStatsTrajectoryResult>());
+    const auto& bonds =
+        tp.Result<nmr::BondLengthStatsTrajectoryResult>().PerBond();
+    ASSERT_EQ(bonds.size(), tp.ProteinRef().BondCount());
+
+    // Physical plausibility. Every covalent bond length in a protein
+    // is 0.8 < L < 2.5 Å (C-H to S-S), and every bond was observed
+    // every frame.
+    bool any_moved = false;
+    for (const auto& pb : bonds) {
+        EXPECT_EQ(pb.n_frames, total);
+        EXPECT_GT(pb.length_mean, 0.5);
+        EXPECT_LT(pb.length_mean, 3.0);
+        EXPECT_GE(pb.length_std, 0.0);
+        EXPECT_LE(pb.length_min, pb.length_mean);
+        EXPECT_GE(pb.length_max, pb.length_mean);
+        if (pb.length_std > 1e-5) any_moved = true;
+    }
+    EXPECT_TRUE(any_moved)
+        << "expected some bonds to fluctuate in length across frames";
+
+    std::cout << "BondLengthStats: " << bonds.size()
+              << " bonds x " << total << " frames; sample bond 0 mean="
+              << bonds[0].length_mean << "Å std=" << bonds[0].length_std
+              << "Å\n";
+}
+
+
+// ============================================================================
+// BsAnomalousAtomMarkerTrajectoryResult — cross-Result + atom events.
+//
+// Exercises: attach-order dependency on another TrajectoryResult,
+// reading that Result's stashed TrajectoryAtom fields during Compute,
+// pushing to the per-atom events bag with two kinds (HighT0, LowT0)
+// from one emitter.
+// ============================================================================
+
+TEST(GromacsStreaming, BsAnomalousAtomMarkerPushesEvents) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+
+    nmr::RunOptions opts;
+    opts.charge_source = tp.Charges();
+    opts.skip_mopac    = true;
+    opts.skip_coulomb  = true;
+    opts.skip_apbs     = true;
+    opts.skip_dssp     = true;
+
+    nmr::GromacsFrameHandler handler(tp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
+    tp.Seed(handler.ProteinPositions(), handler.Time());
+
+    // Attach order matters: BsWelford first so its fields on
+    // TrajectoryAtom exist when BsAnomalous reads them.
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::BsWelfordTrajectoryResult::Create(tp)));
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::BsAnomalousAtomMarkerTrajectoryResult::Create(tp)));
+
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+
+    // Frame 0 + 60 more. Burn-in of 20 frames per atom means the
+    // first 20 frames accumulate but produce no events.
+    auto& conf0 = tp.CanonicalConformation();
+    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
+    ASSERT_TRUE(rr0.Ok()) << rr0.error;
+    tp.DispatchCompute(conf0, traj, 0, handler.Time());
+    size_t total = 1;
+    while (total < 60 && handler.ReadNextFrame()) {
+        auto conf = tp.TickConformation(handler.ProteinPositions());
+        auto rr = nmr::OperationRunner::Run(*conf, opts);
+        ASSERT_TRUE(rr.Ok()) << rr.error;
+        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
+        ++total;
+    }
+    tp.FinalizeAllResults(traj);
+
+    const auto& marker =
+        tp.Result<nmr::BsAnomalousAtomMarkerTrajectoryResult>();
+    const size_t n_events = marker.TotalEvents();
+
+    // We ran 60 frames, MIN_BURN_IN_FRAMES is 20, so frames 20..59
+    // contribute. Across ~479 atoms × 40 frames × ~4.5% two-tail of
+    // a 2σ threshold, expect roughly hundreds of events. Exact count
+    // depends on motion; assert non-zero and that events fell AFTER
+    // the burn-in window.
+    EXPECT_GT(n_events, 0u)
+        << "expected some anomalies across " << total
+        << " frames with burn-in=20";
+    EXPECT_EQ(n_events, marker.HighEvents() + marker.LowEvents())
+        << "totals should split between High and Low kinds";
+
+    // Inspect atom events bag on one atom that got flagged.
+    size_t inspected = 0;
+    for (size_t i = 0; i < tp.AtomCount() && inspected < 3; ++i) {
+        const auto& bag = tp.AtomAt(i).events;
+        if (bag.Count() == 0) continue;
+        ++inspected;
+
+        // Every event on this atom came from BsAnomalousAtomMarker.
+        for (const auto& rec : bag.All()) {
+            EXPECT_EQ(rec.emitter, std::type_index(
+                typeid(nmr::BsAnomalousAtomMarkerTrajectoryResult)));
+            EXPECT_TRUE(
+                rec.kind == std::type_index(typeid(
+                    nmr::BsAnomalousAtomMarkerTrajectoryResult::
+                        BsAnomalyHighT0)) ||
+                rec.kind == std::type_index(typeid(
+                    nmr::BsAnomalousAtomMarkerTrajectoryResult::
+                        BsAnomalyLowT0)));
+            EXPECT_GE(rec.frame_idx, 20u) << "event before burn-in end";
+            EXPECT_LT(rec.frame_idx, total);
+            EXPECT_TRUE(rec.metadata.count("z_sigma"));
+            EXPECT_TRUE(rec.metadata.count("current_t0"));
+            EXPECT_TRUE(rec.metadata.count("running_mean"));
+            EXPECT_TRUE(rec.metadata.count("running_n"));
+        }
+
+        // The per-atom bag's own affordance queries. Count by kind
+        // should partition the bag.
+        const size_t high = bag.CountByKind<
+            nmr::BsAnomalousAtomMarkerTrajectoryResult::BsAnomalyHighT0>();
+        const size_t low = bag.CountByKind<
+            nmr::BsAnomalousAtomMarkerTrajectoryResult::BsAnomalyLowT0>();
+        EXPECT_EQ(high + low, bag.Count());
+    }
+    EXPECT_GT(inspected, 0u) << "no atom had any events — unexpected";
+
+    std::cout << "BsAnomalousAtomMarker: " << n_events
+              << " total events (" << marker.HighEvents()
+              << " high, " << marker.LowEvents()
+              << " low) across " << total << " frames\n";
+}
+
+
+// ============================================================================
+// BsT0AutocorrelationTrajectoryResult — rolling-window autocorrelation.
+//
+// Exercises: non-trivial circular-buffer internal state, Finalize-
+// heavy normalization, DenseBuffer<double> emission with
+// per-atom × lag shape.
+// ============================================================================
+
+TEST(GromacsStreaming, BsT0AutocorrelationEndToEnd) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+
+    nmr::RunOptions opts;
+    opts.charge_source = tp.Charges();
+    opts.skip_mopac    = true;
+    opts.skip_coulomb  = true;
+    opts.skip_apbs     = true;
+    opts.skip_dssp     = true;
+
+    nmr::GromacsFrameHandler handler(tp);
+    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
+    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
+    tp.Seed(handler.ProteinPositions(), handler.Time());
+
+    ASSERT_TRUE(tp.AttachResult(
+        nmr::BsT0AutocorrelationTrajectoryResult::Create(tp)));
+
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+
+    // Need > a handful of frames to get any lag > 0 populated; run
+    // 30 which gives lag 0..29 (N_LAGS=120 but only the first 30 get
+    // counts).
+    auto& conf0 = tp.CanonicalConformation();
+    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
+    ASSERT_TRUE(rr0.Ok()) << rr0.error;
+    tp.DispatchCompute(conf0, traj, 0, handler.Time());
+    size_t total = 1;
+    while (total < 30 && handler.ReadNextFrame()) {
+        auto conf = tp.TickConformation(handler.ProteinPositions());
+        auto rr = nmr::OperationRunner::Run(*conf, opts);
+        ASSERT_TRUE(rr.Ok()) << rr.error;
+        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
+        ++total;
+    }
+    tp.FinalizeAllResults(traj);
+
+    auto* rho = tp.GetDenseBuffer<double>(std::type_index(
+        typeid(nmr::BsT0AutocorrelationTrajectoryResult)));
+    ASSERT_NE(rho, nullptr);
+    EXPECT_EQ(rho->AtomCount(), tp.AtomCount());
+    EXPECT_EQ(rho->StridePerAtom(),
+        nmr::BsT0AutocorrelationTrajectoryResult::N_LAGS);
+
+    // ρ(0) must be exactly 1 for every atom that has non-zero
+    // variance (the lag-0 autocorrelation is self-correlation). For
+    // atoms with constant T0 (e.g. buried atoms far from rings), the
+    // variance is 0 and ρ(0) falls through to 0 — our Finalize
+    // special-cases that.
+    size_t n_rho0_unit = 0;
+    size_t n_rho0_zero = 0;
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        const double r0 = rho->At(i, 0);
+        if (std::fabs(r0 - 1.0) < 1e-9) ++n_rho0_unit;
+        else if (std::fabs(r0) < 1e-9)  ++n_rho0_zero;
+        else ADD_FAILURE() << "atom " << i << " rho(0)=" << r0
+                           << " — expected 1.0 or 0.0";
+    }
+    EXPECT_GT(n_rho0_unit, 0u)
+        << "expected some atoms to show self-correlation ρ(0)=1";
+
+    // ρ(k) ∈ [−1, +1] at every k and every N — guaranteed by the
+    // biased estimator via Cauchy-Schwarz. This is why we picked
+    // biased over unbiased: the physical-meaning bound holds
+    // exactly at finite sample size. Check every lag, every atom.
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        for (size_t k = 0; k <
+             nmr::BsT0AutocorrelationTrajectoryResult::N_LAGS; ++k) {
+            const double v = rho->At(i, k);
+            EXPECT_GE(v, -1.0 - 1e-9)
+                << "atom " << i << " lag " << k << " out of bounds";
+            EXPECT_LE(v,  1.0 + 1e-9)
+                << "atom " << i << " lag " << k << " out of bounds";
+        }
+    }
+
+    // Lags beyond (total - 1) have zero pairs contributed — ρ(k)
+    // there is 0 by construction.
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        for (size_t k = total; k <
+             nmr::BsT0AutocorrelationTrajectoryResult::N_LAGS; ++k) {
+            EXPECT_NEAR(rho->At(i, k), 0.0, 1e-12)
+                << "atom " << i << " lag " << k
+                << " should be 0 (beyond trajectory length)";
+        }
+    }
+
+    std::cout << "BsT0Autocorrelation: " << tp.AtomCount()
+              << " atoms × " << rho->StridePerAtom()
+              << " lags; " << n_rho0_unit
+              << " atoms with ρ(0)=1, " << n_rho0_zero
+              << " with constant T0 (ρ(0)=0)\n";
 }
 
 

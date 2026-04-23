@@ -91,10 +91,17 @@ void PositionsTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 //   result_name      attr      string
 //   n_frames, n_atoms, finalized   attrs
 //
-// The DenseBuffer<Vec3> is contiguous memory with Vec3 = 3 sequential
-// doubles (Eigen Matrix<double,3,1> with no padding), so the raw
-// buffer IS the (N*T*3) double array in atom-major layout. We write
-// it to HighFive with an explicit 3D DataSpace.
+// Emission discipline: we build an explicit std::vector<double> of
+// shape (N * T * 3) via named component access on each Vec3 — .x(),
+// .y(), .z() — and write that to HighFive with an explicit 3D
+// DataSpace. We do NOT reinterpret_cast the Vec3 buffer to double*:
+// that would depend on Eigen's internal storage layout
+// (Matrix<double,3,1> happens to be 3 contiguous doubles today, but
+// this is not a guarantee the library exposes and isn't a contract
+// we should rely on for correctness). Explicit component access is
+// the same pattern every future DenseBuffer<T> emitter uses —
+// DenseBuffer<Mat3> flattens via m(i,j), DenseBuffer<SphericalTensor>
+// flattens via .T0 / .T1[k] / .T2[k]. No layout assumptions.
 
 void PositionsTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -118,14 +125,23 @@ void PositionsTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
-    // Emit xyz with explicit 3D shape. DenseBuffer<Vec3>::RawData()
-    // returns Vec3* pointing at atom-major contiguous (N*T) Vec3s;
-    // reinterpret as (N*T*3) doubles.
-    const double* raw = reinterpret_cast<const double*>(buffer->RawData());
+    // Build flat (N*T*3) double buffer via explicit component access.
+    // Atom-major layout: [atom_0_frame_0_xyz, atom_0_frame_1_xyz, ...].
+    std::vector<double> flat(N * T * 3);
+    for (std::size_t i = 0; i < N; ++i) {
+        for (std::size_t t = 0; t < T; ++t) {
+            const Vec3& v = buffer->At(i, t);
+            const std::size_t base = (i * T + t) * 3;
+            flat[base + 0] = v.x();
+            flat[base + 1] = v.y();
+            flat[base + 2] = v.z();
+        }
+    }
+
     std::vector<std::size_t> dims = {N, T, std::size_t(3)};
     HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
-    ds.write_raw(raw);
+    ds.write_raw(flat.data());
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);

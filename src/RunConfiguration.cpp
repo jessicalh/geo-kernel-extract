@@ -15,9 +15,25 @@
 #include "SasaResult.h"
 #include "ChargeAssignmentResult.h"
 #include "ApbsFieldResult.h"
+#include "RingSusceptibilityResult.h"
+#include "PiQuadrupoleResult.h"
+#include "DispersionResult.h"
+#include "HBondResult.h"
+#include "EeqResult.h"
+#include "AIMNet2Result.h"
+#include "WaterFieldResult.h"
+#include "HydrationShellResult.h"
+#include "HydrationGeometryResult.h"
+#include "GromacsEnergyResult.h"
+#include "BondedEnergyResult.h"
 
-// First concrete TrajectoryResult.
+// Concrete TrajectoryResults populating the canonical configurations.
 #include "BsWelfordTrajectoryResult.h"
+#include "BsShieldingTimeSeriesTrajectoryResult.h"
+#include "BsAnomalousAtomMarkerTrajectoryResult.h"
+#include "BsT0AutocorrelationTrajectoryResult.h"
+#include "BondLengthStatsTrajectoryResult.h"
+#include "PositionsTimeSeriesTrajectoryResult.h"
 
 #include <typeindex>
 
@@ -72,13 +88,25 @@ RunConfiguration RunConfiguration::ScanForDftPointSet() {
 
 // ── PerFrameExtractionSet ────────────────────────────────────────
 //
-// Full classical stack per frame (analysis mode today). Produces the
-// exhaustive per-frame time-series H5 and the per-atom Welford
-// rollups consumed by calibration.
+// The production canonical configuration for the 685-protein fleet
+// extraction. Full classical stack per frame, MOPAC skipped (sparse-
+// frame only under FullFatFrameExtraction), Coulomb skipped (APBS
+// supersedes — faster and solvated for N > 1000 atoms).
 //
-// Per-frame ConformationResults (required): the full classical set
-// minus MOPAC. MOPAC is optional here — selected frames only, and
-// only under FullFatFrameExtraction.
+// Stride 2 is the production sample: 25 ns trajectories at 1250
+// frames → 625 sampled. The fleet runs ~685 of these; standardising
+// here means the shape downstream consumers (calibration, analysis)
+// see is uniform across proteins.
+//
+// Per-frame ConformationResults: every type OperationRunner actually
+// attaches under these opts, given that trajectory runs always
+// provide opts.solvent (from XTC), opts.frame_energy (from preloaded
+// EDR), opts.bonded_params (from TPR), and the session's AIMNet2
+// model (mandatory per RequiresAimnet2 below). Declaring the full
+// set here lets future TrajectoryResults legitimately depend on any
+// of them via Dependencies(); Phase 4's validation then catches a
+// configuration drift rather than letting a TR fail silently on
+// stale zeros.
 
 RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     RunConfiguration c;
@@ -88,13 +116,22 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.per_frame_opts_.skip_apbs    = false;
     c.per_frame_opts_.skip_coulomb = true;   // APBS supersedes
     c.per_frame_opts_.skip_dssp    = false;
-    // AIMNet2 is MANDATORY per frame — the neural-network charge +
-    // 256-dim embedding calculator that drives AIMNet2-derived
-    // features. Caller must supply the model via
-    // RunContext::SetAimnet2Model; Trajectory::Run Phase 2 throws
-    // otherwise.
+
+    // Production stride: 25 ns × 1250 frames × stride 2 → 625 sampled.
+    c.SetStride(2);
+
+    // AIMNet2 is MANDATORY per frame — neural-network Hirshfeld
+    // charges + 256-dim embedding. Trajectory::Run Phase 4 returns
+    // kConfigRequiresAimnet2 if the caller's Session has no model
+    // loaded (prevents silent-switch-off when a model path is
+    // missing).
     c.SetRequiresAimnet2(true);
 
+    // ── Canonical per-frame ConformationResult set ──
+    // Every type OperationRunner attaches under the opts above. The
+    // order here is not load-bearing (dispatch uses attach order
+    // within OperationRunner itself); declared as a set for
+    // validation.
     c.RequireConformationResult(typeid(GeometryResult));
     c.RequireConformationResult(typeid(SpatialIndexResult));
     c.RequireConformationResult(typeid(EnrichmentResult));
@@ -104,16 +141,54 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(BiotSavartResult));
     c.RequireConformationResult(typeid(HaighMallionResult));
     c.RequireConformationResult(typeid(McConnellResult));
+    c.RequireConformationResult(typeid(RingSusceptibilityResult));
+    c.RequireConformationResult(typeid(PiQuadrupoleResult));
+    c.RequireConformationResult(typeid(DispersionResult));
+    c.RequireConformationResult(typeid(HBondResult));
     c.RequireConformationResult(typeid(SasaResult));
+    c.RequireConformationResult(typeid(EeqResult));
+    c.RequireConformationResult(typeid(AIMNet2Result));
+    c.RequireConformationResult(typeid(WaterFieldResult));
+    c.RequireConformationResult(typeid(HydrationShellResult));
+    c.RequireConformationResult(typeid(HydrationGeometryResult));
+    c.RequireConformationResult(typeid(GromacsEnergyResult));
+    c.RequireConformationResult(typeid(BondedEnergyResult));
 
-    // This session: only BsWelford.
-    // Follow-up sessions populate per Appendix F: positions time
-    // series, all *TimeSeriesTrajectoryResult family, Welford
-    // rollups for MC/HM/RS/PQ/Disp/AIMNet2/SASA/Water/EEQ/DSSP/
-    // bonded energy, etc.
+    // ── Canonical per-trajectory TrajectoryResults ──
+    // The two worked examples currently exercise the two canonical
+    // shapes: BsWelfordTrajectoryResult (always-valid-mid-stream
+    // rollup on a ConformationAtom field) and
+    // PositionsTimeSeriesTrajectoryResult (Finalize-only
+    // DenseBuffer<Vec3> time series with no ConformationResult dep).
+    // The rest of Appendix F lands in follow-up sessions — one
+    // AddTrajectoryResultFactory line per class.
+    // Attach order is dispatch order. BsWelford runs first on each
+    // frame so its accumulator state is fresh when downstream
+    // Results (BsAnomalousAtomMarker) read from tp.AtomAt(i) during
+    // the same frame.
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BsWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return BsShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return BsAnomalousAtomMarkerTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return BsT0AutocorrelationTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return BondLengthStatsTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return PositionsTimeSeriesTrajectoryResult::Create(tp);
         });
 
     return c;

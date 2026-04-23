@@ -161,6 +161,7 @@ Pick the row that matches the task and read in order.
   adding a `*TrajectoryResult` subclass, anything in `src/Trajectory*`
   or `src/Run*`). **MANDATORY** before touching code: read the memory
   entry `feedback_trajectory_scope_philosophy.md`, then
+  `feedback_trajectory_scope_gotchas.md`, then
   `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md`, then the relevant
   WIP spec sections. The trajectory object model is deliberate
   organising principle — buffers from ctor, named operations on

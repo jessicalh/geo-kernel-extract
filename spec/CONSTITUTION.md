@@ -217,10 +217,27 @@ Ring-specific atomic traversal is how ring properties are built.
 - All directions: Vec3 (Eigen::Vector3d), normalised where documented
 - All positions: Vec3, in Angstroms, in the ProteinConformation's coordinate frame
 - All field tensors: Mat3 (Eigen::Matrix3d), in Angstrom-based physical units
-- All spherical decompositions: sphericart components in canonical normalization
-  (set once when a tensor is produced, stored alongside the Mat3)
+- All spherical decompositions: `SphericalTensor { T0, T1[3], T2[5] }` in
+  real-spherical-harmonic isometric normalization, computed by
+  `SphericalTensor::Decompose` in `Types.cpp` (a linear-algebra
+  projection of a Mat3 onto the irreducible 0⊕1⊕2 basis — not
+  a spherical-harmonic evaluation at a point). Both Mat3 and
+  SphericalTensor are stored when a tensor is produced. See the
+  `extern/sphericart` note below.
 - All angles: double, in radians
 - All charges: double, in elementary charge units (e)
+
+### `extern/sphericart` note
+
+`extern/sphericart.hpp` is vendored as a header bundle but not wired
+into the runtime library. Its API computes real spherical harmonics
+`Y^m_l(x, y, z)` at Cartesian points — a different operation from
+our Mat3→SphericalTensor decomposition. If we later need point-wise
+`Y^m_l` values (equivariant features, multipole expansions,
+operations on decomposed tensors), sphericart is already in the tree
+to link. A test (`tests/test_spherical_tensor.cpp`) cross-checks our
+isometric T2 basis against sphericart's `Y^2_m` evaluations at unit
+vectors to pin the normalization relationship.
 
 When an extractor receives a distance, it is Angstroms. When it
 receives a tensor, it is Mat3 AND sphericart components. No conversion
@@ -519,8 +536,14 @@ proceeds to implement result types (Layer 2 and beyond). Specifically:
 
 4. **All spatial queries through nanoflann.** No linear scans over atoms.
 
-5. **All tensor decomposition through sphericart.** One normalization.
-   One library. Both sides.
+5. **One tensor-decomposition convention, one basis, everywhere.**
+   Mat3→SphericalTensor via `SphericalTensor::Decompose` (real
+   spherical harmonic basis, isometric normalization). Both Mat3 and
+   SphericalTensor are stored when a tensor is produced. The basis +
+   normalization are pinned by a cross-check against sphericart (see
+   "Units and Representations" above). sphericart itself stays
+   vendored for future Y^m_l-at-point operations, not for
+   decomposition.
 
 6. **One sign convention (documented above), used everywhere.**
 

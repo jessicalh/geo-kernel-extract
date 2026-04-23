@@ -4,6 +4,15 @@
 // BiotSavart shielding contribution per atom, accumulated across all
 // frames of a trajectory.
 //
+// CROSS-RESULT READ (writer side). These TrajectoryAtom fields,
+// written by this Result, are also read by other TrajectoryResult
+// classes during their own Compute. Renames or semantics changes to
+// the fields below require the reader side to update in lockstep.
+//
+//   bs_t0_mean, bs_t0_m2, bs_n_frames
+//       read by BsAnomalousAtomMarkerTrajectoryResult during Compute
+//       (anomaly z-score against the running distribution).
+//
 // First concrete TrajectoryResult per spec/WIP_OBJECT_MODEL.md §4
 // worked example. Illustrates the always-valid-mid-stream pattern:
 // Compute() updates TrajectoryAtom fields in place each frame; the
