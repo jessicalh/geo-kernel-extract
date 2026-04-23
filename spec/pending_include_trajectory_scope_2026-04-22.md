@@ -1,10 +1,57 @@
-# WIP Object Model — Trajectory Scope (2026-04-22)
+# Pending Include — Trajectory Scope Design Pass (2026-04-22)
 
-**Status:** Work in progress. This is the source of truth for the
-trajectory-scope object model + attending patterns during this design pass.
-When it settles, sections here fold into `OBJECT_MODEL.md` and `PATTERNS.md`;
-this file is then retired. Until then, header notes at the superseded
-sections of those two documents point readers here.
+**Status (as of the landing commit that introduced the worked
+examples):** no longer the source of truth. The trajectory-scope
+object model + patterns have landed in `src/` and been folded, in
+tight form, into `OBJECT_MODEL.md` and `PATTERNS.md`. Canonical
+reading is there.
+
+**Why this file is still here, not deleted:** its contents were the
+joint working space for the design pass, and substantial material
+remains that the control docs don't carry:
+
+- Working-note prose, rejected alternatives (Appendix B —
+  `TrajectoryBond` as first-class store), and design-option
+  discussions (per-bond scope (a) vs (b)) that are useful context
+  for future sessions examining why the landed shape is what it is,
+  not cruft to discard.
+- Appendices still pending user review and implementation:
+  `NmrAtomIdentity` (§2 + Appendix A), the full TrajectoryResult
+  catalog (Appendix F — seven of ~30 implemented so far), the H5
+  metadata schema (§7 — partial), the stage-plan (Appendix H —
+  partial; Stage 1 landed across two sessions).
+- Anti-pattern warnings (§3) that still apply and are referenced
+  from the `feedback_trajectory_scope_gotchas` memory entry.
+
+**What this file is NOT:** the source of truth for anything that's
+already landed. Where content here contradicts the control docs or
+the code (e.g. `SelectionEmittingTrajectoryResult` mixin, `RunContext`
+class, `Compute`'s four-parameter signature), **the code wins**.
+Divergences from the originally-proposed design are documented in
+the commit history for the trajectory-scope landing + exemplars.
+
+**User review needed before further integration.** Folding the
+remaining material (pending appendices, catalog, H5 schema) into the
+control docs requires:
+
+1. User sign-off on the pending designs (NmrAtomIdentity specifically
+   is PROPOSAL-PENDING-USER-REVIEW per §2 + Appendix A).
+2. A judgment call per section on what belongs in the control docs
+   as canonical vs what stays here as working context.
+3. For the catalog, a decision on whether to maintain it in
+   OBJECT_MODEL.md as a living checklist vs leave it here as a
+   reference list.
+
+Contents below are preserved verbatim from the design pass for
+provenance and pending-review consumption. Reading order for a
+future session: control docs first (OBJECT_MODEL.md, PATTERNS.md,
+`feedback_trajectory_scope_philosophy.md`,
+`feedback_trajectory_scope_gotchas.md`), this file only when a
+pending-review section is being activated.
+
+---
+
+## Original WIP content follows
 
 **Purpose.** The library has three model scopes: per-protein (Protein),
 per-conformation (ProteinConformation + ConformationAtom + ConformationResult),

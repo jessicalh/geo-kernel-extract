@@ -157,17 +157,22 @@ Pick the row that matches the task and read in order.
   changes, update `OBJECT_MODEL.md` and `spec/CONSTITUTION.md` in
   the same commit.
 - **Trajectory-scope work** (TrajectoryProtein, TrajectoryAtom,
-  TrajectoryResult, Trajectory::Run, RunConfiguration, RunContext,
-  adding a `*TrajectoryResult` subclass, anything in `src/Trajectory*`
-  or `src/Run*`). **MANDATORY** before touching code: read the memory
-  entry `feedback_trajectory_scope_philosophy.md`, then
-  `feedback_trajectory_scope_gotchas.md`, then
-  `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md`, then the relevant
-  WIP spec sections. The trajectory object model is deliberate
-  organising principle — buffers from ctor, named operations on
-  entities are rooms not wrappers, the per-frame loop is four lines.
-  Multiple sessions have re-derived this through painful tangles;
-  the memory entry exists so you do not.
+  TrajectoryResult, Trajectory::Run, RunConfiguration, adding a
+  `*TrajectoryResult` subclass, anything in `src/Trajectory*` or
+  `src/Run*`). Before touching code, read the memory entries
+  `feedback_trajectory_scope_philosophy.md` and
+  `feedback_trajectory_scope_gotchas.md`, then the trajectory-scope
+  section of `OBJECT_MODEL.md` and `PATTERNS.md` §§13-18. For
+  working-notes and pending appendices (`NmrAtomIdentity`, catalog
+  Appendix F, H5 metadata schema), see
+  `spec/pending_include_trajectory_scope_2026-04-22.md` — not
+  authoritative for anything landed. Historical landing records:
+  `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md` +
+  `TRAJECTORY_REFACTOR_GAPS_2026-04-23.md`. The trajectory object
+  model is deliberate organising principle — buffers from ctor,
+  named operations on entities are rooms not wrappers, the per-frame
+  loop is four lines. Multiple sessions re-derived this through
+  tangles; the memory entries exist so future sessions do not.
 - **Single-conformation viewer feature.** `cd ui/` and read
   `ui/CLAUDE.md`. Do not modify the library in service of a viewer
   feature (see "extractor is not to be modified" below).

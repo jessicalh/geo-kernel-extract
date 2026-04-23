@@ -13,20 +13,17 @@ HydrationShellResult, GromacsEnergyResult, and the extended DsspResult
 (8-class SS, H-bond energies, chi1-4) are now documented in
 "Complete property flow" below.
 
-**GROMACS trajectory classes pending documentation here:** GromacsProtein,
-GromacsProteinAtom, GromacsFrameHandler, SolventEnvironment, and
-GromacsFrameCatalog are implemented, tested, and actively used. Their
-object model documentation will be added to this file as the trajectory
-path stabilises. For now see spec/ENSEMBLE_MODEL.md (design) and
-spec/OUTSTANDING_GROMACS_PATH.md (remaining work).
-
-**NOTE (2026-04-22): trajectory-scope object model being redesigned in
-`spec/WIP_OBJECT_MODEL.md`.** That document is the source of truth for
-the TrajectoryProtein + TrajectoryAtom + TrajectoryResult + Trajectory
-+ NmrAtomIdentity design during this pass. Contents there will fold
-into this file (and into PATTERNS.md) when the design settles; until
-then, trust WIP_OBJECT_MODEL.md over any trajectory-scope guidance
-elsewhere.
+**Trajectory-scope entities** (TrajectoryProtein, TrajectoryAtom,
+TrajectoryResult, Trajectory, Session, RunConfiguration, RecordBag,
+DenseBuffer) are documented below after the ConformationResult section.
+The old Gromacs* classes (GromacsProtein, GromacsProteinAtom,
+GromacsRunContext, AnalysisWriter) are in `learn/bones/` — their
+replacement landed as the trajectory-scope object model. Design
+working-notes and pending appendices (NmrAtomIdentity, full
+TrajectoryResult catalog, H5 metadata schema) are in
+`spec/pending_include_trajectory_scope_2026-04-22.md`; that file is
+not authoritative for anything already landed — the code + the
+trajectory-scope section below win.
 
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
@@ -1377,6 +1374,315 @@ tables above for exactly what each result stores.
 
 ---
 
+## Trajectory-scope entities
+
+Trajectory-scope classes are modular accumulators on top of the
+per-frame ConformationResult pipeline — not replacements for it.
+The static-analysis path (Protein + ProteinConformation +
+ConformationResult + OperationRunner::Run) is unchanged and
+authoritative; trajectory-scope types extend the object model to
+cover multi-frame runs without changing any of the above.
+
+The organizing discipline (typed objects, private constructors,
+one writer per field, dependencies declared via type_index,
+self-serialising results) transfers directly from conformation
+scope. The structural differences are multi-phase compute (per-frame
++ end-of-stream), internal accumulator state on Results rather than
+on the per-atom store, and richer serialisation patterns (dense
+buffers for time series, selection bags for event streams). See
+PATTERNS.md §§13-18 for the disciplines; see below for the concrete
+types.
+
+### TrajectoryProtein
+
+A protein in trajectory context. Wraps a `Protein` (identity +
+topology), adds the per-atom trajectory-scope running buffer and the
+attached TrajectoryResults. Replaces the old `GromacsProtein` role
+per spec/pending_include_trajectory_scope_2026-04-22.md §3.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `protein_` | `unique_ptr<Protein>` | Owned Protein (identity + topology) |
+| `charges_` | `unique_ptr<ChargeSource>` | Owned charge source from TPR |
+| `sys_reader_` | `FullSystemReader` | TPR topology handler, borrowed by GromacsFrameHandler |
+| `bonded_params_` | `BondedParameters` | From TPR parse, consumed via RunOptions.bonded_params per frame |
+| `atoms_` | `vector<TrajectoryAtom>` | Per-atom running buffer, parallel to Protein.atoms |
+| `results_` | `unordered_map<type_index, unique_ptr<TrajectoryResult>>` | Attached Results, singleton-per-type |
+| `results_attach_order_` | `vector<TrajectoryResult*>` | Attach order = dispatch order |
+| `dense_buffers_` | `unordered_map<type_index, unique_ptr<DenseBufferBase>>` | Per-Result-owner dense buffers transferred at Finalize |
+| `finalized_` | `bool` | True after FinalizeAllResults |
+
+Key operations:
+
+- `BuildFromTrajectory(dir)` — parses md.tpr, builds Protein + charges.
+  Does NOT finalize (bond detection needs first-frame geometry).
+- `Seed(positions, time_ps)` — runs `Protein::FinalizeConstruction`,
+  adds canonical conformation via `AddMDFrame`, allocates
+  `TrajectoryAtoms`. Called once by `Trajectory::Run` Phase 2. Must
+  precede TrajectoryResult attach.
+- `CanonicalConformation()` — returns conf0; same object
+  `Protein::Conformation()` returns in static paths. Permanent on
+  `Protein.conformations_` with its ConformationResults.
+- `TickConformation(positions)` — creates an ephemeral
+  `ProteinConformation` pointing at the wrapped Protein for topology;
+  lifetime is the caller's iteration (frames 1..N).
+- `AttachResult(unique_ptr<TrajectoryResult>)` — singleton-per-type
+  check, appends to results_attach_order_. Dependency validation is
+  at Trajectory::Run Phase 4, not here.
+- `Result<T>()` / `HasResult<T>()` / `AllResults()` / `ResultsInAttachOrder()` — typed access.
+- `DispatchCompute(conf, traj, frame_idx, time_ps)` — iterates
+  attached Results, calls each one's Compute.
+- `FinalizeAllResults(traj)` — iterates, calls Finalize, sets
+  finalized_.
+- `AdoptDenseBuffer<T>(buffer, owner_type)` /
+  `GetDenseBuffer<T>(owner_type)` — Result ownership transfer for
+  per-atom × stride dense data.
+- `WriteH5(file)` / `WriteFeatures(dir)` — traverses attached
+  Results, each emits its own group / NPY files.
+
+Identity flows through the wrapped Protein:
+
+```cpp
+const TrajectoryAtom& ta = tp.AtomAt(42);
+const Atom& identity = tp.ProteinRef().AtomAt(42);  // element, bonds, residue
+```
+
+### TrajectoryAtom
+
+Per-atom trajectory-scope data store. Private constructor (only
+`TrajectoryProtein` constructs via friend access); one instance per
+Protein atom, constructed once by `TrajectoryProtein::Seed` and
+never resized.
+
+Three coexisting field shapes (see PATTERNS.md §13):
+
+**Typed accumulator fields.** One writer per field. Current fields
+are BS shielding Welford state written by
+`BsWelfordTrajectoryResult`:
+
+| Field | Type | Writer | Description |
+|-------|------|--------|-------------|
+| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`, `bs_t0_min`, `bs_t0_max` | `double` | BsWelford | Welford state for BS T0 shielding; std is Finalize-only |
+| `bs_t0_min_frame`, `bs_t0_max_frame` | `size_t` | BsWelford | Frame indices of extrema |
+| `bs_n_frames` | `size_t` | BsWelford | Samples accumulated; used as denominator |
+| `bs_t2mag_{mean,m2,std,min,max,min_frame,max_frame}` | `double` / `size_t` | BsWelford | Same for \|T2\| magnitude |
+| `bs_t0_delta_{mean,m2,std,min,max,n}` | `double` / `size_t` | BsWelford | Frame-to-frame T0 delta |
+
+Additional fields are added as `*Welford`-style TrajectoryResults
+land.
+
+**Typed struct vectors for known-shape per-source data.** Aspirational;
+no current fields. Parallel to `ConformationAtom::ring_neighbours` but
+holding trajectory-averaged stats (e.g. future
+`RingNeighbourhoodTrajectoryStats` — per atom, per nearby ring, the
+trajectory-averaged geometry + per-calculator tensor statistics).
+
+**Per-atom event bag.** `RecordBag<AtomEvent> events` — open-shape
+event bag for per-atom events emitted by scan-mode detectors and
+lifetime/transition accumulators (rotamer transitions, H-bond
+form/break, anomaly markers).
+
+No identity duplication: element, residue, bonds, ring membership
+come from the wrapped Protein via `tp.ProteinRef().AtomAt(i)`.
+
+### TrajectoryResult (ABC)
+
+Base class for per-trajectory modular calculators. Parallel to
+`ConformationResult` at conformation scope but with multi-phase
+compute.
+
+Virtual methods:
+
+| Method | Signature | Role |
+|--------|-----------|------|
+| `Name()` | `-> string` | Human-readable name for logs / attach diagnostics |
+| `Dependencies()` | `-> vector<type_index>` | TrajectoryResult OR ConformationResult types that must be attached/running. Validated at Trajectory::Run Phase 4 |
+| `Compute(conf, tp, traj, frame_idx, time_ps)` | `-> void` | Per-frame work. Reads conf and prior TrajectoryAtom state; writes owned fields; pushes to atom events or run-scope selections |
+| `Finalize(tp, traj)` | `-> void` | End-of-stream. Converts accumulator state (M2 → std); transfers DenseBuffer ownership to tp; derives final fields |
+| `WriteFeatures(tp, output_dir)` | `-> int` | Optional. NPY emission |
+| `WriteH5Group(tp, file)` | `-> void` | Optional. H5 group emission |
+
+`Compute` is virtual (dispatched per-frame per-Result); `Name` and
+`Dependencies` are pure virtual; the rest are default-implementable.
+Results construct via static `Create(tp)` factories that return
+unique_ptr; the factory allocates internal per-atom buffers sized
+from `tp.AtomCount()` or similar (PATTERNS.md §15: Seed precedes
+Attach, so factories see a finalized Protein).
+
+### Known TrajectoryResult types (as of landing)
+
+| Type | Scope | Dependencies | Lifecycle | Output |
+|------|-------|--------------|-----------|--------|
+| `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
+| `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `BsAnomalousAtomMarkerTrajectoryResult` | per-atom | `BsWelfordTrajectoryResult`, `BiotSavartResult` | AV | per-atom events bag with kinds `BsAnomalyHighT0`, `BsAnomalyLowT0` |
+| `BsT0AutocorrelationTrajectoryResult` | per-atom × lag | `BiotSavartResult` | FO | `DenseBuffer<double>` + `/trajectory/bs_t0_autocorrelation/` (N, N_LAGS=120) with estimator / mean_convention attrs |
+| `BondLengthStatsTrajectoryResult` | per-bond | (none) | AV | internal `vector<PerBondWelford>` + `/trajectory/bond_length_stats/` |
+| `PositionsTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/positions/` (N, T, 3) |
+| `ChiRotamerSelectionTrajectoryResult` | per-residue (emits) | (none) | AV | `traj.MutableSelections()` push per transition detected |
+
+Lifecycle: **AV** = always-valid mid-stream (Compute updates
+output fields in place each frame); **FO** = Finalize-only (Compute
+appends to internal buffers; output materialises at Finalize).
+
+Additional types are spec'd in
+`spec/pending_include_trajectory_scope_2026-04-22.md` Appendix F;
+they land as the time-series, Welford, and scan-mode families fill in.
+
+### Trajectory
+
+Process entity representing one traversal of an XTC + TPR + EDR
+source. Holds both process-role state (handler, env) during Run and
+record-role state (frame times, frame indices, selection bag, source
+paths) after.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `xtc_path_`, `tpr_path_`, `edr_path_` | `filesystem::path` | Source paths |
+| `edr_frames_` | `vector<GromacsEnergy>` | Preloaded at construction for O(log T) time lookup |
+| `env_` | `TrajectoryEnv` | Single-slot per-frame environment (solvent, current_energy pointer, frame idx, time) — populated by handler / Trajectory::Run each frame |
+| `frame_count_`, `frame_times_`, `frame_indices_` | `size_t` / vectors | Growing record during Run |
+| `selections_` | `RecordBag<SelectionRecord>` | Run-scope event bag; Results push directly |
+| `output_dir_` | `filesystem::path` | Record field for downstream writers |
+| `handler_` | `unique_ptr<GromacsFrameHandler>` | During-Run only |
+| `state_` | `enum State` | Constructed / Running / Complete |
+
+`Run(tp, config, session, extras, output_dir)` drives the traversal
+in 8 named phases:
+
+1. Open handler (mount XTC + build PBC fixer).
+2. Read frame 0 + `tp.Seed` (finalize Protein + create conf0 +
+   init TrajectoryAtoms).
+3. Attach TrajectoryResults from `config.TrajectoryResultFactories()`
+   + caller extras.
+4. Validate dependencies and caller-supplied resources (e.g.
+   `session.Aimnet2Model()` if `config.RequiresAimnet2()`).
+5. Build per-frame `RunOptions` template from config + tp + session.
+6. Frame 0: populate env, run OperationRunner on canonical conf,
+   tp.DispatchCompute, record.
+7. Per-frame loop: skip stride-1, read next, tickify, update env,
+   OperationRunner, tp.DispatchCompute, record.
+8. `tp.FinalizeAllResults(traj)`. Selections were pushed directly
+   during Compute/Finalize by the Results themselves; no collection
+   sweep here.
+
+Returns `Status` (`errors.h`); `kOk` on success.
+
+`WriteH5(file)` emits the `/trajectory/` group with source paths,
+frame metadata, and one selection sub-group per kind present in the
+bag. The per-atom and per-Result outputs come from
+`TrajectoryProtein::WriteH5`.
+
+### Session
+
+Process-wide resources wrapper. Owns the AIMNet2 model lifetime and
+orchestrates `RuntimeEnvironment::Load`, `OperationLog::LoadChannelConfig`,
+and session-start logging.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `aimnet2_model_` | `unique_ptr<AIMNet2Model>` | Loaded once, passed to `Trajectory::Run` via the config's `RequiresAimnet2` flag + session access |
+| `last_error_` | `string` | Error from the most recent failed Load call |
+
+Methods: `LoadFromToml()`, `LoadAimnet2Model(path)`, `Aimnet2Model()`,
+`HasAimnet2Model()`, `LastError()`. Returns `Status` from load
+methods.
+
+### RunConfiguration
+
+Typed description of a trajectory-run shape. Three named static
+factories (matching Use Case E/F shapes + the DFT scan loop):
+
+- **`ScanForDftPointSet()`** — cheap per-frame set (no MOPAC, no APBS,
+  no Coulomb; keep Geometry / SpatialIndex / Enrichment / DSSP / BS /
+  HM / McConnell / SASA). Attaches `BsWelfordTrajectoryResult`
+  (placeholder; scan-mode emitters + DftPoseCoordinator land with the
+  scan family). For choosing DFT pose frames from MD.
+- **`PerFrameExtractionSet()`** — production canonical. Full
+  classical stack every frame, MOPAC skipped (sparse-frame only),
+  Coulomb skipped (APBS supersedes at N > 1000 atoms), AIMNet2
+  required. Stride 2 by default (25 ns × 1250 frames → 625 sampled).
+  Attaches the current exemplar Results (BsWelford, BsShieldingTimeSeries,
+  BsAnomalousAtomMarker, BsT0Autocorrelation, BondLengthStats,
+  PositionsTimeSeries). Expands as the catalog fills.
+- **`FullFatFrameExtraction()`** — PerFrameExtractionSet + MOPAC on
+  a selected frame subset (DFT pose set, μs harvester checkpoints).
+
+Each configuration records: per-frame `RunOptions` base (with skip
+flags), required `ConformationResult` types (for Phase 4 dependency
+validation), `TrajectoryResult` factory list (attach order = dispatch
+order), stride, and a `RequiresAimnet2` flag.
+
+### RecordBag<Record>
+
+Template container for typed event streams. Used at two scopes:
+
+- `RecordBag<SelectionRecord>` on `Trajectory` — run-scope
+  frame-level events (rotamer transitions, pose candidates, RMSD
+  spikes).
+- `RecordBag<AtomEvent>` on each `TrajectoryAtom` — atom-scope
+  events attributed to a specific atom (anomaly flags, H-bond
+  form/break, ring flips).
+
+The record type must expose `kind` (type_index), `frame_idx`
+(size_t), `time_ps` (double) as explicit top-level fields —
+windowed queries are direct reads, not string lookups.
+
+Primitives: `Push`, `All`, `Count`, `Kinds`. Affordance queries:
+`ByKind<T>()`, `ByKindSinceFrame<T>(from)`,
+`ByKindSinceTime<T>(since_ps)`, `MostRecent<T>()`, `CountByKind<T>()`.
+
+```cpp
+struct SelectionRecord {
+    std::type_index kind;
+    std::size_t frame_idx = 0;
+    double time_ps = 0.0;
+    std::string reason;
+    std::map<std::string, std::string> metadata;
+};
+
+struct AtomEvent {
+    std::type_index emitter;         // which Result pushed
+    std::type_index kind;            // emitter-specific discriminator
+    std::size_t frame_idx = 0;
+    double time_ps = 0.0;
+    std::map<std::string, std::string> metadata;
+};
+```
+
+`AtomEvent` carries a separate `emitter` alongside `kind` because
+one emitter typically produces several semantic kinds at atom scope
+(`BsAnomalousAtomMarker` emits both `BsAnomalyHighT0` and
+`BsAnomalyLowT0`).
+
+### DenseBuffer<T>
+
+Template for contiguous per-atom × stride storage of Results' FO
+outputs. Owned by `TrajectoryProtein` after a Result transfers
+ownership at Finalize, keyed by the owning Result's `type_index`.
+Atom-major layout: per-atom slice is contiguous.
+
+Typical payloads and emission shapes:
+
+| T | sizeof(T) | Example Result | H5 shape |
+|---|-----------|----------------|----------|
+| `double` | 8 B | `BsT0Autocorrelation` | `(N, stride)` |
+| `Vec3` | 24 B | `PositionsTimeSeries` | `(N, stride, 3)` |
+| `SphericalTensor` | 72 B | `BsShieldingTimeSeries` | `(N, stride, 9)` |
+| `Mat3` | 72 B | future `*EFGTimeSeries` | `(N, stride, 3, 3)` |
+
+H5 emission builds an explicit flat `vector<double>` via named
+component access — `.x()/.y()/.z()`, `.T0/.T1[k]/.T2[k]`,
+`m(i,j)` — and writes with a typed `DataSpace`. No reinterpret_cast
+on the raw buffer; no assumption about Eigen / struct packing
+layout. Every future `DenseBuffer<T>` emitter follows this pattern.
+
+See PATTERNS.md §§13-18 for the disciplines; for the catalog of
+pending TrajectoryResults + the deferred H5 metadata schema see the
+Extended section at the end of this file.
+
+---
+
 ## GeometryChoice (TBD — aspirational, next after calculator tuning)
 
 Every calculator makes implicit geometric choices: distance cutoffs,
@@ -2034,3 +2340,123 @@ own NPY arrays via WriteFeatures(). ConformationResult::WriteAllFeatures()
 traverses all attached results. There is no centralized
 FeatureExtractionResult — the pattern is simpler and keeps each
 result responsible for its own output.
+
+---
+
+## Extended: Trajectory-scope detail (catalog + pending H5 schema)
+
+Material below is true and planned but digressive for the core
+model section above. Living checklists and pending schemas.
+
+### TrajectoryResult catalog (living)
+
+Grouped by configuration. ✓ = landed; ⏳ = pending. Source of truth
+for the pending rows is
+`spec/pending_include_trajectory_scope_2026-04-22.md` Appendix F.
+
+**`PerFrameExtractionSet` (production canonical):**
+
+| ✓/⏳ | Type | Source ConformationResult | Lifecycle | Emission |
+|-----|------|---------------------------|-----------|----------|
+| ✓ | `PositionsTimeSeriesTrajectoryResult` | (positions) | FO | `DenseBuffer<Vec3>` → `/trajectory/positions/` |
+| ✓ | `BsWelfordTrajectoryResult` | BiotSavart | AV | TrajectoryAtom Welford fields + `/trajectory/bs_welford/` |
+| ✓ | `BsShieldingTimeSeriesTrajectoryResult` | BiotSavart | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/` |
+| ✓ | `BsAnomalousAtomMarkerTrajectoryResult` | BsWelford + BiotSavart | AV | per-atom events bag |
+| ✓ | `BsT0AutocorrelationTrajectoryResult` | BiotSavart | FO | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/` |
+| ✓ | `BondLengthStatsTrajectoryResult` | (positions) | AV | internal per-bond Welford → `/trajectory/bond_length_stats/` |
+| ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
+| ⏳ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` |
+| ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |
+| ⏳ | `McConnellShieldingTimeSeriesTrajectoryResult` | McConnell | FO | `DenseBuffer<SphericalTensor>` |
+| ⏳ | `CoulombFieldTimeSeriesTrajectoryResult` | Coulomb | FO | E-field Vec3 + EFG Mat3 dense |
+| ⏳ | `ApbsFieldTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<Vec3>` + `DenseBuffer<Mat3>` |
+| ⏳ | `WaterEnvironmentTimeSeriesTrajectoryResult` | WaterField | FO | multiple dense buffers |
+| ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | |
+| ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | |
+| ⏳ | `AIMNet2ChargeTimeSeriesTrajectoryResult` | AIMNet2 | FO | per-atom charges over time |
+| ⏳ | `AIMNet2EmbeddingTimeSeriesTrajectoryResult` | AIMNet2 | FO | 256-dim per atom per frame — optional, large |
+| ⏳ | `EeqChargeWelfordTrajectoryResult` | Eeq | AV | |
+| ⏳ | `SasaTimeSeriesTrajectoryResult` | Sasa | FO | |
+| ⏳ | `SasaWelfordTrajectoryResult` | Sasa | AV | |
+| ⏳ | `HBondTimeSeriesTrajectoryResult` | HBond | FO | |
+| ⏳ | `HBondCountWelfordTrajectoryResult` | HBond | AV | |
+| ⏳ | `DihedralTimeSeriesTrajectoryResult` | Dssp | FO | per-residue dihedrals |
+| ⏳ | `DihedralBinTransitionTrajectoryResult` | Dssp | AV | per-residue transition counters |
+| ⏳ | `Dssp8TimeSeriesTrajectoryResult` | Dssp | FO | per-residue SS code + H-bond energies |
+| ⏳ | `Dssp8TransitionTrajectoryResult` | Dssp | AV | per-residue SS transitions |
+| ⏳ | `BondedEnergyTimeSeriesTrajectoryResult` | BondedEnergy | FO | per-atom energy decomposition |
+| ⏳ | `GromacsEnergyTimeSeriesTrajectoryResult` | GromacsEnergy | FO | per-frame aggregate (no atom axis) |
+| ⏳ | `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | PiQuadrupole | FO | |
+| ⏳ | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | RingSusceptibility | FO | |
+| ⏳ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | |
+| ⏳ | `RingNeighbourhoodTrajectoryStats` | multiple ring calculators | FO | rich per-atom-per-ring struct vectors (Pattern A) |
+
+**`ScanForDftPointSet` (scan mode, for DFT pose selection):**
+
+| ✓/⏳ | Type | Lifecycle | Emission |
+|-----|------|-----------|----------|
+| ✓ | `ChiRotamerSelectionTrajectoryResult` | AV | run-scope SelectionBag push per transition |
+| ⏳ | `RmsdTrackingTrajectoryResult` | AV | per-frame RMSD vs reference frame |
+| ⏳ | `RmsdSpikeSelectionTrajectoryResult` | AV | SelectionBag push on threshold crossing |
+| ⏳ | `Dssp8TransitionTrajectoryResult` | AV | (shared with PerFrameExtractionSet) |
+| ⏳ | `DftPoseCoordinatorTrajectoryResult` | FO | reads other emitters' SelectionRecords at Finalize, deduplicates, pushes reduced set back under its own kind |
+
+**`FullFatFrameExtraction` (selected-frame MOPAC):**
+
+| ✓/⏳ | Type | Lifecycle | Emission |
+|-----|------|-----------|----------|
+| ⏳ | `MopacChargeWelfordTrajectoryResult` | AV (sparse) | |
+| ⏳ | `MopacBondOrderWelfordTrajectoryResult` | AV (sparse) | internal per-bond (not TrajectoryBond) |
+| ⏳ | `MopacCoulombShieldingTimeSeriesTrajectoryResult` | FO (sparse) | |
+| ⏳ | `MopacMcConnellShieldingTimeSeriesTrajectoryResult` | FO (sparse) | |
+| ⏳ | `MopacVsFf14SbReconciliationTrajectoryResult` | FO | per-atom \|cos\| of MOPAC-Coulomb T2 vs DFT-delta T2 |
+
+### H5 metadata schema (pending / partial)
+
+The design pass spec'd a full `/metadata/source/` + `/atoms/identity/`
+schema (see pending-include file §7). What's currently emitted:
+
+- Per-Result group attributes: `result_name`, `n_frames`, `finalized`,
+  and Result-specific semantics (e.g. `irrep_layout`, `normalization`,
+  `parity`, `units`, `estimator`, `mean_convention`). These ARE
+  schema contracts — downstream Python consumers parse them verbatim.
+- `/atoms/` group with `element`, `residue_index`, `pdb_atom_name`
+  emitted by `TrajectoryProtein::WriteH5`. Minimal passthrough from
+  `Protein`.
+- `/trajectory/source/` group attributes: `xtc_path`, `tpr_path`,
+  `edr_path`, `configuration`.
+- `/trajectory/frames/` datasets: `time_ps`, `original_index`.
+- `/trajectory/selections/<kind>/` per-kind sub-groups walked via
+  `selections_.Kinds()`.
+
+Pending full schema (awaits `NmrAtomIdentity` landing):
+
+- `/metadata/source/` with protein provenance attrs (pdb_source,
+  deposition_date, crystal_resolution, protonation_tool, force_field,
+  stripped, assumptions, extractor_version, extraction_date) from
+  `ProteinBuildContext`.
+- `/atoms/identity/` with the typed NmrAtomIdentity fields
+  (iupac_atom_position, nmr_class, locant, methyl_group,
+  chi_participation, ring_atom_role, ring_membership, residue_category,
+  hydropathy, etc.) for BMRB / RefDB binding downstream.
+
+Emission is currently sufficient for the Python SDK and viewer to
+consume the implemented handlers' output. The full schema is a
+pre-fleet-activation bundle flagged PROPOSAL-PENDING-USER-REVIEW in
+the pending-include file.
+
+### Deferred work pointers
+
+- `NmrAtomIdentity` on Protein (§2 of pending-include, Appendix A for
+  the enum generator) — the typed identity layer for external-data
+  binding. Proposal-pending user review.
+- Full TrajectoryResult catalog (Appendix F above) — ~25 classes to
+  land, each cloning one of the seven canonical shapes.
+- `TopologyTrajectoryResult` or equivalent — centralized topology
+  (bonds, rings, parent atoms) emission so bond-scope Results stop
+  duplicating topology in their own H5 groups.
+- Byte-parity validation pass against archived pre-refactor output
+  across 10 calibration proteins, gated pre-fleet-activation.
+- NVRTC rpath fix (see memory entry `reference_nvrtc_rpath_fix`)
+  so `TrajectoryRunDrivesLoop` runs without external
+  `LD_LIBRARY_PATH`.

@@ -16,28 +16,17 @@ only means something if you already know what it means.
 
 ---
 
-**Trajectory streaming pattern:** GromacsProtein (adapter +
-accumulators), GromacsFrameHandler (frame lifecycle), free-standing
-conformations, two-pass scan/extract. GromacsRunContext holds
-trajectory-level state (bonded params from TPR, preloaded EDR
-energy frames, cursor position). Owned by GromacsProtein, advanced
-by the frame handler per frame. Fully documented in
-spec/ENSEMBLE_MODEL.md. All patterns below apply to every path
-including trajectory — the streaming classes are infrastructure
-around the same ConformationResult / OperationRunner pipeline.
-
-**NOTE (2026-04-22): trajectory-scope patterns being redesigned in
-`spec/WIP_OBJECT_MODEL.md`.** That document is the source of truth for
-trajectory-scope patterns during this design window —
-`TrajectoryProtein` (replacing `GromacsProtein`'s role),
-`TrajectoryAtom` (replacing `GromacsProteinAtom`'s content),
-`TrajectoryResult` (the modular calculator at trajectory scope,
-parallel to `ConformationResult`), `Trajectory::Run` as orchestrator,
-RunConfiguration as first-class typed object. Patterns there will
-fold into this document when the design settles. Until then, trust
-WIP_OBJECT_MODEL.md over any trajectory-scope guidance elsewhere.
-Conformation-scope patterns below are unchanged and remain
-authoritative.
+**Trajectory-scope patterns are Core Patterns 13-18 below.** All
+conformation-scope patterns (1-12) apply to every path including
+trajectory — the trajectory-scope classes are modular accumulators
+on top of the same ConformationResult / OperationRunner pipeline,
+not replacements for it. For working notes, rejected alternatives,
+and pending appendices from the design pass see
+`spec/pending_include_trajectory_scope_2026-04-22.md`; the canonical
+discipline lives here and in OBJECT_MODEL.md. For cross-cutting
+invariants that code alone cannot convey (CROSS-RESULT READ
+discipline, biased-ACF-as-physics-commitment, fleet lock-in), see
+memory entry `feedback_trajectory_scope_gotchas`.
 
 ## The System in One Paragraph
 
@@ -204,6 +193,127 @@ does not need to know which ring type it is processing.
 double I = ring.Intensity();         // -12.0 for PHE, -5.16 for HIS
 double d = ring.JBLobeOffset();    // 0.64 for PHE, 0.50 for HIS
 ```
+
+### 13. TrajectoryAtom: private construction, three coexisting shapes
+
+Per-atom trajectory-scope data lives in three coexisting shapes on
+`TrajectoryAtom`:
+
+- **Typed accumulator fields** with one writer each (e.g.
+  `bs_t0_mean`, `bs_t0_std`). Current bulk of the struct. Same
+  "one writer per field" discipline as ConformationAtom.
+- **Typed struct vectors for known-shape per-source data**, parallel
+  to `ConformationAtom::ring_neighbours`. Aspirational; no current
+  fields but the shape is reserved (e.g. future
+  `RingNeighbourhoodTrajectoryStats`).
+- **`RecordBag<AtomEvent> events`** — open-shape event bag for
+  scan-mode detectors and lifetime/transition accumulators. Same
+  `RecordBag<Record>` template as the run-scope selection bag.
+
+Private constructor; only `TrajectoryProtein` can create them. No
+identity duplication (flow through `tp.ProteinRef().AtomAt(i)`). No
+`Welford` / `DeltaTracker` / `TransitionCounter` as fields — those are
+accumulator implementation state and live inside the owning
+`TrajectoryResult`, never on the per-atom struct.
+
+### 14. TrajectoryResult: multi-phase modular calculator
+
+Trajectory-scope analog of `ConformationResult`. Base class with four
+virtuals + two optional serialisers:
+
+- `Name()` — for logging and attach diagnostics.
+- `Dependencies()` — type_index of TrajectoryResult OR ConformationResult
+  types that must be attached / run first; validated at Phase 4 of
+  `Trajectory::Run`.
+- `Compute(conf, tp, traj, frame_idx, time_ps)` — called per frame.
+- `Finalize(tp, traj)` — called once after the last frame.
+- `WriteFeatures(tp, output_dir)` — optional NPY emission.
+- `WriteH5Group(tp, file)` — optional H5 group emission.
+
+Internal state (rolling windows, per-atom history buffers,
+intermediate matrices) lives on the Result. Finalized OUTPUT fields
+land on `TrajectoryAtom` (one writer per field) or in a
+`DenseBuffer<T>` transferred to `TrajectoryProtein` at Finalize. Add
+new calculator = write subclass + register factory in the relevant
+`RunConfiguration`.
+
+### 15. Trajectory::Run orchestrates; handler reads; factories see finalized Protein
+
+`Trajectory::Run` is the 8-phase orchestrator: open handler, read
+frame 0, `tp.Seed` (finalize Protein + create conf0 + init
+TrajectoryAtoms), attach TrajectoryResults (factories now see a fully
+finalized Protein with bonds, rings, atoms), validate dependencies
+and resources, build per-frame RunOptions, run frame 0 uniformly with
+frames 1..N, per-frame loop, Finalize. **`tp.Seed` must precede TR
+attach** — factories that size per-bond or per-ring state will
+silently allocate zero otherwise. Factories are not intrinsically
+wrong to look at `BondCount`/`RingCount`; the ordering must support it.
+
+The handler (`GromacsFrameHandler`) is a pure reader: Open mounts XTC
++ MoleculeWholer from TPR, `ReadNextFrame` reads + PBC-fixes + splits
+protein/solvent. No OperationRunner, no env writes, no TrajectoryResult
+dispatch — those are `Trajectory::Run`'s job. Handler name stays
+format-specific (GROMACS-specific); additional trajectory formats get
+sibling reader classes, not virtual-base hierarchy.
+
+### 16. RecordBag<Record> as shared vocabulary at two scopes
+
+One template, two scopes. Run-scope: `Trajectory` owns
+`RecordBag<SelectionRecord>` accessible via `traj.MutableSelections()`
+/ `traj.Selections()`. Atom-scope: each `TrajectoryAtom` owns
+`RecordBag<AtomEvent>` accessible via `ta.events`. Same query grammar
+at both scopes:
+
+- `.Push(record)` — append
+- `.ByKind<T>()` or `.ByKind(type_index)` — discriminator lookup
+- `.ByKindSinceFrame<T>(k)`, `.ByKindSinceTime<T>(t)` — windowed
+- `.MostRecent<T>()`, `.CountByKind<T>()`, `.Kinds()`, `.All()`
+
+Record types carry `kind` (type_index discriminator), `frame_idx`
+(size_t), `time_ps` (double) as explicit top-level fields — not
+nested in metadata — so windowed queries are direct reads. Emitters
+push directly during Compute or Finalize; no mixin, no
+`dynamic_cast` collection sweep. Reducers read via `.ByKind<T>()` at
+Finalize and push their reduced set back under their own kind.
+Writer emits one H5 group per kind present (via `.Kinds()` walk for
+Trajectory's selections; per-atom events are Result-owned).
+
+### 17. CROSS-RESULT READ discipline
+
+A `TrajectoryResult` reading another Result's stashed `TrajectoryAtom`
+fields during Compute is allowed by the open-buffer discipline, not
+the default. Before adding a cross-read, prefer independent
+computation if feasible. When justified, comment at three sites:
+
+1. **Writer side** — in the owning Result's header, a
+   "CROSS-RESULT READ (writer side)" block names the fields and the
+   reader classes.
+2. **Reader side** — in the reading Result's class-level doc, a
+   "CROSS-RESULT READ" block names what it reads, why, what
+   alternative was considered.
+3. **Read-point** — inline "CROSS-RESULT READ" markers at the actual
+   read lines in the .cpp.
+
+`grep "CROSS-RESULT READ"` enumerates every cross-Result dependency.
+Attach order is dispatch order, so a Result depending on another's
+field must list the owning Result in `Dependencies()` — Phase 4
+validates the attach ordering.
+
+### 18. "Goes in as one piece" granularity
+
+Trajectory-scope Results group by what a consumer wants as one
+cohesive readable thing — not by operator, not by source field.
+`BsWelfordTrajectoryResult` bundles Welford + delta tracker on T0 and
+|T2| because the BS rollup IS that bundle. Splitting it into three
+classes (one per operator) or merging it with a neighboring physics
+Result both miss the rule. The same applies to every trajectory-scope
+Result: ask what makes sense as one piece in the output H5 and as one
+unit of reading / debugging / testing.
+
+The principle trades conformation-scope's tighter one-physics-per-class
+discipline for a looser organizational rule that matches how
+trajectory-scope outputs are actually consumed. The looseness is the
+feature.
 
 ---
 

@@ -1,18 +1,17 @@
 # Ensemble Extraction Model
 
-**NOTE (2026-04-22): trajectory-scope object model being redesigned
-in `spec/WIP_OBJECT_MODEL.md`.** That document is the active source of
-truth for the object-model side of this work during the current design
-window — it replaces GromacsProtein's role with `TrajectoryProtein`,
-replaces `GromacsProteinAtom`'s hardcoded Welford bag with
-`TrajectoryAtom` as a running buffer, introduces `TrajectoryResult` as
-a modular calculator parallel to `ConformationResult`, and promotes
-the trajectory traversal itself to a typed `Trajectory` entity with
-`Run(tp, ctx)`. Sections of THIS document that describe the
-object-model shape (`GromacsProtein`, `GromacsProteinAtom`, accumulator
-pattern, two-pass scan/extract ownership) are superseded by the WIP.
-Non-object-model content here — EDR handling, streaming mechanics,
-convergence discussion, test coverage — remains relevant. When the
+**Trajectory-scope object model landed.** The
+`TrajectoryProtein` + `TrajectoryAtom` + `TrajectoryResult` +
+`Trajectory` shape is documented in `OBJECT_MODEL.md`
+("Trajectory-scope entities" section) and `PATTERNS.md` §§13-18;
+the old `GromacsProtein` / `GromacsProteinAtom` / `AnalysisWriter`
+classes are in `learn/bones/`. Sections of THIS document that
+describe the old object-model shape (`GromacsProtein`,
+`GromacsProteinAtom`, two-pass scan/extract ownership) are
+historical. Non-object-model content here — EDR handling, streaming
+mechanics, convergence discussion, test coverage — remains relevant.
+For design working-notes see
+`spec/pending_include_trajectory_scope_2026-04-22.md`. When the
 WIP folds in, this document will be reconciled.
 
 **Status:** IMPLEMENTED and TESTED. Two-pass streaming architecture
