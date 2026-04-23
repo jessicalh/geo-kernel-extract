@@ -11,7 +11,11 @@
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
 #include "GromacsEnsembleLoader.h"
-#include "GromacsProtein.h"
+#include "TrajectoryProtein.h"
+#include "Trajectory.h"
+#include "RunConfiguration.h"
+#include "Session.h"
+#include "errors.h"
 #include "OperationRunner.h"
 #include "ConformationResult.h"
 #include "AIMNet2Result.h"
@@ -19,7 +23,8 @@
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
 #include "GromacsFrameHandler.h"
-#include "AnalysisWriter.h"
+
+#include <highfive/H5File.hpp>
 
 #include <cstdio>
 #include <filesystem>
@@ -28,15 +33,15 @@
 namespace fs = std::filesystem;
 using namespace nmr;
 
-// AIMNet2 model: loaded once in main, shared across all use cases.
-static std::unique_ptr<AIMNet2Model> g_aimnet2_model;
+// Resources that every RunXxx needs live on `Session`, constructed
+// in main and passed by const reference. No global singletons here.
 
 
 // ============================================================================
 // Use case A: bare PDB → protonate → run → write
 // ============================================================================
 
-static int RunPdb(const JobSpec& spec) {
+static int RunPdb(const JobSpec& spec, const Session& session) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "PDB mode: " + spec.pdb_path + " pH=" + std::to_string(spec.pH));
 
@@ -55,7 +60,7 @@ static int RunPdb(const JobSpec& spec) {
     opts.skip_mopac   = spec.skip_mopac;
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
-    opts.aimnet2_model = g_aimnet2_model.get();
+    opts.aimnet2_model = session.Aimnet2Model();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -77,7 +82,7 @@ static int RunPdb(const JobSpec& spec) {
 // Use case A': pre-protonated PDB → run → write
 // ============================================================================
 
-static int RunProtonatedPdb(const JobSpec& spec) {
+static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "protonated-pdb mode: " + spec.pdb_path);
 
@@ -96,7 +101,7 @@ static int RunProtonatedPdb(const JobSpec& spec) {
     opts.skip_mopac   = spec.skip_mopac;
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
-    opts.aimnet2_model = g_aimnet2_model.get();
+    opts.aimnet2_model = session.Aimnet2Model();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -118,7 +123,7 @@ static int RunProtonatedPdb(const JobSpec& spec) {
 // Use case B: ORCA DFT → run → write
 // ============================================================================
 
-static int RunOrca(const JobSpec& spec) {
+static int RunOrca(const JobSpec& spec, const Session& session) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "orca mode: xyz=" + spec.orca_files.xyz_path);
 
@@ -137,7 +142,7 @@ static int RunOrca(const JobSpec& spec) {
     opts.skip_mopac   = spec.skip_mopac;
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
-    opts.aimnet2_model = g_aimnet2_model.get();
+    opts.aimnet2_model = session.Aimnet2Model();
     if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
 
@@ -161,7 +166,7 @@ static int RunOrca(const JobSpec& spec) {
 // Use case C: WT + ALA mutant pair → run both → delta → write
 // ============================================================================
 
-static int RunMutant(const JobSpec& spec) {
+static int RunMutant(const JobSpec& spec, const Session& session) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "mutant mode: wt=" + spec.wt_files.xyz_path +
         " ala=" + spec.ala_files.xyz_path);
@@ -180,7 +185,7 @@ static int RunMutant(const JobSpec& spec) {
     wt_opts.skip_mopac   = spec.skip_mopac;
     wt_opts.skip_apbs    = spec.skip_apbs;
     wt_opts.skip_coulomb = spec.skip_coulomb;
-    wt_opts.aimnet2_model = g_aimnet2_model.get();
+    wt_opts.aimnet2_model = session.Aimnet2Model();
     if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
 
@@ -190,7 +195,7 @@ static int RunMutant(const JobSpec& spec) {
     ala_opts.skip_mopac   = spec.skip_mopac;
     ala_opts.skip_apbs    = spec.skip_apbs;
     ala_opts.skip_coulomb = spec.skip_coulomb;
-    ala_opts.aimnet2_model = g_aimnet2_model.get();
+    ala_opts.aimnet2_model = session.Aimnet2Model();
     if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 
@@ -219,120 +224,55 @@ static int RunMutant(const JobSpec& spec) {
 // ============================================================================
 // Use case D: full-system GROMACS trajectory
 //
-// GromacsProtein: adapter around Protein + accumulators.
-// GromacsFrameHandler: reads frames, runs calculators, feeds accumulators.
-// This function: orchestrates the two-pass process.
+// TrajectoryProtein owns Protein + trajectory-scope model (attached
+// TrajectoryResults, TrajectoryAtoms). Trajectory owns file paths,
+// EDR, and drives the 5-phase Run(). RunConfiguration describes what
+// the run does; RunContext holds the caller's choices.
 //
-// Pass 1 — scan: lightweight calculators on all frames, accumulate
-//          per-atom Welford stats.  No NPY output.
-// Finalize — write atom_catalog.csv, select frames.
-// Pass 2 — extract: full calculators on selected frames, write NPY.
+// This session: single-pass Trajectory::Run with PerFrameExtractionSet.
+// The former two-pass scan+extract pattern comes back when scan-mode
+// TrajectoryResults land and push to traj.MutableSelections() (future
+// session).
 // ============================================================================
 
-static int RunTrajectory(const JobSpec& spec) {
+static int RunTrajectory(const JobSpec& spec, const Session& session) {
     OperationLog::Info(LogFileIO, "nmr_extract",
         "trajectory mode: dir=" + spec.traj_dir);
 
-    // Build adapter (single TPR parse: topology, bonded params, protein, EDR)
-    GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_dir)) {
-        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
+    // ── TrajectoryProtein: TPR → topology + protein + charges ────
+    TrajectoryProtein tp;
+    if (!tp.BuildFromTrajectory(spec.traj_dir)) {
+        fprintf(stderr, "ERROR: %s\n", tp.Error().c_str());
         return 1;
     }
 
-    const auto& ctx = gp.run_context();
+    // ── Trajectory: file paths + EDR preload ─────────────────────
+    Trajectory traj(spec.traj_xtc, spec.traj_tpr,
+                    fs::path(spec.traj_dir) / "md.edr");
 
-    // Canonical fleet scan opts: everything EXCEPT MOPAC and vacuum Coulomb.
-    // APBS, DSSP, AIMNet2 all run every frame for accumulation.
-    // Bonded energy from run context. EDR via context cursor (set by frame handler).
-    // Defined BEFORE Open() so frame 0 uses the same calculator set.
-    RunOptions scan_opts;
-    scan_opts.charge_source = gp.charges();
-    scan_opts.skip_mopac   = true;    // 45s — selected frames only
-    scan_opts.skip_coulomb = true;    // APBS replaces this
-    scan_opts.skip_apbs    = false;   // solvated PB field every frame
-    scan_opts.skip_dssp    = false;   // chi angles, SS, H-bond energies
-    scan_opts.aimnet2_model = g_aimnet2_model.get();  // charges every frame
-    if (ctx.HasBondedParams())
-        scan_opts.bonded_params = &ctx.bonded_params;
+    // ── Run shape: PerFrameExtractionSet; aimnet2 comes from session ─
+    RunConfiguration config = RunConfiguration::PerFrameExtractionSet();
 
-    // Open trajectory — reads first frame with scan_opts, finalizes
-    // protein (bond detection, conformation 0), sets up PBC fix
-    GromacsFrameHandler handler(gp);
-    if (!handler.Open(spec.traj_xtc, spec.traj_tpr, scan_opts)) {
-        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
+    // ── Drive ────────────────────────────────────────────────────
+    const Status s = traj.Run(tp, config, session, /*extras=*/{},
+                              /*output_dir=*/spec.output_dir);
+    if (s != kOk) {
+        fprintf(stderr, "ERROR: Trajectory::Run returned status 0x%x\n", s);
         return 1;
     }
-    fprintf(stderr, "Protein: %zu atoms, %zu bonds, %zu rings\n",
-            gp.protein().AtomCount(), gp.protein().BondCount(),
-            gp.protein().RingCount());
 
-    // ── Pass 1: scan ─────────────────────────────────────────────
-
-    fprintf(stderr, "\n=== Pass 1: scan ===\n");
-    size_t scan_count = 1;  // frame 0 already processed by Open
-    while (handler.Next(scan_opts)) {
-        ++scan_count;
-        if (scan_count % 100 == 0)
-            fprintf(stderr, "  scan %zu frames\n", scan_count);
-    }
-    fprintf(stderr, "  scanned %zu frames total\n", scan_count);
-
-    // ── Finalize: catalog + frame selection ───────────────────────
-
+    // ── Emit output H5 ───────────────────────────────────────────
     fs::create_directories(spec.output_dir);
-    std::string catalog_path = spec.output_dir + "/atom_catalog.csv";
-    gp.WriteCatalog(catalog_path);
-    fprintf(stderr, "\nWrote %s\n", catalog_path.c_str());
-
-    std::string h5_path = spec.output_dir + "/trajectory.h5";
-    gp.WriteH5(h5_path);
-    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms)\n",
-            h5_path.c_str(), gp.StoredFrameCount(), gp.AtomCount());
-
-    auto selected = gp.SelectFrames(200);
-    fprintf(stderr, "Selected %zu frames for extraction\n", selected.size());
-
-    if (selected.empty()) {
-        fprintf(stderr, "Scan complete — no frames selected.\n");
-        return 0;
+    const std::string h5_path = spec.output_dir + "/trajectory.h5";
+    {
+        HighFive::File file(h5_path, HighFive::File::Truncate);
+        traj.WriteH5(file);
+        tp.WriteH5(file);
     }
+    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms, %zu selections)\n",
+            h5_path.c_str(), traj.FrameCount(),
+            tp.AtomCount(), traj.Selections().Count());
 
-    // ── Pass 2: extract selected frames ──────────────────────────
-    // Re-read XTC from start, process only selected frames.
-
-    RunOptions extract_opts;
-    extract_opts.charge_source = gp.charges();
-    extract_opts.skip_mopac   = spec.skip_mopac;
-    extract_opts.skip_apbs    = spec.skip_apbs;
-    extract_opts.skip_coulomb = spec.skip_coulomb;
-    extract_opts.aimnet2_model = g_aimnet2_model.get();
-    if (ctx.HasBondedParams())
-        extract_opts.bonded_params = &ctx.bonded_params;
-    // EDR energy per frame is set by the frame handler from the context cursor.
-
-    if (!handler.Reopen()) {
-        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
-        return 1;
-    }
-
-    std::set<size_t> sel_set(selected.begin(), selected.end());
-    fprintf(stderr, "\n=== Pass 2: extract %zu frames ===\n", selected.size());
-    size_t extracted = 0;
-    for (size_t fi = 1; fi < scan_count; ++fi) {
-        if (sel_set.count(fi)) {
-            fprintf(stderr, "  extract frame %zu (%zu/%zu)\n",
-                    fi, extracted + 1, selected.size());
-            handler.Next(extract_opts, spec.output_dir,
-                         /*accumulate=*/false);
-            ++extracted;
-        } else {
-            handler.Skip();
-        }
-    }
-
-    fprintf(stderr, "\nDone: %zu frames extracted to %s\n",
-            extracted, spec.output_dir.c_str());
     return 0;
 }
 
@@ -340,151 +280,33 @@ static int RunTrajectory(const JobSpec& spec) {
 // ============================================================================
 // Analysis mode: --trajectory --analysis
 //
-// Single pass over the XTC with stride. All calculators run every
-// sampled frame (APBS, AIMNet2 always on). AnalysisWriter buffers
-// per-frame data, writes exhaustive analysis H5 at end.
+// STUBBED 2026-04-23. The prior implementation (AnalysisWriter +
+// strided handler loop + per-frame NPY/PDB snapshots) relied on a
+// parallel output pipeline whose existence undercut the
+// TrajectoryResult pattern — see spec/TRAJECTORY_LANDING_STATE_2026-04-23.md.
+// AnalysisWriter has been moved to learn/bones/.
 //
-// See spec/ANALYSIS_TRAJECTORY_2026-04-14.md for full design.
+// The replacement: analysis-mode H5 becomes a concrete assembly of
+// *TimeSeriesTrajectoryResult classes (one per analysis-H5 group)
+// each owning its own buffers-from-ctor on TrajectoryProtein /
+// TrajectoryAtom / Trajectory, and Trajectory::Run drives the loop.
+// Writing is one phase at end that reads already-populated buffers
+// and emits H5. No parallel harvester, no per-frame NPY write, no
+// special-casing of the analysis path in the driver.
+//
+// Until those TrajectoryResults land, analysis mode returns an
+// explicit not-implemented error rather than doing half the job.
 // ============================================================================
 
 static int RunAnalysis(const JobSpec& spec) {
-    OperationLog::Info(LogFileIO, "nmr_extract",
-        "analysis mode: dir=" + spec.traj_dir);
-
-    // Build adapter (single TPR parse: topology, bonded params, protein, EDR)
-    GromacsProtein gp;
-    if (!gp.BuildFromTrajectory(spec.traj_dir)) {
-        fprintf(stderr, "ERROR: %s\n", gp.error().c_str());
-        return 1;
-    }
-
-    const auto& ctx = gp.run_context();
-
-    // Analysis always runs everything except MOPAC and vacuum Coulomb.
-    // APBS and AIMNet2 are mandatory — no opt-out.
-    // EDR and bonded energy from run context — free data per frame.
-    RunOptions opts;
-    opts.charge_source = gp.charges();
-    opts.skip_mopac   = true;     // too expensive per frame
-    opts.skip_coulomb = true;     // APBS replaces
-    opts.skip_apbs    = false;    // always
-    opts.skip_dssp    = false;    // always
-    opts.aimnet2_model = g_aimnet2_model.get();  // always
-    if (ctx.HasBondedParams())
-        opts.bonded_params = &ctx.bonded_params;
-
-    if (!g_aimnet2_model) {
-        fprintf(stderr, "ERROR: --analysis requires --aimnet2 MODEL\n");
-        return 1;
-    }
-
-    // Open trajectory — first frame finalizes protein
-    GromacsFrameHandler handler(gp);
-    if (!handler.Open(spec.traj_xtc, spec.traj_tpr, opts)) {
-        fprintf(stderr, "ERROR: %s\n", handler.error().c_str());
-        return 1;
-    }
-    fprintf(stderr, "Protein: %zu atoms, %zu bonds, %zu rings\n",
-            gp.protein().AtomCount(), gp.protein().BondCount(),
-            gp.protein().RingCount());
-
-    // Estimate frame count for buffer pre-allocation.
-    // Stride 2: sample every other frame → ~600 of 1250.
-    constexpr size_t STRIDE = 2;
-    const size_t n_atoms = gp.protein().AtomCount();
-
-    AnalysisWriter writer(gp.protein(), gp.protein_id());
-    writer.BeginTrajectory(700, n_atoms, STRIDE);  // slight overestimate
-
-    // Frame 0 already processed by Open — harvest it.
-    // Open runs calculators on conf0 which is in the Protein's vector,
-    // but the handler also holds it as last_conf_ now.
-    {
-        const auto& conf0 = gp.protein().ConformationAt(0);
-        writer.HarvestFrame(conf0, 0, handler.frame_time());
-    }
-
-    fprintf(stderr, "\n=== Analysis: single pass, stride %zu ===\n", STRIDE);
-    size_t total_read = 1;   // frame 0 counted
-    size_t harvested  = 1;   // frame 0 harvested
-    size_t pdbs_written = 0;
-
-    // PDB snapshots at ~1 ns intervals for external geometry validation
-    // (MolProbity). Positions are PBC-fixed by MoleculeWholer — the same
-    // GROMACS do_pbc_mtop that walks the bond graph to make molecules
-    // whole. No temp files; write directly from the live conformation.
-    constexpr double PDB_INTERVAL_PS = 1000.0;  // 1 ns
-    double next_pdb_time = 0.0;  // write frame 0 immediately
-
-    // Write frame 0 PDB + NPY snapshot
-    {
-        fs::create_directories(spec.output_dir);
-        int ns = static_cast<int>(handler.frame_time() / 1000.0 + 0.5);
-        std::string snap_name = gp.protein_id() + "_analysis_" +
-            std::to_string(ns) + "ns";
-        std::string snap_dir = spec.output_dir + "/" + snap_name;
-        fs::create_directories(snap_dir);
-        AnalysisWriter::WritePdb(gp.protein(),
-            gp.protein().ConformationAt(0),
-            snap_dir + "/" + snap_name + ".pdb");
-        ConformationResult::WriteAllFeatures(
-            gp.protein().ConformationAt(0), snap_dir);
-        ++pdbs_written;
-        next_pdb_time = PDB_INTERVAL_PS;
-    }
-
-    while (true) {
-        // Skip (STRIDE - 1) frames
-        bool eof = false;
-        for (size_t s = 0; s < STRIDE - 1; ++s) {
-            if (!handler.Skip()) { eof = true; break; }
-            ++total_read;
-        }
-        if (eof) break;
-
-        // Process the next frame (all calculators, no accumulation)
-        if (!handler.Next(opts, "", /*accumulate=*/false)) break;
-        ++total_read;
-
-        // Harvest from the live conformation — all calculator results
-        // are attached, conformation persists until next Next() or Skip().
-        writer.HarvestFrame(handler.conformation(),
-                            handler.frame_index(),
-                            handler.frame_time());
-        ++harvested;
-
-        // Write PDB + NPY snapshot at ~1 ns intervals
-        if (handler.frame_time() >= next_pdb_time) {
-            int ns = static_cast<int>(handler.frame_time() / 1000.0 + 0.5);
-            std::string snap_name = gp.protein_id() + "_analysis_" +
-                std::to_string(ns) + "ns";
-            std::string snap_dir = spec.output_dir + "/" + snap_name;
-            fs::create_directories(snap_dir);
-            AnalysisWriter::WritePdb(gp.protein(),
-                handler.conformation(),
-                snap_dir + "/" + snap_name + ".pdb");
-            ConformationResult::WriteAllFeatures(
-                handler.conformation(), snap_dir);
-            ++pdbs_written;
-            next_pdb_time = handler.frame_time() + PDB_INTERVAL_PS;
-        }
-
-        if (harvested % 50 == 0)
-            fprintf(stderr, "  harvested %zu frames (%zu read)\n",
-                    harvested, total_read);
-    }
-
-    fprintf(stderr, "  total: %zu frames read, %zu harvested, %zu PDB snapshots\n",
-            total_read, harvested, pdbs_written);
-
-    // Write analysis H5
-    fs::create_directories(spec.output_dir);
-    std::string h5_path = spec.output_dir + "/" + gp.protein_id() + "_analysis.h5";
-    writer.WriteH5(h5_path);
-    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms)\n",
-            h5_path.c_str(), writer.FrameCount(), n_atoms);
-
-    return 0;
+    (void)spec;
+    fprintf(stderr,
+        "ERROR: --trajectory --analysis is temporarily disabled pending\n"
+        "the dissolution of AnalysisWriter into TrajectoryResult classes\n"
+        "with buffers-from-ctor on TrajectoryProtein. See\n"
+        "spec/TRAJECTORY_LANDING_STATE_2026-04-23.md.\n"
+        "Use --trajectory (no --analysis) for the Trajectory::Run path.\n");
+    return 1;
 }
 
 
@@ -493,13 +315,16 @@ static int RunAnalysis(const JobSpec& spec) {
 // ============================================================================
 
 int main(int argc, char* argv[]) {
-    RuntimeEnvironment::Load();
-
-    // Logging: read [logging] from ~/.nmr_tools.toml.
-    // If udp_host + udp_port are set, hot-path logs go over UDP.
-    // If not, falls back to stderr (startup/summary only in practice).
-    OperationLog::LoadChannelConfig();
-    OperationLog::LogSessionStart();
+    // ── Session: one named object that holds process-wide resources ─
+    // Loads RuntimeEnvironment, OperationLog channel config, emits
+    // session-start log line. CalculatorConfig + AIMNet2 model are
+    // loaded below after CLI parse (each depends on spec fields).
+    Session session;
+    if (session.LoadFromToml() != kOk) {
+        fprintf(stderr, "ERROR: session load: %s\n",
+                session.LastError().c_str());
+        return 1;
+    }
 
     auto spec = ParseJobSpec(argc, argv);
 
@@ -536,28 +361,26 @@ int main(int argc, char* argv[]) {
             CalculatorConfig::Load(default_config);
     }
 
-    // AIMNet2 model path: CLI --aimnet2 takes priority; TOML fallback if not set.
+    // AIMNet2 model: CLI --aimnet2 takes priority; TOML fallback.
+    // Session holds the loaded model for the rest of the process.
     if (spec.aimnet2_model_path.empty())
-        spec.aimnet2_model_path = CalculatorConfig::GetString("aimnet2_model_path");
-
-    // Load AIMNet2 model if path is set (CLI or TOML).
-    // Non-silent: if path is specified and load fails, abort.
+        spec.aimnet2_model_path =
+            CalculatorConfig::GetString("aimnet2_model_path");
     if (!spec.aimnet2_model_path.empty()) {
-        g_aimnet2_model = AIMNet2Model::Load(spec.aimnet2_model_path);
-        if (!g_aimnet2_model) {
-            fprintf(stderr, "ERROR: Failed to load AIMNet2 model: %s\n",
-                    spec.aimnet2_model_path.c_str());
+        if (session.LoadAimnet2Model(spec.aimnet2_model_path) != kOk) {
+            fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
             return 1;
         }
     }
 
     switch (spec.mode) {
-        case JobMode::Pdb:           return RunPdb(spec);
-        case JobMode::ProtonatedPdb: return RunProtonatedPdb(spec);
-        case JobMode::Orca:          return RunOrca(spec);
-        case JobMode::Mutant:        return RunMutant(spec);
+        case JobMode::Pdb:           return RunPdb(spec, session);
+        case JobMode::ProtonatedPdb: return RunProtonatedPdb(spec, session);
+        case JobMode::Orca:          return RunOrca(spec, session);
+        case JobMode::Mutant:        return RunMutant(spec, session);
         case JobMode::Trajectory:
-            return spec.analysis ? RunAnalysis(spec) : RunTrajectory(spec);
+            return spec.analysis ? RunAnalysis(spec)
+                                 : RunTrajectory(spec, session);
         case JobMode::None:          return 1;  // unreachable
     }
     return 1;

@@ -87,7 +87,8 @@ public:
         return {};  // reads from file, no conformation dependencies
     }
 
-    // Factory: create from preloaded energy data (from GromacsRunContext).
+    // Factory: create from preloaded energy data (looked up by
+    // Trajectory::EnergyAtTime from the trajectory's preloaded EDR).
     static std::unique_ptr<GromacsEnergyResult> Compute(
         ProteinConformation& conf,
         const GromacsEnergy& energy);

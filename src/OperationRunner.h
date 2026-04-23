@@ -59,9 +59,10 @@ struct RunOptions {
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     AIMNet2Model* aimnet2_model = nullptr;
 
-    // Per-frame energy from GROMACS .edr (preloaded by GromacsRunContext).
+    // Per-frame energy from GROMACS .edr (preloaded by Trajectory).
     // Null = skip GromacsEnergyResult. O(1) per frame.
-    // Set by GromacsFrameHandler from the context cursor after each frame.
+    // Set by GromacsFrameHandler via trajectory->EnergyAtTime() after
+    // each frame.
     const GromacsEnergy* frame_energy = nullptr;
 
     // Explicit solvent: water + ion positions for this frame.
@@ -71,7 +72,7 @@ struct RunOptions {
 
     // Bonded force field parameters from TPR for per-atom energy
     // decomposition. Null = skip BondedEnergyResult.
-    // Owned by GromacsProtein, borrowed here per frame.
+    // Owned by TrajectoryProtein, borrowed here per frame.
     const BondedParameters* bonded_params = nullptr;
 
     // DFT: load ORCA shielding tensors after calculators.

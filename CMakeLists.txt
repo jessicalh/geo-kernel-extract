@@ -193,10 +193,15 @@ add_library(nmr_shielding
     src/OrcaRunLoader.cpp
     src/GromacsEnsembleLoader.cpp
     src/SasaResult.cpp
-    src/GromacsProtein.cpp
+    src/TrajectoryResult.cpp
+    src/TrajectoryProtein.cpp
+    src/Trajectory.cpp
+    src/RunConfiguration.cpp
+    src/Session.cpp
+    src/BsWelfordTrajectoryResult.cpp
+    src/PositionsTimeSeriesTrajectoryResult.cpp
+    src/ChiRotamerSelectionTrajectoryResult.cpp
     src/GromacsFrameHandler.cpp
-    src/AnalysisWriter.cpp
-    src/GromacsFinalResult.cpp
     src/GromacsEnergyResult.cpp
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
@@ -230,7 +235,6 @@ add_library(nmr_shielding
     src/JobSpec.cpp
     src/AIMNet2Result.cpp
     src/BondedEnergyResult.cpp
-    src/GromacsRunContext.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC

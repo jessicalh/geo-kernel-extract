@@ -1,0 +1,17 @@
+# clangd configuration for the src/ translation units.
+#
+# Points clangd at the build tree's compile_commands.json so includes
+# (Eigen, GROMACS, MOPAC, OpenBabel, HighFive, xdrfile) resolve to the
+# same paths CMake uses at build time. Without this, clangd falls back
+# to a bare compile and reports cascading errors on every Eigen-using
+# header (which is effectively every source file in this library).
+#
+# CLAUDE.md rules out a symlink from the project root to
+# build/<preset>/compile_commands.json; this configuration file
+# achieves the same effect declaratively, no symlink.
+#
+# Override via CLANGD_BUILD_DIR env if running against a non-default
+# build layout.
+
+CompileFlags:
+  CompilationDatabase: ../build

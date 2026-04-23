@@ -29,8 +29,9 @@ enum class JobMode {
     Mutant,          // WT + ALA ORCA pair (two roots)
     // Fleet removed 2026-04-12. Pre-extracted PDB pose path superseded by
     // full-system trajectory streaming. Use --trajectory for all GROMACS
-    // ensemble extraction. GromacsProtein::Build(FleetPaths) and
-    // BuildFromGromacs remain in the library for tests.
+    // ensemble extraction. Pose-based loading remains via
+    // GromacsEnsembleLoader::BuildFromGromacs for tests; the trajectory
+    // path goes through TrajectoryProtein.
     Trajectory,      // full-system GROMACS trajectory (TPR + XTC)
     None             // parse failed or --help
 };

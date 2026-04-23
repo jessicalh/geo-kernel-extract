@@ -54,7 +54,8 @@ struct BondedInteraction {
 };
 
 // All bonded interactions for the protein, extracted from TPR once.
-// Stored on GromacsProtein, passed to BondedEnergyResult via RunOptions.
+// Stored on TrajectoryProtein (topology-scope, set at build time),
+// passed to BondedEnergyResult via RunOptions.
 struct BondedParameters {
     std::vector<BondedInteraction> interactions;
 

@@ -1,92 +1,97 @@
 #pragma once
 //
-// GromacsFrameHandler: reads GROMACS trajectory frames one at a time,
-// runs calculators, feeds results into GromacsProtein accumulators.
+// GromacsFrameHandler: XTC/TPR stream reader with PBC fix.
 //
-// Owns: XTC stream, MoleculeWholer (PBC fix).
-// Borrows: GromacsProtein (for accumulation + sys_reader + protein).
+// Pure reader. Open mounts the XTC stream and builds the PBC fixer
+// from the TPR. ReadNextFrame advances one frame — reads raw XTC,
+// applies PBC fix to the protein slice, and splits the full-system
+// coordinates into protein positions + SolventEnvironment. Accessors
+// expose the read state for Trajectory::Run to orchestrate the
+// per-frame pipeline.
 //
-// Frame lifecycle per frame:
-//   1. Read full-system XTC frame (streaming, one at a time)
-//   2. Extract protein float coords, PBC fix via MoleculeWholer
-//   3. Put fixed coords back, split via FullSystemReader
-//   4. Create free-standing ProteinConformation
-//   5. Run calculators via OperationRunner
-//   6. gp.AccumulateFrame(conf, frame_idx)
-//   7. Conformation dies — memory freed
+// Does NOT create ProteinConformations (that's tp.Seed for frame 0
+// and tp.TickConformation for frames 1..N, called by Trajectory::Run).
+// Does NOT run per-frame ConformationResults (that's OperationRunner::
+// Run, called by Trajectory::Run). Does NOT write to Trajectory's env
+// (that's Trajectory::Run populating env from the handler's
+// accessors + the preloaded EDR lookup each frame). Does NOT know
+// about TrajectoryResults.
 //
-// First frame is special: finalizes protein (bond detection) and
-// creates conformation 0 (permanent, lives in Protein's vector).
+// Name stays GROMACS-specific: this is the format-specific reader.
+// Trajectory-scope orchestration lives in Trajectory::Run.
 //
 
-#include "GromacsProtein.h"
-#include "ProteinConformation.h"
-#include "OperationRunner.h"
-#include "xtc_reader.h"
+#include "FullSystemReader.h"
+#include "SolventEnvironment.h"
+#include "Types.h"
 #include "pbc_whole.h"
+#include "xtc_reader.h"
+
+#include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nmr {
 
+class TrajectoryProtein;
+
 class GromacsFrameHandler {
 public:
-    // Construct with the GromacsProtein that accumulates results.
-    explicit GromacsFrameHandler(GromacsProtein& gp);
+    explicit GromacsFrameHandler(TrajectoryProtein& tp);
 
-    // Open trajectory for streaming. Creates MoleculeWholer from TPR.
-    // Reads first frame to finalize protein (bond detection, conformation 0).
-    // Frame 0 runs with the provided opts (same calculator set as all
-    // subsequent frames). Returns false on error (check error()).
-    bool Open(const std::string& xtc_path, const std::string& tpr_path,
-              const RunOptions& opts = RunOptions());
+    // Mount XTC stream + build PBC fixer from TPR. Sanity-checks that
+    // the TPR atom count matches the wrapped Protein's topology. Does
+    // NOT read a frame.
+    bool Open(const std::string& xtc_path, const std::string& tpr_path);
 
-    // Process the next frame: read from XTC, PBC fix, split, create
-    // conformation, run calculators, accumulate. Returns false at EOF.
-    // If output_dir is non-empty, writes NPY to output_dir/frame_NNNN/.
-    // Set accumulate=false in pass 2 to avoid double-counting frames
-    // that were already accumulated during pass 1.
-    bool Next(const RunOptions& opts, const std::string& output_dir = "",
-              bool accumulate = true);
+    // Advance one frame. Reads XTC, applies PBC fix, splits into
+    // protein positions + SolventEnvironment. Populates internal
+    // state readable via accessors. Returns false at EOF.
+    bool ReadNextFrame();
 
-    // Skip one frame without processing. Returns false at EOF.
+    // Advance one frame without extracting. Returns false at EOF.
+    // After Skip, accessors (ProteinPositions/Solvent) return stale
+    // data from the last successful ReadNextFrame — only Index()
+    // updates. Intended for stride-based frame dropping.
     bool Skip();
 
-    // Reopen XTC from the start for pass 2.
+    // Reopen XTC from the start. The next ReadNextFrame reads frame 0.
     bool Reopen();
 
-    // Frame index of the frame most recently processed by Next().
-    size_t frame_index() const { return frame_idx_; }
+    // ── Per-frame accessors (valid after a successful ReadNextFrame) ─
 
-    // Total frames seen after a complete pass.
-    size_t total_frames() const { return total_frames_; }
+    const std::vector<Vec3>& ProteinPositions() const {
+        return protein_positions_;
+    }
+    const SolventEnvironment& Solvent() const { return solvent_; }
 
-    // The most recently processed conformation with all calculator
-    // results attached. Valid after Next() returns true. Invalidated
-    // by the next Next(), Skip(), or Reopen() call.
-    // This is the per-frame work product — the buffer for everything
-    // the calculators computed on this frame.
-    const ProteinConformation& conformation() const { return *last_conf_; }
-    bool has_conformation() const { return last_conf_ != nullptr; }
-    double frame_time() const { return last_frame_time_; }
+    // Position in the XTC of the most recently advanced frame
+    // (counting both ReadNextFrame and Skip). Undefined before any
+    // advance.
+    std::size_t Index() const { return current_index_; }
+
+    // Simulation time of the most recently ReadNextFrame'd frame.
+    double Time() const { return last_frame_time_; }
+
+    bool HasRead() const { return has_read_; }
 
     const std::string& error() const { return error_; }
 
 private:
-    GromacsProtein& gp_;
+    TrajectoryProtein& tp_;
+
     XtcStreamReader reader_;
     std::unique_ptr<MoleculeWholer> wholer_;
-    std::unique_ptr<ProteinConformation> last_conf_;
-    double last_frame_time_ = 0.0;
-    size_t frame_idx_ = 0;
-    size_t total_frames_ = 0;
-    bool first_frame_done_ = false;
-    std::string error_;
 
-    // Process one full-system XTC frame. Common path for first and
-    // subsequent frames.
-    bool ProcessFrame(const XtcFrame& frame, const RunOptions& opts,
-                      const std::string& output_dir, bool accumulate);
+    std::vector<Vec3> protein_positions_;
+    SolventEnvironment solvent_;
+
+    double last_frame_time_ = 0.0;
+    std::size_t current_index_ = 0;   // valid iff has_read_
+    bool has_read_ = false;
+
+    std::string error_;
 };
 
 }  // namespace nmr

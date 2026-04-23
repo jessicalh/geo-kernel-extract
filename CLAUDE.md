@@ -156,6 +156,17 @@ Pick the row that matches the task and read in order.
   in `src/` as a model. Touch `src/` only. If the object model
   changes, update `OBJECT_MODEL.md` and `spec/CONSTITUTION.md` in
   the same commit.
+- **Trajectory-scope work** (TrajectoryProtein, TrajectoryAtom,
+  TrajectoryResult, Trajectory::Run, RunConfiguration, RunContext,
+  adding a `*TrajectoryResult` subclass, anything in `src/Trajectory*`
+  or `src/Run*`). **MANDATORY** before touching code: read the memory
+  entry `feedback_trajectory_scope_philosophy.md`, then
+  `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md`, then the relevant
+  WIP spec sections. The trajectory object model is deliberate
+  organising principle — buffers from ctor, named operations on
+  entities are rooms not wrappers, the per-frame loop is four lines.
+  Multiple sessions have re-derived this through painful tangles;
+  the memory entry exists so you do not.
 - **Single-conformation viewer feature.** `cd ui/` and read
   `ui/CLAUDE.md`. Do not modify the library in service of a viewer
   feature (see "extractor is not to be modified" below).

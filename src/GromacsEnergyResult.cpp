@@ -6,7 +6,7 @@
 namespace nmr {
 
 // ── Compute (preloaded) ─────────────────────────────────────────
-// Data already looked up by GromacsRunContext::EnergyAtTime.
+// Data already looked up by Trajectory::EnergyAtTime.
 
 std::unique_ptr<GromacsEnergyResult> GromacsEnergyResult::Compute(
         ProteinConformation& conf,
