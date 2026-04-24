@@ -12,16 +12,11 @@
 // Every resolved value is logged at Load() time so you can see
 // exactly what the program thinks its environment is.
 //
-// Live surface (2026-04-05):
+// Live surface:
 //   ff14sb_params — BuildFromPdb charge assignment
 //   tmpdir        — temp files for MOPAC work directories
 //
-// MOPAC is linked (libmopac.so), not a binary path. No accessor needed.
-//
-// Removed:
-//   xtb           — replaced by linked libmopac (MopacResult)
-//   propka, pdb2pqr, tleap, kaml, gmx, amberhome, apbs (binary)
-//   These tools exist but are not called from any live code path.
+// MOPAC is linked (libmopac.so), not a binary path.
 //
 
 #include <string>

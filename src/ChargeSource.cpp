@@ -287,9 +287,6 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
 }
 
 
-// StubChargeSource — REMOVED 2026-04-03.
-
-
 // ============================================================================
 // PreloadedChargeSource
 // ============================================================================

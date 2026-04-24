@@ -1,33 +1,12 @@
 #pragma once
 //
 // RunConfiguration: typed description of a trajectory-run shape.
-//
-// Three named configurations as static factories:
-//   ScanForDftPointSet      — cheap per-frame, selection-emitting
-//                              TrajectoryResults for DFT pose choice
-//   PerFrameExtractionSet   — full classical stack every frame, time
-//                              series + Welford rollups for analysis H5
-//   FullFatFrameExtraction  — PerFrameExtractionSet + MOPAC family on
-//                              selected frames (use case D's pass 2)
-//
-// Each configuration encodes:
-//   - per-frame RunOptions for OperationRunner::Run
-//   - TrajectoryResult factory list (attached to TrajectoryProtein
-//     before the loop starts)
-//   - required ConformationResult types (validated against the
-//     RunOptions by Trajectory::Run before the loop starts — a
-//     TrajectoryResult that declares a ConformationResult type in
-//     its Dependencies() must find that type in this set)
-//
-// "What does this run do?" is answered by reading one factory
-// function. Changing a configuration means changing one function.
-// Adding a configuration means writing a new static factory.
-//
-// This session populates only the BsWelfordTrajectoryResult factory
-// in PerFrameExtractionSet (and in ScanForDftPointSet, since BS runs
-// per-frame there too). The other TrajectoryResult factories remain
-// empty placeholders until follow-up sessions migrate their fields.
-// See spec/WIP_OBJECT_MODEL.md §6 + Appendix F.
+// See OBJECT_MODEL.md (trajectory-scope). Three named static
+// factories: ScanForDftPointSet, PerFrameExtractionSet,
+// FullFatFrameExtraction. Each encodes per-frame RunOptions, the
+// TrajectoryResult factory list (attach order = dispatch order),
+// the required ConformationResult types (validated at Trajectory::Run
+// Phase 4), stride, and mandatory session resources.
 //
 
 #include "OperationRunner.h"   // RunOptions
@@ -68,23 +47,14 @@ public:
         return required_conf_result_types_;
     }
 
-    // Caller-supplied runtime resource requirements. True means
-    // Trajectory::Run Phase 2 will throw if the corresponding
-    // pointer in the resolved RunOptions is null. Rationale: these
-    // are MANDATORY per-frame drivers, not optional accelerators —
-    // silently proceeding without them produces a different
-    // extraction, which is worse than stopping. See user feedback
-    // 2026-04-23: AIMNet2 had been silently switched off by a
-    // predecessor when misconfigured; the correct behaviour is to
-    // force the caller to set it up.
+    // If true, Trajectory::Run Phase 4 returns kConfigRequiresAimnet2
+    // when the Session has no AIMNet2 model loaded. Rationale:
+    // silently skipping a mandatory per-frame driver produces a
+    // different extraction, which is worse than stopping.
     bool RequiresAimnet2() const { return requires_aimnet2_; }
     void SetRequiresAimnet2(bool b) { requires_aimnet2_ = b; }
 
-    // Stride: process every N-th frame, Skip() the (N-1) in between.
-    // Stride is a property of the run shape (how you sample), not of
-    // runtime resources or per-frame plumbing — it lives here, beside
-    // the named shape that says "this is what a run of this kind does."
-    // Default 1 = every frame.
+    // Process every N-th frame; Skip() the (N-1) in between. Default 1.
     void SetStride(std::size_t s) { stride_ = (s == 0) ? 1 : s; }
     std::size_t Stride() const { return stride_; }
 

@@ -1,30 +1,14 @@
 #pragma once
 //
 // TrajectoryResult: base class for per-trajectory modular calculators.
-// Parallel to ConformationResult at conformation scope.
+// Parallel to ConformationResult at conformation scope. See
+// OBJECT_MODEL.md (trajectory-scope) and PATTERNS.md §14 for the
+// pattern; see BsWelfordTrajectoryResult for the canonical exemplar.
 //
-// ⚠ ARCHITECTURAL NOTE — READ BEFORE MODIFYING ⚠
-//
-// TrajectoryResult subclasses OWN their per-frame accumulator state.
-// Welford, DeltaTracker, TransitionCounter, rolling windows, FFT
-// buffers — all internal state of the subclass, populated during
-// Compute, dissolved or transferred at Finalize.
-//
-// They do NOT write accumulator state onto TrajectoryAtom. They
-// write finalized OUTPUT fields onto TrajectoryAtom, one writer per
-// field, enforced by singleton-per-type discipline at attach time.
-//
-// If you find yourself writing
-//   struct MyTrajectoryResult { std::vector<Welford> per_atom_; };
-// that is CORRECT (accumulator state owned by the result).
-//
-// If you find yourself writing
-//   struct TrajectoryAtom { Welford bs_T0; /* ... */ };
-// that is WRONG (accumulator state on the per-atom struct). Stop;
-// re-read spec/WIP_OBJECT_MODEL.md §3 anti-patterns.
-//
-// For the full pattern, see spec/WIP_OBJECT_MODEL.md §4 and the
-// worked example BsWelfordTrajectoryResult.
+// Invariant worth stating: accumulator state (Welford, DeltaTracker,
+// rolling window, FFT buffer) lives inside the TR subclass, not on
+// TrajectoryAtom. The TR writes finalized OUTPUT fields onto
+// TrajectoryAtom, one writer per field.
 //
 
 #include <memory>
@@ -51,7 +35,7 @@ public:
     //   - other TrajectoryResult types that must be attached first, AND/OR
     //   - ConformationResult types that must be run per frame (i.e., the
     //     RunConfiguration's per-frame calculator set must include them).
-    // Attach-time check fires if any declared dependency is missing.
+    // Validated at Trajectory::Run Phase 4.
     virtual std::vector<std::type_index> Dependencies() const = 0;
 
     // THE work method. Called once per frame during streaming.

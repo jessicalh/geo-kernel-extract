@@ -179,8 +179,8 @@ public:
     void WriteH5(HighFive::File& file) const;
 
 private:
-    // EDR preload (called from constructor — happens before any
-    // traversal starts so Phase 3 has data).
+    // Called from the constructor so Phases 6 + 7 can call
+    // EnergyAtTime without I/O.
     bool LoadEdr(const std::filesystem::path& edr_path);
 
     enum class State { Constructed, Running, Complete };

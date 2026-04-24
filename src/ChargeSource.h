@@ -159,9 +159,8 @@ private:
 };
 
 
-// StubChargeSource — REMOVED 2026-04-03.
-// Every protein enters the system protonated and charged.
-// There is no fallback to fake charges.
+// No StubChargeSource: every protein enters the system protonated
+// and charged; there is no fallback to fake charges.
 
 
 

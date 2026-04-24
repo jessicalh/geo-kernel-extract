@@ -183,9 +183,6 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
 }
 
 
-// No-arg Compute (stub) removed 2026-04-03.
-
-
 double ChargeAssignmentResult::ChargeAt(size_t atom_index) const {
     return conf_->AtomAt(atom_index).partial_charge;
 }

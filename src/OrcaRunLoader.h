@@ -12,14 +12,12 @@
 //   - tleap artifacts: script, log, amber PDB, inpcrd
 //
 // Two loading paths:
-//   WITH prmtop (all 723 proteins): prmtop provides the protonated atom list
-//     (names, residues, element). XYZ provides positions.
-//     As of 2026-04-02, prmtop regenerated via tLeap ff14SB for the 253
-//     proteins that were previously missing them. All proteins now use
-//     this path.
-//   WITHOUT prmtop (legacy fallback): PDB provides sequence. AminoAcidType
-//     provides the canonical atom list per residue (including H). XYZ
-//     provides positions. Atoms matched by residue structure and element.
+//   WITH prmtop: prmtop provides the protonated atom list (names,
+//     residues, element); XYZ provides positions.
+//   WITHOUT prmtop (legacy fallback): PDB provides sequence;
+//     AminoAcidType provides the canonical atom list per residue
+//     (including H); XYZ provides positions. Atoms matched by
+//     residue structure and element.
 //
 // Both paths produce: a Protein with the full protonated atom list and
 // one conformation with XYZ positions. Charges and NMR tensors attach

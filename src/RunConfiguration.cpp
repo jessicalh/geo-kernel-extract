@@ -42,14 +42,11 @@ namespace nmr {
 
 // ── ScanForDftPointSet ───────────────────────────────────────────
 //
-// Cheap per-frame: no MOPAC, no vacuum Coulomb, no APBS, no AIMNet2.
-// The intended use is rotamer / RMSD / bin-crossing detection to
-// choose frames for FullFatFrameExtraction. BiotSavart runs because
-// ring proximity matters for selection; BsWelford aggregates it.
-//
-// Per-frame ConformationResults that actually run are determined by
-// OperationRunner based on RunOptions — the required set below is a
-// declaration for dependency validation, not a drive list.
+// Cheap per-frame (no MOPAC, APBS, Coulomb, AIMNet2). Intended for
+// rotamer / RMSD / bin-crossing detection to choose frames for
+// FullFatFrameExtraction. The ConformationResults listed below are
+// what OperationRunner attaches under these opts; TRs declaring any
+// of them as Dependencies() must find them here (Phase 4 validation).
 
 RunConfiguration RunConfiguration::ScanForDftPointSet() {
     RunConfiguration c;
@@ -70,13 +67,9 @@ RunConfiguration RunConfiguration::ScanForDftPointSet() {
     c.RequireConformationResult(typeid(BiotSavartResult));
     c.RequireConformationResult(typeid(SasaResult));
 
-    // Attached TrajectoryResults. This session: only BsWelford.
-    // Follow-up sessions populate the rest per Appendix F:
-    //   DihedralBinTransitionTrajectoryResult
-    //   RmsdTrackingTrajectoryResult
-    //   SasaWelfordTrajectoryResult
-    //   ChiRotamerSelectionTrajectoryResult (mixin)
-    //   DftPoseCoordinatorTrajectoryResult
+    // Attached TrajectoryResults: BsWelford. The scan-selection TRs
+    // (ChiRotamerSelection et al.) are a pending-decision item —
+    // see spec/pending_decisions_20260423.md item 2.
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BsWelfordTrajectoryResult::Create(tp);
@@ -88,25 +81,10 @@ RunConfiguration RunConfiguration::ScanForDftPointSet() {
 
 // ── PerFrameExtractionSet ────────────────────────────────────────
 //
-// The production canonical configuration for the 685-protein fleet
-// extraction. Full classical stack per frame, MOPAC skipped (sparse-
-// frame only under FullFatFrameExtraction), Coulomb skipped (APBS
-// supersedes — faster and solvated for N > 1000 atoms).
-//
-// Stride 2 is the production sample: 25 ns trajectories at 1250
-// frames → 625 sampled. The fleet runs ~685 of these; standardising
-// here means the shape downstream consumers (calibration, analysis)
-// see is uniform across proteins.
-//
-// Per-frame ConformationResults: every type OperationRunner actually
-// attaches under these opts, given that trajectory runs always
-// provide opts.solvent (from XTC), opts.frame_energy (from preloaded
-// EDR), opts.bonded_params (from TPR), and the session's AIMNet2
-// model (mandatory per RequiresAimnet2 below). Declaring the full
-// set here lets future TrajectoryResults legitimately depend on any
-// of them via Dependencies(); Phase 4's validation then catches a
-// configuration drift rather than letting a TR fail silently on
-// stale zeros.
+// Production canonical for the 685-protein fleet. Full classical
+// stack + APBS + AIMNet2 every frame. MOPAC skipped (FullFat only);
+// vacuum Coulomb skipped (APBS supersedes at N > 1000 atoms).
+// Stride 2: 25 ns × 1250 frames → 625 sampled.
 
 RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     RunConfiguration c;
@@ -120,18 +98,11 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // Production stride: 25 ns × 1250 frames × stride 2 → 625 sampled.
     c.SetStride(2);
 
-    // AIMNet2 is MANDATORY per frame — neural-network Hirshfeld
-    // charges + 256-dim embedding. Trajectory::Run Phase 4 returns
-    // kConfigRequiresAimnet2 if the caller's Session has no model
-    // loaded (prevents silent-switch-off when a model path is
-    // missing).
+    // Mandatory per frame; Phase 4 returns kConfigRequiresAimnet2
+    // if the Session has no model loaded.
     c.SetRequiresAimnet2(true);
 
-    // ── Canonical per-frame ConformationResult set ──
-    // Every type OperationRunner attaches under the opts above. The
-    // order here is not load-bearing (dispatch uses attach order
-    // within OperationRunner itself); declared as a set for
-    // validation.
+    // Required ConformationResult set for Phase 4 validation.
     c.RequireConformationResult(typeid(GeometryResult));
     c.RequireConformationResult(typeid(SpatialIndexResult));
     c.RequireConformationResult(typeid(EnrichmentResult));
@@ -154,18 +125,9 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
 
-    // ── Canonical per-trajectory TrajectoryResults ──
-    // The two worked examples currently exercise the two canonical
-    // shapes: BsWelfordTrajectoryResult (always-valid-mid-stream
-    // rollup on a ConformationAtom field) and
-    // PositionsTimeSeriesTrajectoryResult (Finalize-only
-    // DenseBuffer<Vec3> time series with no ConformationResult dep).
-    // The rest of Appendix F lands in follow-up sessions — one
-    // AddTrajectoryResultFactory line per class.
-    // Attach order is dispatch order. BsWelford runs first on each
-    // frame so its accumulator state is fresh when downstream
-    // Results (BsAnomalousAtomMarker) read from tp.AtomAt(i) during
-    // the same frame.
+    // Attach order is dispatch order. BsWelford runs first so
+    // downstream TRs that cross-read its fields
+    // (BsAnomalousAtomMarker) see fresh values.
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BsWelfordTrajectoryResult::Create(tp);
@@ -197,28 +159,20 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
 // ── FullFatFrameExtraction ───────────────────────────────────────
 //
-// PerFrameExtractionSet plus MOPAC family on the frames that get run.
-// Framing note (WIP §6): this configuration is meant to run only on a
-// selected-frame subset (DFT pose set or μs harvester checkpoints) —
-// every-frame MOPAC on a 25 ns trajectory is ~15 hours per protein.
-// Selection happens at the caller layer (frame-filter XTC from a
-// ScanForDftPointSet run, or RunContext::SetSelectedFrameIndices in
-// a future iteration).
+// PerFrameExtractionSet with MOPAC enabled. Meant for a selected-frame
+// subset (DFT pose set, harvester checkpoints) — every-frame MOPAC
+// on a 25 ns trajectory is ~15 h/protein. Selected-frame mechanism
+// is a pending-decision item (spec/pending_decisions_20260423.md).
+//
+// MOPAC-family ConformationResult deps (MopacResult,
+// MopacCoulombResult, MopacMcConnellResult) are a pending-decision
+// item — see spec/pending_decisions_20260423.md item 3.
 
 RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     RunConfiguration c = PerFrameExtractionSet();
     c.SetName("FullFatFrameExtraction");
 
     c.per_frame_opts_.skip_mopac = false;
-
-    // MOPAC-family ConformationResult dependencies would be added
-    // here once their types are referenced (MopacResult,
-    // MopacCoulombResult, MopacMcConnellResult). Deferred until the
-    // MOPAC-family TrajectoryResults land in a follow-up session;
-    // including the typeids without attached TrajectoryResults that
-    // need them is harmless (the set just lists more than required).
-
-    // No additional TrajectoryResults in this session.
 
     return c;
 }

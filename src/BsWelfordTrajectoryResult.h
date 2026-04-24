@@ -13,11 +13,10 @@
 //       read by BsAnomalousAtomMarkerTrajectoryResult during Compute
 //       (anomaly z-score against the running distribution).
 //
-// First concrete TrajectoryResult per spec/WIP_OBJECT_MODEL.md §4
-// worked example. Illustrates the always-valid-mid-stream pattern:
-// Compute() updates TrajectoryAtom fields in place each frame; the
-// mean/m2/min/max are valid at any point after Compute; std is
-// finalised at end-of-stream (division by n-1 for unbiased variance).
+// AV-pattern exemplar (see PATTERNS.md §14): Compute() updates
+// TrajectoryAtom fields in place each frame; mean/m2/min/max are
+// valid after any Compute; std is finalised at end-of-stream
+// (division by n-1 for unbiased variance).
 //
 // Source: each frame, after BiotSavartResult::Compute has run on the
 // frame's ProteinConformation, this result reads:

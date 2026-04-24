@@ -3,20 +3,14 @@
 // BondLengthStatsTrajectoryResult: per-bond length mean/std/min/max
 // + frame-to-frame length delta stats, across all frames of a run.
 //
-// Canonical worked example for BOND-SCOPE TrajectoryResults per
-// spec/WIP_OBJECT_MODEL.md §3 option (b): per-bond accumulator state
-// lives INTERNAL TO THE RESULT as `std::vector<PerBondWelford>`, NOT
-// on a first-class TrajectoryBond peer-of-TrajectoryAtom store. The
-// parallel-store pattern (GromacsProtein.bonds_accum_ in the old code)
-// is the anti-pattern this exemplar exists to block. If a future
-// session reaches for a TrajectoryBond on TrajectoryProtein, they
-// should read this file's comment first and then §3.
+// Bond-scope TrajectoryResult. Per-bond accumulator state is
+// INTERNAL TO THIS RESULT as `std::vector<PerBondWelford>`, not a
+// first-class TrajectoryBond peer-of-TrajectoryAtom store.
 //
 // Bonds are identified by index into `tp.ProteinRef().Bonds()`. The
-// Result allocates `per_bond_` sized to `protein.BondCount()` at
-// Create — which is valid because Protein has been finalized by
-// tp.Seed before any TrajectoryResult factory runs (Trajectory::Run
-// Phase 2 Seed precedes Phase 3 attach).
+// Result sizes `per_bond_` from `protein.BondCount()` at Create —
+// valid because Trajectory::Run Phase 2 (Seed) precedes Phase 3
+// (factory invocation), so the Protein is finalised.
 //
 // Emission: /trajectory/bond_length_stats/
 //   length_mean     (B,) float64

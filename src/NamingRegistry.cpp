@@ -151,23 +151,20 @@ void NamingRegistry::InitialiseAtomNameRules() {
     AddAtomNameRule("HG2", "HG3", "*", ToolContext::Charmm, ToolContext::Standard);
 
     // ========================================================================
-    // CHARMM ↔ IUPAC COVERAGE GAPS + ONE WILDCARD BUG
-    // DISCOVERED 2026-04-20, DEFERRED until fleet-wide vetting
+    // CHARMM ↔ IUPAC COVERAGE GAPS + ONE WILDCARD BUG — DEFERRED pending
+    // fleet-wide vetting
     // ========================================================================
     //
     // Context
     // -------
-    // During BMRB/RefDB experimental-shift forensics on the 10-protein
-    // calibration set (h5-reader/notes/nmr_forensics/), a systematic
-    // sweep of /atoms/atom_name against BMRB atom names (IUPAC) surfaced
-    // EIGHT categories of naming divergence. Six are missing translation
-    // rules. One is a library BUG: the wildcard β-methylene rule fires
-    // incorrectly on ALA's 3-H methyl, producing an H5 with duplicate
-    // HB3 labels at every ALA residue.
-    //
-    // All findings come from the same audit pass; activate together
-    // after fleet-wide vetting. Full rationale in
-    // spec/ChangesRequiredBeforeProductionH5Run.md (2026-04-20 section).
+    // A BMRB/RefDB experimental-shift audit on the 10-protein calibration
+    // set (h5-reader/notes/nmr_forensics/) surfaced eight categories of
+    // /atoms/atom_name ↔ BMRB-IUPAC divergence. Six are missing
+    // translation rules; one is a library BUG — the wildcard β-methylene
+    // rule fires on ALA's 3-H methyl, producing duplicate HB3 labels at
+    // every ALA residue. All findings come from the same audit pass;
+    // activate together after fleet-wide vetting. Full rationale in
+    // spec/ChangesRequiredBeforeProductionH5Run.md.
     //
     // Findings
     // --------
@@ -206,15 +203,15 @@ void NamingRegistry::InitialiseAtomNameRules() {
     //
     // Consequence (pre-existing H5 files on the 10-protein set)
     // ---------------------------------------------------------
-    // Every one of the eight categories above surfaces as CHARMM names
-    // (or corrupted-IUPAC for ALA) in the already-generated H5 files
-    // under fleet_calibration-{working,stats,backup}. Regeneration is
-    // not on the table. Downstream consumers that assume uniform IUPAC
-    // (e.g., BMRB/RefDB shift binding against /atoms/atom_name) fail
-    // across all these positions.
+    // All eight categories surface as CHARMM names (or corrupted-IUPAC
+    // for ALA) in the already-generated H5 files under
+    // fleet_calibration-{working,stats,backup}. Regeneration is not on
+    // the table. Downstream consumers assuming uniform IUPAC (e.g.,
+    // BMRB/RefDB shift binding against /atoms/atom_name) fail across
+    // these positions.
     //
-    // For the 10-protein experimental-shifts work (2026-04-20), every
-    // case is handled in-place by two typed Python data constants in
+    // For the 10-protein experimental-shifts work, each case is handled
+    // in-place by two typed Python data constants in
     //     h5-reader/notes/nmr_forensics/pack_experimental_shifts.py
     //
     //   - H5_NAME_FROM_IUPAC       dict lookup (residue, IUPAC) → H5 name
@@ -229,12 +226,12 @@ void NamingRegistry::InitialiseAtomNameRules() {
     //
     // Why these rules are COMMENTED OUT
     // ---------------------------------
-    // The 10-protein probe showed BMRB and RefDB uniform IUPAC conventions
-    // across the 10 with no per-protein drift. But 10 is a small sample.
-    // A fleet of 685 proteins is scheduled to land around 2026-04-27; at
-    // that point we re-run the probe fleet-wide. If the probe confirms
-    // these are the only registry gaps, uncomment the rules below AND
-    // apply the ALA blockers. If additional gaps surface, add them to
+    // The 10-protein probe showed uniform BMRB/RefDB IUPAC conventions
+    // with no per-protein drift, but 10 is a small sample. A fleet-wide
+    // probe against the full 685-protein set is a prerequisite for
+    // activation: if the probe confirms these are the only registry
+    // gaps, uncomment the rules below AND apply the ALA blockers; if
+    // additional gaps surface, add them to
     // spec/ChangesRequiredBeforeProductionH5Run.md first, then activate
     // everything together in one coordinated library update before
     // production extraction.
@@ -247,7 +244,6 @@ void NamingRegistry::InitialiseAtomNameRules() {
     // ----------
     //   spec/ChangesRequiredBeforeProductionH5Run.md    full decision record
     //   h5-reader/notes/nmr_forensics/SUMMARY.md        empirical probe
-    //   memory:project_charmm_iupac_gaps_2026-04-20     session continuity
     //
     // Activation recipe (uncomment all of the below together)
     // -------------------------------------------------------

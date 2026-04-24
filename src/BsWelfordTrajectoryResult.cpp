@@ -62,7 +62,7 @@ BsWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 //
 // Required per-frame precondition: BiotSavartResult must have run on
 // `conf` before this Compute fires. Declared via Dependencies() +
-// validated in Trajectory::Run Phase 2 against the RunConfiguration's
+// validated in Trajectory::Run Phase 4 against the RunConfiguration's
 // required ConformationResult set.
 
 void BsWelfordTrajectoryResult::Compute(

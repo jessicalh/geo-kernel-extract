@@ -216,23 +216,12 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
 }
 
 
-// RunFleet (--fleet mode) removed 2026-04-12.
-// Pre-extracted PDB pose path superseded by full-system trajectory streaming.
-// For GROMACS ensemble extraction use: nmr_extract --trajectory DIR
-
-
 // ============================================================================
 // Use case D: full-system GROMACS trajectory
 //
-// TrajectoryProtein owns Protein + trajectory-scope model (attached
-// TrajectoryResults, TrajectoryAtoms). Trajectory owns file paths,
-// EDR, and drives the 5-phase Run(). RunConfiguration describes what
-// the run does; RunContext holds the caller's choices.
-//
-// This session: single-pass Trajectory::Run with PerFrameExtractionSet.
-// The former two-pass scan+extract pattern comes back when scan-mode
-// TrajectoryResults land and push to traj.MutableSelections() (future
-// session).
+// TrajectoryProtein owns Protein + trajectory-scope model.
+// Trajectory owns file paths + EDR and drives the run.
+// RunConfiguration describes the run shape.
 // ============================================================================
 
 static int RunTrajectory(const JobSpec& spec, const Session& session) {
@@ -280,31 +269,16 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
 // ============================================================================
 // Analysis mode: --trajectory --analysis
 //
-// STUBBED 2026-04-23. The prior implementation (AnalysisWriter +
-// strided handler loop + per-frame NPY/PDB snapshots) relied on a
-// parallel output pipeline whose existence undercut the
-// TrajectoryResult pattern — see spec/TRAJECTORY_LANDING_STATE_2026-04-23.md.
-// AnalysisWriter has been moved to learn/bones/.
-//
-// The replacement: analysis-mode H5 becomes a concrete assembly of
-// *TimeSeriesTrajectoryResult classes (one per analysis-H5 group)
-// each owning its own buffers-from-ctor on TrajectoryProtein /
-// TrajectoryAtom / Trajectory, and Trajectory::Run drives the loop.
-// Writing is one phase at end that reads already-populated buffers
-// and emits H5. No parallel harvester, no per-frame NPY write, no
-// special-casing of the analysis path in the driver.
-//
-// Until those TrajectoryResults land, analysis mode returns an
-// explicit not-implemented error rather than doing half the job.
+// Stubbed pending dissolution of AnalysisWriter into a family of
+// *TimeSeriesTrajectoryResult classes (each owning a DenseBuffer,
+// each writing its own H5 group).
 // ============================================================================
 
 static int RunAnalysis(const JobSpec& spec) {
     (void)spec;
     fprintf(stderr,
-        "ERROR: --trajectory --analysis is temporarily disabled pending\n"
-        "the dissolution of AnalysisWriter into TrajectoryResult classes\n"
-        "with buffers-from-ctor on TrajectoryProtein. See\n"
-        "spec/TRAJECTORY_LANDING_STATE_2026-04-23.md.\n"
+        "ERROR: --trajectory --analysis is disabled pending the\n"
+        "dissolution of AnalysisWriter into per-Result H5 emitters.\n"
         "Use --trajectory (no --analysis) for the Trajectory::Run path.\n");
     return 1;
 }

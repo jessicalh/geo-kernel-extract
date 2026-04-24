@@ -32,8 +32,8 @@ Trajectory::Trajectory(std::filesystem::path xtc_path,
     : xtc_path_(std::move(xtc_path)),
       tpr_path_(std::move(tpr_path)),
       edr_path_(std::move(edr_path)) {
-    // Preload EDR now; available through Phase 3+ for per-frame
-    // energy lookup via EnergyAtTime.
+    // Preload EDR at construction; consumed per-frame in Phases 6 + 7
+    // via EnergyAtTime.
     if (!edr_path_.empty()) {
         if (!LoadEdr(edr_path_)) {
             OperationLog::Warn("Trajectory",

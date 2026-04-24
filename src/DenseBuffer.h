@@ -11,14 +11,8 @@
 // time-series access patterns.
 //
 // Typed with the native C++ type (T = double, Vec3, Mat3,
-// SphericalTensor). These are memory-contiguous structs whose
-// sizeof(T) corresponds to the natural serialisation size; no
-// intermediate flattening to double arrays is needed. H5 emission
-// flattens to trailing dimensions with metadata attributes describing
-// irrep layout (see spec/WIP_OBJECT_MODEL.md Appendix C).
-//
-// For the pattern, see spec/WIP_OBJECT_MODEL.md §4 (dense buffers on
-// TrajectoryProtein) + Appendix C (layout conventions).
+// SphericalTensor). H5 emission flattens via explicit named-component
+// access, not reinterpret_cast on the raw buffer.
 //
 
 #include <cstddef>

@@ -19,10 +19,9 @@ TrajectoryProtein::~TrajectoryProtein() = default;
 // ── BuildFromTrajectory ──────────────────────────────────────────
 //
 // Single TPR parse: atom ranges, bonded parameters, stored topology
-// for BuildProtein. Charges come from the TPR (CHARMM36m convention
-// for the fleet). The protein is not finalized here — FinalizeProtein
-// must be called by the frame handler once first-frame positions are
-// available (bond detection needs geometry).
+// for BuildProtein. Charges come from the TPR. The Protein is not
+// finalized here — Seed does that on the first frame (bond + ring
+// detection needs geometry).
 
 bool TrajectoryProtein::BuildFromTrajectory(const std::string& dir_path) {
     protein_id_ = fs::path(dir_path).filename().string();
@@ -101,10 +100,6 @@ const ProteinConformation& TrajectoryProtein::CanonicalConformation() const {
 
 
 // ── TickConformation ─────────────────────────────────────────────
-//
-// Ephemeral per-frame conformation. Caller owns the returned
-// unique_ptr and releases it at the end of its iteration; the
-// ProteinConformation's ConformationResults die with it.
 
 std::unique_ptr<ProteinConformation>
 TrajectoryProtein::TickConformation(std::vector<Vec3> positions) const {
@@ -115,9 +110,8 @@ TrajectoryProtein::TickConformation(std::vector<Vec3> positions) const {
 
 // ── InitTrajectoryAtoms ──────────────────────────────────────────
 //
-// One TrajectoryAtom per wrapped Protein atom, constructed once and
-// never resized. TrajectoryAtom has a private constructor; friend
-// access lets TrajectoryProtein construct them.
+// TrajectoryAtom has a private constructor; friend access lets
+// TrajectoryProtein construct them.
 
 void TrajectoryProtein::InitTrajectoryAtoms() {
     atoms_.clear();
@@ -131,14 +125,8 @@ void TrajectoryProtein::InitTrajectoryAtoms() {
 
 // ── AttachResult ─────────────────────────────────────────────────
 //
-// Same shape as ProteinConformation::AttachResult: singleton-per-type
-// check; TrajectoryResult-dependency check. ConformationResult-type
-// dependencies (those referring to per-frame calculators that must
-// run on each ProteinConformation) are validated at a different layer
-// — by Trajectory::Run against the RunConfiguration's per-frame
-// calculator set. This method cannot see the RunConfiguration; it
-// only reports which declared dependencies are not met by already-
-// attached TrajectoryResults, leaving the rest for Trajectory::Run.
+// Singleton-per-type check only. Dependency validation is in
+// Trajectory::Run Phase 4 (this method cannot see RunConfiguration).
 
 bool TrajectoryProtein::AttachResult(
         std::unique_ptr<TrajectoryResult> result) {
@@ -166,15 +154,8 @@ bool TrajectoryProtein::AttachResult(
 
 // ── DispatchCompute ──────────────────────────────────────────────
 //
-// The trajectory protein's named per-frame operation: send this
-// frame's state to every attached TrajectoryResult in attach order.
-// Attach order is dispatch order so that a Result which reads
-// another Result's per-atom output (via tp.AtomAt(i) fields) sees
-// values already written earlier in the same frame's iteration.
-//
-// Thread-through of Trajectory is explicit: Results that need
-// run-scope access (env, selections, EDR) receive it as a parameter
-// during the only call where it's meaningful.
+// Attach order is dispatch order: a TR reading another TR's per-atom
+// fields sees values already written earlier in the same frame.
 
 void TrajectoryProtein::DispatchCompute(
         const ProteinConformation& conf,
@@ -198,9 +179,8 @@ void TrajectoryProtein::FinalizeAllResults(Trajectory& traj) {
 
 // ── WriteH5 ──────────────────────────────────────────────────────
 //
-// TrajectoryProtein emits its own metadata (protein identity, atom
-// count) and delegates the field-level output to each attached
-// TrajectoryResult via WriteH5Group. No central column list.
+// File-root attributes + /atoms/ passthrough; each attached TR
+// writes its own group.
 
 void TrajectoryProtein::WriteH5(HighFive::File& file) const {
     if (!protein_) return;
@@ -211,11 +191,9 @@ void TrajectoryProtein::WriteH5(HighFive::File& file) const {
     file.createAttribute("n_atoms", N);
     file.createAttribute("finalized", finalized_);
 
-    // /atoms/identity/ — minimal per-atom identity passthrough from
-    // the wrapped Protein. Per-atom typed identity (NmrAtomIdentity)
-    // is deferred per WIP Appendix H — not yet computed, so we emit
-    // only element + residue_index here. Downstream consumers that
-    // want the richer identity read from /topology/ if present.
+    // /atoms/ — minimal per-atom identity passthrough: element,
+    // residue_index, pdb_atom_name. Richer typed identity
+    // (NmrAtomIdentity) is deferred.
     std::vector<int> elements(N);
     std::vector<size_t> residue_indices(N);
     std::vector<std::string> atom_names(N);

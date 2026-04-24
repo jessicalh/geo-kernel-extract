@@ -40,8 +40,8 @@ public:
         ProteinConformation& conf,
         const std::string& param_file_path);
 
-    // No-arg Compute removed 2026-04-03.
-    // Every protein has real charges. No stub fallback.
+    // No no-arg Compute: every protein enters the system with real
+    // charges; there is no stub fallback.
 
     // Query methods
     double ChargeAt(size_t atom_index) const;
