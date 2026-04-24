@@ -16,7 +16,10 @@ only means something if you already know what it means.
 
 ---
 
-**Trajectory-scope patterns are Core Patterns 13-18 below.** All
+**Trajectory-scope patterns are Core Patterns 13-18 below, with a
+library-reference restatement in the 2026-04-24 addition at the end
+of this file.** The addition reflects current code; where it and
+13-18 disagree, the addition is authoritative. All
 conformation-scope patterns (1-12) apply to every path including
 trajectory — the trajectory-scope classes are modular accumulators
 on top of the same ConformationResult / OperationRunner pipeline,
@@ -1052,3 +1055,215 @@ list of names and a switch statement indexed by position.
 ## This Document Is Living
 
 When something breaks or a new pattern emerges, it goes here.
+
+
+---
+
+# Addition — Trajectory-scope patterns (2026-04-24, library-reference form)
+
+This section is an addition, not a replacement for Core Patterns
+13–18 above. It restates those patterns against the current tree
+(2026-04-24) in library-manual form. Where this addition disagrees
+with 13–18 above, trust this addition as current truth; the
+originals are retained for design history.
+
+## Preamble
+
+Trajectory-scope types are modular accumulators on top of the same
+`ConformationResult` / `OperationRunner::Run` pipeline that patterns
+1–12 describe. Those patterns apply unchanged in the trajectory path.
+The patterns below are specific to what's new at this layer:
+per-frame + end-of-stream compute, accumulator state owned by the
+result, dense buffers transferred at Finalize, bagged event streams
+at two scopes, and the eight-phase `Trajectory::Run`.
+
+---
+
+### 13. TrajectoryAtom: private construction, two shapes of per-atom record
+
+`TrajectoryAtom` has a private constructor. Only `TrajectoryProtein`
+creates them, through `friend` access. One instance per wrapped
+Protein atom, allocated once by `Seed`, never resized. Position and
+identity are NOT on `TrajectoryAtom` — they live on the wrapped
+Protein and on the per-frame `ProteinConformation` respectively.
+Reach through `tp.ProteinRef().AtomAt(i)`.
+
+Per-atom trajectory data lives in two shapes:
+
+- **Event bag** — `RecordBag<AtomEvent> events`. Open-ended per-atom
+  record stream, tagged by `(emitter, kind, frame_idx, time_ps)`.
+  What an emitter puts in the bag is its own choice; later TRs query
+  by kind. `BsAnomalousAtomMarkerTrajectoryResult` pushes to the bag
+  with two kinds, `BsAnomalyHighT0` and `BsAnomalyLowT0`.
+- **Finalized rollup fields** — typed fields with one writer per
+  field, for rolled-up statistics where keeping a record per frame
+  would be wasteful and the finalized rollup is what consumers read.
+  The BS Welford set (`bs_t0_mean`, `bs_t0_std`, `bs_n_frames`,
+  and the `bs_t2mag_*` / `bs_t0_delta_*` kin) is written by
+  `BsWelfordTrajectoryResult`.
+
+Accumulator implementation objects (`Welford`, rolling windows,
+full-history buffers) live inside the owning TR, not on
+`TrajectoryAtom`. The TR updates its internal state each frame and
+writes the finalized rollup onto `TrajectoryAtom` (AV) or transfers
+a `DenseBuffer<T>` to `TrajectoryProtein` at `Finalize` (FO).
+
+### 14. TrajectoryResult: multi-phase modular calculator
+
+`TrajectoryResult` is the ABC for per-trajectory modular calculators.
+`Compute(conf, tp, traj, frame_idx, time_ps)` is called once per
+frame; `Finalize(tp, traj)` is called once after the last frame.
+`Dependencies()` declares TR or ConformationResult type_indices that
+must precede; `Trajectory::Run` Phase 4 validates them. Singleton per
+type per `TrajectoryProtein`.
+
+A TR owns its own internal accumulator state. Output lands on
+`TrajectoryAtom` fields, the per-atom events bag, the run-scope
+selections bag, or a `DenseBuffer<T>` transferred to
+`TrajectoryProtein` at `Finalize`. Two lifecycle shapes appear in the
+landed exemplars:
+
+- **AV (always valid mid-stream).** `Compute` updates the output
+  fields in place each frame; `Finalize` at most converts running
+  variance to standard deviation. Mid-run snapshots of
+  `tp.AtomAt(i)` are meaningful. Exemplified by
+  `BsWelfordTrajectoryResult` (Welford rollup on TrajectoryAtom
+  fields) and `BondLengthStatsTrajectoryResult` (internal per-bond
+  Welford, emitted at Finalize but updated every frame).
+- **FO (Finalize only).** `Compute` appends to an internal buffer;
+  the output materialises at `Finalize`, typically as a
+  `DenseBuffer<T>` transferred to `TrajectoryProtein`. Mid-run
+  snapshots are not meaningful. Exemplified by
+  `PositionsTimeSeriesTrajectoryResult` (raw positions,
+  `DenseBuffer<Vec3>`), `BsShieldingTimeSeriesTrajectoryResult`
+  (tensor time series, `DenseBuffer<SphericalTensor>`), and
+  `BsT0AutocorrelationTrajectoryResult` (full history →
+  biased autocorrelation, `DenseBuffer<double>`).
+
+### 15. Trajectory::Run orchestrates; factories see a finalized Protein; handler reads
+
+`Trajectory::Run` drives the traversal in eight phases (see
+`OBJECT_MODEL.md`). Four invariants are load-bearing:
+
+- **Seed precedes attach.** Phase 2 runs `tp.Seed` before Phase 3
+  iterates TR factories. After Seed, the Protein is finalized (bonds,
+  rings, backbone indices detected from first-frame geometry), so
+  `tp.AtomCount()`, `tp.ProteinRef().BondCount()`, and `RingCount()`
+  return final values. Factories that size per-bond or per-ring
+  internal buffers from those counts see them. Without this ordering
+  they would silently allocate zero.
+- **Attach order is dispatch order.** `TrajectoryProtein` stores
+  attached TRs in `results_attach_order_` and iterates it in
+  `DispatchCompute` each frame. A TR reading another TR's per-atom
+  output during its own `Compute` depends on the writer running
+  earlier in the same frame, which means the writer's factory comes
+  first in the configuration's factory list.
+- **Handler is a pure reader.** `GromacsFrameHandler::Open` mounts
+  the XTC stream and builds the PBC fixer from the TPR;
+  `ReadNextFrame` reads, PBC-fixes, and splits. No OperationRunner
+  invocation, no writes to `traj.env_`, no awareness of TRs.
+  Orchestration lives in `Trajectory::Run`. Additional trajectory
+  formats would be sibling reader classes, not a virtual-base
+  hierarchy.
+- **Env is single-slot.** `traj.env_` holds this-frame `solvent`,
+  `current_energy`, `current_frame_idx`, `current_frame_time`;
+  overwritten each frame. A TR that needs cross-frame environment
+  (running water-dipole statistics, bridging-water histograms)
+  keeps its own per-frame buffer. `env_` is strictly this-frame.
+
+Dependency validation is split across two layers.
+`TrajectoryProtein::AttachResult` does the singleton check only.
+`Trajectory::Run` Phase 4 validates each TR's declared dependencies
+against both the attached TR set and
+`RunConfiguration::RequiredConformationResultTypes()`, because only
+`Trajectory::Run` has both pieces.
+
+### 16. RecordBag<Record>: shared vocabulary at two scopes
+
+One template, two scopes with the same push / query grammar:
+
+- **Run-scope.** `Trajectory::selections_` is
+  `RecordBag<SelectionRecord>`. Run-scope frame-level events
+  (rotamer transition, RMSD spike, DFT pose candidate). Emitters
+  push via `traj.MutableSelections().Push(...)` during their own
+  `Compute` or `Finalize`. Reducer TRs read via `.ByKind<T>()` at
+  `Finalize` and push reduced sets back under their own kind.
+  `Trajectory::WriteH5` walks `selections_.Kinds()` and emits one
+  group per kind.
+- **Atom-scope.** `TrajectoryAtom::events` is `RecordBag<AtomEvent>`.
+  Per-atom events attributed to a specific atom, queried by
+  subsequent TRs at the atom axis with the same grammar.
+
+Record types carry `kind` (`type_index`), `frame_idx`, and `time_ps`
+as explicit top-level fields so windowed queries
+(`ByKindSinceFrame`, `ByKindSinceTime`) are direct reads, not
+metadata lookups. `AtomEvent` carries `emitter` separately from
+`kind`: one emitter typically pushes several kinds (e.g. chi-angle
+detectors emit `Chi1Transition` / `Chi2Transition` / …), queries
+discriminate on `kind`, and `emitter` allows filtering by source
+when a consumer needs it.
+
+### 17. Duplication is preferred over chaining; cross-Result reads have a marker discipline
+
+Duplication is generally preferred over chaining. When two TRs need
+the same running statistic, each should compute it independently
+rather than one cross-reading the other's state. The same principle
+applies at the source level: when a new TR needs machinery similar
+to an existing one, clone the relevant code pattern rather than
+subclassing through it or composing with it. Both conventions keep
+TRs independent, testable in isolation, and safe to delete.
+
+A TR reading another TR's stashed `TrajectoryAtom` fields during its
+own `Compute` is allowed but not default. The cross-read is
+warranted only when duplicating the writer's entire accumulation
+would be wasteful AND the semantic coupling is explicit — the
+reader's whole purpose depends on the specific distribution the
+writer produces.
+
+When warranted, mark the dependency at three sites so
+`grep "CROSS-RESULT READ"` enumerates every cross-TR dependency in
+the tree:
+
+1. **Writer side** — a block in the owning TR's header naming the
+   fields and the reader classes.
+2. **Reader side** — a block in the reading TR's class-level doc
+   naming what it reads, why, and what alternative was considered.
+3. **Read point** — inline `CROSS-RESULT READ` markers in the `.cpp`
+   at the actual read lines.
+
+The reader's `Dependencies()` must list the writer's `type_index`.
+`Trajectory::Run` Phase 4 enforces that the writer is attached first,
+and attach order is dispatch order (pattern 15), so by the time the
+reader runs on each frame the writer has updated its fields.
+
+The landed case is `BsAnomalousAtomMarkerTrajectoryResult`
+cross-reading `BsWelfordTrajectoryResult`'s `bs_t0_mean`,
+`bs_t0_m2`, `bs_n_frames` — the anomaly marker's purpose is to flag
+outliers against that specific running distribution, so computing a
+parallel Welford rollup locally would genuinely duplicate the
+writer's entire state. The three markers are in
+`BsWelfordTrajectoryResult.h`,
+`BsAnomalousAtomMarkerTrajectoryResult.h`, and
+`BsAnomalousAtomMarkerTrajectoryResult.cpp`.
+
+### 18. "Goes in as one piece" granularity
+
+Trajectory-scope Results group by what a consumer wants as one
+cohesive thing in the output — not by operator (mean / std / delta),
+not by source field, not by physics layer.
+
+`BsWelfordTrajectoryResult` bundles Welford + delta tracker on BS T0
+and |T2| because the BS rollup *is* that bundle: a consumer reading
+`/trajectory/bs_welford/` wants all of it together. Splitting into
+three classes (one per operator) loses the cohesion; merging into a
+neighbouring physics Result loses the bundle's meaning.
+
+This is looser than `ConformationResult`'s one-physics-per-class
+discipline (pattern 7). The trade is deliberate: trajectory outputs
+are consumed as thematic H5 groups or NPY blocks, so the organising
+principle is what reads / debugs / tests as one unit. Ask what makes
+sense as one piece in the output, and class granularity follows.
+
+---
+
+END trajectory-scope replacement.

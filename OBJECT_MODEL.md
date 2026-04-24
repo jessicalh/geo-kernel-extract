@@ -1376,6 +1376,13 @@ tables above for exactly what each result stores.
 
 ## Trajectory-scope entities
 
+**Current-truth note:** A library-reference restatement of this
+material appears at the end of this file as
+`# Addition — Trajectory-scope entities (2026-04-24, library-reference form)`.
+The addition reflects the code in the current tree; this section is
+retained for design history. Where the two disagree, the addition is
+authoritative.
+
 Trajectory-scope classes are modular accumulators on top of the
 per-frame ConformationResult pipeline — not replacements for it.
 The static-analysis path (Protein + ProteinConformation +
@@ -1593,9 +1600,10 @@ methods.
 Typed description of a trajectory-run shape. Three named static
 factories (matching Use Case E/F shapes + the DFT scan loop):
 
-- **`ScanForDftPointSet()`** — cheap per-frame set (no MOPAC, no APBS,
-  no Coulomb; keep Geometry / SpatialIndex / Enrichment / DSSP / BS /
-  HM / McConnell / SASA). Attaches `BsWelfordTrajectoryResult`
+- **`ScanForDftPointSet()`** — *Slated for removal; a later doc pass
+  will handle the replacement.* Cheap per-frame set (no MOPAC, no
+  APBS, no Coulomb; Geometry / SpatialIndex / Enrichment / DSSP /
+  BiotSavart / SASA). Attaches `BsWelfordTrajectoryResult`
   (placeholder; scan-mode emitters + DftPoseCoordinator land with the
   scan family). For choosing DFT pose frames from MD.
 - **`PerFrameExtractionSet()`** — production canonical. Full
@@ -2391,7 +2399,8 @@ for the pending rows is
 | ⏳ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | |
 | ⏳ | `RingNeighbourhoodTrajectoryStats` | multiple ring calculators | FO | rich per-atom-per-ring struct vectors (Pattern A) |
 
-**`ScanForDftPointSet` (scan mode, for DFT pose selection):**
+**`ScanForDftPointSet` (scan mode, for DFT pose selection):** *Slated
+for removal; a later doc pass will handle the replacement.*
 
 | ✓/⏳ | Type | Lifecycle | Emission |
 |-----|------|-----------|----------|
@@ -2460,3 +2469,535 @@ the pending-include file.
 - NVRTC rpath fix (see memory entry `reference_nvrtc_rpath_fix`)
   so `TrajectoryRunDrivesLoop` runs without external
   `LD_LIBRARY_PATH`.
+
+
+---
+
+# Addition — Trajectory-scope entities (2026-04-24, library-reference form)
+
+This section is an addition, not a replacement for the earlier
+`## Trajectory-scope entities` and `## Extended: Trajectory-scope
+detail` sections above. It describes the trajectory-scope object
+model against the current tree (2026-04-24) in library-manual
+form. Where this section disagrees with the earlier sections, trust
+this section as current truth; the earlier sections are retained for
+design history. Known trajectory-handling errors in the earlier
+sections are flagged separately for review.
+
+## Scope
+
+Trajectory-scope classes are modular accumulators built on top of the
+per-frame `ConformationResult` pipeline. The static-analysis path
+(`Protein` → `ProteinConformation` → `ConformationResult` →
+`OperationRunner::Run`) is unchanged and authoritative.
+
+- `Protein` — the invariant protein.
+- `ProteinConformation` — the recorded and calculated geometry of that
+  protein (positions recorded; ring geometries, bond geometries,
+  spatial indices, `ConformationResult`s, `ConformationAtom` fields
+  all calculated from the positions).
+- `TrajectoryProtein` — the concept of a protein in the context of a
+  trajectory. Contains the invariant `Protein`, basic geometric
+  properties calculated on conformation 0, the per-atom `TrajectoryAtom`
+  buffer holding the geometric record over time, and the attached
+  `TrajectoryResult`s holding the kernel record over time.
+- `Trajectory` — the process that drives one traversal of a source
+  (XTC + TPR + EDR). Process during `Run`; record after (frame times,
+  frame indices, run-scope selection stream, last-frame env).
+
+---
+
+## TrajectoryProtein
+
+Wraps a `Protein`, seats conformation 0 on it, allocates and owns the
+parallel `TrajectoryAtom` vector, and holds the attached
+`TrajectoryResult`s and any `DenseBuffer<T>`s they transfer at
+`Finalize`. Non-copyable.
+
+### Fields
+
+| Field                   | Type                                                      | Description                                       |
+|-------------------------|-----------------------------------------------------------|---------------------------------------------------|
+| `protein_`              | `unique_ptr<Protein>`                                     | Wrapped invariant protein                         |
+| `charges_`              | `unique_ptr<ChargeSource>`                                | TPR-derived charge source                         |
+| `sys_reader_`           | `FullSystemReader`                                        | Topology + frame-split helper, borrowed by handler|
+| `bonded_params_`        | `BondedParameters`                                        | Force-field bonded terms from TPR                 |
+| `atoms_`                | `vector<TrajectoryAtom>`                                  | Per-atom store, parallel to `Protein.Atoms()`     |
+| `results_`              | `unordered_map<type_index, unique_ptr<TrajectoryResult>>` | One TR per type                                   |
+| `results_attach_order_` | `vector<TrajectoryResult*>`                               | Attach order = dispatch order                     |
+| `dense_buffers_`        | `unordered_map<type_index, unique_ptr<DenseBufferBase>>`  | Keyed by owning TR's type                         |
+| `finalized_`            | `bool`                                                    | Set by `FinalizeAllResults`                       |
+
+### Build and seed
+
+| Method                                       | Role                                                                                   |
+|----------------------------------------------|----------------------------------------------------------------------------------------|
+| `BuildFromTrajectory(dir_path)`              | Parse `dir_path/md.tpr`; build Protein + charges + bonded params. Does not seat conf0. |
+| `Seed(first_frame_positions, time_ps)`       | `Protein::FinalizeConstruction` (bonds + rings), seat conf0 via `AddMDFrame`, allocate `TrajectoryAtom`s. |
+| `Error()`                                    | Last-error string from `BuildFromTrajectory`.                                          |
+
+### Conformation access
+
+| Method                                       | Role                                                                     |
+|----------------------------------------------|--------------------------------------------------------------------------|
+| `CanonicalConformation()`                    | `protein_->ConformationAt(0)`. Same object `Protein::Conformation()` returns. |
+| `TickConformation(positions)`                | Ephemeral per-frame `unique_ptr<ProteinConformation>` pointing at the wrapped Protein. |
+| `ProteinRef()`                               | The wrapped Protein.                                                     |
+| `AtomCount()`, `AtomAt(i)`, `MutableAtomAt(i)`, `Atoms()` | Per-atom access.                                            |
+
+### Results
+
+| Method                                       | Role                                                                     |
+|----------------------------------------------|--------------------------------------------------------------------------|
+| `AttachResult(unique_ptr<TR>)`               | Singleton-per-type check; returns false if already attached. Dependency validation is in `Trajectory::Run` Phase 4, not here. |
+| `Result<T>()`, `HasResult<T>()`, `AllResults()`, `ResultsInAttachOrder()` | Typed access; attach order = dispatch order. |
+| `DispatchCompute(conf, traj, frame_idx, time_ps)` | Iterates `results_attach_order_`, calls each TR's `Compute`.        |
+| `FinalizeAllResults(traj)`                   | Iterates, calls `Finalize`; sets `finalized_`.                           |
+| `AdoptDenseBuffer<T>(buffer, owner_type)`    | Move ownership of a `DenseBuffer<T>` into `dense_buffers_`, keyed by owner TR's `type_index`. |
+| `GetDenseBuffer<T>(owner_type)`              | Retrieve; nullptr on missing or element-type mismatch.                   |
+
+### Serialisation
+
+| Method                                       | Role                                                                     |
+|----------------------------------------------|--------------------------------------------------------------------------|
+| `WriteH5(file)`                              | File-root attributes (`protein_id`, `n_atoms`, `finalized`); `/atoms/{element, residue_index, pdb_atom_name}`; delegates to each TR's `WriteH5Group`. |
+| `WriteFeatures(dir)`                         | Delegates NPY emission per TR.                                           |
+
+Identity goes through the wrapped Protein, not duplicated here:
+
+```cpp
+const TrajectoryAtom& ta = tp.AtomAt(42);              // trajectory record
+const Atom& a           = tp.ProteinRef().AtomAt(42);  // element, bonds, residue
+```
+
+---
+
+## TrajectoryAtom
+
+Per-atom cell of the trajectory buffer. Private constructor; only
+`TrajectoryProtein` constructs via `friend`. One instance per wrapped
+Protein atom, allocated once by `Seed`, never resized.
+
+Per-atom trajectory data lives in two shapes in this struct:
+
+**Event bag** — `RecordBag<AtomEvent> events`. Open-ended per-atom
+record stream tagged by `(emitter, kind, frame_idx, time_ps)`.
+Queried by kind (`events.ByKind<T>()`, `events.ByKindSinceFrame<T>(...)`,
+`events.CountByKind<T>()`). What an emitter puts in the bag is the
+emitter's choice; later TRs consume by kind. The per-atom events bag
+is not currently H5-emitted — events are accessible in-process for
+cross-TR reads and test assertions.
+
+**Finalized rollup fields** — typed fields written by one TR each,
+for rolled-up statistics where a record per frame would be wasteful.
+The BS Welford set written by `BsWelfordTrajectoryResult`:
+
+| Field                                              | Type       | Writer                        |
+|----------------------------------------------------|------------|-------------------------------|
+| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`              | `double`   | `BsWelfordTrajectoryResult`   |
+| `bs_t0_min`, `bs_t0_max`                           | `double`   | `BsWelfordTrajectoryResult`   |
+| `bs_t0_min_frame`, `bs_t0_max_frame`               | `size_t`   | `BsWelfordTrajectoryResult`   |
+| `bs_n_frames`                                      | `size_t`   | `BsWelfordTrajectoryResult`   |
+| `bs_t2mag_{mean, m2, std, min, max, min_frame, max_frame}` | `double`/`size_t` | `BsWelfordTrajectoryResult` |
+| `bs_t0_delta_{mean, m2, std, min, max, n}`         | `double`/`size_t` | `BsWelfordTrajectoryResult` |
+
+`_m2` fields carry the running Welford sum-of-squared-deviations;
+`_std` is populated at `Finalize` from `m2 / (n - 1)`. `_std` is
+undefined mid-stream.
+
+Accumulator implementation objects (`Welford` structs, rolling
+windows, full-history buffers) live inside the owning TR, not on
+`TrajectoryAtom`. Identity (element, residue, bonds, ring
+membership) is not duplicated here — reach through
+`tp.ProteinRef().AtomAt(i)`.
+
+---
+
+## TrajectoryResult (ABC)
+
+Base class for per-trajectory modular calculators. Parallel to
+`ConformationResult` at conformation scope.
+
+### Virtual interface
+
+| Method                                                      | Required       | Role                                                                          |
+|-------------------------------------------------------------|----------------|-------------------------------------------------------------------------------|
+| `Name() -> string`                                          | pure           | For logs and attach diagnostics.                                              |
+| `Dependencies() -> vector<type_index>`                      | pure           | TR or ConformationResult types that must precede. Validated in Phase 4.       |
+| `Compute(conf, tp, traj, frame_idx, time_ps)`               | pure           | Per-frame work.                                                               |
+| `Finalize(tp, traj)`                                        | default no-op  | End-of-stream synthesis.                                                      |
+| `WriteFeatures(tp, dir) -> int`                             | default 0      | NPY emission.                                                                 |
+| `WriteH5Group(tp, file)`                                    | default no-op  | H5 group emission.                                                            |
+
+TRs construct via static `Create(const TrajectoryProtein&)` factories
+returning `unique_ptr<TrajectoryResult>`. Factories run after
+`tp.Seed`, so they may size internal buffers from `tp.AtomCount()`,
+`tp.ProteinRef().BondCount()`, or `tp.ProteinRef().RingCount()`.
+
+During `Compute` a TR reads the current `ProteinConformation`
+(its `ConformationResult` output and `ConformationAtom` fields) and
+writes into one or more of:
+
+- its own internal accumulator state (private to the TR);
+- `tp.MutableAtomAt(i)` fields it owns (one writer per field);
+- `tp.MutableAtomAt(i).events` (per-atom event bag);
+- `traj.MutableSelections()` (run-scope selection bag);
+- internal per-bond / per-ring / per-residue state on itself.
+
+At `Finalize` a TR converts accumulator state to output (Welford m2
+to std, full history to ACF, counter to frequency), transfers a
+`DenseBuffer<T>` to TP via `AdoptDenseBuffer`, or reads the
+selection bag and pushes a reduced set under its own kind.
+
+### Lifecycle shapes
+
+**AV (always valid mid-stream).** `Compute` updates output fields in
+place each frame. `Finalize` at most converts running variance to
+std. Mid-run snapshots of `tp.AtomAt(i)` are meaningful.
+
+**FO (Finalize only).** `Compute` appends to an internal buffer; the
+output materialises at `Finalize` (dense buffer transfer, ACF from
+full history, FFT). Mid-run snapshots are not meaningful.
+
+### Current TRs
+
+The TRs below illustrate the patterns in `PATTERNS.md §§13-18`. They
+are worked examples of the available lifecycles and output shapes;
+they are NOT a prescribed template set. New calculators clone the
+most relevant exemplar and adapt — see `PATTERNS.md §17` on
+duplication over chaining.
+
+| Class                                           | Lifecycle      | `Dependencies()`                                         | Output                                                               |
+|-------------------------------------------------|----------------|----------------------------------------------------------|----------------------------------------------------------------------|
+| `BsWelfordTrajectoryResult`                     | AV             | `BiotSavartResult`                                       | `TrajectoryAtom` rollup fields + `/trajectory/bs_welford/`           |
+| `BsShieldingTimeSeriesTrajectoryResult`         | FO             | `BiotSavartResult`                                       | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/{xyz, frame_indices, frame_times}` |
+| `BsAnomalousAtomMarkerTrajectoryResult`         | AV (emitter)   | `BsWelfordTrajectoryResult`, `BiotSavartResult`          | Per-atom events pushed to `ta.events`, kinds `BsAnomalyHighT0` / `BsAnomalyLowT0`. No H5 group of its own (events bag not H5-emitted yet). |
+| `BsT0AutocorrelationTrajectoryResult`           | FO             | `BiotSavartResult`                                       | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/{rho, lag_frames, lag_times_ps}` |
+| `BondLengthStatsTrajectoryResult`               | AV             | none (reads `Bond` indices + positions)                  | Internal per-bond Welford → `/trajectory/bond_length_stats/`         |
+| `PositionsTimeSeriesTrajectoryResult`           | FO             | none (reads positions)                                   | `DenseBuffer<Vec3>` → `/trajectory/positions/{xyz, frame_indices, frame_times}` |
+
+Current `RunConfiguration` attach status:
+
+| Configuration           | Attached TRs                                                                                   |
+|-------------------------|-----------------------------------------------------------------------------------------------|
+| `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
+| `PerFrameExtractionSet` | All six in the table above                                                                     |
+| `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
+
+---
+
+## Trajectory
+
+Process entity representing one traversal of a source (XTC + TPR +
+EDR). Non-copyable. Holds source paths, preloaded EDR frames, the
+single-slot per-frame environment, the run record, and during `Run`
+the handler.
+
+### Fields
+
+| Field                                         | Type                              | Description                                            |
+|-----------------------------------------------|-----------------------------------|--------------------------------------------------------|
+| `xtc_path_`, `tpr_path_`, `edr_path_`         | `filesystem::path`                | Source paths.                                          |
+| `edr_frames_`                                 | `vector<GromacsEnergy>`           | Preloaded at construction; `EnergyAtTime(t)` is O(log T). |
+| `env_`                                        | `TrajectoryEnv`                   | Single-slot per-frame environment.                     |
+| `frame_count_`, `frame_times_`, `frame_indices_` | `size_t` / `vector<double>` / `vector<size_t>` | Run record.                           |
+| `selections_`                                 | `RecordBag<SelectionRecord>`      | Run-scope event stream.                                |
+| `output_dir_`                                 | `filesystem::path`                | Recorded for post-run writers.                         |
+| `handler_`                                    | `unique_ptr<GromacsFrameHandler>` | During-Run only; released at end of Phase 8.           |
+| `state_`                                      | enum                              | `Constructed` → `Running` → `Complete`.                |
+
+Constructor preloads EDR (`LoadEdr`) so frame-energy lookup is
+available from Phase 6 onwards.
+
+### Run (eight phases)
+
+`Status Run(tp, config, session, extras = {}, output_dir = {})`:
+
+1. **Open handler.** `handler_ = make_unique<GromacsFrameHandler>(tp)`; `handler_->Open(xtc_path, tpr_path)` mounts the stream and builds the PBC fixer.
+2. **Read frame 0 and seed.** `handler_->ReadNextFrame()`; `tp.Seed(handler_->ProteinPositions(), handler_->Time())`.
+3. **Attach TrajectoryResults.** Iterate `config.TrajectoryResultFactories()` then caller `extras`. Attach order is dispatch order.
+4. **Validate dependencies and resources.** For each attached TR, every `type_index` in `Dependencies()` must be satisfied by another attached TR OR `config.RequiresConformationResult(t)`. If `config.RequiresAimnet2()`, `session.HasAimnet2Model()` must be true.
+5. **Build base `RunOptions`.** From `config.PerFrameRunOptions()` + `tp.Charges()` + `tp.BondedParams()` + `session.Aimnet2Model()`.
+6. **Frame 0.** Populate `env_` from handler + EDR; `OperationRunner::Run(tp.CanonicalConformation(), frame_opts)`; `tp.DispatchCompute(conf0, *this, 0, time)`; record.
+7. **Per-frame loop.** `handler_->Skip()` (stride − 1) times; `handler_->ReadNextFrame()`; update `env_`; `tick = tp.TickConformation(positions)`; `OperationRunner::Run(*tick, frame_opts)`; `tp.DispatchCompute(*tick, *this, handler_->Index(), handler_->Time())`; record.
+8. **Finalize.** `tp.FinalizeAllResults(*this)`. Selections were pushed during Compute / Finalize — no sweep here. `state_ = Complete`; release `handler_`.
+
+### Return codes
+
+From `errors.h`: `kOk`, `kXtcOpenFailed`, `kFrameReadFailed`,
+`kAttachRejectedSingleton`, `kAttachDependencyUnmet`,
+`kConfigRequiresAimnet2`, `kCalculatorPipelineFailed`. Every non-zero
+return is paired with an `OperationLog::Error` diagnostic at the
+failure site.
+
+### Post-Run accessors
+
+`IsComplete()`, `FrameCount()`, `TotalTimePs()`, `FrameTimes()`,
+`FrameIndices()`, `Selections()`, `EnergyAtTime(t)`, `Env()`,
+`XtcPath()`, `TprPath()`, `EdrPath()`, `OutputDir()`.
+
+### H5 emission
+
+`WriteH5(file)`:
+
+- `/trajectory/source/` — attributes `xtc_path`, `tpr_path`, `edr_path`, `configuration`.
+- `/trajectory/frames/` — datasets `time_ps` (T,), `original_index` (T,); attribute `n_frames`.
+- `/trajectory/selections/<kind>/` — one group per kind in `selections_.Kinds()`, with `frame_idx`, `time_ps`, `reason` datasets and `n_records` attribute. The group path uses `kind.name()` (mangled C++ type name — compiler-dependent but stable within a build).
+
+---
+
+## TrajectoryEnv
+
+Single-slot per-frame environment stash owned by `Trajectory`.
+`Trajectory::Run` writes it at the top of each frame from the handler
+and the preloaded EDR; calculators read it via `RunOptions` pointers,
+TRs read it via `traj.Env()`. Overwritten each frame.
+
+| Field                  | Type                    | Populated from                                  |
+|------------------------|-------------------------|-------------------------------------------------|
+| `solvent`              | `SolventEnvironment`    | `handler_->Solvent()`                           |
+| `current_energy`       | `const GromacsEnergy*`  | `EnergyAtTime(handler_->Time())`; may be null   |
+| `current_frame_idx`    | `size_t`                | `handler_->Index()` (0 on frame 0)              |
+| `current_frame_time`   | `double`                | `handler_->Time()`                              |
+
+A TR that needs cross-frame environment (running water-dipole
+statistics, bridging-water histograms) keeps its own per-frame
+buffer; `env_` is strictly this-frame.
+
+---
+
+## Session
+
+Process-wide resources. Outlives any single `Trajectory`. Loaded
+from TOML; carries large models (AIMNet2) loaded once and passed
+into `Trajectory::Run` via the `session` parameter.
+
+| Field             | Type                        | Description                                      |
+|-------------------|-----------------------------|--------------------------------------------------|
+| `aimnet2_model_`  | `unique_ptr<AIMNet2Model>`  | Loaded via `LoadAimnet2Model(path)`.             |
+| `last_error_`     | `string`                    | Diagnostic from most recent failed Load.         |
+
+Methods: `LoadFromToml()`, `LoadAimnet2Model(path)`, `Aimnet2Model()`,
+`HasAimnet2Model()`, `LastError()`. Load methods return `Status`.
+
+---
+
+## RunConfiguration
+
+Typed description of a trajectory-run shape. Three named static
+factories.
+
+### Fields
+
+| Field                         | Type                                | Description                                          |
+|-------------------------------|-------------------------------------|------------------------------------------------------|
+| `name_`                       | `string`                            | For logs.                                            |
+| `per_frame_opts_`             | `RunOptions`                        | Base `RunOptions` for `OperationRunner::Run`.        |
+| `traj_factories_`             | `vector<TrajectoryResultFactory>`   | Attach order = dispatch order.                       |
+| `required_conf_result_types_` | `unordered_set<type_index>`         | Checked in Phase 4 against each TR's `Dependencies()`. |
+| `requires_aimnet2_`           | `bool`                              | Phase 4 enforces session has model loaded.           |
+| `stride_`                     | `size_t`                            | Process every N-th frame (default 1).                |
+
+### Factories
+
+| Factory                     | Per-frame Conformation set                                                                                                                                                                                                                                                                                | Stride | Requires AIMNet2 | Use                                                        |
+|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|------------------|------------------------------------------------------------|
+| `ScanForDftPointSet()` *(slated for removal)* | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `BiotSavartResult`, `SasaResult`. MOPAC / APBS / Coulomb skipped.                                                                                                                                                                | 1      | no               | Rotamer / RMSD / bin-crossing detection for DFT pose selection. A later doc pass will handle the replacement. |
+| `PerFrameExtractionSet()`   | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `ChargeAssignmentResult`, `ApbsFieldResult`, `BiotSavartResult`, `HaighMallionResult`, `McConnellResult`, `RingSusceptibilityResult`, `PiQuadrupoleResult`, `DispersionResult`, `HBondResult`, `SasaResult`, `EeqResult`, `AIMNet2Result`, `WaterFieldResult`, `HydrationShellResult`, `HydrationGeometryResult`, `GromacsEnergyResult`, `BondedEnergyResult` (21 types). MOPAC skipped; vacuum Coulomb skipped (APBS supersedes). | 2      | yes              | Production canonical for 685-protein fleet.                |
+| `FullFatFrameExtraction()`  | `PerFrameExtractionSet` with `skip_mopac = false`. MOPAC-family ConformationResult types are not yet in `required_conf_result_types_` — see `spec/pending_decisions_20260423.md` item 3.                                                                                                                  | 2      | yes              | Selected-frame MOPAC (DFT pose set, harvester checkpoints). |
+
+Mutators for factory authoring: `SetName`, `MutablePerFrameRunOptions`,
+`AddTrajectoryResultFactory`, `RequireConformationResult`,
+`SetRequiresAimnet2`, `SetStride`.
+
+---
+
+## RecordBag&lt;Record&gt;
+
+Typed container for a stream of tagged records. Used at two scopes:
+
+- **Run-scope**: `Trajectory::selections_` as `RecordBag<SelectionRecord>`.
+- **Atom-scope**: `TrajectoryAtom::events` as `RecordBag<AtomEvent>`.
+
+`Record` must expose `kind` (`type_index`), `frame_idx` (`size_t`),
+and `time_ps` (`double`) as top-level fields so windowed queries are
+direct reads, not metadata lookups.
+
+### API
+
+| Method                                               | Role                                                             |
+|------------------------------------------------------|------------------------------------------------------------------|
+| `Push(record)`                                       | Append.                                                          |
+| `All()`                                              | All records in push order.                                       |
+| `Count()`                                            | Total count.                                                     |
+| `Kinds()`                                            | Distinct kinds present, in first-seen order.                     |
+| `ByKind(kind)` / `ByKind<T>()`                       | Records of one kind, in push order.                              |
+| `ByKindSinceFrame(kind, from)` / `ByKindSinceFrame<T>(from)` | Records with `frame_idx >= from`.                          |
+| `ByKindSinceTime(kind, t_ps)` / `ByKindSinceTime<T>(t_ps)`   | Records with `time_ps >= t_ps`.                            |
+| `MostRecent(kind)` / `MostRecent<T>()`               | Most recent record of kind; nullptr if none.                     |
+| `CountByKind(kind)` / `CountByKind<T>()`             | Count of one kind.                                               |
+
+---
+
+## SelectionRecord
+
+Run-scope record type.
+
+| Field        | Type                     | Note                              |
+|--------------|--------------------------|-----------------------------------|
+| `kind`       | `type_index`             | Emitting TR's `type_index`.       |
+| `frame_idx`  | `size_t`                 |                                   |
+| `time_ps`    | `double`                 |                                   |
+| `reason`     | `string`                 | Human-readable cause.             |
+| `metadata`   | `map<string, string>`    | Emitter-specific extras.          |
+
+---
+
+## AtomEvent
+
+Atom-scope record type.
+
+| Field        | Type                     | Note                                                 |
+|--------------|--------------------------|------------------------------------------------------|
+| `emitter`    | `type_index`             | TR that pushed.                                      |
+| `kind`       | `type_index`             | Emitter-specific discriminator.                      |
+| `frame_idx`  | `size_t`                 |                                                      |
+| `time_ps`    | `double`                 |                                                      |
+| `metadata`   | `map<string, string>`    | Emitter-specific extras.                             |
+
+`emitter` and `kind` are separate because one emitter typically
+pushes several kinds (e.g. `BsAnomalousAtomMarkerTrajectoryResult`
+pushes `BsAnomalyHighT0` and `BsAnomalyLowT0`). Queries on the bag
+discriminate on `kind`; `emitter` allows filtering by source when
+relevant.
+
+---
+
+## DenseBuffer&lt;T&gt;
+
+Contiguous per-atom × stride storage for FO `TrajectoryResult`
+outputs. Atom-major layout: `storage[atom_idx * stride + offset]`.
+Owned by `TrajectoryProtein` after a TR transfers ownership at
+`Finalize`, keyed by the owning TR's `type_index`.
+
+### Base and template
+
+```cpp
+class DenseBufferBase {
+public:
+    virtual ~DenseBufferBase() = default;
+    virtual size_t AtomCount() const = 0;
+    virtual size_t StridePerAtom() const = 0;
+    virtual size_t ElementSizeBytes() const = 0;
+};
+
+template <typename T>
+class DenseBuffer : public DenseBufferBase {
+public:
+    DenseBuffer(size_t atom_count, size_t stride_per_atom);
+    T&       At(size_t atom_idx, size_t offset);
+    const T& At(size_t atom_idx, size_t offset) const;
+    T*       AtomSlicePtr(size_t atom_idx);
+    const T* AtomSlicePtr(size_t atom_idx) const;
+    T*       RawData();
+    const T* RawData() const;
+    size_t   TotalElementCount() const;
+    // AtomCount() / StridePerAtom() / ElementSizeBytes() override the base.
+};
+```
+
+Element types observed in current code: `double` (BsT0Autocorrelation
+ρ(k)), `Vec3` (PositionsTimeSeries), `SphericalTensor`
+(BsShieldingTimeSeries). `Mat3` reserved for future EFG
+time-series TRs.
+
+H5 emission flattens via explicit named-component access
+(`.x() / .y() / .z()`, `.T0 / .T1[k] / .T2[k]`, `m(i,j)`), never
+`reinterpret_cast` on the raw buffer. Each emitting TR writes its
+own group and sets its own schema attributes — e.g.
+`BsShieldingTimeSeriesTrajectoryResult` emits `irrep_layout`,
+`normalization`, `parity`, `units`;
+`BsT0AutocorrelationTrajectoryResult` emits `estimator`,
+`mean_convention`.
+
+---
+
+## GromacsFrameHandler
+
+Format-specific XTC/TPR reader. Mounts the stream, builds the PBC
+fixer from the TPR, reads frames on demand. Pure reader: does not
+create conformations, does not run calculators, does not write to
+`traj.env_`, does not know `TrajectoryResult`s.
+
+Additional trajectory formats would be sibling reader classes at
+this layer, not a virtual-base hierarchy.
+
+### Fields
+
+| Field                 | Type                          | Description                                         |
+|-----------------------|-------------------------------|-----------------------------------------------------|
+| `tp_`                 | `TrajectoryProtein&`          | Borrowed; used for topology access via `SysReader`. |
+| `reader_`             | `XtcStreamReader`             | XTC cursor.                                         |
+| `wholer_`             | `unique_ptr<MoleculeWholer>`  | PBC fixer, built from TPR.                          |
+| `protein_positions_`  | `vector<Vec3>`                | Last-read frame, protein slice.                     |
+| `solvent_`            | `SolventEnvironment`          | Last-read frame, solvent slice.                     |
+| `last_frame_time_`    | `double`                      |                                                     |
+| `current_index_`      | `size_t`                      | XTC position; valid iff `has_read_`.                |
+| `has_read_`           | `bool`                        |                                                     |
+
+### Operations
+
+| Method                                    | Role                                                                 |
+|-------------------------------------------|----------------------------------------------------------------------|
+| `Open(xtc_path, tpr_path)`                | Mount XTC, build wholer from TPR, sanity-check atom counts against `tp.SysReader().Topology().protein_count`. Does not read a frame. |
+| `ReadNextFrame()`                         | Read one XTC frame, PBC-fix protein slice, split into `protein_positions_` + `solvent_`. Returns false at EOF. |
+| `Skip()`                                  | Advance one frame without extracting; accessors return stale data afterward. |
+| `Reopen()`                                | Reset cursor to start (legacy multi-pass flows).                     |
+| `ProteinPositions()`, `Solvent()`, `Index()`, `Time()`, `HasRead()`, `error()` | Accessors.                         |
+
+---
+
+## H5 file layout
+
+The file emitted after a successful `Run` has this top-level shape:
+
+```
+/                                        root attributes from TrajectoryProtein::WriteH5:
+                                           protein_id, n_atoms, finalized
+/atoms/
+    element                              (N,) int
+    residue_index                        (N,) uint64
+    pdb_atom_name                        (N,) string
+
+/trajectory/source/                      attributes: xtc_path, tpr_path, edr_path, configuration
+/trajectory/frames/
+    time_ps                              (T,) float64
+    original_index                       (T,) uint64                         attr: n_frames
+/trajectory/selections/<kind>/           one group per kind in selections_.Kinds()
+    frame_idx                            (R,) size_t                         attr: n_records
+    time_ps                              (R,) float64
+    reason                               (R,) string
+
+/trajectory/<result_name>/               one group per attached TR that implements WriteH5Group
+    (TR-specific datasets + schema attributes)
+```
+
+Per-TR group names and attributes are owned by each TR's
+`WriteH5Group`; downstream consumers parse them verbatim. There is
+no central H5 schema module — the layout is the composition of what
+each TR emits.
+
+### Planned additions
+
+Aspirational. Not yet in the tree.
+
+- **`/header/` group.** File-level provenance: schema version,
+  library version, run configuration name, source provenance from
+  `ProteinBuildContext` (PDB source, build date, protonation tool,
+  force field, assumptions). Root attributes currently emitted by
+  `TrajectoryProtein::WriteH5` (`protein_id`, `n_atoms`, `finalized`)
+  are candidates to migrate into this group when it lands.
+
+---
+
+END trajectory-scope replacement.

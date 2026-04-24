@@ -36,9 +36,9 @@ DSSP (8-class SS, chi1-4, H-bond energies).
   canonical path, available via --no-coulomb inversion)
 - AIMNet2 charges + EFG (CUDA, geometry-only neural net)
 
-### Built this session
+### GromacsEnergyResult
 
-- GromacsEnergyResult: per-frame Coulomb-SR, Coulomb-recip,
+- Per-frame Coulomb-SR, Coulomb-recip,
   LJ-SR, potential, temperature, pressure, volume from .edr.
   Aggregate (not per-atom) — useful for frame characterisation
   and selection.

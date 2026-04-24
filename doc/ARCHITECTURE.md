@@ -486,7 +486,7 @@ The core correspondences:
 
 ## 6. Files
 
-54 headers in src/. Key entry points:
+88 headers in src/. Key entry points:
 
 | File | Purpose |
 |------|---------|

@@ -3,7 +3,7 @@
 **Status:** TENTATIVE. In active design conversation. Captured here so the
 thinking is not lost across sessions. **Do not treat any enum, field list,
 or scope boundary as settled** — this document exists to be iterated on.
-The next session should re-read, not rubber-stamp.
+Re-read before acting on any of it.
 
 **Date pinned:** 2026-04-22.
 

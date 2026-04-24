@@ -1,13 +1,9 @@
 # Microsecond-MD Harvester and DFT Queue Design — 2026-04-22
 
 **Status:** DECIDED (design) / NOT YET BUILT (implementation).
-Captured 2026-04-22 pm during Session 0 literature-pass close-out.
-Becomes au-courant ~2026-04-24 when the current 25 ns fleet run
-completes.
-
-**Not for the next session.** The next session is Session 1 drafting
-of `spec/PHYSICS_FOUNDATIONS.md` parts 1 and 2. This harvester plan
-is queued for after that.
+Captured 2026-04-22. Becomes au-courant when the 25 ns fleet run
+completes. Queued after the Session 1 drafting of
+`spec/PHYSICS_FOUNDATIONS.md` parts 1 and 2.
 
 ---
 

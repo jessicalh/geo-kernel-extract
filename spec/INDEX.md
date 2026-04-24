@@ -53,6 +53,48 @@ You must:
 
 See PATTERNS.md "Numerical Stability" section.
 
+### When implementing a TrajectoryResult
+
+Read an existing one first. For always-valid-mid-stream (AV)
+Results see `BsWelfordTrajectoryResult.cpp`; for Finalize-only (FO)
+time-series Results see `PositionsTimeSeriesTrajectoryResult.cpp` or
+`BsT0AutocorrelationTrajectoryResult.cpp`. For a per-bond-scope AV
+Result with internal state, see `BondLengthStatsTrajectoryResult.cpp`.
+
+You must:
+- Pick a lifecycle shape (AV or FO) and follow one of the exemplars.
+- Declare `Dependencies()` — `type_index` values of TrajectoryResult
+  types that must be attached first AND/OR ConformationResult types
+  that must run per frame. Validated at `Trajectory::Run` Phase 4.
+- Provide a static `Create(const TrajectoryProtein&)` factory. Size
+  internal state from `tp.AtomCount()`, `tp.ProteinRef().BondCount()`,
+  or `tp.ProteinRef().RingCount()` — `Seed` precedes the factory, so
+  the Protein is finalised.
+- Own accumulator state on the Result (Welford struct, rolling
+  window, full-history buffer). Do NOT put accumulator objects on
+  `TrajectoryAtom`.
+- AV: `Compute` updates finalized rollup fields on `TrajectoryAtom`
+  in place, one writer per field; `Finalize` at most converts
+  variance to std.
+- FO: `Compute` appends to internal buffers; `Finalize` transfers a
+  `DenseBuffer<T>` to `TrajectoryProtein` via
+  `AdoptDenseBuffer<T>(buffer, typeid(*this))`.
+- `WriteH5Group(tp, file)` emits `/trajectory/<result_name>/` with
+  provenance attributes (`result_name`, `n_frames`, `finalized`)
+  plus any Result-specific schema attributes. `WriteFeatures(tp, dir)`
+  is optional NPY emission.
+- Register the `Create` factory in the relevant `RunConfiguration`
+  static factory (usually `PerFrameExtractionSet`). Attach order is
+  dispatch order.
+- Cross-Result reads mark at three sites (writer header, reader
+  header, .cpp read point) — see PATTERNS.md §17. Prefer independent
+  computation over chaining.
+
+See OBJECT_MODEL.md "Trajectory-scope entities" + the 2026-04-24
+addition at the end of that file, and PATTERNS.md §§13-18 + the
+2026-04-24 addition. No trajectory-scope test pattern is established
+yet (gap noted in `spec/cold_read_review_20260424.md`).
+
 ### When adding or changing WriteFeatures output
 
 Validate with `./smoke_tests` (~80s), not individual calculator tests.
@@ -91,7 +133,7 @@ then run `python -m pytest python/tests/` to verify.
 - **DEPENDENCIES.md** — external library list
 - **DIRECTORY_SET.md** — directory structure (historical)
 - **TEST_FRAMEWORK.md** — test tiers, what to run when, smoke test design
-- **ENSEMBLE_MODEL.md** — GromacsProtein trajectory-based model (revised 2026-04-12, replaces old EnsembleConformation design)
+- **ENSEMBLE_MODEL.md** — partially historical. Describes the pre-2026-04-23 GromacsProtein/GromacsRunContext trajectory design; the current shape is in OBJECT_MODEL.md (trajectory-scope) + PATTERNS.md §§13-18. Non-object-model content (EDR handling, streaming mechanics, convergence discussion) is still relevant.
 - **TRAJECTORY_EXTRACTION.md** — full-system trajectory path: explicit solvent E-field, water packing, ion field calculators (design, 2026-04-12)
 - **TIMING_4876_ATOMS.md** — measured per-calculator times on 4876-atom protein (2026-04-12)
 - **OUTSTANDING_GROMACS_PATH.md** — open items for trajectory extraction path (GeometryChoice, KernelFilterSet, TOML, SDK tests)
@@ -104,6 +146,9 @@ then run `python -m pytest python/tests/` to verify.
 - **NMR_EXTRACT_DESIDERATA_2026-04-22.md** — NOTE, not spec. Consolidated library-wide pass of every calculator / variation / input-output surface / diagnostic / architectural idea surfaced during Session 0 — organised, not triaged. Sections A-F: new ConformationResults (A1-A11 + 2 cross-ref to PLANNED), variations on existing kernels (B1-B7), I/O surfaces (C1-C8), diagnostics (D1-D3), architectural (E1-E6), scope boundaries (F incl. explicit xTB exclusion). Starting place before the user organises the work against use cases and thesis narrative.
 - **pending_include_trajectory_scope_2026-04-22.md** — was WIP_OBJECT_MODEL.md during the design pass; renamed after the trajectory-scope shape landed in src/ and folded (tight form) into OBJECT_MODEL.md + PATTERNS.md §§13-18. Holds working-note material that doesn't belong in the control docs: rejected alternatives (Appendix B — TrajectoryBond first-class store), design-option discussions, pending appendices awaiting user review (NmrAtomIdentity §2 + Appendix A, full TrajectoryResult catalog Appendix F, H5 metadata schema §7), and the anti-pattern warnings §3 that the `feedback_trajectory_scope_gotchas` memory entry references. **Not authoritative for anything landed** — the code + OBJECT_MODEL.md + PATTERNS.md win. Read only when activating a pending-review section.
 - **TRAJECTORY_LANDING_STATE_2026-04-23.md** + **TRAJECTORY_REFACTOR_GAPS_2026-04-23.md** — session-dated records of the first landing push. Historical; useful for tracing how the trajectory-scope refactor got from WIP to landed.
+- **pending_decisions_20260423.md** — items needing user choice (AllWelfords revival, FullFatFrameExtraction MOPAC deps, and others). Living document — extend as new decisions accrue.
+- **doc_wrongness_20260423.md** — observational audit (2026-04-23) of contradictions between docs/comments and current code. Reference during cleanup passes; supersede items as they are resolved.
+- **cold_read_review_20260424.md** — fresh-reader evaluation (2026-04-24) of whether the docs support adding a new ConformationResult / TrajectoryResult. Notes gaps and contradictions.
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/
@@ -128,16 +173,16 @@ Session notes, early specs, analysis passes, resolved feedback.
 Reference only.
 
 ### Source
-- **src/** — 74 headers, 62 .cpp files
+- **src/** — 88 headers, 70 .cpp files
 - **ui/src/** — 14 viewer source files (Qt6/VTK)
-- **tests/** — GTest suite (287 tests, 40 test files, ~2.5 hours with MOPAC)
-- **extern/** — header-only libraries (nanoflann, sphericart)
+- **tests/** — GTest suite (47 test_*.cpp files, ~2.5 hours with MOPAC)
+- **extern/** — nanoflann, sphericart (header-only), HighFive (vendored), xdrfile, cuda headers
 
 ### External
 - **/shared/2026Thesis/consolidated/** — 723 WT+ALA protein pairs
 - **tests/data/fleet** — GROMACS CHARMM36m ensemble
 
-## Current Status (2026-04-15)
+## Current Status
 
 20 calculators (8 classical, 2 MOPAC-derived, AIMNet2, SASA,
 WaterField, HydrationShell, GromacsEnergy, HydrationGeometry, EEQ,
@@ -145,19 +190,20 @@ BondedEnergy, plus foundation: Geometry, SpatialIndex, Enrichment).
 DSSP extended with 8-class SS, H-bond energies, chi1-4. Calibration
 settled at R²=0.818 (per-element ridge, 55 kernels).
 
-**Single TPR parse (2026-04-14):** FullSystemReader::ReadTopology
-parses the TPR once — atom ranges, bonded parameters, and protein
-construction all from one `read_tpx_state` call. Previously three
-independent parses. `--trajectory DIR` takes a protein directory
-(must contain md.tpr, md.xtc, md.edr — all required). EDR is no
-longer optional. BuildFromTrajectory(dir_path) derives all file
+**Single TPR parse:** `FullSystemReader::ReadTopology` parses the TPR
+once — atom ranges, bonded parameters, and protein construction all
+from one `read_tpx_state` call. `--trajectory DIR` takes a protein
+directory (must contain md.tpr, md.xtc, md.edr — all required).
+`TrajectoryProtein::BuildFromTrajectory(dir_path)` derives all file
 paths from the directory convention.
 
-Two-pass trajectory streaming: GromacsProtein (adapter +
-accumulators) + GromacsFrameHandler (streaming XTC reader, PBC fix,
-frame lifecycle) + GromacsRunContext (bonded params, EDR energy
-frames, cursor state). Per-calculator timing via OperationLog::Scope
-on every Compute call. 75 NPY arrays registered in SDK catalog.
+**Trajectory-scope framework:** `TrajectoryProtein` (wrapped Protein
++ TrajectoryAtom buffer + attached TrajectoryResults) +
+`GromacsFrameHandler` (pure reader — XTC mount, PBC fix, frame
+split) + `Trajectory` (eight-phase Run driver, EDR preloaded, run
+record + selection bag). See OBJECT_MODEL.md trajectory-scope
+entities and PATTERNS.md §§13-18. Per-calculator timing via
+`OperationLog::Scope`. 75 NPY arrays registered in SDK catalog.
 
 **Analysis trajectory mode (2026-04-14):** AnalysisWriter harvests
 all per-atom and per-residue data from each sampled frame, writes

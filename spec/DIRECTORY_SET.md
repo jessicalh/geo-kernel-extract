@@ -2,8 +2,8 @@
 
 Four directories constitute the complete project state as of 2026-03-31:
 
-1. **working-reference/** — Last known good state before this session's changes.
-   Frozen snapshot. Do not modify. Reference for reproducing published results.
+1. **working-reference/** — Frozen snapshot of a known-good state. Do not
+   modify. Reference for reproducing published results.
 
 2. **biot-savart/** — Current state with all contradictions exposed.
    v1/v2 divergence documented. Bugs catalogued. Goals NOT updated.

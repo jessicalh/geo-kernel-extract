@@ -76,3 +76,11 @@ bad-builds/
 # Total ~295 MB. Regenerable from initial-samples/ via the fleet
 # pipeline; machine-local, not repo material.
 tests/data/fleet_test_large/
+
+# Reference-corpus derived files — trivially regenerable from
+# references/*.pdf via scripts/references/ingest_pdf.sh. At ~500
+# papers these would add ~2 GB. Source-of-truth is the PDFs plus
+# the distilled summaries and keywords in references-meta/ (both
+# committed). See scripts/references/README.md.
+references-text/
+references-images/

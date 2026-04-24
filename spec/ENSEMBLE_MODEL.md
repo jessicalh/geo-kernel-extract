@@ -14,23 +14,20 @@ For design working-notes see
 `spec/pending_include_trajectory_scope_2026-04-22.md`. When the
 WIP folds in, this document will be reconciled.
 
-**Status:** IMPLEMENTED and TESTED. Two-pass streaming architecture
-works end-to-end. Three tests pass on 1ZR7_6721 full-system data
-(479 protein atoms, 3525 water molecules, 25 ions). .h5 master file
-writing is IMPLEMENTED (2026-04-13, HighFive v2.6.2).
-WriteH5 produces positions (T,N,3), 48-column Welford rollup,
-per-bond stats, frame times. SDK `load_trajectory()` reads it.
-
-Design revised 2026-04-11/12 after critical review of original
-EnsembleConformation/observer design. See memory:
-`project_ensemble_design_decisions.md`.
+**Status:** sections below describe the pre-2026-04-23 trajectory
+architecture (GromacsProtein + GromacsRunContext + AnalysisWriter).
+Those classes are in `learn/bones/`; the live trajectory-scope model
+is TrajectoryProtein + Trajectory + TrajectoryResult, documented in
+`OBJECT_MODEL.md` trajectory-scope entities and `PATTERNS.md §§13-18`.
+The EDR handling, streaming mechanics, and convergence discussion
+here remain informative background, but do NOT treat class/method
+names in the body as current-tree API.
 
 ---
 
-## Architecture: GromacsProtein pattern
+## Architecture: GromacsProtein pattern (historical)
 
-No abstract EnsembleConformation. No observer/accumulator ABC.
-Four concrete classes married to GROMACS:
+Four concrete classes married to GROMACS, now in `learn/bones/`:
 
 ### GromacsProtein
 

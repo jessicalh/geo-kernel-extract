@@ -286,7 +286,7 @@ Speculative. Not on any roadmap.
 - Ideas 1 and 2 are genuinely new calculators that fit the
   existing architecture. Lowest implementation risk.
 - Idea 3 is a zero-new-calculator diagnostic pass that could run
-  next session against existing fleet calibration data.
+  against existing fleet calibration data.
 - Ideas 4 and 5 are Stage 3 model-architecture neighbours.
   Evaluate alongside the equivariant-GNN Stage 3 design when that
   work begins.

@@ -270,7 +270,7 @@ These are load-bearing across subprojects. Each subproject's
 - **Save fetched papers to `references/`.** Always persist the PDF
   alongside a note in `ANNOTATED_BIBLIOGRAPHY.md`, not just the URL.
 
-## Current state (as of 2026-04-17)
+## Current state
 
 Thesis is structured in three stages (`project_three_stages`
 memory):
