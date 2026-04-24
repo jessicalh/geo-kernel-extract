@@ -103,19 +103,25 @@ in any order.
 
 ### Layer 0 — TR test foundation (blocks everything else)
 
-No per-TR tests exist today (`tests/` has zero `test_*_trajectory_result.cpp`).
-Two files first:
+**Status 2026-04-24 evening:** BondLengthStats discipline tests landed
+inline in `tests/test_gromacs_streaming.cpp` (commit `e306f2a`):
+`BondLengthStatsEndToEnd` (integration) + `Frame0Semantics` +
+`FinalizeIdempotency` + `H5RoundTrip` (the three-assert discipline).
+BsWelford discipline tests are still pending — ship alongside the
+first Layer 1 clone (`HmWelfordTrajectoryResult`) so the pair
+demonstrates the clone recipe against both a no-CR-dep TR and a
+BS-dep TR.
 
-1. `tests/test_bond_length_stats_trajectory_result.cpp` — bond-scope,
-   `Dependencies() == {}`, synthetic trajectory fixture, no CR chain.
-2. `tests/test_bs_welford_trajectory_result.cpp` — needs
-   `BiotSavartResult`; starts from `PerFrameExtractionSet()` with
-   `skip_mopac = true` and APBS + AIMNet2 **on** (memory
-   `feedback_no_convenience_exclusions`).
+Template asserts for every new TR test: frame-0 semantics (AV: valid
+after one Compute, stride ≥ fixture length isolates; FO: internal
+buffer non-empty), Finalize idempotency, H5 round-trip via temp file.
 
-Template asserts for every TR test: frame-0 semantics (AV: valid after
-one Compute; FO: internal buffer non-empty), Finalize idempotency, H5
-round-trip via temp file.
+**File organisation.** Inline in `test_gromacs_streaming.cpp` for now;
+each TR's discipline tests group under a shared name prefix
+(`BondLengthStats*`, then `BsWelford*`, then `HmWelford*`, …).
+Extraction to per-TR-class files (original plan) is deferred until
+the inline count grows enough to justify splitting — probably around
+Layer 1 halfway mark (~4 Welford TRs in the tree).
 
 ### Layer 1 — Per-kernel Welford shelf
 
