@@ -139,63 +139,37 @@ TEST(GromacsStreaming, BsWelfordAttachAndFinalize) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
-    // Build TrajectoryProtein
+    // Narrow RunConfiguration for this test — BS path only.
+    // Dependencies: BsWelfordTrajectoryResult → BiotSavartResult.
+    nmr::RunConfiguration config;
+    config.SetName("BsWelfordAttachAndFinalizeTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::BiotSavartResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BsWelfordTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    // Per-frame opts — BS only, nothing requiring charges/DSSP/APBS/etc.
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;  // narrow config; no AIMNet2 needed.
 
-    // Manual orchestration matching Trajectory::Run's phase order:
-    //   1) Open handler (pure reader).
-    //   2) Read frame 0, tp.Seed (finalize Protein, create conf0).
-    //   3) Attach TrajectoryResults (factories see finalized Protein).
-    //   4) Run OperationRunner on conf0, dispatch TRs for frame 0.
-    //   5) Per-frame loop: read, tick, run calcs, dispatch.
-    //   6) FinalizeAllResults.
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BsWelfordTrajectoryResult::Create(tp)));
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
+    EXPECT_TRUE(tp.IsFinalized());
     ASSERT_TRUE(tp.HasResult<nmr::BsWelfordTrajectoryResult>());
 
-    // Stand up a Trajectory so the dispatch API has a run-scope
-    // context to pass through. BsWelford doesn't use it; future
-    // Results that do (selection emitters, env readers) need it.
-    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
-
-    // Frame 0 — run per-frame calculators on the canonical
-    // conformation, then dispatch TRs.
-    {
-        auto& conf0 = tp.CanonicalConformation();
-        auto rr = nmr::OperationRunner::Run(conf0, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    }
-
-    // Run 10 more frames — read, tick, calc, dispatch.
-    size_t total = 1;
-    while (total < 11 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-
-    // Finalize: converts Welford M2 → std.
-    tp.FinalizeAllResults(traj);
-    EXPECT_TRUE(tp.IsFinalized());
+    const size_t total = traj.FrameCount();
+    ASSERT_GT(total, 1u);
 
     // ── Singleton check on the attach discipline ──
     // A second BsWelfordTrajectoryResult attach must be rejected.
@@ -362,49 +336,41 @@ TEST(GromacsStreaming, PositionsTimeSeriesEndToEnd) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — PositionsTimeSeries has no CR deps
+    // but we still attach Geometry + SpatialIndex as the minimum
+    // per-frame classical stack a RunConfiguration should carry.
+    nmr::RunConfiguration config;
+    config.SetName("PositionsTimeSeriesEndToEndTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::PositionsTimeSeriesTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    // Record frame 0's positions BEFORE attach (for later verification).
-    const std::vector<nmr::Vec3> positions_frame0 = handler.ProteinPositions();
-
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::PositionsTimeSeriesTrajectoryResult::Create(tp)));
-
     nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    // Frame 0.
-    {
-        auto& conf0 = tp.CanonicalConformation();
-        auto rr = nmr::OperationRunner::Run(conf0, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    }
-
-    // 9 more frames.
-    size_t total = 1;
-    while (total < 10 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-
-    tp.FinalizeAllResults(traj);
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
     EXPECT_TRUE(tp.IsFinalized());
+
+    const size_t total = traj.FrameCount();
+    ASSERT_GT(total, 1u);
+
+    // Frame-0 positions reference: conf0 is seeded from frame 0 and
+    // never mutated, so its positions equal what the handler read
+    // before attach. Cheaper than a separate pre-Run handler pass.
+    const auto& conf0 = tp.CanonicalConformation();
 
     // ── Post-Finalize: dense buffer is owned by tp ──
     auto* buffer = tp.GetDenseBuffer<nmr::Vec3>(
@@ -417,10 +383,11 @@ TEST(GromacsStreaming, PositionsTimeSeriesEndToEnd) {
     EXPECT_EQ(buffer->StridePerAtom(), total)
         << "stride should equal number of frames dispatched";
 
-    // Frame 0's positions survive round-trip.
+    // Frame 0's positions survive round-trip (conf0 is const-seeded
+    // from frame 0 at tp.Seed; nothing mutates it after).
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const nmr::Vec3& got = buffer->At(i, 0);
-        const nmr::Vec3& exp = positions_frame0[i];
+        const nmr::Vec3& exp = conf0.PositionAt(i);
         EXPECT_DOUBLE_EQ(got.x(), exp.x()) << "atom " << i << " frame 0 x";
         EXPECT_DOUBLE_EQ(got.y(), exp.y()) << "atom " << i << " frame 0 y";
         EXPECT_DOUBLE_EQ(got.z(), exp.z()) << "atom " << i << " frame 0 z";
@@ -464,55 +431,43 @@ TEST(GromacsStreaming, BsShieldingTimeSeriesEndToEnd) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — BiotSavart must run per frame so
+    // ca.bs_shielding_contribution is populated before the TR reads.
+    nmr::RunConfiguration config;
+    config.SetName("BsShieldingTimeSeriesEndToEndTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::BiotSavartResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BsShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    // BiotSavart must run per frame so that
-    // ca.bs_shielding_contribution is populated. It doesn't require
-    // DSSP, charges, APBS, or MOPAC — skip everything except what BS
-    // needs (Geometry, SpatialIndex, Enrichment).
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BsShieldingTimeSeriesTrajectoryResult::Create(tp)));
-
     nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    // Frame 0.
-    nmr::SphericalTensor expected_atom_frame0;
-    {
-        auto& conf0 = tp.CanonicalConformation();
-        auto rr = nmr::OperationRunner::Run(conf0, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        // Snapshot frame-0 bs_shielding for one atom BEFORE dispatch
-        // so we can verify round-trip into the dense buffer.
-        expected_atom_frame0 = conf0.AtomAt(0).bs_shielding_contribution;
-        tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    }
-
-    // 5 more frames — enough to exercise the growing buffer + final
-    // transfer without running long.
-    size_t total = 1;
-    while (total < 6 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-
-    tp.FinalizeAllResults(traj);
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
     EXPECT_TRUE(tp.IsFinalized());
+
+    const size_t total = traj.FrameCount();
+    ASSERT_GT(total, 1u);
+
+    // Frame-0 bs_shielding reference: conf0 held frame-0 positions
+    // and ran the BS kernel against them. Its atom-0 contribution
+    // is what frame-0 dispatch fed into the buffer.
+    const auto& conf0 = tp.CanonicalConformation();
+    const nmr::SphericalTensor expected_atom_frame0 =
+        conf0.AtomAt(0).bs_shielding_contribution;
 
     // ── Dense buffer owned by tp, indexed by SphericalTensor ──
     auto* buffer = tp.GetDenseBuffer<nmr::SphericalTensor>(
@@ -578,50 +533,34 @@ TEST(GromacsStreaming, ChiRotamerSelectionEmitsToBag) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — ChiRotamer has Dependencies() == {}.
+    nmr::RunConfiguration config;
+    config.SetName("ChiRotamerSelectionEmitsToBagTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::ChiRotamerSelectionTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::ChiRotamerSelectionTrajectoryResult::Create(tp)));
-
     nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    // Bag is empty before any frame runs.
-    EXPECT_EQ(traj.Selections().Count(), 0u);
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
+    EXPECT_TRUE(tp.IsFinalized());
 
-    // Frame 0: establishes prior bins, no transitions emitted.
-    {
-        auto& conf0 = tp.CanonicalConformation();
-        auto rr = nmr::OperationRunner::Run(conf0, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    }
-    EXPECT_EQ(traj.Selections().Count(), 0u)
-        << "frame 0 should not emit — no prior bin to compare against";
-
-    // Run enough subsequent frames to observe some rotamer transitions.
-    size_t total = 1;
-    while (total < 60 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-
-    tp.FinalizeAllResults(traj);
+    const size_t total = traj.FrameCount();
+    ASSERT_GT(total, 1u);
 
     // The bag has events of exactly one kind — ChiRotamerSelection's.
     const auto kinds = traj.Selections().Kinds();
@@ -638,8 +577,11 @@ TEST(GromacsStreaming, ChiRotamerSelectionEmitsToBag) {
         << total << " frames";
 
     // Each record carries frame + time as explicit top-level fields,
-    // and emitter-specific metadata.
+    // and emitter-specific metadata. ChiRotamer needs a prior bin to
+    // detect a transition, so frame 0 never emits.
     for (const auto* rec : records) {
+        EXPECT_GE(rec->frame_idx, 1u)
+            << "frame 0 should not emit — no prior bin to compare against";
         EXPECT_LT(rec->frame_idx, total);
         EXPECT_GT(rec->time_ps, 0.0);
         EXPECT_FALSE(rec->reason.empty())
@@ -690,43 +632,38 @@ TEST(GromacsStreaming, BondLengthStatsEndToEnd) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — BondLengthStats has Dependencies() == {}
+    // (reads bond indices + positions only).
+    nmr::RunConfiguration config;
+    config.SetName("BondLengthStatsEndToEndTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BondLengthStatsTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
+    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
+    EXPECT_TRUE(tp.IsFinalized());
 
-    // After Seed, Protein is finalized — BondCount is valid here.
+    // After Run, Protein is finalized — BondCount is valid.
     ASSERT_GT(tp.ProteinRef().BondCount(), 0u);
 
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BondLengthStatsTrajectoryResult::Create(tp)));
-
-    nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
-
-    // Frame 0 + 9 more.
-    auto& conf0 = tp.CanonicalConformation();
-    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
-    ASSERT_TRUE(rr0.Ok()) << rr0.error;
-    tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    size_t total = 1;
-    while (total < 10 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-    tp.FinalizeAllResults(traj);
+    const size_t total = traj.FrameCount();
+    ASSERT_GT(total, 1u);
 
     ASSERT_TRUE(tp.HasResult<nmr::BondLengthStatsTrajectoryResult>());
     const auto& bonds =
@@ -776,45 +713,45 @@ TEST(GromacsStreaming, BsAnomalousAtomMarkerPushesEvents) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — both TRs attached; attach order is
+    // dispatch order, so BsWelford runs before BsAnomalous each frame
+    // and BsAnomalous sees fresh bs_t0_mean / bs_t0_m2 / bs_n_frames.
+    nmr::RunConfiguration config;
+    config.SetName("BsAnomalousAtomMarkerPushesEventsTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::BiotSavartResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BsWelfordTrajectoryResult::Create(tp);
+        });
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BsAnomalousAtomMarkerTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    // Attach order matters: BsWelford first so its fields on
-    // TrajectoryAtom exist when BsAnomalous reads them.
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BsWelfordTrajectoryResult::Create(tp)));
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BsAnomalousAtomMarkerTrajectoryResult::Create(tp)));
-
     nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    // Frame 0 + 60 more. Burn-in of 20 frames per atom means the
-    // first 20 frames accumulate but produce no events.
-    auto& conf0 = tp.CanonicalConformation();
-    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
-    ASSERT_TRUE(rr0.Ok()) << rr0.error;
-    tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    size_t total = 1;
-    while (total < 60 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-    tp.FinalizeAllResults(traj);
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
+    EXPECT_TRUE(tp.IsFinalized());
+
+    const size_t total = traj.FrameCount();
+    // Need enough frames for burn-in (MIN_BURN_IN_FRAMES=20) plus a
+    // few post-burn-in to see events emitted.
+    ASSERT_GT(total, nmr::BsAnomalousAtomMarkerTrajectoryResult::
+        MIN_BURN_IN_FRAMES + 5u)
+        << "fixture did not provide enough frames past burn-in";
 
     const auto& marker =
         tp.Result<nmr::BsAnomalousAtomMarkerTrajectoryResult>();
@@ -893,42 +830,36 @@ TEST(GromacsStreaming, BsT0AutocorrelationEndToEnd) {
         GTEST_SKIP() << "Full-system test data not found";
     }
 
+    // Narrow RunConfiguration — BsT0Autocorrelation → BiotSavartResult.
+    nmr::RunConfiguration config;
+    config.SetName("BsT0AutocorrelationEndToEndTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::BiotSavartResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BsT0AutocorrelationTrajectoryResult::Create(tp);
+        });
+
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
 
-    nmr::RunOptions opts;
-    opts.charge_source = tp.Charges();
-    opts.skip_mopac    = true;
-    opts.skip_coulomb  = true;
-    opts.skip_apbs     = true;
-    opts.skip_dssp     = true;
-
-    nmr::GromacsFrameHandler handler(tp);
-    ASSERT_TRUE(handler.Open(xtc, tpr)) << handler.error();
-    ASSERT_TRUE(handler.ReadNextFrame()) << handler.error();
-    tp.Seed(handler.ProteinPositions(), handler.Time());
-
-    ASSERT_TRUE(tp.AttachResult(
-        nmr::BsT0AutocorrelationTrajectoryResult::Create(tp)));
-
     nmr::Trajectory traj(xtc, tpr, TRAJ_DIR + "/md.edr");
+    nmr::Session session;
 
-    // Need > a handful of frames to get any lag > 0 populated; run
-    // 30 which gives lag 0..29 (N_LAGS=120 but only the first 30 get
-    // counts).
-    auto& conf0 = tp.CanonicalConformation();
-    auto rr0 = nmr::OperationRunner::Run(conf0, opts);
-    ASSERT_TRUE(rr0.Ok()) << rr0.error;
-    tp.DispatchCompute(conf0, traj, 0, handler.Time());
-    size_t total = 1;
-    while (total < 30 && handler.ReadNextFrame()) {
-        auto conf = tp.TickConformation(handler.ProteinPositions());
-        auto rr = nmr::OperationRunner::Run(*conf, opts);
-        ASSERT_TRUE(rr.Ok()) << rr.error;
-        tp.DispatchCompute(*conf, traj, handler.Index(), handler.Time());
-        ++total;
-    }
-    tp.FinalizeAllResults(traj);
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    EXPECT_TRUE(traj.IsComplete());
+    EXPECT_TRUE(tp.IsFinalized());
+
+    const size_t total = traj.FrameCount();
+    // Need > a handful of frames so any lag > 0 gets populated.
+    ASSERT_GT(total, 5u);
 
     auto* rho = tp.GetDenseBuffer<double>(std::type_index(
         typeid(nmr::BsT0AutocorrelationTrajectoryResult)));
