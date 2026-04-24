@@ -1,0 +1,59 @@
+# facelli-2011-pnmrs
+chemical shift tensor
+magnetic shielding tensor
+shielding tensor theory
+Ramsey paramagnetic shielding
+Rayleigh-Schrödinger perturbation theory
+diamagnetic contribution
+paramagnetic contribution
+gauge invariance
+gauge origin
+GIAO
+gauge including atomic orbital
+IGLO
+individual gauge for localized orbitals
+LORG
+IGAIM
+CSGT
+continuous gauge transformation
+coupled Hartree-Fock
+coupled DFT
+finite perturbation theory
+DFT chemical shift
+B3LYP
+MPW1PW91
+OLYP
+exchange-correlation functional
+absolute shielding scale
+chemical shift anisotropy
+principal components
+icosahedral representation
+Alderman representation
+NMR crystallography
+GIPAW
+Pickard-Mauri method
+periodic DFT
+cluster model shielding
+intermolecular shielding effect
+solvent effect on shielding
+Buckingham solvent classification
+reaction field
+solid state NMR
+MAS
+protein NMR
+Vila fragment approach
+Scheraga
+Ac-G-X-G-NMe capping
+13C chemical shift
+15N chemical shift
+17O chemical shift
+proton chemical shift
+stereochemistry
+polymorph
+paclitaxel
+single crystal tensor
+Grant Utah benchmark
+Iuliucci tensor dataset
+nuclear shielding calculation
+quantum chemical shielding
+pedagogical review

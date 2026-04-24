@@ -1,0 +1,63 @@
+# klukowski-2025-pnmrs
+machine learning in NMR
+deep learning NMR
+automated spectrum analysis
+peak picking
+chemical shift assignment
+protein structure determination from NMR
+chemical shift prediction
+scalar coupling prediction
+protein dynamics prediction
+order parameter S2 prediction
+spectrum reconstruction
+non-uniform sampling
+NUS reconstruction
+virtual decoupling
+denoising
+ARTINA
+NMRtist
+DEEP picker
+FID-Net
+DN-UNet
+PIPNet
+AC-ResNet
+SENNet
+EDHRN
+Distance-AF
+PROSHIFT
+SPARTA+
+ShiftX2
+PPM_One
+UCBShift
+UCBShift 2.0
+ShiftML
+ShiftML2
+3D-DenseNet
+Jonas graph convolutional
+Kang weakly-supervised
+Yang graph neural network
+ExpNN-ff
+IMPRESSION
+PDBCor correlated motion
+Wang order parameter predictor
+Klukowski AF2 UCBShift integration
+convolutional neural network
+graph neural network
+message-passing graph neural network
+kernel ridge regression
+Gaussian process regression
+SOAP kernel
+gradient boosted trees
+LSTM
+random forest
+transfer learning
+weakly-supervised learning
+Klukowski-Riek-Güntert review
+BMRB data scarcity
+NMRPrime database
+AlphaFold2 in NMR
+AlphaFold3
+vision transformer NMR outlook
+diffusion model NMR outlook
+NMR experiment design for deep learning
+pedagogical review

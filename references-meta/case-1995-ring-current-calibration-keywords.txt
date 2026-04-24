@@ -1,0 +1,38 @@
+# case-1995-jbnmr
+ring current calibration
+Johnson-Bovey model
+Haigh-Mallion model
+ring-current intensity factor
+electrostatic polarization coefficient
+Buckingham electrostatic
+secondary chemical shift
+DFT shielding calculation
+methane probe
+protein NMR
+nucleic acid NMR
+aromatic ring
+phenylalanine
+tyrosine
+histidine
+histidinium
+tryptophan
+indole
+phenol
+imidazole
+adenine
+guanine
+cytosine
+thymine
+uracil
+PW91 functional
+IGLO-III basis
+DeMON program
+GIAO
+Hartree-Fock
+AMBER 4.1
+AMBER partial charges
+Coulomb field
+Giessner-Prettre Pullman
+Augspurger-Dykstra
+chemical shift prediction
+biomolecular NMR

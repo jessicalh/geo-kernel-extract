@@ -1,0 +1,40 @@
+# sahakyan-vendruscolo-2013-jpcb
+ring current model
+Pople point dipole
+Haigh-Mallion model
+Waugh-Fessenden-Johnson-Bovey
+electric field effect
+RNA chemical shift
+RNA bases
+nucleic acid NMR
+adenine
+guanine
+cytosine
+uracil
+dibase arrangement
+stacked dibase
+hydrogen bonded base pair
+hybrid DFT
+PBE1PBE functional
+GIAO
+6-311+G basis set
+chemical shift predictor
+1H shift
+13C shift
+15N shift
+17O shift
+DiBaseRNA database
+RNA05 database
+X-ray RNA structure
+structure-based NMR prediction
+linear model fitting
+geometric factor map
+ring current intensity
+ring normal vector
+5-membered ring
+6-membered ring
+Eureqa symbolic regression
+RingPar web server
+MD chemical shift restraint
+sign convention
+Vendruscolo group

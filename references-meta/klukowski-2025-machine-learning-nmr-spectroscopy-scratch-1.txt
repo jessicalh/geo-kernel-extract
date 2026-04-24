@@ -1,0 +1,38 @@
+Scratch notes on chunk 1 (pp 1–3) of Klukowski, P., Riek, R. & Güntert, P. (2025) "Machine learning in NMR spectroscopy." Prog. Nucl. Magn. Reson. Spectrosc. 148–149, 101575. DOI 10.1016/j.pnmrs.2025.101575. Received 14 May 2025, accepted 25 June 2025, published online 1 July 2025. CC BY open access. Editor: David Neuhaus. 15 pages total.
+
+Affiliations: ETH Zurich (Institute of Molecular Physical Science — Klukowski, Riek, Güntert), Goethe Frankfurt (Biophysical Chemistry — Güntert), Tokyo Metropolitan University (Chemistry — Güntert).
+
+Scope / structure. Review of ML applied to NMR spectroscopy across three application areas: (i) automated analysis of experimental data (peak picking, chemical shift assignment, protein structure determination); (ii) structure/dynamics-property prediction (chemical shifts in proteins, chemical shifts in small molecules and molecular solids, scalar couplings, protein dynamics); (iii) spectrum reconstruction and quality enhancement (NUS, virtual decoupling, denoising). Closes with outlook on ML adoption in lab practice, reducing experimental input, experiment design optimisation for DL, spectra databases, and comprehensive structure/dynamics determination.
+
+Fig. 1 is a chronological overview of methods reviewed, 2000s → 2025. Captures all the reconnaissance predictors we identified in our corpus and more: PROSHIFT (~2003), ShiftX2 (2015), SPARTA+ (2015), CV-Peak picker (2018), NMRNet (2018), ShiftML (2019), IMPRESSION (2019), Jonas E (2020), 3D-DenseNet (2020), Kang S (2021), UCBShift (2021), FIDNet (2021), DN-UNet (2021), Bratholm (2022), ExpNN-ff (2022), Karunanithy (2022), DEEP picker (2022), EDHRN (2021), PPM_One (2015), ARTINA (2023), PIPNet (2023), ShiftML2 (2023), NMRtist (2023), Schmid N (2023), Yang Z (2021), Klukowski P (~2024), AC-ResNet (2024), ARTINA-CST (2024), Distance-AF (2024), Wang Q (2024), SENNet (2025), UCBShift2 (2025), PDBCor (2023). So this paper is the canonical 2025 map of the ML-for-NMR literature.
+
+Table 1 — ML model taxonomy as applied in NMR, with typical use cases (chunk 1 gets GBT, CNN, GNN, LSTM, kernel regression; probably more on p4):
+- **Gradient Boosted Trees (GBT)** — tabular/categorical; used in ARTINA to evaluate structure proposals from peak/shift/structure-calc features.
+- **CNN** — grid-like data; automated peak detection in NMR spectra (learns peak shapes, separates from noise/baseline/artifacts).
+- **GNN (message-passing)** — extensively used in chemical shift prediction for small molecules; molecule-as-graph with bonds/proximity edges.
+- **LSTM** — 1D NMR spectra; captures global relationships along spectral axis for signal-positioning context.
+- **Kernel regression** — chemical shift prediction in molecular solids (ShiftML lineage); weighted average of training shifts by structural similarity.
+
+Framing numbers from the intro that matter for our work:
+- 83% of PDB structures are X-ray; 6.3% are NMR (decayed from 10% a few years ago); ~80% of proteins/complexes do not crystallize.
+- AlphaFold (cited [24,25]) — "valuable hypotheses, accelerate but do not replace" experimental structure determination.
+- Pre-DL, solution-state NMR structure determination followed 25-year-old principles.
+- Manual NMR analysis: months of work for 3–30 kDa protein (sometimes 50–70 kDa with appropriate approaches).
+
+Relevance to our work — preliminary flag: this review directly covers our reconnaissance-predictor lineage (SHIFTX2, SPARTA+, UCBShift, UCBShift2, ShiftML, ShiftML2, PROSHIFT) and positions them in the broader ML-NMR landscape. The "three application areas" framing will be useful for Section 5 of `proposed_outline_draft.md` — they carve the existing-ML-systems space cleanly. Also: introduces UCBShift2 (2025) which post-dates our corpus and will be worth acquiring separately. Sections ahead (chunks 2–5) will cover each application area in detail; chunk 2 starts automated analysis.
+
+Citations observed in chunk 1 worth tracking:
+- [1] NUS foundational
+- [2] Denoising — a specific DL method
+- [3,4] Virtual decoupling papers
+- [5] Information synthesis from sequential measurements
+- [6,9] Chemical shift assignment DL papers
+- [7,8] Visual spectrum analysis
+- [10] Structure determination DL
+- [11–19] Structure-property prediction across small molecules, solids, macromolecules
+- [20] The "80% don't crystallize" claim
+- [21] X-ray automation
+- [22,23] Cryo-EM breakthroughs
+- [24,25] AlphaFold
+- [26] Commentary on AlphaFold's role (valuable hypotheses, not replacement)
+- [27–30] Classical solution-NMR structure determination principles (25-year-old)

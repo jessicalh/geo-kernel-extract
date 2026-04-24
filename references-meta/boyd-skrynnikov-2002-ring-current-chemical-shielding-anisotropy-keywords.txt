@@ -1,0 +1,31 @@
+# boyd-skrynnikov-2002-jacs
+ring current
+chemical shielding anisotropy
+CSA
+Johnson-Bovey ring current
+shielding tensor
+sigma_zz component
+sigma_xz component
+rank-2 shielding
+N-methyl acetamide probe
+NMA probe
+1,3-cyclohexadiene
+CYH olefinic analogue
+DFT shielding calculation
+B3LYP functional
+6-311++G(2d,p) basis
+GIAO
+Gaussian98
+fibronectin type-2 module
+G42 residue
+F19 phenylalanine
+N-H pi hydrogen bond
+aromatic hydrogen bond
+backbone HN
+13C' CSA
+15N CSA
+TROSY
+tensor additive decomposition
+sigma_local sigma_rc
+proof-of-concept
+JACS communication

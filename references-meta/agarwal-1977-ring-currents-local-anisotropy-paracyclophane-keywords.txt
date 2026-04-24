@@ -1,0 +1,32 @@
+# agarwal-1977-canjchem
+ring current model
+out-of-plane protons
+paracyclophane
+[10]-paracyclophane
+decamethylene bridge
+local bond anisotropy
+Waugh-Fessenden-Johnson-Bovey
+Johnson-Bovey
+Haigh-Mallion
+loop separation parameter
+single loop model
+two-loop model
+220 MHz NMR
+homonuclear decoupling
+Karplus equation
+vicinal coupling constant
+Allinger molecular mechanics
+MM2
+methylene proton shift
+13C shielding tensor
+Grant solid-state tensor
+Barfield Grant Ikenberry
+aromatic ring shift
+incremental chemical shift
+ring current intensity factor
+HM intensity factor
+JB intensity factor
+standard methylene shift
+geometric calibration molecule
+NMR benchmark geometry
+McMaster University

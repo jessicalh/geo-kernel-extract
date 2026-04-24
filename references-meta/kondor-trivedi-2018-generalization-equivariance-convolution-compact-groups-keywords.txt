@@ -1,0 +1,31 @@
+# kondor-trivedi-2018-icml
+equivariant neural network
+equivariance theorem
+compact group action
+group convolution
+Haar measure
+generalised convolution
+homogeneous space
+quotient space
+feed-forward network
+Theorem 1 Kondor-Trivedi
+necessary condition for equivariance
+sufficient and necessary
+representation theory
+noncommutative harmonic analysis
+group-equivariant CNN
+Cohen Welling antecedent
+message-passing framework
+Gilmer
+scattering network Mallat
+graph neural network
+permutation equivariance
+translation equivariance
+rotation equivariance
+ICML 2018
+PMLR 80
+Kondor
+University of Chicago
+Toyota Technological Institute
+rigorous backing
+theoretical machine learning

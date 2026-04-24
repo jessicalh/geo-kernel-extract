@@ -1,0 +1,32 @@
+# pelloni-2004-orgletters
+ring-current model
+Biot-Savart law
+differential Biot-Savart
+integral Biot-Savart
+shielding density
+shielding density map
+nuclear magnetic shielding
+aromatic ring current
+diatropic ring current
+paratropic ring current
+antiaromaticity
+cyclobutadiene
+benzene
+CTOCD-DZ2
+continuous translation of origin of current density
+PZ2 gauge
+coupled Hartree-Fock
+B3LYP
+6-311++G basis
+ab initio NMR
+out-of-plane shielding component
+pi electron current
+current density tensor
+ortho carbon
+ipso carbon
+para carbon
+loop segment
+GAUSSIAN98
+Lazzeretti
+Modena
+pedagogical interpretation

@@ -1,0 +1,28 @@
+# buckingham-1960-can-j-chem
+electric field effect on NMR shielding
+linear electric field effect
+Buckingham effect
+polar group
+proton shielding
+chemical shift
+screening constant
+shielding tensor
+power series expansion
+inversion symmetry
+X-H bond
+Marshall-Pople H atom
+hydrogen atom shielding
+point-charge model
+Onsager reaction field
+quadrupolar reaction field
+solvent shift
+dielectric constant
+substituted benzene
+1,4-dinitrobenzene
+p-methyl nitrobenzene
+cis-trans dichloroethene
+acetylene
+dipole moment
+quadrupole moment
+reaction field
+NMR spectroscopy

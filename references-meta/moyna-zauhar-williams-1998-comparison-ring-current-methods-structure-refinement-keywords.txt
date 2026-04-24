@@ -1,0 +1,34 @@
+# moyna-1998-jcics
+ring current model comparison
+Haigh-Mallion
+Johnson-Bovey
+classical point-dipole
+Pople model
+point-dipole reparameterization
+proportionality constant
+Perkins-Dwek constant
+proton chemical shift
+protein NMR
+chemical shift prediction
+pseudoenergy penalty
+NMR structure refinement
+chemical shift constraint
+molecular mechanics
+SYBYL 6.3
+Tripos Force Field Engine
+SHIFTS 2.2
+Case chemical shift data
+Osapay-Case dataset
+Fmoc tripeptide
+insect kinin
+D-amino acid peptide
+neuropeptide
+H-alpha shift
+side-chain proton shift
+aromatic ring stacking
+ring current intensity factor
+linear regression fit
+secondary chemical shift
+Williamson Asakura
+Texas A&M Center for Biological NMR
+A.I. Scott lab

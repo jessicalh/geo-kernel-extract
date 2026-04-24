@@ -1,0 +1,25 @@
+# bryant-1983-jce
+NMR time scale
+chemical exchange
+coalescence
+uncertainty principle
+lifetime broadening
+chemical shift averaging
+scalar coupling averaging
+longitudinal relaxation
+T1
+spin-lattice relaxation
+NMRD
+field-cycling relaxometry
+correlation time
+rotational correlation time
+electron relaxation
+paramagnetic NMR
+Solomon-Bloembergen-Morgan
+dipolar relaxation
+Larmor frequency
+coalescence time
+multinuclear NMR
+manganese
+aqueous relaxation
+pedagogical review

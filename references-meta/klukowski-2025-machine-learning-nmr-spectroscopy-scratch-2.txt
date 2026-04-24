@@ -1,0 +1,53 @@
+Scratch notes on chunk 2 (pp 4–6): automated analysis of experimental NMR data (peak picking, chemical shift assignment, protein structure determination) and the shift-prediction table.
+
+**Table 2** — ML for experimental-data analysis:
+- ARTINA [6] — peak picking + chemical shift assignment + chemical shift transfer + structure-based assignment + structure determination; uses CNNs, GNNs, GBT, and metaheuristic search.
+- DEEP picker [7] — peak picking for metabolomics; CNNs.
+- Schmidt et al. [8] — 1D peak picking; CNN + LSTM.
+- Distance-AF [10] — experimental restraints + AlphaFold; AlphaFold2 adaptation.
+- Klukowski et al. [43] — ARTINA + AlphaFold2 + UCBShift integration to reduce experimental data required.
+- Wetton et al. [9] — ARTINA adaptation for chemical shift transfer.
+- NMRtist [44] — online host for ARTINA at nmrtist.org.
+
+**2.1 Peak picking.**
+- History: 1980s pattern recognition, then matrix decomposition (AUTOPSY [48], three-way [49,50], SVD [51], NMF [52]), thresholding (NMRView, XEASY, CCPN), Bayesian methods, geometrical feature extraction.
+- NMRNet [65] — CNN binary classifier on 48×48 image patches; trained on 71 2D/3D spectra across 14 proteins.
+- DEEP picker [7] — 1D CNN layers, 8 hidden, predicts positions + amplitudes + shapes; generalizes across HSQC, NOESY, TOCSY.
+- ARTINA [6] peak picking: two deep residual CNNs; first classifies (extrema proximity), second does regression-based deconvolution/localization; 1329 experimentally-acquired 2D–4D spectra training set; fully autonomous (only spectrum as input); available at nmrtist.org; training data at nmrdb.ethz.ch — 100 protein structures and assignments reproducible from spectra.
+- Schmidt et al. [8] — 1D small-molecule focus; 250K simulated spectra + inception block + FC layers + LSTM + prediction head; achieves 0.92/1.00/0.98 on simulated and 1.00/0.88/0.97 on experimental; tested on 10 ¹H 1D + one ¹³C 1D + one benchtop.
+
+**2.2 Protein chemical shift assignment.**
+- Classical methods: FLYA [68], PINE-NMR [69], AUTOASSIGN [70], MARS [71] — network-based / probabilistic / rule-based.
+- ARTINA hybrid: combines FLYA with GNN; takes manually-curated or CNN-detected peaks; FLYA gives initial assignment; GNN (trained on BMRB-archived assignments across thousands of proteins) predicts expected values for ambiguous atoms; FLYA re-runs with augmented input; median assignment accuracy 91.4% (tolerances: 0.035 ppm ¹H, 0.4 ppm ¹³C/¹⁵N). Long-charged side chains and aromatic rings remain hardest.
+- Chemical shift transfer: use known assignment of a related protein as prior. Wetton et al. [9] (ARTINA follow-up) shows even limited datasets ([¹³C,¹H]-HSQC + [¹⁵N,¹H]-HSQC + ¹³C/¹⁵N-resolved NOESY) can transfer assignments; outperforms de novo, with improvement proportional to perturbation magnitude. Validated on BMRB homologous pairs.
+- Klukowski et al. [43] — big ARTINA + AlphaFold2 + UCBShift integration study, >5000 automated protein assignments. Key result: 5 3D spectra + AlphaFold + UCBShift priors → 92.6% assignment accuracy, *higher* than full spectral dataset without predictions (91.4%). Demonstrates that DL structure predictions meaningfully reduce experimental data burden.
+
+**2.3 Protein structure determination.**
+Two application axes balance experimental vs. in silico reliance:
+(a) Structure determination based exclusively on experimental data.
+(b) Sparse experimental data + in silico structure elucidation.
+
+- ARTINA (axis a): three blocks — spectrum analysis (CNNs), chemical shift refinement cycle, structure calculation cycle. Structure calc uses chemical shifts + NOESY peak lists → 10 structural proposals → GBT ranks them. Best or fed-back-into-shift-refinement. Validated on [67] dataset: 100 proteins reproduced vs. PDB, median RMSD 1.44 Å, mean 1.55 Å, 97% under 3 Å. Available via NMRtist. Applied to protein topologies [72], complex formation [73], pathogens [74-76], cancer [77], immunoglobulins [78], allostery [79], intracellular delivery [80].
+- Distance-AF [10] (axis b): AlphaFold2 + distance restraints via custom loss backpropagated through Invariant Point Attention. Starts with AF2 initial structure, iteratively refines to satisfy experimental distances.
+
+**Table 3** — The big methods table for structure-based chemical shift prediction. Directly covers our reconnaissance-predictor list:
+- **PROSHIFT (2003)** — FF NN 1 hidden layer, 322 proteins, 350 handcrafted features, ¹H/¹³C/¹⁵N.
+- **SPARTA+ (2010)** — FF NN 1 hidden, 580 proteins (from SPARTA/TALOS+/Promega), 113 handcrafted features; HN, Hα, C', Cα, Cβ, N.
+- **ShiftX2 (2011)** — regression trees + sequence alignment, 322 proteins (RefDB/SPARTA/SHIFTX), all ¹H/¹³C/¹⁵N.
+- **PPM_One (2015)** — FF NN for backbone + linear regression for side-chain, 405 proteins, ¹H/¹³C/¹⁵N.
+- **SHIFTML (2018)** — kernel ridge regression + SOAP kernel, 2500 CSD structures with DFT shifts; molecular solids ¹H/¹³C/¹⁵N/¹⁷O.
+- **Jonas (2019)** — graph CNN, 32,538 small molecules ≤64 atoms (NMRShiftDB2), ¹H/¹³C.
+- **3D-DenseNet (2019)** — 3D grid atom-neighborhood representation, 2500 CSD structures; NMR crystallography ¹H/¹³C/¹⁵N/¹⁷O.
+- **UCBShift (2020)** — random forest + alignment, 847 proteins (SPARTA+/ShiftX2/RefDB); HN/Hα/C'/Cα/Cβ/N.
+- **Kang (2020)** — message-passing GNN + weakly-supervised, 32,538 small molecules; ¹H/¹³C.
+- **Impression (2020)** — kernel ridge regression, Coulomb-matrix/aSLATM/FCHL kernels, 1292 CSD + 608 experimental J-couplings + 734 ¹H shifts; C/H/N/O/F, coupling ¹J_CH + ¹³C/¹H shifts.
+- **Yang et al. (2021)** — message-passing GNN, generic, 2664 protein structures (RefDB/ShiftX2) + 369 HMDB metabolites; ¹H/¹³C/¹⁵N.
+- **ExpNN-ff (2021)** — message-passing GNN (SchNet variant with edge updates), 8000 DFT + 5000 experimental + 24 CHESHIRE; organic ¹H/¹³C.
+- **ShiftML2 (2022)** — ensemble of 32 kernel ridge regression models with SOAP, 16,013 CSD (<200 atoms/cell); 13C/15N/17O/19F/33S/31P/35Cl/23Na/43Ca/25Mg/39K.
+- **UCBShift 2.0 (2024)** — random forest + sequence AND structure alignment, 1051 proteins; ¹H/¹³C/¹⁵N.
+
+Key relevance notes for our work:
+- This table is the canonical summary of everything we called the "reconnaissance predictor set." Now with dataset sizes, architectures, and nucleus coverage.
+- All protein predictors still target isotropic shifts on backbone-plus-limited-side-chain (HN/Hα/C'/Cα/Cβ/N). None outputs full rank-2 tensors on proteins. Our work occupies a distinct niche.
+- Solid-state ShiftML-family uses kernel ridge regression with SOAP — architecturally aligned with Kondor 2025's equivariant framework discussion. The SOAP kernel (from Bartók-Kondor-Csányi 2013 on our acquisition list) is the descriptor.
+- ExpNN-ff trained on DFT shifts — analogous training paradigm to our Stage 1 DFT-calibrated kernels, but as a GNN rather than a classical decomposition.

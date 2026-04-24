@@ -1,0 +1,39 @@
+# markwick-2010-jacs-commun
+Accelerated MD
+AMD
+enhanced conformational sampling
+dual-boost AMD
+dihedral boost
+Hamelberg-McCammon method
+chemical shift prediction
+ensemble averaging
+trajectory averaging
+free-energy-weighted ensemble
+protein dynamics
+IκBα
+ankyrin repeat protein
+NF-κB inhibitor
+ubiquitin
+SHIFTX
+empirical shift predictor
+X-ray reference comparison
+RMSD to experimental shifts
+15N backbone shift
+HN shift
+C-alpha shift
+C-beta shift
+C' carbonyl shift
+NH order parameter
+S2
+R1 R2 relaxation
+heteronuclear NOE
+millisecond exchange
+conformational substates
+rotameric states
+AMBER10
+Markwick lineage
+Blackledge
+McCammon
+residual dipolar coupling cross-validation
+dynamical heterogeneity
+backbone dynamics

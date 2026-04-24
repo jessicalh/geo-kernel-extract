@@ -1,0 +1,38 @@
+# de-gortari-2010-jacs
+MD time averaging
+chemical shift time averaging
+DFT chemical shift
+GIPAW
+CASTEP
+gauge including projector augmented wave
+MLF peptide
+N-formyl methionyl leucyl phenylalanine
+solid state NMR
+MAS NMR
+magic angle spinning
+PBE functional
+plane wave DFT
+ultrasoft pseudopotential
+Car-Parrinello MD
+first-principles molecular dynamics
+ab initio MD
+classical molecular dynamics
+GROMACS
+OPLS-AA force field
+NPT ensemble
+Nose-Hoover thermostat
+rotameric averaging
+side chain dynamics
+chi dihedral clustering
+bond length vibration
+zero-point vibrational correction
+Vendruscolo group
+Pickard GIPAW
+13C chemical shift
+periodic DFT
+crystal unit cell
+P2_1 2_1 2_1
+conformational averaging
+microsecond MD
+tripeptide model system
+crystal packing

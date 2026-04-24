@@ -1,0 +1,42 @@
+# kondor-2025-pnas
+equivariance
+invariance
+compact group
+irreducible representation
+irrep
+spherical harmonic
+Wigner D-matrix
+Peter-Weyl theorem
+Schur's lemma
+Clebsch-Gordan product
+CG decomposition
+tensor field network
+TFN
+e3nn
+GElib
+NequIP
+MACE
+ACE
+SOAP
+Coulomb matrix
+Behler-Parrinello symmetry function
+Deep Sets
+message passing
+graph neural network
+GNN
+steerable CNN
+group equivariant CNN
+Lorentz group
+SO(3)
+symmetric group
+permutation equivariance
+point cloud
+atomic environment
+force field learning
+representation theory
+noncommutative harmonic analysis
+Tannaka-Krein duality
+bispectrum
+subgraph neural network
+P-tensor
+pedagogical review

@@ -1,0 +1,21 @@
+Buckingham, A.D. (1960) "Chemical Shifts in the Nuclear Magnetic Resonance Spectra of Molecules Containing Polar Groups." Canadian Journal of Chemistry 38, 300–307. Contribution from the Division of Pure Chemistry, NRC of Canada, Ottawa (Buckingham visiting from Oxford). Manuscript received 18 September 1959. 8 pages, 14 references.
+
+Bibliographic note: our annotated bibliography entry A11 cites this paper as Mol. Phys. 3, 219–224 (1960). The PDF on disk is the Can. J. Chem. version; these appear to be closely related Buckingham 1960 papers under the same title. The bib entry wants checking against the Mol. Phys. volume.
+
+Buckingham derives how polar groups elsewhere in a molecule perturb the nuclear magnetic shielding at a particular nucleus via the electric field they produce there. The shielding tensor σ_αβ is expanded as a power series in the local electric field E:
+
+    σ = σ^(0) + σ^(1)·E + (1/2)·σ^(2)·E² + ...
+
+The first-order term σ^(1)·E is the novel contribution of the paper. It exists only when the environment at the nucleus lacks inversion symmetry — the norm for a proton bonded to an electronegative partner (X–H). The second-order term σ^(2)·E² is always present; Marshall & Pople's 1958 derivation gives its coefficient for an isolated H atom in its ground state.
+
+Combining this with a point-charge model at distance R gives, for a proton in an X–H bond,
+
+    Δσ ≈ −2×10⁻¹² E_z − 10⁻¹⁸ E²
+
+with E_z the field component along the bond. At a representative field E = 10⁵ e.s.u. (a unit charge roughly 7 Å from the proton), the linear term contributes about 0.2 ppm — roughly 20 times the quadratic contribution. The linear term is the quantitatively dominant polar-group effect.
+
+Buckingham extends the analysis to solvent shifts via the Onsager (1936) reaction field for dipolar solutes and his own quadrupolar reaction field (Buckingham 1959) for non-dipolar solutes. Worked examples reproduce observed o-, m-, and p-proton shift patterns in 1,4-dinitrobenzene and p-methyl-nitrobenzene, explain why cis-1,2-dichloroethene shows larger solvent shifts than trans, and predict a 0.19 ppm shift for acetylene going from hexane to acetone via the quadrupolar reaction field.
+
+Relations to our corpus. None of the fourteen references is currently in our corpus. Pointers worth acquiring: Marshall & Pople 1958 (Mol. Phys. 1, 199) for the H-atom shielding tensor used as numerical anchor; Onsager 1936 (J. Am. Chem. Soc. 58, 1486) for the reaction-field model; Pople, Schneider & Bernstein 1959 (McGraw-Hill) as the NMR textbook of the era. Also cited: Saika & Slichter 1954, Stephen 1958, Schaefer & Schneider contemporary work.
+
+Implications for our work. This is the theoretical foundation of the electric-field shielding contribution in our library — the linear σ^(1)·E term derived here is what `ChargeAssignmentResult` and the Coulomb-field machinery compute per atom. Buckingham's numerical coefficient (−2×10⁻¹² e.s.u. for Δσ/E_z in an X–H bond) is the order-of-magnitude anchor against which our kernel output can be checked. The derivation justifies the weighting observed in Stage 1 ridge regression, where electric-field kernels dominate for polar-region atoms. For Stage 2 trajectory averaging, the linear-E term changes sign under field reversal, which is the physical mechanism behind partial cancellation of frame-by-frame contributions — Buckingham provides the framework for interpreting what that averaging is doing physically, not just numerically.

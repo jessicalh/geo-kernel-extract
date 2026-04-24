@@ -1,0 +1,56 @@
+# gershoni-poranne-stanger-2015-csr
+aromaticity
+antiaromaticity
+magnetic aromaticity criteria
+ring current model
+RCM
+nucleus independent chemical shift
+NICS
+NICS(0)
+NICS(1)
+NICS_zz
+NICS_pizz
+NICS-Scan
+NICS-XY-Scan
+dissected NICS
+LMO-NICS
+CMO-NICS
+NCS-NICS
+sigma-only model
+magnetic susceptibility exaltation
+current density analysis
+CDA
+CTOCD-DZ
+CTOCD-PZ
+CTOCD-DZ2
+ipsocentric method
+GIMIC
+gauge including magnetically induced current
+ACID
+anisotropy of current-induced density
+ghost atom probe
+bq probe
+Schleyer NICS
+Steiner-Fowler
+Lazzeretti
+Mitchell annulene probe
+ring current intensity
+diatropic current
+paratropic current
+Hückel rule
+4n+2 electron rule
+Pople point dipole model
+benzene
+cyclobutadiene
+annulene
+pentalene
+polyaromatic hydrocarbon
+PAH ring current
+GIAO
+gauge independent atomic orbital
+coupled Hartree-Fock
+aromaticity stabilization energy
+ASE
+HOMA
+review article
+pedagogical review
