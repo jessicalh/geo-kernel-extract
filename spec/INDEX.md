@@ -89,11 +89,22 @@ You must:
 - Cross-Result reads mark at three sites (writer header, reader
   header, .cpp read point) — see PATTERNS.md §17. Prefer independent
   computation over chaining.
+- Do not mutate `ProteinConformation`, `ConformationAtom`, or
+  `Protein` through `tp`. The compiler enforces this
+  (`TrajectoryProtein` public API is const-only for those paths;
+  `Trajectory` is the sole friend with mutable access). See
+  `spec/TRAJECTORY_WRITE_SURFACE_2026-04-24.md`.
+- Ship three discipline tests alongside any integration test:
+  frame-0 semantics (stride ≥ fixture length so only frame 0
+  dispatches), Finalize idempotency, H5 round-trip via a temp file.
+  Clone target: `tests/test_gromacs_streaming.cpp:BondLengthStats*`.
 
 See OBJECT_MODEL.md "Trajectory-scope entities" + the 2026-04-24
 addition at the end of that file, and PATTERNS.md §§13-18 + the
-2026-04-24 addition. No trajectory-scope test pattern is established
-yet (gap noted in `spec/cold_read_review_20260424.md`).
+2026-04-24 addition. The 2026-04-24 enforcement + test-template
+pass landed in commits `02ba9aa / 582e636 / e306f2a`;
+`spec/TRAJECTORY_RESULT_PLAN_2026-04-24.md` is the layered plan
+for the next round of TR additions.
 
 ### When adding or changing WriteFeatures output
 

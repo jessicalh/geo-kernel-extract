@@ -1140,6 +1140,19 @@ landed exemplars:
   `BsT0AutocorrelationTrajectoryResult` (full history →
   biased autocorrelation, `DenseBuffer<double>`).
 
+**Compile-time enforcement (2026-04-24).** `TrajectoryProtein` exposes
+`Protein` and `ProteinConformation` as const-only on its public API.
+The non-const path is a private `MutableCanonicalConformation_()`
+helper reachable only via `friend class Trajectory` (the orchestrator).
+A TR holding a non-const `TrajectoryProtein&` cannot route around the
+per-frame `const ProteinConformation&` on `Compute` — the compiler
+blocks any attempt to mutate the instant-observation buffer. The
+legitimate TR write surface stays public: `MutableAtomAt(i)`,
+`AdoptDenseBuffer<T>`, per-atom events bag, and
+`traj.MutableSelections()`. Rationale and scope:
+`spec/TRAJECTORY_WRITE_SURFACE_2026-04-24.md`; discipline:
+`feedback_object_model_scope_discipline` memory.
+
 ### 15. Trajectory::Run orchestrates; factories see a finalized Protein; handler reads
 
 `Trajectory::Run` drives the traversal in eight phases (see
@@ -1177,6 +1190,16 @@ Dependency validation is split across two layers.
 against both the attached TR set and
 `RunConfiguration::RequiredConformationResultTypes()`, because only
 `Trajectory::Run` has both pieces.
+
+**Tests use `Trajectory::Run`, not shadow-orchestration (2026-04-24).**
+Per-TR tests drive `Trajectory::Run` with a narrow `RunConfiguration`
+attaching only the TR(s) under test; they do not reimplement the
+eight-phase loop in the test body. The 2026-04-24 refactor
+(commit 582e636) removed seven such shadow-orchestrations after the
+pattern 14 enforcement made them fail to compile. Layer 0 discipline
+tests per TR — frame-0 semantics (stride ≥ fixture length), Finalize
+idempotency, H5 round-trip — live alongside the integration test.
+Template: `tests/test_gromacs_streaming.cpp:BondLengthStats{EndToEnd,Frame0Semantics,FinalizeIdempotency,H5RoundTrip}`.
 
 ### 16. RecordBag<Record>: shared vocabulary at two scopes
 

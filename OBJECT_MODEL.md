@@ -2540,10 +2540,10 @@ parallel `TrajectoryAtom` vector, and holds the attached
 
 | Method                                       | Role                                                                     |
 |----------------------------------------------|--------------------------------------------------------------------------|
-| `CanonicalConformation()`                    | `protein_->ConformationAt(0)`. Same object `Protein::Conformation()` returns. |
-| `TickConformation(positions)`                | Ephemeral per-frame `unique_ptr<ProteinConformation>` pointing at the wrapped Protein. |
-| `ProteinRef()`                               | The wrapped Protein.                                                     |
-| `AtomCount()`, `AtomAt(i)`, `MutableAtomAt(i)`, `Atoms()` | Per-atom access.                                            |
+| `CanonicalConformation() const`              | Const access to conf0 (`protein_->ConformationAt(0)`). Non-const path is the private `MutableCanonicalConformation_()`, reachable only via `friend class Trajectory`. TRs must not mutate the per-instant buffer. |
+| `TickConformation(positions) const`          | Ephemeral per-frame `unique_ptr<ProteinConformation>` pointing at the wrapped Protein. |
+| `ProteinRef() const`                         | Const access to the invariant Protein. No public non-const overload — Protein is finalized by Seed and invariant thereafter. |
+| `AtomCount()`, `AtomAt(i)`, `MutableAtomAt(i)`, `Atoms()` | Per-atom access. `MutableAtomAt(i)` is the legitimate TR write path for `TrajectoryAtom` rollup fields. |
 
 ### Results
 
