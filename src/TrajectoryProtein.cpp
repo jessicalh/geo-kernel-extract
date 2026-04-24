@@ -90,11 +90,12 @@ void TrajectoryProtein::Seed(
 
 // ── CanonicalConformation ────────────────────────────────────────
 
-ProteinConformation& TrajectoryProtein::CanonicalConformation() {
+const ProteinConformation& TrajectoryProtein::CanonicalConformation() const {
     return protein_->ConformationAt(0);
 }
 
-const ProteinConformation& TrajectoryProtein::CanonicalConformation() const {
+// Non-const path, private + friend-only. See TrajectoryProtein.h.
+ProteinConformation& TrajectoryProtein::MutableCanonicalConformation_() {
     return protein_->ConformationAt(0);
 }
 

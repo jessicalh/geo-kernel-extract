@@ -26,6 +26,13 @@ class ProteinConformation;
 class Trajectory;
 
 class TrajectoryProtein {
+    // Trajectory::Run is the only legitimate caller of the non-const
+    // canonical-conformation accessor (Phase 6 OperationRunner call).
+    // TrajectoryResults never mutate the per-instant buffer — that
+    // discipline is compile-time enforced by keeping the non-const
+    // path private. See spec/TRAJECTORY_WRITE_SURFACE_2026-04-24.md.
+    friend class Trajectory;
+
 public:
     TrajectoryProtein();
     ~TrajectoryProtein();
@@ -48,7 +55,9 @@ public:
               double time_ps);
 
     // Conformation 0, permanent on the wrapped Protein after Seed.
-    ProteinConformation& CanonicalConformation();
+    // Only the const accessor is public; TrajectoryResults must not
+    // mutate conf0. Trajectory::Run reaches the mutable path via
+    // MutableCanonicalConformation_() (private, friend-accessible).
     const ProteinConformation& CanonicalConformation() const;
 
     // Ephemeral per-frame conformation pointing at the wrapped
@@ -58,7 +67,9 @@ public:
 
     // ── Identity delegation ──────────────────────────────────────
 
-    Protein& ProteinRef() { return *protein_; }
+    // Const-only: TrajectoryResults read invariant Protein state but
+    // do not mutate it. Protein is const-after-FinalizeConstruction
+    // by design; no caller in the tree needs a mutable path.
     const Protein& ProteinRef() const { return *protein_; }
 
     size_t AtomCount() const { return protein_ ? protein_->AtomCount() : 0; }
@@ -158,6 +169,12 @@ public:
 
 private:
     void InitTrajectoryAtoms();
+
+    // Non-const access to conf0, callable only by Trajectory via friend.
+    // Used at Trajectory::Run Phase 6 so OperationRunner can attach
+    // ConformationResults to the canonical conformation. Not exposed
+    // to TrajectoryResults.
+    ProteinConformation& MutableCanonicalConformation_();
 
     std::unique_ptr<Protein> protein_;
     std::unique_ptr<ChargeSource> charges_;

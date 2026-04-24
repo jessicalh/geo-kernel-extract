@@ -175,7 +175,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     frame_opts.frame_energy = env_.current_energy;
 
     {
-        auto& conf0 = tp.CanonicalConformation();
+        auto& conf0 = tp.MutableCanonicalConformation_();
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
