@@ -456,9 +456,18 @@ add_executable(gromacs_streaming_tests
 target_compile_definitions(gromacs_streaming_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
 )
+# Match HDF5 1.10 headers to the 1.10 .so — the same hazard documented
+# on nmr-viewer below: OpenBabel's micromamba include path contributes
+# HDF5 1.14 headers which emit H5Treclaim, but the link library is
+# system libhdf5 1.10. The per-TR H5 round-trip test reads via HighFive
+# directly from the test TU so this header ordering matters here.
+target_include_directories(gromacs_streaming_tests BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
 target_link_libraries(gromacs_streaming_tests PRIVATE
     nmr_shielding
     GTest::gtest
+    highfive
 )
 gtest_add_tests(TARGET gromacs_streaming_tests)
 

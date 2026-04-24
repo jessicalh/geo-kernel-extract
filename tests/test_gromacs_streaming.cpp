@@ -47,6 +47,8 @@
 #include "OperationLog.h"
 
 #include <gtest/gtest.h>
+#include <highfive/H5File.hpp>
+#include <highfive/H5Group.hpp>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -690,6 +692,214 @@ TEST(GromacsStreaming, BondLengthStatsEndToEnd) {
               << " bonds x " << total << " frames; sample bond 0 mean="
               << bonds[0].length_mean << "Å std=" << bonds[0].length_std
               << "Å\n";
+}
+
+
+// ============================================================================
+// BondLengthStats template asserts — frame-0 semantics, Finalize
+// idempotency, H5 round-trip. Discipline tests that every new TR's
+// suite should carry in some form. BondLengthStats is the simplest TR
+// (Dependencies() == {}) so it's the cleanest place to exercise each.
+// ============================================================================
+
+TEST(GromacsStreaming, BondLengthStatsFrame0Semantics) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    const std::string edr = TRAJ_DIR + "/md.edr";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    // Stride much larger than any fixture length — Trajectory::Run
+    // dispatches frame 0, tries to skip stride-1 frames, fails at EOF,
+    // returns kOk with FrameCount()==1. Isolates AV semantics after
+    // one Compute: every bond seen exactly once.
+    nmr::RunConfiguration config;
+    config.SetName("BondLengthStatsFrame0SemanticsTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BondLengthStatsTrajectoryResult::Create(tp);
+        });
+    config.SetStride(99999);
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+    nmr::Trajectory traj(xtc, tpr, edr);
+    nmr::Session session;
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+    ASSERT_EQ(traj.FrameCount(), 1u)
+        << "stride > fixture length should leave only frame 0 dispatched";
+
+    const auto& bonds =
+        tp.Result<nmr::BondLengthStatsTrajectoryResult>().PerBond();
+    ASSERT_EQ(bonds.size(), tp.ProteinRef().BondCount());
+
+    // AV-pattern frame-0 semantics: one sample per bond, no deltas
+    // (delta needs a prior frame), min == mean == max, std == 0.
+    for (const auto& pb : bonds) {
+        EXPECT_EQ(pb.n_frames, 1u);
+        EXPECT_EQ(pb.delta_n, 0u)
+            << "delta tracker needs a prior frame — must be 0 at frame 0";
+        EXPECT_DOUBLE_EQ(pb.length_min, pb.length_mean);
+        EXPECT_DOUBLE_EQ(pb.length_mean, pb.length_max);
+        EXPECT_DOUBLE_EQ(pb.length_std, 0.0)
+            << "n=1 has no variance";
+        EXPECT_DOUBLE_EQ(pb.delta_std, 0.0);
+    }
+}
+
+
+TEST(GromacsStreaming, BondLengthStatsFinalizeIdempotency) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    const std::string edr = TRAJ_DIR + "/md.edr";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::RunConfiguration config;
+    config.SetName("BondLengthStatsFinalizeIdempotencyTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BondLengthStatsTrajectoryResult::Create(tp);
+        });
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+    nmr::Trajectory traj(xtc, tpr, edr);
+    nmr::Session session;
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+
+    auto& blst = tp.Result<nmr::BondLengthStatsTrajectoryResult>();
+    const auto snapshot = blst.PerBond();   // copy post-first-Finalize
+
+    // Re-run Finalize; state must be unchanged. The implementation
+    // derives length_std / delta_std from m2 / n which Finalize does
+    // not mutate — so a second Finalize should be idempotent.
+    blst.Finalize(tp, traj);
+
+    const auto& after = blst.PerBond();
+    ASSERT_EQ(after.size(), snapshot.size());
+    for (size_t i = 0; i < after.size(); ++i) {
+        EXPECT_DOUBLE_EQ(after[i].length_mean,  snapshot[i].length_mean)  << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].length_m2,    snapshot[i].length_m2)    << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].length_std,   snapshot[i].length_std)   << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].length_min,   snapshot[i].length_min)   << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].length_max,   snapshot[i].length_max)   << "bond " << i;
+        EXPECT_EQ(after[i].n_frames,            snapshot[i].n_frames)     << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].delta_mean,   snapshot[i].delta_mean)   << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].delta_m2,     snapshot[i].delta_m2)     << "bond " << i;
+        EXPECT_DOUBLE_EQ(after[i].delta_std,    snapshot[i].delta_std)    << "bond " << i;
+        EXPECT_EQ(after[i].delta_n,             snapshot[i].delta_n)      << "bond " << i;
+    }
+}
+
+
+TEST(GromacsStreaming, BondLengthStatsH5RoundTrip) {
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+    nmr::CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+
+    const std::string tpr = TRAJ_DIR + "/md.tpr";
+    const std::string xtc = TRAJ_DIR + "/md.xtc";
+    const std::string edr = TRAJ_DIR + "/md.edr";
+    if (!fs::exists(tpr) || !fs::exists(xtc)) {
+        GTEST_SKIP() << "Full-system test data not found";
+    }
+
+    nmr::RunConfiguration config;
+    config.SetName("BondLengthStatsH5RoundTripTest");
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac   = true;
+    opts.skip_coulomb = true;
+    opts.skip_apbs    = true;
+    opts.skip_dssp    = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory(
+        [](const nmr::TrajectoryProtein& tp) -> std::unique_ptr<nmr::TrajectoryResult> {
+            return nmr::BondLengthStatsTrajectoryResult::Create(tp);
+        });
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(TRAJ_DIR)) << tp.Error();
+    nmr::Trajectory traj(xtc, tpr, edr);
+    nmr::Session session;
+    const nmr::Status s = traj.Run(tp, config, session);
+    ASSERT_EQ(s, nmr::kOk);
+
+    const auto& blst = tp.Result<nmr::BondLengthStatsTrajectoryResult>();
+    const auto& bonds = blst.PerBond();
+    const size_t B = bonds.size();
+    ASSERT_GT(B, 0u);
+
+    // Write to temp H5, re-read, compare in-memory state bit-for-bit.
+    const fs::path temp_path =
+        fs::temp_directory_path() / "bls_roundtrip_test.h5";
+    if (fs::exists(temp_path)) fs::remove(temp_path);
+    {
+        HighFive::File out(temp_path.string(), HighFive::File::Overwrite);
+        blst.WriteH5Group(tp, out);
+    }
+
+    HighFive::File in(temp_path.string(), HighFive::File::ReadOnly);
+    ASSERT_TRUE(in.exist("/trajectory/bond_length_stats"));
+    auto grp = in.getGroup("/trajectory/bond_length_stats");
+
+    size_t n_bonds_read = 0, n_frames_read = 0;
+    grp.getAttribute("n_bonds").read(n_bonds_read);
+    grp.getAttribute("n_frames").read(n_frames_read);
+    EXPECT_EQ(n_bonds_read,  B);
+    EXPECT_EQ(n_frames_read, blst.NumFrames());
+
+    std::string units_read;
+    grp.getAttribute("units").read(units_read);
+    EXPECT_EQ(units_read, "Angstrom");
+
+    std::vector<double> mean_read, std_read, min_read, max_read;
+    std::vector<double> dmean_read, dstd_read;
+    grp.getDataSet("length_mean").read(mean_read);
+    grp.getDataSet("length_std").read(std_read);
+    grp.getDataSet("length_min").read(min_read);
+    grp.getDataSet("length_max").read(max_read);
+    grp.getDataSet("length_delta_mean").read(dmean_read);
+    grp.getDataSet("length_delta_std").read(dstd_read);
+
+    ASSERT_EQ(mean_read.size(), B);
+    for (size_t i = 0; i < B; ++i) {
+        EXPECT_DOUBLE_EQ(mean_read[i],  bonds[i].length_mean) << "bond " << i;
+        EXPECT_DOUBLE_EQ(std_read[i],   bonds[i].length_std)  << "bond " << i;
+        EXPECT_DOUBLE_EQ(min_read[i],   bonds[i].length_min)  << "bond " << i;
+        EXPECT_DOUBLE_EQ(max_read[i],   bonds[i].length_max)  << "bond " << i;
+        EXPECT_DOUBLE_EQ(dmean_read[i], bonds[i].delta_mean)  << "bond " << i;
+        EXPECT_DOUBLE_EQ(dstd_read[i],  bonds[i].delta_std)   << "bond " << i;
+    }
+
+    fs::remove(temp_path);
 }
 
 
