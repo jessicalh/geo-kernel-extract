@@ -316,7 +316,46 @@ target_link_libraries(nmr_extract PRIVATE nmr_shielding)
 enable_testing()
 include(GoogleTest)
 
-# Helper: define a test executable with standard boilerplate
+# Resolve PyTorch's bundled cu13 nvrtc-builtins directory at configure
+# time. AIMNet2 / libtorch CUDA JIT dlopens libnvrtc-builtins.so.13.0
+# from this directory and the dlopen chain does not consult the test
+# binary's RPATH (only LD_LIBRARY_PATH). Every test target must run
+# with this on LD_LIBRARY_PATH; this is enforced via the gtest_discover_tests
+# PROPERTIES ENVIRONMENT below, applied uniformly so manual invocation
+# (./build/<binary>) and ctest invocation share the same env source.
+# See reference_nvrtc_rpath_fix and scripts/run_with_cuda_env.sh
+# (the same path resolution, used for manual runs of the binaries).
+execute_process(
+    COMMAND python3 -c "import nvidia.cu13; print(list(nvidia.cu13.__path__)[0])"
+    OUTPUT_VARIABLE NMR_NVIDIA_CU13_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE _python_cu13_status
+)
+if(NOT _python_cu13_status EQUAL 0 OR NOT NMR_NVIDIA_CU13_DIR)
+    message(FATAL_ERROR
+        "Could not locate the bundled PyTorch cu13 directory via "
+        "'python3 -c \"import nvidia.cu13\"'. Tests that exercise "
+        "AIMNet2 will fail at runtime without LD_LIBRARY_PATH set "
+        "to this directory's lib/. Install via "
+        "'pip install --user nvidia-cu13' or equivalent. See "
+        "memory entry reference_nvrtc_rpath_fix for the full picture.")
+endif()
+set(NMR_NVRTC_LIB_DIR "${NMR_NVIDIA_CU13_DIR}/lib")
+message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
+
+# Test environment string: prepend cu13 lib to LD_LIBRARY_PATH so
+# libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0 succeeds.
+# $ENV{LD_LIBRARY_PATH} captures whatever the configure-time shell
+# already had (orca, system cuda); we don't displace it.
+set(NMR_TEST_ENVIRONMENT
+    "LD_LIBRARY_PATH=${NMR_NVRTC_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
+)
+
+# Helper: define a test executable with standard boilerplate. Every
+# test target gets the AIMNet2-compatible environment uniformly. No
+# escape hatch — manual `./build/<binary>` invocation goes through
+# scripts/run_with_cuda_env.sh; ctest invocation uses this property.
 macro(nmr_test_target NAME)
     add_executable(${NAME}
         tests/test_main.cpp
@@ -327,7 +366,7 @@ macro(nmr_test_target NAME)
         NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
     )
     target_link_libraries(${NAME} PRIVATE nmr_shielding GTest::gtest)
-    gtest_add_tests(TARGET ${NAME})
+    gtest_discover_tests(${NAME} PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 endmacro()
 
 # ── Unit tests (<5s) — no protein loading, pure logic ──────────────────
@@ -406,7 +445,7 @@ target_link_libraries(smoke_tests PRIVATE
     nmr_shielding
     GTest::gtest
 )
-gtest_add_tests(TARGET smoke_tests)
+gtest_discover_tests(smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # Fleet smoke test — separate exe (~40 min, 10 GROMACS poses x full pipeline)
@@ -424,7 +463,7 @@ target_link_libraries(fleet_smoke_tests PRIVATE
     nmr_shielding
     GTest::gtest
 )
-gtest_add_tests(TARGET fleet_smoke_tests)
+gtest_discover_tests(fleet_smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # JobSpec tests — separate exe (~10 min, not the 2.5-hour full suite)
@@ -442,7 +481,7 @@ target_link_libraries(job_spec_tests PRIVATE
     nmr_shielding
     GTest::gtest
 )
-gtest_add_tests(TARGET job_spec_tests)
+gtest_discover_tests(job_spec_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # Gromacs streaming test — trajectory streaming proof of concept
@@ -469,7 +508,7 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
     GTest::gtest
     highfive
 )
-gtest_add_tests(TARGET gromacs_streaming_tests)
+gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # Water field test — explicit solvent calculators on full-system trajectory
@@ -487,7 +526,7 @@ target_link_libraries(water_field_tests PRIVATE
     nmr_shielding
     GTest::gtest
 )
-gtest_add_tests(TARGET water_field_tests)
+gtest_discover_tests(water_field_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # FES fleet smoke test — fes-sampler naming, 2 proteins x 6 poses (~15 min)
@@ -505,7 +544,7 @@ target_link_libraries(fes_fleet_smoke_tests PRIVATE
     nmr_shielding
     GTest::gtest
 )
-gtest_add_tests(TARGET fes_fleet_smoke_tests)
+gtest_discover_tests(fes_fleet_smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # ============================================================================
 # Example driver

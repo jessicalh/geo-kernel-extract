@@ -30,26 +30,43 @@ What we actually have, what each test does, and what to run when.
 `trajectory_tests`, `gromacs_streaming_tests`, `water_field_tests`,
 `fleet_smoke_tests`, `fes_fleet_smoke_tests`, `job_spec_tests`
 
+**Tests run via `ctest`, not via raw binaries.** CMake registers each
+test target with the cu13 / libtorch CUDA JIT environment that AIMNet2
+needs (`reference_nvrtc_rpath_fix`). Running `./build/<binary>`
+directly bypasses that env and silently fails the AIMNet2 path. For
+manual invocation of a single binary (debugging, attaching a profiler),
+use `scripts/run_with_cuda_env.sh ./build/<binary>` — same env source.
+
 ```
+cd build
+
 # Always run (sub-second)
-cd build && ./unit_tests
+ctest -R '^[^.]+\..*'  -L unit                      # or simply: ctest -R unit_
 
 # Static structure regression (~5 min)
-./structure_tests
+ctest -L structure                                  # or: ctest -E 'gromacs|water|fleet|mopac|smoke'
 
 # Trajectory development (~5 min each)
-./trajectory_tests
-./gromacs_streaming_tests    # H5 + AIMNet2 critical path
-./water_field_tests
+ctest -R 'GromacsStreaming\.'    # H5 + AIMNet2 critical path
+ctest -R 'WaterField\.'
+ctest -R 'TrajectoryStreaming\.' # the trajectory_tests target
 
 # Pipeline confidence (~80s, includes MOPAC)
-./smoke_tests
+ctest -R 'Smoke\.'
 
 # Before production batch runs (~40 min)
-./fleet_smoke_tests
+ctest -R 'FleetSmoke\.'
 
 # Run everything
 ctest
+```
+
+The above use `-R <regex>` to pattern-match test names. `ctest -N`
+lists every registered test. Manual invocation, when warranted:
+
+```
+# Single binary, manual run (debugging only — ctest is the documented path)
+scripts/run_with_cuda_env.sh build/gromacs_streaming_tests --gtest_filter='*ProteinSliceConsistent*'
 ```
 
 
