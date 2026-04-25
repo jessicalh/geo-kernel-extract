@@ -14,11 +14,17 @@ GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)
 
 // ── Open ─────────────────────────────────────────────────────────
 //
-// Mount XTC + build MoleculeWholer from TPR. Sanity-check atom count
-// against TrajectoryProtein's FullSystemReader topology.
+// Mount the XTC stream. The TPR was already parsed by
+// TrajectoryProtein::BuildFromTrajectory (which called
+// FullSystemReader::ReadTopology), so the protein slice and the
+// trimmed protein-only mtop used for PBC are already on hand. The
+// pre-2026-04-25 cross-check between MoleculeWholer's independent
+// reparse and FullSystemReader's slice is gone — both are now the
+// same source of truth, with composition predicates rather than
+// moltype-name string matching.
 
 bool GromacsFrameHandler::Open(const std::string& xtc_path,
-                               const std::string& tpr_path) {
+                               const std::string& /*tpr_path*/) {
     OperationLog::Scope scope("GromacsFrameHandler::Open", xtc_path);
 
     if (!reader_.Open(xtc_path)) {
@@ -26,21 +32,7 @@ bool GromacsFrameHandler::Open(const std::string& xtc_path,
         return false;
     }
 
-    try {
-        wholer_ = std::make_unique<MoleculeWholer>(tpr_path);
-    } catch (const std::exception& e) {
-        error_ = std::string("MoleculeWholer: ") + e.what();
-        return false;
-    }
-
     const auto& topo = tp_.SysReader().Topology();
-    if (static_cast<std::size_t>(wholer_->natoms()) != topo.protein_count) {
-        error_ = "protein atom count mismatch: MoleculeWholer=" +
-                 std::to_string(wholer_->natoms()) +
-                 " FullSystemReader=" +
-                 std::to_string(topo.protein_count);
-        return false;
-    }
 
     has_read_ = false;
     current_index_ = 0;
@@ -68,11 +60,16 @@ bool GromacsFrameHandler::ReadNextFrame() {
     const std::size_t pstart = topo.protein_start;
     const std::size_t pcount = topo.protein_count;
 
-    // PBC fix on protein slice.
+    // PBC fix on protein slice. FullSystemReader owns the protein-only
+    // mtop and pbcType; passing the frame's box is correct under NPT.
     std::vector<float> protein_coords(
         frame.x.begin() + pstart * 3,
         frame.x.begin() + (pstart + pcount) * 3);
-    wholer_->make_whole(protein_coords, frame.box);
+    if (!tp_.SysReader().MakeProteinWhole(protein_coords, frame.box)) {
+        error_ = std::string("MakeProteinWhole failed at index ") +
+                 std::to_string(has_read_ ? current_index_ + 1 : 0);
+        return false;
+    }
 
     // Write fixed coords back.
     std::vector<float> fixed_xyz = frame.x;

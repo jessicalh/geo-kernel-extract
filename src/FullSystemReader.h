@@ -89,6 +89,17 @@ public:
     BuildResult BuildProtein(const std::string& protein_id,
                              ForceField force_field = ForceField::CHARMM36m) const;
 
+    // PBC-fix the protein slice in-place. `protein_coords` is the
+    // contiguous protein-only float coordinate buffer (size =
+    // 3 * Topology().protein_count, typically carved from a full XTC
+    // frame). `box_in` is this frame's box (varies per frame in NPT).
+    // Walks the protein-only mtop (built once at ReadTopology time)
+    // so the bond-graph traversal touches only the protein atoms.
+    // Returns false if ReadTopology has not run, the buffer size is
+    // wrong, or the captured pbcType was unset.
+    bool MakeProteinWhole(std::vector<float>& protein_coords,
+                          const float box_in[3][3]) const;
+
     const SystemTopology& Topology() const { return topo_; }
     const std::string& error() const { return error_; }
 

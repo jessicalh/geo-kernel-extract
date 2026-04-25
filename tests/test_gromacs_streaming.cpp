@@ -1181,3 +1181,182 @@ TEST(GromacsStreaming, TrajectoryRunDrivesLoop) {
               << " frames, " << tp.AtomCount() << " atoms, "
               << traj.Selections().Count() << " selections\n";
 }
+
+
+// ============================================================================
+// FullSystemReader topology consistency
+// ============================================================================
+//
+// Asserts the protein-slice invariant of the trajectory layer:
+//   - FullSystemReader::Topology().protein_count equals the sum of
+//     all leading non-water non-ion molblock atoms (composition
+//     predicate, not name match).
+//   - FullSystemReader::BuildProtein() produces a Protein with the
+//     same atom count.
+//
+// "Independent" verification re-parses the TPR via libgromacs
+// directly and walks molblocks with typed-int composition
+// predicates that mirror the production code's. If a future TPR
+// contains a multi-Protein_* split, the test sees both counts agree
+// and the bug is no longer reachable. If a regression introduces a
+// single-block fallback, the independent walk and the production
+// count diverge and the test fails.
+//
+// MoleculeWholer's separate parse was eliminated in the 2026-04-25
+// cleanup; PBC fixing now goes through FullSystemReader, so there
+// is no longer a third independent source to cross-check.
+//
+// No per-frame calculators run here; trajectory plumbing is
+// irrelevant to topology-layer correctness.
+//
+
+#include "FullSystemReader.h"
+#include "BuildResult.h"
+#include "Protein.h"
+
+// libgromacs — for the independent topology walk.
+#include "gromacs/fileio/tpxio.h"
+#include "gromacs/topology/topology.h"
+#include "gromacs/mdtypes/state.h"
+#include "gromacs/mdtypes/inputrec.h"
+
+namespace {
+
+struct TprFixture {
+    std::string label;
+    std::string tpr_path;
+};
+
+class FullSystemReaderTopology : public ::testing::TestWithParam<TprFixture> {};
+
+// Composition predicates copied here so the test asserts behaviour
+// rather than tautology with the production helper. They must match
+// the rules in FullSystemReader.cpp (water = 3 atoms 1 O 2 H 1 res;
+// ion = 1 atom 1 res); a divergence here is a test bug, not a
+// production bug.
+static bool TestIsWaterMoltype(const gmx_moltype_t& mt) {
+    if (mt.atoms.nr != 3 || mt.atoms.nres != 1) return false;
+    int n_O = 0, n_H = 0, n_other = 0;
+    for (int i = 0; i < 3; ++i) {
+        const int z = mt.atoms.atom[i].atomnumber;
+        if      (z == 8) ++n_O;
+        else if (z == 1) ++n_H;
+        else             ++n_other;
+    }
+    return n_O == 1 && n_H == 2 && n_other == 0;
+}
+static bool TestIsIonMoltype(const gmx_moltype_t& mt) {
+    return mt.atoms.nr == 1 && mt.atoms.nres == 1;
+}
+
+struct IndependentSlice {
+    size_t protein_atoms = 0;
+    size_t protein_molblocks = 0;
+};
+static IndependentSlice IndependentlyCountSlice(const std::string& tpr_path) {
+    IndependentSlice out;
+    gmx_mtop_t mtop;
+    TpxFileHeader tpx = readTpxHeader(tpr_path.c_str(), true);
+    t_inputrec ir;
+    t_state state;
+    read_tpx_state(tpr_path.c_str(), tpx.bIr ? &ir : nullptr,
+                   &state, tpx.bTop ? &mtop : nullptr);
+    bool past_protein = false;
+    for (const auto& molblock : mtop.molblock) {
+        const auto& mt = mtop.moltype[molblock.type];
+        const bool is_water = TestIsWaterMoltype(mt);
+        const bool is_ion   = TestIsIonMoltype(mt);
+        if (!past_protein && !is_water && !is_ion) {
+            out.protein_atoms += static_cast<size_t>(mt.atoms.nr) *
+                                 static_cast<size_t>(molblock.nmol);
+            ++out.protein_molblocks;
+        } else if (out.protein_molblocks > 0) {
+            past_protein = true;
+        }
+    }
+    return out;
+}
+
+TEST_P(FullSystemReaderTopology, ProteinSliceConsistent) {
+    const TprFixture& fix = GetParam();
+    if (!fs::exists(fix.tpr_path)) {
+        GTEST_SKIP() << fix.label << ": TPR not found at " << fix.tpr_path;
+    }
+
+    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
+
+    // Production parse. Strong logging on the chain-split case is
+    // emitted by ReadTopology; visible in test output.
+    nmr::FullSystemReader rdr;
+    ASSERT_TRUE(rdr.ReadTopology(fix.tpr_path)) << rdr.error();
+
+    // Independent walk to verify the slice without round-tripping
+    // through the production code's predicates.
+    const IndependentSlice indep = IndependentlyCountSlice(fix.tpr_path);
+    ASSERT_GT(indep.protein_atoms, 0u)
+        << fix.label << ": independent walk found no protein-shape molblock";
+
+    const size_t fsr_count = rdr.Topology().protein_count;
+    EXPECT_EQ(fsr_count, indep.protein_atoms)
+        << fix.label
+        << ": FullSystemReader::Topology().protein_count = " << fsr_count
+        << " differs from independent composition walk = "
+        << indep.protein_atoms
+        << " (across " << indep.protein_molblocks << " leading molblocks).";
+
+    nmr::BuildResult build = rdr.BuildProtein(fix.label);
+    ASSERT_TRUE(build.Ok())
+        << fix.label << ": BuildProtein failed: " << build.error;
+
+    EXPECT_EQ(build.protein->AtomCount(), fsr_count)
+        << fix.label << ": BuildProtein atoms (" << build.protein->AtomCount()
+        << ") != Topology().protein_count (" << fsr_count << ")";
+    EXPECT_EQ(build.protein->AtomCount(), indep.protein_atoms)
+        << fix.label << ": BuildProtein atoms (" << build.protein->AtomCount()
+        << ") != independent walk atoms (" << indep.protein_atoms << ")";
+}
+
+// In-tree streaming fixture (single biological chain, single
+// Protein_* moltype) — known good positive control.
+static const TprFixture STREAMING_FIXTURE{
+    "1ZR7_6721_walker_0",
+    std::string(NMR_TEST_DATA_DIR) +
+        "/fleet_test_fullsys/1ZR7_6721/walker_0/md.tpr"
+};
+
+// 10-protein calibration set at /shared/2026Thesis/fleet_calibration-working.
+// User note 2026-04-25: at least one TPR in this set is expected to
+// exhibit the GROMACS-internal Protein_* split. Tests SKIP when a
+// fixture is absent (paths are batcave-specific).
+static std::vector<TprFixture> CalibrationFixtures() {
+    static const char* IDS[] = {
+        "1B1V_4292", "1BWX_3449", "1CBH_192",  "1DV0_4757",
+        "1G26_4656", "1HA9_5028", "1HD6_4820", "1HS5_4934",
+        "1I2V_4976", "1I8X_4351"
+    };
+    std::vector<TprFixture> out;
+    for (const char* id : IDS) {
+        out.push_back({id,
+            std::string("/shared/2026Thesis/fleet_calibration-working/") +
+            id + "/md.tpr"});
+    }
+    return out;
+}
+
+static std::vector<TprFixture> AllTprFixtures() {
+    std::vector<TprFixture> all;
+    all.push_back(STREAMING_FIXTURE);
+    for (const auto& f : CalibrationFixtures()) all.push_back(f);
+    return all;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllProteins,
+    FullSystemReaderTopology,
+    ::testing::ValuesIn(AllTprFixtures()),
+    [](const ::testing::TestParamInfo<TprFixture>& info) {
+        return info.param.label;
+    });
+
+}  // namespace
+

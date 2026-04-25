@@ -24,7 +24,6 @@
 #include "FullSystemReader.h"
 #include "SolventEnvironment.h"
 #include "Types.h"
-#include "pbc_whole.h"
 #include "xtc_reader.h"
 
 #include <cstddef>
@@ -82,7 +81,6 @@ private:
     TrajectoryProtein& tp_;
 
     XtcStreamReader reader_;
-    std::unique_ptr<MoleculeWholer> wholer_;
 
     std::vector<Vec3> protein_positions_;
     SolventEnvironment solvent_;
