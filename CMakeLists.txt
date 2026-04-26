@@ -173,6 +173,7 @@ add_library(nmr_shielding
     src/Types.cpp
     src/AminoAcidType.cpp
     src/Atom.cpp
+    src/AtomReference.cpp
     src/Ring.cpp
     src/Protein.cpp
     src/CovalentTopology.cpp
@@ -392,6 +393,7 @@ nmr_test_target(structure_tests
     tests/test_protonation_detection.cpp
     tests/test_atom_flat.cpp
     tests/test_atom_topology.cpp
+    tests/test_atom_reference.cpp
     tests/test_foundation_results.cpp
     tests/test_apbs_field_result.cpp
     tests/test_apbs_wired.cpp
