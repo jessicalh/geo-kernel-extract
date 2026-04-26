@@ -200,16 +200,21 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                 return BondedEnergyResult::Compute(conf, *opts.bonded_params); })) return out;
     }
 
-    // --- Tier 2: DFT comparison (optional) ---
+    // --- Tier 2: DFT comparison (load only when explicitly requested) ---
 
     if (!opts.orca_nmr_path.empty()) {
         auto orca = OrcaShieldingResult::Compute(conf, opts.orca_nmr_path);
-        if (orca) {
-            Attach(conf, std::move(orca), "OrcaShieldingResult", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "ORCA shielding load failed for " + opts.orca_nmr_path);
+        if (!orca) {
+            // The caller passed an ORCA path, so DFT comparison is part
+            // of this run's contract. A missing/unreadable file is an
+            // environment error — propagate it as a return code so a
+            // batch run does not produce a successful-looking extraction
+            // with no actual delta. Same hard-fail discipline as CCD load.
+            out.error = "ORCA shielding load failed for " + opts.orca_nmr_path;
+            OperationLog::Error("OperationRunner", out.error);
+            return out;
         }
+        Attach(conf, std::move(orca), "OrcaShieldingResult", out);
     }
 
     OperationLog::Info(LogCalcOther, "OperationRunner",
@@ -251,18 +256,31 @@ RunResult OperationRunner::RunMutantComparison(
         return out;
     }
 
-    // Mutation delta (WT - ALA), attaches to WT
-    if (wt_conf.HasResult<OrcaShieldingResult>() &&
-        ala_conf.HasResult<OrcaShieldingResult>()) {
-
-        auto delta = MutationDeltaResult::Compute(wt_conf, ala_conf);
-        if (delta) {
-            Attach(wt_conf, std::move(delta), "MutationDeltaResult", out);
-        } else {
-            OperationLog::Error("OperationRunner",
-                "MutationDeltaResult computation failed");
-        }
+    // Mutation delta (WT - ALA), attaches to WT.
+    //
+    // The point of RunMutantComparison is the delta. A missing
+    // OrcaShieldingResult on either side, or a MutationDeltaResult that
+    // fails to compute, means this run produced nothing of value — fail
+    // the run rather than write WT-only outputs that look like success.
+    if (!wt_conf.HasResult<OrcaShieldingResult>()) {
+        out.error = "MutationDelta requires OrcaShieldingResult on WT; "
+                    "check the WT --orca path";
+        OperationLog::Error("OperationRunner", out.error);
+        return out;
     }
+    if (!ala_conf.HasResult<OrcaShieldingResult>()) {
+        out.error = "MutationDelta requires OrcaShieldingResult on ALA; "
+                    "check the ALA --orca path";
+        OperationLog::Error("OperationRunner", out.error);
+        return out;
+    }
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_conf);
+    if (!delta) {
+        out.error = "MutationDeltaResult::Compute returned nullptr";
+        OperationLog::Error("OperationRunner", out.error);
+        return out;
+    }
+    Attach(wt_conf, std::move(delta), "MutationDeltaResult", out);
 
     OperationLog::Info(LogCalcOther, "OperationRunner",
         "MutantComparison complete: " +
