@@ -163,10 +163,22 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("orca_paramagnetic","orca", ShieldingTensor,         9,    False, "Orca DFT paramagnetic"),
 
     # ── Mutation delta (MutationDeltaResult.cpp) ─────────────────
-    ArraySpec("delta_shielding",       "delta", ShieldingTensor,       9,    False, "WT-ALA shielding delta"),
-    ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info"),
-    ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta E + EFG"),
-    ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)"),
+    # Total-channel delta — preserved name (downstream consumers).
+    ArraySpec("delta_shielding",                "delta", ShieldingTensor,    9,    False, "WT-ALA shielding delta (total channel)"),
+    # 2026-04-26: per-channel deltas + WT/mutant raw shielding for residual
+    # analysis. Paramagnetic isolates aromatic-ring + heavy-atom effects;
+    # diamagnetic is the local-density baseline.
+    ArraySpec("delta_shielding_diamagnetic",    "delta", ShieldingTensor,    9,    False, "WT-ALA shielding delta (diamagnetic channel)"),
+    ArraySpec("delta_shielding_paramagnetic",   "delta", ShieldingTensor,    9,    False, "WT-ALA shielding delta (paramagnetic channel)"),
+    ArraySpec("wt_shielding_total",             "delta", ShieldingTensor,    9,    False, "WT raw shielding (total channel)"),
+    ArraySpec("wt_shielding_diamagnetic",       "delta", ShieldingTensor,    9,    False, "WT raw shielding (diamagnetic channel)"),
+    ArraySpec("wt_shielding_paramagnetic",      "delta", ShieldingTensor,    9,    False, "WT raw shielding (paramagnetic channel)"),
+    ArraySpec("mut_shielding_total",            "delta", ShieldingTensor,    9,    False, "Mutant raw shielding (total channel)"),
+    ArraySpec("mut_shielding_diamagnetic",      "delta", ShieldingTensor,    9,    False, "Mutant raw shielding (diamagnetic channel)"),
+    ArraySpec("mut_shielding_paramagnetic",     "delta", ShieldingTensor,    9,    False, "Mutant raw shielding (paramagnetic channel)"),
+    ArraySpec("delta_scalars",                  "delta", DeltaScalars,       6,    False, "Delta metadata + match info"),
+    ArraySpec("delta_apbs",                     "delta", DeltaAPBS,          12,   False, "APBS delta E + EFG"),
+    ArraySpec("delta_ring_proximity",           "delta", DeltaRingProximity, None, False, "Removed ring geometry (variable cols)"),
 
     # ── AIMNet2 (AIMNet2Result.cpp) ─────────────────────────────
     ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, False, "AIMNet2 Hirshfeld charges"),
