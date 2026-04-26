@@ -54,12 +54,27 @@ class ArraySpec:
 # fmt: off
 CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Identity (ConformationResult.cpp) ────────────────────────
-    ArraySpec("pos",              "identity",   VectorField,       3,    True,  "Atom positions (A)"),
-    ArraySpec("element",          "identity",   np.ndarray,        None, True,  "Atomic number (int32)"),
-    ArraySpec("residue_index",    "identity",   np.ndarray,        None, True,  "Residue index (int32)"),
-    ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)"),
-    ArraySpec("ring_contributions","identity",  RingContributions, 59,   True,  "Per-(atom,ring) pair contributions"),
-    ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference"),
+    ArraySpec("pos",                "identity", VectorField,       3,    True,  "Atom positions (A)"),
+    ArraySpec("element",            "identity", np.ndarray,        None, True,  "Atomic number (int32)"),
+    ArraySpec("residue_index",      "identity", np.ndarray,        None, True,  "Residue index (int32)"),
+    ArraySpec("residue_type",       "identity", np.ndarray,        None, True,  "Residue type enum (int32)"),
+    # 2026-04-26: rich per-atom topology + role exports for post-hoc
+    # classification by IUPAC topology rules (Markley 1998).
+    #
+    # Marked required=False today only because the SDK's golden fixtures
+    # under tests/data/sdk_geo_only/ predate this surface and would all
+    # fail loading if these were promoted to required. The extractor
+    # always emits them after FinalizeConstruction + EnrichmentResult,
+    # which every job spec includes — so once the fixtures are
+    # regenerated, flip required to True. Tracked: regenerate fixtures
+    # then promote.
+    ArraySpec("atom_topology",      "identity", np.ndarray,        13,   False, "AtomTopology + chi participation + ring count (int32)"),
+    ArraySpec("atom_relationships", "identity", np.ndarray,        2,    False, "[partner_atom_index, parent_atom_index] (int32, -1 = none)"),
+    ArraySpec("atom_role",          "identity", np.ndarray,        None, False, "AtomRole enum / nmr_class (int32)"),
+    ArraySpec("atom_flags",         "identity", np.ndarray,        10,   False, "[hybridisation, is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_on_aromatic_residue, is_hbond_donor, is_hbond_acceptor, parent_is_sp2] (int32)"),
+    ArraySpec("residue_context",    "identity", np.ndarray,        4,    False, "[prev_residue_type, next_residue_type, is_n_terminal, is_c_terminal] (int32)"),
+    ArraySpec("ring_contributions", "identity", RingContributions, 59,   True,  "Per-(atom,ring) pair contributions"),
+    ArraySpec("ring_geometry",      "identity", RingGeometry,      10,   True,  "Per-ring geometry reference"),
 
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
     ArraySpec("bs_shielding",     "biot_savart", ShieldingTensor,  9,    True,  "BS ring current shielding"),
@@ -179,6 +194,13 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("delta_scalars",                  "delta", DeltaScalars,       6,    False, "Delta metadata + match info"),
     ArraySpec("delta_apbs",                     "delta", DeltaAPBS,          12,   False, "APBS delta E + EFG"),
     ArraySpec("delta_ring_proximity",           "delta", DeltaRingProximity, None, False, "Removed ring geometry (variable cols)"),
+    # 2026-04-26: per-WT-atom mutant index + per-mutation-site removed
+    # rings. mutation_match is N rows (same as atom NPYs), -1 sentinel
+    # for unmatched. mutation_removed_rings is R rows where R = total
+    # rings removed across all mutation sites; absent when no aromatic
+    # mutations occurred.
+    ArraySpec("mutation_match",                 "delta", np.ndarray,     None, False, "WT-to-mutant atom mapping (int32, -1 unmatched)"),
+    ArraySpec("mutation_removed_rings",         "delta", np.ndarray,     3,    False, "[residue_index, ring_index, ring_type] per removed ring (int32)"),
 
     # ── AIMNet2 (AIMNet2Result.cpp) ─────────────────────────────
     ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, False, "AIMNet2 Hirshfeld charges"),

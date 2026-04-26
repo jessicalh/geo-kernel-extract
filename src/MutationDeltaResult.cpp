@@ -624,6 +624,64 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     write_st_array("mut_shielding_paramagnetic.npy",
                    &MatchedAtomData::mut_shielding_paramagnetic_spherical);
 
+    // -------------------------------------------------------------------
+    // mutation_match.npy (N,) int32 — per-WT-atom mutant atom_index.
+    //
+    // For each WT atom, the matched mutant atom_index, or -1 if unmatched
+    // (mutation-site sidechain atoms removed at PHE→ALA, etc.). Atom
+    // indices fit comfortably in int32 for our use case; -1 is the
+    // sentinel matching the AtomLocator ostream convention.
+    // -------------------------------------------------------------------
+    {
+        std::vector<int32_t> match(N, -1);
+        for (size_t i = 0; i < N; ++i) {
+            if (HasMatch(i)) {
+                match[i] = static_cast<int32_t>(
+                    matched_atoms_[wt_to_matched_[i]].mut_index);
+            }
+        }
+        if (NpyWriter::WriteInt32(output_dir + "/mutation_match.npy",
+                                   match.data(), N))
+            written++;
+    }
+
+    // -------------------------------------------------------------------
+    // mutation_removed_rings.npy (R, 3) int32 — rings removed at mutation
+    // sites.
+    //
+    // Three columns per removed ring:
+    //   0  residue_index    parent residue (in WT) of the removed ring
+    //   1  ring_index       WT ring index (into protein.RingAt)
+    //   2  ring_type        RingTypeIndex enum (PheBenzene/TyrPhenol/...)
+    //
+    // R = total rings removed across all mutation sites. Empty (no NPY
+    // emitted) when there are no mutations at aromatic-ring residues.
+    // -------------------------------------------------------------------
+    {
+        const Protein& wt_protein = conf.ProteinRef();
+        size_t total_removed = 0;
+        for (const auto& site : mutation_sites_)
+            total_removed += site.wt_ring_indices.size();
+
+        if (total_removed > 0) {
+            std::vector<int32_t> data(total_removed * 3, 0);
+            size_t row = 0;
+            for (const auto& site : mutation_sites_) {
+                for (size_t ri : site.wt_ring_indices) {
+                    const Ring& ring = wt_protein.RingAt(ri);
+                    int32_t* r = &data[row * 3];
+                    r[0] = static_cast<int32_t>(site.residue_index);
+                    r[1] = static_cast<int32_t>(ri);
+                    r[2] = static_cast<int32_t>(ring.type_index);
+                    row++;
+                }
+            }
+            if (NpyWriter::WriteInt32(output_dir + "/mutation_removed_rings.npy",
+                                       data.data(), total_removed * 3))
+                written++;
+        }
+    }
+
     // delta_scalars: (N, 6) — [matched, delta_T0, nearest_ring_dist, delta_charge, delta_mopac_charge, match_dist]
     {
         std::vector<double> data(N * 6, 0.0);
