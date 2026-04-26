@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -251,12 +252,31 @@ CcdValidationReport CcdValidator::Check(const Protein& protein) {
             }
         }
 
-        // --- CCD-side check: every CCD atom present in Protein. ---
-        // Only flag heavy atoms; Hs are routinely absent from many PDB sources
-        // (crystal structures without Hs, constant-pH variants) and the noise
-        // would drown the signal. Heavy-atom omissions are real diagnostics.
+        // --- CCD-side check: every CCD heavy atom present in Protein. ---
+        //
+        // Skip hydrogens (commonly absent from crystal sources, constant-pH
+        // variants, etc.) AND skip atoms that the CCD lists as conditionally
+        // present — terminal carboxylate atoms (OXT, OT1, OT2) appear only
+        // on the C-terminal residue, terminal H atoms (HXT) only on the
+        // protonated form. Without filtering, CCD's complete-residue
+        // listing produces ~75 false flags per protein for a 76-residue
+        // chain (every residue except the last gets "missing OXT").
+        //
+        // gemmi's ChemComp::Atom does not expose pdbx_leaving_atom_flag
+        // in its data model, so we hardcode the small set of conditional
+        // heavy/H names we know about. Keep this list tight — it is
+        // safer to ship a noisy diagnostic than to silently mask a real
+        // structure error.
+        static const std::set<std::string> kConditionalCcdAtoms = {
+            "OXT",  // C-terminal carboxylate oxygen
+            "OT1",  // alternate name for C-terminal O
+            "OT2",  // alternate name for OXT
+            "HXT",  // protonated C-terminal carboxyl H
+        };
+
         for (const auto& cc_atom : cc->atoms) {
             if (cc_atom.is_hydrogen()) continue;
+            if (kConditionalCcdAtoms.count(cc_atom.id)) continue;
             if (protein_atoms.count(cc_atom.id) == 0) {
                 CcdValidationFinding f;
                 f.kind = CcdValidationFinding::AtomMissingFromProtein;

@@ -38,9 +38,11 @@ public:
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
     // CCD path for CcdValidator (gemmi). Resolved by Load() from TOML
-    // ("ccd_path"), env var (NMR_CCD_PATH), or NMR_DATA_DIR/ccd/components.cif.gz.
-    // Returns empty string if none resolved; CcdValidator reports
-    // ccd_loaded=false in that case.
+    // ("ccd_path"), env var (NMR_CCD_PATH), or NMR_DATA_DIR/ccd/components.cif.
+    // Returns empty string if none resolved. CCD load is an environment
+    // requirement for any path that calls FinalizeConstruction —
+    // CcdStore::Load aborts (std::abort) on missing or unreadable file
+    // rather than degrading silently.
     static const std::string& CcdPath();
 
     // Verify live tools exist. Returns list of missing (name + path).
