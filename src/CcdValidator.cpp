@@ -212,10 +212,23 @@ CcdValidationReport CcdValidator::Check(const Protein& protein) {
         }
 
         // --- Protein-side check: every atom present in Protein. ---
+        //
+        // Skip atoms our typed topology marks as Locant::Terminal — these
+        // are protonation-time additions (N-terminal H1/H2/H3, C-terminal
+        // OXT/HXT) that CCD does not enumerate as part of the residue
+        // chemistry. Without this filter, every N-terminal residue
+        // produces 2-3 false flags per protein for the protonation Hs;
+        // across 723 proteins that compounds into ~1500-2000 entries.
+        // Using the typed topology rather than a hardcoded name list
+        // means the filter follows whatever atoms the AminoAcidType
+        // table marks as Terminal, no maintenance burden as the table
+        // expands to non-standard residues.
         for (size_t ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             const std::string aname = atom.iupac_name.AsString();
             report.n_atoms_checked++;
+
+            if (atom.topology.locant == Locant::Terminal) continue;
 
             auto cc_it = cc->find_atom(aname);
             if (cc_it == cc->atoms.end()) {
