@@ -284,9 +284,11 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
         const Element mut_elem = mut_protein.AtomAt(mi).element;
         if (wt_elem != mut_elem) {
             element_mismatches++;
+            const Residue& wt_res = wt_protein.ResidueAt(loc.residue_index);
+            const char* res_code = wt_res.AminoAcidInfo().three_letter_code;
             OperationLog::Warn("MutationDeltaResult::Compute",
-                "element mismatch at locator " +
-                std::to_string(loc.residue_position) + ":" +
+                "element mismatch at " + std::string(res_code) +
+                std::to_string(wt_res.sequence_number) + ":" +
                 loc.atom_name.AsString() + " — WT=" +
                 SymbolForElement(wt_elem) + " mut=" +
                 SymbolForElement(mut_elem) + "; skipping");

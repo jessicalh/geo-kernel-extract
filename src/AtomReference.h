@@ -93,39 +93,49 @@ std::ostream& operator<<(std::ostream& os, const AtomReference& ref);
 
 
 // ---------------------------------------------------------------------------
-// AtomLocator: cross-protein atom matching key for mutation analysis.
+// AtomLocator: cross-protein atom matching key for aligned-pair contexts.
+//
+// Keys on (residue_index, atom_name). residue_index is the Protein's
+// internal 0..N-1 array index — stable inside one aligned pair (WT/mutant
+// from the same tleap setup; frame N vs frame M of the same trajectory;
+// classical kernel output vs DFT shielding output on the same Protein).
+// For these cases residue_index is more robust than PDB sequence number,
+// which is subject to gaps and insertion codes.
 //
 // Excludes residue_type so atoms at mutation sites match across the type
 // change. Backbone N of PHE5 in WT matches backbone N of ALA5 in mutant
-// because their (chain, position, atom_name) triple is identical, even
-// though the residue type differs. Side-chain atoms unique to one side
-// (PHE's CG / CD1 / ... vs ALA's HB1) naturally fail to match.
+// because (residue_index, atom_name) is identical, even though residue
+// types differ. Side-chain atoms unique to one side (PHE's CG / CD1 /
+// CE1 / CZ / CD2 / CE2 vs ALA's HB1) naturally fail to match.
 //
-// Use AtomReference for strict same-residue contexts. Use AtomLocator for
-// cross-mutation comparisons (MutationDeltaResult).
+// Use AtomReference for strict same-residue contexts. Use AtomLocator
+// for cross-mutation, frame-to-frame, or kernel-vs-DFT comparisons.
 // ---------------------------------------------------------------------------
 
 struct AtomLocator {
-    int           residue_position = 0;     // PDB sequence number
-    std::string   chain_id;                  // empty for single-chain
+    size_t        residue_index = 0;        // Protein internal 0..N-1
     IupacAtomName atom_name;
 
     bool operator==(const AtomLocator& o) const {
-        return residue_position == o.residue_position
-            && chain_id         == o.chain_id
-            && atom_name        == o.atom_name;
+        return residue_index == o.residue_index
+            && atom_name     == o.atom_name;
     }
     bool operator!=(const AtomLocator& o) const { return !(*this == o); }
 
     bool operator<(const AtomLocator& o) const {
-        if (chain_id != o.chain_id) return chain_id < o.chain_id;
-        if (residue_position != o.residue_position) return residue_position < o.residue_position;
+        if (residue_index != o.residue_index) return residue_index < o.residue_index;
         return atom_name < o.atom_name;
     }
 };
 
 AtomLocator MakeAtomLocator(const Protein& protein, size_t atom_index);
 
+// Build a map from AtomLocator to atom_index. Aborts (fatal) on a duplicate
+// key — two atoms in the same residue with the same IUPAC name is a
+// topology bug (NamingRegistry mistranslation, residue assembly error,
+// duplicate atom load) that must surface loud rather than be silently
+// resolved by "first wins". Hard-fail discipline: a 723-protein run with
+// silently-corrupt locator keys is worse than no run.
 std::unordered_map<AtomLocator, size_t> BuildAtomLocatorMap(
     const Protein& protein);
 
@@ -155,8 +165,7 @@ struct hash<nmr::AtomLocator> {
         auto mix = [](size_t seed, size_t v) {
             return seed ^ (v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
         };
-        size_t h = std::hash<int>{}(l.residue_position);
-        h = mix(h, std::hash<std::string>{}(l.chain_id));
+        size_t h = std::hash<size_t>{}(l.residue_index);
         h = mix(h, std::hash<nmr::IupacAtomName>{}(l.atom_name));
         return h;
     }
