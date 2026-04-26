@@ -50,7 +50,9 @@ struct RingProximity {
 struct MatchedAtomData {
     size_t wt_index = 0;
     size_t mut_index = 0;
-    double match_distance = 0.0;
+    double match_distance = 0.0;     // Euclidean ||WT_pos - mut_pos||;
+                                     // typed match (AtomLocator), reported
+                                     // for diagnostics.
 
     // WT atom identity (from typed objects, not strings)
     Element element = Element::Unknown;
@@ -58,9 +60,44 @@ struct MatchedAtomData {
     bool is_backbone = false;
     size_t residue_index = 0;
 
-    // DFT shielding delta (always present — OrcaShieldingResult required)
-    Mat3 delta_shielding = Mat3::Zero();
-    SphericalTensor delta_shielding_spherical;
+    // ----------------------------------------------------------------
+    // DFT shielding — full tensor output for both proteins, both decompositions.
+    //
+    // Three channels: total = diamagnetic + paramagnetic. ORCA reports all
+    // three. The thesis residual analysis needs them separately (the
+    // paramagnetic channel is where heavy-atom and aromatic-ring effects
+    // dominate; the diamagnetic channel is the local-density baseline).
+    // Six tensors per matched atom (WT and mutant for each channel) plus
+    // three deltas (WT minus mutant per channel). Each as Mat3 +
+    // SphericalTensor (T0+T1+T2 decomposition) per project convention.
+    // ----------------------------------------------------------------
+
+    // WT shielding (copied from wt_conformation.AtomAt(wi).orca_shielding_*)
+    Mat3 wt_shielding_total = Mat3::Zero();
+    SphericalTensor wt_shielding_total_spherical;
+    Mat3 wt_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor wt_shielding_diamagnetic_spherical;
+    Mat3 wt_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor wt_shielding_paramagnetic_spherical;
+
+    // Mutant shielding (copied from mut_conformation.AtomAt(mi).orca_shielding_*)
+    Mat3 mut_shielding_total = Mat3::Zero();
+    SphericalTensor mut_shielding_total_spherical;
+    Mat3 mut_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor mut_shielding_diamagnetic_spherical;
+    Mat3 mut_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor mut_shielding_paramagnetic_spherical;
+
+    // Per-channel delta (WT - mutant). delta_shielding_total replaces the
+    // original `delta_shielding` field — the backward-compat accessors
+    // DeltaShieldingAt / DeltaShieldingSphericalAt / DeltaT0At return the
+    // total channel.
+    Mat3 delta_shielding_total = Mat3::Zero();
+    SphericalTensor delta_shielding_total_spherical;
+    Mat3 delta_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor delta_shielding_diamagnetic_spherical;
+    Mat3 delta_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor delta_shielding_paramagnetic_spherical;
 
     // APBS delta
     Vec3 delta_efield = Vec3::Zero();
@@ -142,9 +179,18 @@ public:
     // --- Per-atom queries (return zero for unmatched atoms) ---
     bool HasMatch(size_t wt_atom_index) const;
     const MatchedAtomData& MatchedDataAt(size_t wt_atom_index) const;
+
+    // Total-channel delta (preserved API — same semantics as before).
     const Mat3& DeltaShieldingAt(size_t wt_atom_index) const;
     const SphericalTensor& DeltaShieldingSphericalAt(size_t wt_atom_index) const;
     double DeltaT0At(size_t wt_atom_index) const;
+
+    // Diamagnetic and paramagnetic channels — added 2026-04-26 for the
+    // dia/para residual analysis that the previous calculator collapsed.
+    const Mat3& DeltaShieldingDiamagneticAt(size_t wt_atom_index) const;
+    const SphericalTensor& DeltaShieldingDiamagneticSphericalAt(size_t wt_atom_index) const;
+    const Mat3& DeltaShieldingParamagneticAt(size_t wt_atom_index) const;
+    const SphericalTensor& DeltaShieldingParamagneticSphericalAt(size_t wt_atom_index) const;
 
     // APBS deltas
     Vec3 DeltaEFieldAt(size_t wt_atom_index) const;

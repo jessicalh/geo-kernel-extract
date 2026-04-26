@@ -82,12 +82,54 @@ AtomReference MakeAtomReference(const Protein& protein, size_t atom_index);
 
 // Build a map from AtomReference to atom_index for a whole Protein.
 // O(N) construction; O(1) average lookup. Use when comparing two proteins
-// atom-by-atom (DFT compare, mutation delta, frame-to-frame identity).
+// atom-by-atom where residue identity is preserved (frame N vs frame M of
+// an MD trajectory; classical kernel output vs DFT shielding output on
+// the same protein).
 std::unordered_map<AtomReference, size_t> BuildAtomReferenceMap(
     const Protein& protein);
 
 // Stream output for diagnostics: e.g. "PHE-4:HB3" or "GLY-10:HA2 [chain A]".
 std::ostream& operator<<(std::ostream& os, const AtomReference& ref);
+
+
+// ---------------------------------------------------------------------------
+// AtomLocator: cross-protein atom matching key for mutation analysis.
+//
+// Excludes residue_type so atoms at mutation sites match across the type
+// change. Backbone N of PHE5 in WT matches backbone N of ALA5 in mutant
+// because their (chain, position, atom_name) triple is identical, even
+// though the residue type differs. Side-chain atoms unique to one side
+// (PHE's CG / CD1 / ... vs ALA's HB1) naturally fail to match.
+//
+// Use AtomReference for strict same-residue contexts. Use AtomLocator for
+// cross-mutation comparisons (MutationDeltaResult).
+// ---------------------------------------------------------------------------
+
+struct AtomLocator {
+    int           residue_position = 0;     // PDB sequence number
+    std::string   chain_id;                  // empty for single-chain
+    IupacAtomName atom_name;
+
+    bool operator==(const AtomLocator& o) const {
+        return residue_position == o.residue_position
+            && chain_id         == o.chain_id
+            && atom_name        == o.atom_name;
+    }
+    bool operator!=(const AtomLocator& o) const { return !(*this == o); }
+
+    bool operator<(const AtomLocator& o) const {
+        if (chain_id != o.chain_id) return chain_id < o.chain_id;
+        if (residue_position != o.residue_position) return residue_position < o.residue_position;
+        return atom_name < o.atom_name;
+    }
+};
+
+AtomLocator MakeAtomLocator(const Protein& protein, size_t atom_index);
+
+std::unordered_map<AtomLocator, size_t> BuildAtomLocatorMap(
+    const Protein& protein);
+
+std::ostream& operator<<(std::ostream& os, const AtomLocator& loc);
 
 }  // namespace nmr
 
@@ -103,6 +145,19 @@ struct hash<nmr::AtomReference> {
         h = mix(h, std::hash<int>{}(r.residue_position));
         h = mix(h, std::hash<std::string>{}(r.chain_id));
         h = mix(h, std::hash<nmr::IupacAtomName>{}(r.atom_name));
+        return h;
+    }
+};
+
+template <>
+struct hash<nmr::AtomLocator> {
+    size_t operator()(const nmr::AtomLocator& l) const noexcept {
+        auto mix = [](size_t seed, size_t v) {
+            return seed ^ (v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2));
+        };
+        size_t h = std::hash<int>{}(l.residue_position);
+        h = mix(h, std::hash<std::string>{}(l.chain_id));
+        h = mix(h, std::hash<nmr::IupacAtomName>{}(l.atom_name));
         return h;
     }
 };

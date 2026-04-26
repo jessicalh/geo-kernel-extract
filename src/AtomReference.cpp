@@ -36,4 +36,33 @@ std::ostream& operator<<(std::ostream& os, const AtomReference& ref) {
     return os;
 }
 
+
+AtomLocator MakeAtomLocator(const Protein& protein, size_t atom_index) {
+    const Atom& a = protein.AtomAt(atom_index);
+    const Residue& r = protein.ResidueAt(a.residue_index);
+    AtomLocator loc;
+    loc.residue_position = r.sequence_number;
+    loc.chain_id         = r.chain_id;
+    loc.atom_name        = a.iupac_name;
+    return loc;
+}
+
+std::unordered_map<AtomLocator, size_t> BuildAtomLocatorMap(
+        const Protein& protein) {
+    std::unordered_map<AtomLocator, size_t> map;
+    map.reserve(protein.AtomCount());
+    for (size_t ai = 0; ai < protein.AtomCount(); ++ai) {
+        map.emplace(MakeAtomLocator(protein, ai), ai);
+    }
+    return map;
+}
+
+std::ostream& operator<<(std::ostream& os, const AtomLocator& loc) {
+    os << loc.residue_position << ':' << loc.atom_name;
+    if (!loc.chain_id.empty()) {
+        os << " [chain " << loc.chain_id << ']';
+    }
+    return os;
+}
+
 }  // namespace nmr

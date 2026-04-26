@@ -1,5 +1,6 @@
 #include "MutationDeltaResult.h"
 #include "Protein.h"
+#include "AtomReference.h"
 #include "OrcaShieldingResult.h"
 #include "ApbsFieldResult.h"
 #include "MopacResult.h"
@@ -10,7 +11,6 @@
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
 
-#include <nanoflann.hpp>
 #include <cmath>
 #include <algorithm>
 #include <map>
@@ -28,21 +28,17 @@ std::vector<std::type_index> MutationDeltaResult::Dependencies() const {
 
 
 // ============================================================================
-// Atom matching KD-tree
+// Atom matching: typed cross-protein key (AtomLocator).
+//
+// Pre-2026-04-26 used a KD-tree on positions with a 0.5A tolerance + element
+// filter. Replaced with AtomLocator (chain, residue_position, atom_name) —
+// a typed cross-protein identity. Backbone atoms at mutation sites match
+// across the residue type change (PHE5 N → ALA5 N) because their locators
+// are identical; side-chain atoms unique to one side (PHE's CG, CD1, ... vs
+// ALA's HB1) naturally fail to match. No geometric tolerance, no fall-back
+// to position-based matching: identity is symbolic and the proteins are
+// expected to have come from the same tleap setup.
 // ============================================================================
-
-struct MatchCloud {
-    std::vector<Vec3> points;
-    size_t kdtree_get_point_count() const { return points.size(); }
-    double kdtree_get_pt(size_t idx, size_t dim) const { return points[idx](dim); }
-    template<class BBOX> bool kdtree_get_bbox(BBOX&) const { return false; }
-};
-
-using MatchTree = nanoflann::KDTreeSingleIndexAdaptor<
-    nanoflann::L2_Simple_Adaptor<double, MatchCloud>,
-    MatchCloud, 3, size_t>;
-
-static constexpr double MATCH_TOLERANCE = 0.5;  // Angstroms
 
 
 // ============================================================================
@@ -142,11 +138,11 @@ static DeltaSummary BuildSummary(
         bin.count = static_cast<int>(atoms.size());
         double sum_t0 = 0, sum_abs_t0 = 0, max_abs = 0, sum_t2 = 0;
         for (const auto* a : atoms) {
-            double t0 = a->delta_shielding_spherical.T0;
+            double t0 = a->delta_shielding_total_spherical.T0;
             sum_t0 += t0;
             sum_abs_t0 += std::abs(t0);
             max_abs = std::max(max_abs, std::abs(t0));
-            sum_t2 += a->delta_shielding_spherical.T2Magnitude();
+            sum_t2 += a->delta_shielding_total_spherical.T2Magnitude();
         }
         bin.mean_delta_t0 = sum_t0 / bin.count;
         bin.mean_abs_delta_t0 = sum_abs_t0 / bin.count;
@@ -165,8 +161,8 @@ static DeltaSummary BuildSummary(
         for (const auto& m : matched) {
             double d = m.nearest_removed_ring_dist;
             if (d >= bin.bin_start && d < bin.bin_end) {
-                sum_abs_t0 += std::abs(m.delta_shielding_spherical.T0);
-                sum_t2 += m.delta_shielding_spherical.T2Magnitude();
+                sum_abs_t0 += std::abs(m.delta_shielding_total_spherical.T0);
+                sum_t2 += m.delta_shielding_total_spherical.T2Magnitude();
                 count++;
             }
         }
@@ -181,7 +177,7 @@ static DeltaSummary BuildSummary(
     // --- Backbone vs sidechain ---
     double bb_sum = 0, sc_sum = 0;
     for (const auto& m : matched) {
-        double abs_t0 = std::abs(m.delta_shielding_spherical.T0);
+        double abs_t0 = std::abs(m.delta_shielding_total_spherical.T0);
         if (m.is_backbone) {
             summary.backbone_count++;
             bb_sum += abs_t0;
@@ -262,74 +258,47 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
                      mut_conf.HasResult<MolecularGraphResult>();
     bool has_geom = wt_conf.HasResult<GeometryResult>();
 
-    // ---- Build KD-tree over mutant positions ----
+    // ---- Atom matching: typed AtomLocator (chain, position, atom_name) ----
+    //
+    // Build a map over the mutant protein keyed by AtomLocator. Each WT
+    // atom looks itself up by its own AtomLocator. A match is exact at the
+    // typed level — no geometric tolerance, no nearest-neighbor search.
+    // Side-chain atoms unique to one side (PHE's CG vs ALA's HB1) fail
+    // the lookup. Element is cross-checked as a sanity guard against
+    // naming weirdness; mismatch logs a warning and the pair is skipped.
 
     const size_t wt_count = wt_conf.AtomCount();
     const size_t mut_count = mut_conf.AtomCount();
 
-    MatchCloud mut_cloud;
-    mut_cloud.points.resize(mut_count);
-    for (size_t i = 0; i < mut_count; ++i)
-        mut_cloud.points[i] = mut_conf.PositionAt(i);
-
-    MatchTree mut_tree(3, mut_cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10));
-    mut_tree.buildIndex();
-
-    // ---- Atom matching: greedy nearest-neighbor + element filter + bijection ----
-
-    struct Claim { size_t wt_index = SIZE_MAX; double distance = 1e30; };
-    std::vector<Claim> mut_claimed(mut_count);
+    auto mut_locator_map = BuildAtomLocatorMap(mut_protein);
     std::vector<size_t> wt_to_mut(wt_count, SIZE_MAX);
-    std::vector<size_t> evicted;
+    int element_mismatches = 0;
 
     for (size_t wi = 0; wi < wt_count; ++wi) {
-        Vec3 wt_pos = wt_conf.PositionAt(wi);
-        Element wt_elem = wt_protein.AtomAt(wi).element;
+        AtomLocator loc = MakeAtomLocator(wt_protein, wi);
+        auto it = mut_locator_map.find(loc);
+        if (it == mut_locator_map.end()) continue;       // unmatched (mutation-site sidechain etc.)
+        size_t mi = it->second;
 
-        const size_t k = 5;
-        size_t indices[5]; double dists_sq[5];
-        size_t found = mut_tree.knnSearch(wt_pos.data(), k, indices, dists_sq);
-
-        for (size_t n = 0; n < found; ++n) {
-            size_t mi = indices[n];
-            double dist = std::sqrt(dists_sq[n]);
-            if (dist > MATCH_TOLERANCE) break;
-            if (wt_elem != mut_protein.AtomAt(mi).element) continue;
-
-            if (dist < mut_claimed[mi].distance) {
-                size_t old_wt = mut_claimed[mi].wt_index;
-                if (old_wt != SIZE_MAX) {
-                    wt_to_mut[old_wt] = SIZE_MAX;
-                    evicted.push_back(old_wt);
-                }
-                wt_to_mut[wi] = mi;
-                mut_claimed[mi] = {wi, dist};
-            }
-            break;
+        const Element wt_elem = wt_protein.AtomAt(wi).element;
+        const Element mut_elem = mut_protein.AtomAt(mi).element;
+        if (wt_elem != mut_elem) {
+            element_mismatches++;
+            OperationLog::Warn("MutationDeltaResult::Compute",
+                "element mismatch at locator " +
+                std::to_string(loc.residue_position) + ":" +
+                loc.atom_name.AsString() + " — WT=" +
+                SymbolForElement(wt_elem) + " mut=" +
+                SymbolForElement(mut_elem) + "; skipping");
+            continue;
         }
+
+        wt_to_mut[wi] = mi;
     }
 
-    // Second-chance pass for evicted atoms
-    for (size_t wi : evicted) {
-        if (wt_to_mut[wi] != SIZE_MAX) continue;
-        Vec3 wt_pos = wt_conf.PositionAt(wi);
-        Element wt_elem = wt_protein.AtomAt(wi).element;
-
-        const size_t k = 5;
-        size_t indices[5]; double dists_sq[5];
-        size_t found = mut_tree.knnSearch(wt_pos.data(), k, indices, dists_sq);
-
-        for (size_t n = 0; n < found; ++n) {
-            size_t mi = indices[n];
-            double dist = std::sqrt(dists_sq[n]);
-            if (dist > MATCH_TOLERANCE) break;
-            if (wt_elem != mut_protein.AtomAt(mi).element) continue;
-            if (mut_claimed[mi].wt_index == SIZE_MAX) {
-                wt_to_mut[wi] = mi;
-                mut_claimed[mi] = {wi, dist};
-                break;
-            }
-        }
+    if (element_mismatches > 0) {
+        OperationLog::Warn("MutationDeltaResult::Compute",
+            std::to_string(element_mismatches) + " atom locators had element disagreement");
     }
 
     // ---- DSSP residue-level lookup helpers ----
@@ -358,7 +327,11 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
         MatchedAtomData data;
         data.wt_index = wi;
         data.mut_index = mi;
-        data.match_distance = mut_claimed[mi].distance;
+        // match_distance is now Euclidean position delta — typed match
+        // happened at the locator level; the position delta is reported
+        // for diagnostic purposes (e.g., backbone stability across the
+        // mutation, MD-frame relaxation).
+        data.match_distance = (wt_conf.PositionAt(wi) - mut_conf.PositionAt(mi)).norm();
 
         // WT atom identity (typed, not strings)
         data.element = wt_protein.AtomAt(wi).element;
@@ -369,9 +342,36 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
 
         const auto& mut_ca = mut_conf.AtomAt(mi);
 
-        // DFT shielding delta: WT - mutant
-        data.delta_shielding = wt_ca.orca_shielding_total - mut_ca.orca_shielding_total;
-        data.delta_shielding_spherical = SphericalTensor::Decompose(data.delta_shielding);
+        // DFT shielding — six full tensors per channel, copied from
+        // ConformationAtom (OrcaShieldingResult populated them at protein
+        // load). Three deltas computed by subtraction; the spherical
+        // decomposition is recomputed from the delta Mat3 to preserve the
+        // T0+T1+T2 structure.
+        data.wt_shielding_total                  = wt_ca.orca_shielding_total;
+        data.wt_shielding_total_spherical        = wt_ca.orca_shielding_total_spherical;
+        data.wt_shielding_diamagnetic            = wt_ca.orca_shielding_diamagnetic;
+        data.wt_shielding_diamagnetic_spherical  = wt_ca.orca_shielding_diamagnetic_spherical;
+        data.wt_shielding_paramagnetic           = wt_ca.orca_shielding_paramagnetic;
+        data.wt_shielding_paramagnetic_spherical = wt_ca.orca_shielding_paramagnetic_spherical;
+
+        data.mut_shielding_total                  = mut_ca.orca_shielding_total;
+        data.mut_shielding_total_spherical        = mut_ca.orca_shielding_total_spherical;
+        data.mut_shielding_diamagnetic            = mut_ca.orca_shielding_diamagnetic;
+        data.mut_shielding_diamagnetic_spherical  = mut_ca.orca_shielding_diamagnetic_spherical;
+        data.mut_shielding_paramagnetic           = mut_ca.orca_shielding_paramagnetic;
+        data.mut_shielding_paramagnetic_spherical = mut_ca.orca_shielding_paramagnetic_spherical;
+
+        data.delta_shielding_total = data.wt_shielding_total - data.mut_shielding_total;
+        data.delta_shielding_total_spherical =
+            SphericalTensor::Decompose(data.delta_shielding_total);
+        data.delta_shielding_diamagnetic =
+            data.wt_shielding_diamagnetic - data.mut_shielding_diamagnetic;
+        data.delta_shielding_diamagnetic_spherical =
+            SphericalTensor::Decompose(data.delta_shielding_diamagnetic);
+        data.delta_shielding_paramagnetic =
+            data.wt_shielding_paramagnetic - data.mut_shielding_paramagnetic;
+        data.delta_shielding_paramagnetic_spherical =
+            SphericalTensor::Decompose(data.delta_shielding_paramagnetic);
 
         // ff14SB charge delta
         data.delta_partial_charge = wt_ca.partial_charge - mut_ca.partial_charge;
@@ -495,16 +495,36 @@ const MatchedAtomData& MutationDeltaResult::MatchedDataAt(size_t i) const {
 
 const Mat3& MutationDeltaResult::DeltaShieldingAt(size_t i) const {
     if (!HasMatch(i)) return zero_mat3_;
-    return matched_atoms_[wt_to_matched_[i]].delta_shielding;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_total;
 }
 
 const SphericalTensor& MutationDeltaResult::DeltaShieldingSphericalAt(size_t i) const {
     if (!HasMatch(i)) return zero_spherical_;
-    return matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_total_spherical;
 }
 
 double MutationDeltaResult::DeltaT0At(size_t i) const {
     return DeltaShieldingSphericalAt(i).T0;
+}
+
+const Mat3& MutationDeltaResult::DeltaShieldingDiamagneticAt(size_t i) const {
+    if (!HasMatch(i)) return zero_mat3_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_diamagnetic;
+}
+
+const SphericalTensor& MutationDeltaResult::DeltaShieldingDiamagneticSphericalAt(size_t i) const {
+    if (!HasMatch(i)) return zero_spherical_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_diamagnetic_spherical;
+}
+
+const Mat3& MutationDeltaResult::DeltaShieldingParamagneticAt(size_t i) const {
+    if (!HasMatch(i)) return zero_mat3_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_paramagnetic;
+}
+
+const SphericalTensor& MutationDeltaResult::DeltaShieldingParamagneticSphericalAt(size_t i) const {
+    if (!HasMatch(i)) return zero_spherical_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_paramagnetic_spherical;
 }
 
 Vec3 MutationDeltaResult::DeltaEFieldAt(size_t i) const {
@@ -559,15 +579,48 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     const size_t N = conf.AtomCount();
     int written = 0;
 
-    // delta_shielding: (N, 9) — DFT shielding delta as SphericalTensor
-    {
+    // Helper: pack a SphericalTensor field selected per matched atom into
+    // a (N, 9) array, zero rows for unmatched atoms, write NPY.
+    auto write_st_array = [&](const std::string& filename,
+                               const SphericalTensor MatchedAtomData::*field) {
         std::vector<double> data(N * 9, 0.0);
-        for (size_t i = 0; i < N; ++i)
-            if (HasMatch(i))
-                PackST(matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical, &data[i*9]);
-        NpyWriter::WriteFloat64(output_dir + "/delta_shielding.npy", data.data(), N, 9);
-        written++;
-    }
+        for (size_t i = 0; i < N; ++i) {
+            if (!HasMatch(i)) continue;
+            PackST(matched_atoms_[wt_to_matched_[i]].*field, &data[i*9]);
+        }
+        if (NpyWriter::WriteFloat64(output_dir + "/" + filename,
+                                     data.data(), N, 9))
+            written++;
+    };
+
+    // delta_shielding.npy preserves its filename (downstream consumers).
+    // Content unchanged: total-channel delta as SphericalTensor.
+    write_st_array("delta_shielding.npy",
+                   &MatchedAtomData::delta_shielding_total_spherical);
+
+    // 2026-04-26: per-channel deltas — paramagnetic isolates the
+    // aromatic-ring and heavy-atom contributions, diamagnetic the
+    // local-density baseline. Both required for residual analysis.
+    write_st_array("delta_shielding_diamagnetic.npy",
+                   &MatchedAtomData::delta_shielding_diamagnetic_spherical);
+    write_st_array("delta_shielding_paramagnetic.npy",
+                   &MatchedAtomData::delta_shielding_paramagnetic_spherical);
+
+    // 2026-04-26: WT and mutant shielding stored separately, so the
+    // calibration pipeline can compute deltas at arbitrary irrep
+    // recombinations rather than only the precomputed delta.
+    write_st_array("wt_shielding_total.npy",
+                   &MatchedAtomData::wt_shielding_total_spherical);
+    write_st_array("wt_shielding_diamagnetic.npy",
+                   &MatchedAtomData::wt_shielding_diamagnetic_spherical);
+    write_st_array("wt_shielding_paramagnetic.npy",
+                   &MatchedAtomData::wt_shielding_paramagnetic_spherical);
+    write_st_array("mut_shielding_total.npy",
+                   &MatchedAtomData::mut_shielding_total_spherical);
+    write_st_array("mut_shielding_diamagnetic.npy",
+                   &MatchedAtomData::mut_shielding_diamagnetic_spherical);
+    write_st_array("mut_shielding_paramagnetic.npy",
+                   &MatchedAtomData::mut_shielding_paramagnetic_spherical);
 
     // delta_scalars: (N, 6) — [matched, delta_T0, nearest_ring_dist, delta_charge, delta_mopac_charge, match_dist]
     {
@@ -576,7 +629,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
             if (HasMatch(i)) {
                 const auto& m = matched_atoms_[wt_to_matched_[i]];
                 data[i*6 + 0] = 1.0;
-                data[i*6 + 1] = m.delta_shielding_spherical.T0;
+                data[i*6 + 1] = m.delta_shielding_total_spherical.T0;
                 data[i*6 + 2] = m.nearest_removed_ring_dist;
                 data[i*6 + 3] = m.delta_partial_charge;
                 data[i*6 + 4] = m.delta_mopac_charge;
