@@ -128,7 +128,7 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 std::string atom_name = atom.get_label_atom_id();
 
                 auto new_atom = Atom::Create(elem);
-                new_atom->pdb_atom_name = atom_name;
+                new_atom->iupac_name = atom_name;
                 new_atom->residue_index = res_idx;
 
                 size_t atom_idx = protein->AddAtom(std::move(new_atom));

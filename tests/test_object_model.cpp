@@ -25,10 +25,10 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     size_t ri_phe = p.AddResidue(phe);
 
     // Add backbone atoms for ALA
-    auto n = Atom::Create(Element::N); n->pdb_atom_name = "N"; n->residue_index = ri_ala;
-    auto ca = Atom::Create(Element::C); ca->pdb_atom_name = "CA"; ca->residue_index = ri_ala;
-    auto c = Atom::Create(Element::C); c->pdb_atom_name = "C"; c->residue_index = ri_ala;
-    auto o = Atom::Create(Element::O); o->pdb_atom_name = "O"; o->residue_index = ri_ala;
+    auto n = Atom::Create(Element::N); n->iupac_name = "N"; n->residue_index = ri_ala;
+    auto ca = Atom::Create(Element::C); ca->iupac_name = "CA"; ca->residue_index = ri_ala;
+    auto c = Atom::Create(Element::C); c->iupac_name = "C"; c->residue_index = ri_ala;
+    auto o = Atom::Create(Element::O); o->iupac_name = "O"; o->residue_index = ri_ala;
 
     size_t n_idx = p.AddAtom(std::move(n));
     size_t ca_idx = p.AddAtom(std::move(ca));
@@ -41,7 +41,7 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     const char* ring_names[] = {"CG", "CD1", "CE1", "CZ", "CE2", "CD2"};
     std::vector<size_t> phe_indices;
     for (auto name : ring_names) {
-        auto a = Atom::Create(Element::C); a->pdb_atom_name = name; a->residue_index = ri_phe;
+        auto a = Atom::Create(Element::C); a->iupac_name = name; a->residue_index = ri_phe;
         phe_indices.push_back(p.AddAtom(std::move(a)));
     }
     p.MutableResidueAt(ri_phe).atom_indices = phe_indices;

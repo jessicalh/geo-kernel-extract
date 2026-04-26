@@ -334,14 +334,14 @@ BuildResult BuildProteinFromTpr(const std::string& tpr_path,
         size_t ri = tpr_atoms.atom[ai].resind;
         std::string canonical_residue =
             ThreeLetterCodeForAminoAcid(protein->ResidueAt(ri).type);
-        atom->pdb_atom_name = registry.TranslateAtomName(
+        atom->iupac_name = registry.TranslateAtomName(
             charmm_atom_name, canonical_residue,
             ToolContext::Charmm, ToolContext::Standard);
         atom->element = ElementFromAtomicNumber(tpr_atoms.atom[ai].atomnumber);
         atom->residue_index = ri;
         size_t idx = protein->AddAtom(std::move(atom));
         protein->MutableResidueAt(ri).atom_indices.push_back(idx);
-        const std::string& name = protein->AtomAt(idx).pdb_atom_name;
+        const IupacAtomName& name = protein->AtomAt(idx).iupac_name;
         Residue& res_ref = protein->MutableResidueAt(ri);
         if      (name == "N"  && res_ref.N  == Residue::NONE) res_ref.N  = idx;
         else if (name == "CA" && res_ref.CA == Residue::NONE) res_ref.CA = idx;
@@ -514,7 +514,7 @@ BuildResult BuildFromGromacs(const FleetPaths& paths) {
             ThreeLetterCodeForAminoAcid(protein->ResidueAt(ri).type);
 
         // PDB LOADING BOUNDARY: CHARMM atom name → canonical
-        atom->pdb_atom_name = registry.TranslateAtomName(
+        atom->iupac_name = registry.TranslateAtomName(
             charmm_atom_name, canonical_residue,
             ToolContext::Charmm, ToolContext::Standard);
 
@@ -525,7 +525,7 @@ BuildResult BuildFromGromacs(const FleetPaths& paths) {
         protein->MutableResidueAt(ri).atom_indices.push_back(idx);
 
         // Cache backbone indices from canonical atom name
-        const std::string& name = protein->AtomAt(idx).pdb_atom_name;
+        const IupacAtomName& name = protein->AtomAt(idx).iupac_name;
         Residue& res_ref = protein->MutableResidueAt(ri);
         if      (name == "N"  && res_ref.N  == Residue::NONE) res_ref.N  = idx;
         else if (name == "CA" && res_ref.CA == Residue::NONE) res_ref.CA = idx;

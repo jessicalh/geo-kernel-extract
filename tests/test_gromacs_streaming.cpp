@@ -223,7 +223,7 @@ TEST(GromacsStreaming, BsWelfordAttachAndFinalize) {
         if (a.bs_t2mag_std  > 1e-6) found_varying_atom = true;
         if (std::abs(a.bs_t0_mean) > 0.01 && a.bs_t0_std > 1e-8) {
             std::cout << "Atom " << i << " ("
-                      << tp.ProteinRef().AtomAt(i).pdb_atom_name << "): "
+                      << tp.ProteinRef().AtomAt(i).iupac_name << "): "
                       << "bs_t0_mean=" << a.bs_t0_mean
                       << "  bs_t0_std=" << a.bs_t0_std
                       << "  bs_t2mag_mean=" << a.bs_t2mag_mean

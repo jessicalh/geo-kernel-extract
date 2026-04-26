@@ -128,7 +128,7 @@ BackboneRibbonOverlay::BackboneRibbonOverlay(
         Vec3 pos = conf.AtomAt(si).Position();
 
         points->SetPoint(i, pos.x(), pos.y(), pos.z());
-        atomTypes->SetValue(i, id.pdb_atom_name);
+        atomTypes->SetValue(i, id.iupac_name.AsString());
         atomType->SetValue(i, static_cast<vtkIdType>(AtomicNumberForElement(id.element)));
         residue->SetValue(i, static_cast<vtkIdType>(res.sequence_number));
         chain->SetValue(i, res.chain_id.empty() ? 'A' : res.chain_id[0]);

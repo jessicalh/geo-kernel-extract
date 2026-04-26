@@ -166,7 +166,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
             e != Element::O && e != Element::S) {
             OperationLog::Error("AIMNet2Result::Compute",
                 "Atom " + std::to_string(i) + " (" +
-                protein.AtomAt(i).pdb_atom_name + " in residue " +
+                protein.AtomAt(i).iupac_name.AsString() + " in residue " +
                 std::to_string(protein.AtomAt(i).residue_index) +
                 ") has Element::Unknown. AIMNet2 has no embedding for Z=0. "
                 "Fix the topology or exclude this atom.");

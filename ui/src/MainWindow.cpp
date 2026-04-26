@@ -959,7 +959,7 @@ void MainWindow::pickAtom(int displayX, int displayY) {
         Vec3 pos = conf.AtomAt(atomIndex).Position();
 
         udp_log("[pick] → atom %zu: %s %s-%d\n", atomIndex,
-                id.pdb_atom_name.c_str(),
+                id.iupac_name.c_str(),
                 ThreeLetterCodeForAminoAcid(res.type).c_str(),
                 res.sequence_number);
 
@@ -986,7 +986,7 @@ void MainWindow::pickAtom(int displayX, int displayY) {
 
         statusLabel_->setText(QString("Atom %1: %2 %3-%4")
             .arg(atomIndex)
-            .arg(QString::fromStdString(id.pdb_atom_name))
+            .arg(QString::fromStdString(id.iupac_name.AsString()))
             .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
             .arg(res.sequence_number));
     }
@@ -1026,7 +1026,7 @@ void MainWindow::populateAtomInfo(size_t idx) {
     QString header = QString("Atom %1: %2 %3 (%4-%5-%6)")
         .arg(idx)
         .arg(QString::fromStdString(SymbolForElement(id.element)))
-        .arg(QString::fromStdString(id.pdb_atom_name))
+        .arg(QString::fromStdString(id.iupac_name.AsString()))
         .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
         .arg(res.sequence_number)
         .arg(QString::fromStdString(res.chain_id));
@@ -1035,7 +1035,7 @@ void MainWindow::populateAtomInfo(size_t idx) {
     auto* identity = new QTreeWidgetItem({header, ""});
     identity->addChild(new QTreeWidgetItem({"Element", QString::fromStdString(SymbolForElement(id.element))
         + QString(" (Z=%1)").arg(AtomicNumberForElement(id.element))}));
-    identity->addChild(new QTreeWidgetItem({"PDB name", QString::fromStdString(id.pdb_atom_name)}));
+    identity->addChild(new QTreeWidgetItem({"PDB name", QString::fromStdString(id.iupac_name.AsString())}));
     identity->addChild(new QTreeWidgetItem({"Residue", QString("%1 %2 %3")
         .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
         .arg(res.sequence_number)
@@ -1139,7 +1139,7 @@ void MainWindow::populateAtomInfo(size_t idx) {
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
             QString label = QString("%1 %2-%3 (BO=%4)")
                 .arg(QString::fromStdString(SymbolForElement(otherId.element)))
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
+                .arg(QString::fromStdString(otherId.iupac_name.AsString()))
                 .arg(otherRes.sequence_number)
                 .arg(mb.wiberg_order, 0, 'f', 3);
             auto* mbItem = new QTreeWidgetItem({label, ""});
@@ -1266,7 +1266,7 @@ void MainWindow::populateAtomBonds(size_t idx) {
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
 
             QString label = QString("%1 %2-%3 (%4)")
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
+                .arg(QString::fromStdString(otherId.iupac_name.AsString()))
                 .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
                 .arg(otherRes.sequence_number)
                 .arg(QString::fromStdString(NameForBondCategory(bond.category)));
@@ -1294,7 +1294,7 @@ void MainWindow::populateAtomBonds(size_t idx) {
             const auto& otherId = protein.AtomAt(mb.other_atom);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
             QString label = QString("%1 %2-%3 (BO=%4)")
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
+                .arg(QString::fromStdString(otherId.iupac_name.AsString()))
                 .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
                 .arg(otherRes.sequence_number)
                 .arg(mb.wiberg_order, 0, 'f', 3);

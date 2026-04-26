@@ -13,12 +13,16 @@
 
 #include "Types.h"
 #include "AtomTopology.h"
+#include "IupacAtomName.h"
 #include <string>
 #include <vector>
 
 namespace nmr {
 
-// An atom in the canonical amino acid template (PDB naming).
+// An atom in the canonical amino acid template (IUPAC naming).
+//
+// `name` is a typed IupacAtomName (NOT a bare string). const char* literals
+// convert implicitly so the table syntax stays terse.
 //
 // `topology` carries the IUPAC symbolic identity from Markley 1998
 // (Figure 1 + Table 1). Default-initialized AtomTopology has
@@ -26,10 +30,10 @@ namespace nmr {
 // diagnostic at load when it copies an unstamped entry, so the table
 // can be filled incrementally while keeping the build green.
 struct AminoAcidAtom {
-    const char* name;
-    Element     element;
-    bool        is_backbone;
-    AtomTopology topology = {};
+    IupacAtomName name;
+    Element       element;
+    bool          is_backbone;
+    AtomTopology  topology = {};
 };
 
 // A protonation variant (e.g., HID for histidine, ASH for aspartate).
@@ -85,15 +89,15 @@ public:
     std::vector<ChiAngleDef>   chi_angles;
     std::vector<ProtonationVariant> variants;
 
-    bool HasAtom(const char* name) const {
+    bool HasAtom(const IupacAtomName& name) const {
         for (const auto& a : atoms)
-            if (std::string(a.name) == name) return true;
+            if (a.name == name) return true;
         return false;
     }
 
-    const AminoAcidAtom* FindAtom(const char* name) const {
+    const AminoAcidAtom* FindAtom(const IupacAtomName& name) const {
         for (const auto& a : atoms)
-            if (std::string(a.name) == name) return &a;
+            if (a.name == name) return &a;
         return nullptr;
     }
 };

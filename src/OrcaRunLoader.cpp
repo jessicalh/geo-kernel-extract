@@ -201,7 +201,7 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
     // Add atoms
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto atom = std::make_unique<Atom>();
-        atom->pdb_atom_name = atom_names[ai];
+        atom->iupac_name = atom_names[ai];
 
         if (ai < atomic_numbers.size())
             atom->element = ElementFromAtomicNumber(atomic_numbers[ai]);

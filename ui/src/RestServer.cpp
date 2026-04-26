@@ -504,7 +504,7 @@ QJsonObject RestServer::cmdLookAtAtom(const QJsonObject& cmd) {
     QJsonObject result;
     result["atom_index"] = atomIdx;
     result["element"] = QString::fromStdString(SymbolForElement(id.element));
-    result["pdb_name"] = QString::fromStdString(id.pdb_atom_name);
+    result["pdb_name"] = QString::fromStdString(id.iupac_name.AsString());
     result["residue"] = QString("%1-%2").arg(
         QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
         .arg(res.sequence_number);

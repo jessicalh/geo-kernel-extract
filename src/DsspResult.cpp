@@ -54,12 +54,12 @@ static std::string WriteTempPdb(const Protein& protein,
 
             // PDB fixed-width format: atom name in columns 13-16
             char atom_field[5];
-            if (atom.pdb_atom_name.size() <= 3)
+            if (atom.iupac_name.size() <= 3)
                 snprintf(atom_field, sizeof(atom_field), " %-3s",
-                         atom.pdb_atom_name.c_str());
+                         atom.iupac_name.c_str());
             else
                 snprintf(atom_field, sizeof(atom_field), "%-4s",
-                         atom.pdb_atom_name.c_str());
+                         atom.iupac_name.c_str());
 
             std::string res_name = ThreeLetterCodeForAminoAcid(res.type);
             char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];

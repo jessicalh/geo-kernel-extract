@@ -13,6 +13,7 @@
 #include "Residue.h"
 #include "Protein.h"
 #include "PdbFileReader.h"
+#include "AminoAcidType.h"
 
 using namespace nmr;
 
@@ -32,7 +33,7 @@ size_t FindResidue(const Protein& p, int seq_num, AminoAcid aa) {
 size_t FindAtomInResidue(const Protein& p, size_t ri, const std::string& name) {
     const Residue& r = p.ResidueAt(ri);
     for (size_t ai : r.atom_indices) {
-        if (p.AtomAt(ai).pdb_atom_name == name) return ai;
+        if (p.AtomAt(ai).iupac_name == name) return ai;
     }
     return SIZE_MAX;
 }
@@ -204,6 +205,79 @@ TEST(AtomTopologyStampingTest, ResidueContextChainEnds) {
     if (last > 0) {
         EXPECT_EQ(last_r.prev_residue_type, p.ResidueAt(last - 1).type);
     }
+}
+
+
+// Coverage test: every entry in every standard amino acid template has
+// `topology.stamped == true`. Catches a missing residue in the table or a
+// missed atom inside a residue. Independent of any protein load — language-
+// level over the static AMINO_ACID_TYPES.
+TEST(AtomTopologyStampingTest, AllStandardAminoAcidsFullyPopulated) {
+    int total_atoms = 0;
+    int unstamped = 0;
+    std::map<std::string, std::vector<std::string>> gaps;
+
+    for (const AminoAcidType& aatype : AllAminoAcidTypes()) {
+        if (aatype.index == AminoAcid::Unknown) continue;
+        for (const AminoAcidAtom& a : aatype.atoms) {
+            ++total_atoms;
+            if (!a.topology.stamped) {
+                ++unstamped;
+                gaps[aatype.three_letter_code].push_back(a.name.AsString());
+            }
+        }
+    }
+
+    if (unstamped > 0) {
+        for (const auto& kv : gaps) {
+            std::string atoms;
+            for (const auto& nm : kv.second) {
+                if (!atoms.empty()) atoms += ", ";
+                atoms += nm;
+            }
+            ADD_FAILURE() << kv.first << " missing topology for: " << atoms;
+        }
+    }
+
+    EXPECT_EQ(unstamped, 0);
+    EXPECT_GT(total_atoms, 200);  // sanity floor — sum across 20 AAs
+}
+
+
+// Coverage test: every atom of every residue in 1ubq stamps cleanly. Catches
+// real-world misses from reduce-protonated input that wouldn't show up in the
+// per-AA table walk above (e.g., a hydrogen produced by reduce that we forgot
+// to put in the template).
+TEST(AtomTopologyStampingTest, EveryAtomInUbqStamped) {
+    auto result = BuildFromProtonatedPdb(test::TestEnvironment::UbqProtonated());
+    ASSERT_TRUE(result.ok) << result.error;
+    const Protein& p = *result.protein;
+
+    int unstamped = 0;
+    std::map<std::string, std::set<std::string>> first_gaps;  // residue → atom names
+    for (size_t ai = 0; ai < p.AtomCount(); ++ai) {
+        const Atom& a = p.AtomAt(ai);
+        if (!a.topology.stamped) {
+            ++unstamped;
+            const Residue& r = p.ResidueAt(a.residue_index);
+            const auto& aatype = r.AminoAcidInfo();
+            first_gaps[aatype.three_letter_code].insert(a.iupac_name.AsString());
+        }
+    }
+
+    if (unstamped > 0) {
+        for (const auto& kv : first_gaps) {
+            std::string atoms;
+            for (const auto& nm : kv.second) {
+                if (!atoms.empty()) atoms += ", ";
+                atoms += nm;
+            }
+            ADD_FAILURE() << kv.first << " in 1ubq has unstamped atoms: " << atoms;
+        }
+    }
+
+    EXPECT_EQ(unstamped, 0)
+        << "Total unstamped atoms in 1ubq: " << unstamped << " of " << p.AtomCount();
 }
 
 

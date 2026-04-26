@@ -42,12 +42,12 @@ std::string PropkaProtonator::WriteTempPdb(
 
             // PDB LOADING BOUNDARY: format atom name for PDB columns 13-16
             char atomField[5];
-            if (atom.pdb_atom_name.size() <= 3)
+            if (atom.iupac_name.size() <= 3)
                 std::snprintf(atomField, sizeof(atomField), " %-3s",
-                              atom.pdb_atom_name.c_str());
+                              atom.iupac_name.c_str());
             else
                 std::snprintf(atomField, sizeof(atomField), "%-4s",
-                              atom.pdb_atom_name.c_str());
+                              atom.iupac_name.c_str());
 
             // PDB LOADING BOUNDARY: residue name from three-letter code
             std::string resname = ThreeLetterCodeForAminoAcid(res.type);

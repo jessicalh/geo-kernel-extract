@@ -193,7 +193,7 @@ void TrajectoryProtein::WriteH5(HighFive::File& file) const {
     file.createAttribute("finalized", finalized_);
 
     // /atoms/ — minimal per-atom identity passthrough: element,
-    // residue_index, pdb_atom_name. Richer typed identity
+    // residue_index, iupac_name. Richer typed identity
     // (NmrAtomIdentity) is deferred.
     std::vector<int> elements(N);
     std::vector<size_t> residue_indices(N);
@@ -202,12 +202,12 @@ void TrajectoryProtein::WriteH5(HighFive::File& file) const {
         const auto& a = protein_->AtomAt(i);
         elements[i] = static_cast<int>(a.element);
         residue_indices[i] = a.residue_index;
-        atom_names[i] = a.pdb_atom_name;
+        atom_names[i] = a.iupac_name.AsString();
     }
     auto atoms = file.createGroup("/atoms");
     atoms.createDataSet("element", elements);
     atoms.createDataSet("residue_index", residue_indices);
-    atoms.createDataSet("pdb_atom_name", atom_names);
+    atoms.createDataSet("iupac_name", atom_names);
 
     // Each attached TrajectoryResult writes its own group.
     for (const TrajectoryResult* r : results_attach_order_) {

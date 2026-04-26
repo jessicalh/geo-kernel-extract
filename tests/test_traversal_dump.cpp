@@ -3,7 +3,7 @@
 // test_traversal_dump: traversal-and-dump test for the typed object model.
 //
 // Loads 1UBQ and traverses EVERY atom, EVERY residue, EVERY ring, EVERY bond.
-// For each, it accesses TYPED PROPERTIES ONLY. pdb_atom_name is used for
+// For each, it accesses TYPED PROPERTIES ONLY. iupac_name is used for
 // printing only, never for comparison.
 //
 // This test is the proof that the typed model is complete: if any traversal
@@ -71,7 +71,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         // Every atom should have at least 1 bond
         // (isolated atoms would indicate a detection problem)
         EXPECT_GT(bond_count, 0u)
-            << "Atom " << ai << " (" << atom.pdb_atom_name << ") has no bonds";
+            << "Atom " << ai << " (" << atom.iupac_name << ") has no bonds";
 
         // Covalent radius and electronegativity: typed element properties
         double cr = atom.CovalentRadius();

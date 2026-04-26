@@ -31,8 +31,8 @@ static const std::map<std::string, std::vector<IupacAtom>>& GetIupacTables() {
             std::vector<IupacAtom> atoms;
             atoms.reserve(type.atoms.size());
             for (const auto& a : type.atoms) {
-                bool is_ring = ring_atoms.count(a.name) > 0;
-                atoms.push_back({a.name, a.element, a.is_backbone, is_ring});
+                bool is_ring = ring_atoms.count(a.name.AsString()) > 0;
+                atoms.push_back({a.name.c_str(), a.element, a.is_backbone, is_ring});
             }
             t[type.three_letter_code] = std::move(atoms);
         }

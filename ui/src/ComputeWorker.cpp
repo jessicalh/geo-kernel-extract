@@ -302,7 +302,7 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
                     // contract: atoms.atom_name has n_atoms entries, which
                     // we already verified equals n_lib, so no guard here.
                     for (size_t i = 0; i < n_lib; ++i) {
-                        const std::string& libName = protein.AtomAt(i).pdb_atom_name;
+                        const std::string& libName = protein.AtomAt(i).iupac_name.AsString();
                         const std::string& h5Name  = af->atoms.atom_name[i];
                         if (libName != h5Name)
                             binding.nameMismatches.push_back({i, libName, h5Name});

@@ -45,7 +45,7 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
         std::string ff_resname = ChargeAssignmentResult::VariantResidueName(
             res.type, res.protonation_variant_index);
 
-        std::string key = ff_resname + " " + identity.pdb_atom_name;
+        std::string key = ff_resname + " " + identity.iupac_name.AsString();
         auto it = params.find(key);
 
         if (it != params.end()) {
@@ -53,7 +53,7 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
         } else {
             // Fallback: standard residue name
             std::string std_name = ThreeLetterCodeForAminoAcid(res.type);
-            std::string fallback_key = std_name + " " + identity.pdb_atom_name;
+            std::string fallback_key = std_name + " " + identity.iupac_name.AsString();
             auto fb = params.find(fallback_key);
 
             if (fb != params.end()) {

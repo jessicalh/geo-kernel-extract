@@ -70,7 +70,7 @@ struct AnalysisBinding {
 
     struct NameMismatch {
         size_t       idx;
-        std::string  lib;   // protein.AtomAt(idx).pdb_atom_name (ff14SB)
+        std::string  lib;   // protein.AtomAt(idx).iupac_name (ff14SB)
         std::string  h5;    // h5.atoms.atom_name[idx]          (CHARMM)
     };
     std::vector<NameMismatch> nameMismatches;  // informational; logged at bind

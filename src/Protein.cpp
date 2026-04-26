@@ -185,11 +185,11 @@ void Protein::StampAtomTopology() {
         const AminoAcidType& aatype = res.AminoAcidInfo();
         for (size_t ai : res.atom_indices) {
             Atom& atom = *atoms_[ai];
-            const AminoAcidAtom* templ = aatype.FindAtom(atom.pdb_atom_name.c_str());
+            const AminoAcidAtom* templ = aatype.FindAtom(atom.iupac_name.c_str());
 
             // PDB/BMRB use "H" for the backbone amide H; IUPAC recommends "HN".
             // The table uses "H"; normalise the PDB-side name on lookup.
-            if (!templ && atom.pdb_atom_name == "HN") {
+            if (!templ && atom.iupac_name == "HN") {
                 templ = aatype.FindAtom("H");
             }
 
@@ -293,7 +293,7 @@ void Protein::StampChiPositions() {
             for (int pos = 0; pos < 4; ++pos) {
                 const char* atom_name = chi.atoms[pos];
                 for (size_t ai : res.atom_indices) {
-                    if (atoms_[ai]->pdb_atom_name == atom_name) {
+                    if (atoms_[ai]->iupac_name == atom_name) {
                         atoms_[ai]->topology.chi_position[chi_idx] =
                             static_cast<int8_t>(pos);
                         break;
@@ -337,9 +337,9 @@ void Protein::DetectAromaticRings() {
         if (!aatype.is_aromatic) continue;
 
         // Build a name->atom_index map for this residue
-        std::map<std::string, size_t> name_to_idx;
+        std::map<IupacAtomName, size_t> name_to_idx;
         for (size_t ai : res.atom_indices) {
-            name_to_idx[atoms_[ai]->pdb_atom_name] = ai;
+            name_to_idx[atoms_[ai]->iupac_name] = ai;
         }
 
         for (const auto& ring_def : aatype.rings) {
@@ -347,7 +347,7 @@ void Protein::DetectAromaticRings() {
             std::vector<size_t> atom_indices;
             bool all_present = true;
             for (const char* aname : ring_def.atom_names) {
-                auto it = name_to_idx.find(aname);
+                auto it = name_to_idx.find(IupacAtomName(aname));
                 if (it == name_to_idx.end()) {
                     all_present = false;
                     break;
@@ -375,8 +375,8 @@ void Protein::DetectAromaticRings() {
                     // PDB LOADING BOUNDARY fallback: protonation not yet
                     // detected (e.g., crystal structure with no H). Check
                     // hydrogen atom names to determine tautomer.
-                    bool has_HD1 = name_to_idx.find("HD1") != name_to_idx.end();
-                    bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
+                    bool has_HD1 = name_to_idx.find(IupacAtomName("HD1")) != name_to_idx.end();
+                    bool has_HE2 = name_to_idx.find(IupacAtomName("HE2")) != name_to_idx.end();
                     if (has_HD1 && has_HE2) {
                         effective_type = RingTypeIndex::HisImidazole;
                     } else if (has_HD1) {
@@ -433,7 +433,7 @@ void Protein::DetectAromaticRings() {
 void Protein::CacheResidueBackboneIndices() {
     for (auto& res : residues_) {
         for (size_t ai : res.atom_indices) {
-            const std::string& name = atoms_[ai]->pdb_atom_name;
+            const IupacAtomName& name = atoms_[ai]->iupac_name;
             if      (name == "N")   res.N  = ai;
             else if (name == "CA")  res.CA = ai;
             else if (name == "C")   res.C  = ai;
@@ -451,7 +451,7 @@ void Protein::CacheResidueBackboneIndices() {
             const ChiAngleDef& def = aatype.chi_angles[ci];
             for (int j = 0; j < 4; ++j) {
                 for (size_t ai : res.atom_indices) {
-                    if (atoms_[ai]->pdb_atom_name == def.atoms[j]) {
+                    if (atoms_[ai]->iupac_name == def.atoms[j]) {
                         res.chi[ci].a[j] = ai;
                         break;
                     }

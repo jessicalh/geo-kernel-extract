@@ -44,10 +44,10 @@ std::unique_ptr<ProtonationDetectionResult> ProtonationDetectionResult::Compute(
 
         // PDB LOADING BOUNDARY: build name set from atom name strings.
         // This is the ONLY place protonation detection reads PDB atom names.
-        std::map<std::string, size_t> name_to_idx;
+        std::map<IupacAtomName, size_t> name_to_idx;
         for (size_t ai : res.atom_indices) {
             // PDB LOADING BOUNDARY: string comparison for hydrogen detection
-            name_to_idx[protein.AtomAt(ai).pdb_atom_name] = ai;
+            name_to_idx[protein.AtomAt(ai).iupac_name] = ai;
         }
 
         // Check whether any hydrogen atoms are present in this residue

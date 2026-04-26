@@ -15,6 +15,11 @@ using E = Element;
 // Glycine substitutes prochiral Hα2/Hα3 for the single HA (pro-R/pro-S per
 // Markley 1998 Figure 1; Hα2 is pro-R for Gly).
 //
+// Terminal atoms (H1/H2/H3 on protonated N-term, OXT on C-term carboxylate)
+// are listed in every BB macro because reduce / pdb2gmx can produce them on
+// the terminal residue regardless of amino-acid type. Atoms not present in a
+// given residue are simply not in its atom_indices and not stamped.
+//
 // Backbone topology is identical across all 20 amino acids, so the macros
 // pre-populate it for every residue automatically.
 #define BB  A{"N",E::N,true,TopologyBackbone()}, \
@@ -22,19 +27,30 @@ using E = Element;
             A{"C",E::C,true,TopologyBackbone()}, \
             A{"O",E::O,true,TopologyBackbone()}, \
             A{"H",E::H,true,TopologyBackbone()}, \
-            A{"HA",E::H,true,TopologyAlpha()}
+            A{"HA",E::H,true,TopologyAlpha()}, \
+            A{"H1",E::H,true,TopologyTerminalH()}, \
+            A{"H2",E::H,true,TopologyTerminalH()}, \
+            A{"H3",E::H,true,TopologyTerminalH()}, \
+            A{"OXT",E::O,true,TopologyTerminalO()}
 #define BB_PRO  A{"N",E::N,true,TopologyBackbone()}, \
                 A{"CA",E::C,true,TopologyAlpha()}, \
                 A{"C",E::C,true,TopologyBackbone()}, \
                 A{"O",E::O,true,TopologyBackbone()}, \
-                A{"HA",E::H,true,TopologyAlpha()}
+                A{"HA",E::H,true,TopologyAlpha()}, \
+                A{"H2",E::H,true,TopologyTerminalH()}, \
+                A{"H3",E::H,true,TopologyTerminalH()}, \
+                A{"OXT",E::O,true,TopologyTerminalO()}
 #define BB_GLY  A{"N",E::N,true,TopologyBackbone()}, \
                 A{"CA",E::C,true,TopologyAlpha()}, \
                 A{"C",E::C,true,TopologyBackbone()}, \
                 A{"O",E::O,true,TopologyBackbone()}, \
                 A{"H",E::H,true,TopologyBackbone()}, \
                 A{"HA2",E::H,true,TopologyAlphaProchiral(DiastereotopicIndex::Two, ProchiralStereo::ProR)}, \
-                A{"HA3",E::H,true,TopologyAlphaProchiral(DiastereotopicIndex::Three, ProchiralStereo::ProS)}
+                A{"HA3",E::H,true,TopologyAlphaProchiral(DiastereotopicIndex::Three, ProchiralStereo::ProS)}, \
+                A{"H1",E::H,true,TopologyTerminalH()}, \
+                A{"H2",E::H,true,TopologyTerminalH()}, \
+                A{"H3",E::H,true,TopologyTerminalH()}, \
+                A{"OXT",E::O,true,TopologyTerminalO()}
 
 static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 

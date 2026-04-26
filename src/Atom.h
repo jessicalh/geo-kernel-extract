@@ -17,6 +17,7 @@
 
 #include "Types.h"
 #include "AtomTopology.h"
+#include "IupacAtomName.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,9 +26,9 @@ namespace nmr {
 
 class Atom {
 public:
-    Element       element = Element::Unknown;
-    std::string   pdb_atom_name;
-    size_t        residue_index = 0;
+    Element        element = Element::Unknown;
+    IupacAtomName  iupac_name;     // typed atom-name model; carries IUPAC string with typed equality
+    size_t         residue_index = 0;
     std::vector<size_t> bond_indices;
 
     // For hydrogen atoms: index of the nearest bonded heavy atom.

@@ -702,7 +702,7 @@ BuildResult FullSystemReader::BuildProtein(
             const size_t global_ri = residue_offset + local_ri;
             std::string canonical_residue =
                 ThreeLetterCodeForAminoAcid(protein->ResidueAt(global_ri).type);
-            atom->pdb_atom_name = registry.TranslateAtomName(
+            atom->iupac_name = registry.TranslateAtomName(
                 charmm_atom_name, canonical_residue,
                 ToolContext::Charmm, ToolContext::Standard);
             atom->element = ElementFromAtomicNumber(
@@ -710,7 +710,7 @@ BuildResult FullSystemReader::BuildProtein(
             atom->residue_index = global_ri;
             const size_t idx = protein->AddAtom(std::move(atom));
             protein->MutableResidueAt(global_ri).atom_indices.push_back(idx);
-            const std::string& name = protein->AtomAt(idx).pdb_atom_name;
+            const IupacAtomName& name = protein->AtomAt(idx).iupac_name;
             Residue& res_ref = protein->MutableResidueAt(global_ri);
             if      (name == "N"  && res_ref.N  == Residue::NONE) res_ref.N  = idx;
             else if (name == "CA" && res_ref.CA == Residue::NONE) res_ref.CA = idx;

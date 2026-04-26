@@ -39,12 +39,12 @@ std::string KamlProtonator::WriteTempPdb(
             Vec3 pos = conf.AtomAt(ai).Position();
 
             char atomField[5];
-            if (atom.pdb_atom_name.size() <= 3)
+            if (atom.iupac_name.size() <= 3)
                 std::snprintf(atomField, sizeof(atomField), " %-3s",
-                              atom.pdb_atom_name.c_str());
+                              atom.iupac_name.c_str());
             else
                 std::snprintf(atomField, sizeof(atomField), "%-4s",
-                              atom.pdb_atom_name.c_str());
+                              atom.iupac_name.c_str());
 
             std::string resname = ThreeLetterCodeForAminoAcid(res.type);
             char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
