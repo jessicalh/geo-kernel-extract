@@ -73,7 +73,7 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     // -------------------------------------------------------------------
     // Atom topology — IUPAC symbolic identity (Markley 1998).
     //
-    // 13 columns per atom:
+    // 14 columns per atom:
     //   0  locant                Locant enum (Backbone/Alpha/.../Special)
     //   1  branch_index          BranchIndex enum (None/One/Two/Three)
     //   2  diastereotopic_index  DiastereotopicIndex (None/Two/Three)
@@ -81,15 +81,16 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     //   4  planar_stereo         PlanarStereo (None/Cis/Trans)
     //   5  pseudoatom_class      PseudoatomClass (None/MB/MG/.../QR)
     //   6  ring_position         RingPosition (NotInRing/Substituent/Member/Junction)
-    //   7  topology_stamped      1 if AtomTopology was populated, 0 if the
+    //   7  polar_h_kind          PolarHKind (None/RingNH/Hydroxyl/CarboxylAcid/Sulfanyl)
+    //   8  topology_stamped      1 if AtomTopology was populated, 0 if the
     //                            (residue_type, atom_name) lookup missed
-    //   8  ring_count            number of aromatic rings the atom belongs to
+    //   9  ring_count            number of aromatic rings the atom belongs to
     //                            (0/1/3 — Trp Cδ2/Cε2 are in three rings)
-    //   9..12  chi_position[0..3]  position 0..3 in chi(i+1), -1 if not
+    //   10..13  chi_position[0..3]  position 0..3 in chi(i+1), -1 if not
     //                              participating in that chi angle
     // -------------------------------------------------------------------
     {
-        const size_t TOPO_COLS = 13;
+        const size_t TOPO_COLS = 14;
         std::vector<int32_t> data(N * TOPO_COLS, 0);
         for (size_t i = 0; i < N; ++i) {
             const Atom& a = protein.AtomAt(i);
@@ -102,10 +103,11 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
             r[4]  = static_cast<int32_t>(t.planar_stereo);
             r[5]  = static_cast<int32_t>(t.pseudoatom_class);
             r[6]  = static_cast<int32_t>(t.ring_position);
-            r[7]  = t.stamped ? 1 : 0;
-            r[8]  = static_cast<int32_t>(a.ring_indices.size());
+            r[7]  = static_cast<int32_t>(t.polar_h_kind);
+            r[8]  = t.stamped ? 1 : 0;
+            r[9]  = static_cast<int32_t>(a.ring_indices.size());
             for (int c = 0; c < 4; ++c)
-                r[9 + c] = static_cast<int32_t>(t.chi_position[c]);
+                r[10 + c] = static_cast<int32_t>(t.chi_position[c]);
         }
         NpyWriter::WriteInt32(output_dir + "/atom_topology.npy",
                                data.data(), N * TOPO_COLS);

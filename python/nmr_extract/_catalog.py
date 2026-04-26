@@ -68,7 +68,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # which every job spec includes — so once the fixtures are
     # regenerated, flip required to True. Tracked: regenerate fixtures
     # then promote.
-    ArraySpec("atom_topology",      "identity", np.ndarray,        13,   False, "AtomTopology + chi participation + ring count (int32)"),
+    ArraySpec("atom_topology",      "identity", np.ndarray,        14,   False, "AtomTopology (locant, branch, diast, prochiral, planar, pseudo, ring_pos, polar_h_kind, stamped, ring_count, chi[0..3]) (int32)"),
     ArraySpec("atom_relationships", "identity", np.ndarray,        2,    False, "[partner_atom_index, parent_atom_index] (int32, -1 = none)"),
     ArraySpec("atom_role",          "identity", np.ndarray,        None, False, "AtomRole enum / nmr_class (int32)"),
     ArraySpec("atom_flags",         "identity", np.ndarray,        10,   False, "[hybridisation, is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H, is_on_aromatic_residue, is_hbond_donor, is_hbond_acceptor, parent_is_sp2] (int32)"),

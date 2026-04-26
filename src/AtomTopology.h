@@ -125,6 +125,25 @@ enum class RingPosition : uint8_t {
                   //   TRP5 / TRP6 / TRP9)
 };
 
+// Kind of polar / labile / heteroatom-bonded hydrogen.
+//
+// Set on H atoms whose chemistry is materially distinct from generic C-H:
+// ring N-H of His variants and Trp indole, hydroxyl O-H of Ser/Thr/Tyr,
+// carboxyl acid O-H of Ash/Glh, sulfanyl S-H of Cys. Default None covers
+// all C-H atoms and the backbone/side-chain amide H atoms whose role is
+// already captured by EnrichmentResult flags (`is_amide_H` etc.).
+//
+// Variant-conditional Hs (HD1/HE2 of HIS variants, HD2 of ASP-ASH, HE2 of
+// GLU-GLH) carry the chemistry they exhibit when present — the topology
+// is invariant given existence; only existence depends on the variant.
+enum class PolarHKind : uint8_t {
+    None,            // generic C-H or backbone/sidechain amide N-H (use atom_flags)
+    RingNH,          // His HD1 (HID/HIP) / HE2 (HIE/HIP); Trp HE1 (indole NH)
+    Hydroxyl,        // Ser HG; Thr HG1; Tyr HH (alcohol / phenol O-H)
+    CarboxylAcid,    // Asp HD2 (ASH); Glu HE2 (GLH) — protonated carboxylate
+    Sulfanyl,        // Cys HG (thiol S-H; absent in CYX/CYM variants)
+};
+
 // Per-atom symbolic topology. ~16 bytes. One value per Atom, populated at
 // protein load via name lookup; const after stamping.
 struct AtomTopology {
@@ -135,6 +154,7 @@ struct AtomTopology {
     PlanarStereo planar_stereo = PlanarStereo::None;
     PseudoatomClass pseudoatom_class = PseudoatomClass::None;
     RingPosition ring_position = RingPosition::NotInRing;
+    PolarHKind polar_h_kind = PolarHKind::None;
 
     // Chi participation: chi_position[i] is this atom's 0..3 position in
     // chi(i+1), or -1 if not in that chi. An atom can participate in
@@ -237,6 +257,20 @@ constexpr AtomTopology TopologyTerminalH() {
     AtomTopology t;
     t.locant = Locant::Terminal;
     t.prochiral_stereo = ProchiralStereo::Equivalent;
+    t.stamped = true;
+    return t;
+}
+
+// Polar / heteroatom-bonded H — heteroatom H atoms with chemistry distinct
+// from generic sidechain C-H. The kind argument is the value picked up by
+// post-hoc analysis when classifying NMR resonances; locant + branch carry
+// the structural identity. Use TopologySidechain for ordinary C-H atoms.
+constexpr AtomTopology TopologyPolarH(Locant loc, BranchIndex br,
+                                       PolarHKind kind) {
+    AtomTopology t;
+    t.locant = loc;
+    t.branch_index = br;
+    t.polar_h_kind = kind;
     t.stamped = true;
     return t;
 }

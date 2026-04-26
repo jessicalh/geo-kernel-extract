@@ -105,7 +105,9 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 
 // ASP — Cδ1/Cδ2 distinguished by smaller |χ2| (carboxylate Os). HD2 atom
 // included for the ASH protonated variant; absent in default deprotonated
-// state and not stamped if missing.
+// state and not stamped if missing. When present (ASH), HD2 is the
+// carboxyl-acid O-H proton — chemistry-tagged via PolarHKind::CarboxylAcid
+// so post-hoc analysis distinguishes it from a generic sidechain H.
 { AminoAcid::ASP, "ASP", 'D', false, true, true, 2, -1,
   {BB,
    {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
@@ -114,19 +116,20 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
    {"OD1", E::O, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
    {"OD2", E::O, false, TopologySidechain(Locant::Delta, BranchIndex::Two)},
-   {"HD2", E::H, false, TopologySidechain(Locant::Delta, BranchIndex::Two)}},  // ASH variant only
+   {"HD2", E::H, false, TopologyPolarH(Locant::Delta, BranchIndex::Two, PolarHKind::CarboxylAcid)}},  // ASH variant only
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}},
   {{"ASH", "protonated aspartate", 0, "protonated"}} },
 
 // CYS — γ-thiol HG is a single H (not prochiral). CYX (disulfide) and CYM
-// (deprotonated thiolate) variants modify the SG/HG state.
+// (deprotonated thiolate) variants modify the SG/HG state. HG when present
+// is the thiol S-H — PolarHKind::Sulfanyl marks it as labile.
 { AminoAcid::CYS, "CYS", 'C', false, true, true, 1, -1,
   {BB,
    {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
    {"HB2", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
    {"HB3", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
    {"SG",  E::S, false, TopologySidechain(Locant::Gamma)},
-   {"HG",  E::H, false, TopologySidechain(Locant::Gamma)}},
+   {"HG",  E::H, false, TopologyPolarH(Locant::Gamma, BranchIndex::None, PolarHKind::Sulfanyl)}},
   {}, {{"N","CA","CB","SG"}},
   {{"CYX", "disulfide bonded", 0, "disulfide"}, {"CYM", "deprotonated thiolate", -1, "deprotonated"}} },
 
@@ -148,7 +151,8 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 
 // GLU — Cε1/Cε2 distinguished by smaller |χ2| (carboxylate Os). HE2 atom
 // included for the GLH protonated variant; absent in default deprotonated
-// state and not stamped if missing.
+// state and not stamped if missing. When present (GLH), HE2 is the
+// carboxyl-acid O-H proton — chemistry-tagged via PolarHKind::CarboxylAcid.
 { AminoAcid::GLU, "GLU", 'E', false, true, true, 3, -1,
   {BB,
    {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
@@ -160,7 +164,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CD",  E::C, false, TopologySidechain(Locant::Delta)},
    {"OE1", E::O, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
    {"OE2", E::O, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
-   {"HE2", E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)}},  // GLH variant only
+   {"HE2", E::H, false, TopologyPolarH(Locant::Epsilon, BranchIndex::Two, PolarHKind::CarboxylAcid)}},  // GLH variant only
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}},
   {{"GLH", "protonated glutamate", 0, "protonated"}} },
 
@@ -172,6 +176,12 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 // HIE/HIP. Both atoms listed in template; absence per variant handled at load.
 // The default base entry covers the HisImidazole ring; HID/HIE/HIP variants
 // modify the ring TYPE (HidImidazole/HieImidazole) but not the atom names.
+//
+// HD1 (when present in HID/HIP) and HE2 (when present in HIE/HIP) are
+// imidazole ring N-H protons — chemistry-tagged via PolarHKind::RingNH so
+// post-hoc analysis distinguishes them from generic ring C-H or sidechain H.
+// HD2 (always present, on Cδ2) and HE1 (always present, on Cε1) are
+// aromatic C-H — these stay as generic sidechain H.
 { AminoAcid::HIS, "HIS", 'H', true, true, true, 2, +1,
   {BB,
    {"CB", E::C, false, TopologySidechain(Locant::Beta)},
@@ -179,13 +189,13 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
    {"CG", E::C, false, TopologyRing(Locant::Gamma,   BranchIndex::None, RingPosition::Substituent)},
    {"ND1",E::N, false, TopologyRing(Locant::Delta,   BranchIndex::One,  RingPosition::Member)},
-   {"HD1",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::One)},   // HID/HIP only
+   {"HD1",E::H, false, TopologyPolarH(Locant::Delta, BranchIndex::One, PolarHKind::RingNH)},   // HID/HIP only
    {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,  RingPosition::Member)},
    {"HD2",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::Two)},
    {"CE1",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::One,  RingPosition::Member)},
    {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
    {"NE2",E::N, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,  RingPosition::Member)},
-   {"HE2",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)}},  // HIE/HIP only
+   {"HE2",E::H, false, TopologyPolarH(Locant::Epsilon, BranchIndex::Two, PolarHKind::RingNH)}},  // HIE/HIP only
   {{RingTypeIndex::HisImidazole, {"CG","ND1","CE1","NE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","ND1"}},
   {{"HID", "Nd-protonated (delta)", 0, "delta"},
@@ -308,23 +318,24 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"HD3",E::H, false, TopologyDiastereo(Locant::Delta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QD)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}}, {} },
 
-// SER — γ-hydroxyl. Hγ is a single O-H (not prochiral).
+// SER — γ-hydroxyl. Hγ is a single hydroxyl O-H (not prochiral).
 { AminoAcid::SER, "SER", 'S', false, false, true, 1, 0,
   {BB,
    {"CB", E::C, false, TopologySidechain(Locant::Beta)},
    {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
    {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
    {"OG", E::O, false, TopologySidechain(Locant::Gamma)},
-   {"HG", E::H, false, TopologySidechain(Locant::Gamma)}},
+   {"HG", E::H, false, TopologyPolarH(Locant::Gamma, BranchIndex::None, PolarHKind::Hydroxyl)}},
   {}, {{"N","CA","CB","OG"}}, {} },
 
-// THR — Cβ is real chiral (single Hβ). Cγ1 = hydroxyl O; Cγ2 = methyl C.
+// THR — Cβ is real chiral (single Hβ). Oγ1 = hydroxyl O; Cγ2 = methyl C.
+// Hγ1 is the hydroxyl O-H — chemistry-tagged via PolarHKind::Hydroxyl.
 { AminoAcid::THR, "THR", 'T', false, false, true, 1, 0,
   {BB,
    {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
    {"HB",  E::H, false, TopologySidechain(Locant::Beta)},
    {"OG1", E::O, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
-   {"HG1", E::H, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
+   {"HG1", E::H, false, TopologyPolarH(Locant::Gamma, BranchIndex::One, PolarHKind::Hydroxyl)},
    {"CG2", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::Two)},
    {"HG21",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
    {"HG22",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
@@ -333,7 +344,8 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 
 // TRP — indole: pyrrole (5-ring) + benzene (6-ring) fused, with the 9-atom
 // perimeter as the third (TrpPerimeter) ring. Cδ2 / Cε2 are ring junctions
-// (members of all three rings). Nε1 is the indole NH.
+// (members of all three rings). Nε1 is the indole NH; Hε1 carries
+// PolarHKind::RingNH so post-hoc analysis sees the indole-proton chemistry.
 { AminoAcid::TRP, "TRP", 'W', true, false, true, 2, 0,
   {BB,
    {"CB", E::C, false, TopologySidechain(Locant::Beta)},
@@ -344,7 +356,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"HD1",E::H, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
    {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,   RingPosition::Junction)},
    {"NE1",E::N, false, TopologyRing(Locant::Epsilon, BranchIndex::One,   RingPosition::Member)},
-   {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},  // indole NH
+   {"HE1",E::H, false, TopologyPolarH(Locant::Epsilon, BranchIndex::One, PolarHKind::RingNH)},  // indole NH
    {"CE2",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,   RingPosition::Junction)},
    {"CE3",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Three, RingPosition::Member)},
    {"HE3",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Three)},
@@ -377,7 +389,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"HE2",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
    {"CZ", E::C, false, TopologyRing(Locant::Zeta,    BranchIndex::None, RingPosition::Member)},
    {"OH", E::O, false, TopologySidechain(Locant::Eta)},
-   {"HH", E::H, false, TopologySidechain(Locant::Eta)}},  // absent in TYM
+   {"HH", E::H, false, TopologyPolarH(Locant::Eta, BranchIndex::None, PolarHKind::Hydroxyl)}},  // phenol O-H; absent in TYM
   {{RingTypeIndex::TyrPhenol, {"CG","CD1","CE1","CZ","CE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}},
   {{"TYM", "deprotonated tyrosinate", -1, "deprotonated"}} },
