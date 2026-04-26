@@ -391,6 +391,7 @@ nmr_test_target(structure_tests
     tests/test_dssp_result.cpp
     tests/test_protonation_detection.cpp
     tests/test_atom_flat.cpp
+    tests/test_atom_topology.cpp
     tests/test_foundation_results.cpp
     tests/test_apbs_field_result.cpp
     tests/test_apbs_wired.cpp

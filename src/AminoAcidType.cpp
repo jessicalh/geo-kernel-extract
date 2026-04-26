@@ -9,70 +9,142 @@ using A = AminoAcidAtom;
 using E = Element;
 
 // Standard backbone atoms (most amino acids)
-#define BB  A{"N",E::N,true}, A{"CA",E::C,true}, A{"C",E::C,true}, A{"O",E::O,true}, A{"H",E::H,true}, A{"HA",E::H,true}
-#define BB_PRO  A{"N",E::N,true}, A{"CA",E::C,true}, A{"C",E::C,true}, A{"O",E::O,true}, A{"HA",E::H,true}
-#define BB_GLY  A{"N",E::N,true}, A{"CA",E::C,true}, A{"C",E::C,true}, A{"O",E::O,true}, A{"H",E::H,true}, A{"HA2",E::H,true}, A{"HA3",E::H,true}
+//
+// Backbone nitrogen N, peptide H, carbonyl C, carbonyl O carry Locant::Backbone.
+// Cα and Hα carry Locant::Alpha (start of the IUPAC Greek-letter chain).
+// Glycine substitutes prochiral Hα2/Hα3 for the single HA (pro-R/pro-S per
+// Markley 1998 Figure 1; Hα2 is pro-R for Gly).
+//
+// Backbone topology is identical across all 20 amino acids, so the macros
+// pre-populate it for every residue automatically.
+#define BB  A{"N",E::N,true,TopologyBackbone()}, \
+            A{"CA",E::C,true,TopologyAlpha()}, \
+            A{"C",E::C,true,TopologyBackbone()}, \
+            A{"O",E::O,true,TopologyBackbone()}, \
+            A{"H",E::H,true,TopologyBackbone()}, \
+            A{"HA",E::H,true,TopologyAlpha()}
+#define BB_PRO  A{"N",E::N,true,TopologyBackbone()}, \
+                A{"CA",E::C,true,TopologyAlpha()}, \
+                A{"C",E::C,true,TopologyBackbone()}, \
+                A{"O",E::O,true,TopologyBackbone()}, \
+                A{"HA",E::H,true,TopologyAlpha()}
+#define BB_GLY  A{"N",E::N,true,TopologyBackbone()}, \
+                A{"CA",E::C,true,TopologyAlpha()}, \
+                A{"C",E::C,true,TopologyBackbone()}, \
+                A{"O",E::O,true,TopologyBackbone()}, \
+                A{"H",E::H,true,TopologyBackbone()}, \
+                A{"HA2",E::H,true,TopologyAlphaProchiral(DiastereotopicIndex::Two, ProchiralStereo::ProR)}, \
+                A{"HA3",E::H,true,TopologyAlphaProchiral(DiastereotopicIndex::Three, ProchiralStereo::ProS)}
 
 static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 
-// ALA
+// ALA — β-methyl. HB1/HB2/HB3 are equivalent under fast rotation (pseudoatom MB).
 { AminoAcid::ALA, "ALA", 'A', false, false, true, 0, 0,
-  {BB, {"CB",E::C,false},{"HB1",E::H,false},{"HB2",E::H,false},{"HB3",E::H,false}},
+  {BB,
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB1",E::H, false, TopologyMethyl(Locant::Beta, BranchIndex::None, PseudoatomClass::MB)},
+   {"HB2",E::H, false, TopologyMethyl(Locant::Beta, BranchIndex::None, PseudoatomClass::MB)},
+   {"HB3",E::H, false, TopologyMethyl(Locant::Beta, BranchIndex::None, PseudoatomClass::MB)}},
   {}, {}, {} },
 
-// ARG (pKa ~12.5, almost always +1, but PROPKA predicts it)
+// ARG — Markley 1998 Sec 2.1.1: Nη1 is cis (Z) to Cδ, Nη2 is trans (E).
+// HHx1/HHx2 distinguished cis/trans relative to Nε (heavy atom three bonds
+// closer to main chain than the H). Pseudoatoms QH1 (Hη11/Hη12), QH2 (Hη21/Hη22).
 { AminoAcid::ARG, "ARG", 'R', false, true, true, 4, +1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"CD",E::C,false},{"HD2",E::H,false},{"HD3",E::H,false},
-   {"NE",E::N,false},{"HE",E::H,false},
-   {"CZ",E::C,false},
-   {"NH1",E::N,false},{"HH11",E::H,false},{"HH12",E::H,false},
-   {"NH2",E::N,false},{"HH21",E::H,false},{"HH22",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"CD",  E::C, false, TopologySidechain(Locant::Delta)},
+   {"HD2", E::H, false, TopologyDiastereo(Locant::Delta,   DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QD)},
+   {"HD3", E::H, false, TopologyDiastereo(Locant::Delta,   DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QD)},
+   {"NE",  E::N, false, TopologySidechain(Locant::Epsilon)},
+   {"HE",  E::H, false, TopologySidechain(Locant::Epsilon)},
+   {"CZ",  E::C, false, TopologySidechain(Locant::Zeta)},
+   {"NH1", E::N, false, TopologyPlanar(Locant::Eta, BranchIndex::One, PlanarStereo::Cis)},
+   {"HH11",E::H, false, TopologyPlanar(Locant::Eta, BranchIndex::One, PlanarStereo::Cis,   PseudoatomClass::QH1)},
+   {"HH12",E::H, false, TopologyPlanar(Locant::Eta, BranchIndex::One, PlanarStereo::Trans, PseudoatomClass::QH1)},
+   {"NH2", E::N, false, TopologyPlanar(Locant::Eta, BranchIndex::Two, PlanarStereo::Trans)},
+   {"HH21",E::H, false, TopologyPlanar(Locant::Eta, BranchIndex::Two, PlanarStereo::Cis,   PseudoatomClass::QH2)},
+   {"HH22",E::H, false, TopologyPlanar(Locant::Eta, BranchIndex::Two, PlanarStereo::Trans, PseudoatomClass::QH2)}},
   {},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","NE"}, {"CG","CD","NE","CZ"}},
   {{"ARN", "deprotonated arginine", 0, "deprotonated"}} },
 
-// ASN
+// ASN — δ2-amido NH2 (Hδ21 cis to Cβ, Hδ22 trans). Pseudoatom QD = HD21+HD22.
 { AminoAcid::ASN, "ASN", 'N', false, false, true, 2, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"OD1",E::O,false},
-   {"ND2",E::N,false},{"HD21",E::H,false},{"HD22",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"OD1", E::O, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
+   {"ND2", E::N, false, TopologySidechain(Locant::Delta, BranchIndex::Two)},
+   {"HD21",E::H, false, TopologyPlanar(Locant::Delta, BranchIndex::Two, PlanarStereo::Cis,   PseudoatomClass::QD)},
+   {"HD22",E::H, false, TopologyPlanar(Locant::Delta, BranchIndex::Two, PlanarStereo::Trans, PseudoatomClass::QD)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}}, {} },
 
-// ASP
+// ASP — Cδ1/Cδ2 distinguished by smaller |χ2| (carboxylate Os). HD2 atom
+// included for the ASH protonated variant; absent in default deprotonated
+// state and not stamped if missing.
 { AminoAcid::ASP, "ASP", 'D', false, true, true, 2, -1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"OD1",E::O,false},{"OD2",E::O,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"OD1", E::O, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
+   {"OD2", E::O, false, TopologySidechain(Locant::Delta, BranchIndex::Two)},
+   {"HD2", E::H, false, TopologySidechain(Locant::Delta, BranchIndex::Two)}},  // ASH variant only
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}},
   {{"ASH", "protonated aspartate", 0, "protonated"}} },
 
-// CYS
+// CYS — γ-thiol HG is a single H (not prochiral). CYX (disulfide) and CYM
+// (deprotonated thiolate) variants modify the SG/HG state.
 { AminoAcid::CYS, "CYS", 'C', false, true, true, 1, -1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"SG",E::S,false},{"HG",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"SG",  E::S, false, TopologySidechain(Locant::Gamma)},
+   {"HG",  E::H, false, TopologySidechain(Locant::Gamma)}},
   {}, {{"N","CA","CB","SG"}},
   {{"CYX", "disulfide bonded", 0, "disulfide"}, {"CYM", "deprotonated thiolate", -1, "deprotonated"}} },
 
-// GLN
+// GLN — ε2-amido NH2 (Hε21 cis to Cγ, Hε22 trans). Pseudoatom QE = HE21+HE22.
 { AminoAcid::GLN, "GLN", 'Q', false, false, true, 3, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"CD",E::C,false},{"OE1",E::O,false},
-   {"NE2",E::N,false},{"HE21",E::H,false},{"HE22",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"CD",  E::C, false, TopologySidechain(Locant::Delta)},
+   {"OE1", E::O, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
+   {"NE2", E::N, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
+   {"HE21",E::H, false, TopologyPlanar(Locant::Epsilon, BranchIndex::Two, PlanarStereo::Cis,   PseudoatomClass::QE)},
+   {"HE22",E::H, false, TopologyPlanar(Locant::Epsilon, BranchIndex::Two, PlanarStereo::Trans, PseudoatomClass::QE)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}}, {} },
 
-// GLU
+// GLU — Cε1/Cε2 distinguished by smaller |χ2| (carboxylate Os). HE2 atom
+// included for the GLH protonated variant; absent in default deprotonated
+// state and not stamped if missing.
 { AminoAcid::GLU, "GLU", 'E', false, true, true, 3, -1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"CD",E::C,false},{"OE1",E::O,false},{"OE2",E::O,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3", E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"CD",  E::C, false, TopologySidechain(Locant::Delta)},
+   {"OE1", E::O, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
+   {"OE2", E::O, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
+   {"HE2", E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)}},  // GLH variant only
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}},
   {{"GLH", "protonated glutamate", 0, "protonated"}} },
 
@@ -80,134 +152,234 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 { AminoAcid::GLY, "GLY", 'G', false, false, true, 0, 0,
   {BB_GLY}, {}, {}, {} },
 
-// HIS
+// HIS — imidazole ring (5 vertices). HD1 present in HID/HIP; HE2 present in
+// HIE/HIP. Both atoms listed in template; absence per variant handled at load.
+// The default base entry covers the HisImidazole ring; HID/HIE/HIP variants
+// modify the ring TYPE (HidImidazole/HieImidazole) but not the atom names.
 { AminoAcid::HIS, "HIS", 'H', true, true, true, 2, +1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},
-   {"ND1",E::N,false},
-   {"CD2",E::C,false},{"HD2",E::H,false},
-   {"CE1",E::C,false},{"HE1",E::H,false},
-   {"NE2",E::N,false},{"HE2",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologyRing(Locant::Gamma,   BranchIndex::None, RingPosition::Substituent)},
+   {"ND1",E::N, false, TopologyRing(Locant::Delta,   BranchIndex::One,  RingPosition::Member)},
+   {"HD1",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::One)},   // HID/HIP only
+   {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,  RingPosition::Member)},
+   {"HD2",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::Two)},
+   {"CE1",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::One,  RingPosition::Member)},
+   {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
+   {"NE2",E::N, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,  RingPosition::Member)},
+   {"HE2",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)}},  // HIE/HIP only
   {{RingTypeIndex::HisImidazole, {"CG","ND1","CE1","NE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","ND1"}},
   {{"HID", "Nd-protonated (delta)", 0, "delta"},
    {"HIE", "Ne-protonated (epsilon)", 0, "epsilon"},
    {"HIP", "doubly protonated", +1, "doubly"}} },
 
-// ILE
+// ILE — Cβ is real chiral (no Hβ2/Hβ3, single Hβ). CG1 is a methylene branch
+// (prochiral Hγ12/Hγ13). CG2 and CD1 are methyl carbons (pseudoatoms MG, MD).
 { AminoAcid::ILE, "ILE", 'I', false, false, true, 2, 0,
   {BB,
-   {"CB",E::C,false},{"HB",E::H,false},
-   {"CG1",E::C,false},{"HG12",E::H,false},{"HG13",E::H,false},
-   {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false},
-   {"CD1",E::C,false},{"HD11",E::H,false},{"HD12",E::H,false},{"HD13",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB",  E::H, false, TopologySidechain(Locant::Beta)},
+   {"CG1", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
+   {"HG12",E::H, false, TopologyDiastereo(Locant::Gamma, DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG, BranchIndex::One)},
+   {"HG13",E::H, false, TopologyDiastereo(Locant::Gamma, DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG, BranchIndex::One)},
+   {"CG2", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::Two)},
+   {"HG21",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
+   {"HG22",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
+   {"HG23",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
+   {"CD1", E::C, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
+   {"HD11",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD)},
+   {"HD12",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD)},
+   {"HD13",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD)}},
   {}, {{"N","CA","CB","CG1"}, {"CA","CB","CG1","CD1"}}, {} },
 
-// LEU
+// LEU — Cγ is real chiral (single Hγ). Cδ1 and Cδ2 are diastereotopic methyl
+// carbons; pseudoatom QD is the union of all 6 δ-methyl Hs.
 { AminoAcid::LEU, "LEU", 'L', false, false, true, 2, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG",E::H,false},
-   {"CD1",E::C,false},{"HD11",E::H,false},{"HD12",E::H,false},{"HD13",E::H,false},
-   {"CD2",E::C,false},{"HD21",E::H,false},{"HD22",E::H,false},{"HD23",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2", E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3", E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG",  E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG",  E::H, false, TopologySidechain(Locant::Gamma)},
+   {"CD1", E::C, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
+   {"HD11",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD1)},
+   {"HD12",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD1)},
+   {"HD13",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::One, PseudoatomClass::MD1)},
+   {"CD2", E::C, false, TopologySidechain(Locant::Delta, BranchIndex::Two)},
+   {"HD21",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::Two, PseudoatomClass::MD2)},
+   {"HD22",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::Two, PseudoatomClass::MD2)},
+   {"HD23",E::H, false, TopologyMethyl(Locant::Delta, BranchIndex::Two, PseudoatomClass::MD2)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
-// LYS
+// LYS — four prochiral methylenes (β/γ/δ/ε). Nζ-NH3+ in protonated state has
+// equivalent Hζ1/Hζ2/Hζ3 (pseudoatom QZ); LYN variant drops Hζ3.
 { AminoAcid::LYS, "LYS", 'K', false, true, true, 4, +1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"CD",E::C,false},{"HD2",E::H,false},{"HD3",E::H,false},
-   {"CE",E::C,false},{"HE2",E::H,false},{"HE3",E::H,false},
-   {"NZ",E::N,false},{"HZ1",E::H,false},{"HZ2",E::H,false},{"HZ3",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2",E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3",E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"CD", E::C, false, TopologySidechain(Locant::Delta)},
+   {"HD2",E::H, false, TopologyDiastereo(Locant::Delta,   DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QD)},
+   {"HD3",E::H, false, TopologyDiastereo(Locant::Delta,   DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QD)},
+   {"CE", E::C, false, TopologySidechain(Locant::Epsilon)},
+   {"HE2",E::H, false, TopologyDiastereo(Locant::Epsilon, DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QE)},
+   {"HE3",E::H, false, TopologyDiastereo(Locant::Epsilon, DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QE)},
+   {"NZ", E::N, false, TopologySidechain(Locant::Zeta)},
+   {"HZ1",E::H, false, TopologyMethyl(Locant::Zeta, BranchIndex::None, PseudoatomClass::QZ)},
+   {"HZ2",E::H, false, TopologyMethyl(Locant::Zeta, BranchIndex::None, PseudoatomClass::QZ)},
+   {"HZ3",E::H, false, TopologyMethyl(Locant::Zeta, BranchIndex::None, PseudoatomClass::QZ)}},  // LYN drops HZ3
   {},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","CE"}, {"CG","CD","CE","NZ"}},
   {{"LYN", "deprotonated lysine", 0, "deprotonated"}} },
 
-// MET
+// MET — Sδ thioether sulfur. Cε is the methyl carbon; Hε1/Hε2/Hε3 are the
+// equivalent thiomethyl protons (pseudoatom ME).
 { AminoAcid::MET, "MET", 'M', false, false, true, 3, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"SD",E::S,false},
-   {"CE",E::C,false},{"HE1",E::H,false},{"HE2",E::H,false},{"HE3",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta,    DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2",E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3",E::H, false, TopologyDiastereo(Locant::Gamma,   DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"SD", E::S, false, TopologySidechain(Locant::Delta)},
+   {"CE", E::C, false, TopologySidechain(Locant::Epsilon)},
+   {"HE1",E::H, false, TopologyMethyl(Locant::Epsilon, BranchIndex::None, PseudoatomClass::ME)},
+   {"HE2",E::H, false, TopologyMethyl(Locant::Epsilon, BranchIndex::None, PseudoatomClass::ME)},
+   {"HE3",E::H, false, TopologyMethyl(Locant::Epsilon, BranchIndex::None, PseudoatomClass::ME)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","SD"}, {"CB","CG","SD","CE"}}, {} },
 
-// PHE
+// PHE — benzene ring. HB2/HB3 prochiral β-methylene (pro-S/pro-R). Ring protons
+// HD1/HD2 form pseudoatom QD; HE1/HE2 form QE; HZ is unique. Cδ1/Cδ2 (and
+// Cε1/Cε2) distinguished by smaller |χ2| convention (Markley 1998 Fig 1 caption).
 { AminoAcid::PHE, "PHE", 'F', true, false, true, 2, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},
-   {"CD1",E::C,false},{"HD1",E::H,false},
-   {"CD2",E::C,false},{"HD2",E::H,false},
-   {"CE1",E::C,false},{"HE1",E::H,false},
-   {"CE2",E::C,false},{"HE2",E::H,false},
-   {"CZ",E::C,false},{"HZ",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologyRing(Locant::Gamma,   BranchIndex::None, RingPosition::Substituent)},
+   {"CD1",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::One,  RingPosition::Member)},
+   {"HD1",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::One)},
+   {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,  RingPosition::Member)},
+   {"HD2",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::Two)},
+   {"CE1",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::One,  RingPosition::Member)},
+   {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
+   {"CE2",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,  RingPosition::Member)},
+   {"HE2",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
+   {"CZ", E::C, false, TopologyRing(Locant::Zeta,    BranchIndex::None, RingPosition::Member)},
+   {"HZ", E::H, false, TopologySidechain(Locant::Zeta,    BranchIndex::None)}},
   {{RingTypeIndex::PheBenzene, {"CG","CD1","CE1","CZ","CE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
-// PRO
+// PRO — pyrrolidine ring (N–Cα–Cβ–Cγ–Cδ–N). No backbone H (BB_PRO). Three
+// prochiral methylenes (β/γ/δ); pucker conformations defined by χ1..χ4.
 { AminoAcid::PRO, "PRO", 'P', false, false, false, 2, 0,
   {BB_PRO,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
-   {"CD",E::C,false},{"HD2",E::H,false},{"HD3",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta,  DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologySidechain(Locant::Gamma)},
+   {"HG2",E::H, false, TopologyDiastereo(Locant::Gamma, DiastereotopicIndex::Two,   ProchiralStereo::ProR, PseudoatomClass::QG)},
+   {"HG3",E::H, false, TopologyDiastereo(Locant::Gamma, DiastereotopicIndex::Three, ProchiralStereo::ProS, PseudoatomClass::QG)},
+   {"CD", E::C, false, TopologySidechain(Locant::Delta)},
+   {"HD2",E::H, false, TopologyDiastereo(Locant::Delta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QD)},
+   {"HD3",E::H, false, TopologyDiastereo(Locant::Delta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QD)}},
   {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}}, {} },
 
-// SER
+// SER — γ-hydroxyl. Hγ is a single O-H (not prochiral).
 { AminoAcid::SER, "SER", 'S', false, false, true, 1, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"OG",E::O,false},{"HG",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"OG", E::O, false, TopologySidechain(Locant::Gamma)},
+   {"HG", E::H, false, TopologySidechain(Locant::Gamma)}},
   {}, {{"N","CA","CB","OG"}}, {} },
 
-// THR
+// THR — Cβ is real chiral (single Hβ). Cγ1 = hydroxyl O; Cγ2 = methyl C.
 { AminoAcid::THR, "THR", 'T', false, false, true, 1, 0,
   {BB,
-   {"CB",E::C,false},{"HB",E::H,false},
-   {"OG1",E::O,false},{"HG1",E::H,false},
-   {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB",  E::H, false, TopologySidechain(Locant::Beta)},
+   {"OG1", E::O, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
+   {"HG1", E::H, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
+   {"CG2", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::Two)},
+   {"HG21",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
+   {"HG22",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)},
+   {"HG23",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG)}},
   {}, {{"N","CA","CB","OG1"}}, {} },
 
-// TRP
+// TRP — indole: pyrrole (5-ring) + benzene (6-ring) fused, with the 9-atom
+// perimeter as the third (TrpPerimeter) ring. Cδ2 / Cε2 are ring junctions
+// (members of all three rings). Nε1 is the indole NH.
 { AminoAcid::TRP, "TRP", 'W', true, false, true, 2, 0,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},
-   {"CD1",E::C,false},{"HD1",E::H,false},
-   {"CD2",E::C,false},
-   {"NE1",E::N,false},{"HE1",E::H,false},
-   {"CE2",E::C,false},
-   {"CE3",E::C,false},{"HE3",E::H,false},
-   {"CZ2",E::C,false},{"HZ2",E::H,false},
-   {"CZ3",E::C,false},{"HZ3",E::H,false},
-   {"CH2",E::C,false},{"HH2",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologyRing(Locant::Gamma,   BranchIndex::None,  RingPosition::Substituent)},
+   {"CD1",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::One,   RingPosition::Member)},
+   {"HD1",E::H, false, TopologySidechain(Locant::Delta, BranchIndex::One)},
+   {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,   RingPosition::Junction)},
+   {"NE1",E::N, false, TopologyRing(Locant::Epsilon, BranchIndex::One,   RingPosition::Member)},
+   {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},  // indole NH
+   {"CE2",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,   RingPosition::Junction)},
+   {"CE3",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Three, RingPosition::Member)},
+   {"HE3",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Three)},
+   {"CZ2",E::C, false, TopologyRing(Locant::Zeta,    BranchIndex::Two,   RingPosition::Member)},
+   {"HZ2",E::H, false, TopologySidechain(Locant::Zeta,    BranchIndex::Two)},
+   {"CZ3",E::C, false, TopologyRing(Locant::Zeta,    BranchIndex::Three, RingPosition::Member)},
+   {"HZ3",E::H, false, TopologySidechain(Locant::Zeta,    BranchIndex::Three)},
+   {"CH2",E::C, false, TopologyRing(Locant::Eta,     BranchIndex::Two,   RingPosition::Member)},
+   {"HH2",E::H, false, TopologySidechain(Locant::Eta,     BranchIndex::Two)}},
   {{RingTypeIndex::TrpBenzene,   {"CD2","CE2","CZ2","CH2","CZ3","CE3"}},
    {RingTypeIndex::TrpPyrrole,   {"CG","CD1","NE1","CE2","CD2"}},
    {RingTypeIndex::TrpPerimeter, {"CG","CD1","NE1","CE2","CZ2","CH2","CZ3","CE3","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
-// TYR
+// TYR — phenol ring with hydroxyl at Cζ. Same Cδ1/Cδ2 + Cε1/Cε2 ordering as
+// PHE (smaller |χ2| → 1). HH absent in TYM (deprotonated tyrosinate) variant.
 { AminoAcid::TYR, "TYR", 'Y', true, true, true, 2, -1,
   {BB,
-   {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
-   {"CG",E::C,false},
-   {"CD1",E::C,false},{"HD1",E::H,false},
-   {"CD2",E::C,false},{"HD2",E::H,false},
-   {"CE1",E::C,false},{"HE1",E::H,false},
-   {"CE2",E::C,false},{"HE2",E::H,false},
-   {"CZ",E::C,false},{"OH",E::O,false},{"HH",E::H,false}},
+   {"CB", E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB2",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Two,   ProchiralStereo::ProS, PseudoatomClass::QB)},
+   {"HB3",E::H, false, TopologyDiastereo(Locant::Beta, DiastereotopicIndex::Three, ProchiralStereo::ProR, PseudoatomClass::QB)},
+   {"CG", E::C, false, TopologyRing(Locant::Gamma,   BranchIndex::None, RingPosition::Substituent)},
+   {"CD1",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::One,  RingPosition::Member)},
+   {"HD1",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::One)},
+   {"CD2",E::C, false, TopologyRing(Locant::Delta,   BranchIndex::Two,  RingPosition::Member)},
+   {"HD2",E::H, false, TopologySidechain(Locant::Delta,   BranchIndex::Two)},
+   {"CE1",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::One,  RingPosition::Member)},
+   {"HE1",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::One)},
+   {"CE2",E::C, false, TopologyRing(Locant::Epsilon, BranchIndex::Two,  RingPosition::Member)},
+   {"HE2",E::H, false, TopologySidechain(Locant::Epsilon, BranchIndex::Two)},
+   {"CZ", E::C, false, TopologyRing(Locant::Zeta,    BranchIndex::None, RingPosition::Member)},
+   {"OH", E::O, false, TopologySidechain(Locant::Eta)},
+   {"HH", E::H, false, TopologySidechain(Locant::Eta)}},  // absent in TYM
   {{RingTypeIndex::TyrPhenol, {"CG","CD1","CE1","CZ","CE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}},
   {{"TYM", "deprotonated tyrosinate", -1, "deprotonated"}} },
 
-// VAL
+// VAL — Cβ is real chiral (single Hβ). Cγ1 and Cγ2 are diastereotopic methyl
+// carbons; pseudoatoms MG1 (Hγ11/12/13), MG2 (Hγ21/22/23), QG (all six γ-methyl).
 { AminoAcid::VAL, "VAL", 'V', false, false, true, 1, 0,
   {BB,
-   {"CB",E::C,false},{"HB",E::H,false},
-   {"CG1",E::C,false},{"HG11",E::H,false},{"HG12",E::H,false},{"HG13",E::H,false},
-   {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false}},
+   {"CB",  E::C, false, TopologySidechain(Locant::Beta)},
+   {"HB",  E::H, false, TopologySidechain(Locant::Beta)},
+   {"CG1", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::One)},
+   {"HG11",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::One, PseudoatomClass::MG1)},
+   {"HG12",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::One, PseudoatomClass::MG1)},
+   {"HG13",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::One, PseudoatomClass::MG1)},
+   {"CG2", E::C, false, TopologySidechain(Locant::Gamma, BranchIndex::Two)},
+   {"HG21",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG2)},
+   {"HG22",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG2)},
+   {"HG23",E::H, false, TopologyMethyl(Locant::Gamma, BranchIndex::Two, PseudoatomClass::MG2)}},
   {}, {{"N","CA","CB","CG1"}}, {} },
 
 // Unknown

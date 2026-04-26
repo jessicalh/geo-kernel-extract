@@ -154,6 +154,154 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         atoms_[i]->bond_indices = topology_->BondIndicesFor(i);
         atoms_[i]->parent_atom_index = topology_->HydrogenParentOf(i);
     }
+
+    // Layer 2.5: IUPAC symbolic topology (Markley 1998).
+    // Stamps typed per-atom identity from the AminoAcidType table.
+    // Additive to the existing layers; calculators ignoring it see no change.
+    StampAtomTopology();
+    StampRingMembership();
+    StampResidueContext();
+    StampPartnerAtomIndex();
+    StampChiPositions();
+}
+
+
+// ============================================================================
+// IUPAC symbolic topology layer (Markley 1998, J Biomol NMR 12:1-23).
+//
+// Source PDF: references/markley-1998-iupac-nmr-nomenclature-recommendations.pdf
+//
+// PDB LOADING BOUNDARY (continued): the PDB atom-name string is used here for
+// one final lookup against the AminoAcidType template, after which all
+// downstream identity work uses the typed AtomTopology payload.
+// ============================================================================
+
+void Protein::StampAtomTopology() {
+    std::map<std::string, int> unstamped_by_residue;
+    int stamped_count = 0;
+    int unstamped_count = 0;
+
+    for (const auto& res : residues_) {
+        const AminoAcidType& aatype = res.AminoAcidInfo();
+        for (size_t ai : res.atom_indices) {
+            Atom& atom = *atoms_[ai];
+            const AminoAcidAtom* templ = aatype.FindAtom(atom.pdb_atom_name.c_str());
+
+            // PDB/BMRB use "H" for the backbone amide H; IUPAC recommends "HN".
+            // The table uses "H"; normalise the PDB-side name on lookup.
+            if (!templ && atom.pdb_atom_name == "HN") {
+                templ = aatype.FindAtom("H");
+            }
+
+            if (templ && templ->topology.stamped) {
+                atom.topology = templ->topology;
+                ++stamped_count;
+            } else {
+                unstamped_by_residue[aatype.three_letter_code]++;
+                ++unstamped_count;
+            }
+        }
+    }
+
+    if (unstamped_count > 0) {
+        std::string types_str;
+        for (const auto& kv : unstamped_by_residue) {
+            if (!types_str.empty()) types_str += ", ";
+            types_str += kv.first + "(" + std::to_string(kv.second) + ")";
+        }
+        fprintf(stderr,
+                "StampAtomTopology: %d atoms stamped, %d unstamped "
+                "[residue counts: %s] — table population in progress.\n",
+                stamped_count, unstamped_count, types_str.c_str());
+    }
+}
+
+
+void Protein::StampRingMembership() {
+    for (auto& atom : atoms_) atom->ring_indices.clear();
+
+    for (size_t ri = 0; ri < rings_.size(); ++ri) {
+        const Ring& ring = *rings_[ri];
+        for (size_t ai : ring.atom_indices) {
+            atoms_[ai]->ring_indices.push_back(ri);
+        }
+    }
+}
+
+
+void Protein::StampResidueContext() {
+    const size_t n = residues_.size();
+    for (size_t ri = 0; ri < n; ++ri) {
+        Residue& res = residues_[ri];
+
+        // Previous in same chain
+        if (ri > 0 && residues_[ri - 1].chain_id == res.chain_id) {
+            res.prev_residue_type = residues_[ri - 1].type;
+            res.is_n_terminal = false;
+        } else {
+            res.prev_residue_type = AminoAcid::Unknown;
+            res.is_n_terminal = true;
+        }
+
+        // Next in same chain
+        if (ri + 1 < n && residues_[ri + 1].chain_id == res.chain_id) {
+            res.next_residue_type = residues_[ri + 1].type;
+            res.is_c_terminal = false;
+        } else {
+            res.next_residue_type = AminoAcid::Unknown;
+            res.is_c_terminal = true;
+        }
+    }
+}
+
+
+void Protein::StampPartnerAtomIndex() {
+    for (const auto& res : residues_) {
+        for (size_t ai : res.atom_indices) {
+            Atom& atom_a = *atoms_[ai];
+            atom_a.partner_atom_index = SIZE_MAX;
+
+            const AtomTopology& ta = atom_a.topology;
+            if (ta.diastereotopic_index == DiastereotopicIndex::None) continue;
+
+            DiastereotopicIndex partner_idx =
+                (ta.diastereotopic_index == DiastereotopicIndex::Two)
+                    ? DiastereotopicIndex::Three
+                    : DiastereotopicIndex::Two;
+
+            for (size_t bi : res.atom_indices) {
+                if (bi == ai) continue;
+                const AtomTopology& tb = atoms_[bi]->topology;
+                if (tb.locant == ta.locant
+                    && tb.branch_index == ta.branch_index
+                    && tb.diastereotopic_index == partner_idx) {
+                    atom_a.partner_atom_index = bi;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+
+void Protein::StampChiPositions() {
+    for (const auto& res : residues_) {
+        const AminoAcidType& aatype = res.AminoAcidInfo();
+        const size_t n_chi = aatype.chi_angles.size();
+        for (size_t chi_idx = 0; chi_idx < n_chi && chi_idx < 4; ++chi_idx) {
+            const ChiAngleDef& chi = aatype.chi_angles[chi_idx];
+            for (int pos = 0; pos < 4; ++pos) {
+                const char* atom_name = chi.atoms[pos];
+                for (size_t ai : res.atom_indices) {
+                    if (atoms_[ai]->pdb_atom_name == atom_name) {
+                        atoms_[ai]->topology.chi_position[chi_idx] =
+                            static_cast<int8_t>(pos);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 
 

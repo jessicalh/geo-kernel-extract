@@ -12,16 +12,24 @@
 //
 
 #include "Types.h"
+#include "AtomTopology.h"
 #include <string>
 #include <vector>
 
 namespace nmr {
 
 // An atom in the canonical amino acid template (PDB naming).
+//
+// `topology` carries the IUPAC symbolic identity from Markley 1998
+// (Figure 1 + Table 1). Default-initialized AtomTopology has
+// `stamped=false`; Protein::StampAtomTopology() emits an informational
+// diagnostic at load when it copies an unstamped entry, so the table
+// can be filled incrementally while keeping the build green.
 struct AminoAcidAtom {
     const char* name;
     Element     element;
     bool        is_backbone;
+    AtomTopology topology = {};
 };
 
 // A protonation variant (e.g., HID for histidine, ASH for aspartate).

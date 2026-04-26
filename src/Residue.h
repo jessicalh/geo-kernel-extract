@@ -33,6 +33,14 @@ public:
     size_t HA = NONE;   // HA2 for GLY
     size_t CB = NONE;   // NONE for GLY
 
+    // Sequence context (set by Protein::StampResidueContext after
+    // residues are loaded). Useful for stats consumers, prochirality
+    // disambiguation, and N/C-terminal aware feature extraction.
+    AminoAcid prev_residue_type = AminoAcid::Unknown;  // Unknown if N-terminal
+    AminoAcid next_residue_type = AminoAcid::Unknown;  // Unknown if C-terminal
+    bool is_n_terminal = false;
+    bool is_c_terminal = false;
+
     // Chi angle atom indices (up to 4)
     struct ChiAtoms {
         size_t a[4] = {NONE, NONE, NONE, NONE};

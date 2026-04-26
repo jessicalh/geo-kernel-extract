@@ -151,6 +151,30 @@ public:
     void DetectAromaticRings();
     void CacheResidueBackboneIndices();
 
+    // IUPAC symbolic topology layer (Markley 1998).
+    // Stamps typed identity onto each Atom by name lookup against the
+    // AminoAcidType table. Independent of geometry — purely symbolic.
+    void StampAtomTopology();
+
+    // Reverse lookup: for each atom, the rings it belongs to.
+    // Some atoms belong to multiple rings (Trp Cδ2, Cε2 are in TRP5 + TRP6
+    // + TRP9). Must run after DetectAromaticRings populates rings_.
+    void StampRingMembership();
+
+    // prev_residue_type, next_residue_type, is_n_terminal, is_c_terminal
+    // populated per Residue from chain context.
+    void StampResidueContext();
+
+    // For atoms at IUPAC 2/3 prochiral positions, the partner atom index
+    // (HB2 ↔ HB3, HG2 ↔ HG3, ...). SIZE_MAX when not at such a position.
+    // Must run after StampAtomTopology.
+    void StampPartnerAtomIndex();
+
+    // Chi-angle participation: for each atom in a residue's chi angle
+    // definition, sets atom.topology.chi_position[chi_index] to the
+    // 0..3 position. Mechanical from AminoAcidType::chi_angles.
+    void StampChiPositions();
+
 private:
     std::vector<std::unique_ptr<Atom>> atoms_;
     std::vector<Residue> residues_;
