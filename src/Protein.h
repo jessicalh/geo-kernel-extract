@@ -13,6 +13,7 @@
 #include "Bond.h"
 #include "Ring.h"
 #include "CovalentTopology.h"
+#include "CcdValidator.h"          // for CcdValidationReport (held by unique_ptr)
 #include "ProteinBuildContext.h"
 #include "ProteinConformation.h"
 #include <vector>
@@ -175,6 +176,13 @@ public:
     // 0..3 position. Mechanical from AminoAcidType::chi_angles.
     void StampChiPositions();
 
+    // CCD validation report from CcdValidator::Check, populated by
+    // FinalizeConstruction after the Stamp* block runs. Always non-null
+    // post-FinalizeConstruction — the dictionary is an environment
+    // requirement, not a soft dependency, so a failed load aborts before
+    // the report is constructed.
+    const CcdValidationReport& CcdReport() const { return *ccd_report_; }
+
 private:
     std::vector<std::unique_ptr<Atom>> atoms_;
     std::vector<Residue> residues_;
@@ -182,6 +190,7 @@ private:
     std::unique_ptr<CovalentTopology> topology_;
     std::unique_ptr<ProteinBuildContext> build_context_ =
         std::make_unique<ProteinBuildContext>();
+    std::unique_ptr<CcdValidationReport> ccd_report_;
     std::vector<std::unique_ptr<ProteinConformation>> conformations_;
     size_t crystal_index_ = SIZE_MAX;
     std::vector<size_t> prediction_indices_;

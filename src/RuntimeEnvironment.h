@@ -37,6 +37,11 @@ public:
     static const std::string& Mopac();
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
+    // CCD path for CcdValidator (gemmi). Resolved by Load() from TOML
+    // ("ccd_path"), env var (NMR_CCD_PATH), or NMR_DATA_DIR/ccd/components.cif.gz.
+    // Returns empty string if none resolved; CcdValidator reports
+    // ccd_loaded=false in that case.
+    static const std::string& CcdPath();
 
     // Verify live tools exist. Returns list of missing (name + path).
     static std::vector<std::string> Verify();
@@ -55,6 +60,7 @@ private:
     static std::string mopac_;
     static std::string ff14sb_params_;
     static std::string tmpDir_;
+    static std::string ccd_path_;
     static std::string processGuid_;
     static bool loaded_;
 };

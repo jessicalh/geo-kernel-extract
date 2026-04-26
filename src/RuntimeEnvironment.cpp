@@ -17,6 +17,7 @@ namespace nmr {
 std::string RuntimeEnvironment::mopac_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
+std::string RuntimeEnvironment::ccd_path_;
 std::string RuntimeEnvironment::processGuid_;
 bool RuntimeEnvironment::loaded_ = false;
 
@@ -93,7 +94,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
-    std::string toml_mopac, toml_ff14sb, toml_tmpdir;
+    std::string toml_mopac, toml_ff14sb, toml_tmpdir, toml_ccd;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -119,6 +120,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             if      (key == "mopac")          toml_mopac = val;
             else if (key == "ff14sb_params") toml_ff14sb = val;
             else if (key == "tmpdir")        toml_tmpdir = val;
+            else if (key == "ccd_path")      toml_ccd   = val;
         }
         OperationLog::Info("RuntimeEnvironment::Load", "read " + path);
     } else {
@@ -163,6 +165,24 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
     fs::create_directories(tmpDir_);
 
+    // CCD: TOML > env var > NMR_DATA_DIR/ccd/components.cif.gz.
+    // No file discovery — if none of these resolve to an existing file,
+    // ccd_path_ stays empty and CcdValidator reports ccd_loaded=false.
+    if (!toml_ccd.empty() && fs::exists(toml_ccd)) {
+        ccd_path_ = toml_ccd;
+    } else {
+        const char* ccd_env = std::getenv("NMR_CCD_PATH");
+        if (ccd_env && fs::exists(ccd_env)) {
+            ccd_path_ = ccd_env;
+        } else {
+#ifdef NMR_DATA_DIR
+            std::string default_path = std::string(NMR_DATA_DIR) + "/ccd/components.cif";
+            if (fs::exists(default_path))
+                ccd_path_ = default_path;
+#endif
+        }
+    }
+
     // --- Mark loaded ---
 
     loaded_ = true;
@@ -178,6 +198,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         "mopac=" + status(mopac_) +
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
+        " ccd_path=" + status(ccd_path_) +
         " guid=" + processGuid_);
 }
 
@@ -205,5 +226,6 @@ std::string RuntimeEnvironment::TempFilePath(const std::string& proteinName,
 const std::string& RuntimeEnvironment::Mopac()          { RequireLoaded(); return mopac_; }
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
+const std::string& RuntimeEnvironment::CcdPath()       { RequireLoaded(); return ccd_path_; }
 
 }  // namespace nmr

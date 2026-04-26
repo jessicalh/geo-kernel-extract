@@ -52,6 +52,16 @@ extern/HighFive/tests/
 extern/HighFive/deps/
 extern/HighFive/.*
 
+# gemmi: only include/ is needed (header-only path). Anything else
+# from a future upstream sync stays gitignored.
+extern/gemmi/CMakeLists.txt
+extern/gemmi/CMake/
+extern/gemmi/cmake/
+extern/gemmi/src/
+extern/gemmi/tests/
+extern/gemmi/docs/
+extern/gemmi/.*
+
 # Analysis outputs (regenerable from scripts)
 learn/src/output/
 
@@ -76,6 +86,13 @@ bad-builds/
 # Total ~295 MB. Regenerable from initial-samples/ via the fleet
 # pipeline; machine-local, not repo material.
 tests/data/fleet_test_large/
+
+# Chemical Component Dictionary — 376 MB raw / 89 MB gzipped.
+# Used by CcdValidator (gemmi header-only) to enrich IUPAC topology
+# diagnostics. components.cif is the runtime file; .gz is kept as a
+# refresh artifact. Both regenerable via scripts/fetch_ccd.sh.
+data/ccd/components.cif
+data/ccd/components.cif.gz
 
 # Reference-corpus derived files — trivially regenerable from
 # references/*.pdf via scripts/references/ingest_pdf.sh. At ~500

@@ -86,6 +86,15 @@ if(NOT EXISTS ${MOPAC_LIB})
 endif()
 message(STATUS "MOPAC: ${MOPAC_LIB}")
 
+# gemmi (PDB/mmCIF + Chemical Component Dictionary) — vendored as headers
+# under extern/gemmi/include. Header-only path: we use cif::read_file on
+# an uncompressed components.cif (data/ccd/), avoiding the libgemmi_cpp.so
+# dependency and its libstdc++ ABI coupling to the build machine. Refresh
+# the CCD via scripts/fetch_ccd.sh.
+add_library(gemmi_headers INTERFACE)
+target_include_directories(gemmi_headers INTERFACE
+    ${CMAKE_SOURCE_DIR}/extern/gemmi/include)
+
 # GTest for unit tests
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
@@ -174,6 +183,7 @@ add_library(nmr_shielding
     src/AminoAcidType.cpp
     src/Atom.cpp
     src/AtomReference.cpp
+    src/CcdValidator.cpp
     src/Ring.cpp
     src/Protein.cpp
     src/CovalentTopology.cpp
@@ -289,6 +299,7 @@ target_link_libraries(nmr_shielding PUBLIC
     extern_headers
     highfive
     xdrfile
+    gemmi_headers
     ${TORCH_LIBRARIES}
 )
 

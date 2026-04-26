@@ -1,5 +1,7 @@
 #include "Protein.h"
 #include "AminoAcidType.h"
+#include "CcdValidator.h"
+#include "OperationLog.h"
 #include <algorithm>
 #include <map>
 #include <set>
@@ -163,6 +165,14 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     StampResidueContext();
     StampPartnerAtomIndex();
     StampChiPositions();
+
+    // Layer 2.6: CCD validation (gemmi). Read-only sanity check against
+    // the Chemical Component Dictionary, never mutates the typed objects.
+    // The report is stashed for later NPY/CSV emission by drivers that
+    // want diagnostic artifacts; warnings have already gone through UDP
+    // log via OperationLog::Warn during the walk.
+    ccd_report_ = std::make_unique<CcdValidationReport>(
+        CcdValidator::Check(*this));
 }
 
 
@@ -199,9 +209,32 @@ void Protein::StampAtomTopology() {
             } else {
                 unstamped_by_residue[aatype.three_letter_code]++;
                 ++unstamped_count;
+
+                // Per-atom verbose warning enriched with what CCD says.
+                // OperationLog::Warn always emits over UDP and stderr.
+                CcdAtomDescription desc = CcdValidator::DescribeAtom(
+                    aatype.three_letter_code, atom.iupac_name.AsString());
+                std::string ccd_note;
+                if (desc.found) {
+                    ccd_note = " — CCD: element=" + desc.element_symbol;
+                    if (desc.is_aromatic) ccd_note += " aromatic";
+                    if (desc.leaving_atom) ccd_note += " leaving";
+                } else {
+                    ccd_note = " — CCD: no record";
+                }
+                OperationLog::Warn("StampAtomTopology",
+                    "unstamped atom: residue " +
+                    std::string(aatype.three_letter_code) +
+                    std::to_string(res.sequence_number) +
+                    " atom " + atom.iupac_name.AsString() + ccd_note);
             }
         }
     }
+
+    // Summary line — Info, always emitted.
+    OperationLog::Info("StampAtomTopology",
+        "stamped=" + std::to_string(stamped_count) +
+        " unstamped=" + std::to_string(unstamped_count));
 
     if (unstamped_count > 0) {
         std::string types_str;
@@ -209,10 +242,8 @@ void Protein::StampAtomTopology() {
             if (!types_str.empty()) types_str += ", ";
             types_str += kv.first + "(" + std::to_string(kv.second) + ")";
         }
-        fprintf(stderr,
-                "StampAtomTopology: %d atoms stamped, %d unstamped "
-                "[residue counts: %s] — table population in progress.\n",
-                stamped_count, unstamped_count, types_str.c_str());
+        OperationLog::Warn("StampAtomTopology",
+            "table population in progress: " + types_str);
     }
 }
 
