@@ -118,7 +118,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     }
 
     if (HasFlag(argc, argv, "--fleet")) {
-        spec.error = "--fleet is not supported. Use --trajectory DIR for GROMACS ensemble extraction.";
+        spec.error = "--fleet was removed 2026-04-12. Use --trajectory DIR for GROMACS ensemble extraction.";
         return spec;
     }
 
