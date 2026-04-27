@@ -173,23 +173,24 @@ rebuild lands, the KD-tree matcher is the working solution.
 
 ## Pointer to the architectural thinking
 
-The branch `architectural-thinking-2026-04-27` (on origin) preserves:
+The architectural design from the 2026-04-27 conversation is preserved
+as a memory entry — `project_proteintopology_architecture` — in the
+user's persistent memory store. That memory is loaded automatically
+at session start regardless of branch state and is the operational
+reference if the architecture is ever revisited.
 
-- `spec/PROTEIN_TOPOLOGY_ABC_GRAPH.md` — the architectural design that
-  emerged from the 2026-04-27 conversation. Topology as ABC + graph
-  container, four-scope shared-currency framing, registry-as-projection-kit,
-  six-granularity inhabitants. The architecture is locked at the framing
-  level; the implementation shape was open.
-- `spec/AUDIT_NAMING_2026-04-26/` — the four-phase audit of where atom-name
-  string dispatch lives in `src/`, including the charge-corruption finding.
-- `spec/SESSION_START_PROTOCOL.md` — the per-session alignment protocol
-  proposed for the multi-session rebuild.
-- `spec/PROTEIN_TOPOLOGY_PROGRESS.md` — the run-state tracking doc.
-- The 12 IUPAC commits (fc76f47..5dbbfa7) reachable via branch history.
-- The in-flight modifications that were uncommitted at revert time.
+In one sentence: the design is a typed-topology-as-graph container
+(`TopologyProtein` ABC, with `IUPACTopologyProtein` as one concrete
+subclass), 1:M with Protein, holding inhabitants at six granularities
+(per-atom, per-pair, per-set, per-residue, per-sequence, per-protein);
+`NamingRegistry` becomes a bidirectional projection kit per tool
+authority; Atom is structurally clean (no IUPAC fields, no name strings);
+and math operates on typed enum categories rather than string spellings
+of atom names. See the memory entry for the full distillation.
 
-The `architectural-thinking-2026-04-27` branch was pushed to origin on
-2026-04-27. If a future session resumes the rebuild work, that branch
-is the starting point. The reading order is `PROTEIN_TOPOLOGY_ABC_GRAPH.md`
-first, then the audit phase reports as empirical grounding, then PATTERNS
-and OBJECT_MODEL on master to ground in the codebase as it currently is.
+A historical archive of the working documents (PROTEIN_TOPOLOGY_ABC_GRAPH.md,
+the audit phase reports, the session-start protocol draft, the
+run-state tracking template, and the 12 reverted IUPAC commits) lives
+on branch `architectural-thinking-2026-04-27` on origin. The user has
+indicated this branch will not be read again; the memory entry is the
+durable reference.
