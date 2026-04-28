@@ -181,7 +181,6 @@ add_library(nmr_shielding
     src/GeometryResult.cpp
     src/DemoResult.cpp
     src/NamingRegistry.cpp
-    src/IupacAtomIdentity.cpp
     src/DsspResult.cpp
     src/ChargeAssignmentResult.cpp
     src/ApbsFieldResult.cpp
@@ -376,7 +375,6 @@ nmr_test_target(unit_tests
     tests/test_ring_hierarchy.cpp
     tests/test_object_model.cpp
     tests/test_naming_registry.cpp
-    tests/test_iupac_atom_identity.cpp
     tests/test_runtime_environment.cpp
     tests/test_calculator_config.cpp
 )

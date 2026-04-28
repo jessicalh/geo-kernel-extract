@@ -365,10 +365,10 @@ sees five nested function calls and has no idea what the data path is.
 Future agents reading this code will not understand what happened and
 will not maintain it correctly.
 
-If the information comes from cifpp, from the AminoAcidType table,
-or from IupacAtomIdentity — it was resolved at construction time and
-stored as a typed property on the object. At runtime, the object
-answers questions about itself. Period.
+If the information comes from cifpp or from the AminoAcidType table,
+it was resolved at construction time and stored as a typed property
+on the object. At runtime, the object answers questions about itself.
+Period.
 
 Grep markers: nested function calls where an atom name or residue code
 string is passed as a parameter to a lookup function inside a
@@ -382,9 +382,9 @@ get back atom name strings and bond pair strings. This is correct and
 necessary AT LOADING TIME.
 
 After loading, no code ever calls cifpp again. The typed objects
-(AminoAcidType, IupacAtomIdentity, NamingRegistry, Ring type classes,
-AtomRole enum) are the runtime authorities. They were built from cifpp
-data during PDB loading. They ARE the typed boundary.
+(AminoAcidType, NamingRegistry, Ring type classes, AtomRole enum)
+are the runtime authorities. They were built from cifpp data during
+PDB loading. They ARE the typed boundary.
 
 An agent that calls `cif::compound_factory` inside a calculator or
 feature extractor is diving back through the string boundary. That
