@@ -3,13 +3,15 @@
 //
 // End-to-end smoke test for the GROMACS fleet extraction pipeline.
 //
-// Loads 1A6J_5789 (2480 atoms, 10 poses) via BuildFromGromacs, runs the
-// full extraction pipeline on every pose via RunAllFrames, writes NPY
-// features per frame, validates logs and output.
+// Loads 1A6J_5789 (2480 atoms, 1 pose) via BuildFromGromacs, runs the
+// full extraction pipeline on the pose via RunAllFrames, writes NPY
+// features, validates logs and output. The fleet test data dir on
+// disk holds 10 pose PDBs (pose_001..pose_010) but ensemble.json
+// only enumerates pose 1 — to test with more poses, edit ensemble.json.
 //
-// This is expensive (~40 min) because every pose runs MOPAC + APBS.
-// It exercises the exact path that the 700-protein x 10-pose production
-// extraction uses. Run it:
+// This is expensive (~10-15 min) because the pose runs MOPAC + APBS.
+// It exercises the exact path that production fleet extraction uses
+// (pre-revert: 700-protein x 10-pose extraction). Run it:
 //   - After changing GromacsEnsembleLoader or TPR reading
 //   - After changing OperationRunner::RunEnsemble
 //   - After changing any extractor (if the quick smoke_tests pass first)
@@ -146,8 +148,8 @@ TEST(SmokeFleet, AllPoses) {
     // ---- Load ----
     auto build = BuildFromGromacs(paths);
     ASSERT_TRUE(build.Ok()) << build.error;
-    ASSERT_EQ(build.protein->MDFrameCount(), 10u)
-        << "Expected 10 poses, got " << build.protein->MDFrameCount();
+    ASSERT_EQ(build.protein->MDFrameCount(), 1u)
+        << "Expected 1 pose (per ensemble.json), got " << build.protein->MDFrameCount();
 
     std::cout << "\n  Fleet: 1A6J_5789\n"
               << "  Atoms: " << build.protein->AtomCount() << "\n"
@@ -172,7 +174,7 @@ TEST(SmokeFleet, AllPoses) {
     opts.net_charge = build.net_charge;
 
     auto run_results = RunAllFrames(*build.protein, opts);
-    ASSERT_EQ(run_results.size(), 10u);
+    ASSERT_EQ(run_results.size(), 1u);
 
     // Every frame should succeed with 13+ results
     for (size_t i = 0; i < run_results.size(); ++i) {
