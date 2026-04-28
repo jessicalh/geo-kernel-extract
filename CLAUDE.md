@@ -13,6 +13,38 @@ against the tree. Human-oriented project description lives in
 `README.md`. Design-document reading order lives in
 `spec/INDEX.md`.
 
+## Current state — read this BEFORE the rest of CLAUDE.md
+
+A 2026-04-26 attempt to add an IUPAC topology layer was reverted on
+2026-04-27. **Master is the working pre-IUPAC tool.** Read these in
+order before doing anything else:
+
+- `KNOWN_BUGS.md` (project root) — documented bugs that exist in the
+  current working tool. **Honest list, not a problem list to solve
+  immediately.**
+- Memory entries `project_iupac_revert_2026-04-27`,
+  `project_proteintopology_architecture`, and `feedback_resource_constraint`.
+  Loaded automatically at session start.
+
+The "iupac topology" episode was a multi-week mistake. **Do not
+investigate it from git history, branches, or filenames.** The
+preservation branch was deleted; an emergency tar.gz sits at
+`/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz`
+and should not be extracted. Extracting it would put you back in
+the trap that produced the revert in the first place. The memory
+entries are the durable architectural record.
+
+If you find yourself thinking "let me check git log to understand
+the recent history" or "let me look at this old branch" or "this
+filename mentions IUPAC, let me investigate" — **stop and verify
+with the user first.** Archaeology costs context. The memory
+entries are designed to give the picture without the cost.
+
+The staged Phase A→D plan in `project_proteintopology_architecture`
+is the path forward if and when the user opens that work. Until
+they do, the post-revert tool is producing thesis-relevant output
+and bugs are documented.
+
 ## Working-directory convention — read this before anything else
 
 Claude Code stores memory keyed on the session's starting working

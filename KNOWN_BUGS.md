@@ -188,9 +188,10 @@ authority; Atom is structurally clean (no IUPAC fields, no name strings);
 and math operates on typed enum categories rather than string spellings
 of atom names. See the memory entry for the full distillation.
 
-A historical archive of the working documents (PROTEIN_TOPOLOGY_ABC_GRAPH.md,
+An emergency archive of the working documents (PROTEIN_TOPOLOGY_ABC_GRAPH.md,
 the audit phase reports, the session-start protocol draft, the
-run-state tracking template, and the 12 reverted IUPAC commits) lives
-on branch `architectural-thinking-2026-04-27` on origin. The user has
-indicated this branch will not be read again; the memory entry is the
-durable reference.
+run-state tracking template, and the 12 reverted IUPAC commits) sits at
+`/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz`
+(~275MB, outside the repo). No corresponding branch — that was deleted
+2026-04-27 to remove archaeology pull from `git branch -a`. The memory
+entry is self-contained; the archive should not need extraction.
