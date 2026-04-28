@@ -152,7 +152,7 @@ the rules in the C++ registry.
 
 ## Design choice 1 — `MutationDeltaResult` uses KD-tree position matching
 
-**Severity.** Not a bug. A known design choice.
+**Severity.** Not a bug. A known design choice with a planned resolution.
 
 **Where.** `src/MutationDeltaResult.cpp` (pre-IUPAC implementation,
 which is what the current tree has).
@@ -163,35 +163,41 @@ produced the existing 723-protein calibration corpus.
 
 **Why this is a design choice rather than a bug.** It works. The
 0.5Å tolerance is tight enough to avoid false matches in practice; the
-calibration results are stable. A typed-identity matcher would be more
-elegant (matches by chemistry, not geometry), but the typed-identity
-work is what the IUPAC topology landing was attempting and what the
-preservation branch's architectural thinking targets. Until that
-rebuild lands, the KD-tree matcher is the working solution.
+calibration results are stable.
+
+**Resolution path (planned, not yet built).** The IUPACAnnotation plan
+(memory entry `project_proteintopology_architecture` — read it for
+the full plan) introduces typed per-atom IUPAC categorical fields
+attached to Protein. `MutationDeltaResult` migrates from KD-tree to
+typed `(residue_index, locant, branch, diastereotopic, element)`
+matching. No more geometric tolerance; cross-protein matching becomes
+typed-by-chemistry. Targeted scope (~50-line change in
+MutationDeltaResult.cpp once IUPACAnnotation is in place).
 
 ---
 
-## Pointer to the architectural thinking
+## Pointer to the active plan
 
-The architectural design from the 2026-04-27 conversation is preserved
-as a memory entry — `project_proteintopology_architecture` — in the
-user's persistent memory store. That memory is loaded automatically
-at session start regardless of branch state and is the operational
-reference if the architecture is ever revisited.
+The IUPACAnnotation plan is preserved as memory entry
+`project_proteintopology_architecture` in the user's persistent memory
+store. That memory is loaded automatically at session start regardless
+of branch state and is the operational reference for this work.
 
-In one sentence: the design is a typed-topology-as-graph container
-(`TopologyProtein` ABC, with `IUPACTopologyProtein` as one concrete
-subclass), 1:M with Protein, holding inhabitants at six granularities
-(per-atom, per-pair, per-set, per-residue, per-sequence, per-protein);
-`NamingRegistry` becomes a bidirectional projection kit per tool
-authority; Atom is structurally clean (no IUPAC fields, no name strings);
-and math operates on typed enum categories rather than string spellings
-of atom names. See the memory entry for the full distillation.
+In one sentence: a single `IUPACAnnotation` class attached to Protein
+holds per-atom typed IUPAC categorical fields (Locant, BranchIndex,
+DiastereotopicIndex, ProchiralStereo, PlanarStereo, PseudoatomClass,
+PolarHKind, RingPosition) as parallel arrays indexed by atom_index;
+**no label strings are stored**; string projection lives at output
+boundary only via a small projection function used by writers that
+need IUPAC label columns. Calculator code is unchanged. Atom is
+unchanged. The plan serves the two real requirements: clean IUPAC in
+output for stats, typed cross-protein matching for DFT comparison.
 
-An emergency archive of the working documents (PROTEIN_TOPOLOGY_ABC_GRAPH.md,
-the audit phase reports, the session-start protocol draft, the
-run-state tracking template, and the 12 reverted IUPAC commits) sits at
+A larger TopologyProtein ABC architecture was explored 2026-04-27 and
+scaled back; that exploration is captured in the memory entry's
+"Historical" section at the bottom and in an emergency archive at
 `/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz`
-(~275MB, outside the repo). No corresponding branch — that was deleted
-2026-04-27 to remove archaeology pull from `git branch -a`. The memory
-entry is self-contained; the archive should not need extraction.
+(~275MB, outside the repo, **do not extract**). No corresponding
+branch — that was deleted 2026-04-27 to remove archaeology pull from
+`git branch -a`. The memory entry is self-contained; the archive
+should not need extraction.
