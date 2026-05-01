@@ -20,6 +20,21 @@ consolidated   = "/shared/2026Thesis/consolidated/"
 # Fleet test data (in-tree, 2 proteins x 10 poses)
 fleet_data     = "/shared/2026Thesis/nmr-shielding/tests/data/fleet"
 
+# AMBER-ff GROMACS straight-relaxation MD trajectories (gitignored).
+# Two proteins: 1P9J_5801 (smoke; ~2 µs target) and 1Z9B_6577
+# (heavy; ~15 µs target). Each protein dir contains the full
+# pipeline output (sources, decisions.json, validator_report.json,
+# em/nvt/npt equilibration, relax_2.0ns, production_scan*).
+fleet_amber    = "/shared/2026Thesis/nmr-shielding/tests/data/fleet_amber"
+
+# Per-protein production-trajectory subpath under <fleet_amber>/<id>/.
+# Paths are pinned (no directory discovery / glob — see PATTERNS.md
+# "No file discovery"). Append .tpr / .xtc / .edr at the call site.
+# When new MD runs are produced, update these entries to point at the
+# new timestamped subdirs.
+fleet_amber_1p9j_5801_subpath = "1P9J_5801/prep_run_20260429T222609Z/production_scan2_0.0us_20260429T233733Z/production"
+fleet_amber_1z9b_6577_subpath = "1Z9B_6577/prep_run_20260429T222806Z/production_scan1_0.0us_20260429T233739Z/production"
+
 # ff14SB parameter file (for tests that create their own ChargeSource)
 ff14sb_params  = "/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"
 

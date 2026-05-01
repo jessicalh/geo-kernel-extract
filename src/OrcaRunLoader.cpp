@@ -2,6 +2,8 @@
 #include "AminoAcidType.h"
 #include "NamingRegistry.h"
 #include "ChargeSource.h"
+#include "AmberChargeResolver.h"
+#include "ForceFieldChargeTable.h"
 #include "OperationLog.h"
 
 #include <fstream>
@@ -300,35 +302,44 @@ BuildResult BuildFromOrca(const OrcaRunFiles& files) {
         return result;
     }
 
-    if (!files.prmtop_path.empty() && fs::exists(files.prmtop_path)) {
-        auto internal = LoadWithPrmtop(files, xyz);
-        if (!internal.ok) {
-            result.error = internal.error;
-            return result;
-        }
-        result.protein = std::move(internal.protein);
-    } else {
+    // ORCA / mutant paths require an upstream PRMTOP. Missing or
+    // unreadable PRMTOP is a hard load error — there is no fall-through
+    // to the ff14SB flat table on the ORCA paths.
+    if (files.prmtop_path.empty() || !fs::exists(files.prmtop_path)) {
         result.error = "no prmtop available for " + files.pdb_path +
-                       ". Run tleap to generate one, or provide it in OrcaRunFiles.";
+                       ". --orca/--mutant require an upstream PRMTOP "
+                       "(provide files.prmtop_path).";
         return result;
     }
 
-    // Charges from prmtop. Net charge from charge sum.
-    if (!files.prmtop_path.empty()) {
-        auto prmtop_source = std::make_unique<PrmtopChargeSource>(files.prmtop_path);
-
-        // Compute net charge by summing prmtop charges
-        std::string charge_err;
-        auto& conf = result.protein->Conformation();
-        auto charges_vec = prmtop_source->LoadCharges(
-            *result.protein, conf, charge_err);
-        double charge_sum = 0.0;
-        for (const auto& cr : charges_vec) charge_sum += cr.charge;
-        result.net_charge = static_cast<int>(
-            charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
-
-        result.charges = std::move(prmtop_source);
+    auto internal = LoadWithPrmtop(files, xyz);
+    if (!internal.ok) {
+        result.error = internal.error;
+        return result;
     }
+    result.protein = std::move(internal.protein);
+
+    // Charges from prmtop, via the resolver (branch 1 short-circuit).
+    AmberSourceConfig source_config;
+    source_config.preparation_policy =
+        AmberPreparationPolicy::FailOnUnsupportedTerminalVariants;
+    std::string charge_err;
+    result.charges = ResolveAmberChargeSource(
+        *result.protein, result.protein->BuildContext(),
+        source_config, charge_err);
+    if (!result.charges) {
+        result.error = charge_err;
+        return result;
+    }
+
+    auto& conf = result.protein->Conformation();
+    if (!result.protein->PrepareForceFieldCharges(*result.charges, conf, charge_err)) {
+        result.error = "charge preparation failed: " + charge_err;
+        return result;
+    }
+    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
+    result.net_charge = static_cast<int>(
+        charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 
     result.ok = true;
 

@@ -77,6 +77,19 @@ bad-builds/
 # pipeline; machine-local, not repo material.
 tests/data/fleet_test_large/
 
+# AMBER-ff GROMACS straight-relaxation MD trajectories used for
+# trajectory tests (1P9J_5801 + 1Z9B_6577). Per-protein full
+# pipeline output: sources/ + decisions.json + validator_report.json
+# + em / nvt / npt / relax_2.0ns / production_scan*. Total ~6.2 GB.
+# Regenerable from sources/ via the fleet preparation pipeline;
+# machine-local, not repo material.
+tests/data/fleet_amber/
+
+# Geometry-only SDK fixture (1Q8K extraction, ~137 MB).
+# Used by python/tests/test_load.py as GEO_ONLY. Regenerable via
+# `nmr_extract` against a fleet pose; machine-local, not repo material.
+tests/data/sdk_geo_only/
+
 # Reference-corpus derived files — trivially regenerable from
 # references/*.pdf via scripts/references/ingest_pdf.sh. At ~500
 # papers these would add ~2 GB. Source-of-truth is the PDFs plus

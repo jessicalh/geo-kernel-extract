@@ -1,0 +1,261 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - 5 paragraphs, no titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, non-observations)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (honest, wide, no stretching)
+        - Length: 4-6 pages paper → 200-300 words body. (This paper is 11 pages: 2388-2398, so ~300-450 words body)
+        - Conventions: Kernel-vs-DFT = correlation (r² captures signal). Per-element complexity matters (don't collapse tensor to scalar unless source does).
+        - Avoid: Inventing methods, manufacturing thesis connections, excited language, editorializing.
+    - **Paper Details from Input:**
+        - Title: Machine Learning Full NMR Chemical Shift Tensors of Silicon Oxides with Equivariant Graph Neural Networks
+        - Authors: Maxwell C. Venetos, Mingjian Wen, and Kristin A. Persson
+        - Journal: J. Phys. Chem. A 2023, 127, 2388−2398
+        - DOI: 10.1021/acs.jpca.2c07530
+        - Pages: 11 (2388-2398)
+        - References: 73
+        - Funding: NSF Grant DIBBS OAC 1640899; Presidential Frontier Faculty Program (UH); DOE/Basic Energy Sciences/Materials Sciences and Engineering Division under Contract DE-AC02-05-CH11231 (Materials Project)
+        - Stance: Research paper (methodological/ML application to NMR tensors)
+        - Dataset: 29Si NMR dataset from Sun et al. (ref 38), subset of ab initio NMR chemical shift tensors of relaxed structures. 421 unique silicate structures, 1387 unique silicon sites (874 Q4, 174 Q3, 172 Q2, 32 Q1, 97 Q0). Train/val/test split 8:1:1 stratified at structure level.
+        - Models: Symmetry-invariant GNNs (DimeNet++, LRR-SOAP), Symmetry-equivariant GNN (TFN/e3nn via MatTEN).
+        - Targets/Conventions: Explored multiple conventions (Maryland, Haeberlen, Axiality/Rhombicity, principal axes, irreps). Found equivariant target (symmetric irreps) with l1 norm loss best.
+        - Key Results:
+            - Invariant models (DimeNet++ on eigenvalues): Total MAE 6.44 ppm.
+            - Equivariant model (full tensor): Total MAE 3.05 ppm on eigenvalues (53% improvement over invariant).
+            - Equivariant model MAE on full Cartesian tensor: 1.05 ppm.
+            - Isotropic shift MAE: 2.82 ppm (equivariant) vs 5.87 ppm (LRR-SOAP state-of-the-art).
+            - Historic models: Engelhardt & Radeglia (Si-O-Si angle) MAE 3.60 ppm (Q4); Grimmer et al. (bond length diff) MAE 8.77 ppm (Q3). Equivariant GNN: Q4 δiso MAE 1.52 ppm, Q3 anisotropy MAE 0.78 ppm.
+            - Per-Qn performance (Table 4): Q4 δiso 1.52, X 0.52, Y 0.60, α 60.6, β 12.2, γ 42.4; Q3 δiso 3.28, X 0.80, Y 0.66, α 47.9, β 17.9, γ 59.2; Q2 δiso 6.95, X 1.71, Y 1.80, α 39.2, β 9.0, γ 27.4; Q1 δiso 8.58, X 0.85, Y 1.00, α 1.2, β 1.3, γ 0.7; Q0 δiso 1.46, X 1.27, Y 1.10, α 49.4, β 39.9, γ 107.
+            - Orientation errors high for spherical tensors (Td) and poorly sampled C2/C3 sites, but shape/magnitude well captured.
+        - Software: MatTEN repository, open source.
+
+2.  **Map to Thesis Context & Constraints:**
+    - Thesis focus: Geometric kernels on proteins, calibrated to DFT shielding, T2 preservation is central.
+    - This paper: ML (GNN) for 29Si NMR chemical shift tensors in silicates. Uses equivariant GNNs to preserve tensor symmetry. Compares invariant vs equivariant targets. Reports MAEs for tensor components, isotropic shift, anisotropy, orientation.
+    - Relevance to thesis: Directly addresses T2 preservation in ML/geometry-based models. Shows that enforcing equivariance captures tensor structure better than predicting independent scalars. Provides MAE benchmarks for full tensor prediction. Does not use geometric kernels or protein structures, but the methodological lesson on tensor representation (irreps vs Cartesian vs scalars) and the performance gap between invariant and equivariant models is directly relevant to the thesis's Stage 1 T2 preservation claim.
+    - Constraints check:
+        - Header: Citation, DOI, pages (11), refs (73), funding.
+        - 5 paragraphs, flowing.
+        - Dry, precise, no fabrication.
+        - Use "correlate"/"captures the signal" if comparing to DFT/ab initio. (Paper uses MAE, not r², so I'll stick to MAE as reported).
+        - Don't collapse tensor to scalar unless source does. (Paper reports MAE for full tensor and components).
+        - Length: ~350 words.
+
+3.  **Draft - Paragraph by Paragraph (Mental Refinement):**
+    *Header:* Venetos, M. C.; Wen, M.; Persson, K. A. Machine Learning Full NMR Chemical Shift Tensors of Silicon Oxides with Equivariant Graph Neural Networks. J. Phys. Chem. A 2023, 127, 2388−2398. DOI: 10.1021/acs.jpca.2c07530. 11 pages, 73 references. Supported by NSF Grant DIBBS OAC 1640899, a Presidential Frontier Faculty Program at the University of Houston, and the U.S. Department of Energy, Office of Basic Energy Sciences, Materials Sciences and Engineering Division under Contract DE-AC02-05-CH11231.
+
+    *Para 1 (Scope/Stance):* This research paper evaluates machine learning approaches for predicting full 29Si NMR chemical shift tensors in silicate materials, contrasting rotation-invariant and rotation-equivariant graph neural networks. The authors argue that treating tensor parameters as independent scalars discards structural symmetry information, necessitating equivariant architectures to preserve the rank-2 tensor nature of the NMR measurement. The work targets computational materials scientists and NMR crystallographers seeking rapid, high-fidelity tensor predictions to accelerate structural refinement.
+
+    *Para 2 (Methods):* The study uses a dataset of 1387 unique silicon sites across 421 relaxed silicate structures, sourced from ab initio VASP calculations reported by Sun et al. Data were split 8:1:1 at the structure level to prevent leakage. The authors benchmarked linear ridge regression with SOAP descriptors (LRR-SOAP), the DimeNet++ invariant GNN, and a Tensor Field Network (TFN) equivariant GNN implemented via the MatTEN package. Training targets included multiple tensor conventions (Haeberlen, Maryland, principal axes) and irreducible representations. The optimal configuration employed symmetric irreducible representations as the target with an l1 norm loss function.
+
+    *Para 3 (Findings):* The equivariant GNN predicts the full Cartesian chemical shift tensor to a mean absolute error of 1.05 ppm, capturing the signal across magnitude, anisotropy, and orientation. When diagonalized, the equivariant model yields an eigenvalue MAE of 3.05 ppm, a 53% improvement over the best invariant model (6.44 ppm). Isotropic shift prediction achieves an MAE of 2.82 ppm, outperforming the LRR-SOAP benchmark (5.87 ppm) and historic analytical models (3.60 ppm for Q4 sites, 8.77 ppm for Q3 sites). Per-Qn analysis shows the lowest isotropic error for high-symmetry Td sites (Q4: 1.52 ppm; Q0: 1.46 ppm) and higher errors for low-symmetry or underrepresented sites (Q1: 8.58 ppm; Q2: 6.95 ppm). Tensor orientation errors increase for highly spherical tensors and poorly sampled C2/C3 environments, though shape parameters remain well-correlated.
+
+    *Para 4 (Relations):* The work builds on prior ML applications to NMR, specifically the LRR-SOAP model for isotropic shifts by Chaker et al., and analytical correlations by Engelhardt and Radeglia (Si–O–Si angle) and Grimmer et al. (bond length differences). It extends geometric deep learning frameworks (Cohen & Welling; Satorras et al.) to tensorial NMR targets, drawing on tensor field network theory (Thomas et al.) and irreducible representation formalisms (Grandinetti et al.). The dataset originates from Sun et al., and benchmarking references historic NMR crystallography protocols (Brouwer et al.; Pickard et al.).
+
+    *Para 5 (Implications):* For this project, the paper demonstrates that enforcing equivariance during training preserves rank-2 tensor structure more effectively than predicting decoupled scalar parameters, aligning with the thesis requirement for T2 preservation. The reported MAE benchmarks (1.05 ppm full tensor, 2.82 ppm isotropic) provide a performance ceiling for ML-based tensor prediction on crystalline networks. The finding that shape parameters correlate reliably even when orientation or isotropic values degrade suggests that kernel calibration may prioritize tensor geometry over absolute shift values. The study does not address protein systems, hydrogen bonding, or ring-current kernels, but its treatment of irreducible representations and loss function selection for tensor targets offers a methodological reference for calibrating geometric kernels to DFT shielding values.
+
+4.  **Check against Constraints:**
+    - Header: Citation, DOI, pages (11), refs (73), funding. ✓
+    - 5 paragraphs, no titles, flowing. ✓
+    - Scope/Stance: Research paper, ML for 29Si tensors, invariant vs equivariant. ✓
+    - Methods: Dataset (1387 sites, 421 structures), split 8:1:1, models (LRR-SOAP, DimeNet++, TFN/e3nn/MatTEN), targets (irreps, l1 loss). ✓
+    - Findings: MAE 1.05 ppm full tensor, 3.05 ppm eigenvalues (53% better than 6.44), isotropic 2.82 vs 5.87 (LRR) and 3.60/8.77 (historic). Per-Qn errors listed. Orientation vs shape behavior noted. ✓
+    - Relations: Chaker et al., Engelhardt & Radeglia, Grimmer et al., Sun et al., Cohen & Welling, Satorras et al., Thomas et al., Grandinetti et al., Brouwer et al., Pickard et al. All from bibliography. ✓
+    - Implications: T2 preservation alignment, MAE benchmarks, shape vs orientation insight, no protein/ring-current claims, irreps/loss function relevance. Dry, honest. ✓
+    - Length: ~280 words body. Fits 4-6 page rule? Wait, paper is 11 pages (2388-2398). Rule says 6-12 pages → 300-450. I'll expand slightly to hit ~320-350.
+    - Check conventions: "captures the signal" used appropriately. No r² fabricated. Tensor not collapsed. Dry register. No editorializing.
+    - I will adjust paragraph lengths slightly to ensure it meets the 300-450 word target for a 6-12 page paper, while maintaining precision.
+
+    Let's count words in draft body:
+    P1: ~78
+    P2: ~98
+    P3: ~118
+    P4: ~98
+    P5: ~118
+    Total: ~510. A bit high. I'll trim slightly to ~350-380.
+    Actually, the prompt says "4-6 pages → 200-300; 6-12 pages → 300-450; 10+ page dense review → 450-500". This is 11 pages but a standard research article, not a dense review. I'll aim for ~350-400.
+
+    Refined P1: This research paper evaluates machine learning approaches for predicting full 29Si NMR chemical shift tensors in silicate materials, contrasting rotation-invariant and rotation-equivariant graph neural networks. The authors argue that treating tensor parameters as independent scalars discards structural symmetry information, necessitating equivariant architectures to preserve the rank-2 tensor nature of the NMR measurement. The work targets computational materials scientists and NMR crystallographers seeking rapid, high-fidelity tensor predictions to accelerate structural refinement. 
+    Refined P2: The study uses a dataset of 1387 unique silicon sites across 421 relaxed silicate structures, sourced from ab initio VASP calculations reported by Sun et al. Data were split 8:1:1 at the structure level to prevent leakage. The authors benchmarked linear ridge regression with SOAP descriptors, the DimeNet++ invariant GNN, and a Tensor Field Network equivariant GNN implemented via the MatTEN package. Training targets included multiple tensor conventions and irreducible representations. The optimal configuration employed symmetric irreducible representations as the target with an l1 norm loss function. 
+    Refined P3: The equivariant GNN predicts the full Cartesian chemical shift tensor to a mean absolute error of 1.05 ppm, capturing the signal across magnitude, anisotropy, and orientation. When diagonalized, the model yields an eigenvalue MAE of 3.05 ppm, a 53% improvement over the best invariant model (6.44 ppm). Isotropic shift prediction achieves an MAE of 2.82 ppm, outperforming the LRR-SOAP benchmark (5.87 ppm) and historic analytical models (3.60 ppm for Q4 sites, 8.77 ppm for Q3 sites). Per-Qn analysis shows the lowest isotropic error for high-symmetry Td sites (Q4: 1.52 ppm; Q0: 1.46 ppm) and higher errors for underrepresented sites (Q1: 8.58 ppm; Q2: 6.95 ppm). Tensor orientation errors increase for highly spherical tensors and poorly sampled C2/C3 environments, though shape parameters remain well-correlated. 
+    Refined P4: The work builds on prior ML applications to NMR, specifically the LRR-SOAP model for isotropic shifts by Chaker et al., and analytical correlations by Engelhardt and Radeglia and Grimmer et al. It extends geometric deep learning frameworks by Cohen and Welling and Satorras et al. to tensorial NMR targets, drawing on tensor field network theory by Thomas et al. and irreducible representation formalisms by Grandinetti et al. The dataset originates from Sun et al., and benchmarking references historic NMR crystallography protocols by Brouwer et al. and Pickard et al. 
+    Refined P5: For this project, the paper demonstrates that enforcing equivariance during training preserves rank-2 tensor structure more effectively than predicting decoupled scalar parameters, aligning with the thesis requirement for T2 preservation. The reported MAE benchmarks provide a performance ceiling for ML-based tensor prediction on crystalline networks. The finding that shape parameters correlate reliably even when orientation or isotropic values degrade suggests that kernel calibration may prioritize tensor geometry over absolute shift values. The study does not address protein systems or ring-current kernels, but its treatment of irreducible representations and loss function selection for tensor targets offers a methodological reference for calibrating geometric kernels to DFT shielding values. 
+    Total: ~388 words. Fits perfectly.
+    Check constraints:
+    - Header: citation, DOI, pages, refs, funding. ✓
+    - 5 paragraphs, no titles. ✓
+    - Specific numbers: 1387 sites, 421 structures, 8:1:1 split, 1.05 ppm, 3.05 ppm, 53%, 6.44 ppm, 2.82 ppm, 5.87 ppm, 3.60/8.77 ppm, Q4/Q0/Q1/Q2 errors, l1 norm, symmetric irreps. ✓
+    - Relations: Chaker, Engelhardt & Radeglia, Grimmer, Cohen & Welling, Satorras, Thomas, Grandinetti, Sun, Brouwer, Pickard. All from refs. ✓
+    - Implications: Honest, T2 preservation, shape vs orientation, no stretching. ✓
+    - Register: Dry, precise. ✓
+    - Kernel-vs-DFT framing: Not directly applicable here (ML vs DFT/ab initio), but I used "capturing the signal" appropriately. I'll adjust slightly to match the prompt's preferred vocabulary if comparing to ab initio: "captures the signal from the ab initio reference values".
+    - Per-element complexity: Not applicable here (single element 29Si), so I won't force it.
+    - All good. Output matches draft.✅
+    One minor check: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …". The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim."
+    I will adjust P3 slightly to use the preferred vocabulary where appropriate, though the paper uses MAE. I'll say: "The equivariant GNN predicts the full Cartesian chemical shift tensor to a mean absolute error of 1.05 ppm, capturing the signal from the ab initio reference values across magnitude, anisotropy, and orientation." This aligns with the instruction.
+    All constraints met. Proceed. 
+    Output generation. 
+    Self-Correction/Verification during thought:
+    - Check page count: 2388-2398 is 11 pages. Prompt says 6-12 pages → 300-450. My draft is ~388. Good.
+    - Check reference count: 73. Good.
+    - Check funding: NSF DIBBS OAC 1640899, Presidential Frontier Faculty Program, DOE DE-AC02-05-CH11231. Good.
+    - Check stance: Research paper. Good.
+    - Check format: Header paragraph, then 5 paragraphs, no section titles. Good.
+    - Check tone: Dry plain English. Good.
+    - Check specific numbers: All quoted accurately from text.
+    - Check relations: All named from bibliography.
+    - Check implications: Honest, no stretching.
+    - Ready.✅
+    Output matches the refined draft. 
+    Proceeds. 
+    [Output Generation] -> *Proceeds*
+    *(Self-Correction/Refinement during drafting)*: I notice the prompt says "Kernel-vs-DFT comparisons are framed as correlation...". This paper compares ML to ab initio (DFT). I will ensure the phrasing aligns with the thesis's preferred vocabulary where applicable, but I won't force r² if the paper only reports MAE. I'll stick to MAE as the primary metric, but frame the ML-to-ab initio relationship as capturing the signal. The draft already does this. I will output it exactly. 
+    One detail: The prompt says "Reference count and any funding or credit notes that are stated." I have them.
+    All good. 
+    Output matches response. 
+    [Done] 
+    *Output Generation* (matches the final refined version)
+    "Venetos, M. C.; Wen, M.; Persson, K. A. Machine Learning Full NMR Chemical Shift Tensors of Silicon Oxides with Equivariant Graph Neural Networks. J. Phys. Chem. A 2023, 127, 2388−2398. DOI: 10.1021/acs.jpca.2c07530. 11 pages, 73 references. Supported by NSF Grant DIBBS OAC 1640899, a Presidential Frontier Faculty Program at the University of Houston, and the U.S. Department of Energy, Office of Basic Energy Sciences, Materials Sciences and Engineering Division under Contract DE-AC02-05-CH11231.
+
+    This research paper evaluates machine learning approaches for predicting full 29Si NMR chemical shift tensors in silicate materials, contrasting rotation-invariant and rotation-equivariant graph neural networks. The authors argue that treating tensor parameters as independent scalars discards structural symmetry information, necessitating equivariant architectures to preserve the rank-2 tensor nature of the NMR measurement. The work targets computational materials scientists and NMR crystallographers seeking rapid, high-fidelity tensor predictions to accelerate structural refinement.
+
+    The study uses a dataset of 1387 unique silicon sites across 421 relaxed silicate structures, sourced from ab initio VASP calculations reported by Sun et al. Data were split 8:1:1 at the structure level to prevent leakage. The authors benchmarked linear ridge regression with SOAP descriptors, the DimeNet++ invariant GNN, and a Tensor Field Network equivariant GNN implemented via the MatTEN package. Training targets included multiple tensor conventions and irreducible representations. The optimal configuration employed symmetric irreducible representations as the target with an l1 norm loss function.
+
+    The equivariant GNN predicts the full Cartesian chemical shift tensor to a mean absolute error of 1.05 ppm, capturing the signal from the ab initio reference values across magnitude, anisotropy, and orientation. When diagonalized, the model yields an eigenvalue MAE of 3.05 ppm, a 53% improvement over the best invariant model (6.44 ppm). Isotropic shift prediction achieves an MAE of 2.82 ppm, outperforming the LRR-SOAP benchmark (5.87 ppm) and historic analytical models (3.60 ppm for Q4 sites, 8.77 ppm for Q3 sites). Per-Qn analysis shows the lowest isotropic error for high-symmetry Td sites (Q4: 1.52 ppm; Q0: 1.46 ppm) and higher errors for underrepresented sites (Q1: 8.58 ppm; Q2: 6.95 ppm). Tensor orientation errors increase for highly spherical tensors and poorly sampled C2/C3 environments, though shape parameters remain well-correlated.
+
+    The work builds on prior ML applications to NMR, specifically the LRR-SOAP model for isotropic shifts by Chaker et al., and analytical correlations by Engelhardt and Radeglia and Grimmer et al. It extends geometric deep learning frameworks by Cohen and Welling and Satorras et al. to tensorial NMR targets, drawing on tensor field network theory by Thomas et al. and irreducible representation formalisms by Grandinetti et al. The dataset originates from Sun et al., and benchmarking references historic NMR crystallography protocols by Brouwer et al. and Pickard et al.
+
+    For this project, the paper demonstrates that enforcing equivariance during training preserves rank-2 tensor structure more effectively than predicting decoupled scalar parameters, aligning with the thesis requirement for T2 preservation. The reported MAE benchmarks provide a performance ceiling for ML-based tensor prediction on crystalline networks. The finding that shape parameters correlate reliably even when orientation or isotropic values degrade suggests that kernel calibration may prioritize tensor geometry over absolute shift values. The study does not address protein systems or ring-current kernels, but its treatment of irreducible representations and loss function selection for tensor targets offers a methodological reference for calibrating geometric kernels to DFT shielding values."
+    Word count: ~398. Fits constraints. All details verified. Output matches. 
+    Proceeds. 
+    [Final Check of the Prompt]: "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." -> Addressed in implications. "Kernel-vs-DFT comparisons are framed as correlation..." -> Addressed. "Per-element complexity..." -> Not applicable here, correctly omitted. "Avoid fabricated methodology..." -> Checked. "Dry plain English..." -> Checked. 
+    All good.✅
+    Output matches response. 
+    [Done]
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy in science, specifically checking:
+        - Statistics (numbers, dataset sizes, MAEs, page/reference counts, etc.)
+        - Methodology (procedures, tools, datasets, fitting, error estimation)
+        - Names (authors, years, works, chemical species, etc.)
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust for scientific accuracy. Reply with final summary only.
+    - **Context:** The summary is for an NMR shielding-tensor PhD thesis focusing on geometric kernels, T2 preservation, and calibration against DFT. The summary must be precise, dry, and faithful to the source.
+
+2.  **Cross-Check Draft vs. Paper Text:**
+
+    *Header Paragraph:*
+    - Draft: Venetos, M. C.; Wen, M.; Persson, K. A. Machine Learning Full NMR Chemical Shift Tensors of Silicon Oxides with Equivariant Graph Neural Networks. J. Phys. Chem. A 2023, 127, 2388−2398. DOI: 10.1021/acs.jpca.2c07530. 11 pages, 73 references. Supported by NSF Grant DIBBS OAC 1640899, a Presidential Frontier Faculty Program at the University of Houston, and the U.S. Department of Energy, Office of Basic Energy Sciences, Materials Sciences and Engineering Division under Contract DE-AC02-05-CH11231.
+    - Check:
+        - Authors: Venetos, M. C.; Wen, M.; Persson, K. A. (Matches)
+        - Title: Machine Learning Full NMR Chemical Shift Tensors of Silicon Oxides with Equivariant Graph Neural Networks (Matches)
+        - Journal: J. Phys. Chem. A 2023, 127, 2388−2398 (Matches)
+        - DOI: 10.1021/acs.jpca.2c07530 (Matches)
+        - Pages: 2388-2398 -> 11 pages. (Matches)
+        - References: Count in text -> (1) to (73). Matches 73.
+        - Funding: NSF Grant DIBBS OAC 1640899. Presidential Frontier Faculty Program at Univ of Houston. DOE Office of Basic Energy Sciences, Materials Sciences and Engineering Division, Contract DE-AC02-05-CH11231. (Matches)
+    - *Status:* Header is accurate.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: This research paper evaluates machine learning approaches for predicting full 29Si NMR chemical shift tensors in silicate materials, contrasting rotation-invariant and rotation-equivariant graph neural networks. The authors argue that treating tensor parameters as independent scalars discards structural symmetry information, necessitating equivariant architectures to preserve the rank-2 tensor nature of the NMR measurement. The work targets computational materials scientists and NMR crystallographers seeking rapid, high-fidelity tensor predictions to accelerate structural refinement.
+    - Check: Matches abstract and introduction. Correct stance. No specific numbers to verify here. Accurate.
+
+    *Paragraph 2: Methods/Central Results*
+    - Draft: The study uses a dataset of 1387 unique silicon sites across 421 relaxed silicate structures, sourced from ab initio VASP calculations reported by Sun et al. Data were split 8:1:1 at the structure level to prevent leakage. The authors benchmarked linear ridge regression with SOAP descriptors, the DimeNet++ invariant GNN, and a Tensor Field Network equivariant GNN implemented via the MatTEN package. Training targets included multiple tensor conventions and irreducible representations. The optimal configuration employed symmetric irreducible representations as the target with an l1 norm loss function.
+    - Check:
+        - Dataset: 421 unique silicate structures, 1387 unique silicon sites. (Matches text: "In total there are 421 unique silicate structures... 1387 unique silicon sites.")
+        - Source: Sun et al. (Matches: "subset of ab initio NMR chemical shift tensors of relaxed structures calculated by Sun et al.38")
+        - VASP: Text says "absolute chemical shift tensor, which is the quantity calculated by VASP42". (Matches)
+        - Split: 8:1:1, stratified at structure level. (Matches: "train, validation, and test split of 8:1:1... stratification was done at the structure level rather than the site level.")
+        - Benchmarks: LRR-SOAP, DimeNet++, TFN equivariant GNN via MatTEN. (Matches)
+        - Targets/Conventions: Multiple conventions, irreps. (Matches)
+        - Optimal config: Symmetric irreps target, l1 norm loss. (Matches: "optimal space was chosen to be a symmetric irreps tensor using an l1 norm loss function")
+    - *Status:* Accurate.
+
+    *Paragraph 3: Findings*
+    - Draft: The equivariant GNN predicts the full Cartesian chemical shift tensor to a mean absolute error of 1.05 ppm, capturing the signal from the ab initio reference values across magnitude, anisotropy, and orientation. When diagonalized, the model yields an eigenvalue MAE of 3.05 ppm, a 53% improvement over the best invariant model (6.44 ppm). Isotropic shift prediction achieves an MAE of 2.82 ppm, outperforming the LRR-SOAP benchmark (5.87 ppm) and historic analytical models (3.60 ppm for Q4 sites, 8.77 ppm for Q3 sites). Per-Qn analysis shows the lowest isotropic error for high-symmetry Td sites (Q4: 1.52 ppm; Q0: 1.46 ppm) and higher errors for underrepresented sites (Q1: 8.58 ppm; Q2: 6.95 ppm). Tensor orientation errors increase for highly spherical tensors and poorly sampled C2/C3 environments, though shape parameters remain well-correlated.
+    - Check:
+        - Full tensor MAE: 1.05 ppm. (Matches: "MAE of 1.05 ppm over the entire chemical shift Cartesian tensor.")
+        - Eigenvalue MAE: 3.05 ppm. (Matches Table 2: "total 3.05")
+        - 53% improvement over invariant (6.44 ppm). (Matches: "53% (3.05 ppm vs 6.44 ppm) decrease")
+        - Isotropic MAE: 2.82 ppm. (Matches Table 4 total: 2.82)
+        - LRR-SOAP isotropic MAE: 5.87 ppm. (Matches: "obtained an error of 5.87 ppm")
+        - Historic models: Q4 3.60 ppm, Q3 8.77 ppm. (Matches: "linear expression with an MAE of 3.60 ppm over the Q4 subset... MAE of 8.77 ppm over the Q3 data subset.")
+        - Per-Qn isotropic: Q4: 1.52, Q0: 1.46, Q1: 8.58, Q2: 6.95. (Matches Table 4)
+        - Orientation errors: spherical tensors, poorly sampled C2/C3. (Matches text discussion)
+    - *Status:* Accurate.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: The work builds on prior ML applications to NMR, specifically the LRR-SOAP model for isotropic shifts by Chaker et al., and analytical correlations by Engelhardt and Radeglia and Grimmer et al. It extends geometric deep learning frameworks by Cohen and Welling and Satorras et al. to tensorial NMR targets, drawing on tensor field network theory by Thomas et al. and irreducible representation formalisms by Grandinetti et al. The dataset originates from Sun et al., and benchmarking references historic NMR crystallography protocols by Brouwer et al. and Pickard et al.
+    - Check:
+        - Chaker et al. (LRR-SOAP): Cited as ref 35. Matches.
+        - Engelhardt and Radeglia: Cited as ref 63. Matches.
+        - Grimmer et al.: Cited as ref 64, 65. Matches.
+        - Cohen and Welling: Ref 39. Matches.
+        - Satorras et al.: Ref 40. Matches.
+        - Thomas et al. (TFN): Ref 41. Matches.
+        - Grandinetti et al.: Ref 48, 49. Matches.
+        - Sun et al.: Ref 38. Matches.
+        - Brouwer et al., Pickard et al.: Cited in intro for NMR crystallography. Matches.
+    - *Status:* Accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: For this project, the paper demonstrates that enforcing equivariance during training preserves rank-2 tensor structure more effectively than predicting decoupled scalar parameters, aligning with the thesis requirement for T2 preservation. The reported MAE benchmarks provide a performance ceiling for ML-based tensor prediction on crystalline networks. The finding that shape parameters correlate reliably even when orientation or isotropic values degrade suggests that kernel calibration may prioritize tensor geometry over absolute shift values. The study does not address protein systems or ring-current kernels, but its treatment of irreducible representations and loss function selection for tensor targets offers a methodological reference for calibrating geometric kernels to DFT shielding values.
+    - Check:
+        - Aligns with T2 preservation thesis goal.
+        - Notes crystalline vs protein difference.
+        - Mentions irreps and loss function as methodological reference.
+        - Does not overclaim. Matches project conventions.
+    - *Status:* Accurate.
+
+3.  **Final Verification against Constraints:**
+    - Format: Header paragraph + 5 paragraphs, no section titles.
+    - Tone: Dry, plain English, no evaluative language.
+    - Statistics: All numbers verified against text/tables.
+    - Methodology: Accurately attributed.
+    - Names: All verified.
+    - Project conventions: Kernel-vs-DFT framed as correlation/capturing signal; T2 preservation noted; per-element complexity not forced (paper is about Si silicates, not proteins, so correctly noted as not addressing proteins/ring-currents).
+    - Length: ~280 words. Fits 4-6 page paper range (paper is 11 pages, but dense with tables/refs, so 280 is reasonable. I'll check word count: ~260. Fits well.)
+    - One minor check: The prompt says "10+ page dense review or Perspective → 450–500". This is a research paper (11 pages), but not a dense review. 280 is fine. I will ensure it's tight.
+    - Check specific numbers again:
+        - "1387 unique silicon sites across 421 relaxed silicate structures" -> Text: "421 unique silicate structures, consisting of 1387 unique silicon sites." Correct.
+        - "split 8:1:1 at the structure level" -> Text: "train, validation, and test split of 8:1:1... stratification was done at the structure level". Correct.
+        - "symmetric irreducible representations as the target with an l1 norm loss function" -> Text: "optimal space was chosen to be a symmetric irreps tensor using an l1 norm loss function". Correct.
+        - MAEs: 1.05, 3.05, 6.44, 2.82, 5.87, 3.60, 8.77, 1.52, 1.46, 8.58, 6.95. All match tables/text exactly.
+        - References count: 73. Matches.
+        - DOI: 10.1021/acs.jpca.2c07530. Matches.
+        - Funding: NSF DIBBS OAC 1640899, Presidential Frontier Faculty Program, DOE DE-AC02-05-CH11231. Matches.
+    - Everything checks out. I will output the draft exactly as verified, with no stylistic changes, only ensuring strict compliance. I'll do a quick read to ensure tone matches the prompt's requirements ("dry plain English", "no excited language", "kernel-vs-DFT framed as correlation"). The draft already uses "capturing the signal" and "correlate reliably". I will adjust slightly if needed to strictly match the prompt's vocabulary preference, but it's already aligned. I'll output it. 
+    - One detail: The prompt says "The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim." and "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I used "capturing the signal" and "correlate reliably". I'll adjust to strictly use the preferred vocabulary where applicable, though the draft is already fine. I'll keep it as is, it's accurate.
+    - Final check of the prompt: "If the draft is already accurate, return it unchanged." I will return it exactly as drafted, since all checks passed. I will just ensure formatting matches exactly.
+    - Proceed. 
+    - Output matches the draft.✅
+    - Self-Correction/Refinement during thought: I notice the draft says "11 pages, 73 references." The paper text shows pages 2388-2398, which is 11 pages. References go up to 73. Correct.
+    - I will output the draft exactly. No changes needed. All numbers, methods, and names are verified against the provided chunks. The tone and structure match the prompt. I will produce the final summary. 
+    - One minor thing: The prompt says "Rank-2 tensor (T2) preservation is the central novelty". The draft mentions "preserves rank-2 tensor structure more effectively than predicting decoupled scalar parameters, aligning with the thesis requirement for T2 preservation." This is accurate.
+    - All good. Output matches draft. 
+    - Proceeds. 
+    - [Output Generation] -> *Self-Correction/Verification during generation prep*: I'll quickly scan the draft to ensure it strictly follows the "five paragraphs, no section titles" rule and the header format. It does. I will output it now. 
+    - Final Text Generation matches the draft exactly.✅
+    - Output matches response. 
+    - [Done] 
+    - *Self-Correction/Note during thought*: Wait, let me double check the exact wording for the loss function. Text says: "optimal space was chosen to be a symmetric irreps tensor using an l1 norm loss function". Draft says: "symmetric irreducible representations as the target with an l1 norm loss function." Matches.
+    - Check dataset split: "train, validation, and test split of 8:1:1 was used... stratification was done at the structure level rather than the site level." Draft says: "Data were split 8:1:1 at the structure level to prevent leakage." Matches.
+    - Check MAE for eigenvalues: Table 2 shows "total 3.05" for equivariant/equivariant. Draft says "eigenvalue MAE of 3.05 ppm". Matches.
+    - Check historic models: Text says "linear expression with an MAE of 3.60 ppm over the Q4 subset... MAE of 8.77 ppm over the Q3 data subset." Draft says "3.60 ppm for Q4 sites, 8.77 ppm for Q3 sites". Matches.
+    - All numbers verified. Output is ready. 
+    - Proceeds. 
+    - [Output Generation] (matches the draft exactly)
+    - *Output Generation* (Proceeds)

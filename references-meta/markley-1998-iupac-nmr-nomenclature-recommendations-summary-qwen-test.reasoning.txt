@@ -1,0 +1,175 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. Outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header paragraph: Citation (authors, year, title, journal, volume, pages), DOI (if present), page count, reference count, funding/credit notes.
+        - Five paragraphs, no section titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, absences)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (honest, wide, no stretching)
+        - Length: 4-6 pages → 200-300 words; 6-12 pages → 300-450; 10+ dense → 450-500. (This paper is 23 pages, so ~450-500 words body)
+        - Conventions: Kernel-vs-DFT correlations framed as r²/signal capture (not relevant here, but keep in mind). Per-element complexity not relevant here. Avoid excited language. Define terms inline briefly. No editorializing.
+    - **Paper Details:**
+        - Title: Recommendations for the presentation of NMR structures of proteins and nucleic acids
+        - Authors: John L. Markley, Ad Bax, Yoji Arata, C. W. Hilbers, Robert Kapteine, Brian D. Sykes, Peter E. Wright, Kurt Wüthrich (convenor)
+        - Journal: Journal of Biomolecular NMR, 12: 1–23, 1998
+        - Publisher: Kluwer Academic Publishers
+        - Funding/Credit: IUPAC-IUBMB-IUPAB Inter-Union Task Group, financial support from ICSU and CODATA. Reprinted from Pure and Applied Chemistry (1998) 70, 117–142 with IUPAC permission.
+        - References: 71 references listed.
+        - Content: IUPAC-IUBMB-IUPAB recommendations for reporting NMR structures of proteins/nucleic acids. Covers nomenclature (atom identifiers, pseudoatoms, torsion angles), data acquisition/processing/referencing (DSS standard, relative frequencies), resonance assignments, conformational constraints, structure calculation/refinement, reporting/validation, data bank deposition.
+        - Stance: Standardization/recommendations document (not a research paper with empirical results). It's a consensus guideline.
+
+2.  **Extract Key Information for Summary:**
+    - *Header:* Markley, J. L., Bax, A., Arata, Y., Hilbers, C. W., Kaptein, R., Sykes, B. D., Wright, P. E., & Wüthrich, K. (1998). Recommendations for the presentation of NMR structures of proteins and nucleic acids. Journal of Biomolecular NMR, 12, 1–23. 23 pages. 71 references. Funded by ICSU and CODATA; reprinted with IUPAC permission from Pure Appl. Chem. 70, 117–142 (1998).
+    - *Paragraph 1 (Scope/Stance):* Consensus guidelines from an IUPAC-IUBMB-IUPAB Inter-Union Task Group. Aims to standardize reporting of NMR-derived protein and nucleic acid structures in journals and databases. Addresses nomenclature, data acquisition, assignment protocols, constraint collection, structure calculation, validation, and deposition.
+    - *Paragraph 2 (Methods/Principles):* Establishes standardized atom identifiers for proteins and nucleic acids, including notation for prochiral centers and assignment ambiguities (slash rule). Defines pseudoatom conventions (Q and M prefixes) for unassigned proton groups in NOE constraints. Specifies torsion angle definitions (φ, ψ, ω, χ for proteins; α, β, γ, δ, ε, ζ, χ, ν for nucleic acids) and conformational regions. Recommends indirect chemical shift referencing to internal DSS at 0 ppm, with fixed relative frequency (Δ) ratios for 2H, 13C, 15N, and 31P. Outlines iterative constraint collection and structure calculation/refinement protocols, including penalty functions and validation metrics (RMSD, Ramachandran plots, stereochemical checks).
+    - *Paragraph 3 (Findings/Observations):* Provides specific numerical standards: Δ values (1H=100.000000, 2H=15.3506088, 13C=25.1449530, 15N=10.1329118, 31P=40.4808636). Specifies diagnostic J-coupling ranges for sugar puckering (e.g., 3JH1'H2' ≈ 1 Hz for N-type, ≈ 7.9 Hz for S-type in ribose; ≈ 1.8 Hz and ≈ 10 Hz in deoxyribose). Defines NOE constraint classification (intraresidue, sequential, medium-range, long-range, intermolecular) and hydrogen bond distance standards (±0.2 Å from Saenger). Reports typical proline ring pucker torsion angle values (e.g., trans DOWN: χ1=18°, χ2=−29°, χ3=17°, χ4=−4°). Notes that validation criteria for NMR structures were still developing, relying on database-derived stereochemical checks rather than direct ab initio validation.
+    - *Paragraph 4 (Relations to Literature):* Builds on earlier IUPAC-IUB recommendations for biochemical nomenclature (refs 5, 6, 7, 8), the 1969 tentative rules for peptide atom naming (ref 20), and the 1983 IUPAC-IUB recommendations for polypeptides (ref 21). References foundational databases (PDB, ref 1; BMRB, ref 2; NDB, ref 3) and key methodological works on pseudoatoms (Wüthrich et al., ref 30), Karplus relationships (ref 50), structure validation (MacArthur & Thornton, ref 55; Laskowski et al., ref 61), and chemical shift referencing (Wishart et al., ref 42). Points toward future data dictionary development and mmCIF/STAR format compatibility for NMR data exchange.
+    - *Paragraph 5 (Implications for our work):* The paper does not address shielding tensors, geometric kernels, or DFT calibration. It establishes the structural and nomenclatural framework required to unambiguously define atom positions, pseudoatoms, and conformational constraints in deposited PDB/BMRB structures. Our kernel construction depends on precise atom identifiers and torsion angle definitions to map geometric features to tensor components. The standardized pseudoatom notation and constraint reporting protocols ensure that the input structures used for Biot-Savart and Haigh-Mallion calculations are consistently annotated. The indirect referencing standards and validation metrics provide context for interpreting chemical shift data, though our calibration relies on DFT-derived shielding rather than experimental shift scales. The recommendations serve as a structural reporting baseline rather than a direct methodological ancestor.
+
+3.  **Check Against Constraints:**
+    - *Header:* Citation complete? Yes. DOI? Not in text, so omit. Page count: 23. Ref count: 71. Funding/credit: ICSU/CODATA, IUPAC reprint.
+    - *Five paragraphs, no titles, flowing:* Yes.
+    - *Content matches paper:* Yes, accurately reflects the nomenclature, standards, and guidelines nature.
+    - *Numbers/Specifics:* Δ values, J-coupling ranges, proline pucker values, NOE classifications, H-bond error estimates. All from text.
+    - *Relations:* Names specific refs/authors from bibliography (Wüthrich, Wishart, MacArthur & Thornton, Laskowski, Saenger, etc.).
+    - *Implications:* Honest, no stretching. Notes it's a reporting standard, not a kernel/shielding paper. Connects atom identifiers/pseudoatoms to structure input for kernels. Notes DFT calibration vs experimental shift scales.
+    - *Length:* ~460 words. Fits the 450-500 range for a 23-page document.
+    - *Tone:* Dry, precise, no evaluative language. Defines terms inline briefly (e.g., pseudoatoms, Δ values).
+    - *Conventions:* No kernel-DFT correlation framing needed here, but kept in mind. No per-element complexity collapse. Avoids fabrication.
+
+    One minor check: The prompt says "DOI when present in the text." The text doesn't have a DOI, so I'll omit it. I'll make sure the header matches exactly.
+    I will carefully count words and ensure the flow matches the requested structure.
+    Let's draft it carefully. 
+    Self-Correction/Refinement during thought:
+    - Check paragraph 2: "Methods or central results (research) / central theorems or organising principles (review)." This is a recommendations paper, so I'll frame it around its organizing principles and standardization protocols.
+    - Check paragraph 3: "Findings — magnitudes, what was observed, what was not." Since it's a guidelines paper, "findings" are the specific numerical standards and diagnostic thresholds it establishes. I'll list them precisely.
+    - Check paragraph 5: Must be honest about implications. It's a nomenclature/standardization paper. It doesn't compute shielding or kernels. It provides the structural reporting framework that ensures atom labels and constraint definitions are consistent across databases, which is necessary for reproducible kernel construction. I'll state this clearly without overstating.
+    - Word count check: I'll aim for ~450-480 words in the body.
+    - All constraints met. Proceed. 
+    Draft generation matches the refined thought.✅
+    Output matches the response. 
+    Structure:
+    Header paragraph
+    Para 1: Scope/stance
+    Para 2: Organizing principles/standards
+    Para 3: Numerical diagnostics & thresholds
+    Para 4: Literature relations
+    Para 5: Implications for thesis
+    All aligned.✅
+    Output generation. 
+    [Output Generation] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - The user wants me to carefully re-read my draft summary against the provided paper text chunks.
+    - I need to check three specific areas: Statistics, Methodology, and Names.
+    - I must verify every number, method, and name mentioned in the draft against the source text.
+    - If anything is wrong or misattributed, I need to correct it.
+    - If it's accurate, I return it unchanged.
+    - The output must be the final summary only, in the specified format (header + 5 paragraphs).
+    - I need to maintain the dry, precise register and avoid fabrication.
+
+2.  **Deconstruct the Draft Summary & Cross-Check with Source Text:**
+
+    *Header Paragraph:*
+    - Draft: Markley, J. L., Bax, A., Arata, Y., Hilbers, C. W., Kaptein, R., Sykes, B. D., Wright, P. E., & Wüthrich, K. (1998). Recommendations for the presentation of NMR structures of proteins and nucleic acids. Journal of Biomolecular NMR, 12, 1–23. 23 pages. 71 references. Funded by ICSU and CODATA; reprinted with IUPAC permission from Pure and Applied Chemistry 70, 117–142 (1998).
+    - Check: Authors match exactly. Year 1998. Journal: Journal of Biomolecular NMR, 12: 1–23, 1998. Page count: 23. Reference count: 71 (matches "References and notes" ending at 71). Funding: "financial support from ICSU and CODATA" (Intro). Reprint note: "Acknowledgement: We are debted to the International Union of Pure and Applied Chemistry for permission to reprint these Recommendations that were previously published in Pure and Applied Chemistry (1998) 70, 117–142." All accurate.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: This document is a consensus standardization guideline produced by an IUPAC-IUBMB-IUPAB Inter-Union Task Group. It establishes reporting conventions for NMR-derived three-dimensional structures of proteins and nucleic acids, targeting journal authors, database curators, and structural biologists. The scope covers atom nomenclature, resonance assignment protocols, conformational constraint collection, structure calculation and refinement, validation metrics, and public data deposition. It does not present new experimental measurements or computational methods; rather, it codifies community practices to ensure reproducibility and machine-readable exchange of structural data.
+    - Check: Matches the Abstract and Introduction. Stance is correctly identified as a recommendation/standardization document, not a research paper. No fabricated methods. Accurate.
+
+    *Paragraph 2: Methods/Organizing Principles*
+    - Draft: The organizing principles centre on unambiguous atom identification, consistent pseudoatom notation, and standardized torsion angle definitions. For proteins, the 1969 IUPAC-IUB main-chain precedence rule is adopted, with Greek letter designators and slash notation for assignment ambiguities. Pseudoatoms representing unassigned proton groups are designated with Q (general groups) and M (methyl groups) prefixes. Torsion angles are defined by highest-precedence atom pairs spanning rotatable bonds, with explicit conventions for protein backbone (φ, ψ, ω), side chains (χ), and nucleic acid backbones (α through ζ), glycosidic bonds (χ), and sugar puckers (ν0–ν4). Chemical shift referencing is standardized to internal DSS at 0 ppm, with fixed relative frequency (Δ) ratios for indirect referencing of 2H, 13C, 15N, and 31P. Structure reporting requires ensemble statistics, constraint violation summaries, and validation against database-derived stereochemical checks.
+    - Check:
+      - 1969 IUPAC-IUB main-chain precedence rule: Section 2.1.1 confirms this.
+      - Greek letters & slash notation: Section 2.1.2 confirms.
+      - Pseudoatoms Q & M: Section 3.1 & Table 1 confirm.
+      - Torsion angles: Sections 4.1 & 4.2 confirm definitions.
+      - DSS referencing: Section 5.3 confirms internal DSS at 0 ppm.
+      - Δ ratios: Section 5.3.2 & Table 3 confirm.
+      - Validation: Section 9.4 mentions database-derived checks (refs 55-61).
+      - All accurate. No fabrication.
+
+    *Paragraph 3: Findings/Numbers*
+    - Draft: The recommendations specify diagnostic numerical thresholds and calibration constants. The Δ values are fixed at 100.000000 (1H), 15.3506088 (2H), 25.1449530 (13C), 10.1329118 (15N), and 40.4808636 (31P). Diagnostic J-coupling ranges for sugar pucker identification are given as 3JH1'H2' ≈ 1 Hz (N-type, P = 0°–18°) and ≈ 7.9 Hz (S-type, P = 144°–162°) in ribose, and ≈ 1.8 Hz and ≈ 10 Hz in deoxyribose. Proline ring pucker torsion angles are tabulated for trans/cis and UP/DOWN conformations (e.g., trans DOWN: χ1 = 18°, χ2 = −29°, χ3 = 17°, χ4 = −4°). Hydrogen bond distance constraints are standardised to ±0.2 Å from crystallographic references. NOE constraints are classified by sequence separation (intraresidue, sequential, medium-range |i−j| < 5, long-range, intermolecular). The paper notes that direct ab initio validation of NMR structures remains unavailable, relying instead on Ramachandran analysis, contact maps, and software suites such as PROCHECK-NMR.
+    - Check:
+      - Δ values: Table 3 matches exactly.
+      - J-coupling ranges: Section 7.2.1 says "3 JH10 H20 ≈ 1 Hz is diagnostic for the N-puckered conformation (P = 0◦ to 18◦ ), and 3 J 0 0 ≈ 7.9 Hz is diagnostic for the S-puckered conformation (P = 144◦ to 162◦ )." (Note: typo in OCR "3 J 0 0" is clearly 3JH1'H2'). For deoxyribose: "3 JH10 H20 ≈ 1.8 Hz ... and 3 JH10 H20 ≈ 10 Hz". Matches.
+      - Proline pucker: Figure 4 caption says "trans DOWN, 18, −29, 17, −4". Matches.
+      - H-bond constraints: Section 8.1.4 says "error estimates of ± 0.2 Å (0.02 nm)". Matches.
+      - NOE classification: Section 8.1.1/8.2 lists intraresidue, sequential, medium-range (|i-j|<5), long-range, intermolecular. Matches.
+      - Validation: Section 9.4 mentions Ramachandran plots, contact analysis, and PROCHECK-NMR (ref 61). Matches.
+      - All numbers and claims are directly from the text.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: The document builds on earlier IUPAC-IUB nomenclature recommendations (refs 5–8), the 1969 tentative peptide rules (ref 20), and the 1983 polypeptide guidelines (ref 21). It references foundational database infrastructure (PDB, ref 1; BMRB, ref 2; NDB, ref 3), pseudoatom formalisms (Wüthrich et al., ref 30), Karplus-based J-coupling analysis (ref 50), and chemical shift referencing protocols (Wishart et al., ref 42). It points toward future data dictionary development, mmCIF/STAR format compatibility, and ASN.1 exchange standards, citing Ulrich & Markley (ref 71) and international committee efforts for NMR data archiving.
+    - Check:
+      - Refs 5-8: Intro mentions them.
+      - Ref 20: 1969 recommendations.
+      - Ref 21: 1983 recommendations.
+      - Refs 1, 2, 3: PDB, BMRB, NDB.
+      - Ref 30: Wüthrich, Billeter, Braun (1983) pseudoatoms.
+      - Ref 50: Eberstadt et al. (1995) J-couplings.
+      - Ref 42: Wishart et al. (1995) referencing.
+      - Ref 71: Ulrich & Markley (1994) data dictionary.
+      - All accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: For this thesis, the paper provides the structural reporting baseline required to map geometric features to tensor components without ambiguity. The standardized atom identifiers, pseudoatom conventions, and torsion angle definitions ensure that deposited PDB/BMRB structures can be parsed consistently for kernel construction. The constraint classification and validation metrics contextualise how input structures are annotated and quality-controlled, though our calibration relies on DFT-derived shielding rather than experimental shift scales. The recommendations do not address shielding tensors, ring-current models, or calibration procedures; they serve as a nomenclatural and archival framework that enables reproducible geometric kernel extraction from publicly available protein structures.
+    - Check: This is an honest, non-stretching implication paragraph. It correctly notes what the paper does and doesn't do. It aligns with the thesis's focus on geometric kernels and DFT calibration. No fabricated connections.
+
+3.  **Final Verification against Constraints:**
+    - Format: Header paragraph + 5 paragraphs, no section titles.
+    - Content: Accurate numbers, methods, names. No fabrication. Dry register.
+    - Check specific numbers again:
+      - Δ values: 100.000000, 15.3506088, 25.1449530, 10.1329118, 40.4808636. (Table 3 matches exactly)
+      - J-couplings: 1 Hz, 7.9 Hz, 1.8 Hz, 10 Hz. (Section 7.2.1 matches)
+      - P = 0-18°, 144-162°. (Matches)
+      - Proline: 18, -29, 17, -4. (Figure 4 caption matches)
+      - H-bond: ±0.2 Å. (Section 8.1.4 matches)
+      - NOE ranges: |i-j| < 5. (Section 8.2 matches)
+      - Page/Ref count: 23 pages, 71 refs. (Matches)
+    - Methodology: Correctly identified as a recommendations/standards document, not a research paper. No DFT, basis sets, or force fields are attributed to it (only mentions database-derived validation and standard penalty functions conceptually).
+    - Names: All authors, references, and chemical terms match the text.
+    - The draft is already highly accurate. I will return it unchanged as requested, since the prompt says "If the draft is already accurate, return it unchanged."
+
+    Wait, let me double-check the exact wording of the prompt: "If the draft is already accurate, return it unchanged. If something needs correction, return a revised summary in the same header-plus-five-paragraphs format, with the corrections applied. Do not rewrite for style — only adjust where the science requires it. Reply with the final summary only."
+
+    I will carefully verify one minor point: The draft says "3JH1'H2' ≈ 1 Hz". The text says "3 JH10 H20 ≈ 1 Hz". The OCR has "10" and "20" which are clearly 1' and 2'. I'll adjust the notation to match standard chemical notation (1', 2') or keep it as 1H, 2H if needed, but the draft's "1'H2'" is fine. I'll stick to the draft's phrasing as it's accurate.
+    Another check: "medium-range |i−j| < 5". The text says "medium-range NOEs (|i − j | < 5)". Matches.
+    "Proline ring pucker torsion angles are tabulated for trans/cis and UP/DOWN conformations (e.g., trans DOWN: χ1 = 18°, χ2 = −29°, χ3 = 17°, χ4 = −4°)." Matches Figure 4 caption exactly.
+    All good. I will output the draft exactly as is.
+    One minor thing: The prompt says "Reply with the final summary only." I will ensure no extra text is included.
+    I will produce the exact draft. All checks passed.✅
+    Proceed. 
+    Output matches the draft.✅
+    Self-Correction/Refinement during thought: 
+    Let me verify the Δ values precision. Table 3 says:
+    1H: 100.000000
+    2H: 15.3506088
+    13C: 25.1449530
+    15N: 10.1329118
+    31P: 40.4808636
+    Matches exactly.
+    Page count: 23. Reference count: 71. Matches.
+    The draft is solid. I will output it. 
+    One detail: The prompt says "Do not rewrite for style — only adjust where the science requires it." Since no science requires adjustment, I will output the draft verbatim.
+    Ready. 
+    Output generation. 
+    [Output matches the draft exactly] 
+    *Self-Correction/Verification during generation prep*: 
+    Wait, let's look at the exact wording in the text for the J-coupling: "3 JH10 H20 ≈ 1 Hz" and "3 J 0 0 ≈ 7.9 Hz". The OCR is messy. I'll write it as ³J_H1'H2' ≈ 1 Hz and ³J_H1'H2' ≈ 7.9 Hz to be precise, but the draft's "3JH1'H2'" is fine. I'll keep it as is.
+    All numbers verified. No changes needed. Output matches draft.✅
+    Proceeds. 
+    [Output Generation] -> *Proceeds*

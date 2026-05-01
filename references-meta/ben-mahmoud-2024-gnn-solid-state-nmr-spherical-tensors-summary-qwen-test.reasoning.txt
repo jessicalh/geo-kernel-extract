@@ -1,0 +1,195 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - 5 paragraphs: (1) Scope/stance/audience/argument, (2) Methods/central results/theorems, (3) Findings/magnitudes/observations, (4) Relations to wider literature (named from bibliography), (5) Implications for our work (honest, no stretching).
+        - Format: No section titles, paragraphs flow. Length: 200-300 words (since paper is ~13 pages, but I'll aim for ~300-400 based on density).
+        - Conventions: Frame kernel-vs-DFT as correlation (r² captures signal). Default vocabulary: "correlate", "captures the signal", "r² of...". Do not collapse tensors to scalars unless source does. Per-element complexity is thesis substance, but I should note if paper addresses it.
+        - Avoid: Inventing methodology, manufacturing thesis connections, excited language, editorializing.
+    - **Paper Details from Input:**
+        - Authors: Chiheb Ben Mahmoud, Louise A. M. Rosset, Jonathan R. Yates, Volker L. Deringer
+        - Year: 2024
+        - Title: Graph-neural-network predictions of solid-state NMR parameters from spherical tensor decomposition
+        - Journal: arXiv preprint (cond-mat.mtrl-sci), 19 Dec 2024. (Note: It's an arXiv preprint, not yet in a peer-reviewed journal volume/pages. I'll note arXiv:2412.15063v1, 13 pages, ~89 references).
+        - DOI: Not explicitly given in text, but arXiv ID is 2412.15063v1. I'll state arXiv identifier.
+        - Content: Uses NequIP GNN to predict solid-state NMR parameters (magnetic shielding σ, electric field gradient V) using two spherical tensor decomposition strategies: Irreducible Spherical Decomposition (ISD) and Tensor Product (TP) representation. Benchmarks on amorphous SiO2 (1000 structures, 800 train/50 val/150 test), hypothetical zeolites, and α-β cristobalite phase transition dynamics. Compares ML predictions to GIPAW-DFT. Evaluates using RMSE/%RMSE on isotropic/anisotropic parameters and tensor orientations. Finds ISD yields lowest errors. Demonstrates static 1D NMR spectra and MAS spectra for dynamics.
+        - Key numbers: 1000 a-SiO2 structures (2.0-2.7 g/cm³), 800/50/150 split. Quench rates: 10^11, 10^12, 10^13 K/s. GAP potential from Ref 64. CHIK potential for melt-quench. GIPAW with PBE, 900 eV cutoff, 0.03 Å⁻¹ k-points. NequIP architecture. Hyperparameters optimized via XPOT. %RMSE for Si σ^(0), σ^(1), σ^(2) below 20% except η_σ and ℱ_σ. O σ^(1) %RMSE ~26-31%. TP model has ~2.16M params vs ISD ~6.22M. Learning curves show algebraic decay. EFG Vzz predicted. α-β transition at 500 K, -2 bar, 100 ps trajectory. Experimental peak separation ~2.6 ppm vs ML ~2.3 ppm. Crystalline β peak discrepancy ~19 ppm.
+        - References cited: Venetos et al. (51), Harper et al. (53), NequIP (54), Tensor Field Networks (59), GIPAW (12,13), MLIPs (14-18), etc.
+
+2.  **Draft - Paragraph by Paragraph (Mental Refinement):**
+    *Header:* Chiheb Ben Mahmoud, Louise A. M. Rosset, Jonathan R. Yates, and Volker L. Deringer (2024). Graph-neural-network predictions of solid-state NMR parameters from spherical tensor decomposition. arXiv:2412.15063v1 [cond-mat.mtrl-sci], 13 pages, 89 references. Funding: Swiss National Science Foundation (SNSF) grant 217837; UK Research and Innovation Frontier Research grant EP/X016188/1; EPSRC grant EP/T026642/1 (Soprano); UKCP/ARCHER2 computational support.
+    *Para 1 (Scope/Stance):* This is a methodological and benchmarking study presenting a machine learning framework for predicting rank-2 solid-state NMR tensors—magnetic shielding (σ) and electric field gradient (V)—using the NequIP graph neural network. The authors argue that representing these tensors as spherical harmonics enables robust equivariant learning, and they systematically compare two decomposition strategies against GIPAW-DFT reference data. The work targets computational materials scientists and NMR crystallographers seeking to accelerate anisotropic property prediction for disordered and dynamic systems.
+    *Para 2 (Methods):* The authors implement two spherical tensor decomposition schemes within NequIP: irreducible spherical decomposition (ISD), which projects σ and V into independent ℓ = 0, 1, 2 components, and a tensor product (TP) representation, which constructs targets from linear combinations of tensor products of rank ℓ ≥ 1 spherical harmonics. Training uses 1,000 amorphous SiO2 structures (2.0–2.7 g cm⁻³) generated via melt–quench–anneal molecular dynamics with the CHIK and GAP interatomic potentials. GIPAW-DFT calculations employ the PBE functional, 900 eV plane-wave cutoff, and 0.03 Å⁻¹ k-point spacing. Hyperparameters are optimized via Bayesian optimization (XPOT) on 100 structures. Predictions are evaluated using root mean square error (RMSE) and normalized RMSE (%RMSE) across isotropic, anisotropic, and orientational descriptors.
+    *Para 3 (Findings):* The ISD model achieves the lowest prediction errors across silicon and oxygen sites. For silicon, %RMSE values for σ^(0), σ^(1), and σ^(2) remain below 20%, though the asymmetry (η_σ) and span (ℱ_σ) parameters show higher errors due to sensitivity to tensor shape. Oxygen σ^(1) yields %RMSE of 26.14% (ISD) and 31.70% (TP), corresponding to 0.80 and 0.97 ppm. The TP model requires approximately 2.16 million trainable parameters compared to 6.22 million for ISD, yet captures similar signal fidelity. Learning curves show algebraic error decay with training set size, with oxygen σ^(1) plateauing near 30% %RMSE at 500 structures. Simulated static 1D and MAS spectra from ML tensors correlate well with GIPAW references, reproducing experimental α–β cristobalite peak separations within ~0.3 ppm, though crystalline β-phase extrapolations show a ~19 ppm positional discrepancy.
+    *Para 4 (Relations):* The work builds on prior GNN applications to isotropic NMR shielding in proteins and glasses (Refs. 45–47), and explicitly extends Venetos et al. (Ref. 51) and Harper et al. (Ref. 53) by demonstrating that learning full Cartesian tensors via spherical decomposition outperforms specialized models for anisotropy parameters. It leverages the NequIP architecture (Ref. 54) and e3nn library (Ref. 62) for equivariant message passing, while situating its methodology within the broader MLIP literature (Refs. 14–18) and NMR tensor conventions (Refs. 56–58). The authors also reference foundational work on tensor field networks (Ref. 59) and Clebsch–Gordan coupling formalisms for harmonic decomposition.
+    *Para 5 (Implications for our work):* This paper demonstrates that equivariant GNNs can preserve rank-2 tensor structure during learning, with ISD providing a parameter-efficient pathway to correlate spherical components with DFT references. The explicit separation of ℓ = 0, 1, 2 channels aligns with the thesis requirement to maintain tensor rank rather than collapsing to isotropic averages. However, the study focuses on SiO2 polymorphs and hypothetical zeolites rather than protein backbones, and does not address geometric kernel construction or per-element complexity scaling. The correlation between ML-predicted spherical components and GIPAW targets confirms that signal capture is feasible for anisotropic descriptors, but the higher errors for oxygen σ^(1) and shape-sensitive parameters (η_σ, ℱ_σ) suggest that calibration strategies will need to weight tensor components differently. The dynamic trajectory application indicates that ML tensors can track phase transitions without repeated DFT, supporting future integration with protein conformational sampling.
+
+3.  **Check against Constraints:**
+    - *Header:* Citation complete. arXiv ID noted. Page count (13), ref count (89). Funding/credits included.
+    - *5 paragraphs, no titles:* Checked.
+    - *Para 1:* Scope, stance, audience, argument. Checked.
+    - *Para 2:* Methods/central results. NequIP, ISD vs TP, dataset, DFT settings, hyperopt, metrics. Checked.
+    - *Para 3:* Findings with magnitudes. %RMSE values, param counts, learning curves, spectra comparison, peak separations. Checked.
+    - *Para 4:* Relations to literature. Names Venetos, Harper, NequIP, TFN, etc. Checked.
+    - *Para 5:* Implications for thesis. Honest, no stretching. Notes T2 preservation, correlation framing, SiO2 vs protein gap, component weighting need, dynamic sampling potential. Checked.
+    - *Conventions:* Uses "correlate", "captures the signal", "r²" not explicitly in paper but I'll stick to %RMSE/correlation framing as requested. The prompt says "kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured." The paper uses RMSE/%RMSE, not r². I will frame it as correlation/signal capture per instructions, noting the paper's actual metrics. I'll adjust wording to match the thesis convention where appropriate, but stay faithful to the paper's actual metrics. I'll explicitly note the paper uses %RMSE rather than r², but frame the relationship as signal capture/correlation per the prompt's directive.
+    - *No fabrication:* All numbers and claims trace directly to the text.
+    - *Dry plain English:* Checked.
+    - *Length:* ~380 words. Fits the 300-450 range for a ~13 page paper.
+    - *Tensor preservation:* Explicitly addressed in Para 5 and throughout.
+    - *Per-element complexity:* Noted as absent in paper, but relevant for calibration.
+
+    One adjustment: The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'. The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim." I should ensure I use this framing when discussing the ML-DFT relationship, even if the paper uses RMSE. I'll phrase it as: "The ML predictions correlate with GIPAW references, capturing the anisotropic signal within the reported %RMSE bounds..." This aligns with the convention.
+
+    Let's carefully verify numbers:
+    - Dataset: 1000 a-SiO2, 800/50/150 split.
+    - DFT: GIPAW, PBE, 900 eV, 0.03 Å⁻¹ k-points.
+    - ISD vs TP params: 6.22M vs 2.16M.
+    - Si %RMSE < 20% except η_σ, ℱ_σ.
+    - O σ^(1) %RMSE: 26.14% (ISD), 31.70% (TP) -> 0.80, 0.97 ppm.
+    - Learning curve: O σ^(1) ~60% at 10 structures, ~30% at 500.
+    - Spectra: α-β peak separation exp ~2.6 ppm, ML ~2.3 ppm. Crystalline β discrepancy ~19 ppm.
+    - All match text.
+
+    Structure check:
+    Header: Citation, DOI/arXiv, pages, refs, funding.
+    P1: Scope/stance
+    P2: Methods
+    P3: Findings
+    P4: Relations
+    P5: Implications
+    All constraints met. I will generate the summary now. 
+    One minor thing: The prompt says "DOI when present in the text." The text only has arXiv ID. I'll state arXiv:2412.15063v1.
+    I'll ensure the tone is strictly dry and technical.
+    I'll carefully map the "correlation" framing to the ML-DFT relationship as instructed.
+    Ready.✅
+    Output matches response. 
+    Self-Correction/Refinement during thought: 
+    I need to make sure I don't invent r² if the paper doesn't report it. The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I will use "correlate" and "captures the signal" as instructed, and note that the paper reports %RMSE rather than r², but the relationship is one of signal capture. I'll phrase it carefully to honor both the paper's actual metrics and the thesis convention.
+    Also, check paragraph count: exactly 5 body paragraphs. No section titles.
+    Check length: ~360 words. Good.
+    All set. 
+    Output generation. 
+    [Proceeds]
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy in science, numbers, methodology, and names.
+    - **Focus Areas:** Statistics (numbers, RMSEs, dataset sizes, etc.), Methodology (procedures, tools, functionals, etc.), Names (authors, works, chemical species, etc.).
+    - **Output:** Revised summary in the exact same format (header + 5 paragraphs) if corrections are needed, otherwise unchanged. Only adjust where science requires it. Reply with final summary only.
+
+2.  **Cross-Check Draft against Paper Text:**
+
+    *Header Paragraph:*
+    - Authors: Chiheb Ben Mahmoud, Louise A. M. Rosset, Jonathan R. Yates, and Volker L. Deringer. (Matches)
+    - Year: 2024. (Matches)
+    - Title: Graph-neural-network predictions of solid-state NMR parameters from spherical tensor decomposition. (Matches)
+    - Journal/Source: arXiv:2412.15063v1 [cond-mat.mtrl-sci], 13 pages, 89 references. (Matches text: "arXiv:2412.15063v1 [cond-mat.mtrl-sci] 19 Dec 2024", page count 13, refs up to 89)
+    - Funding: SNSF grant 217837; UKRI Frontier EP/X016188/1; EPSRC EP/T026642/1; UKCP/ARCHER2. (Matches Acknowledgments)
+    - *Check:* All accurate.
+
+    *Paragraph 1 (Scope/Stance):*
+    - "methodological benchmarking study presenting a machine learning framework for predicting rank-2 solid-state NMR tensors—magnetic shielding (σ) and electric field gradient (V)—using the NequIP graph neural network." (Matches)
+    - "argue that representing these tensors as spherical harmonics enables robust equivariant learning and systematically compare two decomposition strategies against GIPAW-DFT reference data." (Matches)
+    - "targets computational materials scientists and NMR crystallographers..." (Reasonable inference, but I'll keep it tight to the text: "The work targets researchers seeking to accelerate anisotropic property prediction...")
+    - *Check:* Accurate.
+
+    *Paragraph 2 (Methods):*
+    - "implement two spherical tensor decomposition schemes within NequIP: irreducible spherical decomposition (ISD), which projects σ and V into independent ℓ = 0, 1, 2 components, and a tensor product (TP) representation, which constructs targets from linear combinations of tensor products of rank ℓ ≥ 1 spherical harmonics." (Matches Sec II.B & II.C)
+    - "Training uses 1,000 amorphous SiO2 structures (2.0–2.7 g cm⁻³) generated via melt–quench–anneal molecular dynamics with the CHIK and GAP interatomic potentials." (Matches Sec II.D: "1,000 a-SiO2 structures... 2.0 to 2.7 g cm−3... CHIK65... GAP from Ref. 64")
+    - "GIPAW-DFT calculations employ the PBE functional, 900 eV plane-wave cutoff, and 0.03 Å⁻¹ k-point spacing." (Matches Sec II.E: "PBE68... plane-wave energy cutoff of 900 eV... k-point spacing of 0.03 Å−1")
+    - "Hyperparameters are optimized via Bayesian optimization (XPOT) on 100 structures." (Matches Sec II.E: "Bayesian optimization via the Cross-Platform Optimizer for Potentials (XPOT) package69. We randomly choose 100 structures for this task")
+    - "Predictions are evaluated using root mean square error (RMSE) and normalized RMSE (%RMSE)..." (Matches Sec II.C & III)
+    - *Check:* All accurate.
+
+    *Paragraph 3 (Findings):*
+    - "The ISD model achieves the lowest prediction errors across silicon and oxygen sites." (Matches Sec III.B: "irreducible spherical decomposition yielded the lowest prediction errors")
+    - "For silicon, %RMSE values for σ^(0), σ^(1), and σ^(2) remain below 20%, though the asymmetry (η_σ) and span (ℱ_σ) parameters show higher errors due to sensitivity to tensor shape." (Matches Sec III.B: "reproduce the QM silicon MS tensors with excellent accuracy (below 20% of the total variance of targets in the test set), except the asymmetry ησ and the span Ωσ. These parameters are obtained from σ (2)... highlights the sensitivity of these descriptors to the shape")
+    - "Oxygen σ^(1) yields %RMSE of 26.14% (ISD) and 31.70% (TP), corresponding to 0.80 and 0.97 ppm." (Matches Sec III.B: "σ (1) is not well reproduced... with a %RMSE of 26.14% and 31.70% corresponding to 0.80 and 0.97 ppm, for the ISD and tensor-product models respectively.")
+    - "The TP model requires approximately 2.16 million trainable parameters compared to 6.22 million for ISD..." (Matches Sec III.B: "≈ 3 times fewer trainable parameters, viz. 2,159,688 compared to 6,221,944 of the direct ISD model.")
+    - "Learning curves show algebraic error decay with training set size, with oxygen σ^(1) plateauing near 30% %RMSE at 500 structures." (Matches Sec III.B & Fig 4: "LCs appear to be decreasing algebraically... %RMSE is ≈ 60% for all tensor product models models when the training set size is 10 structures, and only decreases to ≈ 30% for 500 training structures in the case of the ISD model.")
+    - "Simulated static 1D and MAS spectra from ML tensors correlate with GIPAW references, reproducing experimental α–β cristobalite peak separations within ~0.3 ppm, though crystalline β-phase extrapolations show a ~19 ppm positional discrepancy." (Matches Sec IV: "experimental separation... ≈ 2.6 ppm... our ML-predicted one, ≈ 2.3 ppm." -> difference is 0.3 ppm. "discrepancy in the position of the β-cristobalite peak is more pronounced, and estimated to be ≈ 19 ppm.")
+    - *Check:* All accurate.
+
+    *Paragraph 4 (Relations to Literature):*
+    - "builds on prior GNN applications to isotropic NMR shielding in proteins and glasses (Refs. 45–47), and explicitly extends Venetos et al. (Ref. 51) and Harper et al. (Ref. 53) by demonstrating that learning full Cartesian tensors via spherical decomposition outperforms specialized models for anisotropy parameters." (Matches Intro & Sec III.B: "Venetos and collaborators51 found that learning the MS tensor... is more accurate... Harper and collaborators53 further explored this aspect...")
+    - "leverages the NequIP architecture (Ref. 54) and e3nn library (Ref. 62) for equivariant message passing..." (Matches Sec II.C)
+    - "situating its methodology within the broader MLIP literature (Refs. 14–18) and NMR tensor conventions (Refs. 56–58)." (Matches Intro & Sec II.A)
+    - "reference foundational work on tensor field networks (Ref. 59) and Clebsch–Gordan coupling formalisms for harmonic decomposition." (Matches Sec II.B: "Tensor Field Networks architecture59... Clebsch–Gordan coefficients...")
+    - *Check:* All accurate. I will verify reference numbers match the text exactly. Ref 45-47 are isotropic NMR. Ref 51 is Venetos. Ref 53 is Harper. Ref 54 is NequIP. Ref 59 is Tensor Field Networks. Ref 62 is e3nn. Ref 56-58 are conventions. All match.
+
+    *Paragraph 5 (Implications):*
+    - "demonstrates that equivariant GNNs can preserve rank-2 tensor structure during learning, with ISD providing a parameter-efficient pathway to correlate spherical components with DFT references." (Matches)
+    - "explicit separation of ℓ = 0, 1, 2 channels aligns with the thesis requirement to maintain tensor rank rather than collapsing to isotropic averages." (Matches thesis context)
+    - "study focuses on SiO2 polymorphs and hypothetical zeolites rather than protein backbones, and does not address geometric kernel construction or per-element complexity scaling." (Honest limitation)
+    - "correlation between ML-predicted spherical components and GIPAW targets confirms that signal capture is feasible for anisotropic descriptors, but the higher errors for oxygen σ^(1) and shape-sensitive parameters (η_σ, ℱ_σ) suggest that calibration strategies will need to weight tensor components differently." (Matches)
+    - "dynamic trajectory application indicates that ML tensors can track phase transitions without repeated DFT, supporting future integration with protein conformational sampling." (Matches Sec IV)
+    - *Check:* Accurate and appropriately scoped.
+
+3.  **Final Verification against Constraints:**
+    - Format: Header paragraph + 5 paragraphs, no section titles.
+    - Tone: Dry, plain English, no evaluative language.
+    - Kernel-vs-DFT framing: Uses "correlate", "captures the signal", "r²" not used here because paper uses RMSE/%RMSE. I'll stick to RMSE/%RMSE as stated.
+    - Per-element complexity: Not in paper, correctly noted as absent.
+    - Numbers: All checked against text.
+    - Methodology: All checked.
+    - Names: All checked.
+    - Length: ~280 words. Fits 4-6 page paper range (200-300). Actually paper is 13 pages, so 300-450 is expected. I'll expand slightly to ensure depth without fluff, hitting ~350 words.
+
+    Let's count words in draft: ~290. I'll add a bit more detail on the dataset split (800 train, 50 val, 150 test) and the specific quench rates (10^11, 10^12, 10^13 K/s) to meet the length requirement and improve precision, as requested.
+
+    Revised Paragraph 2 (Methods) will include dataset split and quench rates.
+    Revised Paragraph 3 (Findings) will keep numbers tight.
+    Check length: ~320 words. Good.
+
+    One minor correction: The paper says "We use 800 structures as training data for the ML models, 50 structures for the internal validation and 150 structures for testing." I'll add this.
+    Also, check the exact wording for RMSE definition: "normalized root mean square error (%RMSE) defined as the RMSE divided by the standard deviation of the quantity of interest". I'll keep it as is.
+    Check reference numbers in text: The draft uses Ref. numbers. I'll keep them as is, or just name authors/years if preferred, but the prompt says "named from the paper's own bibliography". I'll keep the reference numbers as they appear in the text for precision, or just cite authors. The prompt says "Specific authors and works the paper builds on or points toward, named from the paper's own bibliography." I'll use author names + years for clarity.
+
+    Let's carefully reconstruct the draft with these precise checks.
+
+    *Self-Correction/Refinement during thought:*
+    - Check dataset split: "We use 800 structures as training data for the ML models, 50 structures for the internal validation and 150 structures for testing." (Sec II.D)
+    - Check quench rates: "three quench rates: 10^11, 10^12, and 10^13 K s−1." (Sec II.D)
+    - Check parameters: "2,159,688 compared to 6,221,944" (Sec III.B)
+    - Check RMSE values: "26.14% and 31.70% corresponding to 0.80 and 0.97 ppm" (Sec III.B)
+    - Check learning curve: "decreases to ≈ 30% for 500 training structures" (Sec III.B)
+    - Check spectra discrepancy: "≈ 2.6 ppm... our ML-predicted one, ≈ 2.3 ppm." and "≈ 19 ppm" (Sec IV)
+    - All numbers verified.
+    - I will ensure the tone matches the prompt exactly: dry, precise, no fluff.
+    - I will structure it exactly as requested.
+
+    Draft construction:
+    Header: Chiheb Ben Mahmoud, Louise A. M. Rosset, Jonathan R. Yates, and Volker L. Deringer (2024). Graph-neural-network predictions of solid-state NMR parameters from spherical tensor decomposition. arXiv:2412.15063v1 [cond-mat.mtrl-sci], 13 pages, 89 references. Funding: Swiss National Science Foundation (SNSF) grant 217837; UK Research and Innovation Frontier Research grant EP/X016188/1; EPSRC grant EP/T026642/1 (Soprano); UKCP/ARCHER2 computational support.
+
+    P1: This is a methodological benchmarking study presenting a machine learning framework for predicting rank-2 solid-state NMR tensors—magnetic shielding (σ) and electric field gradient (V)—using the NequIP graph neural network. The authors argue that representing these tensors as spherical harmonics enables robust equivariant learning and systematically compare two decomposition strategies against GIPAW-DFT reference data. The work targets researchers seeking to accelerate anisotropic property prediction for disordered and dynamic systems without repeated first-principles calculations.
+
+    P2: The authors implement two spherical tensor decomposition schemes within NequIP: irreducible spherical decomposition (ISD), which projects σ and V into independent ℓ = 0, 1, 2 components, and a tensor product (TP) representation, which constructs targets from linear combinations of tensor products of rank ℓ ≥ 1 spherical harmonics. Training uses 1,000 amorphous SiO2 structures (2.0–2.7 g cm⁻³) generated via melt–quench–anneal molecular dynamics with the CHIK and GAP interatomic potentials, employing three quench rates (10^11, 10^12, and 10^13 K s⁻¹). The dataset is split into 800 training, 50 internal validation, and 150 test structures. GIPAW-DFT calculations employ the PBE functional, 900 eV plane-wave cutoff, and 0.03 Å⁻¹ k-point spacing. Hyperparameters are optimized via Bayesian optimization (XPOT) on 100 structures. Predictions are evaluated using root mean square error (RMSE) and normalized RMSE (%RMSE), defined as RMSE divided by the standard deviation of the target quantity.
+
+    P3: The ISD model achieves the lowest prediction errors across silicon and oxygen sites. For silicon, %RMSE values for σ^(0), σ^(1), and σ^(2) remain below 20%, though the asymmetry (η_σ) and span (ℱ_σ) parameters show higher errors due to sensitivity to tensor shape. Oxygen σ^(1) yields %RMSE of 26.14% (ISD) and 31.70% (TP), corresponding to 0.80 and 0.97 ppm. The TP model requires approximately 2.16 million trainable parameters compared to 6.22 million for ISD, yet captures similar signal fidelity. Learning curves show algebraic error decay with training set size, with oxygen σ^(1) plateauing near 30% %RMSE at 500 structures. Simulated static 1D and MAS spectra from ML tensors correlate with GIPAW references, reproducing experimental α–β cristobalite peak separations within 0.3 ppm, though crystalline β-phase extrapolations show a 19 ppm positional discrepancy.
+
+    P4: The work builds on prior GNN applications to isotropic NMR shielding in proteins and glasses (Kwon et al. 2020; Han et al. 2022; Bånkestad et al. 2024), and explicitly extends Venetos et al. (2023) and Harper et al. (2024) by demonstrating that learning full tensors via spherical decomposition outperforms specialized models for anisotropy parameters. It leverages the NequIP architecture (Batzner et al. 2022) and e3nn library (Geiger & Smidt 2022) for equivariant message passing, while situating its methodology within the broader MLIP literature (Behler & Parrinello 2007; Bartók et al. 2010; Drautz 2019; Schütt et al. 2019) and NMR tensor conventions (Harris et al. 2008; Mason 1993; Haeberlen 1976). The authors also reference foundational work on tensor field networks (Thomas et al. 2018) and Clebsch–Gordan coupling formalisms for harmonic decomposition.
+
+    P5: This paper demonstrates that equivariant GNNs can preserve rank-2 tensor structure during learning, with ISD providing a parameter-efficient pathway to correlate spherical components with DFT references. The explicit separation of ℓ = 0, 1, 2 channels aligns with the thesis requirement to maintain tensor rank rather than collapsing to isotropic averages. However, the study focuses on SiO2 polymorphs and hypothetical zeolites rather than protein backbones, and does not address geometric kernel construction or per-element complexity scaling. The correlation between ML-predicted spherical components and GIPAW targets confirms that signal capture is feasible for anisotropic descriptors, but the higher errors for oxygen σ^(1) and shape-sensitive parameters (η_σ, ℱ_σ) suggest that calibration strategies will need to weight tensor components differently. The dynamic trajectory application indicates that ML tensors can track phase transitions without repeated DFT, supporting future integration with protein conformational sampling.
+
+    Word count: ~380. Fits 6-12 page range (300-450). All numbers verified. Methodology verified. Names verified. Tone is dry. Format matches. Ready. Output matches request.✅
+    One minor check: "Kwon et al. 2020; Han et al. 2022; Bånkestad et al. 2024" matches refs 45, 46, 47. Correct.
+    "Batzner et al. 2022" matches ref 54. Correct.
+    "Geiger & Smidt 2022" matches ref 62. Correct.
+    "Behler & Parrinello 2007; Bartók et al. 2010; Drautz 2019; Schütt et al. 2019" matches refs 14-17. Correct.
+    "Harris et al. 2008; Mason 1993; Haeberlen 1976" matches refs 56-58. Correct.
+    "Thomas et al. 2018" matches ref 59. Correct.
+    All good. Output matches exactly. 
+    Proceeds. 
+    Self-Correction/Note during generation: I will ensure the formatting strictly follows the prompt's "Header paragraph... Then five paragraphs, no section titles, paragraphs flow:" instruction. I will output only the final summary. All checks passed.✅
+    Output matches the refined draft. 
+    Proceeds. 
+    [Output Generation] -> *Proceeds*

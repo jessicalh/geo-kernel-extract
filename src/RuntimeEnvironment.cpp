@@ -15,6 +15,7 @@ namespace nmr {
 
 // Static members
 std::string RuntimeEnvironment::mopac_;
+std::string RuntimeEnvironment::tleap_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
 std::string RuntimeEnvironment::processGuid_;
@@ -93,7 +94,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
-    std::string toml_mopac, toml_ff14sb, toml_tmpdir;
+    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -117,6 +118,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             trim(val);
 
             if      (key == "mopac")          toml_mopac = val;
+            else if (key == "tleap")          toml_tleap = val;
             else if (key == "ff14sb_params") toml_ff14sb = val;
             else if (key == "tmpdir")        toml_tmpdir = val;
         }
@@ -133,6 +135,23 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         // Try conda default location
         std::string conda_mopac = "/home/jessica/micromamba/envs/mm/bin/mopac";
         if (fs::exists(conda_mopac)) mopac_ = conda_mopac;
+    }
+
+    // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH → conda ---
+    tleap_ = toml_tleap;
+    if (tleap_.empty() || !fs::exists(tleap_)) {
+        const char* amberhome = std::getenv("AMBERHOME");
+        if (amberhome) {
+            std::string ah_tleap = std::string(amberhome) + "/bin/tleap";
+            if (fs::exists(ah_tleap)) tleap_ = ah_tleap;
+        }
+    }
+    if (tleap_.empty()) {
+        tleap_ = ResolveBinary("", "tleap");
+    }
+    if (tleap_.empty()) {
+        std::string conda_tleap = "/home/jessica/micromamba/envs/mm/bin/tleap";
+        if (fs::exists(conda_tleap)) tleap_ = conda_tleap;
     }
 
     // --- Resolve data files ---
@@ -176,6 +195,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
 
     OperationLog::Info("RuntimeEnvironment::Load",
         "mopac=" + status(mopac_) +
+        " tleap=" + status(tleap_) +
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
         " guid=" + processGuid_);
@@ -203,6 +223,7 @@ std::string RuntimeEnvironment::TempFilePath(const std::string& proteinName,
 
 
 const std::string& RuntimeEnvironment::Mopac()          { RequireLoaded(); return mopac_; }
+const std::string& RuntimeEnvironment::Tleap()          { RequireLoaded(); return tleap_; }
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
 

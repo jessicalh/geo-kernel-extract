@@ -1,0 +1,11 @@
+Li, D.-W.; Bruschweiler, R. (2010). Certification of Molecular Dynamics Trajectories with NMR Chemical Shifts. J. Phys. Chem. Lett., 1, 246–248. DOI: 10.1021/jz9001345. 3 pages. 30 references. Supported by NSF Grant MCB-0918362.
+
+This research paper assesses AMBER force fields (ff99, ff99SB, ff03) for ubiquitin and calbindin D9k by comparing back-calculated 13C chemical shifts against experimental NMR data. The authors argue that ensemble-averaged shifts provide a scalable metric for validating molecular dynamics trajectories, particularly for backbone and side-chain dihedral sampling.
+
+Simulations ran 30 ns to 1 μs in explicit SPC/E water at 300 K, sampling snapshots every 1–10 ps. Chemical shifts for CR, Cβ, and C0 were predicted using SHIFTS (DFT-based), SHIFTX, and SPARTA. RMSDs were computed against experimental data, with uniform offset minimization tested for referencing sensitivity.
+
+Ensemble averaging lowers RMSD relative to individual snapshots. For ubiquitin, ff99SB and ff03 outperform ff99, with Cβ RMSDs dropping from 1.30 ppm (ff99) to 1.07 ppm (ff99SB) and 1.10 ppm (ff03). RMSD converges between 100 and 200 ns. RMSDs exceed experimental uncertainties across all force fields. C0 shifts remain sensitive to local geometry and hydrogen bonding. SPARTA yields the smallest RMSDs, though all methods perform comparably.
+
+The work builds on force field development, chemical shift prediction algorithms, and prior MD validation using NMR parameters. It cites Mackerell, Showalter and Bruschweiler, Wishart and Berjanskii, Spera and Bax, and de Dios et al. The authors position chemical shift analysis as a scalable certification tool leveraging the BMRB archive.
+
+This paper validates ensemble averaging for matching experimental NMR observables, supporting trajectory sampling for kernel calibration. It treats shifts as scalars and does not address rank-2 tensor preservation or DFT-based kernel calibration. The RMSD framework offers a benchmark for ensemble outputs, but scalar observables limit direct transfer. The ~100–200 ns convergence time informs sampling requirements.

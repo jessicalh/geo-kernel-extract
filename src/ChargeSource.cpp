@@ -1,26 +1,174 @@
 #include "ChargeSource.h"
+#include "AmberChargeResolver.h"
 #include "Protein.h"
-#include "ChargeAssignmentResult.h"
 #include "RuntimeEnvironment.h"
 #include "OperationLog.h"
 
 #include <fstream>
 #include <unordered_map>
+#include <sstream>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <cmath>
+#include <vector>
 
 namespace fs = std::filesystem;
 
 namespace nmr {
 
+namespace {
+
+struct ParamEntry {
+    double partial_charge = 0.0;
+    double pb_radius = 0.0;
+};
+
+bool IsTerminalStateToken(const std::string& token) {
+    return token == "INTERNAL" || token == "NTERM" ||
+           token == "CTERM" || token == "NCTERM";
+}
+
+std::string ParamKey(const std::string& terminal_state,
+                     const std::string& residue_name,
+                     const std::string& atom_name) {
+    return terminal_state + " " + residue_name + " " + atom_name;
+}
+
+std::unordered_map<std::string, ParamEntry>
+LoadFf14sbParamFile(const std::string& path) {
+    std::unordered_map<std::string, ParamEntry> params;
+
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        OperationLog::Error("ParamFileChargeSource::LoadFf14sbParamFile",
+            "cannot open " + path);
+        return params;
+    }
+
+    std::string line;
+    size_t legacy_rows = 0;
+    size_t skipped_rows = 0;
+    while (std::getline(in, line)) {
+        auto comment = line.find('#');
+        if (comment != std::string::npos) line = line.substr(0, comment);
+
+        std::istringstream iss(line);
+        std::vector<std::string> tokens;
+        std::string token;
+        while (iss >> token) tokens.push_back(token);
+        if (tokens.empty()) continue;
+
+        try {
+            if (IsTerminalStateToken(tokens[0])) {
+                if (tokens.size() < 5) {
+                    ++skipped_rows;
+                    continue;
+                }
+                double charge = std::stod(tokens[3]);
+                double pb_radius = std::stod(tokens[4]);
+                if (pb_radius <= 0.0) {
+                    ++skipped_rows;
+                    continue;
+                }
+                params[ParamKey(tokens[0], tokens[1], tokens[2])] =
+                    {charge, pb_radius};
+            } else {
+                // Legacy table format:
+                //   RESNAME ATOMNAME CHARGE LJ_EPSILON RADIUS
+                // Treat as INTERNAL only. Terminal residues must be present
+                // explicitly in the regenerated table.
+                if (tokens.size() < 5) {
+                    ++skipped_rows;
+                    continue;
+                }
+                double charge = std::stod(tokens[2]);
+                double pb_radius = std::stod(tokens[4]);
+                if (pb_radius <= 0.0) {
+                    ++skipped_rows;
+                    continue;
+                }
+                params[ParamKey("INTERNAL", tokens[0], tokens[1])] =
+                    {charge, pb_radius};
+                ++legacy_rows;
+            }
+        } catch (...) {
+            ++skipped_rows;
+        }
+    }
+
+    OperationLog::Info(LogCharges, "ParamFileChargeSource::LoadFf14sbParamFile",
+        "loaded " + std::to_string(params.size()) + " entries from " + path +
+        " legacy_rows=" + std::to_string(legacy_rows) +
+        " skipped_rows=" + std::to_string(skipped_rows));
+
+    return params;
+}
+
+bool Ff14sbVariantResidueName(
+        AminoAcid aa,
+        int protonation_variant_index,
+        std::string& residue_name_out,
+        std::string& error_out) {
+    const AminoAcidType& aa_type = GetAminoAcidType(aa);
+
+    if (protonation_variant_index < 0) {
+        // ff14SB lacks a neutral generic HIS in the flat file path used here.
+        if (aa == AminoAcid::HIS) {
+            residue_name_out = "HIE";
+        } else {
+            residue_name_out = ThreeLetterCodeForAminoAcid(aa);
+        }
+        return true;
+    }
+
+    if (protonation_variant_index >=
+            static_cast<int>(aa_type.variants.size())) {
+        error_out = "invalid protonation variant index " +
+                    std::to_string(protonation_variant_index) + " for " +
+                    ThreeLetterCodeForAminoAcid(aa);
+        return false;
+    }
+
+    residue_name_out = aa_type.variants[protonation_variant_index].name;
+    return true;
+}
+
+std::string TerminalStateToken(ResidueTerminalState terminal_state) {
+    switch (terminal_state) {
+        case ResidueTerminalState::Internal:      return "INTERNAL";
+        case ResidueTerminalState::NTerminus:     return "NTERM";
+        case ResidueTerminalState::CTerminus:     return "CTERM";
+        case ResidueTerminalState::NAndCTerminus: return "NCTERM";
+        case ResidueTerminalState::Unknown:       return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
+std::vector<std::string> AtomNameCandidates(
+        const std::string& atom_name,
+        ResidueTerminalState terminal_state) {
+    std::vector<std::string> candidates;
+    candidates.push_back(atom_name);
+
+    const bool n_terminal =
+        terminal_state == ResidueTerminalState::NTerminus ||
+        terminal_state == ResidueTerminalState::NAndCTerminus;
+    if (n_terminal && (atom_name == "H" || atom_name == "HN")) {
+        candidates.push_back("H1");
+    }
+
+    return candidates;
+}
+
+}  // namespace
+
 // ============================================================================
 // ParamFileChargeSource: ff14SB from the flat parameter file.
 //
-// This is the existing LoadParamFile + VariantResidueName logic, now
-// behind the ChargeSource interface. The implementation delegates to
-// ChargeAssignmentResult's existing param file parsing.
+// The flat file is string-keyed, so string lookup is unavoidable inside this
+// construction-boundary adapter. It produces only AtomChargeRadius rows for the
+// prepared ForceFieldChargeTable; ChargeAssignmentResult is only a projection.
 // ============================================================================
 
 std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
@@ -28,51 +176,84 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
         const ProteinConformation& conf,
         std::string& error_out) const {
 
-    // Use the existing LoadParamFile from ChargeAssignmentResult
-    auto params = ChargeAssignmentResult::LoadParamFile(path_);
+    // Single source of truth for "can the flat table cover this protein."
+    // The verdict is the typed predicate; this loader only runs when the
+    // verdict is satisfiable. The early-fail message preserves the
+    // existing test contract (terminal_token + ff_resname + "no canonical
+    // fallback" substrings).
+    auto verdict = AnalyzeFlatTableCoverage(protein, path_);
+    if (!verdict.Ok()) {
+        error_out = verdict.Detail();
+        OperationLog::Error("ParamFileChargeSource::LoadCharges", error_out);
+        return {};
+    }
+
+    auto params = LoadFf14sbParamFile(path_);
     if (params.empty()) {
         error_out = "cannot load parameters from " + path_;
         return {};
     }
 
     std::vector<AtomChargeRadius> result(conf.AtomCount());
+    size_t internal_matches = 0;
+    size_t terminal_matches = 0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const Atom& identity = protein.AtomAt(ai);
         const Residue& res = protein.ResidueAt(identity.residue_index);
 
-        // PDB LOADING BOUNDARY: variant residue name for param lookup
-        std::string ff_resname = ChargeAssignmentResult::VariantResidueName(
-            res.type, res.protonation_variant_index);
+        // PDB LOADING BOUNDARY: variant residue name for param lookup.
+        // The verdict already proved every (terminal, resname, atom)
+        // triple resolves; here we only need the value.
+        std::string ff_resname;
+        std::string variant_error;
+        if (!Ff14sbVariantResidueName(
+                res.type, res.protonation_variant_index,
+                ff_resname, variant_error)) {
+            error_out = variant_error + " at residue " +
+                        std::to_string(res.sequence_number);
+            OperationLog::Error("ParamFileChargeSource::LoadCharges", error_out);
+            return {};
+        }
+        const std::string terminal_token =
+            TerminalStateToken(res.terminal_state);
 
-        std::string key = ff_resname + " " + identity.pdb_atom_name;
-        auto it = params.find(key);
+        const auto atom_candidates =
+            AtomNameCandidates(identity.pdb_atom_name, res.terminal_state);
 
-        if (it != params.end()) {
-            result[ai] = {it->second.charge, it->second.radius};
-        } else {
-            // Fallback: standard residue name
-            std::string std_name = ThreeLetterCodeForAminoAcid(res.type);
-            std::string fallback_key = std_name + " " + identity.pdb_atom_name;
-            auto fb = params.find(fallback_key);
-
-            if (fb != params.end()) {
-                result[ai] = {fb->second.charge, fb->second.radius};
-            } else {
-                // Element-based defaults (charge 0, reasonable radius)
-                double r = 1.5;
-                switch (identity.element) {
-                    case Element::H: r = 0.6; break;
-                    case Element::C: r = 1.7; break;
-                    case Element::N: r = 1.625; break;
-                    case Element::O: r = 1.48; break;
-                    case Element::S: r = 1.782; break;
-                    default: break;
-                }
-                result[ai] = {0.0, r};
+        const ParamEntry* entry = nullptr;
+        for (const auto& atom_name : atom_candidates) {
+            auto it = params.find(ParamKey(terminal_token, ff_resname, atom_name));
+            if (it != params.end()) {
+                entry = &it->second;
+                break;
             }
         }
+
+        if (!entry) {
+            // Verdict said satisfiable but per-atom lookup missed. This is
+            // a contract violation between AnalyzeFlatTableCoverage and the
+            // loader's parser — not a runtime data condition.
+            fprintf(stderr,
+                "FATAL: ParamFileChargeSource::LoadCharges: verdict claimed "
+                "Satisfiable but lookup missed (%s %s %s). "
+                "AnalyzeFlatTableCoverage and LoadFf14sbParamFile have "
+                "diverged.\n",
+                terminal_token.c_str(), ff_resname.c_str(),
+                identity.pdb_atom_name.c_str());
+            std::abort();
+        }
+
+        result[ai] = {entry->partial_charge, entry->pb_radius,
+                      ChargeAssignmentStatus::Matched};
+        if (terminal_token == "INTERNAL") ++internal_matches;
+        else ++terminal_matches;
     }
+
+    OperationLog::Info(LogCharges, "ParamFileChargeSource::LoadCharges",
+        "internal_matches=" + std::to_string(internal_matches) +
+        " terminal_matches=" + std::to_string(terminal_matches) +
+        " atoms=" + std::to_string(result.size()));
 
     return result;
 }
@@ -139,22 +320,11 @@ std::vector<AtomChargeRadius> GmxTprChargeSource::LoadCharges(
         double q = 0.0;
         std::sscanf(line.c_str() + q_pos + 2, "%lf", &q);
 
-        // For radius: CHARMM36m uses sigma from LJ parameters.
-        // The tpr dump doesn't directly give sigma per atom (it's in
-        // the pair interaction matrix). Use element-based CHARMM defaults.
-        int atomic_number = 0;
-        std::sscanf(line.c_str() + an_pos + 11, "%d", &atomic_number);
-
-        double radius = 1.5;
-        switch (atomic_number) {
-            case 1:  radius = 1.0;   break;  // H (CHARMM uses larger H than AMBER)
-            case 6:  radius = 1.7;   break;  // C
-            case 7:  radius = 1.625; break;  // N
-            case 8:  radius = 1.48;  break;  // O
-            case 16: radius = 1.782; break;  // S
-        }
-
-        all_atoms.push_back({q, radius});
+        all_atoms.push_back({
+            q,
+            kCompatibilityPlaceholderPbRadiusAngstrom,
+            ChargeAssignmentStatus::PlaceholderPbRadius
+        });
     }
     in.close();
 
@@ -176,6 +346,9 @@ std::vector<AtomChargeRadius> GmxTprChargeSource::LoadCharges(
     OperationLog::Info(LogCharges, "GmxTprChargeSource::LoadCharges",
         "loaded " + std::to_string(n_protein) + " charges from " + tpr_ +
         " (tpr total: " + std::to_string(all_atoms.size()) + ")");
+    OperationLog::Warn("GmxTprChargeSource::LoadCharges",
+        "using quarantined compatibility PB radii for GROMACS/CHARMM TPR path; "
+        "TODO(charge-model): replace with defensible CHARMM/GROMACS PB radii");
 
     return result;
 }
@@ -247,6 +420,7 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
         const Protein& protein,
         const ProteinConformation& conf,
         std::string& error_out) const {
+    (void)protein;
 
     if (!fs::exists(path_)) {
         error_out = "prmtop not found: " + path_;
@@ -270,17 +444,22 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
     }
 
     // RADII section may be absent in older prmtops
-    bool has_radii = raw_radii.size() >= n_protein;
+    if (raw_radii.size() < n_protein) {
+        error_out = "prmtop has " + std::to_string(raw_radii.size()) +
+                    " PB radii, protein needs " + std::to_string(n_protein);
+        return {};
+    }
 
     std::vector<AtomChargeRadius> result(n_protein);
     for (size_t i = 0; i < n_protein; ++i) {
         // Convert from AMBER internal units to elementary charges
-        result[i].charge = raw_charges[i] / AMBER_CHARGE_FACTOR;
-        result[i].radius = has_radii ? raw_radii[i] : 1.5;
+        result[i].partial_charge = raw_charges[i] / AMBER_CHARGE_FACTOR;
+        result[i].pb_radius = raw_radii[i];
+        result[i].status = ChargeAssignmentStatus::Matched;
     }
 
     OperationLog::Info(LogCharges, "PrmtopChargeSource::LoadCharges",
-        "loaded " + std::to_string(n_protein) + " charges from " + path_ +
+        "loaded " + std::to_string(n_protein) + " charge/PB-radius rows from " + path_ +
         " (prmtop total: " + std::to_string(raw_charges.size()) + ")");
 
     return result;

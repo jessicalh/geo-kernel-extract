@@ -1,0 +1,162 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[scaled]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{sansmath}
+\sansmath
+\usepackage{microtype}
+\usepackage{parskip}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+
+%% Body-size headings, no size hierarchy
+\titleformat{\section}{\normalsize\bfseries}{}{0pt}{}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0pt}{}
+\titlespacing*{\section}{0pt}{1em}{0.3em}
+\titlespacing*{\subsection}{0pt}{0.7em}{0.2em}
+
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\noindent
+\textbf{Annotated Bibliography and Literature Review Plan}\\
+Jessica Hansberry\\
+Analytical Biosciences Full Time 2025/2026\\
+27 April 2026
+
+\bigskip
+
+%% =====================================================================
+%% LITERATURE REVIEW OUTLINE
+%% =====================================================================
+
+\section*{Literature Review Outline}
+
+\subsection*{1.\quad Shielding basics and physics, short cover.}
+\begin{itemize}
+\item[a.] References at the level of first principles for readers who are familiar, allowing further discussion of shielding maths and physics. Known topic areas per continuing reference in review, a few sentences. Paramagnetic, diamagnetic, tensor representation.
+\item[b.] Student work: actually understanding it. Core chapters in NMR texts (most will not be directly cited but necessary to (a)).
+\end{itemize}
+
+\subsection*{2.\quad Tensor Mathematics and Learning}
+\begin{itemize}
+\item[a.] Learning and physics tensors: when do models learn physics (NMR examples). Differences in current ML and physics uses of the words.
+\item[b.] Intersection: e3nn, equivariant GNN warmup, and relevant other work. History and results.
+\end{itemize}
+
+\subsection*{3.\quad Learning and Shielding Contributors (for each: historic, physics, applicable methods)}
+\begin{itemize}
+\item[a.] Geometry of shielding: dihedrals, exposure. Use in models (historic, methods, reported results).
+\item[b.] Ring current physics. Loop-integral / surface-integral / point-dipole, equivariant representation, use in models (historic, methods, reported results).
+\item[c.] Electric field effects on shielding. Equivariant representation, calculation. Use in models (historic, methods, reported results).
+\item[d.] Electric field gradient (EFG). Tensor coupling of nuclear quadrupoles. Equivariant representation, calculation. Use in models (historic, methods, reported results).
+\item[e.] Hydrogen bonding contributions. Equivariant representation, calculation. Use in models (historic, methods, reported results).
+\item[f.] Bond anisotropy. Equivariant representation, calculation. Use in models (historic, methods, reported results).
+\item[g.] Polarisability. Equivariant representation, calculation. Use in models (historic, methods, reported results).
+\end{itemize}
+
+\subsection*{4.\quad Dynamics of NMR and Time}
+\begin{itemize}
+\item[a.] What is moving and how long does it keep moving?
+\item[b.] Historical approaches to simulating time.
+\item[c.] Mathematics of simulating time: mathematics of MD, Lipari-Szabo $S^{2}$ order parameter, other relaxation statistics.
+\end{itemize}
+
+\subsection*{5.\quad NMR at scale: experimental replication and literature review}
+\begin{itemize}
+\item[a.] Constraining rules (why, brief, cites). NMR normally a single item experiment. How other studies approach electronic replication.
+\item[b.] Comparative limits in other learning systems.
+\end{itemize}
+
+%% =====================================================================
+%% LITERATURE REVIEW PLAN
+%% =====================================================================
+
+\section*{Literature Review Plan}
+
+Several requirements emerge from the experimental/development work. Specific tools are employed to extract rank-2 tensor (T2 in the SO(3) decomposition) data (and more traditional markers) from individual protein conformations. Each method requires brief, clear background on the history of the physics and required maths. The T2 representation itself has a history as well, which will bear on how it can be applied. The outline above attempts to describe most (but not all) of this work.
+
+ML systems for NMR protein structure are a long subject of inquiry with a wide range of interest. A survey of previous systems (without becoming a full review of all of them) is appropriate. Each property extraction we do (and some we do not) has a history. This needs a clear exploration, which will place the maths and physics we do in context. Each model has also chosen a predictive mathematical framework, and we must provide a survey of those frameworks.
+
+Our extraction tools are simple but mathematically ambitious. This means our discussion and some methods will touch on how we validated them against known shielding before attempting to train a model. Enough first principles notes on shielding and relaxation statistics must be covered (briefly) to allow that later discussion.
+
+%% =====================================================================
+%% ANNOTATED BIBLIOGRAPHY
+%% =====================================================================
+
+\section*{Annotated Bibliography}
+
+%% Entry 1 --- Boyd and Skrynnikov 2002
+Boyd, J. and Skrynnikov, N.R. (2002) `Calculations of the contribution of ring currents to the chemical shielding anisotropy', \textit{Journal of the American Chemical Society}, 124(9), pp.~1832--1833. doi:10.1021/ja016476f.
+
+Primary source. Johnson-Bovey Ring Current Calculation Compared to NMR and DFT
+
+Derived full anisotropic tensor form for Johnson-Bovey ring current and showed favorable correspondence (1 ppm or better) to DFT shielding computation for an N-methyl acetamide molecule near a benzene and 1,3-cyclohexadiene ring. Their calculation of Johnson-Bovey was also applied against DFT calculations done on a protein fragment with previously published chemical shifts: obtained values were comparable. Authors suggest ring current has a small contribution to shielding in heavy backbone atoms but a strong contribution where an NH bond donates into an aromatic pi cloud. Useful example of an anisotropic result of a classical calculation being effectively compared to DFT shielding tensor and previously measured shift.
+
+\medskip
+
+%% Entry 2 --- Case 1995
+Case, D.A. (1995) `Calibration of ring-current effects in proteins and nucleic acids', \textit{Journal of Biomolecular NMR}, 6(4), pp.~341--346.
+
+Primary source. Johnson-Bovey and Haigh-Mallion Isotropic Shift Calibrated Against DFT
+
+In this foundational paper, Case computed Johnson-Bovey loop current, Haigh-Mallion surface integral, and an electric field correction. Calculations were compared to DFT for methane placed near ring geometries. Comparison rings included benzene, phenol, indole, imidazole, and imidazolium, as well as A/G/U/T/C nucleic acid bases. Classical calculations provided strong correlation with DFT results. Case found Johnson-Bovey and Haigh-Mallion independently predictive in isotropic form. Relates to DFT and classical ring current comparison, potential applicability (or non-applicability) of anisotropic form (this work was isotropic), and influence of electric field corrections.
+
+\medskip
+
+%% Entry 3 --- Han et al. 2011 (SHIFTX2)
+Han, B., Liu, Y., Ginzinger, S.W. and Wishart, D.S. (2011) `SHIFTX2: significantly improved protein chemical shift prediction', \textit{Journal of Biomolecular NMR}, 50(1), pp.~43--57. doi:10.1007/s10858-011-9478-4.
+
+Secondary source (Software system review). Relative High Accuracy NMR Shift Prediction
+
+Authors created this NMR prediction system as refinement of two previous systems, SHIFTX and SHIFTY (renamed SHIFTX+ and SHIFTY+). SHIFTX+ contributions included a boosted bagged REPTree algorithm, ring current, H-bonds, electrostatics, and surface exposure. SHIFTY+ work contributed sequence information and BLAST information. System claims extremely high coefficients for backbone shift predictions at high speed. The authors put forward the tool as transformative for shift based structure prediction. Provides a compendium of weights which predate current ML approaches.
+
+\medskip
+
+%% Entry 4 --- Kellner et al. 2025
+Kellner, M., Holmes, J.B., Rodriguez-Madrid, R., Viscosi, F., Zhang, Y., Emsley, L. and Ceriotti, M. (2025) `A deep learning model for chemical shieldings in molecular organic solids including anisotropy', \textit{Journal of Physical Chemistry Letters}, pp.~8714--8722.
+
+Primary source. Full shielding tensor prediction via non equivariant GNN
+
+Created a system to predict the full chemical shielding tensor using DFT training inputs to a graph neural network, reporting accuracy approaching DFT reference calculations from a training set of 14,000 small crystals from the Cambridge Structural Database (about half furthest point sampled, and half thermally distorted). While the full anisotropic tensor is predicted, the irreducible spherical tensor, custom designed output head, and random rotations and inversions allow use of a graph network rather than equivariance (ex e3nn). Limited to solid state. Authors' claim is that ML prediction accuracy approaches that of DFT reference. Of interest due to GNN design allowing equivariant data without an equivariant model; demonstrates a variety of design choices.
+
+\medskip
+
+%% Entry 5 --- Klukowski, Riek and G\"untert 2025
+Klukowski, P., Riek, R. and G\"untert, P. (2025) `Machine learning in NMR spectroscopy', \textit{Progress in Nuclear Magnetic Resonance Spectroscopy}, 148--149, 101575. doi:10.1016/j.pnmrs.2025.101575.
+
+Secondary source (review). Comprehensive Review of NMR Shift Prediction Methods and Scope
+
+This review includes current applications of automated NMR analysis, prediction, and spectrum reconstruction, and broad coverage of systems and underlying methodologies for both proteins and molecular solids. Reviews the available sets of training data at present (BMRB, etc.), including limitations on available data for training. For protein prediction, the paper describes landmark systems and (briefly) reviews their underlying methods. These include neural network models, regression tree and alignment models, models based on regression of vectorised descriptors of the atomic environment, and message passing network graphs (referred to as ``deep neural network'' here). Reference is a useful map of tools, techniques, data source limitations, and emergent areas of interest.
+
+\medskip
+
+%% Entry 6 --- Larsen et al. 2015 (ProCS15)
+Larsen, A.S., Bratholm, L.A., Christensen, A.S., Channir, M. and Jensen, J.H. (2015) `ProCS15: a DFT-based chemical shift predictor for backbone and C$\beta$ atoms in proteins', \textit{PeerJ}, 3, e1344. doi:10.7717/peerj.1344.
+
+Primary source. Precomputed Tripeptide DFTs For NMR Shift Prediction
+
+The group created a system of approximately 2.35 million DFT calculations on tripeptides and small hydrogen-bonding model systems, allowing for a protein assembly system which accounts for the backbone and side chain dihedrals of the residue and two nearest residues, hydrogen bonding to the amide group and H$\alpha$, and ring current effects. Against full DFT on ubiquitin and GB3 the additive system reproduces shieldings to within 2.5 ppm for C, 0.8 ppm for H, and 4.5 ppm for N. In the tests done, ensemble structures lowered ProCS15 RMSDs (up to 0.7 ppm C, 0.5 ppm N for ubiquitin) while empirical predictors showed no comparable gain.
+
+\medskip
+
+%% Entry 7 --- Markwick et al. 2010
+Markwick, P.R.L., Cervantes, C.F., Abel, B.L., Komives, E.A., Blackledge, M. and McCammon, J.A. (2010) `Enhanced conformational space sampling improves the prediction of chemical shifts in proteins', \textit{Journal of the American Chemical Society}, 132(4), pp.~1220--1221. doi:10.1021/ja9093692.
+
+Primary source. Accelerated Time Scales Improve Prediction in Exchange Active Regions
+
+SHIFTX prediction was performed for static, normal MD (five 10 ns runs) and free energy accelerated MD on 1NFI. Static x-ray crystallography cumulative RMSD (HN, N, CA, CB, C') of 8.19 ppm dropped to 7.44 ppm with normal MD and 5.92 ppm accelerated MD (using a modified AMBER10), and motion in the accelerated MD was shown to occur mostly in the exchange active regions (so is less likely to be noise). The best gain was found for N, which the authors suggest corresponds to motion on longer time scales. The authors suggest that ensemble averaging is appropriate as NMR is ms-scale average. Paper is straightforward indication that FES averages may be most effective but that even short non-accelerated MD can provide improvement in NMR shift prediction.
+
+\medskip
+
+%% Entry 8 --- Sahakyan and Vendruscolo 2013
+Sahakyan, A.B. and Vendruscolo, M. (2013) `Analysis of the contributions of ring current and electric field effects to the chemical shifts of RNA bases', \textit{The Journal of Physical Chemistry B}, 117(7), pp.~1989--1998. doi:10.1021/jp3057306.
+
+Primary source. An Examination of Point Dipole and Haigh-Mallion Models Across Ring Current, Electric Field, Nucleus and Ring Type
+
+Study created a database of ring arrangements from RNA crystal structures classed adjacent, spatially close, or hydrogen bonded. DFT was calculated across the set of crystal structure arrangements, and point dipole and Haigh-Mallion results were calculated. Linear fit was found for ring current, electric field, and ring current plus electric field, across H, C, N and O nuclei, and across five and six membered rings. Maximum effect of neighboring rings (excluding hydrogen-bonded) was calculated, with $^{1}$H at 4.84 ppm, $^{15}$N at 34.49 ppm, and $^{13}$C at 27.18 ppm. The work effectively provides a hierarchy of electric field and ring current effects across ring atom type. While the work is on RNA bases, these results are illuminating for a project doing classical H-M and electric field calculations that are tested for signal against DFT, and used to predict chemical shift.
+
+\end{document}

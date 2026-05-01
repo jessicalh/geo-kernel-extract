@@ -1,0 +1,106 @@
+================================================================
+FACTUAL + TYPO FIXES — paste blocks for entries-working.txt
+2026-04-27
+================================================================
+
+Recommend a backup first:
+  cp entries-working.txt entries-working.2026-04-27-HHMMSS.bak
+
+Each fix below has the surrounding sentence as context so you can
+find it in SlickEdit.
+
+================================================================
+ENTRY 1 — Boyd and Skrynnikov
+================================================================
+
+Two changes in one sentence: "Benzene" -> "benzene" and
+"cycloheadiene" -> "cyclohexadiene".
+
+OLD SENTENCE:
+Derived full anisotropic tensor form for Johnson-Bovey ring current and showed favorable correspondence (1ppm or better) to DFT shielding computation for an N--methyl acetamide molecule near a Benzene and 1,3-cycloheadiene ring.
+
+NEW SENTENCE:
+Derived full anisotropic tensor form for Johnson-Bovey ring current and showed favorable correspondence (1ppm or better) to DFT shielding computation for an N--methyl acetamide molecule near a benzene and 1,3-cyclohexadiene ring.
+
+================================================================
+ENTRY 6 — Larsen ProCS15
+================================================================
+
+Fix 1 — typo
+  OLD: approixmately
+  NEW: approximately
+
+Fix 2 — factual inversion (last sentence of body)
+
+OLD SENTENCE:
+In the tests done, no grain was seen for ensemble structures.
+
+WHAT THE PAPER ACTUALLY SHOWS:
+ProCS15 (and other DFT-based predictors, including CheShift-2)
+*improve* on NMR-derived ensembles — going from the X-ray structure
+1UBQ to the largest ensemble 2KOX (640 structures), ubiquitin RMSDs
+drop by up to 0.7 ppm for carbon, 0.1 ppm for hydrogen, 0.5 ppm
+for nitrogen. The empirical predictors (CamShift, PPM One, Sparta+,
+shAIC, ShiftX2) stay flat or get slightly worse on ensembles.
+
+So the polarity is inverted as written — and "grain" reads as a
+typo for "gain". You probably want a sentence that says ProCS15
+*does* gain from ensembles while the empirical predictors don't.
+
+SUGGESTED RE-RENDER (your voice, your call):
+In the tests done, ensemble structures improved ProCS15 RMSDs (up to 0.7 ppm C, 0.5 ppm N for ubiquitin) while empirical predictors showed no comparable gain.
+
+================================================================
+ENTRY 7 — Markwick
+================================================================
+
+Three fixes in two sentences.
+
+Fix 1 — MD timescale: paper says five 10 ns runs (50 ns aggregate),
+not five 50-ns runs. As written, "5x50ns" reads as five 50-ns runs.
+
+Fix 2 — PDB code: "INFI" -> "1NFI" (numeral 1, not letter I).
+Paper: "PDB entry 1NFI".
+
+OLD SENTENCE 1:
+SHIFTX prediction was performed for static, normal MD (5x50ns) and free energy accelerated MD on INFI.
+
+NEW SENTENCE 1:
+SHIFTX prediction was performed for static, normal MD (five 10 ns runs) and free energy accelerated MD on 1NFI.
+
+Fix 3 — AMD cumulative RMSD: paper says 5.92 ppm, not 5.29 ppm.
+Paper, page 1221: "yielding a cumulative RMSD of 5.92 ppm".
+
+OLD SENTENCE 2:
+Static x-ray crystallography cumulative RMSD (H-N, N, CA, CB, C) of 8.19 ppm dropped to 7.44 ppm with normal MD and 5.29 ppm accelerated MD (using a modified AMBER10), and motion in the accelerated MD was shown to occur mostly in the exchange active regions (so is less likely to be noise).
+
+NEW SENTENCE 2:
+Static x-ray crystallography cumulative RMSD (H-N, N, CA, CB, C) of 8.19 ppm dropped to 7.44 ppm with normal MD and 5.92 ppm accelerated MD (using a modified AMBER10), and motion in the accelerated MD was shown to occur mostly in the exchange active regions (so is less likely to be noise).
+
+================================================================
+ENTRY 8 — Sahakyan and Vendruscolo
+================================================================
+
+Name spelling: "Haigh-Maillon" -> "Haigh-Mallion". Appears twice
+in this entry (once in the header line, once in the body).
+The reference is to Haigh and Mallion's 1979/1980 ring-current
+work — surname is Mallion (one l, two l's: M-a-l-l-i-o-n).
+
+REPLACE_ALL within Entry 8:
+  Haigh-Maillon  ->  Haigh-Mallion
+
+OLD HEADER:
+Primary source. An Examination of Point Dipole, Johnson-Bovey and Haigh-Maillon Models Across Ring Current, Electric Field, Nucleus and Ring Type
+
+NEW HEADER:
+Primary source. An Examination of Point Dipole, Johnson-Bovey and Haigh-Mallion Models Across Ring Current, Electric Field, Nucleus and Ring Type
+
+OLD BODY EXCERPT:
+DFT was calculated across the set of crystal structure arrangements, and point dipole, Johnson-Bovey, and Haigh-Maillon results were calculated.
+
+NEW BODY EXCERPT:
+DFT was calculated across the set of crystal structure arrangements, and point dipole, Johnson-Bovey, and Haigh-Mallion results were calculated.
+
+================================================================
+END
+================================================================

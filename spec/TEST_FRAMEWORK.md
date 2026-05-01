@@ -2,6 +2,25 @@
 
 What we actually have, what each test does, and what to run when.
 
+**2026-04-29 staleness note:** Some examples in this document use raw
+binary invocations (`./structure_tests`, `./trajectory_tests`, etc.).
+The current discipline is **ctest only** (see "Tests run via `ctest`"
+section below); raw invocations require `scripts/run_with_cuda_env.sh`
+to apply the cu13 / libtorch CUDA JIT environment that AIMNet2 needs.
+Treat any `./<binary>` example as shorthand for
+`ctest -R '<TestSuiteName>\.'` (or `scripts/run_with_cuda_env.sh
+./build/<binary>` if a single binary really is required).
+The "1A6J_5789, 10 GROMACS poses" claim below is also stale: the
+fleet-smoke fixture was trimmed to a single pose at master commit
+`b69d55c`, which is why `FleetLoaderTest.HasTenFrames`,
+`FleetLoaderTest.PositionsDifferBetweenFrames`,
+`FleetLoaderTest.FullPipelineAllFrames`, `SmokeTest.NoDft`, and
+`JobSpecE2E.FleetLibraryDirect` currently fail on master HEAD —
+those are pre-existing fixture-expectation drift, not regressions.
+PHASE 0 (AMBER trajectory loader) replaces this fixture with an
+AMBER trajectory; until then the failures are documented in
+`spec/plan/amber-implementation-plan-2026-04-29.md`.
+
 
 ## Test Executables
 
@@ -49,7 +68,7 @@ ctest -L structure                                  # or: ctest -E 'gromacs|wate
 # Trajectory development (~5 min each)
 ctest -R 'GromacsStreaming\.'    # H5 + AIMNet2 critical path
 ctest -R 'WaterField\.'
-ctest -R 'TrajectoryStreaming\.' # the trajectory_tests target
+ctest -R 'FleetLoaderTest\.'     # the trajectory_tests target
 
 # Pipeline confidence (~80s, includes MOPAC)
 ctest -R 'Smoke\.'
@@ -77,11 +96,15 @@ run the matching test tier.
 
 ### Tier 0: Unit tests (always, <5s)
 
-Run `./unit_tests`. Fast sanity check on core logic — run before anything else.
+Run `ctest -R unit_`. Fast sanity check on core logic — run before
+anything else. (Manual `./build/unit_tests` invocation requires
+`scripts/run_with_cuda_env.sh` per the cu13 fix in
+`reference_nvrtc_rpath_fix`; ctest applies it automatically.)
 
 ### Tier 1: Smoke only (~80 seconds)
 
-Run `./smoke_tests`. This covers:
+Run `ctest -R 'Smoke\.'` or the smoke_tests target via ctest. This
+covers:
 
 - **Changed a parameter** in calibration.toml or CalculatorConfig
 - **Changed an extractor's computation** (e.g. fixed a sign, added a filter)
@@ -241,7 +264,6 @@ It loads every .npy via numpy and checks:
 | test_ring_hierarchy.cpp | Ring type intensity, lobe offset, aromaticity properties |
 | test_object_model.cpp | Protein/Residue/Atom hierarchy construction |
 | test_naming_registry.cpp | Amino acid naming and protonation state resolution |
-| test_iupac_atom_identity.cpp | IUPAC atom lookup by residue and atom name |
 | test_runtime_environment.cpp | ff14sb_params, tmpdir, MOPAC library availability |
 | test_calculator_config.cpp | Ring intensity and JB lobe offset config defaults |
 | test_biot_savart_result.cpp | Biot-Savart field from wire segments (analytical, also 1UBQ integration) |

@@ -7,10 +7,12 @@
 //
 
 #include "FullSystemReader.h"
+#include "BuildResult.h"
 #include "WaterFieldResult.h"
 #include "HydrationShellResult.h"
 #include "GromacsEnergyResult.h"
 #include "OperationRunner.h"
+#include "Trajectory.h"
 #include "GromacsEnsembleLoader.h"
 #include "PdbFileReader.h"
 #include "ChargeSource.h"
@@ -75,19 +77,21 @@ TEST(WaterField, ReadTopologyAndExtractFrame) {
               << "\n  ions:              " << solvent.IonCount()
               << std::endl;
 
-    // 4. Build protein using the existing fleet loader (for topology)
-    nmr::FleetPaths paths;
-    // We need initial-samples for BuildFromGromacs — check if they exist
-    // If not, we'll create the conformation manually
-    // For now, just build from the reference PDB
-    std::string ref_pdb = FULLSYS_DIR + "/walker_0/reference.pdb";
-
-    nmr::RuntimeEnvironment::Load();
-    auto build = nmr::BuildFromProtonatedPdb(ref_pdb);
+    // 4. Build the protein from the same TPR slice, then seed it with
+    // the extracted frame positions.
+    auto build = reader.BuildProtein("1ZR7_6721");
     ASSERT_TRUE(build.Ok()) << build.error;
 
-    // Override positions with the XTC frame positions
-    auto& conf = build.protein->Conformation();
+    build.protein->FinalizeConstruction(protein_pos);
+    auto& conf = build.protein->AddMDFrame(
+        std::move(protein_pos), 0, frames[0].time, 1.0, 0.0, 0.0);
+
+    // EDR energy is loaded by Trajectory and handed to OperationRunner
+    // per frame in the production trajectory path. Mirror that here.
+    nmr::Trajectory traj(xtc, tpr, FULLSYS_DIR + "/walker_0/md.edr");
+    ASSERT_TRUE(traj.HasEdr());
+    const nmr::GromacsEnergy* frame_energy = traj.EnergyAtTime(frames[0].time);
+    ASSERT_NE(frame_energy, nullptr);
 
     // 5. Run standard calculators (no MOPAC, no Coulomb, with APBS)
     nmr::RunOptions opts;
@@ -95,6 +99,9 @@ TEST(WaterField, ReadTopologyAndExtractFrame) {
     opts.skip_coulomb = true;
     opts.charge_source = build.charges.get();
     opts.solvent = &solvent;
+    opts.frame_energy = frame_energy;
+    if (reader.HasBondedParams())
+        opts.bonded_params = &reader.BondedParams();
 
     nmr::RunResult rr = nmr::OperationRunner::Run(conf, opts);
     ASSERT_TRUE(rr.Ok()) << rr.error;

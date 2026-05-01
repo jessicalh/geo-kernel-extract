@@ -15,16 +15,144 @@ against the tree. Human-oriented project description lives in
 
 ## Current state — read this BEFORE the rest of CLAUDE.md
 
-A 2026-04-26 attempt to add an IUPAC topology layer was reverted on
-2026-04-27. **Master is the working pre-IUPAC tool.** Read these in
-order before doing anything else:
+### 2026-04-29 working-tree status (load-bearing)
 
-- `KNOWN_BUGS.md` (project root) — documented bugs that exist in the
-  current working tool. **Honest list, not a problem list to solve
-  immediately.**
+A 2026-04-26 attempt to add an IUPAC topology layer was reverted on
+2026-04-27. Master HEAD is `f8729e3` (post-revert clean; origin/master
+matches local). **The working tree on top of that has the AMBER charge
+slice steps 1–6 fully landed — ~18 new src files, ~30 modified files,
+3 new test files — uncommitted and awaiting review.**
+
+The active plan is captured in
+**`spec/plan/amber-implementation-plan-2026-04-29.md`** (1807 lines;
+the load-bearing capture-of-decisions for the day). It locks O2/O3/O4,
+contains the crystal projection rule, the substrate-vs-conformation
+split, and the post-slice sequencing. **Read it.** It is the single
+most-important doc for understanding what was decided and why.
+
+**Status of the six implementation steps:** all six steps green in
+the working tree; 62/62 acceptance tests passing across the AMBER
+suite (`AmberCharge*`, `AmberFlatTable*`, `AmberPreparation*`,
+`AmberLeapInput*`, `AmberPreparedCharge*`) plus the pre-existing gate
+(`ChargeFF14SB*`, `ApbsFF14SB*`, `PrmtopChargeTest`, `OrcaRunTest`,
+`FleetLoaderTest.ChargesReturned`). Per-step commit boundaries are
+intentional but commits are not yet made — pending user review.
+
+**Pre-existing fixture failures (not regressions from this slice):**
+the full-suite ctest reports 5 failures —
+`FleetLoaderTest.HasTenFrames`, `FleetLoaderTest.PositionsDifferBetweenFrames`,
+`FleetLoaderTest.FullPipelineAllFrames`, `SmokeTest.NoDft`,
+`JobSpecE2E.FleetLibraryDirect`. Root cause is the
+`tests/data/fleet/1A6J_5789/poses/ensemble.json` fixture trim from
+master commit `b69d55c "SmokeFleet.AllPoses: trim to 1 pose; bless
+regenerated"`. These tests expected 10 frames; the trimmed fixture
+declares 1. Frame-loading code is correct; the test expectations are
+stale. The slice does not touch frame-loading. PHASE 0 (AMBER
+trajectory loader) will replace the CHARMM/GROMACS fixture and these
+tests get re-derived against the new fixture; until then, the
+failures are documented and inert. **Do not attribute them to this
+slice.**
+
+**Locked decisions (2026-04-29):**
+
+```text
+O2  --orca / --mutant require an upstream PRMTOP. Hard fail
+    otherwise; no fall-through to the flat ff14SB table on those paths.
+O3  Cap atom geometry does not affect ff14SB charges. Atom positions
+    do not enter charge or radius lookup. Ideal-geometry caps are
+    sufficient permanently. (Was a "non-question" — recorded as such.)
+O4  NME chosen as the default C-terminal cap under
+    UseCappedFragmentsForUnsupportedTerminalVariants. Preserves the
+    INTERNAL backbone chemistry of the host residue; NHE is not used.
+Drift policy  "Drift is OK. Surprise is not." Bit-identity for its
+    own sake is engineering hygiene; understanding-the-drift is the
+    science. Methods text cites the drift report.
+AMBER as project standard  All MD trajectories will be AMBER; the
+    CHARMM/GROMACS-from-TPR loader becomes quarantined legacy.
+Substrate vs conformation split  Invariant facts (chemistry, pH-
+    determined state under fixed-protonation MD) live on
+    LegacyAmberTopology; conformation-dependent facts (geometry, ω,
+    chi values, rotamer classification) live on ProteinConformation
+    via calculators. Mixing scopes is a category error.
+OpenBabel exit is a CONSEQUENCE of Phase 2 calculator migration,
+    not a precursor. There is no "swap OpenBabel" phase.
+Crystal projection rule  Names (AMBER / IUPAC / BMRB) are PURE
+    FUNCTIONS on the typed substrate, never cached strings.
+Substrate-first sequencing  Phase 1 (substrate build-out, complete)
+    runs before Phase 2 (existing-calculator migration). Migrating
+    against a partial substrate forces every calculator through twice.
+```
+
+**Reading order for the next session, in this order:**
+
+1. `spec/plan/current-topology-anchor-2026-04-29.md` — anchor for the
+   active interruption.
+2. `spec/plan/amber-terminal-charge-generation-2026-04-29.md` —
+   AMBER-side policy: standard residue templates, capping, no
+   extractor-local chemistry.
+3. `spec/plan/legacy-amber-implementation-brief-2026-04-29.md` —
+   small-object-model contract.
+4. `spec/plan/pre-iupac-cruft-map-2026-04-29.md` — defensive cleanup
+   notes against the pre-IUPAC string surface.
+5. **`spec/plan/amber-implementation-plan-2026-04-29.md` — TODAY'S
+   CENTRAL PLAN. Locks O2/O3/O4. Six steps. Crystal projection rule.
+   Substrate-vs-conformation split. Post-slice sequencing PHASE 0 →
+   PHASE 1 (N1.A–G) → PHASE 2 → OpenBabel exit → N4.**
+6. `spec/plan/openai-5.5-strong-architecture-layout.md` —
+   architecture record.
+
+**Next task (tomorrow morning):** PHASE 0 — AMBER trajectory loader
+input path. Seals the AMBER-only stance across all five input methods
+(`--pdb`, `--protonated-pdb`, `--orca`, `--mutant`, `--trajectory`).
+After PHASE 0, every Phase 1 substrate field can be tested against
+all five paths.
+
+Older docs that pre-date today's decisions but might still be
+encountered:
+
+- **`spec/plan/openai-5.5-strong-architecture-layout.md`** — naming and
+  ABC architecture; today's plan doc is consistent with it but more
+  specific. Read after the central plan, not before.
+- **`KNOWN_BUGS.md`** — documented bugs. Bug 4's "fix when resources
+  permit" framing is being overtaken right now; Bug 4 IS the shape
+  this slice dissolves. Read with that update in mind.
+- **`spec/EVIL_STRING_AUDIT_2026-04-28.md`** — full inventory of
+  consumer sites (28 actual). Inventory data is still authoritative;
+  phasing recommendation is superseded by the central plan.
 - Memory entries `project_iupac_revert_2026-04-27`,
-  `project_proteintopology_architecture`, and `feedback_resource_constraint`.
-  Loaded automatically at session start.
+  `project_proteintopology_architecture`, and
+  `feedback_resource_constraint`. Loaded automatically at session start.
+
+**Working-tree contents that are uncommitted but real:**
+
+```text
+src/  (new, untracked)
+    ProteinTopology.h
+    LegacyAmberTopology.{h,cpp}
+    ForceFieldChargeTable.{h,cpp}
+    CalculatorContract.h
+    AmberChargeResolver.{h,cpp}
+    AmberLeapInput.{h,cpp}
+    AmberPreparedChargeSource.{h,cpp}
+
+src/  (modified)
+    Protein.{h,cpp}, ChargeSource.{h,cpp},
+    ChargeAssignmentResult.{h,cpp},
+    ProtonationDetectionResult.{h,cpp},
+    RuntimeEnvironment.{h,cpp}, Residue.h,
+    ConformationAtom.h, ApbsFieldResult.{h,cpp},
+    PdbFileReader.{h,cpp}, OrcaRunLoader.cpp,
+    GromacsEnsembleLoader.cpp, FullSystemReader.cpp,
+    TrajectoryProtein.cpp, plus minor edits
+
+tests/  (new)
+    test_amber_charge_resolver.cpp
+    test_amber_leap_input.cpp
+    test_amber_prepared_charge_source.cpp
+
+data/  (regenerated)
+    ff14sb_params.dat (from tools/amber/generate_ff14sb_pb_table.py)
+```
 
 The "iupac topology" episode was a multi-week mistake. **Do not
 investigate it from git history, branches, or filenames.** The
@@ -32,18 +160,13 @@ preservation branch was deleted; an emergency tar.gz sits at
 `/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz`
 and should not be extracted. Extracting it would put you back in
 the trap that produced the revert in the first place. The memory
-entries are the durable architectural record.
+entries plus today's central plan are the durable architectural record.
 
 If you find yourself thinking "let me check git log to understand
 the recent history" or "let me look at this old branch" or "this
 filename mentions IUPAC, let me investigate" — **stop and verify
 with the user first.** Archaeology costs context. The memory
 entries are designed to give the picture without the cost.
-
-The staged Phase A→D plan in `project_proteintopology_architecture`
-is the path forward if and when the user opens that work. Until
-they do, the post-revert tool is producing thesis-relevant output
-and bugs are documented.
 
 ## Working-directory convention — read this before anything else
 
@@ -195,8 +318,11 @@ Pick the row that matches the task and read in order.
   `feedback_trajectory_scope_philosophy.md` and
   `feedback_trajectory_scope_gotchas.md`, then the trajectory-scope
   section of `OBJECT_MODEL.md` and `PATTERNS.md` §§13-18. For
-  working-notes and pending appendices (`NmrAtomIdentity`, catalog
-  Appendix F, H5 metadata schema), see
+  working-notes and pending appendices (`NmrAtomIdentity` —
+  superseded 2026-04-28 by the `LegacyAmberTopology` plan in
+  `spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry
+  `project_proteintopology_architecture`; catalog Appendix F; H5
+  metadata schema), see
   `spec/pending_include_trajectory_scope_2026-04-22.md` — not
   authoritative for anything landed. Historical landing records:
   `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md` +
@@ -323,9 +449,24 @@ memory):
   (authoritative staging with per-job PDB + XYZ + .out + meta.json, worker logs,
   collection manifest) and replicated as orthogonal `dft_output/` siblings into
   all three calibration copies (`fleet_calibration-{working,stats,backup}/`).
-  Fleet state: 200 of 685 proteins H5-complete; remaining 485 MDs
-  running, PDBs landing ~2026-04-24, all in the same tree. DFTs on
-  the 485 have not been scheduled.
+  Fleet state (as of 2026-04-30): the 685-protein fleet run was
+  STOPPED after evaluation showed extractions were bad (chain-
+  extraction issue in structure preparation). 200 proteins had
+  completed Use Case B `PerFrameExtractionSet` extractions before
+  the stop; those H5s exist on disk under
+  `fleet_calibration-{working,stats,backup}/` but are flawed and
+  should not be treated as authoritative. The other 485 were
+  CANCELLED before completion.
+
+  Recovery path: OF3 (OpenFold3) is generating fresh structures
+  directly from sequence for the same 685 proteins, replacing the
+  PDB-extraction step that produced the bad chains. Once OF3
+  structures land, the 685-fleet re-runs MD on the new structures.
+  These OF3 outputs have not been extracted yet because they are
+  *direct* OF3 predictions — no extraction step has run on them.
+
+  DFTs on the 485 have not been scheduled and are deferred until
+  the structure-quality issue is resolved.
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results. Not
   yet active.
 

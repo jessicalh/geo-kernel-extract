@@ -1,0 +1,14 @@
+================================================================
+ENTRY 3 — Han et al. 2011 SHIFTX2  [SECONDARY — bioinformatics]
+================================================================
+
+Han, B., Liu, Y., Ginzinger, S.W. and Wishart, D.S. (2011)
+'SHIFTX2: significantly improved protein chemical shift
+prediction', Journal of Biomolecular NMR, 50(1), pp. 43-57.
+doi:10.1007/s10858-011-9478-4.
+
+Secondary source (bioinformatics / software methods). [HEADER]
+
+[BODY]
+
+[word count: __]

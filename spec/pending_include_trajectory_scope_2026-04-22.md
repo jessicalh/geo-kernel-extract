@@ -1,5 +1,23 @@
 # Pending Include — Trajectory Scope Design Pass (2026-04-22)
 
+**Update 2026-04-28 — `NmrAtomIdentity` proposal is SUPERSEDED.**
+The §2 + Appendix A `NmrAtomIdentity`-on-Atom proposal in this file
+has been replaced by the **`LegacyAmberTopology` + calculator-contract
+architecture** (`spec/plan/openai-5.5-strong-architecture-layout.md` and
+memory entry `project_proteintopology_architecture`).
+`LegacyAmberTopology` is the explicit typed contract for current
+calculators, attached to Protein, holding residue slots, ring
+topology, bond topology (`CovalentTopology` becomes the bond-graph
+component inside), enrichment projection, AMBER-named atoms as typed
+values, and the typed semantic fields originally proposed for
+`NmrAtomIdentity` (Locant, BranchIndex, DiastereotopicIndex, etc. —
+absorbed into `LegacyAmberTopology` rather than a separate class).
+Calculators declare `CalculatorContract<LegacyAmberTopology,
+ChargeSetT>`. **Do not implement from §2 / Appendix A.** They are
+preserved below for historical context only. Other pending sections
+(TrajectoryResult catalog Appendix F, H5 metadata schema §7) remain
+pending.
+
 **Status (as of the landing commit that introduced the worked
 examples):** no longer the source of truth. The trajectory-scope
 object model + patterns have landed in `src/` and been folded, in
@@ -16,10 +34,11 @@ remains that the control docs don't carry:
   for future sessions examining why the landed shape is what it is,
   not cruft to discard.
 - Appendices still pending user review and implementation:
-  `NmrAtomIdentity` (§2 + Appendix A), the full TrajectoryResult
-  catalog (Appendix F — seven of ~30 implemented so far), the H5
-  metadata schema (§7 — partial), the stage-plan (Appendix H —
-  partial; Stage 1 landed across two sessions).
+  the full TrajectoryResult catalog (Appendix F — seven of ~30
+  implemented so far), the H5 metadata schema (§7 — partial), the
+  stage-plan (Appendix H — partial; Stage 1 landed across two
+  sessions). The `NmrAtomIdentity` §2 + Appendix A is superseded
+  per the note above.
 - Anti-pattern warnings (§3) that still apply and are referenced
   from the `feedback_trajectory_scope_gotchas` memory entry.
 
@@ -31,14 +50,12 @@ Divergences from the originally-proposed design are documented in
 the commit history for the trajectory-scope landing + exemplars.
 
 **User review needed before further integration.** Folding the
-remaining material (pending appendices, catalog, H5 schema) into the
+remaining (non-superseded) material (catalog, H5 schema) into the
 control docs requires:
 
-1. User sign-off on the pending designs (NmrAtomIdentity specifically
-   is PROPOSAL-PENDING-USER-REVIEW per §2 + Appendix A).
-2. A judgment call per section on what belongs in the control docs
+1. A judgment call per section on what belongs in the control docs
    as canonical vs what stays here as working context.
-3. For the catalog, a decision on whether to maintain it in
+2. For the catalog, a decision on whether to maintain it in
    OBJECT_MODEL.md as a living checklist vs leave it here as a
    reference list.
 

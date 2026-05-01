@@ -104,9 +104,9 @@ public:
     bool is_hbond_acceptor = false;
     bool parent_is_sp2 = false;
 
-    // === Charges and radii (ChargeAssignmentResult) ===
+    // === Charges and PB radii (ChargeAssignmentResult) ===
     double partial_charge = 0.0;
-    double vdw_radius = 0.0;
+    double pb_radius = 0.0;
 
     // === MOPAC semiempirical results (MopacResult) ===
     double mopac_charge = 0.0;            // Mulliken charge (elementary charges)

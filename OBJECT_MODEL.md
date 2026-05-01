@@ -19,11 +19,18 @@ DenseBuffer) are documented below after the ConformationResult section.
 The old Gromacs* classes (GromacsProtein, GromacsProteinAtom,
 GromacsRunContext, AnalysisWriter) are in `learn/bones/` — their
 replacement landed as the trajectory-scope object model. Design
-working-notes and pending appendices (NmrAtomIdentity, full
-TrajectoryResult catalog, H5 metadata schema) are in
+working-notes and pending appendices (full TrajectoryResult catalog,
+H5 metadata schema) are in
 `spec/pending_include_trajectory_scope_2026-04-22.md`; that file is
 not authoritative for anything already landed — the code + the
-trajectory-scope section below win.
+trajectory-scope section below win. The pending-include's
+`NmrAtomIdentity` proposal is **superseded 2026-04-28** by the
+`LegacyAmberTopology` + calculator-contract architecture in
+`spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry
+`project_proteintopology_architecture` — typed calculator contract
+attached to Protein, with the typed semantic fields (Locant,
+BranchIndex, etc.) absorbed into LegacyAmberTopology rather than a
+separate IUPACAnnotation class.
 
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
@@ -347,20 +354,37 @@ Value type. Full copy.
 
 ## ChargeSource (typed hierarchy)
 
-Where per-atom charges come from. The force field determines charges,
-naming, and VdW parameters. Each source is a distinct type, not a
-string-dispatched function.
+Where per-atom charges and PB radii come from. The force field
+determines charges, naming, and the electrostatic radius model.
+Each source is a distinct type, not a string-dispatched function.
 
 ```
 ChargeSource (abstract)
-├── ParamFileChargeSource   — ff14SB from flat parameter file (fallback)
-├── PrmtopChargeSource      — ff14SB/ff19SB from AMBER prmtop (authoritative)
-├── GmxTprChargeSource      — CHARMM36m from GROMACS .tpr (fleet data)
-└── StubChargeSource        — uniform test charges
+├── ParamFileChargeSource         — ff14SB from flat parameter file
+├── PrmtopChargeSource            — ff14SB/ff19SB from AMBER prmtop
+│                                   (authoritative; --orca, --mutant)
+├── PreloadedChargeSource         — caller-supplied charges
+│                                   (used by GROMACS/CHARMM TPR path)
+├── GmxTprChargeSource            — legacy CHARMM36m via `gmx dump`
+│                                   (quarantined; PB radii are placeholders)
+└── AmberPreparedChargeSource     — runtime tleap → PRMTOP → charges
+                                    when the flat ff14SB table cannot
+                                    represent the protein (--pdb /
+                                    --protonated-pdb fallback under
+                                    UseCappedFragmentsForUnsupportedTerminalVariants)
 ```
 
-ChargeAssignmentResult::Compute(conf, ChargeSource&) is the typed factory.
-The param-file and stub convenience factories delegate to it.
+There is no StubChargeSource. Every protein enters the system with
+real, sourced charges.
+
+ChargeSources do not assign charges directly. They produce
+`AtomChargeRadius` rows; `ForceFieldChargeTable::Build(source, ...)`
+constructs the prepared table on `Protein`; `ChargeAssignmentResult`
+projects that table into ConformationAtom for compatibility consumers.
+Charge identity (which force field, which loader) is recorded on
+`ForceFieldChargeTable::Kind()` (typed `ChargeModelKind` enum) and
+`SourceDescription()` (string), not as a duplicate field on
+ProteinBuildContext.
 
 ### ForceField (enum)
 
@@ -368,7 +392,28 @@ The param-file and stub convenience factories delegate to it.
 enum class ForceField { Amber_ff14SB, Amber_ff19SB, CHARMM36m, Unknown };
 ```
 
-Recorded in ProteinBuildContext as provenance.
+Recorded as `ProteinBuildContext::force_field` (the protein-level
+force-field intent) and on `ForceFieldChargeTable::SourceForceField()`
+(the loaded charge table's force field). Both values must agree by
+construction; the loader sets BuildContext, then constructs a
+ChargeSource of the matching ForceField.
+
+### ChargeModelKind (enum)
+
+```
+enum class ChargeModelKind {
+    AmberPrmtop,            // upstream PRMTOP via PrmtopChargeSource
+    AmberPreparedPrmtop,    // PRMTOP generated at runtime via tleap
+    GromacsTpr,              // CHARMM/GROMACS TPR (placeholder PB radii)
+    Ff14SBParamFile,         // ff14SB flat parameter file
+    Preloaded,               // caller-supplied
+    Unknown
+};
+```
+
+Recorded on `ForceFieldChargeTable::Kind()` to discriminate which
+loader/path produced the table. Methods text and H5 attribute writers
+read this enum; output projections derive their text from typed values.
 
 ---
 
@@ -618,8 +663,8 @@ principle.
 
 | Property | Type | Unit | Source result | Description |
 |----------|------|------|---------------|-------------|
-| partial_charge | double | elementary charge (e) | ChargeAssignmentResult | ff14SB force field |
-| vdw_radius | double | Angstroms | ChargeAssignmentResult | ff14SB force field |
+| partial_charge | double | elementary charge (e) | ChargeAssignmentResult (projected from ForceFieldChargeTable) | force-field partial charge — ff14SB on AMBER paths, CHARMM36m on quarantined GROMACS path |
+| pb_radius | double | Angstroms | ChargeAssignmentResult (projected from ForceFieldChargeTable) | Poisson-Boltzmann (electrostatic) radius — mbondi2 on AMBER paths; placeholder on quarantined GROMACS/CHARMM path |
 | mopac_charge | double | elementary charge (e) | MopacResult | PM7 Mulliken charge |
 | mopac_s_pop | double | electrons | MopacResult | s-orbital population |
 | mopac_p_pop | double | electrons | MopacResult | p-orbital population |
@@ -2438,27 +2483,32 @@ schema (see pending-include file §7). What's currently emitted:
 - `/trajectory/selections/<kind>/` per-kind sub-groups walked via
   `selections_.Kinds()`.
 
-Pending full schema (awaits `NmrAtomIdentity` landing):
+Pending full schema:
 
 - `/metadata/source/` with protein provenance attrs (pdb_source,
   deposition_date, crystal_resolution, protonation_tool, force_field,
   stripped, assumptions, extractor_version, extraction_date) from
   `ProteinBuildContext`.
-- `/atoms/identity/` with the typed NmrAtomIdentity fields
-  (iupac_atom_position, nmr_class, locant, methyl_group,
-  chi_participation, ring_atom_role, ring_membership, residue_category,
-  hydropathy, etc.) for BMRB / RefDB binding downstream.
+- `/atoms/legacy_amber/` with the typed `LegacyAmberTopology` semantic
+  fields (Locant, BranchIndex, DiastereotopicIndex, ProchiralStereo,
+  PlanarStereo, PseudoatomClass, PolarHKind, RingPosition) plus
+  legacy enrichment projection. Naming projections (AMBER native,
+  IUPAC, BMRB) emitted as separate H5 columns derived from the typed
+  enums via `LegacyAmberTopology`'s projection surface; no label
+  strings are stored authoritatively.
 
 Emission is currently sufficient for the Python SDK and viewer to
-consume the implemented handlers' output. The full schema is a
-pre-fleet-activation bundle flagged PROPOSAL-PENDING-USER-REVIEW in
-the pending-include file.
+consume the implemented handlers' output.
 
 ### Deferred work pointers
 
-- `NmrAtomIdentity` on Protein (§2 of pending-include, Appendix A for
-  the enum generator) — the typed identity layer for external-data
-  binding. Proposal-pending user review.
+- `LegacyAmberTopology` + calculator-contract templating — the active
+  architecture, captured in `spec/plan/openai-5.5-strong-architecture-layout.md`
+  and operationally in memory entry
+  `project_proteintopology_architecture`. Supersedes the earlier
+  `NmrAtomIdentity`-on-Atom proposal in the pending-include file and
+  the briefly-active IUPACAnnotation framing. Round-robin design
+  phase + matrix pre-spec deliverable run before any code.
 - Full TrajectoryResult catalog (Appendix F above) — ~25 classes to
   land, each cloning one of the seven canonical shapes.
 - `TopologyTrajectoryResult` or equivalent — centralized topology

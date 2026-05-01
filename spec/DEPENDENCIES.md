@@ -96,9 +96,22 @@ Last updated: 2026-04-03.
 - **Path:** `~/KaML/KaML-CBTrees/KaML-CBtree.py`
 - **~80% success rate on ARM64**
 
-### tleap (AMBER topology) — offline only
-- **Path:** `~/amber24/bin/tleap`
-- **Not called at runtime** — used to prepare training data prmtop files
+### tleap (AMBER topology) — offline AND runtime (2026-04-29 update)
+- **Path:** `~/amber24/bin/tleap` (or wherever `RuntimeEnvironment::Tleap()`
+  resolves it — TOML `tleap = "..."` → AMBERHOME/bin/tleap → PATH →
+  conda default).
+- **Used offline** by `tools/amber/generate_ff14sb_pb_table.py` to
+  produce `data/ff14sb_params.dat` from AmberTools standard libraries.
+- **Now ALSO called at runtime** by `AmberPreparedChargeSource`
+  (`src/AmberPreparedChargeSource.cpp`) when an AMBER input has a
+  terminal protonation variant the flat ff14SB table cannot represent
+  (NTERM/CTERM ASH/CYM/GLH/LYN under `UseCappedFragmentsForUnsupportedTerminalVariants`
+  policy). The runtime invocation is gated by the AMBER charge
+  resolver's branch 3; standard inputs continue through the
+  `ParamFileChargeSource` flat-table path without invoking tleap.
+- **Resolution:** `RuntimeEnvironment::Tleap()` accessor; empty string
+  if no tleap is available. Step-5 negative tests skip when this is
+  empty.
 
 ---
 

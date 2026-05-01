@@ -1,6 +1,8 @@
 #include "PdbFileReader.h"
 #include "ReduceProtonation.h"
 #include "ChargeSource.h"
+#include "AmberChargeResolver.h"
+#include "ForceFieldChargeTable.h"
 #include "RuntimeEnvironment.h"
 #include "AminoAcidType.h"
 #include "OperationLog.h"
@@ -207,24 +209,39 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
     ctx->pdb_source = fs::path(path).filename().string();
     ctx->protonation_tool = "reduce";
     ctx->protonation_pH = pH;
+    ctx->force_field = "ff14SB";
     result.protein->SetBuildContext(std::move(ctx));
 
-    // 5. Assign charges from ff14SB param file — required for physics
-    const std::string& param_path = RuntimeEnvironment::Ff14sbParams();
-    if (param_path.empty() || !fs::exists(param_path)) {
+    // 5. Resolve charge source through the typed dispatch.
+    AmberSourceConfig source_config;
+    source_config.flat_table_path = RuntimeEnvironment::Ff14sbParams();
+    source_config.preparation_policy =
+        AmberPreparationPolicy::FailOnUnsupportedTerminalVariants;
+    if (source_config.flat_table_path.empty() ||
+            !fs::exists(source_config.flat_table_path)) {
         result.error = "ff14SB params not found (RuntimeEnvironment::Ff14sbParams()="
-                       + (param_path.empty() ? "<not set>" : param_path) + ")";
+                       + (source_config.flat_table_path.empty()
+                              ? std::string("<not set>")
+                              : source_config.flat_table_path) + ")";
         return result;
     }
-    result.charges = std::make_unique<ParamFileChargeSource>(param_path);
+
+    std::string charge_err;
+    result.charges = ResolveAmberChargeSource(
+        *result.protein, result.protein->BuildContext(),
+        source_config, charge_err);
+    if (!result.charges) {
+        result.error = charge_err;
+        return result;
+    }
 
     // Compute net charge from charge sum
     auto& conf = result.protein->Conformation();
-    std::string charge_err;
-    auto charges_vec = result.charges->LoadCharges(
-        *result.protein, conf, charge_err);
-    double charge_sum = 0.0;
-    for (const auto& cr : charges_vec) charge_sum += cr.charge;
+    if (!result.protein->PrepareForceFieldCharges(*result.charges, conf, charge_err)) {
+        result.error = "charge preparation failed: " + charge_err;
+        return result;
+    }
+    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 
@@ -269,23 +286,38 @@ BuildResult BuildFromProtonatedPdb(const std::string& path) {
     // Build context
     auto ctx = std::make_unique<ProteinBuildContext>();
     ctx->pdb_source = fs::path(path).filename().string();
+    ctx->force_field = "ff14SB";
     result.protein->SetBuildContext(std::move(ctx));
 
-    // Assign charges from ff14SB — required for physics
-    const std::string& param_path = RuntimeEnvironment::Ff14sbParams();
-    if (param_path.empty() || !fs::exists(param_path)) {
+    // Resolve charge source through the typed dispatch.
+    AmberSourceConfig source_config;
+    source_config.flat_table_path = RuntimeEnvironment::Ff14sbParams();
+    source_config.preparation_policy =
+        AmberPreparationPolicy::FailOnUnsupportedTerminalVariants;
+    if (source_config.flat_table_path.empty() ||
+            !fs::exists(source_config.flat_table_path)) {
         result.error = "ff14SB params not found (RuntimeEnvironment::Ff14sbParams()="
-                       + (param_path.empty() ? "<not set>" : param_path) + ")";
+                       + (source_config.flat_table_path.empty()
+                              ? std::string("<not set>")
+                              : source_config.flat_table_path) + ")";
         return result;
     }
-    result.charges = std::make_unique<ParamFileChargeSource>(param_path);
+
+    std::string charge_err;
+    result.charges = ResolveAmberChargeSource(
+        *result.protein, result.protein->BuildContext(),
+        source_config, charge_err);
+    if (!result.charges) {
+        result.error = charge_err;
+        return result;
+    }
 
     auto& conf = result.protein->Conformation();
-    std::string charge_err;
-    auto charges_vec = result.charges->LoadCharges(
-        *result.protein, conf, charge_err);
-    double charge_sum = 0.0;
-    for (const auto& cr : charges_vec) charge_sum += cr.charge;
+    if (!result.protein->PrepareForceFieldCharges(*result.charges, conf, charge_err)) {
+        result.error = "charge preparation failed: " + charge_err;
+        return result;
+    }
+    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 

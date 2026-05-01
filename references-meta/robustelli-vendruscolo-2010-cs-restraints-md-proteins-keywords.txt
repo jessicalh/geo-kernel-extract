@@ -1,0 +1,47 @@
+# robustelli-vendruscolo-2010-cs-restraints-md-proteins
+chemical-shift restraints
+CS-MD
+restrained molecular dynamics
+CamShift
+backbone chemical shift prediction
+differentiable shift functions
+soft-square harmonic well
+flat-bottom potential
+hyperbolic tangent tail
+penalty function
+replica exchange
+AMBER03 force field
+generalized Born implicit solvent
+SHAKE algorithm
+ALMOST simulation software
+1Hα 13Cα 13Cβ 13C' 1HN 15N
+ring current point-dipole
+through-space sphere term
+dihedral cosine series
+RefDB
+BMRB
+partially denatured starting structures
+folding from extended conformation failure
+Monte Carlo comparison
+move rejection rate
+disordered loop region
+random coil shifts
+residual dipolar coupling
+RDC restraints
+relaxation dispersion NMR
+excited state structure
+transiently populated state
+Abp1p SH3 domain
+peptide bound conformation
+Q-factor cross-validation
+GB3 / 2oed
+ubiquitin / 1d3z
+NE1242 / 2jv8
+twelve protein test set
+molecular fragment replacement
+Cheshire
+CS-Rosetta
+CS23D
+TALOS+
+Vendruscolo group
+protein structure determination from NMR

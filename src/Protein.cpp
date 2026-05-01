@@ -1,9 +1,13 @@
 #include "Protein.h"
 #include "AminoAcidType.h"
+#include "LegacyAmberTopology.h"
+#include "ChargeSource.h"
 #include <algorithm>
 #include <map>
 #include <set>
+#include <vector>
 #include <cstdio>
+#include <cstdlib>
 
 namespace nmr {
 
@@ -133,6 +137,75 @@ const CrystalConformation& Protein::CrystalConf() const {
 
 
 // ============================================================================
+// Explicit topology / charge contract access
+// ============================================================================
+
+const ProteinTopology& Protein::TopologyBase() const {
+    if (!protein_topology_) {
+        fprintf(stderr, "FATAL: Protein::TopologyBase() -- no topology.\n");
+        std::abort();
+    }
+    return *protein_topology_;
+}
+
+const LegacyAmberTopology& Protein::LegacyAmber() const {
+    return TopologyAs<LegacyAmberTopology>();
+}
+
+size_t Protein::BondCount() const {
+    return protein_topology_ ? LegacyAmber().BondCount() : 0;
+}
+
+const Bond& Protein::BondAt(size_t i) const {
+    return LegacyAmber().BondAt(i);
+}
+
+const std::vector<Bond>& Protein::Bonds() const {
+    return LegacyAmber().BondList();
+}
+
+const CovalentTopology& Protein::BondTopology() const {
+    return LegacyAmber().Bonds();
+}
+
+const ForceFieldChargeTable& Protein::ForceFieldCharges() const {
+    if (!force_field_charges_) {
+        fprintf(stderr, "FATAL: Protein::ForceFieldCharges() -- no loaded force-field charges.\n");
+        std::abort();
+    }
+    return *force_field_charges_;
+}
+
+void Protein::SetForceFieldCharges(
+        std::unique_ptr<ForceFieldChargeTable> charges) {
+    if (!charges) {
+        fprintf(stderr, "FATAL: Protein::SetForceFieldCharges(nullptr).\n");
+        std::abort();
+    }
+    if (charges->AtomCount() != AtomCount()) {
+        fprintf(stderr,
+            "FATAL: ForceFieldChargeTable atom count %zu != protein atom count %zu.\n",
+            charges->AtomCount(), AtomCount());
+        std::abort();
+    }
+    force_field_charges_ = std::move(charges);
+}
+
+bool Protein::PrepareForceFieldCharges(
+        const ChargeSource& source,
+        const ProteinConformation& conf,
+        std::string& error_out) {
+    auto table = ForceFieldChargeTable::Build(source, *this, conf, error_out);
+    if (!table) return false;
+    // ForceFieldChargeTable already records source_force_field_, kind_,
+    // and source_description_ at construction. ProteinBuildContext is
+    // not the second authority on charge identity.
+    SetForceFieldCharges(std::move(table));
+    return true;
+}
+
+
+// ============================================================================
 // FinalizeConstruction: every loader must call this after adding all atoms
 // and residues. Ensures backbone indices, bonds, and rings are all detected.
 // ============================================================================
@@ -140,19 +213,176 @@ const CrystalConformation& Protein::CrystalConf() const {
 void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
                                     double bond_tolerance) {
     // Layer 2: symbolic topology (no geometry needed)
+    ResolveResidueTerminalStates();
     CacheResidueBackboneIndices();
+    ResolveProtonationStates(false);
     DetectAromaticRings();
 
     // Layer 3: geometric topology (the geometry→topology boundary)
-    topology_ = CovalentTopology::Resolve(atoms_, rings_, residues_,
+    auto bonds = CovalentTopology::Resolve(atoms_, rings_, residues_,
                                            positions, bond_tolerance);
+    protein_topology_ = std::make_unique<LegacyAmberTopology>(
+        atoms_.size(), residues_.size(), std::move(bonds));
+    ResolveProtonationStates(true);
 
     // Copy connectivity back to Atom objects for convenient calculator access.
     // Calculators read atom.bond_indices and atom.parent_atom_index directly.
     // CovalentTopology is the authority; these are copies for access convenience.
     for (size_t i = 0; i < atoms_.size(); ++i) {
-        atoms_[i]->bond_indices = topology_->BondIndicesFor(i);
-        atoms_[i]->parent_atom_index = topology_->HydrogenParentOf(i);
+        atoms_[i]->bond_indices = LegacyAmber().BondIndicesFor(i);
+        atoms_[i]->parent_atom_index = LegacyAmber().HydrogenParentOf(i);
+    }
+}
+
+
+// ============================================================================
+// ResolveResidueTerminalStates
+//
+// Construction-boundary interpretation of polymer end state. This records
+// which residues are structurally first and last within each chain so
+// force-field adapters can choose their own terminal templates explicitly.
+// ============================================================================
+
+void Protein::ResolveResidueTerminalStates() {
+    std::map<std::string, std::vector<size_t>> by_chain;
+    for (size_t ri = 0; ri < residues_.size(); ++ri) {
+        residues_[ri].terminal_state = ResidueTerminalState::Internal;
+        by_chain[residues_[ri].chain_id].push_back(ri);
+    }
+
+    for (const auto& kv : by_chain) {
+        const auto& indices = kv.second;
+        if (indices.empty()) continue;
+
+        if (indices.size() == 1) {
+            residues_[indices.front()].terminal_state =
+                ResidueTerminalState::NAndCTerminus;
+            continue;
+        }
+
+        residues_[indices.front()].terminal_state =
+            ResidueTerminalState::NTerminus;
+        residues_[indices.back()].terminal_state =
+            ResidueTerminalState::CTerminus;
+    }
+}
+
+
+// ============================================================================
+// ResolveProtonationStates
+//
+// Construction-boundary string interpretation. This prepares residue
+// protonation/variant state before calculators run. ProtonationDetectionResult
+// reports this state; it does not perform identity resolution.
+// ============================================================================
+
+void Protein::ResolveProtonationStates(bool use_covalent_topology) {
+    std::set<size_t> disulfide_sg;
+    if (use_covalent_topology && protein_topology_) {
+        for (const Bond& bond : Bonds()) {
+            if (bond.category == BondCategory::Disulfide) {
+                disulfide_sg.insert(bond.atom_index_a);
+                disulfide_sg.insert(bond.atom_index_b);
+            }
+        }
+    }
+
+    for (auto& res : residues_) {
+        const AminoAcidType& aatype = res.AminoAcidInfo();
+        if (!aatype.is_titratable || aatype.variants.empty()) continue;
+
+        if (res.protonation_variant_index >= 0) {
+            res.protonation_state_resolved = true;
+        }
+
+        std::map<std::string, size_t> name_to_idx;
+        bool has_any_H = false;
+        for (size_t ai : res.atom_indices) {
+            const Atom& atom = *atoms_[ai];
+            name_to_idx[atom.pdb_atom_name] = ai;
+            if (atom.element == Element::H) has_any_H = true;
+        }
+
+        int variant_idx = res.protonation_variant_index;
+        bool resolved = res.protonation_state_resolved;
+
+        if (res.type == AminoAcid::HIS) {
+            bool has_HD1 = name_to_idx.find("HD1") != name_to_idx.end();
+            bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
+
+            if (has_HD1 && has_HE2) {
+                variant_idx = 2;  // HIP
+                resolved = true;
+            } else if (has_HD1) {
+                variant_idx = 0;  // HID
+                resolved = true;
+            } else if (has_HE2) {
+                variant_idx = 1;  // HIE
+                resolved = true;
+            } else if (has_any_H) {
+                resolved = true;
+            }
+        }
+        else if (res.type == AminoAcid::ASP) {
+            bool has_HD2 = name_to_idx.find("HD2") != name_to_idx.end();
+            if (has_HD2) {
+                variant_idx = 0;  // ASH
+                resolved = true;
+            } else if (has_any_H) {
+                resolved = true;  // charged ASP default
+            }
+        }
+        else if (res.type == AminoAcid::GLU) {
+            bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
+            if (has_HE2) {
+                variant_idx = 0;  // GLH
+                resolved = true;
+            } else if (has_any_H) {
+                resolved = true;  // charged GLU default
+            }
+        }
+        else if (res.type == AminoAcid::CYS) {
+            auto sg_it = name_to_idx.find("SG");
+            if (sg_it != name_to_idx.end() &&
+                disulfide_sg.count(sg_it->second) > 0) {
+                variant_idx = 0;  // CYX
+                resolved = true;
+            } else {
+                bool has_HG = name_to_idx.find("HG") != name_to_idx.end();
+                if (has_HG || has_any_H) {
+                    resolved = true;  // free CYS default unless CYX detected
+                }
+            }
+        }
+        else if (res.type == AminoAcid::LYS) {
+            bool has_HZ1 = name_to_idx.find("HZ1") != name_to_idx.end();
+            bool has_HZ2 = name_to_idx.find("HZ2") != name_to_idx.end();
+            bool has_HZ3 = name_to_idx.find("HZ3") != name_to_idx.end();
+
+            if (has_HZ1 && has_HZ2 && has_HZ3) {
+                resolved = true;  // charged LYS default
+            } else if (has_HZ1 || has_HZ2) {
+                variant_idx = 0;  // LYN
+                resolved = true;
+            } else if (has_any_H) {
+                resolved = true;
+            }
+        }
+        else if (res.type == AminoAcid::ARG) {
+            resolved = true;  // charged ARG default; ARN is not inferred from names
+        }
+        else if (res.type == AminoAcid::TYR) {
+            bool has_HH = name_to_idx.find("HH") != name_to_idx.end();
+            if (!has_HH && has_any_H) {
+                variant_idx = 0;  // TYM
+                resolved = true;
+            } else if (has_HH) {
+                resolved = true;  // neutral TYR default
+            }
+        }
+
+        res.protonation_variant_index = variant_idx;
+        res.protonation_state_resolved = resolved;
     }
 }
 
@@ -208,14 +438,14 @@ void Protein::DetectAromaticRings() {
             }
             if (!all_present) continue;
 
-            // Determine ring type -- for HIS, use protonation_variant_index
-            // if ProtonationDetectionResult has run (preferred), otherwise
-            // fall back to string check at the PDB loading boundary.
+            // Determine ring type -- for HIS, use the construction-resolved
+            // protonation_variant_index when available, otherwise fall back
+            // to string checks at the PDB loading boundary.
             RingTypeIndex effective_type = ring_def.type_index;
             if (res.type == AminoAcid::HIS) {
                 if (res.protonation_variant_index >= 0) {
                     // Typed path: read from protonation_variant_index
-                    // (set by ProtonationDetectionResult)
+                    // (prepared during Protein construction)
                     // 0 = HID, 1 = HIE, 2 = HIP
                     switch (res.protonation_variant_index) {
                         case 0: effective_type = RingTypeIndex::HidImidazole; break;

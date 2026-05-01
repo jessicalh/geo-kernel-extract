@@ -1,0 +1,223 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart/Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - 5 paragraphs (no titles): 1. Scope/stance/audience/argument. 2. Methods/central results. 3. Findings (magnitudes, observations). 4. Relations to literature (builds on/points to, named from bibliography). 5. Implications for our work (honest, no stretch).
+        - Conventions: Kernel-vs-DFT = correlation (r²), not match. Per-element complexity matters (don't collapse tensor to scalar unless paper does). Dry register. No invented methodology.
+        - Length: 4-6 pages paper -> 200-300 words body. (This paper is 8 pages: 10802-10809). I'll aim for ~250-300 words for the body.
+    - **Paper Info:**
+        - Authors: Ziyue Yang, Maghesree Chakraborty, Andrew D. White
+        - Year: 2021
+        - Title: Predicting chemical shifts with graph neural networks
+        - Journal: Chemical Science, 2021, 12, 10802–10809
+        - DOI: 10.1039/d1sc01895g
+        - Pages: 8 (10802-10809)
+        - References: 73
+        - Funding: NSF (1764415, 1751471), NIH R35GM137966, CIRC at Univ of Rochester.
+        - Stance: Research paper (Edge Article), methodological/empirical study on GNNs for NMR chemical shift prediction.
+        - Key Methods: Message-passing GNN (enn-s2s style), inputs: molecular graph (atoms, covalent/spatial edges with distances), outputs: chemical shifts for C, N, H. Trained on RefDB (2405 proteins, 131M fragments), SHIFTX (197 train/62 test), Metabolome (369 organic molecules). Loss: RMSD + correlation term. Architecture: 4 MP layers, 3 FC layers, 256 node features, 4 edge features. Residue connections used.
+        - Key Findings: H-only model: RMSD 0.459, r=0.781. All-elements model: RMSD 0.527 (H), 0.293 (Ha), r=0.844 (Ha). Correlation on Ha is 0.844 (r² ≈ 0.712). Captures secondary structure effects (β-sheet downfield, α-helix upfield for Ha) and hydrogen bonding/salt bridge effects (upfield shift when broken). Efficiency: ~5.7 ms per shift, 1M shifts in ~5s. Differentiable w.r.t. distances.
+        - Literature Relations: Builds on/compares to ProShift, SPARTA+, ShiftX+, ShiftX2, CamShift, CS2Backbone. References GNN literature (Battaglia, Gilmer, Schütt, Wu, etc.). References NMR physics (Mielke & Krishnan, Avbelj & Baldwin, Szilagyi & Jardetzky, White et al. on H-bond shifts).
+        - Implications for Thesis: The thesis uses geometric kernels + DFT calibration for shielding tensors. This paper uses a black-box GNN for scalar chemical shifts. It demonstrates that differentiable, structure-to-shift mapping is possible without hand-engineered features, but it collapses tensor information to scalars and relies on data-driven learning rather than physics-based kernels. It shows correlation can be high (r² ~0.7-0.8) but doesn't address tensor preservation or DFT calibration. Useful as a contrast to physics-based kernel approaches; shows the ceiling for data-driven scalar prediction, but lacks the physical interpretability and tensor structure the thesis requires. No direct methodological overlap.
+
+2.  **Draft - Header:**
+    Yang, Z., Chakraborty, M., & White, A. D. (2021). Predicting chemical shifts with graph neural networks. *Chemical Science*, 12, 10802–10809. DOI: 10.1039/d1sc01895g. 8 pages. 73 references. Funded by NSF (1764415, 1751471) and NIH (R35GM137966); computational resources from CIRC, University of Rochester.
+
+3.  **Draft - Paragraph 1: Scope & Stance**
+    This research paper presents a graph neural network (GNN) framework for predicting NMR chemical shifts directly from 3D molecular structures. The authors position the work as a differentiable forward model capable of handling arbitrary molecules, contrasting it with existing protein-specific, non-differentiable empirical models that rely on hand-engineered features. The primary argument is that a message-passing GNN trained end-to-end on structural graphs can achieve accuracy comparable to state-of-the-art methods while remaining computationally efficient and compatible with gradient-based molecular simulation.
+
+4.  **Draft - Paragraph 2: Methods**
+    The model implements a message-passing neural network (enn-s2s architecture) where inputs consist of atom element identities and a molecular graph encoding covalent and spatial neighbor relationships with distances. The architecture comprises an edge feature network, four message-passing layers with residue connections, and three fully connected output layers. Training utilizes three datasets: a large fragment dataset derived from 2,405 proteins (RefDB), a carefully curated protein dataset (SHIFTX), and a metabolome database of 369 organic molecules. The loss function combines root mean squared deviation with a correlation penalty. Hyperparameters were optimized on a validation split, and training employed Adam optimization with a decaying learning rate schedule and early stopping.
+
+5.  **Draft - Paragraph 3: Findings**
+    The H-only model achieves an RMSD of 0.459 ppm and a correlation coefficient of 0.781 on the SHIFTX test set. The multielement model trained on all datasets yields RMSDs of 0.527 ppm (H), 0.293 ppm (Ha), and 0.264 ppm (Hr), with correlation coefficients of 0.844 (Ha) and 0.878 (H). The authors note that correlation on Ha corresponds to an r² of approximately 0.712. The model captures secondary structure dependencies, reproducing the expected downfield shift for β-sheets and upfield shift for α-helices in Ha, and reproduces the upfield shift associated with breaking salt bridges, consistent with prior experimental measurements. Inference requires approximately 5.7 ms per shift on a single GPU.
+
+6.  **Draft - Paragraph 4: Literature Relations**
+    The paper situates its approach within the broader GNN literature, citing foundational message-passing frameworks (Gilmer et al., Battaglia et al.) and recent surveys (Wu et al., Dwivedi et al.). It compares performance against established NMR prediction tools including ProShift, SPARTA+, ShiftX+, ShiftX2, CamShift, and CS2Backbone. The phenomenological validation references experimental and computational studies on secondary structure effects (Mielke & Krishnan; Avbelj & Baldwin; Szilagyi & Jardetzky) and hydrogen-bond-induced deshielding (White et al.). The work builds on prior applications of GNNs to molecular properties but extends them to macromolecular NMR shifts.
+
+7.  **Draft - Paragraph 5: Implications for Our Work**
+    This study demonstrates that differentiable, data-driven forward models can capture structure-to-shift correlations without explicit physical kernels or feature engineering. However, it operates exclusively on scalar chemical shifts and does not preserve rank-2 tensor structure or provide a mechanism for calibration against first-principles shielding values. The reliance on large fragment datasets and the absence of explicit physical constraints contrast with the thesis approach of constructing geometry-based kernels calibrated to DFT. The paper serves as a benchmark for the correlation ceiling of purely neural forward models on scalar shifts, but offers no direct methodological transfer for tensor-preserving kernel construction or DFT-based calibration.
+
+8.  **Review & Refine (Self-Correction/Verification against constraints):**
+    - *Header:* Matches requirements. DOI, pages, refs, funding included.
+    - *5 paragraphs, no titles:* Checked.
+    - *Paragraph 1:* Scope/stance/audience/argument. Clear.
+    - *Paragraph 2:* Methods. Specifics: enn-s2s, edge/node features, 4 MP layers, 3 FC, datasets (RefDB, SHIFTX, Metabolome), loss (RMSD + correlation), training details. Accurate to text.
+    - *Paragraph 3:* Findings. Numbers: RMSD 0.459/0.527/0.293, r=0.781/0.844/0.878, r²≈0.712 for Ha. Captures secondary structure & H-bond shifts. Efficiency 5.7 ms/shift. All quoted from text/tables.
+    - *Paragraph 4:* Literature. Names: Gilmer, Battaglia, Wu, Dwivedi, ProShift, SPARTA+, ShiftX+, ShiftX2, CamShift, CS2Backbone, Mielke & Krishnan, Avbelj & Baldwin, Szilagyi & Jardetzky, White et al. All from bibliography or text.
+    - *Paragraph 5:* Implications. Honest, no stretch. Notes scalar vs tensor, data-driven vs kernel+DFT, correlation vs accuracy. Aligns with thesis conventions.
+    - *Conventions check:* Uses "correlation", "r²", avoids "match". Doesn't collapse tensor to scalar (explicitly notes it operates on scalars). Dry register. No fabricated methodology. Length ~280 words body. Fits 4-6 page paper guideline (actually 8 pages, but close enough; I'll keep it tight).
+    - *Check numbers:* Table 1 shows HRMSD 0.459, Hr 0.781, HaRMSD 0.264, Har 0.878 for Model (H). Model (all): HRMSD 0.527, Hr 0.718, HaRMSD 0.293, Har 0.844. I'll adjust paragraph 3 to match exactly: H-only: RMSD 0.459, r=0.781. All-elements: RMSD 0.527 (H), 0.293 (Ha), r=0.844 (Ha). The text says "N: 2.982, C: 1.652, 0.368" for RMSD in multitype, but I'll stick to the main reported ones. I'll verify r² calculation: 0.844² = 0.712336. Text says "r is correlation coefficient, so for example r = 0.966 corresponds to an R2 = 0.933." I'll state r² ≈ 0.712 for Ha.
+    - *Check dataset sizes:* RefDB: 131,015,256 fragments, ~1.25M shifts. SHIFTX: 21,878 fragments, 62 test proteins. Metabolome: 369 molecules. All accurate.
+    - *Check architecture:* 4 MP layers, 3 FC layers, 256 node features, 4 edge features. Residue connections. Loss: RMSD + correlation term (g=0.01). All accurate.
+    - *Check tone:* Dry, precise, no evaluative language.
+    - *Check thesis alignment:* Explicitly addresses T2 preservation gap, scalar vs tensor, kernel vs GNN, DFT calibration absence. Matches constraints perfectly.
+
+    One minor adjustment: The prompt says "Length scales with paper size: 4–6 pages → 200–300 words body". This paper is 8 pages (10802-10809). I'll keep it around 280-300. It's fine.
+    I will ensure the formatting matches exactly: Header paragraph, then 5 paragraphs. No section titles. I'll double-check the exact wording for the loss function and architecture to be precise.
+    "The loss function combined correlation and root mean squared deviation (RMSD): L = Σ(yi - ŷi)² + g(1 - Cov(y,ŷ)/(σy σŷ))" - I'll just describe it as combining RMSD and a correlation penalty term.
+    All good. Proceed. 
+    Output matches the refined draft.✅
+    Self-Correction/Verification during thought:
+    - Check Table 1 values: Model (H) HRMSD 0.459, Hr 0.781, HaRMSD 0.264, Har 0.878. Model (all) HRMSD 0.527, Hr 0.718, HaRMSD 0.293, Har 0.844. I'll report these exactly.
+    - Check r² convention: The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'". I'll adjust phrasing to explicitly use r² where appropriate.
+    - Check per-element complexity: The prompt says "Do not collapse a tensor to a scalar except where the source paper itself does." The paper predicts scalar shifts. I will note this explicitly as a limitation for the thesis context.
+    - All constraints met. Output generation. 
+    Structure:
+    [Header]
+    [Para 1]
+    [Para 2]
+    [Para 3]
+    [Para 4]
+    [Para 5]
+    Word count: ~290. Fits. Dry. Precise. No fluff. Matches thesis framing. Ready. 
+    Output matches response. 
+    Proceeds. 
+    [Output Generation] -> *See response.* 
+    *Self-Correction/Note during drafting*: I need to make sure I don't use "r² of" incorrectly. The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'". I will phrase it as "captures the signal with an r² of 0.712 for Ha". I'll adjust paragraph 3 slightly to align with the exact phrasing requested. Also, I'll ensure the header strictly follows the format. All good. 
+    Final check of the text: "The loss function combined correlation and root mean squared deviation (RMSD)" -> I'll keep it concise. 
+    All set. 
+    Output generation. 
+    [Output] -> *Proceeds.*
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy.
+    - **Focus Areas:** Statistics (numbers, r, r², RMSEs, dataset sizes, etc.), Methodology (procedures, tools, datasets, etc.), Names (authors, years, works, residues, molecules, etc.).
+    - **Constraint:** Return only the revised summary if corrections are needed, or the unchanged draft if accurate. Maintain the exact header-plus-five-paragraphs format. Do not rewrite for style.
+    - **Context:** NMR shielding-tensor PhD thesis. Kernel-vs-DFT comparisons framed as correlation. Per-element complexity noted but not directly relevant to this paper's content. Dry, precise language.
+
+2.  **Cross-Check Draft against Paper Text:**
+
+    *Header:*
+    - Draft: Yang, Z., Chakraborty, M., & White, A. D. (2021). Predicting chemical shifts with graph neural networks. *Chemical Science*, 12, 10802–10809. DOI: 10.1039/d1sc01895g. 8 pages. 73 references. Funded by NSF (1764415, 1751471) and NIH (R35GM137966); computational resources provided by CIRC, University of Rochester.
+    - Paper: Authors: Ziyue Yang, Maghesree Chakraborty and Andrew D. White. Year: 2021. Title: Predicting chemical shifts with graph neural networks. Journal: Chem. Sci., 2021, 12, 10802-10809. DOI: 10.1039/d1sc01895g. Pages: 10802-10809 (8 pages). References: 73 listed. Funding: NSF 1764415, 1751471; NIH R35GM137966. CIRC mentioned. All matches.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: "This research paper presents a graph neural network framework for predicting NMR chemical shifts directly from three-dimensional molecular structures. The authors position the work as a differentiable forward model capable of handling arbitrary molecules, contrasting it with existing protein-specific, non-differentiable empirical models that rely on hand-engineered features. The central argument is that a message-passing GNN trained end-to-end on structural graphs can achieve accuracy comparable to state-of-the-art methods while remaining computationally efficient and compatible with gradient-based molecular simulation."
+    - Check: Matches paper's introduction and abstract. No specific numbers/names to verify here. Accurate.
+
+    *Paragraph 2: Methods*
+    - Draft: "The model implements a message-passing neural network (enn-s2s architecture) where inputs consist of atom element identities and a molecular graph encoding covalent and spatial neighbor relationships with distances. The architecture comprises an edge feature network, four message-passing layers with residue connections, and three fully connected output layers. Training utilizes three datasets: a large fragment dataset derived from 2,405 proteins (RefDB), a carefully curated protein dataset (SHIFTX), and a metabolome database of 369 organic molecules. The loss function combines root mean squared deviation with a correlation penalty term. Hyperparameters were optimized on a validation split, and training employed Adam optimization with a decaying learning rate schedule and early stopping."
+    - Check against text:
+      - "enn-s2s" mentioned in text: "This approach is sometimes referred to as enn-s2s."
+      - Inputs: atom identities, edges (covalent/spatial, distance). Correct.
+      - Architecture: F(E0)=E, G(V0,E) MP layers, H(VK) output. Text says: "Final layer numbers are K = 4, L = 3, J = 3." (K=MP layers, L=output FC layers, J=edge network layers? Actually text says "Final layer numbers are K = 4, L = 3, J = 3." I'll stick to "four message-passing layers and three fully connected output layers" as drafted.
+      - Datasets: RefDB (2405 proteins, 131,015,256 fragments? Wait, text says "131 015 256 atom fragments with approximately 1.25 million NMR chemical shifts." Actually, it says "131 015 256 atom fragments" - that's 131 million? Let's check: "This was segmented into a fragment dataset of 131 015 256 atom fragments with approximately 1.25 million NMR chemical shifts." That seems like a typo in the paper or my reading. Wait, "131 015 256" might be 131,015,256? Or maybe it's 131,015 fragments? Let's look closely: "131 015 256 atom fragments". Actually, later it says "The number of RefDB dataset examples is 131 015 (716 164 shifts)". So it's 131,015 fragments. The "256" is likely the atom limit per fragment. I will correct to "131,015 fragments".
+      - SHIFTX: 197 train, 62 test proteins. 21,878 fragments for training. Correct.
+      - Metabolome: 369 metabolites. Correct.
+      - Loss: "The loss function combined correlation and root mean squared deviation (RMSD)". Correct.
+      - Training: Adam, learning rate schedule, early stopping. Correct.
+      - I need to fix the fragment count: "131,015 fragments" not "2,405 proteins (RefDB)" as the dataset size. The draft says "derived from 2,405 proteins (RefDB)". That's fine, but I'll adjust to match the exact number if needed. The text says "2405 proteins with both X-ray resolved crystal structures and measured NMR chemical shifts". So that's correct.
+      - I'll verify the "131 015 256" phrasing. It's likely a formatting artifact in the PDF extraction. The caption says "131 015 (716 164 shifts)". I'll stick to "131,015 fragments".
+
+    *Paragraph 3: Findings*
+    - Draft: "The H-only model captures the signal with an RMSD of 0.459 ppm and a correlation coefficient of 0.781 on the SHIFTX test set. The multielement model trained on all datasets yields RMSDs of 0.527 ppm (H), 0.293 ppm (Ha), and 0.264 ppm (Hr), with correlation coefficients of 0.844 (Ha) and 0.878 (H). The Ha correlation corresponds to an r² of 0.712. The model captures secondary structure dependencies, reproducing the expected downfield shift for β-sheets and upfield shift for α-helices in Ha, and reproduces the upfield shift associated with breaking salt bridges, consistent with prior experimental measurements. Inference requires approximately 5.7 ms per shift on a single GPU."
+    - Check against Table 1:
+      - Model (H): HRMSD 0.459, Hr 0.781 (correlation), HaRMSD 0.264, Har 0.878. Wait, the draft says "correlation coefficient of 0.781 on the SHIFTX test set" for H-only. Table 1 says Hr=0.781, Har=0.878. So H-only model: RMSD(H)=0.459, Corr(H)=0.781. Correct.
+      - Model (all): HRMSD 0.527, Hr 0.718, HaRMSD 0.293, Har 0.844. Draft says: "RMSDs of 0.527 ppm (H), 0.293 ppm (Ha), and 0.264 ppm (Hr)". Wait, Table 1 says HaRMSD is 0.293, HrRMSD is not listed in that row? Actually, Table 1 columns are: HRMSD, Hr, HaRMSD, Har, # Para. So for Model (all): HRMSD=0.527, Hr=0.718, HaRMSD=0.293, Har=0.844. The draft incorrectly lists 0.264 ppm for Hr. 0.264 is HaRMSD for the H-only model. I need to fix this.
+      - Let's re-read Table 1 carefully:
+        Label variance: HRMSD 0.176, Hr 0.965, HaRMSD 0.138, Har 0.967
+        Model (H): HRMSD 0.459, Hr 0.781, HaRMSD 0.264, Har 0.878
+        Model (all): HRMSD 0.527, Hr 0.718, HaRMSD 0.293, Har 0.844
+        Medium: ...
+        Small: ...
+        No RefDB: ...
+        No non-linearity: ...
+        Weighted: ...
+        SHIFTX+: HRMSD 0.455, Hr 0.787, HaRMSD 0.248, Har 0.890
+        SHIFTX+a: HRMSD 0.378, Hr 0.836, HaRMSD 0.197, Har 0.932
+        UCBShiftX: ...
+        CS2Backbone: ...
+      - Draft says: "RMSDs of 0.527 ppm (H), 0.293 ppm (Ha), and 0.264 ppm (Hr)". This is wrong. 0.264 is HaRMSD for H-only. For Model (all), HaRMSD is 0.293. There is no HrRMSD listed in Table 1. I will correct to: "RMSDs of 0.527 ppm (H) and 0.293 ppm (Ha), with correlation coefficients of 0.718 (Hr) and 0.844 (Har)."
+      - "The Ha correlation corresponds to an r² of 0.712." Wait, 0.844² = 0.712336. So r² ≈ 0.712. Correct.
+      - Secondary structure: "downfield shift for β-sheets and upfield shift for α-helices in Ha". Text says: "downfield shift of Ha d for β-sheet and upfield shift for α-helix." Correct.
+      - Salt bridge: "upfield shift associated with breaking salt bridges". Text says: "breaking a salt bridge ... on the H3 chemical shift. ... The model gets a similar upfield shift". Correct.
+      - Inference: "5.7 ms per shift". Text: "5.7 ms per shift". Correct.
+      - I will fix the RMSD values in paragraph 3.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: "The paper situates its approach within the broader GNN literature, citing foundational message-passing frameworks (Gilmer et al., Battaglia et al.) and recent surveys (Wu et al., Dwivedi et al.). It compares performance against established NMR prediction tools including ProShift, SPARTA+, ShiftX+, ShiftX2, CamShift, and CS2Backbone. The phenomenological validation references experimental and computational studies on secondary structure effects (Mielke & Krishnan; Avbelj & Baldwin; Szilagyi & Jardetzky) and hydrogen-bond-induced deshielding (White et al.). The work builds on prior applications of GNNs to molecular properties but extends them to macromolecular NMR shifts."
+    - Check names:
+      - Gilmer et al. (ref 31), Battaglia et al. (ref 29), Wu et al. (ref 28), Dwivedi et al. (ref 22). Correct.
+      - ProShift (ref 38), SPARTA+ (ref 39), ShiftX+ (ref 36), ShiftX2 (ref 36/38/39 context), CamShift (ref 40), CS2Backbone (ref 44). Correct.
+      - Mielke & Krishnan (ref 68, 72), Avbelj & Baldwin (ref 69), Szilagyi & Jardetzky (ref 70), White et al. (ref 71). Correct.
+      - All match.
+
+    *Paragraph 5: Implications*
+    - Draft: "This study demonstrates that differentiable, data-driven forward models can capture structure-to-shift correlations without explicit physical kernels or feature engineering. However, it operates exclusively on scalar chemical shifts and does not preserve rank-2 tensor structure or provide a mechanism for calibration against first-principles shielding values. The reliance on large fragment datasets and the absence of explicit physical constraints contrast with the thesis approach of constructing geometry-based kernels calibrated to DFT. The paper serves as a benchmark for the correlation ceiling of purely neural forward models on scalar shifts, but offers no direct methodological transfer for tensor-preserving kernel construction or DFT-based calibration."
+    - Check: Matches thesis framing. No specific numbers/names to verify. Accurate.
+
+3.  **Detailed Verification & Correction:**
+    Let's meticulously check the numbers in the draft against the text.
+    - Header: All correct.
+    - P1: No numbers.
+    - P2: "131,015 fragments" (corrected from ambiguous "2,405 proteins (RefDB)" which is fine but I'll adjust to match exact text: "131,015 fragments derived from 2,405 proteins"). Actually, the draft says "derived from 2,405 proteins (RefDB)". I'll keep it but ensure accuracy. The text says "131 015 256 atom fragments" which is clearly a PDF parsing error for "131,015 fragments" (256 is the atom limit). I will state "131,015 fragments".
+    - P3: Fixed the RMSD/correlation mix-up. Table 1 clearly shows Model (all): HRMSD 0.527, Hr 0.718, HaRMSD 0.293, Har 0.844. Draft had 0.264 for Hr, which is wrong. I will correct to: "The multielement model trained on all datasets yields RMSDs of 0.527 ppm (H) and 0.293 ppm (Ha), with correlation coefficients of 0.718 (Hr) and 0.844 (Har)."
+    - Check r² calculation: 0.844² = 0.712336. Draft says 0.712. Correct.
+    - Check inference time: "5.7 ms per shift". Text: "5.7 ms per shift". Correct.
+    - Check dataset sizes: RefDB 131,015 fragments. SHIFTX 21,878 fragments. Metabolome 369 molecules. All correct.
+    - Check architecture: "four message-passing layers with residue connections, and three fully connected output layers." Text: "Final layer numbers are K = 4, L = 3, J = 3." Correct.
+    - Check loss: "combined correlation and root mean squared deviation (RMSD)". Text: "The loss function combined correlation and root mean squared deviation (RMSD)". Correct.
+    - Check names: All match references.
+    - Check thesis framing: "correlate", "captures the signal", "r² of …". Used correctly.
+    - One minor thing: The draft says "The Ha correlation corresponds to an r² of 0.712." I'll adjust to "The Har of 0.844 corresponds to an r² of 0.712." to be precise.
+    - Let's verify the "0.264 ppm (Hr)" error in draft. It definitely came from misaligning columns in Table 1. I will fix it.
+    - Check "131 015 256 atom fragments" in text. It's a known OCR/PDF issue. The caption says "131 015 (716 164 shifts)". I will use 131,015 fragments.
+    - Check "SHIFTX test dataset of 62 proteins (7494 fragments)". I'll mention this if relevant, but not strictly necessary.
+    - Check "5 seconds for one million chemical shifts". Text: "able to compute one million chemical shifts in about 5 seconds." Draft says "5.7 ms per shift". Both are consistent. I'll keep 5.7 ms.
+    - Check "r and r² values". Draft uses r and r² correctly per thesis convention.
+    - Check "per-element complexity". Not applicable here, but I won't force it.
+    - Check "kernel-vs-DFT". Not applicable, but I frame it correctly as a neural baseline.
+    - All good. I will produce the revised summary.
+
+    Structure check:
+    Header paragraph
+    Paragraph 1: Scope/Stance
+    Paragraph 2: Methods
+    Paragraph 3: Findings
+    Paragraph 4: Relations
+    Paragraph 5: Implications
+    Length: ~250 words. Fits 4-6 page paper guideline (200-300).
+    Tone: Dry, precise.
+    I will carefully reconstruct the draft with the corrections applied.
+
+    Re-reading P3 carefully:
+    "The H-only model captures the signal with an RMSD of 0.459 ppm and a correlation coefficient of 0.781 on the SHIFTX test set. The multielement model trained on all datasets yields RMSDs of 0.527 ppm (H) and 0.293 ppm (Ha), with correlation coefficients of 0.718 (Hr) and 0.844 (Har). The Har of 0.844 corresponds to an r² of 0.712. The model captures secondary structure dependencies, reproducing the expected downfield shift for β-sheets and upfield shift for α-helices in Ha, and reproduces the upfield shift associated with breaking salt bridges, consistent with prior experimental measurements. Inference requires approximately 5.7 ms per shift on a single GPU."
+    This matches Table 1 exactly now.
+
+    Check P2 dataset size: "Training utilizes three datasets: a fragment dataset of 131,015 examples derived from 2,405 proteins (RefDB), a curated protein dataset of 21,878 fragments (SHIFTX), and a metabolome database of 369 organic molecules." Matches text.
+
+    Check P2 architecture: "The architecture comprises an edge feature network, four message-passing layers with residue connections, and three fully connected output layers." Matches text.
+
+    Check P4 names: All verified against references.
+
+    Everything looks solid. I will output the revised summary. 
+    One minor point: The prompt says "The Ha correlation corresponds to an r² of 0.712." I'll change to "The Har of 0.844 corresponds to an r² of 0.712." for precision.
+    Also, check "SHIFTX test dataset of 62 proteins (7494 fragments)". I'll add "on the 62-protein SHIFTX test set" for precision.
+    All set. Output matches request.✅
+    Proceeds. 
+    Self-Correction/Verification during thought:
+    - Table 1 columns: HRMSD, Hr, HaRMSD, Har. 
+    - Model (H): 0.459, 0.781, 0.264, 0.878.
+    - Model (all): 0.527, 0.718, 0.293, 0.844.
+    - Draft originally said: "RMSDs of 0.527 ppm (H), 0.293 ppm (Ha), and 0.264 ppm (Hr)". This was definitely a column misread. Corrected.
+    - "5.7 ms per shift" matches text.
+    - "131,015 fragments" matches caption.
+    - All other numbers/names verified.
+    - Format matches exactly.
+    - Ready. 
+    Output generation. 
+    [Output Generation] -> *Proceeds*
+    *(Self-Correction/Refinement during drafting)*: I notice the prompt says "The Ha correlation corresponds to an r² of 0.712." I will adjust to "The Har of 0.844 corresponds to an r² of 0.712." to be strictly accurate to the table. I will also ensure the dataset sizes are explicitly stated as in the text. The rest is solid.
+    Final check of the prompt: "Reply with the final summary only."
+    I will output exactly the revised summary.✅
+    [Output Generation] -> *Proceeds*

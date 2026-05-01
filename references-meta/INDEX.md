@@ -7,7 +7,7 @@ scripts/references/regen_index.sh
 ```
 
 Source: every `*-keywords.txt` file under `references-meta/`.
-Papers: 15. Generated: 2026-04-24 18:45 UTC.
+Papers: 17. Generated: 2026-04-30 20:22 UTC.
 
 **Caveat:** keywords are free-form, not a controlled vocabulary. Near-synonyms appear as separate entries. When snarfing a topic, grep more than one phrasing.
 
@@ -47,17 +47,29 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **15N shift**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**17O 15N shift prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **17O chemical shift**
 - facelli-2011-chemical-shift-tensors-theory-application
 
 **17O shift**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**19F NMR prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **1H shift**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**1Hα 13Cα 13Cβ 13C' 1HN 15N**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **220 MHz NMR**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
+
+**31P NMR prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **3D-DenseNet**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -86,6 +98,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **ab initio NMR**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
 
+**Abp1p SH3 domain**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **absolute shielding scale**
 - facelli-2011-chemical-shift-tensors-theory-application
 
@@ -107,9 +122,15 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **AC-ResNet**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**active learning**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **adenine**
 - case-1995-ring-current-calibration
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
+
+**AI for NMR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **A.I. Scott lab**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
@@ -120,11 +141,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Allinger molecular mechanics**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
+**ALMOST simulation software**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **AlphaFold2 in NMR**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
 **AlphaFold3**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+
+**AMBER03 force field**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **AMBER10**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
@@ -137,6 +164,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **AMD**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
+
+**ANI-1 dataset**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **anisotropy of current-induced density**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
@@ -187,6 +217,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Augspurger-Dykstra**
 - case-1995-ring-current-calibration
 
+**automated peak picking**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **automated spectrum analysis**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
@@ -196,6 +229,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **B3LYP functional**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
+
+**backbone chemical shift prediction**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **backbone dynamics**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
@@ -225,6 +261,10 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Blackledge**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**BMRB**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **BMRB data scarcity**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
@@ -246,8 +286,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **C-alpha shift**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**CamShift**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **Car-Parrinello MD**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
+
+**CASCADE-2.0**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **Case chemical shift data**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
@@ -270,11 +316,21 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **chemical exchange**
 - bryant-1983-nmr-time-scale
 
+**chemical realism in ML**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **chemical shielding anisotropy**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
 
+**chemical shift accuracy MAE**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**chemical shift accuracy RMSE**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **chemical shift anisotropy**
 - facelli-2011-chemical-shift-tensors-theory-application
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **chemical shift assignment**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -297,11 +353,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **chemical shift predictor**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**chemical-shift restraints**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **chemical shift tensor**
 - facelli-2011-chemical-shift-tensors-theory-application
 
 **chemical shift time averaging**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
+
+**CHESHIRE benchmark**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**Cheshire**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **chi dihedral clustering**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
@@ -332,6 +397,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **Cohen Welling antecedent**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
+
+**ComENet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **compact group action**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -377,11 +445,23 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **crystal unit cell**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 
+**CS23D**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **CSA**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
 
+**CSD Cambridge Structural Database**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **CSGT**
 - facelli-2011-chemical-shift-tensors-theory-application
+
+**CS-MD**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**CS-Rosetta**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **CTOCD-DZ2**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
@@ -413,11 +493,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **D-amino acid peptide**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
 
+**data augmentation**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **decamethylene bridge**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
 **deep learning NMR**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+
+**DEEP Picker1D**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **DEEP picker**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -430,14 +516,30 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **denoising**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**descriptor-based models**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**DFT8K NMR8K Exp5K**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **DFT chemical shift**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 - facelli-2011-chemical-shift-tensors-theory-application
 
+**DFT+ML**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **DFT shielding calculation**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
 - case-1995-ring-current-calibration
+
+**DFT shielding**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**DFT speedup**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **diamagnetic contribution**
 - facelli-2011-chemical-shift-tensors-theory-application
@@ -457,8 +559,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **dielectric constant**
 - buckingham-1960-chemical-shifts-polar-groups
 
+**differentiable shift functions**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **differential Biot-Savart**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
+
+**diffusion coefficients**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **diffusion model NMR outlook**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -466,11 +574,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **dihedral boost**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**dihedral cosine series**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**DimeNet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **dipolar relaxation**
 - bryant-1983-nmr-time-scale
 
 **dipole moment**
 - buckingham-1960-chemical-shifts-polar-groups
+
+**disordered loop region**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **dissected NICS**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
@@ -481,17 +598,29 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **DN-UNet**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**DP4-AI**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**DU8ML**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **dual-boost AMD**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
 **dynamical heterogeneity**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**E(3) equivariance**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **e3nn**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
 **EDHRN**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+
+**EISD experimental inferential structure determination**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **electric field effect**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
@@ -508,11 +637,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **empirical shift predictor**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**end-to-end deep learning**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**end-to-end spectrum to structure**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **enhanced conformational sampling**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
 **ensemble averaging**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
+
+**ensemble error estimation**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **equivariance**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
@@ -523,17 +661,29 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **equivariant neural network**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
 
+**equivariant neural networks**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Eureqa symbolic regression**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
 **exchange-correlation functional**
 - facelli-2011-chemical-shift-tensors-theory-application
 
+**excited state structure**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **ExpNN-ff**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**extra trees regressor**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **F19 phenylalanine**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
+
+**FCHL descriptor**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **feed-forward network**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -543,6 +693,7 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **FID-Net**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **field-cycling relaxometry**
 - bryant-1983-nmr-time-scale
@@ -553,8 +704,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **first-principles molecular dynamics**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 
+**flat-bottom potential**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **Fmoc tripeptide**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
+
+**folding from extended conformation failure**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **force field learning**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
@@ -589,12 +746,22 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **Gaussian process regression**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**GB3 / 2oed**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **GElib**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**generalisability out of distribution**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **generalised convolution**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
+
+**generalized Born implicit solvent**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **geometric calibration molecule**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
@@ -612,6 +779,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**GIAO method**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Giessner-Prettre Pullman**
 - case-1995-ring-current-calibration
 
@@ -621,12 +791,25 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **GIMIC**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**GIPAW DFT**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **GIPAW**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 - facelli-2011-chemical-shift-tensors-theory-application
 
+**GlycoNMR dataset**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**GM26**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **GNN**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**GPR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **gradient boosted trees**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -641,6 +824,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 - klukowski-2025-machine-learning-nmr-spectroscopy
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
+
+**graph neural networks**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**GraphSAGE**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **GROMACS**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
@@ -678,14 +867,23 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Hartree-Fock**
 - case-1995-ring-current-calibration
 
+**heavy atoms B Si Se Br I**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **heteronuclear NOE**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
+
+**heteronuclei**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **histidine**
 - case-1995-ring-current-calibration
 
 **histidinium**
 - case-1995-ring-current-calibration
+
+**HMDB**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **HM intensity factor**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
@@ -702,17 +900,29 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **homonuclear decoupling**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
+**HOSE codes**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**HSQC 2D NMR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Hückel rule**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
 **hybrid DFT**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**hybrid QM/ML**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **hydrogen atom shielding**
 - buckingham-1960-chemical-shifts-polar-groups
 
 **hydrogen bonded base pair**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
+
+**hyperbolic tangent tail**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **ICML 2018**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -732,8 +942,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **imidazole**
 - case-1995-ring-current-calibration
 
+**IMPRESSION-G2**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **IMPRESSION**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **incremental chemical shift**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
@@ -753,6 +967,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **intermolecular shielding effect**
 - facelli-2011-chemical-shift-tensors-theory-application
 
+**intrinsically disordered proteins**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **invariance**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
@@ -771,6 +988,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **irrep**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**iShiftML**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**isotropic chemical shift**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Iuliucci tensor dataset**
 - facelli-2011-chemical-shift-tensors-theory-application
 
@@ -782,6 +1005,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **JB intensity factor**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
+
+**J-couplings**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **Johnson-Bovey**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
@@ -802,8 +1028,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Karplus equation**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
+**Kellner 2025 anisotropy DL solids (cited)**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **kernel ridge regression**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **Klukowski AF2 UCBShift integration**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -813,6 +1043,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **Kondor**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
+
+**KRR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **Larmor frequency**
 - bryant-1983-nmr-time-scale
@@ -859,6 +1092,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **MACE**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
+
+**MACE-OFF23**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**machine learning chemical shift prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **machine learning in NMR**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -911,6 +1150,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **message passing**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**message passing neural network**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **methane probe**
 - case-1995-ring-current-calibration
 
@@ -935,8 +1177,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Modena**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
 
+**molecular fragment replacement**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **molecular mechanics**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
+
+**Monte Carlo comparison**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**move rejection rate**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**MPNN**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **MPW1PW91**
 - facelli-2011-chemical-shift-tensors-theory-application
@@ -944,8 +1198,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **multinuclear NMR**
 - bryant-1983-nmr-time-scale
 
+**natural product dereplication**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **NCS-NICS**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
+
+**NE1242 / 2jv8**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **necessary condition for equivariance**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -989,6 +1249,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **NICS_zz**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**NightShift**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **NMA probe**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
 
@@ -1000,6 +1263,7 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **NMR crystallography**
 - facelli-2011-chemical-shift-tensors-theory-application
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **NMRD**
 - bryant-1983-nmr-time-scale
@@ -1007,11 +1271,23 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **NMR experiment design for deep learning**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**NMRNet (CNN peak picking)**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**NMRNet (SE3 transformer)**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **NMRPrime database**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**NMRShiftDB2**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **NMR spectroscopy**
 - buckingham-1960-chemical-shifts-polar-groups
+
+**NMR spectrum to structure**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **NMR structure refinement**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
@@ -1028,12 +1304,19 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **non-uniform sampling**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **Nose-Hoover thermostat**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 
+**NP-MRD**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **NPT ensemble**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
+
+**NS372 benchmark**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **nuclear magnetic shielding**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
@@ -1084,6 +1367,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **PAH ring current**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**PAiNN**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **para carbon**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
 
@@ -1101,6 +1387,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **paratropic ring current**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
+
+**partially denatured starting structures**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **PBE1PBE functional**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
@@ -1124,8 +1413,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 - klukowski-2025-machine-learning-nmr-spectroscopy
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**penalty function**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **pentalene**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
+
+**peptide bound conformation**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **periodic DFT**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
@@ -1183,6 +1478,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **polyaromatic hydrocarbon**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**polymorph identification**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **polymorph**
 - facelli-2011-chemical-shift-tensors-theory-application
 
@@ -1212,6 +1510,10 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **PROSHIFT**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**PROSPRE**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **protein dynamics prediction**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -1226,6 +1528,7 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **protein structure determination from NMR**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **proton chemical shift**
 - facelli-2011-chemical-shift-tensors-theory-application
@@ -1240,11 +1543,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **P-tensor**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**pure shift NMR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **PW91 functional**
 - case-1995-ring-current-calibration
 
 **PZ2 gauge**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
+
+**Q-factor cross-validation**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**QM9-NMR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **quadrupolar reaction field**
 - buckingham-1960-chemical-shifts-polar-groups
@@ -1264,8 +1576,12 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Ramsey paramagnetic shielding**
 - facelli-2011-chemical-shift-tensors-theory-application
 
+**random coil shifts**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **random forest**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **rank-2 shielding**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
@@ -1276,9 +1592,25 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **RCM**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**RDC restraints**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **reaction field**
 - buckingham-1960-chemical-shifts-polar-groups
 - facelli-2011-chemical-shift-tensors-theory-application
+
+**RefDB**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**relaxation dispersion NMR**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**relaxation times**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**replica exchange**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **representation theory**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
@@ -1287,8 +1619,15 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **residual dipolar coupling cross-validation**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
+**residual dipolar coupling**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
+**restrained molecular dynamics**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **review article**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **rigorous backing**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -1321,6 +1660,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **ring current model**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
+
+**ring current point-dipole**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **ring current**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
@@ -1355,6 +1697,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **rotation equivariance**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
 
+**R squared metric**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **S2**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
 
@@ -1363,6 +1708,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **scalar coupling prediction**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+
+**scalar couplings**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **scattering network Mallat**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -1373,11 +1721,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **Schleyer NICS**
 - gershoni-poranne-stanger-2015-magnetic-criteria-aromaticity
 
+**SchNet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Schur's lemma**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
 **screening constant**
 - buckingham-1960-chemical-shifts-polar-groups
+
+**SE(3) equivariance**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **secondary chemical shift**
 - case-1995-ring-current-calibration
@@ -1386,11 +1740,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **SENNet**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**SHAKE algorithm**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **shielding density map**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
 
 **shielding density**
 - pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart
+
+**shielding tensor (footnote in review)**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **shielding tensor**
 - boyd-skrynnikov-2002-ring-current-chemical-shielding-anisotropy
@@ -1401,15 +1761,18 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **ShiftML2**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **ShiftML**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **SHIFTS 2.2**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
 
 **ShiftX2**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **SHIFTX**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
@@ -1441,8 +1804,14 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **single loop model**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
+**SMILES to spectrum**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **SO(3)**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
+
+**SOAP descriptor**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **SOAP kernel**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -1450,12 +1819,18 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **SOAP**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**soft-square harmonic well**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **solid state NMR**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 - facelli-2011-chemical-shift-tensors-theory-application
 
 **Solomon-Bloembergen-Morgan**
 - bryant-1983-nmr-time-scale
+
+**solvent-aware prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **solvent effect on shielding**
 - facelli-2011-chemical-shift-tensors-theory-application
@@ -1465,15 +1840,28 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **SPARTA+**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**spectral reconstruction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **spectrum reconstruction**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+
+**SphereNet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **spherical harmonic**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
 **spin-lattice relaxation**
 - bryant-1983-nmr-time-scale
+
+**SPINUS**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**SpookyNet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **stacked dibase**
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
@@ -1499,6 +1887,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **substituted benzene**
 - buckingham-1960-chemical-shifts-polar-groups
 
+**substructure prediction**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **sufficient and necessary**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
 
@@ -1508,8 +1899,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **symmetric group**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
+**synthetic data pretraining**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **T1**
 - bryant-1983-nmr-time-scale
+
+**T1 T2 relaxation**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**TALOS+**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **Tannaka-Krein duality**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
@@ -1532,6 +1932,9 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **theoretical machine learning**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
 
+**through-space sphere term**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **thymine**
 - case-1995-ring-current-calibration
 
@@ -1543,9 +1946,19 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **transfer learning**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**transformer architecture**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**transiently populated state**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **translation equivariance**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
+
+**TransPeakNet**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **tripeptide model system**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
@@ -1559,11 +1972,17 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **tryptophan**
 - case-1995-ring-current-calibration
 
+**twelve protein test set**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
+
 **two-loop model**
 - agarwal-1977-ring-currents-local-anisotropy-paracyclophane
 
 **tyrosine**
 - case-1995-ring-current-calibration
+
+**ubiquitin / 1d3z**
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 
 **ubiquitin**
 - markwick-2010-enhanced-conformational-sampling-chemical-shifts
@@ -1573,12 +1992,19 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **UCBShift**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **ultrasoft pseudopotential**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
 
 **uncertainty principle**
 - bryant-1983-nmr-time-scale
+
+**uncertainty quantification**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**Uni-Mol**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **University of Chicago**
 - kondor-trivedi-2018-generalization-equivariance-convolution-compact-groups
@@ -1587,8 +2013,15 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 - case-1995-ring-current-calibration
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
+**variance filter**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**variational GPR**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Vendruscolo group**
 - de-gortari-2010-time-averaging-nmr-chemical-shifts-mlf-peptide
+- robustelli-vendruscolo-2010-cs-restraints-md-proteins
 - sahakyan-vendruscolo-2013-ring-current-electric-field-contributions
 
 **vicinal coupling constant**
@@ -1599,6 +2032,7 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 
 **virtual decoupling**
 - klukowski-2025-machine-learning-nmr-spectroscopy
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **vision transformer NMR outlook**
 - klukowski-2025-machine-learning-nmr-spectroscopy
@@ -1613,11 +2047,20 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 **weakly-supervised learning**
 - klukowski-2025-machine-learning-nmr-spectroscopy
 
+**weakly supervised learning**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
 **Wigner D-matrix**
 - kondor-2025-principles-equivariant-nn-physics-chemistry
 
 **Williamson Asakura**
 - moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement
+
+**Wylie 2011 chemical shift tensors (cited)**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
+
+**XGBoost**
+- piroozi-kammakakam-2026-ai-nmr-shift-prediction
 
 **X-H bond**
 - buckingham-1960-chemical-shifts-polar-groups
@@ -1653,4 +2096,6 @@ Papers: 15. Generated: 2026-04-24 18:45 UTC.
 - `markwick-2010-enhanced-conformational-sampling-chemical-shifts`
 - `moyna-zauhar-williams-1998-comparison-ring-current-methods-structure-refinement`
 - `pelloni-ligabue-lazzeretti-2004-ring-current-models-differential-biot-savart`
+- `piroozi-kammakakam-2026-ai-nmr-shift-prediction`
+- `robustelli-vendruscolo-2010-cs-restraints-md-proteins`
 - `sahakyan-vendruscolo-2013-ring-current-electric-field-contributions`

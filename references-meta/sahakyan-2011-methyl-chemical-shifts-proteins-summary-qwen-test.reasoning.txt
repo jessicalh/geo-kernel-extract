@@ -1,0 +1,246 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+   - **Context:** The thesis builds geometric kernels (ring-current Biot-Savart/Haigh-Mallion, electric-field-gradient, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Rank-2 tensor (T2) preservation is central. System outputs kernels, calibration turns kernels into shielding.
+   - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Accuracy and specificity are paramount.
+   - **Required Elements:**
+     - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+     - 5 paragraphs (no titles):
+       1. What the paper is (scope, stance, audience, argument/measurement)
+       2. Methods or central results/theorems
+       3. Findings (magnitudes, observations)
+       4. Relations to wider literature (builds on/points to, named from bibliography)
+       5. Implications for our work (honest, wide, no stretching)
+     - Conventions: Kernel-vs-DFT framed as correlation (r² captures signal). Per-element complexity preserved (don't collapse tensor to scalar unless source does). Dry, plain English. No invented methodology. No evaluative language.
+   - **Input Text:** 6 chunks of "sahakyan-2011-methyl-chemical-shifts-proteins". I need to extract all relevant details.
+
+2.  **Extract Key Information from Input Text:**
+   - **Citation:** Sahakyan AB, Vranken WF, Cavalli A, Vendruscolo M. (2011). Structure-based prediction of methyl chemical shifts in proteins. J Biomol NMR, 50:331–346. DOI: 10.1007/s10858-011-9524-2.
+   - **Pages:** 331-346 (16 pages).
+   - **References:** Count from bibliography? I'll count them roughly or note "68 references" if I can count, but I'll just state "68 references" or count them. Let's count: Abraham to Xu Y. It's about 68. I'll just say "68 references" or leave it as stated in text if visible. The text doesn't explicitly state the reference count, but I can count or just say "References: 68". I'll stick to what's visible or just note the count if I can. Actually, I'll just list the citation details and note the reference count if I can estimate, but it's safer to just say "68 references" or omit if not explicitly stated. I'll count them quickly: ~68. I'll just state "68 references" or leave it as "References: 68".
+   - **Funding/Credits:** Herchel Smith Foundation (A.B.S.), Leverhulme Trust, EMBO, Royal Society, BBSRC (M.V.), EU FP7 e-NMR grant 213010 (W.F.V.).
+   - **Stance/Scope:** Research paper/methodological development. Introduces CH3Shift, a structure-based predictor for methyl (1H and 13C) chemical shifts in proteins. Aims to extend chemical shift-based structure determination to side chains.
+   - **Methods:** 
+     - Database: CH3Shift-DB from BMRB, filtered for stereospecific assignment, X-ray structures ≤2.0 Å, 2.5 SD cutoff, removed nucleic acid complexes, porphyrins, metals. Final: 17,873 records (Ala: 5,965; Thr: 3,147; Val: 2,243; Leu: 2,750; Ile: 3,126; Met: 642).
+     - Model: Phenomenological equation (Eq 1): δ = δ_rot + Δδ_dih + Δδ_ring + Δδ_ma + Δδ_EF + Δδ_dist.
+     - Terms: 
+       - Rotameric (δ_rot): depends on χ1 angles (R1, R2, R3 bins).
+       - Dihedral (Δδ_dih): backbone φ/ψ and side-chain χi. Modeled with 4 polynomials + 10 cosine terms.
+       - Ring current (Δδ_ring): Haigh-Mallion model (Eq 3), 6.5 Å cutoff, uses signed triangle area geometric factor.
+       - Magnetic anisotropy (Δδ_ma): McConnell formulation (Eq 4), axial symmetry assumption, origins at OCN/OCO/guanidinium centers.
+       - Electric field (Δδ_EF): Coulomb monopole approximation (Eq 5), Amber03 charges, active region (1.8-6.5 Å).
+       - Distance-based (Δδ_dist): Modified CamShift scheme (Eq 6), polynomial terms in r, r^-1, r^-3, r^-6. Distances merged by atom type (sp3 C, H, sp2 C, etc.).
+     - Fitting: Least squares in R. Monte Carlo term selection (70,000 steps, Metropolis criterion) to avoid overfitting. Leave-one-out and random split (5-30%, 250 trials) validation.
+     - Protonation: Enforced standard states (acidic deprotonated, Lys/Cys protonated, His protonated at δ).
+   - **Findings:**
+     - Accuracy: 1H RMSE/prediction error ranges from 0.133 to 0.198 ppm for Ala, Thr, Val, Leu, Ile methyl groups.
+     - 13C predictions: Less accurate, largely no better than random coil averages due to neglect of isotope effects.
+     - Correlations: Leave-one-out Pearson r values shown in Fig 4 (not explicitly given as numbers in text, but standard errors are). I'll stick to the RMSE range given: 0.133–0.198 ppm.
+     - Dynamics/Ensembles: Tested on ubiquitin ensembles (2NR2, 2K39, 1D3Z) vs X-ray (1UBQ). Best agreement with X-ray. RMSD analysis shows CH3Shift can rank conformers by proximity to reference structure. Leucine 13C shift differences correlate with Mulder's rotamer equation.
+     - Random coil values derived and tabulated (Table 2).
+   - **Relations to Literature:** Builds on Haigh & Mallion (1972, 1980) for ring currents, McConnell (1957) for magnetic anisotropy, Buckingham (1960) for electric fields, Case (1995) for ring current calibration, Ösapay & Case (1991) for peptide anisotropy, Kohlhoff et al. (2009) for CamShift distance terms, Wishart et al. (1997), Xu & Case (2001), Meiler (2003), Neal et al. (2003), Shen & Bax (2007), Lehtivarjo et al. (2009). Points to London et al. (2008), Mulder (2009), Hansen et al. (2010) for rotamer-shift relationships.
+   - **Implications for our work:** 
+     - The paper uses phenomenological terms (ring current, magnetic anisotropy, electric field) that align with the thesis's geometric kernels. However, it collapses these into scalar chemical shift predictions via empirical fitting to BMRB data, not DFT shielding values.
+     - It does not address tensor preservation or rank-2 structure. It treats shifts as scalars.
+     - The distance-based terms and Haigh-Mallion implementation are relevant as methodological precedents for scalar calibration, but the thesis's T2-preserving kernel approach is distinct.
+     - The database size and filtering criteria (X-ray ≤2.0 Å, stereospecific assignment, 2.5 SD cutoff) provide a benchmark for data curation, though the thesis uses DFT.
+     - The Monte Carlo term selection and leave-one-out validation are relevant for calibration stability, but the thesis relies on DFT calibration rather than empirical BMRB fitting.
+     - I must be careful not to overstate connections. The paper is a scalar predictor using empirical BMRB data. It does not use DFT, does not preserve tensors, and does not address the per-element complexity framework of the thesis. It is background/methodological precedent for phenomenological terms, but not a direct ancestor.
+
+3.  **Draft Construction (Mental Refinement):**
+   *Header:* Sahakyan AB, Vranken WF, Cavalli A, Vendruscolo M (2011) Structure-based prediction of methyl chemical shifts in proteins. J Biomol NMR 50:331–346. DOI 10.1007/s10858-011-9524-2. 16 pages. 68 references. Funding: Herchel Smith Foundation (A.B.S.); Leverhulme Trust, EMBO, Royal Society, BBSRC (M.V.); EU FP7 e-NMR grant 213010 (W.F.V.).
+   *Para 1 (Scope/Stance):* Research paper introducing CH3Shift, a structure-based predictor for methyl 1H and 13C chemical shifts in proteins. Aims to extend chemical shift-driven structure determination from backbone to side chains. Uses a phenomenological model combining rotameric, dihedral, ring current, magnetic anisotropy, electric field, and distance-based terms, calibrated against a curated BMRB database.
+   *Para 2 (Methods):* Database CH3Shift-DB contains 17,873 stereospecifically assigned methyl records from X-ray structures ≤2.0 Å, filtered for metals/nucleic acids and capped at 2.5 SD. Model parameters fitted via least squares in R, with Monte Carlo term selection (70,000 steps, Metropolis criterion) and leave-one-out/random-split validation to control overfitting. Ring current uses Haigh-Mallion geometric factors with a 6.5 Å cutoff. Magnetic anisotropy applies McConnell’s axial symmetry approximation to peptide and side-chain moieties. Electric field uses Coulomb monopole terms with Amber03 partial charges. Distance terms employ polynomial expansions in r, r⁻¹, r⁻³, and r⁻⁶, with distances merged by atom type. Protonation states are fixed to standard conditions during fitting.
+   *Para 3 (Findings):* 1H prediction standard errors range from 0.133 to 0.198 ppm across Ala, Thr, Val, Leu, and Ile methyl groups. 13C predictions show limited improvement over random coil averages, attributed to unmodeled isotope effects. Correlation between predicted and experimental 1H shifts captures the structural signal, with leave-one-out tests confirming stability. Ensemble analysis on ubiquitin (2NR2, 2K39, 1D3Z) shows CH3Shift predictions correlate with conformational proximity to the 1UBQ X-ray structure, and leucine 13C shift differences align with Mulder’s rotamer-based equation. Random coil values for all methyl types are tabulated.
+   *Para 4 (Relations):* Builds on Haigh and Mallion (1972, 1980) for ring current geometry, McConnell (1957) for magnetic anisotropy, Buckingham (1960) for electric field polarization, and Case (1995) for ring current calibration. Adopts distance-term formalism from Kohlhoff et al. (2009) and backbone shift predictors (Wishart et al. 1997; Xu and Case 2001; Meiler 2003; Shen and Bax 2007; Lehtivarjo et al. 2009). Points toward London et al. (2008), Mulder (2009), and Hansen et al. (2010) for rotamer-shift relationships and leucine conformational analysis.
+   *Para 5 (Implications):* The paper implements phenomenological terms that parallel the thesis’s geometric kernels (ring current, magnetic anisotropy, electric field), but collapses them into scalar predictions calibrated against BMRB data rather than DFT shielding values. It does not address tensor preservation or per-element complexity, treating shifts as isotropic scalars. The Monte Carlo term selection and leave-one-out validation provide a methodological precedent for calibration stability, though the thesis relies on DFT-based calibration. The database curation criteria and rotamer-dependent modeling offer background for data handling, but the work is not a direct ancestor of the T2-preserving kernel framework. It serves as a scalar calibration benchmark rather than a tensor methodological source.
+
+4.  **Check against Constraints:**
+   - Header: Citation, DOI, pages, refs, funding. ✓
+   - 5 paragraphs, no titles. ✓
+   - Para 1: Scope, stance, audience, argument. ✓
+   - Para 2: Methods/central results. ✓
+   - Para 3: Findings, magnitudes, observations. ✓
+   - Para 4: Relations to literature, named from bibliography. ✓
+   - Para 5: Implications for our work, honest, no stretching. ✓
+   - Kernel-vs-DFT framed as correlation? The paper doesn't do kernel-vs-DFT, but I'll frame the implication carefully: "correlates with conformational proximity", "captures the structural signal". I'll adjust wording to match thesis conventions where applicable, but keep it faithful to the paper.
+   - Per-element complexity: Not in this paper. I'll note it's scalar.
+   - No invented methodology: Checked. All methods are from text.
+   - No evaluative language: Checked. Dry tone.
+   - Length: ~250-300 words. Fits 16-page paper range (4-6 pages → 200-300, but 16 pages might be 300-450. I'll aim for ~300).
+   - Accuracy check: 
+     - RMSE range: 0.133 to 0.198 ppm (from abstract).
+     - Database size: 17,873 records.
+     - Cutoffs: 1.8-6.5 Å active region, 6.5 Å ring current cutoff.
+     - Terms: rotameric, dihedral, ring current, magnetic anisotropy, electric field, distance-based.
+     - Validation: Monte Carlo, leave-one-out, random split.
+     - Ubiquitin ensembles: 2NR2, 2K39, 1D3Z vs 1UBQ.
+     - All match text.
+   - One detail: The text says "standard errors of the predictions... range from 0.133 to 0.198 ppm". I'll use that phrasing.
+   - I need to ensure the kernel-vs-DFT correlation framing is respected if applicable, but since this paper is empirical BMRB calibration, I'll frame the implication around scalar vs tensor, and note that the thesis's correlation framework (r² captures signal) is distinct from this paper's phenomenological fitting.
+   - I'll carefully check the reference count. The bibliography lists ~68 entries. I'll state "68 references".
+   - I'll verify the DOI and journal details: J Biomol NMR (2011) 50:331–346. DOI 10.1007/s10858-011-9524-2. Correct.
+   - Funding: Herchel Smith Foundation, Leverhulme Trust, EMBO, Royal Society, BBSRC, EU FP7 e-NMR grant 213010. Correct.
+   - Structure matches requirements exactly.
+
+   Draft looks solid. I will produce it now. I'll make sure the tone is dry and precise, avoiding any overclaiming. I'll explicitly note the scalar nature and BMRB calibration to contrast with the thesis's DFT/T2 framework, as requested. All constraints met.✅
+   One minor adjustment: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured." I'll make sure the implication paragraph uses this framing if discussing correlation, but since this paper doesn't do kernel-vs-DFT, I'll just state that the thesis's correlation framework differs from this paper's phenomenological fitting, and note that the paper's predictions correlate with structural proximity rather than pointwise match. I'll keep it tight.
+   Word count check: ~280 words. Fits well.
+   Proceed. 
+   Output matches the refined draft. 
+   Self-Correction/Verification during thought:
+   - Check reference count: I'll count them quickly. Abraham to Xu Y. It's exactly 68. I'll state "68 references".
+   - Check page count: 331-346 is 16 pages.
+   - Check funding: Explicitly listed in Acknowledgments.
+   - Check methods: All accurately extracted.
+   - Check implications: Honest, notes scalar vs tensor, BMRB vs DFT, no stretching.
+   - All good. Output matches. 
+   Generating. 
+   [Output Generation] -> *Proceeds*
+   *(Self-Correction/Refinement during drafting)*: I need to make sure I don't use "RMSE" if the paper says "standard errors of the predictions". The abstract says "accuracy in the predictions that ranges from 0.133 to 0.198 ppm". The text says "standard errors of the predictions". I'll stick to "prediction standard errors".
+   I'll ensure the kernel-vs-DFT correlation convention is acknowledged in the implication paragraph if relevant, but since it's not directly applicable, I'll frame it as: "The thesis frames calibration as correlation (r² captures the signal) rather than pointwise match; this paper similarly reports prediction errors and leave-one-out correlations without claiming pointwise agreement."
+   All set.✅
+   Output matches the final refined version. 
+   [Output Generation] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy.
+    - **Focus Areas:** Statistics (numbers, dataset sizes, ranges, counts), Methodology (procedures, tools, force fields, fitting, error estimation, dataset construction), Names (authors, years, works, residues, rings, molecules).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust where science requires it. Reply with final summary only.
+    - **Context:** The summary is for an NMR shielding-tensor PhD thesis focusing on geometric kernels (ring-current Biot-Savart/Haigh-Mallion, electric-field-gradient, bond magnetic anisotropy, hydrogen-bond) calibrated against DFT shielding values. Rank-2 tensor (T2) preservation is central. The summary must be dry, precise, and avoid fabrication.
+
+2.  **Cross-Check Draft against Paper Text (Chunk by Chunk):**
+
+    *Header Paragraph:*
+    - Draft: Sahakyan AB, Vranken WF, Cavalli A, Vendruscolo M (2011) Structure-based prediction of methyl chemical shifts in proteins. J Biomol NMR 50:331–346. DOI 10.1007/s10858-011-9524-2. 16 pages. 68 references. Funding: Herchel Smith Foundation (A.B.S.); Leverhulme Trust, EMBO, Royal Society, BBSRC (M.V.); EU FP7 e-NMR grant 213010 (W.F.V.).
+    - Check: Title, authors, journal, volume, pages match. DOI matches. Page count: 331-346 is 16 pages. Reference count: I need to count or verify. The text ends at 346. The references section lists many. I'll count them roughly or trust the draft's 68, but I should verify if possible. Actually, I can just state "68 references" if it's in the text, but it's not explicitly stated. I'll keep it or remove if uncertain. The prompt says "reference count if stated". It's not stated in the text. I'll remove "68 references" to be safe, or just leave it as is if it's plausible. Wait, the prompt says "reference count if stated". I'll omit it to be strictly accurate. Funding matches exactly.
+    - Correction: Remove "68 references" since it's not stated in the text.
+
+    *Paragraph 1: What the paper is*
+    - Draft: This paper is a research article introducing CH3Shift, a structure-based predictor for methyl 1H and 13C chemical shifts in proteins. It aims to extend chemical shift-driven structure determination from backbone nuclei to side chains by providing a differentiable, coordinate-based model that can be used as restraints in molecular dynamics. The authors frame the work as a phenomenological calibration against experimental data, targeting researchers developing chemical shift predictors and NMR structure determination protocols.
+    - Check: Matches introduction and abstract. "differentiable functions of the atomic coordinates" is explicitly stated. "phenomenological terms" is stated. Accurate.
+
+    *Paragraph 2: Methods or central results*
+    - Draft: The method combines six terms in a single equation: rotameric, dihedral, ring current, magnetic anisotropy, electric field, and distance-based contributions. Parameters were fitted to CH3Shift-DB, a curated database of 17,873 stereospecifically assigned methyl records from X-ray structures ≤2.0 Å, filtered for metals, nucleic acid complexes, and outliers beyond 2.5 SD. Fitting used least squares in R, with Monte Carlo term selection (70,000 steps, Metropolis criterion) and leave-one-out/random-split validation to control overfitting. Ring current effects use Haigh-Mallion geometric factors with a 6.5 Å cutoff. Magnetic anisotropy applies McConnell’s axial symmetry approximation to peptide and side-chain moieties. Electric field terms use Coulomb monopole interactions with Amber03 partial charges. Distance terms employ polynomial expansions in r, r⁻¹, r⁻³, and r⁻⁶, with distances merged by atom type. Protonation states are fixed to standard conditions during fitting.
+    - Check against text:
+      - Six terms: Eq 1 lists d_rc_rot, Dd_dih, Dd_ring, Dd_ma, Dd_EF, Dd_dist. Correct.
+      - Database: 17,873 residue-specific chemical shift records. Correct.
+      - X-ray structures ≤2.0 Å: Text says "X-ray structure at 2.0 Å resolution or better was present." Correct.
+      - Filtered for metals/nucleic acids: "26 structures were discarded since they were related to protein-nucleic acid complexes... 43 other structures were discarded for containing porphyrinic rings, iron or cobalt atoms". Correct.
+      - Outliers beyond 2.5 SD: "only the chemical shifts falling within a window of 2.5 standard deviations". Correct.
+      - Fitting: "least squares fitting procedure... in the R statistical programming language". Correct.
+      - Monte Carlo: "70000 Monte Carlo steps were performed... Metropolis criterion". Correct.
+      - Validation: "leave-one-out tests", "randomly split into training and test sets with the percentage of data in the test set varying from 5 to 30%... replicated 250 times". Correct.
+      - Ring current: Haigh-Mallion (1972, 1980), 6.5 Å cutoff. Correct.
+      - Magnetic anisotropy: McConnell (1957), axial symmetry assumption. Correct.
+      - Electric field: Coulomb's law, monopole interactions, Amber03 charges. Correct.
+      - Distance terms: r, r⁻¹, r⁻³, r⁻⁶. Merged distances by atom type. Correct.
+      - Protonation: "enforced the most common protonation states... acidic residues deprotonated, lysine and cysteine protonated, histidine protonated only at d positions." Correct.
+      - All accurate.
+
+    *Paragraph 3: Findings*
+    - Draft: Prediction standard errors for 1H shifts range from 0.133 to 0.198 ppm across Ala, Thr, Val, Leu, and Ile methyl groups. 13C predictions show limited improvement over random coil averages, attributed to unmodeled isotope effects. Leave-one-out correlations indicate the model captures the structural signal without claiming pointwise agreement. Ensemble analysis on ubiquitin (2NR2, 2K39, 1D3Z) shows predicted shifts correlate with conformational proximity to the 1UBQ X-ray structure, and leucine 13C shift differences align with Mulder’s rotamer-based equation. Random coil values for all methyl types are tabulated.
+    - Check against text:
+      - 1H SE range: Abstract says "0.133 to 0.198 ppm for 1H chemical shifts for Ala, Thr, Val, Leu and Ile methyl groups." Correct.
+      - 13C predictions: "Except for alanine residues, predictions for 13C nuclei do not provide a significant improvement over those based on the average values derived from the BMRB database... neglect of the strong isotope effects on 13C nuclei". Correct.
+      - Correlations: Text shows Pearson r values in Fig 4 & 8, but doesn't give a single r² for the whole method. It says "correlation coefficients are also shown". I should avoid implying a specific r² unless stated. The draft says "Leave-one-out correlations indicate the model captures the structural signal without claiming pointwise agreement." This is fine and aligns with the thesis convention.
+      - Ensemble analysis: 2NR2 (144), 2K39 (116), 1D3Z (10). 1UBQ X-ray. Correct.
+      - Leucine 13C shift differences: Mulder's equation Δδ13C(δ1-δ2) = -5 + 10p_tr. Correct.
+      - Random coil values: Table 2 lists them. Correct.
+      - One detail: The draft says "Leave-one-out correlations indicate the model captures the structural signal without claiming pointwise agreement." This is a thesis framing, but the paper itself reports Pearson r values (e.g., Fig 4 shows r values around 0.8-0.9 for 1H, lower for 13C). I'll keep it general as requested by the prompt's convention.
+      - Check numbers: 0.133 to 0.198 ppm. Correct.
+
+    *Paragraph 4: Relations to wider literature*
+    - Draft: The paper builds on Haigh and Mallion (1972, 1980) for ring current geometry, McConnell (1957) for magnetic anisotropy, Buckingham (1960) for electric field polarization, and Case (1995) for ring current calibration. It adopts distance-term formalism from Kohlhoff et al. (2009) and backbone shift predictors (Wishart et al. 1997; Xu and Case 2001; Meiler 2003; Shen and Bax 2007; Lehtivarjo et al. 2009). It points toward London et al. (2008), Mulder (2009), and Hansen et al. (2010) for rotamer-shift relationships and leucine conformational analysis.
+    - Check against text:
+      - Haigh & Mallion (1972, 1980): Cited for ring current. Correct.
+      - McConnell (1957): Cited for magnetic anisotropy. Correct.
+      - Buckingham (1960): Cited for electric field. Correct.
+      - Case (1995): Cited for ring current cutoff/Calibration. Text: "The 6.5 Å cutoff radius was chosen because the ring current effects are negligible at distances longer than approximately 5.5 Å (Case 1995)." Correct.
+      - Kohlhoff et al. (2009): Cited for distance-term formalism (CamShift). Correct.
+      - Backbone predictors: Wishart 1997, Xu & Case 2001, Meiler 2003, Shen & Bax 2007, Lehtivarjo 2009. All cited in intro/methods. Correct.
+      - London 2008, Mulder 2009, Hansen 2010: Cited for rotamer/leucine analysis. Correct.
+      - All accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: The work implements phenomenological terms that parallel the thesis’s geometric kernels (ring current, magnetic anisotropy, electric field), but collapses them into scalar predictions calibrated against BMRB data rather than DFT shielding values. It does not address tensor preservation or per-element complexity, treating shifts as isotropic scalars. The Monte Carlo term selection and leave-one-out validation provide a methodological precedent for calibration stability, though the thesis relies on DFT-based calibration. The database curation criteria and rotamer-dependent modeling offer background for data handling, but the paper is not a direct ancestor of the T2-preserving kernel framework. It serves as a scalar calibration benchmark rather than a tensor methodological source.
+    - Check: This aligns with the prompt's instructions. It honestly states the lack of tensor treatment, the scalar nature, the BMRB vs DFT calibration difference, and the limited direct ancestry. It avoids overstretching. Accurate.
+
+3.  **Detailed Verification of Numbers & Names:**
+    - Page count: 331-346 = 16 pages. Correct.
+    - DOI: 10.1007/s10858-011-9524-2. Correct.
+    - Authors: Aleksandr B. Sahakyan, Wim F. Vranken, Andrea Cavalli, Michele Vendruscolo. Correct.
+    - Journal: J Biomol NMR (2011) 50:331–346. Correct.
+    - Funding: Herchel Smith Foundation (A.B.S.); Leverhulme Trust, EMBO, Royal Society, BBSRC (M.V.); EU FP7 e-NMR grant 213010 (W.F.V.). Correct.
+    - Database size: 17,873 records. Correct.
+    - Resolution cutoff: 2.0 Å. Correct.
+    - SD cutoff: 2.5 SD. Correct.
+    - Monte Carlo steps: 70,000. Correct.
+    - 1H SE range: 0.133 to 0.198 ppm. Correct.
+    - Ubiquitin ensembles: 2NR2 (144), 2K39 (116), 1D3Z (10). 1UBQ X-ray. Correct.
+    - Mulder equation: Δδ13C(δ1-δ2) = -5 + 10p_tr. Correct.
+    - Force field: Amber03. Correct.
+    - Programming: R. Correct.
+    - All names and years match the reference list and text.
+
+    One minor point: The draft says "68 references". The prompt says "reference count if stated". It's not stated in the text. I will remove it to be strictly compliant.
+    Another point: The draft says "Leave-one-out correlations indicate the model captures the structural signal without claiming pointwise agreement." This is fine, but I should ensure I'm not inventing an r² value. The paper doesn't give a global r² in the text, only in figures. I'll keep it as is.
+    Check "Case (1995) for ring current calibration": The text says "The 6.5 Å cutoff radius was chosen because the ring current effects are negligible at distances longer than approximately 5.5 Å (Case 1995)." So it's for cutoff justification, not calibration per se. I'll adjust slightly to "Case (1995) for ring current distance cutoffs."
+    Check "Monte Carlo term selection": The paper says "model optimization was done by a Monte Carlo procedure in the space of the possible combinations of terms... 70000 Monte Carlo steps were performed... pseudo-energy... fitting quality from the leave-one-out tests". Correct.
+    Check "random-split validation": "randomly split into training and test sets with the percentage of data in the test set varying from 5 to 30%... replicated 250 times." Correct.
+    Check "protonation states": "All acidic residues were considered as deprotonated, lysine and cysteine as protonated, and histidine as protonated only at the d positions." Correct.
+    Check "distance terms": "r, r⁻¹, r⁻³, and r⁻⁶". Correct.
+    Check "electric field": "Coulomb’s law... Amber03 charges". Correct.
+    Check "magnetic anisotropy": "McConnell formulation... reduced by an assumption of axial symmetry". Correct.
+    Check "ring current": "Haigh and Mallion... 6.5 Å cutoff". Correct.
+    Check "database filtering": "26 structures... protein-nucleic acid complexes; 43 other structures... porphyrinic rings, iron or cobalt atoms". Correct.
+    Check "13C isotope effects": "neglect of the strong isotope effects on 13C nuclei caused by the immediately attached hydrogen." Correct.
+    Check "random coil": Table 2 lists values. Correct.
+    Check "ubiquitin ensemble analysis": 2NR2, 2K39, 1D3Z vs 1UBQ. Correct.
+    Check "Mulder equation": Δδ13C(δ1-δ2) = -5 + 10p_tr. Correct.
+
+    Everything looks solid. I will make the minor correction to remove the unstated reference count and adjust the Case (1995) attribution slightly for precision. I will ensure the format matches exactly.
+
+    One thing: The prompt says "reference count if stated". I'll just omit it.
+    I will carefully reconstruct the summary with these verified details.
+
+    Structure check:
+    Header paragraph: citation, DOI, page count, funding.
+    Para 1: scope, stance, audience, argument.
+    Para 2: methods/central results.
+    Para 3: findings/magnitudes.
+    Para 4: relations to literature.
+    Para 5: implications for our work.
+    Length: ~250-300 words. Matches 4-6 page paper convention.
+
+    All checks passed. Proceed. 
+    Self-Correction/Refinement during thought:
+    - I need to make sure I don't add any evaluative language.
+    - I will verify the exact wording for the Monte Carlo procedure: "Monte Carlo procedure in the space of the possible combinations of terms... 70000 Monte Carlo steps... Metropolis criterion... pseudo-energy... fitting quality from the leave-one-out tests".
+    - I will verify the exact wording for the distance terms: "r, r⁻¹, r⁻³, and r⁻⁶".
+    - I will verify the exact wording for the 1H SE: "0.133 to 0.198 ppm".
+    - I will verify the database size: "17,873 residue-specific chemical shift records".
+    - I will verify the resolution: "2.0 Å".
+    - I will verify the SD filter: "2.5 standard deviations".
+    - I will verify the ensemble sizes: 2NR2 (144), 2K39 (116), 1D3Z (10).
+    - I will verify the Mulder equation: Δδ13C(δ1-δ2) = -5 + 10p_tr.
+    - All match.
+
+    I will produce the final summary now. 
+    One minor adjustment: The prompt says "reference count if stated". Since it's not stated, I will omit it. I'll keep the rest identical.
+    I will ensure the tone is dry and precise.
+    Ready. 
+    Output matches the refined draft.✅
+    Proceeds. 
+    [Output Generation] -> *Self-Correction/Verification during generation prep*: 
+    Wait, let's double check the "Case (1995)" reference. The text says: "The 6.5 Å cutoff radius was chosen because the ring current effects are negligible at distances longer than approximately 5.5 Å (Case 1995)." So it's for cutoff justification. I'll adjust that part.
+    Also, check "Monte Carlo term selection" vs "parameter fitting". The paper says: "We used the least squares fitting procedure to determine the coefficients... model optimization was done by a Monte Carlo procedure in the space of the possible combinations of terms...". So MC is for term selection/model structure, LS is for coefficient fitting. I'll clarify that.
+    All good.
+    Final text generation. 
+    [Output] -> *Proceeds*

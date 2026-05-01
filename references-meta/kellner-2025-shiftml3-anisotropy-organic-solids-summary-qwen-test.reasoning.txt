@@ -1,0 +1,177 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+   - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart/Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+   - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+   - **Key Requirements:**
+     - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+     - 5 paragraphs: (1) Scope/stance/audience/argument, (2) Methods/central results, (3) Findings (magnitudes, observations), (4) Relations to literature (builds on/points to, named from bibliography), (5) Implications for our work (honest, no stretching).
+     - Format conventions: Kernel-vs-DFT = correlation (r², captures signal), not match. Per-element complexity preserved. No excited language. No editorializing.
+     - Length: Paper is ~18 pages (including SI). Target: 450-500 words body.
+   - **Input Text:** 6 chunks of the paper "kellner-2025-shiftml3-anisotropy-organic-solids". Contains abstract, intro, methods, results, tables, SI details, references.
+
+2.  **Extract Key Information from Text:**
+   - **Citation:** Matthias Kellner, Jacob B. Holmes, Ruben Rodriguez-Madrid, Florian Viscosi, Yuxuan Zhang, Lyndon Emsley, and Michele Ceriotti. 2025. "A deep learning model for chemical shieldings in molecular organic solids including anisotropy". arXiv:2506.13146v3 [physics.chem-ph] 14 Sep 2025. (Note: Journal not explicitly stated in text, likely preprint/arXiv at time of extraction, but I'll note arXiv and date. I'll check if journal is mentioned. Text says "arXiv:2506.13146v3". I'll stick to what's given.)
+   - **DOI:** 10.24435/materialscloud:kt-kd (from ref [71] in text, but that's for data. The paper itself might not have a DOI yet, or it's on arXiv. I'll note arXiv identifier and date.)
+   - **Pages/Refs:** ~18 pages total (including SI). References go up to [100]. So ~100 references.
+   - **Funding/Credits:** Swiss National Science Foundation Grant No. 200020_212046, NCCR MARVEL (grant 182892), ERC Horizon 2020 Grant No. 101001890-FIAMMA. Acknowledges Filippo Bigi, Michelangelo Domina, Sergey Pozdnyakov, Joseph William Abbott.
+   - **Stance/Scope:** Research paper introducing ShiftML3, a deep learning model predicting full chemical shielding tensors (including anisotropy) for molecular organic solids. Trained on GIPAW/PBE DFT data. Audience: computational chemists, NMR crystallographers.
+   - **Methods:** Uses nanoPET (modified Point Edge Transformer, unconstrained GNN) ensemble of 8 models. Trained on 14,146 structures (1.4M atomic environments) from CSD + thermally distorted structures. Elements: H, C, N, O, F, Na, Mg, P, S, Cl, K, Ca. Predicts irreducible spherical tensor (IST) components (λ=0 scalar, λ=1 pseudovector, λ=2 proper 5-vector). Uses rotational augmentation during training to learn equivariance. Ensemble provides uncertainty estimates (committee spread), calibrated with a global scaling factor. Radial cutoff 5 Å, 2 message passing/attention layers, token dim 192. Batch size 4, 1500 epochs, Adam optimizer, lr 3e-4.
+   - **Findings (Isotropic vs DFT):** CSD-test set. RMSEs vs DFT: H: 0.43 ppm, C: 2.32 ppm, N: 10.41 ppm, O: 11.45 ppm, F: 6.66 ppm, S: 26.34 ppm, P: 18.98 ppm, Cl: 15.11 ppm, Na: 4.61 ppm, Ca: 3.34 ppm, Mg: 5.49 ppm, K: 4.65 ppm. R² values generally 0.98-1.00 for H, C, N, O, F, S, Cl, Na, Ca, Mg; P is 0.91; K is 0.73. Improvement over ShiftML2: ~20% for H, factor of 2 for C, N, O, etc.
+   - **Findings (Tensor/Anisotropy vs DFT):** Table II shows RMSE for σij and σPAS. H: 0.72/0.85, C: 3.08/3.88, N: 10.75/15.62, O: 12.09/16.79, F: 6.28/8.65, S: 30.37/42.73, P: 18.73/23.59, Cl: 15.32/20.50, Na: 4.01/5.24, Ca: 3.85/4.93, Mg: 9.79/8.34, K: 3.95/5.21. R² for σPAS: H 0.98, C 1.00, N 0.99, O 1.00, F 0.99, S 0.97, P 0.95, Cl 0.99, Na 0.91, Ca 0.98, Mg 0.93, K 0.87.
+   - **Findings (vs Experiment):** Benchmark sets: 13 structures for H, 21 for C, 15 for N (Ramos et al. [14]), 19 for 13C CSA (Hartman et al. [72]). ShiftML3 RMSE vs experiment: H 0.53 ppm, C 2.44 ppm, N 7.24 ppm. DFT RMSE vs experiment: H 0.49, C 2.34, N 5.85. Notes error cancellation between ML and DFT errors. CSA RMSE vs experiment: ShiftML3 5.2 ppm, DFT 5.85 ppm.
+   - **Speed:** 41 seconds on MacBook M1 for all benchmark structures vs ~80 hours on 32 cores for DFT. Linear scaling with system size.
+   - **Relations to Literature:** Builds on ShiftML [45], ShiftML2 [49], Paruzzo et al., Engel et al., Unzueta et al. [48, 87], Liu et al. [46], Xu et al. [99]. References PET/nanoPET [61, 73], SOAP descriptors [58], KRR [56], DFT/GIPAW [7, 8, 11, 12], NMR crystallography [1-6, 13, 14, 25-43], uncertainty quantification [57, 83-89], rotational augmentation/equivariance [74, 81, 82]. Points toward applications in NMR crystallography, CSA analysis, protein solid-state NMR (1PGA tested).
+   - **Implications for our work:** The paper predicts full shielding tensors (including anisotropy/CSA) using a deep learning ensemble, achieving DFT-level correlation against GIPAW references. It demonstrates that tensorial predictions (rank-2) can be learned directly from structure without explicit geometric kernels, though it relies on rotational augmentation rather than exact equivariance constraints. The correlation metrics (R² ~0.98-1.00 for isotropic and principal components) indicate the model captures the structural signal underlying shielding anisotropy. The ensemble uncertainty calibration and linear scaling suggest potential utility for large systems, though the unconstrained GNN architecture differs from the explicit geometric kernel approach. The paper does not address protein-specific environments or hydrogen-bond/ring-current kernels explicitly, but its treatment of full tensor prediction and uncertainty quantification provides a methodological reference for validating tensor preservation and calibration workflows.
+
+3.  **Draft Construction (Mental Refinement according to constraints):**
+   - *Header:* Kellner, M., Holmes, J. B., Rodriguez-Madrid, R., Viscosi, F., Zhang, Y., Emsley, L., & Ceriotti, M. (2025). A deep learning model for chemical shieldings in molecular organic solids including anisotropy. arXiv:2506.13146v3 [physics.chem-ph], 14 Sep 2025. 18 pages (including supporting information). 100 references. Supported by Swiss National Science Foundation Grant No. 200020_212046, NCCR MARVEL (grant 182892), and ERC Horizon 2020 Grant No. 101001890-FIAMMA.
+   - *Para 1 (Scope/Stance):* This research paper introduces ShiftML3, a machine learning model designed to predict full chemical shielding tensors, including chemical shift anisotropy (CSA), for molecular organic solids. The authors frame the work as a response to the limitations of previous models that predicted only isotropic shifts, arguing that tensorial predictions are necessary for structure elucidation via CSA measurements. The target audience comprises computational chemists and NMR crystallographers. The paper positions itself as a methodological advance in deep learning for solid-state NMR, aiming to deliver DFT-level accuracy at a fraction of the computational cost.
+   - *Para 2 (Methods):* The model employs an ensemble of eight nanoPET architectures, an unconstrained graph neural network that learns rotational equivariance through training-time augmentations rather than hard constraints. Training data comprises 14,146 organic solid structures (1.4 million atomic environments) containing H, C, N, O, F, Na, Mg, P, S, Cl, K, and Ca, with shielding tensors computed at the GIPAW/PBE level. Local environments are encoded using a 5 Å radial cutoff. The network predicts irreducible spherical tensor components (λ=0 scalar, λ=1 pseudovector, λ=2 five-vector) via a single message-passing sequence with two attention layers and a token dimensionality of 192. Uncertainty estimates are derived from the committee spread and calibrated using a global input-independent scaling factor.
+   - *Para 3 (Findings):* On the CSD-test set, ShiftML3 correlates with GIPAW reference isotropic shieldings with R² values ranging from 0.73 (³⁹K) to 1.00 (¹³C, ¹⁷O). RMSEs against DFT are 0.43 ppm (¹H), 2.32 ppm (¹³C), 10.41 ppm (¹⁵N), and 11.45 ppm (¹⁷O), representing a two-fold improvement over ShiftML2 for heavier nuclei. Tensor component predictions show R² values of 0.98–1.00 for ¹H, ¹³C, ¹⁵N, ¹⁷O, and ¹⁹F principal components, with RMSEs of 0.85, 3.88, 15.62, 16.79, and 8.65 ppm, respectively. Against experimental benchmarks, isotropic RMSEs are 0.53 ppm (¹H), 2.44 ppm (¹³C), and 7.24 ppm (¹⁵N), closely tracking DFT errors of 0.49, 2.34, and 5.85 ppm. CSA principal component predictions yield an experimental RMSE of 5.2 ppm versus 5.85 ppm for DFT. Inference scales linearly with system size, requiring 41 seconds on a consumer laptop for benchmark sets compared to ~80 hours for DFT.
+   - *Para 4 (Relations):* The work extends the ShiftML lineage [45, 49], which previously used kernel ridge regression with SOAP descriptors on isotropic shifts. It builds on PET architecture developments [61, 73] and uncertainty quantification strategies [57, 83–89]. The authors compare performance against prior neural network models trained on smaller datasets [46, 87, 99], noting that direct comparisons are limited by differing DFT convergence parameters. The paper references foundational NMR crystallography methods [1–6, 13, 14] and DFT shielding theory [7, 8, 11, 12], while pointing toward applications in protein solid-state NMR, as demonstrated by testing on the 1PGA crystal structure.
+   - *Para 5 (Implications):* ShiftML3 demonstrates that full rank-2 shielding tensors can be learned directly from atomic coordinates with high correlation to DFT references, capturing the structural signal underlying chemical shift anisotropy. The ensemble framework and uncertainty calibration provide a template for evaluating prediction reliability, though the unconstrained GNN relies on rotational augmentation rather than exact equivariance. The paper does not address protein-specific environments, hydrogen-bond networks, or explicit geometric kernels, and its training set focuses on small-molecule organic crystals. Its treatment of tensor preservation and calibration may inform validation protocols for kernel-based shielding models, particularly in assessing how well structural features map to rank-2 tensor components. The linear scaling and low inference cost suggest potential utility for larger systems, but the model’s applicability to biomolecular contexts remains untested.
+
+4.  **Check against Constraints:**
+   - *Header:* Citation, DOI (arXiv), pages, refs, funding. Checked.
+   - *5 paragraphs, no titles:* Checked.
+   - *Para 1:* Scope, stance, audience, argument. Checked.
+   - *Para 2:* Methods/central results. Checked.
+   - *Para 3:* Findings, magnitudes, observations. Checked.
+   - *Para 4:* Relations to literature, named from bibliography. Checked.
+   - *Para 5:* Implications for our work, honest, no stretching. Checked.
+   - *Kernel-vs-DFT:* Framed as correlation (R², captures signal). Checked.
+   - *Per-element complexity:* Preserved (H, C, N, O, F, S, P, Cl, Na, Ca, Mg, K). Checked.
+   - *No fabricated methodology:* Only used what's in text. Checked.
+   - *No excited language:* Dry, plain English. Checked.
+   - *Length:* ~460 words. Fits 450-500 range. Checked.
+   - *Specific numbers:* RMSEs, R²s, dataset sizes, cutoffs, layers, tokens, epochs, lr, batch size, timing. All quoted accurately. Checked.
+   - *Stance:* Research paper. Checked.
+   - *DOI:* Text says arXiv:2506.13146v3. I'll note that. Materials Cloud DOI is for data, not paper. I'll stick to arXiv.
+   - *Reference count:* 100. Checked.
+   - *Page count:* 18 (including SI). Checked.
+
+   One minor adjustment: The prompt says "DOI when present in the text." The text only gives arXiv ID and a Materials Cloud DOI for the dataset. I will state arXiv identifier and note the dataset DOI if relevant, but stick to arXiv for the paper. I'll format the header precisely.
+   Check paragraph flow and tone. Ensure no "our approach" or evaluative language. Ensure correlation framing is explicit where applicable.
+   All constraints met. Proceed to output. 
+   Self-Correction/Refinement during thought:
+   - Check R² values: Table I shows R² for isotropic: H 0.98, C 1.00, N 0.99, O 1.00, F 0.99, S 0.97, P 0.91, Cl 0.98, Na 0.68, Ca 0.96, Mg 0.95, K 0.73. I'll adjust the range to match exactly.
+   - Check tensor R²: Table II shows σPAS R²: H 0.98, C 1.00, N 0.99, O 1.00, F 0.99, S 0.97, P 0.95, Cl 0.99, Na 0.91, Ca 0.98, Mg 0.93, K 0.87.
+   - I will explicitly state these ranges accurately.
+   - The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured." I will ensure this phrasing is used.
+   - I will verify the exact wording for the header to match conventions.
+   - All good. Output matches draft.✅
+   Proceed. 
+   Output Generation. 
+   [Output Generation] -> *Proceeds*
+   *(Self-Correction/Verification during drafting)*
+   - Check reference count: The references go up to [100]. So 100 references.
+   - Check page count: The text shows pages up to 18 (including SI). I'll state 18 pages.
+   - Check DOI: The text says "arXiv:2506.13146v3". No formal journal DOI is provided. I will note arXiv identifier.
+   - Check funding: Swiss National Science Foundation Grant No. 200020_212046, NCCR MARVEL (grant 182892), ERC Horizon 2020 Grant No. 101001890-FIAMMA.
+   - All matches.
+   - I will carefully ensure the tone is dry and precise.
+   - I will make sure the 5 paragraphs flow without section titles.
+   - I will verify the correlation framing: "correlates with GIPAW reference isotropic shieldings with R² values...", "captures the structural signal underlying chemical shift anisotropy."
+   - Ready.✅
+   Output matches the refined draft. 
+   [Output Generation] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy.
+    - **Focus Areas:** Statistics (numbers, r², RMSE, dataset sizes, etc.), Methodology (procedures, tools, functionals, etc.), Names (authors, years, works, species).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust for scientific accuracy. Reply with final summary only.
+    - **Context:** NMR shielding-tensor PhD thesis. Kernel-vs-DFT comparisons framed as correlation. Per-element complexity is key. Dry, precise language.
+
+2.  **Cross-Check Draft vs. Paper Text (Mental Walkthrough & Verification):**
+
+    *Header Paragraph:*
+    - Draft: Kellner, M., Holmes, J. B., Rodriguez-Madrid, R., Viscosi, F., Zhang, Y., Emsley, L., & Ceriotti, M. (2025). A deep learning model for chemical shieldings in molecular organic solids including anisotropy. arXiv:2506.13146v3 [physics.chem-ph], 14 Sep 2025. 18 pages (including supporting information). 100 references. Supported by Swiss National Science Foundation Grant No. 200020_212046, NCCR MARVEL (grant 182892), and ERC Horizon 2020 Grant No. 101001890-FIAMMA.
+    - Check: Authors match. Title matches. arXiv:2506.13146v3, 14 Sep 2025 matches. Page count: The text shows up to page 18 (including SI). References: The last reference is [100]. Funding matches exactly. All good.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: Introduces ShiftML3, predicts full chemical shielding tensors including CSA. Frames as response to previous models predicting only isotropic shifts. Target audience: computational chemists/NMR crystallographers. Methodological advance in DL for SSNMR.
+    - Check: Matches abstract and intro. Correct stance.
+
+    *Paragraph 2: Methods/Central Results*
+    - Draft: Ensemble of eight nanoPET architectures. Unconstrained GNN learning rotational equivariance via training-time augmentations. Training data: 14,146 organic solid structures (1.4 million atomic environments) containing H, C, N, O, F, Na, Mg, P, S, Cl, K, Ca. GIPAW/PBE level. 5 Å radial cutoff. Predicts irreducible spherical tensor components (λ=0, 1, 2) via single message-passing sequence with two attention layers and token dim 192. Uncertainty from committee spread, calibrated with global input-independent scaling factor.
+    - Check:
+      - "eight nanoPET models" -> Text: "We train an ensemble consisting of 8 nanoPET models." (Matches)
+      - "unconstrained graph neural network that learns rotational equivariance through training-time augmentations" -> Text: "nanoPET does not enforce rotational invariance or equivariance... learns the rotational behaviour... via rotational augmentation during training" (Matches)
+      - "14,146 organic solid structures (1.4 million atomic environments)" -> Text: "14,146 structures... 1.4 million atomic environments" (Matches)
+      - Elements: H, C, N, O, F, Na, Mg, P, S, Cl, K, Ca. (Matches)
+      - GIPAW/PBE: "trained using shieldings calculated at the GIPAW/PBE level of theory." (Matches)
+      - 5 Å cutoff: "We choose a radial cutoff of 5 Å" (Matches)
+      - IST components λ=0,1,2: "decomposed into their irreducible real spherical representations: A scalar, λ = 0 part, a λ = 1 pseudovector, and a λ = 2 proper 5-vector" (Matches)
+      - "single message-passing sequence with two attention layers and a token dimensionality of 192" -> Text: "single message-passing sequence of unconstrained graph transformer modules... 2 message passing layers and 2 attention layers per message passing step, and a token dimensionality of 192." (Matches)
+      - Uncertainty: "ensemble... spread is taken to be an indicator... calibrated... scaling the predicted ensemble uncertainties with a global, input-independent correction." (Matches)
+      - All accurate.
+
+    *Paragraph 3: Findings/Statistics*
+    - Draft: CSD-test set R²: 0.68 (²³Na) to 1.00 (¹³C, ¹⁷O). RMSEs vs DFT: 0.43 (¹H), 2.32 (¹³C), 10.41 (¹⁵N), 11.45 (¹⁷O). Two-fold improvement over ShiftML2 for heavier nuclei. Tensor components R²: 0.98–1.00 for ¹H, ¹³C, ¹⁵N, ¹⁷O, ¹⁹F principal components. RMSEs: 0.85, 3.88, 15.62, 16.79, 8.65 ppm. Experimental isotropic RMSEs: 0.53 (¹H), 2.44 (¹³C), 7.24 (¹⁵N). DFT experimental RMSEs: 0.49, 2.34, 5.85. CSA experimental RMSE: 5.2 vs 5.85 DFT. Inference: 41s on laptop vs ~80h DFT.
+    - Check against Table I & II & Text:
+      - Table I: R² sML3: H:0.98, C:1.00, N:0.99, O:1.00, F:0.99, S:0.97, P:0.91, Cl:0.98, Na:0.68, Ca:0.96, Mg:0.95, K:0.73. Draft says "0.68 (²³Na) to 1.00 (¹³C, ¹⁷O)". This is accurate as a range, but I should verify if I missed any. It's fine.
+      - RMSE vs DFT (Table I): H:0.43, C:2.32, N:10.41, O:11.45. Matches.
+      - "two-fold improvement over ShiftML2 for heavier nuclei" -> Text: "up to a two-fold improvement over ShiftML2 for the isotropic shieldings of nuclei with Z > 1." (Matches)
+      - Tensor components R² (Table II): σPAS R²: H:0.98, C:1.00, N:0.99, O:1.00, F:0.99, S:0.97, P:0.95, Cl:0.99, Na:0.91, Ca:0.98, Mg:0.93, K:0.87. Draft says "0.98–1.00 for ¹H, ¹³C, ¹⁵N, ¹⁷O, and ¹⁹F principal components". Matches.
+      - Tensor RMSEs (Table II σPAS): H:0.85, C:3.88, N:15.62, O:16.79, F:8.65. Matches.
+      - Experimental isotropic RMSEs (Text & Table S6): H:0.53, C:2.44, N:7.24. Matches.
+      - DFT experimental RMSEs (Table S6): H:0.49, C:2.34, N:5.85. Matches.
+      - CSA experimental RMSE (Text & Table S6): ShiftML3: 5.2, DFT: 5.85. Matches.
+      - Inference time: "ShiftML3 yielded shielding predictions for all structures in just 41 seconds on a personal computer... DFT calculations... took approximately 80 hours". Matches.
+      - All numbers verified.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: Extends ShiftML lineage [45, 49] (KRR with SOAP on isotropic shifts). Builds on PET architecture [61, 73] and uncertainty quantification [57, 83–89]. Compares against prior NN models [46, 87, 99]. Notes direct comparisons limited by differing DFT convergence parameters. References NMR crystallography [1–6, 13, 14] and DFT theory [7, 8, 11, 12]. Points to protein SSNMR via 1PGA testing.
+    - Check:
+      - ShiftML lineage: Paruzzo et al. [45] (ShiftML), Cordova et al. [49] (ShiftML2). Correct.
+      - PET: Pozdnyakov & Ceriotti [61], Metatensor/nanoPET [73]. Correct.
+      - Uncertainty: Musil et al. [57], Lakshminarayanan et al. [84], Guo et al. [88], Kuleshov et al. [89], Hüllermeier & Waegeman [83]. Correct.
+      - Prior NN: Liu et al. [46] (DenseNet), Unzueta et al. [87] (GNN), Xu et al. [99] (NMRNet). Correct.
+      - DFT convergence params note: Text says "Shielding computations are highly sensitive to k-space discretization and choice of pseudopotentials... CSD-2K/CSD-500 was computed with other DFT convergence parameters than the ShiftML2/ShiftML3 dataset, severely hampering a direct comparison". Correct.
+      - NMR crystallography refs: [1-6, 13, 14] are in bibliography. Correct.
+      - 1PGA protein: Text mentions testing on 1PGA crystal (3,656 atoms) and cites [93, 94, 95]. Correct.
+      - All accurate.
+
+    *Paragraph 5: Implications*
+    - Draft: ShiftML3 shows full rank-2 tensors can be learned directly from coordinates with high correlation to DFT, capturing structural signal underlying CSA. Ensemble framework & uncertainty calibration provide template for evaluating reliability, though unconstrained GNN relies on rotational augmentation rather than exact equivariance. Does not address protein-specific environments, H-bond networks, or explicit geometric kernels. Training set focuses on small-molecule organic crystals. Treatment of tensor preservation & calibration may inform validation protocols for kernel-based shielding models, particularly in assessing how well structural features map to rank-2 tensor components. Linear scaling & low inference cost suggest potential utility for larger systems, but applicability to biomolecular contexts remains untested.
+    - Check: Matches the paper's claims and limitations. Frames correlation correctly. Notes lack of protein/H-bond/kernel focus. Aligns with thesis conventions. No fabricated details. Dry tone.
+
+3.  **Final Verification & Refinement:**
+    - I will carefully re-read the draft against the text one more time to catch any subtle mismatches.
+    - *Header:* Matches exactly.
+    - *Para 1:* "This research paper introduces ShiftML3..." - accurate.
+    - *Para 2:* "ensemble of eight nanoPET architectures" - text says "ensemble consisting of 8 nanoPET models". "unconstrained graph neural network" - text says "unconstrained graph neural network (GNN) architecture". "training-time augmentations" - text says "rotational augmentation during the training process". "14,146 organic solid structures (1.4 million atomic environments)" - exact. "GIPAW/PBE level" - exact. "5 Å radial cutoff" - exact. "λ=0 scalar, λ=1 pseudovector, λ=2 proper 5-vector" - exact. "single message-passing sequence with two attention layers and a token dimensionality of 192" - exact. "global input-independent scaling factor" - exact.
+    - *Para 3:* Numbers all verified against Tables I, II, S6 and main text. R² range 0.68-1.00 is correct. RMSEs match. Experimental vs DFT comparison matches. Inference times match.
+    - *Para 4:* References and comparisons match. Note on DFT convergence parameters is accurately attributed.
+    - *Para 5:* Implications are measured, correctly frame correlation vs accuracy, note limitations, and avoid overstretching. Matches thesis conventions.
+    - One minor point: The draft says "R² values ranging from 0.68 (²³Na) to 1.00 (¹³C, ¹⁷O)". Table I shows ¹³C is 1.00, ¹⁷O is 1.00. ²³Na is 0.68. This is correct.
+    - Another point: "two-fold improvement over ShiftML2 for heavier nuclei" -> Text says "up to a two-fold improvement over ShiftML2 for the isotropic shieldings of nuclei with Z > 1." I'll adjust slightly to match the text's phrasing for precision: "up to a two-fold improvement over ShiftML2 for isotropic shieldings of nuclei with Z > 1."
+    - Check tensor RMSE phrasing: "Tensor component predictions show R² values of 0.98–1.00 for ¹H, ¹³C, ¹⁵N, ¹⁷O, and ¹⁹F principal components, with RMSEs of 0.85, 3.88, 15.62, 16.79, and 8.65 ppm, respectively." Matches Table II exactly.
+    - Check experimental RMSE phrasing: "Against experimental benchmarks, isotropic RMSEs are 0.53 ppm (¹H), 2.44 ppm (¹³C), and 7.24 ppm (¹⁵N), closely tracking DFT errors of 0.49, 2.34, and 5.85 ppm." Matches Table S6.
+    - Check CSA: "CSA principal component predictions yield an experimental RMSE of 5.2 ppm versus 5.85 ppm for DFT." Matches Table S6 & text.
+    - All numbers are solid.
+    - I will produce the final summary exactly as requested, ensuring format matches header + 5 paragraphs, dry tone, precise numbers, no stylistic fluff.
+
+    One detail to verify: "1.4 million atomic environments" vs "14,146 structures". Text: "14,146 structures... 1.4 million atomic environments". Correct.
+    "token dimensionality of 192" - Text: "token dimensionality of 192". Correct.
+    "2 message passing layers and 2 attention layers per message passing step" - I said "two attention layers". I'll adjust to "two message-passing layers, each with two attention layers" for precision.
+    "global input-independent scaling factor" - Text: "global, input-independent correction". I'll use "correction".
+    Everything else is tight.
+
+    I will generate the final output now. All checks passed. No fabricated details. Numbers verified. Methodology accurately attributed. Names/refs correct. Format exact. Tone dry. Correlation framing used. Ready. 
+    Output matches the refined version.✅
+    Proceeds. 
+    [Self-Correction/Refinement during thought]
+    - I notice I said "two attention layers" but the text says "2 message passing layers and 2 attention layers per message passing step". I will correct that to be precise.
+    - I will double-check the R² for ¹⁵N isotropic: Table I says 0.99. Draft says range 0.68-1.00, which is fine, but I'll keep it as is since it's a range.
+    - I will ensure the header matches exactly the requested format.
+    - All good. Output matches the refined draft. 
+    Generating. 
+    [Output Generation] -> *Proceeds*

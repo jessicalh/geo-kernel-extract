@@ -1,0 +1,203 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Context:** The thesis builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, electric-field-gradient, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Preserve true detail: authors, year, title, journal, volume, pages, DOI, reference count, funding/credit notes.
+        - Specific numerical findings: r, r², RMSEs, intensity factors, coefficient values, dataset sizes, distance ranges, basis sets, functionals, force fields. Quote numbers.
+        - Distinguish paper's claims from field claims.
+        - Name authors/works the paper builds on/points toward, from its bibliography.
+        - State stance honestly (research, perspective, review, etc.).
+        - Avoid: inventing methodology, manufacturing thesis connections, excited/evaluative language, editorializing.
+        - Project conventions: Frame kernel-vs-DFT as correlation (r² shows signal captured). Default vocabulary: "correlate", "captures the signal", "r² of...". Do not collapse tensor to scalar unless source does.
+        - Format: Header paragraph (citation, DOI, page count, ref count, funding/credits). Then 5 paragraphs (no titles): 1. What it is, 2. Methods/results, 3. Findings, 4. Relations to literature, 5. Implications for our work.
+        - Length: 4-6 pages → 200-300 words; 6-12 pages → 300-450; 10+ dense review → 450-500. This paper is 13 pages, so target ~450-500 words.
+    - **Input Text:** "corso-2024-graph-neural-networks-primer" (Nature Reviews Methods Primers, 2024, 4:17, DOI: 10.1038/s43586-024-00294-7). It's a Primer/Review on Graph Neural Networks (GNNs).
+
+2.  **Extract Metadata & Key Details from Text:**
+    - **Authors:** Gabriele Corso, Hannes Stark, Stefanie Jegelka, Tommi Jaakkola, Regina Barzilay
+    - **Year:** 2024
+    - **Title:** Graph neural networks
+    - **Journal:** Nature Reviews Methods Primers
+    - **Volume/Pages:** 4:17 (13 pages total based on text chunks)
+    - **DOI:** 10.1038/s43586-024-00294-7
+    - **Reference Count:** 117 references listed.
+    - **Funding/Credits:** NSF Expeditions grant (award 1918839), MLPDS consortium, DTRA DOMANE program, DARPA Accelerated Molecular Discovery program, NSF AI Institute CCF-2112665, NSF Award 2134795. Authors thank R. Wu, S. Yang, D. Lim, A. Corso, M.-M. Troadec, B. Jing, F. Di Giovanni, J. Yim, C. Vignac, F. Faltings.
+    - **Stance:** Primer / Review / Introduction. Explicitly states: "This Primer provides a practical and accessible introduction to GNNs... This is not a comprehensive survey... intended as an introduction to GNNs for students and practitioners."
+    - **Key Concepts/Methods:** Message-passing layers, permutation invariance/equivariance, locality bias, Weisfeiler-Leman isomorphism test, SE(3) invariance/equivariance, oversmoothing, oversquashing, interpretability (GNNExplainer), uncertainty estimation. Worked example: HIV inhibition prediction on OGB dataset (40,000 molecules, 80/10/10 scaffold split). Results: GNN ROC-AUC 77.9% val, 74.5% test vs FFNN on Morgan fingerprints 70.5% test.
+    - **Applications mentioned:** Knowledge graphs, molecular property prediction (ADME, toxicity, quantum properties), graph generation (molecules, conformers, docking), biophysical structure/dynamics (protein folding, inverse folding, molecular dynamics potentials).
+    - **Limitations:** Data dependence, expressivity limits (WL test), interpretability, uncertainty quantification, oversmoothing, oversquashing.
+    - **Key References Cited:** Gori et al. (2005), Scarselli et al. (2008), Morgan (1965), Xu et al. (2019), Morris et al. (2019), Veličković et al. (2017), Corso et al. (2020), Gilmer et al. (2017), SchNet (Schütt et al., 2017), e3nn (Geiger & Smidt, 2022), Stokes et al. (2020), Jin et al. (2018/2020), Dauparas et al. (2022), Corso et al. (2023) [DiffDock], etc.
+
+3.  **Map to Thesis Context (NMR Shielding Tensors):**
+    - The thesis builds geometric kernels on protein structures, calibrated against DFT shielding values. Focus on Rank-2 tensor preservation.
+    - This paper is a general GNN primer. It does not discuss NMR shielding, DFT calibration, or tensor preservation. It discusses GNNs broadly, including 3D/geometric GNNs (SE(3) equivariance), molecular property prediction, and limitations like expressivity and oversquashing.
+    - Implications for our work: It provides a baseline understanding of GNN architectures, message-passing formalism, and geometric invariance/equivariance (SE(3)), which are relevant if the thesis uses GNNs for kernel calibration or representation. However, it does not address tensor-valued outputs, shielding-specific features, or DFT calibration protocols. The connection is indirect: it outlines the general GNN landscape, practical implementation constraints (sparse vs dense, O(|E|) complexity), and known failure modes (oversmoothing, oversquashing) that could affect deep GNNs used for complex tensor fields. It does not provide direct methodological ancestors for the kernel calibration pipeline.
+
+4.  **Draft Construction (Iterative Refinement):**
+    *Header:* Corso, G., Stark, H., Jegelka, S., Jaakkola, T. & Barzilay, R. (2024). Graph neural networks. Nature Reviews Methods Primers, 4:17. DOI: 10.1038/s43586-024-00294-7. 13 pages. 117 references. Supported by NSF Expeditions grant 1918839, the MLPDS consortium, DTRA DOMANE program, DARPA Accelerated Molecular Discovery program, NSF AI Institute CCF-2112665, and NSF Award 2134795. Acknowledgements list R. Wu, S. Yang, D. Lim, A. Corso, M.-M. Troadec, B. Jing, F. Di Giovanni, J. Yim, C. Vignac, and F. Faltings.
+
+    *Paragraph 1 (Scope/Stance):* This Primer provides a practical introduction to graph neural networks (GNNs) for students and practitioners in the life and physical sciences. It frames GNNs as deep learning models that learn functions over graph-structured data by iteratively aggregating information from neighbouring nodes. The authors explicitly position the work as an accessible overview rather than a comprehensive theoretical survey, directing readers to refs. 4 and 5 for exhaustive foundations. The text covers the standard message-passing framework, architectural variations, implementation considerations, applications, and fundamental limitations.
+
+    *Paragraph 2 (Methods/Results):* The central formalism is the message-passing layer, where node representations are updated by aggregating transformed vectors from neighbours, typically parameterized by feedforward networks and stochastic gradient descent. The authors illustrate the framework using a molecular property prediction task: classifying HIV inhibition on the Open Graph Benchmark dataset containing 40,000 molecules. The model uses an embedding layer, four message-passing layers, sum pooling, and a linear classifier. Data splitting employs scaffold splits to simulate distribution shifts. The paper details architectural choices including permutation invariance/equivariance, locality bias, and SE(3) invariance for 3D geometric graphs. It also covers efficient sparse implementations with O(|E|) complexity and libraries such as PyTorch Geometric, Deep Graph Library, Chemprop, and e3nn.
+
+    *Paragraph 3 (Findings):* In the worked example, the GNN achieves 77.9% ROC-AUC on the validation set and 74.5% on the test set after early stopping, compared to 70.5% for a shallow feedforward network on Morgan fingerprints. The authors note that standard message-passing GNNs are bounded by the Weisfeiler–Leman isomorphism test, limiting their ability to distinguish certain non-isomorphic graphs. They identify oversmoothing (node features converging across layers) and oversquashing (bottlenecks in information flow between distant nodes) as persistent architectural constraints. Interpretability methods such as GNNExplainer and surrogate models are discussed, alongside uncertainty quantification challenges in transductive and inductive settings.
+
+    *Paragraph 4 (Relations to Literature):* The Primer builds on foundational GNN formulations by Gori et al. (2005), Scarselli et al. (2008), and Gilmer et al. (2017), and situates modern architectures within the expressivity framework established by Xu et al. (2019) and Morris et al. (2019). It references Veličković et al. (2017) for attention mechanisms, Corso et al. (2020) for principal neighbourhood aggregation, and Schütt et al. (2017) and Geiger & Smidt (2022) for SE(3)-equivariant models. Applications cite Stokes et al. (2020) for antibiotic discovery, Jin et al. (2018, 2020) for molecular generation, and Dauparas et al. (2022) and Corso et al. (2023) for protein and ligand structure prediction. Theoretical discussions draw on Alon & Yahav (2021) for oversquashing and Rusch et al. (2023) for oversmoothing.
+
+    *Paragraph 5 (Implications for our work):* This Primer outlines the general GNN landscape, message-passing formalism, and geometric invariance requirements, which provide context for any deep learning component in the kernel calibration pipeline. It confirms that sparse implementations maintain O(|E|) complexity and that SE(3) equivariance is standard for 3D structural data. However, the paper does not address tensor-valued outputs, shielding-specific physical features, or calibration against DFT reference values. It does not discuss rank preservation or kernel-to-shielding mapping. The limitations noted—oversmoothing, oversquashing, and expressivity bounds under the Weisfeiler–Leman test—apply to general graph representations but do not directly constrain the geometric kernel construction or the rank-2 tensor preservation strategy. The work serves as background on GNN capabilities and failure modes rather than a methodological ancestor for the shielding calibration framework.
+
+5.  **Check against Constraints:**
+    - *Header:* Citation, DOI, page count (13), ref count (117), funding/credits. ✓
+    - *5 paragraphs, no titles:* ✓
+    - *Para 1:* Scope, stance, audience, argument. ✓
+    - *Para 2:* Methods/central results. ✓
+    - *Para 3:* Findings/magnitudes. ✓
+    - *Para 4:* Relations to literature (named from bibliography). ✓
+    - *Para 5:* Implications for our work, honest, no stretch. ✓
+    - *Length:* ~460 words. Fits 450-500 range for 10+ page dense review. ✓
+    - *Tone:* Dry, plain English, no evaluative language. ✓
+    - *Project conventions:* Does not force kernel/DFT correlation framing where absent. Notes that the paper does not address tensor preservation or DFT calibration. Uses precise terminology. ✓
+    - *Accuracy check:* 
+        - Authors: Corso, Stark, Jegelka, Jaakkola, Barzilay. ✓
+        - Journal: Nature Reviews Methods Primers, 2024, 4:17. ✓
+        - DOI: 10.1038/s43586-024-00294-7. ✓
+        - Pages: 13 (text chunks show up to page 13). ✓
+        - Refs: 117 listed. ✓
+        - Funding: NSF 1918839, MLPDS, DTRA DOMANE, DARPA AMD, NSF AI Institute CCF-2112665, NSF 2134795. ✓
+        - HIV example: 40k molecules, 80/10/10 scaffold split, 4 MP layers, sum pooling, ROC-AUC 77.9% val, 74.5% test vs 70.5% FFNN. ✓
+        - WL test, oversmoothing, oversquashing, SE(3), O(|E|), libraries. ✓
+        - References cited correctly mapped. ✓
+        - Implications: Honest, notes lack of direct connection to NMR shielding/tensors, frames as background. ✓
+    - *Potential issue:* The prompt says "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." The summary must not invent connections. I explicitly state the paper does not address this. That's correct.
+    - *Check vocabulary:* "correlate", "captures the signal", "r² of..." are default vocabulary for kernel-DFT comparisons in the thesis, but this paper doesn't do that. I'll avoid forcing them. I'll stick to the paper's actual metrics (ROC-AUC).
+    - *Check length:* ~468 words. Good.
+    - *Check format:* Header paragraph, then 5 paragraphs. No section titles. Flows logically.
+
+    All constraints met. Proceed to output. 
+    One minor adjustment: Ensure the header strictly follows the requested format: "citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    I will format it exactly as requested.
+    Text looks solid. I will generate it now. 
+    Self-Correction/Verification during thought:
+    - Check reference count: The text lists references 1 through 117. So 117 is correct.
+    - Check page count: The text chunks show pages 1 through 13. So 13 pages.
+    - Check funding: Explicitly listed in the text.
+    - Check stance: "Primer", "intended as an introduction", "not a comprehensive survey".
+    - Check numerical findings: ROC-AUC 77.9% val, 74.5% test, 70.5% FFNN. 40,000 molecules. O(|E|) complexity. 4 layers. All quoted.
+    - Check relations: Gori 2005, Scarselli 2008, Gilmer 2017, Xu 2019, Morris 2019, Veličković 2017, Corso 2020, Schütt 2017, Geiger & Smidt 2022, Stokes 2020, Jin 2018/2020, Dauparas 2022, Corso 2023, Alon & Yahav 2021, Rusch 2023. All from bibliography.
+    - Check implications: Explicitly states no direct connection to NMR shielding, DFT calibration, or tensor preservation. Frames as general GNN background. Matches constraint "Do not stretch beyond what the paper supports."
+    - All good. Output matches draft.✅
+    Proceeds. 
+    Output Generation. 
+    [Output Generation] -> *Proceeds*
+    *(Self-Correction/Refinement during drafting)*: I should ensure the header paragraph strictly matches the requested format without extra fluff. I will combine the citation details concisely. I will also verify the exact wording for the funding/credits. The prompt says "any load-bearing access, funding, or credit notes that are stated." I'll include them.
+    The draft looks solid. I will produce it now. 
+    Output matches the refined draft.✅
+    [Final Check of the Prompt]: "Rank-2 tensor (T2) preservation is the central novelty... calibration turns kernels into shielding." "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." Since this paper doesn't do kernel-DFT comparisons, I won't force those terms. I'll stick to the paper's actual content. The constraint says "Default vocabulary: ... The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim." This is a guideline for how to frame *our* work's comparisons, not a requirement to force it into unrelated papers. I'll follow the paper's actual metrics.
+    All constraints satisfied. Output generation. 
+    [Output] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+The user wants me to carefully re-read the draft summary against the provided paper text to ensure absolute accuracy in numbers, methodology, and names.
+I need to check:
+1. Statistics: page count, reference count, dataset size (40,000), ROC-AUC scores (77.9% val, 74.5% test, 70.5% baseline), complexity O(|E|).
+2. Methodology: GNN framework, message passing, scaffold splits, early stopping, libraries (PyTorch Geometric, DGL, Chemprop, e3nn), SE(3) invariance, Weisfeiler-Leman test, oversmoothing/oversquashing.
+3. Names: Authors (Corso, Stark, Jegelka, Jaakkola, Barzilay), years, cited works (Gori 2005, Scarselli 2008, Gilmer 2017, Xu 2019, Morris 2019, Veličković 2017, Corso 2020, Schütt 2017, Geiger & Smidt 2022, Stokes 2020, Jin 2018/2020, Dauparas 2022, Corso 2023, Alon & Yahav 2021, Rusch 2023).
+
+Let's verify the numbers and claims in the draft against the text chunks.
+Header: Corso, G., Stark, H., Jegelka, S., Jaakkola, T. & Barzilay, R. (2024). Graph neural networks. Nature Reviews Methods Primers, 4:17. DOI: 10.1038/s43586-024-00294-7. 13 pages. 117 references. Funding: NSF Expeditions 1918839, MLPDS, DTRA DOMANE, DARPA AMD, NSF AI Institute CCF-2112665, NSF 2134795. Acknowledgements: R. Wu, S. Yang, D. Lim, A. Corso, M.-M. Troadec, B. Jing, F. Di Giovanni, J. Yim, C. Vignac, F. Faltings. -> Matches text.
+
+Paragraph 1: Scope, stance, audience. Matches.
+Paragraph 2: Methods. Message-passing layer, embedding, 4 layers, sum pooling, linear classifier. HIV inhibition on OGB (40k molecules). Scaffold splits. O(|E|) complexity. Libraries: PyTorch Geometric, DGL, Chemprop, e3nn. SE(3) invariance. -> Matches text.
+Paragraph 3: Findings. ROC-AUC 77.9% val, 74.5% test. Baseline 70.5% on Morgan fingerprints. Weisfeiler-Leman bound. Oversmoothing, oversquashing. Interpretability (GNNExplainer), uncertainty. -> Matches text.
+Paragraph 4: Relations. Gori et al. (2005), Scarselli et al. (2008), Gilmer et al. (2017). Xu et al. (2019), Morris et al. (2019). Veličković et al. (2017), Corso et al. (2020), Schütt et al. (2017), Geiger & Smidt (2022). Stokes et al. (2020), Jin et al. (2018, 2020), Dauparas et al. (2022), Corso et al. (2023). Alon & Yahav (2021), Rusch et al. (2023). -> Let's check the reference list in the text to ensure these citations are actually in the paper's bibliography.
+Ref 1: Gori, Gori, Monfardini, Scarselli (2005)
+Ref 3: Scarselli et al. (2008)
+Ref 73: Gilmer et al. (2017)
+Ref 14: Xu et al. (2019)
+Ref 15: Morris et al. (2019)
+Ref 30: Veličković et al. (2017)
+Ref 31: Corso et al. (2020)
+Ref 44: Schütt et al. (2017)
+Ref 11: Geiger & Smidt (2022)
+Ref 67: Stokes et al. (2020)
+Ref 80: Jin et al. (2018)
+Ref 81: Jin et al. (2020)
+Ref 85: Dauparas et al. (2022)
+Ref 91: Corso et al. (2023)
+Ref 113: Alon & Yahav (2021)
+Ref 109: Rusch et al. (2023)
+All match the bibliography provided in the text chunks.
+
+Paragraph 5: Implications. Context for GNNs, sparse implementation, SE(3), limitations (oversmoothing/oversquashing). Does not address tensor outputs, shielding, DFT calibration, rank preservation. Background only. -> Matches instructions.
+
+Wait, let's double check the exact wording for the ROC-AUC numbers.
+Text: "After training for 100 epochs, the ROC-AUC is 82.5% on the training set compared with 73.0% on the validation set."
+Text: "the training process can be stopped at the point of highest validation performance (77.9% ROC-AUC) before the model starts overfitting, which translates to a 74.5% ROC-AUC on the test set. This is considerably better than the performance (70.5% test set ROC-AUC) obtained with a shallow FF-NN on Morgan fingerprints."
+My draft says: "In the worked example, the GNN achieves 77.9% ROC-AUC on the validation set and 74.5% on the test set after early stopping, compared to 70.5% for a shallow feedforward network on Morgan fingerprints." -> Matches exactly.
+
+Check dataset size: "The dataset contains 40,000 small molecules" -> Matches.
+Check complexity: "computational complexity of a message-passing layer is O(|E| + |V|) = O(|E|)" -> Matches.
+Check page count: The text ends on page 13. "Nature Reviews Methods Primers | (2024) 4:17 13". So 13 pages. Matches.
+Check reference count: Ends at 117. Matches.
+
+Check names in bibliography:
+Gori et al. (2005) - Ref 1
+Scarselli et al. (2008) - Ref 3
+Gilmer et al. (2017) - Ref 73
+Xu et al. (2019) - Ref 14
+Morris et al. (2019) - Ref 15
+Veličković et al. (2017) - Ref 30
+Corso et al. (2020) - Ref 31
+Schütt et al. (2017) - Ref 44
+Geiger & Smidt (2022) - Ref 11
+Stokes et al. (2020) - Ref 67
+Jin et al. (2018, 2020) - Refs 80, 81
+Dauparas et al. (2022) - Ref 85
+Corso et al. (2023) - Ref 91
+Alon & Yahav (2021) - Ref 113
+Rusch et al. (2023) - Ref 109
+All correctly attributed.
+
+Check methodology claims:
+"explicitly position the work as an accessible overview rather than a comprehensive theoretical survey, directing readers to refs. 4 and 5 for exhaustive foundations." -> Text: "This is not a comprehensive survey of all the theoretical results and methodologies regarding GNNs. Interested readers are directed to refs. 4,5 for more exhaustive expositions on the theoretical foundations." Matches.
+"libraries such as PyTorch Geometric, Deep Graph Library, Chemprop, and e3nn." -> Text mentions these. Matches.
+"SE(3) invariance for 3D geometric graphs." -> Text discusses SE(3) invariance/equivariance. Matches.
+"Weisfeiler-Leman isomorphism test" -> Text discusses WL test. Matches.
+"oversmoothing" and "oversquashing" -> Text discusses both. Matches.
+
+One minor point: The draft says "13 pages." The text shows page numbers up to 13. I will keep it as 13 pages.
+Another point: The draft says "The authors explicitly position the work as an accessible overview rather than a comprehensive theoretical survey". This is accurate.
+Check the funding/acknowledgements: "NSF Expeditions grant (award 1918839), the Machine Learning for Pharmaceutical Discovery and Synthesis (MLPDS) consortium, the DTRA Discovery of Medical Countermeasures Against New and Emerging (DOMANE) threats program, the DARPA Accelerated Molecular Discovery program, the NSF AI Institute CCF-2112665 and the NSF Award 2134795." Matches exactly.
+Check authors: Gabriele Corso, Hannes Stark, Stefanie Jegelka, Tommi Jaakkola & Regina Barzilay. Matches.
+
+Everything looks solid. The summary accurately reflects the paper's content, numbers, and references without fabrication or over-interpretation. I will return the draft unchanged as requested.
+Wait, let's verify the exact wording for the ROC-AUC baseline: "70.5% test set ROC-AUC". My draft says "70.5% for a shallow feedforward network on Morgan fingerprints." Matches.
+Check dataset: "Open Graph Benchmark (OGB)12. The dataset contains 40,000 small molecules". Matches.
+Check complexity: "O(|E| + |V|) = O(|E|)". Matches.
+Check libraries: "PyTorch Geometric8 and Deep Graph Library9 for general graphs, Chemprop10 for molecular graphs, and e3nn11 for 3D geometric graphs." Matches.
+Check references: All match the provided bibliography.
+Check page count: The text ends at page 13. I'll state 13 pages.
+Check reference count: 117 references. Matches.
+
+The summary is accurate. I will output it exactly as drafted.
+One thing: The prompt says "Reply with the final summary only." I will do that.
+I will double check the exact phrasing of the header to ensure it matches the requested format.
+"Header paragraph: citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+My header: "Corso, G., Stark, H., Jegelka, S., Jaakkola, T. & Barzilay, R. (2024). Graph neural networks. Nature Reviews Methods Primers, 4:17. DOI: 10.1038/s43586-024-00294-7. 13 pages. 117 references. Supported by NSF Expeditions grant 1918839, the Machine Learning for Pharmaceutical Discovery and Synthesis (MLPDS) consortium, the DTRA Discovery of Medical Countermeasures Against New and Emerging (DOMANE) threats program, the DARPA Accelerated Molecular Discovery program, the NSF AI Institute CCF-2112665, and NSF Award 2134795. Acknowledgements list R. Wu, S. Yang, D. Lim, A. Corso, M.-M. Troadec, B. Jing, F. Di Giovanni, J. Yim, C. Vignac, and F. Faltings."
+Matches format.
+
+Paragraph 1: What the paper is.
+Paragraph 2: Methods/central results.
+Paragraph 3: Findings.
+Paragraph 4: Relations to wider literature.
+Paragraph 5: Implications for our work.
+All constraints met. No changes needed. I will output the draft. 
+One minor check: "13 pages" vs "4:17". The journal is Nature Reviews Methods Primers, volume 4, article 17. Page count is indeed 13 based on the footer. I'll keep it.
+All good.
+Proceeding. 
+Output matches the draft exactly.✅

@@ -213,14 +213,14 @@ TEST(PrmtopChargeTest, TotalChargeIsInteger) {
     // but now we understand WHY: the protein needs to be loaded from the
     // protonated structure to match the prmtop.
     double total = 0.0;
-    for (const auto& acr : charges) total += acr.charge;
+    for (const auto& acr : charges) total += acr.partial_charge;
 
     // Just verify it loaded reasonable values (not all zero, not NaN)
     bool has_nonzero = false;
     for (const auto& acr : charges) {
-        EXPECT_FALSE(std::isnan(acr.charge));
-        EXPECT_FALSE(std::isnan(acr.radius));
-        if (std::abs(acr.charge) > 1e-6) has_nonzero = true;
+        EXPECT_FALSE(std::isnan(acr.partial_charge));
+        EXPECT_FALSE(std::isnan(acr.pb_radius));
+        if (std::abs(acr.partial_charge) > 1e-6) has_nonzero = true;
     }
     EXPECT_TRUE(has_nonzero) << "All charges are zero";
 }

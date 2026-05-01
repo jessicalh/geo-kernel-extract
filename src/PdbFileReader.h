@@ -7,8 +7,12 @@
 // protein in this system is protonated and charged — these are
 // preconditions for the physics we compute.
 //
-// Uses cif++ for parsing. NamingRegistry translates names.
-// AminoAcidType provides ring definitions. reduce adds H atoms.
+// Uses cif++ for parsing. AminoAcidType provides ring definitions.
+// reduce adds H atoms. Atom-name strings from cif++ are assigned raw
+// to Atom::pdb_atom_name — no NamingRegistry translation on this
+// path. AMBER-convention input is assumed (the documented contract
+// for --pdb is reduce-protonated PDBs, which emit AMBER names). See
+// KNOWN_BUGS.md Bug 1 for what fails when this assumption is wrong.
 //
 
 #include "Protein.h"

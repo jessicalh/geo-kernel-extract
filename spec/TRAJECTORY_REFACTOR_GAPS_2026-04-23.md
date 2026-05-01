@@ -83,9 +83,17 @@ Treat it as a 2026-04-23 snapshot, not a current work queue.]
 - **G6** AnalysisWriter dissolution — still follow-up.
 - **G7** Positions time series in trajectory H5 — landed
   (`PositionsTimeSeriesTrajectoryResult`).
-- **G8** Per-atom identity emission (NmrAtomIdentity) — still
-  deferred; `TrajectoryProtein::WriteH5` emits element +
-  residue_index + pdb_atom_name only.
+- **G8** Per-atom identity emission — still deferred;
+  `TrajectoryProtein::WriteH5` emits element + residue_index +
+  pdb_atom_name only. The NmrAtomIdentity-on-Atom design originally
+  proposed for this gap was **superseded 2026-04-28** by the
+  `LegacyAmberTopology` + calculator-contract architecture
+  (`spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry
+  `project_proteintopology_architecture` — typed contract attached
+  to Protein with typed semantic fields absorbed in). When G8 is
+  closed, it will be via `LegacyAmberTopology`'s output projection
+  surface at the H5 boundary (AMBER strings native, IUPAC and BMRB
+  as derived projections).
 - **G9** Two-pass scan+extract pattern — unchanged status: dormant in
   driver, returns when scan-emitter TRs are attached.
 

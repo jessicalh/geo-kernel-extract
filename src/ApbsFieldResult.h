@@ -2,7 +2,7 @@
 //
 // ApbsFieldResult: electrostatic E-field and EFG at each atom.
 //
-// Dependencies: ChargeAssignmentResult (charges and radii).
+// Dependencies: ChargeAssignmentResult (charges and PB radii).
 //
 // Stores per atom: apbs_efield (Vec3), apbs_efg (Mat3),
 //                  apbs_efg_spherical (SphericalTensor).

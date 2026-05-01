@@ -14,9 +14,13 @@
 //
 // Live surface:
 //   ff14sb_params — BuildFromPdb charge assignment
-//   tmpdir        — temp files for MOPAC work directories
+//   tleap         — AmberPreparedChargeSource runtime topology generation
+//                   (resolved from TOML / AMBERHOME / PATH / conda)
+//   tmpdir        — temp files for MOPAC and AmberPreparedChargeSource
+//                   work directories
 //
-// MOPAC is linked (libmopac.so), not a binary path.
+// MOPAC is linked (libmopac.so), not a binary path. tleap IS a
+// binary path (subprocess invocation by AmberPreparedChargeSource).
 //
 
 #include <string>
@@ -35,6 +39,7 @@ public:
     // --- Live accessors ---
 
     static const std::string& Mopac();
+    static const std::string& Tleap();
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
 
@@ -53,6 +58,7 @@ public:
 
 private:
     static std::string mopac_;
+    static std::string tleap_;
     static std::string ff14sb_params_;
     static std::string tmpDir_;
     static std::string processGuid_;

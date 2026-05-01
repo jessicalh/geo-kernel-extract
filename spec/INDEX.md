@@ -4,6 +4,29 @@
 
 ## Reading Order
 
+### Active migration/interruption note
+
+If the task touches topology, charge/radius assignment, AMBER terminal
+state handling, GROMACS/CHARMM TPR loading, or APBS radii, first read
+**spec/plan/current-topology-anchor-2026-04-29.md**. That document is
+the active context-recovery anchor for the 2026-04-29 topology work and
+the AMBER/APBS/GROMACS interruption currently sitting above it.
+
+For the immediate AMBER terminal/protonation charge issue, also read
+**spec/plan/amber-terminal-charge-generation-2026-04-29.md** before
+writing code. It preserves the current AMBER findings and parks the
+GROMACS observations for later.
+
+**Today's central plan (2026-04-29; LOAD-BEARING):**
+**spec/plan/amber-implementation-plan-2026-04-29.md** is the
+1807-line capture-of-decisions for the day. It locks O2/O3/O4,
+contains the crystal projection rule, the substrate-vs-conformation
+split, the drift policy, and the post-slice sequencing
+(PHASE 0 → PHASE 1 (N1.A–G) → PHASE 2 → OpenBabel exit → N4). The
+six implementation steps are green in the working tree (62/62 tests
+passing) but uncommitted. **Read this BEFORE writing code on any
+post-AMBER-slice work.**
+
 ### Tier 1 — Start here (what the system is)
 
 1. **doc/ARCHITECTURE.md** — structure, provenance paths, pipeline,
@@ -150,16 +173,18 @@ then run `python -m pytest python/tests/` to verify.
 - **OUTSTANDING_GROMACS_PATH.md** — open items for trajectory extraction path (GeometryChoice, KernelFilterSet, TOML, SDK tests)
 - **POLARISABILITY_ROADMAP_2026-04-13.md** — charge polarisation proxy approaches: SASA normal, HydrationGeometryResult, water-embedded AIMNet2, EEQ, E-field variance. What was rejected and why.
 - **ANALYSIS_TRAJECTORY_2026-04-14.md** — analysis trajectory mode: exhaustive per-frame H5, per-ring K=6, ridge+MLP predictions, projections. 10-protein workspace design (tentative, evolving).
-- **IDENTITY_AND_DYNAMICS_ROLLUP_2026-04-22.md** — tentative rollup spec: NmrAtomIdentity per-atom invariants, TrajectoryResult continuous summaries, threshold-parameterised event menu with hookable C++/Python forms. Living document; re-read before acting.
+- **IDENTITY_AND_DYNAMICS_ROLLUP_2026-04-22.md** — **partially superseded 2026-04-28.** The NmrAtomIdentity-on-Atom proposal in this rollup is replaced by the `LegacyAmberTopology` + calculator-contract architecture (`spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry `project_proteintopology_architecture` — typed contract attached to Protein with typed semantic fields absorbed into LegacyAmberTopology). The TrajectoryResult continuous-summary and event-menu portions of the rollup remain valid. Re-read with that scoping before acting.
 - **PHYSICS_FOUNDATIONS.md** — IN PROGRESS. Properly-referenced physics theory for every mechanism the extractor touches. Session 0 landscape underway 2026-04-22; three drafting sessions follow. Must exist before rollup implementation per IDENTITY_AND_DYNAMICS_ROLLUP section 13.11.
 - **MICROSECOND_MD_HARVESTER_2026-04-22.md** — DECIDED design, NOT YET BUILT. Pose-harvester scanner (`nmr_extract --harvest-poses`) + AI-curator DFT submission for μs-MD extension of the 10 calibration proteins during a 41-day 5090 rental window. Au-courant ~2026-04-24 when current 25 ns fleet run completes; queued after Session 1 drafting.
 - **PLANNED_CALCULATORS_2026-04-22.md** — NOTE, not spec. Five calculator / diagnostic / model-architecture ideas surfaced during Session 0 literature pass: GreenKuboSpectralDensity (J(ω) from σ-autocorrelation), PseudocontactShift (same K_ab as RingSusceptibility with external χ tensor), per-SS CSA stratification diagnostic, Lie-group GP on SE(3), FNO for volumetric shielding field. None committed; captured so ideas survive between sessions.
 - **NMR_EXTRACT_DESIDERATA_2026-04-22.md** — NOTE, not spec. Consolidated library-wide pass of every calculator / variation / input-output surface / diagnostic / architectural idea surfaced during Session 0 — organised, not triaged. Sections A-F: new ConformationResults (A1-A11 + 2 cross-ref to PLANNED), variations on existing kernels (B1-B7), I/O surfaces (C1-C8), diagnostics (D1-D3), architectural (E1-E6), scope boundaries (F incl. explicit xTB exclusion). Starting place before the user organises the work against use cases and thesis narrative.
-- **pending_include_trajectory_scope_2026-04-22.md** — was WIP_OBJECT_MODEL.md during the design pass; renamed after the trajectory-scope shape landed in src/ and folded (tight form) into OBJECT_MODEL.md + PATTERNS.md §§13-18. Holds working-note material that doesn't belong in the control docs: rejected alternatives (Appendix B — TrajectoryBond first-class store), design-option discussions, pending appendices awaiting user review (NmrAtomIdentity §2 + Appendix A, full TrajectoryResult catalog Appendix F, H5 metadata schema §7), and the anti-pattern warnings §3 that the `feedback_trajectory_scope_gotchas` memory entry references. **Not authoritative for anything landed** — the code + OBJECT_MODEL.md + PATTERNS.md win. Read only when activating a pending-review section.
+- **pending_include_trajectory_scope_2026-04-22.md** — was WIP_OBJECT_MODEL.md during the design pass; renamed after the trajectory-scope shape landed in src/ and folded (tight form) into OBJECT_MODEL.md + PATTERNS.md §§13-18. Holds working-note material that doesn't belong in the control docs: rejected alternatives (Appendix B — TrajectoryBond first-class store), design-option discussions, pending appendices, and the anti-pattern warnings §3 that the `feedback_trajectory_scope_gotchas` memory entry references. **Note 2026-04-28:** the `NmrAtomIdentity` §2 + Appendix A proposal is **superseded** by the `LegacyAmberTopology` + calculator-contract plan (`spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry `project_proteintopology_architecture`); do not implement from §2 / Appendix A. Other pending sections (full TrajectoryResult catalog Appendix F, H5 metadata schema §7) remain pending. **Not authoritative for anything landed** — the code + OBJECT_MODEL.md + PATTERNS.md win. Read only when activating a pending-review section.
 - **TRAJECTORY_LANDING_STATE_2026-04-23.md** + **TRAJECTORY_REFACTOR_GAPS_2026-04-23.md** — session-dated records of the first landing push. Historical; useful for tracing how the trajectory-scope refactor got from WIP to landed.
 - **pending_decisions_20260423.md** — items needing user choice (AllWelfords revival, FullFatFrameExtraction MOPAC deps, and others). Living document — extend as new decisions accrue.
 - **doc_wrongness_20260423.md** — observational audit (2026-04-23) of contradictions between docs/comments and current code. Reference during cleanup passes; supersede items as they are resolved.
 - **cold_read_review_20260424.md** — fresh-reader evaluation (2026-04-24) of whether the docs support adding a new ConformationResult / TrajectoryResult. Notes gaps and contradictions.
+- **openai-5.5-strong-architecture-layout.md** — **AUTHORITATIVE for the active topology/charge contract direction (2026-04-28).** `LegacyAmberTopology` as the explicit typed contract for current calculators, `ForceFieldChargeSet` as a first-class object on Protein, `CalculatorContract<TopologyT, ChargeSetT>` template for declaring calculator requirements, naming projections (IUPAC, BMRB) as output-side functions on the topology. Operational reference is memory entry `project_proteintopology_architecture`. Round-robin design + matrix pre-spec runs before any code.
+- **EVIL_STRING_AUDIT_2026-04-28.md** — full inventory of `pdb_atom_name` consumer sites (28 actual). Loader-side write sites, NamingRegistry capability vs. need, test-coverage gaps. Phasing recommendation is **superseded by openai-5.5-strong-architecture-layout.md**; the inventory data is still authoritative and feeds the matrix pre-spec.
 - **meta-docs-review/** — 2026-04-03 documentation audit artifacts
 
 ### ui/

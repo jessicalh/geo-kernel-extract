@@ -1,0 +1,247 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Preserve true detail: Authors, year, title, journal, volume, pages, DOI, ref count, funding/credit notes.
+        - Specific numerical findings: r/r², RMSEs, intensity factors, coefficient values, dataset sizes, distance ranges, basis sets, functionals, force fields. Quote numbers.
+        - Distinguish paper's claims from field claims.
+        - Name authors/works the paper builds on/points to (from its bibliography).
+        - State stance honestly (research paper, review, etc.).
+        - Avoid: Inventing methodology, manufacturing thesis connections, excited language, editorializing.
+        - Project Conventions: Frame kernel-vs-DFT as correlation (r² captures signal). Default vocabulary: "correlate", "captures the signal", "r² of...". Do not collapse tensor to scalar unless source does. Per-element complexity is thesis substance (H≈20, C≈6, N≈3, O≈12) - keep in mind but don't force if not in paper.
+        - Format: Header paragraph (citation, DOI, page count, ref count, funding/credit). Then 5 paragraphs, no titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (honest, wide, no stretching)
+        - Length: 4-6 pages → 200-300 words; 6-12 pages → 300-450; 10+ dense review → 450-500. This paper is ~14 pages. I'll aim for ~350-450 words.
+
+2.  **Extract Paper Metadata & Details:**
+    - **Authors:** Maria Bånkestad, Kevin M. Dorst, Göran Widmalm, Jerk Rönnols
+    - **Year:** 2023
+    - **Title:** Carbohydrate NMR chemical shift predictions using E(3) equivariant graph neural networks
+    - **Journal/Source:** arXiv:2311.12657v1 [cs.LG], 21 Nov 2023 (Note: It's an arXiv preprint, not a peer-reviewed journal yet, but I'll note it as presented)
+    - **Pages:** 14 pages
+    - **References:** ~30+ (I'll count roughly or state "approximately 30 references" based on the list provided)
+    - **DOI:** Not explicitly given in text, but arXiv ID is arXiv:2311.12657v1. I'll note the arXiv identifier.
+    - **Funding/Credit:** Supported by Swedish Research Council (2022-03014) and The Knut and Alice Wallenberg Foundation. Simulations on LuxProvide MeluXina.
+    - **Stance:** Research paper introducing a machine learning model (GeqShift) for predicting carbohydrate NMR chemical shifts.
+    - **Dataset:** 375 carbohydrates (107 mono-, 153 di-, 115 trisaccharides). 5356 1H and 4713 13C shifts. Data from CASPER program.
+    - **Methods:** E(3) equivariant graph neural network (Euclidean neural network). Uses molecular geometry (3D conformations). Ensemble of 100 conformations per molecule generated via RDKit (ETKDGv3) and MMFF94 force field. Hidden layers: scalar (64), ℓ=1 odd (32), ℓ=2 even (8). 7 layers. Cutoff radius 6 Å. Optimized with Adam, LR 3e-4. Loss: MAE.
+    - **Results/Findings:** 
+        - Best model (GeqShift) MAE: 0.31 ppm for 13C, 0.032 ppm for 1H.
+        - RMSE for monosaccharides: 0.58 ppm (13C), 0.057 ppm (1H).
+        - Comparison to DFT (Palivec et al., 2022): DFT MAE 1.11 (13C), 0.081 (1H). GeqShift outperforms.
+        - Comparison to baseline SG-IMP-IR: ~3x lower MAE for 13C, 2x for 1H.
+        - Polysaccharide extension: MAE 0.56 (13C), 0.052 (1H).
+        - Error distribution: zero-centered, σ=0.39 (13C), 0.052 (1H).
+    - **Claims:** E(3) equivariance + conformational ensemble improves prediction accuracy for stereochemically complex carbohydrates. Predicts isotropic chemical shift (scalar) but uses tensorial representations internally (ℓ=2 even parity tensors).
+    - **References cited:** Palivec et al. (2022), Han et al. (2022) [SG-IMP-IR], Jonas et al. (2022), Unzueta et al. (2021), Geiger & Smidt (2022) [e3nn], Liao & Smidt (2023) [Equiformer], Lundborg & Widmalm (2011) [CASPER], etc.
+    - **Thesis Connection Check:** The thesis focuses on geometric kernels for shielding tensors, calibrated against DFT. This paper predicts isotropic chemical shifts (scalars) using equivariant GNNs on 3D structures. It does not deal with shielding tensors, geometric kernels, or DFT calibration directly. It uses DFT results (Palivec et al.) only as a benchmark for MAE. The connection is weak: it demonstrates that 3D geometry + equivariance captures stereochemical effects on NMR shifts, which aligns with the thesis's premise that spatial arrangement matters, but it does not preserve rank-2 tensors in its output (it predicts scalars). I must state implications honestly without stretching.
+
+3.  **Draft Construction (Mental Refinement - Paragraph by Paragraph):**
+    *Header:* Bånkestad, M., Dorst, K. M., Widmalm, G., & Rönnols, J. (2023). Carbohydrate NMR chemical shift predictions using E(3) equivariant graph neural networks. arXiv:2311.12657v1 [cs.LG], 14 pages, approximately 30 references. Supported by the Swedish Research Council (grant 2022-03014) and the Knut and Alice Wallenberg Foundation; computations performed on the MeluXina supercomputer.
+    *Para 1 (Scope/Stance):* This is a research paper introducing GeqShift, an E(3) equivariant graph neural network designed to predict isotropic 1H and 13C NMR chemical shifts for carbohydrates. The authors argue that accurate prediction requires explicit three-dimensional molecular geometry and equivariance to Euclidean transformations, particularly for molecules with complex stereochemistry. The work targets computational chemistry and machine learning audiences, positioning the model as a data-driven alternative to database-matching programs like CASPER and computationally expensive DFT calculations.
+    *Para 2 (Methods):* The model processes molecular graphs where nodes represent carbon/oxygen atoms (hydrogens are excluded) and edges connect atoms within a 6 Å cutoff. Input features include atom type, connected hydrogen count, bond type, and relative distance embeddings. The network employs seven E(3)-equivariant self-attention layers using the e3nn library, with hidden representations comprising scalar (ℓ=0), vector (ℓ=1, odd parity), and rank-2 tensor (ℓ=2, even parity) components. To account for conformational dynamics, each molecule is represented by an ensemble of 100 conformations generated via RDKit’s ETKDGv3 method and filtered using the MMFF94 force field. Training minimizes the mean absolute error across the ensemble, with predictions averaged post-inference.
+    *Para 3 (Findings):* On a ten-fold cross-validated dataset of 375 carbohydrates (107 monosaccharides, 153 disaccharides, 115 trisaccharides) containing 5356 1H and 4713 13C shifts, the full ensemble model (GeqShift) achieves a mean absolute error of 0.31 ppm for 13C and 0.032 ppm for 1H. Root mean square errors for monosaccharides are 0.58 ppm and 0.057 ppm, respectively. Prediction errors are approximately zero-centered with standard deviations of 0.39 ppm (13C) and 0.052 ppm (1H). The model outperforms the baseline SG-IMP-IR network by roughly threefold for 13C and twofold for 1H, and surpasses the DFT-based benchmark reported by Palivec et al. (2022), which recorded MAEs of 1.11 ppm and 0.081 ppm. Extension to two tetrasaccharide polysaccharides yields MAEs of 0.56 ppm (13C) and 0.052 ppm (1H).
+    *Para 4 (Relations):* The paper builds on the CASPER program for experimental shift data (Lundborg & Widmalm, 2011; Jansson et al., 2006) and the scalable GNN architecture SG-IMP-IR (Han et al., 2022). It situates its methodology within the broader development of Euclidean neural networks (Geiger & Smidt, 2022) and equivariant attention transformers (Liao & Smidt, 2023). The authors compare performance against prior machine learning studies summarized by Jonas et al. (2022) and Unzueta et al. (2021), as well as DFT simulations of saccharide shifts in aqueous environments (Palivec et al., 2022).
+    *Para 5 (Implications):* The study demonstrates that equivariant geometric representations combined with conformational ensembles capture stereochemical dependencies in carbohydrate NMR shifts. While the output is restricted to isotropic scalars rather than full shielding tensors, the internal use of ℓ=2 even parity tensors indicates that rank-2 geometric information is utilized during message passing. The work supports the broader premise that three-dimensional atomic arrangement and symmetry constraints are necessary for accurate shift prediction. However, it does not address shielding tensor calibration, kernel decomposition, or protein structural contexts, so its direct methodological transfer to the current project is limited to the validation of 3D equivariance and ensemble averaging strategies.
+
+4.  **Check against Constraints:**
+    - *Header:* Authors, year, title, journal/source, volume/pages (arXiv, 14 pages), ref count (~30), funding/credit. DOI not in text, noted arXiv ID. Matches.
+    - *Para 1:* Scope, stance, audience, argument. Matches.
+    - *Para 2:* Methods/central results. Details on GNN, equivariance, conformations, force field, layers, loss. Matches.
+    - *Para 3:* Findings with magnitudes. MAE, RMSE, σ, dataset sizes, comparison numbers. Matches.
+    - *Para 4:* Relations to literature. Names from bibliography. Matches.
+    - *Para 5:* Implications for our work. Honest, no stretching. Notes scalar output vs tensor preservation, mentions ℓ=2 usage, limits direct transfer. Matches.
+    - *Tone:* Dry, plain English. No excited language. No fabricated methods.
+    - *Project Conventions:* Notes that output is scalar, but internal ℓ=2 tensors are used. Does not force r² correlation framing (paper doesn't use it for kernel-DFT, it uses MAE/RMSE). Clarifies that it doesn't collapse tensor to scalar except where source does (source predicts isotropic shift). Mentions per-element complexity? Not applicable here, but I'll keep it in mind. The constraint says "Do not collapse a tensor to a scalar except where the source paper itself does." The source predicts isotropic shift (scalar), so I note that. I'll adjust wording slightly to ensure strict compliance.
+    - *Length:* ~380 words. Fits 6-12 page range (300-450).
+    - *Accuracy Check:* 
+        - Dataset: 375 carbs, 5356 1H, 4713 13C. Correct.
+        - MAE: 0.31 (13C), 0.032 (1H). Correct.
+        - RMSE mono: 0.58, 0.057. Correct.
+        - σ: 0.39, 0.052. Correct.
+        - DFT benchmark: Palivec 2022 MAE 1.11, 0.081. Correct.
+        - Polysaccharide MAE: 0.56, 0.052. Correct.
+        - Cutoff: 6 Å. Correct.
+        - Force field: MMFF94. Correct.
+        - Conformations: 100 per molecule. Correct.
+        - Hidden dims: scalar 64, ℓ=1 odd 32, ℓ=2 even 8. Correct.
+        - All numbers match text.
+    - *Constraint Check:* "Kernel-vs-DFT comparisons are framed as correlation... r² shows signal captured." This paper doesn't do kernel-vs-DFT calibration; it compares ML MAE to DFT MAE. I will stick to the paper's framing (MAE comparison) but note the thesis convention if relevant. The constraint says "Default vocabulary: correlate, captures the signal, r² of...". I'll avoid forcing it where inappropriate, but I'll keep the tone aligned.
+    - "Per-element complexity... Do not collapse a tensor to a scalar except where the source paper itself does." The source predicts isotropic shift (scalar). I will explicitly note this.
+    - "Implications... considered widely and honestly. Do not stretch." I've done this.
+
+    One minor adjustment: The prompt says "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." This is the thesis context. The summary should reflect that this paper does *not* do that, but uses ℓ=2 tensors internally. I'll make sure the implication paragraph clearly separates the thesis's kernel/shielding calibration approach from this paper's direct shift prediction.
+
+    Let's draft carefully. 
+    Structure:
+    Header
+    P1: Scope/Stance
+    P2: Methods
+    P3: Findings
+    P4: Relations
+    P5: Implications
+    Word count check: ~360. Good.
+    All constraints met. Proceed. 
+    Self-Correction/Refinement during thought:
+    - Check DOI: Text says "arXiv:2311.12657v1 [cs.LG] 21 Nov 2023". No DOI provided. I will state "DOI not provided in text; arXiv identifier 2311.12657v1".
+    - Check reference count: The bibliography lists ~30 entries. I'll state "approximately 30 references".
+    - Check "correlation" framing: The prompt says "Kernel-vs-DFT comparisons are framed as correlation...". This paper compares ML to DFT via MAE. I will not force r² here, but I will maintain the dry, precise tone.
+    - Check tensor/scalar: The paper explicitly states it predicts the isotropic part (scalar) because solution NMR measures δ_iso. I will note this clearly.
+    - All good. Output matches draft.✅
+    Generate. 
+    Output matches the refined draft.✅
+    Proceeds. 
+    [Output Generation] -> *See response.* 
+    Self-Correction/Verification during generation prep:
+    - "Rank-2 tensor (T2) preservation is the central novelty" -> I need to make sure I don't claim this paper does T2 preservation. It uses ℓ=2 even parity tensors internally for message passing, but outputs a scalar. I'll state exactly that.
+    - "Per-element complexity is the substance of the thesis... Do not collapse a tensor to a scalar except where the source paper itself does." -> The source predicts isotropic shift (scalar). I will note that the model outputs a scalar isotropic shift, consistent with the source's stated objective, while retaining ℓ=2 representations internally.
+    - All constraints satisfied. Output matches. 
+    Proceeds. 
+    [Output Generation] -> *Proceeds.* 
+    *(Done.)*
+
+
+=== pass 2 (vet) ===
+The user wants me to carefully review the draft summary against the provided paper text.
+I need to check three specific things:
+1. Statistics: numbers (MAE, RMSE, dataset sizes, cutoffs, etc.)
+2. Methodology: procedures, tools, force fields, etc.
+3. Names: authors, years, works, molecules, etc.
+
+Let's go through the draft paragraph by paragraph and verify against the text chunks.
+
+**Header:**
+Bånkestad, M., Dorst, K. M., Widmalm, G., & Rönnols, J. (2023). Carbohydrate NMR chemical shift predictions using E(3) equivariant graph neural networks. arXiv:2311.12657v1 [cs.LG], 14 pages, approximately 30 references. DOI not provided in text; arXiv identifier 2311.12657v1. Supported by the Swedish Research Council (grant 2022-03014) and the Knut and Alice Wallenberg Foundation; computations performed on the MeluXina supercomputer.
+*Check:* Authors match. Title matches. arXiv ID matches. Page count: text ends at page 14. References: I'll count roughly or check the text. The text has a reference list. I'll trust "approximately 30 references" or just say "references listed". Funding: Swedish Research Council (2022-03014) and Knut and Alice Wallenberg Foundation. Supercomputer: MeluXina. All match.
+
+**Paragraph 1:**
+This is a research paper introducing GeqShift, an E(3) equivariant graph neural network designed to predict isotropic 1H and 13C NMR chemical shifts for carbohydrates. The authors argue that accurate prediction requires explicit three-dimensional molecular geometry and equivariance to Euclidean transformations, particularly for molecules with complex stereochemistry. The work targets computational chemistry and machine learning audiences, positioning the model as a data-driven alternative to database-matching programs like CASPER and computationally expensive DFT calculations.
+*Check:* Matches abstract and intro. "isotropic 1H and 13C NMR chemical shifts" - text says "isotropic part of the chemical shift tensor, denoted as δiso". Good.
+
+**Paragraph 2:**
+The model processes molecular graphs where nodes represent carbon and oxygen atoms (hydrogens are excluded) and edges connect atoms within a 6 Å cutoff. Input features include atom type, connected hydrogen count, bond type, and relative distance embeddings. The network employs seven E(3)-equivariant self-attention layers using the e3nn library, with hidden representations comprising scalar (ℓ=0), vector (ℓ=1, odd parity), and rank-2 tensor (ℓ=2, even parity) components. To account for conformational dynamics, each molecule is represented by an ensemble of 100 conformations generated via RDKit’s ETKDGv3 method and filtered using the MMFF94 force field. Training minimizes the mean absolute error across the ensemble, with predictions averaged post-inference.
+*Check:*
+- Nodes: carbon and oxygen? Text says "We exclude hydrogen atoms from the representation of molecules...". It doesn't explicitly say only C and O, but carbohydrates are C, H, O. I'll say "carbon and oxygen atoms (hydrogens excluded)".
+- Cutoff: "cutoff radius rcut = 6 Å" - matches.
+- Input features: "atom type Zi... number of hydrogen atoms connected... bond type Eij... euclidean distance... normalized relative distance... using spherical harmonics" - matches.
+- Layers: "seven layers" - matches.
+- Library: "e3nn library" - matches.
+- Hidden reps: "scalar vector of size 64, 32 tensors with ℓ = 1 and odd parity, and eight tensors with ℓ = 2 and even parity." - matches.
+- Conformations: "ensemble of 100 conformations generated via RDKit’s ETKDGv3 method... MMFF94 force field... discarded the 100 conformations with the highest energy." - matches.
+- Training: "minimizing the mean absolute error... ensemble of predictions... aim at minimizing... average prediction derived from the ten models" - matches.
+
+**Paragraph 3:**
+On a ten-fold cross-validated dataset of 375 carbohydrates (107 monosaccharides, 153 disaccharides, 115 trisaccharides) containing 5356 1H and 4713 13C shifts, the full ensemble model achieves a mean absolute error of 0.31 ppm for 13C and 0.032 ppm for 1H. Root mean square errors for monosaccharides are 0.58 ppm and 0.057 ppm, respectively. Prediction errors are approximately zero-centered with standard deviations of 0.39 ppm (13C) and 0.052 ppm (1H). The model outperforms the baseline SG-IMP-IR network by roughly threefold for 13C and twofold for 1H, and surpasses the DFT-based benchmark reported by Palivec et al. (2022), which recorded MAEs of 1.11 ppm and 0.081 ppm. Extension to two tetrasaccharide polysaccharides yields MAEs of 0.56 ppm (13C) and 0.052 ppm (1H).
+*Check:*
+- Dataset size: 375 carbohydrates (107 mono, 153 di, 115 tri). Matches text: "encompasses hydrogen 1H and carbon 13C chemical shifts for 375 carbohydrates... 107 monosaccharides, 153 disaccharides, and 115 trisaccharides."
+- Shifts: 5356 1H and 4713 13C. Matches text.
+- MAE: 0.31 ppm (13C) and 0.032 ppm (1H). Text says "0.31 for δC and 0.032 for δH" in abstract, but Table 2 says GeqShift MAE for 13C is 0.31 (0.08) and for 1H is 0.035 (0.009). Wait, the abstract says 0.032. Table 2 says 0.035. I will stick to the abstract's 0.032 or note the table's 0.035. The text says "our network reaches mean absolute errors (MAEs) of 0.31 for δC and 0.032 for δH." I'll use 0.032 as stated in the main text.
+- RMSE monosaccharides: Table 2 says 0.58 (0.18) for 13C and 0.057 (0.018) for 1H. Matches.
+- Std dev of errors: Text says "standard deviation of 0.39 for 13C and 0.052 for 1H." Matches.
+- Baseline comparison: "over three times lower for δC and two times lower for δH compared to models relying solely on two-dimensional molecular structure information." SG-IMP-IR MAE for 13C is 1.18, 1H is 0.071. 1.18/0.31 ≈ 3.8. 0.071/0.032 ≈ 2.2. Matches "roughly threefold... twofold".
+- DFT benchmark: Palivec et al. (2022) MAE 1.11 ppm and 0.081 ppm. Matches.
+- Polysaccharides: "two tetrasaccharide polysaccharides... MAEs of 0.56 ppm (13C) and 0.052 ppm (1H)." Figure 8 shows EqGeom++ MAE 0.56 for 13C and 0.052 for 1H. Matches.
+
+**Paragraph 4:**
+The paper builds on the CASPER program for experimental shift data (Lundborg & Widmalm, 2011; Jansson et al., 2006) and the scalable GNN architecture SG-IMP-IR (Han et al., 2022). It situates its methodology within the broader development of Euclidean neural networks (Geiger & Smidt, 2022) and equivariant attention transformers (Liao & Smidt, 2023). The authors compare performance against prior machine learning studies summarized by Jonas et al. (2022) and Unzueta et al. (2021), as well as DFT simulations of saccharide shifts in aqueous environments (Palivec et al., 2022).
+*Check:*
+- CASPER: Lundborg & Widmalm, 2011; Jansson et al., 2006. Matches.
+- SG-IMP-IR: Han et al., 2022. Matches.
+- e3nn: Geiger & Smidt, 2022. Matches.
+- Equiformer: Liao & Smidt, 2023. Matches.
+- Jonas et al., 2022 review. Matches.
+- Unzueta et al., 2021. Matches.
+- Palivec et al., 2022. Matches.
+All names and years match the reference list.
+
+**Paragraph 5:**
+The study demonstrates that equivariant geometric representations combined with conformational ensembles capture stereochemical dependencies in carbohydrate NMR shifts. While the output is restricted to isotropic scalars rather than full shielding tensors, the internal use of ℓ=2 even parity tensors indicates that rank-2 geometric information is utilized during message passing. The work supports the broader premise that three-dimensional atomic arrangement and symmetry constraints are necessary for accurate shift prediction. However, it does not address shielding tensor calibration, kernel decomposition, or protein structural contexts, so its direct methodological transfer to the current project is limited to the validation of 3D equivariance and ensemble averaging strategies.
+*Check:* Matches the scientific content and appropriately frames implications for the thesis without overstretching. Notes the ℓ=2 tensors correctly.
+
+Wait, let's double check the exact wording for the dataset size and shifts.
+Text: "encompasses hydrogen 1H and carbon 13C chemical shifts for 375 carbohydrates in an aqueous solution. Of these are 107 monosaccharides, 153 disaccharides, and 115 trisaccharides. By summing up the individual shifts, the dataset contains 5356 1H and 4713 13C chemical shifts." -> Matches exactly.
+
+Check RMSE for monosaccharides in Table 2:
+GeqShift Monosaccharides 13C: MAE 0.31 (0.08), RMSE 0.58 (0.18)
+GeqShift Monosaccharides 1H: MAE 0.035 (0.009), RMSE 0.057 (0.018)
+My draft says 0.032 for 1H MAE based on abstract/text, but Table 2 says 0.035. I will adjust to 0.035 to match the detailed table, or note the abstract's 0.032. The prompt says "Quote the numbers the paper actually gives." I'll use the table values for precision, or stick to the abstract if it's the main claim. I'll change 0.032 to 0.035 to be safe with the table, or just say "0.032–0.035 ppm". Actually, the abstract says 0.032. I'll keep 0.032 as it's in the abstract, but note the table says 0.035. I'll just use 0.035 as it's in the main results table. Wait, the text says "our network reaches mean absolute errors (MAEs) of 0.31 for δC and 0.032 for δH." I will stick to 0.032 as stated in the text.
+
+Check cutoff: "cutoff radius rcut = 6 Å" -> matches.
+Check layers: "seven layers" -> matches.
+Check hidden dims: "scalar vector of size 64, 32 tensors with ℓ = 1 and odd parity, and eight tensors with ℓ = 2 and even parity." -> matches.
+Check conformations: "100 conformations... ETKDGv3... MMFF94... discarded highest energy" -> matches.
+Check polysaccharides: "two tetrasaccharide polysaccharides... MAEs of 0.56 ppm (13C) and 0.052 ppm (1H)." -> matches Fig 8.
+
+One minor point: The draft says "nodes represent carbon and oxygen atoms". The text says "We exclude hydrogen atoms from the representation of molecules to reduce computational complexity." It doesn't explicitly restrict to C and O, but carbohydrates are C, H, O. I'll change to "nodes represent heavy atoms (carbon and oxygen)" to be precise.
+
+Another point: "Training minimizes the mean absolute error across the ensemble, with predictions averaged post-inference." The text says: "We train the model by minimizing the mean absolute error... We train the model with multiple conformations and, thereby, multiple graphs for each chemical shift xi. This results in an ensemble of predictions... We want the mean of this ensemble to be equal to the experimentally determined chemical shift... minimizing xi - 1/N sum x_hat_i." So training minimizes the error of the ensemble average. I'll adjust slightly for accuracy: "Training minimizes the mean absolute error between the ensemble average prediction and the experimental shift."
+
+Let's verify the reference count. The text has references from Argaman to Yildirim. I count about 30. I'll leave "approximately 30 references" or just "references listed". The prompt says "reference count if stated". It's not stated. I'll omit the count or say "references listed in the bibliography".
+
+Check names: Bånkestad, Dorst, Widmalm, Rönnols. All match.
+CASPER: Lundborg & Widmalm, 2011; Jansson et al., 2006. Match.
+SG-IMP-IR: Han et al., 2022. Match.
+e3nn: Geiger & Smidt, 2022. Match.
+Equiformer: Liao & Smidt, 2023. Match.
+Jonas et al., 2022. Match.
+Unzueta et al., 2021. Match.
+Palivec et al., 2022. Match.
+All good.
+
+One detail: "Prediction errors are approximately zero-centered with standard deviations of 0.39 ppm (13C) and 0.052 ppm (1H)." Text says: "standard deviation of 0.39 for 13C and 0.052 for 1H." Matches.
+
+Check RMSE for monosaccharides: 0.58 ppm and 0.057 ppm. Matches Table 2.
+
+Check polysaccharides MAE: Fig 8 shows EqGeom++ (which is GeqShift with ensemble) MAE 0.56 for 13C and 0.052 for 1H. Matches.
+
+Everything looks solid. I will produce the revised summary with these minor precision tweaks.
+Structure:
+Header paragraph
+Paragraph 1: Scope/stance
+Paragraph 2: Methods
+Paragraph 3: Findings
+Paragraph 4: Relations
+Paragraph 5: Implications
+
+I will ensure the tone is dry and precise. I will double-check the exact wording for the ℓ=2 tensors: "eight tensors with ℓ = 2 and even parity." I'll include that.
+I will verify the dataset composition: 375 carbohydrates, 107 mono, 153 di, 115 tri. 5356 1H, 4713 13C shifts.
+I will verify the baseline comparison: SG-IMP-IR MAE 1.18 (13C), 0.071 (1H). GeqShift 0.31, 0.032. Ratio ~3.8x and ~2.2x. "roughly threefold... twofold" is accurate.
+I will verify DFT benchmark: Palivec et al. (2022) MAE 1.11, 0.081.
+All numbers verified.
+
+One thing: The prompt says "reference count if stated". It's not stated, so I'll omit it.
+"page count" -> 14 pages.
+"DOI when visible" -> arXiv identifier provided, no DOI.
+I'll format the header carefully.
+
+Final check of the draft against constraints:
+- Header paragraph: citation, DOI/arXiv, page count, funding/credits.
+- 5 paragraphs, no titles.
+- Stats checked.
+- Methods checked.
+- Names checked.
+- Tone: dry, plain English.
+- Kernel-vs-DFT framing: Not directly applicable here, but I noted the isotropic scalar output vs tensor.
+- Per-element complexity: Not in this paper.
+- Length: ~280 words. Fits 4-6 page paper guideline (200-300).
+
+Ready. Output matches the refined draft. 
+I will generate it now. 
+Self-Correction/Refinement during thought:
+Wait, the prompt says "reference count if stated". I'll just say "references listed".
+The draft says "approximately 30 references". I'll change to "references listed in the bibliography" to be safe.
+The draft says "nodes represent carbon and oxygen atoms". I'll change to "nodes represent heavy atoms (carbon and oxygen)".
+The draft says "Training minimizes the mean absolute error across the ensemble, with predictions averaged post-inference." I'll change to "Training minimizes the mean absolute error between the ensemble average prediction and the experimental shift."
+All other details are verified.
+Proceed. 
+Output matches the final refined version. 
+Generating. 
+[Output Generation] -> *Proceeds*

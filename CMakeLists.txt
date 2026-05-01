@@ -175,7 +175,9 @@ add_library(nmr_shielding
     src/Atom.cpp
     src/Ring.cpp
     src/Protein.cpp
+    src/LegacyAmberTopology.cpp
     src/CovalentTopology.cpp
+    src/ForceFieldChargeTable.cpp
     src/ProteinConformation.cpp
     src/PdbFileReader.cpp
     src/GeometryResult.cpp
@@ -189,6 +191,9 @@ add_library(nmr_shielding
     src/PropkaProtonator.cpp
     src/KamlProtonator.cpp
     src/ChargeSource.cpp
+    src/AmberChargeResolver.cpp
+    src/AmberLeapInput.cpp
+    src/AmberPreparedChargeSource.cpp
     src/OrcaRunLoader.cpp
     src/GromacsEnsembleLoader.cpp
     src/SasaResult.cpp
@@ -390,6 +395,9 @@ nmr_test_target(structure_tests
     tests/test_protonation_detection.cpp
     tests/test_atom_flat.cpp
     tests/test_foundation_results.cpp
+    tests/test_amber_charge_resolver.cpp
+    tests/test_amber_leap_input.cpp
+    tests/test_amber_prepared_charge_source.cpp
     tests/test_apbs_field_result.cpp
     tests/test_apbs_wired.cpp
     tests/test_apbs_ff14sb.cpp
@@ -410,6 +418,7 @@ nmr_test_target(structure_tests
 # ── Trajectory tests (~5 min) — GROMACS fleet loader path ─────────────
 nmr_test_target(trajectory_tests
     tests/test_fleet_loader.cpp
+    tests/test_amber_trajectory.cpp
 )
 
 # ── MOPAC tests (~1 hr) — semiempirical charge calculation ────────────

@@ -14,6 +14,25 @@
 
 namespace nmr {
 
+enum class ResidueTerminalState {
+    Internal,
+    NTerminus,
+    CTerminus,
+    NAndCTerminus,
+    Unknown
+};
+
+inline const char* ResidueTerminalStateName(ResidueTerminalState state) {
+    switch (state) {
+        case ResidueTerminalState::Internal:      return "internal";
+        case ResidueTerminalState::NTerminus:     return "n_terminus";
+        case ResidueTerminalState::CTerminus:     return "c_terminus";
+        case ResidueTerminalState::NAndCTerminus: return "n_and_c_terminus";
+        case ResidueTerminalState::Unknown:       return "unknown";
+    }
+    return "unknown";
+}
+
 class Residue {
 public:
     AminoAcid           type = AminoAcid::Unknown;
@@ -22,6 +41,8 @@ public:
     std::string         insertion_code;
     std::vector<size_t> atom_indices;
     int                 protonation_variant_index = -1;
+    bool                protonation_state_resolved = false;
+    ResidueTerminalState terminal_state = ResidueTerminalState::Unknown;
 
     // Backbone atom indices (cached). NONE means not present.
     static constexpr size_t NONE = std::numeric_limits<size_t>::max();

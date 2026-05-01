@@ -1,9 +1,32 @@
 # Identity and Dynamics Rollup — Tentative Spec
 
-**Status:** TENTATIVE. In active design conversation. Captured here so the
-thinking is not lost across sessions. **Do not treat any enum, field list,
-or scope boundary as settled** — this document exists to be iterated on.
-Re-read before acting on any of it.
+**Status (updated 2026-04-28):** PARTIALLY SUPERSEDED.
+
+The **Identity** half of this spec — the `NmrAtomIdentity`-on-Atom
+proposal in §2 and Appendix A — is **superseded by the
+`LegacyAmberTopology` + calculator-contract architecture**. The active
+plan is captured authoritatively in
+`spec/plan/openai-5.5-strong-architecture-layout.md` and operationally in
+memory entry `project_proteintopology_architecture` (loaded
+automatically at session start). `LegacyAmberTopology` is the explicit
+typed contract for current calculators — residue slots, ring topology,
+bond topology, enrichment projection, AMBER-named atoms as typed
+values, plus the typed semantic fields (Locant, BranchIndex, etc.)
+that this spec's Identity half had assigned to a separate
+`NmrAtomIdentity` object. Calculators declare
+`CalculatorContract<LegacyAmberTopology, ChargeSetT>`. Read the 5.5
+spec before any identity-related work.
+
+The **Dynamics** half of this spec — TrajectoryResult continuous
+summaries, threshold-parameterised event menu, hookable C++/Python
+forms — remains a tentative design open for iteration.
+
+**Status (original 2026-04-22):** TENTATIVE. In active design
+conversation. Captured here so the thinking is not lost across
+sessions. **Do not treat any enum, field list, or scope boundary as
+settled** — this document exists to be iterated on. Re-read before
+acting on any of it. (Identity-half scoping note above takes
+precedence on the identity content.)
 
 **Date pinned:** 2026-04-22.
 
@@ -14,9 +37,10 @@ NamingRegistry fixes already captured there.
 
 **Intent:** treat this as the last serious opportunity to pay cost
 up-front in the H5 surface before Stage 2 / Stage 3 analysis begins.
-Once the 10-protein calibration H5s are regenerated and the 485-protein
-fleet starts extracting natively, re-regenerating is real work and we
-prefer not to do it again.
+Once the 10-protein calibration H5s are regenerated and the 685-protein
+fleet (re-running with OF3-direct structures after the 2026-04-30
+cancellation) starts extracting natively, re-regenerating is real work
+and we prefer not to do it again.
 
 ---
 
@@ -43,7 +67,9 @@ Discovery path:
    2026-04-18) and tie back to atoms by element-verified ordering,
    a library + schema update **does not invalidate the DFTs**. It does
    require a one-time regeneration of the 10 calibration H5s, and lets
-   the 485 pending fleet MDs extract natively into the new schema.
+   the 685 pending fleet MDs (re-running with OF3-direct structures
+   after the 2026-04-30 cancellation) extract natively into the new
+   schema.
 
 What this spec proposes is **one coherent rollup**: NamingRegistry
 fixes, typed per-atom invariants, typed per-trajectory continuous
@@ -636,9 +662,11 @@ SHA …" once the rollup lands.
 - 1 ns pose PDBs may be regenerated alongside if the user wants
   fully-IUPAC atom_name in the PDB column. Optional; positional
   content is identical to existing.
-- The 485 pending fleet MDs extract natively into the new schema once
-  the rollup is activated. Zero extra cost — they were going to be
-  extracted anyway; they simply arrive with the new fields populated.
+- The 685 pending fleet MDs (re-running with OF3-direct structures
+  after the 2026-04-30 cancellation) extract natively into the new
+  schema once the rollup is activated. Zero extra cost — they were
+  going to be extracted anyway; they simply arrive with the new fields
+  populated.
 
 ---
 

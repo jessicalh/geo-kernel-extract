@@ -2,6 +2,7 @@
 #include "AminoAcidType.h"
 #include "NamingRegistry.h"
 #include "ChargeSource.h"
+#include "ForceFieldChargeTable.h"
 #include "OperationLog.h"
 
 // GROMACS internal API — linked against libgromacs.so
@@ -367,12 +368,23 @@ BuildResult BuildProteinFromTpr(const std::string& tpr_path,
     std::vector<AtomChargeRadius> charge_vec(n_protein_atoms);
     double charge_sum = 0.0;
     for (size_t ai = 0; ai < n_protein_atoms; ++ai) {
-        charge_vec[ai].charge = tpr_atoms.atom[ai].q;
-        charge_vec[ai].radius = 1.5;
+        charge_vec[ai].partial_charge = tpr_atoms.atom[ai].q;
+        charge_vec[ai].pb_radius = kCompatibilityPlaceholderPbRadiusAngstrom;
+        charge_vec[ai].status = ChargeAssignmentStatus::PlaceholderPbRadius;
         charge_sum += tpr_atoms.atom[ai].q;
     }
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
+    std::string charge_err;
+    auto table = ForceFieldChargeTable::FromValues(
+        force_field, ChargeModelKind::GromacsTpr,
+        std::string(ForceFieldName(force_field)) + ":tpr:" + tpr_path,
+        charge_vec, n_protein_atoms, charge_err);
+    if (!table) {
+        result.error = "charge table preparation failed: " + charge_err;
+        return result;
+    }
+    protein->SetForceFieldCharges(std::move(table));
     result.charges = std::make_unique<PreloadedChargeSource>(
         std::move(charge_vec), force_field);
 
@@ -607,12 +619,26 @@ BuildResult BuildFromGromacs(const FleetPaths& paths) {
     std::vector<AtomChargeRadius> charge_vec(n_protein_atoms);
     double charge_sum = 0.0;
     for (size_t ai = 0; ai < n_protein_atoms; ++ai) {
-        charge_vec[ai].charge = tpr_atoms.atom[ai].q;
-        charge_vec[ai].radius = 1.5;  // default PB radius
+        charge_vec[ai].partial_charge = tpr_atoms.atom[ai].q;
+        charge_vec[ai].pb_radius = kCompatibilityPlaceholderPbRadiusAngstrom;
+        charge_vec[ai].status = ChargeAssignmentStatus::PlaceholderPbRadius;
         charge_sum += tpr_atoms.atom[ai].q;
     }
+    OperationLog::Warn("BuildFromGromacs",
+        "using quarantined compatibility PB radii for GROMACS/CHARMM TPR path; "
+        "TODO(charge-model): replace with defensible CHARMM/GROMACS PB radii");
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
+    std::string charge_err;
+    auto table = ForceFieldChargeTable::FromValues(
+        paths.force_field, ChargeModelKind::GromacsTpr,
+        std::string(ForceFieldName(paths.force_field)) + ":tpr:" + paths.tpr_path,
+        charge_vec, n_protein_atoms, charge_err);
+    if (!table) {
+        result.error = "charge table preparation failed: " + charge_err;
+        return result;
+    }
+    protein->SetForceFieldCharges(std::move(table));
     result.charges = std::make_unique<PreloadedChargeSource>(
         std::move(charge_vec), paths.force_field);
 

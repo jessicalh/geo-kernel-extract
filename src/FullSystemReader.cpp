@@ -4,6 +4,7 @@
 #include "AminoAcidType.h"
 #include "NamingRegistry.h"
 #include "ChargeSource.h"
+#include "ForceFieldChargeTable.h"
 #include "PhysicalConstants.h"
 #include "OperationLog.h"
 
@@ -725,8 +726,9 @@ BuildResult FullSystemReader::BuildProtein(
             else if (name == "CB" && res_ref.CB == Residue::NONE) res_ref.CB = idx;
 
             AtomChargeRadius cr;
-            cr.charge = tpr_atoms.atom[ai].q;
-            cr.radius = 1.5;
+            cr.partial_charge = tpr_atoms.atom[ai].q;
+            cr.pb_radius = kCompatibilityPlaceholderPbRadiusAngstrom;
+            cr.status = ChargeAssignmentStatus::PlaceholderPbRadius;
             charge_vec.push_back(cr);
             charge_sum += tpr_atoms.atom[ai].q;
         }
@@ -744,6 +746,16 @@ BuildResult FullSystemReader::BuildProtein(
 
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
+    std::string charge_err;
+    auto table = ForceFieldChargeTable::FromValues(
+        force_field, ChargeModelKind::GromacsTpr,
+        std::string(ForceFieldName(force_field)) + ":tpr:stored",
+        charge_vec, atom_offset, charge_err);
+    if (!table) {
+        result.error = "charge table preparation failed: " + charge_err;
+        return result;
+    }
+    protein->SetForceFieldCharges(std::move(table));
     result.charges = std::make_unique<PreloadedChargeSource>(
         std::move(charge_vec), force_field);
 

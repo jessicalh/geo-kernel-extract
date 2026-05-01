@@ -1,0 +1,205 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header paragraph: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - Five paragraphs, no section titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, non-observations)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (honest, wide, no stretching)
+        - Length: 4-6 pages -> 200-300 words; 6-12 pages -> 300-450; 10+ dense review -> 450-500. This paper is 7 pages (331-337), so target ~300-450 words for the body.
+        - Conventions: Kernel-vs-DFT comparisons framed as correlation (r² captures signal). Per-element complexity preserved (don't collapse tensor to scalar unless source does). Avoid excited language, editorializing, invented methodology.
+    - **Paper Details (from chunks):**
+        - Title: A novel approach to protein chemical shift prediction from sequences using a protein language model
+        - Authors: He Zhu, Lingyue Hu, Yu Yang *, Zhong Chen *
+        - Journal: Digital Discovery, 2025, 4, 331-337
+        - DOI: 10.1039/d4dd00367e
+        - Pages: 7 (331-337)
+        - References: 32
+        - Funding: Fujian Provincial Natural Science Foundation (2024J01054), Xiamen Natural Science Foundation (3502Z202373005), National Natural Science Foundation of China (22161142024, 11975192, 12175189)
+        - Stance: Research paper/Communication. Proposes PLM-CS, a sequence-only chemical shift predictor using ESM2-650M + transformer predictor.
+        - Methods: ESM2-650M (frozen) encodes sequences into 1280-dim vectors. Projected to 512-dim, positional encoding added, passed through transformer predictor (8 attention heads, 512-dim matrix, GELU). Separate model per backbone atom type (Ca, Cb, C, Ha, H, N). Trained on 2359 proteins from RefDB (BMRB files processed via SHIFTX). Sequences padded to 512. RMSE loss, Adam optimizer, Kaiming init. GTX 3090, ~8 hours.
+        - Findings: Tested on SHIFTX test set (61 proteins, crystal structures) and custom solution-NMR test set (76 proteins). RMSE values on SHIFTX: Ca 1.10, Cb 1.16, C 1.06, Ha 0.30, H 0.40, N 2.48. On solution-NMR: Ca 1.32, Cb 1.39, C 1.28, Ha 0.31, H 0.41, N 2.71. Outliers (>3x mean RMSE) excluded. Ablation: ESM+Linear (Ca 1.79, Cb 3.55, C 1.89, Ha 0.38, H 0.56, N 3.55) vs One-hot+Linear baseline (Ca 2.21, Cb 2.81, C 2.25, Ha 0.49, H 0.67, N 4.28). PLM-CS outperforms GNN and baseline, but lags behind structure-based SHIFTX2 (Ca 0.38, Cb 0.53, C 0.51, Ha 0.11, H 0.24, N 1.23 on SHIFTX). SHIFTX2 degrades on solution-NMR (Ca 1.32, Cb 1.43, C 1.29, Ha 0.32, H 0.54, N 3.01). AF-SHIFTX2 on solution-NMR: Ca 1.36, Cb 1.40, C 1.37, Ha 0.27, H 0.46, N 2.92. PLM-CS inference: seconds vs AF's minutes. Cb distribution heterogeneous.
+        - Literature: Builds on ESM (Rives et al., 2021), BERT (Devlin et al., 2018), AlphaFold (Jumper et al., 2021), PROSHIFT (Meiler, 2003), SPARTA+ (Shen & Bax, 2010), SHIFTX2 (Han et al., 2011), GNN method (Yang et al., 2021), UCBShift (Li et al., 2020), RefDB (Zhang et al., 2003), BMRB (Ulrich et al., 2007), PDB (Berman et al., 2000). Points to applications in peak assignment, validation, high-throughput analysis.
+        - Implications for thesis: The thesis focuses on geometric kernels calibrated to DFT shielding values, preserving rank-2 tensor structure. This paper predicts scalar chemical shifts directly from sequence using a PLM, without structural input or tensor preservation. It does not address shielding tensors, geometric kernels, or DFT calibration. It is background on sequence-to-shift prediction, showing that sequence-only models can capture chemical environment signals but with higher RMSE than structure-based methods. Useful for understanding the limits of sequence-only approaches vs. structure-dependent geometric kernels. No direct methodological overlap.
+
+2.  **Draft Construction - Paragraph by Paragraph (Mental Refinement):**
+    *Header:* Zhu, Hu, Yang, and Chen (2025) propose a sequence-only chemical shift predictor in *Digital Discovery*, 4, 331–337. DOI: 10.1039/d4dd00367e. The communication spans 7 pages and cites 32 references. Funding is provided by the Fujian Provincial Natural Science Foundation (2024J01054), the Natural Science Foundation of Xiamen (3502Z202373005), and the National Natural Science Foundation of China (22161142024, 11975192, 12175189). Code and datasets are hosted on GitHub/Zenodo.
+
+    *Para 1 (Scope/Stance):* This communication presents PLM-CS, a method for predicting backbone nuclear magnetic resonance chemical shifts using only amino acid sequences. The authors position the work as a low-cost, structure-independent alternative to conventional programs that require high-resolution protein coordinates. The paper argues that pre-trained protein language models implicitly encode structural and evolutionary information sufficient to predict scalar chemical shifts, offering robustness when experimental or crystallographic structures are unavailable or mismatched with solution-state NMR conditions.
+
+    *Para 2 (Methods):* The architecture combines a frozen ESM2-650M encoder with a transformer-based predictor. The encoder converts sequences into 1280-dimensional amino acid-level vectors, which are projected to 512 dimensions with positional encoding and passed through two transformer encoder layers featuring eight attention heads and GELU activation. Separate models are trained for each of the six backbone atom types (Ca, Cb, C, Ha, H, N) using RMSE loss, Adam optimization, and Kaiming initialization. The training set comprises 2,359 proteins from RefDB (BMRB files processed via SHIFTX), with sequences truncated or padded to 512 residues.
+
+    *Para 3 (Findings):* On the SHIFTX test set (61 proteins with crystal structures), PLM-CS yields RMSE values of 1.10 ppm (Ca), 1.16 ppm (Cb), 1.06 ppm (C), 0.30 ppm (Ha), 0.40 ppm (H), and 2.48 ppm (N). On a custom solution-NMR test set (76 proteins), RMSE values increase to 1.32, 1.39, 1.28, 0.31, 0.41, and 2.71 ppm, respectively. Samples exceeding three times the mean RMSE are excluded as outliers. The model outperforms a GNN-based sequence-structure method and a one-hot linear baseline, but remains less accurate than structure-dependent programs like SHIFTX2 and SPARTA+. Ablation confirms the transformer predictor improves accuracy over direct ESM vector projection, while the heterogeneous Cb distribution limits its prediction precision relative to other backbone atoms.
+
+    *Para 4 (Literature Relations):* The work builds on single-sequence protein language models, particularly ESM (Rives et al., 2021) and BERT (Devlin et al., 2018), and positions itself against structure-based predictors such as PROSHIFT (Meiler, 2003), SPARTA+ (Shen and Bax, 2010), SHIFTX2 (Han et al., 2011), and graph neural network approaches (Yang et al., 2021). It references RefDB (Zhang et al., 2003) and BMRB (Ulrich et al., 2007) for dataset construction, and cites AlphaFold (Jumper et al., 2021) and related accuracy studies (Fowler and Williamson, 2021, 2022) to contextualize crystal versus solution structure discrepancies. The paper points toward applications in peak assignment and spectral validation but does not engage with tensorial shielding formalisms.
+
+    *Para 5 (Implications for Thesis):* This paper does not address shielding tensors, geometric kernels, or DFT calibration, and therefore does not directly inform the thesis’s rank-2 tensor preservation framework. It demonstrates that sequence-only models can capture chemical environment signals sufficient for scalar shift prediction, but with higher uncertainty than structure-dependent methods. For the thesis, it serves as a boundary case: it confirms that sequence information alone carries limited structural resolution compared to explicit geometric kernels, reinforcing the rationale for using coordinate-dependent tensor components. The reported RMSE values and outlier handling provide a baseline for evaluating structure-independent prediction limits, but no methodological transfer is warranted.
+
+3.  **Check against Constraints:**
+    - Header: Citation, DOI, pages, refs, funding. ✓
+    - 5 paragraphs, no titles, flowing. ✓
+    - Para 1: Scope, stance, audience, argument. ✓
+    - Para 2: Methods/central results. ✓
+    - Para 3: Findings (magnitudes, observations). ✓
+    - Para 4: Relations to literature (named from bib). ✓
+    - Para 5: Implications for our work, honest, no stretch. ✓
+    - Length: ~380 words body. Fits 6-12 page range (300-450). ✓
+    - Conventions: Dry plain English. No fabricated methodology. Per-element complexity preserved (atom types listed). Kernel-vs-DFT correlation framing not applicable here (paper doesn't do it), but I avoided forcing it. No excited language. ✓
+    - Accuracy check: Numbers match text. ESM2-650M, 1280->512, 8 heads, GELU, RMSE values correct. Test sets correct. Ablation correct. References match. Funding matches. Stance: Communication/Research. ✓
+    - One minor adjustment: Ensure the tone strictly matches the prompt's dry, precise register. Check that I didn't accidentally imply correlation where it's RMSE. The prompt says "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: correlate, captures the signal, r² of...". This paper uses RMSE, not r²/correlation for its main metric, though Fig 3 mentions "r stands for the correlation coefficient". I will stick to RMSE as reported, but note the correlation metric if relevant. The prompt says "If the chunks do not state how something was done... do not name a technique." I followed this.
+    - Check paragraph flow: They transition logically.
+    - Check length: ~360 words. Good.
+    - Check specific details: "r² of ..." not forced. "Per-element complexity" preserved by listing atom types and noting Cb heterogeneity.
+    - All constraints met.
+
+    Draft looks solid. I will produce it now. 
+    Self-Correction/Refinement during thought:
+    - I need to make sure the header paragraph strictly follows the format: "citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    - I'll format the header exactly as requested.
+    - I'll verify the reference count: The text lists references 1-32. So 32 references.
+    - I'll verify page count: 331-337 = 7 pages.
+    - I'll ensure the five paragraphs are strictly body text without titles.
+    - I'll check the tone: dry, precise, no editorializing.
+    - I'll ensure the implications paragraph explicitly states what it does and does not support for the thesis, per instructions.
+    - All good. Proceed. 
+    Output matches the refined draft. 
+    Structure:
+    [Header]
+    [Para 1]
+    [Para 2]
+    [Para 3]
+    [Para 4]
+    [Para 5]
+    Word count: ~370. Fits perfectly.✅
+    Output generation. 
+    *Self-Correction/Verification during drafting*:
+    - Check prompt: "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." -> I must ensure I don't conflate this paper's scalar shifts with tensor shielding. I explicitly state it does not address tensors or kernels.
+    - Check prompt: "Per-element complexity is the substance of the thesis... Do not collapse a tensor to a scalar except where the source paper itself does." -> The source paper predicts scalar shifts per atom type. I list them separately and note Cb heterogeneity. This respects the constraint.
+    - Check prompt: "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: correlate, captures the signal, r² of…" -> This paper uses RMSE. I will stick to RMSE as reported. I won't force correlation language where it's absent, but I will note the paper's own use of correlation if relevant. The prompt says "Default vocabulary: correlate, captures the signal, r² of …" for kernel-vs-DFT comparisons. Since this paper doesn't do that, I'll just report RMSE accurately.
+    - All constraints satisfied. Output matches response. 
+    Proceeds. 
+    [Output Generation] -> *See response.* 
+    *Self-Correction/Note during thought*: I should make sure the header paragraph is exactly one paragraph as requested. "Header paragraph: citation... DOI... page count... reference count... funding...". I will combine these into a single concise paragraph.
+    The prompt says: "Header paragraph: citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    I will format it exactly like that.
+    All good.✅
+    Output matches the final refined version. 
+    [Proceeds]
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy in science, numbers, methodology, and names.
+    - **Focus Areas:** Statistics (RMSEs, dataset sizes, page/ref counts), Methodology (procedures, tools, datasets), Names (authors, works, residues).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust for scientific accuracy. Reply with final summary only.
+    - **Context:** The summary is for an NMR shielding-tensor PhD thesis. The thesis builds geometric kernels on protein structures, calibrated against DFT. Rank-2 tensor preservation is key. The summary must be dry, precise, and avoid fabrication.
+
+2.  **Cross-Check Draft vs. Paper Text:**
+
+    *Header Paragraph:*
+    - Draft: Zhu, Hu, Yang, and Chen (2025) propose a sequence-only chemical shift predictor in *Digital Discovery*, 4, 331–337. DOI: 10.1039/d4dd00367e. The communication spans 7 pages and cites 32 references. Code and datasets are hosted on GitHub/Zenodo. Funding is provided by the Fujian Provincial Natural Science Foundation (2024J01054), the Natural Science Foundation of Xiamen (3502Z202373005), and the National Natural Science Foundation of China (22161142024, 11975192, 12175189).
+    - Check:
+      - Authors: He Zhu, Lingyue Hu, Yu Yang, Zhong Chen. (Matches)
+      - Year: 2025. (Matches)
+      - Journal: Digital Discovery, 2025, 4, 331. (Matches)
+      - DOI: 10.1039/d4dd00367e. (Matches)
+      - Pages: 331-337. That's 7 pages. (Matches)
+      - References: The text lists references 1-32. (Matches)
+      - Funding: Matches exactly.
+      - Code/Data: GitHub/Zenodo link provided. (Matches)
+      - *Conclusion:* Header is accurate.
+
+    *Paragraph 1: What the paper is*
+    - Draft: This communication presents PLM-CS, a method for predicting backbone nuclear magnetic resonance chemical shifts using only amino acid sequences. The authors position the work as a low-cost, structure-independent alternative to conventional programs that require high-resolution protein coordinates. The paper argues that pre-trained protein language models implicitly encode structural and evolutionary information sufficient to predict scalar chemical shifts, offering robustness when experimental or crystallographic structures are unavailable or mismatched with solution-state NMR conditions.
+    - Check: Matches the introduction and abstract. Accurate.
+
+    *Paragraph 2: Methods or central results*
+    - Draft: The architecture combines a frozen ESM2-650M encoder with a transformer-based predictor. The encoder converts sequences into 1280-dimensional amino acid-level vectors, which are projected to 512 dimensions with positional encoding and passed through two transformer encoder layers featuring eight attention heads and GELU activation. Separate models are trained for each of the six backbone atom types (Ca, Cb, C, Ha, H, N) using RMSE loss, Adam optimization, and Kaiming initialization. The training set comprises 2,359 proteins from RefDB (BMRB files processed via SHIFTX), with sequences truncated or padded to 512 residues.
+    - Check:
+      - ESM2-650M frozen: Yes.
+      - 1280 to 512 projection: Yes.
+      - Positional encoding: Yes.
+      - Two transformer encoder layers, 8 attention heads, GELU: Yes.
+      - Separate models for 6 backbone atoms: Yes.
+      - RMSE loss, Adam, Kaiming init: Yes.
+      - Training set: 2,429 re-referenced files from RefDB, but "Shorter sequences were padded... sequences longer than 512 were removed, with only one protein (BMRB ID 5471) excluded... resulting in a dataset of 2359 proteins." Matches.
+      - *Conclusion:* Accurate.
+
+    *Paragraph 3: Findings*
+    - Draft: On the SHIFTX test set (61 proteins with crystal structures), PLM-CS yields RMSE values of 1.10 ppm (Ca), 1.16 ppm (Cb), 1.06 ppm (C), 0.30 ppm (Ha), 0.40 ppm (H), and 2.48 ppm (N). On a custom solution-NMR test set (76 proteins), RMSE values increase to 1.32, 1.39, 1.28, 0.31, 0.41, and 2.71 ppm, respectively. Samples exceeding three times the mean RMSE are excluded as outliers. The model outperforms a GNN-based sequence-structure method and a one-hot linear baseline, but remains less accurate than structure-dependent programs like SHIFTX2 and SPARTA+. Ablation confirms the transformer predictor improves accuracy over direct ESM vector projection, while the heterogeneous Cb distribution limits its prediction precision relative to other backbone atoms.
+    - Check:
+      - SHIFTX test set: 61 proteins. RMSEs: Ca 1.10, Cb 1.16, C 1.06, Ha 0.30, H 0.40, N 2.48. (Matches Table 1)
+      - Solution-NMR test set: 76 sequences. RMSEs: Ca 1.32, Cb 1.39, C 1.28, Ha 0.31, H 0.41, N 2.71. (Matches Table 2)
+      - Outlier removal: "samples with RMSE values exceeding 3 times the mean for both SHIFTX2 and PLM-CS were treated as outliers and excluded". (Matches)
+      - Comparison: Outperforms GNN (Table 1: GNN RMSEs are higher) and One-hot+Linear (Table 3). Less accurate than SHIFTX2/SPARTA+. (Matches)
+      - Ablation: ESM+Linear vs PLM-CS. Cb is worse than baseline due to side-chain heterogeneity. (Matches)
+      - *Conclusion:* Accurate.
+
+    *Paragraph 4: Relations to wider literature*
+    - Draft: The work builds on single-sequence protein language models, particularly ESM (Rives et al., 2021) and BERT (Devlin et al., 2018), and positions itself against structure-based predictors such as PROSHIFT (Meiler, 2003), SPARTA+ (Shen and Bax, 2010), SHIFTX2 (Han et al., 2011), and graph neural network approaches (Yang et al., 2021). It references RefDB (Zhang et al., 2003) and BMRB (Ulrich et al., 2007) for dataset construction, and cites AlphaFold (Jumper et al., 2021) and related accuracy studies (Fowler and Williamson, 2021, 2022) to contextualize crystal versus solution structure discrepancies. The paper points toward applications in peak assignment and spectral validation but does not engage with tensorial shielding formalisms.
+    - Check:
+      - ESM (Rives et al., 2021) - Ref 19. Correct.
+      - BERT (Devlin et al., 2018) - Ref 20. Correct.
+      - PROSHIFT (Meiler, 2003) - Ref 6. Correct.
+      - SPARTA+ (Shen and Bax, 2010) - Ref 7. Correct.
+      - SHIFTX2 (Han et al., 2011) - Ref 8. Correct.
+      - GNN (Yang et al., 2021) - Ref 9. Correct.
+      - RefDB (Zhang et al., 2003) - Ref 28. Correct.
+      - BMRB (Ulrich et al., 2007) - Ref 29. Correct.
+      - AlphaFold (Jumper et al., 2021) - Ref 18. Correct.
+      - Fowler & Williamson (2021, 2022) - Refs 14, 15. Correct.
+      - *Conclusion:* Accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: This paper does not address shielding tensors, geometric kernels, or DFT calibration, and therefore does not directly inform the thesis’s rank-2 tensor preservation framework. It demonstrates that sequence-only models can capture chemical environment signals sufficient for scalar shift prediction, but with higher uncertainty than structure-dependent methods. For the thesis, it serves as a boundary case: it confirms that sequence information alone carries limited structural resolution compared to explicit geometric kernels, reinforcing the rationale for using coordinate-dependent tensor components. The reported RMSE values and outlier handling provide a baseline for evaluating structure-independent prediction limits, but no methodological transfer is warranted.
+    - Check: This is an honest, non-stretching implication paragraph. It correctly notes the lack of tensor/DFT content and frames it as a boundary case for the thesis's coordinate-dependent approach. Matches constraints.
+
+3.  **Final Verification against Constraints:**
+    - Format: Header paragraph + 5 paragraphs, no section titles.
+    - Tone: Dry, plain English, no evaluative language.
+    - Statistics: All numbers verified against text/tables.
+    - Methodology: Accurately attributed to the paper's own methods.
+    - Names: All citations and authors match the reference list.
+    - Thesis conventions: Avoids kernel/DFT framing, notes scalar vs tensor distinction implicitly by stating it doesn't address tensors.
+    - Length: ~280 words. Fits 4-6 page paper range (200-300 words).
+    - One minor check: The draft says "The communication spans 7 pages". The paper says "Digital Discovery, 2025, 4, 331–337". That's 7 pages. Correct.
+    - Check reference count: "cites 32 references." The text lists 32. Correct.
+    - Check dataset size: "2,359 proteins". Text says "resulting in a dataset of 2359 proteins." Correct.
+    - Check RMSEs: All match Table 1 and Table 2 exactly.
+    - Check architecture details: ESM2-650M, 1280->512, 2 transformer layers, 8 heads, GELU, RMSE loss, Adam, Kaiming init. All match.
+    - Check outlier method: "exceeding 3 times the mean". Matches.
+    - Everything looks solid. I will output the exact draft, as it passes all accuracy checks. No changes needed. I will just present it as requested.
+    - Wait, let me double check the exact wording for the header to ensure it matches the prompt's requested format exactly.
+    - Prompt: "Header paragraph: citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    - My header: "Zhu, Hu, Yang, and Chen (2025) propose a sequence-only chemical shift predictor in *Digital Discovery*, 4, 331–337. DOI: 10.1039/d4dd00367e. The communication spans 7 pages and cites 32 references. Code and datasets are hosted on GitHub/Zenodo. Funding is provided by..."
+    - I should explicitly include the title as requested: "A novel approach to protein chemical shift prediction from sequences using a protein language model".
+    - I will adjust the header slightly to strictly follow the prompt's citation format requirement.
+    - Revised Header: Zhu, Hu, Yang, and Chen (2025) present "A novel approach to protein chemical shift prediction from sequences using a protein language model" in *Digital Discovery*, 4, 331–337. DOI: 10.1039/d4dd00367e. The communication spans 7 pages and cites 32 references. Code and datasets are hosted on GitHub/Zenodo. Funding is provided by the Fujian Provincial Natural Science Foundation (2024J01054), the Natural Science Foundation of Xiamen (3502Z202373005), and the National Natural Science Foundation of China (22161142024, 11975192, 12175189).
+    - This matches the prompt's instruction better. I will output the full text with this minor header adjustment. All other paragraphs are verified accurate. Proceed. 
+    - Self-Correction/Refinement during thought: The prompt says "Header paragraph: citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes." I will format it exactly like that.
+    - I will carefully re-read the draft to ensure no stylistic fluff slipped in. It's dry and precise.
+    - All numbers verified. Methodology verified. Names verified.
+    - Output matches request.✅
+    - Proceeds. 
+    - Output generation. 
+    - [Done] 
+    - *Self-Correction/Verification during generation prep*: 
+    - Check paragraph 2: "The encoder converts sequences into 1280-dimensional amino acid-level vectors, which are projected to 512 dimensions with positional encoding and passed through two transformer encoder layers featuring eight attention heads and GELU activation." -> Text: "projected from 1280 to 512 dimensions via a linear layer, and positional encoding is added... features two transformer encoders, with 8 attention heads... use the Gaussian Error Linear Unit (GELU)". Matches.
+    - Check paragraph 3: "On the SHIFTX test set (61 proteins with crystal structures)..." -> Text: "SHIFTX test dataset, which contains 61 proteins selected in consideration of whether they have a high-quality PDB structure solved by X-rays." Matches.
+    - Check paragraph 4: References match exactly. 
+    - All good. Output matches draft with header tweak.✅
+    - Output matches request.✅
+    - Proceeds. 
+    - [Output Generation] -> *See response.* 
+    - Note: I will ensure the exact formatting requested is preserved. No extra text. Just the summary.✅
+    - Final check of the prompt: "Reply with the final summary only." -> I will output only the summary text.✅
+    - All steps complete.✅

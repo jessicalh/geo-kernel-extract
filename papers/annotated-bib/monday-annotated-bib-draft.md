@@ -1,0 +1,54 @@
+# Annotated Bibliography — Draft for Monday submission
+
+**Author:** Jessica Hansberry
+**Date:** 2026-04-27
+
+The following eight references establish the foundation for thesis work on classical geometric-kernel extraction of NMR shielding tensors in proteins, calibrated against density functional theory and applied to molecular dynamics trajectories. The selection covers the five topical areas addressed in the accompanying literature-review outline: NMR physics, NMR and machine learning, shielding physics, geometric kernels, and physics extractions from molecular simulation.
+
+---
+
+### 1. Bryant, R.G. (1983) "The NMR Time Scale." *Journal of Chemical Education* 60(11), 933–935.
+
+Pedagogical note arguing that "the NMR time scale" is not a single timescale but a family of timescales specific to each NMR observable. Chemical-shift averaging operates in the microsecond-to-millisecond range via exchange coalescence (τ_coalescence = (√2·πΔν)⁻¹, where Δν is the frequency separation in hertz, so the averaging window scales with magnetic field), while spin relaxation extends down to picoseconds through NMRD and field-cycling methods. The paper tabulates representative shift ranges and coalescence times across ¹H, ¹³C, ¹⁵N, ¹⁹F, ³¹P, ⁵⁹Co, and ¹⁹⁹Hg, demonstrating that the span from observable to observable covers many orders of magnitude. The framework is directly relevant to work integrating molecular-dynamics simulations (nanosecond scale) with NMR chemical-shift measurements (microsecond-to-millisecond averaging window), because it establishes that MD samples conformational substates below the coalescence limit and therefore supports averaging computed per-frame observables rather than treating any single frame as the experimental answer.
+
+---
+
+### 2. Facelli, J.C. (2011) "Chemical shift tensors: Theory and application to molecular structural problems." *Progress in Nuclear Magnetic Resonance Spectroscopy* 58(3–4), 176–201.
+
+Pedagogical review of chemical-shift-tensor theory, from the quantum-mechanical definition σ_αβ = ∂²E/∂μ_α∂B_β through practical gauge-origin treatments (GIAO, IGLO, LORG, IGAIM, CSGT), density-functional implementations, intermolecular effects in solution and solid state, accuracy benchmarks for each commonly studied nucleus, and a survey of applications including the emerging field of NMR crystallography. Facelli notes that shielding calculations are relatively insensitive to the choice of modern exchange-correlation functional, a finding that supports recent functional choices without extensive justification. The review's most consequential observation for tensor-output work is that fortuitous cancellation of errors in individual tensor components can yield artificially high agreement on isotropic shifts, so tensor-component comparisons (via the Alderman icosahedral representation or equivalent) provide more rigorous validation than isotropic-trace comparison alone. Organises Buckingham's solvent-effect classification, which any explicit-solvent shielding calculation must eventually address.
+
+---
+
+### 3. Buckingham, A.D. (1960) "Chemical shifts in the nuclear magnetic resonance spectra of molecules containing polar groups." *Canadian Journal of Chemistry* 38, 300–307.
+
+Derives the linear electric-field contribution to nuclear magnetic shielding for nuclei situated in polar-group environments by expanding the shielding tensor as a power series in the local electric field: σ = σ^(0) + σ^(1)·E + (1/2)σ^(2)·E² + …. The linear term σ^(1)·E is non-zero whenever inversion symmetry is broken at the nucleus — the typical case for protons attached to an electronegative partner — and for a proton in an X–H bond the shielding correction works out to approximately Δσ ≈ −2×10⁻¹² E_z − 10⁻¹⁸ E², with the linear term quantitatively about twenty times larger than the quadratic Buckingham effect at biomolecular field strengths. Extensions to solvent contributions via the Onsager reaction field and a new quadrupolar reaction field reproduce observed patterns in substituted benzenes and cis/trans isomers. The paper remains the canonical starting point for treating electric-field effects on chemical shielding as a separable contribution, and its coefficient provides the numerical anchor against which classical electric-field calculations can be checked.
+
+---
+
+### 4. Case, D.A. (1995) "Calibration of ring-current effects in proteins and nucleic acids." *Journal of Biomolecular NMR* 6, 341–346.
+
+Calibrates two long-standing empirical formulas for ring-current effects in biomolecular NMR — the Johnson-Bovey loop-current model and the Haigh-Mallion surface-integral Hückel model — together with a Buckingham-style electrostatic polarisation term σ_el = A·E(C–H), against density-functional-theory shielding calculations on a model system. A methane probe is placed at many geometries around ten aromatic ring types (benzene, phenol, indole, imidazole, imidazolium, adenine, guanidine, uracil, thymine, cytosine), and 421 secondary shifts are computed at the DFT level (PW91/IGLO-III) and by Hartree-Fock with GIAO gauge handling. Both ring-current formulas fit the data with Pearson coefficients of 0.94–0.99 and RMS differences below 0.1 ppm, and the two are statistically indistinguishable for scalar shifts. The updated ring-current intensity factors, substantially larger than earlier Giessner-Prettre values for histidine and tryptophan, become the standard reference values for downstream biomolecular chemical-shift work.
+
+---
+
+### 5. Gershoni-Poranne, R. & Stanger, A. (2015) "Magnetic criteria of aromaticity." *Chemical Society Reviews* 44, 6597–6615.
+
+Critical review of magnetic-response-based aromaticity indicators covering ring-current-model chemical shifts, diamagnetic susceptibility exaltation, nucleus-independent chemical shift and its many variants, and current-density analysis methods. The paper is methodologically organised: it traces the NICS methodology from its 1996 origin (Schleyer et al., JACS 118, 6317) through systematic refinements toward indicators that better isolate the physically relevant signal, including dissected NICS methods (LMO-NICS, CMO-NICS) and tensor-component indicators (NICS_zz, NICS_πzz). A central argument for tensor-output work in an adjacent subfield is that the aromaticity-criteria community has moved systematically away from isotropic NICS toward NICS_zz because the tensor's z-component isolates π-electron ring-current contributions while the isotropic trace mixes in σ-framework contamination. The paper's survey of current-density methods (CTOCD-DZ, GIMIC, ACID) rounds out the theoretical landscape for ab initio interpretation of ring currents, which the geometric kernels discussed in this thesis approximate classically.
+
+---
+
+### 6. De Gortari, I., Portella, G., Salvatella, X., Bajaj, V.S., van der Wel, P.C.A., Yates, J.R., Segall, M.D., Pickard, C.J., Payne, M.C. & Vendruscolo, M. (2010) "Time Averaging of NMR Chemical Shifts in the MLF Peptide in the Solid State." *Journal of the American Chemical Society* 132, 5993–6000.
+
+Quantifies how much conformational and vibrational averaging closes the experimental-theoretical gap in DFT-computed ¹³C chemical shifts, using N-formyl-L-methionyl-L-leucyl-L-phenylalanine-OMe (MLF) tripeptide in its orthorhombic crystal as a model system. Four treatments are compared against experimental magic-angle-spinning shifts: static X-ray with hydrogens relaxed, fully relaxed static structure, 2 ps first-principles MD averaging, and a 5 μs classical MD trajectory sampled via ten representative rotameric substates. RMSD to experiment falls from 4.2 ppm (static, fully relaxed) to 3.3 ppm (2 ps first-principles) to 3.0 ppm (5 μs classical). A methodologically useful observation is that fast bond-length vibrations (~20 fs period) produce instantaneous ¹³C shift fluctuations of up to 20 ppm that average out within approximately 200 fs, which justifies picosecond-spaced trajectory snapshots in work that averages computed shifts over MD frames. The paper establishes that dynamical averaging produces quantitatively measurable improvements in DFT-shift accuracy.
+
+---
+
+### 7. Sahakyan, A.B. & Vendruscolo, M. (2013) "Analysis of the Contributions of Ring Current and Electric Field Effects to the Chemical Shifts of RNA Bases." *The Journal of Physical Chemistry B* 117, 1989–1998.
+
+Extends the structural-NMR apparatus of Case 1995 to RNA bases by comparing three ring-current models — the Pople point-dipole model, the Waugh-Fessenden-Johnson-Bovey loop-current model, and the Haigh-Mallion Hückel surface-integral model — under a unified sign convention, and calibrating both ring-current and electric-field contributions to ¹H, ¹³C, ¹⁵N, and ¹⁷O chemical shifts using hybrid DFT calculations (PBE1PBE, 6-311+G(2d,p), GIAO) on a new database of RNA dibase geometries drawn from high-resolution X-ray structures. The empirical finding for heavy nuclei is that electric-field effects dominate ring-current effects: for ¹³C the Pearson correlation from electric field alone reaches 0.702 versus 0.257 from ring current alone, and ¹⁷O chemical shifts show electric-field sensitivity of up to 80 ppm. For ¹H the two mechanisms contribute comparably. The paper also flags a methodological concern about the numerical stability of ring-normal-vector computation from three ring atoms under molecular-dynamics fluctuation, proposing a two-subset average as a remedy.
+
+---
+
+### 8. Kondor, R. (2025) "The principles behind equivariant neural networks for physics and chemistry." *Proceedings of the National Academy of Sciences* 122(41), e2415656122.
+
+Pedagogical Perspective article that derives the mathematical basis for equivariant neural networks in physics and chemistry applications. Equivariance is distinguished from invariance: an invariant network gives the same output for rotated inputs, whereas an equivariant network allows the output to transform in coordinated fashion with the input, which is required whenever the prediction target is itself a vector or tensor rather than a scalar. Three results carry the paper. First, the Peter-Weyl theorem allows any representation of a compact group to be decomposed into irreducible representations (irreps), which for the three-dimensional rotation group SO(3) are realised concretely as spherical harmonics and Wigner D-matrices. Second, Schur's Lemma combined with Theorem 1 of the paper gives the form of equivariant linear layers as a sequence of per-irrep matrix multiplications. Third, the Clebsch-Gordan product — the tensor product of irrep vectors decomposed back into irreps — serves as the canonical polynomial equivariant nonlinearity. The review provides the theoretical backing for rank-two shielding-tensor work, because the T0/T1/T2 decomposition of any rank-two tensor is exactly the SO(3)-irrep content the paper identifies as structurally necessary.

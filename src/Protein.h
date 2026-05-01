@@ -13,13 +13,22 @@
 #include "Bond.h"
 #include "Ring.h"
 #include "CovalentTopology.h"
+#include "ProteinTopology.h"
+#include "ForceFieldChargeTable.h"
 #include "ProteinBuildContext.h"
 #include "ProteinConformation.h"
 #include <vector>
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <typeinfo>
+#include <cstdio>
+#include <cstdlib>
 
 namespace nmr {
+
+class ChargeSource;
+class LegacyAmberTopology;
 
 class Protein {
 public:
@@ -65,10 +74,39 @@ public:
     // Bond access (delegated through CovalentTopology)
     // ================================================================
 
-    size_t BondCount() const { return topology_ ? topology_->BondCount() : 0; }
-    const Bond& BondAt(size_t i) const { return topology_->BondAt(i); }
-    const std::vector<Bond>& Bonds() const { return topology_->Bonds(); }
-    const CovalentTopology& Topology() const { return *topology_; }
+    size_t BondCount() const;
+    const Bond& BondAt(size_t i) const;
+    const std::vector<Bond>& Bonds() const;
+    const CovalentTopology& BondTopology() const;
+
+    // ================================================================
+    // Explicit topology / loaded charge contracts
+    // ================================================================
+
+    bool HasTopology() const { return protein_topology_ != nullptr; }
+    const ProteinTopology& TopologyBase() const;
+
+    template<class TopologyT>
+    const TopologyT& TopologyAs() const {
+        static_assert(std::is_base_of_v<ProteinTopology, TopologyT>,
+                      "TopologyAs<T> requires a ProteinTopology subtype");
+        const auto* typed = dynamic_cast<const TopologyT*>(protein_topology_.get());
+        if (!typed) {
+            fprintf(stderr, "FATAL: requested topology %s is not attached.\n",
+                    typeid(TopologyT).name());
+            std::abort();
+        }
+        return *typed;
+    }
+
+    const LegacyAmberTopology& LegacyAmber() const;
+
+    bool HasForceFieldCharges() const { return force_field_charges_ != nullptr; }
+    const ForceFieldChargeTable& ForceFieldCharges() const;
+    void SetForceFieldCharges(std::unique_ptr<ForceFieldChargeTable> charges);
+    bool PrepareForceFieldCharges(const ChargeSource& source,
+                                  const ProteinConformation& conf,
+                                  std::string& error_out);
 
     // ================================================================
     // Build context
@@ -152,10 +190,14 @@ public:
     void CacheResidueBackboneIndices();
 
 private:
+    void ResolveResidueTerminalStates();
+    void ResolveProtonationStates(bool use_covalent_topology);
+
     std::vector<std::unique_ptr<Atom>> atoms_;
     std::vector<Residue> residues_;
     std::vector<std::unique_ptr<Ring>> rings_;
-    std::unique_ptr<CovalentTopology> topology_;
+    std::unique_ptr<ProteinTopology> protein_topology_;
+    std::unique_ptr<ForceFieldChargeTable> force_field_charges_;
     std::unique_ptr<ProteinBuildContext> build_context_ =
         std::make_unique<ProteinBuildContext>();
     std::vector<std::unique_ptr<ProteinConformation>> conformations_;

@@ -1,0 +1,289 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+   - **Context:** The thesis builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, electric-field-gradient, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+   - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+   - **Required Elements:**
+     - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+     - 5 paragraphs (no titles):
+       1. What the paper is (scope, stance, audience, argument/measurement)
+       2. Methods or central results/theorems
+       3. Findings (magnitudes, observations, what was not)
+       4. Relations to wider literature (works built on/pointed toward, named from bibliography)
+       5. Implications for our work (widely, honestly, no stretching)
+     - Conventions: Kernel-vs-DFT = correlation (r² captures signal). Per-element complexity matters (don't collapse tensor to scalar unless source does). Avoid excited language, editorializing, invented methodology.
+     - Length: 24 pages total (based on text chunks). The prompt says "Length scales with paper size: 4-6 pages → 200-300 words body; 6-12 pages → 300-450; 10+ page dense review → 450-500." This paper is 24 pages, so I'll aim for ~450-500 words for the body, but keep it concise and precise. Actually, the prompt says "10+ page dense review or Perspective → 450–500." I'll aim for ~400-450 words.
+   - **Paper Details from Input:**
+     - Authors: Elena Papaleo, Carlo Camilloni, Kaare Teilum, Michele Vendruscolo, Kresten Lindorff-Larsen
+     - Year: 2018
+     - Title: Molecular dynamics ensemble refinement of the heterogeneous native state of NCBD using chemical shifts and NOEs
+     - Journal: PeerJ, 6:e5125
+     - DOI: 10.7717/peerj.5125
+     - Pages: 24 (based on chunk numbering and references)
+     - References: ~70+ (I'll count roughly or state "approximately 70 references" or just list the count if visible. The text shows references up to Zijlstra et al. 2017. I'll state "approximately 70 references" or just "70 references" based on typical PeerJ format, but I'll stick to what's visible or say "70 references" as a safe estimate, or just note the count if I can count them. Actually, I'll just state "70 references" or leave it as "approximately 70 references" or count them precisely if needed. Let's count: ~70. I'll just say "70 references".)
+     - Funding: Novo Nordisk Foundation (Hallas-Møller stipend), Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie.
+     - Stance: Research paper/methodological application.
+     - Subject: NCBD protein dynamics, MD ensemble refinement using NMR chemical shifts and NOEs, CHARMM22* force field, replica-averaged simulations.
+     - Methods: Replica-averaged MD simulations (Gromacs 4.5, PLUMED 1.3), CHARMM22* vs CHARMM22 force fields, simulated annealing (304-454 K, 0.6 ns/cycle), chemical shift restraints (CamShift, harmonic force constant 5.2 kJ mol⁻¹ ppm⁻²), NOE restraints (r⁻⁶ averaging, flat-bottomed harmonic), cross-validation with side-chain methyl shifts (CH3Shift, PPM), convergence via JS divergence and RMSIP, order parameters (S²) calculated via Lipari-Szabo model from 28x50 ns unbiased runs.
+     - Findings: CS or NOE alone insufficient. CS-NOE-4 (4 replicas) with CHARMM22* best. JS divergence stabilizes ~0.2-0.3 after ~30 cycles. RMSIP > 0.83. Side-chain methyl χ²_red shows CHARMM22* significantly improves accuracy over CHARMM22. Ensemble is broad but helices maintained. Rg ~13.7-14.9 Å (lower than SAXS ~16.5-18.8 Å, attributed to ~8% unfolded population and force field compaction). S²_relaxation (ns) high (rigid), S²_chemicalshift (ms) lower (flexible), especially in side chains (avg diff 0.4 for methyl, 0.2 for backbone). Correlates well with experimental S² (Spearman 0.9 and 0.8).
+     - Literature relations: Builds on Lindorff-Larsen et al. 2005 (DER), Camilloni et al. 2012/2013 (CS restraints), Piana et al. 2011 (CHARMM22*), Vögeli et al. 2014, etc. Points toward Bonomi et al. 2016 (Metainference), Best 2017, Hub 2018.
+     - Implications for thesis: The paper demonstrates that replica-averaged MD with chemical shifts and NOEs can capture conformational heterogeneity across timescales. It validates the use of chemical shifts as structural restraints and shows that force field accuracy matters. For the thesis, it supports the idea that ensemble averaging captures the signal for NMR observables, but it does not directly address shielding tensors, DFT calibration, or T2 preservation. It's a structural dynamics paper, not a shielding calibration paper. I must be careful not to overstate connections. The paper uses chemical shifts and NOEs, not shielding tensors. It focuses on ensemble refinement, not kernel calibration. I will note that it provides a methodological precedent for combining multiple NMR observables with MD to capture multi-timescale dynamics, but it does not engage with shielding tensors, DFT, or geometric kernels. The correlation framework (ensemble averages matching experiment) aligns with the thesis's r² philosophy, but the physical observables differ.
+
+2.  **Draft Construction - Paragraph by Paragraph (Mental Refinement):**
+   *Header:* Papaleo, E., Camilloni, C., Teilum, K., Vendruscolo, M., & Lindorff-Larsen, K. (2018). Molecular dynamics ensemble refinement of the heterogeneous native state of NCBD using chemical shifts and NOEs. PeerJ, 6, e5125. DOI: 10.7717/peerj.5125. 24 pages. Approximately 70 references. Funding: Novo Nordisk Foundation (Hallas-Møller stipend to K.L.-L.), Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie.
+   *Para 1 (Scope/Stance):* This is a research paper applying dynamic ensemble refinement (DER) to the 59-residue Nuclear Coactivator Binding Domain (NCBD) of CBP. The authors aim to demonstrate that combining backbone chemical shifts and nuclear Overhauser effect (NOE) distance restraints with replica-averaged molecular dynamics (MD) can accurately capture the conformational heterogeneity of a highly dynamic protein. The study argues that standard NMR structures capture only an average conformation, whereas replica-averaged simulations can model the underlying ensemble, reconciling apparently contradictory NMR relaxation and chemical shift data.
+   *Para 2 (Methods):* The authors performed replica-averaged MD simulations using Gromacs 4.5 and PLUMED 1.3 with the CHARMM22* force field, comparing results against CHARMM22 and unbiased trajectories. Simulations employed simulated annealing cycles (304–454 K) with 1, 2, 4, or 8 replicas. Backbone chemical shifts (Cα, Cβ, Hα, C′, H, N) were restrained using CamShift predictions and a harmonic potential (5.2 kJ mol⁻¹ ppm⁻²). NOEs (455 distance intervals, 46 long-range) were restrained via r⁻⁶ averaging over replicas. Convergence was assessed using Jensen–Shannon divergence and root mean square inner product (RMSIP). Cross-validation used side-chain methyl chemical shifts predicted by CH3Shift and PPM. Fast-timescale dynamics were probed via 28 × 50 ns unbiased runs, fitting N–H bond-vector autocorrelation functions to the Lipari–Szabo model to extract relaxation order parameters (S²_relaxation). Long-timescale flexibility was quantified as S²_chemicalshift from the aligned ensemble.
+   *Para 3 (Findings):* Chemical shift or NOE restraints alone failed to reproduce experimental side-chain methyl shifts or long-range NOEs, indicating insufficient structural accuracy. Combining both restraints with CHARMM22* and four replicas (CS-NOE-4) yielded the best agreement with independent methyl shift data. The ensemble maintains three α-helices but exhibits broad conformational distributions. The radius of gyration (13.7–14.9 Å) is lower than SAXS estimates (~16.5–18.8 Å), attributed to an ~8% unfolded population in experiments and residual force-field compaction. S²_relaxation values are high across the backbone, indicating nanosecond rigidity. S²_chemicalshift values are systematically lower, revealing millisecond-timescale flexibility in loops and the C-terminus. The difference averages 0.2 for backbone amides and 0.4 for methyl side chains. Both calculated S² sets correlate strongly with experimental relaxation data (Spearman ρ = 0.9 and 0.8).
+   *Para 4 (Literature Relations):* The work extends the original DER framework of Lindorff-Larsen et al. (2005) by substituting relaxation order parameters with backbone chemical shifts and NOEs, following methodological developments by Camilloni et al. (2012, 2013a, 2013b) and Cavalli et al. (2013). It relies on the CHARMM22* force field validation of Piana, Lindorff-Larsen & Shaw (2011) and Lindorff-Larsen et al. (2012a). The authors position the approach alongside replica-averaged metainference (Bonomi et al., 2016) and Bayesian ensemble refinement (Hummer & Köfinger, 2015; MacCallum, Perez & Dill, 2015). The discussion points toward future force-field improvements (Best, 2017), SAXS interpretation methods (Hub, 2018), and enhanced sampling algorithms (Bonomi, Camilloni & Vendruscolo, 2016).
+   *Para 5 (Implications for Thesis):* The paper demonstrates that replica-averaged MD can capture multi-timescale conformational heterogeneity when multiple NMR observables are combined with an accurate force field. The correlation between calculated and experimental S² values supports the thesis’s principle that ensemble averaging captures the signal of time-averaged NMR data. However, the study operates on backbone chemical shifts and NOEs rather than shielding tensors, and it does not engage with DFT calibration, geometric kernels, or rank-2 tensor preservation. It serves as a methodological precedent for ensemble refinement but does not directly inform the tensor calibration pipeline. Its primary relevance lies in validating the use of chemical shifts as structural restraints and illustrating how different NMR timescales probe distinct dynamical regimes.
+
+3.  **Check against Constraints:**
+   - *Header:* Authors, year, title, journal, volume, pages, DOI, page count, ref count, funding. All present.
+   - *5 paragraphs, no titles:* Yes.
+   - *Para 1:* Scope, stance, audience, argument. Yes.
+   - *Para 2:* Methods/central results. Yes, specific numbers (force constants, replica counts, simulation details, prediction tools).
+   - *Para 3:* Findings, magnitudes, observations. Yes, χ²_red context, Rg values, S² differences, Spearman correlations.
+   - *Para 4:* Relations to literature, named from bibliography. Yes, Lindorff-Larsen 2005, Camilloni 2012/2013, Cavalli 2013, Piana 2011, Bonomi 2016, etc.
+   - *Para 5:* Implications for our work, honest, no stretching. Explicitly notes difference in observables (shifts/NOEs vs shielding tensors), no DFT/kernel/T2 engagement, but acknowledges correlation philosophy alignment.
+   - *Conventions:* Kernel-vs-DFT correlation framing? The paper uses correlation (Spearman ρ) and ensemble averaging matching experiment. I'll adjust wording to align with the thesis's default vocabulary where applicable, but the paper itself uses χ²_red and Spearman. I'll stick to what the paper says but frame the ensemble-experiment match as capturing the signal. Per-element complexity? Not relevant here, but I won't collapse tensors.
+   - *Length:* ~380 words. Fits the 300-450 range for a ~24 page paper (though the prompt says 10+ page dense review → 450-500, this is a research paper, so ~350-400 is appropriate).
+   - *Tone:* Dry, plain English, no evaluative language, no fabrication.
+   - *Accuracy check:* 
+     - Force constant: 5.2 kJ mol⁻¹ ppm⁻² (correct)
+     - NOEs: 455 intervals, 46 long-range (correct)
+     - Replicas: 1, 2, 4, 8 (correct)
+     - SA cycles: 304-454 K, 0.6 ns/cycle (correct)
+     - JS divergence: ~0.2-0.3 after ~30 cycles (correct)
+     - RMSIP: >0.83 (correct)
+     - Rg: 13.7-14.9 Å vs SAXS ~16.5-18.8 Å (correct)
+     - S² diff: 0.4 methyl, 0.2 backbone (correct)
+     - Spearman: 0.9 and 0.8 (correct)
+     - Tools: CamShift, CH3Shift, PPM, THESEUS, CRYSOL, Lipari-Szabo (correct)
+     - Force fields: CHARMM22*, CHARMM22 (correct)
+     - Funding: Novo Nordisk, Danish e-Infra, PRACE Curie (correct)
+     - All numbers match the text.
+   - *Self-Correction/Refinement during drafting:*
+     - Check paragraph 2: "Convergence was assessed using Jensen–Shannon divergence and root mean square inner product (RMSIP)." -> Good.
+     - Check paragraph 3: "The correlation between calculated and experimental S² values supports the thesis’s principle that ensemble averaging captures the signal of time-averaged NMR data." -> Aligns with convention.
+     - Check paragraph 5: Explicitly state it does not address shielding tensors, DFT, or T2 preservation. This is crucial per instructions.
+     - Ensure no section titles.
+     - Ensure dry register.
+     - Word count: ~360. Fits well.
+     - I will carefully verify the reference count. The text shows references up to Zijlstra et al. 2017. Counting them roughly: ~70. I'll state "70 references" or "approximately 70 references". The prompt says "reference count if stated". It's not explicitly stated in the text, so I'll estimate or omit if unsure, but I'll say "70 references" as it's standard. Actually, I'll just say "70 references" or leave it as "approximately 70 references". I'll stick to "70 references".
+     - Check DOI format: 10.7717/peerj.5125. Correct.
+     - Check volume/pages: PeerJ 6:e5125. Correct.
+     - All constraints met. Proceed. 
+     - One minor adjustment: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …"." I will adjust paragraph 5 to explicitly use this vocabulary when discussing the ensemble-experiment relationship, even though the paper uses Spearman/χ². I'll phrase it as: "The ensemble-experiment agreement captures the signal of time-averaged NMR observables, consistent with the thesis’s correlation-based calibration framework."
+     - Also, ensure per-element complexity isn't collapsed. The paper doesn't discuss elements, so no issue.
+     - Final check of the draft against instructions: All good. Output matches. 
+     - Generate. 
+     - Output matches the refined draft.✅
+     - Structure:
+       Header paragraph
+       Para 1
+       Para 2
+       Para 3
+       Para 4
+       Para 5
+       No titles. Dry. Specific. Honest. Conventions honored. Length appropriate. Numbers accurate. References named. Implications bounded. Ready. 
+     - Proceeds. 
+     - [Output Generation] -> *Self-Correction/Verification during thought*: 
+       - Check reference count: The text lists references from Amadei to Zijlstra. I'll count them precisely if possible, but it's ~70. I'll state "70 references".
+       - Check funding: Novo Nordisk Foundation, Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie. Correct.
+       - Check page count: 24 pages. Correct.
+       - Check volume/pages: PeerJ 6:e5125. Correct.
+       - All good. Output matches response. 
+       - One detail: The prompt says "reference count if stated". It's not stated in the text, so I will omit it or say "approximately 70 references". I'll just say "70 references".
+       - I will ensure the tone is strictly dry and technical.
+       - I will make sure paragraph 5 explicitly addresses the thesis context without overreaching.
+       - All set. 
+       - Output generation. 
+       - [Done] 
+       - *Self-Correction/Note during generation prep*: I notice the prompt says "10+ page dense review or Perspective → 450–500." This is a research paper, so ~350-400 is fine. I'll keep it tight.
+       - I will verify the exact wording for the correlation convention: "correlate", "captures the signal", "r² of …". I'll adjust paragraph 5 to use these terms where appropriate, even though the paper uses Spearman/χ², to align with the thesis framing. Actually, the convention says "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I'll apply this to how the paper treats ensemble vs experiment: "The ensemble averages capture the signal of the time-averaged NMR data, correlating with experimental observables rather than matching pointwise values." This fits.
+       - All constraints met. Output matches. 
+       - Proceeds. 
+       - [Output Generation] -> *Output matches the final refined version.* 
+       - [Final Check of the Prompt]: "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." "Do not collapse a tensor to a scalar except where the source paper itself does." The paper doesn't use tensors, so fine. "A good summary preserves the wealth of true detail... Quote the numbers the paper actually gives." I have. "Avoid editorialising... dry plain English." I have. "Two project conventions to honour..." I have. 
+       - Ready. 
+       - Output generation. 
+       - [Output] -> *Proceeds.*
+
+
+=== pass 2 (vet) ===
+The user wants me to carefully review the draft summary against the provided paper text chunks.
+I need to check:
+1. Statistics: numbers, dataset sizes, distances, coefficients, page/reference counts.
+2. Methodology: procedures, tools, force fields, fitting, error estimation.
+3. Names: authors, years, works, residues, molecules.
+
+Let's go through the draft paragraph by paragraph and verify against the text.
+
+Header:
+Papaleo, E., Camilloni, C., Teilum, K., Vendruscolo, M., & Lindorff-Larsen, K. (2018). Molecular dynamics ensemble refinement of the heterogeneous native state of NCBD using chemical shifts and NOEs. PeerJ, 6, e5125. DOI: 10.7717/peerj.5125. 24 pages. Approximately 70 references. Funding: Novo Nordisk Foundation (Hallas-Møller stipend to K.L.-L.), Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie.
+Check:
+Authors: Elena Papaleo, Carlo Camilloni, Kaare Teilum, Michele Vendruscolo, Kresten Lindorff-Larsen. Correct.
+Year: 2018. Correct.
+Title: Molecular dynamics ensemble refinement of the heterogeneous native state of NCBD using chemical shifts and NOEs. Correct.
+Journal: PeerJ, 6, e5125. Correct.
+DOI: 10.7717/peerj.5125. Correct.
+Pages: 24 pages. Text says "24/24" at the end of chunk 8. Correct.
+References: The text lists references up to Zijlstra et al. 2017. I'll count them or just say "Approximately 70 references." Let's count roughly: chunk 7 has ~30, chunk 8 has ~40. Total ~70. I'll keep it as stated or say "70 references". The prompt says "reference count if stated". It's not explicitly stated, so I'll leave it or remove it. I'll just say "70 references".
+Funding: Novo Nordisk Foundation, Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie. Correct.
+
+Paragraph 1:
+Scope, stance, audience, argument.
+Matches draft.
+
+Paragraph 2: Methodology.
+"replica-averaged MD simulations using Gromacs 4.5 and PLUMED 1.3 with the CHARMM22* force field, comparing results against CHARMM22 and unbiased trajectories." -> Correct.
+"Simulations employed simulated annealing cycles (304–454 K, 0.6 ns per cycle) with 1, 2, 4, or 8 replicas." -> Text: "series of simulated annealing (SA) cycles between 304 and 454 K for a total duration of 0.6 ns per cycle." Correct.
+"Backbone chemical shifts (Cα, Cβ, Hα, C′, H, N) were restrained using CamShift predictions and a harmonic potential with a force constant of 5.2 kJ mol⁻¹ ppm⁻²." -> Text: "force constant of 5.2 kJ mol−1 ppm−2". Correct.
+"NOEs (455 distance intervals, 46 long-range) were restrained via r⁻⁶ averaging over replicas." -> Text: "455 NOE-derived distance intervals... of which 46 were long-range... r−6 averaging". Correct.
+"Convergence was assessed using Jensen–Shannon divergence and root mean square inner product (RMSIP)." -> Text: "Jensen–Shannon (JS) divergence... Root Mean Square Inner Product (RMSIP)". Correct.
+"Cross-validation used side-chain methyl chemical shifts predicted by CH3Shift and PPM." -> Text: "CH3Shift... and PPM". Correct.
+"Fast-timescale dynamics were probed via 28 × 50 ns unbiased runs, fitting N–H bond-vector autocorrelation functions to the Lipari–Szabo model to extract relaxation order parameters (S²_relaxation)." -> Text: "28 independent unbiased MD simulations, each 50 ns long... bond-vector autocorrelation functions... fitted globally to a Lipari-Szabo model... yield relaxation order parameters." Correct.
+"Long-timescale flexibility was quantified as S²_chemicalshift from the aligned ensemble." -> Text: "defined and calculated 'S2chemicalshift'-values from the structural variability in the ensemble after aligning the structures." Correct.
+
+Paragraph 3: Findings.
+"Chemical shift or NOE restraints alone failed to reproduce experimental side-chain methyl shifts or long-range NOEs, indicating insufficient structural accuracy." -> Text: "CS-restraints and MD force field... are not sufficient... NOE-restrained ensemble... perform slightly worse than the CS ensemble." Correct.
+"Combining both restraints with CHARMM22* and four replicas (CS-NOE-4) yielded the best agreement with independent methyl shift data." -> Text: "CS-NOE-4 ensemble... provides the most accurate representation...". Correct.
+"The ensemble maintains three α-helices but exhibits broad conformational distributions." -> Text: "three helical regions are maintained overall, but differ in the lengths and relative positions". Correct.
+"The radius of gyration (13.7–14.9 Å) is lower than SAXS estimates (~16.5–18.8 Å), attributed to an ~8% unfolded population in experiments and residual force-field compaction." -> Text: "average Rg values are in the range of 13.7 Å–14.9 Å... lower than... Guinier analysis... (~16.5 Å) or ensemble-optimization method (18.8 Å)... include contributions from a ~8% population of unfolded protein... ascribed to remaining force field deficiencies." Correct.
+"S²_relaxation values are high across the backbone, indicating nanosecond rigidity." -> Text: "relatively rigid ensemble on the ns timescale attested by high order parameters". Correct.
+"S²_chemicalshift values are systematically lower, revealing millisecond-timescale flexibility in loops and the C-terminus." -> Text: "broader distribution of conformations with additional, longer-timescale dynamics evident both in loop regions and the C-terminal region". Correct.
+"The difference averages 0.2 for backbone amides and 0.4 for methyl side chains." -> Text: "average difference of 0.2 for the backbone amides... S2chemicalshift-values are on average lower than S2relaxation-values by 0.4". Correct.
+"Both calculated S² sets correlate strongly with experimental relaxation data (Spearman ρ = 0.9 and 0.8)." -> Text: "Spearman correlation coefficient of 0.9 and 0.8, respectively". Correct.
+
+Paragraph 4: Relations to literature.
+"extends the original DER framework of Lindorff-Larsen et al. (2005) by substituting relaxation order parameters with backbone chemical shifts and NOEs, following methodological developments by Camilloni et al. (2012, 2013a, 2013b) and Cavalli et al. (2013)." -> Text mentions Lindorff-Larsen et al., 2005; Camilloni et al., 2012; Camilloni, Cavalli & Vendruscolo, 2013a/b; Cavalli, Camilloni & Vendruscolo, 2013. Correct.
+"relies on the CHARMM22* force field validation of Piana, Lindorff-Larsen & Shaw (2011) and Lindorff-Larsen et al. (2012a)." -> Text mentions Piana, Lindorff-Larsen & Shaw, 2011; Lindorff-Larsen et al., 2012a. Correct.
+"positions the approach alongside replica-averaged metainference (Bonomi et al., 2016) and Bayesian ensemble refinement (Hummer & Köfinger, 2015; MacCallum, Perez & Dill, 2015)." -> Text mentions Bonomi et al., 2016; Hummer & Köfinger, 2015; MacCallum, Perez & Dill, 2015. Correct.
+"discussion points toward future force-field improvements (Best, 2017), SAXS interpretation methods (Hub, 2018), and enhanced sampling algorithms (Bonomi, Camilloni & Vendruscolo, 2016)." -> Text mentions Best, 2017; Hub, 2018; Bonomi, Camilloni & Vendruscolo, 2016. Correct.
+
+Paragraph 5: Implications.
+"derives that replica-averaged MD can capture multi-timescale conformational heterogeneity when multiple NMR observables are combined with an accurate force field." -> Correct.
+"ensemble averages capture the signal of the time-averaged NMR data, correlating with experimental observables rather than matching pointwise values, which aligns with the thesis’s correlation-based calibration framework." -> Correct.
+"operates on backbone chemical shifts and NOEs rather than shielding tensors, and it does not engage with DFT calibration, geometric kernels, or rank-2 tensor preservation." -> Correct.
+"serves as a methodological precedent for ensemble refinement but does not directly inform the tensor calibration pipeline." -> Correct.
+"primary relevance lies in validating the use of chemical shifts as structural restraints and illustrating how different NMR timescales probe distinct dynamical regimes." -> Correct.
+
+Wait, let's double check the reference count. The prompt says "reference count if stated". It is not stated in the text. I will remove "Approximately 70 references." to be safe, or just leave it out. The prompt says "reference count if stated". I'll omit it.
+Let's check the force field constant: "5.2 kJ mol−1 ppm−2". Correct.
+NOE intervals: 455 total, 46 long-range. Correct.
+SA cycles: 304-454 K, 0.6 ns per cycle. Correct.
+Replicas: 1, 2, 4, 8. Correct.
+Unbiased runs: 28 x 50 ns. Correct.
+Rg: 13.7-14.9 Å. Correct.
+SAXS: ~16.5 Å, 18.8 Å. Correct.
+Unfolded population: ~8%. Correct.
+Difference in S2: 0.2 backbone, 0.4 methyl. Correct.
+Spearman: 0.9 and 0.8. Correct.
+All numbers match perfectly.
+
+One minor point: "CamShift predictions" -> The text says "chemical shifts were calculated by CamShift (Kohlhoff et al., 2009)". Correct.
+"CH3Shift and PPM" -> Text says "CH3Shift (Sahakyan et al., 2011) ... and PPM (Li & Brüschweiler, 2012)". Correct.
+"Jensen-Shannon divergence" -> Text says "Jensen–Shannon (JS) divergence". Correct.
+"RMSIP" -> Text says "Root Mean Square Inner Product (RMSIP)". Correct.
+"Lipari-Szabo model" -> Text says "Lipari-Szabo model". Correct.
+
+Check paragraph 1: "The authors aim to demonstrate that combining backbone chemical shifts and nuclear Overhauser effect (NOE) distance restraints with replica-averaged molecular dynamics (MD) can accurately capture the conformational heterogeneity of a highly dynamic protein." -> Matches abstract/intro.
+"The study argues that standard NMR structures capture only an average conformation, whereas replica-averaged simulations can model the underlying ensemble, reconciling apparently contradictory NMR relaxation and chemical shift data." -> Matches intro/discussion.
+
+Check paragraph 5: "The ensemble averages capture the signal of the time-averaged NMR data, correlating with experimental observables rather than matching pointwise values, which aligns with the thesis’s correlation-based calibration framework." -> This is a bit of a stretch in wording, but it accurately reflects the paper's method (replica-averaging captures the ensemble average, which is what NMR measures). I'll rephrase slightly to be more precise to the paper's claims: "The paper demonstrates that replica-averaged MD can capture multi-timescale conformational heterogeneity when multiple NMR observables are combined with an accurate force field. The method relies on ensemble averaging to match time-averaged experimental observables, a principle that parallels the thesis’s correlation-based calibration of geometric kernels. However, the study operates on backbone chemical shifts and NOEs rather than shielding tensors, and it does not engage with DFT calibration, geometric kernels, or rank-2 tensor preservation. It serves as a methodological precedent for ensemble refinement but does not directly inform the tensor calibration pipeline. Its primary relevance lies in validating the use of chemical shifts as structural restraints and illustrating how different NMR timescales probe distinct dynamical regimes."
+
+Let's verify the exact wording for the thesis connection: "The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim." The prompt says: "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I will adjust paragraph 5 to use the exact vocabulary requested: "captures the signal".
+
+Revised Paragraph 5:
+The paper demonstrates that replica-averaged MD can capture multi-timescale conformational heterogeneity when multiple NMR observables are combined with an accurate force field. The method relies on ensemble averaging to capture the signal of time-averaged experimental observables, a principle that parallels the thesis’s correlation-based calibration of geometric kernels. However, the study operates on backbone chemical shifts and NOEs rather than shielding tensors, and it does not engage with DFT calibration, geometric kernels, or rank-2 tensor preservation. It serves as a methodological precedent for ensemble refinement but does not directly inform the tensor calibration pipeline. Its primary relevance lies in validating the use of chemical shifts as structural restraints and illustrating how different NMR timescales probe distinct dynamical regimes.
+
+Check reference count again. The prompt says "reference count if stated". I will just omit it to be safe, or say "70 references" if I count them. I'll just remove it. The header will just have the citation, DOI, page count.
+
+Let's do a strict check of the numbers in the text vs draft.
+- 304–454 K, 0.6 ns per cycle: matches.
+- 5.2 kJ mol⁻¹ ppm⁻²: matches.
+- 455 distance intervals, 46 long-range: matches.
+- 28 × 50 ns: matches.
+- 13.7–14.9 Å: matches.
+- ~16.5 Å, 18.8 Å: matches.
+- ~8%: matches.
+- 0.2, 0.4: matches.
+- 0.9, 0.8: matches.
+All correct.
+
+Methodology check:
+- Gromacs 4.5, PLUMED 1.3: matches.
+- CHARMM22*, CHARMM22: matches.
+- CamShift, CH3Shift, PPM: matches.
+- Jensen-Shannon, RMSIP: matches.
+- Lipari-Szabo: matches.
+- THESEUS alignment: I missed mentioning THESEUS in the draft. The text says: "In our calculations we chose theseus (Theobald & Steindel, 2012) as the least biased method to align the structures". I should add this to paragraph 2 or 3. I'll add it to paragraph 2: "Long-timescale flexibility was quantified as S²_chemicalshift from the ensemble aligned using THESEUS."
+
+Let's adjust paragraph 2 slightly to include THESEUS:
+"Long-timescale flexibility was quantified as S²_chemicalshift from the ensemble aligned using THESEUS."
+
+Check paragraph 4 names:
+Lindorff-Larsen et al. (2005)
+Camilloni et al. (2012, 2013a, 2013b)
+Cavalli et al. (2013)
+Piana, Lindorff-Larsen & Shaw (2011)
+Lindorff-Larsen et al. (2012a)
+Bonomi et al. (2016)
+Hummer & Köfinger (2015)
+MacCallum, Perez & Dill (2015)
+Best (2017)
+Hub (2018)
+Bonomi, Camilloni & Vendruscolo (2016)
+All match the reference list.
+
+Check paragraph 5: "The method relies on ensemble averaging to capture the signal of time-averaged experimental observables, a principle that parallels the thesis’s correlation-based calibration of geometric kernels." -> This fits the prompt's instruction: "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal'".
+
+One detail: The prompt says "reference count if stated". It is not stated. I will omit it.
+Page count: 24 pages. (Text says 24/24). Correct.
+
+Let's assemble the final summary carefully.
+
+Header:
+Papaleo, E., Camilloni, C., Teilum, K., Vendruscolo, M., & Lindorff-Larsen, K. (2018). Molecular dynamics ensemble refinement of the heterogeneous native state of NCBD using chemical shifts and NOEs. PeerJ, 6, e5125. DOI: 10.7717/peerj.5125. 24 pages. Funding: Novo Nordisk Foundation (Hallas-Møller stipend to K.L.-L.), Danish e-Infrastructure Cooperation HPC Grant 2013, PRACE Research Infrastructure Resource Curie.
+
+Paragraph 1:
+This is a research paper applying dynamic ensemble refinement (DER) to the 59-residue Nuclear Coactivator Binding Domain (NCBD) of CBP. The authors aim to demonstrate that combining backbone chemical shifts and nuclear Overhauser effect (NOE) distance restraints with replica-averaged molecular dynamics (MD) can accurately capture the conformational heterogeneity of a highly dynamic protein. The study argues that standard NMR structures capture only an average conformation, whereas replica-averaged simulations can model the underlying ensemble, reconciling apparently contradictory NMR relaxation and chemical shift data. The intended audience includes computational biologists and NMR spectroscopists working on protein dynamics and ensemble determination.
+
+Paragraph 2:
+The authors performed replica-averaged MD simulations using Gromacs 4.5 and PLUMED 1.3 with the CHARMM22* force field, comparing results against CHARMM22 and unbiased trajectories. Simulations employed simulated annealing cycles (304–454 K, 0.6 ns per cycle) with 1, 2, 4, or 8 replicas. Backbone chemical shifts (Cα, Cβ, Hα, C′, H, N) were restrained using CamShift predictions and a harmonic potential with a force constant of 5.2 kJ mol⁻¹ ppm⁻². NOEs (455 distance intervals, 46 long-range) were restrained via r⁻⁶ averaging over replicas. Convergence was assessed using Jensen–Shannon divergence and root mean square inner product (RMSIP). Cross-validation used side-chain methyl chemical shifts predicted by CH3Shift and PPM. Fast-timescale dynamics were probed via 28 × 50 ns unbiased runs, fitting N–H bond-vector autocorrelation functions to the Lipari–Szabo model to extract relaxation order parameters (S²_relaxation). Long-timescale flexibility was quantified as S²_chemicalshift from the ensemble aligned using THESEUS.
+
+Paragraph 3:
+Chemical shift or NOE restraints alone failed to reproduce experimental side-chain methyl shifts or long-range NOEs, indicating insufficient structural accuracy. Combining both restraints with CHARMM22* and four replicas (CS-NOE-4) yielded the best agreement with independent methyl shift data. The ensemble maintains three α-helices but exhibits broad conformational distributions. The radius of gyration (13.7–14.9 Å) is lower than SAXS estimates (~16.5–18.8 Å), attributed to an ~8% unfolded population in experiments and residual force-field compaction. S²_relaxation values are high across the backbone, indicating nanosecond rigidity. S²_chemicalshift values are systematically lower, revealing millisecond-timescale flexibility in loops and the C-terminus. The difference averages 0.2 for backbone amides and 0.4 for methyl side chains. Both calculated S² sets correlate strongly with experimental relaxation data (Spearman ρ = 0.9 and 0.8).
+
+Paragraph 4:
+The work extends the original DER framework of Lindorff-Larsen et al. (2005) by substituting relaxation order parameters with backbone chemical shifts and NOEs, following methodological developments by Camilloni et al. (2012, 2013a, 2013b) and Cavalli et al. (2013). It relies on the CHARMM22* force field validation of Piana, Lindorff-Larsen & Shaw (2011) and Lindorff-Larsen et al. (2012a). The authors position the approach alongside replica-averaged metainference (Bonomi et al., 2016) and Bayesian ensemble refinement (Hummer & Köfinger, 2015; MacCallum, Perez & Dill, 2015). The discussion points toward future force-field improvements (Best, 2017), SAXS interpretation methods (Hub, 2018), and enhanced sampling algorithms (Bonomi, Camilloni & Vendruscolo, 2016).
+
+Paragraph 5:
+The paper demonstrates that replica-averaged MD can capture multi-timescale conformational heterogeneity when multiple NMR observables are combined with an accurate force field. The method relies on ensemble averaging to capture the signal of time-averaged experimental observables, a principle that parallels the thesis’s correlation-based calibration of geometric kernels. However, the study operates on backbone chemical shifts and NOEs rather than shielding tensors, and it does not engage with DFT calibration, geometric kernels, or rank-2 tensor preservation. It serves as a methodological precedent for ensemble refinement but does not directly inform the tensor calibration pipeline. Its primary relevance lies in validating the use of chemical shifts as structural restraints and illustrating how different NMR timescales probe distinct dynamical regimes.
+
+All checks passed. Numbers, methods, names, and thesis connections are accurate and adhere to constraints. I will output this exactly.
+One minor thing: "reference count if stated" -> I'll just leave it out as it's not stated. The prompt says "reference count if stated".
+Page count: 24 pages.
+Funding: correctly listed.
+All good.
+Proceeds. 
+Output matches the refined text. 
+Self-Correction/Verification during thought: 
+Check "Spearman correlation coefficient of 0.9 and 0.8, respectively" -> Text says exactly that. 
+Check "difference averages 0.2 for backbone amides and 0.4 for methyl side chains" -> Text says exactly that. 
+Check "13.7–14.9 Å" -> Text says exactly that. 
+Check "455 distance intervals, 46 long-range" -> Text says exactly that. 
+Check "5.2 kJ mol⁻¹ ppm⁻²" -> Text says exactly that. 
+Check "304–454 K, 0.6 ns per cycle" -> Text says exactly that. 
+Check "28 × 50 ns" -> Text says exactly that. 
+Check "THESEUS" -> Added. 
+Check "CamShift, CH3Shift, PPM" -> Added/kept. 
+Check "Jensen-Shannon, RMSIP" -> Kept. 
+Check "Lipari-Szabo" -> Kept. 
+Check "CHARMM22*, CHARMM22" -> Kept. 
+Check "Gromacs 4.5, PLUMED 1.3" -> Kept. 
+Everything is solid. Output matches. 
+Proceeds. 
+[Output Generation] -> *Proceeds*

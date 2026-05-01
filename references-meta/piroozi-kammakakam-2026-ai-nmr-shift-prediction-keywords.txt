@@ -1,0 +1,118 @@
+# piroozi-kammakakam-2026-ai-nmr-shift-prediction
+review article
+AI for NMR
+machine learning chemical shift prediction
+DFT shielding
+GIAO method
+GIPAW DFT
+graph neural networks
+GNN
+message passing neural network
+MPNN
+transformer architecture
+SE(3) equivariance
+E(3) equivariance
+equivariant neural networks
+random forest
+extra trees regressor
+XGBoost
+kernel ridge regression
+KRR
+Gaussian process regression
+GPR
+variational GPR
+SOAP descriptor
+FCHL descriptor
+HOSE codes
+SchNet
+DimeNet
+ComENet
+SphereNet
+PAiNN
+MACE-OFF23
+Uni-Mol
+GraphSAGE
+SpookyNet
+end-to-end deep learning
+descriptor-based models
+hybrid QM/ML
+DFT+ML
+DU8ML
+transfer learning
+active learning
+weakly supervised learning
+synthetic data pretraining
+data augmentation
+ShiftML
+ShiftML2
+IMPRESSION
+IMPRESSION-G2
+NMRNet (SE3 transformer)
+NMRNet (CNN peak picking)
+PROSPRE
+NightShift
+UCBShift
+SPARTA+
+SHIFTX2
+PROSHIFT
+SPINUS
+GM26
+TransPeakNet
+iShiftML
+CASCADE-2.0
+DEEP Picker1D
+FID-Net
+DP4-AI
+chemical shift anisotropy
+shielding tensor (footnote in review)
+isotropic chemical shift
+J-couplings
+scalar couplings
+relaxation times
+T1 T2 relaxation
+diffusion coefficients
+spectral reconstruction
+non-uniform sampling
+denoising
+automated peak picking
+virtual decoupling
+pure shift NMR
+NMR crystallography
+polymorph identification
+natural product dereplication
+intrinsically disordered proteins
+EISD experimental inferential structure determination
+solvent-aware prediction
+HSQC 2D NMR
+NMR spectrum to structure
+substructure prediction
+NMRShiftDB2
+BMRB
+HMDB
+NP-MRD
+CSD Cambridge Structural Database
+ANI-1 dataset
+NS372 benchmark
+CHESHIRE benchmark
+GlycoNMR dataset
+DFT8K NMR8K Exp5K
+QM9-NMR
+RefDB
+chemical shift accuracy MAE
+chemical shift accuracy RMSE
+R squared metric
+DFT speedup
+uncertainty quantification
+generalisability out of distribution
+ensemble error estimation
+variance filter
+heteronuclei
+19F NMR prediction
+31P NMR prediction
+17O 15N shift prediction
+heavy atoms B Si Se Br I
+chemical realism in ML
+Wylie 2011 chemical shift tensors (cited)
+Kellner 2025 anisotropy DL solids (cited)
+end-to-end spectrum to structure
+SMILES to spectrum

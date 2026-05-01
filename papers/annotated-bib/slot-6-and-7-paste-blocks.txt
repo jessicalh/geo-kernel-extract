@@ -1,0 +1,45 @@
+================================================================
+FINAL ALPHABETICAL ORDER: B, C, H, K, K, L, M, S
+================================================================
+
+Slot 6 was Markwick → becomes Larsen et al. 2015 (ProCS15) [NEW]
+Slot 7 was Sahakyan-V → becomes Markwick (move existing
+   Markwick citation block from old slot 6 down to slot 7)
+Slot 8 was Yates → becomes Sahakyan-V (move existing prose
+   from old slot 7 down to slot 8)
+
+In SlickEdit:
+1. Cut the Sahakyan-V block from slot 7 → paste over Yates at slot 8
+   (update section header to ENTRY 8)
+2. Cut the Markwick citation block from slot 6 → paste at slot 7
+   (update section header to ENTRY 7)
+3. Insert the Larsen block (below) at the now-empty slot 6
+
+================================================================
+ENTRY 6 — Larsen et al. 2015 ProCS15  [PRIMARY]
+================================================================
+
+Larsen, A.S., Bratholm, L.A., Christensen, A.S., Channir, M. and
+Jensen, J.H. (2015) 'ProCS15: a DFT-based chemical shift predictor
+for backbone and Cβ atoms in proteins', PeerJ, 3, e1344.
+doi:10.7717/peerj.1344.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 7 — Markwick et al. 2010
+================================================================
+
+(Move your existing Markwick citation block here from old slot 6.
+Update the section header from "ENTRY 6" to "ENTRY 7".)
+
+================================================================
+ENTRY 8 — Sahakyan and Vendruscolo 2013  [PRIMARY]
+================================================================
+
+(Move your existing Sahakyan-V prose here from old slot 7.
+Update the section header from "ENTRY 7" to "ENTRY 8".)

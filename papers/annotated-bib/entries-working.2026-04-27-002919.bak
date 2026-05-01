@@ -1,0 +1,152 @@
+================================================================
+ANNOTATED BIBLIOGRAPHY — WORKING TEXT
+================================================================
+
+Eight entries, alphabetical by first author. Citations already in
+Harvard format (Cite Them Right style). Type prose into the
+[BRACKETS]. When an entry is done, I'll move it into submission.tex.
+
+Per-entry format mirrors the rubric example:
+
+    [Citation block]
+
+    Primary source. [HEADER — one short topic sentence.]
+
+    [BODY PARAGRAPH — one paragraph, three or four sentences:
+     system+method, result, authors' interpretation, relevance.]
+
+Word target: 120-150 words for the prose (header + body).
+Citation does not count. Rubric range is 120-240; floor is the
+example's ~119.
+
+Notes:
+ - Single quotes around article titles, italic journal name.
+ - Sentence-case article title, title-case journal.
+ - "and" before last author (Harvard convention).
+ - For old papers without DOI, omit the doi line.
+ - Final lineup: 7 primary, 1 secondary (the advisor's review).
+
+================================================================
+ENTRY 1 — Boyd and Skrynnikov 2002  [PRIMARY]
+================================================================
+
+Boyd, J. and Skrynnikov, N.R. (2002) 'Calculations of the
+contribution of ring currents to the chemical shielding
+anisotropy', Journal of the American Chemical Society, 124(9),
+pp. 1832-1833. doi:10.1021/ja016476f.
+
+Primary source. Johnson-Bovey Ring Current Calculation Compared to NMR and DFT
+
+Derived full anisotropic tensor form for Johnson-Bovey ring current and showed favorable correspondence (1ppm or better) to DFT shielding computation for an N--methyl acetamide molecule near a Benzene and 1,3-cycloheadiene ring.  Their calculation of Johnson-Bovey was also applied against DFT calculations done on a protein fragment with  previously published  chemical shifts: obtained values were comparable. Authors suggest ring current has a small contribution to shielding in heavy backbone atoms but a strong contribution where an NH bond donates into an aromatic pi cloud.  Useful example of an anisotropic result of a classical calculation being effectively compared to DFT shielding tensor and previously measured shift.
+
+[word count: __]
+
+================================================================
+ENTRY 2 — Case 1995  [PRIMARY]
+================================================================
+
+Case, D.A. (1995) 'Calibration of ring-current effects in proteins
+and nucleic acids', Journal of Biomolecular NMR, 6(4), pp. 341-346.
+
+Primary source. Johnson-Bovey and Haigh-Mallion Isotropic Shift Calibrated Against DFT
+
+In this foundational paper, Case computed Johnson-Bovey loop current, Haigh-Mallion surface integral, and an electric field correction. Calculations were compared to DFT for methane placed near ring geometries.  Comparison rings included benzene, phenol, indole, imidazole, and imidazolium, as well as A/G/U/T/C nucleic acid bases.  Classical calculations provided strong correlation to DFT results.  Case found Johnson-Bovey and Haigh-Mallion independently predictive in isotropic form.  Relates to DFT and classical ring current comparison, potential applicability (or non-applicability) of anisotropic form (Case found effect worked when isotropic), and influence of electric field corrections.
+
+[word count: __]
+
+================================================================
+ENTRY 3 — De Gortari et al. 2010  [PRIMARY]
+================================================================
+
+De Gortari, I., Portella, G., Salvatella, X., Bajaj, V.S., van der
+Wel, P.C.A., Yates, J.R., Segall, M.D., Pickard, C.J., Payne, M.C.
+and Vendruscolo, M. (2010) 'Time averaging of NMR chemical shifts
+in the MLF peptide in the solid state', Journal of the American
+Chemical Society, 132(17), pp. 5993-6000. doi:10.1021/ja9062629.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 4 — Kellner et al. 2025  [PRIMARY]
+================================================================
+
+Kellner, M., Holmes, J.B., Rodriguez-Madrid, R., Viscosi, F.,
+Zhang, Y., Emsley, L. and Ceriotti, M. (2025) 'A deep learning
+model for chemical shieldings in molecular organic solids
+including anisotropy', Journal of Physical Chemistry Letters,
+pp. 8714-8722.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 5 — Klukowski, Riek and Güntert 2025  [SECONDARY — review]
+================================================================
+
+Klukowski, P., Riek, R. and Güntert, P. (2025) 'Machine learning
+in NMR spectroscopy', Progress in Nuclear Magnetic Resonance
+Spectroscopy, 148-149, 101575.
+doi:10.1016/j.pnmrs.2025.101575.
+
+Secondary source (review). [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 6 — Markwick et al. 2010  [PRIMARY]
+================================================================
+
+Markwick, P.R.L., Cervantes, C.F., Abel, B.L., Komives, E.A.,
+Blackledge, M. and McCammon, J.A. (2010) 'Enhanced conformational
+space sampling improves the prediction of chemical shifts in
+proteins', Journal of the American Chemical Society, 132(4),
+pp. 1220-1221. doi:10.1021/ja9093692.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 7 — Sahakyan and Vendruscolo 2013  [PRIMARY]
+================================================================
+
+Sahakyan, A.B. and Vendruscolo, M. (2013) 'Analysis of the
+contributions of ring current and electric field effects to the
+chemical shifts of RNA bases', The Journal of Physical Chemistry
+B, 117(7), pp. 1989-1998. doi:10.1021/jp3057306.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+ENTRY 8 — Yates and Bartók 2024  [PRIMARY]
+================================================================
+
+Yates, J.R. and Bartók, A.P. (2024) 'Accurate predictions of
+chemical shifts with the rSCAN and r2SCAN mGGA exchange-
+correlation functionals', Faraday Discussions, 255, pp. 192-202.
+doi:10.1039/D4FD00142G.
+
+Primary source. [HEADER]
+
+[BODY]
+
+[word count: __]
+
+================================================================
+END OF WORKING FILE
+================================================================

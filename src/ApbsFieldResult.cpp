@@ -112,6 +112,15 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
 static bool ComputeViaApbs(ProteinConformation& conf) {
     const Protein& protein = conf.ProteinRef();
     const size_t n_atoms = conf.AtomCount();
+    const auto& charge_result = conf.Result<ChargeAssignmentResult>();
+    const int non_authoritative_radii =
+        charge_result.ChargeTable().NonAuthoritativePbRadiusCount();
+    if (non_authoritative_radii > 0) {
+        OperationLog::Warn("ApbsFieldResult::Compute",
+            "APBS running with " + std::to_string(non_authoritative_radii) +
+            " non-authoritative PB radii; GROMACS/CHARMM radius conversion "
+            "is quarantined pending explicit CHARMM/APBS support");
+    }
 
     // Separate x, y, z arrays for the C bridge
     std::vector<double> xArr(n_atoms), yArr(n_atoms), zArr(n_atoms);
@@ -124,18 +133,12 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         zArr[i] = pos.z();
         charges[i] = conf.AtomAt(i).partial_charge;
 
-        double r = conf.AtomAt(i).vdw_radius;
-        if (r < 0.5) {
-            // VdW radius not set or too small — use element defaults.
-            // These approximate ff14SB typical values.
-            switch (protein.AtomAt(i).element) {
-                case Element::C: r = 1.70; break;
-                case Element::N: r = 1.63; break;
-                case Element::O: r = 1.48; break;
-                case Element::S: r = 1.78; break;
-                case Element::H: r = 1.00; break;
-                default:         r = 1.50; break;
-            }
+        double r = conf.AtomAt(i).pb_radius;
+        if (r <= 0.0) {
+            OperationLog::Error("ApbsFieldResult::Compute",
+                "missing PB radius for atom " + std::to_string(i) +
+                " (" + protein.AtomAt(i).pdb_atom_name + ")");
+            return false;
         }
         radii[i] = r;
     }

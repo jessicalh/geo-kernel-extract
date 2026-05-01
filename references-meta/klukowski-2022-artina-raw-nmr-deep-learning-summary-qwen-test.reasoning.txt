@@ -1,0 +1,199 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header paragraph: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - Five paragraphs (no titles):
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, non-observations)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (widely, honestly, no stretching)
+        - Format/Length: 4-6 pages -> 200-300 words; 6-12 pages -> 300-450; 10+ dense -> 450-500. This paper is 12 pages. Target: ~300-450 words for body.
+        - Conventions: Kernel-vs-DFT = correlation (r²). Per-element complexity preserved. Avoid excited language. No fabricated methods.
+    - **Input Text:** 4 chunks of the paper "klukowski-2022-artina-raw-nmr-deep-learning". It's a Nature Communications paper (2022) on ARTINA, a deep learning pipeline for automated NMR protein structure determination from raw spectra.
+
+2.  **Extract Key Information from Text:**
+    - **Citation:** Piotr Klukowski, Roland Riek & Peter Güntert. 2022. "Rapid protein assignments and structures from raw NMR spectra with the deep learning technique ARTINA". Nature Communications, 13:6151. DOI: 10.1038/s41467-022-33879-5.
+    - **Pages/Refs:** 12 pages. References: 46.
+    - **Funding/Credits:** EU Horizon 2020 Marie Sklodowska-Curie grant No 891690 (P.K.). Grant-in-Aid for Scientific Research of JSPS (P.G., 20 K06508). Acknowledgements to several Drs. for unpublished data.
+    - **Stance/Scope:** Research paper/methodological report. Presents ARTINA, a fully automated machine learning pipeline for NMR resonance assignment and protein structure determination from raw multidimensional spectra and sequence. No human intervention.
+    - **Methods:**
+        - Benchmark: 100 proteins, 1329 spectra (2D/3D/4D), sizes 35-175 residues.
+        - Pipeline: Visual spectrum analysis (pp-ResNet for peak picking, deconv-ResNet for deconvolution), chemical shift assignment/refinement (FLYA + GNN for shift prediction), structure calculation (CYANA with TALOS-N torsion restraints), structure selection (GBT ranking 10 proposals).
+        - Models: ResNet-18 variants (8 blocks), DeepGCN (28,400 graphs from BMRB), GBT (96 features), KDE for signal unfolding.
+        - Training: pp-ResNet on 675k positive/576k negative fragments. deconv-ResNet on 110k synthetic fragments. GNN on BMRB/PDB. GBT on CYANA success/failure tuples.
+        - Cross-validation: 5-fold for pp-ResNet/GBT. Others trained once.
+    - **Findings:**
+        - Median backbone RMSD to PDB reference: 1.44 Å.
+        - Assignment accuracy: 90.39% overall (96.03% backbone, 86.50% side-chain). Core residues higher.
+        - Distance restraints: 2198 average (4.25-33.20 per residue). Weak correlation with RMSD (r = -0.38).
+        - Predicted RMSD (pRMSD) vs actual: correlation 0.77, mean deviation 0.35 Å.
+        - Refinement cycles: 3 cycles improve RMSD from 1.56 Å to 1.44 Å.
+        - 4D CC-NOESY impact: average RMSD decrease 0.15 Å (1.88 to 1.73 Å), <1% assignment impact.
+        - Error cases: 2KCD, 2L82, 2M47 (terminal helix displacement, loop flexibility).
+    - **Relations to Literature:** Builds on FLYA (12), TALOS-N (21), CYANA (22, 23), AlphaFold (38), BMRB (39), CASD-NMR (28), previous peak pickers (NMRNet, DEEP picker, AUTOPSY, CYPICK). Points toward integration with AlphaFold, extended to ligand binding, RNA, solid-state, in-cell NMR.
+    - **Implications for Thesis:** The thesis focuses on geometric kernels for shielding tensors calibrated against DFT. ARTINA focuses on end-to-end structure determination from raw spectra using deep learning. It does not address shielding tensors, DFT calibration, or kernel-based geometric modeling. It provides a pipeline for generating protein structures from NMR data, which could be a downstream source of structural coordinates for kernel application, but the paper itself does not engage with shielding, tensors, or calibration. The relationship is peripheral: ARTINA automates structure determination, which is a prerequisite for applying geometric kernels to protein structures, but the paper's methodology (deep learning for peak picking/assignment/CYANA) and outputs (backbone RMSD, chemical shift assignments) do not intersect with the thesis's core focus (rank-2 tensor preservation, kernel calibration against DFT). I must state this honestly without stretching.
+
+3.  **Draft Construction (Mental Refinement - Paragraph by Paragraph):**
+    *Header:* Klukowski, P., Riek, R. & Güntert, P. (2022). Rapid protein assignments and structures from raw NMR spectra with the deep learning technique ARTINA. Nature Communications, 13, 6151. DOI: 10.1038/s41467-022-33879-5. 12 pages, 46 references. Funding: EU Horizon 2020 Marie Skłodowska-Curie grant No 891690; JSPS Grant-in-Aid 20 K06508. Acknowledgements note contributions from several researchers for unpublished data.
+
+    *Para 1 (Scope/Stance):* This is a research paper presenting ARTINA, a fully automated machine learning pipeline for NMR resonance assignment and protein structure determination. The authors aim to replace the traditionally manual, expert-dependent NMR analysis workflow with a system that requires only raw multidimensional spectra and the protein sequence as input. The method is evaluated on a benchmark of 100 proteins (1329 spectra, 35–175 residues) and is positioned as a tool for non-experts, reducing structure determination time from weeks to hours.
+
+    *Para 2 (Methods):* ARTINA integrates several machine learning models with established NMR algorithms. Visual spectrum analysis uses a peak-picking ResNet (pp-ResNet) and a deconvolution ResNet (deconv-ResNet) to identify and resolve overlapping cross-peaks. A kernel density estimator (KDE) handles signal unfolding in folded spectra. Chemical shift assignment and refinement are performed by FLYA, guided by a deep graph neural network (GNN) trained on BMRB/PDB records to predict missing shifts. Structure calculation employs CYANA with torsion angle restraints from TALOS-N. Ten candidate structures are generated with varying NOESY peak confidence thresholds and ranked by a gradient boosted tree (GBT) model using 96 structural features. The pipeline executes three interchangeable refinement cycles.
+
+    *Para 3 (Findings):* In a 5-fold cross-validation on the benchmark, ARTINA reproduces reference structures with a median backbone RMSD of 1.44 Å. Overall chemical shift assignment accuracy is 90.39% (96.03% backbone, 86.50% side-chain), with core residues generally assigned more accurately. The system identifies an average of 2198 distance restraints per protein, which correlates only weakly with backbone RMSD (r = −0.38). A predicted RMSD metric correlates with actual RMSD at r² = 0.59 (linear correlation 0.77), with a mean deviation of 0.35 Å. Three refinement cycles reduce the median backbone RMSD from 1.56 Å to 1.44 Å. The inclusion of 4D CC-NOESY spectra improves median RMSD by 0.15 Å but has negligible impact on assignment accuracy. Structural deviations are primarily localized to terminal secondary structure elements and flexible loops.
+
+    *Para 4 (Relations):* The work builds on established NMR software (FLYA, CYANA, TALOS-N) and previous deep learning applications for NMR (NMRNet, DEEP picker, AUTOPSY, CYPICK). It references the CASD-NMR competition and the BMRB database as foundational data sources. The authors position ARTINA alongside recent advances in structure prediction, notably AlphaFold, and suggest future integration of AlphaFold models with reduced NMR datasets. The bibliography also cites foundational methods for automated NOE assignment, structure validation (RPF, ANSSUR), and consensus bundle calculation.
+
+    *Para 5 (Implications for Thesis):* This paper addresses end-to-end automated structure determination from raw NMR spectra using deep learning and CYANA-based torsion angle dynamics. It does not engage with NMR shielding tensors, DFT calibration, or geometric kernel modeling. The outputs are backbone coordinates and chemical shift assignments, not shielding values or rank-2 tensor fields. While the benchmark structures could theoretically serve as input geometries for applying geometric kernels, the paper itself provides no methodology for shielding prediction, tensor preservation, or calibration against quantum chemical calculations. Its relevance to the thesis is strictly as a source of automated protein structures from NMR data, with no direct methodological overlap.
+
+4.  **Check against Constraints:**
+    - Header: Authors, year, title, journal, volume, pages, DOI, page count, ref count, funding/credits. ✓
+    - Five paragraphs, no titles. ✓
+    - Para 1: Scope, stance, audience, argument. ✓
+    - Para 2: Methods/central results. ✓
+    - Para 3: Findings (magnitudes, observations). ✓
+    - Para 4: Relations to literature (named from bib). ✓
+    - Para 5: Implications for our work, honest, no stretch. ✓
+    - Length: ~380 words body. Fits 6-12 page range (300-450). ✓
+    - Conventions: Dry plain English. No fabricated methods. Kernel-vs-DFT correlation framing not applicable here (paper doesn't do it), but I'll keep the tone consistent. Per-element complexity not relevant here. ✓
+    - Accuracy check: RMSD 1.44 Å, assignment 90.39%, r=-0.38, pRMSD correlation 0.77, 3 cycles 1.56->1.44, 4D CC-NOESY +0.15 Å improvement. All match text. Models: pp-ResNet, deconv-ResNet, GNN, GBT, FLYA, CYANA, TALOS-N, KDE. All match. Funding/credits match. References match.
+    - One minor adjustment: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured." This paper doesn't do that, so I won't force it. I'll just stick to the facts.
+    - Check paragraph flow and tone: Dry, precise, academic. No evaluative language.
+    - Word count check: ~360 words. Good.
+    - All constraints met. Proceed. 
+    - Self-Correction/Refinement during thought: 
+      - I should verify the pRMSD correlation. Text says: "linear correlation coefficient is 0.77". r² would be ~0.59. I'll state "linear correlation coefficient of 0.77" to be precise.
+      - Check reference count: Text shows references 1-46. So 46 references.
+      - Check funding: EU Horizon 2020 MSCA 891690, JSPS 20 K06508.
+      - Check page count: 12 pages.
+      - The prompt says "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." This is context for the thesis, not the paper. I must ensure I don't conflate them.
+      - I will carefully draft the summary now. All details verified against the provided text. Output matches the draft.✅
+    - Structure matches exactly. I will produce the final response. 
+    - One detail: "The benchmark covers protein sizes typically studied by NMR spectroscopy with sequence lengths between 35 and 175 residues (molecular mass 4–20 kDa)." I'll include this in Para 1 or 3.
+    - "ARTINA can be used by non-experts" - included.
+    - "5-fold cross-validation" - included.
+    - All good. Output matches response. 
+    - Proceeds. 
+    - [Output Generation] -> *Self-Correction/Verification during drafting*: 
+      - Check paragraph 3: "linear correlation coefficient is 0.77" -> I'll write "linear correlation of 0.77".
+      - Check paragraph 4: Names from bibliography: FLYA (12), CYANA (22,23), TALOS-N (21), AlphaFold (38), BMRB (39), CASD-NMR (28), NMRNet (8), DEEP picker (9), AUTOPSY (6), CYPICK (7), RPF (32), ANSSUR (31). All correctly attributed.
+      - Check paragraph 5: Explicitly states no overlap with shielding/tensors/DFT calibration. Honest.
+      - Length: ~370 words. Fits constraint.
+      - Format: Header + 5 paragraphs. No titles. Dry tone.
+      - Ready.✅
+    - Output matches the refined draft. 
+    - Proceeds. 
+    - [Final Check of the Prompt]: "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." -> This is just context. I will ignore it for the summary content except to note the lack of overlap in Para 5.
+    - "Kernel-vs-DFT comparisons are framed as correlation..." -> Not applicable here, but I'll keep the dry, precise tone.
+    - All constraints satisfied. Output generation. 
+    - [Output Generation] (matches the final refined version)
+    - "Klukowski, P., Riek, R. & Güntert, P. (2022). Rapid protein assignments and structures from raw NMR spectra with the deep learning technique ARTINA. Nature Communications, 13, 6151. DOI: 10.1038/s41467-022-33879-5. 12 pages, 46 references. Funding: EU Horizon 2020 Marie Skłodowska-Curie grant No 891690; JSPS Grant-in-Aid 20 K06508. Acknowledgements note contributions from several researchers for unpublished data."
+    - Para 1-5 as drafted.
+    - All good.✅
+    - Output matches response. 
+    - [Done] 
+    - *Self-Correction/Note during thought*: I should ensure the header paragraph strictly follows the format: "citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    - I will format it exactly as requested.
+    - The body will be exactly 5 paragraphs.
+    - I will double-check the numbers: 1.44 Å median RMSD, 90.39% assignment, 2198 restraints, r=-0.38, pRMSD linear corr 0.77, 3 cycles 1.56->1.44, 4D CC-NOESY +0.15 Å. All correct.
+    - Ready.✅
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy.
+    - **Focus Areas:** Statistics (numbers, r/r², RMSEs, dataset sizes, etc.), Methodology (procedures, tools, functionals, basis sets, etc.), Names (authors, years, works, residues, etc.).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust for scientific accuracy. Reply with final summary only.
+    - **Context:** The summary is for an NMR shielding-tensor PhD thesis building geometric kernels on protein structures calibrated against DFT. The summary must be precise, dry, and avoid fabrication.
+
+2.  **Cross-Check Draft Summary against Paper Text:**
+
+    *Header Paragraph:*
+    - Draft: Klukowski, P., Riek, R. & Güntert, P. (2022). Rapid protein assignments and structures from raw NMR spectra with the deep learning technique ARTINA. Nature Communications, 13, 6151. DOI: 10.1038/s41467-022-33879-5. 12 pages, 46 references. Funding: EU Horizon 2020 Marie Skłodowska-Curie grant No 891690; JSPS Grant-in-Aid 20 K06508. Acknowledgements note contributions from several researchers for unpublished data.
+    - Check: Authors match. Title matches. Journal/Volume/Page: Nature Communications, 13, 6151. DOI matches. Page count: The text shows pages 1-12. Reference count: The references list goes up to 46. Funding: "EU Horizon 2020... grant agreement No 891690 (P.K.), and a Grant-in-Aid... 20 K06508 (P.G.)". Acknowledgements: "We thank Drs. Frédéric Allain, Fred Damberger, Hideo Iwai, Harindranath Kadavath, Julien Orts, and Dean Strotz for providing unpublished spectra." All accurate.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: This is a research paper presenting ARTINA, a fully automated machine learning pipeline for NMR resonance assignment and protein structure determination. The authors aim to replace the traditionally manual, expert-dependent NMR analysis workflow with a system that requires only raw multidimensional spectra and the protein sequence as input. The method is evaluated on a benchmark of 100 proteins (1329 spectra, 35–175 residues) and is positioned as a tool for non-experts, reducing structure determination time from weeks to hours.
+    - Check: "100-protein benchmark comprising 1329 multidimensional NMR spectra" (matches). "sequence lengths between 35 and 175 residues" (matches). "within hours after completing the measurements" (matches). Stance: Research paper/methodological presentation. Accurate.
+
+    *Paragraph 2: Methods/Central Results*
+    - Draft: ARTINA integrates several machine learning models with established NMR algorithms. Visual spectrum analysis uses a peak-picking ResNet (pp-ResNet) and a deconvolution ResNet (deconv-ResNet) to identify and resolve overlapping cross-peaks. A kernel density estimator (KDE) handles signal unfolding in folded spectra. Chemical shift assignment and refinement are performed by FLYA, guided by a deep graph neural network (GNN) trained on BMRB/PDB records to predict missing shifts. Structure calculation employs CYANA with torsion angle restraints from TALOS-N. Ten candidate structures are generated with varying NOESY peak confidence thresholds and ranked by a gradient boosted tree (GBT) model using 96 structural features. The pipeline executes three interchangeable refinement cycles.
+    - Check: pp-ResNet & deconv-ResNet for peak picking/deconvolution (matches). KDE for unfolding (matches). FLYA for assignment, guided by GNN trained on BMRB/PDB (matches). CYANA for structure, TALOS-N for torsion angles (matches). 10 candidate structures from varying confidence thresholds (0.05 to 0.5) (matches). GBT ranks them using 96 features (matches). Three refinement cycles (matches). All accurate.
+
+    *Paragraph 3: Findings*
+    - Draft: In a 5-fold cross-validation on the benchmark, ARTINA reproduces reference structures with a median backbone RMSD of 1.44 Å. Overall chemical shift assignment accuracy is 90.39% (96.03% backbone, 86.50% side-chain), with core residues generally assigned more accurately. The system identifies an average of 2198 distance restraints per protein, which correlates only weakly with backbone RMSD (r = −0.38). A predicted RMSD metric correlates with actual RMSD at a linear correlation coefficient of 0.77, with a mean deviation of 0.35 Å. Three refinement cycles reduce the median backbone RMSD from 1.56 Å to 1.44 Å. The inclusion of 4D CC-NOESY spectra improves median RMSD by 0.15 Å but has negligible impact on assignment accuracy. Structural deviations are primarily localized to terminal secondary structure elements and flexible loops.
+    - Check:
+      - 5-fold cross-validation: "evaluated in a 5-fold cross-validation experiment" (matches).
+      - Median backbone RMSD: 1.44 Å (matches).
+      - Assignment accuracy: 90.39% overall, 96.03% backbone, 86.50% side-chain (matches).
+      - Distance restraints: 2198 on average (matches).
+      - Correlation with RMSD: "correlates only weakly with the backbone RMSD to reference (linear correlation coefficient −0.38)" (matches).
+      - Predicted RMSD: "average deviation between actual and predicted RMSDs... is 0.35 Å, and their linear correlation coefficient is 0.77" (matches).
+      - Refinement cycles: Table 1 shows cycle 1: 1.56 Å, cycle 2: 1.52 Å, cycle 3: 1.44 Å. Draft says "reduce... from 1.56 Å to 1.44 Å". Accurate.
+      - 4D CC-NOESY impact: "improves the backbone RMSD to reference by 0.15 Å (decrease from 1.88 to 1.73 Å) and has less than 1% impact on chemical shift assignment accuracy." (matches).
+      - Deviations localized to: "terminal secondary structure elements or inaccurate loop conformations" (matches).
+      All numbers and claims match the text exactly.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: The work builds on established NMR software (FLYA, CYANA, TALOS-N) and previous deep learning applications for NMR (NMRNet, DEEP picker, AUTOPSY, CYPICK). It references the CASD-NMR competition and the BMRB database as foundational data sources. The authors position ARTINA alongside recent advances in structure prediction, notably AlphaFold, and suggest future integration of AlphaFold models with reduced NMR datasets. The bibliography also cites foundational methods for automated NOE assignment, structure validation (RPF, ANSSUR), and consensus bundle calculation.
+    - Check:
+      - Software: FLYA (ref 12), CYANA (ref 22/23), TALOS-N (ref 21). All cited in text.
+      - DL apps: NMRNet (ref 8), DEEP picker (ref 9), AUTOPSY (ref 6), CYPICK (ref 7). All cited.
+      - CASD-NMR (ref 28), BMRB (ref 39). Cited.
+      - AlphaFold (ref 38): "known partial assignments... Structural information, e.g., from AlphaFold38, can be used..." (matches).
+      - Validation: RPF (ref 32), ANSSUR (ref 31), consensus bundles (ref 33). Cited.
+      All accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: This paper addresses end-to-end automated structure determination from raw NMR spectra using deep learning and CYANA-based torsion angle dynamics. It does not engage with NMR shielding tensors, DFT calibration, or geometric kernel modeling. The outputs are backbone coordinates and chemical shift assignments, not shielding values or rank-2 tensor fields. While the benchmark structures could theoretically serve as input geometries for applying geometric kernels, the paper itself provides no methodology for shielding prediction, tensor preservation, or calibration against quantum chemical calculations. Its relevance to the thesis is strictly as a source of automated protein structures from NMR data, with no direct methodological overlap.
+    - Check: This is a careful, honest assessment. It correctly notes the lack of shielding/tensor/DFT content. It frames the potential use (benchmark structures as input geometries) without overstating. Matches the thesis constraints.
+
+3.  **Final Verification:**
+    - Check all numbers against text one more time.
+    - 100 proteins, 1329 spectra, 35-175 residues. ✓
+    - Median backbone RMSD: 1.44 Å. ✓
+    - Assignment: 90.39% overall, 96.03% backbone, 86.50% side-chain. ✓
+    - Restraints: 2198 avg. ✓
+    - Correlation: r = -0.38. ✓
+    - Predicted vs actual RMSD: r = 0.77, mean deviation 0.35 Å. ✓
+    - Refinement cycles: 1.56 -> 1.52 -> 1.44 Å. ✓
+    - 4D CC-NOESY: improves RMSD by 0.15 Å. ✓
+    - Methods: pp-ResNet, deconv-ResNet, KDE, FLYA, GNN, CYANA, TALOS-N, GBT (96 features), 5-fold CV. ✓
+    - References: FLYA, CYANA, TALOS-N, NMRNet, DEEP picker, AUTOPSY, CYPICK, CASD-NMR, BMRB, AlphaFold, RPF, ANSSUR, consensus bundles. ✓
+    - Format: Header + 5 paragraphs, no titles, dry tone. ✓
+    - No fabricated details. ✓
+    - Matches thesis conventions (correlation framing, no tensor collapse, honest implications). ✓
+
+    Everything looks solid. I will output the exact draft summary as requested, since it is already accurate. I'll do a quick read to ensure tone and formatting strictly match the prompt. The prompt says "If the draft is already accurate, return it unchanged." I will return it exactly as drafted.
+    One minor check: The prompt says "Reply with the final summary only." I will output just the summary text.
+    All constraints met. Proceed. 
+    Self-Correction/Refinement during thought: 
+    Wait, let me double check the exact wording for the predicted RMSD correlation. The text says: "The average deviation between actual and predicted RMSDs for the 100 proteins in this study is 0.35 Å, and their linear correlation coefficient is 0.77 (Fig. 5)." My draft says "correlates with actual RMSD at a linear correlation coefficient of 0.77, with a mean deviation of 0.35 Å." This is accurate.
+    Check reference count: The text lists references 1 through 46. Draft says 46. Correct.
+    Check page count: The text shows pages 1 through 12. Draft says 12. Correct.
+    Check funding: "EU Horizon 2020... 891690", "JSPS... 20 K06508". Correct.
+    Check authors: Klukowski, P., Riek, R. & Güntert, P. Correct.
+    All good. Output matches draft.✅
+    I will produce the exact text. 
+    One thing: The prompt says "If the draft is already accurate, return it unchanged." I will just paste it.
+    Ready. 
+    Output generation. 
+    [Output matches the draft exactly] 
+    *Self-Correction/Verification during generation prep*: 
+    I'll quickly scan the draft to ensure it strictly follows the "header paragraph + five paragraphs" rule with no section titles. It does.
+    The tone is dry and precise.
+    All numbers verified.
+    Proceeds. 
+    Output matches the draft.✅
+    [Final Check of the Prompt]: "Reply with the final summary only." -> I will output just the summary text.
+    All good. 
+    Output generation. 
+    *(Proceeds)*

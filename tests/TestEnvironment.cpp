@@ -19,6 +19,9 @@ std::string TestEnvironment::consolidated_;
 std::string TestEnvironment::fleet_data_;
 std::string TestEnvironment::ff14sb_params_;
 std::string TestEnvironment::baseline_features_;
+std::string TestEnvironment::fleet_amber_;
+std::string TestEnvironment::fleet_amber_1p9j_5801_subpath_;
+std::string TestEnvironment::fleet_amber_1z9b_6577_subpath_;
 bool TestEnvironment::loaded_ = false;
 
 
@@ -73,6 +76,11 @@ void TestEnvironment::Load() {
             else if (key == "fleet_data")      fleet_data_ = val;
             else if (key == "ff14sb_params")   ff14sb_params_ = val;
             else if (key == "baseline_features") baseline_features_ = val;
+            else if (key == "fleet_amber")     fleet_amber_ = val;
+            else if (key == "fleet_amber_1p9j_5801_subpath")
+                fleet_amber_1p9j_5801_subpath_ = val;
+            else if (key == "fleet_amber_1z9b_6577_subpath")
+                fleet_amber_1z9b_6577_subpath_ = val;
         }
         OperationLog::Info("TestEnvironment::Load", "read " + toml_path);
     } else {
@@ -96,7 +104,10 @@ void TestEnvironment::Load() {
         " consolidated=" + status(consolidated_) +
         " fleet=" + status(fleet_data_) +
         " ff14sb=" + status(ff14sb_params_) +
-        " baseline=" + status(baseline_features_));
+        " baseline=" + status(baseline_features_) +
+        " fleet_amber=" + status(fleet_amber_) +
+        " fleet_amber_1p9j_subpath=" + status(fleet_amber_1p9j_5801_subpath_) +
+        " fleet_amber_1z9b_subpath=" + status(fleet_amber_1z9b_6577_subpath_));
 }
 
 
@@ -108,6 +119,27 @@ const std::string& TestEnvironment::Consolidated()    { RequireLoaded(); return 
 const std::string& TestEnvironment::FleetData()       { RequireLoaded(); return fleet_data_; }
 const std::string& TestEnvironment::Ff14sbParams()    { RequireLoaded(); return ff14sb_params_; }
 const std::string& TestEnvironment::BaselineFeatures() { RequireLoaded(); return baseline_features_; }
+const std::string& TestEnvironment::FleetAmberData()  { RequireLoaded(); return fleet_amber_; }
+
+
+AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
+        const std::string& protein_id) {
+    RequireLoaded();
+    AmberTrajectoryFixture fix;
+    fix.protein_id = protein_id;
+    if (fleet_amber_.empty()) return fix;
+
+    const std::string* subpath = nullptr;
+    if (protein_id == "1P9J_5801")      subpath = &fleet_amber_1p9j_5801_subpath_;
+    else if (protein_id == "1Z9B_6577") subpath = &fleet_amber_1z9b_6577_subpath_;
+    if (!subpath || subpath->empty()) return fix;
+
+    const std::string base = fleet_amber_ + "/" + *subpath;
+    fix.tpr_path = base + ".tpr";
+    fix.xtc_path = base + ".xtc";
+    fix.edr_path = base + ".edr";
+    return fix;
+}
 
 }  // namespace test
 }  // namespace nmr

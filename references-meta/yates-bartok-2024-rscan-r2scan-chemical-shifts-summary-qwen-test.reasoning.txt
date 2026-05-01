@@ -1,0 +1,246 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header paragraph: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - Five paragraphs, no section titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, non-observations)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (widely/honestly considered, no stretching)
+        - Length: 4-6 pages → 200-300 words; 6-12 pages → 300-450; 10+ dense review → 450-500. This paper is 11 pages (192-202), so target ~300-450 words for the body.
+        - Conventions: Kernel-vs-DFT comparisons framed as correlation (r², captures signal). Default vocabulary: "correlate", "captures the signal", "r² of...". Do not collapse tensor to scalar unless source does. Per-element complexity is thesis substance, but this paper doesn't discuss it, so just note if relevant or stay silent.
+        - Avoid: Inventing methodology, manufacturing thesis connections, excited/evaluative language, editorialising.
+
+2.  **Extract Paper Details:**
+    - **Authors:** Jonathan R. Yates, Albert P. Bartók
+    - **Year:** 2024 (Received July 2024, Accepted July 2024, Published July 2024, Journal issue 2025)
+    - **Title:** Accurate predictions of chemical shifts with the rSCAN and r2SCAN mGGA exchange–correlation functionals
+    - **Journal:** Faraday Discussions, 2025, 255, 192–202
+    - **DOI:** 10.1039/d4fd00142g
+    - **Pages:** 11 (192-202)
+    - **References:** 28
+    - **Funding/Credits:** CCP-NC, UKCP Consortium, CASTEP-USER grant. EPSRC grants EP/M022501/1, EP/P022561/1, EP/W030438/1. HPCMidlands+ (EP/T022108/1). Computational resources from Warwick and EPSRC.
+    - **Stance:** Benchmarking/calibration study. Compares DFT-predicted magnetic shieldings (using rSCAN/r2SCAN) to experimental chemical shifts for halide/oxide inorganic compounds.
+    - **Methods:** GIPAW approach in CASTEP v25. Ultrasoft pseudopotentials generated with RSCAN (due to r2SCAN instabilities). 800 eV cutoff, fine-grid, 0.03 Å⁻¹ k-point spacing. Full geometry optimization. Dataset: same as ref 16 (oxide and halide compounds from ICSD). Conversion: δ = σ_ref - σ. Reference shielding obtained by linear fit to experiment.
+    - **Findings:**
+        - PBE slopes overestimated: ¹⁹F (-1.146), ¹⁷O (-1.135), ³⁵/³⁷Cl (-1.092), ⁷⁹/⁸¹Br (-1.147).
+        - rSCAN/r2SCAN slopes closer to -1: Br slopes still > -1 (-1.074 rSCAN, -1.063 r2SCAN).
+        - RMSEs (Table 1, using gradient -1 fit): PBE ~17.5 (F), 35.9 (O), 18.9 (Cl), 61.6 (Br). rSCAN ~11.7 (F), 18.2 (O), 9.2 (Cl), 27.0 (Br). r2SCAN similar to rSCAN. RMSEs roughly half PBE.
+        - Ca compounds (CaF, CaO, CaCl₂, CaBr₂) show largest errors. SCAN family doesn't fix unoccupied Ca d-orbital issue. A 1.25 eV shift in Ca d-levels in pseudopotential improves agreement, reducing RMSEs significantly (e.g., O RMSE drops to 10.5).
+        - Computational cost: rSCAN ~2x PBE for small cell (MgF₂, 6 atoms), ~1.25x for large cell (GeSe, 256 atoms). mGGA potential application takes ~4x operations of GGA, but FFT/pseudopotential dominate for large systems.
+    - **Relations to Literature:** Builds on Zheng et al. (9), Griffin et al. (10), Sadoc (11, 13), Laskowski & Blaha (14, 16), Profeta et al. (12), Bartók & Yates (17), Sun et al. SCAN (18), Chen et al. (19), Remsing et al. (20), Gautam & Carter (21), Bartók & Yates rSCAN (22, 24), Furness et al. r2SCAN (25), Pickard & Mauri (26), Yates et al. (27), Harris et al. (28). Reviews by Charpentier (3), Bonhomme et al. (4).
+    - **Implications for Thesis:** The paper benchmarks DFT functionals for NMR shielding prediction. It establishes that mGGAs (rSCAN/r2SCAN) improve the correlation (slope closer to -1) and reduce RMSE compared to PBE, particularly for halides/oxides. It highlights a systematic error for Ca compounds related to unoccupied d-orbitals, correctable via pseudopotential adjustment. For the thesis, this supports the use of higher-rung DFT functionals for calibration data generation, but notes that functional choice affects the slope of the shielding-shift correlation. The tensor nature of the data is preserved in the GIPAW calculations, though the paper reports isotropic values and linear fits. The computational cost increase is modest for larger systems. The paper does not address kernel construction or T2 preservation directly, but provides a methodological reference for DFT shielding benchmarking and functional selection in solid-state NMR.
+
+3.  **Draft Construction (Mental Refinement - Paragraph by Paragraph):**
+    *Header:* Yates, J. R. and Bartók, A. P. (2024) Accurate predictions of chemical shifts with the rSCAN and r2SCAN mGGA exchange–correlation functionals. Faraday Discuss., 2025, 255, 192–202. DOI: 10.1039/d4fd00142g. 11 pages. 28 references. Funding: CCP-NC, UKCP Consortium, CASTEP-USER grant, EPSRC (EP/M022501/1, EP/P022561/1, EP/W030438/1), HPCMidlands+ (EP/T022108/1).
+    *Para 1 (Scope/Stance):* This is a benchmarking study evaluating the regularised meta-generalised gradient approximation (mGGA) functionals rSCAN and r2SCAN for predicting solid-state NMR magnetic shieldings. The authors compare DFT-calculated isotropic shieldings against experimental chemical shifts for a set of inorganic oxides and halides. The paper argues that moving from the widely used PBE GGA functional to these mGGAs yields slopes closer to the theoretically expected value of −1 and reduces root mean square deviations, thereby improving the reliability of spectrum assignments for complex inorganic materials.
+    *Para 2 (Methods):* Calculations employ the gauge-including projector-augmented wave (GIPAW) method within the CASTEP plane-wave pseudopotential code. Structures from the ICSD undergo full geometry optimisation and cell parameter relaxation. Ultrasoft pseudopotentials are generated using the RSCAN functional due to numerical instabilities in r2SCAN pseudopotential construction. A consistent 800 eV plane-wave cutoff, a fine grid four times denser than the basis set, and a 0.03 Å⁻¹ k-point spacing are applied. The conversion from shielding to chemical shift uses a linear reference fit. Computational cost is assessed by comparing wall-clock times for small (6-atom MgF₂) and large (256-atom GeSe) systems.
+    *Para 3 (Findings):* PBE consistently overestimates the slope of the shielding-shift correlation across nuclei: −1.146 for ¹⁹F, −1.135 for ¹⁷O, −1.092 for ³⁵/³⁷Cl, and −1.147 for ⁷⁹/⁸¹Br. rSCAN and r2SCAN bring these slopes closer to −1, with bromine remaining the most affected at −1.074 and −1.063 respectively. When fitted to a fixed gradient of −1, rSCAN and r2SCAN reduce RMSEs to approximately half those of PBE across fluorides, oxides, chlorides, and bromides. The largest residual errors occur for calcium compounds (CaF₂, CaO, CaCl₂, CaBr₂), where the SCAN family fails to adequately describe unoccupied Ca d-orbitals. Applying a 1.25 eV upward shift to the Ca d-levels in the pseudopotential significantly improves agreement, particularly for ¹⁷O. Computationally, rSCAN requires roughly twice the wall-clock time of PBE for small cells but only 1.25 times for large cells, as pseudopotential and FFT operations dominate the cost at scale.
+    *Para 4 (Relations):* The work extends prior observations of PBE slope deviations for halides and oxides reported by Zheng et al., Griffin et al., and Laskowski and Blaha. It builds on Sadoc’s identification of pseudopotential-dependent errors in fluorides and Profeta et al.’s earlier work on d-orbital corrections. The study positions rSCAN and r2SCAN as numerically stable alternatives to the original SCAN functional, referencing the constraint-satisfying design of Sun et al. and the regularisation strategy of Bartók and Yates. It also engages with the broader GIPAW methodology literature (Pickard and Mauri; Yates et al.) and functional benchmarking studies (Gautam and Carter; Chen et al.).
+    *Para 5 (Implications):* For the thesis, this paper provides a methodological reference for selecting exchange–correlation functionals when generating DFT calibration data for NMR parameters. The results indicate that mGGA functionals capture the shielding-shift correlation more accurately than PBE, reducing systematic slope deviations. The persistent error in calcium-containing systems highlights a functional-specific limitation that may require pseudopotential adjustment rather than functional replacement. While the paper reports isotropic values and linear correlations rather than full tensor components, it confirms that higher-rung functionals improve the signal captured in DFT shieldings. The modest computational overhead for larger systems supports their use in generating training data for kernel calibration, provided the dataset composition accounts for known functional biases.
+
+4.  **Check against Constraints:**
+    - Header: Citation, DOI, pages, refs, funding. ✓
+    - 5 paragraphs, no titles, flowing. ✓
+    - Para 1: Scope, stance, audience, argument. ✓
+    - Para 2: Methods/central results. ✓
+    - Para 3: Findings (magnitudes, observations). ✓
+    - Para 4: Relations to literature (named from bib). ✓
+    - Para 5: Implications for our work, honest, no stretch. ✓
+    - Length: ~380 words. Fits 6-12 page range (300-450). ✓
+    - Conventions: Uses "correlation", "captures the signal", "slope", "RMSE". Does not collapse tensor to scalar except where paper does (paper reports isotropic). Mentions T2 preservation? Paper doesn't, so I note it reports isotropic values, which is honest. I'll adjust wording slightly to align with thesis vocabulary where appropriate, but keep it grounded in the paper.
+    - Avoids: Invented methods, excited language, editorialising. ✓
+    - Specific numbers: slopes, RMSEs, cutoffs, k-point spacing, cost ratios, Ca shift. All quoted from text. ✓
+    - Check DOI: 10.1039/d4fd00142g. ✓
+    - Check authors/year: Yates & Bartók, 2024 (published 2025). ✓
+    - Check references: 28. ✓
+    - Check funding: CCP-NC, UKCP, CASTEP-USER, EPSRC grants, HPCMidlands+. ✓
+    - One minor point: The prompt says "Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding." I should ensure the implications paragraph acknowledges this context without forcing a connection. I'll state that the paper's focus on isotropic values and linear fits does not address tensor preservation, but the improved correlation supports using mGGAs for generating the DFT reference shieldings that will calibrate the kernel-to-shielding mapping.
+    - I will carefully count words and ensure tone is dry and precise.
+    - Let's draft it out carefully. 
+
+    Self-Correction/Refinement during drafting:
+    - Check paragraph 3 numbers: PBE slopes: F -1.146, O -1.135, Cl -1.092, Br -1.147. rSCAN/r2SCAN Br: -1.074, -1.063. RMSEs halved. Ca d-shift 1.25 eV. Cost: 2.0x for 6-atom, 1.25x for 256-atom. All match text.
+    - Check paragraph 4 names: Zheng et al. (9), Griffin et al. (10), Laskowski and Blaha (14), Sadoc (11), Profeta et al. (12), Sun et al. (18), Bartók and Yates (22, 24), Pickard and Mauri (26), Yates et al. (27), Gautam and Carter (21), Chen et al. (19). All match bibliography.
+    - Check paragraph 5: Explicitly ties to thesis context (kernel calibration, DFT reference generation, tensor vs isotropic reporting, computational cost for training data). Honest about limits.
+    - Word count: ~360. Fits perfectly.
+    - Format: Header paragraph, then 5 paragraphs. No section titles. Dry register.
+    - All constraints met. Proceed. 
+    - One detail: The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'". The paper doesn't report r² values explicitly, it reports slopes and RMSEs. I will note that the paper frames the improvement in terms of slope convergence to −1 and RMSE reduction, which aligns with the correlation framing. I'll adjust the implications to use the requested vocabulary where applicable, e.g., "the mGGA functionals capture the shielding-shift correlation more accurately..."
+    - I will ensure the summary strictly follows the structure.
+    - Ready. Output matches response. 
+    - Self-Correction/Verification during thought: 
+      - Check DOI format: 10.1039/d4fd00142g. Correct.
+      - Check page count: 192-202 is 11 pages. Correct.
+      - Check reference count: 28. Correct.
+      - Check funding: EPSRC grants listed. Correct.
+      - Check tone: Dry, precise. No "groundbreaking". 
+      - Check tensor convention: Paper uses isotropic values. I will note this explicitly to avoid collapsing tensor to scalar improperly. 
+      - All good. Output generation. 
+      - Structure:
+        Header
+        Para 1
+        Para 2
+        Para 3
+        Para 4
+        Para 5
+      - Matches exactly.✅
+      - Proceeds. 
+      - Output generation. 
+      - [Output Generation] -> *See response.* 
+      - Self-Correction/Note during generation prep: I need to make sure the header paragraph includes all requested metadata in a single block. Then exactly 5 paragraphs. I will count words to ensure it's in the 300-450 range for the body. 
+      - Body word count check: ~370. Perfect.
+      - All constraints satisfied. Output matches. 
+      - Proceeds. 
+      - [Done.] 
+      - *Output Generation* (matches the final response)
+      - "Yates, J. R. and Bartók, A. P. (2024) Accurate predictions of chemical shifts with the rSCAN and r2SCAN mGGA exchange–correlation functionals. Faraday Discuss., 2025, 255, 192–202. DOI: 10.1039/d4fd00142g. 11 pages. 28 references. Funding: Collaborative Computational Project for NMR Crystallography (CCP-NC), UKCP Consortium, CASTEP-USER grant, EPSRC (EP/M022501/1, EP/P022561/1, EP/W030438/1), and HPCMidlands+ (EP/T022108/1)."
+      - Para 1: This is a benchmarking study...
+      - Para 2: Calculations employ...
+      - Para 3: PBE consistently overestimates...
+      - Para 4: The work extends...
+      - Para 5: For the thesis...
+      - All matches. Output matches response.✅
+      - Final check of the prompt: "Rank-2 tensor (T2) preservation is the central novelty... Do not collapse a tensor to a scalar except where the source paper itself does." The paper reports isotropic values. I will explicitly state this to maintain tensor integrity in the summary. "While the paper reports isotropic values and linear fits rather than full tensor components..." This satisfies the constraint.
+      - "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I will adjust phrasing in para 3/5 to use "correlate" and "captures the signal" where appropriate, noting the paper uses slope/RMSE as proxies for correlation quality.
+      - All set. Output matches. 
+      - [Proceeds]
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy in science, numbers, methodology, and names.
+    - **Focus Areas:** Statistics (numbers, RMSEs, dataset sizes, etc.), Methodology (procedures, tools, fitting, etc.), Names (authors, years, works, chemical species).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the same format. Only adjust where science requires it. Reply with final summary only.
+    - **Context:** The summary is for an NMR shielding-tensor PhD thesis focusing on geometric kernels, rank-2 tensor preservation, and calibration against DFT. The summary must be dry, precise, and avoid fabrication.
+
+2.  **Cross-Check Draft vs. Paper Text:**
+
+    *Header Paragraph:*
+    - Draft: Yates, J. R. and Bartók, A. P. (2024) Accurate predictions of chemical shifts with the rSCAN and r2SCAN mGGA exchange–correlation functionals. Faraday Discuss., 2025, 255, 192–202. DOI: 10.1039/d4fd00142g. 11 pages. 28 references. Funding: ...
+    - Paper: Authors: Jonathan R. Yates and Albert P. Bartók. Year: 2024 (Received/Accepted 2024, Published 25 July 2024). Journal: Faraday Discuss., 2025, 255, 192. Pages: 192-202 (11 pages). References: 28. Funding: CCP-NC, UKCP, CASTEP-USER, EPSRC (EP/M022501/1, EP/P022561/1, EP/W030438/1), HPCMidlands+ (EP/T022108/1).
+    - Check: Matches.
+
+    *Paragraph 1 (Scope/Stance):*
+    - Draft: Benchmarking study evaluating rSCAN and r2SCAN for predicting solid-state NMR magnetic shieldings. Compares DFT-calculated isotropic shieldings against experimental chemical shifts for a curated set of inorganic oxides and halides. Central argument: replacing PBE with mGGAs yields slopes closer to -1 and reduces RMSEs. Positioned as methodological calibration note.
+    - Paper: "We benchmark the rSCAN and r2SCAN exchange–correlation functionals by comparing the Nuclear Magnetic Resonance (NMR) magnetic shieldings predicted by Density Functional Theory (DFT) to experimentally observed chemical shifts of halide and oxide inorganic compounds." "Signiﬁcant improvement in accuracy is achieved compared to the Generalised Gradient Approximation (GGA) at a marginally higher computational cost."
+    - Check: Matches.
+
+    *Paragraph 2 (Methods):*
+    - Draft: GIPAW in CASTEP. ICSD structures, full geometry optimisation. Ultrasoft pseudopotentials generated using RSCAN. 800 eV cutoff, fine grid 4x denser, 0.03 Å⁻¹ k-point spacing. Conversion uses linear reference fit. Computational cost assessed for 6-atom MgF₂ and 256-atom GeSe.
+    - Paper: "We use the same set of oxide and halide compounds as ref. 16." "starting structures... taken from the ICSD." "full geometry optimisation... including atomic positions and cell parameters." "GIPAW approach." "pre-release copy of version 25 of the CASTEP plane-wave pseudopotential code." "ultrasoft pseudopotentials, 800 eV planewave cut-oﬀ energy, a ﬁne-grid, four times more dense than that of the plane-wave basis... 0.03 Å−1 minimum k-point spacing." "pseudopotentials generated with RSCAN, due to minor instabilities observed in the r2SCAN pseudopotential generation". "For a 6 atom cell of MgF2... time for rSCAN was 2.0 times a PBE... For a 256 atom cell of GeSe... time for rSCAN was 1.25 times a PBE".
+    - Check: Matches. Note: The paper says "four times more dense than that of the plane-wave basis" for the fine-grid. Draft says "four times denser than the basis set". Accurate.
+
+    *Paragraph 3 (Findings):*
+    - Draft: PBE slopes: -1.146 (F), -1.135 (O), -1.092 (Cl), -1.147 (Br). rSCAN/r2SCAN bring slopes closer to -1. Br remains -1.074/-1.063. RMSEs halved when fitted to fixed gradient -1. Largest errors for Ca compounds. 1.25 eV Ca d-level shift improves agreement. rSCAN ~2x PBE time for small cells, 1.25x for large.
+    - Paper: Fig 2: PBE slope -1.146 for F. Fig 3: PBE slope -1.135 for O. Fig 4: PBE slope -1.092 for Cl. Fig 5: PBE slope -1.147 for Br. rSCAN/r2SCAN slopes for Br: -1.074 and -1.063. "The RMSEs reported in Table 1 are larger than the deviations given in the ﬁgures as the latter allow for a slope which deviates from the ideal −1. The rSCAN and r2SCAN functionals give RMSEs which are approximately half the size of the PBE errors." Table 1 shows RMS errors: Fluorides PBE 17.5, rSCAN 11.7, r2SCAN 10.6. Oxides PBE 35.9, rSCAN 18.2, r2SCAN ~? (Table shows 18.2 for rSCAN, r2SCAN not explicitly listed in RMS row but text says ~half). Chlorides PBE 18.9, rSCAN 9.2, r2SCAN 9.0. Bromides PBE 61.6, rSCAN 27.0, r2SCAN 25.4. "The largest errors are for the Ca compounds CaF, CaO, CaCl2, CaBr2." (Note: Paper says CaF, but Table 1 shows CaF2. I'll stick to Ca compounds or CaF2/CaO/CaCl2/CaBr2 as per text/table). "a smaller shiﬂ of 1.25 eV produces magnetic shieldings for all four compounds that are in signiﬁcantly closer agreement with experiment." "time for rSCAN was 2.0 times a PBE calculation... For a 256 atom cell of GeSe... 1.25 times".
+    - Check: Matches. I should verify the exact RMSE values if mentioned, but the draft says "approximately half", which matches the text. I'll keep it precise but aligned with the text. The draft says "When fitted to a fixed gradient of −1, rSCAN and r2SCAN reduce RMSEs to approximately half those of PBE across fluorides, oxides, chlorides, and bromides." This is accurate to the text. I will adjust slightly to match the exact phrasing if needed, but it's fine.
+
+    *Paragraph 4 (Relations):*
+    - Draft: Extends Zheng et al., Griffin et al., Laskowski and Blaha. Builds on Sadoc, Profeta et al. Positions rSCAN/r2SCAN as stable alternatives to SCAN, referencing Sun et al. and Bartók and Yates. Engages with GIPAW literature (Pickard and Mauri; Yates et al.) and functional benchmarking (Gautam and Carter; Chen et al.).
+    - Paper: References: 9 Zheng et al., 10 Griffin et al., 11 Sadoc et al., 12 Profeta et al., 14 Laskowski and Blaha, 16 Laskowski et al., 17 Bartók and Yates, 18 Sun et al. (SCAN), 19 Chen et al., 20 Remsing et al., 21 Gautam and Carter, 22/24 Bartók and Yates (rSCAN), 25 Furness et al. (r2SCAN), 26/27 Pickard/Mauri/Yates (GIPAW).
+    - Check: Matches. The draft accurately reflects the bibliography.
+
+    *Paragraph 5 (Implications):*
+    - Draft: Provides methodological reference for selecting functionals for DFT calibration data. mGGAs capture shielding-shift correlation more accurately than PBE, reducing slope deviations and RMSEs. Persistent error in Ca systems highlights functional-specific limitation requiring pseudopotential adjustment. Paper reports isotropic values and linear fits, not full tensor components. Confirms higher-rung functionals improve signal captured in DFT shieldings. Modest computational overhead supports use for training data. Does not address rank-2 tensor preservation or kernel construction. Findings on functional-dependent correlation quality relevant to calibrating mapping from geometric kernels to shielding.
+    - Check: Matches thesis constraints. Dry, precise, acknowledges limits (isotropic only, no tensors). Aligns with "correlation" framing.
+
+3.  **Detailed Verification of Numbers & Names:**
+    - *Authors:* Jonathan R. Yates, Albert P. Bartók. (Correct)
+    - *Year/Journal:* 2024/2025, Faraday Discuss., 255, 192-202. (Correct)
+    - *DOI:* 10.1039/d4fd00142g. (Correct)
+    - *Pages/Refs:* 11 pages, 28 refs. (Correct)
+    - *Funding:* CCP-NC, UKCP, CASTEP-USER, EPSRC (EP/M022501/1, EP/P022561/1, EP/W030438/1), HPCMidlands+ (EP/T022108/1). (Correct)
+    - *Methodology:* GIPAW, CASTEP v25, ICSD structures, full relaxation, ultrasoft pseudopotentials (RSCAN generated), 800 eV cutoff, fine-grid 4x denser, 0.03 Å⁻¹ k-spacing. (Correct)
+    - *Slopes:* PBE: F -1.146, O -1.135, Cl -1.092, Br -1.147. rSCAN/r2SCAN Br: -1.074, -1.063. (Correct)
+    - *RMSEs:* "approximately half the size of the PBE errors". Table 1 shows specific values but text summarizes as ~half. I'll keep the summary's phrasing as it matches the text's explicit statement.
+    - *Ca compounds:* CaF2, CaO, CaCl2, CaBr2. (Text says "CaF, CaO, CaCl2, CaBr2" but Table 1 says CaF2. I will use Ca compounds or specify CaF2/CaO/CaCl2/CaBr2 to be precise. The text says "Ca compounds CaF, CaO, CaCl2, CaBr2." I'll stick to "calcium compounds (CaF2, CaO, CaCl2, CaBr2)" as per Table 1, or just "calcium compounds" to be safe. Actually, the text explicitly lists "CaF, CaO, CaCl2, CaBr2". I'll note "calcium compounds" generally.)
+    - *Ca d-shift:* 1.25 eV. (Correct)
+    - *Cost:* 6-atom MgF2: 2.0x PBE. 256-atom GeSe: 1.25x PBE. (Correct)
+    - *References cited:* Zheng et al. (2009), Griffin et al. (2010), Sadoc et al. (2011), Profeta et al. (2004), Laskowski & Blaha (2012), Sun et al. (2015), Bartók & Yates (2019), Pickard & Mauri (2001), Yates et al. (2007), Gautam & Carter (2018), Chen et al. (2017). All match bibliography.
+    - *Thesis framing:* Uses "correlation", avoids "match", notes isotropic focus, acknowledges no tensor/rank-2 discussion. Matches constraints.
+
+    One minor point: The draft says "When fitted to a fixed gradient of −1, rSCAN and r2SCAN reduce RMSEs to approximately half those of PBE across fluorides, oxides, chlorides, and bromides." The paper says: "The RMSEs reported in Table 1 are larger than the deviations given in the ﬁgures as the latter allow for a slope which deviates from the ideal −1. The rSCAN and r2SCAN functionals give RMSEs which are approximately half the size of the PBE errors." This is accurate.
+
+    Another point: The draft mentions "fine grid four times denser than the basis set". The paper says "four times more dense than that of the plane-wave basis". This is accurate.
+
+    Check names: "Zheng et al.", "Griffin et al.", "Laskowski and Blaha", "Sadoc", "Profeta et al.", "Sun et al.", "Bartók and Yates", "Pickard and Mauri", "Yates et al.", "Gautam and Carter", "Chen et al.". All correctly attributed.
+
+    Check methodology attribution: The paper explicitly states they used CASTEP v25, GIPAW, ICSD structures, full relaxation, ultrasoft pseudopotentials generated with RSCAN, 800 eV cutoff, 0.03 Å⁻¹ k-spacing. All correctly attributed.
+
+    Check statistics: Slopes: -1.146 (F), -1.135 (O), -1.092 (Cl), -1.147 (Br). rSCAN/r2SCAN Br: -1.074, -1.063. RMSE ~half. Ca d-shift: 1.25 eV. Cost: 2.0x (6-atom), 1.25x (256-atom). All match.
+
+    The draft looks solid. I will make one minor adjustment to ensure precise alignment with the text regarding the calcium compounds (the text says "CaF, CaO, CaCl2, CaBr2" but Table 1 says CaF2; I'll just say "calcium compounds" to avoid the typo in the source text, or note it as written). I'll stick to "calcium compounds (CaF2, CaO, CaCl2, CaBr2)" as it's clearer. Actually, I'll just say "calcium compounds" as the text does.
+
+    I will carefully review the draft against the prompt's constraints one last time.
+    - Header: citation, DOI, page count, ref count, funding. (Check)
+    - 5 paragraphs, no titles. (Check)
+    - Content matches scope, methods, findings, relations, implications. (Check)
+    - Dry, plain English. (Check)
+    - Correlation framing. (Check)
+    - No fabrication. (Check)
+    - Numbers verified. (Check)
+
+    One detail: The draft says "11 pages." The paper spans 192-202, which is 11 pages. Correct.
+    The draft says "28 references." The bibliography lists 28. Correct.
+    The draft says "pre-release copy of version 25 of the CASTEP plane-wave pseudopotential code." Correct.
+    The draft says "fine-grid, four times more dense than that of the plane-wave basis". Correct.
+    The draft says "0.03 Å⁻¹ minimum k-point spacing". Correct.
+    The draft says "RMSEs which are approximately half the size of the PBE errors". Correct.
+    The draft says "1.25 eV upward shift to the Ca d-levels". Correct.
+    The draft says "2.0 times a PBE calculation... 1.25 times a PBE calculation". Correct.
+
+    Everything aligns. I will output the revised summary (which will be nearly identical to the draft, with only minor precision tweaks if any, but I'll keep it as is since it's already accurate). I'll just ensure the formatting matches exactly.
+
+    One minor correction: The draft says "When fitted to a fixed gradient of −1, rSCAN and r2SCAN reduce RMSEs to approximately half those of PBE across fluorides, oxides, chlorides, and bromides." The paper actually says the RMSEs in Table 1 are calculated using a reference shielding obtained by fitting a line with gradient -1. So the RMSEs *are* the ones fitted to -1. The draft's phrasing is slightly ambiguous but essentially correct. I'll adjust it to: "When converted to chemical shifts using a reference shielding derived from a fixed gradient of −1, rSCAN and r2SCAN yield RMSEs approximately half those of PBE." This matches the text more precisely.
+
+    Also, check the Ca compound list: Text says "CaF, CaO, CaCl2, CaBr2". Table 1 says "CaF2". I will just say "calcium compounds" to be safe and accurate to the main text.
+
+    All other details are verified. I will produce the final summary. 
+    Structure:
+    Header paragraph
+    Para 1: Scope/Stance
+    Para 2: Methods
+    Para 3: Findings
+    Para 4: Relations
+    Para 5: Implications
+    All constraints met. Output matches request.✅
+    Proceed. 
+    Self-Correction/Refinement during thought: 
+    I notice the draft says "11 pages." The paper is 192-202, which is indeed 11 pages. 
+    I will double-check the funding names: "Collaborative Computational Project for NMR Crystallography (CCP-NC), the UKCP Consortium and the CASTEP-USER grant. All three sources of funding were provided by the Engineering and Physical Sciences Research Council (EPSRC) under grant numbers EP/M022501/1, EP/P022561/1 and EP/W030438/1, respectively. We acknowledge computational resources provided by Scientific Computing Research Technology Platform of the University of Warwick and the EPSRC-funded HPCMidlands+ consortium (Grant No. EP/T022108/1)." -> Matches draft.
+    I will ensure the tone is strictly dry and technical.
+    The draft is ready. I will output it exactly as refined. 
+    One thing: The prompt says "Reply with the final summary only." I will do exactly that.
+    All checks passed. Output matches. 
+    Proceeds. 
+    [Output Generation] -> *See response.* 
+    *(Self-Correction/Verification during drafting)*: 
+    Let's verify the exact wording for the RMSE part in the paper: "The RMSEs reported in Table 1 are larger than the deviations given in the figures as the latter allow for a slope which deviates from the ideal −1. The rSCAN and r2SCAN functionals give RMSEs which are approximately half the size of the PBE errors." 
+    My draft: "When converted to chemical shifts using a reference shielding derived from a fixed gradient of −1, rSCAN and r2SCAN yield RMSEs approximately half those of PBE." This is accurate.
+    Check slope values again: PBE: F -1.146, O -1.135, Cl -1.092, Br -1.147. rSCAN/r2SCAN Br: -1.074, -1.063. All match.
+    Check computational cost: 6-atom MgF2: 2.0x. 256-atom GeSe: 1.25x. All match.
+    Check methodology: GIPAW, CASTEP v25, ICSD, full relaxation, ultrasoft pseudopotentials (RSCAN generated), 800 eV, fine-grid 4x denser, 0.03 Å⁻¹ k-spacing. All match.
+    Check references: Zheng et al. (2009), Griffin et al. (2010), Sadoc et al. (2011), Profeta et al. (2004), Laskowski & Blaha (2012), Sun et al. (2015), Bartók & Yates (2019), Pickard & Mauri (2001), Yates et al. (2007), Gautam & Carter (2018), Chen et al. (2017). All match.
+    Everything is solid. Output matches request.✅
+    Proceeds. 
+    [Output Generation] -> *Proceeds.* 
+    *(Final Check of the Prompt)*: "Reply with the final summary only." -> I will output just the summary text.
+    All good. 
+    [Output] -> *See response.* 
+    *(Self-Correction/Note during thought)*: I should make sure the header paragraph exactly matches the requested format: "citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    I will format it precisely.
+    "Yates, J. R. and Bartók, A. P. (2024) Accurate predictions of chemical shifts with the rSCAN and r2SCAN mGGA exchange–correlation functionals. Faraday Discuss., 2025, 255, 192–202. DOI: 10.1039/d4fd00142g. 11 pages. 28 references. Funding: Collaborative Computational Project for NMR Crystallography (CCP-NC), UKCP Consortium, CASTEP-USER grant, EPSRC (EP/M022501/1, EP/P022561/1, EP/W030438/1), and HPCMidlands+ (EP/T022108/1)."
+    This matches.
+    Paragraphs 1-5 follow.
+    All constraints met. Output matches.✅
+    Proceeds. 
+    [Output Generation] -> *Proceeds.*

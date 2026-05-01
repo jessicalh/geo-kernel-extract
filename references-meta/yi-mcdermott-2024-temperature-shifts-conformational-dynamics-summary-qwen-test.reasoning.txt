@@ -1,0 +1,296 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, H-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - 5 paragraphs, no titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, what was not)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (widely, honestly, no stretching)
+        - Length: 4-6 pages → 200-300 words body; 6-12 pages → 300-450; 10+ dense → 450-500. This paper is 9 pages (2270-2278), so target ~300-450 words for the body.
+        - Conventions: Kernel-vs-DFT = correlation (r² captures signal). Per-element complexity not to be collapsed. Dry register. No invented methodology.
+    - **Paper Details from Input:**
+        - Title: Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics
+        - Authors: Xu Yi, Lichirui Zhang, Richard A. Friesner, Ann McDermott
+        - Journal: J. Phys. Chem. Lett. 2024, 15, 2270−2278
+        - DOI: 10.1021/acs.jpclett.3c02589
+        - Pages: 9 (2270-2278)
+        - References: 62
+        - Funding: NSF (MCB 1913885), NIH (1RM1GM145397-01)
+        - Stance: Perspective/Research paper (labeled Perspective in header, but reads like a research study with MD/QM/MM and experimental SSNMR comparison)
+        - Key Methods: 1000 ns MD simulation of DHFR:TMP (X-ray 2.5 Å), AF-QM/MM calculations on 20/100 snapshots, restricted minimization, comparison with room-temp solution NMR and 105 K DNP-enhanced SSNMR. Analysis of torsion angles (ψ, φ), H-bonds, side chain χ1. Time-scale analysis (100 ps MD).
+        - Key Findings: 
+            - Single conformation (X-ray) vs experimental: r=0.69 (15N), r=0.78 (13Cα)
+            - Averaged over 20 MD snapshots: r=0.73 (15N), r=0.94 (13Cα); RMSE 4.8 ppm (15N), 1.7 ppm (13Cα) vs 7.9, 3.6 ppm for single.
+            - 13C′: r=0.51, RMSE=2.3 ppm
+            - SSNMR at 105 K line widths match distribution widths of predicted shifts from MD snapshots.
+            - Ile60ψ varies ~60° on ps time scale, compensated by φi+1 (crankshaft motion, r=-0.89).
+            - 15N shifts vary up to 25 ppm across trajectory; Ile61N shifts vary up to 5 ppm for 5° range of I60ψ.
+            - H-bond angle θ strongly correlates with ψ; H-bond distance weakly correlates with shifts.
+            - Time scale: State switching ~0.1-0.9 ps.
+        - Relations: Builds on/deals with: De Dios et al. (1993), Oldfield (2002), Case (2020), Wang et al. (1991), Li et al. (2021), Kraus et al. (2020), Sergeyev et al. (2017), Bajaj et al. (2009), Su & Hong (2011), Gupta et al. (2019), Bayro et al. (2011), Reggie et al. (2011), Lopez Del Amo et al. (2013), Yi (2023 thesis), He & Merz (2009), Swails et al. (2015), Rogawski (2018 thesis), Sawaya & Kraut (1997), Fitzgerald et al. (2007), Go & Go (1976), Wasserman & Salemme (1990), García (1992), Karplus et al. (1977), Yi et al. (2023 bioRxiv), Pérez-Conesa et al. (2021), De Dios et al. (1993), Oldfield (2002), Case (2020), Wishart et al. (1991), Wang (2002), Wang & Jardetzky (2004), Le & Oldfield (1994), Robustelli et al. (2012), Han et al. (2011), Shen & Bax (2010), Sumowski et al. (2014), Chen et al. (2014), Luman et al. (2001), Wang & Markley (2009), Xu & Case (2002), Paramasivam et al. (2018), Takeda et al. (1999), Takegoshi et al. (1985), Xu & Havenith (2015), Henzler-Wildman et al. (2007), Mu et al. (2005), Gupta et al. (2016), Ravikumar & Srinivasan (2021), Grassein et al. (2020), Keedy et al. (2014), Le & Oldfield (1996), Williams & McDermott (1998), Déméné & Sugar (1999), Shen et al. (2018), Exner et al. (2012), Dracínský et al. (2013), Chandy et al. (2020), La Penna et al. (2016).
+        - Implications for thesis: The paper demonstrates that conformational averaging (ensemble sampling) significantly improves correlation between QM/MM predicted shifts and experimental values. It shows that backbone torsion angle fluctuations (ψ, φ) on ps timescales drive shift variations (up to 25 ppm), and that frozen distributions at low T match the width of predicted shift distributions. This supports the thesis's premise that geometric kernels must capture ensemble-averaged structural features rather than single static conformations. The correlation-based framing (r²/r) aligns with the thesis's kernel calibration approach. The paper does not explicitly model tensors or kernels, but its findings on ensemble dependence and torsion-angle sensitivity inform how geometric descriptors should be weighted or averaged. No direct tensor calibration is performed here, so implications are limited to ensemble sampling and structural sensitivity.
+
+2.  **Draft Construction - Paragraph by Paragraph (Mental Refinement):**
+    *Header:* Yi, X.; Zhang, L.; Friesner, R. A.; McDermott, A. E. Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics. J. Phys. Chem. Lett. 2024, 15, 2270−2278. DOI: 10.1021/acs.jpclett.3c02589. 9 pages. 62 references. Funded by NSF (MCB 1913885) and NIH (1RM1GM145397-01).
+    *Para 1 (Scope/Stance):* This Perspective and research study examines how protein conformational dynamics influence 15N and 13C chemical shifts in dihydrofolate reductase (DHFR) bound to trimethoprim. The authors compare automated fragmentation quantum mechanics/molecular mechanics (AF-QM/MM) predictions against room-temperature solution NMR and 105 K dynamic nuclear polarization-enhanced solid-state NMR (DNP-SSNMR) data. The central argument is that conformational averaging over molecular dynamics (MD) trajectories substantially improves the correlation between predicted and experimental isotropic shifts, while the breadth of predicted shift distributions matches the inhomogeneous line broadening observed in cryogenic spectra.
+    *Para 2 (Methods):* The authors performed a 1000 ns explicit-solvent MD simulation starting from a 2.5 Å X-ray structure of DHFR:TMP. From this trajectory, 20 snapshots spaced 50 ns apart were selected, energy-minimized with heavy-atom RMSD constraints (<0.3 Å), and processed with AF-QM/MM to compute 15N, 13Cα, and 13C′ isotropic shifts. A separate 100 ps segment sampled every 100 fs was analyzed for torsion angle dynamics. Experimental comparisons used solution-state NMR data and DNP-SSNMR spectra of selectively 13C,15N-labeled DHFR at 105 K. Correlation coefficients (r) and root-mean-square errors (RMSE) were calculated to quantify prediction accuracy against single-conformer X-ray structures versus ensemble-averaged MD snapshots.
+    *Para 3 (Findings):* Averaging QM/MM predictions over the 20-snapshot ensemble improved correlation with experimental solution shifts to r = 0.73 for 15N and r = 0.94 for 13Cα, reducing RMSE to 4.8 ppm and 1.7 ppm, respectively, compared to 7.9 ppm and 3.6 ppm for the single X-ray conformer. 13C′ predictions showed weaker agreement (r = 0.51, RMSE = 2.3 ppm). Predicted 15N shifts varied by up to 25 ppm across the trajectory. For Ile60-Ile61, the backbone torsion angle ψi−1 fluctuated by ~60° on picosecond timescales, anticorrelated with φi (r = −0.89), producing a crankshaft-like rocking of the amide plane. Ile61 15N isotropic shifts varied by up to 5 ppm over a 5° range of I60ψ. The distribution of predicted shifts matched the contour widths of 105 K SSNMR spectra. Hydrogen-bond angle θ correlated strongly with ψ, whereas distance showed weak correlation with shifts. State-switching residence times were 0.89 ± 0.18 ps and 0.23 ± 0.02 ps.
+    *Para 4 (Relations):* The work builds on prior QM/MM benchmarking by He and Merz (2009) and Swails et al. (2015), and extends conformational averaging studies by Exner et al. (2012) and Dracínský et al. (2013). It engages with empirical shift predictors like SHIFTX2 (Han et al., 2011) and SPARTA+ (Shen & Bax, 2010), noting their limitation to thermally averaged basins. The torsion-angle dependence aligns with Le and Oldfield (1994) and Wang and Jardetzky (2004), while the cryogenic line-broadening interpretation connects to Su and Hong (2011), Gupta et al. (2019), and Yi (2023). The authors also reference Polenova’s group (Kraus et al., 2020) for QM/MM tensor studies and Case (2020) for quantum chemical shift estimation in biomolecules.
+    *Para 5 (Implications for thesis):* The paper supports the thesis’s requirement that geometric kernels must capture ensemble-averaged structural signals rather than static coordinates. The demonstrated correlation improvements (r² of 0.53 for 15N and 0.88 for 13Cα when averaging is applied) indicate that kernel calibration should incorporate torsion-angle distributions and hydrogen-bond angular variations. The finding that ψ fluctuations drive 15N shift variations up to 25 ppm suggests that backbone torsion descriptors require sufficient effective dimensionality to represent conformational breadth. Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors, direct implications for tensor preservation are limited; however, the ensemble-sampling protocol and restricted minimization procedure provide a practical template for generating training distributions that preserve structural heterogeneity during kernel calibration.
+
+3.  **Check against Constraints:**
+    - Header: Authors, year, title, journal, volume, pages, DOI, page count, ref count, funding. ✓
+    - 5 paragraphs, no titles, flowing. ✓
+    - Para 1: Scope, stance, audience, argument. ✓
+    - Para 2: Methods/central results. ✓
+    - Para 3: Findings (magnitudes, observations). ✓
+    - Para 4: Relations to literature (named from bib). ✓
+    - Para 5: Implications for our work, honest, no stretch. ✓
+    - Length: ~380 words body. Fits 6-12 page range (300-450). ✓
+    - Conventions: Uses correlation framing (r, r² captures signal). Does not collapse tensors to scalars (notes isotropic shifts only). Dry register. No invented methodology. ✓
+    - Accuracy check: 
+        - r values: 0.73 (15N), 0.94 (13Cα), 0.51 (13C′). RMSE: 4.8, 1.7, 2.3. Single: 7.9, 3.6. ✓
+        - ψ variation: ~60°. φ anticorrelation: r=-0.89. ✓
+        - Shift variation: up to 25 ppm. Ile61N: 5 ppm for 5° ψ range. ✓
+        - Time scale: 0.89±0.18 ps, 0.23±0.02 ps. ✓
+        - References: Correctly cited from text. ✓
+        - Stance: Labeled Perspective in journal, but functions as research. I'll note it as a Perspective/research study. ✓
+        - Implications: Carefully limited to ensemble sampling and torsion sensitivity. Explicitly notes lack of tensor data. ✓
+    - One minor adjustment: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …"." I should adjust the wording in Para 3/5 to explicitly use "r²" where appropriate, or at least frame the correlation improvement in those terms. The paper uses r, but I can compute r² or just stick to r as reported, but frame it as capturing the signal. I'll adjust to use "r²" where it fits the thesis convention, or note that the paper reports r, which corresponds to r² of ~0.53 and 0.88. I'll keep it precise to the paper but use the requested framing language.
+    - Check per-element complexity: Not directly relevant here, but I'll avoid collapsing tensors.
+    - Check tone: Dry, precise, no evaluative language.
+    - All constraints met.
+
+    Draft generation matches the refined version. I will produce it now. 
+    Self-Correction/Verification during thought:
+    - The prompt says: "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …"."
+    - I will adjust Para 3/5 to explicitly use "r²" when discussing the correlation improvements, noting that the paper reports r, which translates to r² values that capture the signal. Actually, the paper only reports r. I will stick to r but frame it as capturing the signal, and mention r² where the thesis convention applies, or just use the paper's r values but phrase it as "captures the signal with r = ...". The prompt says "Default vocabulary: correlate, captures the signal, r² of...". I'll adapt to use r² where appropriate, or note r² of 0.53 and 0.88 for the averaged case.
+    - I'll ensure the tone is strictly dry.
+    - I'll verify the reference count: The text lists references (1) through (62). So 62 references.
+    - Page count: 2270-2278 is 9 pages.
+    - Funding: NSF (MCB 1913885) and NIH (1RM1GM145397-01).
+    - All good. Proceed. 
+    Output matches the refined draft.✅
+    Structure:
+    Header paragraph.
+    Para 1: Scope/stance.
+    Para 2: Methods.
+    Para 3: Findings.
+    Para 4: Relations.
+    Para 5: Implications.
+    Word count: ~360. Fits constraints.
+    Language: Dry, precise, uses requested framing.
+    Ready. 
+    Output generation. 
+    [Output Generation] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+The user wants me to carefully review the draft summary against the provided paper text.
+I need to check:
+1. Statistics: r, r², RMSE, dataset sizes, distances, intensity factors, coefficients, page/ref counts.
+2. Methodology: procedures, tools, functionals, basis sets, force fields, fitting, error estimation, dataset construction.
+3. Names: authors, years, works, residues, molecules, etc.
+
+Let's go through the draft paragraph by paragraph and verify against the text.
+
+Header:
+Yi, X.; Zhang, L.; Friesner, R. A.; McDermott, A. E. Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics. J. Phys. Chem. Lett. 2024, 15, 2270−2278. DOI: 10.1021/acs.jpclett.3c02589. 9 pages. 62 references. Funded by NSF (MCB 1913885) and NIH (1RM1GM145397-01).
+Check:
+Authors: Xu Yi, Lichirui Zhang, Richard A. Friesner, Ann McDermott. Correct.
+Title: Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics. Correct.
+Journal: J. Phys. Chem. Lett. 2024, 15, 2270−2278. Correct.
+DOI: 10.1021/acs.jpclett.3c02589. Correct.
+Pages: 2270-2278 is 9 pages. Correct.
+References: The text lists refs 1-62. Correct.
+Funding: NSF (MCB 1913885) and NIH (1RM1GM145397-01). Correct.
+
+Paragraph 1:
+This Perspective and research study examines how protein conformational dynamics influence 15N and 13C chemical shifts in dihydrofolate reductase (DHFR) bound to trimethoprim. The authors compare automated fragmentation quantum mechanics/molecular mechanics (AF-QM/MM) predictions against room-temperature solution NMR and 105 K dynamic nuclear polarization-enhanced solid-state NMR (DNP-SSNMR) data. The central argument is that conformational averaging over molecular dynamics (MD) trajectories substantially improves the correlation between predicted and experimental isotropic shifts, while the breadth of predicted shift distributions captures the inhomogeneous line broadening observed in cryogenic spectra.
+Check:
+Stance: Perspective. Correct.
+Subject: DHFR bound to TMP. Correct.
+Methods: AF-QM/MM vs solution NMR and 105 K DNP-SSNMR. Correct.
+Argument: averaging improves correlation, breadth matches cryogenic broadening. Correct.
+
+Paragraph 2:
+The authors performed a 1000 ns explicit-solvent MD simulation starting from a 2.5 Å X-ray structure of DHFR:TMP. From this trajectory, 20 snapshots spaced 50 ns apart were selected, energy-minimized with heavy-atom RMSD constraints (<0.3 Å), and processed with AF-QM/MM to compute 15N, 13Cα, and 13C′ isotropic shifts. A separate 100 ps segment sampled every 100 fs was analyzed for torsion angle dynamics. Experimental comparisons used solution-state NMR data and DNP-SSNMR spectra of selectively 13C,15N-labeled DHFR at 105 K. Correlation coefficients and root-mean-square errors were calculated to quantify prediction accuracy against single-conformer X-ray structures versus ensemble-averaged MD snapshots.
+Check:
+MD: 1000 ns explicit-solvent. Correct.
+Start: 2.5 Å X-ray structure of DHFR:TMP. Correct.
+Snapshots: 20 snapshots, 50 ns apart. Correct.
+Minimization: restricted minimization, heavy atom RMSD < 0.3 Å. Correct.
+AF-QM/MM for 15N, 13Cα, 13C′. Correct.
+100 ps segment every 100 fs for torsion dynamics. Correct.
+Exp: solution-state NMR and DNP-SSNMR at 105 K. Correct.
+Metrics: r and RMSE. Correct.
+
+Paragraph 3:
+Averaging QM/MM predictions over the 20-snapshot ensemble improved correlation with experimental solution shifts to r = 0.73 for 15N and r = 0.94 for 13Cα, reducing RMSE to 4.8 ppm and 1.7 ppm, respectively, compared to 7.9 ppm and 3.6 ppm for the single X-ray conformer. 13C′ predictions showed weaker agreement (r = 0.51, RMSE = 2.3 ppm). Predicted 15N shifts varied by up to 25 ppm across the trajectory. For Ile60-Ile61, the backbone torsion angle ψi−1 fluctuated by ~60° on picosecond timescales, anticorrelated with φi (r = −0.89), producing a crankshaft-like rocking of the amide plane. Ile61 15N isotropic shifts varied by up to 5 ppm over a 5° range of I60ψ. The distribution of predicted shifts matched the contour widths of 105 K SSNMR spectra. Hydrogen-bond angle θ correlated strongly with ψ, whereas distance showed weak correlation with shifts. State-switching residence times were 0.89 ± 0.18 ps and 0.23 ± 0.02 ps.
+Check:
+r=0.73 (15N), r=0.94 (13Cα). RMSE 4.8, 1.7 ppm. Single: 7.9, 3.6 ppm. Correct.
+13C′: r=0.51, RMSE=2.3 ppm. Correct.
+15N variation: up to 25 ppm. Correct.
+Ile60-Ile61: ψi-1 fluctuates ~60°. Wait, text says "The backbone torsion angle ψi−1 varies over 60° on the picosecond time scale, compensated by φi." in abstract. In section 2.2: "Although ψ and φ both vary by 50° in one amide, for example, Ile60-Ile61 (Figure 2c)". I'll stick to ~60° or 50°. The abstract says 60°. I'll use ~60°.
+Anticorrelated with φi (r = -0.89). Text: "The correlation coefficient is −0.89." Correct.
+Ile61 15N shifts varied up to 5 ppm with a 5° range of I60ψ. Correct.
+Distribution matched contour widths. Correct.
+H-bond angle θ correlated strongly with ψ, distance weak. Correct.
+Residence times: 0.89 ± 0.18 ps and 0.23 ± 0.02 ps. Correct.
+
+Paragraph 4:
+The work builds on prior QM/MM benchmarking by He and Merz (2009) and Swails et al. (2015), and extends conformational averaging studies by Exner et al. (2012) and Dracínský et al. (2013). It engages with empirical shift predictors like SHIFTX2 (Han et al., 2011) and SPARTA+ (Shen & Bax, 2010), noting their limitation to thermally averaged basins. The torsion-angle dependence aligns with Le and Oldfield (1994) and Wang and Jardetzky (2004), while the cryogenic line-broadening interpretation connects to Su and Hong (2011), Gupta et al. (2019), and Yi (2023). The authors also reference Polenova’s group (Kraus et al., 2020) for QM/MM tensor studies and Case (2020) for quantum chemical shift estimation in biomolecules.
+Check:
+He & Merz 2009 (ref 20). Swails et al. 2015 (ref 21). Exner et al. 2012 (ref 52). Dracínský et al. 2013 (ref 53). SHIFTX2 (Han et al. 2011, ref 47). SPARTA+ (Shen & Bax 2010, ref 48). Le & Oldfield 1994 (ref 7). Wang & Jardetzky 2004 (ref 6). Su & Hong 2011 (ref 14). Gupta et al. 2019 (ref 15). Yi 2023 (ref 19). Kraus et al. 2020 (ref 11). Case 2020 (ref 3). All match references in text. Correct.
+
+Paragraph 5:
+The paper supports the thesis requirement that geometric kernels must capture ensemble-averaged structural signals rather than static coordinates. The correlation improvements (r² of 0.53 for 15N and 0.88 for 13Cα when averaging is applied) indicate that kernel calibration should incorporate torsion-angle distributions and hydrogen-bond angular variations. The finding that ψ fluctuations drive 15N shift variations up to 25 ppm suggests that backbone torsion descriptors require sufficient effective dimensionality to represent conformational breadth. Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors, direct implications for tensor preservation are limited; however, the ensemble-sampling protocol and restricted minimization procedure provide a practical template for generating training distributions that preserve structural heterogeneity during kernel calibration.
+Check:
+r² values: The text gives r values. r=0.73 -> r²=0.5329. r=0.94 -> r²=0.8836. I calculated them. The prompt says "r and r² values". I will just state the r values as given, or note r² if needed. The prompt says "correlation: the r² shows the signal was captured." I'll stick to r values as reported, or convert to r² carefully. Actually, the paper only reports r. I will report r.
+"r² of 0.53 for 15N and 0.88 for 13Cα" - I'll change to r = 0.73 and r = 0.94 to match the paper exactly, as requested.
+"Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors..." - The paper mentions 15N and 13C isotropic shifts. It does mention shift tensors in intro/discussion (e.g., δ11, δ22), but calculations are isotropic. Correct.
+"ensemble-sampling protocol and restricted minimization procedure provide a practical template..." - Matches text.
+
+Let's double check the exact wording for r values in the text:
+"correlation coefficient comparing experimental solution 15N shifts to single conformer (X-ray crystal structure) predicted shifts is 0.69 and for 13Cα is 0.78."
+"predicted average chemical shift with a better correlation to experimental solution-state NMR shifts, 0.73 for 15N and 0.94 for 13Cα."
+"RMSE ... was 4.8 ppm (15N) and 1.7 ppm (13Cα), respectively, when averaging was included, vs 7.9 and 3.6 ppm"
+"13C′ QM/MM calculation results ... (correlation coefficient r = 0.51, RMSE = 2.3 ppm)."
+All match.
+
+Check methodology details:
+"automated fragmentation (AF) procedure, which was previously benchmarked with 20 proteins." (ref 21)
+"1000 ns MD simulation was performed based on a solved DHFR:TMP X-ray crystal structure."
+"locations and orientations of water molecules from the MD simulation were imported to AF-QM/MM."
+"restricted minimization before QM/MM; without minimization, the predictions are less similar..."
+"heavy atom RMSD < 0.3 Å"
+All match.
+
+Check names:
+Ile60-Ile61. Correct.
+Thr73. Correct.
+Met42. Correct.
+Trp74, Val72. Correct.
+Lys83 (mouse protein kinase A ref 41). Correct.
+Ala7 peptide (ref 24). Correct.
+GB3 (ref 50). Correct.
+Galectin-3C (ref 51). Correct.
+KcsA (ref 10). Correct.
+Amyloid-β (ref 18). Correct.
+Sec translocon (ref 17). Correct.
+All match.
+
+One minor point: The prompt says "r and r² values". I will just report r as given, since r² isn't explicitly in the text. I'll adjust paragraph 5 to say "correlation improvements (r = 0.73 for 15N and r = 0.94 for 13Cα when averaging is applied)".
+
+Let's verify the "r²" phrasing in the prompt: "The thesis's Stage 1 R² = 0.818 is a correlation claim, not an accuracy claim." The prompt says "r and r² values". I will stick to r.
+
+Check paragraph 3: "backbone torsion angle ψi−1 fluctuated by ~60° on picosecond timescales, anticorrelated with φi (r = −0.89)". Text says: "The backbone torsion angle ψi−1 varies over 60° on the picosecond time scale, compensated by φi." and "The correlation coefficient is −0.89." for ψi and φi+1. Wait, the text says "strong correlation between ψi and φi+1 is observed also for several other solvent inaccessible residues...". And Figure 2c caption: "There is strong correlation between Ile61φ and Ile60ψ. Each scatter point represents one snapshot... The correlation coefficient is −0.89." So it's ψi and φi+1. I'll adjust to "anticorrelated with φi+1 (r = −0.89)".
+
+Check paragraph 3: "State-switching residence times were 0.89 ± 0.18 ps and 0.23 ± 0.02 ps." Text: "For the first 50 ps trajectory, the residence time is 0.89 ± 0.18 ps for State 0 and 0.34 ± 0.05 ps for State 1. After 50 ps, the residence time is 0.23 ± 0.02 ps for State 0." I missed State 1's second residence time. I'll just say "State-switching residence times were 0.89 ± 0.18 ps, 0.34 ± 0.05 ps, and 0.23 ± 0.02 ps." Or just keep it simple. The draft says 0.89 and 0.23. I'll add 0.34 to be precise.
+
+Check paragraph 5: "Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors..." The paper does discuss shift tensors (δ11, δ22) in the context of hydrogen bonding effects on anisotropy, but the calculations performed are isotropic. This is accurate.
+
+Let's do a strict pass over the draft to ensure no fabricated details.
+"automated fragmentation quantum mechanics/molecular mechanics (AF-QM/MM)" - correct.
+"1000 ns explicit-solvent MD simulation" - correct.
+"2.5 Å X-ray structure" - correct.
+"20 snapshots spaced 50 ns apart" - correct.
+"heavy-atom RMSD constraints (<0.3 Å)" - correct.
+"100 ps segment sampled every 100 fs" - correct.
+"r = 0.73 for 15N and r = 0.94 for 13Cα" - correct.
+"RMSE to 4.8 ppm and 1.7 ppm" - correct.
+"single X-ray conformer ... 7.9 ppm and 3.6 ppm" - correct.
+"13C′ ... r = 0.51, RMSE = 2.3 ppm" - correct.
+"15N shifts varied by up to 25 ppm" - correct.
+"ψi−1 fluctuated by ~60°" - correct.
+"anticorrelated with φi+1 (r = −0.89)" - correct.
+"Ile61 15N isotropic shifts varied by up to 5 ppm over a 5° range of I60ψ" - correct.
+"State-switching residence times were 0.89 ± 0.18 ps, 0.34 ± 0.05 ps, and 0.23 ± 0.02 ps." - correct.
+References check: He & Merz 2009, Swails et al. 2015, Exner et al. 2012, Dracínský et al. 2013, SHIFTX2 (Han et al. 2011), SPARTA+ (Shen & Bax 2010), Le & Oldfield 1994, Wang & Jardetzky 2004, Su & Hong 2011, Gupta et al. 2019, Yi 2023, Kraus et al. 2020, Case 2020. All match.
+
+One detail: "The correlation improvements (r² of 0.53 for 15N and 0.88 for 13Cα when averaging is applied)" -> I will change to "correlation improvements (r = 0.73 for 15N and r = 0.94 for 13Cα when averaging is applied)" to match the text exactly.
+
+Another detail: "hydrogen-bond angular variations" -> The paper says "Hydrogen-bond angle θ correlated strongly with ψ". I'll keep it.
+
+Check funding: "NSF (MCB 1913885) and NIH (1RM1GM145397-01)". Correct.
+
+Check page count: 2270-2278 is 9 pages. Correct.
+Check ref count: 62. Correct.
+
+Everything looks solid. I will produce the revised summary. I'll make sure the formatting matches exactly.
+One minor adjustment: In paragraph 3, I'll specify "ψi and φi+1" instead of "ψi−1" and "φi" to match the text's Figure 2c description ("correlation between Ile61φ and Ile60ψ"). The abstract says "ψi−1 varies over 60°... compensated by φi", but the detailed analysis focuses on Ile60ψ and Ile61φ. I'll stick to the abstract's phrasing or clarify. Actually, the abstract says "The backbone torsion angle ψi−1 varies over 60° on the picosecond time scale, compensated by φi." I'll keep it as is, or just say "backbone torsion angles ψ and φ". I'll adjust to "backbone torsion angles ψ and φ fluctuated by ~60°... anticorrelated (r = −0.89)".
+
+Let's verify the exact wording for the correlation: "There is strong correlation between Ile61φ and Ile60ψ. Each scatter point represents one snapshot... The correlation coefficient is −0.89." So it's ψi and φi+1. I will write "backbone torsion angles ψi and φi+1 fluctuated by ~60°... anticorrelated (r = −0.89)".
+
+All checks passed. I will generate the final summary. 
+One thing: The prompt says "r and r² values". I will just report r as given. If I must report r², I can calculate it, but it's safer to report what's in the text. I'll stick to r.
+The draft is ready.
+Proceed. 
+Output matches the requested format.
+Header paragraph + 5 paragraphs.
+No section titles.
+Dry plain English.
+Accurate numbers.
+Correct names.
+Correct methodology.
+Done. 
+Self-Correction/Verification during thought:
+Check paragraph 5: "The correlation improvements (r² of 0.53 for 15N and 0.88 for 13Cα when averaging is applied) indicate that kernel calibration should incorporate torsion-angle distributions and hydrogen-bond angular variations." -> I will change to "r = 0.73 for 15N and r = 0.94 for 13Cα" to avoid calculating r² not in the text.
+Check paragraph 3: "State-switching residence times were 0.89 ± 0.18 ps, 0.34 ± 0.05 ps, and 0.23 ± 0.02 ps." -> Matches text.
+Check paragraph 2: "restricted minimization with heavy-atom RMSD constraints (<0.3 Å)" -> Text: "restricted minimization before QM/MM allowing an adjustment with heavy atom RMSD < 0.3 Å". Matches.
+Check paragraph 1: "Perspective and research study" -> Text header says "Perspective". Matches.
+All good.
+Output generation. 
+Proceeds. 
+[Final Check of the Prompt]
+"Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding."
+"Per-element complexity is the substance of the thesis (Stage 1: H ≈ 20 effective dims, C ≈ 6, N ≈ 3, O ≈ 12)."
+The summary should not invent these, but can mention them if relevant. The paper doesn't mention them, so I won't.
+The summary is ready.✅
+Output matches response. 
+Proceeds. 
+[Output Generation] -> *Self-Correction/Refinement during generation prep*: 
+I will carefully ensure the formatting matches exactly. Header paragraph, then 5 paragraphs. No titles. 
+All numbers verified. 
+Ready. 
+Output matches the final refined version. 
+Proceeds. 
+[Output Generation] (matches the final response)
+Yi, X.; Zhang, L.; Friesner, R. A.; McDermott, A. E. Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics. J. Phys. Chem. Lett. 2024, 15, 2270−2278. DOI: 10.1021/acs.jpclett.3c02589. 9 pages. 62 references. Funded by NSF (MCB 1913885) and NIH (1RM1GM145397-01).
+
+This Perspective and research study examines how protein conformational dynamics influence 15N and 13C chemical shifts in dihydrofolate reductase (DHFR) bound to trimethoprim. The authors compare automated fragmentation quantum mechanics/molecular mechanics (AF-QM/MM) predictions against room-temperature solution NMR and 105 K dynamic nuclear polarization-enhanced solid-state NMR (DNP-SSNMR) data. The central argument is that conformational averaging over molecular dynamics (MD) trajectories substantially improves the correlation between predicted and experimental isotropic shifts, while the breadth of predicted shift distributions captures the inhomogeneous line broadening observed in cryogenic spectra.
+
+The authors performed a 1000 ns explicit-solvent MD simulation starting from a 2.5 Å X-ray structure of DHFR:TMP. From this trajectory, 20 snapshots spaced 50 ns apart were selected, energy-minimized with heavy-atom RMSD constraints (<0.3 Å), and processed with AF-QM/MM to compute 15N, 13Cα, and 13C′ isotropic shifts. A separate 100 ps segment sampled every 100 fs was analyzed for torsion angle dynamics. Experimental comparisons used solution-state NMR data and DNP-SSNMR spectra of selectively 13C,15N-labeled DHFR at 105 K. Correlation coefficients and root-mean-square errors were calculated to quantify prediction accuracy against single-conformer X-ray structures versus ensemble-averaged MD snapshots.
+
+Averaging QM/MM predictions over the 20-snapshot ensemble improved correlation with experimental solution shifts to r = 0.73 for 15N and r = 0.94 for 13Cα, reducing RMSE to 4.8 ppm and 1.7 ppm, respectively, compared to 7.9 ppm and 3.6 ppm for the single X-ray conformer. 13C′ predictions showed weaker agreement (r = 0.51, RMSE = 2.3 ppm). Predicted 15N shifts varied by up to 25 ppm across the trajectory. For Ile60-Ile61, the backbone torsion angles ψi and φi+1 fluctuated by ~60° on picosecond timescales, anticorrelated (r = −0.89), producing a crankshaft-like rocking of the amide plane. Ile61 15N isotropic shifts varied by up to 5 ppm over a 5° range of I60ψ. The distribution of predicted shifts matched the contour widths of 105 K SSNMR spectra. Hydrogen-bond angle θ correlated strongly with ψ, whereas distance showed weak correlation with shifts. State-switching residence times were 0.89 ± 0.18 ps, 0.34 ± 0.05 ps, and 0.23 ± 0.02 ps.
+
+The work builds on prior QM/MM benchmarking by He and Merz (2009) and Swails et al. (2015), and extends conformational averaging studies by Exner et al. (2012) and Dracínský et al. (2013). It engages with empirical shift predictors like SHIFTX2 (Han et al., 2011) and SPARTA+ (Shen & Bax, 2010), noting their limitation to thermally averaged basins. The torsion-angle dependence aligns with Le and Oldfield (1994) and Wang and Jardetzky (2004), while the cryogenic line-broadening interpretation connects to Su and Hong (2011), Gupta et al. (2019), and Yi (2023). The authors also reference Polenova’s group (Kraus et al., 2020) for QM/MM tensor studies and Case (2020) for quantum chemical shift estimation in biomolecules.
+
+The paper supports the thesis requirement that geometric kernels must capture ensemble-averaged structural signals rather than static coordinates. The correlation improvements (r = 0.73 for 15N and r = 0.94 for 13Cα when averaging is applied) indicate that kernel calibration should incorporate torsion-angle distributions and hydrogen-bond angular variations. The finding that ψ fluctuations drive 15N shift variations up to 25 ppm suggests that backbone torsion descriptors require sufficient effective dimensionality to represent conformational breadth. Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors, direct implications for tensor preservation are limited; however, the ensemble-sampling protocol and restricted minimization procedure provide a practical template for generating training distributions that preserve structural heterogeneity during kernel calibration. 
+All checks passed. Output matches. 
+Proceeds. 
+[Final Output Generation] -> *Self-Correction/Verification during thought*: 
+I will carefully ensure the formatting matches exactly. Header paragraph, then 5 paragraphs. No titles. 
+All numbers verified. 
+Ready. 
+Output matches response. 
+Proceeds. 
+[Output Generation] (matches the final response)
+Yi, X.; Zhang, L.; Friesner, R. A.; McDermott, A. E. Predicted and Experimental NMR Chemical Shifts at Variable Temperatures: The Effect of Protein Conformational Dynamics. J. Phys. Chem. Lett. 2024, 15, 2270−2278. DOI: 10.1021/acs.jpclett.3c02589. 9 pages. 62 references. Funded by NSF (MCB 1913885) and NIH (1RM1GM145397-01).
+
+This Perspective and research study examines how protein conformational dynamics influence 15N and 13C chemical shifts in dihydrofolate reductase (DHFR) bound to trimethoprim. The authors compare automated fragmentation quantum mechanics/molecular mechanics (AF-QM/MM) predictions against room-temperature solution NMR and 105 K dynamic nuclear polarization-enhanced solid-state NMR (DNP-SSNMR) data. The central argument is that conformational averaging over molecular dynamics (MD) trajectories substantially improves the correlation between predicted and experimental isotropic shifts, while the breadth of predicted shift distributions captures the inhomogeneous line broadening observed in cryogenic spectra.
+
+The authors performed a 1000 ns explicit-solvent MD simulation starting from a 2.5 Å X-ray structure of DHFR:TMP. From this trajectory, 20 snapshots spaced 50 ns apart were selected, energy-minimized with heavy-atom RMSD constraints (<0.3 Å), and processed with AF-QM/MM to compute 15N, 13Cα, and 13C′ isotropic shifts. A separate 100 ps segment sampled every 100 fs was analyzed for torsion angle dynamics. Experimental comparisons used solution-state NMR data and DNP-SSNMR spectra of selectively 13C,15N-labeled DHFR at 105 K. Correlation coefficients and root-mean-square errors were calculated to quantify prediction accuracy against single-conformer X-ray structures versus ensemble-averaged MD snapshots.
+
+Averaging QM/MM predictions over the 20-snapshot ensemble improved correlation with experimental solution shifts to r = 0.73 for 15N and r = 0.94 for 13Cα, reducing RMSE to 4.8 ppm and 1.7 ppm, respectively, compared to 7.9 ppm and 3.6 ppm for the single X-ray conformer. 13C′ predictions showed weaker agreement (r = 0.51, RMSE = 2.3 ppm). Predicted 15N shifts varied by up to 25 ppm across the trajectory. For Ile60-Ile61, the backbone torsion angles ψi and φi+1 fluctuated by ~60° on picosecond timescales, anticorrelated (r = −0.89), producing a crankshaft-like rocking of the amide plane. Ile61 15N isotropic shifts varied by up to 5 ppm over a 5° range of I60ψ. The distribution of predicted shifts matched the contour widths of 105 K SSNMR spectra. Hydrogen-bond angle θ correlated strongly with ψ, whereas distance showed weak correlation with shifts. State-switching residence times were 0.89 ± 0.18 ps, 0.34 ± 0.05 ps, and 0.23 ± 0.02 ps.
+
+The work builds on prior QM/MM benchmarking by He and Merz (2009) and Swails et al. (2015), and extends conformational averaging studies by Exner et al. (2012) and Dracínský et al. (2013). It engages with empirical shift predictors like SHIFTX2 (Han et al., 2011) and SPARTA+ (Shen & Bax, 2010), noting their limitation to thermally averaged basins. The torsion-angle dependence aligns with Le and Oldfield (1994) and Wang and Jardetzky (2004), while the cryogenic line-broadening interpretation connects to Su and Hong (2011), Gupta et al. (2019), and Yi (2023). The authors also reference Polenova’s group (Kraus et al., 2020) for QM/MM tensor studies and Case (2020) for quantum chemical shift estimation in biomolecules.
+
+The paper supports the thesis requirement that geometric kernels must capture ensemble-averaged structural signals rather than static coordinates. The correlation improvements (r = 0.73 for 15N and r = 0.94 for 13Cα when averaging is applied) indicate that kernel calibration should incorporate torsion-angle distributions and hydrogen-bond angular variations. The finding that ψ fluctuations drive 15N shift variations up to 25 ppm suggests that backbone torsion descriptors require sufficient effective dimensionality to represent conformational breadth. Because the study reports only isotropic shifts and does not compute or calibrate rank-2 shielding tensors, direct implications for tensor preservation are limited; however, the ensemble-sampling protocol and restricted minimization procedure provide a practical template for generating training distributions that preserve structural heterogeneity during kernel calibration.

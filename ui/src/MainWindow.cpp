@@ -1061,7 +1061,7 @@ void MainWindow::populateAtomInfo(size_t idx) {
     charges->addChild(new QTreeWidgetItem({"s-orbital pop", QString::number(ca.mopac_s_pop, 'f', 3)}));
     charges->addChild(new QTreeWidgetItem({"p-orbital pop", QString::number(ca.mopac_p_pop, 'f', 3)}));
     charges->addChild(new QTreeWidgetItem({"Valency (sum BO)", QString::number(ca.mopac_valency, 'f', 3)}));
-    charges->addChild(new QTreeWidgetItem({"VdW radius", QString::number(ca.vdw_radius, 'f', 3) + " A"}));
+    charges->addChild(new QTreeWidgetItem({"PB radius", QString::number(ca.pb_radius, 'f', 3) + " A"}));
     atomInfoTree_->addTopLevelItem(charges);
 
     // ---- Shielding contributions (8 classical + 2 MOPAC-derived) ----

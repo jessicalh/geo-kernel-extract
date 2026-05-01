@@ -387,6 +387,9 @@ without forcing re-extraction:
 
 Each step is mechanically small (~150-line files), testable in
 isolation, safe to abandon if data arbitrates away from it. Nothing
-forces re-extraction of the 485 in-flight fleet proteins. Nothing is
-gated on thesis scope — the pipeline adds channels; data decides
-which carry signal.
+forces re-extraction of any in-flight fleet proteins (the 685 fleet
+was stopped 2026-04-30 after evaluation showed bad chain extractions;
+the 485 not-yet-completed proteins were cancelled, and OF3 is
+generating fresh direct-from-sequence structures for the next dispatch).
+Nothing is gated on thesis scope — the pipeline adds channels; data
+decides which carry signal.

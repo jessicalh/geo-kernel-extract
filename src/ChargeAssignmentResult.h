@@ -1,22 +1,24 @@
 #pragma once
 //
-// ChargeAssignmentResult: per-atom partial charges and VdW radii.
+// ChargeAssignmentResult: per-atom partial charges and PB radii.
 //
 // Dependencies: none.
 //
 // Charges come from a typed ChargeSource: ff14SB param file, CHARMM36m
-// topology (.tpr), AMBER prmtop, or stub. The ChargeSource determines
-// the force field; this result stores the numbers on ConformationAtom.
+// topology (.tpr), or AMBER prmtop. The ChargeSource determines the
+// force field; this result projects the prepared Protein charge table
+// onto ConformationAtom.
 //
-// For protonation variants (HID/HIE/HIP, ASH, GLH, CYX, LYN, ARN):
-// the ff14SB param file path uses the residue's protonation_variant_index
+// For protonation variants (HID/HIE/HIP, ASH, GLH, CYX/CYM, LYN,
+// ARN, TYM): the ff14SB param file path uses the residue's
+// protonation_variant_index
 // to select the correct charge set. Other sources (tpr, prmtop) carry
 // the protonation in their topology already.
 //
 
 #include "ConformationResult.h"
 #include "ProteinConformation.h"
-#include <unordered_map>
+#include "ForceFieldChargeTable.h"
 #include <string>
 
 namespace nmr {
@@ -45,7 +47,8 @@ public:
 
     // Query methods
     double ChargeAt(size_t atom_index) const;
-    double RadiusAt(size_t atom_index) const;
+    double PbRadiusAt(size_t atom_index) const;
+    const ForceFieldChargeTable& ChargeTable() const;
 
     // Diagnostics
     double TotalCharge() const { return total_charge_; }
@@ -53,24 +56,9 @@ public:
     int UnassignedCount() const { return unassigned_count_; }
     const std::string& Source() const { return source_; }
 
-    // PDB LOADING BOUNDARY: load ff14SB params file into a lookup table.
-    // Key is "RESNAME ATOMNAME", value is (charge, radius).
-    // Public because ParamFileChargeSource uses it.
-    struct ParamEntry {
-        double charge = 0.0;
-        double radius = 0.0;
-    };
-    static std::unordered_map<std::string, ParamEntry> LoadParamFile(
-        const std::string& path);
-
-    // Map from standard amino acid to ff14SB variant residue name.
-    // PDB LOADING BOUNDARY: this is where the typed variant_index becomes
-    // the string residue name for the parameter file lookup.
-    // Public because ParamFileChargeSource uses it.
-    static std::string VariantResidueName(AminoAcid aa, int protonation_variant_index);
-
 private:
     const ProteinConformation* conf_ = nullptr;
+    const ForceFieldChargeTable* charge_table_ = nullptr;
     double total_charge_ = 0.0;
     int assigned_count_ = 0;
     int unassigned_count_ = 0;

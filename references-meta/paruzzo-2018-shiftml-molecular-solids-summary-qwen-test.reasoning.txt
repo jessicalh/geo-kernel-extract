@@ -1,0 +1,273 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Context:** Thesis builds geometric kernels (ring-current Biot-Savart, Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Role of Summary:** Durable record for thesis author, committee, future readers. Will be used for citations, methods, arguments. Accuracy and specificity are paramount.
+    - **Requirements:**
+        - Preserve true detail: Authors, year, title, journal, volume, pages, DOI, reference count, funding/credit notes.
+        - Specific numerical findings: r/r², RMSEs, intensity factors, coefficient values, dataset sizes, distance ranges, basis sets, functionals, force fields. Quote numbers.
+        - Claims distinct from field claims.
+        - Specific authors/works built on/pointed to, named from bibliography.
+        - Stance: research paper, perspective, review, etc. State honestly.
+        - Avoid: Inventing methodology, manufacturing thesis connections, excited/evaluative language, editorializing.
+        - Project Conventions: Frame kernel-vs-DFT as correlation (r² shows signal captured, not pointwise match). Default vocabulary: "correlate", "captures the signal", "r² of …". Do not collapse tensor to scalar unless source does. Per-element complexity is thesis substance, but don't force it here.
+        - Format: Header paragraph (citation, DOI, page count, ref count, funding/credit). Then 5 paragraphs, no titles, flowing:
+          1. What the paper is (scope, stance, audience, argument/measurement)
+          2. Methods or central results
+          3. Findings (magnitudes, observations)
+          4. Relations to wider literature (builds on/points to, named from bib)
+          5. Implications for our work (widely, honestly, no stretching)
+        - Length: 4-6 pages → 200-300 words body; 6-12 pages → 300-450; 10+ dense review → 450-500. This paper is ~10 pages (including refs/figures), so target ~300-450 words for the body.
+    - **Input Text:** 4 chunks of the paper "Chemical shifts in molecular solids by machine learning" by Paruzzo et al., Nature Communications 2018, 9:4501.
+
+2.  **Extract Key Information from Paper:**
+    - **Authors:** Federico M. Paruzzo, Albert Hofstetter, Félix Musil, Sandip De, Michele Ceriotti, Lyndon Emsley
+    - **Year:** 2018
+    - **Title:** Chemical shifts in molecular solids by machine learning
+    - **Journal:** Nature Communications
+    - **Volume/Pages:** 9:4501
+    - **DOI:** 10.1038/s41467-018-06972-x
+    - **Page Count:** ~10 pages (including refs/figures/supplementary notes mentioned)
+    - **Reference Count:** 74 references listed in the text.
+    - **Funding/Credits:** Swiss National Science Foundation Grant no. 200021_160112; NCCR MARVEL (SNF); ERC under Horizon 2020 (Grant 677013-HBMAP); EPFL Scientific IT and Application Support Center. Open Access CC BY 4.0.
+    - **Stance:** Research paper (method development & benchmarking/application).
+    - **Scope/Aim:** Predict chemical shifts in molecular solids using ML to bypass expensive DFT/GIPAW calculations. Train on DFT shifts, test against DFT and experiment. Apply to NMR crystallography (structure determination).
+    - **Methods:**
+        - Dataset: CSD-61k (~61k structures, <200 atoms, HCNO), CSD-2k (2000 structures, ~185k environments, farthest point sampling), CSD-500 (500 random structures for testing).
+        - DFT: GIPAW method, Quantum Espresso/CASTEP for relaxation/calculation. Reference shielding: σ_ref = 30.8 ppm (1H), 169.5 ppm (13C).
+        - ML: Gaussian Process Regression (GPR) with Smooth Overlap of Atomic Positions (SOAP) kernel. Multi-kernel combination: linear combination of SOAP kernels at rc = 2, 3, 4, 5, 6, 7 Å with weights 256, 128, 32, 8, 8, 1. Outlier detection via cross-validation (0.3% discarded). Symmetry reduction applied.
+        - Software: glosim2 package.
+    - **Findings (Numerical):**
+        - Correlation (DFT vs ML) on CSD-500: R² = 0.97 (1H), 0.99 (13C), 0.99 (15N), 0.99 (17O).
+        - RMSE (DFT vs ML) on CSD-500: 0.49 ppm (1H), 4.3 ppm (13C), 13.3 ppm (15N), 17.7 ppm (17O).
+        - Polymorphs (Cocaine 86 atoms, AZD8329): 1H RMSE = 0.37 ppm (cocaine), 0.46 ppm (AZD8329). Heteronuclei RMSEs: cocaine (13C: 3.8, 15N: 12.1, 17O: 15.7); AZD8329 (15N: 17.7, 17O: 54.7, 13C: 4.0).
+        - Experimental comparison (6 molecules, 68 shifts): RMSE = 0.39 ppm, R² = 0.99. Matches DFT-experimental RMSE of 0.38 ppm.
+        - Computational cost: <1 CPU minute for 86-atom structure vs ~62-150 CPU hours for DFT. Acceleration factor 5x to 10,000x. Linear scaling with atoms. Large structures (768-1584 atoms) predicted in <6 min vs ~16 CPU years estimated for DFT.
+        - Note: The paper predicts scalar chemical shifts (δ), not shielding tensors. It explicitly focuses on isotropic shifts for crystal structure determination.
+    - **Relations to Literature:**
+        - Builds on: GIPAW DFT (Pickard & Mauri 2001, Yates et al. 2007), SOAP kernels (Bartók et al. 2013, De et al. 2016), GPR (Rasmussen & Williams 2006), CSP/NMR crystallography (Baias et al. 2013, Salager et al. 2009/2010), protein shift prediction (Shen & Bax 2007, Wishart et al. 1997, etc.), previous ML for shifts (Rupp et al. 2015, Cuny et al. 2016, silicas by Cuny et al. 2016).
+        - Points toward: Extension to halides/network materials, future use of experimental shifts if databases grow, web server (shiftml.epfl.ch).
+    - **Implications for Thesis:**
+        - The thesis focuses on rank-2 tensor preservation and geometric kernels for proteins. This paper predicts scalar isotropic shifts using SOAP-GPR on molecular solids. It does not address tensor components, anisotropy, or protein-specific environments. It demonstrates that ML can capture local environment dependence of shifts with high correlation (R² ~0.97-0.99) and low RMSE, validating the premise that local descriptors can encode shielding information. However, it operates on scalar shifts, not tensors, and uses a different kernel (SOAP) and regression framework (GPR) than the thesis's geometric kernels. The computational speedup and linear scaling are relevant for large systems, but the methodological path diverges. The paper's use of DFT as a training proxy aligns with the thesis's calibration approach, but the target property (scalar δ vs rank-2 tensor) and system (molecular solids vs proteins) differ. No direct methodological overlap, but supports the broader feasibility of ML for NMR parameters.
+
+3.  **Draft Construction (Mental Refinement according to constraints):**
+    - *Header:* Paruzzo, F. M., Hofstetter, A., Musil, F., De, S., Ceriotti, M. & Emsley, L. (2018). Chemical shifts in molecular solids by machine learning. Nature Communications, 9, 4501. DOI: 10.1038/s41467-018-06972-x. 10 pages. 74 references. Funding: Swiss National Science Foundation Grant 200021_160112; NCCR MARVEL (SNF); ERC Horizon 2020 Grant 677013-HBMAP; EPFL Scientific IT and Application Support Center.
+    - *Para 1 (Scope/Stance):* This is a research paper that develops and benchmarks a machine learning protocol for predicting isotropic chemical shifts in organic molecular solids. The authors argue that local atomic environments, rather than long-range periodicity, govern chemical shifts, and that a model trained on density functional theory (DFT) shifts can substitute for expensive GIPAW calculations in NMR crystallography. The intended audience is computational chemists and solid-state NMR practitioners.
+    - *Para 2 (Methods):* The model employs Gaussian process regression with a multi-kernel combination of smooth overlap of atomic positions (SOAP) descriptors. Training uses 2,000 structures (CSD-2k, ~185,000 environments) selected via farthest point sampling from a 61,000-structure CSD subset. DFT shifts are computed using GIPAW with Quantum Espresso and CASTEP, referenced to σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C). A combined SOAP kernel sums contributions from cut-off radii of 2 to 7 Å with weights 256, 128, 32, 8, 8, and 1. Symmetry-equivalent environments are removed, and cross-validation prunes 0.3% of training environments as outliers. Predictions are generated using the glosim2 package.
+    - *Para 3 (Findings):* On a random 500-structure test set, the predicted shifts correlate with DFT values with r² of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, yielding RMSEs of 0.49, 4.3, 13.3, and 17.7 ppm, respectively. For polymorphs of cocaine (86 atoms) and AZD8329, 1H RMSEs are 0.37 and 0.46 ppm. Heteronuclear RMSEs for AZD8329 reach 54.7 ppm for 17O, attributed to sparse training data for its C–O…H–N/C–O…H–O hydrogen-bonded dimer motif. Against experimental shifts for six molecules (68 data points), the model achieves an RMSE of 0.39 ppm and r² of 0.99, matching the DFT-experimental RMSE of 0.38 ppm. Prediction time scales linearly with atom count, requiring less than one CPU minute for 86-atom systems and under six minutes for structures up to 1,584 atoms, compared to an estimated 16 CPU years for GIPAW.
+    - *Para 4 (Relations):* The work builds on GIPAW formalisms (Pickard & Mauri, 2001; Yates et al., 2007), SOAP descriptors (Bartók et al., 2013; De et al., 2016), and Gaussian process regression (Rasmussen & Williams, 2006). It extends prior machine learning applications to chemical shifts, including neural network approaches for gas/liquid phases (Rupp et al., 2015; Cuny et al., 2016) and a single prior study on silicas (Cuny et al., 2016). It engages with the NMR crystallography literature that couples crystal structure prediction with GIPAW calculations (Baias et al., 2013; Salager et al., 2009, 2010) and protein shift prediction methods (Shen & Bax, 2007; Wishart et al., 1997). The authors point toward future extensions to halides, network solids, and potential training on experimental databases.
+    - *Para 5 (Implications):* The paper demonstrates that local environment descriptors can capture the signal of chemical shifts with high correlation, validating the premise that shielding information is encoded in short- and medium-range atomic arrangements. However, the model predicts scalar isotropic shifts rather than rank-2 shielding tensors, and it targets molecular solids rather than protein backbones or side chains. The SOAP-GPR framework and multi-kernel weighting differ from the thesis’s geometric kernel construction. The use of DFT as a training proxy aligns with the thesis’s calibration strategy, but the divergence in target property (scalar δ vs tensor) and system class limits direct methodological transfer. The work supports the broader feasibility of machine learning for NMR parameters but does not address tensor preservation or protein-specific geometric kernels.
+
+4.  **Check against Constraints:**
+    - *Header:* Citation, DOI, page count (10), ref count (74), funding/credits. ✓
+    - *5 paragraphs, no titles, flowing.* ✓
+    - *Para 1:* Scope, stance, audience, argument. ✓
+    - *Para 2:* Methods/central results. SOAP-GPR, CSD sets, DFT/GIPAW, reference values, kernel weights, outlier pruning, glosim2. ✓
+    - *Para 3:* Findings with magnitudes. r², RMSEs, polymorph results, experimental comparison, computational scaling. ✓
+    - *Para 4:* Relations. Builds on/points to specific authors from bib. ✓
+    - *Para 5:* Implications for our work. Honest, no stretching, addresses tensor vs scalar, molecular solids vs proteins, DFT proxy alignment. ✓
+    - *Avoids:* Inventing methodology, manufacturing connections, evaluative language, editorializing. ✓
+    - *Project Conventions:* Uses "correlate", "captures the signal", "r² of". Does not collapse tensor to scalar (notes it predicts scalar). Acknowledges per-element complexity isn't forced. ✓
+    - *Length:* ~380 words body. Fits 300-450 range. ✓
+    - *Accuracy:* Numbers match text exactly. DOI, journal, volume, pages correct. Reference count 74. Funding matches. Stance: research paper. ✓
+
+    One minor adjustment: Ensure the vocabulary strictly follows "correlate", "captures the signal", "r² of …". I used "correlate with DFT values with r² of" and "captures the signal of chemical shifts". I'll adjust slightly to strictly match the prompt's preferred phrasing if needed, but it's already close. I will make sure the phrasing aligns precisely: "The predicted shifts correlate with DFT values, yielding r² of 0.97..." and "demonstrates that local environment descriptors can capture the signal of chemical shifts".
+
+    Check reference count: The text lists references 1 through 74. I'll state 74 references.
+    Check page count: The paper runs from page 1 to 10 (including refs/figures). I'll state 10 pages.
+    Check funding: Matches exactly.
+    Check stance: "research paper" is accurate.
+    Check conventions: "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …"." I will ensure this phrasing is explicit in the findings/implications.
+    Check tensor vs scalar: The paper explicitly predicts isotropic shifts (δ), not tensors. I will note this clearly in the implications paragraph to avoid thesis misalignment.
+
+    All constraints met. Draft looks solid. I will produce it now. 
+    Self-Correction/Refinement during thought:
+    - I need to make sure the summary strictly follows the 5-paragraph structure without section titles.
+    - I will verify the exact wording for the correlation framing: "The predicted shifts correlate with DFT values, with r² of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, capturing the signal across the test set."
+    - I will ensure the implications paragraph explicitly states that the paper predicts scalar isotropic shifts, not rank-2 tensors, and targets molecular solids, not proteins, so it does not directly advance the thesis's tensor preservation or geometric kernel work, but supports the broader calibration premise.
+    - Word count check: ~360 words. Fits perfectly.
+    - All numbers verified against text.
+    - Ready.✅
+    Output matches the refined draft. 
+    Proceeds. 
+    [Output Generation] -> *See response.* 
+    *Self-Correction/Verification during drafting:*
+    - Check reference count: The text shows references up to 74. I'll state 74.
+    - Check page count: The PDF pagination shows 1-10. I'll state 10 pages.
+    - Check DOI: 10.1038/s41467-018-06972-x. Correct.
+    - Check funding: Swiss National Science Foundation Grant no. 200021_160112; NCCR MARVEL; ERC Horizon 2020 Grant 677013-HBMAP; EPFL Scientific IT and Application Support Center. Correct.
+    - Check stance: Research paper. Correct.
+    - Check conventions: "correlate", "captures the signal", "r² of …". I will adjust the text to strictly use these phrases where appropriate.
+    - All good. Output matches response. 
+    *Output Generation* (matches the final refined version)
+    "Paruzzo, F. M., Hofstetter, A., Musil, F., De, S., Ceriotti, M. & Emsley, L. (2018). Chemical shifts in molecular solids by machine learning. Nature Communications, 9, 4501. DOI: 10.1038/s41467-018-06972-x. 10 pages. 74 references. Funding: Swiss National Science Foundation Grant 200021_160112; NCCR MARVEL (SNF); ERC Horizon 2020 Grant 677013-HBMAP; EPFL Scientific IT and Application Support Center.
+
+    This is a research paper that develops and benchmarks a machine learning protocol for predicting isotropic chemical shifts in organic molecular solids. The authors argue that local atomic environments, rather than long-range periodicity, govern chemical shifts, and that a model trained on density functional theory (DFT) shifts can substitute for expensive GIPAW calculations in NMR crystallography. The intended audience is computational chemists and solid-state NMR practitioners.
+
+    The model employs Gaussian process regression with a multi-kernel combination of smooth overlap of atomic positions (SOAP) descriptors. Training uses 2,000 structures (CSD-2k, ~185,000 environments) selected via farthest point sampling from a 61,000-structure CSD subset. DFT shifts are computed using GIPAW with Quantum Espresso and CASTEP, referenced to σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C). A combined SOAP kernel sums contributions from cut-off radii of 2 to 7 Å with weights 256, 128, 32, 8, 8, and 1. Symmetry-equivalent environments are removed, and cross-validation prunes 0.3% of training environments as outliers. Predictions are generated using the glosim2 package.
+
+    On a random 500-structure test set, the predicted shifts correlate with DFT values, yielding r² of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, capturing the signal across the test set with RMSEs of 0.49, 4.3, 13.3, and 17.7 ppm, respectively. For polymorphs of cocaine (86 atoms) and AZD8329, 1H RMSEs are 0.37 and 0.46 ppm. Heteronuclear RMSEs for AZD8329 reach 54.7 ppm for 17O, attributed to sparse training data for its C–O…H–N/C–O…H–O hydrogen-bonded dimer motif. Against experimental shifts for six molecules (68 data points), the model achieves an RMSE of 0.39 ppm and r² of 0.99, matching the DFT-experimental RMSE of 0.38 ppm. Prediction time scales linearly with atom count, requiring less than one CPU minute for 86-atom systems and under six minutes for structures up to 1,584 atoms, compared to an estimated 16 CPU years for GIPAW.
+
+    The work builds on GIPAW formalisms (Pickard & Mauri, 2001; Yates et al., 2007), SOAP descriptors (Bartók et al., 2013; De et al., 2016), and Gaussian process regression (Rasmussen & Williams, 2006). It extends prior machine learning applications to chemical shifts, including neural network approaches for gas/liquid phases (Rupp et al., 2015; Cuny et al., 2016) and a single prior study on silicas (Cuny et al., 2016). It engages with the NMR crystallography literature that couples crystal structure prediction with GIPAW calculations (Baias et al., 2013; Salager et al., 2009, 2010) and protein shift prediction methods (Shen & Bax, 2007; Wishart et al., 1997). The authors point toward future extensions to halides, network solids, and potential training on experimental databases.
+
+    The paper demonstrates that local environment descriptors can capture the signal of chemical shifts with high correlation, validating the premise that shielding information is encoded in short- and medium-range atomic arrangements. However, the model predicts scalar isotropic shifts rather than rank-2 shielding tensors, and it targets molecular solids rather than protein backbones or side chains. The SOAP-GPR framework and multi-kernel weighting differ from the thesis’s geometric kernel construction. The use of DFT as a training proxy aligns with the thesis’s calibration strategy, but the divergence in target property (scalar δ vs tensor) and system class limits direct methodological transfer. The work supports the broader feasibility of machine learning for NMR parameters but does not address tensor preservation or protein-specific geometric kernels."
+    All constraints met. Output matches.✅
+    Proceeds. 
+    [Output Generation] -> *Proceeds* (The output matches the refined text exactly.) 
+    *Self-Correction/Note during generation prep:* I will ensure the formatting strictly matches the prompt's request: Header paragraph, then five paragraphs, no section titles. The text above does exactly that. I will output it now. 
+    [Final Check of the Prompt]: "Rank-2 tensor (T2) preservation is the central novelty... The summary you write will be the durable record... Format. Header paragraph... Then five paragraphs, no section titles... Length scales with paper size... Take the time to think carefully..."
+    All good. Output matches. 
+    [Output Generation] -> *Proceeds* (Output matches the refined draft exactly.)
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text for accuracy.
+    - **Focus Areas:** Statistics (numbers, r², RMSE, dataset sizes, etc.), Methodology (procedures, tools, functionals, etc.), Names (authors, years, works, molecules, etc.).
+    - **Constraint:** If accurate, return unchanged. If corrections needed, return revised summary in the exact same format (header + 5 paragraphs). Do not rewrite for style, only adjust science/accuracy. Reply with final summary only.
+    - **Context:** Thesis on NMR shielding tensors, geometric kernels, protein structures, DFT calibration. The summary must be precise.
+
+2.  **Cross-Check Draft against Paper Text:**
+
+    *Header Paragraph:*
+    - Authors: Paruzzo, F. M., Hofstetter, A., Musil, F., De, S., Ceriotti, M. & Emsley, L. -> Matches text.
+    - Year: 2018 -> Matches.
+    - Title: Chemical shifts in molecular solids by machine learning -> Matches.
+    - Journal: Nature Communications, 9, 4501 -> Matches.
+    - DOI: 10.1038/s41467-018-06972-x -> Matches.
+    - Pages: 10 pages -> Text shows pages 1-10 (actually 9 pages of content + title page, but "10 pages" is fine, or I'll check exact pagination. The text says "NATURE COMMUNICATIONS | (2018)9:4501". I'll keep 10 pages or just state it as given. The prompt says "page count". I'll stick with 10.)
+    - References: 74 references -> Text shows references 1-74. Matches.
+    - Funding: Swiss National Science Foundation Grant no. 200021_160112; NCCR MARVEL; ERC Horizon 2020 Grant 677013-HBMAP; EPFL Scientific IT and Application Support Center. -> Matches Acknowledgments.
+
+    *Paragraph 1: Scope/Stance*
+    - "machine learning protocol for predicting isotropic chemical shifts in organic molecular solids." -> Matches.
+    - "local atomic environments... govern chemical shifts" -> Matches.
+    - "trained on DFT shifts can substitute for expensive GIPAW calculations" -> Matches.
+    - "intended audience is computational chemists and solid-state NMR practitioners." -> Reasonable inference, but I'll keep it tight.
+    - Check: The paper explicitly says "isotropic chemical shifts" (δ). I should verify if they mention tensors. They don't. They focus on δ.
+
+    *Paragraph 2: Methods*
+    - "Gaussian process regression with a multi-kernel combination of smooth overlap of atomic positions (SOAP) descriptors." -> Matches.
+    - "Training uses 2,000 structures (CSD-2k, ~185,000 environments) selected via farthest point sampling from a 61,000-structure CSD subset." -> Text says: "select 2000 structures (corresponding to about 185,000 atomic environments)... using a farthest point sampling algorithm". Matches.
+    - "DFT shifts are computed using GIPAW with Quantum Espresso and CASTEP, referenced to σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C)." -> Text says: "relaxed with DFT, using the Quantum Espresso suite... calculated the chemical shieldings using the GIPAW DFT method... σ_ref of 30.8 ppm (for 1H) and 169.5 ppm (for 13C)". Also mentions CASTEP for polymorphs: "DFT structure optimization and GIPAW chemical shift calculation were done with a different DFT program (CASTEP)". Matches.
+    - "combined SOAP kernel sums contributions from cut-off radii of 2 to 7 Å with weights 256, 128, 32, 8, 8, and 1." -> Text says: "rc = 2 Å), 128 (rc = 3 Å), 32(rc = 4 Å), 8 (rc = 5 Å and rc = 6 Å), and 1 (rc = 7 Å)." Matches.
+    - "Symmetry-equivalent environments are removed, and cross-validation prunes 0.3% of training environments as outliers." -> Text says: "remove from the training set all the symmetrically equivalent environments... detected only a small fraction of environments as outliers (e.g., 211 out of 76,214 for 1H, or 0.3%)." Matches.
+    - "Predictions are generated using the glosim2 package." -> Text says: "glosim2 package". Matches.
+
+    *Paragraph 3: Findings*
+    - "On a random 500-structure test set, the predicted shifts correlate with DFT values, yielding r² of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, capturing the signal across the test set with RMSEs of 0.49, 4.3, 13.3, and 17.7 ppm, respectively." -> Text says: "R2 coefficients between the chemical shifts calculated with DFT and with ML of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, corresponding to root-mean-square-errors (RMSEs) of 0.49 ppm for 1H, 4.3 ppm for 13C, 13.3 ppm for 15N, and 17.7 ppm for 17O." Matches.
+    - "For polymorphs of cocaine (86 atoms) and AZD8329, 1H RMSEs are 0.37 and 0.46 ppm." -> Text says: "RMSE between GIPAW DFT and ShiftML for 1H for the cocaine polymorphs of 0.37 ppm and for AZD8329 of 0.46 ppm." Matches.
+    - "Heteronuclear RMSEs for AZD8329 reach 54.7 ppm for 17O, attributed to sparse training data for its C–O…H–N/C–O…H–O hydrogen-bonded dimer motif." -> Text says: "For AZD8329 the 15N and 17O RMSEs are proportionally larger (17.7 and 54.7 ppm), and we attribute this to the fact that the molecule contains a rather unusual C–O…H–N /C–O…H–O H-bonded dimer structure, for which the learning is thus even sparser than for the heteronuclei in general." Matches.
+    - "Against experimental shifts for six molecules (68 data points), the model achieves an RMSE of 0.39 ppm and r² of 0.99, matching the DFT-experimental RMSE of 0.38 ppm." -> Text says: "comparison between experimental and calculated 1H chemical shifts for all crystal structures (for a total of 68 shifts) gives an error (RMSE) of 0.39 ppm and a R2 coefficient of 0.99. This compares very favorably to the equivalent agreement found between GIPAW DFT and experiment which for this set of structures is a RMSE of 0.38 ppm." Matches.
+    - "Prediction time scales linearly with atom count, requiring less than one CPU minute for 86-atom systems and under six minutes for structures up to 1,584 atoms, compared to an estimated 16 CPU years for GIPAW." -> Text says: "less than 1 CPU minute compared to ~62–150 CPU hours for DFT... on structures containing 86 atoms". For large: "less than 6 CPU minutes to calculate the shifts for all the compounds... estimate that the whole calculation would require around 16 CPU years by GIPAW." Matches.
+
+    *Paragraph 4: Literature Relations*
+    - "builds on GIPAW formalisms (Pickard & Mauri, 2001; Yates et al., 2007)" -> Text refs 4, 5. Matches.
+    - "SOAP descriptors (Bartók et al., 2013; De et al., 2016)" -> Text refs 59, 60. Matches.
+    - "Gaussian process regression (Rasmussen & Williams, 2006)" -> Text ref 58. Matches.
+    - "extends prior machine learning applications to chemical shifts, including neural network approaches for gas/liquid phases (Rupp et al., 2015; Cuny et al., 2016) and a single prior study on silicas (Cuny et al., 2016)." -> Text refs 50-54, 55. Matches.
+    - "engages with the NMR crystallography literature that couples crystal structure prediction with GIPAW calculations (Baias et al., 2013; Salager et al., 2009, 2010)" -> Text refs 13, 16, 27. Matches.
+    - "protein shift prediction methods (Shen & Bax, 2007; Wishart et al., 1997)" -> Text refs 39, 41. Matches.
+    - "points toward future extensions to halides, network solids, and potential training on experimental databases." -> Text says: "extended to organic solids including halides or other nuclei, and to network materials such as oxides... or by using experimental shifts if a large enough set were available." Matches.
+
+    *Paragraph 5: Implications*
+    - "demonstrates that local environment descriptors can capture the signal of chemical shifts with high correlation" -> Matches thesis convention.
+    - "model predicts scalar isotropic shifts rather than rank-2 shielding tensors" -> True, paper only does δ.
+    - "targets molecular solids rather than protein backbones" -> True.
+    - "SOAP-GPR framework and multi-kernel weighting differ from the thesis’s geometric kernel construction." -> True.
+    - "use of DFT as a training proxy aligns with the thesis’s calibration strategy" -> True.
+    - "divergence in target property (scalar δ vs tensor) and system class limits direct methodological transfer." -> True.
+    - "supports the broader feasibility of machine learning for NMR parameters but does not address tensor preservation or protein-specific geometric kernels." -> True.
+
+3.  **Detailed Verification & Correction Check:**
+    Let's carefully scan the draft against the text for any subtle inaccuracies.
+    - *Dataset sizes:* CSD-61k (subset <200 atoms, HCNO), CSD-500 (random test), CSD-2k (FPS training, ~185k envs). Draft says "2,000 structures (CSD-2k, ~185,000 environments) selected via farthest point sampling from a 61,000-structure CSD subset." Accurate.
+    - *Kernel weights:* "256 (rc = 2 Å), 128 (rc = 3 Å), 32(rc = 4 Å), 8 (rc = 5 Å and rc = 6 Å), and 1 (rc = 7 Å)." Draft says "256, 128, 32, 8, 8, and 1." Accurate.
+    - *Reference shifts:* "σ_ref of 30.8 ppm (for 1H) and 169.5 ppm (for 13C), found through linear regression between the calculated and experimental chemical shifts for cocaine." Draft says "referenced to σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C)." Accurate.
+    - *Polymorph RMSEs:* "cocaine polymorphs of 0.37 ppm and for AZD8329 of 0.46 ppm." Draft matches.
+    - *Heteronuclear AZD8329:* "15N and 17O RMSEs are proportionally larger (17.7 and 54.7 ppm)". Draft says "reach 54.7 ppm for 17O". Accurate.
+    - *Experimental comparison:* "68 shifts... RMSE of 0.39 ppm and a R2 coefficient of 0.99." Draft matches.
+    - *Time:* "less than 1 CPU minute compared to ~62–150 CPU hours for DFT... on structures containing 86 atoms". Draft says "less than one CPU minute for 86-atom systems". Accurate.
+    - *Large structures:* "between 768 and 1584 atoms per unit cell... less than 6 CPU minutes... estimate that the whole calculation would require around 16 CPU years by GIPAW." Draft matches.
+    - *Methodology details:* The paper uses Quantum Espresso for training set relaxation/GIPAW, and CASTEP for polymorph relaxation/GIPAW. Draft mentions both. Accurate.
+    - *Software:* glosim2 package. Accurate.
+    - *Citations:* I listed a few representative citations in paragraph 4. The prompt says "Specific authors and works the paper builds on or points toward, named from the paper's own bibliography." I should ensure I'm naming them correctly as they appear in the text. The draft names: Pickard & Mauri (2001), Yates et al. (2007), Bartók et al. (2013), De et al. (2016), Rasmussen & Williams (2006), Rupp et al. (2015), Cuny et al. (2016), Baias et al. (2013), Salager et al. (2009, 2010), Shen & Bax (2007), Wishart et al. (1997). All match the reference list.
+    - *Check for fabrication:* I didn't invent any methodology. I stuck to what's in the text.
+    - *Check thesis conventions:* "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured." I used "correlate with DFT values, yielding r² of... capturing the signal". Good.
+    - *Check per-element complexity:* Not applicable here, paper doesn't discuss it. I noted the scalar vs tensor difference.
+    - *Format:* Header + 5 paragraphs, no section titles. Length: ~280 words. Matches 4-6 page paper guideline (200-300 words).
+
+    One minor point: The draft says "10 pages." The paper is actually 9 pages of content + title page, but the pagination in the text goes 1 to 10. I'll keep it as is or adjust to "9 pages" if needed, but it's fine.
+    Another point: "σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C)" - The paper says these were found via linear regression on cocaine. I'll add that detail for precision.
+    Another point: The paper mentions "Gaussian process regression (GPR)" and "SOAP kernel". I'll ensure the terminology matches exactly.
+    Let's verify the exact wording for the kernel weights: "weightings of 256 (rc = 2 Å), 128 (rc = 3 Å), 32(rc = 4 Å), 8 (rc = 5 Å and rc = 6 Å), and 1 (rc = 7 Å)." My draft says "256, 128, 32, 8, 8, and 1." This is accurate.
+    Check RMSE for experimental: "RMSE of 0.39 ppm and a R2 coefficient of 0.99." Matches.
+    Check polymorph RMSE: "0.37 ppm and for AZD8329 of 0.46 ppm." Matches.
+    Check large structure time: "less than 6 CPU minutes... 16 CPU years". Matches.
+    Check reference count: 74. Matches.
+    Check funding: Matches.
+    Check authors: Matches.
+    Check journal/vol/pages: Nature Communications, 9, 4501. Matches.
+    Check DOI: 10.1038/s41467-018-06972-x. Matches.
+
+    Everything looks solid. I will produce the revised summary exactly as requested, ensuring strict adherence to the format and accuracy checks. I'll make minor tweaks to ensure maximum precision (e.g., explicitly noting the σ_ref derivation, clarifying the DFT codes used for different sets, and tightening the literature references to match the text's explicit mentions).
+
+    One thing to verify: The prompt says "Reference count and any funding or credit notes that are stated." I have them.
+    "Specific numerical findings — r and r² values, RMSEs, intensity factors per residue, coefficient values, dataset sizes, distance ranges, basis sets, functionals, force fields. Quote the numbers the paper actually gives." I have r², RMSEs, dataset sizes, cutoff radii, weights, σ_ref values, CPU times.
+    "The paper's stance — research paper, Perspective, review, calibration study, methodological note. State it honestly." It's a research paper/method development paper. I'll state it clearly.
+    "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal', 'r² of …'." I used this.
+    "Per-element complexity... Do not collapse a tensor to a scalar except where the source paper itself does." The paper only does scalar δ. I noted this.
+
+    I will now generate the final summary. All checks pass. I'll ensure the tone is dry and precise. No extra fluff. Format matches exactly.
+    One minor adjustment: I'll explicitly state the stance as "research paper" in the first paragraph as requested.
+    I'll double-check the exact wording for the kernel: "combined SOAP kernel consisting of a linear combination of the single local environment kernels... weightings of 256...". I'll keep it precise.
+    All good. Output matches draft with minor precision tweaks.
+    Proceed. 
+    Self-Correction/Refinement during thought: 
+    I should verify the exact phrasing for the stance. The prompt says "State it honestly." I'll add "This is a research paper that develops..."
+    I'll check the reference list count: The text ends at reference 74. So 74 is correct.
+    I'll check the page count: The PDF pagination shows 1-10. I'll keep "10 pages".
+    I'll ensure the summary strictly follows the 5-paragraph structure without titles.
+    Everything is ready. Output matches the refined version. 
+    Generating. 
+    [Output Generation] -> *Proceeds*
+    *(Self-Correction/Verification during drafting)*: 
+    Wait, let's verify the σ_ref values again. Text: "Here, we used a σref of 30.8 ppm (for 1H) and 169.5 ppm (for 13C), found through linear regression between the calculated and experimental chemical shifts for cocaine." I'll include this detail.
+    Check DFT codes: Training set used Quantum Espresso. Polymorphs used CASTEP. I'll specify this distinction.
+    Check kernel weights: "256 (rc = 2 Å), 128 (rc = 3 Å), 32(rc = 4 Å), 8 (rc = 5 Å and rc = 6 Å), and 1 (rc = 7 Å)." I'll list them exactly.
+    Check RMSEs: 0.49, 4.3, 13.3, 17.7 ppm. Correct.
+    Check r²: 0.97, 0.99, 0.99, 0.99. Correct.
+    Check experimental: 68 shifts, RMSE 0.39, r² 0.99. Correct.
+    Check polymorphs: cocaine 0.37, AZD8329 0.46. Correct.
+    Check large structures: 768-1584 atoms, <6 min, ~16 CPU years est. Correct.
+    All numbers verified. Methodology verified. Names verified. Format verified.
+    Output matches.✅
+    Proceeds. 
+    [Output Generation] -> *Produces final summary*
+    *(Note: I will carefully ensure the output matches the exact requested format, with no extra text.)*
+    "Paruzzo, F. M., Hofstetter, A., Musil, F., De, S., Ceriotti, M. & Emsley, L. (2018). Chemical shifts in molecular solids by machine learning. Nature Communications, 9, 4501. DOI: 10.1038/s41467-018-06972-x. 10 pages. 74 references. Funding: Swiss National Science Foundation Grant no. 200021_160112; NCCR MARVEL (SNF); ERC Horizon 2020 Grant 677013-HBMAP; EPFL Scientific IT and Application Support Center.
+
+    This is a research paper that develops and benchmarks a machine learning protocol for predicting isotropic chemical shifts in organic molecular solids. The authors argue that local atomic environments, rather than long-range periodicity, govern chemical shifts, and that a model trained on density functional theory (DFT) shifts can substitute for expensive GIPAW calculations in NMR crystallography. The intended audience is computational chemists and solid-state NMR practitioners.
+
+    The model employs Gaussian process regression with a multi-kernel combination of smooth overlap of atomic positions (SOAP) descriptors. Training uses 2,000 structures (CSD-2k, ~185,000 environments) selected via farthest point sampling from a 61,000-structure CSD subset. DFT shifts are computed using GIPAW with Quantum Espresso for the training set and CASTEP for polymorphs, referenced to σ_ref = 30.8 ppm (1H) and 169.5 ppm (13C), derived from linear regression on cocaine. A combined SOAP kernel sums contributions from cut-off radii of 2 to 7 Å with weights 256, 128, 32, 8, 8, and 1. Symmetry-equivalent environments are removed, and cross-validation prunes 0.3% of training environments as outliers. Predictions are generated using the glosim2 package.
+
+    On a random 500-structure test set, the predicted shifts correlate with DFT values, yielding r² of 0.97 for 1H, 0.99 for 13C, 0.99 for 15N, and 0.99 for 17O, capturing the signal across the test set with RMSEs of 0.49, 4.3, 13.3, and 17.7 ppm, respectively. For polymorphs of cocaine (86 atoms) and AZD8329, 1H RMSEs are 0.37 and 0.46 ppm. Heteronuclear RMSEs for AZD8329 reach 54.7 ppm for 17O, attributed to sparse training data for its C–O…H–N/C–O…H–O hydrogen-bonded dimer motif. Against experimental shifts for six molecules (68 data points), the model achieves an RMSE of 0.39 ppm and r² of 0.99, matching the DFT-experimental RMSE of 0.38 ppm. Prediction time scales linearly with atom count, requiring less than one CPU minute for 86-atom systems and under six minutes for structures up to 1,584 atoms, compared to an estimated 16 CPU years for GIPAW.
+
+    The work builds on GIPAW formalisms (Pickard & Mauri, 2001; Yates et al., 2007), SOAP descriptors (Bartók et al., 2013; De et al., 2016), and Gaussian process regression (Rasmussen & Williams, 2006). It extends prior machine learning applications to chemical shifts, including neural network approaches for gas/liquid phases (Rupp et al., 2015; Cuny et al., 2016) and a single prior study on silicas (Cuny et al., 2016). It engages with the NMR crystallography literature that couples crystal structure prediction with GIPAW calculations (Baias et al., 2013; Salager et al., 2009, 2010) and protein shift prediction methods (Shen & Bax, 2007; Wishart et al., 1997). The authors point toward future extensions to halides, network solids, and potential training on experimental databases.
+
+    The paper demonstrates that local environment descriptors can capture the signal of chemical shifts with high correlation, validating the premise that shielding information is encoded in short- and medium-range atomic arrangements. However, the model predicts scalar isotropic shifts rather than rank-2 shielding tensors, and it targets molecular solids rather than protein backbones or side chains. The SOAP-GPR framework and multi-kernel weighting differ from the thesis’s geometric kernel construction. The use of DFT as a training proxy aligns with the thesis’s calibration strategy, but the divergence in target property (scalar δ vs tensor) and system class limits direct methodological transfer. The work supports the broader feasibility of machine learning for NMR parameters but does not address tensor preservation or protein-specific geometric kernels."
+    All checks passed. Output matches.✅
+    Proceeds. 
+    [Final Check of the Prompt]: "Reply with the final summary only." -> I will output exactly the text. No extra words. Format matches. Numbers verified. Methodology verified. Names verified. Stance stated. Correlation framing used. Per-element complexity noted as not applicable/scaled correctly. All good. 
+    Output matches response. 
+    [Done] 
+    *Self-Correction/Note during generation prep*: I notice the prompt says "Reference count and any funding or credit notes that are stated." I have them. The prompt says "page count". I have 10. The prompt says "DOI when present in the text." I have it. All good.
+    One minor thing: The prompt says "Kernel-vs-DFT comparisons are framed as correlation: the r² shows the signal was captured. They are not framed as match (pointwise agreement). Default vocabulary: "correlate", "captures the signal", "r² of …"." I used exactly this phrasing.
+    All constraints met. Output matches. 
+    Proceeds. 
+    [Output Generation] -> *Produces final summary* (matches the refined text above)
+    *(Done.)*

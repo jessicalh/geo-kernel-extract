@@ -3,6 +3,7 @@
 #include "PdbFileReader.h"
 #include "Protein.h"
 #include "GeometryResult.h"
+#include "ChargeSource.h"
 #include "ChargeAssignmentResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
@@ -10,6 +11,7 @@
 #include "ProtonationDetectionResult.h"
 #include <filesystem>
 #include <cmath>
+#include <fstream>
 
 using namespace nmr;
 
@@ -44,6 +46,180 @@ protected:
 // ============================================================================
 
 class ChargeFF14SBTest : public FoundationTest {};
+
+static std::unique_ptr<Protein> BuildSingleAtomVariantProtein(
+        AminoAcid aa,
+        int variant_index,
+        const std::string& atom_name,
+        Element element,
+        ResidueTerminalState terminal_state = ResidueTerminalState::Internal) {
+    auto protein = std::make_unique<Protein>();
+
+    Residue res;
+    res.type = aa;
+    res.sequence_number = 1;
+    res.chain_id = "A";
+    res.protonation_variant_index = variant_index;
+    res.protonation_state_resolved = true;
+    res.terminal_state = terminal_state;
+    size_t ri = protein->AddResidue(res);
+
+    auto atom = Atom::Create(element);
+    atom->pdb_atom_name = atom_name;
+    atom->residue_index = ri;
+    size_t ai = protein->AddAtom(std::move(atom));
+    protein->MutableResidueAt(ri).atom_indices.push_back(ai);
+    protein->AddConformation({Vec3(0.0, 0.0, 0.0)}, "variant-test");
+
+    return protein;
+}
+
+TEST(ChargeFF14SBVariantTest, CysVariantOneUsesCymRows) {
+    if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
+        GTEST_SKIP() << "ff14sb_params.dat not found";
+    }
+
+    auto protein = BuildSingleAtomVariantProtein(
+        AminoAcid::CYS, 1, "SG", Element::S);
+    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+
+    std::string error;
+    auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
+
+    ASSERT_EQ(rows.size(), 1u) << error;
+    EXPECT_EQ(rows[0].status, ChargeAssignmentStatus::Matched);
+    EXPECT_NEAR(rows[0].partial_charge, -0.8844, 1e-6);
+    EXPECT_NEAR(rows[0].pb_radius, 1.8, 1e-6);
+}
+
+TEST(ChargeFF14SBVariantTest, MissingVariantDoesNotFallBackToCanonicalResidue) {
+    auto protein = BuildSingleAtomVariantProtein(
+        AminoAcid::TYR, 0, "OH", Element::O);
+
+    const auto path = std::filesystem::temp_directory_path() /
+        "nmr_ff14sb_variant_no_fallback.dat";
+    {
+        std::ofstream out(path);
+        ASSERT_TRUE(out.is_open());
+        out << "INTERNAL TYR OH -0.5579 1.5000\n";
+    }
+
+    ParamFileChargeSource source(path.string());
+
+    std::string error;
+    auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
+
+    EXPECT_TRUE(rows.empty());
+    EXPECT_NE(error.find("TYM"), std::string::npos) << error;
+
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
+
+TEST(ChargeFF14SBTerminalTest, SupportedAmberTerminalRowsAreUsed) {
+    if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
+        GTEST_SKIP() << "ff14sb_params.dat not found";
+    }
+
+    struct Case {
+        AminoAcid aa;
+        int variant_index;
+        ResidueTerminalState terminal_state;
+        const char* atom_name;
+        Element element;
+        double expected_charge;
+        double expected_radius;
+    };
+
+    const Case cases[] = {
+        {AminoAcid::CYS, -1, ResidueTerminalState::NTerminus,
+            "H1", Element::H, 0.2023, 1.3},
+        {AminoAcid::CYS, -1, ResidueTerminalState::CTerminus,
+            "OXT", Element::O, -0.7981, 1.5},
+        {AminoAcid::CYS, 0, ResidueTerminalState::NTerminus,
+            "SG", Element::S, -0.0984, 1.8},
+        {AminoAcid::CYS, 0, ResidueTerminalState::CTerminus,
+            "SG", Element::S, -0.0529, 1.8},
+        {AminoAcid::HIS, 1, ResidueTerminalState::NTerminus,
+            "HE2", Element::H, 0.3324, 1.3},
+        {AminoAcid::HIS, 2, ResidueTerminalState::CTerminus,
+            "HE2", Element::H, 0.3913, 1.3},
+    };
+
+    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    for (const auto& c : cases) {
+        auto protein = BuildSingleAtomVariantProtein(
+            c.aa, c.variant_index, c.atom_name, c.element, c.terminal_state);
+
+        std::string error;
+        auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
+
+        ASSERT_EQ(rows.size(), 1u) << error;
+        EXPECT_EQ(rows[0].status, ChargeAssignmentStatus::Matched);
+        EXPECT_NEAR(rows[0].partial_charge, c.expected_charge, 1e-6);
+        EXPECT_NEAR(rows[0].pb_radius, c.expected_radius, 1e-6);
+    }
+}
+
+TEST(ChargeFF14SBTerminalTest, UnsupportedTerminalVariantsFailWithoutFallback) {
+    if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
+        GTEST_SKIP() << "ff14sb_params.dat not found";
+    }
+
+    struct Case {
+        AminoAcid aa;
+        int variant_index;
+        const char* amber_name;
+        const char* atom_name;
+        Element element;
+    };
+
+    const Case cases[] = {
+        {AminoAcid::ASP, 0, "ASH", "HD2", Element::H},
+        {AminoAcid::CYS, 1, "CYM", "SG", Element::S},
+        {AminoAcid::GLU, 0, "GLH", "HE2", Element::H},
+        {AminoAcid::LYS, 0, "LYN", "NZ", Element::N},
+        {AminoAcid::ARG, 0, "ARN", "NH1", Element::N},
+        {AminoAcid::TYR, 0, "TYM", "OH", Element::O},
+    };
+
+    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    for (const auto& c : cases) {
+        for (ResidueTerminalState terminal_state :
+                {ResidueTerminalState::NTerminus,
+                 ResidueTerminalState::CTerminus}) {
+            auto protein = BuildSingleAtomVariantProtein(
+                c.aa, c.variant_index, c.atom_name, c.element, terminal_state);
+
+            std::string error;
+            auto rows = source.LoadCharges(
+                *protein, protein->Conformation(), error);
+
+            EXPECT_TRUE(rows.empty()) << c.amber_name;
+            EXPECT_NE(error.find(c.amber_name), std::string::npos) << error;
+            EXPECT_NE(error.find("no canonical fallback"), std::string::npos)
+                << error;
+        }
+    }
+}
+
+TEST(ChargeFF14SBTerminalTest, SingleResidueChainFailsExplicitly) {
+    if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
+        GTEST_SKIP() << "ff14sb_params.dat not found";
+    }
+
+    auto protein = BuildSingleAtomVariantProtein(
+        AminoAcid::ALA, -1, "CA", Element::C,
+        ResidueTerminalState::NAndCTerminus);
+    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+
+    std::string error;
+    auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
+
+    EXPECT_TRUE(rows.empty());
+    EXPECT_NE(error.find("NCTERM"), std::string::npos) << error;
+    EXPECT_NE(error.find("no canonical fallback"), std::string::npos) << error;
+}
 
 TEST_F(ChargeFF14SBTest, LoadsAndAssigns) {
     if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
@@ -84,15 +260,24 @@ TEST_F(ChargeFF14SBTest, BackboneNChargeRange) {
     ASSERT_NE(result, nullptr);
     conf.AttachResult(std::move(result));
 
-    // Backbone N atoms should have charge ~ -0.4 to -0.5
+    // Internal/CTERM backbone N atoms are negative in ff14SB. NTERM templates
+    // are a different AMBER end-state and may be neutral/positive.
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         const Residue& res = protein->ResidueAt(ri);
         if (res.N == Residue::NONE) continue;
         double q = conf.AtomAt(res.N).partial_charge;
-        EXPECT_LT(q, -0.1) << "Backbone N at res " << res.sequence_number
-            << " has charge " << q << " (expected < -0.1)";
-        EXPECT_GT(q, -0.9) << "Backbone N at res " << res.sequence_number
-            << " has charge " << q << " (expected > -0.9)";
+        if (res.terminal_state == ResidueTerminalState::NTerminus ||
+            res.terminal_state == ResidueTerminalState::NAndCTerminus) {
+            EXPECT_GT(q, -0.4) << "N-terminal backbone N at res "
+                << res.sequence_number << " has charge " << q;
+            EXPECT_LT(q, 0.4) << "N-terminal backbone N at res "
+                << res.sequence_number << " has charge " << q;
+        } else {
+            EXPECT_LT(q, -0.1) << "Backbone N at res " << res.sequence_number
+                << " has charge " << q << " (expected < -0.1)";
+            EXPECT_GT(q, -0.9) << "Backbone N at res " << res.sequence_number
+                << " has charge " << q << " (expected > -0.9)";
+        }
     }
 }
 

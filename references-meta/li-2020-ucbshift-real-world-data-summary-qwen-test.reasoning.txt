@@ -1,0 +1,211 @@
+=== pass 1 (draft) ===
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+    - **Task:** Summarize a scholarly paper for an NMR shielding-tensor PhD thesis.
+    - **Thesis Context:** Builds geometric kernels (ring-current Biot-Savart/Haigh-Mallion, EFG, bond magnetic anisotropy, hydrogen-bond) on protein structures, calibrated against DFT shielding values. Central novelty: Rank-2 tensor (T2) preservation. System outputs kernels, calibration turns kernels into shielding.
+    - **Summary Purpose:** Durable record for the project. Will be used for citations, methods, arguments. Needs high accuracy, specificity, no fabrication, dry plain English.
+    - **Key Requirements:**
+        - Header paragraph: Citation (authors, year, title, journal, volume, pages), DOI, page count, reference count, funding/credit notes.
+        - Five paragraphs, no section titles, flowing:
+            1. What the paper is (scope, stance, audience, argument/measurement)
+            2. Methods or central results/theorems
+            3. Findings (magnitudes, observations, what wasn't)
+            4. Relations to wider literature (builds on/points to, named from bibliography)
+            5. Implications for our work (widely, honestly, no stretching)
+        - Length: 4-6 pages → 200-300 words body; 6-12 pages → 300-450; 10+ dense review → 450-500. (This paper is ~12 pages, so aim for ~300-450 words body).
+        - Conventions: Kernel-vs-DFT correlations framed as correlation (r² captures signal). Per-element complexity noted. Avoid excited language, editorializing, fabricating methods.
+    - **Input Text:** 4 chunks of the paper "Accurate prediction of chemical shifts for aqueous protein structure on “Real World” data" by Li et al., Chem. Sci., 2020, 11, 3180-3191.
+
+2.  **Extract Key Information from Paper:**
+    - **Citation:** Jie Li, Kochise C. Bennett, Yuchen Liu, Michael V. Martin, Teresa Head-Gordon. 2020. "Accurate prediction of chemical shifts for aqueous protein structure on “Real World” data". Chemical Science, 11, 3180-3191. DOI: 10.1039/c9sc06561j.
+    - **Pages/Refs:** 12 pages (3180-3191). References: 60.
+    - **Funding/Credits:** NIH [5U01GM121667]; computational resources from NERSC (DOE Office of Science [DE-AC02-05CH11231]); KCB thanks California Alliance Postdoctoral Fellowship. CC BY-NC 3.0.
+    - **Stance/Scope:** Research paper/methodological note on chemical shift prediction. Introduces UCBShift, a hybrid algorithm combining sequence/structural alignment transfer (UCBShift-Y) and a two-level machine learning pipeline (extra tree + random forest regressors, UCBShift-X). Evaluates on a new, minimally curated "real-world" test set of 200 proteins (high-res X-ray structures, RefDB shifts).
+    - **Methods:**
+        - Training data: Combined SPARTA+ and SHIFTX+ datasets, cleaned of duplicates, 647 proteins. Retained crystal waters/ligands. Removed residues deviating >5 SD or failing DSSP.
+        - Test sets: 200 proteins (Test), 100 low-homology (LH-Test), plus curated versions.
+        - UCBShift-Y: BLAST sequence alignment + mTM-align structural alignment. Filters: TM score > 0.8, RMSD < 1.75 Å. Weighted transfer using sequence alignment score, TM score, BLOSUM62 substitution likelihood.
+        - UCBShift-X: Feature extraction from PDB (BLOSUM62 scores, sin/cos of φ/ψ, sidechain dihedrals, H-bond descriptors, DSSP secondary structure, ring currents via Haigh-Mallion model, B-factors, half-sphere exposure, polynomial transformations of features like d_HB). Pipeline: Extra tree regressor (R0) → Random forest (R1) → Random forest (R2, incorporates Y predictions). Optimized with TPOT, 3-fold CV.
+        - Evaluation: RMSE, R² (correlation), MAE. Compares against SPARTA+ and SHIFTX2.
+    - **Findings:**
+        - RMSE on uncurated Test set: H 0.31, Ha 0.19, C' 0.84, Ca 0.81, Cb 1.00, N 1.81 ppm. (Table 2/3)
+        - Outperforms SPARTA+ and SHIFTX2 on uncurated and curated sets, and across homology levels.
+        - UCBShift-Y improves predictions for low-sequence-identity but high-structural-homology proteins (e.g., adenylate kinase mutant 1E4V vs 4AKE).
+        - Feature importance: Backbone dihedrals, transformed features, secondary structure, BLOSUM, H-bonds, ring currents dominate R0. R2 heavily relies on UCBShift-Y prediction (0.67 importance) and R0 prediction (0.19).
+        - Decoy discrimination: UCBShift shows greater discriminative power for native state selection than SPARTA+/SHIFTX2, correlating predicted vs experimental shifts across RMSD ranges.
+        - Notes on dataset curation: Filtering outliers artificially inflates performance; real-world data contains genuine deviations.
+    - **Relations to Literature:** Builds on SPARTA+ (Shen & Bax, 2010), SHIFTX2 (Han et al., 2011), SHIFTY+ (Wishart et al., 1997), Haigh-Mallion ring current model (Haigh & Mallion, 1979; Case, 1995), DSSP (Kabsch & Sander, 1983), RefDB (Zhang et al., 2003), BMRB (Ulrich et al., 2007). Points toward deep learning for 3D representations (Liu et al., 2019; Paruzzo et al., 2018) and QM predictions for IDPs.
+    - **Implications for Thesis:** The paper uses Haigh-Mallion ring currents as a feature, but treats them as scalar inputs to a black-box ML model. It does not address tensor preservation, geometric kernels, or DFT calibration. It focuses on scalar chemical shift prediction via ML/alignment. Useful as a benchmark for real-world prediction accuracy and feature engineering (ring currents, H-bonds, dihedrals), but its methodology (ML regression on extracted features) differs fundamentally from the thesis's geometric kernel + calibration approach. No direct methodological overlap except the use of Haigh-Mallion ring currents and structural features. The paper's emphasis on uncurated test sets and handling of real-world deviations aligns with the need for robust calibration, but the tensor/scalar distinction is critical.
+
+3.  **Draft Construction (Mental Refinement):**
+    *Header:* Li, J., Bennett, K. C., Liu, Y., Martin, M. V., & Head-Gordon, T. (2020). Accurate prediction of chemical shifts for aqueous protein structure on “Real World” data. *Chemical Science*, *11*, 3180–3191. DOI: 10.1039/c9sc06561j. 12 pages, 60 references. Funded by NIH (5U01GM121667) and DOE NERSC (DE-AC02-05CH11231); KCB supported by California Alliance Postdoctoral Fellowship. Published under CC BY-NC 3.0.
+
+    *Para 1 (Scope/Stance):* This is a research paper introducing UCBShift, a hybrid algorithm for predicting protein NMR chemical shifts from atomic coordinates. The authors evaluate the method on a newly assembled, minimally curated test set of 200 high-resolution X-ray structures to assess performance on realistic, unfiltered data. The paper argues that existing predictors (SPARTA+, SHIFTX2) report inflated accuracy due to aggressive outlier removal, and demonstrates that a combined transfer-learning and machine learning pipeline yields lower root-mean-square errors across all major atom types without post-prediction filtering.
+
+    *Para 2 (Methods):* UCBShift comprises two modules. The transfer module (UCBShift-Y) aligns query sequences and structures against a reference database using BLAST and mTM-align, retaining matches with TM scores >0.8 and RMSD <1.75 Å. Predicted shifts are transferred using an exponential weighting scheme based on sequence alignment scores, TM scores, and BLOSUM62 substitution likelihoods. The machine learning module (UCBShift-X) extracts residue-specific features from PDB files, including backbone and sidechain dihedral angles (sin/cos), hydrogen bond descriptors, secondary structure categories, B-factors, half-sphere exposure, and ring current effects calculated via the Haigh–Mallion model. These features undergo polynomial transformations. A two-level regression pipeline, optimized via TPOT, first trains an extra tree regressor, followed by two random forest regressors; the second forest incorporates the transfer module’s output when available. Training data combines cleaned SPARTA+ and SHIFTX+ datasets (647 proteins), retaining crystal waters and ligands.
+
+    *Para 3 (Findings):* On the uncurated 200-protein test set, UCBShift achieves RMSEs of 0.31 ppm (H), 0.19 ppm (Ha), 0.84 ppm (C′), 0.81 ppm (Ca), 1.00 ppm (Cb), and 1.81 ppm (N). These values consistently outperform SPARTA+ and SHIFTX2 across both uncurated and curated subsets, and across high- and low-homology conditions. The structural alignment component improves predictions for proteins with low sequence identity but high structural similarity, as demonstrated on adenylate kinase variants. Feature importance analysis shows that backbone dihedrals, transformed structural features, secondary structure, BLOSUM scores, hydrogen bonds, and ring currents dominate the initial regressor, while the final prediction relies heavily on the transfer module’s output and the first regressor. The method also demonstrates superior discriminative power for native state selection among decoy sets compared to existing predictors.
+
+    *Para 4 (Relations):* The work builds directly on alignment-based and feature-based predictors, specifically citing SPARTA+ (Shen & Bax, 2010), SHIFTX2 (Han et al., 2011), and SHIFTY+ (Wishart et al., 1997). It incorporates the Haigh–Mallion ring current model (Haigh & Mallion, 1979; Case, 1995) and DSSP secondary structure assignment (Kabsch & Sander, 1983). The reference database relies on RefDB (Zhang et al., 2003) and BMRB (Ulrich et al., 2007). The authors point toward deep learning approaches operating on direct 3D representations (Liu et al., 2019; Paruzzo et al., 2018) as a future direction, particularly for intrinsically disordered proteins where feature extraction becomes less reliable.
+
+    *Para 5 (Implications):* For the thesis, this paper provides a benchmark for real-world prediction accuracy and validates the inclusion of Haigh–Mallion ring currents and hydrogen bond descriptors as predictive features. However, the methodology operates entirely on scalar chemical shifts and treats structural features as inputs to a black-box regression pipeline, with no treatment of rank-2 tensor preservation or geometric kernel construction. The calibration against experimental shifts bypasses the DFT shielding reference framework used in the thesis. The paper’s emphasis on uncurated test sets and the limitations of feature extraction for disordered systems align with the thesis’s need for robust, physically grounded kernels, but the algorithmic approach (ML regression vs. geometric kernel calibration) remains distinct. The work does not directly inform the tensor-preserving kernel design, though its feature importance rankings may inform which geometric terms warrant higher complexity in the calibration stage.
+
+4.  **Check against Constraints:**
+    - *Header:* Citation, DOI, pages, refs, funding/credits. ✓
+    - *5 paragraphs, no titles, flowing.* ✓
+    - *Para 1:* Scope, stance, audience, argument. ✓
+    - *Para 2:* Methods/central results. ✓
+    - *Para 3:* Findings (magnitudes, observations). ✓
+    - *Para 4:* Relations to literature (named from bib). ✓
+    - *Para 5:* Implications for our work, honest, no stretch. ✓
+    - *Length:* ~380 words body. Fits 6-12 page range (300-450). ✓
+    - *Conventions:* Dry plain English. No fabricated methods. Kernel-vs-DFT correlation framing not directly applicable here since paper doesn't do DFT, but I'll ensure I don't misuse it. Per-element complexity noted where relevant (RMSEs per atom type). Avoids excited language. ✓
+    - *Accuracy check:* Numbers match Table 2/3. Methods match text. References match. Stance matches. Implications are careful. ✓
+
+    One minor adjustment: Ensure the tone strictly matches the prompt's request for dry, precise academic summary. Check that I didn't accidentally claim DFT correlation where it's not present. The prompt says "Kernel-vs-DFT comparisons are framed as correlation... Default vocabulary: 'correlate', 'captures the signal'". This paper doesn't do that, so I won't force it. I'll just state the RMSEs and correlation claims as the paper does. I'll make sure the implications paragraph explicitly addresses the thesis's tensor/kernel focus without overstating connections.
+
+    All constraints met. Proceed to output. 
+    Self-Correction/Refinement during thought:
+    - Check reference count: The text shows references up to 60. I'll state 60.
+    - Check page count: 3180-3191 is 12 pages.
+    - Check funding: NIH [5U01GM121667], DOE NERSC [DE-AC02-05CH11231], California Alliance Postdoctoral Fellowship.
+    - Check numbers: RMSEs exactly as in Table 2/3.
+    - Check methods: Haigh-Mallion ring currents, DSSP, BLOSUM62, sin/cos dihedrals, polynomial transforms, extra tree + 2 random forests, TPOT optimization, TM>0.8, RMSD<1.75A.
+    - Check implications: Clearly separate ML scalar prediction from thesis's geometric kernel + DFT calibration + T2 preservation. Note that while it uses ring currents, it treats them as scalar features, not tensors. This is a crucial distinction for the thesis.
+    - Word count: ~360. Perfect.
+    - Structure: Matches exactly.
+    - Ready. Output matches response. 
+    Proceeds. 
+    Output Generation. 
+    [Output Generation] -> *Proceeds*
+    *(Self-Correction/Verification during drafting)*: 
+    I need to make sure the header paragraph strictly follows: "citation (authors, year, title, journal, volume, pages), DOI when visible, page count, reference count if stated, and any load-bearing access, funding, or credit notes."
+    I will format it precisely.
+    Paragraph 1: Scope/stance.
+    Paragraph 2: Methods.
+    Paragraph 3: Findings.
+    Paragraph 4: Relations.
+    Paragraph 5: Implications.
+    All good. No section titles. Flowing. Dry. Specific. Matches constraints.✅
+    Output matches the final refined version. 
+    [Output Generation] -> *Proceeds*
+
+
+=== pass 2 (vet) ===
+Here's a thinking process:
+
+1.  **Analyze User Request:**
+    - **Task:** Review the draft summary against the provided paper text chunks.
+    - **Focus Areas:** Accuracy of science, specifically:
+        - Statistics: Every number (RMSEs, dataset sizes, distances, counts, etc.) must match the paper.
+        - Methodology: Procedures/tools attributed to the paper must be exactly what the authors did.
+        - Names: Authors, years, works, residues, molecules, etc., must match exactly.
+    - **Output:** If accurate, return unchanged. If corrections needed, return a revised summary in the exact same format (header + 5 paragraphs). Only adjust where science requires it. Reply with final summary only.
+
+2.  **Deconstruct the Draft Summary & Cross-Check with Paper Text:**
+
+    *Header Paragraph:*
+    - Draft: Li, J., Bennett, K. C., Liu, Y., Martin, M. V., & Head-Gordon, T. (2020). Accurate prediction of chemical shifts for aqueous protein structure on “Real World” data. *Chemical Science*, *11*, 3180–3191. DOI: 10.1039/c9sc06561j. 12 pages, 60 references. Funded by NIH (5U01GM121667) and DOE NERSC (DE-AC02-05CH11231); K. C. Bennett acknowledges support from the California Alliance Postdoctoral Fellowship. Published under CC BY-NC 3.0.
+    - Check against text:
+        - Authors: Jie Li, Kochise C. Bennett, Yuchen Liu, Michael V. Martin, Teresa Head-Gordon. (Matches)
+        - Year/Title/Journal/Volume/Pages: Chem. Sci., 2020, 11, 3180–3191. (Matches)
+        - DOI: 10.1039/c9sc06561j. (Matches)
+        - Page count: 3180-3191 is 12 pages. (Matches)
+        - References: Text ends at ref 60. (Matches)
+        - Funding: NIH [5U01GM121667]; DOE NERSC [DE-AC02-05CH11231]; KCB thanks California Alliance Postdoctoral Fellowship. (Matches)
+        - License: CC BY-NC 3.0. (Matches)
+    - *Status:* Accurate.
+
+    *Paragraph 1: Scope/Stance*
+    - Draft: This research paper introduces UCBShift, a hybrid algorithm for predicting protein NMR chemical shifts from atomic coordinates, and evaluates it on a newly assembled, minimally curated test set of 200 high-resolution X-ray structures. The authors argue that existing predictors (SPARTA+, SHIFTX2) report inflated accuracy due to aggressive post-prediction outlier removal, and demonstrate that a combined transfer-learning and machine learning pipeline yields lower root-mean-square errors across all major atom types without ad hoc filtering. The work targets computational chemists and NMR method developers, positioning the method as a benchmark for realistic, unfiltered protein structure prediction.
+    - Check: Matches introduction and methods. Mentions 200 proteins, high-res (<2.4 Å) X-ray structures. Argues against outlier removal. Positions as state-of-the-art for real-world data.
+    - *Status:* Accurate.
+
+    *Paragraph 2: Methods/Central Results*
+    - Draft: UCBShift operates through two modules. The transfer module (UCBShift-Y) aligns query sequences and structures against a reference database using BLAST and mTM-align, retaining matches with TM scores >0.8 and RMSD <1.75 Å. Predicted shifts are transferred using an exponential weighting scheme based on sequence alignment scores, TM scores, and BLOSUM62 substitution likelihoods. The machine learning module (UCBShift-X) extracts residue-specific features from PDB files, including backbone and sidechain dihedral angles (sin/cos), hydrogen bond descriptors, DSSP secondary structure categories, B-factors, half-sphere exposure, and ring current effects calculated via the Haigh–Mallion model. Polynomial transformations of structural quantities (e.g., d_HB^2, cos^2 of dihedrals) are added. A two-level regression pipeline, optimized via TPOT with 3-fold cross-validation, first trains an extra tree regressor, followed by two random forest regressors; the second forest incorporates the transfer module’s output when available. Training data combines cleaned SPARTA+ and SHIFTX+ datasets (647 proteins), retaining crystal waters and ligands, and excluding residues deviating >5 standard deviations from the mean or failing DSSP assignment.
+    - Check against text:
+        - Modules: UCBShift-Y (transfer) and UCBShift-X (ML). Correct.
+        - Alignment: BLAST, mTM-align. Thresholds: TM score > 0.8, RMSD < 1.75 Å. Correct.
+        - Weighting: Eq 2: w_I = e^(5(S_NA - S_TM) + B_IJ - 1(B_IJ >= 0)). Mentions sequence alignment score, TM score, BLOSUM62. Correct.
+        - Features: sin/cos of phi/psi, chi1/chi2 indicators, H-bond descriptors (5 numbers per position), DSSP secondary structure (8 categories), B-factor, half-sphere exposure, ring current (Haigh-Mallion), hydrophobicity, polynomial transformations (d_HB^2, d_HB^-1, etc., squares of cos dihedrals). Correct.
+        - ML Pipeline: Extra tree regressor (R0) -> Random forest regressor 1 (R1) -> Random forest regressor 2 (R2). Optimized via TPOT with 3-fold CV. R2 takes R0 prediction + UCBShift-Y output + alignment scores. Correct.
+        - Training data: Combined SPARTA+ and SHIFTX+ datasets. 852 proteins initially, reduced to 647 after duplicate removal. Retained crystal waters/ligands. Removed residues >5 SD from mean or failing DSSP. Correct.
+    - *Status:* Accurate.
+
+    *Paragraph 3: Findings*
+    - Draft: On the uncurated 200-protein test set, UCBShift achieves RMSEs of 0.31 ppm (H), 0.19 ppm (Ha), 0.84 ppm (C′), 0.81 ppm (Ca), 1.00 ppm (Cb), and 1.81 ppm (N). These values consistently outperform SPARTA+ and SHIFTX2 across both uncurated and curated subsets, and across high- and low-homology conditions. The structural alignment component improves predictions for proteins with low sequence identity but high structural similarity, as demonstrated on adenylate kinase variants (4AKE vs 1E4V). Feature importance analysis shows that backbone dihedrals, transformed structural features, secondary structure, BLOSUM scores, hydrogen bonds, and ring currents dominate the initial regressor, while the final prediction relies heavily on the transfer module’s output (0.67 importance) and the first regressor (0.19 importance). The method also demonstrates superior discriminative power for native state selection among decoy sets, correlating predicted and experimental shifts across RMSD ranges more effectively than existing predictors.
+    - Check against text:
+        - RMSEs (Table 2, Test dataset): H: 0.31, Ha: 0.19, C': 0.84, Ca: 0.81, Cb: 1.00, N: 1.81. Correct.
+        - Outperforms SPARTA+/SHIFTX2 across subsets. Correct.
+        - Adenylate kinase example: 4AKE vs 1E4V (G10V mutant). Backbone RMSD 7.08 Å. Experimental H shift RMSD 0.38 ppm, max diff 1.34 ppm. UCBShift-Y picks 1AKE and 2CDN (67% seq identity). Correlation R=0.94, RMSE=0.25 ppm. Correct.
+        - Feature importance (Table 4): R0: Backbone dihedrals (0.22), Transformed features (0.23), Secondary structure (0.17), BLOSUM (0.11), H-bond (0.11), Half surface exposure (0.05), Ring current (0.04). Correct.
+        - R2 importance: UCBShift-Y prediction (0.67), Prediction from R0 (0.19). Correct.
+        - Decoy discrimination: Fig 4 shows UCBShift outperforms SPARTA+/SHIFTX2 in correlating predicted vs experimental shifts across RMSD ranges for 1CTF and 1HFZ decoy sets. Correct.
+    - *Status:* Accurate.
+
+    *Paragraph 4: Relations to Literature*
+    - Draft: The work builds directly on alignment-based and feature-based predictors, specifically citing SPARTA+ (Shen & Bax, 2010), SHIFTX2 (Han et al., 2011), and SHIFTY+ (Wishart et al., 1997). It incorporates the Haigh–Mallion ring current model (Haigh & Mallion, 1979; Case, 1995) and DSSP secondary structure assignment (Kabsch & Sander, 1983). The reference database relies on RefDB (Zhang et al., 2003) and BMRB (Ulrich et al., 2007). The authors point toward deep learning approaches operating on direct 3D representations (Liu et al., 2019; Paruzzo et al., 2018) as a future direction, particularly for intrinsically disordered proteins where feature extraction becomes less reliable.
+    - Check against text:
+        - SPARTA+ (ref 20: Shen & Bax, 2010). Correct.
+        - SHIFTX2 (ref 21: Han et al., 2011). Correct.
+        - SHIFTY (ref 11: Wishart et al., 1997). Correct.
+        - Haigh-Mallion (ref 25: 1979; ref 26: Case 1995). Correct.
+        - DSSP (ref 37: Kabsch & Sander, 1983). Correct.
+        - RefDB (ref 30: Zhang et al., 2003). Correct.
+        - BMRB (ref 22: Ulrich et al., 2007). Correct.
+        - Deep learning/3D refs: Liu et al. 2019 (ref 14), Paruzzo et al. 2018 (ref 15). Correct.
+    - *Status:* Accurate.
+
+    *Paragraph 5: Implications for our work*
+    - Draft: For the thesis, this paper provides a benchmark for real-world prediction accuracy and validates the inclusion of Haigh–Mallion ring currents and hydrogen bond descriptors as predictive features. However, the methodology operates entirely on scalar chemical shifts and treats structural features as inputs to a black-box regression pipeline, with no treatment of rank-2 tensor preservation or geometric kernel construction. The calibration against experimental shifts bypasses the DFT shielding reference framework used in the thesis. The paper’s emphasis on uncurated test sets and the limitations of feature extraction for disordered systems align with the thesis’s need for robust, physically grounded kernels, but the algorithmic approach (ML regression vs. geometric kernel calibration) remains distinct. The work does not directly inform the tensor-preserving kernel design, though its feature importance rankings may inform which geometric terms warrant higher complexity in the calibration stage.
+    - Check against thesis constraints:
+        - "scalar chemical shifts" - correct, paper predicts scalar ppm values.
+        - "black-box regression pipeline" - correct, uses RF/ExtraTrees.
+        - "no treatment of rank-2 tensor preservation" - correct.
+        - "bypasses DFT shielding reference framework" - correct, uses experimental BMRB/RefDB.
+        - "uncurated test sets" - aligns with thesis's emphasis on real-world data.
+        - "limitations of feature extraction for disordered systems" - paper mentions this explicitly in Discussion.
+        - "feature importance rankings may inform which geometric terms warrant higher complexity" - reasonable, cautious implication.
+    - *Status:* Accurate and follows constraints.
+
+3.  **Final Verification against Constraints:**
+    - Format: Header paragraph + 5 paragraphs, no section titles.
+    - Content: Authors, year, title, journal, volume, pages, DOI, page count, ref count, funding. Scope, methods, findings, relations, implications.
+    - Tone: Dry, plain English, no evaluative language.
+    - Kernel-vs-DFT framing: Not directly applicable here since the paper uses experimental shifts, but I've noted it bypasses DFT. I'll adjust slightly to ensure it aligns with the thesis's default vocabulary if applicable, but the paper doesn't use r² for correlation claims in the same way; it uses RMSE. I'll stick to the paper's metrics.
+    - Per-element complexity: Not in this paper, so I won't force it.
+    - Check numbers one last time:
+        - RMSEs: 0.31, 0.19, 0.84, 0.81, 1.00, 1.81. (Table 2, Test)
+        - Training proteins: 647.
+        - Test proteins: 200.
+        - Thresholds: TM > 0.8, RMSD < 1.75 Å.
+        - Feature importance R2: UCBShift-Y 0.67, R0 0.19.
+        - All match.
+    - Check names: Li, Bennett, Liu, Martin, Head-Gordon. SPARTA+, SHIFTX2, UCBShift, UCBShift-Y, UCBShift-X, Haigh-Mallion, DSSP, RefDB, BMRB, TPOT, BLAST, mTM-align, BLOSUM62. All match.
+    - Check methodology: No DFT, no force fields, no basis sets mentioned. Correctly omitted.
+    - The draft is solid. I will output it exactly as refined. No changes needed. I will ensure the formatting strictly matches the prompt.
+    - One minor point: The prompt says "Default vocabulary: 'correlate', 'captures the signal', 'r² of …'". The paper uses RMSE primarily, but also mentions R² in Table S4 and Fig 4. I'll keep the focus on RMSE as the paper does, but I'll make sure the phrasing doesn't contradict the thesis conventions. The draft already handles this well.
+    - I will produce the final summary.✅
+    - Self-Correction/Refinement during thought: I should double-check the exact wording for the funding and license. "This article is licensed under a Creative Commons Attribution-NonCommercial 3.0 Unported Licence." Matches. "All publication charges for this article have been paid for by the Royal Society of Chemistry". I'll add that to the header for completeness, as it's a load-bearing credit note.
+    - Check paragraph 5: "The calibration against experimental shifts bypasses the DFT shielding reference framework used in the thesis." This is accurate. I'll keep it.
+    - All good. Output matches draft.✅
+    - Proceed. 
+    - Output generation. 
+    - [Done] 
+    - *Self-Correction/Verification during generation prep*: 
+    - Let's verify the exact RMSE values from Table 2 again. 
+    - Test dataset: H 0.31, Ha 0.19, C' 0.84, Ca 0.81, Cb 1.00, N 1.81. Correct.
+    - LH-Test dataset: H 0.45, Ha 0.26, C' 1.14, Ca 1.09, Cb 1.34, N 2.61. (Not in draft, which is fine, draft focuses on main test set).
+    - Training size: 647 proteins. Correct.
+    - Test size: 200 proteins. Correct.
+    - Thresholds: TM > 0.8, RMSD < 1.75 Å. Correct.
+    - Feature importance: R0: Backbone 0.22, Transformed 0.23, SS 0.17, BLOSUM 0.11, H-bond 0.11. R2: UCBShift-Y 0.67, R0 0.19. Correct.
+    - All numbers verified. Text matches. I will output the draft exactly. 
+    - One detail: The prompt says "Reference count and any funding or credit notes that are stated." I'll add the RSC payment note to the header.
+    - Final check of the draft text against constraints: "Header paragraph: citation... DOI... page count, reference count if stated, and any load-bearing access, funding, or credit notes." -> I'll update header slightly to include RSC payment.
+    - Everything else is solid. Output matches. 
+    - Proceeds. 
+    - [Output Generation] -> *See response.* 
+    - *Self-Correction/Note during thought*: I notice the prompt says "The summary you write will be the durable record...". I will ensure the tone is strictly dry and factual. I will verify the exact phrasing of the header matches the requested format. All good. 
+    - Output matches the refined draft.✅
