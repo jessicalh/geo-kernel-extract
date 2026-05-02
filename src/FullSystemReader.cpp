@@ -84,34 +84,15 @@ static int DetectHisVariantFromAtoms(const t_atoms& atoms,
     return -1;
 }
 
-// CHARMM residue name → protonation variant index.
-static int VariantFromCharmmResidueName(const std::string& charmm_name,
-                                        AminoAcid type) {
-    if (type == AminoAcid::HIS) {
-        if (charmm_name == "HSD" || charmm_name == "HID") return 0;
-        if (charmm_name == "HSE" || charmm_name == "HIE") return 1;
-        if (charmm_name == "HSP" || charmm_name == "HIP") return 2;
-        return -1;
-    }
-    if (type == AminoAcid::ASP) {
-        if (charmm_name == "ASH" || charmm_name == "ASPP") return 1;
-        return 0;
-    }
-    if (type == AminoAcid::GLU) {
-        if (charmm_name == "GLH" || charmm_name == "GLUP") return 1;
-        return 0;
-    }
-    if (type == AminoAcid::CYS) {
-        if (charmm_name == "CYX" || charmm_name == "CYS2") return 1;
-        if (charmm_name == "CYM") return 2;
-        return 0;
-    }
-    if (type == AminoAcid::LYS) {
-        if (charmm_name == "LYN") return 1;
-        return 0;
-    }
-    return 0;
-}
+// Force-field residue name → protonation variant index.
+//
+// REPLACED 2026-05-02. The previous local helper here had wrong indices
+// for ASH/GLH/CYX/CYM/LYN (returned 1 for ASH when the canonical index
+// is 0; returned 0 for default ASP when the canonical signal is -1).
+// This corrupted protonation_variant_index downstream. The single
+// shared helper now lives at AminoAcidType.cpp::
+// VariantIndexFromForceFieldName so the indices match the contract
+// AminoAcidType::ValidateVariantIndices asserts at startup.
 
 
 // ── Identify molecule block types by composition (not by name) ──
@@ -477,29 +458,38 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         std::to_string(bonded_params_.interactions.size()) + " bonded interactions, " +
         std::to_string(bonded_params_.cmap_grids.size()) + " CMAP grids");
 
-    // ── AmberFFData enrichment ───────────────────────────────────
+    // ── LegacyAmberInvariants population ─────────────────────────
     //
-    // Capture FF-numerical invariant data the calculators don't currently
-    // consume but downstream work / future calculators will (mass for
-    // isotope-aware moves, ptype for virtual-site detection, atom-type
-    // strings for AMBER-naming queries, exclusions for 1-2/1-3/1-4 filter
-    // logic, fudgeQQ for 1-4 Coulomb scaling, SETTLE/vsite geometry for
-    // water-model awareness). Populated here while we have the canonical
-    // localtop + full mtop in hand; the loader then attaches it to the
-    // typed LegacyAmberTopology after Protein::FinalizeConstruction
-    // creates the topology (TrajectoryProtein::Seed handles the wiring).
+    // Capture FF-numerical invariant data the source provides at this
+    // boundary: per-atom mass / atom-type-index / ptype / atomtype-
+    // string, exclusions, fudge_qq, rep_pow, atnr, num_non_perturbed.
+    // Source-available data captured at the boundary; future calculators
+    // that need any of these read directly from the topology's plain
+    // fields. Empty fields = "this load path didn't have it." See
+    // memory `feedback_capture_at_the_boundary`.
+    //
+    // Water/ion FF data (SETTLE per water moltype, virtual-site geometry
+    // for TIP4P-class M-sites) is NOT captured into LegacyAmberTopology
+    // — waters are not in the typed Protein/Residue substrate per the
+    // 2026-04-30 walk-back. If a calculator needs water FF facts later,
+    // they live at per-frame side-channel scope, not on the protein
+    // topology.
+    //
+    // LJ pair table is similarly out of scope here: it's nonbonded FF
+    // numerics (atnr × atnr), not topology. If a calculator needs it,
+    // a separate object holds it; not LegacyAmberTopology.
 
-    amber_ff_data_ = AmberFFData{};
-    amber_ff_data_.mass.reserve(topo_.protein_count);
-    amber_ff_data_.ff_atom_type_index.reserve(topo_.protein_count);
-    amber_ff_data_.ptype.reserve(topo_.protein_count);
-    amber_ff_data_.atomtype_string.reserve(topo_.protein_count);
+    amber_invariants_ = LegacyAmberInvariants{};
+    amber_invariants_.mass.reserve(topo_.protein_count);
+    amber_invariants_.ff_atom_type_index.reserve(topo_.protein_count);
+    amber_invariants_.ptype.reserve(topo_.protein_count);
+    amber_invariants_.atomtype_string.reserve(topo_.protein_count);
 
     {
-        // Walk protein molblocks again for per-atom FF data. (We can't
-        // reuse the canonical localtop's flat atom list without the
-        // gmx_mtop_global_atoms() call; staying with the per-moltype walk
-        // is direct and sufficient for invariant per-atom fields.)
+        // Walk protein molblocks for per-atom FF data. (We can't reuse
+        // the canonical localtop's flat atom list without the
+        // gmx_mtop_global_atoms() call; staying with the per-moltype
+        // walk is direct and sufficient for invariant per-atom fields.)
         size_t global_offset = 0;
         for (size_t b = 0; b < n_protein_molblocks; ++b) {
             const auto& molblock = mtop.molblock[b];
@@ -507,33 +497,33 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
             const auto& atoms = mt.atoms;
             for (int i = 0; i < atoms.nr; ++i) {
                 const auto& atom = atoms.atom[i];
-                amber_ff_data_.mass.push_back(atom.m);
-                amber_ff_data_.ff_atom_type_index.push_back(atom.type);
-                amber_ff_data_.ptype.push_back(static_cast<int>(atom.ptype));
+                amber_invariants_.mass.push_back(atom.m);
+                amber_invariants_.ff_atom_type_index.push_back(atom.type);
+                amber_invariants_.ptype.push_back(static_cast<int>(atom.ptype));
                 std::string atype_s = atoms.atomtype && atoms.atomtype[i]
                                           ? std::string(*atoms.atomtype[i])
                                           : std::string();
-                amber_ff_data_.atomtype_string.push_back(std::move(atype_s));
+                amber_invariants_.atomtype_string.push_back(std::move(atype_s));
             }
             global_offset += static_cast<size_t>(atoms.nr) * molblock.nmol;
         }
     }
 
     // Force-field-wide constants.
-    amber_ff_data_.fudge_qq = mtop.ffparams.fudgeQQ;
-    amber_ff_data_.rep_pow  = mtop.ffparams.reppow;
-    amber_ff_data_.atnr     = mtop.ffparams.atnr;
+    amber_invariants_.fudge_qq = mtop.ffparams.fudgeQQ;
+    amber_invariants_.rep_pow  = mtop.ffparams.reppow;
+    amber_invariants_.atnr     = mtop.ffparams.atnr;
 
-    // numNonperturbedInteractions: copy the per-function counts so a
-    // future TPR with FEP-perturbed interactions can be detected
-    // (entries past nNonperturbed in idef.il[fn] indicate perturbation).
+    // numNonperturbedInteractions: per-function counts for FEP-perturbation
+    // diagnostics (entries past nNonperturbed in idef.il[fn] indicate
+    // perturbation). We do not currently consume FEP-perturbed TPRs.
     {
         const auto& nnp = idef.numNonperturbedInteractions;
         const size_t cap =
-            std::min<size_t>(amber_ff_data_.num_non_perturbed.size(),
+            std::min<size_t>(amber_invariants_.num_non_perturbed.size(),
                              static_cast<size_t>(InteractionFunction::Count));
         for (size_t fn = 0; fn < cap; ++fn) {
-            amber_ff_data_.num_non_perturbed[fn] =
+            amber_invariants_.num_non_perturbed[fn] =
                 nnp[static_cast<InteractionFunction>(fn)];
         }
     }
@@ -542,10 +532,10 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
     // gmx_localtop_t.excls is gmx::ListOfLists<int>; iterate per-atom
     // sublist via [] operator returning a span/range over int indices.
     {
-        amber_ff_data_.exclusions.assign(topo_.protein_count, {});
+        amber_invariants_.exclusions.assign(topo_.protein_count, {});
         for (size_t global_i = topo_.protein_start; global_i < prot_hi; ++global_i) {
             const auto& sub = localtop->excls[global_i];
-            auto& out = amber_ff_data_.exclusions[global_i - topo_.protein_start];
+            auto& out = amber_invariants_.exclusions[global_i - topo_.protein_start];
             out.reserve(sub.size());
             for (int gj : sub) {
                 if (in_protein(static_cast<size_t>(gj))) {
@@ -555,19 +545,6 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
             }
         }
     }
-
-    // SETTLE and virtual sites: structure in place; population deferred
-    // to the next pass. Our current TIP3P fixtures have no protein-side
-    // vsites and SETTLE only applies to water moltype atoms (which are
-    // not in the typed Protein anyway). Future TIP4P+ work will fill
-    // these slots.
-    // TODO(amber-ff): SETTLE per water moltype + vsite geometry.
-    //
-    // LJ pair table: ffparams.iparams entries with functype == Lj are the
-    // per-atom-type-pair {c6, c12}. atnr × atnr layout. Capture deferred
-    // until a calculator consumes them (e.g. vdW-aware HBondResult);
-    // the field exists on AmberFFData so a follow-up populates without
-    // schema change.
 
     // Trim the parsed mtop in place to the protein-only slice.
     // gmx_mtop_t is not copyable, so this is the single canonical
@@ -674,9 +651,106 @@ bool FullSystemReader::MakeProteinWhole(
 // but uses the gmx_mtop_t already parsed by ReadTopology().
 // PDB LOADING BOUNDARY: translates CHARMM naming to typed objects.
 
+// Resolve a residue's typed type + variant_index from either the readback
+// block (when present) or the NamingRegistry fallback.
+//
+// Returns true on success. Populates res.type and res.protonation_variant_index.
+// On failure (unknown residue), populates error_out with a diagnostic and
+// leaves res untouched.
+//
+// Strings (charmm_name, rtp, etc.) are NOT copied onto the Residue object;
+// only typed enum + int values are written. The block holds source strings
+// for the duration of the load + audit JSON; the model object stays typed.
+static bool ResolveResidueTypeAndVariant(
+        Residue& res,
+        size_t global_residue_index,
+        const std::string& charmm_name,
+        const GromacsToAmberReadbackBlock* readback,
+        const NamingRegistry& registry,
+        const std::string& protein_id,
+        std::string& error_out)
+{
+    std::string canonical_three;
+    int variant_index = -1;
+
+    if (readback) {
+        // When a readback block is provided, EVERY protein residue must
+        // have a populated entry. A missing/empty entry within the
+        // protein-residue range means the topol.top didn't fully describe
+        // what the TPR contains — failing loudly here prevents silent
+        // loss of CYX / terminal / protonation chemistry for residues
+        // whose .name happened to match a NamingRegistry-canonical form.
+        if (global_residue_index >= readback->residues.size()) {
+            error_out = "GromacsToAmberReadbackBlock has " +
+                        std::to_string(readback->residues.size()) +
+                        " entries; protein residue index " +
+                        std::to_string(global_residue_index) +
+                        " is out of range in " + protein_id;
+            return false;
+        }
+        const auto& entry = readback->residues[global_residue_index];
+        if (entry.canonical_three.empty()) {
+            error_out = "GromacsToAmberReadbackBlock has no rtp entry for "
+                        "protein residue index " +
+                        std::to_string(global_residue_index) +
+                        " (TPR .name='" + charmm_name + "') in " +
+                        protein_id +
+                        " — topol.top is missing the comment line for "
+                        "this residue or the parse skipped it.";
+            return false;
+        }
+
+        // Sanity-check: the rtp comment's tpr_name should match what the
+        // TPR atom records carry. Mismatch means the topol.top isn't the
+        // one matching this TPR (e.g., wrong path passed in). Fail loudly
+        // — silent name drift is the worst failure mode.
+        if (!entry.tpr_name.empty() && entry.tpr_name != charmm_name) {
+            error_out = "GromacsToAmberReadbackBlock mismatch at residue " +
+                        std::to_string(global_residue_index + 1) +
+                        ": TPR has '" + charmm_name +
+                        "', topol.top rtp comment has '" + entry.tpr_name +
+                        "' for the same residue index in " + protein_id;
+            return false;
+        }
+
+        canonical_three = entry.canonical_three;
+        variant_index = entry.variant_index;
+    } else {
+        // Legacy / non-trajectory fallback: NamingRegistry's canonical map.
+        canonical_three = registry.ToCanonical(charmm_name);
+    }
+
+    if (canonical_three.empty()) {
+        error_out = "unknown residue '" + charmm_name +
+                    "' at position " + std::to_string(global_residue_index) +
+                    " in " + protein_id;
+        return false;
+    }
+
+    res.type = AminoAcidFromThreeLetterCode(canonical_three);
+    if (res.type == AminoAcid::Unknown) {
+        error_out = "unrecognised amino acid '" + canonical_three +
+                    "' from '" + charmm_name + "' at " +
+                    std::to_string(global_residue_index);
+        return false;
+    }
+
+    if (variant_index < 0) {
+        // Either no readback, or readback didn't resolve a variant
+        // (canonical-charged-state form). Try the FF-port-name helper as
+        // a last resort; HIS-by-atom-presence runs further below if this
+        // still returns -1.
+        variant_index = VariantIndexFromForceFieldName(res.type, charmm_name);
+    }
+    res.protonation_variant_index = variant_index;
+    return true;
+}
+
+
 BuildResult FullSystemReader::BuildProtein(
         const std::string& protein_id,
-        ForceField force_field) const {
+        ForceField force_field,
+        const GromacsToAmberReadbackBlock* readback) {
 
     BuildResult result;
 
@@ -758,27 +832,29 @@ BuildResult FullSystemReader::BuildProtein(
         for (size_t ri = 0; ri < n_residues; ++ri) {
             Residue res;
             std::string charmm_name = *(tpr_atoms.resinfo[ri].name);
-            std::string canonical = registry.ToCanonical(charmm_name);
-            if (canonical.empty()) {
-                result.error = "unknown residue '" + charmm_name +
-                               "' at position " +
-                               std::to_string(residue_offset + ri) +
-                               " in " + protein_id;
+            const size_t global_ri = residue_offset + ri;
+
+            // Resolve typed res.type + res.protonation_variant_index from
+            // the readback block (preferred, when present) or the
+            // NamingRegistry fallback. Strings stay in the resolver; only
+            // typed enum + int values land on Residue.
+            std::string resolve_err;
+            if (!ResolveResidueTypeAndVariant(res, global_ri, charmm_name,
+                                              readback, registry, protein_id,
+                                              resolve_err)) {
+                result.error = resolve_err;
                 return result;
             }
-            res.type = AminoAcidFromThreeLetterCode(canonical);
-            if (res.type == AminoAcid::Unknown) {
-                result.error = "unrecognised amino acid '" + canonical +
-                               "' from '" + charmm_name + "' at " +
-                               std::to_string(residue_offset + ri);
-                return result;
-            }
+
             res.sequence_number = tpr_atoms.resinfo[ri].nr;
             res.chain_id = "A";  // single biological chain (multi-molblock
                                  // is a GROMACS encoding artifact, not a
                                  // chain split at the biology layer).
-            res.protonation_variant_index =
-                VariantFromCharmmResidueName(charmm_name, res.type);
+
+            // HIS atom-presence detection as a final fallback (when neither
+            // the readback nor VariantIndexFromForceFieldName produced a
+            // variant index — e.g., legacy CHARMM-style HIS without a
+            // tautomer label).
             if (res.type == AminoAcid::HIS &&
                 res.protonation_variant_index < 0) {
                 res.protonation_variant_index = DetectHisVariantFromAtoms(
@@ -827,6 +903,58 @@ BuildResult FullSystemReader::BuildProtein(
 
         residue_offset += n_residues;
         atom_offset += static_cast<size_t>(tpr_atoms.nr);
+    }
+
+    // ── Authoritative disulfide pairs (chemistry decisions GROMACS made) ─
+    //
+    // Walk bonded_params_.interactions for Bond-type interactions with
+    // SG-SG inter-residue chemistry, validate both endpoints sit on
+    // CYX residues per the readback (variant_index == 0 for AminoAcid::CYS),
+    // record the pair into amber_invariants_.disulfide_pairs. Applied at
+    // FinalizeConstruction time via CovalentTopology::OverrideDisulfides.
+    //
+    // Empty result is correct for: PDB loads (readback==nullptr),
+    // proteins with no disulfides, and any path where the geometric
+    // SG-SG inference is the only reasonable source.
+    amber_invariants_.disulfide_pairs.clear();
+    if (readback) {
+        const auto& atoms = protein->Atoms();
+        for (const auto& ix : bonded_params_.interactions) {
+            if (ix.type != BondedInteraction::Bond) continue;
+            const size_t a = ix.atoms[0];
+            const size_t b = ix.atoms[1];
+            if (a >= atoms.size() || b >= atoms.size()) continue;
+            if (atoms[a]->element != Element::S) continue;
+            if (atoms[b]->element != Element::S) continue;
+            const size_t ra = atoms[a]->residue_index;
+            const size_t rb = atoms[b]->residue_index;
+            if (ra == rb) continue;  // intra-residue not a disulfide
+            const Residue& res_a = protein->ResidueAt(ra);
+            const Residue& res_b = protein->ResidueAt(rb);
+            if (res_a.type != AminoAcid::CYS ||
+                res_b.type != AminoAcid::CYS) {
+                continue;  // both endpoints must be CYS-type residues
+            }
+            // Both must be CYX (variant_index == 0 per AminoAcidType.h
+            // canonical contract). Anything else means geometric S-S
+            // bond with non-disulfide chemistry — rare, not authority.
+            if (res_a.protonation_variant_index != 0 ||
+                res_b.protonation_variant_index != 0) {
+                continue;
+            }
+            DisulfidePair dp;
+            dp.residue_a = ra;
+            dp.residue_b = rb;
+            dp.atom_index_sg_a = a;
+            dp.atom_index_sg_b = b;
+            amber_invariants_.disulfide_pairs.push_back(dp);
+        }
+        if (!amber_invariants_.disulfide_pairs.empty()) {
+            OperationLog::Info(LogCalcOther,
+                "FullSystemReader::BuildProtein",
+                protein_id + ": authoritative disulfide pairs from TPR: " +
+                std::to_string(amber_invariants_.disulfide_pairs.size()));
+        }
     }
 
     // Build context

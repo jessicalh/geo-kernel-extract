@@ -23,6 +23,7 @@
 #include "AIMNet2Result.h"
 #include "SasaResult.h"
 #include "GromacsEnergyResult.h"
+#include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "WaterFieldResult.h"
 #include "HydrationShellResult.h"
@@ -186,6 +187,16 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                 return HydrationShellResult::Compute(conf, *opts.solvent); })) return out;
         if (!TimedAttach(conf, "HydrationGeometryResult", out, [&]{
                 return HydrationGeometryResult::Compute(conf, *opts.solvent); })) return out;
+    }
+
+    // GROMACS frame pull: catch-all for what the trajectory frame
+    // yielded. Source-available capture (velocities, box matrix today;
+    // future fields land here, not as direct fields on
+    // ProteinConformation). No dependencies; runs whenever either
+    // pointer is non-null. See GromacsFramePullResult.h.
+    if (opts.velocities || opts.box_matrix) {
+        if (!TimedAttach(conf, "GromacsFramePullResult", out, [&]{
+                return GromacsFramePullResult::Compute(conf, opts.velocities, opts.box_matrix); })) return out;
     }
 
     // GROMACS energy: from preloaded EDR via run context (O(1) per frame)

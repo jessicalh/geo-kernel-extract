@@ -2,8 +2,10 @@
 #include "Atom.h"
 #include "Residue.h"
 #include "Ring.h"
+#include "OperationLog.h"
 
 #include <set>
+#include <sstream>
 #include <cstdio>
 
 #ifdef HAS_OPENBABEL
@@ -223,6 +225,124 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     }
 
     return topo;
+}
+
+
+// ============================================================================
+// OverrideDisulfides: applies the readback authority for SG-SG bonds.
+//
+// Inputs are the chemistry decisions GROMACS pdb2gmx made (specbond.cpp +
+// rtp comment line) carried through as DisulfidePair records. After this
+// runs, every SG-SG bond categorised as Disulfide in the topology IS in
+// the authority list, and vice versa — the geometric inference at line
+// 134 stops being the source of truth on the consume side.
+//
+// "Force-add" path: if pdb2gmx recorded an SG-SG bond that OpenBabel
+// didn't detect (extremely rare — covalent SG-SG at ~2.05 Å is well
+// within OpenBabel's tolerance), we add the bond explicitly so
+// downstream calculators see the chemistry decision rather than
+// silently miss it.
+// ============================================================================
+
+std::string CovalentTopology::OverrideDisulfides(
+        const std::vector<DisulfidePair>& pairs) {
+
+    if (pairs.empty()) return "";
+
+    // Track which authority pairs got applied so we can detect leftover
+    // geometric Disulfide bonds that aren't in the authority list.
+    std::set<std::pair<size_t, size_t>> authority_pair_set;
+    auto canonical_pair = [](size_t a, size_t b) {
+        return std::pair<size_t, size_t>(std::min(a, b), std::max(a, b));
+    };
+
+    int n_force_added = 0;
+    int n_overrides = 0;
+
+    for (const auto& dp : pairs) {
+        const size_t a = dp.atom_index_sg_a;
+        const size_t b = dp.atom_index_sg_b;
+
+        if (a >= bond_indices_.size() || b >= bond_indices_.size()) {
+            std::ostringstream err;
+            err << "CovalentTopology::OverrideDisulfides: atom index "
+                << "out of range — got pair (" << a << ", " << b
+                << ") with bond_indices_.size()=" << bond_indices_.size();
+            return err.str();
+        }
+        if (a == b) {
+            std::ostringstream err;
+            err << "CovalentTopology::OverrideDisulfides: degenerate "
+                << "DisulfidePair both indices = " << a;
+            return err.str();
+        }
+
+        authority_pair_set.insert(canonical_pair(a, b));
+
+        // Find an existing bond between a and b (if any).
+        size_t found_index = SIZE_MAX;
+        for (size_t bi : bond_indices_[a]) {
+            const Bond& bnd = bonds_[bi];
+            if ((bnd.atom_index_a == a && bnd.atom_index_b == b) ||
+                (bnd.atom_index_a == b && bnd.atom_index_b == a)) {
+                found_index = bi;
+                break;
+            }
+        }
+
+        if (found_index != SIZE_MAX) {
+            Bond& bnd = bonds_[found_index];
+            if (bnd.category != BondCategory::Disulfide) {
+                ++n_overrides;
+            }
+            bnd.category = BondCategory::Disulfide;
+            bnd.order    = BondOrder::Single;
+        } else {
+            // Force-add: pdb2gmx recorded an SG-SG bond that OpenBabel
+            // didn't see. Append + index. Keep the same canonical
+            // (min, max) ordering the geometric path uses.
+            Bond bnd;
+            bnd.atom_index_a = std::min(a, b);
+            bnd.atom_index_b = std::max(a, b);
+            bnd.order    = BondOrder::Single;
+            bnd.category = BondCategory::Disulfide;
+            const size_t new_idx = bonds_.size();
+            bonds_.push_back(bnd);
+            bond_indices_[a].push_back(new_idx);
+            bond_indices_[b].push_back(new_idx);
+            ++n_force_added;
+        }
+    }
+
+    // Walk all bonds; any Disulfide-tagged bond NOT in the authority
+    // list is geometric inference disagreeing with chemistry. Rare in
+    // standard MD; reset to SidechainOther and warn.
+    int n_demoted = 0;
+    for (Bond& bnd : bonds_) {
+        if (bnd.category != BondCategory::Disulfide) continue;
+        if (authority_pair_set.count(canonical_pair(
+                bnd.atom_index_a, bnd.atom_index_b)) == 0) {
+            bnd.category = BondCategory::SidechainOther;
+            ++n_demoted;
+        }
+    }
+
+    if (n_overrides > 0 || n_force_added > 0 || n_demoted > 0) {
+        std::ostringstream msg;
+        msg << "applied " << pairs.size() << " authority pairs ("
+            << n_overrides << " overrides, "
+            << n_force_added << " force-added, "
+            << n_demoted << " demoted from geometric)";
+        if (n_demoted > 0) {
+            OperationLog::Warn(
+                "CovalentTopology::OverrideDisulfides", msg.str());
+        } else {
+            OperationLog::Info(LogCalcOther,
+                "CovalentTopology::OverrideDisulfides", msg.str());
+        }
+    }
+
+    return "";
 }
 
 

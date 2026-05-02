@@ -82,6 +82,16 @@ struct TrajectoryEnv {
     const GromacsEnergy* current_energy = nullptr;
     std::size_t current_frame_idx = 0;
     double current_frame_time = 0.0;
+
+    // Per-frame TRR data carried from GromacsFrameHandler. Per-atom
+    // velocities (Å/ps), simulation box matrix (Å). Empty/zero on load
+    // paths that don't carry these (XTC-only legacy paths, or
+    // non-trajectory loads). Read by GromacsFramePullResult through
+    // RunOptions pointers; not consumed directly off env_ by other
+    // code (env is a single-slot per-frame stash, overwritten next
+    // frame).
+    std::vector<Vec3> velocities;
+    Eigen::Matrix3d box_matrix = Eigen::Matrix3d::Zero();
 };
 
 class Trajectory {

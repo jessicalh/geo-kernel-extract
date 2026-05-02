@@ -19,7 +19,8 @@
 
 #include "SolventEnvironment.h"
 #include "BondedEnergyResult.h"
-#include "LegacyAmberTopology.h"  // AmberFFData enrichment payload
+#include "LegacyAmberTopology.h"  // LegacyAmberInvariants value-pack
+#include "GromacsToAmberReadbackBlock.h"  // optional rtp readback block
 #include "OperationRunner.h"      // ForceField enum
 
 #include <Eigen/Dense>
@@ -83,22 +84,35 @@ public:
     const BondedParameters& BondedParams() const { return bonded_params_; }
     bool HasBondedParams() const { return !bonded_params_.interactions.empty(); }
 
-    // FF-numerical enrichment data extracted during ReadTopology().
-    // Per-atom mass, atom-type index, ptype, atomtype string; exclusion
-    // lists; LJ pair table; fudgeQQ; SETTLE per water moltype; vsite
-    // geometry. Consumed by the trajectory loader path: after
-    // Protein::FinalizeConstruction creates the LegacyAmberTopology,
-    // the loader calls protein.MutableLegacyAmber().AttachAmberFFData(
-    // reader.ConsumeAmberFFData()).
-    const AmberFFData& AmberFF() const { return amber_ff_data_; }
-    AmberFFData ConsumeAmberFFData() { return std::move(amber_ff_data_); }
+    // FF-numerical invariants extracted during ReadTopology(). Per-atom
+    // mass, atom-type index, ptype, atomtype string, exclusion lists,
+    // fudgeQQ, reppow, atnr, num_non_perturbed. Consumed by the
+    // trajectory loader path: passed to Protein::FinalizeConstruction
+    // as the value-pack moved into LegacyAmberTopology's plain fields.
+    // Single-shot move; the reader's slot is left empty afterward.
+    LegacyAmberInvariants ConsumeAmberInvariants() {
+        return std::move(amber_invariants_);
+    }
 
     // Build a Protein + ChargeSource from the stored TPR parse.
     // Must be called after ReadTopology(). Returns a Protein with
     // residues + atoms but no conformations (FinalizeConstruction
     // needs positions from the first XTC frame).
+    //
+    // `readback`, when non-null, provides per-residue rtp facts read
+    // from the matching topol.top. The per-residue loop consults it
+    // for the canonical AMBER 3-letter code (resolving FF-port labels
+    // like HISH/HISD/HISE/CYS-with-no-HG to HIS/CYS) and the
+    // protonation_variant_index. When null, falls back to
+    // NamingRegistry::ToCanonical (the legacy / non-trajectory path).
+    // Not const-marked because the readback path scans the bonded
+    // interaction list for SG-SG inter-residue bonds and populates
+    // `amber_invariants_.disulfide_pairs` from authority — the chemistry
+    // decisions GROMACS recorded in the TPR + topol.top. Those flow
+    // through `ConsumeAmberInvariants()` to FinalizeConstruction.
     BuildResult BuildProtein(const std::string& protein_id,
-                             ForceField force_field = ForceField::CHARMM36m) const;
+                             ForceField force_field = ForceField::CHARMM36m,
+                             const GromacsToAmberReadbackBlock* readback = nullptr);
 
     // PBC-fix the protein slice in-place. `protein_coords` is the
     // contiguous protein-only float coordinate buffer (size =
@@ -117,7 +131,7 @@ public:
 private:
     SystemTopology topo_;
     BondedParameters bonded_params_;
-    AmberFFData amber_ff_data_;
+    LegacyAmberInvariants amber_invariants_;
     std::unique_ptr<detail::TprData> tpr_;
     std::string error_;
 };

@@ -267,4 +267,74 @@ void ValidateVariantIndices() {
     check(AminoAcid::TYR, 0, "TYM");
 }
 
+
+// Self-canonical 4-letter FF-port names that share an initial 'N' or 'C'
+// with terminal-prefixed names but are NOT terminal variants. We must not
+// strip the leading character from these.
+static bool IsSelfCanonicalFourLetterFfPortName(const std::string& s) {
+    return s == "CYS2" || s == "ASPP" || s == "GLUP" || s == "LYSN";
+}
+
+std::string BaseFfPortNameFromGromacsRtp(const std::string& rtp) {
+    if (rtp.size() == 4 && (rtp[0] == 'N' || rtp[0] == 'C') &&
+        !IsSelfCanonicalFourLetterFfPortName(rtp)) {
+        return rtp.substr(1);
+    }
+    return rtp;
+}
+
+std::string CanonicalThreeLetterFromGromacsRtp(const std::string& rtp) {
+    const std::string base = BaseFfPortNameFromGromacsRtp(rtp);
+
+    // Map known FF-port variant names to their canonical 3-letter parent.
+    if (base == "HID" || base == "HIE" || base == "HIP" ||
+        base == "HSD" || base == "HSE" || base == "HSP") return "HIS";
+    if (base == "CYX" || base == "CYS2" || base == "CYM") return "CYS";
+    if (base == "ASH" || base == "ASPP")                   return "ASP";
+    if (base == "GLH" || base == "GLUP")                   return "GLU";
+    if (base == "LYN" || base == "LYSN")                   return "LYS";
+    if (base == "ARN")                                     return "ARG";
+    if (base == "TYM")                                     return "TYR";
+
+    // Standard 3-letter codes pass through if they match a known amino acid.
+    if (base.size() == 3) {
+        if (AminoAcidFromThreeLetterCode(base) != AminoAcid::Unknown) {
+            return base;
+        }
+    }
+
+    return "";  // unrecognised
+}
+
+int VariantIndexFromForceFieldName(AminoAcid type, const std::string& ff_name) {
+    switch (type) {
+        case AminoAcid::HIS:
+            if (ff_name == "HID" || ff_name == "HSD") return 0;
+            if (ff_name == "HIE" || ff_name == "HSE") return 1;
+            if (ff_name == "HIP" || ff_name == "HSP") return 2;
+            return -1;
+        case AminoAcid::ASP:
+            if (ff_name == "ASH" || ff_name == "ASPP") return 0;
+            return -1;
+        case AminoAcid::GLU:
+            if (ff_name == "GLH" || ff_name == "GLUP") return 0;
+            return -1;
+        case AminoAcid::CYS:
+            if (ff_name == "CYX" || ff_name == "CYS2") return 0;
+            if (ff_name == "CYM") return 1;
+            return -1;
+        case AminoAcid::LYS:
+            if (ff_name == "LYN" || ff_name == "LYSN") return 0;
+            return -1;
+        case AminoAcid::ARG:
+            if (ff_name == "ARN") return 0;
+            return -1;
+        case AminoAcid::TYR:
+            if (ff_name == "TYM") return 0;
+            return -1;
+        default:
+            return -1;
+    }
+}
+
 }  // namespace nmr

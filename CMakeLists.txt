@@ -211,6 +211,8 @@ add_library(nmr_shielding
     src/ChiRotamerSelectionTrajectoryResult.cpp
     src/GromacsFrameHandler.cpp
     src/GromacsEnergyResult.cpp
+    src/GromacsFramePullResult.cpp
+    src/GromacsToAmberReadbackBlock.cpp
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
     src/HydrationShellResult.cpp
@@ -497,7 +499,7 @@ gtest_discover_tests(job_spec_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONME
 add_executable(gromacs_streaming_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
-    tests/test_gromacs_streaming.cpp
+    tests/test_amber_streaming.cpp
 )
 target_compile_definitions(gromacs_streaming_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"

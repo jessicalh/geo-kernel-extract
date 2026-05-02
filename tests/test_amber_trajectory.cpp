@@ -19,12 +19,26 @@
 #include "ChargeSource.h"
 #include "ForceFieldChargeTable.h"
 #include "FullSystemReader.h"
+#include "GromacsToAmberReadbackBlock.h"
 #include "Protein.h"
 #include "ProteinBuildContext.h"
 #include "ProteinConformation.h"
 
 #include <cmath>
 #include <filesystem>
+
+namespace {
+
+// topol.top sits two directories above production.tpr per the fleet_amber
+// path convention (`<protein>/prep_run_<TS>/topol.top` is the parent of
+// `batcave_local_15ns_optB_<TS>/production.tpr`). Documented convention,
+// not file discovery.
+std::string TopolTopPathForFixture(const std::string& tpr_path) {
+    return (std::filesystem::path(tpr_path).parent_path().parent_path() /
+            "topol.top").string();
+}
+
+}  // namespace
 
 using namespace nmr;
 
@@ -92,7 +106,21 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1P9J) {
     FullSystemReader reader;
     ASSERT_TRUE(reader.ReadTopology(fix.tpr_path)) << reader.error();
 
-    auto build = reader.BuildProtein(fix.protein_id, ForceField::Amber_ff14SB);
+    // Parse topol.top rtp comment lines into the readback block. The block
+    // resolves FF-port labels (HISH→HIP→HIS, CYS-with-no-HG→CYX→CYS,
+    // ASH→ASP, etc.) so BuildProtein's per-residue lookup sees canonical
+    // 3-letter codes plus typed variant indices.
+    const std::string topol_path = TopolTopPathForFixture(fix.tpr_path);
+    std::string parse_err;
+    auto readback = nmr::ParseTopolTopReadback(topol_path, parse_err);
+    ASSERT_TRUE(parse_err.empty()) << "topol.top parse: " << parse_err;
+    EXPECT_GE(readback.residues.size(), 50u);
+    EXPECT_GT(readback.n_port_label_translations, 0)
+        << "expected HISH→HIP and CYX translations in 1P9J topol.top";
+
+    auto build = reader.BuildProtein(fix.protein_id,
+                                     ForceField::Amber_ff14SB,
+                                     &readback);
     ASSERT_TRUE(build.Ok()) << build.error;
 
     EXPECT_GT(build.protein->AtomCount(), 100u);
@@ -121,7 +149,15 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1Z9B) {
     FullSystemReader reader;
     ASSERT_TRUE(reader.ReadTopology(fix.tpr_path)) << reader.error();
 
-    auto build = reader.BuildProtein(fix.protein_id, ForceField::Amber_ff14SB);
+    const std::string topol_path = TopolTopPathForFixture(fix.tpr_path);
+    std::string parse_err;
+    auto readback = nmr::ParseTopolTopReadback(topol_path, parse_err);
+    ASSERT_TRUE(parse_err.empty()) << "topol.top parse: " << parse_err;
+    EXPECT_GE(readback.residues.size(), 100u);
+
+    auto build = reader.BuildProtein(fix.protein_id,
+                                     ForceField::Amber_ff14SB,
+                                     &readback);
     ASSERT_TRUE(build.Ok()) << build.error;
 
     EXPECT_GT(build.protein->AtomCount(), 100u);
@@ -152,10 +188,18 @@ TEST_F(AmberTrajectoryFixtureTest, ProteinsDifferBetweenFixtures) {
     ASSERT_TRUE(r1.ReadTopology(fix1.tpr_path)) << r1.error();
     ASSERT_TRUE(r2.ReadTopology(fix2.tpr_path)) << r2.error();
 
-    auto b1 = r1.BuildProtein(fix1.protein_id, ForceField::Amber_ff14SB);
-    auto b2 = r2.BuildProtein(fix2.protein_id, ForceField::Amber_ff14SB);
-    ASSERT_TRUE(b1.Ok());
-    ASSERT_TRUE(b2.Ok());
+    std::string err1, err2;
+    auto rb1 = nmr::ParseTopolTopReadback(
+        TopolTopPathForFixture(fix1.tpr_path), err1);
+    auto rb2 = nmr::ParseTopolTopReadback(
+        TopolTopPathForFixture(fix2.tpr_path), err2);
+    ASSERT_TRUE(err1.empty()) << err1;
+    ASSERT_TRUE(err2.empty()) << err2;
+
+    auto b1 = r1.BuildProtein(fix1.protein_id, ForceField::Amber_ff14SB, &rb1);
+    auto b2 = r2.BuildProtein(fix2.protein_id, ForceField::Amber_ff14SB, &rb2);
+    ASSERT_TRUE(b1.Ok()) << b1.error;
+    ASSERT_TRUE(b2.Ok()) << b2.error;
 
     EXPECT_NE(b1.protein->AtomCount(), b2.protein->AtomCount());
     EXPECT_NE(b1.protein->ResidueCount(), b2.protein->ResidueCount());

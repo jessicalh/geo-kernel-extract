@@ -169,17 +169,17 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     env_.current_energy     = EnergyAtTime(handler_->Time());
     env_.current_frame_idx  = 0;
     env_.current_frame_time = handler_->Time();
+    env_.velocities         = handler_->ProteinVelocities();
+    env_.box_matrix         = handler_->BoxMatrix();
 
     RunOptions frame_opts = base_opts;
     frame_opts.solvent      = &env_.solvent;
     frame_opts.frame_energy = env_.current_energy;
+    frame_opts.velocities   = &env_.velocities;
+    frame_opts.box_matrix   = &env_.box_matrix;
 
     {
         auto& conf0 = tp.MutableCanonicalConformation_();
-        // Per-frame TRR data: velocities + box_matrix from the handler.
-        // Populated here after Seed creates conf0 from positions.
-        conf0.velocities = handler_->ProteinVelocities();
-        conf0.box_matrix = handler_->BoxMatrix();
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
@@ -214,14 +214,17 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         env_.current_energy     = EnergyAtTime(handler_->Time());
         env_.current_frame_idx  = handler_->Index();
         env_.current_frame_time = handler_->Time();
+        env_.velocities         = handler_->ProteinVelocities();
+        env_.box_matrix         = handler_->BoxMatrix();
 
-        // frame_opts pointers follow env; energy pointer resolves fresh.
+        // frame_opts pointers follow env; energy + velocity + box
+        // pointers resolve fresh against env_'s current slot.
         frame_opts.solvent      = &env_.solvent;
         frame_opts.frame_energy = env_.current_energy;
+        frame_opts.velocities   = &env_.velocities;
+        frame_opts.box_matrix   = &env_.box_matrix;
 
         auto conf = tp.TickConformation(handler_->ProteinPositions());
-        conf->velocities = handler_->ProteinVelocities();
-        conf->box_matrix = handler_->BoxMatrix();
         RunResult rr = OperationRunner::Run(*conf, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",

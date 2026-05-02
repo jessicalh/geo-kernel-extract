@@ -1,5 +1,6 @@
 #include "TrajectoryProtein.h"
 #include "BuildResult.h"
+#include "GromacsToAmberReadbackBlock.h"
 #include "OperationLog.h"
 
 #include <highfive/H5File.hpp>
@@ -26,7 +27,21 @@ TrajectoryProtein::~TrajectoryProtein() = default;
 bool TrajectoryProtein::BuildFromTrajectory(const std::string& dir_path) {
     protein_id_ = fs::path(dir_path).filename().string();
 
-    const std::string tpr_path = dir_path + "/md.tpr";
+    // Path convention (post-2026-05-02 AMBER-only world):
+    //   <production_dir>/production.tpr     — TPR, parsed by FullSystemReader
+    //   <production_dir>/production.trr     — TRR frames, read by handler
+    //   <production_dir>/production.edr     — EDR energies (read elsewhere)
+    //   <production_dir>/../topol.top       — rtp comment lines (this read)
+    //
+    // The TRR-via-libgromacs swap (commit 590a754) and JobSpec's
+    // production-prefix derivation (commit 590a754 also) made
+    // production.* the canonical naming. md.* is legacy CHARMM-era
+    // and not used by the AMBER fixtures. Older callers that still
+    // pass dir_path expecting md.tpr will need updating; flagged in
+    // CLAUDE.md path-convention discussion.
+    const std::string tpr_path = dir_path + "/production.tpr";
+    const std::string topol_top_path =
+        (fs::path(dir_path).parent_path() / "topol.top").string();
 
     if (!sys_reader_.ReadTopology(tpr_path)) {
         error_ = "TPR topology: " + sys_reader_.error();
@@ -36,8 +51,49 @@ bool TrajectoryProtein::BuildFromTrajectory(const std::string& dir_path) {
     // Bonded parameters from the same TPR parse (no re-read).
     bonded_params_ = sys_reader_.BondedParams();
 
-    // Build Protein + ChargeSource from stored TPR data.
-    auto build = sys_reader_.BuildProtein(protein_id_);
+    // Read GROMACS's chemistry decisions from topol.top so BuildProtein's
+    // per-residue lookup sees canonical AMBER names (HIP/HID/HIE/CYX/...)
+    // instead of FF-port labels (HISH/HISD/HISE/CYS-with-no-HG). The
+    // block lives on the stack frame; strings die when this function
+    // returns. Only typed enum + int fields land on Residue.
+    //
+    // If topol.top is missing, we fall back to BuildProtein-without-block
+    // (NamingRegistry path). This handles older fixtures that don't have
+    // the prep tree, but loses CYX/HISH resolution; flagged in error_
+    // for diagnostic visibility but not fatal.
+    std::string readback_err;
+    GromacsToAmberReadbackBlock readback;
+    const GromacsToAmberReadbackBlock* readback_ptr = nullptr;
+    if (fs::exists(topol_top_path)) {
+        readback = ParseTopolTopReadback(topol_top_path, readback_err);
+        if (readback_err.empty() && !readback.residues.empty()) {
+            readback_ptr = &readback;
+            OperationLog::Info(LogCalcOther,
+                "TrajectoryProtein::BuildFromTrajectory",
+                protein_id_ + ": readback block from " + topol_top_path +
+                " (" + std::to_string(readback.residues.size()) + " entries, " +
+                std::to_string(readback.n_port_label_translations) +
+                " port-label translations, " +
+                std::to_string(readback.n_disulfide_residues) +
+                " CYX residues)");
+        } else if (!readback_err.empty()) {
+            OperationLog::Warn("TrajectoryProtein::BuildFromTrajectory",
+                protein_id_ + ": topol.top parse failed (" + readback_err +
+                ") — falling back to NamingRegistry; CYX/HISH/etc. may "
+                "not resolve");
+        }
+    } else {
+        OperationLog::Warn("TrajectoryProtein::BuildFromTrajectory",
+            protein_id_ + ": no topol.top at " + topol_top_path +
+            " — falling back to NamingRegistry; CYX/HISH/etc. may "
+            "not resolve");
+    }
+
+    // Build Protein + ChargeSource from stored TPR data, with the
+    // readback block (when available) routing FF-port-label residues
+    // to canonical AMBER chemistry.
+    auto build = sys_reader_.BuildProtein(
+        protein_id_, ForceField::Amber_ff14SB, readback_ptr);
     if (!build.Ok()) {
         error_ = "TPR protein: " + build.error;
         return false;
@@ -67,15 +123,13 @@ bool TrajectoryProtein::BuildFromTrajectory(const std::string& dir_path) {
 
 void TrajectoryProtein::Seed(
         std::vector<Vec3> first_frame_positions, double time_ps) {
-    // Bond detection needs first-frame geometry.
-    protein_->FinalizeConstruction(first_frame_positions);
-
-    // FF-numerical enrichment: now that LegacyAmberTopology exists
-    // (created by FinalizeConstruction), attach the AmberFFData that
-    // FullSystemReader extracted from the TPR. One-shot move; reader's
-    // member is left empty afterward.
-    protein_->MutableLegacyAmber()
-            .AttachAmberFFData(sys_reader_.ConsumeAmberFFData());
+    // Bond detection needs first-frame geometry. The LegacyAmberInvariants
+    // value-pack carries TPR-derived FF-numerical fields (mass, atom-type,
+    // exclusions, fudge_qq, ...) into LegacyAmberTopology's plain fields
+    // at construction. One-shot move; the reader's slot is left empty.
+    protein_->FinalizeConstruction(
+        first_frame_positions,
+        sys_reader_.ConsumeAmberInvariants());
 
     // Canonical conformation: permanent, lives in Protein.conformations_.
     // Tick conformations created by TickConformation are free-standing

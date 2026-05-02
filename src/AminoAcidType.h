@@ -98,4 +98,63 @@ const AminoAcidType& AminoAcidTypeFromCode(const std::string& code);
 // Called once at startup. Aborts on mismatch.
 void ValidateVariantIndices();
 
+// Resolve a variant index from a force-field residue name.
+//
+// Single shared helper: callers that have a force-field residue label
+// (CHARMM HSD/HSE/HSP, AMBER HID/HIE/HIP/CYX/CYM/ASH/GLH/LYN/ARN/TYM,
+// CHARMM-port alternates ASPP/GLUP/CYS2) map it to the canonical
+// variant index for the given amino acid type. Returns -1 when the
+// label names the canonical-charged-state form (no variant) or doesn't
+// match any known variant.
+//
+// Indices match the AminoAcidType.h canonical contract asserted at
+// startup by ValidateVariantIndices():
+//
+//   HIS: HID/HSD = 0, HIE/HSE = 1, HIP/HSP = 2
+//   ASP: ASH/ASPP = 0
+//   GLU: GLH/GLUP = 0
+//   CYS: CYX/CYS2 = 0, CYM = 1
+//   LYS: LYN = 0
+//   ARG: ARN = 0
+//   TYR: TYM = 0
+//
+// FF-port labels that GROMACS pdb2gmx writes back (HISH / HISE / HISD
+// for amber14sb, etc.) are NOT handled here — those are resolved
+// upstream by reading the topol.top rtp comment line, per the
+// GromacsToAmberReadbackBlock design (compiler-trace shape; see
+// spec/plan/gromacs-to-amber-readback-block-design-2026-05-02.md and
+// memory feedback_readback_block_is_a_compiler_trace). Callers should
+// pass canonical AMBER/CHARMM names, not GROMACS FF-port labels.
+int VariantIndexFromForceFieldName(AminoAcid type, const std::string& ff_name);
+
+// Strip an N- or C- terminal prefix from a GROMACS rtp name, returning the
+// base FF-port name. The prefix is recognised only if the remaining four
+// characters are not themselves a known self-canonical FF-port name (CYS2,
+// ASPP, GLUP, LYSN). Pass-through for non-prefixed names.
+//
+//   "VAL"   → "VAL"
+//   "NVAL"  → "VAL"
+//   "CALA"  → "ALA"
+//   "NHIP"  → "HIP"
+//   "CHIE"  → "HIE"
+//   "NCYX"  → "CYX"
+//   "CYS2"  → "CYS2"   (self-canonical 4-letter; not stripped)
+//   "ASPP"  → "ASPP"   (self-canonical 4-letter; not stripped)
+std::string BaseFfPortNameFromGromacsRtp(const std::string& rtp);
+
+// Resolve a GROMACS rtp name (possibly N-/C-terminal-prefixed FF-port form)
+// to the canonical AMBER/PDB 3-letter residue code.
+//
+//   "VAL"   → "VAL"
+//   "NVAL"  → "VAL"
+//   "HIP"   → "HIS"
+//   "NHIP"  → "HIS"
+//   "CHIE"  → "HIS"
+//   "CYX"   → "CYS"
+//   "CYS2"  → "CYS"
+//   "ASH"   → "ASP"
+//
+// Returns empty string if the name can't be resolved to a known amino acid.
+std::string CanonicalThreeLetterFromGromacsRtp(const std::string& rtp);
+
 }  // namespace nmr

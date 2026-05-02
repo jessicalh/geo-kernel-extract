@@ -8,35 +8,25 @@ namespace nmr {
 LegacyAmberTopology::LegacyAmberTopology(
         size_t atom_count,
         size_t residue_count,
-        std::unique_ptr<CovalentTopology> bonds)
+        std::unique_ptr<CovalentTopology> bonds,
+        LegacyAmberInvariants invariants)
     : atom_count_(atom_count)
     , residue_count_(residue_count)
-    , bonds_(std::move(bonds)) {
+    , bonds_(std::move(bonds))
+    , mass_(std::move(invariants.mass))
+    , ff_atom_type_index_(std::move(invariants.ff_atom_type_index))
+    , ptype_(std::move(invariants.ptype))
+    , atomtype_string_(std::move(invariants.atomtype_string))
+    , exclusions_(std::move(invariants.exclusions))
+    , fudge_qq_(invariants.fudge_qq)
+    , rep_pow_(invariants.rep_pow)
+    , atnr_(invariants.atnr)
+    , num_non_perturbed_(invariants.num_non_perturbed) {
     if (!bonds_) {
         std::fprintf(stderr,
             "FATAL: LegacyAmberTopology requires a CovalentTopology.\n");
         std::abort();
     }
-}
-
-void LegacyAmberTopology::AttachAmberFFData(AmberFFData data) {
-    if (amber_ff_data_.has_value()) {
-        std::fprintf(stderr,
-            "FATAL: LegacyAmberTopology::AttachAmberFFData called twice. "
-            "Enrichment is one-shot.\n");
-        std::abort();
-    }
-    amber_ff_data_ = std::move(data);
-}
-
-const AmberFFData& LegacyAmberTopology::FFData() const {
-    if (!amber_ff_data_.has_value()) {
-        std::fprintf(stderr,
-            "FATAL: LegacyAmberTopology::FFData called without prior "
-            "AttachAmberFFData. Check HasAmberFFData() first.\n");
-        std::abort();
-    }
-    return *amber_ff_data_;
 }
 
 }  // namespace nmr

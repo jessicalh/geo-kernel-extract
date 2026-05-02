@@ -102,12 +102,6 @@ public:
 
     const LegacyAmberTopology& LegacyAmber() const;
 
-    // Narrow mutable accessor for one-shot post-FinalizeConstruction
-    // enrichment (LegacyAmberTopology::AttachAmberFFData from the
-    // trajectory load path). Calculators must use the const LegacyAmber()
-    // accessor; this is a builder-time-only handle.
-    LegacyAmberTopology& MutableLegacyAmber();
-
     bool HasForceFieldCharges() const { return force_field_charges_ != nullptr; }
     const ForceFieldChargeTable& ForceFieldCharges() const;
     void SetForceFieldCharges(std::unique_ptr<ForceFieldChargeTable> charges);
@@ -186,10 +180,20 @@ public:
 
     // FinalizeConstruction: must be called by every loader after adding
     // all atoms and residues. Caches backbone indices, detects bonds
-    // (via OpenBabel), and detects aromatic rings from residue types.
-    // Positions are needed for bond detection (covalent radius check).
-    // Call BEFORE creating any ProteinConformation.
+    // (via OpenBabel), detects aromatic rings from residue types, and
+    // constructs the LegacyAmberTopology — moving any source-provided
+    // invariant FF data into its plain fields. Positions are needed
+    // for bond detection (covalent radius check). Call BEFORE creating
+    // any ProteinConformation.
+    //
+    // `invariants` is an optional value-pack of FF-numerical fields the
+    // loader extracted from the source (TPR, PRMTOP). Loaders without
+    // FF data pass `{}` (default); the topology's corresponding fields
+    // remain empty and that is the legitimate signal. There is no
+    // post-construction attach path; the value-pack is moved into the
+    // topology and then goes out of scope.
     void FinalizeConstruction(const std::vector<Vec3>& positions,
+                              LegacyAmberInvariants invariants = {},
                               double bond_tolerance = 0.4);
 
     // Individual steps (public for testing, prefer FinalizeConstruction)

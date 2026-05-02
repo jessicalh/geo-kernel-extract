@@ -152,17 +152,6 @@ const LegacyAmberTopology& Protein::LegacyAmber() const {
     return TopologyAs<LegacyAmberTopology>();
 }
 
-LegacyAmberTopology& Protein::MutableLegacyAmber() {
-    auto* typed = dynamic_cast<LegacyAmberTopology*>(protein_topology_.get());
-    if (!typed) {
-        std::fprintf(stderr,
-            "FATAL: MutableLegacyAmber requested before FinalizeConstruction "
-            "or against a non-LegacyAmber topology.\n");
-        std::abort();
-    }
-    return *typed;
-}
-
 size_t Protein::BondCount() const {
     return protein_topology_ ? LegacyAmber().BondCount() : 0;
 }
@@ -222,6 +211,7 @@ bool Protein::PrepareForceFieldCharges(
 // ============================================================================
 
 void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
+                                    LegacyAmberInvariants invariants,
                                     double bond_tolerance) {
     // Layer 2: symbolic topology (no geometry needed)
     ResolveResidueTerminalStates();
@@ -229,11 +219,31 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     ResolveProtonationStates(false);
     DetectAromaticRings();
 
-    // Layer 3: geometric topology (the geometry→topology boundary)
+    // Layer 3: geometric topology + FF-numerical invariants. The
+    // value-pack is moved into the topology's plain fields and goes out
+    // of scope after this call. Loaders without source FF data pass {}.
     auto bonds = CovalentTopology::Resolve(atoms_, rings_, residues_,
                                            positions, bond_tolerance);
+
+    // Apply pdb2gmx's authoritative disulfide pairing (TPR bonded list
+    // + rtp comments). Geometric SG-SG inference at this point in
+    // CovalentTopology agrees with chemistry on standard fixtures, but
+    // the override establishes authority direction: GROMACS decided,
+    // we read. Empty disulfide_pairs (non-trajectory loads) → no-op.
+    if (!invariants.disulfide_pairs.empty()) {
+        const std::string err =
+            bonds->OverrideDisulfides(invariants.disulfide_pairs);
+        if (!err.empty()) {
+            std::fprintf(stderr,
+                "FATAL: Protein::FinalizeConstruction "
+                "OverrideDisulfides: %s\n", err.c_str());
+            std::abort();
+        }
+    }
+
     protein_topology_ = std::make_unique<LegacyAmberTopology>(
-        atoms_.size(), residues_.size(), std::move(bonds));
+        atoms_.size(), residues_.size(), std::move(bonds),
+        std::move(invariants));
     ResolveProtonationStates(true);
 
     // Copy connectivity back to Atom objects for convenient calculator access.

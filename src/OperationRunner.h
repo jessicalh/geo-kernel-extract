@@ -75,6 +75,15 @@ struct RunOptions {
     // Owned by TrajectoryProtein, borrowed here per frame.
     const BondedParameters* bonded_params = nullptr;
 
+    // Per-frame TRR data from GromacsFrameHandler (set per frame from
+    // TrajectoryEnv by Trajectory::Run). Null = no velocities / box for
+    // this frame (XTC-only legacy or non-trajectory load).
+    // Read by GromacsFramePullResult, which stashes them on its result
+    // alongside derived geometry — the catch-all for "everything gromacs
+    // gave us at frame pull time."
+    const std::vector<Vec3>* velocities = nullptr;
+    const Eigen::Matrix3d*   box_matrix = nullptr;
+
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;
 };

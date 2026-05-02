@@ -142,23 +142,6 @@ public:
     // Flat list, append-only. Populated via GeometryChoiceBuilder::Record().
     std::vector<GeometryChoice> geometry_choices;
 
-    // ============================================================
-    // Per-frame trajectory data (populated for MD frames only)
-    // ============================================================
-    //
-    // The trajectory frame-seat code (Trajectory::Run via
-    // GromacsFrameHandler) writes these after the conformation is
-    // constructed. Empty / zero for non-trajectory loads.
-    //
-    // Velocities: per-atom, parallel-indexed to Positions(), in
-    //             Angstroms / picosecond (converted from GROMACS's nm/ps
-    //             at frame-extract time, the same convention as positions).
-    //             Empty when not available (XTC-only, no velocity stream).
-    // Box matrix: simulation cell, Angstroms. 3×3 matrix. Zero when the
-    //             load path doesn't carry a periodic cell.
-    std::vector<Vec3> velocities;
-    Eigen::Matrix3d box_matrix = Eigen::Matrix3d::Zero();
-
 protected:
     const Protein* protein_;
     std::string description_;

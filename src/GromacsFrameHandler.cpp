@@ -6,7 +6,9 @@
 #include "gromacs/utility/vectypes.h"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
+#include <limits>
 
 namespace nmr {
 
@@ -99,14 +101,19 @@ bool GromacsFrameHandler::ReadNextFrame() {
     rvec    box_rv[3];
     int     na_frame = natoms_;
 
-    // Lazily size the velocity buffer the first time a frame carries v_size > 0.
-    // gmx_trr_read_frame returns gmx_bool (FALSE on EOF or read error).
-    // To probe v presence on first read, attempt a v=non-null pull;
-    // libgromacs returns success and leaves v untouched if the frame
-    // carries no velocities, so we use the header indirectly by
-    // pre-allocating a v buffer and trusting the read result.
+    // Pre-fill the velocity buffer with NaN sentinels before every read.
+    // libgromacs's gmx_trr_read_frame returns success and leaves the v
+    // buffer untouched if the TRR frame carries no velocities (nstvout=0
+    // / XTC-like TRR). The unified read API gives us no other channel
+    // for "this frame had v_size > 0", so we sentinel-fill, then check
+    // post-read whether the sentinel was overwritten. Production MD
+    // (nstvout=5000) overwrites; non-velocity TRRs leave NaN, telling
+    // us trr_has_v_ is false for that frame.
+    const float nan_sentinel = std::numeric_limits<float>::quiet_NaN();
     if (raw_v_.size() != static_cast<std::size_t>(natoms_) * 3) {
-        raw_v_.assign(static_cast<std::size_t>(natoms_) * 3, 0.0f);
+        raw_v_.assign(static_cast<std::size_t>(natoms_) * 3, nan_sentinel);
+    } else {
+        std::fill(raw_v_.begin(), raw_v_.end(), nan_sentinel);
     }
 
     auto* x_ptr = reinterpret_cast<rvec*>(raw_x_.data());
@@ -125,9 +132,11 @@ bool GromacsFrameHandler::ReadNextFrame() {
         return false;
     }
 
-    trr_has_v_ = true;  // gmx_trr_read_frame populates v if v_size > 0;
-                        // for our production runs (nstvout = 5000) every
-                        // frame has v, so we treat presence as sticky.
+    // Sentinel-survival check: if the first velocity slot is still NaN
+    // after the read, libgromacs didn't write velocities (this TRR has
+    // no velocity stream). Otherwise gmx_trr_read_frame overwrote our
+    // sentinels with real values.
+    trr_has_v_ = !raw_v_.empty() && !std::isnan(raw_v_[0]);
 
     // Box matrix in Å (TRR stores in nm).
     for (int i = 0; i < 3; ++i) {

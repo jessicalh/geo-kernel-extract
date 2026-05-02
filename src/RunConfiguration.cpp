@@ -25,6 +25,7 @@
 #include "HydrationShellResult.h"
 #include "HydrationGeometryResult.h"
 #include "GromacsEnergyResult.h"
+#include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 
 // Concrete TrajectoryResults populating the canonical configurations.
@@ -122,6 +123,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(WaterFieldResult));
     c.RequireConformationResult(typeid(HydrationShellResult));
     c.RequireConformationResult(typeid(HydrationGeometryResult));
+    c.RequireConformationResult(typeid(GromacsFramePullResult));
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
 

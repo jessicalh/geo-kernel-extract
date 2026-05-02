@@ -154,6 +154,145 @@ data/  (regenerated)
     ff14sb_params.dat (from tools/amber/generate_ff14sb_pb_table.py)
 ```
 
+### 2026-05-02 update — additive, original 2026-04-29 block above stays
+
+Read after the 2026-04-29 block; this notes what landed since then.
+
+**HEAD is now `590a754`**, not `f8729e3`. The AMBER charge slice is
+committed across six per-step commits (the slice's "GREEN, uncommitted"
+status in the block above is no longer true). Several follow-on
+commits today (Sat May 2 2026) added libgromacs-direct delegation
+(`gmx_mtop_generate_local_top`), TRR via `gmx_trr_*` replacing the
+prior XTC reader, and the `LegacyAmberInvariants` value-pack for
+FF-numerical capture into `LegacyAmberTopology`. Five pre-existing
+FleetLoader fixture failures named in the block above are still
+present and still inert per the same reasoning.
+
+**Project framing changes (decided this conversation):**
+
+- **CHARMM retired, AMBER-only via TRR, libgromacs-direct is the rule.**
+  No `gmx dump` subprocess; no hand-rolled walkers. Quarantined-legacy
+  code that should NOT be invoked from new paths: `src/xtc_reader.h`,
+  `src/GromacsEnsembleLoader.{h,cpp}`,
+  `src/ChargeSource.cpp::GmxTprChargeSource::LoadCharges` (subprocess).
+- **Per-frame source-specific data (velocities, box matrix, future
+  EDR row + solvent fold-in) goes in `GromacsFramePullResult`** — the
+  catch-all CR landed today at `src/GromacsFramePullResult.{h,cpp}`,
+  attached when `RunOptions::velocities` or `box_matrix` is non-null.
+  Per-frame data does NOT go as direct fields on ProteinConformation
+  (PDB and GROMACS are both legal load paths; conditional-empty
+  fields are the wrong shape).
+- **Invariant FF data lives on `LegacyAmberTopology` as plain const
+  fields** populated through a `LegacyAmberInvariants` value-pack at
+  construction. Earlier today's `AmberFFData` wrapper struct +
+  Attach/Has/Optional/Mutable accessors was the wrong shape; replaced
+  with plain fields (committed in the working tree, not yet on a
+  named commit).
+- **HISH-class FF-port labels and similar are a selective-authority
+  merge, not aliases.** GROMACS is the chemistry authority for
+  decisions it made (disulfide, protonation, terminal); topol.top
+  rtp comment line is the authority for canonical AMBER labels when
+  GROMACS rewrote `.name` to a port label. The merge logic —
+  `GromacsToAmberReadbackBlock` — is a compiler trace: read during
+  loading, applied to typed slots (`Residue.type`,
+  `Residue.protonation_variant_index`), optionally audit-emitted as
+  JSON, discarded. Calculators see only compiled facts. **Landed
+  2026-05-02** in `src/GromacsToAmberReadbackBlock.{h,cpp}` plus
+  optional `readback` arg on `FullSystemReader::BuildProtein`. Design
+  at `spec/plan/gromacs-to-amber-readback-block-design-2026-05-02.md`.
+- **Source-available capture at the boundary** (PDB atoms, TPR FF
+  data, TRR frame, EDR row) is the rule. It is NOT speculative. It
+  is distinct from calculator fairy-fields. See memory
+  `feedback_capture_at_the_boundary`.
+
+**New memory entries loaded automatically on session start:**
+
+- `project_charmm_retired_amber_only_2026-05-02`
+- `feedback_capture_at_the_boundary`
+- `feedback_no_attach_lifecycle_for_invariant_data`
+- `feedback_readback_block_is_a_compiler_trace`
+
+**Real bugs remaining in working tree:**
+
+- Orphan `ConformationAtom` schema fields (`G_iso_exp_sum`,
+  `G_T2_exp_sum`, `G_iso_var_8A`, `mean_ring_distance`,
+  `nearest_ring_atom_distance`) — schema with no producer. User
+  direction recorded in `running_plan_notes.md`: "we probably want
+  those" → implement producers, don't drop schema.
+- Duplicated PRMTOP parsing across the prepared AMBER and existing
+  charge paths. Local cleanup target after the authority-boundary
+  bugs settle.
+- Cap pseudo-residues (NHE / ACE / NME) not yet supported. The
+  `AminoAcid` enum and `Residue.terminal_state` enum would need
+  small extensions; not relevant for current 1P9J/1Z9B fixtures
+  (standard charged termini only). Design note in the readback
+  block doc.
+
+**What landed today, by file:**
+
+- `src/GromacsToAmberReadbackBlock.{h,cpp}` — new (untracked). The
+  selective-authority merge: parses topol.top rtp comment lines,
+  resolves canonical 3-letter codes + protonation variant indices,
+  emits JSON audit, dies at end of `BuildProtein`. Strings stay
+  inside the block; only typed enum + int values land on `Residue`.
+- `src/CovalentTopology.{h,cpp}` — `DisulfidePair` struct +
+  `OverrideDisulfides` method. The chemistry-authority overlay:
+  geometric SG-SG inference at line 134 stops being source of truth
+  on the trajectory path; authority pairs from the TPR bonded list
+  drive `BondCategory::Disulfide` tagging. Geometric Disulfide tags
+  not in authority get demoted; force-adds when geometry missed an
+  SG-SG bond pdb2gmx recorded.
+- `src/GromacsFramePullResult.{h,cpp}` — new (untracked).
+- `src/OperationRunner.{h,cpp}` — `RunOptions::velocities`/`box_matrix`
+  pointers + attach block for the new CR.
+- `src/Trajectory.{cpp,h}` — `TrajectoryEnv::velocities`/`box_matrix`,
+  populated each frame from the handler.
+- `src/ProteinConformation.h` — velocities/box_matrix removed (they
+  live in the catch-all CR now).
+- `src/RunConfiguration.cpp` — `GromacsFramePullResult` registered in
+  `PerFrameExtractionSet`.
+- `src/AminoAcidType.{h,cpp}` — single shared
+  `VariantIndexFromForceFieldName` helper plus
+  `BaseFfPortNameFromGromacsRtp` and
+  `CanonicalThreeLetterFromGromacsRtp` for readback-block resolution.
+  Replaces the broken local helper at `FullSystemReader.cpp:87`
+  whose ASH/GLH/CYX/CYM/LYN indices were wrong.
+- `src/GromacsFrameHandler.cpp` — TRR velocity-presence detection by
+  NaN sentinel survival (was unconditionally `true`).
+- `src/LegacyAmberTopology.{h,cpp}` — plain-field shape, value-pack
+  constructor; `AmberFFData` wrapper + Attach/Has/FFData/Optional
+  removed.
+- `src/Protein.{h,cpp}` — `MutableLegacyAmber` removed;
+  `FinalizeConstruction` signature gains optional
+  `LegacyAmberInvariants` value-pack. After `CovalentTopology::Resolve`
+  runs, applies `OverrideDisulfides` from the value-pack's
+  `disulfide_pairs` field — the principled authority chain for
+  SG-SG categorization on trajectory loads.
+- `src/FullSystemReader.{h,cpp}` — populates `LegacyAmberInvariants`
+  in place of `AmberFFData`; `ConsumeAmberInvariants()` accessor.
+  `BuildProtein` signature gains optional
+  `GromacsToAmberReadbackBlock*` argument; per-residue lookup uses
+  block.residues when present (sets typed `Residue.type` +
+  `protonation_variant_index` directly), falls back to
+  `NamingRegistry::ToCanonical` otherwise. After the residue/atom
+  loops, scans `BondedParameters.interactions` for SG-SG
+  inter-residue bonds between CYX residues and populates
+  `amber_invariants_.disulfide_pairs` — the typed authority record
+  flows to `FinalizeConstruction` via `ConsumeAmberInvariants()`.
+  Strict validation: when readback is non-null, every protein
+  residue index must have a populated entry; missing/empty hard-fails.
+- `tests/test_amber_trajectory.cpp` — parses topol.top per
+  documented path convention (`<production_dir>/../topol.top`),
+  passes the readback block to `BuildProtein`. The 3 previously
+  HISH-blocked tests now pass.
+- `src/TrajectoryProtein.cpp` — passes invariants through
+  `FinalizeConstruction`; the post-hoc `AttachAmberFFData` call is
+  gone.
+
+The 2026-04-29 block above remains the load-bearing reading-order +
+locked-decisions reference. This 2026-05-02 update changes none of
+those decisions; it records what was acted on between then and now.
+
 The "iupac topology" episode was a multi-week mistake. **Do not
 investigate it from git history, branches, or filenames.** The
 preservation branch was deleted; an emergency tar.gz sits at
