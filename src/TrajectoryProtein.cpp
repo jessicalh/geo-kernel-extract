@@ -70,6 +70,13 @@ void TrajectoryProtein::Seed(
     // Bond detection needs first-frame geometry.
     protein_->FinalizeConstruction(first_frame_positions);
 
+    // FF-numerical enrichment: now that LegacyAmberTopology exists
+    // (created by FinalizeConstruction), attach the AmberFFData that
+    // FullSystemReader extracted from the TPR. One-shot move; reader's
+    // member is left empty afterward.
+    protein_->MutableLegacyAmber()
+            .AttachAmberFFData(sys_reader_.ConsumeAmberFFData());
+
     // Canonical conformation: permanent, lives in Protein.conformations_.
     // Tick conformations created by TickConformation are free-standing
     // and not added to this vector.

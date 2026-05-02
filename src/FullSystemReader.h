@@ -19,7 +19,8 @@
 
 #include "SolventEnvironment.h"
 #include "BondedEnergyResult.h"
-#include "OperationRunner.h"   // ForceField enum
+#include "LegacyAmberTopology.h"  // AmberFFData enrichment payload
+#include "OperationRunner.h"      // ForceField enum
 
 #include <Eigen/Dense>
 #include <memory>
@@ -82,6 +83,16 @@ public:
     const BondedParameters& BondedParams() const { return bonded_params_; }
     bool HasBondedParams() const { return !bonded_params_.interactions.empty(); }
 
+    // FF-numerical enrichment data extracted during ReadTopology().
+    // Per-atom mass, atom-type index, ptype, atomtype string; exclusion
+    // lists; LJ pair table; fudgeQQ; SETTLE per water moltype; vsite
+    // geometry. Consumed by the trajectory loader path: after
+    // Protein::FinalizeConstruction creates the LegacyAmberTopology,
+    // the loader calls protein.MutableLegacyAmber().AttachAmberFFData(
+    // reader.ConsumeAmberFFData()).
+    const AmberFFData& AmberFF() const { return amber_ff_data_; }
+    AmberFFData ConsumeAmberFFData() { return std::move(amber_ff_data_); }
+
     // Build a Protein + ChargeSource from the stored TPR parse.
     // Must be called after ReadTopology(). Returns a Protein with
     // residues + atoms but no conformations (FinalizeConstruction
@@ -106,6 +117,7 @@ public:
 private:
     SystemTopology topo_;
     BondedParameters bonded_params_;
+    AmberFFData amber_ff_data_;
     std::unique_ptr<detail::TprData> tpr_;
     std::string error_;
 };

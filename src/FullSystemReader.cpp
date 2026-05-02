@@ -477,6 +477,98 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         std::to_string(bonded_params_.interactions.size()) + " bonded interactions, " +
         std::to_string(bonded_params_.cmap_grids.size()) + " CMAP grids");
 
+    // ── AmberFFData enrichment ───────────────────────────────────
+    //
+    // Capture FF-numerical invariant data the calculators don't currently
+    // consume but downstream work / future calculators will (mass for
+    // isotope-aware moves, ptype for virtual-site detection, atom-type
+    // strings for AMBER-naming queries, exclusions for 1-2/1-3/1-4 filter
+    // logic, fudgeQQ for 1-4 Coulomb scaling, SETTLE/vsite geometry for
+    // water-model awareness). Populated here while we have the canonical
+    // localtop + full mtop in hand; the loader then attaches it to the
+    // typed LegacyAmberTopology after Protein::FinalizeConstruction
+    // creates the topology (TrajectoryProtein::Seed handles the wiring).
+
+    amber_ff_data_ = AmberFFData{};
+    amber_ff_data_.mass.reserve(topo_.protein_count);
+    amber_ff_data_.ff_atom_type_index.reserve(topo_.protein_count);
+    amber_ff_data_.ptype.reserve(topo_.protein_count);
+    amber_ff_data_.atomtype_string.reserve(topo_.protein_count);
+
+    {
+        // Walk protein molblocks again for per-atom FF data. (We can't
+        // reuse the canonical localtop's flat atom list without the
+        // gmx_mtop_global_atoms() call; staying with the per-moltype walk
+        // is direct and sufficient for invariant per-atom fields.)
+        size_t global_offset = 0;
+        for (size_t b = 0; b < n_protein_molblocks; ++b) {
+            const auto& molblock = mtop.molblock[b];
+            const auto& mt = mtop.moltype[molblock.type];
+            const auto& atoms = mt.atoms;
+            for (int i = 0; i < atoms.nr; ++i) {
+                const auto& atom = atoms.atom[i];
+                amber_ff_data_.mass.push_back(atom.m);
+                amber_ff_data_.ff_atom_type_index.push_back(atom.type);
+                amber_ff_data_.ptype.push_back(static_cast<int>(atom.ptype));
+                std::string atype_s = atoms.atomtype && atoms.atomtype[i]
+                                          ? std::string(*atoms.atomtype[i])
+                                          : std::string();
+                amber_ff_data_.atomtype_string.push_back(std::move(atype_s));
+            }
+            global_offset += static_cast<size_t>(atoms.nr) * molblock.nmol;
+        }
+    }
+
+    // Force-field-wide constants.
+    amber_ff_data_.fudge_qq = mtop.ffparams.fudgeQQ;
+    amber_ff_data_.rep_pow  = mtop.ffparams.reppow;
+    amber_ff_data_.atnr     = mtop.ffparams.atnr;
+
+    // numNonperturbedInteractions: copy the per-function counts so a
+    // future TPR with FEP-perturbed interactions can be detected
+    // (entries past nNonperturbed in idef.il[fn] indicate perturbation).
+    {
+        const auto& nnp = idef.numNonperturbedInteractions;
+        const size_t cap =
+            std::min<size_t>(amber_ff_data_.num_non_perturbed.size(),
+                             static_cast<size_t>(InteractionFunction::Count));
+        for (size_t fn = 0; fn < cap; ++fn) {
+            amber_ff_data_.num_non_perturbed[fn] =
+                nnp[static_cast<InteractionFunction>(fn)];
+        }
+    }
+
+    // Exclusion lists: filter to protein atom range and rebase indices.
+    // gmx_localtop_t.excls is gmx::ListOfLists<int>; iterate per-atom
+    // sublist via [] operator returning a span/range over int indices.
+    {
+        amber_ff_data_.exclusions.assign(topo_.protein_count, {});
+        for (size_t global_i = topo_.protein_start; global_i < prot_hi; ++global_i) {
+            const auto& sub = localtop->excls[global_i];
+            auto& out = amber_ff_data_.exclusions[global_i - topo_.protein_start];
+            out.reserve(sub.size());
+            for (int gj : sub) {
+                if (in_protein(static_cast<size_t>(gj))) {
+                    out.push_back(static_cast<int>(
+                        static_cast<size_t>(gj) - topo_.protein_start));
+                }
+            }
+        }
+    }
+
+    // SETTLE and virtual sites: structure in place; population deferred
+    // to the next pass. Our current TIP3P fixtures have no protein-side
+    // vsites and SETTLE only applies to water moltype atoms (which are
+    // not in the typed Protein anyway). Future TIP4P+ work will fill
+    // these slots.
+    // TODO(amber-ff): SETTLE per water moltype + vsite geometry.
+    //
+    // LJ pair table: ffparams.iparams entries with functype == Lj are the
+    // per-atom-type-pair {c6, c12}. atnr × atnr layout. Capture deferred
+    // until a calculator consumes them (e.g. vdW-aware HBondResult);
+    // the field exists on AmberFFData so a follow-up populates without
+    // schema change.
+
     // Trim the parsed mtop in place to the protein-only slice.
     // gmx_mtop_t is not copyable, so this is the single canonical
     // mtop from this point on. BuildProtein and MakeProteinWhole
