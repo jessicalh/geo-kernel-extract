@@ -19,4 +19,24 @@ LegacyAmberTopology::LegacyAmberTopology(
     }
 }
 
+void LegacyAmberTopology::AttachAmberFFData(AmberFFData data) {
+    if (amber_ff_data_.has_value()) {
+        std::fprintf(stderr,
+            "FATAL: LegacyAmberTopology::AttachAmberFFData called twice. "
+            "Enrichment is one-shot.\n");
+        std::abort();
+    }
+    amber_ff_data_ = std::move(data);
+}
+
+const AmberFFData& LegacyAmberTopology::FFData() const {
+    if (!amber_ff_data_.has_value()) {
+        std::fprintf(stderr,
+            "FATAL: LegacyAmberTopology::FFData called without prior "
+            "AttachAmberFFData. Check HasAmberFFData() first.\n");
+        std::abort();
+    }
+    return *amber_ff_data_;
+}
+
 }  // namespace nmr

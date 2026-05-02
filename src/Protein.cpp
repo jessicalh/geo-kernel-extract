@@ -152,6 +152,17 @@ const LegacyAmberTopology& Protein::LegacyAmber() const {
     return TopologyAs<LegacyAmberTopology>();
 }
 
+LegacyAmberTopology& Protein::MutableLegacyAmber() {
+    auto* typed = dynamic_cast<LegacyAmberTopology*>(protein_topology_.get());
+    if (!typed) {
+        std::fprintf(stderr,
+            "FATAL: MutableLegacyAmber requested before FinalizeConstruction "
+            "or against a non-LegacyAmber topology.\n");
+        std::abort();
+    }
+    return *typed;
+}
+
 size_t Protein::BondCount() const {
     return protein_topology_ ? LegacyAmber().BondCount() : 0;
 }

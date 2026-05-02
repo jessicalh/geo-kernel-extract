@@ -14,6 +14,7 @@
 #include "Ring.h"
 #include "CovalentTopology.h"
 #include "ProteinTopology.h"
+#include "LegacyAmberTopology.h"
 #include "ForceFieldChargeTable.h"
 #include "ProteinBuildContext.h"
 #include "ProteinConformation.h"
@@ -100,6 +101,12 @@ public:
     }
 
     const LegacyAmberTopology& LegacyAmber() const;
+
+    // Narrow mutable accessor for one-shot post-FinalizeConstruction
+    // enrichment (LegacyAmberTopology::AttachAmberFFData from the
+    // trajectory load path). Calculators must use the const LegacyAmber()
+    // accessor; this is a builder-time-only handle.
+    LegacyAmberTopology& MutableLegacyAmber();
 
     bool HasForceFieldCharges() const { return force_field_charges_ != nullptr; }
     const ForceFieldChargeTable& ForceFieldCharges() const;
