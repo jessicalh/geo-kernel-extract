@@ -21,19 +21,39 @@ consolidated   = "/shared/2026Thesis/consolidated/"
 fleet_data     = "/shared/2026Thesis/nmr-shielding/tests/data/fleet"
 
 # AMBER-ff GROMACS straight-relaxation MD trajectories (gitignored).
-# Two proteins: 1P9J_5801 (smoke; ~2 µs target) and 1Z9B_6577
-# (heavy; ~15 µs target). Each protein dir contains the full
-# pipeline output (sources, decisions.json, validator_report.json,
-# em/nvt/npt equilibration, relax_2.0ns, production_scan*).
+# Test set: two proteins (1P9J_5801 and 1Z9B_6577), 1 × 15 ns each at
+# Option B cadence (XTC every 5 ps, TRR positions+velocities every 10 ps,
+# EDR every 1 ps). The same two proteins as the prior fleet's first
+# batch, BMRB-PDB-extracted, with published S² / T1 / T2 NMR relaxation
+# data. Round-3 (2 nm padding) re-runs from 2026-05-01.
+#
+# Each protein dir contains:
+#   sources/                — original PDB, BMRB .str, parsed bmrb_chemistry,
+#                             structure_extracted_*.pdb (the canonical
+#                             reference for atom-name walking, "Authority B"
+#                             per spec/plan/naming-canonical-vocabulary-
+#                             2026-04-30.md). Also pdb_companion_*.pdb
+#                             (original BMRB-deposited PDB).
+#   decisions.json          — chemistry / titration / ion / pH decisions
+#   validator_report.json   — prep validation
+#   prep_run_<TIMESTAMP>/   — em / nvt / npt equilibration, relax_2.0ns,
+#                             topol.top ("Authority A" — rtp comments hold
+#                             canonical AMBER names; e.g. residue 4 of 1P9J
+#                             has ".name=HISH rtp=HIP" — the load-bearing
+#                             test case for NC4 in the canonical-vocabulary
+#                             spec), and the production run subdir.
 fleet_amber    = "/shared/2026Thesis/nmr-shielding/tests/data/fleet_amber"
 
 # Per-protein production-trajectory subpath under <fleet_amber>/<id>/.
 # Paths are pinned (no directory discovery / glob — see PATTERNS.md
 # "No file discovery"). Append .tpr / .xtc / .edr at the call site.
-# When new MD runs are produced, update these entries to point at the
-# new timestamped subdirs.
-fleet_amber_1p9j_5801_subpath = "1P9J_5801/prep_run_20260429T222609Z/production_scan2_0.0us_20260429T233733Z/production"
-fleet_amber_1z9b_6577_subpath = "1Z9B_6577/prep_run_20260429T222806Z/production_scan1_0.0us_20260429T233739Z/production"
+# (Note: the deeply nested timestamped-dir convention is unwieldy but
+# reproducibly identifies each dispatch. Update these subpaths when
+# new MD runs replace them.)
+#
+# Round-3 Option B 15 ns runs (2026-05-01):
+fleet_amber_1p9j_5801_subpath = "1P9J_5801/prep_run_20260501T141627Z/batcave_local_15ns_optB_20260501T144807Z/production"
+fleet_amber_1z9b_6577_subpath = "1Z9B_6577/prep_run_20260501T143103Z/batcave_local_15ns_optB_20260501T144823Z/production"
 
 # ff14SB parameter file (for tests that create their own ChargeSource)
 ff14sb_params  = "/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"

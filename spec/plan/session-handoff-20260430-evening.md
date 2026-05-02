@@ -354,6 +354,90 @@ DEPENDENCIES
     residue handling.
 ```
 
+## Trajectory test data — where it lives now
+
+The two sample proteins (1P9J_5801 and 1Z9B_6577) — same two as the prior batch, BMRB-PDB-extracted, with published S² / T1 / T2 NMR relaxation data — have completed Round-3 Option B 15 ns runs and now serve as **the trajectory test data** for the calculator-pass and Phase 0 / NC1-NC7 work. The paths are deeply nested with timestamped subdirs (unwieldy but reproducibly identifies each dispatch); the subpaths are pinned in `tests/testpaths.toml`.
+
+```
+ROOT (in testpaths.toml as `fleet_amber`)
+  /shared/2026Thesis/nmr-shielding/tests/data/fleet_amber/
+
+PER-PROTEIN LAYOUT
+  <ROOT>/<protein_id>/
+    sources/
+      pdb_companion_<id>.pdb                       Original BMRB-deposited PDB
+      bmrb_<id>.str                                BMRB chemistry record
+      bmrb_chemistry.json                          Parsed BMRB chemistry
+      structure_extracted_<id>_chain_A_model_0.pdb Authority B for NC1-NC7 atom-
+                                                    name walking; deposit-canonical
+                                                    PDB CCD names. Some proteins
+                                                    have a .complete_termini.pdb
+                                                    variant alongside.
+      structure_extract_record.json                Provenance trail
+      pdb2pqr_record.json
+      validator_report.json
+    decisions.json                                 Chemistry / titration / ion / pH
+                                                    decisions for the prep
+    validator_report.json                          Prep validation
+    prep_run_<TIMESTAMP>/                          em / nvt / npt equilibration +
+                                                    relax_2.0ns + topol.top +
+                                                    production run subdir
+      topol.top                                    Authority A for NC1-NC7;
+                                                    "; residue N <name> rtp <rtp>
+                                                    q <q>" comment lines carry
+                                                    canonical AMBER names
+                                                    (HID/HIE/HIP/CYX/ASH/GLH/LYN/...)
+      em.gro / nvt.gro / npt.gro
+      relax.gro / relax.cpt
+      batcave_local_15ns_optB_<TIMESTAMP>/         The Round-3 Option B 15 ns run
+        production.tpr                             Run topology
+        production.xtc                             Coords every 5 ps (3001 frames)
+        production.trr                             Positions + velocities every
+                                                    10 ps (1500 frames)
+        production.edr                             Energy every 1 ps (15000 frames)
+        production.gro                             Final frame
+        production.cpt                             Final-step checkpoint
+        production.log                             Run log + perf metrics
+        production.mdp                             The actual MDP used for the run
+
+CURRENT ROUND-3 OPTION B PATHS (2026-05-01, both completed)
+  1P9J_5801    /shared/2026Thesis/nmr-shielding/tests/data/fleet_amber/1P9J_5801/
+                 prep_run_20260501T141627Z/
+                   batcave_local_15ns_optB_20260501T144807Z/
+                     production.{tpr,xtc,trr,edr,gro,cpt,log,mdp}
+               System: 52,337 atoms (small protein at 2 nm padding)
+
+  1Z9B_6577    /shared/2026Thesis/nmr-shielding/tests/data/fleet_amber/1Z9B_6577/
+                 prep_run_20260501T143103Z/
+                   batcave_local_15ns_optB_20260501T144823Z/
+                     production.{tpr,xtc,trr,edr,gro,cpt,log,mdp}
+               System: 163,056 atoms (larger protein)
+
+SANITY CHECK VALUES (for the next session to verify "I'm on the new data")
+  1P9J:  XTC stride = 5 ps, atom count = 52337,
+         sha256(production.xtc) = c62110014288ef064fd4c6ceed52582e4d05df8080427de19ffe93a57b554041
+  1Z9B:  XTC stride = 5 ps, atom count = 163056,
+         sha256(production.xtc) = d5a3e86f054b0700350d0d4aef89227f75082094084648411df61e5a08d6b5df
+
+PINNED IN testpaths.toml
+  fleet_amber                       = "/shared/.../tests/data/fleet_amber"
+  fleet_amber_1p9j_5801_subpath     = "1P9J_5801/prep_run_20260501T141627Z/
+                                        batcave_local_15ns_optB_20260501T144807Z/production"
+  fleet_amber_1z9b_6577_subpath     = "1Z9B_6577/prep_run_20260501T143103Z/
+                                        batcave_local_15ns_optB_20260501T144823Z/production"
+  Append .tpr / .xtc / .edr / etc. at the call site (no glob, no discovery).
+
+PATH NOTES
+  - The deeply nested layout (prep_run_<TIMESTAMP>/batcave_local_15ns_optB_<TIMESTAMP>/)
+    is unwieldy but reproducibly identifies each dispatch. Future re-runs go to new
+    timestamped subdirs and testpaths.toml gets updated.
+  - "Authority A" topol.top is one level above the production run subdir
+    (in prep_run_<TIMESTAMP>/, not in batcave_local_15ns_optB_<TIMESTAMP>/).
+  - "Authority B" structure_extracted PDB is in <protein>/sources/, two levels above.
+  - sources/, decisions.json, validator_report.json are protein-level, not
+    prep-run-specific. They survive across re-runs.
+```
+
 ## Sample MD runs in flight overnight
 
 Per `spec/plan/md-session-handoff-2026-04-30.md`:

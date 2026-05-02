@@ -410,6 +410,14 @@ These are load-bearing across subprojects. Each subproject's
   editing / vetting surface for H5 fields before they become thesis
   claims. Per-field glossary, per-metric colouring, tensor glyphs
   on atoms — these are not polish, they are the point.
+- **"I don't know" is preferred to handwaving.** When reasoning
+  about external systems (libgromacs internals, force-field
+  conventions, compiler behaviour, library APIs we don't routinely
+  touch), the honest answer "I don't know — let me look" is
+  preferred to confident reconstruction. Send an agent, read the
+  source, build a fixture. Confident-sounding speculation about
+  external behaviour is the failure mode that produces silent bugs
+  and rolled-our-own reimplementations of canonical utilities.
 
 ### AI / ML framing
 
