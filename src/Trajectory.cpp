@@ -176,6 +176,10 @@ Status Trajectory::Run(TrajectoryProtein& tp,
 
     {
         auto& conf0 = tp.MutableCanonicalConformation_();
+        // Per-frame TRR data: velocities + box_matrix from the handler.
+        // Populated here after Seed creates conf0 from positions.
+        conf0.velocities = handler_->ProteinVelocities();
+        conf0.box_matrix = handler_->BoxMatrix();
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
@@ -216,6 +220,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         frame_opts.frame_energy = env_.current_energy;
 
         auto conf = tp.TickConformation(handler_->ProteinPositions());
+        conf->velocities = handler_->ProteinVelocities();
+        conf->box_matrix = handler_->BoxMatrix();
         RunResult rr = OperationRunner::Run(*conf, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",

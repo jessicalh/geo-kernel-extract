@@ -126,7 +126,9 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         spec.mode = JobMode::Trajectory;
         spec.analysis = HasFlag(argc, argv, "--analysis");
 
-        // --trajectory DIR: protein directory containing md.tpr, md.xtc, md.edr.
+        // --trajectory DIR: protein directory containing production.tpr,
+        // production.trr, production.edr (Round-3 Option B convention,
+        // 2026-05-01 onward — TRR carries positions + velocities + box).
         // Find DIR: the first non-flag token after --trajectory.
         // (GetArg would grab --analysis as the value.)
         for (int i = 1; i < argc; ++i) {
@@ -144,7 +146,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         if (spec.traj_dir.empty()) {
             spec.error = "--trajectory requires a directory path:\n"
                          "  --trajectory DIR\n"
-                         "  DIR must contain md.tpr, md.xtc, md.edr";
+                         "  DIR must contain production.tpr, production.trr, production.edr";
             return spec;
         }
 
@@ -152,9 +154,11 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         // No looking around, no extension swapping, no glob.
         std::string dir = spec.traj_dir;
         if (!dir.empty() && dir.back() == '/') dir.pop_back();
-        spec.traj_tpr = dir + "/md.tpr";
-        spec.traj_xtc = dir + "/md.xtc";
-        spec.traj_edr = dir + "/md.edr";
+        spec.traj_tpr = dir + "/production.tpr";
+        spec.traj_xtc = dir + "/production.trr";  // field still named traj_xtc
+                                                    // for code-call-site compat;
+                                                    // value is now the TRR path.
+        spec.traj_edr = dir + "/production.edr";
 
         return spec;
     }
@@ -370,7 +374,7 @@ void PrintJobSpecUsage(const char* prog) {
         "\n"
         "  %s --trajectory DIR --output DIR\n"
         "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
-        "      DIR must contain md.tpr, md.xtc, md.edr (all required).\n"
+        "      DIR must contain production.tpr, production.trr, production.edr (all required).\n"
         "      Pass 1: scan all frames with lightweight calculators, accumulate stats.\n"
         "      Pass 2: extract selected frames with full calculators, write NPY.\n"
         "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"

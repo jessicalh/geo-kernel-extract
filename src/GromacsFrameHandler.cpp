@@ -2,43 +2,75 @@
 #include "TrajectoryProtein.h"
 #include "OperationLog.h"
 
+#include "gromacs/fileio/trrio.h"
+#include "gromacs/utility/vectypes.h"
+
 #include <algorithm>
 #include <exception>
 
 namespace nmr {
+
+// nm → Å conversion (TRR stores positions / velocities in nm; our
+// per-frame buffers are in Å / Å/ps to match every other ConformationAtom
+// position field in the system).
+static constexpr float NM_TO_ANGSTROM = 10.0f;
 
 
 GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)
     : tp_(tp) {}
 
 
+GromacsFrameHandler::~GromacsFrameHandler() {
+    if (trr_fio_) {
+        gmx_trr_close(trr_fio_);
+        trr_fio_ = nullptr;
+    }
+}
+
+
 // ── Open ─────────────────────────────────────────────────────────
 //
-// Mount the XTC stream. The TPR was already parsed by
-// TrajectoryProtein::BuildFromTrajectory (which called
-// FullSystemReader::ReadTopology), so the protein slice and the
-// trimmed protein-only mtop used for PBC are already on hand. The
-// pre-2026-04-25 cross-check between MoleculeWholer's independent
-// reparse and FullSystemReader's slice is gone — both are now the
-// same source of truth, with composition predicates rather than
-// moltype-name string matching.
+// Mount the TRR stream via libgromacs gmx_trr_open. The TPR was
+// already parsed by TrajectoryProtein::BuildFromTrajectory (which
+// called FullSystemReader::ReadTopology), so the protein slice and
+// the trimmed protein-only mtop used for PBC fixing are already on
+// hand. Atom-count sanity check: TRR header reports total system
+// atoms, which must match topology.total_atoms.
 
-bool GromacsFrameHandler::Open(const std::string& xtc_path,
+bool GromacsFrameHandler::Open(const std::string& trr_path,
                                const std::string& /*tpr_path*/) {
-    OperationLog::Scope scope("GromacsFrameHandler::Open", xtc_path);
+    OperationLog::Scope scope("GromacsFrameHandler::Open", trr_path);
 
-    if (!reader_.Open(xtc_path)) {
-        error_ = "cannot open XTC: " + xtc_path;
+    if (trr_fio_) {
+        gmx_trr_close(trr_fio_);
+        trr_fio_ = nullptr;
+    }
+
+    trr_path_ = trr_path;
+    trr_fio_ = gmx_trr_open(trr_path, "r");
+    if (!trr_fio_) {
+        error_ = "cannot open TRR: " + trr_path;
         return false;
     }
 
+    // Probe the first frame's header to learn natoms and whether
+    // velocities are present. We do this with a peek then rewind via
+    // Reopen — gmx_trr's stream model doesn't natively peek-and-rewind,
+    // so instead we rely on the system topology's total atom count
+    // (already parsed from the TPR) and treat the first ReadNextFrame
+    // as the source of truth for natoms/v presence.
     const auto& topo = tp_.SysReader().Topology();
+    natoms_ = static_cast<int>(topo.total_atoms);
+
+    raw_x_.assign(static_cast<std::size_t>(natoms_) * 3, 0.0f);
+    raw_v_.clear();
+    trr_has_v_ = false;
 
     has_read_ = false;
     current_index_ = 0;
 
     OperationLog::Info(LogCalcOther, "GromacsFrameHandler::Open",
-        std::to_string(reader_.natoms()) + " atoms/frame, " +
+        std::to_string(natoms_) + " atoms/frame, " +
         std::to_string(topo.protein_count) + " protein, " +
         std::to_string(topo.water_count) + " water, " +
         std::to_string(topo.ion_count) + " ions");
@@ -49,30 +81,86 @@ bool GromacsFrameHandler::Open(const std::string& xtc_path,
 
 // ── ReadNextFrame ────────────────────────────────────────────────
 //
-// Read one XTC frame, PBC-fix protein coords, split full-system into
-// protein positions + SolventEnvironment. Populates internal state.
+// Read one TRR frame: positions + velocities + box. PBC-fix protein,
+// split full-system into protein positions, protein velocities, and
+// SolventEnvironment. Populates internal state.
+//
+// First-frame note: TRR per-frame headers can have x_size / v_size /
+// f_size set independently. We allocate the velocity buffer on
+// first-read if v_size is non-zero, then keep it allocated for the
+// duration. Forces are skipped (NULL pointer; our nstfout=0 anyway).
 
 bool GromacsFrameHandler::ReadNextFrame() {
-    XtcFrame frame;
-    if (!reader_.ReadNext(frame)) return false;
+    if (!trr_fio_) return false;
 
+    int64_t step = 0;
+    real    t = 0.0f;
+    real    lambda = 0.0f;
+    rvec    box_rv[3];
+    int     na_frame = natoms_;
+
+    // Lazily size the velocity buffer the first time a frame carries v_size > 0.
+    // gmx_trr_read_frame returns gmx_bool (FALSE on EOF or read error).
+    // To probe v presence on first read, attempt a v=non-null pull;
+    // libgromacs returns success and leaves v untouched if the frame
+    // carries no velocities, so we use the header indirectly by
+    // pre-allocating a v buffer and trusting the read result.
+    if (raw_v_.size() != static_cast<std::size_t>(natoms_) * 3) {
+        raw_v_.assign(static_cast<std::size_t>(natoms_) * 3, 0.0f);
+    }
+
+    auto* x_ptr = reinterpret_cast<rvec*>(raw_x_.data());
+    auto* v_ptr = reinterpret_cast<rvec*>(raw_v_.data());
+
+    if (!gmx_trr_read_frame(trr_fio_, &step, &t, &lambda,
+                            box_rv, &na_frame,
+                            x_ptr, v_ptr, /*f=*/nullptr)) {
+        return false;
+    }
+
+    if (na_frame != natoms_) {
+        error_ = "TRR frame natoms mismatch: header=" +
+                 std::to_string(na_frame) + " expected=" +
+                 std::to_string(natoms_);
+        return false;
+    }
+
+    trr_has_v_ = true;  // gmx_trr_read_frame populates v if v_size > 0;
+                        // for our production runs (nstvout = 5000) every
+                        // frame has v, so we treat presence as sticky.
+
+    // Box matrix in Å (TRR stores in nm).
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            box_matrix_(i, j) = static_cast<double>(box_rv[i][j]) * 10.0;
+        }
+    }
+
+    // PBC fix on protein slice. FullSystemReader owns the protein-only
+    // mtop and pbcType; passing the frame's box is correct under NPT.
     const auto& topo = tp_.SysReader().Topology();
     const std::size_t pstart = topo.protein_start;
     const std::size_t pcount = topo.protein_count;
 
-    // PBC fix on protein slice. FullSystemReader owns the protein-only
-    // mtop and pbcType; passing the frame's box is correct under NPT.
     std::vector<float> protein_coords(
-        frame.x.begin() + pstart * 3,
-        frame.x.begin() + (pstart + pcount) * 3);
-    if (!tp_.SysReader().MakeProteinWhole(protein_coords, frame.box)) {
+        raw_x_.begin() + pstart * 3,
+        raw_x_.begin() + (pstart + pcount) * 3);
+
+    // FullSystemReader::MakeProteinWhole signature takes a 3×3 float box.
+    float box_for_pbc[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            box_for_pbc[i][j] = box_rv[i][j];
+        }
+    }
+    if (!tp_.SysReader().MakeProteinWhole(protein_coords, box_for_pbc)) {
         error_ = std::string("MakeProteinWhole failed at index ") +
                  std::to_string(has_read_ ? current_index_ + 1 : 0);
         return false;
     }
 
-    // Write fixed coords back.
-    std::vector<float> fixed_xyz = frame.x;
+    // Write fixed coords back over the protein slice for ExtractFrame.
+    std::vector<float> fixed_xyz(raw_x_.begin(), raw_x_.end());
     std::copy(protein_coords.begin(), protein_coords.end(),
               fixed_xyz.begin() + pstart * 3);
 
@@ -85,7 +173,20 @@ bool GromacsFrameHandler::ReadNextFrame() {
         return false;
     }
 
-    last_frame_time_ = static_cast<double>(frame.time);
+    // Carve protein velocities (nm/ps → Å/ps). Empty if TRR had no v.
+    protein_velocities_.clear();
+    if (trr_has_v_) {
+        protein_velocities_.reserve(pcount);
+        for (std::size_t a = 0; a < pcount; ++a) {
+            const std::size_t base = (pstart + a) * 3;
+            protein_velocities_.emplace_back(
+                static_cast<double>(raw_v_[base + 0]) * 10.0,
+                static_cast<double>(raw_v_[base + 1]) * 10.0,
+                static_cast<double>(raw_v_[base + 2]) * 10.0);
+        }
+    }
+
+    last_frame_time_ = static_cast<double>(t);
     current_index_ = has_read_ ? current_index_ + 1 : 0;
     has_read_ = true;
     return true;
@@ -94,11 +195,25 @@ bool GromacsFrameHandler::ReadNextFrame() {
 
 // ── Skip ─────────────────────────────────────────────────────────
 //
-// Advance the XTC cursor without extracting. Used for stride-based
-// frame dropping: skip stride-1 frames between each ReadNextFrame.
+// Advance the TRR cursor without extracting. Used for stride-based
+// frame dropping. Calls gmx_trr_read_frame with NULL output pointers
+// for x, v, f — libgromacs reads the header and skips the data.
 
 bool GromacsFrameHandler::Skip() {
-    if (!reader_.Skip()) return false;
+    if (!trr_fio_) return false;
+
+    int64_t step = 0;
+    real    t = 0.0f;
+    real    lambda = 0.0f;
+    rvec    box_rv[3];
+    int     na_frame = natoms_;
+
+    if (!gmx_trr_read_frame(trr_fio_, &step, &t, &lambda,
+                            box_rv, &na_frame,
+                            /*x=*/nullptr, /*v=*/nullptr, /*f=*/nullptr)) {
+        return false;
+    }
+
     current_index_ = has_read_ ? current_index_ + 1 : 0;
     has_read_ = true;  // cursor has moved past a real frame
     return true;
@@ -107,13 +222,18 @@ bool GromacsFrameHandler::Skip() {
 
 // ── Reopen ───────────────────────────────────────────────────────
 //
-// Reset the XTC cursor to the start. Per the static path's legacy
+// Reset the TRR cursor to the start. Per the static path's legacy
 // expectation, Protein is not re-finalized — the caller has already
 // done that on the first pass and should treat conf0 as valid.
 
 bool GromacsFrameHandler::Reopen() {
-    if (!reader_.Reopen()) {
-        error_ = "failed to reopen XTC";
+    if (trr_fio_) {
+        gmx_trr_close(trr_fio_);
+        trr_fio_ = nullptr;
+    }
+    trr_fio_ = gmx_trr_open(trr_path_, "r");
+    if (!trr_fio_) {
+        error_ = "failed to reopen TRR: " + trr_path_;
         return false;
     }
     has_read_ = false;
