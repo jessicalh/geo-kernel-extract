@@ -305,173 +305,173 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         " water_H_q=" + std::to_string(topo_.water_H_charge));
 
     // ── Pass 2: bonded interaction parameters ───────────────────
-    // Same molblock walk, extracting force field interaction lists
-    // for the protein atoms. Uses the stored mtop — no re-read.
+    //
+    // Canonical adoption: build a gmx_localtop_t via libgromacs's
+    // gmx_mtop_generate_local_top() (mtop_util.h:113), which flattens
+    // every molblock's interaction lists into idef.il[fn] with global
+    // atom indices and stores the parameters in idef.iparams. The
+    // reindexing math (ilistcat() in libgromacs) is the canonical
+    // recipe; we delegate to it rather than reimplementing per-molblock
+    // offset rebasing. Filter the resulting flat list to the protein
+    // atom range [protein_start, protein_start + protein_count) — the
+    // typed Protein indices are zero-based within the protein, so each
+    // captured atom index has protein_start subtracted at push time.
+    //
+    // Run BEFORE the in-place mtop trim at the bottom of this function:
+    // gmx_mtop_generate_local_top operates on the FULL mtop
+    // (protein + solvent + ions); the trim that follows reduces mtop
+    // to protein-only for downstream consumers (do_pbc_mtop, BuildProtein).
 
-    const auto& ffp = mtop.ffparams;
+    auto localtop = std::make_unique<gmx_localtop_t>(mtop.ffparams);
+    gmx_mtop_generate_local_top(mtop, localtop.get(),
+                                /*freeEnergyInteractionsAtEnd=*/false);
+    const auto& idef = localtop->idef;
 
-    bonded_params_.cmap_grid_spacing = ffp.cmap_grid.grid_spacing;
+    bonded_params_.cmap_grid_spacing = idef.cmap_grid.grid_spacing;
     bonded_params_.cmap_grids.clear();
-    for (const auto& cm : ffp.cmap_grid.cmapdata) {
+    for (const auto& cm : idef.cmap_grid.cmapdata) {
         bonded_params_.cmap_grids.push_back(
             std::vector<double>(cm.cmap.begin(), cm.cmap.end()));
     }
 
-    // Iterate exactly the leading protein molblocks identified in
-    // Pass 1. Each one's local atom indices are offset by the
-    // running global_offset so the resulting BondedInteraction list
-    // uses indices consistent with BuildProtein's concatenated atom
-    // ordering.
-    size_t global_offset = 0;
-    for (size_t b = 0; b < n_protein_molblocks; ++b) {
-        const auto& molblock = mtop.molblock[b];
-        const auto& mt = mtop.moltype[molblock.type];
-        size_t atoms_per_mol = mt.atoms.nr;
+    const size_t prot_lo = topo_.protein_start;
+    const size_t prot_hi = topo_.protein_start + topo_.protein_count;
 
-        size_t protein_local_offset = global_offset - topo_.protein_start;
+    auto in_protein = [&](size_t global) {
+        return global >= prot_lo && global < prot_hi;
+    };
+    auto to_protein_idx = [&](int global) -> size_t {
+        return static_cast<size_t>(global) - prot_lo;
+    };
 
-        auto prot_idx = [&](int local) -> size_t {
-            return protein_local_offset + static_cast<size_t>(local);
-        };
-
-        const auto& ilist = mt.ilist;
-
-        // Bonds (harmonic)
-        {
-            const auto& il = ilist[InteractionFunction::Bonds];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::Bonds].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                const auto& p = ffp.iparams[type].harmonic;
-                BondedInteraction bi;
-                bi.type = BondedInteraction::Bond;
-                bi.n_atoms = 2;
-                bi.atoms[0] = prot_idx(ia[j+1]);
-                bi.atoms[1] = prot_idx(ia[j+2]);
-                bi.p[0] = p.rA;
-                bi.p[1] = p.krA;
-                bonded_params_.interactions.push_back(bi);
-            }
-        }
-
-        // Angles (harmonic) — GROMACS stores theta0 in DEGREES
-        {
-            const auto& il = ilist[InteractionFunction::Angles];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::Angles].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                const auto& p = ffp.iparams[type].harmonic;
-                BondedInteraction bi;
-                bi.type = BondedInteraction::Angle;
-                bi.n_atoms = 3;
-                bi.atoms[0] = prot_idx(ia[j+1]);
-                bi.atoms[1] = prot_idx(ia[j+2]);
-                bi.atoms[2] = prot_idx(ia[j+3]);
-                bi.p[0] = p.rA * DEG_TO_RAD;
-                bi.p[1] = p.krA;
-                bonded_params_.interactions.push_back(bi);
-            }
-        }
-
-        // Urey-Bradley
-        {
-            const auto& il = ilist[InteractionFunction::UreyBradleyPotential];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::UreyBradleyPotential].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                const auto& p = ffp.iparams[type].u_b;
-                BondedInteraction bi_angle;
-                bi_angle.type = BondedInteraction::Angle;
-                bi_angle.n_atoms = 3;
-                bi_angle.atoms[0] = prot_idx(ia[j+1]);
-                bi_angle.atoms[1] = prot_idx(ia[j+2]);
-                bi_angle.atoms[2] = prot_idx(ia[j+3]);
-                bi_angle.p[0] = p.thetaA * DEG_TO_RAD;
-                bi_angle.p[1] = p.kthetaA;
-                bonded_params_.interactions.push_back(bi_angle);
-                if (p.kUBA != 0.0) {
-                    BondedInteraction bi_ub;
-                    bi_ub.type = BondedInteraction::UreyBradley;
-                    bi_ub.n_atoms = 3;
-                    bi_ub.atoms[0] = prot_idx(ia[j+1]);
-                    bi_ub.atoms[1] = prot_idx(ia[j+2]);
-                    bi_ub.atoms[2] = prot_idx(ia[j+3]);
-                    bi_ub.p[0] = p.r13A;
-                    bi_ub.p[1] = p.kUBA;
-                    bonded_params_.interactions.push_back(bi_ub);
+    // Walk a flat InteractionList for one InteractionFunction kind.
+    // Each entry occupies (nratoms + 1) ints in iatoms: type then
+    // atom indices. Skip any entry whose atoms aren't all in the
+    // protein range; rebase indices into protein-local space.
+    auto walk_il = [&](InteractionFunction fn,
+                       auto&& push_one) {
+        const auto& il = idef.il[fn];
+        const auto& ia = il.iatoms;
+        const int nra = interaction_function[fn].nratoms;
+        for (size_t j = 0; j + nra < ia.size(); j += nra + 1) {
+            const int type = ia[j];
+            // All atoms must be in protein range; otherwise skip.
+            bool all_in = true;
+            for (int k = 1; k <= nra; ++k) {
+                if (!in_protein(static_cast<size_t>(ia[j + k]))) {
+                    all_in = false;
+                    break;
                 }
             }
+            if (!all_in) continue;
+            push_one(type, &ia[j + 1]);
         }
+    };
 
-        // Proper dihedrals (periodic)
-        {
-            const auto& il = ilist[InteractionFunction::ProperDihedrals];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::ProperDihedrals].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                const auto& p = ffp.iparams[type].pdihs;
-                BondedInteraction bi;
-                bi.type = BondedInteraction::ProperDih;
-                bi.n_atoms = 4;
-                bi.atoms[0] = prot_idx(ia[j+1]);
-                bi.atoms[1] = prot_idx(ia[j+2]);
-                bi.atoms[2] = prot_idx(ia[j+3]);
-                bi.atoms[3] = prot_idx(ia[j+4]);
-                bi.p[0] = p.phiA * DEG_TO_RAD;
-                bi.p[1] = p.cpA;
-                bi.p[2] = static_cast<double>(p.mult);
-                bonded_params_.interactions.push_back(bi);
+    // Bonds (harmonic)
+    walk_il(InteractionFunction::Bonds,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].harmonic;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::Bond;
+            bi.n_atoms = 2;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.p[0] = p.rA;
+            bi.p[1] = p.krA;
+            bonded_params_.interactions.push_back(bi);
+        });
+
+    // Angles (harmonic) — GROMACS stores theta0 in DEGREES
+    walk_il(InteractionFunction::Angles,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].harmonic;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::Angle;
+            bi.n_atoms = 3;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.atoms[2] = to_protein_idx(a[2]);
+            bi.p[0] = p.rA * DEG_TO_RAD;
+            bi.p[1] = p.krA;
+            bonded_params_.interactions.push_back(bi);
+        });
+
+    // Urey-Bradley: emits both an angle term and (if k_UB nonzero) a
+    // 1-3 distance term, matching the legacy walk's behaviour.
+    walk_il(InteractionFunction::UreyBradleyPotential,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].u_b;
+            BondedInteraction bi_angle;
+            bi_angle.type = BondedInteraction::Angle;
+            bi_angle.n_atoms = 3;
+            bi_angle.atoms[0] = to_protein_idx(a[0]);
+            bi_angle.atoms[1] = to_protein_idx(a[1]);
+            bi_angle.atoms[2] = to_protein_idx(a[2]);
+            bi_angle.p[0] = p.thetaA * DEG_TO_RAD;
+            bi_angle.p[1] = p.kthetaA;
+            bonded_params_.interactions.push_back(bi_angle);
+            if (p.kUBA != 0.0) {
+                BondedInteraction bi_ub;
+                bi_ub.type = BondedInteraction::UreyBradley;
+                bi_ub.n_atoms = 3;
+                bi_ub.atoms[0] = to_protein_idx(a[0]);
+                bi_ub.atoms[1] = to_protein_idx(a[1]);
+                bi_ub.atoms[2] = to_protein_idx(a[2]);
+                bi_ub.p[0] = p.r13A;
+                bi_ub.p[1] = p.kUBA;
+                bonded_params_.interactions.push_back(bi_ub);
             }
-        }
+        });
 
-        // Improper dihedrals (harmonic)
-        {
-            const auto& il = ilist[InteractionFunction::ImproperDihedrals];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::ImproperDihedrals].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                const auto& p = ffp.iparams[type].harmonic;
-                BondedInteraction bi;
-                bi.type = BondedInteraction::ImproperDih;
-                bi.n_atoms = 4;
-                bi.atoms[0] = prot_idx(ia[j+1]);
-                bi.atoms[1] = prot_idx(ia[j+2]);
-                bi.atoms[2] = prot_idx(ia[j+3]);
-                bi.atoms[3] = prot_idx(ia[j+4]);
-                bi.p[0] = p.rA * DEG_TO_RAD;
-                bi.p[1] = p.krA;
-                bonded_params_.interactions.push_back(bi);
-            }
-        }
+    // Proper dihedrals (periodic)
+    walk_il(InteractionFunction::ProperDihedrals,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].pdihs;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::ProperDih;
+            bi.n_atoms = 4;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.atoms[2] = to_protein_idx(a[2]);
+            bi.atoms[3] = to_protein_idx(a[3]);
+            bi.p[0] = p.phiA * DEG_TO_RAD;
+            bi.p[1] = p.cpA;
+            bi.p[2] = static_cast<double>(p.mult);
+            bonded_params_.interactions.push_back(bi);
+        });
 
-        // CMAP (dihedral energy correction)
-        {
-            const auto& il = ilist[InteractionFunction::DihedralEnergyCorrectionMap];
-            const auto& ia = il.iatoms;
-            int nra = interaction_function[InteractionFunction::DihedralEnergyCorrectionMap].nratoms;
-            for (size_t j = 0; j < ia.size(); j += nra + 1) {
-                int type = ia[j];
-                int grid_idx = ffp.iparams[type].cmap.cmapA;
-                BondedInteraction bi;
-                bi.type = BondedInteraction::CMAP;
-                bi.n_atoms = 5;
-                bi.atoms[0] = prot_idx(ia[j+1]);
-                bi.atoms[1] = prot_idx(ia[j+2]);
-                bi.atoms[2] = prot_idx(ia[j+3]);
-                bi.atoms[3] = prot_idx(ia[j+4]);
-                bi.atoms[4] = prot_idx(ia[j+5]);
-                bi.p[0] = static_cast<double>(grid_idx);
-                bonded_params_.interactions.push_back(bi);
-            }
-        }
+    // Improper dihedrals (harmonic)
+    walk_il(InteractionFunction::ImproperDihedrals,
+        [&](int type, const int* a) {
+            const auto& p = idef.iparams[type].harmonic;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::ImproperDih;
+            bi.n_atoms = 4;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.atoms[2] = to_protein_idx(a[2]);
+            bi.atoms[3] = to_protein_idx(a[3]);
+            bi.p[0] = p.rA * DEG_TO_RAD;
+            bi.p[1] = p.krA;
+            bonded_params_.interactions.push_back(bi);
+        });
 
-        global_offset += atoms_per_mol * molblock.nmol;
-    }
+    // CMAP (dihedral energy correction)
+    walk_il(InteractionFunction::DihedralEnergyCorrectionMap,
+        [&](int type, const int* a) {
+            const int grid_idx = idef.iparams[type].cmap.cmapA;
+            BondedInteraction bi;
+            bi.type = BondedInteraction::CMAP;
+            bi.n_atoms = 5;
+            bi.atoms[0] = to_protein_idx(a[0]);
+            bi.atoms[1] = to_protein_idx(a[1]);
+            bi.atoms[2] = to_protein_idx(a[2]);
+            bi.atoms[3] = to_protein_idx(a[3]);
+            bi.atoms[4] = to_protein_idx(a[4]);
+            bi.p[0] = static_cast<double>(grid_idx);
+            bonded_params_.interactions.push_back(bi);
+        });
 
     OperationLog::Info(LogCalcOther, "FullSystemReader",
         std::to_string(bonded_params_.interactions.size()) + " bonded interactions, " +
