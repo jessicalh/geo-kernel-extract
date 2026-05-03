@@ -97,3 +97,9 @@ tests/data/sdk_geo_only/
 # committed). See scripts/references/README.md.
 references-text/
 references-images/
+
+# PDB Chemical Component Dictionary — reference data, freely
+# re-fetchable from wwPDB. ~376 MB uncompressed; see
+# data/ccd/README.md for fetch command.
+data/ccd/*
+!data/ccd/README.md
