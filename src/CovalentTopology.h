@@ -39,8 +39,10 @@ class Residue;
 // Lives on `LegacyAmberInvariants` (carried alongside FF-numerical
 // invariants from BuildProtein → FinalizeConstruction). Applied by
 // `CovalentTopology::OverrideDisulfides` after geometric bond
-// detection. Empty default for non-trajectory load paths (PDB +
-// ff14SB flat table, raw PDB) where no upstream authority exists.
+// detection. Non-trajectory load paths do not call the override; for
+// those paths geometric SG-SG inference remains the source of truth.
+// When an upstream authority exists, an empty pair list is meaningful:
+// it means the authority says there are zero disulfides.
 struct DisulfidePair {
     size_t residue_a = 0;          // 0-based residue index in Protein
     size_t residue_b = 0;
@@ -82,13 +84,15 @@ public:
     }
 
     // Apply the authoritative disulfide pairing as recorded by GROMACS
-    // (TPR bonded list + topol.top rtp). Each pair is set to
-    // BondCategory::Disulfide explicitly, regardless of what the
-    // geometric categorization in Resolve() inferred. Any bond
-    // currently tagged Disulfide that is NOT in `pairs` is reset to
-    // BondCategory::SidechainOther (geometry detected an SG-SG bond
-    // that chemistry says is not a disulfide — extremely rare in
-    // standard MD, but the authority must win).
+    // (TPR bonded list + topol.top rtp). Call this only when an upstream
+    // authority is present. Each pair is set to BondCategory::Disulfide
+    // explicitly, regardless of what the geometric categorization in
+    // Resolve() inferred. Any bond currently tagged Disulfide that is
+    // NOT in `pairs` is reset to BondCategory::SidechainOther.
+    //
+    // An empty `pairs` vector is not a no-op once this function is
+    // called. It means "authority says zero disulfides", so every
+    // geometry-derived Disulfide tag is demoted.
     //
     // If a pair's bond is missing from the geometric topology
     // (OpenBabel didn't detect it), the bond is force-added with

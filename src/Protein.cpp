@@ -229,8 +229,14 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     // + rtp comments). Geometric SG-SG inference at this point in
     // CovalentTopology agrees with chemistry on standard fixtures, but
     // the override establishes authority direction: GROMACS decided,
-    // we read. Empty disulfide_pairs (non-trajectory loads) → no-op.
-    if (!invariants.disulfide_pairs.empty()) {
+    // we read.
+    //
+    // Gated on has_disulfide_authority, NOT on !disulfide_pairs.empty():
+    // an authority that says "zero disulfides" is meaningful — any
+    // geometric Disulfide tag in CovalentTopology must be demoted, not
+    // preserved. Falsy authority (PDB load) leaves geometric inference
+    // as source of truth.
+    if (invariants.has_disulfide_authority) {
         const std::string err =
             bonds->OverrideDisulfides(invariants.disulfide_pairs);
         if (!err.empty()) {

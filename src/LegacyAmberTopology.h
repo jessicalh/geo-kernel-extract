@@ -63,11 +63,24 @@ struct LegacyAmberInvariants {
     std::array<int, 256> num_non_perturbed = {};
 
     // Authoritative disulfide pairing fact recorded by pdb2gmx
-    // (specbond.cpp + rtp comment line). Empty for non-trajectory load
-    // paths. Applied at FinalizeConstruction time via
-    // CovalentTopology::OverrideDisulfides — geometric SG-SG inference
-    // stops being the source of truth on the consume side.
+    // (specbond.cpp + rtp comment line). Applied at FinalizeConstruction
+    // time via CovalentTopology::OverrideDisulfides — geometric SG-SG
+    // inference stops being the source of truth on the consume side.
+    //
+    // Empty `disulfide_pairs` is meaningful only in conjunction with
+    // `has_disulfide_authority`:
+    //   - has_disulfide_authority=false (default, non-trajectory path):
+    //       no upstream authority. Geometric SG-SG inference in
+    //       CovalentTopology::Resolve stays as source of truth.
+    //   - has_disulfide_authority=true, disulfide_pairs.empty():
+    //       authority says zero disulfides. Override runs with empty
+    //       authority list — any geometric Disulfide tags get demoted
+    //       to SidechainOther (warned, but the authority wins).
+    //   - has_disulfide_authority=true, disulfide_pairs non-empty:
+    //       authority's specific pair list. Override applies and
+    //       validates against geometric inference.
     std::vector<DisulfidePair> disulfide_pairs;
+    bool has_disulfide_authority = false;
 };
 
 

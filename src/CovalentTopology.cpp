@@ -232,10 +232,14 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
 // OverrideDisulfides: applies the readback authority for SG-SG bonds.
 //
 // Inputs are the chemistry decisions GROMACS pdb2gmx made (specbond.cpp +
-// rtp comment line) carried through as DisulfidePair records. After this
-// runs, every SG-SG bond categorised as Disulfide in the topology IS in
-// the authority list, and vice versa — the geometric inference at line
-// 134 stops being the source of truth on the consume side.
+// rtp comment line) carried through as DisulfidePair records. The caller
+// invokes this only when upstream authority exists. After this runs,
+// every SG-SG bond categorised as Disulfide in the topology IS in the
+// authority list, and vice versa — the geometric inference in Resolve()
+// stops being the source of truth on the consume side.
+//
+// Empty pairs means "authority says zero disulfides", not "no source";
+// all geometry-derived Disulfide tags are demoted in that case.
 //
 // "Force-add" path: if pdb2gmx recorded an SG-SG bond that OpenBabel
 // didn't detect (extremely rare — covalent SG-SG at ~2.05 Å is well
@@ -246,8 +250,6 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
 
 std::string CovalentTopology::OverrideDisulfides(
         const std::vector<DisulfidePair>& pairs) {
-
-    if (pairs.empty()) return "";
 
     // Track which authority pairs got applied so we can detect leftover
     // geometric Disulfide bonds that aren't in the authority list.

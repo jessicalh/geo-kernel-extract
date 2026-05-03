@@ -52,6 +52,43 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     return pp;
 }
 
+static std::unique_ptr<Protein> MakeTwoCysSgOnlyProtein(
+        std::vector<Vec3>& positions_out) {
+    auto pp = std::make_unique<Protein>();
+    Protein& p = *pp;
+
+    auto add_cys_sg = [&](int sequence_number,
+                          const Vec3& position) -> size_t {
+        Residue res;
+        res.type = AminoAcid::CYS;
+        res.sequence_number = sequence_number;
+        res.chain_id = "A";
+        const size_t ri = p.AddResidue(res);
+
+        auto sg = Atom::Create(Element::S);
+        sg->pdb_atom_name = "SG";
+        sg->residue_index = ri;
+        const size_t ai = p.AddAtom(std::move(sg));
+        p.MutableResidueAt(ri).atom_indices.push_back(ai);
+        positions_out.push_back(position);
+        return ai;
+    };
+
+    add_cys_sg(1, Vec3(0.0, 0.0, 0.0));
+    add_cys_sg(2, Vec3(2.05, 0.0, 0.0));
+    return pp;
+}
+
+static size_t CountDisulfideBonds(const Protein& p) {
+    size_t count = 0;
+    for (const Bond& bond : p.Bonds()) {
+        if (bond.category == BondCategory::Disulfide) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 
 TEST(ObjectModel, ProteinOwnsResidues) {
     auto p = MakeTinyProtein();
@@ -202,4 +239,26 @@ TEST(ObjectModel, BuildContext) {
 
     EXPECT_EQ(p->BuildContext().pdb_source, "1ubq.pdb");
     EXPECT_EQ(p->BuildContext().force_field, "ff14SB");
+}
+
+TEST(ObjectModel, DisulfideAuthorityZeroDemotesGeometry) {
+    std::vector<Vec3> positions;
+    auto p = MakeTwoCysSgOnlyProtein(positions);
+
+    LegacyAmberInvariants invariants;
+    invariants.has_disulfide_authority = true;
+    p->FinalizeConstruction(positions, std::move(invariants));
+
+    EXPECT_EQ(CountDisulfideBonds(*p), 0u)
+        << "empty authoritative disulfide list must mean zero, not no-op";
+}
+
+TEST(ObjectModel, NoDisulfideAuthorityKeepsGeometry) {
+    std::vector<Vec3> positions;
+    auto p = MakeTwoCysSgOnlyProtein(positions);
+
+    p->FinalizeConstruction(positions);
+
+    EXPECT_EQ(CountDisulfideBonds(*p), 1u)
+        << "non-trajectory paths still use geometric SG-SG inference";
 }

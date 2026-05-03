@@ -917,6 +917,12 @@ BuildResult FullSystemReader::BuildProtein(
     // proteins with no disulfides, and any path where the geometric
     // SG-SG inference is the only reasonable source.
     amber_invariants_.disulfide_pairs.clear();
+    // has_disulfide_authority distinguishes "no upstream authority" (PDB
+    // load) from "authority says zero" (TPR with no SG-SG bonds, e.g. a
+    // protein with no cysteines or with all CYS free thiols). When true,
+    // FinalizeConstruction will run the override even with empty pairs,
+    // demoting any geometric Disulfide tags. When false, geometric stays.
+    amber_invariants_.has_disulfide_authority = (readback != nullptr);
     if (readback) {
         const auto& atoms = protein->Atoms();
         for (const auto& ix : bonded_params_.interactions) {
