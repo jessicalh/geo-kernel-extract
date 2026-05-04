@@ -308,6 +308,20 @@ int main(int argc, char* argv[]) {
         return spec.error.empty() ? 0 : 1;
     }
 
+    // Load CalculatorConfig BEFORE ValidateJobSpec so the validation
+    // can resolve the AIMNet2 TOML default (aimnet2_model_path) when
+    // --aimnet2 is not on the CLI. CalculatorConfig::Load does not
+    // fail on missing file — it logs and falls back to compiled
+    // defaults. See feedback_aimnet2_required_no_weasel.
+    if (!spec.config_path.empty()) {
+        CalculatorConfig::Load(spec.config_path);
+    } else {
+        std::string default_config =
+            std::string(NMR_DATA_DIR) + "/calculator_params.toml";
+        if (fs::exists(default_config))
+            CalculatorConfig::Load(default_config);
+    }
+
     if (!ValidateJobSpec(spec)) {
         fprintf(stderr, "ERROR: %s\n", spec.error.c_str());
         return 1;
@@ -324,26 +338,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Load calculator config: explicit --config, or default from data dir.
-    if (!spec.config_path.empty()) {
-        CalculatorConfig::Load(spec.config_path);
-    } else {
-        std::string default_config =
-            std::string(NMR_DATA_DIR) + "/calculator_params.toml";
-        if (fs::exists(default_config))
-            CalculatorConfig::Load(default_config);
-    }
-
-    // AIMNet2 model: CLI --aimnet2 takes priority; TOML fallback.
-    // Session holds the loaded model for the rest of the process.
-    if (spec.aimnet2_model_path.empty())
-        spec.aimnet2_model_path =
-            CalculatorConfig::GetString("aimnet2_model_path");
-    if (!spec.aimnet2_model_path.empty()) {
-        if (session.LoadAimnet2Model(spec.aimnet2_model_path) != kOk) {
-            fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
-            return 1;
-        }
+    // AIMNet2 model: ValidateJobSpec already resolved the path
+    // (CLI --aimnet2 → CalculatorConfig TOML fallback) and verified
+    // the file exists. Required for every non-None mode per
+    // feedback_aimnet2_required_no_weasel; load failure is fatal.
+    if (session.LoadAimnet2Model(spec.aimnet2_model_path) != kOk) {
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        return 1;
     }
 
     switch (spec.mode) {

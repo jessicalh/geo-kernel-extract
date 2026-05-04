@@ -289,8 +289,31 @@ bool ValidateJobSpec(JobSpec& spec) {
             "config TOML: " + spec.config_path + " (ok)");
     }
 
-    // AIMNet2 model — optional, but if specified must exist
-    if (!spec.aimnet2_model_path.empty()) {
+    // AIMNet2 model — REQUIRED in every production path per
+    // project_aimnet2_contract_20260426 + the 2026-05-04 scope
+    // generalisation captured in feedback_aimnet2_required_no_weasel.
+    // CLI --aimnet2 takes priority; CalculatorConfig TOML fallback
+    // (CalculatorConfig::Load must run before ValidateJobSpec, which
+    // it does in main()).
+    //
+    // JobMode::None is the only mode that does not require AIMNet2,
+    // because nothing runs (parse-failure or --help). The check below
+    // applies to every other mode at the end of validation, after the
+    // mode-specific blocks have set their own requirements.
+    if (spec.mode != JobMode::None) {
+        if (spec.aimnet2_model_path.empty()) {
+            spec.aimnet2_model_path =
+                CalculatorConfig::GetString("aimnet2_model_path");
+        }
+        if (spec.aimnet2_model_path.empty()) {
+            spec.error =
+                "AIMNet2 model required: pass --aimnet2 PATH or set "
+                "aimnet2_model_path in calculator_params.toml. "
+                "AIMNet2 is required in every production path; see "
+                "memory entry feedback_aimnet2_required_no_weasel.";
+            OperationLog::Error("JobSpec", spec.error);
+            return false;
+        }
         if (!RequireFile(spec, spec.aimnet2_model_path,
                          "AIMNet2 .jpt model")) return false;
         OperationLog::Info(LogFileIO, "JobSpec",
