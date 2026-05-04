@@ -10,7 +10,6 @@
 #include "JobSpec.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
-#include "GromacsEnsembleLoader.h"
 #include "TrajectoryProtein.h"
 #include "Trajectory.h"
 #include "RunConfiguration.h"

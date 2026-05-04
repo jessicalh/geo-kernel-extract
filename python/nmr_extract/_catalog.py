@@ -169,11 +169,15 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)"),
 
     # ── AIMNet2 (AIMNet2Result.cpp) ─────────────────────────────
-    ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, False, "AIMNet2 Hirshfeld charges"),
-    ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  False, "AIMNet2 256-dim electronic embedding"),
-    ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG total"),
-    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG aromatic"),
-    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    False, "AIMNet2 Coulomb EFG backbone"),
+    # Required in production output per project_aimnet2_contract_20260426.
+    # The 2026-04-26 contract was articulated in the memory entry but
+    # the required=True flag was not landed in the catalog at the time;
+    # landed 2026-05-04 alongside AIMNet2 wire-in to smoke tests.
+    ArraySpec("aimnet2_charges",             "aimnet2", AIMNet2Charges,            None, True,  "AIMNet2 Hirshfeld charges"),
+    ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  True,  "AIMNet2 256-dim electronic embedding"),
+    ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG total"),
+    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG aromatic"),
+    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG backbone"),
     # aimnet2_charge_sensitivity: REMOVED from calculator output (2026-04-12).
     # Perturbation approach deleted. Charge sensitivity is now computed
     # by GromacsFrameHandler as ensemble charge variance (Welford on

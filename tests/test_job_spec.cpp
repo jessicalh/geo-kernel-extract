@@ -15,7 +15,6 @@
 #include "BuildResult.h"
 #include "PdbFileReader.h"
 #include "OrcaRunLoader.h"
-#include "GromacsEnsembleLoader.h"
 #include "OperationRunner.h"
 #include "ConformationResult.h"
 #include "RuntimeEnvironment.h"
@@ -47,8 +46,9 @@ static const std::string DATA = NMR_TEST_DATA_DIR;
 //   tests/data/1ubq_protonated.pdb                  — pre-protonated PDB
 //   tests/data/orca/A0A7C5FAR6_WT.xyz/.prmtop/_nmr.out — ORCA WT
 //   tests/data/orca/A0A7C5FAR6_ALA.xyz/.prmtop/_nmr.out — ORCA ALA
-//   tests/data/fleet/1A6J_5789/params/prod.tpr      — GROMACS TPR
-//   tests/data/fleet/1A6J_5789/poses/                — poses + ensemble.json
+//
+// The FleetLibraryDirect e2e against the CHARMM fleet/1A6J_5789 fixture
+// was retired 2026-05-04 to tests/bones/test_job_spec_fleet.cpp.
 
 
 // ============================================================================
@@ -223,7 +223,6 @@ TEST(JobSpecValidate, MutantValid) {
 }
 
 // JobSpecValidate::FleetValid removed 2026-04-12 — --fleet mode removed.
-// BuildFromGromacs library path is exercised by FleetLibraryDirect below.
 
 
 // ============================================================================
@@ -366,37 +365,5 @@ TEST_F(JobSpecE2E, MutantEndToEnd) {
 }
 
 
-TEST_F(JobSpecE2E, FleetLibraryDirect) {
-    // --fleet CLI mode removed 2026-04-12, but BuildFromGromacs stays in the
-    // library for backward compatibility with pre-extracted PDB pose data.
-    // This test calls it directly, bypassing JobSpec.
-    std::string tpr   = DATA + "/fleet/1A6J_5789/params/prod.tpr";
-    std::string poses = DATA + "/fleet/1A6J_5789/poses";
-    std::string out   = "/tmp/jobspec_e2e_fleet";
-
-    FleetPaths paths;
-    paths.tpr_path          = tpr;
-    paths.sampled_poses_dir = poses;
-
-    auto build = BuildFromGromacs(paths);
-    ASSERT_TRUE(build.Ok()) << build.error;
-
-    EXPECT_GT(build.protein->ConformationCount(), 1u);
-
-    RunOptions opts;
-    opts.charge_source = build.charges.get();
-    opts.net_charge = build.net_charge;
-
-    auto results = OperationRunner::RunEnsemble(*build.protein, opts);
-    EXPECT_FALSE(results.empty());
-
-    fs::create_directories(out);
-    int total = 0;
-    for (size_t i = 0; i < build.protein->ConformationCount(); ++i) {
-        auto& conf = build.protein->ConformationAt(i);
-        std::string frame_dir = out + "/frame_" + std::to_string(i + 1);
-        fs::create_directories(frame_dir);
-        total += ConformationResult::WriteAllFeatures(conf, frame_dir);
-    }
-    EXPECT_GT(total, 0);
-}
+// JobSpecE2E.FleetLibraryDirect retired 2026-05-04 to
+// tests/bones/test_job_spec_fleet.cpp (CHARMM/XTC fleet fixture).

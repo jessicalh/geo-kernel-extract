@@ -2,6 +2,7 @@ build/
 build-ui/
 build-check/
 build-forensic/
+Testing/
 *.o
 *.a
 *.so
@@ -76,6 +77,7 @@ bad-builds/
 # Total ~295 MB. Regenerable from initial-samples/ via the fleet
 # pipeline; machine-local, not repo material.
 tests/data/fleet_test_large/
+tests/bones/
 
 # AMBER-ff GROMACS straight-relaxation MD trajectories used for
 # trajectory tests (1P9J_5801 + 1Z9B_6577). Per-protein full

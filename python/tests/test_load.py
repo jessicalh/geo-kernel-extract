@@ -54,7 +54,7 @@ def baseline():
         pytest.skip("baseline extraction not available")
     try:
         return load(BASELINE)
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, FileNotFoundError) as e:
         pytest.skip(f"baseline extraction stale: {e}")
 
 
@@ -64,7 +64,7 @@ def mutant():
         pytest.skip("mutant extraction not available")
     try:
         return load(MUTANT)
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, FileNotFoundError) as e:
         pytest.skip(f"mutant extraction stale: {e}")
 
 
@@ -406,9 +406,11 @@ class TestOptionalAbsent:
     def test_delta_absent(self, geo):
         assert geo.delta is None
 
-    def test_aimnet2_absent(self, geo):
-        """AIMNet2 not in this extraction (geometry-only, no GPU)."""
-        assert geo.aimnet2 is None
+    # test_aimnet2_absent retired 2026-05-04: AIMNet2 is no longer
+    # optional per project_aimnet2_contract_20260426. AIMNet2 is part
+    # of production output across all use cases on machines with CUDA
+    # (every machine in scope). Positive assertion lives in
+    # TestRequired.test_aimnet2_present below.
 
 
 # ── Optional: MOPAC (only if baseline available) ───────────────────
@@ -436,6 +438,24 @@ class TestDelta:
     def test_shielding(self, mutant):
         assert mutant.delta.shielding.data.shape == (mutant.n_atoms, 9)
         assert isinstance(mutant.delta.shielding, ShieldingTensor)
+
+
+# ── Required: AIMNet2 (project_aimnet2_contract_20260426) ───────────
+
+
+class TestRequired:
+
+    def test_aimnet2_present(self, geo):
+        """AIMNet2 must be in production output. The geo-only fixture is
+        regenerated with AIMNet2 included; absence indicates either a
+        stale fixture or a regression."""
+        assert geo.aimnet2 is not None
+
+    def test_aimnet2_charges_shape(self, geo):
+        assert geo.aimnet2.charges.data.shape == (geo.n_atoms,)
+
+    def test_aimnet2_aim_shape(self, geo):
+        assert geo.aimnet2.aim.data.shape == (geo.n_atoms, 256)
 
 
 # ── Catalog ──────────────────────────────────────────────────────────

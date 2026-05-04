@@ -9,9 +9,12 @@
 //
 // Implementations:
 //   ParamFileChargeSource  — ff14SB from flat parameter file (current)
-//   GmxTprChargeSource     — CHARMM36m (or any FF) from GROMACS .tpr
 //   PrmtopChargeSource     — AMBER prmtop (future, needs cpptraj)
 //   StubChargeSource       — uniform test charges
+//
+// GmxTprChargeSource (CHARMM36m via `gmx dump`) was retired 2026-05-04
+// to tests/bones/src/GmxTprChargeSource_excerpt.{h,cpp} as part of the
+// CHARMM-retired-AMBER-only Phase 1 cleanup.
 //
 // ChargeAssignmentResult::Compute takes a ChargeSource, not a path string.
 //
@@ -139,38 +142,6 @@ public:
 
 private:
     std::string path_;
-};
-
-
-// ============================================================================
-// CHARMM36m (or any FF) from GROMACS .tpr binary topology.
-// Uses `gmx dump` to extract per-atom charges and masses.
-// ============================================================================
-
-class GmxTprChargeSource : public ChargeSource {
-public:
-    // gmx_binary: path to the gmx executable (from RuntimeEnvironment)
-    // tpr_path: path to the .tpr file
-    GmxTprChargeSource(const std::string& gmx_binary,
-                       const std::string& tpr_path,
-                       ForceField ff = ForceField::CHARMM36m)
-        : gmx_(gmx_binary), tpr_(tpr_path), ff_(ff) {}
-
-    ForceField SourceForceField() const override { return ff_; }
-    ChargeModelKind Kind() const override { return ChargeModelKind::GromacsTpr; }
-    std::string Describe() const override {
-        return std::string(ForceFieldName(ff_)) + ":tpr:" + tpr_;
-    }
-
-    std::vector<AtomChargeRadius> LoadCharges(
-        const Protein& protein,
-        const ProteinConformation& conf,
-        std::string& error_out) const override;
-
-private:
-    std::string gmx_;
-    std::string tpr_;
-    ForceField ff_;
 };
 
 

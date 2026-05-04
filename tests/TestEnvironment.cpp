@@ -16,8 +16,8 @@ std::string TestEnvironment::ubq_crystal_;
 std::string TestEnvironment::gmx_protonated_;
 std::string TestEnvironment::orca_dir_;
 std::string TestEnvironment::consolidated_;
-std::string TestEnvironment::fleet_data_;
 std::string TestEnvironment::ff14sb_params_;
+std::string TestEnvironment::aimnet2_model_;
 std::string TestEnvironment::baseline_features_;
 std::string TestEnvironment::fleet_amber_;
 std::string TestEnvironment::fleet_amber_1p9j_5801_subpath_;
@@ -73,8 +73,8 @@ void TestEnvironment::Load() {
             else if (key == "gmx_protonated")  gmx_protonated_ = val;
             else if (key == "orca_dir")        orca_dir_ = val;
             else if (key == "consolidated")    consolidated_ = val;
-            else if (key == "fleet_data")      fleet_data_ = val;
             else if (key == "ff14sb_params")   ff14sb_params_ = val;
+            else if (key == "aimnet2_model")   aimnet2_model_ = val;
             else if (key == "baseline_features") baseline_features_ = val;
             else if (key == "fleet_amber")     fleet_amber_ = val;
             else if (key == "fleet_amber_1p9j_5801_subpath")
@@ -102,8 +102,8 @@ void TestEnvironment::Load() {
         " gmx=" + status(gmx_protonated_) +
         " orca=" + status(orca_dir_) +
         " consolidated=" + status(consolidated_) +
-        " fleet=" + status(fleet_data_) +
         " ff14sb=" + status(ff14sb_params_) +
+        " aimnet2=" + status(aimnet2_model_) +
         " baseline=" + status(baseline_features_) +
         " fleet_amber=" + status(fleet_amber_) +
         " fleet_amber_1p9j_subpath=" + status(fleet_amber_1p9j_5801_subpath_) +
@@ -116,8 +116,8 @@ const std::string& TestEnvironment::UbqCrystal()     { RequireLoaded(); return u
 const std::string& TestEnvironment::GmxProtonated()   { RequireLoaded(); return gmx_protonated_; }
 const std::string& TestEnvironment::OrcaDir()         { RequireLoaded(); return orca_dir_; }
 const std::string& TestEnvironment::Consolidated()    { RequireLoaded(); return consolidated_; }
-const std::string& TestEnvironment::FleetData()       { RequireLoaded(); return fleet_data_; }
 const std::string& TestEnvironment::Ff14sbParams()    { RequireLoaded(); return ff14sb_params_; }
+const std::string& TestEnvironment::Aimnet2Model()    { RequireLoaded(); return aimnet2_model_; }
 const std::string& TestEnvironment::BaselineFeatures() { RequireLoaded(); return baseline_features_; }
 const std::string& TestEnvironment::FleetAmberData()  { RequireLoaded(); return fleet_amber_; }
 

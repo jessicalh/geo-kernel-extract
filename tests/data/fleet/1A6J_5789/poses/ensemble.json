@@ -1,9 +1,0 @@
-{
-  "protein_id": "1A6J_5789",
-  "temperature_K": 308,
-  "n_poses": 1,
-  "method": "boltzmann_reweighted_metad",
-  "poses": [
-    {"pose": 1, "walker": 1, "time_ps": 70.0, "rmsd_nm": 1.1695, "rg_nm": 1.4828, "rbias_kJmol": 21.9590, "weight": 2.595111e-01}
-  ]
-}

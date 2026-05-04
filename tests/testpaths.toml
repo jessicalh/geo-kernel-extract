@@ -17,8 +17,9 @@ orca_dir       = "/shared/2026Thesis/nmr-shielding/tests/data/orca/"
 # 734 WT+ALA consolidated mutant pairs (year of DFT compute)
 consolidated   = "/shared/2026Thesis/consolidated/"
 
-# Fleet test data (in-tree, 2 proteins x 10 poses)
-fleet_data     = "/shared/2026Thesis/nmr-shielding/tests/data/fleet"
+# fleet_data (CHARMM/XTC fleet/1A6J_5789 + 1AEP_4814) retired 2026-05-04
+# to tests/bones/data/fleet/. The two AMBER fixtures (1P9J_5801 +
+# 1Z9B_6577) below replace it.
 
 # AMBER-ff GROMACS straight-relaxation MD trajectories (gitignored).
 # Test set: two proteins (1P9J_5801 and 1Z9B_6577), 1 × 15 ns each at
@@ -57,6 +58,10 @@ fleet_amber_1z9b_6577_subpath = "1Z9B_6577/prep_run_20260501T143103Z/batcave_loc
 
 # ff14SB parameter file (for tests that create their own ChargeSource)
 ff14sb_params  = "/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"
+
+# AIMNet2 .jpt model. Required by smoke tests so they exercise the
+# AIMNet2 path per project_aimnet2_contract_20260426.
+aimnet2_model  = "/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt"
 
 # Baseline NPY features for regression
 baseline_features = "/shared/2026Thesis/nmr-shielding/baseline_features/P84477"

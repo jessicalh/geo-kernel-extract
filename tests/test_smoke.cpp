@@ -21,6 +21,7 @@
 //
 
 #include "TestEnvironment.h"
+#include "BlessCompare.h"
 #include <gtest/gtest.h>
 
 #include "OperationRunner.h"
@@ -30,6 +31,8 @@
 #include "ChargeSource.h"
 #include "RuntimeEnvironment.h"
 #include "OperationLog.h"
+#include "Session.h"
+#include "errors.h"
 
 #include <filesystem>
 #include <fstream>
@@ -144,6 +147,29 @@ protected:
     std::string smoke_root_;
     // This run's timestamped directory
     std::string run_dir_;
+
+    // Process-scoped Session: holds the AIMNet2 model so smoke tests
+    // exercise the AIMNet2 path. Required by
+    // project_aimnet2_contract_20260426 — AIMNet2 is part of production
+    // output. Loaded once per test suite via SetUpTestSuite (model load
+    // is ~1s on first call; per-test reuse keeps the suite tight).
+    static std::unique_ptr<Session> session_;
+
+    static void SetUpTestSuite() {
+        session_ = std::make_unique<Session>();
+        const std::string& model_path = test::TestEnvironment::Aimnet2Model();
+        ASSERT_FALSE(model_path.empty())
+            << "testpaths.toml is missing aimnet2_model — required for "
+               "smoke tests per the AIMNet2 contract.";
+        ASSERT_TRUE(fs::exists(model_path))
+            << "AIMNet2 model not found at " << model_path;
+        Status s = session_->LoadAimnet2Model(model_path);
+        ASSERT_EQ(s, kOk) << session_->LastError();
+    }
+
+    static void TearDownTestSuite() {
+        session_.reset();
+    }
 
     void SetUp() override {
         RuntimeEnvironment::Load();
@@ -282,6 +308,11 @@ private:
                   << valid << " valid\n";
     }
 
+    // Bless comparison via tests/BlessCompare.{h,cpp}: tolerance-aware
+    // numeric diff plus nonzero-fraction sanity. Per-array policy lives
+    // in tests/golden/blessed/bless_policy.toml; defaults are permissive
+    // enough to absorb platform / LTO / library-rebuild noise but tight
+    // enough to flag a calculator regression. See BlessCompare.h.
     void BinaryCompare(const std::string& run_dir,
                        const std::string& blessed_dir) {
         auto run_files = NpyFiles(run_dir);
@@ -298,25 +329,68 @@ private:
             }
         }
 
-        // Binary compare common files
-        int identical = 0, different = 0;
+        std::string policy_path;
+#ifdef NMR_TEST_DATA_DIR
+        policy_path = std::string(NMR_TEST_DATA_DIR)
+                    + "/../golden/blessed/bless_policy.toml";
+#endif
+
+        int identical = 0, within = 0, drifted = 0,
+            zero_out = 0, structural = 0, read_failed = 0;
+
         for (const auto& f : blessed_files) {
             if (!run_files.count(f)) continue;
             std::string a = run_dir + "/" + f;
             std::string b = blessed_dir + "/" + f;
-            if (FilesIdentical(a, b)) {
-                identical++;
-            } else {
-                different++;
-                ADD_FAILURE() << "BINARY DIFF: " << f
-                    << " (run=" << fs::file_size(a)
-                    << " blessed=" << fs::file_size(b) << " bytes)";
+
+            std::string stem = f;
+            auto dot = stem.rfind(".npy");
+            if (dot != std::string::npos) stem = stem.substr(0, dot);
+            auto policy = test::LoadPolicy(policy_path, stem);
+
+            auto r = test::CompareNpy(a, b, policy);
+            switch (r.verdict) {
+                case test::BlessVerdict::Identical:
+                    ++identical;
+                    break;
+                case test::BlessVerdict::WithinTolerance:
+                    ++within;
+                    std::cout << "  OK (drift): " << f << " "
+                              << r.diagnostic << "\n";
+                    break;
+                case test::BlessVerdict::Drifted:
+                    ++drifted;
+                    ADD_FAILURE() << "DRIFT: " << f << " " << r.diagnostic;
+                    break;
+                case test::BlessVerdict::ZeroOutput:
+                    ++zero_out;
+                    ADD_FAILURE() << "ZERO OUTPUT: " << f << " "
+                                  << r.diagnostic;
+                    break;
+                case test::BlessVerdict::DtypeOrShapeMismatch:
+                    ++structural;
+                    ADD_FAILURE() << "STRUCTURAL: " << f << " "
+                                  << r.diagnostic;
+                    break;
+                case test::BlessVerdict::ReadFailed:
+                    ++read_failed;
+                    ADD_FAILURE() << "READ FAILED: " << f << " "
+                                  << r.diagnostic;
+                    break;
             }
         }
-        std::cout << "  Binary comparison: " << identical << " identical, "
-                  << different << " different\n";
+
+        std::cout << "  Bless: " << identical << " identical, "
+                  << within << " within tol, "
+                  << drifted << " drifted, "
+                  << zero_out << " zero-output, "
+                  << structural << " structural mismatch, "
+                  << read_failed << " read failed\n";
     }
 };
+
+
+std::unique_ptr<Session> SmokeTest::session_;
 
 
 // ============================================================================
@@ -344,16 +418,19 @@ TEST_F(SmokeTest, NoDft) {
         opts.charge_source = charges.get();
     }
 
+    // AIMNet2 model from process Session (project_aimnet2_contract_20260426).
+    opts.aimnet2_model = session_->Aimnet2Model();
+
     // Blessed baseline
     std::string blessed;
 #ifdef NMR_TEST_DATA_DIR
     blessed = std::string(NMR_TEST_DATA_DIR) + "/../golden/blessed/nodft";
 #endif
 
-    // Expect: foundation (4) + MOPAC + APBS + 6 ring calculators
-    //         + Coulomb + MopacCoulomb + MopacMcConnell + HBond = ~17
-    // NPY: 40+ arrays (no orca_*.npy)
-    RunSmoke("nodft", conf, opts, 13, 35, blessed);
+    // Expect: foundation (4) + MOPAC + APBS + 6 ring calculators + Coulomb
+    //         + MopacCoulomb + MopacMcConnell + HBond + AIMNet2 = ~18
+    // NPY: 45+ arrays (no orca_*.npy; +5 aimnet2_*.npy)
+    RunSmoke("nodft", conf, opts, 14, 40, blessed);
 }
 
 
@@ -378,6 +455,8 @@ TEST_F(SmokeTest, WithDft) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
+    // AIMNet2 model from process Session (project_aimnet2_contract_20260426).
+    opts.aimnet2_model = session_->Aimnet2Model();
 
     // Find ORCA NMR output
     for (const auto& entry : fs::directory_iterator(dir)) {
@@ -394,7 +473,7 @@ TEST_F(SmokeTest, WithDft) {
     blessed = std::string(NMR_TEST_DATA_DIR) + "/../golden/blessed/withdft";
 #endif
 
-    // Expect: everything NoDft has + OrcaShieldingResult = ~18
-    // NPY: 45+ arrays (including orca_*.npy)
-    RunSmoke("withdft", conf, opts, 14, 40, blessed);
+    // Expect: everything NoDft has + OrcaShieldingResult + AIMNet2 = ~19
+    // NPY: 50+ arrays (including orca_*.npy and aimnet2_*.npy)
+    RunSmoke("withdft", conf, opts, 15, 45, blessed);
 }

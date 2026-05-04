@@ -10,8 +10,8 @@
 //   ubq_protonated                 = "tests/data/1ubq_protonated.pdb"
 //   orca_dir                       = "path/to/orca/test/pair"
 //   consolidated                   = "path/to/734/mutant/pairs"
-//   fleet_data                     = "tests/data/fleet"
 //   ff14sb_params                  = "path/to/ff14sb_params.dat"
+//   aimnet2_model                  = "path/to/aimnet2_wb97m_0.jpt"
 //   fleet_amber                    = "tests/data/fleet_amber"
 //   fleet_amber_<id>_subpath       = pinned per-protein production sub-path
 //
@@ -40,8 +40,8 @@ public:
     static const std::string& GmxProtonated();
     static const std::string& OrcaDir();
     static const std::string& Consolidated();
-    static const std::string& FleetData();
     static const std::string& Ff14sbParams();
+    static const std::string& Aimnet2Model();
     static const std::string& BaselineFeatures();
 
     // AMBER-ff GROMACS trajectory fixtures. FleetAmberData() is the
@@ -61,8 +61,8 @@ private:
     static std::string gmx_protonated_;
     static std::string orca_dir_;
     static std::string consolidated_;
-    static std::string fleet_data_;
     static std::string ff14sb_params_;
+    static std::string aimnet2_model_;
     static std::string baseline_features_;
     static std::string fleet_amber_;
     static std::string fleet_amber_1p9j_5801_subpath_;

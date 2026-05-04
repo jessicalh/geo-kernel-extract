@@ -195,7 +195,6 @@ add_library(nmr_shielding
     src/AmberLeapInput.cpp
     src/AmberPreparedChargeSource.cpp
     src/OrcaRunLoader.cpp
-    src/GromacsEnsembleLoader.cpp
     src/SasaResult.cpp
     src/TrajectoryResult.cpp
     src/TrajectoryProtein.cpp
@@ -310,13 +309,16 @@ target_link_libraries(nmr_extract PRIVATE nmr_shielding)
 #
 #   unit_tests        <5s    No file I/O, pure logic
 #   structure_tests   ~5min  Static PDB path (1UBQ, P84477), no MOPAC
-#   trajectory_tests  ~5min  GROMACS fleet loader, trajectory path
+#   trajectory_tests  ~5min  AMBER trajectory loader (fleet_amber/)
 #   mopac_tests       ~1hr   MOPAC semiempirical (test_mopac, mutation, pipeline)
 #   batch_tests       ~2hr   Multi-protein sweep across consolidated/
 #
 # Separate executables (unchanged):
-#   smoke_tests, fleet_smoke_tests, fes_fleet_smoke_tests,
-#   job_spec_tests, gromacs_streaming_tests, water_field_tests
+#   smoke_tests, job_spec_tests, gromacs_streaming_tests
+#
+# Retired 2026-05-04 (Phase 1 CHARMM-dead-letter cleanup, sources in
+# tests/bones/): fleet_smoke_tests, fes_fleet_smoke_tests, water_field_tests.
+# water_field_tests will be re-derived against fleet_amber/ in Phase 2.
 # ============================================================================
 
 enable_testing()
@@ -417,9 +419,8 @@ nmr_test_target(structure_tests
     tests/test_write_features.cpp
 )
 
-# ── Trajectory tests (~5 min) — GROMACS fleet loader path ─────────────
+# ── Trajectory tests (~5 min) — AMBER trajectory loader (fleet_amber/) ─
 nmr_test_target(trajectory_tests
-    tests/test_fleet_loader.cpp
     tests/test_amber_trajectory.cpp
 )
 
@@ -445,6 +446,7 @@ nmr_test_target(batch_tests
 add_executable(smoke_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/BlessCompare.cpp
     tests/test_smoke.cpp
 )
 target_compile_definitions(smoke_tests PRIVATE
@@ -456,23 +458,8 @@ target_link_libraries(smoke_tests PRIVATE
 )
 gtest_discover_tests(smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
-# ============================================================================
-# Fleet smoke test — separate exe (~40 min, 10 GROMACS poses x full pipeline)
-# ============================================================================
-
-add_executable(fleet_smoke_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_smoke_fleet.cpp
-)
-target_compile_definitions(fleet_smoke_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(fleet_smoke_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(fleet_smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+# fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp
+# (CHARMM/XTC fleet/1A6J_5789 fixture).
 
 # ============================================================================
 # JobSpec tests — separate exe (~10 min, not the 2.5-hour full suite)
@@ -519,41 +506,12 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
 )
 gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
-# ============================================================================
-# Water field test — explicit solvent calculators on full-system trajectory
-# ============================================================================
+# water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
+# (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).
+# To be re-derived against fleet_amber/ in Phase 2.
 
-add_executable(water_field_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_water_field.cpp
-)
-target_compile_definitions(water_field_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(water_field_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(water_field_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# FES fleet smoke test — fes-sampler naming, 2 proteins x 6 poses (~15 min)
-# ============================================================================
-
-add_executable(fes_fleet_smoke_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_smoke_fes_fleet.cpp
-)
-target_compile_definitions(fes_fleet_smoke_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(fes_fleet_smoke_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(fes_fleet_smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+# fes_fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fes_fleet.cpp
+# (fes-sampler retired; fixture in tests/bones/data/fes_fleet/).
 
 # ============================================================================
 # Example driver
