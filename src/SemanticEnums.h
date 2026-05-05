@@ -229,6 +229,17 @@ enum class PlanarGroupKind : uint8_t {
     /// is a real conformation degree of freedom captured by
     /// PlanarGeometryResult, not by this substrate field.
     AromaticHydroxyl  = 8,
+
+    /// Aryloxide. The deprotonated phenolate -O- on TYM (Tyr
+    /// deprotonated form). The phenolate conjugates more strongly
+    /// with the aromatic ring pi system than neutral phenol-OH does,
+    /// redistributing ring current and shifting the para-Czeta
+    /// environment by 5-10 ppm relative to neutral Tyr.
+    /// Distinguished from `AromaticHydroxyl` because the H is absent
+    /// and the conjugation is qualitatively different. Vollhardt &
+    /// Schore, "Organic Chemistry" 8e (2018) ch. 22 for phenolate
+    /// resonance; Bovey 1988 ch. 4 for shift consequences.
+    AromaticOxide     = 9,
 };
 
 
@@ -275,6 +286,15 @@ enum class PlanarStereo : uint8_t {
 // but those are NOT IUPAC and are not adopted here. See research
 // dossier `spec/plan/topology-fields-research-2026-05-05.md`
 // "Field 6" for evidence.
+//
+// Terminus convention (synthesised, not Markley-canonical):
+// N-terminal H1/H2/H3 (NTERM_CHARGED) and H1/H2 (NTERM_NEUTRAL)
+// are encoded as `Q` with `Locant::None`. Markley Table 1 does not
+// list a pseudoatom for terminus-specific Hs; `Q` is the closest
+// fit because they form an equivalent-H group on a single nitrogen
+// (rapid exchange with water on the NMR timescale). We do NOT
+// introduce a new letter ("T" or otherwise) -- staying within the
+// IUPAC M/Q/R taxonomy is a discipline call.
 //
 enum class PseudoatomKind : uint8_t {
     None = 0,   ///< Atom is not a member of any pseudoatom group.
@@ -387,9 +407,20 @@ enum class PolarHKind : uint8_t {
     /// cysteines.
     ThiolSH              = 10,
 
+    /// Neutral primary-amine N-H. Lys neutral form (LYN: HZ2, HZ3)
+    /// and the NTERM_NEUTRAL state (H1, H2) on the backbone N.
+    /// Distinguished from `AmmoniumNH` because the chemistry differs:
+    /// pKa ~9-10 for primary amine vs always-deprotonated water-
+    /// exchange for charged ammonium; SHIFTX2 (Han et al., J. Biomol.
+    /// NMR 50 (2011) 43-57) trains separate models for these
+    /// environments. Wuethrich, "NMR of Proteins and Nucleic Acids"
+    /// (1986) ch. 2; Englander, Annu. Rev. Biophys. Biomol. Struct.
+    /// 39 (2008) 289-307 for the H/D exchange framework.
+    AmineNH              = 11,
+
     /// Catch-all for non-standard residues (modified amino acids,
     /// caps with novel polar Hs not in the standard 20).
-    OtherPolarH          = 11,
+    OtherPolarH          = 12,
 };
 
 
@@ -447,16 +478,23 @@ enum class RingPositionLabel : uint8_t {
     Ipso            = 1,
 
     /// Adjacent to ipso, branch 1 (per |chi2|-priority rule, Markley
-    /// text-2:368-371).
+    /// text-2:368-371). Extension for Trp 6-ring perimeter
+    /// (synthesised; Markley does not publish ipso/ortho/meta/para
+    /// for the indole 6-ring): `Ortho1` = C-epsilon3 (perimeter atom
+    /// adjacent to the C-delta2 bridgehead).
     Ortho1          = 2,
 
-    /// Adjacent to ipso, branch 2.
+    /// Adjacent to ipso, branch 2. For Trp 6-ring (synthesised):
+    /// `Ortho2` = C-zeta2 (perimeter atom adjacent to the C-epsilon2
+    /// bridgehead).
     Ortho2          = 3,
 
-    /// Two bonds from ipso, branch 1.
+    /// Two bonds from ipso, branch 1. For Trp 6-ring (synthesised):
+    /// `Meta1` = C-zeta3.
     Meta1           = 4,
 
-    /// Two bonds from ipso, branch 2.
+    /// Two bonds from ipso, branch 2. For Trp 6-ring (synthesised):
+    /// `Meta2` = C-eta2.
     Meta2           = 5,
 
     /// Para to ipso. For Tyr this is C-zeta with the OH; for Phe the
@@ -522,6 +560,13 @@ struct RingMembership {
 // bridgehead atoms (C-delta2, C-epsilon2), both `primary` (the
 // 5-ring per the smaller-ring convention) and `secondary` (the
 // 6-ring) are populated.
+//
+// Locant and RingPosition are ORTHOGONAL: `Locant` records the
+// backbone-vs-side-chain Greek-letter position; `RingPosition`
+// records ring membership. An atom can be in a ring AND have
+// `Locant::None`. Pro C-alpha is the canonical example: it is in
+// the pyrrolidine ring (`Pyrrolidine_Pro/Saturated/5/f/1`) AND has
+// `Locant::None` because Locant is reserved for side-chain atoms.
 //
 struct RingPosition {
     RingMembership primary;

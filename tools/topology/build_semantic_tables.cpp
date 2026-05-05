@@ -791,7 +791,9 @@ SynthesisedFields SynthesisedForPhe(const std::string& atom_id, const ParsedName
         s.ring_pos.primary.n_heteroatoms = 0;
         s.planar_group = PlanarGroupKind::Aromatic6Ring;
     };
-    if      (atom_id == "CG"  || atom_id == "HG")  set_ring(RingPositionLabel::Ipso);
+    // Note: PHE has no HG atom (CG is the ipso C, fully substituted).
+    // The previous `|| atom_id == "HG"` clause was dead code; removed.
+    if      (atom_id == "CG")                      set_ring(RingPositionLabel::Ipso);
     else if (atom_id == "CD1" || atom_id == "HD1") set_ring(RingPositionLabel::Ortho1);
     else if (atom_id == "CD2" || atom_id == "HD2") set_ring(RingPositionLabel::Ortho2);
     else if (atom_id == "CE1" || atom_id == "HE1") set_ring(RingPositionLabel::Meta1);
@@ -1080,6 +1082,7 @@ const char* PlanarGroupLiteral(PlanarGroupKind p) {
         case PlanarGroupKind::Aromatic5Ring:    return "nmr::PlanarGroupKind::Aromatic5Ring";
         case PlanarGroupKind::Carboxylate:      return "nmr::PlanarGroupKind::Carboxylate";
         case PlanarGroupKind::AromaticHydroxyl: return "nmr::PlanarGroupKind::AromaticHydroxyl";
+        case PlanarGroupKind::AromaticOxide:    return "nmr::PlanarGroupKind::AromaticOxide";
     }
     return "nmr::PlanarGroupKind::None";
 }
@@ -1117,6 +1120,7 @@ const char* PolarHLiteral(PolarHKind p) {
         case PolarHKind::HydroxylOH_Aliphatic:  return "nmr::PolarHKind::HydroxylOH_Aliphatic";
         case PolarHKind::HydroxylOH_Aromatic:   return "nmr::PolarHKind::HydroxylOH_Aromatic";
         case PolarHKind::ThiolSH:               return "nmr::PolarHKind::ThiolSH";
+        case PolarHKind::AmineNH:               return "nmr::PolarHKind::AmineNH";
         case PolarHKind::OtherPolarH:           return "nmr::PolarHKind::OtherPolarH";
     }
     return "nmr::PolarHKind::NotPolar";
