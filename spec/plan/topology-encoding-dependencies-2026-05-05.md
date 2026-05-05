@@ -485,6 +485,32 @@ void Protein::FinalizeConstruction() {
 `ApplySemantic` writes the typed semantic fields onto the runtime
 atom record (or a parallel `LegacyAmberTopology` substrate slot).
 
+**Override-composition rule (per Fix 6 of the 2026-05-05 OpenAI
+evaluation; live in the cap-table comment block of the generated
+.cpp)**: when a residue is at a terminus, `Protein::FinalizeConstruction`
+MUST query both `LookupBy` (chain) and `LookupCap` (terminal-state).
+If `LookupCap` returns non-null, the cap entry's fields override the
+chain entry's fields for that atom. The cap table MAY contain entries
+for backbone atoms (N for NTERM, C/O for CTERM) whose chemistry
+differs at the terminus; those entries have priority.
+
+Backbone overrides have non-None `BackboneRole` matching the chain's
+same-role entry; terminus-added Hs / Os (H1, H2, H3, OXT, HXT) carry
+`BackboneRole::None` and only match via the cap-table lookup. The
+`ApplySemantic` ordering above (cap last, after chain) implements the
+override automatically: the cap-table fields land on top of any chain
+values that were written first.
+
+After Fix 1 (2026-05-05), the cap tables carry override entries:
+- `kCapNtermCharged` — N (BackboneRole::Nitrogen, formal_charge=+1) +
+  H1, H2, H3 (4 entries).
+- `kCapNtermNeutral` — N (BackboneRole::Nitrogen, formal_charge=0) +
+  H1, H2 (3 entries).
+- `kCapCtermDeprotonated` — C, O (Carboxylate planar group, both
+  formal_charge=0) + OXT (formal_charge=-1) (3 entries).
+- `kCapCtermProtonated` — C, O (Carboxylate planar group) + OXT, HXT
+  (4 entries).
+
 ### H.6 What this means for the generator
 
 The generator must:
@@ -549,39 +575,77 @@ The structural-matching architecture is implemented:
 - Stale "atom_local_idx" comments refreshed.
 - Tests 352/352 pass; StringBarrier 5/5.
 
-### H.10 Outstanding follow-up: chain-atom whitelist for variant atoms
+### H.10 LANDED 2026-05-05 (Fix 4 of OpenAI evaluation): chain-atom whitelist filter
 
-The §H landing partitions out cap atoms but does NOT yet partition
-out variant-specific atoms (HD2 in ASP, HE2 in GLU, HD1 in HIS) from
-the standard-residue tables. CCD's free-amino-acid form has these
-atoms (CCD ASP carries the protonated HD2 etc.) but AMBER's chain-
-residue inventory for the standard charged/HIE forms does not.
+The §H landing partitioned out cap atoms but did NOT partition out
+variant-specific atoms (HD2 in ASP, HE2 in GLU, HD1 in HIS) from the
+standard-residue tables, and missed PRO's backbone H. CCD's free-
+amino-acid form has these atoms (CCD ASP carries the protonated HD2;
+CCD HIS carries both HD1 and HE2; CCD PRO carries the backbone amide
+H) but AMBER's chain-residue inventory for the standard charged /
+HIE-default / Pro-as-secondary-amine forms does not.
 
-The benign-extras tolerance from §H.3 makes this functionally inert:
-runtime queries by structural identity; HD2 in ASP's table sits
-unqueried because runtime ASP doesn't have HD2. But for "clean"
-encoding (per the user's stated priority), these atoms should be
-dropped from the standard-residue tables too — they would still
-appear in the variant tables (kAspAtoms_ASH, kGluAtoms_GLH,
-kHisAtoms_HIP).
+The benign-extras tolerance from §H.3 made this functionally inert
+at runtime, but for "clean" encoding the standard-residue tables
+should match the runtime data shape exactly.
 
-**To implement**: extend the whitelist in `BuildResidueEntries` (or
-its caller) to filter against `AmberAminoAcidVariantTable[residue].atoms`
-for the standard variant. The cleanest source is to encode the
-chain-atom whitelist explicitly in the generator (or wire the
-generator to read from AmberAminoAcidVariantTable). After this filter:
+**Implementation**: a `ChainAtomWhitelist(residue_3letter)` function
+in `tools/topology/build_semantic_tables.cpp` returns the per-residue
+chain-atom set, mirroring `AmberAminoAcidVariantTable` from
+`src/AminoAcidType.cpp::AMINO_ACID_TYPES`. (Duplicated rather than
+linked — the build-time generator can't pull AminoAcidType.cpp
+without significant runtime deps.) `BuildResidueEntries` filters CCD
+atoms against this whitelist on the standard-20 path; the variant
+path passes an empty whitelist (no filtering) so variant tables
+retain their full atom set.
 
-  ASP: 13 -> 12 (drop HD2)
-  GLU: 16 -> 15 (drop HE2)
-  HIS: 18 -> 17 (drop HD1)
+**After Fix 4 (counts in regenerated `LegacyAmberSemanticTables.cpp`)**:
 
-Other standard tables already match runtime atom counts.
+  ALA: 10 (unchanged)
+  ARG: 24 (unchanged)
+  ASN: 14 (unchanged)
+  ASP: 12 (was 13; HD2 partitioned to ASH)
+  CYS: 11 (unchanged)
+  GLN: 17 (unchanged)
+  GLU: 15 (was 16; HE2 partitioned to GLH)
+  GLY: 7  (unchanged)
+  HIS: 17 (was 18; HD1 partitioned to HID/HIP)
+  ILE: 19 (unchanged)
+  LEU: 19 (unchanged)
+  LYS: 22 (unchanged)
+  MET: 17 (unchanged)
+  PHE: 20 (unchanged)
+  PRO: 14 (was 15; backbone H dropped — Pro is a secondary amine)
+  SER: 11 (unchanged)
+  THR: 14 (unchanged)
+  TRP: 24 (unchanged)
+  TYR: 21 (unchanged)
+  VAL: 16 (unchanged)
 
-**Why this is queued not done in commit `ee1f1b4`**: scope discipline.
-The structural-matching landing is its own coherent unit; the chain-
-atom filter is an additional refinement. They are independent gates.
-Functional behaviour is correct without H.10; H.10 makes the substrate
-data shape match the runtime data shape exactly.
+Variant tables (kHisAtoms_HID, kAspAtoms_ASH, kGluAtoms_GLH, etc.)
+retain CCD's full atom set; the dropped atoms appear there.
+
+### H.11 No outstanding follow-ups from the 2026-05-05 OpenAI evaluation
+
+Six fixes from the OpenAI evaluation have all landed:
+
+1. Cap-table N/C/O semantic deltas (Fix 1) — `BuildCapTables` now
+   emits backbone overrides; cap counts 4 / 3 / 3 / 4.
+2. Default residue formal charges (Fix 2) — ARG NE=+1; ASP OD2=-1;
+   GLU OE2=-1; HIS ND1=0 (HIS=HIE per AMBER convention).
+3. LookupBy fail-fast on invalid indices (Fix 3) — explicit
+   `case kBaseVariantIdx:` for chain table; `default: return nullptr`.
+4. Chain-atom whitelist filter (Fix 4) — this section.
+5. Identity uniqueness docstring relaxation (Fix 5) — docstring on
+   `AtomMechanicalIdentity` in `src/SemanticEnums.h` acknowledges
+   chemically-equivalent H collisions.
+6. Override-composition rule documentation (Fix 6) — see §H.5 above
+   and the `LookupCap` comment block in the generated `.cpp`.
+
+Tests: 352/352 pass; StringBarrier 5/5; generator builds zero
+warnings. Runtime composition (`Protein::FinalizeConstruction`
+applying both `LookupBy` and `LookupCap`) is the next-session
+deliverable; the substrate data is ready for it.
 
 ---
 

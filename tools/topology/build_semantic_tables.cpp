@@ -890,6 +890,11 @@ SynthesisedFields SynthesisedForAla(const std::string& atom_id, const ParsedName
 // Hηxx labels: BMRB confirms HH11=Z (cis to Nε via Nη1), HH12=E,
 // HH21=Z (cis to Nε via Nη2), HH22=E. Note this is OPPOSITE polarity
 // from Asn/Gln because on Cζ, Nε IS the higher-priority substituent.
+//
+// CCD ARG carries +1 on NH2 (its Lewis convention places +1 on a
+// nitrogen of the guanidinium); we override to put +1 on Nε per the
+// project's chosen Lewis-convention placement (reference Section 2),
+// and zero out NH2's CCD-default +1.
 SynthesisedFields SynthesisedForArg(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β/γ/δ methylenes
@@ -899,6 +904,12 @@ SynthesisedFields SynthesisedForArg(const std::string& atom_id, const ParsedName
         s.planar_group = PlanarGroupKind::PeptideAmide;
     }
     if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // Lewis-convention charge placement (Section 2 of reference doc):
+    // +1 on Nε; CCD default has +1 on NH2 (also a valid Lewis form, but
+    // not the project's canonical placement). Override both.
+    if (atom_id == "NE")  s.charge_override = static_cast<int8_t>(+1);
+    if (atom_id == "NH2") s.charge_override = static_cast<int8_t>(0);
 
     // β methylene QB.
     if (atom_id == "HB2" || atom_id == "HB3") {
@@ -954,14 +965,19 @@ SynthesisedFields SynthesisedForArg(const std::string& atom_id, const ParsedName
 // template; HE is removed by chemistry inference (lone pair on Nε).
 // AmberAminoAcidVariantTable["ARN"] verified 2026-05-05: charge=0,
 // no explicit atom inventory, so reference's HE-removal stands.
-// CCD ARG entry has +1 on NH2 (charged guanidinium); ARN is neutral
-// so override NH2 +1 → 0.
+//
+// ARG default carries +1 on Nε (HE-bearing guanidinium nitrogen) and
+// 0 on NH2 per Lewis convention. ARN drops HE and the lone pair lives
+// on Nε, so ARN's Nε is neutral (0). NH2 stays 0. (CCD's +1 on NH2
+// was zeroed by ARG already; this remains 0 for ARN.)
 SynthesisedFields SynthesisedForArn(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForArg(atom_id, parsed);
     // HE is removed at the pipeline level; defensive zeroing here.
     if (atom_id == "HE") {
         s.polar_h = PolarHKind::NotPolar;
     }
+    // ARG default put +1 on Nε; ARN is neutral, so re-override to 0.
+    if (atom_id == "NE")  s.charge_override = static_cast<int8_t>(0);
     if (atom_id == "NH2") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
@@ -1007,6 +1023,12 @@ SynthesisedFields SynthesisedForAsn(const std::string& atom_id, const ParsedName
 
 // ASP -- aspartate. Reference Section 3 (ASP block).
 // Carboxylate: -1 on Oδ2 per Lewis convention; Cγ + Oδ1 carry 0.
+//
+// CCD ASP entry is the *protonated* (neutral) form, so its OD2 has
+// formal_charge=0. The deprotonated chain form (project default) needs
+// an explicit -1 override on OD2 per Section 2 of the reference doc.
+// (The protonated variant ASH inherits SynthesisedForAsp; ASH then
+// re-overrides OD2 back to 0 -- see SynthesisedForAsh.)
 SynthesisedFields SynthesisedForAsp(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
@@ -1026,6 +1048,10 @@ SynthesisedFields SynthesisedForAsp(const std::string& atom_id, const ParsedName
     if (atom_id == "CG" || atom_id == "OD1" || atom_id == "OD2") {
         s.planar_group = PlanarGroupKind::Carboxylate;
     }
+
+    // Lewis-convention charge placement (reference Section 2):
+    // -1 on Oδ2; Oδ1 = 0 (delocalised in reality, Lewis-localised here).
+    if (atom_id == "OD2") s.charge_override = static_cast<int8_t>(-1);
     return s;
 }
 
@@ -1035,9 +1061,12 @@ SynthesisedFields SynthesisedForAsp(const std::string& atom_id, const ParsedName
 // HD2 + OXT + HXT and has total formal_charge=0). The standard ASP
 // emission therefore already passes through the HD2 atom; the ASH
 // variant's job is to label that atom's chemistry correctly
-// (CarboxylOH on HD2). No atom-add, no atom-remove, no charge
-// override (CCD already has OD2 = 0 per Lewis convention since HD2
-// is bonded to OD2 in CCD).
+// (CarboxylOH on HD2). No atom-add, no atom-remove.
+//
+// Charge: SynthesisedForAsp sets -1 on OD2 (the deprotonated chain
+// form). ASH is the protonated (neutral) form, so we re-override OD2
+// back to 0 here -- HD2 is bonded to OD2 in ASH, making OD2 a neutral
+// hydroxyl oxygen.
 SynthesisedFields SynthesisedForAsh(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForAsp(atom_id, parsed);
     // HD2 is the protonated carboxyl OH on Oδ2 in ASH.
@@ -1045,6 +1074,8 @@ SynthesisedFields SynthesisedForAsh(const std::string& atom_id, const ParsedName
         s.planar_group = PlanarGroupKind::Carboxylate;
         s.polar_h      = PolarHKind::CarboxylOH;
     }
+    // ASH is neutral: undo the ASP -1 on OD2 (now a hydroxyl-bearing O).
+    if (atom_id == "OD2") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
@@ -1137,6 +1168,11 @@ SynthesisedFields SynthesisedForGln(const std::string& atom_id, const ParsedName
 
 // GLU -- glutamate. Reference Section 3 (GLU block).
 // Carboxylate: -1 on Oε2 per Lewis convention.
+//
+// CCD GLU entry is the *protonated* (neutral) form (formal_charge=0;
+// carries HE2 + OXT + HXT). The deprotonated chain form (project
+// default) needs an explicit -1 override on OE2. (GLH inherits and
+// re-overrides OE2 back to 0 -- see SynthesisedForGlh.)
 SynthesisedFields SynthesisedForGlu(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β + γ methylenes
@@ -1160,6 +1196,10 @@ SynthesisedFields SynthesisedForGlu(const std::string& atom_id, const ParsedName
     if (atom_id == "CD" || atom_id == "OE1" || atom_id == "OE2") {
         s.planar_group = PlanarGroupKind::Carboxylate;
     }
+
+    // Lewis-convention charge placement (reference Section 2):
+    // -1 on Oε2; Oε1 = 0.
+    if (atom_id == "OE2") s.charge_override = static_cast<int8_t>(-1);
     return s;
 }
 
@@ -1167,14 +1207,18 @@ SynthesisedFields SynthesisedForGlu(const std::string& atom_id, const ParsedName
 // GLH -- protonated glutamate variant. Reference Section 3 (GLH
 // block). Like ASP→ASH above, the CCD "GLU" entry IS the protonated
 // form (it carries HE2 + OXT + HXT, total formal_charge=0). The
-// GLH variant just labels HE2's chemistry as CarboxylOH; no atom
-// inventory delta and no charge override needed.
+// GLH variant labels HE2's chemistry as CarboxylOH; the SynthesisedForGlu
+// default sets -1 on OE2 (deprotonated chain form), so GLH needs to
+// re-override OE2 back to 0 (HE2 bonded to OE2 makes it a neutral
+// hydroxyl oxygen).
 SynthesisedFields SynthesisedForGlh(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForGlu(atom_id, parsed);
     if (atom_id == "HE2") {
         s.planar_group = PlanarGroupKind::Carboxylate;
         s.polar_h      = PolarHKind::CarboxylOH;
     }
+    // GLH is neutral: undo the GLU -1 on OE2.
+    if (atom_id == "OE2") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
@@ -1221,7 +1265,12 @@ SynthesisedFields SynthesisedForGly(const std::string& atom_id, const ParsedName
 // neutral). The bare 3-letter "HIS" therefore maps to the HIE
 // encoding: no Hδ1, has Hε2; ND1 = Heteroatom_NoH, NE2 = Heteroatom_NH.
 // Reference Section 3 (HIS block). Locked decision per dependencies
-// §D.1 (HIE-default-for-HIS).
+// §D.1 (HIE-default-for-HIS); cross-check at src/AmberLeapInput.cpp:29.
+//
+// CCD HIS entry is the imidazolium form (+1 on Nδ1, with HD1 + HE2
+// both present). The default chain form is the neutral HIE-equivalent:
+// Nδ1 + Nε2 + ring carbons all carry 0, and HD1 is partitioned out by
+// the §H.10 chain-atom whitelist filter. Override Nδ1 +1 -> 0 here.
 SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
@@ -1265,6 +1314,10 @@ SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName
     else if (atom_id == "CD2" || atom_id == "HD2") set_ring(RingPositionLabel::PyrroleBeta, false);
 
     if (atom_id == "HE2") s.polar_h = PolarHKind::ImidazoleNH;
+
+    // HIS = HIE default (neutral). CCD HIS has +1 on Nδ1 (imidazolium);
+    // override Nδ1 to 0. NE2 remains 0 (CCD default).
+    if (atom_id == "ND1") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
@@ -2130,6 +2183,156 @@ const std::set<std::string>& CapAtomNames() {
 }
 
 
+// Chain-atom whitelist per residue (Fix 4 / §H.10 of dependencies file).
+//
+// The substrate's per-residue tables must match AMBER's chain-residue
+// inventory exactly: CCD's free-amino-acid form is a superset (e.g.
+// CCD ASP carries the protonated HD2; CCD GLU carries HE2; CCD HIS
+// carries HD1; CCD PRO carries the backbone amide H, but Pro is a
+// secondary amine in chain context). Filter the CCD atom list against
+// this whitelist for the standard 20.
+//
+// Source: parallel encoding of `AmberAminoAcidVariantTable` in
+// `src/AminoAcidType.cpp::AMINO_ACID_TYPES`. Duplicated here (acceptable
+// for build-time utility) because the generator cannot link
+// AminoAcidType.cpp without pulling in significant runtime deps. Verify
+// against AminoAcidType.cpp when a residue's atom inventory changes.
+//
+// Variant tables (kHisAtoms_HID etc.) are NOT filtered here; they retain
+// their full atom set. The variant-specific atoms (HD1 in HID/HIP, HD2
+// in ASH, HE2 in GLH) are intentionally excluded from the chain table
+// and intentionally included in the variant table.
+const std::set<std::string>& ChainAtomWhitelist(const std::string& residue_3letter) {
+    // ALA: 10 atoms.
+    static const std::set<std::string> kALA = {
+        "N","CA","C","O","H","HA","CB","HB1","HB2","HB3"
+    };
+    // ARG: 24 atoms (charged form, includes HE).
+    static const std::set<std::string> kARG = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","CD","HD2","HD3",
+        "NE","HE","CZ","NH1","HH11","HH12","NH2","HH21","HH22"
+    };
+    // ASN: 14 atoms.
+    static const std::set<std::string> kASN = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","OD1","ND2","HD21","HD22"
+    };
+    // ASP: 12 atoms (deprotonated; drops HD2 from CCD's protonated form).
+    static const std::set<std::string> kASP = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","OD1","OD2"
+    };
+    // CYS: 11 atoms (reduced thiol).
+    static const std::set<std::string> kCYS = {
+        "N","CA","C","O","H","HA","CB","HB2","HB3","SG","HG"
+    };
+    // GLN: 17 atoms.
+    static const std::set<std::string> kGLN = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","CD","OE1","NE2","HE21","HE22"
+    };
+    // GLU: 15 atoms (deprotonated; drops HE2 from CCD's protonated form).
+    static const std::set<std::string> kGLU = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","CD","OE1","OE2"
+    };
+    // GLY: 7 atoms.
+    static const std::set<std::string> kGLY = {
+        "N","CA","C","O","H","HA2","HA3"
+    };
+    // HIS: 17 atoms (HIE-default; drops HD1 from CCD's imidazolium form).
+    static const std::set<std::string> kHIS = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","ND1","CD2","HD2","CE1","HE1","NE2","HE2"
+    };
+    // ILE: 19 atoms.
+    static const std::set<std::string> kILE = {
+        "N","CA","C","O","H","HA",
+        "CB","HB","CG1","HG12","HG13","CG2","HG21","HG22","HG23",
+        "CD1","HD11","HD12","HD13"
+    };
+    // LEU: 19 atoms.
+    static const std::set<std::string> kLEU = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG",
+        "CD1","HD11","HD12","HD13","CD2","HD21","HD22","HD23"
+    };
+    // LYS: 22 atoms.
+    static const std::set<std::string> kLYS = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","CD","HD2","HD3",
+        "CE","HE2","HE3","NZ","HZ1","HZ2","HZ3"
+    };
+    // MET: 17 atoms.
+    static const std::set<std::string> kMET = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","SD","CE","HE1","HE2","HE3"
+    };
+    // PHE: 20 atoms.
+    static const std::set<std::string> kPHE = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","CD1","HD1","CD2","HD2",
+        "CE1","HE1","CE2","HE2","CZ","HZ"
+    };
+    // PRO: 14 atoms (drops backbone H; Pro is a secondary amine).
+    static const std::set<std::string> kPRO = {
+        "N","CA","C","O","HA",
+        "CB","HB2","HB3","CG","HG2","HG3","CD","HD2","HD3"
+    };
+    // SER: 11 atoms.
+    static const std::set<std::string> kSER = {
+        "N","CA","C","O","H","HA","CB","HB2","HB3","OG","HG"
+    };
+    // THR: 14 atoms.
+    static const std::set<std::string> kTHR = {
+        "N","CA","C","O","H","HA",
+        "CB","HB","OG1","HG1","CG2","HG21","HG22","HG23"
+    };
+    // TRP: 24 atoms.
+    static const std::set<std::string> kTRP = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","CD1","HD1","CD2",
+        "NE1","HE1","CE2","CE3","HE3",
+        "CZ2","HZ2","CZ3","HZ3","CH2","HH2"
+    };
+    // TYR: 21 atoms.
+    static const std::set<std::string> kTYR = {
+        "N","CA","C","O","H","HA",
+        "CB","HB2","HB3","CG","CD1","HD1","CD2","HD2",
+        "CE1","HE1","CE2","HE2","CZ","OH","HH"
+    };
+    // VAL: 16 atoms.
+    static const std::set<std::string> kVAL = {
+        "N","CA","C","O","H","HA",
+        "CB","HB","CG1","HG11","HG12","HG13","CG2","HG21","HG22","HG23"
+    };
+    static const std::set<std::string> kEMPTY;
+
+    if (residue_3letter == "ALA") return kALA;
+    if (residue_3letter == "ARG") return kARG;
+    if (residue_3letter == "ASN") return kASN;
+    if (residue_3letter == "ASP") return kASP;
+    if (residue_3letter == "CYS") return kCYS;
+    if (residue_3letter == "GLN") return kGLN;
+    if (residue_3letter == "GLU") return kGLU;
+    if (residue_3letter == "GLY") return kGLY;
+    if (residue_3letter == "HIS") return kHIS;
+    if (residue_3letter == "ILE") return kILE;
+    if (residue_3letter == "LEU") return kLEU;
+    if (residue_3letter == "LYS") return kLYS;
+    if (residue_3letter == "MET") return kMET;
+    if (residue_3letter == "PHE") return kPHE;
+    if (residue_3letter == "PRO") return kPRO;
+    if (residue_3letter == "SER") return kSER;
+    if (residue_3letter == "THR") return kTHR;
+    if (residue_3letter == "TRP") return kTRP;
+    if (residue_3letter == "TYR") return kTYR;
+    if (residue_3letter == "VAL") return kVAL;
+    return kEMPTY;
+}
+
+
 // Build the per-atom semantic entries for one residue. The
 // `synthesis_code` is the dispatch key for `DispatchSynthesised`; it
 // is normally `res.three_letter` for the standard 20 but for variants
@@ -2144,12 +2347,21 @@ const std::set<std::string>& CapAtomNames() {
 // -- they live only in the terminal-state tables emitted separately.
 // This means the standard 20 tables are SMALLER than they were before
 // the partitioning landed (drop 2-4 atoms each).
+//
+// Per §H.10 (chain-atom whitelist filter, landed by Fix 4 of the
+// 2026-05-05 OpenAI evaluation): the standard 20 tables are filtered
+// against the chain-residue inventory in `ChainAtomWhitelist`. CCD's
+// free-amino-acid form may carry extra atoms (HD2 in ASP, HE2 in GLU,
+// HD1 in HIS, backbone H in PRO) that are NOT in AMBER's chain-residue
+// inventory; the whitelist drops them. Empty whitelist (variant path)
+// disables filtering.
 std::vector<AtomSemanticEntry> BuildResidueEntries(
         const CcdResidue& res,
         const RdkitMolWithMap& built,
         const RdkitFacts& facts,
         const std::string& synthesis_code,
         const std::set<std::string>& atoms_to_remove,
+        const std::set<std::string>& chain_whitelist,
         ProcessLog& log) {
     log.Section(std::string("build-entries::") + res.three_letter +
                 (synthesis_code != res.three_letter
@@ -2166,7 +2378,9 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(
 
     int dropped = 0;
     int dropped_caps = 0;
+    int dropped_non_chain = 0;
     const auto& cap_names = CapAtomNames();
+    const bool apply_whitelist = !chain_whitelist.empty();
     for (const auto& ccd_atom : res.atoms) {
         if (atoms_to_remove.count(ccd_atom.atom_id) > 0) {
             ++dropped;
@@ -2179,6 +2393,16 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(
             // cap tables emitted separately at the end of the run.
             ++dropped_caps;
             log.KV("partitioned_cap_atom", ccd_atom.atom_id);
+            continue;
+        }
+        if (apply_whitelist && chain_whitelist.count(ccd_atom.atom_id) == 0) {
+            // Per §H.10 chain-atom whitelist: CCD-only atoms not in
+            // AMBER's chain-residue inventory (HD2 in ASP, HE2 in GLU,
+            // HD1 in HIS, backbone H in PRO) are dropped from the per-
+            // residue table. They remain in the variant tables where
+            // appropriate.
+            ++dropped_non_chain;
+            log.KV("non_chain_atom_filtered", ccd_atom.atom_id);
             continue;
         }
         std::string parent_name;
@@ -2204,6 +2428,7 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(
     }
     if (dropped > 0) log.KV("variant_atoms_dropped_total", dropped);
     if (dropped_caps > 0) log.KV("partitioned_cap_atoms_total", dropped_caps);
+    if (dropped_non_chain > 0) log.KV("non_chain_atoms_filtered_total", dropped_non_chain);
     log.KV("entries_built", static_cast<int>(entries.size()));
     return entries;
 }
@@ -2491,8 +2716,12 @@ struct CapTableEntries {
 // from §4 of `spec/plan/topology-residue-reference-2026-05-05.md`.
 // The mechanical-identity tuple (Element, Locant, Branch, DiIndex,
 // BackboneRole) for cap atoms uses Locant::None and BackboneRole::None
-// because they are neither sidechain (Greek-letter) atoms nor backbone
-// (peptide-amide-unit) atoms; they are terminus-specific Hs / Os.
+// for terminus-added Hs / Os (they are neither sidechain Greek-letter
+// atoms nor backbone peptide-amide-unit atoms). For backbone OVERRIDE
+// rows (the N row in NTERM caps, the C and O rows in CTERM caps) the
+// BackboneRole IS populated -- these rows compose with the per-residue
+// table by matching the same (Element, Locant=None, Branch=0, DiIndex,
+// BackboneRole) identity as the chain entry. See `MakeCapBackboneOverride`.
 AtomSemanticEntry MakeCapAtomEntry(const std::string& atom_id,
                                     Element element,
                                     PlanarGroupKind planar_group,
@@ -2521,24 +2750,81 @@ AtomSemanticEntry MakeCapAtomEntry(const std::string& atom_id,
 }
 
 
+// Build a cap-table OVERRIDE entry for a backbone atom whose chemistry
+// differs at the terminus from the canonical internal-chain chemistry.
+// These rows have a non-None BackboneRole so they share their mechanical
+// identity (Element, Locant::None, Branch={0,0}, DiIndex::None,
+// backbone_role) with the chain table's same-role entry; the runtime
+// composition rule is "if LookupCap returns non-null, override the
+// chain entry's fields with the cap entry's fields for that atom."
+// See the comment block at the top of LookupCap in the generated .cpp
+// for the full composition rule.
+AtomSemanticEntry MakeCapBackboneOverride(const std::string& atom_id,
+                                           Element element,
+                                           BackboneRole backbone_role,
+                                           PlanarGroupKind planar_group,
+                                           PolarHKind polar_h,
+                                           int8_t formal_charge,
+                                           bool is_exchangeable) {
+    AtomSemanticEntry e;
+    e.atom_id_for_log = atom_id;
+    e.element         = element;
+    e.locant          = Locant::None;
+    e.branch          = {};
+    e.di_index        = DiastereotopicIndex::None;
+    e.backbone_role   = backbone_role;
+    e.prochiral       = ProchiralStereo::NotProchiral;
+    e.planar_group    = planar_group;
+    e.planar_stereo   = PlanarStereo::NotApplicable;
+    e.pseudoatom      = {};
+    e.polar_h         = polar_h;
+    e.ring_position   = {};
+    e.aromatic        = false;
+    e.formal_charge   = formal_charge;
+    e.is_exchangeable = is_exchangeable;
+    e.equivalence_class = 0;
+    return e;
+}
+
+
 // Synthesise the four cap tables per §4 of the reference doc.
 //
 // NTERM_CHARGED (NH3+):
+//   N (override) -- planar_group=None (terminal N is not a peptide-amide
+//     nitrogen); polarH=NotPolar (label is on the H, not the N); formal_chg=+1.
 //   H1, H2, H3 -- ammonium NH; PolarHKind::AmmoniumNH; formal_chg=0;
 //   exchangeable=true; Pseudoatom = Q with Locant::None (Markley Table 1
 //   does not list a pseudoatom for terminus-specific Hs; Q-with-locant=None
 //   is the Q-like equivalent-group encoding per the reference doc).
 // NTERM_NEUTRAL (NH2):
+//   N (override) -- planar_group=None; polarH=NotPolar; formal_chg=0.
 //   H1, H2 -- amine NH; PolarHKind::AmineNH; formal_chg=0;
 //   exchangeable=true.
 // CTERM_DEPROTONATED (COO-):
+//   C (override) -- planar_group=Carboxylate (was PeptideAmide on chain);
+//     polarH=NotPolar; formal_chg=0.
+//   O (override = O' in Markley convention) -- planar_group=Carboxylate
+//     (was PeptideAmide on chain); polarH=NotPolar; formal_chg=0
+//     (the -1 is on OXT/O'').
 //   OXT (= O'') -- planar_group=Carboxylate; polarH=NotPolar;
 //   formal_chg=-1; exchangeable=false.
 // CTERM_PROTONATED (COOH):
+//   C (override) -- planar_group=Carboxylate; polarH=NotPolar; formal_chg=0.
+//   O (override) -- planar_group=Carboxylate; polarH=NotPolar; formal_chg=0.
 //   OXT (= O'') -- planar_group=Carboxylate; polarH=NotPolar;
 //   formal_chg=0; exchangeable=false.
 //   HXT (= H'') -- planar_group=Carboxylate; polarH=CarboxylOH;
 //   formal_chg=0; exchangeable=true.
+//
+// Backbone H removal in NTERM is handled by AminoAcidType (terminal
+// residues use H1/H2/H3, not H) -- no sentinel needed in the cap table.
+//
+// Composition rule (documented at LookupCap site below): if
+// LookupCap(state, identity) returns non-null, the cap entry overrides
+// the per-residue entry for that atom. Backbone overrides have the
+// same (Element, Locant::None, Branch={0,0}, DiIndex::None,
+// backbone_role) identity as the chain row for the corresponding
+// backbone slot, so they shadow it under that rule.
 std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
     log.Section("build-cap-tables");
 
@@ -2554,6 +2840,13 @@ std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
         CapTableEntries c;
         c.state      = TerminalState::NtermCharged;
         c.array_name = "kCapNtermCharged";
+        // Backbone N override: chain-N planar_group is PeptideAmide; the
+        // terminal NH3+ is a primary amine, not a peptide-amide unit.
+        // formal_charge moves to +1.
+        c.entries.push_back(MakeCapBackboneOverride(
+            "N", Element::N, BackboneRole::Nitrogen,
+            PlanarGroupKind::None, PolarHKind::NotPolar,
+            static_cast<int8_t>(+1), false));
         c.entries.push_back(MakeCapAtomEntry(
             "H1", Element::H, PlanarGroupKind::None,
             PolarHKind::AmmoniumNH, 0, true, q_terminus));
@@ -2572,6 +2865,12 @@ std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
         CapTableEntries c;
         c.state      = TerminalState::NtermNeutral;
         c.array_name = "kCapNtermNeutral";
+        // Backbone N override: chain-N planar_group is PeptideAmide; the
+        // terminal NH2 is a primary amine. formal_charge stays 0.
+        c.entries.push_back(MakeCapBackboneOverride(
+            "N", Element::N, BackboneRole::Nitrogen,
+            PlanarGroupKind::None, PolarHKind::NotPolar,
+            static_cast<int8_t>(0), false));
         c.entries.push_back(MakeCapAtomEntry(
             "H1", Element::H, PlanarGroupKind::None,
             PolarHKind::AmineNH, 0, true, q_terminus));
@@ -2587,6 +2886,17 @@ std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
         CapTableEntries c;
         c.state      = TerminalState::CtermDeprotonated;
         c.array_name = "kCapCtermDeprotonated";
+        // Backbone C and O overrides: chain planar_group is PeptideAmide;
+        // the terminal COO- is a carboxylate. -1 is on OXT/O'' per the
+        // CTERM_DEPROTONATED entry below, so this O (= O') stays formal_charge 0.
+        c.entries.push_back(MakeCapBackboneOverride(
+            "C", Element::C, BackboneRole::CarbonylCarbon,
+            PlanarGroupKind::Carboxylate, PolarHKind::NotPolar,
+            static_cast<int8_t>(0), false));
+        c.entries.push_back(MakeCapBackboneOverride(
+            "O", Element::O, BackboneRole::CarbonylOxygen,
+            PlanarGroupKind::Carboxylate, PolarHKind::NotPolar,
+            static_cast<int8_t>(0), false));
         c.entries.push_back(MakeCapAtomEntry(
             "OXT", Element::O, PlanarGroupKind::Carboxylate,
             PolarHKind::NotPolar, -1, false));
@@ -2599,6 +2909,17 @@ std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
         CapTableEntries c;
         c.state      = TerminalState::CtermProtonated;
         c.array_name = "kCapCtermProtonated";
+        // Backbone C and O overrides: chain planar_group PeptideAmide ->
+        // Carboxylate at the protonated terminus. formal_charges stay 0
+        // (no charged form here).
+        c.entries.push_back(MakeCapBackboneOverride(
+            "C", Element::C, BackboneRole::CarbonylCarbon,
+            PlanarGroupKind::Carboxylate, PolarHKind::NotPolar,
+            static_cast<int8_t>(0), false));
+        c.entries.push_back(MakeCapBackboneOverride(
+            "O", Element::O, BackboneRole::CarbonylOxygen,
+            PlanarGroupKind::Carboxylate, PolarHKind::NotPolar,
+            static_cast<int8_t>(0), false));
         c.entries.push_back(MakeCapAtomEntry(
             "OXT", Element::O, PlanarGroupKind::Carboxylate,
             PolarHKind::NotPolar, 0, false));
@@ -2736,6 +3057,10 @@ void EmitCppFile(const std::string& output_path,
     out << "// No std::string literals, no gemmi / RDKit / cifpp\n";
     out << "// symbols, no chemistry-string round-tripping at runtime.\n";
     out << "//\n";
+    out << "// Variant-index sentinel: the base (chain, no protonation\n";
+    out << "// variant) table is selected by variant_idx == kBaseVariantIdx.\n";
+    out << "// Any other invalid index returns nullptr (fail-fast).\n";
+    out << "//\n";
     out << "// Audit trail: see src/generated/LegacyAmberSemanticTables.log.txt\n";
     out << "// for the structured generation log committed alongside.\n";
     out << "\n";
@@ -2743,6 +3068,13 @@ void EmitCppFile(const std::string& output_path,
     out << "#include \"../Types.h\"\n";
     out << "\n";
     out << "namespace nmr::topology_generated {\n";
+    out << "\n";
+    // Emit the typed sentinel constant for the base (chain) table.
+    out << "// Sentinel for the base (chain, non-variant) table. Runtime\n";
+    out << "// callers pass this value when there is no protonation variant\n";
+    out << "// in play; LookupBy dispatches the base table on this case and\n";
+    out << "// returns nullptr for any other invalid index (fail-fast).\n";
+    out << "constexpr std::uint8_t kBaseVariantIdx = 255;\n";
     out << "\n";
 
     int total_atoms = 0;
@@ -2808,11 +3140,18 @@ void EmitCppFile(const std::string& output_path,
     out << "// contract: HIS HID=0, HIE=1, HIP=2; ASP ASH=0; GLU GLH=0; CYS CYX=0,\n";
     out << "// CYM=1; LYS LYN=0; ARG ARN=0; TYR TYM=0. The runtime convention\n";
     out << "// `Residue::protonation_variant_index = -1` (no variant) is mapped\n";
-    out << "// to variant_idx=255 by the runtime caller (cast from -1) or passed\n";
-    out << "// as 255 directly; the function handles 255 as \"default chain\" via\n";
-    out << "// each residue's `default:` branch -- for HIS this returns the\n";
-    out << "// CCD-derived HIS table (which corresponds to the AMBER ff14SB\n";
-    out << "// \"HIS = HIE\" convention).\n";
+    out << "// to variant_idx=kBaseVariantIdx (255) by the runtime caller (cast\n";
+    out << "// from -1) or passed as 255 directly; the function handles\n";
+    out << "// kBaseVariantIdx as \"chain (no protonation variant)\" via each\n";
+    out << "// residue's explicit case -- for HIS this returns the CCD-derived\n";
+    out << "// HIS table (which corresponds to the AMBER ff14SB \"HIS = HIE\"\n";
+    out << "// convention).\n";
+    out << "//\n";
+    out << "// FAIL-FAST: any variant_idx that is neither one of the known\n";
+    out << "// variant indices for this residue nor kBaseVariantIdx returns\n";
+    out << "// nullptr. Callers must pass kBaseVariantIdx for chain residues;\n";
+    out << "// silently returning the base table on garbage input would mask\n";
+    out << "// upstream bugs.\n";
     out << "//\n";
     out << "// THIS IS THE CANONICAL RUNTIME LOOKUP. atom_local_idx is NOT used\n";
     out << "// (index spaces don't align across CCD, AmberAminoAcidVariantTable,\n";
@@ -2861,6 +3200,17 @@ void EmitCppFile(const std::string& output_path,
             else variants_only.push_back(re);
         }
         out << "            switch (variant_idx) {\n";
+        // Explicit base-chain case via the typed sentinel. Replaces the
+        // older "default: -> base table" pattern; default now returns
+        // nullptr (fail-fast on invalid indices).
+        if (default_entry != nullptr) {
+            const std::string array_name =
+                CppArrayName(default_entry->residue_3letter, "");
+            out << "                case kBaseVariantIdx:\n";
+            out << "                    return detail::LookupInArray("
+                << array_name << ".data(), "
+                << array_name << ".size(), identity);\n";
+        }
         for (const ResidueEntries* re : variants_only) {
             const int vidx = VariantIndexForEmitter(re->variant_3letter);
             const std::string array_name =
@@ -2870,16 +3220,7 @@ void EmitCppFile(const std::string& output_path,
                 << array_name << ".data(), "
                 << array_name << ".size(), identity);\n";
         }
-        if (default_entry != nullptr) {
-            const std::string array_name =
-                CppArrayName(default_entry->residue_3letter, "");
-            out << "                default:\n";
-            out << "                    return detail::LookupInArray("
-                << array_name << ".data(), "
-                << array_name << ".size(), identity);\n";
-        } else {
-            out << "                default: return nullptr;\n";
-        }
+        out << "                default: return nullptr;\n";
         out << "            }\n";
         out << "        }\n";
     }
@@ -2899,7 +3240,19 @@ void EmitCppFile(const std::string& output_path,
     out << "// queries an atom that is not actually a cap atom on this terminus,\n";
     out << "// or when the terminal state is `Internal`).\n";
     out << "//\n";
-    out << "// Per §H.4 of spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
+    out << "// Override-composition rule (per §H.5 of dependencies file):\n";
+    out << "// When a residue is at a terminus, `Protein::FinalizeConstruction`\n";
+    out << "// MUST query both `LookupBy` (chain) and `LookupCap` (terminal-\n";
+    out << "// state). If `LookupCap` returns non-null, the cap entry's fields\n";
+    out << "// override the chain entry's fields for that atom. The cap table\n";
+    out << "// MAY contain entries for backbone atoms (N for NTERM, C/O for\n";
+    out << "// CTERM) whose chemistry differs at the terminus; those entries\n";
+    out << "// have priority. Backbone overrides have non-None BackboneRole\n";
+    out << "// matching the chain's same-role entry; terminus-added Hs / Os\n";
+    out << "// (H1, H2, H3, OXT, HXT) carry BackboneRole::None and only match\n";
+    out << "// via the cap-table lookup.\n";
+    out << "//\n";
+    out << "// Per §H.4 + §H.5 of spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
     out << "const AtomSemanticTable*\n";
     out << "LookupCap(nmr::TerminalState state,\n";
     out << "          const AtomMechanicalIdentity& identity) {\n";
@@ -2952,8 +3305,11 @@ std::optional<ResidueEntries> ProcessOneResidue(cif::file& ccd,
     LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log, residue_3letter);
 
     auto facts = ExtractRdkitFacts(*built.mol, log);
+    // Standard-20 path: apply the chain-atom whitelist (§H.10) so the
+    // per-residue table reflects AMBER's chain-residue inventory.
     auto entries = BuildResidueEntries(*residue_opt, built, facts,
                                         residue_3letter, /*atoms_to_remove*/ {},
+                                        ChainAtomWhitelist(residue_3letter),
                                         log);
     LogEntriesSpotCheck(entries, log, residue_3letter);
 
@@ -3012,8 +3368,13 @@ std::optional<ResidueEntries> ProcessVariantResidue(
                        parent_3letter + "::variant=" + variant_3letter);
 
     auto facts = ExtractRdkitFacts(*built.mol, log);
+    // Variant path: empty whitelist disables §H.10 filtering. Variant
+    // tables retain their full atom set (including atoms partitioned
+    // out of the chain table for that residue, e.g. HD2 in ASH, HE2 in
+    // GLH, HD1 in HID/HIP).
     auto entries = BuildResidueEntries(*residue_opt, built, facts,
                                         variant_3letter, atoms_to_remove,
+                                        /*chain_whitelist*/ {},
                                         log);
     LogEntriesSpotCheck(entries, log, parent_3letter + "_" + variant_3letter);
 

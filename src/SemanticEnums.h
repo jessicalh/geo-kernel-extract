@@ -817,8 +817,29 @@ struct AtomSemanticTable {
 // keys on. NOT atom_local_idx (index spaces don't align across CCD,
 // AmberAminoAcidVariantTable, and other producers) and NOT atom_id
 // strings (the string wall is sacred). The five fields below are
-// computed by the parser from the atom name + bond graph; they are
-// unique within a residue's table by construction.
+// computed by the parser from the atom name + bond graph.
+//
+// Uniqueness contract:
+// Identities are unique within a residue table EXCEPT for chemically-
+// equivalent hydrogen sets, where the substrate stores identical rows
+// by design:
+//
+//   - Methyl-group Hs (e.g. ALA HB1/HB2/HB3, MET HE1/HE2/HE3, all
+//     methyl-bearing residues' methyl Hs) collapse to one identity
+//     after `DiastereotopicIndex` is cleared for `PseudoatomKind::M`.
+//     The three Hs are NMR-equivalent at room temperature; the
+//     substrate rows are identical by design; LookupBy returns the
+//     first match.
+//   - Cap-table Hs (NTERM_CHARGED H1/H2/H3, NTERM_NEUTRAL H1/H2)
+//     similarly collapse -- they are equivalent under the rapid water
+//     exchange that is the dominant chemistry for these atoms.
+//
+// Consumers requiring per-H discrimination (e.g. for diastereotopic
+// labelling of prochiral methylene Hs, which DO carry distinct
+// DiastereotopicIndex values) should use the underlying atom-name
+// semantics from the runtime atom record, not the substrate's
+// mechanical identity. The collisions above are limited to chemically
+// equivalent sets where any-of-three is the right answer.
 //
 // See §H of `spec/plan/topology-encoding-dependencies-2026-05-05.md`
 // for the full architectural rationale; section H.1 defines this

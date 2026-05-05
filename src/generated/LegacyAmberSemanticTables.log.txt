@@ -8,9 +8,9 @@
 
 ==== run-info ====
 generator = build_semantic_tables
-ccd_path = data/ccd/components.cif
-output_cpp = src/generated/LegacyAmberSemanticTables.cpp
-log_path = src/generated/LegacyAmberSemanticTables.log.txt
+ccd_path = /shared/2026Thesis/nmr-shielding/data/ccd/components.cif
+output_cpp = /shared/2026Thesis/nmr-shielding/src/generated/LegacyAmberSemanticTables.cpp
+log_path = /shared/2026Thesis/nmr-shielding/src/generated/LegacyAmberSemanticTables.log.txt
 rdkit_version = 2023.09.6
 step = 2 of N -- cifpp + RDKit pipeline validated on PHE
 # Subsequent steps generalise to all 20 residues + variants,
@@ -18,7 +18,7 @@ step = 2 of N -- cifpp + RDKit pipeline validated on PHE
 # table, and emit the generated C++ source.
 
 ==== ccd-load ====
-ccd_path = data/ccd/components.cif
+ccd_path = /shared/2026Thesis/nmr-shielding/data/ccd/components.cif
 status = OK
 
 ==== process-residue::ALA ====
@@ -254,9 +254,11 @@ cip_labels_assigned = 0
 ==== build-entries::ASP ====
 partitioned_cap_atom = OXT
 partitioned_cap_atom = H2
+non_chain_atom_filtered = HD2
 partitioned_cap_atom = HXT
 partitioned_cap_atoms_total = 3
-entries_built = 13
+non_chain_atoms_filtered_total = 1
+entries_built = 12
 
 ==== entries-spot-check::ASP ====
 0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
@@ -271,7 +273,6 @@ entries_built = 13
 9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
 10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
 11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-12_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
 
 ==== process-residue::CYS ====
@@ -439,9 +440,11 @@ cip_labels_assigned = 0
 ==== build-entries::GLU ====
 partitioned_cap_atom = OXT
 partitioned_cap_atom = H2
+non_chain_atom_filtered = HE2
 partitioned_cap_atom = HXT
 partitioned_cap_atoms_total = 3
-entries_built = 16
+non_chain_atoms_filtered_total = 1
+entries_built = 15
 
 ==== entries-spot-check::GLU ====
 0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
@@ -459,7 +462,6 @@ entries_built = 16
 12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
 13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
 14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-15_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
 
 ==== process-residue::GLY ====
@@ -558,9 +560,11 @@ cip_labels_assigned = 0
 ==== build-entries::HIS ====
 partitioned_cap_atom = OXT
 partitioned_cap_atom = H2
+non_chain_atom_filtered = HD1
 partitioned_cap_atom = HXT
 partitioned_cap_atoms_total = 3
-entries_built = 18
+non_chain_atoms_filtered_total = 1
+entries_built = 17
 
 ==== entries-spot-check::HIS ====
 0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
@@ -577,10 +581,9 @@ entries_built = 18
 11_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
 12_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
 13_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-14_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-15_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
-16_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
-17_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
+14_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+15_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
+16_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
 status = OK
 
 ==== process-residue::ILE ====
@@ -960,9 +963,11 @@ cip_labels_assigned = 0
 
 ==== build-entries::PRO ====
 partitioned_cap_atom = OXT
+non_chain_atom_filtered = H
 partitioned_cap_atom = HXT
 partitioned_cap_atoms_total = 2
-entries_built = 15
+non_chain_atoms_filtered_total = 1
+entries_built = 14
 
 ==== entries-spot-check::PRO ====
 0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=0 polarH=0 ring_pos=11 arom=0 hyb=2 eqcls=12
@@ -972,14 +977,13 @@ entries_built = 15
 4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=16
 5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=15
 6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=13
-7_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-8_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-9_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-10_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-11_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-12_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-13_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-14_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+10_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+11_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+12_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+13_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
 status = OK
 
 ==== process-residue::SER ====
@@ -1988,28 +1992,28 @@ variant_atoms_emitted = 20
 variant_atoms_removed = 4
 
 ==== build-cap-tables ====
-kCapNtermCharged_size = 3
-kCapNtermNeutral_size = 2
-kCapCtermDeprotonated_size = 1
-kCapCtermProtonated_size = 2
+kCapNtermCharged_size = 4
+kCapNtermNeutral_size = 3
+kCapCtermDeprotonated_size = 3
+kCapCtermProtonated_size = 4
 
 ==== emit-cpp ====
-output_path = src/generated/LegacyAmberSemanticTables.cpp
+output_path = /shared/2026Thesis/nmr-shielding/src/generated/LegacyAmberSemanticTables.cpp
 emitted_kAlaAtoms_size = 10
 emitted_kArgAtoms_size = 24
 emitted_kAsnAtoms_size = 14
-emitted_kAspAtoms_size = 13
+emitted_kAspAtoms_size = 12
 emitted_kCysAtoms_size = 11
 emitted_kGlnAtoms_size = 17
-emitted_kGluAtoms_size = 16
+emitted_kGluAtoms_size = 15
 emitted_kGlyAtoms_size = 7
-emitted_kHisAtoms_size = 18
+emitted_kHisAtoms_size = 17
 emitted_kIleAtoms_size = 19
 emitted_kLeuAtoms_size = 19
 emitted_kLysAtoms_size = 22
 emitted_kMetAtoms_size = 17
 emitted_kPheAtoms_size = 20
-emitted_kProAtoms_size = 15
+emitted_kProAtoms_size = 14
 emitted_kSerAtoms_size = 11
 emitted_kThrAtoms_size = 14
 emitted_kTrpAtoms_size = 24
@@ -2025,12 +2029,12 @@ emitted_kCysAtoms_CYM_size = 10
 emitted_kLysAtoms_LYN_size = 21
 emitted_kArgAtoms_ARN_size = 23
 emitted_kTyrAtoms_TYM_size = 20
-emitted_kCapNtermCharged_size = 3
-emitted_kCapNtermNeutral_size = 2
-emitted_kCapCtermDeprotonated_size = 1
-emitted_kCapCtermProtonated_size = 2
-total_atoms_emitted = 493
-cap_atoms_emitted = 8
+emitted_kCapNtermCharged_size = 4
+emitted_kCapNtermNeutral_size = 3
+emitted_kCapCtermDeprotonated_size = 3
+emitted_kCapCtermProtonated_size = 4
+total_atoms_emitted = 489
+cap_atoms_emitted = 14
 status = OK
 
 ==== done ====

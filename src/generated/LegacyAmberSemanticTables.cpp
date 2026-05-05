@@ -20,6 +20,10 @@
 // No std::string literals, no gemmi / RDKit / cifpp
 // symbols, no chemistry-string round-tripping at runtime.
 //
+// Variant-index sentinel: the base (chain, no protonation
+// variant) table is selected by variant_idx == kBaseVariantIdx.
+// Any other invalid index returns nullptr (fail-fast).
+//
 // Audit trail: see src/generated/LegacyAmberSemanticTables.log.txt
 // for the structured generation log committed alongside.
 
@@ -27,6 +31,12 @@
 #include "../Types.h"
 
 namespace nmr::topology_generated {
+
+// Sentinel for the base (chain, non-variant) table. Runtime
+// callers pass this value when there is no protonation variant
+// in play; LookupBy dispatches the base table on this case and
+// returns nullptr for any other invalid index (fail-fast).
+constexpr std::uint8_t kBaseVariantIdx = 255;
 
 // === ALA ===
 constexpr std::array<AtomSemanticTable, 10> kAlaAtoms = {{
@@ -51,10 +61,10 @@ constexpr std::array<AtomSemanticTable, 24> kArgAtoms = {{
     { nmr::Element::C, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 26 },  // 4: CB
     { nmr::Element::C, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 25 },  // 5: CG
     { nmr::Element::C, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 23 },  // 6: CD
-    { nmr::Element::N, nmr::Locant::Epsilon, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 20 },  // 7: NE
+    { nmr::Element::N, nmr::Locant::Epsilon, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 1, false, 20 },  // 7: NE
     { nmr::Element::C, nmr::Locant::Zeta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 18 },  // 8: CZ
     { nmr::Element::N, nmr::Locant::Eta, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::Z, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 19 },  // 9: NH1
-    { nmr::Element::N, nmr::Locant::Eta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::E, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 1, false, 22 },  // 10: NH2
+    { nmr::Element::N, nmr::Locant::Eta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Guanidinium, nmr::PlanarStereo::E, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 22 },  // 10: NH2
     { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AmideHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::BackboneAmide, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 4 },  // 11: H
     { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 10 },  // 12: HA
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 13 },  // 13: HB2
@@ -89,7 +99,7 @@ constexpr std::array<AtomSemanticTable, 14> kAsnAtoms = {{
 }};
 
 // === ASP ===
-constexpr std::array<AtomSemanticTable, 13> kAspAtoms = {{
+constexpr std::array<AtomSemanticTable, 12> kAspAtoms = {{
     { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 13 },  // 0: N
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 15 },  // 1: CA
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 12 },  // 2: C
@@ -97,12 +107,11 @@ constexpr std::array<AtomSemanticTable, 13> kAspAtoms = {{
     { nmr::Element::C, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 14 },  // 4: CB
     { nmr::Element::C, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 11 },  // 5: CG
     { nmr::Element::O, nmr::Locant::Delta, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 6: OD1
-    { nmr::Element::O, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 9 },  // 7: OD2
+    { nmr::Element::O, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, -1, false, 9 },  // 7: OD2
     { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AmideHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::BackboneAmide, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 2 },  // 8: H
     { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 6 },  // 9: HA
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 10: HB2
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 11: HB3
-    { nmr::Element::H, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 12: HD2
 }};
 
 // === CYS ===
@@ -142,7 +151,7 @@ constexpr std::array<AtomSemanticTable, 17> kGlnAtoms = {{
 }};
 
 // === GLU ===
-constexpr std::array<AtomSemanticTable, 16> kGluAtoms = {{
+constexpr std::array<AtomSemanticTable, 15> kGluAtoms = {{
     { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 15 },  // 0: N
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 17 },  // 1: CA
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 14 },  // 2: C
@@ -151,14 +160,13 @@ constexpr std::array<AtomSemanticTable, 16> kGluAtoms = {{
     { nmr::Element::C, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 16 },  // 5: CG
     { nmr::Element::C, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 13 },  // 6: CD
     { nmr::Element::O, nmr::Locant::Epsilon, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 9 },  // 7: OE1
-    { nmr::Element::O, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 11 },  // 8: OE2
+    { nmr::Element::O, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, -1, false, 11 },  // 8: OE2
     { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AmideHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::BackboneAmide, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 2 },  // 9: H
     { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 6 },  // 10: HA
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 11: HB2
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 12: HB3
     { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 13: HG2
     { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 14: HG3
-    { nmr::Element::H, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 15: HE2
 }};
 
 // === GLY ===
@@ -173,14 +181,14 @@ constexpr std::array<AtomSemanticTable, 7> kGlyAtoms = {{
 }};
 
 // === HIS ===
-constexpr std::array<AtomSemanticTable, 18> kHisAtoms = {{
+constexpr std::array<AtomSemanticTable, 17> kHisAtoms = {{
     { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 16 },  // 0: N
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 20 },  // 1: CA
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 12 },  // 2: C
     { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylOxygen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 10 },  // 3: O
     { nmr::Element::C, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 19 },  // 4: CB
     { nmr::Element::C, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Ipso, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 0, false, 14 },  // 5: CG
-    { nmr::Element::N, nmr::Locant::Delta, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Heteroatom_NoH, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 1, false, 18 },  // 6: ND1
+    { nmr::Element::N, nmr::Locant::Delta, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Heteroatom_NoH, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 0, false, 18 },  // 6: ND1
     { nmr::Element::C, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleBeta, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 0, false, 13 },  // 7: CD2
     { nmr::Element::C, nmr::Locant::Epsilon, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleAlpha, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 0, false, 15 },  // 8: CE1
     { nmr::Element::N, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Heteroatom_NH, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, true, 0, false, 17 },  // 9: NE2
@@ -188,10 +196,9 @@ constexpr std::array<AtomSemanticTable, 18> kHisAtoms = {{
     { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 9 },  // 11: HA
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 12: HB2
     { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 13: HB3
-    { nmr::Element::H, nmr::Locant::Delta, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 6 },  // 14: HD1
-    { nmr::Element::H, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleBeta, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 1 },  // 15: HD2
-    { nmr::Element::H, nmr::Locant::Epsilon, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleAlpha, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 16: HE1
-    { nmr::Element::H, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::ImidazoleNH, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Heteroatom_NH, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 5 },  // 17: HE2
+    { nmr::Element::H, nmr::Locant::Delta, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleBeta, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 1 },  // 14: HD2
+    { nmr::Element::H, nmr::Locant::Epsilon, {1,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::PyrroleAlpha, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 15: HE1
+    { nmr::Element::H, nmr::Locant::Epsilon, {2,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Imidazole, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::ImidazoleNH, {{nmr::RingSystemKind::Imidazole_His, nmr::RingPositionLabel::Heteroatom_NH, 5, true, true, 2}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 5 },  // 16: HE2
 }};
 
 // === ILE ===
@@ -312,7 +319,7 @@ constexpr std::array<AtomSemanticTable, 20> kPheAtoms = {{
 }};
 
 // === PRO ===
-constexpr std::array<AtomSemanticTable, 15> kProAtoms = {{
+constexpr std::array<AtomSemanticTable, 14> kProAtoms = {{
     { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Pyrrolidine_Pro, nmr::RingPositionLabel::Heteroatom_NoH, 5, false, false, 1}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 12 },  // 0: N
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Pyrrolidine_Pro, nmr::RingPositionLabel::Saturated, 5, false, false, 1}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 14 },  // 1: CA
     { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::PeptideAmide, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 11 },  // 2: C
@@ -320,14 +327,13 @@ constexpr std::array<AtomSemanticTable, 15> kProAtoms = {{
     { nmr::Element::C, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Pyrrolidine_Pro, nmr::RingPositionLabel::Saturated, 5, false, false, 1}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 16 },  // 4: CB
     { nmr::Element::C, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Pyrrolidine_Pro, nmr::RingPositionLabel::Saturated, 5, false, false, 1}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 15 },  // 5: CG
     { nmr::Element::C, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::Pyrrolidine_Pro, nmr::RingPositionLabel::Saturated, 5, false, false, 1}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 13 },  // 6: CD
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AmideHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 1 },  // 7: H
-    { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 8: HA
-    { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 9: HB2
-    { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 10: HB3
-    { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 5 },  // 11: HG2
-    { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 5 },  // 12: HG3
-    { nmr::Element::H, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 4, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 13: HD2
-    { nmr::Element::H, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 4, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 14: HD3
+    { nmr::Element::H, nmr::Locant::Alpha, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::AlphaHydrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 4 },  // 7: HA
+    { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 8: HB2
+    { nmr::Element::H, nmr::Locant::Beta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 2, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 7 },  // 9: HB3
+    { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 5 },  // 10: HG2
+    { nmr::Element::H, nmr::Locant::Gamma, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 3, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 5 },  // 11: HG3
+    { nmr::Element::H, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::Position2, nmr::BackboneRole::None, nmr::ProchiralStereo::ProS, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 4, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 12: HD2
+    { nmr::Element::H, nmr::Locant::Delta, {0,0}, nmr::DiastereotopicIndex::Position3, nmr::BackboneRole::None, nmr::ProchiralStereo::ProR, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 4, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 2 },  // 13: HD3
 }};
 
 // === SER ===
@@ -646,24 +652,30 @@ constexpr std::array<AtomSemanticTable, 20> kTyrAtoms_TYM = {{
 // Cap atoms (OXT, HXT, H1, H2, H3) are residue-independent; one
 // table per terminal state covers all 20 standard residues.
 
-constexpr std::array<AtomSemanticTable, 3> kCapNtermCharged = {{
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 0: H1
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 1: H2
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 2: H3
+constexpr std::array<AtomSemanticTable, 4> kCapNtermCharged = {{
+    { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 1, false, 0 },  // 0: N
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 1: H1
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 2: H2
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmmoniumNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 3: H3
 }};
 
-constexpr std::array<AtomSemanticTable, 2> kCapNtermNeutral = {{
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmineNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 0: H1
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmineNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 1: H2
+constexpr std::array<AtomSemanticTable, 3> kCapNtermNeutral = {{
+    { nmr::Element::N, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::Nitrogen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 0: N
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmineNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 1: H1
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::None, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::Q, 0, 0, false}, nmr::PolarHKind::AmineNH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 2: H2
 }};
 
-constexpr std::array<AtomSemanticTable, 1> kCapCtermDeprotonated = {{
-    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, -1, false, 0 },  // 0: OXT
+constexpr std::array<AtomSemanticTable, 3> kCapCtermDeprotonated = {{
+    { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 0: C
+    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylOxygen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 1: O
+    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, -1, false, 0 },  // 2: OXT
 }};
 
-constexpr std::array<AtomSemanticTable, 2> kCapCtermProtonated = {{
-    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 0: OXT
-    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::CarboxylOH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 1: HXT
+constexpr std::array<AtomSemanticTable, 4> kCapCtermProtonated = {{
+    { nmr::Element::C, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylCarbon, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 0: C
+    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::CarbonylOxygen, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 1: O
+    { nmr::Element::O, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::NotPolar, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, false, 0 },  // 2: OXT
+    { nmr::Element::H, nmr::Locant::None, {0,0}, nmr::DiastereotopicIndex::None, nmr::BackboneRole::None, nmr::ProchiralStereo::NotProchiral, nmr::PlanarGroupKind::Carboxylate, nmr::PlanarStereo::NotApplicable, {nmr::PseudoatomKind::None, 0, 0, false}, nmr::PolarHKind::CarboxylOH, {{nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}, {nmr::RingSystemKind::NotInRing, nmr::RingPositionLabel::NotInRing, 0, false, false, 0}}, false, 0, true, 0 },  // 3: HXT
 }};
 
 // ============================================================================
@@ -679,11 +691,18 @@ constexpr std::array<AtomSemanticTable, 2> kCapCtermProtonated = {{
 // contract: HIS HID=0, HIE=1, HIP=2; ASP ASH=0; GLU GLH=0; CYS CYX=0,
 // CYM=1; LYS LYN=0; ARG ARN=0; TYR TYM=0. The runtime convention
 // `Residue::protonation_variant_index = -1` (no variant) is mapped
-// to variant_idx=255 by the runtime caller (cast from -1) or passed
-// as 255 directly; the function handles 255 as "default chain" via
-// each residue's `default:` branch -- for HIS this returns the
-// CCD-derived HIS table (which corresponds to the AMBER ff14SB
-// "HIS = HIE" convention).
+// to variant_idx=kBaseVariantIdx (255) by the runtime caller (cast
+// from -1) or passed as 255 directly; the function handles
+// kBaseVariantIdx as "chain (no protonation variant)" via each
+// residue's explicit case -- for HIS this returns the CCD-derived
+// HIS table (which corresponds to the AMBER ff14SB "HIS = HIE"
+// convention).
+//
+// FAIL-FAST: any variant_idx that is neither one of the known
+// variant indices for this residue nor kBaseVariantIdx returns
+// nullptr. Callers must pass kBaseVariantIdx for chain residues;
+// silently returning the base table on garbage input would mask
+// upstream bugs.
 //
 // THIS IS THE CANONICAL RUNTIME LOOKUP. atom_local_idx is NOT used
 // (index spaces don't align across CCD, AmberAminoAcidVariantTable,
@@ -714,142 +733,162 @@ LookupBy(nmr::AminoAcid residue, std::uint8_t variant_idx,
     switch (residue) {
         case nmr::AminoAcid::ALA: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kAlaAtoms.data(), kAlaAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::ARG: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kArgAtoms.data(), kArgAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kArgAtoms_ARN.data(), kArgAtoms_ARN.size(), identity);
-                default:
-                    return detail::LookupInArray(kArgAtoms.data(), kArgAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::ASN: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kAsnAtoms.data(), kAsnAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::ASP: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kAspAtoms.data(), kAspAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kAspAtoms_ASH.data(), kAspAtoms_ASH.size(), identity);
-                default:
-                    return detail::LookupInArray(kAspAtoms.data(), kAspAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::CYS: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kCysAtoms.data(), kCysAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kCysAtoms_CYX.data(), kCysAtoms_CYX.size(), identity);
                 case 1:
                     return detail::LookupInArray(kCysAtoms_CYM.data(), kCysAtoms_CYM.size(), identity);
-                default:
-                    return detail::LookupInArray(kCysAtoms.data(), kCysAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::GLN: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kGlnAtoms.data(), kGlnAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::GLU: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kGluAtoms.data(), kGluAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kGluAtoms_GLH.data(), kGluAtoms_GLH.size(), identity);
-                default:
-                    return detail::LookupInArray(kGluAtoms.data(), kGluAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::GLY: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kGlyAtoms.data(), kGlyAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::HIS: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kHisAtoms.data(), kHisAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kHisAtoms_HID.data(), kHisAtoms_HID.size(), identity);
                 case 1:
                     return detail::LookupInArray(kHisAtoms_HIE.data(), kHisAtoms_HIE.size(), identity);
                 case 2:
                     return detail::LookupInArray(kHisAtoms_HIP.data(), kHisAtoms_HIP.size(), identity);
-                default:
-                    return detail::LookupInArray(kHisAtoms.data(), kHisAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::ILE: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kIleAtoms.data(), kIleAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::LEU: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kLeuAtoms.data(), kLeuAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::LYS: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kLysAtoms.data(), kLysAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kLysAtoms_LYN.data(), kLysAtoms_LYN.size(), identity);
-                default:
-                    return detail::LookupInArray(kLysAtoms.data(), kLysAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::MET: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kMetAtoms.data(), kMetAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::PHE: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kPheAtoms.data(), kPheAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::PRO: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kProAtoms.data(), kProAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::SER: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kSerAtoms.data(), kSerAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::THR: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kThrAtoms.data(), kThrAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::TRP: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kTrpAtoms.data(), kTrpAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::TYR: {
             switch (variant_idx) {
+                case kBaseVariantIdx:
+                    return detail::LookupInArray(kTyrAtoms.data(), kTyrAtoms.size(), identity);
                 case 0:
                     return detail::LookupInArray(kTyrAtoms_TYM.data(), kTyrAtoms_TYM.size(), identity);
-                default:
-                    return detail::LookupInArray(kTyrAtoms.data(), kTyrAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         case nmr::AminoAcid::VAL: {
             switch (variant_idx) {
-                default:
+                case kBaseVariantIdx:
                     return detail::LookupInArray(kValAtoms.data(), kValAtoms.size(), identity);
+                default: return nullptr;
             }
         }
         default: return nullptr;
@@ -866,7 +905,19 @@ LookupBy(nmr::AminoAcid residue, std::uint8_t variant_idx,
 // queries an atom that is not actually a cap atom on this terminus,
 // or when the terminal state is `Internal`).
 //
-// Per §H.4 of spec/plan/topology-encoding-dependencies-2026-05-05.md.
+// Override-composition rule (per §H.5 of dependencies file):
+// When a residue is at a terminus, `Protein::FinalizeConstruction`
+// MUST query both `LookupBy` (chain) and `LookupCap` (terminal-
+// state). If `LookupCap` returns non-null, the cap entry's fields
+// override the chain entry's fields for that atom. The cap table
+// MAY contain entries for backbone atoms (N for NTERM, C/O for
+// CTERM) whose chemistry differs at the terminus; those entries
+// have priority. Backbone overrides have non-None BackboneRole
+// matching the chain's same-role entry; terminus-added Hs / Os
+// (H1, H2, H3, OXT, HXT) carry BackboneRole::None and only match
+// via the cap-table lookup.
+//
+// Per §H.4 + §H.5 of spec/plan/topology-encoding-dependencies-2026-05-05.md.
 const AtomSemanticTable*
 LookupCap(nmr::TerminalState state,
           const AtomMechanicalIdentity& identity) {
