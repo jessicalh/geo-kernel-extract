@@ -24,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -781,6 +782,18 @@ struct SynthesisedFields {
     // RDKit-perceived value (which is None for prochiral Hs in
     // CCD's free-amino-acid forms with explicit Hs).
     ProchiralStereo       prochiral     = ProchiralStereo::NotProchiral;
+
+    // Optional per-atom formal-charge override (variant-specific).
+    // The CCD entry's per-atom charge is the default authority. When
+    // a variant's protonation state differs from the CCD parent's
+    // chemistry (e.g. CYM changes Sγ from neutral to -1; LYN changes
+    // Nζ from +1 to 0; HID/HIE remove the imidazolium +1 from Nδ1;
+    // HIP relocates the +1 from Nδ1 to Nε2), the variant patch sets
+    // this override and BuildAtomSemanticEntry uses it instead of
+    // the CCD value. std::optional<> empty = "use CCD"; populated =
+    // "variant overrides CCD here." The standard 20 patch functions
+    // never set this, so their output is unchanged.
+    std::optional<int8_t> charge_override = std::nullopt;
 };
 
 
@@ -926,13 +939,15 @@ SynthesisedFields SynthesisedForArg(const std::string& atom_id, const ParsedName
 // template; HE is removed by chemistry inference (lone pair on Nε).
 // AmberAminoAcidVariantTable["ARN"] verified 2026-05-05: charge=0,
 // no explicit atom inventory, so reference's HE-removal stands.
-[[maybe_unused]] SynthesisedFields SynthesisedForArn(const std::string& atom_id, const ParsedName& parsed) {
+// CCD ARG entry has +1 on NH2 (charged guanidinium); ARN is neutral
+// so override NH2 +1 → 0.
+SynthesisedFields SynthesisedForArn(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForArg(atom_id, parsed);
-    // HE is removed in ARN; if it appears in the CCD entry, treat as
-    // not-polar (no formal charge on the now-absent guanidinium).
+    // HE is removed at the pipeline level; defensive zeroing here.
     if (atom_id == "HE") {
         s.polar_h = PolarHKind::NotPolar;
     }
+    if (atom_id == "NH2") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
@@ -1001,11 +1016,16 @@ SynthesisedFields SynthesisedForAsp(const std::string& atom_id, const ParsedName
 
 
 // ASH -- protonated aspartate variant. Reference Section 3 (ASH block).
-// Adds HD2 (carboxyl OH); OD2 formal_charge changes -1 -> 0 (handled
-// by CCD's per-atom formal_charge field, not synthesised here).
-[[maybe_unused]] SynthesisedFields SynthesisedForAsh(const std::string& atom_id, const ParsedName& parsed) {
+// Note that the CCD's "ASP" entry IS the protonated form (it carries
+// HD2 + OXT + HXT and has total formal_charge=0). The standard ASP
+// emission therefore already passes through the HD2 atom; the ASH
+// variant's job is to label that atom's chemistry correctly
+// (CarboxylOH on HD2). No atom-add, no atom-remove, no charge
+// override (CCD already has OD2 = 0 per Lewis convention since HD2
+// is bonded to OD2 in CCD).
+SynthesisedFields SynthesisedForAsh(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForAsp(atom_id, parsed);
-    // HD2 is added in ASH: protonated carboxyl OH on Oδ2.
+    // HD2 is the protonated carboxyl OH on Oδ2 in ASH.
     if (atom_id == "HD2") {
         s.planar_group = PlanarGroupKind::Carboxylate;
         s.polar_h      = PolarHKind::CarboxylOH;
@@ -1035,21 +1055,26 @@ SynthesisedFields SynthesisedForCys(const std::string& atom_id, const ParsedName
 
 
 // CYX -- disulfide-bonded cysteine variant. Reference Section 3 (CYX
-// block). HG removed (Sγ-Sγ disulfide bond); the inter-residue
-// disulfide topology is captured upstream via CovalentTopology.
-[[maybe_unused]] SynthesisedFields SynthesisedForCyx(const std::string& atom_id, const ParsedName& parsed) {
+// block). HG removed at the variant pipeline level (Sγ-Sγ disulfide
+// bond); the inter-residue disulfide topology is captured upstream
+// via CovalentTopology. Sγ formal charge stays 0 (CCD: 0).
+SynthesisedFields SynthesisedForCyx(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForCys(atom_id, parsed);
-    if (atom_id == "HG") s.polar_h = PolarHKind::NotPolar;    // removed in CYX
+    // Defensive/idempotent: HG row is removed entirely at the
+    // pipeline level; this branch ensures we never label a stray HG
+    // entry as ThiolSH for CYX.
+    if (atom_id == "HG") s.polar_h = PolarHKind::NotPolar;
     return s;
 }
 
 
 // CYM -- deprotonated thiolate cysteine variant. Reference Section 3
-// (CYM block). HG removed; Sγ formal charge becomes -1 (handled via
-// CCD's per-atom field, not here).
-[[maybe_unused]] SynthesisedFields SynthesisedForCym(const std::string& atom_id, const ParsedName& parsed) {
+// (CYM block). HG removed at the variant pipeline level. Sγ formal
+// charge: CCD has 0 (CYS); CYM is thiolate so override SG to -1.
+SynthesisedFields SynthesisedForCym(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForCys(atom_id, parsed);
     if (atom_id == "HG") s.polar_h = PolarHKind::NotPolar;
+    if (atom_id == "SG") s.charge_override = static_cast<int8_t>(-1);
     return s;
 }
 
@@ -1125,8 +1150,11 @@ SynthesisedFields SynthesisedForGlu(const std::string& atom_id, const ParsedName
 
 
 // GLH -- protonated glutamate variant. Reference Section 3 (GLH
-// block). Adds HE2 (carboxyl OH); Oε2 formal_charge -1 -> 0 (CCD).
-[[maybe_unused]] SynthesisedFields SynthesisedForGlh(const std::string& atom_id, const ParsedName& parsed) {
+// block). Like ASP→ASH above, the CCD "GLU" entry IS the protonated
+// form (it carries HE2 + OXT + HXT, total formal_charge=0). The
+// GLH variant just labels HE2's chemistry as CarboxylOH; no atom
+// inventory delta and no charge override needed.
+SynthesisedFields SynthesisedForGlh(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForGlu(atom_id, parsed);
     if (atom_id == "HE2") {
         s.planar_group = PlanarGroupKind::Carboxylate;
@@ -1220,9 +1248,12 @@ SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName
 
 
 // HID -- Nδ1-protonated histidine variant. Reference Section 3 (HID
-// block). HD1 added (ImidazoleNH on Nδ1); HE2 removed; ND1 becomes
-// Heteroatom_NH; NE2 becomes Heteroatom_NoH.
-[[maybe_unused]] SynthesisedFields SynthesisedForHid(const std::string& atom_id, const ParsedName& parsed) {
+// block). HD1 retained from CCD parent; HE2 dropped at the variant
+// pipeline level (see ProcessVariantResidue); ND1 becomes
+// Heteroatom_NH; NE2 becomes Heteroatom_NoH. Formal charge: CCD's
+// HIS entry has +1 on Nδ1 (it's the imidazolium form). HID is
+// neutral, so we override Nδ1 +1 → 0.
+SynthesisedFields SynthesisedForHid(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForHis(atom_id, parsed);
     // ND1 now bears Hδ1: change from Heteroatom_NoH to Heteroatom_NH.
     if (atom_id == "ND1" || atom_id == "HD1") {
@@ -1239,23 +1270,38 @@ SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName
         s.ring_pos.primary.position = RingPositionLabel::Heteroatom_NoH;
     }
     if (atom_id == "HD1") s.polar_h = PolarHKind::ImidazoleNH;
-    if (atom_id == "HE2") s.polar_h = PolarHKind::NotPolar;     // removed in HID
+    // HE2 is removed entirely at the pipeline level (see
+    // ProcessVariantResidue's atoms_to_remove), so no row will be
+    // emitted for it; this branch is here for defensive/idempotent
+    // patching only.
+    if (atom_id == "HE2") s.polar_h = PolarHKind::NotPolar;
+    // Variant formal charge: HID is neutral; CCD HIS has +1 on ND1
+    // (imidazolium form). Override ND1 to 0 here.
+    if (atom_id == "ND1") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
 
 // HIE -- Nε2-protonated histidine variant. Reference Section 3 (HIE
-// block). Identical to HIS default. Provided as an alias for
-// completeness when the CCD entry is named HIE.
-[[maybe_unused]] SynthesisedFields SynthesisedForHie(const std::string& atom_id, const ParsedName& parsed) {
-    return SynthesisedForHis(atom_id, parsed);
+// block). HD1 dropped at the variant pipeline level; HE2 retained.
+// AMBER ff14SB's "HIE" matches what the existing SynthesisedForHis
+// function already encodes for HE2/NE2 (HE2 = ImidazoleNH; NE2 =
+// Heteroatom_NH; ND1 = Heteroatom_NoH); we therefore re-use the HIS
+// patch wholesale here. CCD HIS has +1 on Nδ1 (imidazolium); HIE is
+// neutral so we override Nδ1 +1 → 0.
+SynthesisedFields SynthesisedForHie(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForHis(atom_id, parsed);
+    // HIE is neutral; remove CCD's +1 on Nδ1.
+    if (atom_id == "ND1") s.charge_override = static_cast<int8_t>(0);
+    return s;
 }
 
 
 // HIP -- imidazolium (both NHs protonated, +1 charge). Reference
 // Section 3 (HIP block). Charge placement (Section 2): +1 on Nε2 per
-// chosen convention; ND1, CE1, CD2, CG carry 0.
-[[maybe_unused]] SynthesisedFields SynthesisedForHip(const std::string& atom_id, const ParsedName& parsed) {
+// chosen convention; ND1, CE1, CD2, CG carry 0. CCD's HIS entry has
+// +1 on ND1; HIP relocates the +1 to NE2 per the chosen convention.
+SynthesisedFields SynthesisedForHip(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForHis(atom_id, parsed);
     // Both ND1 and NE2 are NH-bearing in HIP.
     if (atom_id == "ND1" || atom_id == "HD1") {
@@ -1269,6 +1315,11 @@ SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName
     }
     if (atom_id == "HD1") s.polar_h = PolarHKind::ImidazoleNH;
     // HE2 stays ImidazoleNH (inherited from HIS default).
+    // Variant formal charge (Lewis-localised convention, Section
+    // 2 / dependencies §C.4): place +1 on Nε2; clear the CCD's
+    // ND1 +1.
+    if (atom_id == "ND1") s.charge_override = static_cast<int8_t>(0);
+    if (atom_id == "NE2") s.charge_override = static_cast<int8_t>(1);
     return s;
 }
 
@@ -1390,11 +1441,12 @@ SynthesisedFields SynthesisedForLys(const std::string& atom_id, const ParsedName
 // LYN -- neutral lysine variant. Reference Section 3 (LYN block) +
 // dependencies §B.2 + §E.5-6. CRITICAL (recently corrected): HZ1 is
 // REMOVED (NOT HZ3); HZ2 + HZ3 retained as AmineNH (per the new
-// PolarHKind::AmineNH enum). NZ formal charge +1 -> 0 (CCD).
-[[maybe_unused]] SynthesisedFields SynthesisedForLyn(const std::string& atom_id, const ParsedName& parsed) {
+// PolarHKind::AmineNH enum). NZ formal charge: CCD LYS has +1 on
+// NZ (charged ammonium); LYN is neutral so override NZ +1 → 0.
+SynthesisedFields SynthesisedForLyn(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForLys(atom_id, parsed);
-    // HZ1 removed; HZ2/HZ3 are AmineNH (neutral primary amine), NOT
-    // AmmoniumNH. ff14SB authoritative atom inventory: HZ2 + HZ3.
+    // HZ1 removed at pipeline level; defensive/idempotent zeroing
+    // here in case a row sneaks through.
     if (atom_id == "HZ1") {
         s.polar_h    = PolarHKind::NotPolar;
         s.pseudoatom = {};
@@ -1402,6 +1454,7 @@ SynthesisedFields SynthesisedForLys(const std::string& atom_id, const ParsedName
     if (atom_id == "HZ2" || atom_id == "HZ3") {
         s.polar_h = PolarHKind::AmineNH;
     }
+    if (atom_id == "NZ") s.charge_override = static_cast<int8_t>(0);
     return s;
 }
 
@@ -1761,20 +1814,22 @@ SynthesisedFields SynthesisedForTyr(const std::string& atom_id, const ParsedName
 
 
 // TYM -- deprotonated tyrosine (aryloxide) variant. Reference Section
-// 3 (TYM block) + dependencies §E.8. HH REMOVED; OH planar_group
-// AromaticHydroxyl -> AromaticOxide (per the new
-// PlanarGroupKind::AromaticOxide enum, 2026-05-05). Oη formal_chg
-// 0 -> -1 (CCD).
-[[maybe_unused]] SynthesisedFields SynthesisedForTym(const std::string& atom_id, const ParsedName& parsed) {
+// 3 (TYM block) + dependencies §E.8. HH removed at the pipeline
+// level; OH planar_group AromaticHydroxyl → AromaticOxide (per the
+// new PlanarGroupKind::AromaticOxide enum, 2026-05-05). Oη formal
+// charge: CCD TYR has 0 on OH (neutral phenol); TYM is phenolate so
+// override OH 0 → -1.
+SynthesisedFields SynthesisedForTym(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s = SynthesisedForTyr(atom_id, parsed);
     // Oη: AromaticHydroxyl -> AromaticOxide (phenolate; π-conjugation
     // qualitatively different from neutral phenol-OH).
     if (atom_id == "OH") s.planar_group = PlanarGroupKind::AromaticOxide;
-    // HH removed in TYM; if it appears in CCD, treat as not-polar.
+    // HH removed at pipeline level; defensive zeroing here.
     if (atom_id == "HH") {
         s.planar_group = PlanarGroupKind::None;
         s.polar_h      = PolarHKind::NotPolar;
     }
+    if (atom_id == "OH") s.charge_override = static_cast<int8_t>(-1);
     return s;
 }
 
@@ -1878,7 +1933,16 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
     e.hybridisation = facts.hybridisation[rdkit_idx];
     e.bond_orders   = facts.bond_orders[rdkit_idx];
     e.equivalence_class = facts.canonical_rank[rdkit_idx];
-    e.formal_charge = static_cast<int8_t>(formal_charge_from_ccd);
+    // Formal charge: CCD per-atom value is the default authority. A
+    // variant's SynthesisedFor<Variant> patch may set
+    // syn.charge_override to redirect a per-atom charge for chemistry
+    // that differs from the CCD entry (e.g. CYM's Sγ -1, LYN's Nζ 0,
+    // HID/HIE/HIP's Nδ1 / Nε2 redistribution, TYM's Oη -1, ARN's
+    // Nη2 0). Standard 20 patches never set the override, so their
+    // formal_charge tracks CCD untouched.
+    e.formal_charge = syn.charge_override.has_value()
+        ? *syn.charge_override
+        : static_cast<int8_t>(formal_charge_from_ccd);
 
     // Prochiral assignment combines RDKit (chiral centres) with the
     // synthesised Markley-derived per-residue table (prochiral Hs
@@ -1939,12 +2003,75 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
 }
 
 
-// Build the per-atom semantic entries for one residue.
-std::vector<AtomSemanticEntry> BuildResidueEntries(const CcdResidue& res,
-                                                    const RdkitMolWithMap& built,
-                                                    const RdkitFacts& facts,
-                                                    ProcessLog& log) {
-    log.Section(std::string("build-entries::") + res.three_letter);
+// Dispatch the chemistry-source plug-in for one (residue-or-variant
+// code, atom_id) pair. Single source-of-truth for which
+// SynthesisedFor<...> function applies. Standard 20 codes route to
+// their per-residue function; AMBER variant codes
+// (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/TYM) route to their
+// per-variant patch (which itself layers on top of the parent
+// SynthesisedFor<Parent>).
+//
+// Returns default-constructed SynthesisedFields if the code is
+// unknown -- the dispatch is permissive so unknown codes do not fail
+// hard at this layer; the main loop owns the residue-set decision.
+SynthesisedFields DispatchSynthesised(const std::string& code,
+                                       const std::string& atom_id,
+                                       const ParsedName& parsed) {
+    // Standard 20.
+    if      (code == "ALA") return SynthesisedForAla(atom_id, parsed);
+    else if (code == "ARG") return SynthesisedForArg(atom_id, parsed);
+    else if (code == "ASN") return SynthesisedForAsn(atom_id, parsed);
+    else if (code == "ASP") return SynthesisedForAsp(atom_id, parsed);
+    else if (code == "CYS") return SynthesisedForCys(atom_id, parsed);
+    else if (code == "GLN") return SynthesisedForGln(atom_id, parsed);
+    else if (code == "GLU") return SynthesisedForGlu(atom_id, parsed);
+    else if (code == "GLY") return SynthesisedForGly(atom_id, parsed);
+    else if (code == "HIS") return SynthesisedForHis(atom_id, parsed);
+    else if (code == "ILE") return SynthesisedForIle(atom_id, parsed);
+    else if (code == "LEU") return SynthesisedForLeu(atom_id, parsed);
+    else if (code == "LYS") return SynthesisedForLys(atom_id, parsed);
+    else if (code == "MET") return SynthesisedForMet(atom_id, parsed);
+    else if (code == "PHE") return SynthesisedForPhe(atom_id, parsed);
+    else if (code == "PRO") return SynthesisedForPro(atom_id, parsed);
+    else if (code == "SER") return SynthesisedForSer(atom_id, parsed);
+    else if (code == "THR") return SynthesisedForThr(atom_id, parsed);
+    else if (code == "TRP") return SynthesisedForTrp(atom_id, parsed);
+    else if (code == "TYR") return SynthesisedForTyr(atom_id, parsed);
+    else if (code == "VAL") return SynthesisedForVal(atom_id, parsed);
+    // AMBER protonation variants.
+    else if (code == "HID") return SynthesisedForHid(atom_id, parsed);
+    else if (code == "HIE") return SynthesisedForHie(atom_id, parsed);
+    else if (code == "HIP") return SynthesisedForHip(atom_id, parsed);
+    else if (code == "ASH") return SynthesisedForAsh(atom_id, parsed);
+    else if (code == "GLH") return SynthesisedForGlh(atom_id, parsed);
+    else if (code == "CYX") return SynthesisedForCyx(atom_id, parsed);
+    else if (code == "CYM") return SynthesisedForCym(atom_id, parsed);
+    else if (code == "LYN") return SynthesisedForLyn(atom_id, parsed);
+    else if (code == "ARN") return SynthesisedForArn(atom_id, parsed);
+    else if (code == "TYM") return SynthesisedForTym(atom_id, parsed);
+    return SynthesisedFields{};
+}
+
+
+// Build the per-atom semantic entries for one residue. The
+// `synthesis_code` is the dispatch key for `DispatchSynthesised`; it
+// is normally `res.three_letter` for the standard 20 but for variants
+// it is the variant code (HID/HIE/HIP/...). The `atoms_to_remove`
+// set names CCD-parent atoms that should be dropped from the variant
+// output (e.g. HE2 for HID; HZ1 for LYN; HG for CYX/CYM; HH for TYM;
+// HE for ARN). Empty set means emit every CCD atom (standard 20
+// path).
+std::vector<AtomSemanticEntry> BuildResidueEntries(
+        const CcdResidue& res,
+        const RdkitMolWithMap& built,
+        const RdkitFacts& facts,
+        const std::string& synthesis_code,
+        const std::set<std::string>& atoms_to_remove,
+        ProcessLog& log) {
+    log.Section(std::string("build-entries::") + res.three_letter +
+                (synthesis_code != res.three_letter
+                    ? "::variant=" + synthesis_code
+                    : std::string()));
     std::vector<AtomSemanticEntry> entries;
     entries.reserve(res.atoms.size());
 
@@ -1954,7 +2081,13 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(const CcdResidue& res,
         name_to_rdkit_idx[built.rdkit_idx_to_ccd_atom_id[i]] = i;
     }
 
+    int dropped = 0;
     for (const auto& ccd_atom : res.atoms) {
+        if (atoms_to_remove.count(ccd_atom.atom_id) > 0) {
+            ++dropped;
+            log.KV("variant_dropped_atom", ccd_atom.atom_id);
+            continue;
+        }
         std::string parent_name;
         if (ccd_atom.type_symbol == "H") {
             auto it = parents.find(ccd_atom.atom_id);
@@ -1966,42 +2099,16 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(const CcdResidue& res,
         auto it = name_to_rdkit_idx.find(ccd_atom.atom_id);
         if (it != name_to_rdkit_idx.end()) rdkit_idx = it->second;
 
-        SynthesisedFields syn;
-        // Standard 20 dispatch. AMBER variant dispatch is intentionally
-        // not present here -- variants are not iterated (see main loop
-        // for the architectural reasoning). The per-variant
-        // SynthesisedFor<Variant> functions above remain compiled-and-
-        // unused; they carry the patch logic that the next-generation
-        // generator pass will plug in once parent-CCD-plus-delta atom
-        // synthesis is implemented.
-        const std::string& r = res.three_letter;
-        if      (r == "ALA") syn = SynthesisedForAla(ccd_atom.atom_id, parsed);
-        else if (r == "ARG") syn = SynthesisedForArg(ccd_atom.atom_id, parsed);
-        else if (r == "ASN") syn = SynthesisedForAsn(ccd_atom.atom_id, parsed);
-        else if (r == "ASP") syn = SynthesisedForAsp(ccd_atom.atom_id, parsed);
-        else if (r == "CYS") syn = SynthesisedForCys(ccd_atom.atom_id, parsed);
-        else if (r == "GLN") syn = SynthesisedForGln(ccd_atom.atom_id, parsed);
-        else if (r == "GLU") syn = SynthesisedForGlu(ccd_atom.atom_id, parsed);
-        else if (r == "GLY") syn = SynthesisedForGly(ccd_atom.atom_id, parsed);
-        else if (r == "HIS") syn = SynthesisedForHis(ccd_atom.atom_id, parsed);
-        else if (r == "ILE") syn = SynthesisedForIle(ccd_atom.atom_id, parsed);
-        else if (r == "LEU") syn = SynthesisedForLeu(ccd_atom.atom_id, parsed);
-        else if (r == "LYS") syn = SynthesisedForLys(ccd_atom.atom_id, parsed);
-        else if (r == "MET") syn = SynthesisedForMet(ccd_atom.atom_id, parsed);
-        else if (r == "PHE") syn = SynthesisedForPhe(ccd_atom.atom_id, parsed);
-        else if (r == "PRO") syn = SynthesisedForPro(ccd_atom.atom_id, parsed);
-        else if (r == "SER") syn = SynthesisedForSer(ccd_atom.atom_id, parsed);
-        else if (r == "THR") syn = SynthesisedForThr(ccd_atom.atom_id, parsed);
-        else if (r == "TRP") syn = SynthesisedForTrp(ccd_atom.atom_id, parsed);
-        else if (r == "TYR") syn = SynthesisedForTyr(ccd_atom.atom_id, parsed);
-        else if (r == "TYM") syn = SynthesisedForTym(ccd_atom.atom_id, parsed);
-        else if (r == "VAL") syn = SynthesisedForVal(ccd_atom.atom_id, parsed);
+        SynthesisedFields syn = DispatchSynthesised(synthesis_code,
+                                                     ccd_atom.atom_id,
+                                                     parsed);
 
         AtomSemanticEntry e = BuildAtomSemanticEntry(ccd_atom.atom_id, parsed,
                                                       rdkit_idx, facts, syn,
                                                       ccd_atom.formal_charge);
         entries.push_back(std::move(e));
     }
+    if (dropped > 0) log.KV("variant_atoms_dropped_total", dropped);
     log.KV("entries_built", static_cast<int>(entries.size()));
     return entries;
 }
@@ -2308,6 +2415,9 @@ void EmitCppFile(const std::string& output_path,
 // Validation pass: load a residue, build mol, sanitize, extract
 // facts, build typed entries, log them. Returns the entries on
 // success for downstream emission.
+//
+// Standard-20 path: synthesis_code = residue_3letter,
+// atoms_to_remove empty.
 std::optional<ResidueEntries> ProcessOneResidue(cif::file& ccd,
                                                   const std::string& residue_3letter,
                                                   ProcessLog& log) {
@@ -2329,16 +2439,81 @@ std::optional<ResidueEntries> ProcessOneResidue(cif::file& ccd,
     LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log, residue_3letter);
 
     auto facts = ExtractRdkitFacts(*built.mol, log);
-    auto entries = BuildResidueEntries(*residue_opt, built, facts, log);
+    auto entries = BuildResidueEntries(*residue_opt, built, facts,
+                                        residue_3letter, /*atoms_to_remove*/ {},
+                                        log);
     LogEntriesSpotCheck(entries, log, residue_3letter);
 
     ResidueEntries re;
     re.residue_3letter = residue_3letter;
-    re.variant_3letter = "";  // canonical form for now
+    re.variant_3letter = "";  // canonical form for the standard 20
     re.atom_id_for_log.reserve(entries.size());
     for (const auto& e : entries) re.atom_id_for_log.push_back(e.atom_id_for_log);
     re.entries = std::move(entries);
     log.KV("status", "OK");
+    return re;
+}
+
+
+// Variant path: parent_3letter = the CCD entry name that owns the
+// chemistry graph (HIS for HID/HIE/HIP; ASP for ASH; GLU for GLH;
+// CYS for CYX/CYM; LYS for LYN; ARG for ARN; TYR for TYM). The
+// variant_3letter is the AMBER protonation-variant code emitted in
+// the table name (kHisAtoms_HID etc.). atoms_to_remove names the
+// CCD-parent atoms that the variant lacks (e.g. HE2 for HID). The
+// SynthesisedFor<Variant> patch sets remaining field deltas
+// (charge_override + planar_group + polar_h + ring_position
+// changes); see the per-variant SynthesisedFor<Variant> comments.
+//
+// Architectural note: AMBER protonation-variant codes are NOT
+// canonical CCD entries -- they are AMBER-internal names. The CCD
+// happens to have data_HID, data_HIE, data_HIP, data_ASH, data_GLH,
+// data_CYX, data_CYM, data_LYN, data_ARN, data_TYM blocks, but
+// every one of them is an unrelated small molecule that shares the
+// 3-letter code by historical accident. We MUST NOT iterate variant
+// codes against the CCD; we synthesise variants from the parent's
+// chemistry graph.
+std::optional<ResidueEntries> ProcessVariantResidue(
+        cif::file& ccd,
+        const std::string& variant_3letter,
+        const std::string& parent_3letter,
+        const std::set<std::string>& atoms_to_remove,
+        ProcessLog& log) {
+    log.Section(std::string("process-variant::") + variant_3letter +
+                "::parent=" + parent_3letter);
+    auto residue_opt = LoadCcdResidue(ccd, parent_3letter, log);
+    if (!residue_opt) {
+        log.KV("status", "FAILED_TO_LOAD_PARENT");
+        return std::nullopt;
+    }
+    auto built = BuildRdkitMol(*residue_opt, log);
+    if (built.mol == nullptr || built.mol->getNumAtoms() == 0) {
+        log.KV("status", "FAILED_TO_BUILD_RDKIT_MOL");
+        return std::nullopt;
+    }
+    if (!SanitizeMol(*built.mol, log)) {
+        log.KV("status", "FAILED_TO_SANITIZE");
+        return std::nullopt;
+    }
+    LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log,
+                       parent_3letter + "::variant=" + variant_3letter);
+
+    auto facts = ExtractRdkitFacts(*built.mol, log);
+    auto entries = BuildResidueEntries(*residue_opt, built, facts,
+                                        variant_3letter, atoms_to_remove,
+                                        log);
+    LogEntriesSpotCheck(entries, log, parent_3letter + "_" + variant_3letter);
+
+    ResidueEntries re;
+    re.residue_3letter = parent_3letter;
+    re.variant_3letter = variant_3letter;
+    re.atom_id_for_log.reserve(entries.size());
+    for (const auto& e : entries) re.atom_id_for_log.push_back(e.atom_id_for_log);
+    re.entries = std::move(entries);
+    log.KV("status", "OK");
+    log.KV("variant_atoms_emitted", static_cast<int>(re.entries.size()));
+    log.KV("variant_atoms_removed",
+           static_cast<int>(residue_opt->atoms.size() - re.entries.size()));
     return re;
 }
 
@@ -2378,26 +2553,10 @@ int main(int argc, char** argv) {
     }
     log.KV("status", "OK");
 
-    // Process the standard 20 amino acids plus the 10 AMBER
-    // protonation variants. Encoding order chosen to step through
-    // every chemistry case in sequence (Section 3 alphabetical for
-    // the standards; variants follow their parent for readability):
-    //   ALA, ARG+ARN, ASN, ASP+ASH, CYS+CYX+CYM, GLN, GLU+GLH, GLY,
-    //   HIS+HID+HIE+HIP, ILE, LEU, LYS+LYN, MET, PHE, PRO, SER, THR,
-    //   TRP, TYR+TYM, VAL.
+    // Process the standard 20 amino acids first; emit one
+    // ResidueEntries per residue, indexed by `kFooAtoms` in the
+    // generated C++.
     std::vector<ResidueEntries> all_entries;
-    // Standard 20 amino acids only. AMBER protonation variants
-    // (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/TYM) are NOT iterated here:
-    // their 3-letter codes coincidentally match unrelated small molecules
-    // in the wwPDB Chemical Component Dictionary (e.g., CCD's `data_HID`
-    // block is "(5-hydroxy-1H-indol-3-yl)acetic acid", not histidine).
-    // AMBER variants must be synthesised from the parent CCD entry plus
-    // per-variant delta-patches (atom additions like Hδ1 for HID, atom
-    // removals like Hζ1 for LYN, and field changes). The per-variant
-    // SynthesisedFor<Variant> functions above carry the patch logic but
-    // are not yet plugged into a generator pass that synthesises atoms
-    // missing from the parent CCD entry. See dependencies §G (variant
-    // synthesis architecture) for the next-step plan.
     for (const std::string& res : {
             std::string("ALA"),
             std::string("ARG"),
@@ -2407,7 +2566,7 @@ int main(int argc, char** argv) {
             std::string("GLN"),
             std::string("GLU"),
             std::string("GLY"),
-            std::string("HIS"),  // AMBER default; HIS in CCD = neutral histidine ≈ HIE
+            std::string("HIS"),  // AMBER default; HIS in CCD has both HD1 and HE2
             std::string("ILE"),
             std::string("LEU"),
             std::string("LYS"),
@@ -2431,16 +2590,96 @@ int main(int argc, char** argv) {
         all_entries.push_back(std::move(*entries));
     }
 
+    // AMBER protonation variants. Each variant is synthesised from
+    // its parent CCD entry plus a per-atom delta:
+    //   - atoms_to_remove: CCD-parent atoms absent from the variant
+    //   - SynthesisedFor<Variant> patch: field deltas (charge,
+    //     planar_group, polar_h, ring_position) for retained atoms
+    //
+    // Architectural note (recorded for archaeology): AMBER's variant
+    // 3-letter codes (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/TYM) are
+    // NOT canonical CCD entries. The CCD does have data_X blocks for
+    // those codes but they refer to unrelated small molecules that
+    // share the code by historical accident (e.g. data_HID =
+    // 5-hydroxy-1H-indol-3-yl acetic acid; data_LYN = lysine amide).
+    // Iterating variant codes against the CCD would emit the wrong
+    // chemistry. Variants are synthesised from the parent only.
+    //
+    // CCD parent inventory note: the CCD's HIS entry includes BOTH
+    // HD1 AND HE2 (it's the imidazolium form, +1 on Nδ1); the CCD's
+    // ASP includes HD2 (it's the protonated/ASH form); the CCD's GLU
+    // includes HE2 (it's the protonated/GLH form). This means
+    // ASH/GLH/HIP need NO atom removal -- the parent CCD already has
+    // the atoms they require. HID and HIE each remove one atom (HE2
+    // and HD1 respectively). Other variants remove their respective
+    // atoms (HG for CYX/CYM; HZ1 for LYN; HE for ARN; HH for TYM).
+    struct VariantSpec {
+        std::string variant_code;
+        std::string parent_code;
+        std::set<std::string> atoms_to_remove;
+    };
+    const std::vector<VariantSpec> variants = {
+        // Histidine family. CCD HIS = imidazolium (HD1 + HE2 both
+        // present, +1 on Nδ1). HID drops HE2; HIE drops HD1; HIP
+        // keeps both atoms but relocates +1 from Nδ1 to Nε2 (handled
+        // in SynthesisedForHip).
+        {"HID", "HIS", {"HE2"}},
+        {"HIE", "HIS", {"HD1"}},
+        {"HIP", "HIS", {}},
+        // Aspartate. CCD ASP = neutral protonated (has HD2 + OXT +
+        // HXT, total formal_charge 0). ASH variant just labels HD2
+        // as CarboxylOH; no atom delta.
+        {"ASH", "ASP", {}},
+        // Glutamate. CCD GLU = neutral protonated (has HE2 + OXT +
+        // HXT). GLH labels HE2 as CarboxylOH; no atom delta.
+        {"GLH", "GLU", {}},
+        // Cysteine family. CCD CYS = thiol (has HG). CYX (disulfide-
+        // bonded) and CYM (thiolate) both drop HG; CYM also sets
+        // SG charge to -1 (handled in SynthesisedForCym).
+        {"CYX", "CYS", {"HG"}},
+        {"CYM", "CYS", {"HG"}},
+        // Lysine. CCD LYS = ammonium (HZ1, HZ2, HZ3, +1 on Nζ).
+        // LYN drops HZ1 and clears the +1 on Nζ; HZ2/HZ3 become
+        // AmineNH (handled in SynthesisedForLyn).
+        {"LYN", "LYS", {"HZ1"}},
+        // Arginine. CCD ARG = guanidinium (HE + HH11 + HH12 + HH21 +
+        // HH22, +1 on NH2). ARN drops HE and clears the +1 on NH2
+        // (handled in SynthesisedForArn). Note: AMBER ff14SB has no
+        // canonical ARN template; HE is removed by chemistry
+        // inference (lone pair on Nε after deprotonation). See
+        // dependencies §B.1, §F.
+        {"ARN", "ARG", {"HE"}},
+        // Tyrosine. CCD TYR = neutral phenol (has HH on OH). TYM
+        // drops HH; OH becomes AromaticOxide and gets formal_chg=-1
+        // (handled in SynthesisedForTym).
+        {"TYM", "TYR", {"HH"}},
+    };
+    for (const auto& v : variants) {
+        auto entries = ProcessVariantResidue(ccd, v.variant_code,
+                                              v.parent_code,
+                                              v.atoms_to_remove, log);
+        if (!entries) {
+            log.Section("done");
+            log.KV("status", "FAILED_VARIANT");
+            log.KV("failed_variant", v.variant_code);
+            std::fprintf(stderr, "ERROR: failed to process variant %s "
+                                  "(parent %s); see log %s\n",
+                         v.variant_code.c_str(), v.parent_code.c_str(),
+                         args.log_path.c_str());
+            return 1;
+        }
+        all_entries.push_back(std::move(*entries));
+    }
+
     EmitCppFile(args.output_cpp_path, all_entries, log);
 
     log.Section("done");
     log.KV("status", "OK");
     log.KV("residues_emitted", static_cast<int>(all_entries.size()));
-    log.Note("Step 5 of N done: emitter writes generated C++ source.");
-    log.Note("Architecture proven end-to-end on PHE.");
-    log.Note("Generalisation to remaining 19 residues + 10 variants is the");
-    log.Note("next session's work; the synthesised-field tables in");
-    log.Note("SynthesisedForPhe extend mechanically per residue.");
+    log.Note("Standard 20 + 10 AMBER protonation variants emitted.");
+    log.Note("Standard 20 byte-identical regeneration is the contract:");
+    log.Note("variant emission appends after the 20 and never modifies");
+    log.Note("the 20's tables.");
 
     std::printf("OK -- generated %s with %d residue table(s).\n"
                 "Log: %s\n",
