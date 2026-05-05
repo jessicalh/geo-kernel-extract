@@ -281,6 +281,84 @@ generates `LegacyAmberSemanticTables.cpp`.
 
 ---
 
+## G. Variant-table synthesis architecture (PENDING — discovered 2026-05-05 evening)
+
+**Status**: the ten AMBER protonation variants (HID, HIE, HIP, ASH,
+GLH, CYX, CYM, LYN, ARN, TYM) are NOT yet emitted into
+`src/generated/LegacyAmberSemanticTables.cpp`. The standard 20 are.
+Per-variant `SynthesisedFor<Variant>` patch functions exist in the
+generator (compiled but unused, marked `[[maybe_unused]]`) and carry
+the correct delta logic; they need a different upstream feeder.
+
+**The discovered constraint**: AMBER's protonation-variant 3-letter
+codes (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/TYM) are an AMBER-internal
+naming convention. They are NOT canonical wwPDB Chemical Component
+Dictionary entries for those chemistries. The CCD does happen to
+contain `data_X` blocks for several of these codes — but those blocks
+refer to UNRELATED small molecules that share the 3-letter code by
+historical accident:
+
+| AMBER variant | CCD's `data_X` actually contains |
+|---|---|
+| HID | (5-hydroxy-1H-indol-3-yl)acetic acid |
+| HIE | tetrahydroindazol benzamide (60-atom small molecule) |
+| HIP | ND1-phosphonohistidine (a phosphorylated histidine, not HIP) |
+| ASH | imidazopyrazine compound |
+| GLH | cyclohexyl-glutamine |
+| CYX | (3-formyl-but-3-enyl)-phosphonic acid |
+| CYM | S-methylcysteine |
+| LYN | lysine amide |
+| ARN | 1-imino-5-pentanone |
+| TYM | tryptophanyl-AMP |
+
+A naive `grep "^data_HID" components.cif` will report a hit; the entry
+exists. But the chemistry inside it is not histidine.
+
+**Implication**: variants must be synthesised, not looked up. The
+generator needs a parent-CCD-plus-delta architecture:
+
+1. For each variant, identify the parent (HID/HIE/HIP → HIS;
+   ASH → ASP; GLH → GLU; CYX/CYM → CYS; LYN → LYS; ARN → ARG;
+   TYM → TYR).
+2. Read the parent's CCD entry and run the existing pipeline
+   (cifpp + RDKit perception).
+3. Apply the variant's per-atom delta from the reference doc Section 3
+   variant block:
+   - **Atoms ABSENT** in variant but PRESENT in parent: drop the
+     entry from the table (e.g. LYN drops HZ1; TYM drops HH; CYX/CYM
+     drop HG).
+   - **Atoms PRESENT** in variant but ABSENT in parent: synthesise an
+     atom record. The parent CCD does NOT carry these atoms (HID's
+     Hδ1, HIP's Hδ1, ASH's Hδ2, GLH's Hε2). The synthesis needs:
+     - Element (always H for the variant adds in scope).
+     - Bond graph: the new H bonds to the variant's parent heavy atom
+       (Hδ1 to Nδ1 in HID; Hδ2 to Oδ2 in ASH; Hε2 to Oε2 in GLH).
+     - Hybridisation, formal_charge, equivalence_class: derive from
+       chemistry (RDKit on the variant's heavy-atom topology).
+   - **Field-delta atoms**: existing entries change values
+     (Nδ1's RingPositionLabel flips Heteroatom_NoH → Heteroatom_NH
+     in HID; Oδ2's formal_charge flips -1 → 0 in ASH).
+
+4. Pipe the synthesised atom inventory through `BuildAtomSemanticEntry`
+   with the existing `SynthesisedFor<Variant>` function as the
+   chemistry-source plug-in.
+
+**Authority for per-variant atom additions**: AMBER ff14SB at
+`data/ff14sb_params.dat` is canonical. Cross-check against
+`src/AminoAcidType.cpp::AMINO_ACID_TYPES`.
+
+**Estimated effort**: one focused agent run with a corrected brief
+(see `spec/plan/topology-variants-agent-brief-2026-05-05.md` if it
+exists; otherwise the brief is in the session-handoff doc).
+
+**Why this wasn't caught earlier**: the prior research dossier
+(`topology-fields-research-2026-05-05.md`) and prior session handoffs
+contained the implicit assumption "use the CCD entry where it exists"
+without verifying chemistry. The bare presence-test (grep) was treated
+as confirmation. Lesson recorded in the next-agent brief.
+
+---
+
 ## How this file should be used
 
 - **Before encoding** (running `tools/topology/build_semantic_tables`):

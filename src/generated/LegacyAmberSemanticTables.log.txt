@@ -21,6 +21,824 @@ step = 2 of N -- cifpp + RDKit pipeline validated on PHE
 ccd_path = data/ccd/components.cif
 status = OK
 
+==== process-residue::ALA ====
+
+==== load-ccd-residue::ALA ====
+name = ALANINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 13
+bond_count = 12
+status = OK
+
+==== build-rdkit-mol::ALA ====
+rdkit_atoms_added = 13
+rdkit_bonds_added = 12
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::ALA ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 7
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_OXT = Z=8 arom=0 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::ALA ====
+entries_built = 13
+
+==== entries-spot-check::ALA ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=10
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+5_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+6_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+7_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+8_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+9_HB1 = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+10_HB2 = loc=2 branch=0/0 di=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HB3 = loc=2 branch=0/0 di=3 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+12_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::ARG ====
+
+==== load-ccd-residue::ARG ====
+name = ARGININE
+type = L-PEPTIDE LINKING
+formal_charge_total = 1
+atom_count = 27
+bond_count = 26
+status = OK
+
+==== build-rdkit-mol::ARG ====
+rdkit_atoms_added = 27
+rdkit_bonds_added = 26
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::ARG ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 7
+hybridisation_sp3 = 5
+hybridisation_other_or_unset = 15
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C([H])([H])C([H])([H])N([H])C(N([H])[H])=[N+]([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::ARG ====
+entries_built = 27
+
+==== entries-spot-check::ARG ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
+6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+7_NE = loc=5 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=20
+8_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=18
+9_NH1 = loc=7 branch=1/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=19
+10_NH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=22
+11_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
+12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=4
+13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+15_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+16_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+17_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+18_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+19_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+20_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+21_HE = loc=5 branch=0/0 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=3
+22_HH11 = loc=7 branch=1/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+23_HH12 = loc=7 branch=1/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+24_HH21 = loc=7 branch=2/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
+25_HH22 = loc=7 branch=2/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
+26_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::ASN ====
+
+==== load-ccd-residue::ASN ====
+name = ASPARAGINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 17
+bond_count = 16
+status = OK
+
+==== build-rdkit-mol::ASN ====
+rdkit_atoms_added = 17
+rdkit_bonds_added = 16
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::ASN ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 6
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 8
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C(=O)N([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::ASN ====
+entries_built = 17
+
+==== entries-spot-check::ASN ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+6_OD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+7_ND2 = loc=4 branch=2/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+14_HD21 = loc=4 branch=2/1 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+15_HD22 = loc=4 branch=2/2 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::ASP ====
+
+==== load-ccd-residue::ASP ====
+name = ASPARTIC ACID
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 16
+bond_count = 15
+status = OK
+
+==== build-rdkit-mol::ASP ====
+rdkit_atoms_added = 16
+rdkit_bonds_added = 15
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::ASP ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 6
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 7
+smiles_roundtrip = [H]OC(=O)C([H])([H])C([H])(C(=O)O[H])N([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::ASP ====
+entries_built = 16
+
+==== entries-spot-check::ASP ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+6_OD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+7_OD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+15_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+status = OK
+
+==== process-residue::CYS ====
+
+==== load-ccd-residue::CYS ====
+name = CYSTEINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 14
+bond_count = 13
+status = OK
+
+==== build-rdkit-mol::CYS ====
+rdkit_atoms_added = 14
+rdkit_bonds_added = 13
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::CYS ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 4
+hybridisation_other_or_unset = 7
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])S[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_SG = Z=16 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::CYS ====
+entries_built = 14
+
+==== entries-spot-check::CYS ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_SG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=10 ring_pos=0 arom=0 hyb=3 eqcls=1
+13_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::GLN ====
+
+==== load-ccd-residue::GLN ====
+name = GLUTAMINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 20
+bond_count = 19
+status = OK
+
+==== build-rdkit-mol::GLN ====
+rdkit_atoms_added = 20
+rdkit_bonds_added = 19
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::GLN ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 6
+hybridisation_sp3 = 4
+hybridisation_other_or_unset = 10
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C([H])([H])C(=O)N([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::GLN ====
+entries_built = 20
+
+==== entries-spot-check::GLN ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+7_OE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+8_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+17_HE21 = loc=5 branch=2/1 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+18_HE22 = loc=5 branch=2/2 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::GLU ====
+
+==== load-ccd-residue::GLU ====
+name = GLUTAMIC ACID
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 19
+bond_count = 18
+status = OK
+
+==== build-rdkit-mol::GLU ====
+rdkit_atoms_added = 19
+rdkit_bonds_added = 18
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::GLU ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 6
+hybridisation_sp3 = 4
+hybridisation_other_or_unset = 9
+smiles_roundtrip = [H]OC(=O)C([H])([H])C([H])([H])C([H])(C(=O)O[H])N([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::GLU ====
+entries_built = 19
+
+==== entries-spot-check::GLU ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+7_OE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_OE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+17_HE2 = loc=5 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+18_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+status = OK
+
+==== process-residue::GLY ====
+
+==== load-ccd-residue::GLY ====
+name = GLYCINE
+type = PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 10
+bond_count = 9
+status = OK
+
+==== build-rdkit-mol::GLY ====
+rdkit_atoms_added = 10
+rdkit_bonds_added = 9
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::GLY ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 2
+hybridisation_other_or_unset = 5
+smiles_roundtrip = [H]OC(=O)C([H])([H])N([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_OXT = Z=8 arom=0 hyb=3
+atom_5_H = Z=1 arom=0 hyb=1
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::GLY ====
+entries_built = 10
+
+==== entries-spot-check::GLY ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=8
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=5
+4_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=6
+5_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+6_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+7_HA2 = loc=1 branch=0/0 di=2 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+8_HA3 = loc=1 branch=0/0 di=3 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+9_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::HIS ====
+
+==== load-ccd-residue::HIS ====
+name = HISTIDINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 1
+atom_count = 21
+bond_count = 21
+status = OK
+
+==== build-rdkit-mol::HIS ====
+rdkit_atoms_added = 21
+rdkit_bonds_added = 21
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::HIS ====
+ring_count = 1
+aromatic_ring_count = 1
+aromatic_atom_count = 5
+hybridisation_sp = 0
+hybridisation_sp2 = 8
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 10
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])c1c([H])n([H])c([H])[n+]1[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=1 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 5
+cip_labels_assigned = 0
+
+==== build-entries::HIS ====
+entries_built = 21
+
+==== entries-spot-check::HIS ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
+6_ND1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=18
+7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
+8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
+9_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
+10_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+11_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+12_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+13_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+14_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+15_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+16_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+17_HD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+18_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
+19_HE2 = loc=5 branch=2/0 di=0 prochiral=2 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
+20_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::ILE ====
+
+==== load-ccd-residue::ILE ====
+name = ISOLEUCINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 22
+bond_count = 21
+status = OK
+
+==== build-rdkit-mol::ILE ====
+rdkit_atoms_added = 22
+rdkit_bonds_added = 21
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::ILE ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 6
+hybridisation_other_or_unset = 13
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])(C([H])([H])[H])C([H])([H])C([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG1 = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::ILE ====
+entries_built = 22
+
+==== entries-spot-check::ILE ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+5_CG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+6_CG2 = loc=3 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+7_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
+13_HG12 = loc=3 branch=1/2 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+14_HG13 = loc=3 branch=1/3 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+15_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+16_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+17_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+18_HD11 = loc=4 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+19_HD12 = loc=4 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+20_HD13 = loc=4 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+21_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::LEU ====
+
+==== load-ccd-residue::LEU ====
+name = LEUCINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 22
+bond_count = 21
+status = OK
+
+==== build-rdkit-mol::LEU ====
+rdkit_atoms_added = 22
+rdkit_bonds_added = 21
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::LEU ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 6
+hybridisation_other_or_unset = 13
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C([H])(C([H])([H])[H])C([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::LEU ====
+entries_built = 22
+
+==== entries-spot-check::LEU ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+6_CD1 = loc=4 branch=1/0 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+7_CD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+14_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
+15_HD11 = loc=4 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+16_HD12 = loc=4 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+17_HD13 = loc=4 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+18_HD21 = loc=4 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+19_HD22 = loc=4 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+20_HD23 = loc=4 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+21_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::LYS ====
+
+==== load-ccd-residue::LYS ====
+name = LYSINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 1
+atom_count = 25
+bond_count = 24
+status = OK
+
+==== build-rdkit-mol::LYS ====
+rdkit_atoms_added = 25
+rdkit_bonds_added = 24
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::LYS ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 7
+hybridisation_other_or_unset = 15
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C([H])([H])C([H])([H])C([H])([H])[N+]([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::LYS ====
+entries_built = 25
+
+==== entries-spot-check::LYS ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+7_CE = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+8_NZ = loc=6 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
+10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+17_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+18_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+19_HE2 = loc=5 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+20_HE3 = loc=5 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+21_HZ1 = loc=6 branch=0/0 di=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
+22_HZ2 = loc=6 branch=0/0 di=2 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
+23_HZ3 = loc=6 branch=0/0 di=3 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
+24_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::MET ====
+
+==== load-ccd-residue::MET ====
+name = METHIONINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 20
+bond_count = 19
+status = OK
+
+==== build-rdkit-mol::MET ====
+rdkit_atoms_added = 20
+rdkit_bonds_added = 19
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::MET ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 6
+hybridisation_other_or_unset = 11
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])C([H])([H])SC([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::MET ====
+entries_built = 20
+
+==== entries-spot-check::MET ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+6_SD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+7_CE = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+14_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+16_HE1 = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+17_HE2 = loc=5 branch=0/0 di=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+18_HE3 = loc=5 branch=0/0 di=3 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
 ==== process-residue::PHE ====
 
 ==== load-ccd-residue::PHE ====
@@ -78,8 +896,8 @@ entries_built = 23
 12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
 13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=6
 14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-15_HB2 = loc=2 branch=0/0 di=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-16_HB3 = loc=2 branch=0/0 di=3 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+15_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
 17_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
 18_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
 19_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
@@ -88,15 +906,416 @@ entries_built = 23
 22_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
 
+==== process-residue::PRO ====
+
+==== load-ccd-residue::PRO ====
+name = PROLINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 17
+bond_count = 17
+status = OK
+
+==== build-rdkit-mol::PRO ====
+rdkit_atoms_added = 17
+rdkit_bonds_added = 17
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::PRO ====
+ring_count = 1
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 5
+hybridisation_other_or_unset = 9
+smiles_roundtrip = [H]OC(=O)C1([H])N([H])C([H])([H])C([H])([H])C1([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::PRO ====
+entries_built = 17
+
+==== entries-spot-check::PRO ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=11 arom=0 hyb=2 eqcls=12
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=14
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=16
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=15
+6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=13
+7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+12_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+13_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+14_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+15_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::SER ====
+
+==== load-ccd-residue::SER ====
+name = SERINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 14
+bond_count = 13
+status = OK
+
+==== build-rdkit-mol::SER ====
+rdkit_atoms_added = 14
+rdkit_bonds_added = 13
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::SER ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 4
+hybridisation_other_or_unset = 7
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])O[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_OG = Z=8 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::SER ====
+entries_built = 14
+
+==== entries-spot-check::SER ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_OG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
+13_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::THR ====
+
+==== load-ccd-residue::THR ====
+name = THREONINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 17
+bond_count = 16
+status = OK
+
+==== build-rdkit-mol::THR ====
+rdkit_atoms_added = 17
+rdkit_bonds_added = 16
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::THR ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 5
+hybridisation_other_or_unset = 9
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])(O[H])C([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_OG1 = Z=8 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::THR ====
+entries_built = 17
+
+==== entries-spot-check::THR ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+5_OG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+6_CG2 = loc=3 branch=2/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+9_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+10_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+11_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+12_HG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
+13_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+15_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::TRP ====
+
+==== load-ccd-residue::TRP ====
+name = TRYPTOPHAN
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 27
+bond_count = 28
+status = OK
+
+==== build-rdkit-mol::TRP ====
+rdkit_atoms_added = 27
+rdkit_bonds_added = 28
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::TRP ====
+ring_count = 2
+aromatic_ring_count = 2
+aromatic_atom_count = 9
+hybridisation_sp = 0
+hybridisation_sp2 = 12
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 12
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])c1c([H])n([H])c2c([H])c([H])c([H])c([H])c12
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=1 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 9
+cip_labels_assigned = 0
+
+==== build-entries::TRP ====
+entries_built = 27
+
+==== entries-spot-check::TRP ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=18
+6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=20
+7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=21
+8_NE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=24
+9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=22
+10_CE3 = loc=5 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+11_CZ2 = loc=6 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=19
+12_CZ3 = loc=6 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+13_CH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=16
+14_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+15_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+16_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+17_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+18_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+19_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+20_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=5
+21_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=6 polarH=3 ring_pos=10 arom=0 hyb=3 eqcls=8
+22_HE3 = loc=5 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=3
+23_HZ2 = loc=6 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+24_HZ3 = loc=6 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=1
+25_HH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
+26_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::TYR ====
+
+==== load-ccd-residue::TYR ====
+name = TYROSINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 24
+bond_count = 24
+status = OK
+
+==== build-rdkit-mol::TYR ====
+rdkit_atoms_added = 24
+rdkit_bonds_added = 24
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::TYR ====
+ring_count = 1
+aromatic_ring_count = 1
+aromatic_atom_count = 6
+hybridisation_sp = 0
+hybridisation_sp2 = 10
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 11
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])c1c([H])c([H])c(O[H])c([H])c1[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=1 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 6
+cip_labels_assigned = 0
+
+==== build-entries::TYR ====
+entries_built = 24
+
+==== entries-spot-check::TYR ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=20
+6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
+8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
+10_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=19
+11_OH = loc=7 branch=0/0 di=0 prochiral=0 planar=8 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+12_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+13_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+16_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+17_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+18_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
+19_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+20_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
+21_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
+22_HH = loc=7 branch=0/0 di=0 prochiral=0 planar=8 polarH=9 ring_pos=0 arom=0 hyb=3 eqcls=1
+23_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== process-residue::VAL ====
+
+==== load-ccd-residue::VAL ====
+name = VALINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 19
+bond_count = 18
+status = OK
+
+==== build-rdkit-mol::VAL ====
+rdkit_atoms_added = 19
+rdkit_bonds_added = 18
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::VAL ====
+ring_count = 0
+aromatic_ring_count = 0
+aromatic_atom_count = 0
+hybridisation_sp = 0
+hybridisation_sp2 = 3
+hybridisation_sp3 = 5
+hybridisation_other_or_unset = 11
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])(C([H])([H])[H])C([H])([H])[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG1 = Z=6 arom=0 hyb=4
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 0
+cip_labels_assigned = 0
+
+==== build-entries::VAL ====
+entries_built = 19
+
+==== entries-spot-check::VAL ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+5_CG1 = loc=3 branch=1/0 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+6_CG2 = loc=3 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+9_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+11_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+12_HG11 = loc=3 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+13_HG12 = loc=3 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+14_HG13 = loc=3 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+15_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+16_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+17_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+18_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
 ==== emit-cpp ====
 output_path = src/generated/LegacyAmberSemanticTables.cpp
+emitted_kAlaAtoms_size = 13
+emitted_kArgAtoms_size = 27
+emitted_kAsnAtoms_size = 17
+emitted_kAspAtoms_size = 16
+emitted_kCysAtoms_size = 14
+emitted_kGlnAtoms_size = 20
+emitted_kGluAtoms_size = 19
+emitted_kGlyAtoms_size = 10
+emitted_kHisAtoms_size = 21
+emitted_kIleAtoms_size = 22
+emitted_kLeuAtoms_size = 22
+emitted_kLysAtoms_size = 25
+emitted_kMetAtoms_size = 20
 emitted_kPheAtoms_size = 23
-total_atoms_emitted = 23
+emitted_kProAtoms_size = 17
+emitted_kSerAtoms_size = 14
+emitted_kThrAtoms_size = 17
+emitted_kTrpAtoms_size = 27
+emitted_kTyrAtoms_size = 24
+emitted_kValAtoms_size = 19
+total_atoms_emitted = 387
 status = OK
 
 ==== done ====
 status = OK
-residues_emitted = 1
+residues_emitted = 20
 # Step 5 of N done: emitter writes generated C++ source.
 # Architecture proven end-to-end on PHE.
 # Generalisation to remaining 19 residues + 10 variants is the

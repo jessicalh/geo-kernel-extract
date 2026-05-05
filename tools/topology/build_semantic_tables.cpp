@@ -771,13 +771,690 @@ struct SynthesisedFields {
     PolarHKind            polar_h       = PolarHKind::NotPolar;
     PseudoatomMembership  pseudoatom    = {};
     RingPosition          ring_pos      = {};
+
+    // Markley-derived prochiral assignment (ProR / ProS for
+    // prochiral methylene Hs and prochiral methyl-bearing branch
+    // carbons). Hand-encoded in the residue reference because
+    // RDKit CIPLabeler labels chiral centres, NOT prochiral Hs --
+    // see the reference doc + dependencies §C.1. When the
+    // synthesised value is not NotProchiral, it OVERRIDES the
+    // RDKit-perceived value (which is None for prochiral Hs in
+    // CCD's free-amino-acid forms with explicit Hs).
+    ProchiralStereo       prochiral     = ProchiralStereo::NotProchiral;
 };
 
 
+// ============================================================================
+// Per-residue + per-variant synthesised-field tables
+// ============================================================================
+//
+// Each function below encodes one (residue, variant) block from the
+// signed-off reference document
+// `spec/plan/topology-residue-reference-2026-05-05.md` Section 3
+// (alphabetical per-residue blocks) + Section 2 conventions (charge
+// placement, residue-specific E/Z, Markley alternation rule).
+//
+// Architecture: every variant has its own CCD entry (verified
+// 2026-05-05: HID/HIE/HIP/CYX/CYM/LYN/ARN/TYM/ASH/GLH all present in
+// data/ccd/components.cif). Therefore each variant has its own
+// SynthesisedFor<Variant> function dispatched by `res.three_letter`,
+// just like PHE. No variant-aware branching inside the residue-default
+// function is needed.
+//
+// Markley alternation rule applied uniformly:
+//   β-onward methylene Hs in standard L-amino acids:
+//     H<locant>2 = ProS; H<locant>3 = ProR.
+//   Glycine Hα is INVERTED: HA2 = ProR; HA3 = ProS.
+//   Branched heavy atoms (Val, Leu, Ile) per Markley Fig 1.
+//
+// Citation: every block carries a single-line pointer to the
+// reference doc's Section 3 entry for that residue / variant.
+// ============================================================================
+
+
+// Markley alternation rule for prochiral methylene Hs in standard
+// L-amino acids (β-onward). Returns ProS for "...2", ProR for "...3",
+// NotProchiral otherwise. Glycine Hα is NOT covered here (it inverts;
+// see SynthesisedForGly). Branched-heavy-atom prochirality is
+// per-residue and also encoded explicitly per function.
+ProchiralStereo MarkleyMethyleneProchiral(const std::string& atom_id) {
+    if (atom_id.size() < 3 || atom_id[0] != 'H') return ProchiralStereo::NotProchiral;
+    // The matching atom-id forms covered by the alternation rule:
+    //   HB2/HB3, HG2/HG3, HD2/HD3, HE2/HE3 (no branch-digit suffix).
+    // Forms with a digit between locant and inner index (e.g. HD11
+    // for Leu's δ1-methyl, HG21 for Val's γ2-methyl) are methyl-Hs,
+    // not prochiral methylene Hs; do NOT label them ProR/ProS.
+    if (atom_id.size() != 3) return ProchiralStereo::NotProchiral;
+    const char locant = atom_id[1];
+    const char digit  = atom_id[2];
+    if (locant != 'B' && locant != 'G' && locant != 'D' && locant != 'E') {
+        return ProchiralStereo::NotProchiral;
+    }
+    if (digit == '2') return ProchiralStereo::ProS;
+    if (digit == '3') return ProchiralStereo::ProR;
+    return ProchiralStereo::NotProchiral;
+}
+
+
+// ALA -- alanine. Reference Section 3 (ALA block).
+SynthesisedFields SynthesisedForAla(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+
+    // Backbone amide plane (N + C + O + H form the planar peptide unit).
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // β-methyl pseudoatom (Markley MB; 3 equivalent β-methyl Hs).
+    if (atom_id == "HB1" || atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    return s;
+}
+
+
+// ARG -- arginine (default, charged). Reference Section 3 (ARG block).
+// Charge placement (Section 2): +1 on Nε per Lewis convention; Cζ +
+// Nη1 + Nη2 = 0. E/Z mapping: Nη1 cis to Cδ ⇒ Z; Nη2 trans ⇒ E.
+// Hηxx labels: BMRB confirms HH11=Z (cis to Nε via Nη1), HH12=E,
+// HH21=Z (cis to Nε via Nη2), HH22=E. Note this is OPPOSITE polarity
+// from Asn/Gln because on Cζ, Nε IS the higher-priority substituent.
+SynthesisedFields SynthesisedForArg(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β/γ/δ methylenes
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // β methylene QB.
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    // γ methylene QG.
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+    // δ methylene QD.
+    if (atom_id == "HD2" || atom_id == "HD3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Delta), 0, false};
+    }
+
+    // Guanidinium group: NE + HE + CZ + NH1/HH11/HH12 + NH2/HH21/HH22.
+    if (atom_id == "NE" || atom_id == "HE" || atom_id == "CZ" ||
+        atom_id == "NH1" || atom_id == "HH11" || atom_id == "HH12" ||
+        atom_id == "NH2" || atom_id == "HH21" || atom_id == "HH22") {
+        s.planar_group = PlanarGroupKind::Guanidinium;
+    }
+    if (atom_id == "HE")    s.polar_h = PolarHKind::GuanidiniumNH;
+    if (atom_id == "HH11" || atom_id == "HH12" ||
+        atom_id == "HH21" || atom_id == "HH22") {
+        s.polar_h = PolarHKind::GuanidiniumNH;
+    }
+
+    // E/Z labels on the Nη atoms and their Hs (Section 2 of reference).
+    if (atom_id == "NH1")  s.planar_stereo = PlanarStereo::Z;   // Nη1 cis to Cδ
+    if (atom_id == "NH2")  s.planar_stereo = PlanarStereo::E;   // Nη2 trans to Cδ
+    if (atom_id == "HH11") s.planar_stereo = PlanarStereo::Z;   // BMRB: Z
+    if (atom_id == "HH12") s.planar_stereo = PlanarStereo::E;   // BMRB: E
+    if (atom_id == "HH21") s.planar_stereo = PlanarStereo::Z;   // BMRB: Z
+    if (atom_id == "HH22") s.planar_stereo = PlanarStereo::E;   // BMRB: E
+
+    // QH super-group across all four Hη; per-atom QH1 vs QH2 by outer.
+    if (atom_id == "HH11" || atom_id == "HH12") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Eta), 1, true};
+    }
+    if (atom_id == "HH21" || atom_id == "HH22") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Eta), 2, true};
+    }
+    return s;
+}
+
+
+// ARN -- deprotonated arginine variant. Reference Section 3 (ARN
+// block) + dependencies §B.1 + §F. ff14SB has no canonical ARN
+// template; HE is removed by chemistry inference (lone pair on Nε).
+// AmberAminoAcidVariantTable["ARN"] verified 2026-05-05: charge=0,
+// no explicit atom inventory, so reference's HE-removal stands.
+[[maybe_unused]] SynthesisedFields SynthesisedForArn(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForArg(atom_id, parsed);
+    // HE is removed in ARN; if it appears in the CCD entry, treat as
+    // not-polar (no formal charge on the now-absent guanidinium).
+    if (atom_id == "HE") {
+        s.polar_h = PolarHKind::NotPolar;
+    }
+    return s;
+}
+
+
+// ASN -- asparagine. Reference Section 3 (ASN block).
+// E/Z labels (CRITICAL, recently corrected per dependencies §E.1-2):
+// On Cγ=Nδ2 planar bond, OD1 (O) is the high-priority Cγ substituent.
+// HD21 = "1" = cis to Cβ = trans to OD1 = E (BMRB confirms).
+// HD22 = "2" = trans to Cβ = cis to OD1 = Z (BMRB confirms).
+SynthesisedFields SynthesisedForAsn(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // β methylene QB.
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+
+    // Side-chain amide group: CG + OD1 + ND2 + HD21 + HD22.
+    if (atom_id == "CG"  || atom_id == "OD1" || atom_id == "ND2" ||
+        atom_id == "HD21" || atom_id == "HD22") {
+        s.planar_group = PlanarGroupKind::SidechainAmide;
+    }
+    if (atom_id == "HD21" || atom_id == "HD22") {
+        s.polar_h = PolarHKind::SidechainPrimaryAmide;
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Delta), 0, false};
+    }
+    if (atom_id == "HD21") s.planar_stereo = PlanarStereo::E;   // BMRB
+    if (atom_id == "HD22") s.planar_stereo = PlanarStereo::Z;   // BMRB
+
+    return s;
+}
+
+
+// ASP -- aspartate. Reference Section 3 (ASP block).
+// Carboxylate: -1 on Oδ2 per Lewis convention; Cγ + Oδ1 carry 0.
+SynthesisedFields SynthesisedForAsp(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+
+    // Side-chain carboxylate: CG + OD1 + OD2.
+    if (atom_id == "CG" || atom_id == "OD1" || atom_id == "OD2") {
+        s.planar_group = PlanarGroupKind::Carboxylate;
+    }
+    return s;
+}
+
+
+// ASH -- protonated aspartate variant. Reference Section 3 (ASH block).
+// Adds HD2 (carboxyl OH); OD2 formal_charge changes -1 -> 0 (handled
+// by CCD's per-atom formal_charge field, not synthesised here).
+[[maybe_unused]] SynthesisedFields SynthesisedForAsh(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForAsp(atom_id, parsed);
+    // HD2 is added in ASH: protonated carboxyl OH on Oδ2.
+    if (atom_id == "HD2") {
+        s.planar_group = PlanarGroupKind::Carboxylate;
+        s.polar_h      = PolarHKind::CarboxylOH;
+    }
+    return s;
+}
+
+
+// CYS -- cysteine. Reference Section 3 (CYS block).
+SynthesisedFields SynthesisedForCys(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG") s.polar_h = PolarHKind::ThiolSH;     // reduced thiol H
+    return s;
+}
+
+
+// CYX -- disulfide-bonded cysteine variant. Reference Section 3 (CYX
+// block). HG removed (Sγ-Sγ disulfide bond); the inter-residue
+// disulfide topology is captured upstream via CovalentTopology.
+[[maybe_unused]] SynthesisedFields SynthesisedForCyx(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForCys(atom_id, parsed);
+    if (atom_id == "HG") s.polar_h = PolarHKind::NotPolar;    // removed in CYX
+    return s;
+}
+
+
+// CYM -- deprotonated thiolate cysteine variant. Reference Section 3
+// (CYM block). HG removed; Sγ formal charge becomes -1 (handled via
+// CCD's per-atom field, not here).
+[[maybe_unused]] SynthesisedFields SynthesisedForCym(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForCys(atom_id, parsed);
+    if (atom_id == "HG") s.polar_h = PolarHKind::NotPolar;
+    return s;
+}
+
+
+// GLN -- glutamine. Reference Section 3 (GLN block).
+// E/Z labels (CRITICAL, recently corrected per dependencies §E.3-4):
+// On Cδ=Nε2 planar bond, OE1 (O) is the high-priority Cδ substituent.
+// HE21 = "1" = cis to Cγ = trans to OE1 = E (BMRB confirms).
+// HE22 = "2" = trans to Cγ = cis to OE1 = Z (BMRB confirms).
+SynthesisedFields SynthesisedForGln(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β + γ methylenes
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+
+    // Side-chain amide group: CD + OE1 + NE2 + HE21 + HE22.
+    if (atom_id == "CD" || atom_id == "OE1" || atom_id == "NE2" ||
+        atom_id == "HE21" || atom_id == "HE22") {
+        s.planar_group = PlanarGroupKind::SidechainAmide;
+    }
+    if (atom_id == "HE21" || atom_id == "HE22") {
+        s.polar_h = PolarHKind::SidechainPrimaryAmide;
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Epsilon), 0, false};
+    }
+    if (atom_id == "HE21") s.planar_stereo = PlanarStereo::E;  // BMRB
+    if (atom_id == "HE22") s.planar_stereo = PlanarStereo::Z;  // BMRB
+
+    return s;
+}
+
+
+// GLU -- glutamate. Reference Section 3 (GLU block).
+// Carboxylate: -1 on Oε2 per Lewis convention.
+SynthesisedFields SynthesisedForGlu(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β + γ methylenes
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+
+    // Side-chain carboxylate: CD + OE1 + OE2.
+    if (atom_id == "CD" || atom_id == "OE1" || atom_id == "OE2") {
+        s.planar_group = PlanarGroupKind::Carboxylate;
+    }
+    return s;
+}
+
+
+// GLH -- protonated glutamate variant. Reference Section 3 (GLH
+// block). Adds HE2 (carboxyl OH); Oε2 formal_charge -1 -> 0 (CCD).
+[[maybe_unused]] SynthesisedFields SynthesisedForGlh(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForGlu(atom_id, parsed);
+    if (atom_id == "HE2") {
+        s.planar_group = PlanarGroupKind::Carboxylate;
+        s.polar_h      = PolarHKind::CarboxylOH;
+    }
+    return s;
+}
+
+
+// GLY -- glycine. Reference Section 3 (GLY block).
+// THE INVERSION: HA2 = ProR, HA3 = ProS (the only standard-20 case
+// where the alternation rule reverses; Markley Fig 1 marks HA2 as R).
+// Prochiral fields are populated mechanically by ParsedName for now;
+// the synthesised block contributes the QA pseudoatom membership only.
+// (Note: HA2/HA3 ProR/ProS assignment is out-of-scope here per the
+// reference's guidance to use the prochiral column directly per atom;
+// the C++ generator's `prochiral` field is sourced from RDKit
+// CIPLabeler, which handles chiral centres but not glycine prochiral
+// Hs. The Gly inversion is the canonical Markley result; if the
+// runtime field is empty for Gly Hα atoms, the pre-CIP fallback rule
+// is "ProR = HA2; ProS = HA3" -- INVERTED from typical alternation.)
+SynthesisedFields SynthesisedForGly(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // Glycine's two diastereotopic Hα form the QA pseudoatom group.
+    // INVERSION: HA2 = ProR; HA3 = ProS (Markley Fig 1; the only
+    // standard-20 case where the alternation rule reverses).
+    if (atom_id == "HA2") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Alpha), 0, false};
+        s.prochiral  = ProchiralStereo::ProR;
+    }
+    if (atom_id == "HA3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Alpha), 0, false};
+        s.prochiral  = ProchiralStereo::ProS;
+    }
+    return s;
+}
+
+
+// HIS -- histidine. AMBER ff14SB DEFAULT = HIE (Nε2-protonated,
+// neutral). The bare 3-letter "HIS" therefore maps to the HIE
+// encoding: no Hδ1, has Hε2; ND1 = Heteroatom_NoH, NE2 = Heteroatom_NH.
+// Reference Section 3 (HIS block). Locked decision per dependencies
+// §D.1 (HIE-default-for-HIS).
+SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+
+    // Imidazole 5-ring: CG (ipso), ND1, CE1 (PyrroleAlpha), HE1, NE2,
+    // HE2, CD2 (PyrroleBeta), HD2.
+    auto set_ring = [&](RingPositionLabel pos, bool het_with_h) {
+        s.ring_pos.primary.ring          = RingSystemKind::Imidazole_His;
+        s.ring_pos.primary.position      = pos;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 2;
+        s.planar_group = PlanarGroupKind::Imidazole;
+        (void)het_with_h;
+    };
+
+    if (atom_id == "CG")                           set_ring(RingPositionLabel::Ipso, false);
+    else if (atom_id == "ND1")                     set_ring(RingPositionLabel::Heteroatom_NoH, false);
+    else if (atom_id == "CE1" || atom_id == "HE1") set_ring(RingPositionLabel::PyrroleAlpha, false);
+    else if (atom_id == "NE2")                     set_ring(RingPositionLabel::Heteroatom_NH, true);
+    else if (atom_id == "HE2")                     set_ring(RingPositionLabel::Heteroatom_NH, true);
+    else if (atom_id == "CD2" || atom_id == "HD2") set_ring(RingPositionLabel::PyrroleBeta, false);
+
+    if (atom_id == "HE2") s.polar_h = PolarHKind::ImidazoleNH;
+    return s;
+}
+
+
+// HID -- Nδ1-protonated histidine variant. Reference Section 3 (HID
+// block). HD1 added (ImidazoleNH on Nδ1); HE2 removed; ND1 becomes
+// Heteroatom_NH; NE2 becomes Heteroatom_NoH.
+[[maybe_unused]] SynthesisedFields SynthesisedForHid(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForHis(atom_id, parsed);
+    // ND1 now bears Hδ1: change from Heteroatom_NoH to Heteroatom_NH.
+    if (atom_id == "ND1" || atom_id == "HD1") {
+        s.ring_pos.primary.position = RingPositionLabel::Heteroatom_NH;
+        s.planar_group = PlanarGroupKind::Imidazole;
+        s.ring_pos.primary.ring          = RingSystemKind::Imidazole_His;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 2;
+    }
+    // NE2 now has no H: change to Heteroatom_NoH.
+    if (atom_id == "NE2") {
+        s.ring_pos.primary.position = RingPositionLabel::Heteroatom_NoH;
+    }
+    if (atom_id == "HD1") s.polar_h = PolarHKind::ImidazoleNH;
+    if (atom_id == "HE2") s.polar_h = PolarHKind::NotPolar;     // removed in HID
+    return s;
+}
+
+
+// HIE -- Nε2-protonated histidine variant. Reference Section 3 (HIE
+// block). Identical to HIS default. Provided as an alias for
+// completeness when the CCD entry is named HIE.
+[[maybe_unused]] SynthesisedFields SynthesisedForHie(const std::string& atom_id, const ParsedName& parsed) {
+    return SynthesisedForHis(atom_id, parsed);
+}
+
+
+// HIP -- imidazolium (both NHs protonated, +1 charge). Reference
+// Section 3 (HIP block). Charge placement (Section 2): +1 on Nε2 per
+// chosen convention; ND1, CE1, CD2, CG carry 0.
+[[maybe_unused]] SynthesisedFields SynthesisedForHip(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForHis(atom_id, parsed);
+    // Both ND1 and NE2 are NH-bearing in HIP.
+    if (atom_id == "ND1" || atom_id == "HD1") {
+        s.ring_pos.primary.position = RingPositionLabel::Heteroatom_NH;
+        s.planar_group = PlanarGroupKind::Imidazole;
+        s.ring_pos.primary.ring          = RingSystemKind::Imidazole_His;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 2;
+    }
+    if (atom_id == "HD1") s.polar_h = PolarHKind::ImidazoleNH;
+    // HE2 stays ImidazoleNH (inherited from HIS default).
+    return s;
+}
+
+
+// ILE -- isoleucine. Reference Section 3 (ILE block).
+// Branched aliphatic; CG2 (γ-methyl, ProS branch); CG1 (γ-methylene,
+// HG12=ProS, HG13=ProR); CD1 (δ-methyl, only δ atom -> NotProchiral).
+// MG and MD are NOT in higher-order Q super-groups (Ile has no QG_super
+// because γ2-methyl and γ1-methylene are not equivalent in any
+// pseudoatom).
+SynthesisedFields SynthesisedForIle(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // CG2: γ2-methyl carbon, ProS branch (only γ-methyl C in Ile).
+    if (atom_id == "CG2") s.prochiral = ProchiralStereo::ProS;
+    // γ2-methyl (CG2): MG with branch=2, super=false.
+    if (atom_id == "HG21" || atom_id == "HG22" || atom_id == "HG23") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Gamma), 2, false};
+    }
+    // γ1-methylene (CG1): QG with branch=1, super=false. Hγ12=ProS,
+    // Hγ13=ProR (Markley Fig 1; the asymmetric γ-methylene of Ile).
+    if (atom_id == "HG12") s.prochiral = ProchiralStereo::ProS;
+    if (atom_id == "HG13") s.prochiral = ProchiralStereo::ProR;
+    if (atom_id == "HG12" || atom_id == "HG13") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 1, false};
+    }
+    // δ1-methyl (CD1): MD with branch=1, super=false. Cδ1 is the only
+    // δ atom (no diastereotopy) -> NotProchiral.
+    if (atom_id == "HD11" || atom_id == "HD12" || atom_id == "HD13") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Delta), 1, false};
+    }
+    return s;
+}
+
+
+// LEU -- leucine. Reference Section 3 (LEU block).
+// β methylene QB (NOT in QD super); γ has single Hγ (no diastereotopy);
+// δ1-methyl (Cδ1=ProR) + δ2-methyl (Cδ2=ProS); MD1+MD2 both in QD
+// super (all six δ-methyl Hs collapse to QD).
+SynthesisedFields SynthesisedForLeu(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    // Branched δ-methyls: Cδ1 = ProR; Cδ2 = ProS (Markley Fig 1).
+    if (atom_id == "CD1") s.prochiral = ProchiralStereo::ProR;
+    if (atom_id == "CD2") s.prochiral = ProchiralStereo::ProS;
+    // δ1-methyl: MD1 in QD super.
+    if (atom_id == "HD11" || atom_id == "HD12" || atom_id == "HD13") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Delta), 1, true};
+    }
+    // δ2-methyl: MD2 in QD super.
+    if (atom_id == "HD21" || atom_id == "HD22" || atom_id == "HD23") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Delta), 2, true};
+    }
+    return s;
+}
+
+
+// LYS -- lysine (default, charged). Reference Section 3 (LYS block).
+// Charge placement: +1 on Nζ; HZ1/2/3 = AmmoniumNH (0). All four
+// methylenes get QB/QG/QD/QE; Nζ has QZ (3 ammonium Hs).
+SynthesisedFields SynthesisedForLys(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β/γ/δ/ε methylenes
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+    if (atom_id == "HD2" || atom_id == "HD3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Delta), 0, false};
+    }
+    if (atom_id == "HE2" || atom_id == "HE3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Epsilon), 0, false};
+    }
+    // QZ over the ammonium Hs.
+    if (atom_id == "HZ1" || atom_id == "HZ2" || atom_id == "HZ3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Zeta), 0, false};
+        s.polar_h = PolarHKind::AmmoniumNH;
+    }
+    return s;
+}
+
+
+// LYN -- neutral lysine variant. Reference Section 3 (LYN block) +
+// dependencies §B.2 + §E.5-6. CRITICAL (recently corrected): HZ1 is
+// REMOVED (NOT HZ3); HZ2 + HZ3 retained as AmineNH (per the new
+// PolarHKind::AmineNH enum). NZ formal charge +1 -> 0 (CCD).
+[[maybe_unused]] SynthesisedFields SynthesisedForLyn(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForLys(atom_id, parsed);
+    // HZ1 removed; HZ2/HZ3 are AmineNH (neutral primary amine), NOT
+    // AmmoniumNH. ff14SB authoritative atom inventory: HZ2 + HZ3.
+    if (atom_id == "HZ1") {
+        s.polar_h    = PolarHKind::NotPolar;
+        s.pseudoatom = {};
+    }
+    if (atom_id == "HZ2" || atom_id == "HZ3") {
+        s.polar_h = PolarHKind::AmineNH;
+    }
+    return s;
+}
+
+
+// MET -- methionine. Reference Section 3 (MET block).
+// Sulphur sidechain: β methylene QB; γ methylene QG; thioether SD; ε
+// methyl ME (3 equivalent Hs); no super-group.
+SynthesisedFields SynthesisedForMet(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β + γ methylenes
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+    // ε-methyl: HE1/HE2/HE3 form ME (Markley says 3 equivalent Hs).
+    // Note: HE1/HE2/HE3 here are 3-H METHYL group (not methylene). The
+    // helper would tag HE2/HE3 as ProS/ProR, but the methyl is not
+    // prochiral -- override back to NotProchiral.
+    if (atom_id == "HE1" || atom_id == "HE2" || atom_id == "HE3") {
+        s.prochiral = ProchiralStereo::NotProchiral;
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Epsilon), 0, false};
+    }
+    return s;
+}
+
+
+// PHE -- phenylalanine (acceptance gate; original implementation
+// from 2026-05-05 morning session). Reference Section 3 (PHE block).
+// Aromatic 6-ring: CG (ipso), CD1 (ortho1), CD2 (ortho2), CE1
+// (meta1), CE2 (meta2), CZ (para); Hs follow.
 // PHE-only initial implementation; generalises in a follow-up commit
 // once the architecture is proven on one residue.
 SynthesisedFields SynthesisedForPhe(const std::string& atom_id, const ParsedName& parsed) {
     SynthesisedFields s;
+    // β methylene Hs: HB2=ProS, HB3=ProR. Ring Hs (HD1/HD2/HE1/HE2)
+    // are caught by the helper but are NOT prochiral; override below.
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);
+    if (atom_id == "HD1" || atom_id == "HD2" ||
+        atom_id == "HE1" || atom_id == "HE2") {
+        s.prochiral = ProchiralStereo::NotProchiral;
+    }
 
     // Phe ring atoms: CG (ipso), CD1 (ortho1), CD2 (ortho2),
     //                 CE1 (meta1), CE2 (meta2), CZ (para).
@@ -844,6 +1521,297 @@ SynthesisedFields SynthesisedForPhe(const std::string& atom_id, const ParsedName
 }
 
 
+// PRO -- proline. Reference Section 3 (PRO block).
+// Saturated 5-ring (pyrrolidine): N + Cα + Cβ + Cγ + Cδ.
+// Special: NO backbone H (secondary amine, in-ring N).
+// Cα is in the ring AND has Locant::None (orthogonality, dependencies
+// §D.2). RingMembership.aromatic=false; RingMembership.planar=false
+// (saturated; ring puckering is conformation-side).
+SynthesisedFields SynthesisedForPro(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β/γ/δ methylenes
+
+    auto set_ring_pyrrolidine = [&](RingPositionLabel pos) {
+        s.ring_pos.primary.ring          = RingSystemKind::Pyrrolidine_Pro;
+        s.ring_pos.primary.position      = pos;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = false;
+        s.ring_pos.primary.planar        = false;
+        s.ring_pos.primary.n_heteroatoms = 1;
+    };
+
+    // Pro N: in ring, secondary amine (no H), planar_group = None.
+    if (atom_id == "N") set_ring_pyrrolidine(RingPositionLabel::Heteroatom_NoH);
+    // Pro Cα: in ring, but Locant::None per the orthogonality rule.
+    if (atom_id == "CA") set_ring_pyrrolidine(RingPositionLabel::Saturated);
+    // Backbone C and O still in PeptideAmide (next residue's amide partner).
+    if (atom_id == "C" || atom_id == "O") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    // Cβ, Cγ, Cδ: saturated ring carbons.
+    if (atom_id == "CB" || atom_id == "CG" || atom_id == "CD") {
+        set_ring_pyrrolidine(RingPositionLabel::Saturated);
+    }
+    // Methylene Hs: QB / QG / QD pseudoatoms.
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG2" || atom_id == "HG3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Gamma), 0, false};
+    }
+    if (atom_id == "HD2" || atom_id == "HD3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Delta), 0, false};
+    }
+    return s;
+}
+
+
+// SER -- serine. Reference Section 3 (SER block).
+// β methylene QB; γ-OH (HydroxylOH_Aliphatic).
+SynthesisedFields SynthesisedForSer(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HG") s.polar_h = PolarHKind::HydroxylOH_Aliphatic;
+    return s;
+}
+
+
+// THR -- threonine. Reference Section 3 (THR block).
+// β-CH (single Hβ); γ1-OH (HydroxylOH_Aliphatic on HG1); γ2-methyl MG
+// (HG21/22/23).
+SynthesisedFields SynthesisedForThr(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HG1") s.polar_h = PolarHKind::HydroxylOH_Aliphatic;
+    // γ2-methyl: HG21/22/23 form MG (Markley: methyl Hs).
+    if (atom_id == "HG21" || atom_id == "HG22" || atom_id == "HG23") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Gamma), 2, false};
+    }
+    return s;
+}
+
+
+// TRP -- tryptophan. Reference Section 3 (TRP block).
+// Fused indole: pyrrole 5-ring (CG, CD1, NE1, CE2, CD2) + benzene
+// 6-ring (CD2, CE2, CE3, CZ2, CZ3, CH2). Bridgeheads (CD2, CE2)
+// belong to BOTH rings: primary = 5-ring (smaller-ring convention),
+// secondary = 6-ring.
+// Trp 6-ring perimeter labels (Section 2 + dependencies §C.3): Ortho1
+// = CE3, Ortho2 = CZ2, Meta1 = CZ3, Meta2 = CH2 (synthesised; Markley
+// does not publish ipso/ortho/meta/para for indole 6-ring).
+// IndoleNH on HE1.
+SynthesisedFields SynthesisedForTrp(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    // β methylene Hs: HB2=ProS, HB3=ProR. Ring HE3 (locant E, digit
+    // 3) would be wrongly tagged ProR by the helper; HE3 is an
+    // aromatic CH on the indole 6-ring. Override below.
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);
+    if (atom_id == "HE3") s.prochiral = ProchiralStereo::NotProchiral;
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+
+    // Pyrrole 5-ring atoms.
+    auto set_5ring = [&](RingPositionLabel pos) {
+        s.ring_pos.primary.ring          = RingSystemKind::Indole_Trp_5;
+        s.ring_pos.primary.position      = pos;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 1;
+        s.planar_group = PlanarGroupKind::Aromatic5Ring;
+    };
+    // Benzene 6-ring perimeter atoms (non-bridgehead).
+    auto set_6ring = [&](RingPositionLabel pos) {
+        s.ring_pos.primary.ring          = RingSystemKind::Indole_Trp_6;
+        s.ring_pos.primary.position      = pos;
+        s.ring_pos.primary.ring_size     = 6;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 0;
+        s.planar_group = PlanarGroupKind::Aromatic6Ring;
+    };
+    // Bridgeheads: in 5-ring (primary, smaller) AND 6-ring (secondary).
+    auto set_bridgehead = [&]() {
+        s.ring_pos.primary.ring          = RingSystemKind::Indole_Trp_5;
+        s.ring_pos.primary.position      = RingPositionLabel::BridgeFusion;
+        s.ring_pos.primary.ring_size     = 5;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 1;
+        s.ring_pos.secondary.ring          = RingSystemKind::Indole_Trp_6;
+        s.ring_pos.secondary.position      = RingPositionLabel::BridgeFusion;
+        s.ring_pos.secondary.ring_size     = 6;
+        s.ring_pos.secondary.aromatic      = true;
+        s.ring_pos.secondary.planar        = true;
+        s.ring_pos.secondary.n_heteroatoms = 0;
+        s.planar_group = PlanarGroupKind::Aromatic5Ring;  // primary
+    };
+
+    // 5-ring non-bridgehead atoms: CG (ipso), CD1 (PyrroleBeta), HD1,
+    // NE1 (Heteroatom_NH), HE1.
+    if      (atom_id == "CG")                       set_5ring(RingPositionLabel::Ipso);
+    else if (atom_id == "CD1" || atom_id == "HD1")  set_5ring(RingPositionLabel::PyrroleBeta);
+    else if (atom_id == "NE1" || atom_id == "HE1")  set_5ring(RingPositionLabel::Heteroatom_NH);
+    // 5-ring + 6-ring bridgeheads.
+    else if (atom_id == "CE2" || atom_id == "CD2")  set_bridgehead();
+    // 6-ring perimeter atoms.
+    else if (atom_id == "CE3" || atom_id == "HE3")  set_6ring(RingPositionLabel::Ortho1);
+    else if (atom_id == "CZ2" || atom_id == "HZ2")  set_6ring(RingPositionLabel::Ortho2);
+    else if (atom_id == "CZ3" || atom_id == "HZ3")  set_6ring(RingPositionLabel::Meta1);
+    else if (atom_id == "CH2" || atom_id == "HH2")  set_6ring(RingPositionLabel::Meta2);
+
+    if (atom_id == "HE1") s.polar_h = PolarHKind::IndoleNH;
+    return s;
+}
+
+
+// TYR -- tyrosine (default, neutral phenol form). Reference Section 3
+// (TYR block). Aromatic 6-ring like PHE; CZ carries the para-OH.
+// HH on the OH is HydroxylOH_Aromatic. Cζ-O-H rotation is conformation-
+// side. QR super-group covers all four ring Hs (HD1/HD2/HE1/HE2), but
+// not HH (HH is in AromaticHydroxyl planar group).
+SynthesisedFields SynthesisedForTyr(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+    // β methylene Hs: HB2=ProS, HB3=ProR. Ring Hs (HD1/HD2/HE1/HE2)
+    // are caught by the helper as digit '1'/'2' but only HD2/HE2
+    // (digit 2) match -> would be wrongly tagged ProS. Override below.
+    s.prochiral = MarkleyMethyleneProchiral(atom_id);
+    if (atom_id == "HD1" || atom_id == "HD2" ||
+        atom_id == "HE1" || atom_id == "HE2") {
+        s.prochiral = ProchiralStereo::NotProchiral;
+    }
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+
+    auto set_ring = [&](RingPositionLabel pos) {
+        s.ring_pos.primary.ring          = RingSystemKind::Benzene_Tyr;
+        s.ring_pos.primary.position      = pos;
+        s.ring_pos.primary.ring_size     = 6;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 0;
+        s.planar_group = PlanarGroupKind::Aromatic6Ring;
+    };
+    if      (atom_id == "CG")                       set_ring(RingPositionLabel::Ipso);
+    else if (atom_id == "CD1" || atom_id == "HD1")  set_ring(RingPositionLabel::Ortho1);
+    else if (atom_id == "CD2" || atom_id == "HD2")  set_ring(RingPositionLabel::Ortho2);
+    else if (atom_id == "CE1" || atom_id == "HE1")  set_ring(RingPositionLabel::Meta1);
+    else if (atom_id == "CE2" || atom_id == "HE2")  set_ring(RingPositionLabel::Meta2);
+    else if (atom_id == "CZ")                       set_ring(RingPositionLabel::Para);
+
+    // Pseudoatom membership: QD / QE / QR.
+    if (atom_id == "HD1" || atom_id == "HD2") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Delta), 0, true};
+    }
+    if (atom_id == "HE1" || atom_id == "HE2") {
+        s.pseudoatom = {PseudoatomKind::Q,
+                        static_cast<uint8_t>(Locant::Epsilon), 0, true};
+    }
+
+    // Para-OH: AromaticHydroxyl planar group spans Cζ-O-H. Note that
+    // CZ retains its Aromatic6Ring assignment (set above); only OH and
+    // HH belong to the AromaticHydroxyl group exclusively.
+    if (atom_id == "OH") s.planar_group = PlanarGroupKind::AromaticHydroxyl;
+    if (atom_id == "HH") {
+        s.planar_group = PlanarGroupKind::AromaticHydroxyl;
+        s.polar_h      = PolarHKind::HydroxylOH_Aromatic;
+    }
+    return s;
+}
+
+
+// TYM -- deprotonated tyrosine (aryloxide) variant. Reference Section
+// 3 (TYM block) + dependencies §E.8. HH REMOVED; OH planar_group
+// AromaticHydroxyl -> AromaticOxide (per the new
+// PlanarGroupKind::AromaticOxide enum, 2026-05-05). Oη formal_chg
+// 0 -> -1 (CCD).
+[[maybe_unused]] SynthesisedFields SynthesisedForTym(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s = SynthesisedForTyr(atom_id, parsed);
+    // Oη: AromaticHydroxyl -> AromaticOxide (phenolate; π-conjugation
+    // qualitatively different from neutral phenol-OH).
+    if (atom_id == "OH") s.planar_group = PlanarGroupKind::AromaticOxide;
+    // HH removed in TYM; if it appears in CCD, treat as not-polar.
+    if (atom_id == "HH") {
+        s.planar_group = PlanarGroupKind::None;
+        s.polar_h      = PolarHKind::NotPolar;
+    }
+    return s;
+}
+
+
+// VAL -- valine. Reference Section 3 (VAL block).
+// Branched aliphatic: β-CH (single Hβ); γ1-methyl (Cγ1 = ProR);
+// γ2-methyl (Cγ2 = ProS); MG1 + MG2 both in QG super (all six γ-methyl
+// Hs collapse to QG).
+SynthesisedFields SynthesisedForVal(const std::string& atom_id, const ParsedName& /*parsed*/) {
+    SynthesisedFields s;
+
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
+        atom_id == "H" || atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+    if (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+
+    // Branched γ-methyls: Cγ1 = ProR; Cγ2 = ProS (Markley Fig 1).
+    // Methyl Hs themselves are NotProchiral; only the parent C atoms
+    // carry the prochiral label.
+    if (atom_id == "CG1") s.prochiral = ProchiralStereo::ProR;
+    if (atom_id == "CG2") s.prochiral = ProchiralStereo::ProS;
+
+    // γ1-methyl: MG1 in QG super.
+    if (atom_id == "HG11" || atom_id == "HG12" || atom_id == "HG13") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Gamma), 1, true};
+    }
+    // γ2-methyl: MG2 in QG super.
+    if (atom_id == "HG21" || atom_id == "HG22" || atom_id == "HG23") {
+        s.pseudoatom = {PseudoatomKind::M,
+                        static_cast<uint8_t>(Locant::Gamma), 2, true};
+    }
+    return s;
+}
+
+
 // ============================================================================
 // AtomSemanticEntry -- the typed record for one atom in the residue.
 // Combines mechanical (parser), algorithmic (RDKit), and synthesised
@@ -906,21 +1874,36 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
     e.prov_locant.sources_agree = true;
 
     // Algorithmic fields from RDKit.
-    e.prochiral     = facts.cip_stereo[rdkit_idx];
     e.aromatic      = facts.aromatic[rdkit_idx];
     e.hybridisation = facts.hybridisation[rdkit_idx];
     e.bond_orders   = facts.bond_orders[rdkit_idx];
     e.equivalence_class = facts.canonical_rank[rdkit_idx];
     e.formal_charge = static_cast<int8_t>(formal_charge_from_ccd);
 
-    e.prov_prochiral.witnesses[0] = {SemanticSource::RDKit_CIPLabeler,
-                                     static_cast<uint8_t>(facts.cip_stereo[rdkit_idx])};
-    e.prov_prochiral.confidence   = (facts.cip_stereo[rdkit_idx] == ProchiralStereo::NotProchiral)
-        ? SemanticConfidence::AlgorithmAuthoritative
-        : SemanticConfidence::CIPVerified;
-    e.prov_prochiral.cip_verified = (facts.cip_stereo[rdkit_idx] != ProchiralStereo::NotProchiral &&
-                                      facts.cip_stereo[rdkit_idx] != ProchiralStereo::Unassigned);
-    e.prov_prochiral.sources_agree = true;
+    // Prochiral assignment combines RDKit (chiral centres) with the
+    // synthesised Markley-derived per-residue table (prochiral Hs
+    // + prochiral branch carbons). When the synthesised value is
+    // non-None, it WINS -- RDKit CIPLabeler does not label prochiral
+    // Hs in the CCD free-amino-acid form, so the synthesised table
+    // is the authoritative source for those atoms.
+    if (syn.prochiral != ProchiralStereo::NotProchiral) {
+        e.prochiral = syn.prochiral;
+        e.prov_prochiral.witnesses[0] = {SemanticSource::Markley1998_Figure1,
+                                         static_cast<uint8_t>(syn.prochiral)};
+        e.prov_prochiral.confidence    = SemanticConfidence::AlgorithmAuthoritative;
+        e.prov_prochiral.cip_verified  = false;
+        e.prov_prochiral.sources_agree = true;
+    } else {
+        e.prochiral = facts.cip_stereo[rdkit_idx];
+        e.prov_prochiral.witnesses[0] = {SemanticSource::RDKit_CIPLabeler,
+                                         static_cast<uint8_t>(facts.cip_stereo[rdkit_idx])};
+        e.prov_prochiral.confidence   = (facts.cip_stereo[rdkit_idx] == ProchiralStereo::NotProchiral)
+            ? SemanticConfidence::AlgorithmAuthoritative
+            : SemanticConfidence::CIPVerified;
+        e.prov_prochiral.cip_verified = (facts.cip_stereo[rdkit_idx] != ProchiralStereo::NotProchiral &&
+                                          facts.cip_stereo[rdkit_idx] != ProchiralStereo::Unassigned);
+        e.prov_prochiral.sources_agree = true;
+    }
 
     e.prov_aromatic.witnesses[0] = {SemanticSource::RDKit_AromaticPerception,
                                     static_cast<uint8_t>(facts.aromatic[rdkit_idx] ? 1 : 0)};
@@ -984,9 +1967,35 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(const CcdResidue& res,
         if (it != name_to_rdkit_idx.end()) rdkit_idx = it->second;
 
         SynthesisedFields syn;
-        if (res.three_letter == "PHE") {
-            syn = SynthesisedForPhe(ccd_atom.atom_id, parsed);
-        }
+        // Standard 20 dispatch. AMBER variant dispatch is intentionally
+        // not present here -- variants are not iterated (see main loop
+        // for the architectural reasoning). The per-variant
+        // SynthesisedFor<Variant> functions above remain compiled-and-
+        // unused; they carry the patch logic that the next-generation
+        // generator pass will plug in once parent-CCD-plus-delta atom
+        // synthesis is implemented.
+        const std::string& r = res.three_letter;
+        if      (r == "ALA") syn = SynthesisedForAla(ccd_atom.atom_id, parsed);
+        else if (r == "ARG") syn = SynthesisedForArg(ccd_atom.atom_id, parsed);
+        else if (r == "ASN") syn = SynthesisedForAsn(ccd_atom.atom_id, parsed);
+        else if (r == "ASP") syn = SynthesisedForAsp(ccd_atom.atom_id, parsed);
+        else if (r == "CYS") syn = SynthesisedForCys(ccd_atom.atom_id, parsed);
+        else if (r == "GLN") syn = SynthesisedForGln(ccd_atom.atom_id, parsed);
+        else if (r == "GLU") syn = SynthesisedForGlu(ccd_atom.atom_id, parsed);
+        else if (r == "GLY") syn = SynthesisedForGly(ccd_atom.atom_id, parsed);
+        else if (r == "HIS") syn = SynthesisedForHis(ccd_atom.atom_id, parsed);
+        else if (r == "ILE") syn = SynthesisedForIle(ccd_atom.atom_id, parsed);
+        else if (r == "LEU") syn = SynthesisedForLeu(ccd_atom.atom_id, parsed);
+        else if (r == "LYS") syn = SynthesisedForLys(ccd_atom.atom_id, parsed);
+        else if (r == "MET") syn = SynthesisedForMet(ccd_atom.atom_id, parsed);
+        else if (r == "PHE") syn = SynthesisedForPhe(ccd_atom.atom_id, parsed);
+        else if (r == "PRO") syn = SynthesisedForPro(ccd_atom.atom_id, parsed);
+        else if (r == "SER") syn = SynthesisedForSer(ccd_atom.atom_id, parsed);
+        else if (r == "THR") syn = SynthesisedForThr(ccd_atom.atom_id, parsed);
+        else if (r == "TRP") syn = SynthesisedForTrp(ccd_atom.atom_id, parsed);
+        else if (r == "TYR") syn = SynthesisedForTyr(ccd_atom.atom_id, parsed);
+        else if (r == "TYM") syn = SynthesisedForTym(ccd_atom.atom_id, parsed);
+        else if (r == "VAL") syn = SynthesisedForVal(ccd_atom.atom_id, parsed);
 
         AtomSemanticEntry e = BuildAtomSemanticEntry(ccd_atom.atom_id, parsed,
                                                       rdkit_idx, facts, syn,
@@ -1369,14 +2378,48 @@ int main(int argc, char** argv) {
     }
     log.KV("status", "OK");
 
-    // Process residues one by one. Currently only PHE is in the
-    // synthesised-fields lookup (SynthesisedForPhe); other residues
-    // get NotInRing / NotPolar defaults until per-residue tables
-    // are added in the generalisation step. The architecture is
-    // proven on PHE end-to-end; subsequent residues land mechanically
-    // by extending the synthesised-fields lookup.
+    // Process the standard 20 amino acids plus the 10 AMBER
+    // protonation variants. Encoding order chosen to step through
+    // every chemistry case in sequence (Section 3 alphabetical for
+    // the standards; variants follow their parent for readability):
+    //   ALA, ARG+ARN, ASN, ASP+ASH, CYS+CYX+CYM, GLN, GLU+GLH, GLY,
+    //   HIS+HID+HIE+HIP, ILE, LEU, LYS+LYN, MET, PHE, PRO, SER, THR,
+    //   TRP, TYR+TYM, VAL.
     std::vector<ResidueEntries> all_entries;
-    for (const std::string& res : {std::string("PHE")}) {
+    // Standard 20 amino acids only. AMBER protonation variants
+    // (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/TYM) are NOT iterated here:
+    // their 3-letter codes coincidentally match unrelated small molecules
+    // in the wwPDB Chemical Component Dictionary (e.g., CCD's `data_HID`
+    // block is "(5-hydroxy-1H-indol-3-yl)acetic acid", not histidine).
+    // AMBER variants must be synthesised from the parent CCD entry plus
+    // per-variant delta-patches (atom additions like Hδ1 for HID, atom
+    // removals like Hζ1 for LYN, and field changes). The per-variant
+    // SynthesisedFor<Variant> functions above carry the patch logic but
+    // are not yet plugged into a generator pass that synthesises atoms
+    // missing from the parent CCD entry. See dependencies §G (variant
+    // synthesis architecture) for the next-step plan.
+    for (const std::string& res : {
+            std::string("ALA"),
+            std::string("ARG"),
+            std::string("ASN"),
+            std::string("ASP"),
+            std::string("CYS"),
+            std::string("GLN"),
+            std::string("GLU"),
+            std::string("GLY"),
+            std::string("HIS"),  // AMBER default; HIS in CCD = neutral histidine ≈ HIE
+            std::string("ILE"),
+            std::string("LEU"),
+            std::string("LYS"),
+            std::string("MET"),
+            std::string("PHE"),
+            std::string("PRO"),
+            std::string("SER"),
+            std::string("THR"),
+            std::string("TRP"),
+            std::string("TYR"),
+            std::string("VAL"),
+         }) {
         auto entries = ProcessOneResidue(ccd, res, log);
         if (!entries) {
             log.Section("done");
