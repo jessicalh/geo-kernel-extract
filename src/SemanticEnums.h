@@ -656,4 +656,43 @@ struct SemanticProvenance {
 };
 
 
+// ============================================================================
+// AtomSemanticTable -- the runtime per-atom record consumed by the
+// LegacyAmberTopology populator
+// ============================================================================
+//
+// One record per (residue, variant, atom_local_idx). The generated
+// table at src/generated/LegacyAmberSemanticTables.cpp emits a
+// constexpr std::array of these per residue; the populator looks up
+// entries at construction time and writes into the typed fields on
+// LegacyAmberTopology.
+//
+// Provenance is NOT carried in the runtime record (it lives in the
+// generation log, src/generated/LegacyAmberSemanticTables.log.txt,
+// and is committed alongside as the audit trail). Runtime code never
+// needs to inspect provenance; downstream stats analysis joins via
+// (residue, atom_id) keys against the log.
+//
+struct AtomSemanticTable {
+    Locant                locant            = Locant::None;
+    BranchAddress         branch            = {};
+    DiastereotopicIndex   di_index          = DiastereotopicIndex::None;
+    ProchiralStereo       prochiral         = ProchiralStereo::NotProchiral;
+    PlanarGroupKind       planar_group      = PlanarGroupKind::None;
+    PlanarStereo          planar_stereo     = PlanarStereo::NotApplicable;
+    PseudoatomMembership  pseudoatom        = {};
+    PolarHKind            polar_h           = PolarHKind::NotPolar;
+    RingPosition          ring_position     = {};
+    bool                  aromatic          = false;
+    int8_t                formal_charge     = 0;
+    bool                  is_exchangeable   = false;
+    uint8_t               equivalence_class = 0;
+    // Note: Hybridisation (from Types.h) and BondOrderMask are not
+    // included in the runtime record at the moment; they are
+    // available via the generation log if needed for analysis.
+    // The runtime is intentionally minimal until a calculator
+    // requires a specific field on the substrate.
+};
+
+
 }  // namespace nmr

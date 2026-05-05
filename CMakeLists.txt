@@ -458,6 +458,26 @@ target_link_libraries(smoke_tests PRIVATE
 )
 gtest_discover_tests(smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
+
+# ============================================================================
+# String barrier discipline test (lightweight; greps source tree).
+# Asserts that gemmi / RDKit / cifpp use stays bounded per the
+# substrate-side string barrier in
+# spec/plan/topology-substrate-implementation-plan-2026-05-05.md.
+# ============================================================================
+
+add_executable(string_barrier_tests
+    tests/test_string_barrier.cpp
+)
+target_compile_definitions(string_barrier_tests PRIVATE
+    NMR_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+target_link_libraries(string_barrier_tests PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+)
+gtest_discover_tests(string_barrier_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
 # fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp
 # (CHARMM/XTC fleet/1A6J_5789 fixture).
 

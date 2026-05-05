@@ -1,0 +1,104 @@
+# LegacyAmberTopology semantic tables -- generator process log
+# Format: section headers (==== SECTION ====), key=value records,
+# blank lines for grouping. grep-able by section / key.
+#
+# This log is committed alongside src/generated/LegacyAmberSemanticTables.cpp
+# as the reproducibility audit trail. Inspect once per regeneration.
+#
+
+==== run-info ====
+generator = build_semantic_tables
+ccd_path = data/ccd/components.cif
+output_cpp = src/generated/LegacyAmberSemanticTables.cpp
+log_path = src/generated/LegacyAmberSemanticTables.log.txt
+rdkit_version = 2023.09.6
+step = 2 of N -- cifpp + RDKit pipeline validated on PHE
+# Subsequent steps generalise to all 20 residues + variants,
+# add per-field population, reconciliation per the precedence
+# table, and emit the generated C++ source.
+
+==== ccd-load ====
+ccd_path = data/ccd/components.cif
+status = OK
+
+==== process-residue::PHE ====
+
+==== load-ccd-residue::PHE ====
+name = PHENYLALANINE
+type = L-PEPTIDE LINKING
+formal_charge_total = 0
+atom_count = 23
+bond_count = 23
+status = OK
+
+==== build-rdkit-mol::PHE ====
+rdkit_atoms_added = 23
+rdkit_bonds_added = 23
+sanitize_status = OK
+sanitize_ops_mask_hex = 0x0
+
+==== rdkit-perception::PHE ====
+ring_count = 1
+aromatic_ring_count = 1
+aromatic_atom_count = 6
+hybridisation_sp = 0
+hybridisation_sp2 = 9
+hybridisation_sp3 = 3
+hybridisation_other_or_unset = 11
+smiles_roundtrip = [H]OC(=O)C([H])(N([H])[H])C([H])([H])c1c([H])c([H])c([H])c([H])c1[H]
+atom_0_N = Z=7 arom=0 hyb=4
+atom_1_CA = Z=6 arom=0 hyb=4
+atom_2_C = Z=6 arom=0 hyb=3
+atom_3_O = Z=8 arom=0 hyb=3
+atom_4_CB = Z=6 arom=0 hyb=4
+atom_5_CG = Z=6 arom=1 hyb=3
+
+==== rdkit-facts-extraction ====
+cip_labeller_status = OK
+canonical_rank_status = OK
+aromatic_atom_count = 6
+cip_labels_assigned = 0
+
+==== build-entries::PHE ====
+entries_built = 23
+
+==== entries-spot-check::PHE ====
+0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=19
+6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
+8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
+10_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=14
+11_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+15_HB2 = loc=2 branch=0/0 di=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HB3 = loc=2 branch=0/0 di=3 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+17_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
+18_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+19_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
+20_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
+21_HZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=0 hyb=3 eqcls=1
+22_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
+status = OK
+
+==== emit-cpp ====
+output_path = src/generated/LegacyAmberSemanticTables.cpp
+emitted_kPheAtoms_size = 23
+total_atoms_emitted = 23
+status = OK
+
+==== done ====
+status = OK
+residues_emitted = 1
+# Step 5 of N done: emitter writes generated C++ source.
+# Architecture proven end-to-end on PHE.
+# Generalisation to remaining 19 residues + 10 variants is the
+# next session's work; the synthesised-field tables in
+# SynthesisedForPhe extend mechanically per residue.

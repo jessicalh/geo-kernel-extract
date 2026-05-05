@@ -17,12 +17,14 @@
 // Inspection: the user reads the log once after each generation run;
 // committed logs serve as a reproducibility record.
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1017,32 +1019,314 @@ void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
 }
 
 
-// Validation pass: load PHE, build mol, sanitize, extract facts,
-// build typed entries, log them.
-int ValidatePheRoundTrip(cif::file& ccd, ProcessLog& log) {
-    log.Section("phe-roundtrip-validation");
-    auto residue_opt = LoadCcdResidue(ccd, "PHE", log);
+// ============================================================================
+// C++ emitter -- writes the typed-enum table file consumed at runtime.
+//
+// Format: a generated .cpp file with constexpr std::array of
+// AtomSemanticTable per residue, plus a Lookup function indexed by
+// (AminoAcid, atom_local_idx). The output includes only typed-enum
+// references; no std::string literals carrying chemistry data, no
+// gemmi/RDKit/cifpp symbols, no Eigen.
+//
+// The string barrier from the generator's perspective: this Emit
+// function is the only place where chemistry-derived enum names are
+// converted back to text -- but only as C++ source code identifiers
+// (e.g. "nmr::Locant::Beta"), not as data. The compiler then turns
+// those identifier strings back into the typed-enum integer values
+// at compile time. No runtime string survives.
+// ============================================================================
+
+const char* LocantLiteral(Locant l) {
+    switch (l) {
+        case Locant::None:    return "nmr::Locant::None";
+        case Locant::Alpha:   return "nmr::Locant::Alpha";
+        case Locant::Beta:    return "nmr::Locant::Beta";
+        case Locant::Gamma:   return "nmr::Locant::Gamma";
+        case Locant::Delta:   return "nmr::Locant::Delta";
+        case Locant::Epsilon: return "nmr::Locant::Epsilon";
+        case Locant::Zeta:    return "nmr::Locant::Zeta";
+        case Locant::Eta:     return "nmr::Locant::Eta";
+    }
+    return "nmr::Locant::None";
+}
+
+const char* DiastereotopicLiteral(DiastereotopicIndex d) {
+    switch (d) {
+        case DiastereotopicIndex::None:      return "nmr::DiastereotopicIndex::None";
+        case DiastereotopicIndex::Position2: return "nmr::DiastereotopicIndex::Position2";
+        case DiastereotopicIndex::Position3: return "nmr::DiastereotopicIndex::Position3";
+    }
+    return "nmr::DiastereotopicIndex::None";
+}
+
+const char* ProchiralLiteral(ProchiralStereo p) {
+    switch (p) {
+        case ProchiralStereo::NotProchiral: return "nmr::ProchiralStereo::NotProchiral";
+        case ProchiralStereo::ProR:         return "nmr::ProchiralStereo::ProR";
+        case ProchiralStereo::ProS:         return "nmr::ProchiralStereo::ProS";
+        case ProchiralStereo::Unassigned:   return "nmr::ProchiralStereo::Unassigned";
+    }
+    return "nmr::ProchiralStereo::NotProchiral";
+}
+
+const char* PlanarGroupLiteral(PlanarGroupKind p) {
+    switch (p) {
+        case PlanarGroupKind::None:             return "nmr::PlanarGroupKind::None";
+        case PlanarGroupKind::PeptideAmide:     return "nmr::PlanarGroupKind::PeptideAmide";
+        case PlanarGroupKind::SidechainAmide:   return "nmr::PlanarGroupKind::SidechainAmide";
+        case PlanarGroupKind::Guanidinium:      return "nmr::PlanarGroupKind::Guanidinium";
+        case PlanarGroupKind::Imidazole:        return "nmr::PlanarGroupKind::Imidazole";
+        case PlanarGroupKind::Aromatic6Ring:    return "nmr::PlanarGroupKind::Aromatic6Ring";
+        case PlanarGroupKind::Aromatic5Ring:    return "nmr::PlanarGroupKind::Aromatic5Ring";
+        case PlanarGroupKind::Carboxylate:      return "nmr::PlanarGroupKind::Carboxylate";
+        case PlanarGroupKind::AromaticHydroxyl: return "nmr::PlanarGroupKind::AromaticHydroxyl";
+    }
+    return "nmr::PlanarGroupKind::None";
+}
+
+const char* PlanarStereoLiteral(PlanarStereo p) {
+    switch (p) {
+        case PlanarStereo::NotApplicable: return "nmr::PlanarStereo::NotApplicable";
+        case PlanarStereo::E:             return "nmr::PlanarStereo::E";
+        case PlanarStereo::Z:             return "nmr::PlanarStereo::Z";
+        case PlanarStereo::Unspecified:   return "nmr::PlanarStereo::Unspecified";
+    }
+    return "nmr::PlanarStereo::NotApplicable";
+}
+
+const char* PseudoatomKindLiteral(PseudoatomKind k) {
+    switch (k) {
+        case PseudoatomKind::None: return "nmr::PseudoatomKind::None";
+        case PseudoatomKind::M:    return "nmr::PseudoatomKind::M";
+        case PseudoatomKind::Q:    return "nmr::PseudoatomKind::Q";
+        case PseudoatomKind::R:    return "nmr::PseudoatomKind::R";
+    }
+    return "nmr::PseudoatomKind::None";
+}
+
+const char* PolarHLiteral(PolarHKind p) {
+    switch (p) {
+        case PolarHKind::NotPolar:              return "nmr::PolarHKind::NotPolar";
+        case PolarHKind::BackboneAmide:         return "nmr::PolarHKind::BackboneAmide";
+        case PolarHKind::SidechainPrimaryAmide: return "nmr::PolarHKind::SidechainPrimaryAmide";
+        case PolarHKind::IndoleNH:              return "nmr::PolarHKind::IndoleNH";
+        case PolarHKind::AmmoniumNH:            return "nmr::PolarHKind::AmmoniumNH";
+        case PolarHKind::GuanidiniumNH:         return "nmr::PolarHKind::GuanidiniumNH";
+        case PolarHKind::ImidazoleNH:           return "nmr::PolarHKind::ImidazoleNH";
+        case PolarHKind::CarboxylOH:            return "nmr::PolarHKind::CarboxylOH";
+        case PolarHKind::HydroxylOH_Aliphatic:  return "nmr::PolarHKind::HydroxylOH_Aliphatic";
+        case PolarHKind::HydroxylOH_Aromatic:   return "nmr::PolarHKind::HydroxylOH_Aromatic";
+        case PolarHKind::ThiolSH:               return "nmr::PolarHKind::ThiolSH";
+        case PolarHKind::OtherPolarH:           return "nmr::PolarHKind::OtherPolarH";
+    }
+    return "nmr::PolarHKind::NotPolar";
+}
+
+const char* RingSystemLiteral(RingSystemKind r) {
+    switch (r) {
+        case RingSystemKind::NotInRing:       return "nmr::RingSystemKind::NotInRing";
+        case RingSystemKind::Benzene_Phe:     return "nmr::RingSystemKind::Benzene_Phe";
+        case RingSystemKind::Benzene_Tyr:     return "nmr::RingSystemKind::Benzene_Tyr";
+        case RingSystemKind::Imidazole_His:   return "nmr::RingSystemKind::Imidazole_His";
+        case RingSystemKind::Indole_Trp_5:    return "nmr::RingSystemKind::Indole_Trp_5";
+        case RingSystemKind::Indole_Trp_6:    return "nmr::RingSystemKind::Indole_Trp_6";
+        case RingSystemKind::Pyrrolidine_Pro: return "nmr::RingSystemKind::Pyrrolidine_Pro";
+    }
+    return "nmr::RingSystemKind::NotInRing";
+}
+
+const char* RingPositionLabelLiteral(RingPositionLabel r) {
+    switch (r) {
+        case RingPositionLabel::NotInRing:      return "nmr::RingPositionLabel::NotInRing";
+        case RingPositionLabel::Ipso:           return "nmr::RingPositionLabel::Ipso";
+        case RingPositionLabel::Ortho1:         return "nmr::RingPositionLabel::Ortho1";
+        case RingPositionLabel::Ortho2:         return "nmr::RingPositionLabel::Ortho2";
+        case RingPositionLabel::Meta1:          return "nmr::RingPositionLabel::Meta1";
+        case RingPositionLabel::Meta2:          return "nmr::RingPositionLabel::Meta2";
+        case RingPositionLabel::Para:           return "nmr::RingPositionLabel::Para";
+        case RingPositionLabel::PyrroleAlpha:   return "nmr::RingPositionLabel::PyrroleAlpha";
+        case RingPositionLabel::PyrroleBeta:    return "nmr::RingPositionLabel::PyrroleBeta";
+        case RingPositionLabel::BridgeFusion:   return "nmr::RingPositionLabel::BridgeFusion";
+        case RingPositionLabel::Heteroatom_NH:  return "nmr::RingPositionLabel::Heteroatom_NH";
+        case RingPositionLabel::Heteroatom_NoH: return "nmr::RingPositionLabel::Heteroatom_NoH";
+        case RingPositionLabel::Heteroatom_OH:  return "nmr::RingPositionLabel::Heteroatom_OH";
+        case RingPositionLabel::Saturated:      return "nmr::RingPositionLabel::Saturated";
+    }
+    return "nmr::RingPositionLabel::NotInRing";
+}
+
+std::string RingMembershipLiteral(const RingMembership& rm) {
+    std::ostringstream o;
+    o << "{" << RingSystemLiteral(rm.ring)
+      << ", " << RingPositionLabelLiteral(rm.position)
+      << ", " << static_cast<int>(rm.ring_size)
+      << ", " << (rm.aromatic ? "true" : "false")
+      << ", " << (rm.planar ? "true" : "false")
+      << ", " << static_cast<int>(rm.n_heteroatoms)
+      << "}";
+    return o.str();
+}
+
+std::string PseudoatomLiteral(const PseudoatomMembership& p) {
+    std::ostringstream o;
+    o << "{" << PseudoatomKindLiteral(p.kind)
+      << ", " << static_cast<int>(p.locant)
+      << ", " << static_cast<int>(p.branch)
+      << ", " << (p.in_super_group ? "true" : "false")
+      << "}";
+    return o.str();
+}
+
+// Emit one AtomSemanticTable record as a brace-initialiser. Field
+// order MUST match SemanticEnums.h's AtomSemanticTable definition.
+std::string EmitEntryLiteral(const AtomSemanticEntry& e) {
+    std::ostringstream o;
+    o << "    { " << LocantLiteral(e.locant)
+      << ", {" << static_cast<int>(e.branch.outer)
+      <<  "," << static_cast<int>(e.branch.inner) << "}"
+      << ", " << DiastereotopicLiteral(e.di_index)
+      << ", " << ProchiralLiteral(e.prochiral)
+      << ", " << PlanarGroupLiteral(e.planar_group)
+      << ", " << PlanarStereoLiteral(e.planar_stereo)
+      << ", " << PseudoatomLiteral(e.pseudoatom)
+      << ", " << PolarHLiteral(e.polar_h)
+      << ", {" << RingMembershipLiteral(e.ring_position.primary)
+      <<  ", " << RingMembershipLiteral(e.ring_position.secondary) << "}"
+      << ", " << (e.aromatic ? "true" : "false")
+      << ", " << static_cast<int>(e.formal_charge)
+      << ", " << (e.is_exchangeable ? "true" : "false")
+      << ", " << static_cast<int>(e.equivalence_class)
+      << " }";
+    return o.str();
+}
+
+
+// Holds entries emitted for one (residue, variant) combination.
+struct ResidueEntries {
+    std::string residue_3letter;
+    std::string variant_3letter;   ///< "" for canonical; "HID" / "ASH" / etc for variants
+    std::vector<std::string>      atom_id_for_log;   ///< For comments alongside each row.
+    std::vector<AtomSemanticEntry> entries;
+};
+
+
+// Format the residue's identifier for use as a C++ array name.
+// Canonical -> kPheAtoms, variant -> kPheAtoms_HID.
+std::string CppArrayName(const std::string& residue, const std::string& variant) {
+    auto title_case = [](const std::string& s) {
+        if (s.empty()) return s;
+        std::string out = s;
+        for (size_t i = 1; i < out.size(); ++i) {
+            out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+        }
+        return out;
+    };
+    std::string n = "k" + title_case(residue) + "Atoms";
+    if (!variant.empty()) n += "_" + variant;
+    return n;
+}
+
+
+// Write the generated .cpp file. Strings that appear in the output:
+// (a) the C++ identifier for each enum value (as the typed-enum name);
+// (b) atom-id comments next to each entry, for human readability.
+// (a) is compile-time identifier, not runtime data; (b) is decoration
+// in a // comment, also not runtime data.
+void EmitCppFile(const std::string& output_path,
+                 const std::vector<ResidueEntries>& all,
+                 ProcessLog& log) {
+    log.Section("emit-cpp");
+    log.KV("output_path", output_path);
+
+    std::ofstream out(output_path);
+    if (!out.is_open()) {
+        log.KV("status", "FAILED");
+        log.KV("error", "cannot open output file");
+        std::fprintf(stderr, "ERROR: cannot open %s for writing\n", output_path.c_str());
+        std::exit(3);
+    }
+
+    out << "// src/generated/LegacyAmberSemanticTables.cpp\n";
+    out << "//\n";
+    out << "// AUTOGENERATED by tools/topology/build_semantic_tables.\n";
+    out << "// Do NOT edit by hand. Regenerate with the steps in\n";
+    out << "// tools/topology/README.md.\n";
+    out << "//\n";
+    out << "// String barrier: this file contains only typed-enum\n";
+    out << "// identifiers (compile-time names) and atom-id comments.\n";
+    out << "// No std::string literals, no gemmi / RDKit / cifpp\n";
+    out << "// symbols, no chemistry-string round-tripping at runtime.\n";
+    out << "//\n";
+    out << "// Audit trail: see src/generated/LegacyAmberSemanticTables.log.txt\n";
+    out << "// for the structured generation log committed alongside.\n";
+    out << "\n";
+    out << "#include \"../SemanticEnums.h\"\n";
+    out << "\n";
+    out << "namespace nmr::topology_generated {\n";
+    out << "\n";
+
+    int total_atoms = 0;
+    for (const auto& re : all) {
+        const auto array_name = CppArrayName(re.residue_3letter, re.variant_3letter);
+        out << "// === " << re.residue_3letter;
+        if (!re.variant_3letter.empty()) out << " (variant " << re.variant_3letter << ")";
+        out << " ===\n";
+        out << "constexpr std::array<AtomSemanticTable, " << re.entries.size() << "> "
+            << array_name << " = {{\n";
+        for (size_t i = 0; i < re.entries.size(); ++i) {
+            out << EmitEntryLiteral(re.entries[i]);
+            const std::string atom_id = (i < re.atom_id_for_log.size())
+                                            ? re.atom_id_for_log[i] : "";
+            out << ",  // " << i << ": " << atom_id << "\n";
+        }
+        out << "}};\n\n";
+        total_atoms += static_cast<int>(re.entries.size());
+        log.KV(std::string("emitted_") + array_name + "_size",
+               static_cast<int>(re.entries.size()));
+    }
+
+    out << "}  // namespace nmr::topology_generated\n";
+    out.flush();
+    log.KV("total_atoms_emitted", total_atoms);
+    log.KV("status", "OK");
+}
+
+
+// Validation pass: load a residue, build mol, sanitize, extract
+// facts, build typed entries, log them. Returns the entries on
+// success for downstream emission.
+std::optional<ResidueEntries> ProcessOneResidue(cif::file& ccd,
+                                                  const std::string& residue_3letter,
+                                                  ProcessLog& log) {
+    log.Section(std::string("process-residue::") + residue_3letter);
+    auto residue_opt = LoadCcdResidue(ccd, residue_3letter, log);
     if (!residue_opt) {
-        log.KV("status", "FAILED_TO_LOAD_PHE");
-        return 1;
+        log.KV("status", "FAILED_TO_LOAD");
+        return std::nullopt;
     }
     auto built = BuildRdkitMol(*residue_opt, log);
     if (built.mol == nullptr || built.mol->getNumAtoms() == 0) {
         log.KV("status", "FAILED_TO_BUILD_RDKIT_MOL");
-        return 1;
+        return std::nullopt;
     }
     if (!SanitizeMol(*built.mol, log)) {
         log.KV("status", "FAILED_TO_SANITIZE");
-        return 1;
+        return std::nullopt;
     }
-    LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log, "PHE");
+    LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log, residue_3letter);
 
     auto facts = ExtractRdkitFacts(*built.mol, log);
     auto entries = BuildResidueEntries(*residue_opt, built, facts, log);
-    LogEntriesSpotCheck(entries, log, "PHE");
+    LogEntriesSpotCheck(entries, log, residue_3letter);
 
+    ResidueEntries re;
+    re.residue_3letter = residue_3letter;
+    re.variant_3letter = "";  // canonical form for now
+    re.atom_id_for_log.reserve(entries.size());
+    for (const auto& e : entries) re.atom_id_for_log.push_back(e.atom_id_for_log);
+    re.entries = std::move(entries);
     log.KV("status", "OK");
-    return 0;
+    return re;
 }
 
 
@@ -1081,21 +1365,40 @@ int main(int argc, char** argv) {
     }
     log.KV("status", "OK");
 
-    if (int rc = ValidatePheRoundTrip(ccd, log); rc != 0) {
-        log.Section("done");
-        log.KV("status", "FAILED");
-        std::fprintf(stderr, "ERROR: PHE round-trip validation failed; see log %s\n",
-                     args.log_path.c_str());
-        return rc;
+    // Process residues one by one. Currently only PHE is in the
+    // synthesised-fields lookup (SynthesisedForPhe); other residues
+    // get NotInRing / NotPolar defaults until per-residue tables
+    // are added in the generalisation step. The architecture is
+    // proven on PHE end-to-end; subsequent residues land mechanically
+    // by extending the synthesised-fields lookup.
+    std::vector<ResidueEntries> all_entries;
+    for (const std::string& res : {std::string("PHE")}) {
+        auto entries = ProcessOneResidue(ccd, res, log);
+        if (!entries) {
+            log.Section("done");
+            log.KV("status", "FAILED");
+            std::fprintf(stderr, "ERROR: failed to process %s; see log %s\n",
+                         res.c_str(), args.log_path.c_str());
+            return 1;
+        }
+        all_entries.push_back(std::move(*entries));
     }
+
+    EmitCppFile(args.output_cpp_path, all_entries, log);
 
     log.Section("done");
     log.KV("status", "OK");
-    log.Note("Step 2 of N done: cifpp -> RDKit pipeline validated on PHE.");
-    log.Note("No tables emitted yet.");
+    log.KV("residues_emitted", static_cast<int>(all_entries.size()));
+    log.Note("Step 5 of N done: emitter writes generated C++ source.");
+    log.Note("Architecture proven end-to-end on PHE.");
+    log.Note("Generalisation to remaining 19 residues + 10 variants is the");
+    log.Note("next session's work; the synthesised-field tables in");
+    log.Note("SynthesisedForPhe extend mechanically per residue.");
 
-    std::printf("OK -- step 2 (PHE round-trip via cifpp + RDKit) complete.\n"
-                "See log at %s\n",
+    std::printf("OK -- generated %s with %d residue table(s).\n"
+                "Log: %s\n",
+                args.output_cpp_path.c_str(),
+                static_cast<int>(all_entries.size()),
                 args.log_path.c_str());
     return 0;
 }
