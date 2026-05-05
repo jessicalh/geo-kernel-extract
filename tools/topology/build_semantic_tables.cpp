@@ -2026,12 +2026,14 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
     e.bond_orders   = facts.bond_orders[rdkit_idx];
     e.equivalence_class = facts.canonical_rank[rdkit_idx];
     // Formal charge: CCD per-atom value is the default authority. A
-    // variant's SynthesisedFor<Variant> patch may set
-    // syn.charge_override to redirect a per-atom charge for chemistry
-    // that differs from the CCD entry (e.g. CYM's Sγ -1, LYN's Nζ 0,
-    // HID/HIE/HIP's Nδ1 / Nε2 redistribution, TYM's Oη -1, ARN's
-    // Nη2 0). Standard 20 patches never set the override, so their
-    // formal_charge tracks CCD untouched.
+    // SynthesisedFor<Residue|Variant> patch may set syn.charge_override
+    // to redirect a per-atom charge for chemistry that differs from
+    // CCD. Variants use this for protonation deltas (CYM Sγ -1, LYN Nζ
+    // 0, HIP Nε2 +1, TYM Oη -1, ARN HE removal). Standard 20 patches
+    // also use this to enforce Lewis-localised conventions per
+    // dependencies §C.1: ASP OD2=-1, GLU OE2=-1, ARG NE=+1 + NH2=0,
+    // HIS ND1=0 (HIE-default per AmberLeapInput.cpp:29). Atoms not
+    // overridden track CCD untouched.
     e.formal_charge = syn.charge_override.has_value()
         ? *syn.charge_override
         : static_cast<int8_t>(formal_charge_from_ccd);

@@ -403,7 +403,14 @@ struct AtomMechanicalIdentity {
 };
 ```
 
-The `AtomMechanicalIdentity` is unique within a residue's table.
+The `AtomMechanicalIdentity` is unique within a residue's table for
+all distinguishable atoms; chemically-equivalent hydrogen sets
+(methyl-group Hs after `DiastereotopicIndex` is cleared on
+`PseudoatomKind::M`; cap-table H1/H2/H3 under rapid water exchange)
+share identity by deliberate design. See the docstring on
+`AtomMechanicalIdentity` in `src/SemanticEnums.h` for the canonical
+statement; `LookupBy` returns the first match in such cases and the
+substrate rows for those hydrogens are intentionally identical.
 
 ### H.2 Lookup function (runtime)
 
@@ -485,21 +492,40 @@ void Protein::FinalizeConstruction() {
 `ApplySemantic` writes the typed semantic fields onto the runtime
 atom record (or a parallel `LegacyAmberTopology` substrate slot).
 
-**Override-composition rule (per Fix 6 of the 2026-05-05 OpenAI
-evaluation; live in the cap-table comment block of the generated
-.cpp)**: when a residue is at a terminus, `Protein::FinalizeConstruction`
-MUST query both `LookupBy` (chain) and `LookupCap` (terminal-state).
-If `LookupCap` returns non-null, the cap entry's fields override the
-chain entry's fields for that atom. The cap table MAY contain entries
-for backbone atoms (N for NTERM, C/O for CTERM) whose chemistry
-differs at the terminus; those entries have priority.
+**Override-composition rule (FIELD-LEVEL, not whole-row — per the
+2026-05-05 OpenAI second-round evaluation finding)**: cap-table
+entries are SEMANTIC DELTAS, not full rows. Whole-row override would
+clobber RDKit-derived fields (`equivalence_class`, `aromatic`)
+because the cap entries' non-delta fields carry placeholder defaults
+(zero / false) — the cap table's purpose is to express the few
+chemistry-level fields that change at termini.
 
-Backbone overrides have non-None `BackboneRole` matching the chain's
-same-role entry; terminus-added Hs / Os (H1, H2, H3, OXT, HXT) carry
-`BackboneRole::None` and only match via the cap-table lookup. The
-`ApplySemantic` ordering above (cap last, after chain) implements the
-override automatically: the cap-table fields land on top of any chain
-values that were written first.
+The canonical composition primitive is `ApplyCapDelta` declared in
+`src/generated/LegacyAmberSemanticTables.h` and inlined there. It
+takes the chain-derived `AtomSemanticTable` and overlays the cap
+entry's chemistry-level fields:
+
+- **Cap-controlled fields (overlayed from cap entry)**:
+  `planar_group`, `polar_h`, `formal_charge`, `pseudoatom`,
+  `ring_position`. Plus `is_exchangeable` recomputed from the
+  resulting `polar_h`.
+- **Chain-controlled fields (preserved from chain)**: `element`,
+  `locant`, `branch`, `di_index`, `backbone_role` (identity);
+  `aromatic`, `equivalence_class` (RDKit perception); `prochiral`,
+  `planar_stereo` (chemistry not affected by termini per Section 4
+  of the residue reference doc).
+
+The composition pseudocode at top of §H.5 should be revised to use
+`ApplyCapDelta` for the override case (chain entry exists AND cap
+entry exists) and to take the cap entry whole only for cap-only
+atoms (no chain entry — H1/H2/H3 / OXT / HXT). The cap entries'
+identity fields are validly populated (the cap-table builder fills
+them in); RDKit-derived fields default to 0/false for cap-only
+atoms because cap atoms are not RDKit-perceived.
+
+Cap tables continue to carry override entries for backbone atoms
+(N for NTERM; C/O for CTERM) plus added cap atoms (H1/H2/H3, OXT,
+HXT) — see Fix 1 + Fix 2 commit and §H.4 for the layout.
 
 After Fix 1 (2026-05-05), the cap tables carry override entries:
 - `kCapNtermCharged` — N (BackboneRole::Nitrogen, formal_charge=+1) +

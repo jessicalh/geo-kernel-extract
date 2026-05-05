@@ -178,6 +178,7 @@ add_library(nmr_shielding
     src/LegacyAmberTopology.cpp
     src/CovalentTopology.cpp
     src/ForceFieldChargeTable.cpp
+    src/generated/LegacyAmberSemanticTables.cpp
     src/ProteinConformation.cpp
     src/PdbFileReader.cpp
     src/GeometryResult.cpp
