@@ -35,7 +35,15 @@
 #include <GraphMol/PeriodicTable.h>
 #include <GraphMol/RDKitBase.h>
 #include <GraphMol/SmilesParse/SmilesWrite.h>
+#include <GraphMol/new_canon.h>
+#include <CIPLabeler/CIPLabeler.h>
 #include <RDGeneral/versions.h>
+
+// Types.h + SemanticEnums.h -- the typed-enum vocabulary the runtime sees.
+#include "Types.h"
+#include "SemanticEnums.h"
+
+using namespace nmr;
 
 
 namespace {
@@ -449,10 +457,568 @@ void LogRdkitPerception(const RDKit::RWMol& mol,
 }
 
 
-// Scaffolded validation pass: load PHE from CCD, build an RDKit mol,
-// sanitize, log perception. This is Step 2-3 of the generator
-// pipeline; subsequent steps add per-field population, reconciliation,
-// and emission.
+// ============================================================================
+// Atom-name parser -- mechanical fields (Locant, BranchAddress,
+// DiastereotopicIndex) from the CCD atom_id string plus the residue's
+// bond graph (to map H atoms to their heavy-atom parent).
+//
+// String boundary: this parser consumes CCD atom-name strings and
+// returns typed-enum values. The strings die at this function's
+// return; callers see typed values only.
+// ============================================================================
+
+struct ParsedName {
+    Element             element;
+    bool                is_backbone     = false;  ///< N/CA/C/O/H/HA (and HN alias)
+    bool                is_n_terminus   = false;  ///< H1/H2/H3 (extra ammonium Hs)
+    bool                is_c_terminus   = false;  ///< OXT/HXT
+    Locant              locant          = Locant::None;
+    BranchAddress       branch          = {};
+    DiastereotopicIndex di_index        = DiastereotopicIndex::None;
+};
+
+Element ElementFromAtomName(const std::string& name) {
+    if (name.empty()) return Element::Unknown;
+    switch (name[0]) {
+        case 'H': return Element::H;
+        case 'C': return Element::C;
+        case 'N': return Element::N;
+        case 'O': return Element::O;
+        case 'S': return Element::S;
+        default:  return Element::Unknown;
+    }
+}
+
+Locant LocantLetterToEnum(char c) {
+    switch (c) {
+        case 'A': return Locant::Alpha;
+        case 'B': return Locant::Beta;
+        case 'G': return Locant::Gamma;
+        case 'D': return Locant::Delta;
+        case 'E': return Locant::Epsilon;
+        case 'Z': return Locant::Zeta;
+        case 'H': return Locant::Eta;     // Note: 'H' as locant suffix (Arg/Tyr eta), NOT element.
+        default:  return Locant::None;
+    }
+}
+
+// Parse an atom name plus its parent map (H -> heavy parent name).
+// For non-H atoms parent_name is empty.
+ParsedName ParseAtomName(const std::string& name, const std::string& parent_name) {
+    ParsedName p;
+    p.element = ElementFromAtomName(name);
+
+    // Pure backbone names.
+    if (name == "N" || name == "CA" || name == "C" || name == "O" ||
+        name == "H" || name == "HN" || name == "HA") {
+        p.is_backbone = true;
+        if (name == "HA") p.locant = Locant::Alpha;  // HA is a Cα-H
+        return p;
+    }
+    // N-terminal extra ammonium Hs.
+    if (name == "H1" || name == "H2" || name == "H3" || name == "H2N") {
+        p.is_n_terminus = true;
+        return p;
+    }
+    // C-terminal carboxyl atoms.
+    if (name == "OXT" || name == "HXT" || name == "OT1" || name == "OT2") {
+        p.is_c_terminus = true;
+        return p;
+    }
+    // Glycine alpha-Hs (only diastereotopic CH2 in the standard 20).
+    if (name == "HA2" || name == "HA3") {
+        p.is_backbone = true;
+        p.locant = Locant::Alpha;
+        p.di_index = (name.back() == '2') ? DiastereotopicIndex::Position2
+                                          : DiastereotopicIndex::Position3;
+        return p;
+    }
+
+    // Sidechain: <element-letter><locant-letter><digits...>.
+    // The locant letter is the second character of the atom name.
+    if (name.size() < 2) return p;  // unparseable, give up
+    p.locant = LocantLetterToEnum(name[1]);
+    if (p.locant == Locant::None) return p;
+
+    // Trailing digits form a numeric suffix: "" / "1" / "2" / "12" / "21" etc.
+    const std::string suffix = name.substr(2);
+    if (suffix.empty()) return p;  // single sidechain atom (e.g. CB, SG, OH)
+
+    // For non-H atoms with a digit suffix: the digit is the BranchAddress::outer
+    // (Val CG1/CG2, Leu CD1/CD2, Phe CD1/CD2, Asn OD1/ND2, Asn OD1, etc.).
+    if (p.element != Element::H) {
+        // Single digit: simple branch.
+        if (suffix.size() == 1 && std::isdigit(static_cast<unsigned char>(suffix[0]))) {
+            p.branch.outer = static_cast<uint8_t>(suffix[0] - '0');
+            return p;
+        }
+        // Multi-digit on heavy atom is unusual; record as outer for now.
+        p.branch.outer = static_cast<uint8_t>(suffix[0] - '0');
+        return p;
+    }
+
+    // For H atoms: use the heavy-atom parent map to disambiguate.
+    //   - parent has no branch digit (e.g. CB, CG): suffix encodes
+    //     diastereotopic pair (HB2/HB3).
+    //   - parent has branch digit (e.g. CD1, NH1): suffix's first
+    //     digit is the parent's branch (outer); remaining digits
+    //     are inner (e.g. HD11 = on CD1, inner=1).
+    bool parent_has_digit = false;
+    char parent_digit = 0;
+    if (!parent_name.empty()) {
+        for (char c : parent_name) {
+            if (std::isdigit(static_cast<unsigned char>(c))) {
+                parent_has_digit = true;
+                parent_digit = c;
+                break;
+            }
+        }
+    }
+
+    if (!parent_has_digit) {
+        // Diastereotopic methylene-style: HB2 vs HB3, HG2 vs HG3, etc.
+        // Methyl-on-unbranched (Ala HB1/HB2/HB3) also lands here; we
+        // record the digit as DiastereotopicIndex but the methyl-pair
+        // distinction is downstream (PseudoatomMembership).
+        if (suffix.size() == 1 && std::isdigit(static_cast<unsigned char>(suffix[0]))) {
+            const char d = suffix[0];
+            if (d == '2') p.di_index = DiastereotopicIndex::Position2;
+            else if (d == '3') p.di_index = DiastereotopicIndex::Position3;
+            // d == '1' (Ala HB1) leaves di_index = None; the membership
+            // of a methyl pseudoatom (MB) is what carries the meaning.
+        }
+        return p;
+    }
+
+    // Parent has branch digit: outer = parent's branch, inner = remaining
+    // digit on the H name (if any).
+    p.branch.outer = static_cast<uint8_t>(parent_digit - '0');
+    // Extract the H atom's inner digit: search the suffix for a digit
+    // that isn't the parent's outer match.
+    for (char c : suffix) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) continue;
+        if (c == parent_digit && p.branch.inner == 0 && suffix.size() == 1) {
+            // Single matching digit (e.g. HG1 on CG1 means just "the H on CG1").
+            return p;
+        }
+        if (c != parent_digit) {
+            p.branch.inner = static_cast<uint8_t>(c - '0');
+            break;
+        }
+    }
+    // Special case: HG21 on Thr CG2 -> outer=2, inner=1.
+    // The above loop catches that because digits after the first match are inner.
+    if (p.branch.inner == 0) {
+        // Suffix has multiple matching digits or only one: handle by
+        // taking the last digit as inner.
+        p.branch.inner = static_cast<uint8_t>(suffix.back() - '0');
+        if (p.branch.inner == p.branch.outer && suffix.size() == 1) {
+            // Suffix was just the parent digit; H is the only one on
+            // that branch (e.g. Thr HG1 on OG1).
+            p.branch.inner = 0;
+        }
+    }
+    return p;
+}
+
+
+// Build a map from each atom name to its first heavy-atom neighbour
+// (used to derive H -> parent for ParseAtomName).
+std::map<std::string, std::string> BuildHydrogenParentMap(const CcdResidue& res) {
+    std::map<std::string, std::string> parents;
+    for (const auto& b : res.bonds) {
+        const bool a1_is_h = !b.atom_id_1.empty() && b.atom_id_1.front() == 'H';
+        const bool a2_is_h = !b.atom_id_2.empty() && b.atom_id_2.front() == 'H';
+        if (a1_is_h && !a2_is_h) parents[b.atom_id_1] = b.atom_id_2;
+        else if (a2_is_h && !a1_is_h) parents[b.atom_id_2] = b.atom_id_1;
+    }
+    return parents;
+}
+
+
+// ============================================================================
+// RDKit perception extraction -- typed values for ProchiralStereo,
+// hybridisation, aromatic flag, ring info, equivalence class.
+//
+// String boundary: RDKit returns its perception as typed C++ values
+// already. The CIPLabeler returns "R"/"S"/etc. as a property string;
+// we translate to the typed enum here.
+// ============================================================================
+
+ProchiralStereo RdkitCipCodeToEnum(const std::string& code) {
+    if (code == "R") return ProchiralStereo::ProR;
+    if (code == "S") return ProchiralStereo::ProS;
+    return ProchiralStereo::Unassigned;
+}
+
+Hybridisation RdkitHybToEnum(RDKit::Atom::HybridizationType h) {
+    switch (h) {
+        case RDKit::Atom::SP:   return Hybridisation::sp;
+        case RDKit::Atom::SP2:  return Hybridisation::sp2;
+        case RDKit::Atom::SP3:  return Hybridisation::sp3;
+        default:                return Hybridisation::Unassigned;
+    }
+}
+
+BondOrderToNeighbour RdkitBondTypeToEnum(RDKit::Bond::BondType t) {
+    switch (t) {
+        case RDKit::Bond::SINGLE:        return BondOrderToNeighbour::Single;
+        case RDKit::Bond::DOUBLE:        return BondOrderToNeighbour::Double;
+        case RDKit::Bond::TRIPLE:        return BondOrderToNeighbour::Triple;
+        case RDKit::Bond::AROMATIC:      return BondOrderToNeighbour::Aromatic;
+        case RDKit::Bond::ONEANDAHALF:   return BondOrderToNeighbour::Delocalised;
+        case RDKit::Bond::QUADRUPLE:     return BondOrderToNeighbour::Quadruple;
+        default:                         return BondOrderToNeighbour::None;
+    }
+}
+
+
+struct RdkitFacts {
+    // Per-rdkit-atom-index facts.
+    std::vector<bool>            aromatic;
+    std::vector<Hybridisation>   hybridisation;
+    std::vector<ProchiralStereo> cip_stereo;
+    std::vector<uint8_t>         canonical_rank;   ///< RDKit equivalence-class index
+    std::vector<BondOrderMask>   bond_orders;      ///< up to 4 bonded neighbours
+    std::vector<bool>            in_ring;
+};
+
+RdkitFacts ExtractRdkitFacts(RDKit::RWMol& mol, ProcessLog& log) {
+    log.Section("rdkit-facts-extraction");
+
+    // Run CIP labelling. Annotates atoms with property "_CIPCode" = "R"/"S".
+    try {
+        RDKit::CIPLabeler::assignCIPLabels(mol);
+        log.KV("cip_labeller_status", "OK");
+    } catch (const std::exception& e) {
+        log.KV("cip_labeller_status", "FAILED");
+        log.KV("cip_labeller_error", e.what());
+    }
+
+    // Canonical-rank = equivalence class within molecule. Atoms with the
+    // same rank are NMR-equivalent (e.g. methyl Hs collapse, ring-flip-fast
+    // ortho atoms collapse).
+    std::vector<unsigned int> rank;
+    try {
+        RDKit::Canon::rankMolAtoms(mol, rank, /*breakTies*/ false);
+        log.KV("canonical_rank_status", "OK");
+    } catch (const std::exception& e) {
+        log.KV("canonical_rank_status", "FAILED");
+        log.KV("canonical_rank_error", e.what());
+        rank.assign(mol.getNumAtoms(), 0);
+    }
+
+    RdkitFacts facts;
+    const auto n = mol.getNumAtoms();
+    facts.aromatic.resize(n);
+    facts.hybridisation.resize(n);
+    facts.cip_stereo.resize(n, ProchiralStereo::NotProchiral);
+    facts.canonical_rank.resize(n);
+    facts.bond_orders.resize(n);
+    facts.in_ring.resize(n);
+
+    const auto* ring_info = mol.getRingInfo();
+    int cip_assigned = 0;
+    int aromatic_count = 0;
+    for (unsigned int i = 0; i < n; ++i) {
+        const auto* a = mol.getAtomWithIdx(i);
+        facts.aromatic[i]      = a->getIsAromatic();
+        facts.hybridisation[i] = RdkitHybToEnum(a->getHybridization());
+        facts.canonical_rank[i] = static_cast<uint8_t>(
+            i < rank.size() ? std::min<unsigned>(rank[i], 255u) : 0u);
+        facts.in_ring[i] = ring_info->numAtomRings(i) > 0;
+        if (facts.aromatic[i]) ++aromatic_count;
+
+        std::string cip;
+        if (a->getPropIfPresent(RDKit::common_properties::_CIPCode, cip) && !cip.empty()) {
+            facts.cip_stereo[i] = RdkitCipCodeToEnum(cip);
+            ++cip_assigned;
+        }
+
+        // Per-atom bond orders to up to 4 neighbours.
+        unsigned int slot = 0;
+        for (const auto& nbr : mol.atomBonds(a)) {
+            if (slot >= 4) break;
+            facts.bond_orders[i].orders[slot] = RdkitBondTypeToEnum(nbr->getBondType());
+            ++slot;
+        }
+    }
+    log.KV("aromatic_atom_count", aromatic_count);
+    log.KV("cip_labels_assigned", cip_assigned);
+    return facts;
+}
+
+
+// ============================================================================
+// Synthesised-field tables -- per-residue chemistry encoding.
+//
+// PlanarGroupKind, PolarHKind, PseudoatomMembership, RingSystem and
+// RingPosition labels for the standard 20 residues. Encoded as a
+// per-residue lookup function.
+//
+// Citation pattern: each lookup carries a comment naming the chemistry
+// authority. PolarHKind from Wuethrich 1986 + Englander 2008 frame;
+// PlanarGroupKind from Pauling 1951 / Cantor & Schimmel 1980;
+// pseudoatom set from Markley 1998 Table 1 (Wuethrich 1983 extension).
+// RingPosition from Vollhardt + Joule & Mills heterocycle conventions.
+// ============================================================================
+
+struct SynthesisedFields {
+    PlanarGroupKind       planar_group  = PlanarGroupKind::None;
+    PlanarStereo          planar_stereo = PlanarStereo::NotApplicable;
+    PolarHKind            polar_h       = PolarHKind::NotPolar;
+    PseudoatomMembership  pseudoatom    = {};
+    RingPosition          ring_pos      = {};
+};
+
+
+// PHE-only initial implementation; generalises in a follow-up commit
+// once the architecture is proven on one residue.
+SynthesisedFields SynthesisedForPhe(const std::string& atom_id, const ParsedName& parsed) {
+    SynthesisedFields s;
+
+    // Phe ring atoms: CG (ipso), CD1 (ortho1), CD2 (ortho2),
+    //                 CE1 (meta1), CE2 (meta2), CZ (para).
+    // Their hydrogens take the corresponding label too.
+    auto set_ring = [&](RingPositionLabel label) {
+        s.ring_pos.primary.ring          = RingSystemKind::Benzene_Phe;
+        s.ring_pos.primary.position      = label;
+        s.ring_pos.primary.ring_size     = 6;
+        s.ring_pos.primary.aromatic      = true;
+        s.ring_pos.primary.planar        = true;
+        s.ring_pos.primary.n_heteroatoms = 0;
+        s.planar_group = PlanarGroupKind::Aromatic6Ring;
+    };
+    if      (atom_id == "CG"  || atom_id == "HG")  set_ring(RingPositionLabel::Ipso);
+    else if (atom_id == "CD1" || atom_id == "HD1") set_ring(RingPositionLabel::Ortho1);
+    else if (atom_id == "CD2" || atom_id == "HD2") set_ring(RingPositionLabel::Ortho2);
+    else if (atom_id == "CE1" || atom_id == "HE1") set_ring(RingPositionLabel::Meta1);
+    else if (atom_id == "CE2" || atom_id == "HE2") set_ring(RingPositionLabel::Meta2);
+    else if (atom_id == "CZ"  || atom_id == "HZ")  set_ring(RingPositionLabel::Para);
+
+    // Polar-H classification.
+    if (parsed.element == Element::H) {
+        if      (atom_id == "H" || atom_id == "HN") s.polar_h = PolarHKind::BackboneAmide;
+        else if (parsed.is_n_terminus)              s.polar_h = PolarHKind::AmmoniumNH;
+        else if (parsed.is_c_terminus)              s.polar_h = PolarHKind::CarboxylOH;
+        // ring Hs and CH/CHn are NotPolar.
+    }
+
+    // Backbone peptide planar group: N, CA(?, no, CA is sp3), C, O, H form
+    // the planar peptide unit. Strictly: N, C, O, H of i; CA of i and i-1
+    // are at the boundaries. In the canonical free-amino-acid CCD entry
+    // we tag N + C + O + H as members.
+    if (atom_id == "N" || atom_id == "C" || atom_id == "O" || atom_id == "H" ||
+        atom_id == "HN") {
+        s.planar_group = PlanarGroupKind::PeptideAmide;
+    }
+
+    // C-terminal carboxylate (Phe in CCD has OXT + HXT i.e. protonated):
+    // tag OXT/HXT/C as Carboxylate when both Os are present. PHE in CCD
+    // is the protonated form so we use AromaticHydroxyl-style PolarH for
+    // the OH proton.
+    if (atom_id == "OXT" || atom_id == "C" || atom_id == "O") {
+        if (s.planar_group == PlanarGroupKind::None) s.planar_group = PlanarGroupKind::Carboxylate;
+    }
+
+    // Pseudoatom membership: PHE has QB (Hβ pair), QD (Hδ ring pair),
+    // QE (Hε ring pair), QR (all ring Hs).
+    if (atom_id == "HB2" || atom_id == "HB3") {
+        s.pseudoatom = {PseudoatomKind::Q, /*locant*/ static_cast<uint8_t>(Locant::Beta), 0, false};
+    }
+    if (atom_id == "HD1" || atom_id == "HD2") {
+        s.pseudoatom = {PseudoatomKind::Q, /*locant*/ static_cast<uint8_t>(Locant::Delta), 0, /*super*/ true};
+    }
+    if (atom_id == "HE1" || atom_id == "HE2") {
+        s.pseudoatom = {PseudoatomKind::Q, /*locant*/ static_cast<uint8_t>(Locant::Epsilon), 0, /*super*/ true};
+    }
+    if (atom_id == "HZ") {
+        s.pseudoatom = {PseudoatomKind::R, /*locant*/ static_cast<uint8_t>(Locant::Zeta), 0, /*super*/ true};
+    }
+
+    return s;
+}
+
+
+// ============================================================================
+// AtomSemanticEntry -- the typed record for one atom in the residue.
+// Combines mechanical (parser), algorithmic (RDKit), and synthesised
+// (per-residue table) sources into a single typed record with
+// provenance witnesses.
+// ============================================================================
+
+struct AtomSemanticEntry {
+    // Identification (in the generator scope only -- the runtime
+    // table indexes by (residue, atom_local_idx), not by name).
+    std::string               atom_id_for_log;
+
+    // Typed fields, all 14 of them.
+    Locant                    locant            = Locant::None;
+    BranchAddress             branch            = {};
+    DiastereotopicIndex       di_index          = DiastereotopicIndex::None;
+    ProchiralStereo           prochiral         = ProchiralStereo::NotProchiral;
+    PlanarGroupKind           planar_group      = PlanarGroupKind::None;
+    PlanarStereo              planar_stereo     = PlanarStereo::NotApplicable;
+    PseudoatomMembership      pseudoatom        = {};
+    PolarHKind                polar_h           = PolarHKind::NotPolar;
+    RingPosition              ring_position     = {};
+    bool                      aromatic          = false;
+    Hybridisation             hybridisation     = Hybridisation::Unassigned;
+    BondOrderMask             bond_orders       = {};
+    int8_t                    formal_charge     = 0;
+    bool                      is_exchangeable   = false;
+    uint8_t                   equivalence_class = 0;
+
+    // Provenance per field. Keyed by a small enum; populated as
+    // each source contributes.
+    SemanticProvenance        prov_locant;
+    SemanticProvenance        prov_prochiral;
+    SemanticProvenance        prov_planar_group;
+    SemanticProvenance        prov_polar_h;
+    SemanticProvenance        prov_ring_position;
+    SemanticProvenance        prov_aromatic;
+    SemanticProvenance        prov_hybridisation;
+    // (Other provenance fields default-constructed; expanded as
+    // additional sources are added in subsequent commits.)
+};
+
+// Combine sources with the precedence-table policy.
+AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
+                                          const ParsedName& parsed,
+                                          unsigned int rdkit_idx,
+                                          const RdkitFacts& facts,
+                                          const SynthesisedFields& syn,
+                                          int formal_charge_from_ccd) {
+    AtomSemanticEntry e;
+    e.atom_id_for_log = atom_id;
+
+    // Mechanical fields from atom-name parser.
+    e.locant   = parsed.locant;
+    e.branch   = parsed.branch;
+    e.di_index = parsed.di_index;
+    e.prov_locant.witnesses[0] = {SemanticSource::IUPAC_1969,
+                                  static_cast<uint8_t>(parsed.locant)};
+    e.prov_locant.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+    e.prov_locant.sources_agree = true;
+
+    // Algorithmic fields from RDKit.
+    e.prochiral     = facts.cip_stereo[rdkit_idx];
+    e.aromatic      = facts.aromatic[rdkit_idx];
+    e.hybridisation = facts.hybridisation[rdkit_idx];
+    e.bond_orders   = facts.bond_orders[rdkit_idx];
+    e.equivalence_class = facts.canonical_rank[rdkit_idx];
+    e.formal_charge = static_cast<int8_t>(formal_charge_from_ccd);
+
+    e.prov_prochiral.witnesses[0] = {SemanticSource::RDKit_CIPLabeler,
+                                     static_cast<uint8_t>(facts.cip_stereo[rdkit_idx])};
+    e.prov_prochiral.confidence   = (facts.cip_stereo[rdkit_idx] == ProchiralStereo::NotProchiral)
+        ? SemanticConfidence::AlgorithmAuthoritative
+        : SemanticConfidence::CIPVerified;
+    e.prov_prochiral.cip_verified = (facts.cip_stereo[rdkit_idx] != ProchiralStereo::NotProchiral &&
+                                      facts.cip_stereo[rdkit_idx] != ProchiralStereo::Unassigned);
+    e.prov_prochiral.sources_agree = true;
+
+    e.prov_aromatic.witnesses[0] = {SemanticSource::RDKit_AromaticPerception,
+                                    static_cast<uint8_t>(facts.aromatic[rdkit_idx] ? 1 : 0)};
+    e.prov_aromatic.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+    e.prov_aromatic.sources_agree = true;
+
+    e.prov_hybridisation.witnesses[0] = {SemanticSource::RDKit_Hybridisation,
+                                          static_cast<uint8_t>(facts.hybridisation[rdkit_idx])};
+    e.prov_hybridisation.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+    e.prov_hybridisation.sources_agree = true;
+
+    // Synthesised fields from per-residue table.
+    e.planar_group  = syn.planar_group;
+    e.planar_stereo = syn.planar_stereo;
+    e.polar_h       = syn.polar_h;
+    e.pseudoatom    = syn.pseudoatom;
+    e.ring_position = syn.ring_pos;
+    e.is_exchangeable = (e.polar_h != PolarHKind::NotPolar);
+
+    e.prov_planar_group.witnesses[0] = {SemanticSource::SynthesizedFromChemistry,
+                                         static_cast<uint8_t>(syn.planar_group)};
+    e.prov_planar_group.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+
+    e.prov_polar_h.witnesses[0] = {SemanticSource::SynthesizedFromChemistry,
+                                    static_cast<uint8_t>(syn.polar_h)};
+    e.prov_polar_h.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+
+    e.prov_ring_position.witnesses[0] = {SemanticSource::SynthesizedFromChemistry,
+                                          static_cast<uint8_t>(syn.ring_pos.primary.position)};
+    e.prov_ring_position.confidence   = SemanticConfidence::AlgorithmAuthoritative;
+
+    return e;
+}
+
+
+// Build the per-atom semantic entries for one residue.
+std::vector<AtomSemanticEntry> BuildResidueEntries(const CcdResidue& res,
+                                                    const RdkitMolWithMap& built,
+                                                    const RdkitFacts& facts,
+                                                    ProcessLog& log) {
+    log.Section(std::string("build-entries::") + res.three_letter);
+    std::vector<AtomSemanticEntry> entries;
+    entries.reserve(res.atoms.size());
+
+    auto parents = BuildHydrogenParentMap(res);
+    std::map<std::string, unsigned int> name_to_rdkit_idx;
+    for (unsigned int i = 0; i < built.rdkit_idx_to_ccd_atom_id.size(); ++i) {
+        name_to_rdkit_idx[built.rdkit_idx_to_ccd_atom_id[i]] = i;
+    }
+
+    for (const auto& ccd_atom : res.atoms) {
+        std::string parent_name;
+        if (ccd_atom.type_symbol == "H") {
+            auto it = parents.find(ccd_atom.atom_id);
+            if (it != parents.end()) parent_name = it->second;
+        }
+        const ParsedName parsed = ParseAtomName(ccd_atom.atom_id, parent_name);
+
+        unsigned int rdkit_idx = 0;
+        auto it = name_to_rdkit_idx.find(ccd_atom.atom_id);
+        if (it != name_to_rdkit_idx.end()) rdkit_idx = it->second;
+
+        SynthesisedFields syn;
+        if (res.three_letter == "PHE") {
+            syn = SynthesisedForPhe(ccd_atom.atom_id, parsed);
+        }
+
+        AtomSemanticEntry e = BuildAtomSemanticEntry(ccd_atom.atom_id, parsed,
+                                                      rdkit_idx, facts, syn,
+                                                      ccd_atom.formal_charge);
+        entries.push_back(std::move(e));
+    }
+    log.KV("entries_built", static_cast<int>(entries.size()));
+    return entries;
+}
+
+
+// Spot-log a few entries for inspection.
+void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
+                         ProcessLog& log,
+                         const std::string& residue_3letter) {
+    log.Section(std::string("entries-spot-check::") + residue_3letter);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& e = entries[i];
+        std::string fact;
+        fact += "loc=" + std::to_string(static_cast<int>(e.locant));
+        fact += " branch=" + std::to_string(e.branch.outer) + "/" + std::to_string(e.branch.inner);
+        fact += " di=" + std::to_string(static_cast<int>(e.di_index));
+        fact += " prochiral=" + std::to_string(static_cast<int>(e.prochiral));
+        fact += " planar=" + std::to_string(static_cast<int>(e.planar_group));
+        fact += " polarH=" + std::to_string(static_cast<int>(e.polar_h));
+        fact += " ring_pos=" + std::to_string(static_cast<int>(e.ring_position.primary.position));
+        fact += " arom=" + std::to_string(static_cast<int>(e.aromatic));
+        fact += " hyb=" + std::to_string(static_cast<int>(e.hybridisation));
+        fact += " eqcls=" + std::to_string(static_cast<int>(e.equivalence_class));
+        log.KV(std::to_string(i) + "_" + e.atom_id_for_log, fact);
+    }
+}
+
+
+// Validation pass: load PHE, build mol, sanitize, extract facts,
+// build typed entries, log them.
 int ValidatePheRoundTrip(cif::file& ccd, ProcessLog& log) {
     log.Section("phe-roundtrip-validation");
     auto residue_opt = LoadCcdResidue(ccd, "PHE", log);
@@ -470,6 +1036,11 @@ int ValidatePheRoundTrip(cif::file& ccd, ProcessLog& log) {
         return 1;
     }
     LogRdkitPerception(*built.mol, built.rdkit_idx_to_ccd_atom_id, log, "PHE");
+
+    auto facts = ExtractRdkitFacts(*built.mol, log);
+    auto entries = BuildResidueEntries(*residue_opt, built, facts, log);
+    LogEntriesSpotCheck(entries, log, "PHE");
+
     log.KV("status", "OK");
     return 0;
 }

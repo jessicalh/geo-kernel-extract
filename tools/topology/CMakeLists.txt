@@ -68,6 +68,12 @@ target_include_directories(build_semantic_tables PRIVATE
 target_link_libraries(build_semantic_tables PRIVATE
     ${RDKIT_LIBRARIES}
     cifpp::cifpp
+    Eigen3::Eigen          # Needed by src/Types.h (Vec3, Mat3) -- the
+                           # generator includes Types.h to share the
+                           # Element + Hybridisation enums with the
+                           # runtime. Eigen does not cross any string
+                           # barrier; only the typed-enum subset of
+                           # Types.h is consumed.
 )
 
 # Set rpath so the binary can find RDKit shared libraries at runtime
