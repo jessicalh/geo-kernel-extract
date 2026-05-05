@@ -2,6 +2,7 @@ build/
 build-ui/
 build-check/
 build-forensic/
+build-gen/
 Testing/
 *.o
 *.a

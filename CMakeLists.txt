@@ -579,3 +579,22 @@ if(Qt6_FOUND AND VTK_FOUND)
 else()
     message(STATUS "Qt6 or VTK not found — skipping nmr-viewer")
 endif()
+
+
+# ============================================================================
+# Build-time generator for LegacyAmberTopology semantic tables (opt-in).
+#
+# Links cifpp + RDKit. Reads CCD, runs perception, emits the typed-enum
+# table at src/generated/LegacyAmberSemanticTables.cpp. The runtime
+# library does NOT link RDKit -- the string barrier is enforced by
+# the linker. See tools/topology/README.md and
+# spec/plan/topology-substrate-implementation-plan-2026-05-05.md.
+# ============================================================================
+
+option(NMR_BUILD_TABLE_GENERATOR
+    "Build the LegacyAmberTopology semantic tables generator (requires RDKit)"
+    OFF)
+if(NMR_BUILD_TABLE_GENERATOR)
+    message(STATUS "Building topology table generator (NMR_BUILD_TABLE_GENERATOR=ON)")
+    add_subdirectory(tools/topology)
+endif()
