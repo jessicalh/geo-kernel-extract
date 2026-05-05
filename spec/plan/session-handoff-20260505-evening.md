@@ -21,16 +21,19 @@ This document is that.
 
 ## State at end of session
 
-**HEAD:** `bb4584d` on `master`. The morning handoff commit `b079d4a`
-plus this evening's commit `bb4584d` are local-only pending push
-(matches the prior session's state — push is on the user's schedule,
-not autonomous).
+**HEAD:** `ab3bd5e` on `master`. The morning handoff commit `b079d4a`
+plus three evening commits (`bb4584d`, `56fb6b9`, `ab3bd5e`) are
+local-only pending push (matches the prior session's state — push is
+on the user's schedule, not autonomous).
 
-**This session's single commit:**
+**This session's three commits, oldest first:**
 
 ```text
 bb4584d  Phase 5 substrate: residue reference + critical review +
          dependencies + enum extensions
+56fb6b9  Phase 5 substrate: encode standard 20 residues; variants pending
+ab3bd5e  Phase 5 substrate: emit AMBER variant tables via parent-CCD +
+         delta architecture
 ```
 
 **Tests:** ctest 352/352 pass (347 prior baseline + 5 StringBarrier).
@@ -109,44 +112,74 @@ Per dependencies §E:
 
 ---
 
+## Update: encoding completed in this session via supervised agent
+
+After the original handoff was drafted, the user proposed using an
+encoding agent under supervisor oversight rather than saving state for
+a fresh session. Two agent runs completed in this session:
+
+**Run 1 — encoded standard 20 + per-variant patch functions** but iterated
+variant codes against the CCD assuming the codes had matching CCD
+entries. They do not — the codes (HID/HIE/HIP/ASH/GLH/CYX/CYM/LYN/ARN/
+TYM) coincide with unrelated small molecules in CCD by historical
+accident. The 10 variant tables emitted contained garbage data
+encoded against the wrong molecules.
+
+**Strip + standard-20 commit (`56fb6b9`)** removed the variant entries
+from the iteration loop and dispatch; per-variant `SynthesisedFor<Variant>`
+functions kept as `[[maybe_unused]]` ready for the corrected
+architecture; `topology-encoding-dependencies-2026-05-05.md` §G added
+to capture the architectural lesson.
+
+**Run 2 — variant tables emitted via parent-CCD + delta architecture**
+(commit `ab3bd5e`). The agent discovered the CCD parent entries
+already contain protonated/imidazolium variants, so most variants are
+atom-removal cases (HIE removes HD1; HID removes HE2; CYX/CYM remove
+HG; LYN removes HZ1; ARN removes HE; TYM removes HH) plus field-deltas
+via the existing `SynthesisedFor<Variant>` patches with a new
+`charge_override` field on `SynthesisedFields`. HIP/ASH/GLH have no
+atom-removals (parent CCD atoms = variant atoms; just field changes).
+
+Generated table: 30 residue tables (20 standard + 10 variants).
+Standard 20 byte-identical. PHE byte-identical. ctest 352/352.
+
+**Phase 5 substrate is COMPLETE.** Next session's work is integration
++ test coverage, not encoding.
+
+---
+
 ## What's next (sequenced)
 
-The next session's work is mechanical encoding against the reference
-doc + dependencies file. Order matters less than the inputs being on
-disk and signed off.
+The encoding work is done. Next is integration + test coverage.
 
-### Next-session priority 1: Encode 19 residues + variants
-
-Generalise `SynthesisedFor<Residue>` in
-`tools/topology/build_semantic_tables.cpp`. Existing template:
-`SynthesisedForPhe` lines 779–842. Pattern per residue:
-
-1. Read residue's block in
-   `spec/plan/topology-residue-reference-2026-05-05.md` Section 3.
-2. Translate each row into the SynthesisedFields shape: planar_group,
-   planar_stereo (where applicable), pseudoatom membership, polarH,
-   ring_position primary + secondary.
-3. Apply variant deltas as separate `SynthesisedFor<Residue><Variant>`
-   functions or as variant-aware switches inside the residue function.
-4. Add ProchiralStereo via the Markley alternation rule (per-residue
-   table in the reference; β-onward 3=ProR/2=ProS; Gly inverts
-   HA2=ProR/HA3=ProS; branched heavy atoms per Markley Fig 1).
-
-Order recommendation: ALA (simplest, no rings, no variants) →
-GLY (inversion case) → ALA-cluster (SER, THR, VAL) → branched aliphatic
-(LEU, ILE) → polar charged (LYS+LYN, ASP+ASH, GLU+GLH, ARG+ARN) →
-sulphur (CYS+CYX+CYM, MET) → aromatic (PHE confirmed, TYR+TYM, HIS+HID+HIE+HIP)
-→ TRP (most complex; fused rings) → PRO (saturated ring case).
-
-### Next-session priority 2: Coverage test (Task #10)
+### Next-session priority 1: Coverage test (Task #10)
 
 `tests/test_legacy_amber_semantic_tables.cpp` (or similar). Asserts
-every (residue, variant, atom) triple has all 14 fields populated
-with a non-default-sentinel value where chemistry calls for it. Run
-after each batch of residue encodings so partial coverage is caught
-incrementally.
+programmatic invariants on the 30 emitted tables. Suggested asserts:
 
-### Next-session priority 3: Runtime integration
+- **Standard 20**: each has expected backbone atoms (N, CA, C, O,
+  plus H for non-Pro); each non-Pro backbone H has
+  `PolarHKind::BackboneAmide`.
+- **Variant deltas** exercise their critical fields:
+  - HID HD1 = `ImidazoleNH`; Nδ1 = `Heteroatom_NH`; Nε2 = `Heteroatom_NoH`.
+  - HIE HE2 = `ImidazoleNH`; Nε2 = `Heteroatom_NH`; Nδ1 = `Heteroatom_NoH`.
+  - HIP both Hδ1 + Hε2 = `ImidazoleNH`; Nε2 formal_chg=+1.
+  - LYN: 24 atoms; HZ1 absent; HZ2/HZ3 = `AmineNH`; Nζ formal_chg=0.
+  - LYS: HZ1/HZ2/HZ3 = `AmmoniumNH`; Nζ formal_chg=+1.
+  - TYM: Oη = `AromaticOxide`, formal_chg=-1; HH absent.
+  - ASH HD2 = `CarboxylOH`; Oδ2 formal_chg=0.
+  - GLH HE2 = `CarboxylOH`; Oε2 formal_chg=0.
+  - CYM: HG absent; Sγ formal_chg=-1.
+  - CYX: HG absent.
+  - GLY: HA2 = `ProR`; HA3 = `ProS` (the inversion).
+  - TRP: Cδ2 + Cε2 both have primary AND secondary RingMembership.
+- **Markley alternation**: β-onward methylenes have HB3=ProR,
+  HB2=ProS (sample LYS, ARG, MET, ASP).
+
+Tests can dispatch via a small lookup helper or directly index the
+generated `kFooAtoms` / `kFooAtoms_VARIANT` arrays.
+
+### Next-session priority 2: Runtime integration
 
 Add `src/generated/LegacyAmberSemanticTables.cpp` to the
 `nmr_shielding` source list in the main `CMakeLists.txt`, plus a
@@ -251,8 +284,8 @@ tests/test_string_barrier.cpp                              [unchanged this sessi
 
 ```bash
 # 1. HEAD matches.
-git log --oneline -3
-# Expect: bb4584d, b079d4a, 721e681
+git log --oneline -5
+# Expect: ab3bd5e, 56fb6b9, bb4584d, b079d4a, 721e681
 
 # 2. ctest baseline.
 ctest --test-dir build -j 8 | grep -E "tests passed|tests failed"
@@ -266,21 +299,25 @@ ctest --test-dir build -R StringBarrier
 nm build/libnmr_shielding.a | grep -c '_ZN5RDKit'
 # Expect: 0.
 
-# 5. Generator regenerates byte-identical PHE.
+# 5. Generated tables emit 30 residues.
+grep -c "^// === " src/generated/LegacyAmberSemanticTables.cpp
+# Expect: 30 (20 standard + 10 variants).
+
+# 6. Generator regenerates byte-identical for the standard 20.
 ./build-gen/tools/topology/build_semantic_tables \
     --ccd data/ccd/components.cif \
-    --output /tmp/phe.cpp \
-    --log /tmp/phe.log
-diff /tmp/phe.cpp src/generated/LegacyAmberSemanticTables.cpp
+    --output /tmp/regen.cpp \
+    --log /tmp/regen.log
+diff /tmp/regen.cpp src/generated/LegacyAmberSemanticTables.cpp
 # Expect: no output (byte-identical).
 
-# 6. New enum values present.
+# 7. New enum values present.
 grep -E "AmineNH|AromaticOxide" src/SemanticEnums.h
-# Expect: 4 hits (1 enum line + 1 docstring per value).
+# Expect: 4+ hits (1 enum line + 1 docstring per value).
 
-# 7. Three plan docs in place.
-ls -la spec/plan/topology-{fields-research,substrate-implementation-plan,residue-reference,reference-review,encoding-dependencies}-2026-05-05.md
-# Expect: 5 files (research dossier + impl plan from morning + 3 from this session).
+# 8. Five plan docs in place.
+ls spec/plan/topology-*-2026-05-05.md spec/plan/session-handoff-20260505*.md
+# Expect: 5 topology docs + 2 handoffs (morning + evening).
 ```
 
 ---
