@@ -26,7 +26,6 @@ from ._tensors import (
     MopacGlobal,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
@@ -51,7 +50,6 @@ __all__ = [
     "ArraySpec",
     "AIMNet2Charges",
     "AIMNet2AimEmbedding",
-    "AIMNet2ChargeSensitivity",
     "MopacScalars",
     "MopacGlobal",
     "AIMNet2Group",

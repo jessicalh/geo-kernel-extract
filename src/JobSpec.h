@@ -47,12 +47,12 @@ struct JobSpec {
     OrcaRunFiles ala_files;
 
     // -- Trajectory mode --
-    // --trajectory DIR: directory containing md.tpr, md.xtc, md.edr.
+    // --trajectory DIR: directory containing production.tpr, production.trr, production.edr.
     // All three are required. Paths derived from traj_dir.
     std::string traj_dir;        // protein directory (e.g. /path/to/1B1V_4292)
-    std::string traj_tpr;        // {traj_dir}/md.tpr
-    std::string traj_xtc;        // {traj_dir}/md.xtc
-    std::string traj_edr;        // {traj_dir}/md.edr
+    std::string traj_tpr;        // {traj_dir}/production.tpr
+    std::string traj_xtc;        // {traj_dir}/production.trr (field still named traj_xtc)
+    std::string traj_edr;        // {traj_dir}/production.edr
     bool analysis = false;       // --analysis: exhaustive per-frame H5 (see ANALYSIS_TRAJECTORY spec)
 
     // -- Common --

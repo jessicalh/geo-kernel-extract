@@ -122,7 +122,6 @@ p.aimnet2               AIMNet2Group | None
   .efg                  EFGTensor (N, 9) — Coulomb EFG from AIMNet2 charges
   .efg_aromatic         EFGTensor (N, 9) — aromatic decomposition
   .efg_backbone         EFGTensor (N, 9) — backbone decomposition
-  .charge_sensitivity   AIMNet2ChargeSensitivity (N,) — intrinsic polarisability proxy
 
 p.water_field           WaterFieldGroup | None — trajectory path only
   .efield               VectorField (N, 3) — total water E-field (V/A)

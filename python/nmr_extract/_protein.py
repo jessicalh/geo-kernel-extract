@@ -35,7 +35,6 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG
@@ -142,7 +141,6 @@ class AIMNet2Group:
     efg: EFGTensor
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
-    charge_sensitivity: AIMNet2ChargeSensitivity
 
 
 @dataclass(frozen=True)
@@ -410,7 +408,6 @@ def load(path: str | Path) -> Protein:
             efg=get("aimnet2_efg"),
             efg_aromatic=get("aimnet2_efg_aromatic"),
             efg_backbone=get("aimnet2_efg_backbone"),
-            charge_sensitivity=get("aimnet2_charge_sensitivity"),
         )
 
     # Water field (trajectory path — optional)

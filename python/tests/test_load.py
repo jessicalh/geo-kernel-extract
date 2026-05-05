@@ -477,11 +477,10 @@ class TestCatalog:
             assert spec.description, f"{stem} has no description"
 
     def test_aimnet2_specs_registered(self):
-        """All 6 AIMNet2 NPY files are in the catalog."""
+        """All 5 AIMNet2 NPY files are in the catalog."""
         expected = {
             "aimnet2_charges", "aimnet2_aim", "aimnet2_efg",
             "aimnet2_efg_aromatic", "aimnet2_efg_backbone",
-            "aimnet2_charge_sensitivity",
         }
         assert expected.issubset(set(CATALOG.keys())), \
             f"Missing: {expected - set(CATALOG.keys())}"

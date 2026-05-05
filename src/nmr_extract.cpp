@@ -235,8 +235,7 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
     }
 
     // ── Trajectory: file paths + EDR preload ─────────────────────
-    Trajectory traj(spec.traj_xtc, spec.traj_tpr,
-                    fs::path(spec.traj_dir) / "md.edr");
+    Trajectory traj(spec.traj_xtc, spec.traj_tpr, spec.traj_edr);
 
     // ── Run shape: PerFrameExtractionSet; aimnet2 comes from session ─
     RunConfiguration config = RunConfiguration::PerFrameExtractionSet();

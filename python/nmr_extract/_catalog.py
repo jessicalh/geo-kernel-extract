@@ -35,7 +35,6 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2ChargeSensitivity,
 )
 from ._ring import RingContributions, RingGeometry
 
@@ -178,12 +177,5 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG total"),
     ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG aromatic"),
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG backbone"),
-    # aimnet2_charge_sensitivity: REMOVED from calculator output (2026-04-12).
-    # Perturbation approach deleted. Charge sensitivity is now computed
-    # by GromacsFrameHandler as ensemble charge variance (Welford on
-    # aimnet2_charge across frames) and optionally autograd on selected
-    # frames. The SDK entry is kept for backward compatibility with old
-    # extractions that have the file.
-    ArraySpec("aimnet2_charge_sensitivity",  "aimnet2", AIMNet2ChargeSensitivity,  None, False, "LEGACY: per-atom charge sensitivity (old perturbation method)"),
 ]}
 # fmt: on

@@ -711,27 +711,3 @@ class AIMNet2AimEmbedding:
         return f"AIMNet2AimEmbedding(shape={self._data.shape})"
 
 
-class AIMNet2ChargeSensitivity:
-    """(N,) per-atom intrinsic polarisability proxy.
-
-    Per-atom charge variance under 0.1A bulk perturbations.  Computed
-    once on first AIMNet2 use, then permanent.  112x variation across
-    carbon atoms.  The interaction term (sensitivity x kernel T2) adds
-    +0.08 R^2 for carbon.
-    """
-
-    __slots__ = ("_data",)
-
-    def __init__(self, data: np.ndarray):
-        self._data = data
-
-    @property
-    def data(self) -> np.ndarray:
-        return self._data
-
-    @property
-    def sensitivity(self) -> np.ndarray:
-        return self._data
-
-    def __repr__(self) -> str:
-        return f"AIMNet2ChargeSensitivity(n={len(self._data)})"

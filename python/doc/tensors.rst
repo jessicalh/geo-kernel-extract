@@ -68,7 +68,3 @@ AIMNet2
 .. autoclass:: nmr_extract.AIMNet2AimEmbedding
    :members:
    :undoc-members:
-
-.. autoclass:: nmr_extract.AIMNet2ChargeSensitivity
-   :members:
-   :undoc-members:
