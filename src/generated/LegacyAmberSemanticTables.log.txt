@@ -60,22 +60,23 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ALA ====
-entries_built = 13
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 10
 
 ==== entries-spot-check::ALA ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=10
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-5_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-6_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-7_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-8_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-9_HB1 = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-10_HB2 = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-11_HB3 = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=10
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+5_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+6_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+7_HB1 = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+8_HB2 = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+9_HB3 = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-residue::ARG ====
@@ -117,36 +118,37 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ARG ====
-entries_built = 27
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 24
 
 ==== entries-spot-check::ARG ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-7_NE = loc=5 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=20
-8_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=18
-9_NH1 = loc=7 branch=1/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=19
-10_NH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=22
-11_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
-12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=4
-13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-15_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
-16_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
-17_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
-18_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
-19_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-20_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-21_HE = loc=5 branch=0/0 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=3
-22_HH11 = loc=7 branch=1/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
-23_HH12 = loc=7 branch=1/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
-24_HH21 = loc=7 branch=2/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
-25_HH22 = loc=7 branch=2/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
-26_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+7_NE = elem=2 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=20
+8_CZ = elem=1 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=18
+9_NH1 = elem=2 loc=7 branch=1/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=19
+10_NH2 = elem=2 loc=7 branch=2/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=22
+11_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+13_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+14_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+15_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+16_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+17_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+18_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+19_HE = elem=0 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=3
+20_HH11 = elem=0 loc=7 branch=1/1 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+21_HH12 = elem=0 loc=7 branch=1/2 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+22_HH21 = elem=0 loc=7 branch=2/1 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
+23_HH22 = elem=0 loc=7 branch=2/2 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
 status = OK
 
 ==== process-residue::ASN ====
@@ -188,26 +190,27 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ASN ====
-entries_built = 17
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 14
 
 ==== entries-spot-check::ASN ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-6_OD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-7_ND2 = loc=4 branch=2/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-14_HD21 = loc=4 branch=2/1 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
-15_HD22 = loc=4 branch=2/2 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
-16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+6_OD1 = elem=3 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+7_ND2 = elem=2 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+12_HD21 = elem=0 loc=4 branch=2/1 di=0 bbrole=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+13_HD22 = elem=0 loc=4 branch=2/2 di=0 bbrole=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::ASP ====
@@ -249,25 +252,26 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ASP ====
-entries_built = 16
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 13
 
 ==== entries-spot-check::ASP ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-6_OD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-7_OD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
-15_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+6_OD1 = elem=3 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+7_OD2 = elem=3 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
 
 ==== process-residue::CYS ====
@@ -309,23 +313,24 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::CYS ====
-entries_built = 14
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 11
 
 ==== entries-spot-check::CYS ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
-5_SG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
-6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-12_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=10 ring_pos=0 arom=0 hyb=3 eqcls=1
-13_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_SG = elem=4 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+10_HG = elem=0 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=10 ring_pos=0 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::GLN ====
@@ -367,29 +372,30 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::GLN ====
-entries_built = 20
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 17
 
 ==== entries-spot-check::GLN ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-7_OE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-8_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-17_HE21 = loc=5 branch=2/1 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
-18_HE22 = loc=5 branch=2/2 di=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
-19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+7_OE1 = elem=3 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+8_NE2 = elem=2 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=2 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+9_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+10_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+11_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+15_HE21 = elem=0 loc=5 branch=2/1 di=0 bbrole=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
+16_HE22 = elem=0 loc=5 branch=2/2 di=0 bbrole=0 prochiral=0 planar=2 polarH=2 ring_pos=0 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::GLU ====
@@ -431,28 +437,29 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::GLU ====
-entries_built = 19
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 16
 
 ==== entries-spot-check::GLU ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-7_OE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-8_OE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-17_HE2 = loc=5 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
-18_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+7_OE1 = elem=3 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_OE2 = elem=3 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+9_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+10_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+11_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+15_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
 
 ==== process-residue::GLY ====
@@ -494,19 +501,20 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::GLY ====
-entries_built = 10
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 7
 
 ==== entries-spot-check::GLY ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=8
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=5
-4_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=6
-5_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-6_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-7_HA2 = loc=1 branch=0/0 di=2 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-8_HA3 = loc=1 branch=0/0 di=3 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-9_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=8
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=5
+4_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+5_HA2 = elem=0 loc=1 branch=0/0 di=2 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+6_HA3 = elem=0 loc=1 branch=0/0 di=3 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-residue::HIS ====
@@ -548,30 +556,31 @@ aromatic_atom_count = 5
 cip_labels_assigned = 0
 
 ==== build-entries::HIS ====
-entries_built = 21
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 18
 
 ==== entries-spot-check::HIS ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
-6_ND1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=18
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
-9_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
-10_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-11_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-14_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-16_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-17_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
-18_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
-19_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
-20_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
+6_ND1 = elem=2 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=18
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
+9_NE2 = elem=2 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
+10_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+14_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+16_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
+17_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
 status = OK
 
 ==== process-residue::ILE ====
@@ -613,31 +622,32 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ILE ====
-entries_built = 22
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 19
 
 ==== entries-spot-check::ILE ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-5_CG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-6_CG2 = loc=3 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-7_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-12_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
-13_HG12 = loc=3 branch=1/2 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-14_HG13 = loc=3 branch=1/3 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-15_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-16_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-17_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-18_HD11 = loc=4 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-19_HD12 = loc=4 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-20_HD13 = loc=4 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-21_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+5_CG1 = elem=1 loc=3 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+6_CG2 = elem=1 loc=3 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+7_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+10_HB = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
+11_HG12 = elem=0 loc=3 branch=1/2 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+12_HG13 = elem=0 loc=3 branch=1/3 di=0 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+13_HG21 = elem=0 loc=3 branch=2/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_HG22 = elem=0 loc=3 branch=2/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HG23 = elem=0 loc=3 branch=2/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+16_HD11 = elem=0 loc=4 branch=1/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+17_HD12 = elem=0 loc=4 branch=1/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+18_HD13 = elem=0 loc=4 branch=1/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-residue::LEU ====
@@ -679,31 +689,32 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::LEU ====
-entries_built = 22
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 19
 
 ==== entries-spot-check::LEU ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-6_CD1 = loc=4 branch=1/0 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-14_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
-15_HD11 = loc=4 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-16_HD12 = loc=4 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-17_HD13 = loc=4 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-18_HD21 = loc=4 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-19_HD22 = loc=4 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-20_HD23 = loc=4 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-21_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+6_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+12_HG = elem=0 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=12
+13_HD11 = elem=0 loc=4 branch=1/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+14_HD12 = elem=0 loc=4 branch=1/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+15_HD13 = elem=0 loc=4 branch=1/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+16_HD21 = elem=0 loc=4 branch=2/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+17_HD22 = elem=0 loc=4 branch=2/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+18_HD23 = elem=0 loc=4 branch=2/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-residue::LYS ====
@@ -745,34 +756,35 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::LYS ====
-entries_built = 25
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 22
 
 ==== entries-spot-check::LYS ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
-7_CE = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-8_NZ = loc=6 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
-9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
-10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-17_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-18_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-19_HE2 = loc=5 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-20_HE3 = loc=5 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-21_HZ1 = loc=6 branch=0/0 di=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
-22_HZ2 = loc=6 branch=0/0 di=2 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
-23_HZ3 = loc=6 branch=0/0 di=3 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
-24_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+7_CE = elem=1 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+8_NZ = elem=2 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+9_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+17_HE2 = elem=0 loc=5 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+18_HE3 = elem=0 loc=5 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+19_HZ1 = elem=0 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
+20_HZ2 = elem=0 loc=6 branch=0/0 di=2 bbrole=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
+21_HZ3 = elem=0 loc=6 branch=0/0 di=3 bbrole=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=12
 status = OK
 
 ==== process-residue::MET ====
@@ -814,29 +826,30 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::MET ====
-entries_built = 20
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 17
 
 ==== entries-spot-check::MET ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-6_SD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-7_CE = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-14_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-15_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-16_HE1 = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-17_HE2 = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-18_HE3 = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+6_SD = elem=4 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+7_CE = elem=1 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+13_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_HE1 = elem=0 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+15_HE2 = elem=0 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+16_HE3 = elem=0 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-residue::PHE ====
@@ -878,32 +891,33 @@ aromatic_atom_count = 6
 cip_labels_assigned = 0
 
 ==== build-entries::PHE ====
-entries_built = 23
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 20
 
 ==== entries-spot-check::PHE ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=19
-6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
-9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
-10_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=14
-11_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
-13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=4 ring_pos=0 arom=0 hyb=3 eqcls=6
-14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-15_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-16_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-17_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
-18_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
-19_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
-20_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
-21_HZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=0 hyb=3 eqcls=1
-22_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=19
+6_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+9_CE2 = elem=1 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
+10_CZ = elem=1 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=14
+11_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+12_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+13_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+14_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+15_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
+16_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+17_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
+18_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
+19_HZ = elem=0 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::PRO ====
@@ -945,26 +959,27 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::PRO ====
-entries_built = 17
+partitioned_cap_atom = OXT
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 2
+entries_built = 15
 
 ==== entries-spot-check::PRO ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=11 arom=0 hyb=2 eqcls=12
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=14
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=16
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=15
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=13
-7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-12_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-13_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-14_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-15_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=0 polarH=0 ring_pos=11 arom=0 hyb=2 eqcls=12
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=14
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=16
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=15
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=13
+7_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+8_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+9_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+10_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+11_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+12_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
+13_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+14_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
 status = OK
 
 ==== process-residue::SER ====
@@ -1006,23 +1021,24 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::SER ====
-entries_built = 14
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 11
 
 ==== entries-spot-check::SER ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
-5_OG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
-6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-12_HG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
-13_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_OG = elem=3 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+10_HG = elem=0 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::THR ====
@@ -1064,26 +1080,27 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::THR ====
-entries_built = 17
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 14
 
 ==== entries-spot-check::THR ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-5_OG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-6_CG2 = loc=3 branch=2/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
-7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-9_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-10_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-11_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-12_HG1 = loc=3 branch=1/0 di=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
-13_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-15_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-16_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+5_OG1 = elem=3 loc=3 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+6_CG2 = elem=1 loc=3 branch=2/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+7_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+8_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+9_HB = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+10_HG1 = elem=0 loc=3 branch=1/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=8 ring_pos=0 arom=0 hyb=3 eqcls=1
+11_HG21 = elem=0 loc=3 branch=2/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HG22 = elem=0 loc=3 branch=2/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+13_HG23 = elem=0 loc=3 branch=2/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
 status = OK
 
 ==== process-residue::TRP ====
@@ -1125,36 +1142,37 @@ aromatic_atom_count = 9
 cip_labels_assigned = 0
 
 ==== build-entries::TRP ====
-entries_built = 27
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 24
 
 ==== entries-spot-check::TRP ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=18
-6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=20
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=21
-8_NE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=24
-9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=22
-10_CE3 = loc=5 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
-11_CZ2 = loc=6 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=19
-12_CZ3 = loc=6 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
-13_CH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=16
-14_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-15_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
-16_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-17_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
-18_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-19_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-20_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=5
-21_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=6 polarH=3 ring_pos=10 arom=0 hyb=3 eqcls=8
-22_HE3 = loc=5 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=3
-23_HZ2 = loc=6 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
-24_HZ3 = loc=6 branch=3/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=1
-25_HH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
-26_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=18
+6_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=20
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=21
+8_NE1 = elem=2 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=24
+9_CE2 = elem=1 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=9 arom=1 hyb=1 eqcls=22
+10_CE3 = elem=1 loc=5 branch=3/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+11_CZ2 = elem=1 loc=6 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=19
+12_CZ3 = elem=1 loc=6 branch=3/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+13_CH2 = elem=1 loc=7 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=16
+14_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+16_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+17_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+18_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=5
+19_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=6 polarH=3 ring_pos=10 arom=0 hyb=3 eqcls=8
+20_HE3 = elem=0 loc=5 branch=3/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=3
+21_HZ2 = elem=0 loc=6 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+22_HZ3 = elem=0 loc=6 branch=3/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=1
+23_HH2 = elem=0 loc=7 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
 status = OK
 
 ==== process-residue::TYR ====
@@ -1196,33 +1214,34 @@ aromatic_atom_count = 6
 cip_labels_assigned = 0
 
 ==== build-entries::TYR ====
-entries_built = 24
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 21
 
 ==== entries-spot-check::TYR ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=20
-6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
-9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
-10_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=19
-11_OH = loc=7 branch=0/0 di=0 prochiral=0 planar=8 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-12_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-13_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
-14_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-15_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-16_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-17_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-18_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
-19_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
-20_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
-21_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
-22_HH = loc=7 branch=0/0 di=0 prochiral=0 planar=8 polarH=9 ring_pos=0 arom=0 hyb=3 eqcls=1
-23_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=20
+6_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+9_CE2 = elem=1 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
+10_CZ = elem=1 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=19
+11_OH = elem=3 loc=7 branch=0/0 di=0 bbrole=0 prochiral=0 planar=8 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+12_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+13_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+14_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+15_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
+17_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+18_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
+19_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
+20_HH = elem=0 loc=7 branch=0/0 di=0 bbrole=0 prochiral=0 planar=8 polarH=9 ring_pos=0 arom=0 hyb=3 eqcls=1
 status = OK
 
 ==== process-residue::VAL ====
@@ -1264,28 +1283,29 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::VAL ====
-entries_built = 19
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 16
 
 ==== entries-spot-check::VAL ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-5_CG1 = loc=3 branch=1/0 di=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-6_CG2 = loc=3 branch=2/0 di=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-7_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-8_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-9_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-10_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-11_HB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-12_HG11 = loc=3 branch=1/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HG12 = loc=3 branch=1/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-14_HG13 = loc=3 branch=1/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-15_HG21 = loc=3 branch=2/1 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-16_HG22 = loc=3 branch=2/2 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-17_HG23 = loc=3 branch=2/3 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-18_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+5_CG1 = elem=1 loc=3 branch=1/0 di=0 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+6_CG2 = elem=1 loc=3 branch=2/0 di=0 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+7_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+8_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+9_HB = elem=0 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+10_HG11 = elem=0 loc=3 branch=1/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HG12 = elem=0 loc=3 branch=1/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+12_HG13 = elem=0 loc=3 branch=1/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+13_HG21 = elem=0 loc=3 branch=2/1 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+14_HG22 = elem=0 loc=3 branch=2/2 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+15_HG23 = elem=0 loc=3 branch=2/3 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
 status = OK
 
 ==== process-variant::HID::parent=HIS ====
@@ -1327,34 +1347,35 @@ aromatic_atom_count = 5
 cip_labels_assigned = 0
 
 ==== build-entries::HIS::variant=HID ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HE2
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 20
+partitioned_cap_atoms_total = 3
+entries_built = 17
 
 ==== entries-spot-check::HIS_HID ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
-6_ND1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=18
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
-9_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=17
-10_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-11_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-14_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-16_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=6
-17_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
-18_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
-19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
+6_ND1 = elem=2 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=18
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
+9_NE2 = elem=2 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=17
+10_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+14_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=6
+15_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+16_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
 status = OK
-variant_atoms_emitted = 20
-variant_atoms_removed = 1
+variant_atoms_emitted = 17
+variant_atoms_removed = 4
 
 ==== process-variant::HIE::parent=HIS ====
 
@@ -1395,34 +1416,35 @@ aromatic_atom_count = 5
 cip_labels_assigned = 0
 
 ==== build-entries::HIS::variant=HIE ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HD1
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 20
+partitioned_cap_atoms_total = 3
+entries_built = 17
 
 ==== entries-spot-check::HIS_HIE ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
-6_ND1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=18
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
-9_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
-10_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-11_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-14_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-16_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
-17_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
-18_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
-19_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
+6_ND1 = elem=2 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=11 arom=1 hyb=1 eqcls=18
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
+9_NE2 = elem=2 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
+10_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+14_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+15_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
+16_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
 status = OK
-variant_atoms_emitted = 20
-variant_atoms_removed = 1
+variant_atoms_emitted = 17
+variant_atoms_removed = 4
 
 ==== process-variant::HIP::parent=HIS ====
 
@@ -1463,33 +1485,34 @@ aromatic_atom_count = 5
 cip_labels_assigned = 0
 
 ==== build-entries::HIS::variant=HIP ====
-entries_built = 21
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 18
 
 ==== entries-spot-check::HIS_HIP ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
-6_ND1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=18
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
-9_NE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
-10_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-11_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
-12_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
-14_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-16_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=6
-17_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
-18_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
-19_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
-20_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=14
+6_ND1 = elem=2 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=18
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=1 hyb=1 eqcls=13
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=1 hyb=1 eqcls=15
+9_NE2 = elem=2 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=10 arom=1 hyb=1 eqcls=17
+10_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=9
+12_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+14_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=6
+15_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=8 arom=0 hyb=3 eqcls=1
+16_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=0 ring_pos=7 arom=0 hyb=3 eqcls=2
+17_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=4 polarH=6 ring_pos=10 arom=0 hyb=3 eqcls=5
 status = OK
-variant_atoms_emitted = 21
-variant_atoms_removed = 0
+variant_atoms_emitted = 18
+variant_atoms_removed = 3
 
 ==== process-variant::ASH::parent=ASP ====
 
@@ -1530,28 +1553,29 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ASP::variant=ASH ====
-entries_built = 16
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 13
 
 ==== entries-spot-check::ASP_ASH ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-6_OD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-7_OD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-8_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-9_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-10_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-11_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-12_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-13_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HD2 = loc=4 branch=2/0 di=0 prochiral=2 planar=7 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
-15_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=14
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+6_OD1 = elem=3 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+7_OD2 = elem=3 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+9_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+10_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+11_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=2 planar=7 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
-variant_atoms_emitted = 16
-variant_atoms_removed = 0
+variant_atoms_emitted = 13
+variant_atoms_removed = 3
 
 ==== process-variant::GLH::parent=GLU ====
 
@@ -1592,31 +1616,32 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::GLU::variant=GLH ====
-entries_built = 19
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
+partitioned_cap_atom = HXT
+partitioned_cap_atoms_total = 3
+entries_built = 16
 
 ==== entries-spot-check::GLU_GLH ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-7_OE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-8_OE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-17_HE2 = loc=5 branch=2/0 di=0 prochiral=2 planar=7 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
-18_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=15
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=17
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=16
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+7_OE1 = elem=3 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
+8_OE2 = elem=3 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=7 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+9_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+10_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+11_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
+13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+15_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=2 planar=7 polarH=7 ring_pos=0 arom=0 hyb=3 eqcls=0
 status = OK
-variant_atoms_emitted = 19
-variant_atoms_removed = 0
+variant_atoms_emitted = 16
+variant_atoms_removed = 3
 
 ==== process-variant::CYX::parent=CYS ====
 
@@ -1657,27 +1682,28 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::CYS::variant=CYX ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HG
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 13
+partitioned_cap_atoms_total = 3
+entries_built = 10
 
 ==== entries-spot-check::CYS_CYX ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
-5_SG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
-6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-12_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_SG = elem=4 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
 status = OK
-variant_atoms_emitted = 13
-variant_atoms_removed = 1
+variant_atoms_emitted = 10
+variant_atoms_removed = 4
 
 ==== process-variant::CYM::parent=CYS ====
 
@@ -1718,27 +1744,28 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::CYS::variant=CYM ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HG
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 13
+partitioned_cap_atoms_total = 3
+entries_built = 10
 
 ==== entries-spot-check::CYS_CYM ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
-5_SG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
-6_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=8
-7_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
-8_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-9_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-10_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-11_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-12_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=11
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=13
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=10
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=7
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=12
+5_SG = elem=4 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=9
+6_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=2
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
 status = OK
-variant_atoms_emitted = 13
-variant_atoms_removed = 1
+variant_atoms_emitted = 10
+variant_atoms_removed = 4
 
 ==== process-variant::LYN::parent=LYS ====
 
@@ -1779,38 +1806,39 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::LYS::variant=LYN ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HZ1
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 24
+partitioned_cap_atoms_total = 3
+entries_built = 21
 
 ==== entries-spot-check::LYS_LYN ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
-7_CE = loc=5 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-8_NZ = loc=6 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
-9_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
-10_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
-11_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=1
-12_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
-13_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-15_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-16_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-17_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-18_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-19_HE2 = loc=5 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-20_HE3 = loc=5 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-21_HZ2 = loc=6 branch=0/0 di=2 prochiral=0 planar=0 polarH=11 ring_pos=0 arom=0 hyb=3 eqcls=12
-22_HZ3 = loc=6 branch=0/0 di=3 prochiral=0 planar=0 polarH=11 ring_pos=0 arom=0 hyb=3 eqcls=12
-23_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=18
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=19
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=20
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+7_CE = elem=1 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+8_NZ = elem=2 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+9_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=1
+10_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=3
+11_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
+13_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+14_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
+15_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+17_HE2 = elem=0 loc=5 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+18_HE3 = elem=0 loc=5 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+19_HZ2 = elem=0 loc=6 branch=0/0 di=2 bbrole=0 prochiral=0 planar=0 polarH=11 ring_pos=0 arom=0 hyb=3 eqcls=12
+20_HZ3 = elem=0 loc=6 branch=0/0 di=3 bbrole=0 prochiral=0 planar=0 polarH=11 ring_pos=0 arom=0 hyb=3 eqcls=12
 status = OK
-variant_atoms_emitted = 24
-variant_atoms_removed = 1
+variant_atoms_emitted = 21
+variant_atoms_removed = 4
 
 ==== process-variant::ARN::parent=ARG ====
 
@@ -1851,40 +1879,41 @@ aromatic_atom_count = 0
 cip_labels_assigned = 0
 
 ==== build-entries::ARG::variant=ARN ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HE
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 26
+partitioned_cap_atoms_total = 3
+entries_built = 23
 
 ==== entries-spot-check::ARG_ARN ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
-6_CD = loc=4 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-7_NE = loc=5 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=20
-8_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=18
-9_NH1 = loc=7 branch=1/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=19
-10_NH2 = loc=7 branch=2/0 di=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=22
-11_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=16
-12_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=4
-13_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-14_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-15_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
-16_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
-17_HG2 = loc=3 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
-18_HG3 = loc=3 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
-19_HD2 = loc=4 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-20_HD3 = loc=4 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-21_HH11 = loc=7 branch=1/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
-22_HH12 = loc=7 branch=1/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
-23_HH21 = loc=7 branch=2/1 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
-24_HH22 = loc=7 branch=2/2 di=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
-25_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=24
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=17
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=15
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=26
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=25
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+7_NE = elem=2 loc=5 branch=0/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=20
+8_CZ = elem=1 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=18
+9_NH1 = elem=2 loc=7 branch=1/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=19
+10_NH2 = elem=2 loc=7 branch=2/0 di=0 bbrole=0 prochiral=0 planar=3 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=22
+11_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=4
+12_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+13_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+14_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=13
+15_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+16_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=11
+17_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+18_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+19_HH11 = elem=0 loc=7 branch=1/1 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+20_HH12 = elem=0 loc=7 branch=1/2 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=1
+21_HH21 = elem=0 loc=7 branch=2/1 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
+22_HH22 = elem=0 loc=7 branch=2/2 di=0 bbrole=0 prochiral=0 planar=3 polarH=5 ring_pos=0 arom=0 hyb=3 eqcls=6
 status = OK
-variant_atoms_emitted = 26
-variant_atoms_removed = 1
+variant_atoms_emitted = 23
+variant_atoms_removed = 4
 
 ==== process-variant::TYM::parent=TYR ====
 
@@ -1925,71 +1954,83 @@ aromatic_atom_count = 6
 cip_labels_assigned = 0
 
 ==== build-entries::TYR::variant=TYM ====
+partitioned_cap_atom = OXT
+partitioned_cap_atom = H2
 variant_dropped_atom = HH
+partitioned_cap_atom = HXT
 variant_atoms_dropped_total = 1
-entries_built = 23
+partitioned_cap_atoms_total = 3
+entries_built = 20
 
 ==== entries-spot-check::TYR_TYM ====
-0_N = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
-1_CA = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
-2_C = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
-3_O = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
-4_CB = loc=2 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
-5_CG = loc=3 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=20
-6_CD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
-7_CD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
-8_CE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
-9_CE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
-10_CZ = loc=6 branch=0/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=19
-11_OH = loc=7 branch=0/0 di=0 prochiral=0 planar=9 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
-12_OXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=12
-13_H = loc=0 branch=0/0 di=0 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
-14_H2 = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=6
-15_HA = loc=1 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
-16_HB2 = loc=2 branch=0/0 di=2 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-17_HB3 = loc=2 branch=0/0 di=3 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
-18_HD1 = loc=4 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
-19_HD2 = loc=4 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
-20_HE1 = loc=5 branch=1/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
-21_HE2 = loc=5 branch=2/0 di=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
-22_HXT = loc=0 branch=0/0 di=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=0
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=21
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=23
+2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=14
+3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=2 eqcls=22
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=1 arom=1 hyb=1 eqcls=20
+6_CD1 = elem=1 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=1 hyb=1 eqcls=17
+7_CD2 = elem=1 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=1 hyb=1 eqcls=17
+8_CE1 = elem=1 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=1 hyb=1 eqcls=15
+9_CE2 = elem=1 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=1 hyb=1 eqcls=15
+10_CZ = elem=1 loc=6 branch=0/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=6 arom=1 hyb=1 eqcls=19
+11_OH = elem=3 loc=7 branch=0/0 di=0 bbrole=0 prochiral=0 planar=9 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=13
+12_H = elem=0 loc=0 branch=0/0 di=0 bbrole=5 prochiral=0 planar=1 polarH=1 ring_pos=0 arom=0 hyb=3 eqcls=6
+13_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=10
+14_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+15_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=8
+16_HD1 = elem=0 loc=4 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=2 arom=0 hyb=3 eqcls=4
+17_HD2 = elem=0 loc=4 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=3 arom=0 hyb=3 eqcls=4
+18_HE1 = elem=0 loc=5 branch=1/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=4 arom=0 hyb=3 eqcls=2
+19_HE2 = elem=0 loc=5 branch=2/0 di=0 bbrole=0 prochiral=0 planar=5 polarH=0 ring_pos=5 arom=0 hyb=3 eqcls=2
 status = OK
-variant_atoms_emitted = 23
-variant_atoms_removed = 1
+variant_atoms_emitted = 20
+variant_atoms_removed = 4
+
+==== build-cap-tables ====
+kCapNtermCharged_size = 3
+kCapNtermNeutral_size = 2
+kCapCtermDeprotonated_size = 1
+kCapCtermProtonated_size = 2
 
 ==== emit-cpp ====
 output_path = src/generated/LegacyAmberSemanticTables.cpp
-emitted_kAlaAtoms_size = 13
-emitted_kArgAtoms_size = 27
-emitted_kAsnAtoms_size = 17
-emitted_kAspAtoms_size = 16
-emitted_kCysAtoms_size = 14
-emitted_kGlnAtoms_size = 20
-emitted_kGluAtoms_size = 19
-emitted_kGlyAtoms_size = 10
-emitted_kHisAtoms_size = 21
-emitted_kIleAtoms_size = 22
-emitted_kLeuAtoms_size = 22
-emitted_kLysAtoms_size = 25
-emitted_kMetAtoms_size = 20
-emitted_kPheAtoms_size = 23
-emitted_kProAtoms_size = 17
-emitted_kSerAtoms_size = 14
-emitted_kThrAtoms_size = 17
-emitted_kTrpAtoms_size = 27
-emitted_kTyrAtoms_size = 24
-emitted_kValAtoms_size = 19
-emitted_kHisAtoms_HID_size = 20
-emitted_kHisAtoms_HIE_size = 20
-emitted_kHisAtoms_HIP_size = 21
-emitted_kAspAtoms_ASH_size = 16
-emitted_kGluAtoms_GLH_size = 19
-emitted_kCysAtoms_CYX_size = 13
-emitted_kCysAtoms_CYM_size = 13
-emitted_kLysAtoms_LYN_size = 24
-emitted_kArgAtoms_ARN_size = 26
-emitted_kTyrAtoms_TYM_size = 23
-total_atoms_emitted = 582
+emitted_kAlaAtoms_size = 10
+emitted_kArgAtoms_size = 24
+emitted_kAsnAtoms_size = 14
+emitted_kAspAtoms_size = 13
+emitted_kCysAtoms_size = 11
+emitted_kGlnAtoms_size = 17
+emitted_kGluAtoms_size = 16
+emitted_kGlyAtoms_size = 7
+emitted_kHisAtoms_size = 18
+emitted_kIleAtoms_size = 19
+emitted_kLeuAtoms_size = 19
+emitted_kLysAtoms_size = 22
+emitted_kMetAtoms_size = 17
+emitted_kPheAtoms_size = 20
+emitted_kProAtoms_size = 15
+emitted_kSerAtoms_size = 11
+emitted_kThrAtoms_size = 14
+emitted_kTrpAtoms_size = 24
+emitted_kTyrAtoms_size = 21
+emitted_kValAtoms_size = 16
+emitted_kHisAtoms_HID_size = 17
+emitted_kHisAtoms_HIE_size = 17
+emitted_kHisAtoms_HIP_size = 18
+emitted_kAspAtoms_ASH_size = 13
+emitted_kGluAtoms_GLH_size = 16
+emitted_kCysAtoms_CYX_size = 10
+emitted_kCysAtoms_CYM_size = 10
+emitted_kLysAtoms_LYN_size = 21
+emitted_kArgAtoms_ARN_size = 23
+emitted_kTyrAtoms_TYM_size = 20
+emitted_kCapNtermCharged_size = 3
+emitted_kCapNtermNeutral_size = 2
+emitted_kCapCtermDeprotonated_size = 1
+emitted_kCapCtermProtonated_size = 2
+total_atoms_emitted = 493
+cap_atoms_emitted = 8
 status = OK
 
 ==== done ====

@@ -41,7 +41,62 @@
 #include <array>
 #include <cstdint>
 
+#include "Types.h"   // Element
+
 namespace nmr {
+
+
+// ============================================================================
+// TerminalState -- which kind of chain-end a residue presents
+// ============================================================================
+//
+// Used to select among the four cap-atom tables emitted alongside the
+// 30 residue tables (per §H.4 of
+// `spec/plan/topology-encoding-dependencies-2026-05-05.md`). The chain
+// itself uses Internal; an N-terminal residue has its terminus_state set
+// to NtermCharged (default ammonium NH3+) or NtermNeutral (NH2 form);
+// a C-terminal residue has CtermDeprotonated (carboxylate COO-) or
+// CtermProtonated (carboxylic acid COOH).
+//
+enum class TerminalState : uint8_t {
+    Internal           = 0,   ///< Residue is not at a chain end.
+    NtermCharged       = 1,   ///< NH3+ N-terminus (H1, H2, H3).
+    NtermNeutral       = 2,   ///< NH2 N-terminus (H1, H2 only).
+    CtermDeprotonated  = 3,   ///< COO- C-terminus (OXT, no HXT).
+    CtermProtonated    = 4,   ///< COOH C-terminus (OXT + HXT).
+};
+
+
+// ============================================================================
+// BackboneRole -- which canonical backbone atom slot
+// ============================================================================
+//
+// Backbone atoms (N, CA, C, O, H, HA) all share `Locant::None`, so the
+// (Element, Locant, BranchAddress, DiastereotopicIndex) tuple does not
+// disambiguate them. BackboneRole adds the missing axis: it names the
+// role each of those atoms plays in the peptide-amide unit.
+//
+// The peptide-amide chemistry that motivates this distinction comes
+// from Pauling, Corey, Branson, PNAS 37 (1951) 205-211 (planar
+// peptide bond), and the Ramachandran framework
+// (Ramachandran & Sasisekharan, Adv. Protein Chem. 23 (1968) 283-437)
+// for backbone classification across the standard 20.
+//
+// Glycine's HA2/HA3 carry `Locant::Alpha` (sidechain locant pattern in
+// Markley convention) and therefore stay BackboneRole::None -- the
+// (Locant, DiastereotopicIndex) pair already disambiguates them.
+//
+enum class BackboneRole : uint8_t {
+    None             = 0,   ///< Sidechain atom or cap; identity comes from
+                            ///< (Element, Locant, BranchAddress, DiastereotopicIndex).
+    Nitrogen         = 1,   ///< Backbone N (Pauling 1951 amide nitrogen).
+    AlphaCarbon      = 2,   ///< Backbone CA (Ramachandran 1968 chiral centre).
+    CarbonylCarbon   = 3,   ///< Backbone C (Pauling 1951 amide carbon).
+    CarbonylOxygen   = 4,   ///< Backbone O (Pauling 1951 amide carbonyl).
+    AmideHydrogen    = 5,   ///< Backbone H / HN (Pauling 1951 amide H, donor).
+    AlphaHydrogen    = 6,   ///< Backbone HA (Markley locant Alpha; Gly HA2/HA3
+                            ///< stay None because they already carry Locant::Alpha).
+};
 
 
 // ============================================================================
@@ -706,11 +761,16 @@ struct SemanticProvenance {
 // LegacyAmberTopology populator
 // ============================================================================
 //
-// One record per (residue, variant, atom_local_idx). The generated
-// table at src/generated/LegacyAmberSemanticTables.cpp emits a
-// constexpr std::array of these per residue; the populator looks up
-// entries at construction time and writes into the typed fields on
-// LegacyAmberTopology.
+// The generated table at src/generated/LegacyAmberSemanticTables.cpp
+// emits a constexpr std::array of these per (residue, variant) and
+// per terminal-state cap; the populator at runtime composition looks
+// up entries via typed structural matching (see `LookupBy` /
+// `LookupCap` in the generated .cpp) and writes into the typed
+// fields on LegacyAmberTopology. The lookup key is
+// `AtomMechanicalIdentity` (Element + Locant + BranchAddress +
+// DiastereotopicIndex + BackboneRole) -- NOT atom_local_idx and NOT
+// atom_id strings; per §H of
+// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
 //
 // Provenance is NOT carried in the runtime record (it lives in the
 // generation log, src/generated/LegacyAmberSemanticTables.log.txt,
@@ -719,9 +779,18 @@ struct SemanticProvenance {
 // (residue, atom_id) keys against the log.
 //
 struct AtomSemanticTable {
+    // Mechanical-identity fields. These five fields together form the
+    // typed lookup key (`AtomMechanicalIdentity` below) used by the
+    // generated `LookupBy` function at runtime composition. See §H of
+    // `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+    Element               element           = Element::Unknown;
     Locant                locant            = Locant::None;
     BranchAddress         branch            = {};
     DiastereotopicIndex   di_index          = DiastereotopicIndex::None;
+    BackboneRole          backbone_role     = BackboneRole::None;
+
+    // Chemistry-substrate fields populated from CCD + RDKit + the
+    // synthesised per-residue tables.
     ProchiralStereo       prochiral         = ProchiralStereo::NotProchiral;
     PlanarGroupKind       planar_group      = PlanarGroupKind::None;
     PlanarStereo          planar_stereo     = PlanarStereo::NotApplicable;
@@ -738,6 +807,39 @@ struct AtomSemanticTable {
     // The runtime is intentionally minimal until a calculator
     // requires a specific field on the substrate.
 };
+
+
+// ============================================================================
+// AtomMechanicalIdentity -- typed lookup key for runtime composition
+// ============================================================================
+//
+// The typed mechanical identity that the generated `LookupBy` function
+// keys on. NOT atom_local_idx (index spaces don't align across CCD,
+// AmberAminoAcidVariantTable, and other producers) and NOT atom_id
+// strings (the string wall is sacred). The five fields below are
+// computed by the parser from the atom name + bond graph; they are
+// unique within a residue's table by construction.
+//
+// See §H of `spec/plan/topology-encoding-dependencies-2026-05-05.md`
+// for the full architectural rationale; section H.1 defines this
+// tuple, H.2 the lookup function, H.4 the cap-table separation.
+//
+struct AtomMechanicalIdentity {
+    Element             element       = Element::Unknown;
+    Locant              locant        = Locant::None;
+    BranchAddress       branch        = {};
+    DiastereotopicIndex di_index      = DiastereotopicIndex::None;
+    BackboneRole        backbone_role = BackboneRole::None;
+};
+
+constexpr bool operator==(const AtomMechanicalIdentity& a,
+                          const AtomMechanicalIdentity& b) {
+    return a.element       == b.element
+        && a.locant        == b.locant
+        && a.branch        == b.branch
+        && a.di_index      == b.di_index
+        && a.backbone_role == b.backbone_role;
+}
 
 
 }  // namespace nmr

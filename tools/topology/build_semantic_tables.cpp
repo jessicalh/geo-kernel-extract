@@ -478,6 +478,7 @@ struct ParsedName {
     Locant              locant          = Locant::None;
     BranchAddress       branch          = {};
     DiastereotopicIndex di_index        = DiastereotopicIndex::None;
+    BackboneRole        backbone_role   = BackboneRole::None;
 };
 
 Element ElementFromAtomName(const std::string& name) {
@@ -511,11 +512,25 @@ ParsedName ParseAtomName(const std::string& name, const std::string& parent_name
     ParsedName p;
     p.element = ElementFromAtomName(name);
 
-    // Pure backbone names.
+    // Pure backbone names. BackboneRole identifies which slot in the
+    // peptide-amide unit this atom occupies (the (Element, Locant,
+    // Branch, DiIndex) tuple all share Locant::None for these atoms,
+    // so it cannot disambiguate them on its own). HA carries
+    // BackboneRole::AlphaHydrogen AND Locant::Alpha; only Gly's
+    // HA2/HA3 below stay BackboneRole::None and rely on Locant::Alpha
+    // to distinguish themselves from sidechain atoms.
     if (name == "N" || name == "CA" || name == "C" || name == "O" ||
         name == "H" || name == "HN" || name == "HA") {
         p.is_backbone = true;
-        if (name == "HA") p.locant = Locant::Alpha;  // HA is a Cα-H
+        if      (name == "N")  p.backbone_role = BackboneRole::Nitrogen;
+        else if (name == "CA") p.backbone_role = BackboneRole::AlphaCarbon;
+        else if (name == "C")  p.backbone_role = BackboneRole::CarbonylCarbon;
+        else if (name == "O")  p.backbone_role = BackboneRole::CarbonylOxygen;
+        else if (name == "H" || name == "HN") p.backbone_role = BackboneRole::AmideHydrogen;
+        else if (name == "HA") {
+            p.backbone_role = BackboneRole::AlphaHydrogen;
+            p.locant = Locant::Alpha;  // HA is a Cα-H
+        }
         return p;
     }
     // N-terminal extra ammonium Hs.
@@ -1883,13 +1898,20 @@ SynthesisedFields SynthesisedForVal(const std::string& atom_id, const ParsedName
 
 struct AtomSemanticEntry {
     // Identification (in the generator scope only -- the runtime
-    // table indexes by (residue, atom_local_idx), not by name).
+    // table is keyed by typed structural matching against
+    // AtomMechanicalIdentity (Element + Locant + Branch + DiIndex +
+    // BackboneRole), per §H of
+    // spec/plan/topology-encoding-dependencies-2026-05-05.md).
     std::string               atom_id_for_log;
 
-    // Typed fields, all 14 of them.
+    // Mechanical-identity fields (the typed lookup key).
+    Element                   element           = Element::Unknown;
     Locant                    locant            = Locant::None;
     BranchAddress             branch            = {};
     DiastereotopicIndex       di_index          = DiastereotopicIndex::None;
+    BackboneRole              backbone_role     = BackboneRole::None;
+
+    // Chemistry-substrate fields.
     ProchiralStereo           prochiral         = ProchiralStereo::NotProchiral;
     PlanarGroupKind           planar_group      = PlanarGroupKind::None;
     PlanarStereo              planar_stereo     = PlanarStereo::NotApplicable;
@@ -1922,14 +1944,24 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
                                           unsigned int rdkit_idx,
                                           const RdkitFacts& facts,
                                           const SynthesisedFields& syn,
-                                          int formal_charge_from_ccd) {
+                                          int formal_charge_from_ccd,
+                                          const std::string& ccd_type_symbol) {
     AtomSemanticEntry e;
     e.atom_id_for_log = atom_id;
 
-    // Mechanical fields from atom-name parser.
-    e.locant   = parsed.locant;
-    e.branch   = parsed.branch;
-    e.di_index = parsed.di_index;
+    // Mechanical-identity fields. Element comes from the CCD record
+    // (`_chem_comp_atom.type_symbol`) -- the parser's first-letter rule
+    // is unsuitable for this slot because it conflates 'H' as an element
+    // with 'H' as the eta-locant suffix. The CCD authority is canonical.
+    // Locant + Branch + DiastereotopicIndex + BackboneRole come from the
+    // parser. Together these five form the AtomMechanicalIdentity tuple
+    // used by the generated `LookupBy` function. See §H of
+    // `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+    e.element       = ElementFromSymbol(ccd_type_symbol);
+    e.locant        = parsed.locant;
+    e.branch        = parsed.branch;
+    e.di_index      = parsed.di_index;
+    e.backbone_role = parsed.backbone_role;
     e.prov_locant.witnesses[0] = {SemanticSource::IUPAC_1969,
                                   static_cast<uint8_t>(parsed.locant)};
     e.prov_locant.confidence   = SemanticConfidence::AlgorithmAuthoritative;
@@ -2072,6 +2104,32 @@ SynthesisedFields DispatchSynthesised(const std::string& code,
 }
 
 
+// Cap-atom names that always belong to a terminal-state table, never
+// to a per-residue chain table. The CCD entries for the canonical
+// free-amino-acid forms include these atoms (the CCD records the
+// fully-protonated zwitterion or its protonated-carboxyl variant);
+// the runtime composition layer reads them from the dedicated
+// terminal-state tables (`kCapNtermCharged`, `kCapNtermNeutral`,
+// `kCapCtermDeprotonated`, `kCapCtermProtonated`) only when a residue
+// is actually at a chain end. Per §H.4 of
+// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+//
+// The five names below are residue-independent: the chemistry of
+// NTERM_CHARGED Hs (H1/H2/H3) is the same on every residue's N
+// terminus, etc. Centralising them eliminates per-residue duplication
+// and makes the chain table semantically clean.
+const std::set<std::string>& CapAtomNames() {
+    static const std::set<std::string> kCaps = {
+        "OXT",   // C-terminal carboxylate / carboxylic acid second oxygen.
+        "HXT",   // C-terminal carboxylic-acid OH proton.
+        "H1",    // N-terminal first H (NTERM_CHARGED + NTERM_NEUTRAL).
+        "H2",    // N-terminal second H (NTERM_CHARGED + NTERM_NEUTRAL).
+        "H3",    // N-terminal third H (NTERM_CHARGED only).
+    };
+    return kCaps;
+}
+
+
 // Build the per-atom semantic entries for one residue. The
 // `synthesis_code` is the dispatch key for `DispatchSynthesised`; it
 // is normally `res.three_letter` for the standard 20 but for variants
@@ -2080,6 +2138,12 @@ SynthesisedFields DispatchSynthesised(const std::string& code,
 // output (e.g. HE2 for HID; HZ1 for LYN; HG for CYX/CYM; HH for TYM;
 // HE for ARN). Empty set means emit every CCD atom (standard 20
 // path).
+//
+// Per §H.4 of the dependencies file, cap atoms (OXT, HXT, H1, H2, H3)
+// are partitioned out of the per-residue table irrespective of variant
+// -- they live only in the terminal-state tables emitted separately.
+// This means the standard 20 tables are SMALLER than they were before
+// the partitioning landed (drop 2-4 atoms each).
 std::vector<AtomSemanticEntry> BuildResidueEntries(
         const CcdResidue& res,
         const RdkitMolWithMap& built,
@@ -2101,10 +2165,20 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(
     }
 
     int dropped = 0;
+    int dropped_caps = 0;
+    const auto& cap_names = CapAtomNames();
     for (const auto& ccd_atom : res.atoms) {
         if (atoms_to_remove.count(ccd_atom.atom_id) > 0) {
             ++dropped;
             log.KV("variant_dropped_atom", ccd_atom.atom_id);
+            continue;
+        }
+        if (cap_names.count(ccd_atom.atom_id) > 0) {
+            // Per §H.4 partitioning: cap atoms never live in a
+            // per-residue table; they live in the four terminal-state
+            // cap tables emitted separately at the end of the run.
+            ++dropped_caps;
+            log.KV("partitioned_cap_atom", ccd_atom.atom_id);
             continue;
         }
         std::string parent_name;
@@ -2124,10 +2198,12 @@ std::vector<AtomSemanticEntry> BuildResidueEntries(
 
         AtomSemanticEntry e = BuildAtomSemanticEntry(ccd_atom.atom_id, parsed,
                                                       rdkit_idx, facts, syn,
-                                                      ccd_atom.formal_charge);
+                                                      ccd_atom.formal_charge,
+                                                      ccd_atom.type_symbol);
         entries.push_back(std::move(e));
     }
     if (dropped > 0) log.KV("variant_atoms_dropped_total", dropped);
+    if (dropped_caps > 0) log.KV("partitioned_cap_atoms_total", dropped_caps);
     log.KV("entries_built", static_cast<int>(entries.size()));
     return entries;
 }
@@ -2141,9 +2217,11 @@ void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
     for (size_t i = 0; i < entries.size(); ++i) {
         const auto& e = entries[i];
         std::string fact;
-        fact += "loc=" + std::to_string(static_cast<int>(e.locant));
+        fact += "elem=" + std::to_string(static_cast<int>(e.element));
+        fact += " loc=" + std::to_string(static_cast<int>(e.locant));
         fact += " branch=" + std::to_string(e.branch.outer) + "/" + std::to_string(e.branch.inner);
         fact += " di=" + std::to_string(static_cast<int>(e.di_index));
+        fact += " bbrole=" + std::to_string(static_cast<int>(e.backbone_role));
         fact += " prochiral=" + std::to_string(static_cast<int>(e.prochiral));
         fact += " planar=" + std::to_string(static_cast<int>(e.planar_group));
         fact += " polarH=" + std::to_string(static_cast<int>(e.polar_h));
@@ -2160,10 +2238,17 @@ void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
 // C++ emitter -- writes the typed-enum table file consumed at runtime.
 //
 // Format: a generated .cpp file with constexpr std::array of
-// AtomSemanticTable per residue, plus a Lookup function indexed by
-// (AminoAcid, atom_local_idx). The output includes only typed-enum
-// references; no std::string literals carrying chemistry data, no
-// gemmi/RDKit/cifpp symbols, no Eigen.
+// AtomSemanticTable per residue and per AMBER protonation variant,
+// plus four cap tables (one per TerminalState) carrying the residue-
+// independent terminal-state chemistry, plus two Lookup functions
+// (`LookupBy` for per-(residue, variant) tables; `LookupCap` for cap
+// tables) keyed on AtomMechanicalIdentity (Element + Locant +
+// BranchAddress + DiastereotopicIndex + BackboneRole) -- typed
+// structural matching, NOT atom_local_idx and NOT atom_id strings.
+// Per §H of spec/plan/topology-encoding-dependencies-2026-05-05.md.
+// The output includes only typed-enum references; no std::string
+// literals carrying chemistry data, no gemmi/RDKit/cifpp symbols, no
+// Eigen.
 //
 // The string barrier from the generator's perspective: this Emit
 // function is the only place where chemistry-derived enum names are
@@ -2172,6 +2257,42 @@ void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
 // those identifier strings back into the typed-enum integer values
 // at compile time. No runtime string survives.
 // ============================================================================
+
+const char* ElementLiteral(Element e) {
+    switch (e) {
+        case Element::H:       return "nmr::Element::H";
+        case Element::C:       return "nmr::Element::C";
+        case Element::N:       return "nmr::Element::N";
+        case Element::O:       return "nmr::Element::O";
+        case Element::S:       return "nmr::Element::S";
+        case Element::Unknown: return "nmr::Element::Unknown";
+    }
+    return "nmr::Element::Unknown";
+}
+
+const char* BackboneRoleLiteral(BackboneRole r) {
+    switch (r) {
+        case BackboneRole::None:           return "nmr::BackboneRole::None";
+        case BackboneRole::Nitrogen:       return "nmr::BackboneRole::Nitrogen";
+        case BackboneRole::AlphaCarbon:    return "nmr::BackboneRole::AlphaCarbon";
+        case BackboneRole::CarbonylCarbon: return "nmr::BackboneRole::CarbonylCarbon";
+        case BackboneRole::CarbonylOxygen: return "nmr::BackboneRole::CarbonylOxygen";
+        case BackboneRole::AmideHydrogen:  return "nmr::BackboneRole::AmideHydrogen";
+        case BackboneRole::AlphaHydrogen:  return "nmr::BackboneRole::AlphaHydrogen";
+    }
+    return "nmr::BackboneRole::None";
+}
+
+const char* TerminalStateLiteral(TerminalState t) {
+    switch (t) {
+        case TerminalState::Internal:          return "nmr::TerminalState::Internal";
+        case TerminalState::NtermCharged:      return "nmr::TerminalState::NtermCharged";
+        case TerminalState::NtermNeutral:      return "nmr::TerminalState::NtermNeutral";
+        case TerminalState::CtermDeprotonated: return "nmr::TerminalState::CtermDeprotonated";
+        case TerminalState::CtermProtonated:   return "nmr::TerminalState::CtermProtonated";
+    }
+    return "nmr::TerminalState::Internal";
+}
 
 const char* LocantLiteral(Locant l) {
     switch (l) {
@@ -2318,12 +2439,18 @@ std::string PseudoatomLiteral(const PseudoatomMembership& p) {
 
 // Emit one AtomSemanticTable record as a brace-initialiser. Field
 // order MUST match SemanticEnums.h's AtomSemanticTable definition.
+// The first five fields (Element, Locant, BranchAddress,
+// DiastereotopicIndex, BackboneRole) form the AtomMechanicalIdentity
+// tuple used by the generated `LookupBy` function -- see §H of
+// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
 std::string EmitEntryLiteral(const AtomSemanticEntry& e) {
     std::ostringstream o;
-    o << "    { " << LocantLiteral(e.locant)
+    o << "    { " << ElementLiteral(e.element)
+      << ", " << LocantLiteral(e.locant)
       << ", {" << static_cast<int>(e.branch.outer)
       <<  "," << static_cast<int>(e.branch.inner) << "}"
       << ", " << DiastereotopicLiteral(e.di_index)
+      << ", " << BackboneRoleLiteral(e.backbone_role)
       << ", " << ProchiralLiteral(e.prochiral)
       << ", " << PlanarGroupLiteral(e.planar_group)
       << ", " << PlanarStereoLiteral(e.planar_stereo)
@@ -2349,6 +2476,144 @@ struct ResidueEntries {
 };
 
 
+// Holds the entries for one cap-table (terminal-state) emission. Cap
+// atom rows are residue-independent: the chemistry of NTERM_CHARGED
+// H1/H2/H3 is the same on every residue's N terminus.
+struct CapTableEntries {
+    TerminalState                  state;
+    std::string                    array_name;       ///< "kCapNtermCharged" etc.
+    std::vector<std::string>       atom_id_for_log;
+    std::vector<AtomSemanticEntry> entries;
+};
+
+
+// Build one cap-atom AtomSemanticEntry. Cap chemistry is hand-encoded
+// from §4 of `spec/plan/topology-residue-reference-2026-05-05.md`.
+// The mechanical-identity tuple (Element, Locant, Branch, DiIndex,
+// BackboneRole) for cap atoms uses Locant::None and BackboneRole::None
+// because they are neither sidechain (Greek-letter) atoms nor backbone
+// (peptide-amide-unit) atoms; they are terminus-specific Hs / Os.
+AtomSemanticEntry MakeCapAtomEntry(const std::string& atom_id,
+                                    Element element,
+                                    PlanarGroupKind planar_group,
+                                    PolarHKind polar_h,
+                                    int8_t formal_charge,
+                                    bool is_exchangeable,
+                                    PseudoatomMembership pseudoatom = {}) {
+    AtomSemanticEntry e;
+    e.atom_id_for_log = atom_id;
+    e.element         = element;
+    e.locant          = Locant::None;
+    e.branch          = {};
+    e.di_index        = DiastereotopicIndex::None;
+    e.backbone_role   = BackboneRole::None;
+    e.prochiral       = ProchiralStereo::NotProchiral;
+    e.planar_group    = planar_group;
+    e.planar_stereo   = PlanarStereo::NotApplicable;
+    e.pseudoatom      = pseudoatom;
+    e.polar_h         = polar_h;
+    e.ring_position   = {};
+    e.aromatic        = false;
+    e.formal_charge   = formal_charge;
+    e.is_exchangeable = is_exchangeable;
+    e.equivalence_class = 0;
+    return e;
+}
+
+
+// Synthesise the four cap tables per §4 of the reference doc.
+//
+// NTERM_CHARGED (NH3+):
+//   H1, H2, H3 -- ammonium NH; PolarHKind::AmmoniumNH; formal_chg=0;
+//   exchangeable=true; Pseudoatom = Q with Locant::None (Markley Table 1
+//   does not list a pseudoatom for terminus-specific Hs; Q-with-locant=None
+//   is the Q-like equivalent-group encoding per the reference doc).
+// NTERM_NEUTRAL (NH2):
+//   H1, H2 -- amine NH; PolarHKind::AmineNH; formal_chg=0;
+//   exchangeable=true.
+// CTERM_DEPROTONATED (COO-):
+//   OXT (= O'') -- planar_group=Carboxylate; polarH=NotPolar;
+//   formal_chg=-1; exchangeable=false.
+// CTERM_PROTONATED (COOH):
+//   OXT (= O'') -- planar_group=Carboxylate; polarH=NotPolar;
+//   formal_chg=0; exchangeable=false.
+//   HXT (= H'') -- planar_group=Carboxylate; polarH=CarboxylOH;
+//   formal_chg=0; exchangeable=true.
+std::vector<CapTableEntries> BuildCapTables(ProcessLog& log) {
+    log.Section("build-cap-tables");
+
+    // Per-cap-H pseudoatom encoding (Markley Table 1 has no entry for
+    // terminus-specific Hs; the Q/None/0/false encoding is the
+    // closest-fit "equivalent group" per spec Section 4 + §A.3 of the
+    // dependencies file).
+    const PseudoatomMembership q_terminus = {PseudoatomKind::Q, 0, 0, false};
+
+    std::vector<CapTableEntries> caps;
+
+    {
+        CapTableEntries c;
+        c.state      = TerminalState::NtermCharged;
+        c.array_name = "kCapNtermCharged";
+        c.entries.push_back(MakeCapAtomEntry(
+            "H1", Element::H, PlanarGroupKind::None,
+            PolarHKind::AmmoniumNH, 0, true, q_terminus));
+        c.entries.push_back(MakeCapAtomEntry(
+            "H2", Element::H, PlanarGroupKind::None,
+            PolarHKind::AmmoniumNH, 0, true, q_terminus));
+        c.entries.push_back(MakeCapAtomEntry(
+            "H3", Element::H, PlanarGroupKind::None,
+            PolarHKind::AmmoniumNH, 0, true, q_terminus));
+        for (const auto& e : c.entries) c.atom_id_for_log.push_back(e.atom_id_for_log);
+        log.KV("kCapNtermCharged_size", static_cast<int>(c.entries.size()));
+        caps.push_back(std::move(c));
+    }
+
+    {
+        CapTableEntries c;
+        c.state      = TerminalState::NtermNeutral;
+        c.array_name = "kCapNtermNeutral";
+        c.entries.push_back(MakeCapAtomEntry(
+            "H1", Element::H, PlanarGroupKind::None,
+            PolarHKind::AmineNH, 0, true, q_terminus));
+        c.entries.push_back(MakeCapAtomEntry(
+            "H2", Element::H, PlanarGroupKind::None,
+            PolarHKind::AmineNH, 0, true, q_terminus));
+        for (const auto& e : c.entries) c.atom_id_for_log.push_back(e.atom_id_for_log);
+        log.KV("kCapNtermNeutral_size", static_cast<int>(c.entries.size()));
+        caps.push_back(std::move(c));
+    }
+
+    {
+        CapTableEntries c;
+        c.state      = TerminalState::CtermDeprotonated;
+        c.array_name = "kCapCtermDeprotonated";
+        c.entries.push_back(MakeCapAtomEntry(
+            "OXT", Element::O, PlanarGroupKind::Carboxylate,
+            PolarHKind::NotPolar, -1, false));
+        for (const auto& e : c.entries) c.atom_id_for_log.push_back(e.atom_id_for_log);
+        log.KV("kCapCtermDeprotonated_size", static_cast<int>(c.entries.size()));
+        caps.push_back(std::move(c));
+    }
+
+    {
+        CapTableEntries c;
+        c.state      = TerminalState::CtermProtonated;
+        c.array_name = "kCapCtermProtonated";
+        c.entries.push_back(MakeCapAtomEntry(
+            "OXT", Element::O, PlanarGroupKind::Carboxylate,
+            PolarHKind::NotPolar, 0, false));
+        c.entries.push_back(MakeCapAtomEntry(
+            "HXT", Element::H, PlanarGroupKind::Carboxylate,
+            PolarHKind::CarboxylOH, 0, true));
+        for (const auto& e : c.entries) c.atom_id_for_log.push_back(e.atom_id_for_log);
+        log.KV("kCapCtermProtonated_size", static_cast<int>(c.entries.size()));
+        caps.push_back(std::move(c));
+    }
+
+    return caps;
+}
+
+
 // Format the residue's identifier for use as a C++ array name.
 // Canonical -> kPheAtoms, variant -> kPheAtoms_HID.
 std::string CppArrayName(const std::string& residue, const std::string& variant) {
@@ -2366,6 +2631,69 @@ std::string CppArrayName(const std::string& residue, const std::string& variant)
 }
 
 
+// Map an AMBER 3-letter code to its AminoAcid enum identifier (as a
+// C++ source token). Used by the LookupBy emitter to dispatch on
+// (residue, variant_idx).
+const char* AminoAcidEnumLiteral(const std::string& three_letter) {
+    if (three_letter == "ALA") return "nmr::AminoAcid::ALA";
+    if (three_letter == "ARG") return "nmr::AminoAcid::ARG";
+    if (three_letter == "ASN") return "nmr::AminoAcid::ASN";
+    if (three_letter == "ASP") return "nmr::AminoAcid::ASP";
+    if (three_letter == "CYS") return "nmr::AminoAcid::CYS";
+    if (three_letter == "GLN") return "nmr::AminoAcid::GLN";
+    if (three_letter == "GLU") return "nmr::AminoAcid::GLU";
+    if (three_letter == "GLY") return "nmr::AminoAcid::GLY";
+    if (three_letter == "HIS") return "nmr::AminoAcid::HIS";
+    if (three_letter == "ILE") return "nmr::AminoAcid::ILE";
+    if (three_letter == "LEU") return "nmr::AminoAcid::LEU";
+    if (three_letter == "LYS") return "nmr::AminoAcid::LYS";
+    if (three_letter == "MET") return "nmr::AminoAcid::MET";
+    if (three_letter == "PHE") return "nmr::AminoAcid::PHE";
+    if (three_letter == "PRO") return "nmr::AminoAcid::PRO";
+    if (three_letter == "SER") return "nmr::AminoAcid::SER";
+    if (three_letter == "THR") return "nmr::AminoAcid::THR";
+    if (three_letter == "TRP") return "nmr::AminoAcid::TRP";
+    if (three_letter == "TYR") return "nmr::AminoAcid::TYR";
+    if (three_letter == "VAL") return "nmr::AminoAcid::VAL";
+    return "nmr::AminoAcid::Unknown";
+}
+
+
+// Map a variant 3-letter code to its variant index per
+// `src/AminoAcidType.h` canonical contract (asserted by
+// ValidateVariantIndices()):
+//   HIS:  HID=0, HIE=1, HIP=2
+//   ASP:  ASH=0
+//   GLU:  GLH=0
+//   CYS:  CYX=0, CYM=1
+//   LYS:  LYN=0
+//   ARG:  ARN=0
+//   TYR:  TYM=0
+// Default chain (no variant) has variant_idx = 255 in this generator's
+// emitter; the runtime conventionally uses 0 for "no variant" but the
+// AminoAcidType variant table is 1-indexed in spirit. We use 255 as a
+// distinct "default chain" marker in the emitted lookup; runtime
+// callers pass the same convention. Standard 20 default chain emits
+// variant_idx=255; HIS chain (which IS HIE in AMBER) also emits
+// variant_idx=255 in the default block.
+int VariantIndexForEmitter(const std::string& variant_3letter) {
+    // 255 = "default chain (no variant)"; matches the usage in
+    // SynthesisedFor<Residue> default-block emission.
+    if (variant_3letter.empty()) return 255;
+    if (variant_3letter == "HID") return 0;
+    if (variant_3letter == "HIE") return 1;
+    if (variant_3letter == "HIP") return 2;
+    if (variant_3letter == "ASH") return 0;
+    if (variant_3letter == "GLH") return 0;
+    if (variant_3letter == "CYX") return 0;
+    if (variant_3letter == "CYM") return 1;
+    if (variant_3letter == "LYN") return 0;
+    if (variant_3letter == "ARN") return 0;
+    if (variant_3letter == "TYM") return 0;
+    return 255;
+}
+
+
 // Write the generated .cpp file. Strings that appear in the output:
 // (a) the C++ identifier for each enum value (as the typed-enum name);
 // (b) atom-id comments next to each entry, for human readability.
@@ -2373,6 +2701,7 @@ std::string CppArrayName(const std::string& residue, const std::string& variant)
 // in a // comment, also not runtime data.
 void EmitCppFile(const std::string& output_path,
                  const std::vector<ResidueEntries>& all,
+                 const std::vector<CapTableEntries>& caps,
                  ProcessLog& log) {
     log.Section("emit-cpp");
     log.KV("output_path", output_path);
@@ -2391,6 +2720,17 @@ void EmitCppFile(const std::string& output_path,
     out << "// Do NOT edit by hand. Regenerate with the steps in\n";
     out << "// tools/topology/README.md.\n";
     out << "//\n";
+    out << "// Lookup architecture: per-residue and cap tables are queried at\n";
+    out << "// runtime composition time via typed structural matching against\n";
+    out << "// AtomMechanicalIdentity (Element + Locant + BranchAddress +\n";
+    out << "// DiastereotopicIndex + BackboneRole). Atom positions in the\n";
+    out << "// arrays are NOT used as runtime keys; the LookupBy / LookupCap\n";
+    out << "// functions emitted at the bottom of this file own the lookup.\n";
+    out << "// See section H of\n";
+    out << "// `spec/plan/topology-encoding-dependencies-2026-05-05.md` for\n";
+    out << "// the architectural rationale (typed identity instead of\n";
+    out << "// atom_local_idx; cap atoms partitioned out of per-residue tables).\n";
+    out << "//\n";
     out << "// String barrier: this file contains only typed-enum\n";
     out << "// identifiers (compile-time names) and atom-id comments.\n";
     out << "// No std::string literals, no gemmi / RDKit / cifpp\n";
@@ -2400,6 +2740,7 @@ void EmitCppFile(const std::string& output_path,
     out << "// for the structured generation log committed alongside.\n";
     out << "\n";
     out << "#include \"../SemanticEnums.h\"\n";
+    out << "#include \"../Types.h\"\n";
     out << "\n";
     out << "namespace nmr::topology_generated {\n";
     out << "\n";
@@ -2424,9 +2765,162 @@ void EmitCppFile(const std::string& output_path,
                static_cast<int>(re.entries.size()));
     }
 
+    // Cap tables (per §H.4 of the dependencies file). One per
+    // TerminalState; chain atoms live in the per-residue tables above.
+    out << "// === Terminal-state cap tables ===\n";
+    out << "// Per spec/plan/topology-residue-reference-2026-05-05.md Section 4.\n";
+    out << "// Cap atoms (OXT, HXT, H1, H2, H3) are residue-independent; one\n";
+    out << "// table per terminal state covers all 20 standard residues.\n";
+    out << "\n";
+    int cap_total = 0;
+    for (const auto& c : caps) {
+        out << "constexpr std::array<AtomSemanticTable, " << c.entries.size() << "> "
+            << c.array_name << " = {{\n";
+        for (size_t i = 0; i < c.entries.size(); ++i) {
+            out << EmitEntryLiteral(c.entries[i]);
+            const std::string atom_id = (i < c.atom_id_for_log.size())
+                                            ? c.atom_id_for_log[i] : "";
+            out << ",  // " << i << ": " << atom_id << "\n";
+        }
+        out << "}};\n\n";
+        cap_total += static_cast<int>(c.entries.size());
+        log.KV(std::string("emitted_") + c.array_name + "_size",
+               static_cast<int>(c.entries.size()));
+    }
+
+    // Lookup function emission. The runtime calls these at protein-
+    // construction time once per atom; the result drives ApplySemantic
+    // onto the typed semantic-record slots. Linear scan over a
+    // residue's table; the typed mechanical identity is unique within
+    // a residue's table by construction.
+    //
+    // No strings cross this barrier: enum types only.
+    out << "// ============================================================================\n";
+    out << "// LookupBy -- canonical runtime lookup over a residue + variant table\n";
+    out << "// ============================================================================\n";
+    out << "//\n";
+    out << "// Returns the AtomSemanticTable entry whose mechanical identity\n";
+    out << "// (Element + Locant + Branch + DiIndex + BackboneRole) matches\n";
+    out << "// the queried `identity`. Linear scan; tables are small (each\n";
+    out << "// residue is ~10-25 entries). Returns nullptr if no entry matches.\n";
+    out << "//\n";
+    out << "// `variant_idx` follows `src/AminoAcidType.h` ValidateVariantIndices()\n";
+    out << "// contract: HIS HID=0, HIE=1, HIP=2; ASP ASH=0; GLU GLH=0; CYS CYX=0,\n";
+    out << "// CYM=1; LYS LYN=0; ARG ARN=0; TYR TYM=0. The runtime convention\n";
+    out << "// `Residue::protonation_variant_index = -1` (no variant) is mapped\n";
+    out << "// to variant_idx=255 by the runtime caller (cast from -1) or passed\n";
+    out << "// as 255 directly; the function handles 255 as \"default chain\" via\n";
+    out << "// each residue's `default:` branch -- for HIS this returns the\n";
+    out << "// CCD-derived HIS table (which corresponds to the AMBER ff14SB\n";
+    out << "// \"HIS = HIE\" convention).\n";
+    out << "//\n";
+    out << "// THIS IS THE CANONICAL RUNTIME LOOKUP. atom_local_idx is NOT used\n";
+    out << "// (index spaces don't align across CCD, AmberAminoAcidVariantTable,\n";
+    out << "// and other producers; typed structural matching gives unambiguous\n";
+    out << "// lookup that survives any reordering of either side). Per §H.2 of\n";
+    out << "// spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
+    out << "namespace detail {\n";
+    out << "    constexpr const AtomSemanticTable*\n";
+    out << "    LookupInArray(const AtomSemanticTable* base, std::size_t n,\n";
+    out << "                  const AtomMechanicalIdentity& q) {\n";
+    out << "        for (std::size_t i = 0; i < n; ++i) {\n";
+    out << "            const auto& e = base[i];\n";
+    out << "            if (e.element == q.element\n";
+    out << "                && e.locant == q.locant\n";
+    out << "                && e.branch == q.branch\n";
+    out << "                && e.di_index == q.di_index\n";
+    out << "                && e.backbone_role == q.backbone_role) {\n";
+    out << "                return &e;\n";
+    out << "            }\n";
+    out << "        }\n";
+    out << "        return nullptr;\n";
+    out << "    }\n";
+    out << "}  // namespace detail\n";
+    out << "\n";
+
+    out << "const AtomSemanticTable*\n";
+    out << "LookupBy(nmr::AminoAcid residue, std::uint8_t variant_idx,\n";
+    out << "         const AtomMechanicalIdentity& identity) {\n";
+
+    // Group entries by AminoAcid first; emit a switch on residue.
+    // Within each residue branch, dispatch on variant_idx.
+    std::map<std::string, std::vector<const ResidueEntries*>> by_residue;
+    for (const auto& re : all) {
+        by_residue[re.residue_3letter].push_back(&re);
+    }
+
+    out << "    switch (residue) {\n";
+    for (const auto& kv : by_residue) {
+        const std::string& res = kv.first;
+        out << "        case " << AminoAcidEnumLiteral(res) << ": {\n";
+        // Find default-chain entry (variant_3letter empty).
+        const ResidueEntries* default_entry = nullptr;
+        std::vector<const ResidueEntries*> variants_only;
+        for (const ResidueEntries* re : kv.second) {
+            if (re->variant_3letter.empty()) default_entry = re;
+            else variants_only.push_back(re);
+        }
+        out << "            switch (variant_idx) {\n";
+        for (const ResidueEntries* re : variants_only) {
+            const int vidx = VariantIndexForEmitter(re->variant_3letter);
+            const std::string array_name =
+                CppArrayName(re->residue_3letter, re->variant_3letter);
+            out << "                case " << vidx << ":\n";
+            out << "                    return detail::LookupInArray("
+                << array_name << ".data(), "
+                << array_name << ".size(), identity);\n";
+        }
+        if (default_entry != nullptr) {
+            const std::string array_name =
+                CppArrayName(default_entry->residue_3letter, "");
+            out << "                default:\n";
+            out << "                    return detail::LookupInArray("
+                << array_name << ".data(), "
+                << array_name << ".size(), identity);\n";
+        } else {
+            out << "                default: return nullptr;\n";
+        }
+        out << "            }\n";
+        out << "        }\n";
+    }
+    out << "        default: return nullptr;\n";
+    out << "    }\n";
+    out << "}\n";
+    out << "\n";
+
+    // LookupCap emission.
+    out << "// ============================================================================\n";
+    out << "// LookupCap -- runtime lookup over a terminal-state cap table\n";
+    out << "// ============================================================================\n";
+    out << "//\n";
+    out << "// Returns the cap-atom AtomSemanticTable entry whose mechanical\n";
+    out << "// identity matches `identity`, for the requested terminal state.\n";
+    out << "// Returns nullptr if no entry matches (typical when the caller\n";
+    out << "// queries an atom that is not actually a cap atom on this terminus,\n";
+    out << "// or when the terminal state is `Internal`).\n";
+    out << "//\n";
+    out << "// Per §H.4 of spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
+    out << "const AtomSemanticTable*\n";
+    out << "LookupCap(nmr::TerminalState state,\n";
+    out << "          const AtomMechanicalIdentity& identity) {\n";
+    out << "    switch (state) {\n";
+    for (const auto& c : caps) {
+        out << "        case " << TerminalStateLiteral(c.state) << ":\n";
+        out << "            return detail::LookupInArray("
+            << c.array_name << ".data(), "
+            << c.array_name << ".size(), identity);\n";
+    }
+    out << "        case nmr::TerminalState::Internal:\n";
+    out << "        default:\n";
+    out << "            return nullptr;\n";
+    out << "    }\n";
+    out << "}\n";
+    out << "\n";
+
     out << "}  // namespace nmr::topology_generated\n";
     out.flush();
     log.KV("total_atoms_emitted", total_atoms);
+    log.KV("cap_atoms_emitted", cap_total);
     log.KV("status", "OK");
 }
 
@@ -2690,7 +3184,13 @@ int main(int argc, char** argv) {
         all_entries.push_back(std::move(*entries));
     }
 
-    EmitCppFile(args.output_cpp_path, all_entries, log);
+    // Build the four terminal-state cap tables. Per §H.4 of
+    // spec/plan/topology-encoding-dependencies-2026-05-05.md, cap
+    // chemistry is residue-independent; one table per terminal state
+    // covers all 20 standard residues.
+    auto cap_tables = BuildCapTables(log);
+
+    EmitCppFile(args.output_cpp_path, all_entries, cap_tables, log);
 
     log.Section("done");
     log.KV("status", "OK");
