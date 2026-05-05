@@ -1210,6 +1210,13 @@ SynthesisedFields SynthesisedForGly(const std::string& atom_id, const ParsedName
 SynthesisedFields SynthesisedForHis(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β methylene only
+    // Aromatic-CH / imidazole-NH override: HD2 (aromatic CH on Cδ2)
+    // and HE2 (imidazole NH on Nε2) match the helper's H[BGDE][23]
+    // pattern but are NOT prochiral methylene Hs. Clear the helper's
+    // false-positive ProS tag here; same cleanup pattern as PHE/TRP/TYR.
+    if (atom_id == "HD2" || atom_id == "HE2") {
+        s.prochiral = ProchiralStereo::NotProchiral;
+    }
 
     if (atom_id == "N" || atom_id == "C" || atom_id == "O" ||
         atom_id == "H" || atom_id == "HN") {
@@ -1986,6 +1993,18 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
     e.pseudoatom    = syn.pseudoatom;
     e.ring_position = syn.ring_pos;
     e.is_exchangeable = (e.polar_h != PolarHKind::NotPolar);
+
+    // DiastereotopicIndex docstring (`SemanticEnums.h:123`) defines None
+    // as "atom is not part of a prochiral methylene pair." The mechanical
+    // parser keys on the digit in the atom name (HB2 -> Position2 etc.)
+    // without knowing whether the atom belongs to a methyl or methylene.
+    // For methyl-pseudoatom members (Ala HB2/HB3, Val MG[12]'s methyl Hs,
+    // etc.), the digit reflects the H ordering within the methyl, NOT a
+    // prochiral pair. Clear di_index here so the field's semantics match
+    // its docstring.
+    if (e.pseudoatom.kind == PseudoatomKind::M) {
+        e.di_index = DiastereotopicIndex::None;
+    }
 
     e.prov_planar_group.witnesses[0] = {SemanticSource::SynthesizedFromChemistry,
                                          static_cast<uint8_t>(syn.planar_group)};

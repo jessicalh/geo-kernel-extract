@@ -359,6 +359,181 @@ as confirmation. Lesson recorded in the next-agent brief.
 
 ---
 
+## H. Structural-matching lookup architecture (PENDING — discovered 2026-05-05 evening, OpenAI critique)
+
+**Status**: the comment at `tools/topology/build_semantic_tables.cpp:2144`
+promises "(AminoAcid, atom_local_idx)" lookup at runtime, but the
+generator iterates raw CCD atom order at line 2085. Runtime
+`AminoAcidType` (in `src/AminoAcidType.cpp`) carries chain-residue
+inventory; CCD's free-amino-acid form is a superset (extra cap atoms
+OXT/HXT/H2 plus, for ASP/GLU/HIS, the protonated forms HD2/HE2/HD1).
+Direct atom_local_idx integration would silently mis-assign semantics.
+
+**Architectural fix — locked decision (do NOT relitigate)**: the
+runtime lookup MUST use **typed structural matching**, not raw
+atom_local_idx and not atom_id strings. The string wall is sacred.
+
+### H.1 Mechanical-identity tuple
+
+Each `AtomSemanticTable` entry exposes its mechanical identity. The
+parser already computes `Locant + BranchAddress + DiastereotopicIndex`;
+add `Element` (already typed in `src/Types.h`) and a `BackboneRole`
+enum to disambiguate the six backbone slots (which all share
+`Locant::None`):
+
+```cpp
+enum class BackboneRole : uint8_t {
+    None              = 0,   // Sidechain atom or cap; identity comes from
+                              // (Locant, Branch, DiIndex, Element).
+    Nitrogen          = 1,   // Backbone N.
+    AlphaCarbon       = 2,   // Backbone CA.
+    CarbonylCarbon    = 3,   // Backbone C.
+    CarbonylOxygen    = 4,   // Backbone O.
+    AmideHydrogen     = 5,   // Backbone H / HN.
+    AlphaHydrogen     = 6,   // Backbone HA (Gly's HA2/HA3 keep BackboneRole::None
+                              // because they carry Locant::Alpha).
+};
+
+struct AtomMechanicalIdentity {
+    Element             element;
+    Locant              locant;
+    BranchAddress       branch;
+    DiastereotopicIndex di_index;
+    BackboneRole        backbone_role;
+};
+```
+
+The `AtomMechanicalIdentity` is unique within a residue's table.
+
+### H.2 Lookup function (runtime)
+
+```cpp
+// Linear scan over the table; N is small (≤ ~25 entries per residue).
+const AtomSemanticTable*
+LookupBy(AminoAcid residue, uint8_t variant_idx,
+         const AtomMechanicalIdentity& identity);
+```
+
+Lookup time ≈ 25 ns per call; one call per atom at protein
+construction; entirely inert at calculator runtime (lookup happens
+once at `Protein::FinalizeConstruction`).
+
+### H.3 Benign-extras tolerance
+
+The substrate's per-residue tables MAY contain extra atoms not
+present in the runtime's chain-residue inventory (CCD-form caps,
+protonated atoms in CCD ASP/GLU/HIS, etc.). These are benign extras:
+runtime queries the lookup function for the atoms it actually has;
+extras sit unqueried in the table.
+
+This is robustness by design: the substrate is a superset of any
+runtime use-case; the runtime composes its semantic record by
+querying the typed identity for each atom it owns. If the substrate
+table is later filtered to chain-form (per H.4 below), benign extras
+disappear; the lookup mechanism is unaffected.
+
+### H.4 Option C: cap separation (paired with structural matching)
+
+The standard 20 tables today carry CCD's cap atoms (OXT, HXT, H2)
+with default-no-chemistry entries — the existing `SynthesisedFor<Residue>`
+functions only handle `is_n_terminus` / `is_c_terminus` polar_h via
+per-atom branching; other cap-specific fields (formal_charge,
+pseudoatom membership, planar_group context) get default values that
+are wrong for an actual terminus.
+
+**Decision**: emit four cap tables alongside the 30 residue tables:
+
+```cpp
+constexpr std::array<AtomSemanticTable, N> kCapNtermCharged    = { ... };
+constexpr std::array<AtomSemanticTable, N> kCapNtermNeutral    = { ... };
+constexpr std::array<AtomSemanticTable, N> kCapCtermDeprotonated = { ... };
+constexpr std::array<AtomSemanticTable, N> kCapCtermProtonated   = { ... };
+```
+
+The reference doc Section 4 (`spec/plan/topology-residue-reference-2026-05-05.md`)
+has the chemistry. Generator partitions CCD atoms: chain atoms go to
+per-residue tables; cap atoms go to terminal-state tables; variant
+atoms stay in variant tables (already done).
+
+### H.5 Composition at protein construction
+
+```cpp
+void Protein::FinalizeConstruction() {
+    for (Residue& res : residues_) {
+        for (Atom& atom : res.atoms()) {
+            // Compute mechanical identity from atom name (parser).
+            auto ident = ComputeAtomMechanicalIdentity(atom);
+
+            // Standard semantic record from per-residue / per-variant table.
+            const AtomSemanticTable* base = LookupBy(res.type, res.variant, ident);
+            if (base) ApplySemantic(atom, *base);
+
+            // If this residue is at a terminus, also look up cap atoms.
+            if (atom.is_n_terminal_atom) {
+                const auto* cap = LookupCap(res.n_term_state, ident);
+                if (cap) ApplySemantic(atom, *cap);
+            }
+            if (atom.is_c_terminal_atom) {
+                const auto* cap = LookupCap(res.c_term_state, ident);
+                if (cap) ApplySemantic(atom, *cap);
+            }
+        }
+    }
+}
+```
+
+`ApplySemantic` writes the typed semantic fields onto the runtime
+atom record (or a parallel `LegacyAmberTopology` substrate slot).
+
+### H.6 What this means for the generator
+
+The generator must:
+
+1. **Partition CCD atoms per residue** into:
+   - Chain atoms (those in `AmberAminoAcidVariantTable`'s standard set
+     for that residue) → per-residue table.
+   - Cap atoms (OXT, HXT, H1, H2, H3) → terminal-state table.
+   - Variant-specific atoms — already handled by variant tables.
+2. **Add `Element` and `BackboneRole` to `AtomSemanticTable`**
+   (and the parser computes them).
+3. **Emit four cap tables** carrying the reference doc Section 4 chemistry.
+4. **Re-anchor the `Lookup` function comment** at line 2144 to describe
+   structural matching, not atom_local_idx.
+
+### H.7 Rationale (why this architecture, not the alternatives)
+
+- **NOT atom_local_idx** because index spaces don't align across CCD,
+  AmberAminoAcidVariantTable, and any other producer of atom inventories.
+- **NOT atom_id strings** because the string wall is sacred; the
+  substrate is typed-only.
+- **YES typed mechanical identity** because the parser already computes
+  these fields; reusing them as the lookup key adds no string surface
+  and gives unambiguous matching within a residue.
+- **YES cap-table separation** because cap chemistry is residue-
+  independent (NTERM_CHARGED chemistry is the same across all 20
+  residues); centralising it eliminates per-residue duplication and
+  makes the chain table semantically clean.
+
+### H.8 Estimated effort
+
+One focused agent run:
+- ~50 lines new types in `SemanticEnums.h` (`BackboneRole`, `AtomMechanicalIdentity`,
+  Element field on `AtomSemanticTable`).
+- ~150 lines generator changes (partitioning, cap-table emission,
+  parser BackboneRole computation, lookup-function emission).
+- Reference doc Section 4 already has the cap chemistry.
+- Tests updated.
+
+The `Lookup` function lives in the generated `.cpp` (typed enums only;
+no strings); the runtime composition lives in `Protein.cpp` (next-
+session integration, not in this work).
+
+This entry takes precedence over earlier "atom_local_idx" comments
+in the codebase. Update those comments at the same time the
+architectural change lands.
+
+---
+
 ## How this file should be used
 
 - **Before encoding** (running `tools/topology/build_semantic_tables`):

@@ -212,10 +212,10 @@ spec/plan/session-handoff-20260505.md                      [Session B morning ha
 spec/plan/session-handoff-20260505-evening.md              [this file]
 
 src/SemanticEnums.h                                        [extended this session: AmineNH, AromaticOxide, doc comments]
-src/generated/LegacyAmberSemanticTables.cpp                [PHE only; unchanged this session]
-src/generated/LegacyAmberSemanticTables.log.txt            [PHE only; unchanged this session]
+src/generated/LegacyAmberSemanticTables.cpp                [30 residue tables: 20 standard + 10 AMBER protonation variants; emitted via parent-CCD + delta architecture]
+src/generated/LegacyAmberSemanticTables.log.txt            [regenerated this session with full per-residue + per-variant audit trail]
 
-tools/topology/build_semantic_tables.cpp                   [dead HG-clause removed; literal-emitter switches extended]
+tools/topology/build_semantic_tables.cpp                   [dead HG-clause removed; 19 new SynthesisedFor<Residue> + 10 SynthesisedFor<Variant> functions; ProcessVariantResidue path; charge_override on SynthesisedFields; literal-emitter switches extended for AmineNH and AromaticOxide]
 
 tests/test_string_barrier.cpp                              [unchanged this session]
 ```

@@ -127,6 +127,7 @@ AminoAcid AminoAcidFromThreeLetterCode(const std::string& code) {
     if (code == "GLH") return AminoAcid::GLU;
     if (code == "CYX" || code == "CYM") return AminoAcid::CYS;
     if (code == "LYN") return AminoAcid::LYS;
+    if (code == "ARN") return AminoAcid::ARG;
     if (code == "TYM") return AminoAcid::TYR;
     if (code == "MSE") return AminoAcid::MET;
     return AminoAcid::Unknown;
