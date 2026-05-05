@@ -26,7 +26,7 @@ plus three evening commits (`bb4584d`, `56fb6b9`, `ab3bd5e`) are
 local-only pending push (matches the prior session's state — push is
 on the user's schedule, not autonomous).
 
-**This session's three commits, oldest first:**
+**This session's six commits, oldest first:**
 
 ```text
 bb4584d  Phase 5 substrate: residue reference + critical review +
@@ -34,6 +34,10 @@ bb4584d  Phase 5 substrate: residue reference + critical review +
 56fb6b9  Phase 5 substrate: encode standard 20 residues; variants pending
 ab3bd5e  Phase 5 substrate: emit AMBER variant tables via parent-CCD +
          delta architecture
+60f9a11  Session handoff: update for evening Phase 5 substrate completion
+3f1d03a  Phase 5 substrate: critique-driven fixes + structural-matching
+         architecture spec
+ee1f1b4  Phase 5 substrate: structural-matching lookup + cap-table separation
 ```
 
 **Tests:** ctest 352/352 pass (347 prior baseline + 5 StringBarrier).
@@ -152,7 +156,25 @@ Standard 20 byte-identical. PHE byte-identical. ctest 352/352.
 
 The encoding work is done. Next is integration + test coverage.
 
-### Next-session priority 1: Coverage test (Task #10)
+### Next-session priority 1: Chain-atom whitelist filter (dependencies §H.10)
+
+Drop variant-specific atoms (HD2 from ASP, HE2 from GLU, HD1 from HIS)
+from the standard-residue tables. Currently retained as benign extras
+(structural-matching tolerates them); cleaner state has them only in
+the variant tables (ASH/GLH/HIP) where they belong. ~30 lines of
+generator changes; per §H.10 of the dependencies file.
+
+### Next-session priority 2: Runtime composition (`Protein::FinalizeConstruction`)
+
+Wire `LookupBy` + `LookupCap` (now emitted in
+`src/generated/LegacyAmberSemanticTables.cpp`) into protein
+construction. For each atom, compute `AtomMechanicalIdentity`,
+look up the typed semantic record, copy fields into the runtime
+substrate slot. For terminal residues, also call `LookupCap`. This
+is the integration step the architecture was built for; bounded
+work.
+
+### Next-session priority 3: Coverage test (Task #10)
 
 `tests/test_legacy_amber_semantic_tables.cpp` (or similar). Asserts
 programmatic invariants on the 30 emitted tables. Suggested asserts:

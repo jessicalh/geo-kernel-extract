@@ -532,6 +532,57 @@ This entry takes precedence over earlier "atom_local_idx" comments
 in the codebase. Update those comments at the same time the
 architectural change lands.
 
+### H.9 LANDED 2026-05-05 evening at commit `ee1f1b4`
+
+The structural-matching architecture is implemented:
+- `BackboneRole` + `TerminalState` enums and `AtomMechanicalIdentity`
+  struct in `src/SemanticEnums.h`.
+- `Element` + `BackboneRole` fields on `AtomSemanticTable`.
+- Chain-form filtering in `BuildResidueEntries` drops cap atoms
+  (OXT/HXT/H1/H2/H3) from per-residue tables.
+- Four cap tables emitted (`kCapNtermCharged`, `kCapNtermNeutral`,
+  `kCapCtermDeprotonated`, `kCapCtermProtonated`) per Section 4 of
+  the residue-reference doc.
+- `LookupBy(AminoAcid, variant_idx, AtomMechanicalIdentity)` and
+  `LookupCap(TerminalState, AtomMechanicalIdentity)` functions in
+  the generated `.cpp`.
+- Stale "atom_local_idx" comments refreshed.
+- Tests 352/352 pass; StringBarrier 5/5.
+
+### H.10 Outstanding follow-up: chain-atom whitelist for variant atoms
+
+The §H landing partitions out cap atoms but does NOT yet partition
+out variant-specific atoms (HD2 in ASP, HE2 in GLU, HD1 in HIS) from
+the standard-residue tables. CCD's free-amino-acid form has these
+atoms (CCD ASP carries the protonated HD2 etc.) but AMBER's chain-
+residue inventory for the standard charged/HIE forms does not.
+
+The benign-extras tolerance from §H.3 makes this functionally inert:
+runtime queries by structural identity; HD2 in ASP's table sits
+unqueried because runtime ASP doesn't have HD2. But for "clean"
+encoding (per the user's stated priority), these atoms should be
+dropped from the standard-residue tables too — they would still
+appear in the variant tables (kAspAtoms_ASH, kGluAtoms_GLH,
+kHisAtoms_HIP).
+
+**To implement**: extend the whitelist in `BuildResidueEntries` (or
+its caller) to filter against `AmberAminoAcidVariantTable[residue].atoms`
+for the standard variant. The cleanest source is to encode the
+chain-atom whitelist explicitly in the generator (or wire the
+generator to read from AmberAminoAcidVariantTable). After this filter:
+
+  ASP: 13 -> 12 (drop HD2)
+  GLU: 16 -> 15 (drop HE2)
+  HIS: 18 -> 17 (drop HD1)
+
+Other standard tables already match runtime atom counts.
+
+**Why this is queued not done in commit `ee1f1b4`**: scope discipline.
+The structural-matching landing is its own coherent unit; the chain-
+atom filter is an additional refinement. They are independent gates.
+Functional behaviour is correct without H.10; H.10 makes the substrate
+data shape match the runtime data shape exactly.
+
 ---
 
 ## How this file should be used
