@@ -789,12 +789,52 @@ std::unique_ptr<nmr::Protein> MakeMixedKnownAndUnknownProtein() {
     return pp;
 }
 
+// Codex Finding F4 (2026-05-06): the prior stub-fixture guard skipped
+// AminoAcid::Unknown residues when checking "does this protein have
+// real atom names?" — so an all-Unknown-but-named-atoms protein
+// silently treated as a stub fixture, returning an empty substrate
+// without firing the fail-loud Unknown-residue loop. The redefined
+// guard checks "any atom anywhere has a non-empty pdb_atom_name?";
+// the all-Unknown case now flows through to the fail-loud loop.
+std::unique_ptr<nmr::Protein> MakeAllUnknownNamedProtein() {
+    auto pp = std::make_unique<nmr::Protein>();
+    nmr::Protein& p = *pp;
+
+    // Single residue, Unknown type, but with a named atom.
+    nmr::Residue unk;
+    unk.type = nmr::AminoAcid::Unknown;
+    unk.sequence_number = 1;
+    unk.chain_id = "A";
+    const size_t ri = p.AddResidue(unk);
+    {
+        auto a = nmr::Atom::Create(nmr::Element::C);
+        a->pdb_atom_name = "Q1";  // non-standard but non-empty
+        a->residue_index = ri;
+        p.MutableResidueAt(ri).atom_indices.push_back(
+            p.AddAtom(std::move(a)));
+    }
+
+    return pp;
+}
+
 }  // namespace
 
 using LegacyAmberSemanticIntegrationDeathTest = ::testing::Test;
 
 TEST_F(LegacyAmberSemanticIntegrationDeathTest, UnknownResidueWithNamedAtomsAborts) {
     auto pp = MakeMixedKnownAndUnknownProtein();
+    nmr::Protein& p = *pp;
+
+    std::vector<nmr::Vec3> positions(p.AtomCount(), nmr::Vec3::Zero());
+    EXPECT_DEATH(
+        p.FinalizeConstruction(positions),
+        "AminoAcid::Unknown residue.*carries .* named atom");
+}
+
+// Codex Finding F4 (2026-05-06): all-Unknown-but-named-atoms protein
+// now hits the fail-loud loop instead of the stub-fixture short-circuit.
+TEST_F(LegacyAmberSemanticIntegrationDeathTest, AllUnknownNamedAtomsAborts) {
+    auto pp = MakeAllUnknownNamedProtein();
     nmr::Protein& p = *pp;
 
     std::vector<nmr::Vec3> positions(p.AtomCount(), nmr::Vec3::Zero());

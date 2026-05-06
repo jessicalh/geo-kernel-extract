@@ -228,11 +228,20 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
 
     // Stub-fixture guard. Tests that construct proteins with raw
     // element-and-position fixtures (no PDB names) leave pdb_atom_name
-    // empty. Substrate doesn't apply; return empty vector. Calculators
-    // gate on HasAtomSemantic().
+    // empty on every atom. Substrate doesn't apply; return empty vector.
+    // Calculators gate on HasAtomSemantic().
+    //
+    // Codex Finding F4 (2026-05-06): the guard's predicate is "ANY atom
+    // anywhere in the protein has a non-empty pdb_atom_name." It does
+    // NOT pre-skip Unknown residues. An all-Unknown-but-named-atoms
+    // protein hits this guard with has_real_atom_names = true, falls
+    // through to the Unknown-residue fail-loud loop below, and aborts
+    // there — which is the correct behaviour. The previous formulation
+    // ("ignore Unknown residues, look for named atoms only on standard
+    // residues") let an all-Unknown-named-atoms protein silently return
+    // empty, masking a real chemistry error.
     bool has_real_atom_names = false;
     for (const Residue& res : residues) {
-        if (res.type == AminoAcid::Unknown) continue;
         for (size_t ai : res.atom_indices) {
             if (ai < atoms.size() && !atoms[ai]->pdb_atom_name.empty()) {
                 has_real_atom_names = true;
@@ -395,6 +404,24 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             result[ai] = *base;
 
             // Backbone-cap overlay (FIELD-LEVEL via ApplyCapDelta).
+            //
+            // Codex Finding CC1 (2026-05-06): when
+            // IsBackboneCapOverlayAtom() selects this branch, the
+            // backbone role + terminal state combination is one the
+            // substrate is required to populate (Nitrogen at NTERM*,
+            // CarbonylCarbon / CarbonylOxygen at CTERM*). A nullptr
+            // cap row here is a substrate gap — the chain row would
+            // silently keep its internal-residue chemistry while the
+            // load-time terminal state says it should have cap-delta
+            // overlays applied. Treat nullptr as FATAL with full
+            // mechanical-identity context, mirroring the chain-side
+            // FatalSubstrateMiss path. Test-gap note: constructing a
+            // synthetic fixture that triggers this assertion requires
+            // modifying the (auto-generated) substrate table to omit
+            // the row; the architectural fix is the value, and the
+            // failure becomes obvious any time the substrate is
+            // extended for a new variant or terminal state without
+            // the matching cap-table population.
             const nmr::BackboneRole bb_role = ident.backbone_role;
             if (gen::IsBackboneCapOverlayAtom(bb_role, n_state, c_state)) {
                 const nmr::TerminalState cap_state =
@@ -402,12 +429,12 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
                                                               : c_state;
                 const nmr::AtomSemanticTable* cap =
                     gen::LookupCap(cap_state, ident);
-                if (cap != nullptr) {
-                    gen::ApplyCapDelta(result[ai], *cap);
+                if (cap == nullptr) {
+                    FatalSubstrateMiss("LookupCap (backbone-cap overlay)",
+                                       ai, res, atom, ident, variant_idx,
+                                       static_cast<int>(cap_state));
                 }
-                // cap == nullptr is acceptable here: cap tables don't
-                // carry every backbone role at every state. The chain
-                // entry stays as-is.
+                gen::ApplyCapDelta(result[ai], *cap);
             }
         }
     }
