@@ -1,4 +1,7 @@
 #include "NamingRegistry.h"
+#include "Residue.h"
+#include "Atom.h"
+#include "AminoAcidType.h"
 #include <algorithm>
 #include <cctype>
 
@@ -522,6 +525,45 @@ NamingRegistry::CanonicaliseAmberAtomName(const std::string& atom_name,
 NamingRegistry& GlobalNamingRegistry() {
     static NamingRegistry instance;
     return instance;
+}
+
+
+// ============================================================================
+// RecanonicaliseAfterProtonation
+//
+// See header for full rationale. Walks every residue with a resolved
+// variant; rewrites atom names against the variant's three-letter
+// code. The rules in the (Standard, Amber) keyspace fire when keyed
+// on the variant name (e.g. LYN HZ1 -> HZ2, LYN HZ2 -> HZ3).
+//
+// Atoms in residues with no resolved variant (default charged form)
+// are NOT touched by this pass — their canonical-AMBER names came
+// from the loader's CanonicaliseAmberAtomName(... "LYS" ...) call
+// path which is correct for the charged form.
+// ============================================================================
+
+void RecanonicaliseAfterProtonation(
+        std::vector<Residue>& residues,
+        std::vector<std::unique_ptr<Atom>>& atoms) {
+    const NamingRegistry& registry = GlobalNamingRegistry();
+    for (Residue& res : residues) {
+        if (!res.protonation_state_resolved) continue;
+        if (res.protonation_variant_index < 0) continue;
+        const AminoAcidType& aatype = res.AminoAcidInfo();
+        const size_t vi = static_cast<size_t>(res.protonation_variant_index);
+        if (vi >= aatype.variants.size()) continue;
+        const std::string variant_name = aatype.variants[vi].name;
+        for (size_t ai : res.atom_indices) {
+            if (ai >= atoms.size() || !atoms[ai]) continue;
+            const std::string& current = atoms[ai]->pdb_atom_name;
+            if (current.empty()) continue;
+            const std::string canonical = registry.CanonicaliseAmberAtomName(
+                current, variant_name, ToolContext::Standard);
+            if (canonical != current) {
+                atoms[ai]->pdb_atom_name = canonical;
+            }
+        }
+    }
 }
 
 }  // namespace nmr

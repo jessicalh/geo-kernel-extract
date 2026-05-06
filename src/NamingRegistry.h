@@ -17,6 +17,7 @@
 //
 
 #include "Types.h"
+#include <memory>
 #include <string>
 #include <map>
 #include <set>
@@ -152,5 +153,45 @@ private:
 
 // Global singleton (C++11 Meyers singleton, thread-safe).
 NamingRegistry& GlobalNamingRegistry();
+
+
+// Re-canonicalise atom names with variant-corrected residue context.
+//
+// Loaders and ResolveProtonationStates(false) (the first pass) already
+// canonicalise atom names against the residue's *file-format* 3-letter
+// code (LYS, HIS, etc.). When ResolveProtonationStates resolves a
+// variant (LYS-labelled-LYN, HIS variant detection, etc.), some
+// canonicalisation rules need the variant name as context — e.g. the
+// `HZ1 -> HZ2 / HZ2 -> HZ3` rule keys on residue_name="LYN" and only
+// fires when the residue is recognised as LYN. Until variant_idx is
+// resolved, those rules cannot fire from the LYS-labelled side.
+//
+// This pass walks every residue with a resolved variant, computes the
+// variant's residue name (e.g. LYS variant_idx=0 -> "LYN", HIS
+// variant_idx=0 -> "HID"), and calls CanonicaliseAmberAtomName with
+// that name. Atom names that match a (Standard, Amber) rule keyed on
+// the variant name (LYN HZ1->HZ2, LYN HZ2->HZ3) get rewritten in
+// place. Atoms whose names are already canonical are unchanged.
+//
+// The pass runs uniformly across all titratable variants. If a future
+// source delivers HIS variants with non-canonical naming, the same
+// mechanism captures the rewrite via additional rules. Variants
+// without naming variance (e.g. HID/HIE/HIP HD1/HE2 are already
+// canonical for HIS subfamily) have the pass be a no-op for them.
+//
+// Pass scope: residues with `protonation_state_resolved == true` AND
+// `protonation_variant_index >= 0`. Residues left at the default
+// charged form (variant_index == -1) keep their canonical-AMBER
+// names from the loader pass.
+//
+// Rationale: spec/plan/topology-and-identity-pivot-synthesis-2026-05-05.md
+// §13.2 (PROPKA wiring) is the long-term residential answer; this
+// post-protonation re-canon is the bridge that makes the substrate
+// composition work today, in advance of PROPKA wiring.
+class Residue;
+class Atom;
+void RecanonicaliseAfterProtonation(
+    std::vector<Residue>& residues,
+    std::vector<std::unique_ptr<Atom>>& atoms);
 
 }  // namespace nmr
