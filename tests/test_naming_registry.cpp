@@ -581,12 +581,25 @@ TEST_F(NamingApplicatorDeathTest, UnknownAtomNameUnderUnknownSourceAborts) {
 
 TEST(NamingApplicatorApplyResidue, LynPreMarkleyShiftWholeResidue) {
     const auto& app = GlobalNamingApplicator();
-    // Pre-Markley LYN siblings: HZ1+HZ2, no HZ3. ApplyResidue
-    // snapshots once; both atoms see the original siblings.
+    // Pre-Markley LYN siblings: HZ1+HZ2, no HZ3. Other side-chain atoms
+    // in canonical AMBER ff14SB form (HD2/HD3, HE2/HE3) so the test
+    // isolates the LYN HZ shift behaviour from any Pdb2gmx β/γ-methylene
+    // shift behaviour. ApplyResidue snapshots siblings once; both HZ
+    // atoms see the original {..., HZ1, HZ2} set.
+    //
+    // Source = CifppPdbInput: rules tagged Pdb2gmxAmberRtpDeviation do
+    // not fire (their source-tag predicate returns false). The LYN HZ
+    // shift rules are tagged AmberFf14SBCanonical (source-agnostic) so
+    // they DO fire on this fixture, which is the test's purpose.
+    //
+    // Note on chemistry: AMBER ff14SB canonical LYS β/γ/δ/ε methylene
+    // numbering starts at 2 (not 1) per Markley 1998 §2.1.2 — HD1 is
+    // NOT canonical for LYS. The fixture uses HD2/HD3 + HE2/HE3 to
+    // stay on canonical ground for everything except the LYN HZ pair.
     std::vector<std::string> input_names = {
         "N", "H", "CA", "HA", "CB", "HB2", "HB3",
-        "CG", "HG2", "HG3", "CD", "HD1", "HD2",
-        "CE", "HE1", "HE2", "NZ", "HZ1", "HZ2"};
+        "CG", "HG2", "HG3", "CD", "HD2", "HD3",
+        "CE", "HE2", "HE3", "NZ", "HZ1", "HZ2"};
     std::vector<std::string> parent_names(input_names.size());
 
     const auto outs = app.ApplyResidue(
@@ -598,23 +611,22 @@ TEST(NamingApplicatorApplyResidue, LynPreMarkleyShiftWholeResidue) {
         /*sequence_number=*/28,
         "A");
     ASSERT_EQ(outs.size(), input_names.size());
-    // HZ1 -> HZ2; HZ2 -> HZ3.
+
+    // LYN HZ shift fires (AmberFf14SBCanonical source-agnostic):
+    // HZ1 -> HZ2, HZ2 -> HZ3.
     EXPECT_EQ(outs[input_names.size() - 2], "HZ2");
     EXPECT_EQ(outs[input_names.size() - 1], "HZ3");
-    // HD1 -> HD2 / HD2 -> HD3 fired by Pdb2gmxAmberRtpDeviation; under
-    // CifppPdbInput source, the Pdb2gmx shift rules' source-tag check
-    // fails; HD1 in canonical AMBER LYS chain inventory IS legal so
-    // the canonicality oracle returns true on it; pass-through.
-    // EXPECTATION: with CifppPdbInput source, only the LYN HZ rules
-    // fire (which are tagged AmberFf14SBCanonical and source-agnostic).
+
+    // All other (canonical) atoms pass through unchanged.
     auto find = [&](const std::string& n) -> std::string {
         for (size_t i = 0; i < input_names.size(); ++i)
             if (input_names[i] == n) return outs[i];
         return "<missing>";
     };
-    EXPECT_EQ(find("HD1"), "HD1") << "CifppPdbInput should not fire pdb2gmx-RTP HD1 shift";
     EXPECT_EQ(find("HD2"), "HD2");
-    EXPECT_EQ(find("HE1"), "HE1");
+    EXPECT_EQ(find("HD3"), "HD3");
+    EXPECT_EQ(find("HE2"), "HE2");
+    EXPECT_EQ(find("HE3"), "HE3");
 }
 
 TEST(NamingApplicatorApplyResidue, IleSnapshotIsIndependentOfPerAtomOrder) {
