@@ -374,6 +374,9 @@ macro(nmr_test_target NAME)
     target_compile_definitions(${NAME} PRIVATE
         NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
     )
+    target_include_directories(${NAME} PRIVATE
+        ${CMAKE_SOURCE_DIR}/tests
+    )
     target_link_libraries(${NAME} PRIVATE nmr_shielding GTest::gtest)
     gtest_discover_tests(${NAME} PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 endmacro()

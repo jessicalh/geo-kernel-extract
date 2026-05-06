@@ -41,7 +41,10 @@ bool NamingRegistry::ContextKey::operator<(const ContextKey& o) const {
 NamingRegistry::NamingRegistry() {
     InitialiseStandardResidues();
     InitialiseAmberContext();
-    InitialiseCharmmContext();
+    // InitialiseCharmmContext() retired 2026-05-06 (codex D1): no live
+    // consumer needed canonical -> CHARMM residue-name emission. CHARMM
+    // input names (HSD/HSE/HSP/CYS2/ASPP/GLUP) still parse via
+    // ToCanonical() — the standard-residues table seeds those mappings.
 }
 
 
@@ -110,26 +113,12 @@ void NamingRegistry::InitialiseAmberContext() {
 }
 
 
-void NamingRegistry::InitialiseCharmmContext() {
-    auto add = [&](const std::string& canonical, const std::string& variant,
-                    const std::string& charmm_name) {
-        context_map_[{canonical, ToolContext::Charmm, variant}] = charmm_name;
-    };
-
-    // HIS tautomers (CHARMM uses HSD/HSE/HSP)
-    add("HIS", "delta",   "HSD");
-    add("HIS", "epsilon", "HSE");
-    add("HIS", "doubly",  "HSP");
-    add("HIS", "",        "HIS");
-
-    // Protonated acids (CHARMM uses ASPP/GLUP)
-    add("ASP", "protonated", "ASPP");
-    add("GLU", "protonated", "GLUP");
-
-    // Cysteine disulfide (CHARMM uses CYS2)
-    add("CYS", "disulfide",    "CYS2");
-    add("CYS", "deprotonated", "CYM");
-}
+// InitialiseCharmmContext() retired 2026-05-06 (codex Finding D1):
+// CHARMM force-field support is retired (memory entry
+// `project_charmm_retired_amber_only_2026-05-02`); no live consumer
+// needed canonical -> CHARMM residue-name emission. CHARMM input
+// names (HSD/HSE/HSP, CYS2, ASPP, GLUP) still parse via
+// ToCanonical() because the standard-residues map seeds those entries.
 
 
 // ============================================================================
@@ -431,6 +420,63 @@ bool IsGammaMethyleneResidue(AminoAcid aa) {
 bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
     if (ctx.input_name.empty()) return true;  // empty -> idempotent
 
+    // ------------------------------------------------------------------
+    // Deletion-variant deny overlay (codex Finding F5, 2026-05-06)
+    //
+    // Some protonation variants DELETE atoms that are present in the
+    // base AminoAcidType chain inventory. Under the resolved variant
+    // (variant_index >= 0), the deleted atom is NOT canonical even
+    // though the chain-inventory pass below would accept it. Without
+    // this overlay, a chemistry mistake (e.g. CYX residue with HG
+    // present) silently passes the oracle and substrate composition
+    // looks up an atom that the resolved variant's substrate row does
+    // not carry. The deletion overlay catches it before chain-pass.
+    //
+    // Variant indices (verified against AminoAcidType.cpp::AMINO_ACID_TYPES
+    // + the ValidateVariantIndices() contract):
+    //   CYS:  variant 0 = CYX (disulfide, no HG on Sγ)
+    //         variant 1 = CYM (thiolate,  no HG on Sγ)
+    //   LYS:  variant 0 = LYN (neutral amine; canonical hydrogens are
+    //         HZ2+HZ3, NO HZ1 — Markley 1998 §2.1.1 numbering)
+    //   TYR:  variant 0 = TYM (deprotonated phenolate, no HH on Oη)
+    //   ARG:  variant 0 = ARN (deprotonated guanidinium, no HE on Nε)
+    //
+    // The load-time tolerance window (variant_index == -1) does NOT
+    // hit this branch — at load time, the variant has not yet been
+    // resolved, so a base-form HG/HZ1/HH/HE may still be legitimate.
+    // The post-protonation pass through the applicator (variant_index
+    // >= 0) is when this branch fires.
+    if (ctx.variant_index >= 0) {
+        switch (ctx.residue_type) {
+            case AminoAcid::CYS:
+                if ((ctx.variant_index == 0 /*CYX*/ ||
+                     ctx.variant_index == 1 /*CYM*/) &&
+                    ctx.input_name == "HG") {
+                    return false;
+                }
+                break;
+            case AminoAcid::LYS:
+                if (ctx.variant_index == 0 /*LYN*/ &&
+                    ctx.input_name == "HZ1") {
+                    return false;
+                }
+                break;
+            case AminoAcid::TYR:
+                if (ctx.variant_index == 0 /*TYM*/ &&
+                    ctx.input_name == "HH") {
+                    return false;
+                }
+                break;
+            case AminoAcid::ARG:
+                if (ctx.variant_index == 0 /*ARN*/ &&
+                    ctx.input_name == "HE") {
+                    return false;
+                }
+                break;
+            default: break;
+        }
+    }
+
     // (a) Chain residue inventory.
     const AminoAcidType& aatype = GetAminoAcidType(ctx.residue_type);
     for (const auto& a : aatype.atoms) {
@@ -671,9 +717,35 @@ NamingApplicator::FailUnresolved(
 
 // ----------------------------------------------------------------------------
 // Apply: single-atom canonicalisation. Collect + Resolve.
+//
+// Codex Finding CC2 (2026-05-06): NamingSource::Unknown at entry is a
+// loader bug. Source-agnostic rules (the LYN HZ shift, the GLY HA
+// collapse, etc.) tagged AmberFf14SBCanonical do not gate on
+// ctx.source; under Unknown they would silently fire and rewrite the
+// atom without the loader knowing what kind of input it provided. The
+// invariant: every Apply() call carries a real source tag. Loaders
+// always tag a real source (CifppPdbInput, Pdb2gmxAmberRtpDeviation,
+// OrcaEcho, etc.); Unknown is a loader-side bug, surfaced here at the
+// canonicalisation entry rather than allowed to propagate.
 // ----------------------------------------------------------------------------
 
 std::string NamingApplicator::Apply(const NamingContext& ctx) const {
+    if (ctx.source == NamingSource::Unknown) {
+        std::fprintf(stderr,
+            "FATAL: NamingApplicator::Apply: ctx.source = "
+            "NamingSource::Unknown is forbidden. Loaders must tag every "
+            "atom with a real source (CifppPdbInput, "
+            "Pdb2gmxAmberRtpDeviation, OrcaEcho, AmberFf14SBCanonical, "
+            "etc.); Unknown indicates a loader bug. Atom '%s' in "
+            "residue %s seq %d chain '%s'. "
+            "See spec/plan/naming-applicator-architecture-sketch-"
+            "2026-05-06.md and codex Finding CC2.\n",
+            ctx.input_name.c_str(),
+            GetAminoAcidType(ctx.residue_type).three_letter_code,
+            ctx.residue_sequence_number,
+            ctx.chain_id.c_str());
+        std::abort();
+    }
     std::vector<NamingApplication> applications = Collect(ctx);
     return Resolve(applications, ctx);
 }
@@ -1096,8 +1168,8 @@ void NamingApplicator::InstallRules() {
     //
     // These are the four "wildcard" rules ported from the pre-refactor
     // NamingRegistry. The pre-refactor code carried them as
-    // AddAtomNameRule("HB1", "HB2", "*", ToolContext::Charmm,
-    // ToolContext::Standard) wildcard entries (residue = "*"); the new
+    // AddAtomNameRule("HB1", "HB2", "*", <pdb2gmx-rtp-tag>,
+    // <canonical-tag>) wildcard entries (residue = "*"); the new
     // architecture replaces the wildcard with explicit residue-set
     // predicates (IsBetaMethyleneResidue / IsGammaMethyleneResidue).
     //

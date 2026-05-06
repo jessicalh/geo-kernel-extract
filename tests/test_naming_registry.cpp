@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "NamingRegistry.h"
 #include "AminoAcidType.h"
+#include "test_naming_applicator_access.h"
 
 using namespace nmr;
 
@@ -38,12 +39,11 @@ TEST(NamingRegistryTest, HisToAmberProducesVariants) {
     EXPECT_EQ(reg.ResolveForTool("HIS", ToolContext::Amber, "doubly"),  "HIP");
 }
 
-TEST(NamingRegistryTest, HisToCharmmProducesVariants) {
-    auto& reg = GlobalNamingRegistry();
-    EXPECT_EQ(reg.ResolveForTool("HIS", ToolContext::Charmm, "delta"),   "HSD");
-    EXPECT_EQ(reg.ResolveForTool("HIS", ToolContext::Charmm, "epsilon"), "HSE");
-    EXPECT_EQ(reg.ResolveForTool("HIS", ToolContext::Charmm, "doubly"),  "HSP");
-}
+// HisToCharmmProducesVariants test deleted 2026-05-06 (codex D1):
+// `ToolContext::Charmm` was retired with InitialiseCharmmContext().
+// CHARMM-input recognition remains via ToCanonical (HSD/HSE/HSP -> HIS,
+// CYS2 -> CYS, ASPP -> ASP, GLUP -> GLU); the test below
+// (ToCanonicalMapsVariants) covers that direction.
 
 TEST(NamingRegistryTest, ToCanonicalMapsVariants) {
     auto& reg = GlobalNamingRegistry();
@@ -84,9 +84,11 @@ TEST(NamingRegistryTest, CaseInsensitive) {
 
 TEST(NamingRegistryTest, NonTitratableReturnsCanonical) {
     auto& reg = GlobalNamingRegistry();
-    // ALA has no variants -- ResolveForTool returns the canonical name
+    // ALA / GLY have no variants -- ResolveForTool returns the canonical
+    // name unchanged when no (residue, context, variant) mapping exists.
     EXPECT_EQ(reg.ResolveForTool("ALA", ToolContext::Amber), "ALA");
-    EXPECT_EQ(reg.ResolveForTool("GLY", ToolContext::Charmm), "GLY");
+    EXPECT_EQ(reg.ResolveForTool("GLY", ToolContext::Amber), "GLY");
+    EXPECT_EQ(reg.ResolveForTool("PHE", ToolContext::OpenMM), "PHE");
 }
 
 TEST(NamingRegistryTest, KnownVariantNames) {
@@ -541,6 +543,144 @@ TEST(NamingApplicatorVariantAwareDeathTest, HieRejectsHd1) {
 
 
 // ----------------------------------------------------------------------------
+// Variant-aware DELETION overlay — codex Finding F5 (2026-05-06)
+//
+// Under a resolved deletion variant (variant_index >= 0 mapping to a
+// variant that REMOVES atoms from the base chain inventory), the
+// removed atom's name is NOT canonical even though it lives in the
+// AminoAcidType::atoms list. Without the deletion overlay, the chain-
+// inventory pass-through silently accepts the deleted atom and the
+// substrate composition would look up a row the variant does not
+// carry — a chemistry mistake masquerading as canonical input.
+//
+// Variant indices verified against AminoAcidType.cpp::AMINO_ACID_TYPES:
+//   CYS variant 0 = CYX (disulfide), variant 1 = CYM (thiolate); both drop HG
+//   LYS variant 0 = LYN (deprotonated lysine, neutral NH2); drops HZ1
+//   TYR variant 0 = TYM (deprotonated tyrosinate, no OηH); drops HH
+//   ARG variant 0 = ARN (deprotonated guanidinium, no NεH); drops HE
+// ----------------------------------------------------------------------------
+
+TEST(NamingApplicatorVariantAwareDeletionDeathTest, CyxRejectsHg) {
+    const auto& app = GlobalNamingApplicator();
+    // CYX (variant_index = 0): Sγ is in a disulfide, no HG on it.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "SG", "HG"};  // illegal HG on CYX
+    auto ctx = MakeContext("HG", AminoAcid::CYS,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
+}
+
+TEST(NamingApplicatorVariantAwareDeletionDeathTest, CymRejectsHg) {
+    const auto& app = GlobalNamingApplicator();
+    // CYM (variant_index = 1): thiolate, no HG.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "SG", "HG"};  // illegal HG on CYM
+    auto ctx = MakeContext("HG", AminoAcid::CYS,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/1);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
+}
+
+TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
+    const auto& app = GlobalNamingApplicator();
+    // LYN (variant_index = 0): canonical hydrogens are HZ2+HZ3 only.
+    // HZ1 is NOT canonical under resolved LYN.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "CG", "HG2", "HG3",
+                                       "CD", "HD2", "HD3",
+                                       "CE", "HE2", "HE3",
+                                       "NZ", "HZ1", "HZ2", "HZ3"};
+    auto ctx = MakeContext("HZ1", AminoAcid::LYS,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
+}
+
+TEST(NamingApplicatorVariantAwareDeletionDeathTest, TymRejectsHh) {
+    const auto& app = GlobalNamingApplicator();
+    // TYM (variant_index = 0): deprotonated phenolate; no HH on Oη.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3", "CG",
+                                       "CD1", "HD1", "CD2", "HD2",
+                                       "CE1", "HE1", "CE2", "HE2",
+                                       "CZ", "OH", "HH"};  // illegal HH on TYM
+    auto ctx = MakeContext("HH", AminoAcid::TYR,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
+}
+
+TEST(NamingApplicatorVariantAwareDeletionDeathTest, ArnRejectsHe) {
+    const auto& app = GlobalNamingApplicator();
+    // ARN (variant_index = 0): deprotonated guanidinium; no HE on Nε.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "CG", "HG2", "HG3",
+                                       "CD", "HD2", "HD3",
+                                       "NE", "HE",  // illegal HE on ARN
+                                       "CZ",
+                                       "NH1", "HH11", "HH12",
+                                       "NH2", "HH21", "HH22"};
+    auto ctx = MakeContext("HE", AminoAcid::ARG,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
+}
+
+// Idempotency — the same deleted-atom names DO pass through under the
+// base form (variant_index = -1, load-time tolerance window). Verifies
+// the deny overlay gates strictly on variant_index >= 0.
+TEST(NamingApplicatorVariantAwareDeletion, BaseFormAcceptsDeletionTargetAtoms) {
+    const auto& app = GlobalNamingApplicator();
+    struct Case {
+        AminoAcid res;
+        const char* atom;
+        std::set<std::string> siblings;
+        const char* note;
+    };
+    const Case cases[] = {
+        {AminoAcid::CYS, "HG",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "SG", "HG"},
+         "base CYS HG"},
+        {AminoAcid::LYS, "HZ1",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "CG", "HG2", "HG3",
+          "CD", "HD2", "HD3", "CE", "HE2", "HE3",
+          "NZ", "HZ1", "HZ2", "HZ3"},
+         "base LYS HZ1"},
+        {AminoAcid::TYR, "HH",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "CG",
+          "CD1", "HD1", "CD2", "HD2", "CE1", "HE1", "CE2", "HE2",
+          "CZ", "OH", "HH"},
+         "base TYR HH"},
+        {AminoAcid::ARG, "HE",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "CG", "HG2", "HG3",
+          "CD", "HD2", "HD3", "NE", "HE", "CZ",
+          "NH1", "HH11", "HH12", "NH2", "HH21", "HH22"},
+         "base ARG HE"},
+    };
+    for (const Case& c : cases) {
+        // variant_index = -1: deny overlay must NOT fire; chain
+        // inventory accepts.
+        auto ctx = MakeContext(c.atom, c.res,
+                               NamingSource::AmberFf14SBCanonical,
+                               c.siblings);
+        EXPECT_EQ(app.Apply(ctx), c.atom)
+            << "Deletion-target atom " << c.note
+            << " must pass through under base-form (variant_index = -1)";
+    }
+}
+
+
+// ----------------------------------------------------------------------------
 // Canonicality oracle — direct exercise
 // ----------------------------------------------------------------------------
 
@@ -612,8 +752,13 @@ TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
     // The production rule set does not currently reach this branch
     // (see NamingRegistry.cpp::Resolve() codex Finding 6 comment); the
     // test-only `CustomRules` constructor is the canonical exercise.
-    NamingApplicator::CustomRules custom;
-    custom.rules.push_back(NamingRule{
+    //
+    // Codex Finding D3 (2026-05-06): the test-only constructor is
+    // private; reach it through nmr::test::NamingApplicatorTestAccess
+    // (test_naming_applicator_access.h). Production code cannot reach
+    // this path.
+    std::vector<NamingRule> rules;
+    rules.push_back(NamingRule{
         NamingSource::AmberFf14SBCanonical,
         "TestRuleA_AmberCanonicalAlaCa",
         "test fixture: AMBER ff14SB canonical pass-through for ALA/CA",
@@ -622,7 +767,7 @@ TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
         },
         [](const NamingContext& c) { return c.input_name; },
     });
-    custom.rules.push_back(NamingRule{
+    rules.push_back(NamingRule{
         NamingSource::Markley1998,
         "TestRuleB_MarkleyAlaCa",
         "test fixture: Markley 1998 pass-through for ALA/CA — agrees",
@@ -631,7 +776,8 @@ TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
         },
         [](const NamingContext& c) { return c.input_name; },
     });
-    const NamingApplicator test_app(std::move(custom));
+    const NamingApplicator test_app =
+        nmr::test::NamingApplicatorTestAccess::MakeWithRules(std::move(rules));
 
     auto ctx = MakeContext("CA", AminoAcid::ALA,
                            NamingSource::AmberFf14SBCanonical,
@@ -651,15 +797,33 @@ TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
 
 using NamingApplicatorDeathTest = ::testing::Test;
 
-TEST_F(NamingApplicatorDeathTest, UnknownAtomNameUnderUnknownSourceAborts) {
+TEST_F(NamingApplicatorDeathTest, UnknownAtomNameAborts) {
     const auto& app = GlobalNamingApplicator();
     // An atom name no rule matches AND not present in the canonicality
     // oracle. ZZZZ is fictional, residue ALA, no source rules match.
+    // Source must be a real loader tag (codex CC2, 2026-05-06):
+    // NamingSource::Unknown is rejected at Apply() entry, so the
+    // FailUnresolved branch is exercised under a real source.
     auto ctx = MakeContext("ZZZZ", AminoAcid::ALA,
-                           NamingSource::Unknown,
+                           NamingSource::CifppPdbInput,
                            {"ZZZZ", "CA"});
     EXPECT_DEATH(app.Apply(ctx),
                  "no rule applies and input is not canonical");
+}
+
+// Codex Finding CC2 (2026-05-06): NamingSource::Unknown at entry is a
+// loader bug. The applicator rejects it before any rule iterates.
+TEST_F(NamingApplicatorDeathTest, UnknownSourceAtEntryAborts) {
+    const auto& app = GlobalNamingApplicator();
+    // A context that would otherwise trigger the LYN HZ shift rule
+    // (which is source-agnostic). Under NamingSource::Unknown, the
+    // applicator MUST reject before the rule fires, even though the
+    // input is well-formed and a rule would apply.
+    auto ctx = MakeContext("HZ1", AminoAcid::LYS,
+                           NamingSource::Unknown,
+                           {"NZ", "HZ1", "HZ2"});
+    EXPECT_DEATH(app.Apply(ctx),
+                 "ctx\\.source = NamingSource::Unknown is forbidden");
 }
 
 

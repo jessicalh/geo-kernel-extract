@@ -15,9 +15,15 @@
 // Every tool in the pipeline has its own naming universe:
 //   PDB/Standard: HIS, CYS, H (backbone amide)
 //   AMBER:        HID/HIE/HIP, CYX/CYM, H
-//   CHARMM36m:    HSD/HSE/HSP, CYS2/CYM, HN
 //   ORCA:         standard PDB names (numbered atoms)
 //   OpenMM:       AMBER-like (HIE, HID, CYX)
+//
+// CHARMM36m (formerly HSD/HSE/HSP, CYS2, ASPP, GLUP, HN) was retired
+// 2026-05-02; the `Charmm` ToolContext slot was removed 2026-05-06
+// (codex D1). NamingRegistry::ToCanonical still recognises HSD/HSE/HSP
+// and CYS2/ASPP/GLUP at INPUT (a CHARMM-prepared file landing in the
+// pipeline still maps onto the standard 3-letter codes); there is no
+// canonical -> CHARMM emitter on the output side.
 //
 // This registry translates between them. It is the GATEKEEPER:
 // unknown names are rejected. No guessing. No silent pass-through.
@@ -42,22 +48,33 @@ namespace nmr {
 // The tools we talk to. Each has its own naming conventions.
 //
 // ToolContext is the EXTERNAL surface for residue-name translation
-// (HIS <-> HSD/HSE/HSP etc.). It is NOT the internal source-tag for
+// (HIS <-> HID/HIE/HIP etc.). It is NOT the internal source-tag for
 // atom-name rule routing — that role is played by NamingSource, see
 // below.
+//
+// CHARMM force-field support was retired 2026-05-02 (memory entry
+// `project_charmm_retired_amber_only_2026-05-02`); the previous
+// `Charmm` enum value (formerly slot 2: HSD/HSE/HSP, CYS2, ASPP,
+// GLUP, HN) was removed 2026-05-06 (codex Finding D1) after
+// investigation found zero active production consumers. The numeric
+// slot it occupied is deliberately RETIRED — do not re-use for a
+// different concept; a future legitimate CHARMM-input path can be
+// added with a fresh enum value at that time.
 enum class ToolContext {
-    Standard,    // PDB / IUPAC canonical names
-    Amber,       // AMBER force fields (ff14SB, ff19SB): HID/HIE/HIP, CYX, ASH, GLH
-    Charmm,      // CHARMM36m: HSD/HSE/HSP, CYS2, ASPP, GLUP, HN for backbone amide
-    Orca,        // ORCA DFT (standard PDB names, numbered atoms)
-    OpenMM,      // OpenMM (AMBER-like: HIE, HID, CYX)
+    Standard = 0,    // PDB / IUPAC canonical names
+    Amber    = 1,    // AMBER force fields (ff14SB, ff19SB): HID/HIE/HIP, CYX, ASH, GLH
+    // Charmm = 2  — RETIRED slot, removed 2026-05-06 (codex D1).
+    // DO NOT reuse this numeric value for a different concept; if
+    // any persisted records contain it they would silently re-bind
+    // to an unrelated meaning.
+    Orca     = 3,    // ORCA DFT (standard PDB names, numbered atoms)
+    OpenMM   = 4,    // OpenMM (AMBER-like: HIE, HID, CYX)
 };
 
 inline const char* ToolContextName(ToolContext ctx) {
     switch (ctx) {
         case ToolContext::Standard: return "Standard";
         case ToolContext::Amber:    return "Amber";
-        case ToolContext::Charmm:   return "CHARMM";
         case ToolContext::Orca:     return "ORCA";
         case ToolContext::OpenMM:   return "OpenMM";
     }
@@ -70,8 +87,9 @@ inline const char* ToolContextName(ToolContext ctx) {
 // authored an atom-name rule. Symmetric with SemanticSource on the substrate
 // side (SemanticEnums.h). New sources = new enum values. Each value names
 // the source the rule body actually represents — historic ToolContext
-// labels did not (e.g. ToolContext::Charmm tagged AMBER pdb2gmx-RTP rules
-// for fleet_amber TPRs, NOT CHARMM force-field naming).
+// labels did not (e.g. the now-retired ToolContext::Charmm slot tagged
+// AMBER pdb2gmx-RTP rules for fleet_amber TPRs, NOT CHARMM force-field
+// naming; ToolContext::Charmm itself was removed 2026-05-06 codex D1).
 // ============================================================================
 
 enum class NamingSource : uint8_t {
@@ -240,20 +258,19 @@ struct NamingApplication {
 // historic flat-map architecture (atom_name_map_).
 // ============================================================================
 
+namespace test {
+// Forward-declared test access helper. Lives in the tests/ tree;
+// production code never instantiates it. Its sole purpose is to keep
+// the test-only NamingApplicator(custom_rules) constructor private —
+// production callers cannot stumble across it on the public API
+// (codex Finding D3, 2026-05-06). See
+// tests/test_naming_applicator_access.h.
+class NamingApplicatorTestAccess;
+}  // namespace test
+
 class NamingApplicator {
 public:
     NamingApplicator();
-
-    /// Test-only constructor: build an applicator with custom rules.
-    /// The supplied rule list REPLACES the production rule set; the
-    /// canonicality oracle and resolution body are unchanged. Used by
-    /// `tests/test_naming_registry.cpp` to exercise resolution branches
-    /// (notably the "multiple rules agree" branch — codex Finding 6)
-    /// that the production rule set does not currently reach. This
-    /// constructor is not for production use; production code calls
-    /// `GlobalNamingApplicator()`.
-    struct CustomRules { std::vector<NamingRule> rules; };
-    explicit NamingApplicator(CustomRules custom);
 
     /// Single-atom canonicalisation. Builds the per-atom application
     /// map, calls the resolver, returns the canonical output. Aborts
@@ -299,6 +316,23 @@ public:
     bool IsCanonical(const NamingContext& ctx) const;
 
 private:
+    // Test-only constructor: build an applicator with custom rules.
+    // The supplied rule list REPLACES the production rule set; the
+    // canonicality oracle and resolution body are unchanged. Used by
+    // `tests/test_naming_registry.cpp` to exercise resolution branches
+    // (notably the "multiple rules agree" branch) that the production
+    // rule set does not currently reach. NOT for production use;
+    // production code calls `GlobalNamingApplicator()`.
+    //
+    // Codex Finding D3 (2026-05-06): this constructor is private, only
+    // reachable through the friend declaration below; the test code
+    // gates entry through nmr::test::NamingApplicatorTestAccess. The
+    // production public API does not expose a way to install a
+    // hand-rolled rule list.
+    friend class test::NamingApplicatorTestAccess;
+    struct CustomRules { std::vector<NamingRule> rules; };
+    explicit NamingApplicator(CustomRules custom);
+
     /// Step 1: iterate rules, return all applications.
     std::vector<NamingApplication> Collect(const NamingContext& ctx) const;
 
@@ -343,11 +377,11 @@ public:
 
     // Map canonical to tool-specific name.
     // For titratable residues, caller specifies the variant:
-    //   ResolveForTool("HIS", ToolContext::Charmm, "delta")   -> "HSD"
-    //   ResolveForTool("HIS", ToolContext::Charmm, "epsilon") -> "HSE"
-    //   ResolveForTool("HIS", ToolContext::Charmm, "doubly")  -> "HSP"
+    //   ResolveForTool("HIS", ToolContext::Amber, "delta")   -> "HID"
+    //   ResolveForTool("HIS", ToolContext::Amber, "epsilon") -> "HIE"
+    //   ResolveForTool("HIS", ToolContext::Amber, "doubly")  -> "HIP"
     // For non-titratable residues, variant is ignored:
-    //   ResolveForTool("ALA", ToolContext::Charmm) -> "ALA"
+    //   ResolveForTool("ALA", ToolContext::Amber) -> "ALA"
     // Returns canonical name unchanged if no mapping exists.
     std::string ResolveForTool(const std::string& canonical,
                                 ToolContext context,
@@ -371,7 +405,9 @@ private:
 
     void InitialiseStandardResidues();
     void InitialiseAmberContext();
-    void InitialiseCharmmContext();
+    // InitialiseCharmmContext() removed 2026-05-06 (codex D1):
+    // CHARMM force-field support retired; no live consumer needed
+    // canonical -> CHARMM residue-name emission.
 };
 
 // Global singleton (C++11 Meyers singleton, thread-safe).
