@@ -590,6 +590,18 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
     const auto& app = GlobalNamingApplicator();
     // LYN (variant_index = 0): canonical hydrogens are HZ2+HZ3 only.
     // HZ1 is NOT canonical under resolved LYN.
+    //
+    // After the codex round-2 fix (2026-05-06), the death can come via
+    // EITHER path (architecturally equivalent):
+    //   (a) Rule-level: LysAmmoniumHzPassThrough's variant gate
+    //       (c.variant_index < 0) blocks the rule from firing. Map
+    //       empty; IsCanonical(ctx) deletion overlay returns false;
+    //       FailUnresolved emits "no rule applies and input is not
+    //       canonical".
+    //   (b) Validator: if a rule still fires and proposes HZ1,
+    //       post-resolution validator catches non-canonical output and
+    //       emits "non-canonical output for resolved chemistry context".
+    // Both paths are correct; the regex accepts either.
     std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
@@ -600,7 +612,8 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
                            NamingSource::AmberFf14SBCanonical,
                            siblings, /*variant_index=*/0);
     EXPECT_DEATH(app.Apply(ctx),
-                 "no rule applies and input is not canonical");
+                 "no rule applies and input is not canonical|"
+                 "non-canonical output for resolved chemistry context");
 }
 
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, TymRejectsHh) {
@@ -824,6 +837,137 @@ TEST_F(NamingApplicatorDeathTest, UnknownSourceAtEntryAborts) {
                            {"NZ", "HZ1", "HZ2"});
     EXPECT_DEATH(app.Apply(ctx),
                  "ctx\\.source = NamingSource::Unknown is forbidden");
+}
+
+
+// ----------------------------------------------------------------------------
+// Post-resolution validator — codex round-2, 2026-05-06
+//
+// Architectural contract:
+//   Applies()  may recognise NON-canonical input (rules exist to repair).
+//   Output()   MUST produce CANONICAL output for the resolved chemistry
+//              context.
+//   Resolve()  chooses among rule outputs.
+//   Apply()    enforces the canonical-output invariant before returning.
+//
+// The validator runs AFTER Resolve(), on the chosen output. It catches
+// a misbehaving rule that produces a non-canonical output for the
+// resolved chemistry context (e.g. a rule that fires under LYN and
+// returns HZ1, which the deletion overlay denies). Pre-rule oracle
+// gating would block legitimate non-canonical inputs from reaching
+// repair rules; the validator runs on OUTPUT, not input, preserving
+// the asymmetry.
+// ----------------------------------------------------------------------------
+
+TEST_F(NamingApplicatorDeathTest, ValidatorCatchesRuleProducingDeletionDeniedOutput) {
+    // Custom rule: fires when residue is CYS, variant_index == 0 (CYX),
+    // input is "HX" (synthetic; never a real atom name), and proposes
+    // output "HG". The CYX deletion overlay denies HG: under resolved
+    // CYX the Sγ is in a disulfide and HG is non-canonical. The rule's
+    // proposed output is therefore non-canonical for the resolved
+    // chemistry context, which the post-resolution validator catches.
+    //
+    // Without the validator, this output would silently leak to the
+    // substrate and chain-form lookup would find HG in the base CYS
+    // chain inventory while the resolved CYX variant table does not
+    // carry HG. Under the validator, FATAL with the "non-canonical
+    // output" diagnostic.
+    std::vector<NamingRule> rules;
+    rules.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "TestBadRule_ProducesNonCanonicalOutput",
+        "test fixture: rule misbehaves by returning a deletion-denied "
+        "atom (HG under resolved CYX, where deletion overlay denies HG)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::CYS
+                && c.variant_index == 0  // CYX
+                && c.input_name == "HX";
+        },
+        [](const NamingContext&) { return std::string("HG"); },
+    });
+    NamingApplicator app =
+        nmr::test::NamingApplicatorTestAccess::MakeWithRules(std::move(rules));
+
+    NamingContext ctx;
+    ctx.source        = NamingSource::CifppPdbInput;
+    ctx.input_name    = "HX";
+    ctx.residue_type  = AminoAcid::CYS;
+    ctx.variant_index = 0;  // CYX
+    ctx.terminal_state = TerminalState::Internal;
+    ctx.sibling_input_names = {"N", "H", "CA", "HA", "CB", "HB2", "HB3",
+                               "SG", "HX"};
+    ctx.parent_input_name = "SG";
+    ctx.residue_sequence_number = 1;
+    ctx.chain_id = "A";
+
+    EXPECT_DEATH(app.Apply(ctx),
+                 "non-canonical output for resolved chemistry context");
+}
+
+TEST(NamingApplicatorPostResolutionValidator, ValidatorAllowsCanonicalOutput) {
+    // Custom rule: fires on ALA/CA + repairs a non-canonical input to
+    // a canonical output. The validator must NOT abort: the proposed
+    // output is in the canonicality oracle.
+    std::vector<NamingRule> rules;
+    rules.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "TestGoodRule_ProducesCanonicalOutput",
+        "test fixture: rule repairs a non-canonical input (XALPHA -> CA) "
+        "in ALA; CA is in the canonical chain inventory; validator passes",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::ALA && c.input_name == "XALPHA";
+        },
+        [](const NamingContext&) { return std::string("CA"); },
+    });
+    NamingApplicator app =
+        nmr::test::NamingApplicatorTestAccess::MakeWithRules(std::move(rules));
+
+    auto ctx = MakeContext("XALPHA", AminoAcid::ALA,
+                           NamingSource::CifppPdbInput,
+                           {"N", "XALPHA", "C", "O"});
+    EXPECT_EQ(app.Apply(ctx), "CA");
+}
+
+TEST(NamingApplicatorPostResolutionValidator, ValidatorAllowsRepairOfNonCanonicalInput) {
+    // Architectural-contract test: rule recognises NON-canonical input
+    // and produces CANONICAL output. The validator passes the chosen
+    // output through the canonicality oracle; oracle accepts; Apply()
+    // returns. This is the LYN HZ shift case (1Z9B fleet variance) at
+    // unit-test scale: input HZ1 with siblings {NZ, HZ1, HZ2} is
+    // pre-Markley LYN; rule fires; output HZ2 is canonical. No abort.
+    const auto& app = GlobalNamingApplicator();
+    auto ctx = MakeContext("HZ1", AminoAcid::LYS,
+                           NamingSource::CifppPdbInput,
+                           {"NZ", "HZ1", "HZ2"});
+    EXPECT_EQ(app.Apply(ctx), "HZ2");
+}
+
+TEST(NamingApplicatorPostResolutionValidator, LysAmmoniumRuleDoesNotFireUnderLyn) {
+    // Variant-gate test: LysAmmoniumHzPassThrough must NOT fire under
+    // resolved LYN (variant_index = 0). Under the unresolved or
+    // default-charged-LYS form (variant_index = -1) with all three HZ
+    // atoms in siblings, the rule fires and passes input through. Under
+    // resolved LYN with the same sibling set (a chemistry-mistake
+    // fixture: residue resolved to LYN but still has HZ1), the rule
+    // must not fire — the variant gate (c.variant_index < 0) blocks
+    // it. With no rule firing, IsCanonical's deletion overlay rejects
+    // HZ1 under LYN; FailUnresolved fires.
+    //
+    // This is the rule-level fix for the LYN HZ1 bug; the post-
+    // resolution validator is the safety net that would have caught a
+    // misbehaving rule even without the variant gate.
+    const auto& app = GlobalNamingApplicator();
+
+    // Sanity: variant_index = -1 (unresolved) + all three HZ siblings
+    // = canonical charged-LYS; rule fires and passes through.
+    auto ctx_unresolved = MakeContext("HZ1", AminoAcid::LYS,
+                                      NamingSource::AmberFf14SBCanonical,
+                                      {"NZ", "HZ1", "HZ2", "HZ3"});
+    EXPECT_EQ(app.Apply(ctx_unresolved), "HZ1");
+
+    // The LYN-resolved + HZ1 case is already covered by
+    // NamingApplicatorVariantAwareDeletionDeathTest::LynRejectsHz1
+    // above; that test's FATAL is now reached via the rule-level fix.
 }
 
 

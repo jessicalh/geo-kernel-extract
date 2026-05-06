@@ -716,6 +716,68 @@ NamingApplicator::FailUnresolved(
 
 
 // ----------------------------------------------------------------------------
+// FailValidator: post-resolution validator's fail-loud emit.
+//
+// The architectural contract for the rule architecture (codex round-2,
+// 2026-05-06) is asymmetric:
+//
+//   Applies()  may recognise NON-canonical input (rules exist to repair).
+//   Output()   MUST produce CANONICAL output for the resolved chemistry
+//              context.
+//   Resolve()  chooses among rule outputs.
+//   Apply()    ENFORCES the canonical-output invariant before returning.
+//
+// Pre-rule oracle would block legitimate non-canonical inputs from
+// reaching the repair rules. Post-resolution validator catches a
+// misbehaving rule's bad output without blocking legitimate repair
+// work. The validator is the safety net; rules are still expected to
+// be correct (belt-and-suspenders).
+//
+// The fail-loud diagnostic names every record that fired so the
+// triage agent can identify exactly which rule produced the bad
+// output — distinct from FailUnresolved (which fires when no rule
+// fires or a multi-rule conflict has no documented branch).
+// ----------------------------------------------------------------------------
+
+[[noreturn]] void
+NamingApplicator::FailValidator(
+        const NamingContext& ctx,
+        const std::vector<NamingApplication>& applications,
+        const std::string& chosen_output) const {
+    std::ostringstream map_str;
+    for (const NamingApplication& app : applications) {
+        map_str << "\n    " << NamingSourceName(app.rule->source) << "/"
+                << app.rule->name << " (" << app.rule->rationale
+                << ") -> '" << app.proposed_output << "'";
+    }
+    if (applications.empty()) map_str << "\n    (empty)";
+
+    std::fprintf(stderr,
+        "FATAL: NamingApplicator post-resolution validator: rule produced "
+        "non-canonical output for resolved chemistry context. "
+        "Original input '%s' resolved to '%s' (BAD); residue %s seq %d "
+        "chain '%s'; source %s; variant_index=%d; terminal_state=%d. "
+        "Rules that fired:%s. "
+        "Architectural contract (codex round-2, 2026-05-06): rules may "
+        "recognise non-canonical INPUT (rules exist to repair) but their "
+        "OUTPUT must be canonical for the resolved chemistry context; "
+        "the canonicality oracle is the authority on canonical form. "
+        "See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md "
+        "and the 2026-05-06 codex round-2 review.\n",
+        ctx.input_name.c_str(),
+        chosen_output.c_str(),
+        GetAminoAcidType(ctx.residue_type).three_letter_code,
+        ctx.residue_sequence_number,
+        ctx.chain_id.c_str(),
+        NamingSourceName(ctx.source),
+        ctx.variant_index,
+        static_cast<int>(ctx.terminal_state),
+        map_str.str().c_str());
+    std::abort();
+}
+
+
+// ----------------------------------------------------------------------------
 // Apply: single-atom canonicalisation. Collect + Resolve.
 //
 // Codex Finding CC2 (2026-05-06): NamingSource::Unknown at entry is a
@@ -747,7 +809,31 @@ std::string NamingApplicator::Apply(const NamingContext& ctx) const {
         std::abort();
     }
     std::vector<NamingApplication> applications = Collect(ctx);
-    return Resolve(applications, ctx);
+    std::string output = Resolve(applications, ctx);
+
+    // Architectural contract (codex round-2, 2026-05-06): rules may
+    // recognise non-canonical INPUT (rules exist to repair it), but
+    // their OUTPUT must be canonical for the resolved chemistry context.
+    // The canonicality oracle is the authority on canonical form; this
+    // validator enforces the invariant at the Apply() boundary so a
+    // misbehaving rule cannot leak non-canonical names into the runtime
+    // substrate.
+    //
+    // Pre-rule oracle gating ("oracle-first") would block legitimate
+    // non-canonical inputs from reaching repair rules. Post-resolution
+    // validation catches misbehaviour without blocking repair. Both
+    // paths fail-loud; either FATAL (unresolved or non-canonical
+    // output) is correct rejection of an unsafe canonicalisation.
+    //
+    // Per spec/plan/naming-applicator-architecture-sketch-2026-05-06.md
+    // and the 2026-05-06 codex round-2 review.
+    NamingContext output_ctx = ctx;
+    output_ctx.input_name = output;
+    if (!IsCanonical(output_ctx)) {
+        FailValidator(ctx, applications, output);
+    }
+
+    return output;
 }
 
 
@@ -895,12 +981,34 @@ void NamingApplicator::InstallRules() {
     });
 
     // Pass-through for canonical charged LYS (HZ1+HZ2+HZ3 all present).
+    //
+    // Variant gate (codex round-2, 2026-05-06): the rule represents
+    // canonical CHARGED LYS chemistry (NH3+, HZ1+HZ2+HZ3 on Nζ). Under
+    // resolved LYN (variant_index = 0), the residue is the neutral
+    // amine NH2 form whose canonical hydrogens are HZ2+HZ3 only — HZ1
+    // is NOT canonical. Without a variant gate, this rule would fire
+    // on a LYN-resolved residue whose siblings still contain all three
+    // HZ atoms (e.g. a chemistry-mistake fixture or a Pass-2 residue
+    // arriving with stale HZ1) and pass HZ1 through unchanged before
+    // the post-resolution validator catches the bad output.
+    //
+    // The validator is the safety net (defence in depth); the variant
+    // gate is the primary fix (rules should be correct). Belt and
+    // suspenders.
+    //
+    // c.variant_index < 0 means "unresolved at load time" (Pass 1) or
+    // "default-charged-LYS" (no variant resolved). LYS's only variant
+    // index is 0 (LYN), per AminoAcidType.cpp::AMINO_ACID_TYPES:
+    //   variant 0 = LYN (deprotonated lysine, HZ2+HZ3 only)
+    // — so variant_index >= 0 unambiguously means LYN.
     rules_.push_back(NamingRule{
         NamingSource::AmberFf14SBCanonical,
         "LysAmmoniumHzPassThrough",
-        "LYS: HZ1/HZ2/HZ3 canonical NH3+ when siblings have all three",
+        "LYS: HZ1/HZ2/HZ3 canonical NH3+ when siblings have all three "
+        "AND variant unresolved (default-charged-LYS); LYN gates this off",
         [](const NamingContext& c) {
             return c.residue_type == AminoAcid::LYS
+                && c.variant_index < 0
                 && (c.input_name == "HZ1" || c.input_name == "HZ2"
                     || c.input_name == "HZ3")
                 && IsLysAmmoniumCanonical(c.sibling_input_names);

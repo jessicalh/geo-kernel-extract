@@ -349,6 +349,19 @@ private:
         const std::vector<NamingApplication>& applications,
         std::string_view reason) const;
 
+    /// Post-resolution validator's fail-loud emit. Fires when Resolve()
+    /// returned a chosen output that the canonicality oracle rejects
+    /// for the resolved chemistry context — a rule misbehaved by
+    /// proposing non-canonical output. Distinct from FailUnresolved
+    /// (which fires when no rule fires or a multi-rule conflict has no
+    /// documented branch). The diagnostic names every rule that fired,
+    /// the original input, and the bad output. Codex round-2,
+    /// 2026-05-06.
+    [[noreturn]] void FailValidator(
+        const NamingContext& ctx,
+        const std::vector<NamingApplication>& applications,
+        const std::string& chosen_output) const;
+
     void InstallRules();
 
     std::vector<NamingRule> rules_;
