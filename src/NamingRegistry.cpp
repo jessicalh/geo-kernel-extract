@@ -242,6 +242,66 @@ void NamingRegistry::InitialiseAtomNameRules() {
     AddAtomNameRule("HA1", "HA3", "GLY", ToolContext::Standard, ToolContext::Amber);
 
     // ========================================================================
+    // CHARMM-port AMBER pdb2gmx atom names — load-time collapse rules
+    // ========================================================================
+    //
+    // When pdb2gmx writes an AMBER-ff14SB topology, side-chain methylene
+    // and methyl-bearing-carbon atom names sometimes appear in CHARMM-
+    // port form rather than the IUPAC/AMBER canonical form. The 1P9J +
+    // 1Z9B fleet topol.top files carry these names (verified inside
+    // their `#mol_X` rtp blocks). Without these rules the canonical
+    // AMBER substrate's LookupBy fails on PRO HD1, LYS HD/HE, ILE HD/CD,
+    // ILE HG1.
+    //
+    // The (Charmm, Standard) keyspace fires in Stage 1 of
+    // CanonicaliseAmberAtomName when source_context == Charmm. Stage 2
+    // (Standard, Amber) is a no-op for these names because they are
+    // already canonical post-Stage-1.
+    //
+    // Verified-against-fleet block; activation criterion per the
+    // deferred-block comment further down: residue-specific rules only
+    // (no wildcard β-methylene over-fire on ALA), and only the patterns
+    // observed in fleet_amber/{1P9J,1Z9B}/topol.top. Other patterns
+    // (BMRB-shift-binding ALA blockers, GLY HA1/HA2 Charmm→Standard)
+    // remain in the deferred block until the broader fleet probe runs.
+    //
+    // Reference: spec/ChangesRequiredBeforeProductionH5Run.md;
+    // h5-reader/notes/nmr_forensics/SUMMARY.md (empirical probe).
+    //
+    // PRO δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
+    AddAtomNameRule("HD1", "HD2", "PRO", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HD2", "HD3", "PRO", ToolContext::Charmm, ToolContext::Standard);
+
+    // LYS δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
+    AddAtomNameRule("HD1", "HD2", "LYS", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HD2", "HD3", "LYS", ToolContext::Charmm, ToolContext::Standard);
+
+    // LYS ε-methylene: CHARMM HE1/HE2 ↔ IUPAC HE2/HE3.
+    AddAtomNameRule("HE1", "HE2", "LYS", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HE2", "HE3", "LYS", ToolContext::Charmm, ToolContext::Standard);
+
+    // ARG δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
+    AddAtomNameRule("HD1", "HD2", "ARG", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HD2", "HD3", "ARG", ToolContext::Charmm, ToolContext::Standard);
+
+    // ILE δ-methyl: CHARMM HD1/HD2/HD3 ↔ IUPAC HD11/HD12/HD13.
+    // (3 H pseudoatom on a single methyl carbon; substrate collapses
+    // their di_index to None after methyl detection, but the names
+    // must canonicalise so LookupBy doesn't miss on the chain table.)
+    AddAtomNameRule("HD1", "HD11", "ILE", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HD2", "HD12", "ILE", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HD3", "HD13", "ILE", ToolContext::Charmm, ToolContext::Standard);
+
+    // ILE γ-carbon: CHARMM CD ↔ IUPAC CD1 (the methyl-bearing carbon).
+    AddAtomNameRule("CD",  "CD1", "ILE", ToolContext::Charmm, ToolContext::Standard);
+
+    // ILE γ1-methylene: CHARMM HG11/HG12 ↔ IUPAC HG12/HG13. The HG21,
+    // HG22, HG23 names on the γ2-methyl already match canon — only HG1*
+    // get rewritten.
+    AddAtomNameRule("HG11", "HG12", "ILE", ToolContext::Charmm, ToolContext::Standard);
+    AddAtomNameRule("HG12", "HG13", "ILE", ToolContext::Charmm, ToolContext::Standard);
+
+    // ========================================================================
     // N-terminal H2N (CHARMM port) — kept as cap-only literal H2N
     // ========================================================================
     //
@@ -536,6 +596,27 @@ NamingRegistry& GlobalNamingRegistry() {
 // code. The rules in the (Standard, Amber) keyspace fire when keyed
 // on the variant name (e.g. LYN HZ1 -> HZ2, LYN HZ2 -> HZ3).
 //
+// CHAIN-RULE COLLISION GUARD: the LYN HZ1->HZ2 / HZ2->HZ3 rules will
+// chain-rewrite a canonical LYN input (HZ2+HZ3 already canonical)
+// into HZ3+HZ3 if applied per-atom independently — atom HZ2 sees
+// rule HZ2->HZ3 and renames itself to HZ3, but atom HZ3 was already
+// HZ3, producing a duplicate. The same shape is hypothetically
+// possible for any future "shift up" rule set.
+//
+// The fix is a residue-scope two-phase application:
+//   1. Compute the proposed name for every atom (rule lookup per atom,
+//      independent).
+//   2. If the proposed-name SET has duplicates (two atoms map to the
+//      same name), the residue is already in a canonical state that
+//      doesn't need rewriting — skip.
+//   3. Otherwise apply the rewrites.
+//
+// Canonical-LYN (HZ2+HZ3): rule HZ2->HZ3 fires; proposed = {HZ3, HZ3};
+// duplicate; skip. ✓
+//
+// Fleet-LYN (HZ1+HZ2): rules HZ1->HZ2 and HZ2->HZ3 both fire;
+// proposed = {HZ2, HZ3}; no duplicate; apply. ✓
+//
 // Atoms in residues with no resolved variant (default charged form)
 // are NOT touched by this pass — their canonical-AMBER names came
 // from the loader's CanonicaliseAmberAtomName(... "LYS" ...) call
@@ -553,15 +634,50 @@ void RecanonicaliseAfterProtonation(
         const size_t vi = static_cast<size_t>(res.protonation_variant_index);
         if (vi >= aatype.variants.size()) continue;
         const std::string variant_name = aatype.variants[vi].name;
-        for (size_t ai : res.atom_indices) {
-            if (ai >= atoms.size() || !atoms[ai]) continue;
-            const std::string& current = atoms[ai]->pdb_atom_name;
-            if (current.empty()) continue;
-            const std::string canonical = registry.CanonicaliseAmberAtomName(
-                current, variant_name, ToolContext::Standard);
-            if (canonical != current) {
-                atoms[ai]->pdb_atom_name = canonical;
+
+        // Phase 1: compute proposed name per atom; track whether any
+        // rule would actually change a name.
+        std::vector<std::string> proposed(res.atom_indices.size());
+        bool any_rule_fired = false;
+        for (size_t k = 0; k < res.atom_indices.size(); ++k) {
+            const size_t ai = res.atom_indices[k];
+            if (ai >= atoms.size() || !atoms[ai]) {
+                proposed[k] = "";
+                continue;
             }
+            const std::string& cur = atoms[ai]->pdb_atom_name;
+            if (cur.empty()) {
+                proposed[k] = cur;
+                continue;
+            }
+            const std::string canon = registry.CanonicaliseAmberAtomName(
+                cur, variant_name, ToolContext::Standard);
+            proposed[k] = canon;
+            if (canon != cur) any_rule_fired = true;
+        }
+        if (!any_rule_fired) continue;
+
+        // Phase 2: detect duplicates in the proposed-name set. Any
+        // duplicate means the residue is already in a canonical state
+        // that doesn't need this rewrite (canonical LYN: HZ2->HZ3
+        // creates a second HZ3). Skip in that case.
+        std::set<std::string> seen;
+        bool has_duplicate = false;
+        for (const std::string& p : proposed) {
+            if (p.empty()) continue;
+            if (!seen.insert(p).second) {
+                has_duplicate = true;
+                break;
+            }
+        }
+        if (has_duplicate) continue;
+
+        // Phase 3: apply rewrites.
+        for (size_t k = 0; k < res.atom_indices.size(); ++k) {
+            const size_t ai = res.atom_indices[k];
+            if (ai >= atoms.size() || !atoms[ai]) continue;
+            if (proposed[k].empty()) continue;
+            atoms[ai]->pdb_atom_name = proposed[k];
         }
     }
 }
