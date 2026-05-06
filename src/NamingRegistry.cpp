@@ -306,6 +306,97 @@ bool IsIleHg1Pdb2gmxShape(const std::set<std::string>& siblings) {
         && ContainsNone(siblings, {"HG13"});
 }
 
+// β-methylene Pdb2gmx-RTP shift shape: HB1+HB2 instead of canonical HB2+HB3.
+// Used by the residue-set-scoped β-methylene wildcard rules below.
+bool IsBetaMethylenePdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HB1", "HB2"})
+        && ContainsNone(siblings, {"HB3"});
+}
+
+// γ-methylene Pdb2gmx-RTP shift shape: HG1+HG2 instead of canonical HG2+HG3.
+// Used by the residue-set-scoped γ-methylene wildcard rules below.
+bool IsGammaMethylenePdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HG1", "HG2"})
+        && ContainsNone(siblings, {"HG3"});
+}
+
+// ============================================================================
+// Residue-set predicates for the β-methylene + γ-methylene wildcard rules.
+//
+// The pre-refactor NamingRegistry carried wildcard ("*"-residue) rules
+// of the form "HB1 -> HB2" / "HB2 -> HB3" that fired across every
+// residue with a β-methylene side-chain. The wildcard depended on a
+// lookup-order convention (residue-specific wins over wildcard) and
+// quiet-by-construction ALA discipline (ALA HB1/HB2/HB3 always already
+// canonical in fleet inputs, so wildcard over-fire never triggered).
+//
+// The rule-application architecture replaces the wildcard with explicit
+// residue-set predicates. Each set names exactly the residues whose
+// pdb2gmx-AMBER-RTP topology emits a β-methylene or γ-methylene under
+// older AMBER-RTP convention requiring the Markley 1998 §2.1.2 numbering
+// shift to canonical.
+//
+// References:
+//   - Markley et al. 1998 J. Biomol. NMR 12:1-23 §2.1.2: stereo numbering
+//     of prochiral methylene H atoms (Hβ pair, Hγ pair, Hδ pair).
+//   - AMBER ff14SB residue templates / pdb2gmx amino acid RTP entries.
+//
+// β-methylene set: every residue with a CB-bearing methylene (CB has
+// two H atoms). EXCLUDES:
+//   - ALA (HB1/HB2/HB3 is canonical methyl on CB; not a methylene).
+//   - GLY (no CB, no β atom at all).
+//   - VAL, ILE, THR (single Hβ; CB bears only one H — not a methylene).
+//
+// γ-methylene set: every residue with a CG-bearing methylene (CG has
+// two H atoms named HG2/HG3 canonically). The set is exactly:
+//   ARG, GLN, GLU, LYS, MET, PRO. Note: ILE has γ1-methylene
+//   (HG11/HG12 pdb2gmx ↔ HG12/HG13 canonical) but ILE-specific rules
+//   above already cover that case; ILE is not in this set.
+//
+// Reverse-direction wildcards (Standard → Charmm; HB2->HB1, HB3->HB2,
+// HG2->HG1, HG3->HG2) intentionally NOT ported. The CHARMM-output path
+// is retired (memory `project_charmm_retired_amber_only_2026-05-02`);
+// no live consumer needs canonical → CHARMM-conventional output. If a
+// future CHARMM-output path arises, those rules get added then.
+// ============================================================================
+
+bool IsBetaMethyleneResidue(AminoAcid aa) {
+    switch (aa) {
+        case AminoAcid::ARG:
+        case AminoAcid::ASN:
+        case AminoAcid::ASP:
+        case AminoAcid::CYS:
+        case AminoAcid::GLN:
+        case AminoAcid::GLU:
+        case AminoAcid::HIS:
+        case AminoAcid::LEU:
+        case AminoAcid::LYS:
+        case AminoAcid::MET:
+        case AminoAcid::PHE:
+        case AminoAcid::PRO:
+        case AminoAcid::SER:
+        case AminoAcid::TRP:
+        case AminoAcid::TYR:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsGammaMethyleneResidue(AminoAcid aa) {
+    switch (aa) {
+        case AminoAcid::ARG:
+        case AminoAcid::GLN:
+        case AminoAcid::GLU:
+        case AminoAcid::LYS:
+        case AminoAcid::MET:
+        case AminoAcid::PRO:
+            return true;
+        default:
+            return false;
+    }
+}
+
 }  // namespace
 
 
@@ -992,6 +1083,105 @@ void NamingApplicator::InstallRules() {
                 && IsIleHg1Pdb2gmxShape(c.sibling_input_names);
         },
         [](const NamingContext&) { return std::string("HG13"); },
+    });
+
+
+    // ========================================================================
+    // β-methylene + γ-methylene wildcard shift rules (residue-set scoped)
+    // ========================================================================
+    //
+    // These are the four "wildcard" rules ported from the pre-refactor
+    // NamingRegistry. The pre-refactor code carried them as
+    // AddAtomNameRule("HB1", "HB2", "*", ToolContext::Charmm,
+    // ToolContext::Standard) wildcard entries (residue = "*"); the new
+    // architecture replaces the wildcard with explicit residue-set
+    // predicates (IsBetaMethyleneResidue / IsGammaMethyleneResidue).
+    //
+    // Source rationale: AMBER pdb2gmx emits β/γ methylene H atoms in the
+    // older AMBER RTP convention (HB1/HB2; HG1/HG2). Canonical AMBER ff14SB
+    // (post-Markley 1998 §2.1.2 numbering) is HB2/HB3 and HG2/HG3.
+    //
+    // Residue-set scope:
+    //   β-methylene: ARG, ASN, ASP, CYS, GLN, GLU, HIS, LEU, LYS, MET,
+    //     PHE, PRO, SER, TRP, TYR (15 residues). ALA excluded
+    //     (HB1/HB2/HB3 canonical methyl; not a methylene). VAL/ILE/THR
+    //     excluded (single Hβ; not a methylene). GLY excluded (no β atom).
+    //   γ-methylene: ARG, GLN, GLU, LYS, MET, PRO (6 residues). ILE
+    //     γ1-methylene HG11/HG12 already covered by IleHg11/12_Pdb2gmxShift
+    //     above; ILE not in this set.
+    //
+    // These rules fire ONLY when ctx.source == Pdb2gmxAmberRtpDeviation,
+    // AND the residue is in the relevant set, AND siblings match the
+    // non-canonical (HB1+HB2 / HG1+HG2 with no HB3 / HG3) pattern. On
+    // canonical sibling sets the predicate returns false; the rule does
+    // not fire; idempotency preserved.
+    //
+    // Reverse-direction wildcards (Standard → Charmm; HB2->HB1 etc.)
+    // intentionally NOT ported. The CHARMM force-field output path is
+    // retired (memory `project_charmm_retired_amber_only_2026-05-02`);
+    // no live consumer needs canonical → CHARMM-conventional output.
+    //
+    // Reference: spec/plan/naming-applicator-architecture-sketch-2026-05-06.md;
+    // Markley et al. 1998 J. Biomol. NMR 12:1-23 §2.1.2.
+
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "BetaMethyleneHb1ToHb2_Pdb2gmxShift",
+        "β-methylene HB1 -> HB2 (Markley 1998 §2.1.2); applies to all "
+        "residues with β-methylene side-chain (ARG, ASN, ASP, CYS, GLN, "
+        "GLU, HIS, LEU, LYS, MET, PHE, PRO, SER, TRP, TYR); ALA excluded "
+        "(HB1/HB2/HB3 canonical methyl); VAL/ILE/THR excluded (single Hβ); "
+        "GLY excluded (no β atom)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && IsBetaMethyleneResidue(c.residue_type)
+                && c.input_name == "HB1"
+                && IsBetaMethylenePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HB2"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "BetaMethyleneHb2ToHb3_Pdb2gmxShift",
+        "β-methylene HB2 -> HB3 (Markley 1998 §2.1.2); residue-set + "
+        "sibling-pattern predicate matches BetaMethyleneHb1ToHb2 above",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && IsBetaMethyleneResidue(c.residue_type)
+                && c.input_name == "HB2"
+                && IsBetaMethylenePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HB3"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "GammaMethyleneHg1ToHg2_Pdb2gmxShift",
+        "γ-methylene HG1 -> HG2 (Markley 1998 §2.1.2); applies to "
+        "residues with γ-methylene chain (ARG, GLN, GLU, LYS, MET, PRO); "
+        "ILE γ1-methylene HG11/HG12 covered by ILE-specific rules above",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && IsGammaMethyleneResidue(c.residue_type)
+                && c.input_name == "HG1"
+                && IsGammaMethylenePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HG2"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "GammaMethyleneHg2ToHg3_Pdb2gmxShift",
+        "γ-methylene HG2 -> HG3 (Markley 1998 §2.1.2); residue-set + "
+        "sibling-pattern predicate matches GammaMethyleneHg1ToHg2 above",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && IsGammaMethyleneResidue(c.residue_type)
+                && c.input_name == "HG2"
+                && IsGammaMethylenePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HG3"); },
     });
 }
 
