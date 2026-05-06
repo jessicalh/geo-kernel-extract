@@ -416,12 +416,15 @@ TEST(NamingApplicatorIdempotency, CanonicalChainAtomsPassThrough) {
     }
 }
 
-TEST(NamingApplicatorIdempotency, VariantExtensionAtomsPassThrough) {
+TEST(NamingApplicatorIdempotency, LoadTimeToleranceAcceptsVariantExtensionAtoms) {
     const auto& app = GlobalNamingApplicator();
-    // Variant-only atoms (HID/HIP HD1, ASH HD2, GLH HE2) must pass
-    // through under any source when the sibling pattern is canonical
-    // for that variant. The IsCanonical oracle's per-variant atom
-    // extension makes these legal canonical inputs.
+    // SCOPE: load-time tolerance window — variant_index == -1
+    // (unresolved). Loaders cannot know the resolved tautomer until
+    // ResolveProtonationStates fires, so the oracle accepts the union
+    // of variant-extension atoms permissively. The variant-strict
+    // checks (codex Finding 5) are exercised in the per-variant tests
+    // below (HieRejectsHd1, HipAcceptsHd1AndHe2, AshAcceptsHd2,
+    // GlhAcceptsHe2).
     struct VariantCase {
         AminoAcid res;
         const char* atom;
@@ -452,12 +455,88 @@ TEST(NamingApplicatorIdempotency, VariantExtensionAtomsPassThrough) {
     };
 
     for (const VariantCase& c : cases) {
+        // variant_index defaults to -1 — load-time tolerance window.
         auto ctx = MakeContext(c.atom, c.res,
                                NamingSource::AmberFf14SBCanonical,
                                c.siblings);
         EXPECT_EQ(app.Apply(ctx), c.atom)
-            << "Variant-extension atom " << c.note << " should pass through";
+            << "Variant-extension atom " << c.note
+            << " should pass through under load-time tolerance "
+               "(variant_index = -1)";
     }
+}
+
+
+// ----------------------------------------------------------------------------
+// Variant-aware canonicality oracle — codex Finding 5
+//
+// IsCanonical is variant-aware AFTER protonation resolution. Under
+// variant_index >= 0 (resolved), only the variant's true atoms pass;
+// HD1 on HIE-resolved HIS is NOT canonical (HD1 belongs to HID/HIP).
+// ----------------------------------------------------------------------------
+
+TEST(NamingApplicatorVariantAware, HipAcceptsHd1AndHe2) {
+    const auto& app = GlobalNamingApplicator();
+    // HIP (variant_index = 2): both ND1 and NE2 are protonated. HD1 and
+    // HE2 are both canonical.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3", "CG",
+                                       "ND1", "HD1", "CD2", "HD2",
+                                       "CE1", "HE1", "NE2", "HE2"};
+    {
+        auto ctx_hd1 = MakeContext("HD1", AminoAcid::HIS,
+                                    NamingSource::AmberFf14SBCanonical,
+                                    siblings, /*variant_index=*/2);
+        EXPECT_EQ(app.Apply(ctx_hd1), "HD1");
+    }
+    {
+        auto ctx_he2 = MakeContext("HE2", AminoAcid::HIS,
+                                    NamingSource::AmberFf14SBCanonical,
+                                    siblings, /*variant_index=*/2);
+        EXPECT_EQ(app.Apply(ctx_he2), "HE2");
+    }
+}
+
+TEST(NamingApplicatorVariantAware, AshAcceptsHd2) {
+    const auto& app = GlobalNamingApplicator();
+    // ASH (variant_index = 0 for ASP): OD2 protonated. HD2 is canonical.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "CG", "OD1", "OD2", "HD2"};
+    auto ctx = MakeContext("HD2", AminoAcid::ASP,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_EQ(app.Apply(ctx), "HD2");
+}
+
+TEST(NamingApplicatorVariantAware, GlhAcceptsHe2) {
+    const auto& app = GlobalNamingApplicator();
+    // GLH (variant_index = 0 for GLU): OE2 protonated. HE2 is canonical.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3",
+                                       "CG", "HG2", "HG3",
+                                       "CD", "OE1", "OE2", "HE2"};
+    auto ctx = MakeContext("HE2", AminoAcid::GLU,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/0);
+    EXPECT_EQ(app.Apply(ctx), "HE2");
+}
+
+TEST(NamingApplicatorVariantAwareDeathTest, HieRejectsHd1) {
+    const auto& app = GlobalNamingApplicator();
+    // HIE (variant_index = 1): NE2 protonated, ND1 not. HD1 is NOT
+    // canonical for HIE; no rule fires; the canonicality oracle returns
+    // false; FailUnresolved aborts.
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
+                                       "CB", "HB2", "HB3", "CG",
+                                       "ND1", "CD2", "HD2",
+                                       "CE1", "HE1", "NE2", "HE2",
+                                       "HD1"};  // illegal extra HD1 on HIE
+    auto ctx = MakeContext("HD1", AminoAcid::HIS,
+                           NamingSource::AmberFf14SBCanonical,
+                           siblings, /*variant_index=*/1);
+    EXPECT_DEATH(app.Apply(ctx),
+                 "no rule applies and input is not canonical");
 }
 
 
@@ -525,15 +604,44 @@ TEST(NamingApplicatorResolve, SingleRuleFiringReturnsItsOutput) {
 }
 
 TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
-    const auto& app = GlobalNamingApplicator();
-    // For LYS with canonical-charged siblings {HZ1, HZ2, HZ3},
-    // LysAmmoniumHzPassThrough fires for HZ2. Only one rule fires
-    // (others have predicates that fail). The pass-through agreement
-    // path is exercised when the sibling pattern is canonical.
-    auto ctx = MakeContext("HZ2", AminoAcid::LYS,
+    // Construct a NamingApplicator with two test-only rules from
+    // different NamingSource tags that BOTH fire on the same context
+    // and propose the SAME output. Asserts the resolver's branch 3a
+    // path returns the shared output.
+    //
+    // The production rule set does not currently reach this branch
+    // (see NamingRegistry.cpp::Resolve() codex Finding 6 comment); the
+    // test-only `CustomRules` constructor is the canonical exercise.
+    NamingApplicator::CustomRules custom;
+    custom.rules.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "TestRuleA_AmberCanonicalAlaCa",
+        "test fixture: AMBER ff14SB canonical pass-through for ALA/CA",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::ALA && c.input_name == "CA";
+        },
+        [](const NamingContext& c) { return c.input_name; },
+    });
+    custom.rules.push_back(NamingRule{
+        NamingSource::Markley1998,
+        "TestRuleB_MarkleyAlaCa",
+        "test fixture: Markley 1998 pass-through for ALA/CA — agrees",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::ALA && c.input_name == "CA";
+        },
+        [](const NamingContext& c) { return c.input_name; },
+    });
+    const NamingApplicator test_app(std::move(custom));
+
+    auto ctx = MakeContext("CA", AminoAcid::ALA,
                            NamingSource::AmberFf14SBCanonical,
-                           {"NZ", "HZ1", "HZ2", "HZ3"});
-    EXPECT_EQ(app.Apply(ctx), "HZ2");
+                           {"N", "CA", "C", "O"});
+
+    // Both rules are in the rule list.
+    ASSERT_EQ(test_app.RuleCount(), 2u);
+
+    // The resolver's branch 3a (all-agree) returns the shared output.
+    EXPECT_EQ(test_app.Apply(ctx), "CA");
 }
 
 

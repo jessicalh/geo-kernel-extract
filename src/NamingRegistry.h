@@ -244,6 +244,17 @@ class NamingApplicator {
 public:
     NamingApplicator();
 
+    /// Test-only constructor: build an applicator with custom rules.
+    /// The supplied rule list REPLACES the production rule set; the
+    /// canonicality oracle and resolution body are unchanged. Used by
+    /// `tests/test_naming_registry.cpp` to exercise resolution branches
+    /// (notably the "multiple rules agree" branch — codex Finding 6)
+    /// that the production rule set does not currently reach. This
+    /// constructor is not for production use; production code calls
+    /// `GlobalNamingApplicator()`.
+    struct CustomRules { std::vector<NamingRule> rules; };
+    explicit NamingApplicator(CustomRules custom);
+
     /// Single-atom canonicalisation. Builds the per-atom application
     /// map, calls the resolver, returns the canonical output. Aborts
     /// loudly on unresolvable cases (no rule + non-canonical input,

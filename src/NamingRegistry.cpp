@@ -202,6 +202,13 @@ NamingApplicator::NamingApplicator() {
 }
 
 
+// Test-only constructor — see header. The supplied rule list replaces
+// the production set; canonicality oracle + Resolve() body unchanged.
+NamingApplicator::NamingApplicator(CustomRules custom)
+    : rules_(std::move(custom.rules)) {
+}
+
+
 // ----------------------------------------------------------------------------
 // Sibling-set predicates used by the rule InstallRules() function.
 //
@@ -445,15 +452,47 @@ bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
     // ARG ARN, TYR TYM either remove atoms (variant-deletion) or
     // re-purpose existing chain entries (LYN HZ2/HZ3 are already in
     // LYS chain) — no atom-extension needed.
+    //
+    // Variant-aware canonicality (codex-review Finding 5, 2026-05-06):
+    //
+    //   * variant_index == -1 (unresolved at load): accept the UNION of
+    //     variant-extension atoms. Loaders see protonation state before
+    //     the second-pass ResolveProtonationStates fires; permissive
+    //     acceptance avoids false-FATAL on variant atoms whose tautomer
+    //     is not yet known.
+    //   * variant_index >= 0 (resolved, post-protonation pass): accept
+    //     ONLY the variant-extension atoms that belong to the resolved
+    //     variant.
+    //
+    // Without this distinction the oracle would silently accept HD1 on
+    // HIE-resolved HIS (HD1 belongs to HID/HIP only), masking a real
+    // chemistry error — the residue would have an atom that the
+    // resolved variant's substrate row does not carry.
+    const int v = ctx.variant_index;
     switch (ctx.residue_type) {
         case AminoAcid::HIS:
-            if (ctx.input_name == "HD1") return true;  // HID/HIP
+            if (ctx.input_name == "HD1") {
+                // HD1 is canonical for HID(0), HIP(2), and the
+                // unresolved-load (-1) tolerance window. Not for
+                // HIE(1) — HIE has only HE2 protonated.
+                if (v == -1 || v == 0 || v == 2) return true;
+            }
             break;
         case AminoAcid::ASP:
-            if (ctx.input_name == "HD2") return true;  // ASH
+            if (ctx.input_name == "HD2") {
+                // HD2 is canonical for ASH(0) and the unresolved-load
+                // window. Not for default ASP(-1 resolves to default
+                // = no HD2 in fixed-protonation MD; the v == -1 branch
+                // here is the load-time tolerance).
+                if (v == -1 || v == 0) return true;
+            }
             break;
         case AminoAcid::GLU:
-            if (ctx.input_name == "HE2") return true;  // GLH
+            if (ctx.input_name == "HE2") {
+                // HE2 is canonical for GLH(0) and the unresolved-load
+                // window.
+                if (v == -1 || v == 0) return true;
+            }
             break;
         default: break;
     }
@@ -555,12 +594,24 @@ NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
     //
     // Project decision (3a): if every fired rule produces the SAME
     // proposed output, return that shared output. The rules agree;
-    // there is no conflict. This typically arises when an atom is
-    // canonical in two related sources (e.g. AmberFf14SBCanonical
-    // pass-through + Markley1998 pass-through both return the input
-    // unchanged for a canonical name).
+    // there is no conflict. This branch is the future-friendly path
+    // for adding (e.g.) Markley1998 pass-through rules alongside
+    // AmberFf14SBCanonical pass-throughs — the rule sets agree on
+    // canonical inputs and the resolver returns the shared output.
     //
-    // Authority: ibid. §"What's locked" — rule sets are preserved as
+    // Reachability (codex Finding 6, 2026-05-06): the CURRENT
+    // production rule set does NOT exercise this branch. Every rule
+    // either gates on `ctx.source` (the Pdb2gmxAmberRtpDeviation
+    // family) or is a sibling-pattern-specific shift / pass-through
+    // (LYN HZ, GLY HA, LYS NH3+, β/γ-methylene, ILE δ-methyl, ILE
+    // γ1, ILE γ-carbon). No two of those fire and agree on the same
+    // (residue, input, source, sibling) tuple. The branch is
+    // exercised in tests/test_naming_registry.cpp::
+    // NamingApplicatorMultiRuleResolve (codex Finding 6) via a
+    // test-only `NamingApplicator(CustomRules)` constructor.
+    //
+    // Authority: spec/plan/naming-applicator-architecture-sketch-
+    // 2026-05-06.md §"What's locked" — rule sets are preserved as
     // published; convergent agreement is the easiest case.
     {
         const std::string& first = applications.front().proposed_output;
