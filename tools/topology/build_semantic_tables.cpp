@@ -46,7 +46,27 @@
 #include "Types.h"
 #include "SemanticEnums.h"
 
+// Runtime substrate header -- the home of `ParseAtomName`,
+// `LocantLetterToEnum`, `ElementFromAtomName`, `ParsedAtomName`. Lifted
+// out of this generator into the runtime header so the generator and
+// the runtime share a SINGLE copy. This file used to carry private
+// duplicates; they are removed and the generator now calls the lifted
+// versions inline. See spec/plan/topology-and-identity-pivot-synthesis-2026-05-05.md
+// §13.1 for the rationale.
+#include "generated/LegacyAmberSemanticTables.h"
+
 using namespace nmr;
+
+// Bring the lifted parser into the generator's local scope so the
+// existing call sites (SynthesisedFor*, BuildAtomSemanticEntry, the
+// per-residue loop in BuildAtomSemanticEntries) compile unchanged.
+// The generator's local `ParsedName` is now an alias for the runtime
+// header's `ParsedAtomName`; struct shape is identical (same fields,
+// same defaults, same semantics) so existing field accesses keep working.
+using ParsedName = ::nmr::topology_generated::ParsedAtomName;
+using ::nmr::topology_generated::ElementFromAtomName;
+using ::nmr::topology_generated::LocantLetterToEnum;
+using ::nmr::topology_generated::ParseAtomName;
 
 
 namespace {
@@ -461,183 +481,21 @@ void LogRdkitPerception(const RDKit::RWMol& mol,
 
 
 // ============================================================================
-// Atom-name parser -- mechanical fields (Locant, BranchAddress,
-// DiastereotopicIndex) from the CCD atom_id string plus the residue's
-// bond graph (to map H atoms to their heavy-atom parent).
+// Atom-name parser
 //
-// String boundary: this parser consumes CCD atom-name strings and
-// returns typed-enum values. The strings die at this function's
+// Lifted to src/generated/LegacyAmberSemanticTables.h so the runtime
+// composition path and this generator share a SINGLE source of truth.
+// `ParseAtomName`, `ElementFromAtomName`, `LocantLetterToEnum`, and
+// the `ParsedAtomName` struct live there as inline functions; the
+// `using` declarations near the top of this file bring them into local
+// scope under the legacy generator-side name `ParsedName` so the
+// existing call sites (SynthesisedFor*, BuildAtomSemanticEntry, the
+// per-residue loop) compile unchanged.
+//
+// String boundary: the parser consumes CCD atom-name strings and
+// returns typed-enum values. The strings die at the function's
 // return; callers see typed values only.
 // ============================================================================
-
-struct ParsedName {
-    Element             element;
-    bool                is_backbone     = false;  ///< N/CA/C/O/H/HA (and HN alias)
-    bool                is_n_terminus   = false;  ///< H1/H2/H3 (extra ammonium Hs)
-    bool                is_c_terminus   = false;  ///< OXT/HXT
-    Locant              locant          = Locant::None;
-    BranchAddress       branch          = {};
-    DiastereotopicIndex di_index        = DiastereotopicIndex::None;
-    BackboneRole        backbone_role   = BackboneRole::None;
-};
-
-Element ElementFromAtomName(const std::string& name) {
-    if (name.empty()) return Element::Unknown;
-    switch (name[0]) {
-        case 'H': return Element::H;
-        case 'C': return Element::C;
-        case 'N': return Element::N;
-        case 'O': return Element::O;
-        case 'S': return Element::S;
-        default:  return Element::Unknown;
-    }
-}
-
-Locant LocantLetterToEnum(char c) {
-    switch (c) {
-        case 'A': return Locant::Alpha;
-        case 'B': return Locant::Beta;
-        case 'G': return Locant::Gamma;
-        case 'D': return Locant::Delta;
-        case 'E': return Locant::Epsilon;
-        case 'Z': return Locant::Zeta;
-        case 'H': return Locant::Eta;     // Note: 'H' as locant suffix (Arg/Tyr eta), NOT element.
-        default:  return Locant::None;
-    }
-}
-
-// Parse an atom name plus its parent map (H -> heavy parent name).
-// For non-H atoms parent_name is empty.
-ParsedName ParseAtomName(const std::string& name, const std::string& parent_name) {
-    ParsedName p;
-    p.element = ElementFromAtomName(name);
-
-    // Pure backbone names. BackboneRole identifies which slot in the
-    // peptide-amide unit this atom occupies (the (Element, Locant,
-    // Branch, DiIndex) tuple all share Locant::None for these atoms,
-    // so it cannot disambiguate them on its own). HA carries
-    // BackboneRole::AlphaHydrogen AND Locant::Alpha; only Gly's
-    // HA2/HA3 below stay BackboneRole::None and rely on Locant::Alpha
-    // to distinguish themselves from sidechain atoms.
-    if (name == "N" || name == "CA" || name == "C" || name == "O" ||
-        name == "H" || name == "HN" || name == "HA") {
-        p.is_backbone = true;
-        if      (name == "N")  p.backbone_role = BackboneRole::Nitrogen;
-        else if (name == "CA") p.backbone_role = BackboneRole::AlphaCarbon;
-        else if (name == "C")  p.backbone_role = BackboneRole::CarbonylCarbon;
-        else if (name == "O")  p.backbone_role = BackboneRole::CarbonylOxygen;
-        else if (name == "H" || name == "HN") p.backbone_role = BackboneRole::AmideHydrogen;
-        else if (name == "HA") {
-            p.backbone_role = BackboneRole::AlphaHydrogen;
-            p.locant = Locant::Alpha;  // HA is a Cα-H
-        }
-        return p;
-    }
-    // N-terminal extra ammonium Hs.
-    if (name == "H1" || name == "H2" || name == "H3" || name == "H2N") {
-        p.is_n_terminus = true;
-        return p;
-    }
-    // C-terminal carboxyl atoms.
-    if (name == "OXT" || name == "HXT" || name == "OT1" || name == "OT2") {
-        p.is_c_terminus = true;
-        return p;
-    }
-    // Glycine alpha-Hs (only diastereotopic CH2 in the standard 20).
-    if (name == "HA2" || name == "HA3") {
-        p.is_backbone = true;
-        p.locant = Locant::Alpha;
-        p.di_index = (name.back() == '2') ? DiastereotopicIndex::Position2
-                                          : DiastereotopicIndex::Position3;
-        return p;
-    }
-
-    // Sidechain: <element-letter><locant-letter><digits...>.
-    // The locant letter is the second character of the atom name.
-    if (name.size() < 2) return p;  // unparseable, give up
-    p.locant = LocantLetterToEnum(name[1]);
-    if (p.locant == Locant::None) return p;
-
-    // Trailing digits form a numeric suffix: "" / "1" / "2" / "12" / "21" etc.
-    const std::string suffix = name.substr(2);
-    if (suffix.empty()) return p;  // single sidechain atom (e.g. CB, SG, OH)
-
-    // For non-H atoms with a digit suffix: the digit is the BranchAddress::outer
-    // (Val CG1/CG2, Leu CD1/CD2, Phe CD1/CD2, Asn OD1/ND2, Asn OD1, etc.).
-    if (p.element != Element::H) {
-        // Single digit: simple branch.
-        if (suffix.size() == 1 && std::isdigit(static_cast<unsigned char>(suffix[0]))) {
-            p.branch.outer = static_cast<uint8_t>(suffix[0] - '0');
-            return p;
-        }
-        // Multi-digit on heavy atom is unusual; record as outer for now.
-        p.branch.outer = static_cast<uint8_t>(suffix[0] - '0');
-        return p;
-    }
-
-    // For H atoms: use the heavy-atom parent map to disambiguate.
-    //   - parent has no branch digit (e.g. CB, CG): suffix encodes
-    //     diastereotopic pair (HB2/HB3).
-    //   - parent has branch digit (e.g. CD1, NH1): suffix's first
-    //     digit is the parent's branch (outer); remaining digits
-    //     are inner (e.g. HD11 = on CD1, inner=1).
-    bool parent_has_digit = false;
-    char parent_digit = 0;
-    if (!parent_name.empty()) {
-        for (char c : parent_name) {
-            if (std::isdigit(static_cast<unsigned char>(c))) {
-                parent_has_digit = true;
-                parent_digit = c;
-                break;
-            }
-        }
-    }
-
-    if (!parent_has_digit) {
-        // Diastereotopic methylene-style: HB2 vs HB3, HG2 vs HG3, etc.
-        // Methyl-on-unbranched (Ala HB1/HB2/HB3) also lands here; we
-        // record the digit as DiastereotopicIndex but the methyl-pair
-        // distinction is downstream (PseudoatomMembership).
-        if (suffix.size() == 1 && std::isdigit(static_cast<unsigned char>(suffix[0]))) {
-            const char d = suffix[0];
-            if (d == '2') p.di_index = DiastereotopicIndex::Position2;
-            else if (d == '3') p.di_index = DiastereotopicIndex::Position3;
-            // d == '1' (Ala HB1) leaves di_index = None; the membership
-            // of a methyl pseudoatom (MB) is what carries the meaning.
-        }
-        return p;
-    }
-
-    // Parent has branch digit: outer = parent's branch, inner = remaining
-    // digit on the H name (if any).
-    p.branch.outer = static_cast<uint8_t>(parent_digit - '0');
-    // Extract the H atom's inner digit: search the suffix for a digit
-    // that isn't the parent's outer match.
-    for (char c : suffix) {
-        if (!std::isdigit(static_cast<unsigned char>(c))) continue;
-        if (c == parent_digit && p.branch.inner == 0 && suffix.size() == 1) {
-            // Single matching digit (e.g. HG1 on CG1 means just "the H on CG1").
-            return p;
-        }
-        if (c != parent_digit) {
-            p.branch.inner = static_cast<uint8_t>(c - '0');
-            break;
-        }
-    }
-    // Special case: HG21 on Thr CG2 -> outer=2, inner=1.
-    // The above loop catches that because digits after the first match are inner.
-    if (p.branch.inner == 0) {
-        // Suffix has multiple matching digits or only one: handle by
-        // taking the last digit as inner.
-        p.branch.inner = static_cast<uint8_t>(suffix.back() - '0');
-        if (p.branch.inner == p.branch.outer && suffix.size() == 1) {
-            // Suffix was just the parent digit; H is the only one on
-            // that branch (e.g. Thr HG1 on OG1).
-            p.branch.inner = 0;
-        }
-    }
-    return p;
-}
 
 
 // Build a map from each atom name to its first heavy-atom neighbour
