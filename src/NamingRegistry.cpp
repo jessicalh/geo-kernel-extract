@@ -4,6 +4,9 @@
 #include "AminoAcidType.h"
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <sstream>
 
 namespace nmr {
 
@@ -29,23 +32,16 @@ bool NamingRegistry::ContextKey::operator<(const ContextKey& o) const {
     return variant < o.variant;
 }
 
-bool NamingRegistry::AtomNameKey::operator<(const AtomNameKey& o) const {
-    if (atom_name != o.atom_name) return atom_name < o.atom_name;
-    if (residue_name != o.residue_name) return residue_name < o.residue_name;
-    if (from_context != o.from_context) return from_context < o.from_context;
-    return to_context < o.to_context;
-}
-
 
 // ============================================================================
-// Construction: populate all naming tables
+// NamingRegistry: residue-name translation only. Atom-name canonicalisation
+// is delegated to the NamingApplicator below.
 // ============================================================================
 
 NamingRegistry::NamingRegistry() {
     InitialiseStandardResidues();
     InitialiseAmberContext();
     InitialiseCharmmContext();
-    InitialiseAtomNameRules();
 }
 
 
@@ -136,362 +132,6 @@ void NamingRegistry::InitialiseCharmmContext() {
 }
 
 
-void NamingRegistry::InitialiseAtomNameRules() {
-    // Backbone amide hydrogen: H (PDB/AMBER) <-> HN (CHARMM)
-    AddAtomNameRule("H",  "HN", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("HN", "H",  "*", ToolContext::Charmm, ToolContext::Standard);
-
-    // Beta methylenes (all residues: HB2,HB3 <-> HB1,HB2)
-    AddAtomNameRule("HB2", "HB1", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("HB3", "HB2", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("HB1", "HB2", "*", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HB2", "HB3", "*", ToolContext::Charmm, ToolContext::Standard);
-
-    // Gamma methylenes (all residues: HG2,HG3 <-> HG1,HG2)
-    AddAtomNameRule("HG2", "HG1", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("HG3", "HG2", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("HG1", "HG2", "*", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HG2", "HG3", "*", ToolContext::Charmm, ToolContext::Standard);
-
-    // ========================================================================
-    // C-terminal carboxyl atoms — CHARMM port → AMBER canonical
-    // ========================================================================
-    //
-    // CHARMM emits the two C-terminal oxygens as OT1 / OT2; AMBER
-    // ff14SB and IUPAC use O (the carbonyl O of the chain) and OXT
-    // (the deprotonated carboxyl O). The AMBER kCapCtermDeprotonated
-    // / kCapCtermProtonated tables key on canonical O / OXT, so
-    // CHARMM-loaded fixtures need to collapse here before substrate
-    // composition or the cap lookup misses entirely. Mapping:
-    //
-    //     CHARMM OT1  <-->  AMBER/IUPAC O   (the chain backbone carbonyl O)
-    //     CHARMM OT2  <-->  AMBER/IUPAC OXT (the C-terminal carboxyl O)
-    //
-    // Verified against the AMBER ff14SB cap convention encoded in
-    // src/generated/LegacyAmberSemanticTables.cpp's kCapCterm tables
-    // and the ff14SB parameter files at data/ff14sb_params.dat.
-    //
-    // These rules live in the (Charmm, Standard) keyspace -- they
-    // are wire-format-collapse aliases and fire only on CHARMM
-    // inputs. They do NOT have (Standard, Amber) counterparts;
-    // canonical Standard inputs already use O/OXT.
-    AddAtomNameRule("OT1", "O",   "*", ToolContext::Charmm,   ToolContext::Standard);
-    AddAtomNameRule("OT2", "OXT", "*", ToolContext::Charmm,   ToolContext::Standard);
-    AddAtomNameRule("O",   "OT1", "*", ToolContext::Standard, ToolContext::Charmm);
-    AddAtomNameRule("OXT", "OT2", "*", ToolContext::Standard, ToolContext::Charmm);
-
-    // ========================================================================
-    // LYN protonation-variant H-on-NZ naming — fleet-vintage variance
-    // ========================================================================
-    //
-    // AMBER ff14SB LYN (deprotonated lysine, neutral NH2 amine on NZ)
-    // has TWO H atoms on NZ canonically named HZ2 / HZ3 — preserving
-    // the LYS NH3+ numbering convention with HZ1 absent (the proton
-    // removed at deprotonation). Some upstream prep flows (notably
-    // the 1Z9B fleet input.pdb) carry LYN-chemistry residues with
-    // the H atoms named HZ1 / HZ2 (a pre-Markley-1998 numbering).
-    // Map those to the canonical HZ2 / HZ3 when the residue is
-    // recorded as LYN.
-    //
-    // RULES ARE RESIDUE-CONTEXT-KEYED. They fire ONLY when the
-    // residue's three-letter code is "LYN". For LYS residues
-    // (NH3+, HZ1/HZ2/HZ3) the rule does NOT fire and HZ1/HZ2/HZ3
-    // pass through canonical.
-    //
-    // The rules live in the (Standard, Amber) keyspace so they fire
-    // in Stage 2 of CanonicaliseAmberAtomName regardless of source
-    // wire-format. They do NOT have (Charmm, Standard) counterparts:
-    // putting them in both keyspaces would chain incorrectly
-    // (HZ1 -> HZ2 -> HZ3 in a single canonicalisation pass).
-    //
-    // KNOWN GAP: when a fleet PDB labels the residue "LYS" but
-    // structurally has LYN chemistry (e.g. only HZ1/HZ2 present),
-    // load-time canonicalisation here cannot know to fire. The
-    // rename then needs to happen at protonation-detection time
-    // downstream (Phase 1 step 13.2 -- PROPKA wiring at the
-    // PdbFileReader TODO; not in this commit's scope).
-    //
-    // Reference: AMBER ff14SB residue templates encoded in
-    // data/ff14sb_params.dat lines 433-453; Markley 1998 §2.1.1.
-    AddAtomNameRule("HZ1", "HZ2", "LYN", ToolContext::Standard, ToolContext::Amber);
-    AddAtomNameRule("HZ2", "HZ3", "LYN", ToolContext::Standard, ToolContext::Amber);
-
-    // ========================================================================
-    // Glycine alpha methylene — HA <-> HA2
-    // ========================================================================
-    //
-    // Glycine has two prochiral alpha hydrogens; AMBER ff14SB +
-    // IUPAC convention names them HA2 / HA3 (Markley 1998 §2.1.2).
-    // Some fixtures collapse the methylene to a single "HA" name on
-    // GLY (pre-Markley convention) when the file format only supplies
-    // one of the two atoms. Map "HA" -> "HA2" so the substrate's
-    // GLY chain table (which keys HA2 / HA3) finds a match. A third
-    // pre-Markley atom labelled "HA1" maps to "HA3".
-    //
-    // RULES ARE RESIDUE-CONTEXT-KEYED to GLY only: non-Gly residues
-    // canonically use plain HA, and aliasing HA -> HA2 there would
-    // produce non-existent atoms.
-    //
-    // Like LYN HZ above, these rules live in the (Standard, Amber)
-    // keyspace so Stage 2 of CanonicaliseAmberAtomName fires them
-    // and Stage 1 does not chain-rewrite.
-    //
-    // Reference: AminoAcidType.cpp line 14 (BB_GLY definition uses
-    // HA2 / HA3); Markley 1998 §2.1.2.
-    AddAtomNameRule("HA",  "HA2", "GLY", ToolContext::Standard, ToolContext::Amber);
-    AddAtomNameRule("HA1", "HA3", "GLY", ToolContext::Standard, ToolContext::Amber);
-
-    // ========================================================================
-    // CHARMM-port AMBER pdb2gmx atom names — load-time collapse rules
-    // ========================================================================
-    //
-    // When pdb2gmx writes an AMBER-ff14SB topology, side-chain methylene
-    // and methyl-bearing-carbon atom names sometimes appear in CHARMM-
-    // port form rather than the IUPAC/AMBER canonical form. The 1P9J +
-    // 1Z9B fleet topol.top files carry these names (verified inside
-    // their `#mol_X` rtp blocks). Without these rules the canonical
-    // AMBER substrate's LookupBy fails on PRO HD1, LYS HD/HE, ILE HD/CD,
-    // ILE HG1.
-    //
-    // The (Charmm, Standard) keyspace fires in Stage 1 of
-    // CanonicaliseAmberAtomName when source_context == Charmm. Stage 2
-    // (Standard, Amber) is a no-op for these names because they are
-    // already canonical post-Stage-1.
-    //
-    // Verified-against-fleet block; activation criterion per the
-    // deferred-block comment further down: residue-specific rules only
-    // (no wildcard β-methylene over-fire on ALA), and only the patterns
-    // observed in fleet_amber/{1P9J,1Z9B}/topol.top. Other patterns
-    // (BMRB-shift-binding ALA blockers, GLY HA1/HA2 Charmm→Standard)
-    // remain in the deferred block until the broader fleet probe runs.
-    //
-    // Reference: spec/ChangesRequiredBeforeProductionH5Run.md;
-    // h5-reader/notes/nmr_forensics/SUMMARY.md (empirical probe).
-    //
-    // PRO δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
-    AddAtomNameRule("HD1", "HD2", "PRO", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HD2", "HD3", "PRO", ToolContext::Charmm, ToolContext::Standard);
-
-    // LYS δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
-    AddAtomNameRule("HD1", "HD2", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HD2", "HD3", "LYS", ToolContext::Charmm, ToolContext::Standard);
-
-    // LYS ε-methylene: CHARMM HE1/HE2 ↔ IUPAC HE2/HE3.
-    AddAtomNameRule("HE1", "HE2", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HE2", "HE3", "LYS", ToolContext::Charmm, ToolContext::Standard);
-
-    // ARG δ-methylene: CHARMM HD1/HD2 ↔ IUPAC HD2/HD3.
-    AddAtomNameRule("HD1", "HD2", "ARG", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HD2", "HD3", "ARG", ToolContext::Charmm, ToolContext::Standard);
-
-    // ILE δ-methyl: CHARMM HD1/HD2/HD3 ↔ IUPAC HD11/HD12/HD13.
-    // (3 H pseudoatom on a single methyl carbon; substrate collapses
-    // their di_index to None after methyl detection, but the names
-    // must canonicalise so LookupBy doesn't miss on the chain table.)
-    AddAtomNameRule("HD1", "HD11", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HD2", "HD12", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HD3", "HD13", "ILE", ToolContext::Charmm, ToolContext::Standard);
-
-    // ILE γ-carbon: CHARMM CD ↔ IUPAC CD1 (the methyl-bearing carbon).
-    AddAtomNameRule("CD",  "CD1", "ILE", ToolContext::Charmm, ToolContext::Standard);
-
-    // ILE γ1-methylene: CHARMM HG11/HG12 ↔ IUPAC HG12/HG13. The HG21,
-    // HG22, HG23 names on the γ2-methyl already match canon — only HG1*
-    // get rewritten.
-    AddAtomNameRule("HG11", "HG12", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    AddAtomNameRule("HG12", "HG13", "ILE", ToolContext::Charmm, ToolContext::Standard);
-
-    // ========================================================================
-    // N-terminal H2N (CHARMM port) — kept as cap-only literal H2N
-    // ========================================================================
-    //
-    // CHARMM occasionally emits a single H2N pseudo-name standing
-    // for the entire NTERM amine NH2-block. AMBER ff14SB N-termini
-    // resolve to three SEPARATE atoms H1 / H2 / H3 (charged) or
-    // two atoms H1 / H2 (neutral). The mapping is therefore
-    // 1-to-many and not a clean per-atom rename.
-    //
-    // The runtime parser's `IsCapOnlyAtomName` recognises H2N as a
-    // cap-only atom name and routes it to LookupCap. We do NOT
-    // install a NamingRegistry alias for H2N here — collapsing it
-    // would lose information (which of H1/H2/H3 it represents). The
-    // canonicalisation is intentionally a no-op for H2N; the
-    // substrate composition path treats H2N as a cap-only literal,
-    // and downstream re-protonation (when it lands) will produce
-    // the correct H1/H2/H3 atom set per terminal_state.
-    //
-    // FOLLOW-UP: when a load path produces an H2N atom that needs
-    // expansion to three H atoms, that has to happen at the load
-    // boundary (a fan-out, not a rename). Out of scope for this
-    // commit; flagged as residual work.
-
-    // ========================================================================
-    // CHARMM ↔ IUPAC COVERAGE GAPS + ONE WILDCARD BUG — DEFERRED pending
-    // fleet-wide vetting
-    // ========================================================================
-    //
-    // Context
-    // -------
-    // A BMRB/RefDB experimental-shift audit on the 10-protein calibration
-    // set (h5-reader/notes/nmr_forensics/) surfaced eight categories of
-    // /atoms/atom_name ↔ BMRB-IUPAC divergence. Six are missing
-    // translation rules; one is a library BUG — the wildcard β-methylene
-    // rule fires on ALA's 3-H methyl, producing duplicate HB3 labels at
-    // every ALA residue. All findings come from the same audit pass;
-    // activate together after fleet-wide vetting. Full rationale in
-    // spec/ChangesRequiredBeforeProductionH5Run.md.
-    //
-    // Findings
-    // --------
-    //
-    // Missing rules — H5 carries CHARMM names where IUPAC is wanted:
-    //
-    //    Position          CHARMM                IUPAC                 Residues
-    //    ----------------- --------------------  --------------------  --------
-    //    ILE γ-carbon      CD                    CD1                   ILE
-    //    ILE δ-methyl      HD1/HD2/HD3           HD11/HD12/HD13        ILE
-    //    ILE γ1-methylene  HG11/HG12             HG12/HG13             ILE
-    //    δ-methylene       HD1/HD2               HD2/HD3               ARG, LYS, PRO
-    //    ε-methylene       HE1/HE2               HE2/HE3               LYS
-    //    α-methylene       HA1/HA2               HA2/HA3               GLY
-    //
-    // Bug — wildcard β-methylene fires on ALA's 3-H β-methyl:
-    //
-    //    ALA β-methyl is HB1/HB2/HB3 in BOTH CHARMM and IUPAC — no
-    //    translation is needed. But the wildcard rule HB1→HB2,
-    //    HB2→HB3 (Standard↔CHARMM) over-fires on ALA, producing:
-    //
-    //        CHARMM HB1 → IUPAC HB2   (rule applied)
-    //        CHARMM HB2 → IUPAC HB3   (rule applied)
-    //        CHARMM HB3 → IUPAC HB3   (no rule, passes through)
-    //
-    //    Result: /atoms/atom_name has two atoms named HB3 and one
-    //    named HB2 at every ALA residue. The underlying atom data
-    //    (positions, charges, shielding tensors, bond topology) is
-    //    correct — three distinct atom indices with parent = CB. Only
-    //    the display label is corrupted.
-    //
-    //    Fix: add ALA-specific identity blocker rules that shadow the
-    //    wildcard. ALA HB1/HB2/HB3 → themselves in both directions.
-    //    The registry's lookup order (residue-specific wins over
-    //    wildcard) causes the block to take precedence.
-    //
-    // Consequence (pre-existing H5 files on the 10-protein set)
-    // ---------------------------------------------------------
-    // All eight categories surface as CHARMM names (or corrupted-IUPAC
-    // for ALA) in the already-generated H5 files under
-    // fleet_calibration-{working,stats,backup}. Regeneration is not on
-    // the table. Downstream consumers assuming uniform IUPAC (e.g.,
-    // BMRB/RefDB shift binding against /atoms/atom_name) fail across
-    // these positions.
-    //
-    // For the 10-protein experimental-shifts work, each case is handled
-    // in-place by two typed Python data constants in
-    //     h5-reader/notes/nmr_forensics/pack_experimental_shifts.py
-    //
-    //   - H5_NAME_FROM_IUPAC       dict lookup (residue, IUPAC) → H5 name
-    //                              covers the six missing-rule cases.
-    //   - BMRB_METHYL_VIA_PARENT   dict lookup (residue, BMRB name) →
-    //                              parent heavy atom; binds BMRB row to
-    //                              atom set via /topology/parent_atom_index.
-    //                              Handles ALA; flags the binding as
-    //                              AMBIGUOUS_METHYL_ORDER. No information
-    //                              loss — methyl Hs are chemically
-    //                              indistinguishable.
-    //
-    // Why these rules are COMMENTED OUT
-    // ---------------------------------
-    // The 10-protein probe showed uniform BMRB/RefDB IUPAC conventions
-    // with no per-protein drift, but 10 is a small sample. A fleet-wide
-    // probe against the full 685-protein set is a prerequisite for
-    // activation: if the probe confirms these are the only registry
-    // gaps, uncomment the rules below AND apply the ALA blockers; if
-    // additional gaps surface, add them to
-    // spec/ChangesRequiredBeforeProductionH5Run.md first, then activate
-    // everything together in one coordinated library update before
-    // production extraction.
-    //
-    // Partial activation is forbidden: activating some rules without
-    // others risks a partial fix that silently hides a different
-    // mismatch behind the accepted correction.
-    //
-    // References
-    // ----------
-    //   spec/ChangesRequiredBeforeProductionH5Run.md    full decision record
-    //   h5-reader/notes/nmr_forensics/SUMMARY.md        empirical probe
-    //
-    // Activation recipe (uncomment all of the below together)
-    // -------------------------------------------------------
-    //
-    // ALA β-methyl identity blockers — shadow the wildcard β-methylene
-    // rule, which over-fires on ALA's 3-H methyl. CHARMM and IUPAC agree
-    // on ALA β-methyl (HB1/HB2/HB3 in both), so identity is correct.
-    //
-    // AddAtomNameRule("HB1", "HB1", "ALA", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HB2", "HB2", "ALA", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HB3", "HB3", "ALA", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HB1", "HB1", "ALA", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HB2", "HB2", "ALA", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HB3", "HB3", "ALA", ToolContext::Charmm, ToolContext::Standard);
-    //
-    // ILE γ-carbon + δ-methyl (Standard → CHARMM and CHARMM → Standard)
-    //
-    // AddAtomNameRule("CD1",  "CD",   "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD11", "HD1",  "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD12", "HD2",  "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD13", "HD3",  "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("CD",   "CD1",  "ILE", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD1",  "HD11", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2",  "HD12", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD3",  "HD13", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    //
-    // ILE γ1-methylene (CHARMM HG11/HG12 ↔ IUPAC HG12/HG13)
-    //
-    // AddAtomNameRule("HG12", "HG11", "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HG13", "HG12", "ILE", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HG11", "HG12", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HG12", "HG13", "ILE", ToolContext::Charmm, ToolContext::Standard);
-    //
-    // δ-methylene — ARG, LYS, PRO (CHARMM HD1/HD2 ↔ IUPAC HD2/HD3)
-    //
-    // AddAtomNameRule("HD2", "HD1", "ARG", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD3", "HD2", "ARG", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD1", "HD2", "ARG", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2", "HD3", "ARG", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2", "HD1", "LYS", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD3", "HD2", "LYS", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD1", "HD2", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2", "HD3", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2", "HD1", "PRO", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD3", "HD2", "PRO", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HD1", "HD2", "PRO", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HD2", "HD3", "PRO", ToolContext::Charmm, ToolContext::Standard);
-    //
-    // ε-methylene — LYS (CHARMM HE1/HE2 ↔ IUPAC HE2/HE3)
-    //
-    // AddAtomNameRule("HE2", "HE1", "LYS", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HE3", "HE2", "LYS", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HE1", "HE2", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HE2", "HE3", "LYS", ToolContext::Charmm, ToolContext::Standard);
-    //
-    // α-methylene — GLY (CHARMM HA1/HA2 ↔ IUPAC HA2/HA3)
-    //
-    // AddAtomNameRule("HA2", "HA1", "GLY", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HA3", "HA2", "GLY", ToolContext::Standard, ToolContext::Charmm);
-    // AddAtomNameRule("HA1", "HA2", "GLY", ToolContext::Charmm, ToolContext::Standard);
-    // AddAtomNameRule("HA2", "HA3", "GLY", ToolContext::Charmm, ToolContext::Standard);
-}
-
-
-void NamingRegistry::AddAtomNameRule(const std::string& from_name,
-                                      const std::string& to_name,
-                                      const std::string& residue_name,
-                                      ToolContext from_context,
-                                      ToolContext to_context) {
-    atom_name_map_[{from_name, residue_name, from_context, to_context}] = to_name;
-}
-
-
 // ============================================================================
 // Residue name operations
 // ============================================================================
@@ -530,56 +170,7 @@ std::string NamingRegistry::ResolveForTool(const std::string& canonical,
 
 
 // ============================================================================
-// Atom name operations
-// ============================================================================
-
-std::string NamingRegistry::TranslateAtomName(const std::string& atom_name,
-                                               const std::string& residue_name,
-                                               ToolContext from_context,
-                                               ToolContext to_context) const {
-    if (from_context == to_context) return atom_name;
-
-    // Try residue-specific rule first
-    auto it = atom_name_map_.find({atom_name, residue_name, from_context, to_context});
-    if (it != atom_name_map_.end())
-        return it->second;
-
-    // Try wildcard residue
-    it = atom_name_map_.find({atom_name, "*", from_context, to_context});
-    if (it != atom_name_map_.end())
-        return it->second;
-
-    // No rule: return unchanged
-    return atom_name;
-}
-
-
-std::string
-NamingRegistry::CanonicaliseAmberAtomName(const std::string& atom_name,
-                                           const std::string& residue_name,
-                                           ToolContext source_context) const {
-    // Stage 1: collapse the wire-format universe to Standard (canonical
-    // AMBER ff14SB / IUPAC). For Standard inputs this is a no-op via
-    // TranslateAtomName's same-context fast path; for CHARMM inputs
-    // this fires the H<->HN, OT1->O, OT2->OXT, HA->HA2 (Gly) etc. rules.
-    std::string after_stage1 = (source_context == ToolContext::Standard)
-            ? atom_name
-            : TranslateAtomName(atom_name, residue_name,
-                                 source_context, ToolContext::Standard);
-
-    // Stage 2: residue-context-keyed canonicalisation that applies
-    // even on Standard inputs (e.g. LYN HZ1->HZ2 / HZ2->HZ3 fleet
-    // variance, GLY HA->HA2 collapsed-methylene). Implemented as
-    // (Standard -> Amber) rules so the existing residue-keyed
-    // dispatch in TranslateAtomName fires; the result IS canonical
-    // AMBER ff14SB.
-    return TranslateAtomName(after_stage1, residue_name,
-                              ToolContext::Standard, ToolContext::Amber);
-}
-
-
-// ============================================================================
-// Global singleton
+// Global singleton — residue-name registry
 // ============================================================================
 
 NamingRegistry& GlobalNamingRegistry() {
@@ -589,97 +180,807 @@ NamingRegistry& GlobalNamingRegistry() {
 
 
 // ============================================================================
-// RecanonicaliseAfterProtonation
+// NamingApplicator — atom-name canonicalisation engine
 //
-// See header for full rationale. Walks every residue with a resolved
-// variant; rewrites atom names against the variant's three-letter
-// code. The rules in the (Standard, Amber) keyspace fire when keyed
-// on the variant name (e.g. LYN HZ1 -> HZ2, LYN HZ2 -> HZ3).
+// Algorithm:
+//   1. Collect: iterate every rule, accumulate every NamingApplication
+//      whose Applies() predicate evaluates true for this context.
+//   2. Resolve: pick a single canonical output from the per-atom map
+//      via the explicit per-case decision body in Resolve(). Each
+//      branch documents the project decision authorising the choice
+//      and is exercised by a property test.
 //
-// CHAIN-RULE COLLISION GUARD: the LYN HZ1->HZ2 / HZ2->HZ3 rules will
-// chain-rewrite a canonical LYN input (HZ2+HZ3 already canonical)
-// into HZ3+HZ3 if applied per-atom independently — atom HZ2 sees
-// rule HZ2->HZ3 and renames itself to HZ3, but atom HZ3 was already
-// HZ3, producing a duplicate. The same shape is hypothetically
-// possible for any future "shift up" rule set.
+// The map is transient (built per Apply() call, consumed by Resolve(),
+// discarded). The chosen output is what persists, written by the caller
+// onto Atom::pdb_atom_name.
 //
-// The fix is a residue-scope two-phase application:
-//   1. Compute the proposed name for every atom (rule lookup per atom,
-//      independent).
-//   2. If the proposed-name SET has duplicates (two atoms map to the
-//      same name), the residue is already in a canonical state that
-//      doesn't need rewriting — skip.
-//   3. Otherwise apply the rewrites.
-//
-// Canonical-LYN (HZ2+HZ3): rule HZ2->HZ3 fires; proposed = {HZ3, HZ3};
-// duplicate; skip. ✓
-//
-// Fleet-LYN (HZ1+HZ2): rules HZ1->HZ2 and HZ2->HZ3 both fire;
-// proposed = {HZ2, HZ3}; no duplicate; apply. ✓
-//
-// Atoms in residues with no resolved variant (default charged form)
-// are NOT touched by this pass — their canonical-AMBER names came
-// from the loader's CanonicaliseAmberAtomName(... "LYS" ...) call
-// path which is correct for the charged form.
+// See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md.
 // ============================================================================
 
-void RecanonicaliseAfterProtonation(
-        std::vector<Residue>& residues,
-        std::vector<std::unique_ptr<Atom>>& atoms) {
-    const NamingRegistry& registry = GlobalNamingRegistry();
-    for (Residue& res : residues) {
-        if (!res.protonation_state_resolved) continue;
-        if (res.protonation_variant_index < 0) continue;
-        const AminoAcidType& aatype = res.AminoAcidInfo();
-        const size_t vi = static_cast<size_t>(res.protonation_variant_index);
-        if (vi >= aatype.variants.size()) continue;
-        const std::string variant_name = aatype.variants[vi].name;
+NamingApplicator::NamingApplicator() {
+    InstallRules();
+}
 
-        // Phase 1: compute proposed name per atom; track whether any
-        // rule would actually change a name.
-        std::vector<std::string> proposed(res.atom_indices.size());
-        bool any_rule_fired = false;
-        for (size_t k = 0; k < res.atom_indices.size(); ++k) {
-            const size_t ai = res.atom_indices[k];
-            if (ai >= atoms.size() || !atoms[ai]) {
-                proposed[k] = "";
-                continue;
-            }
-            const std::string& cur = atoms[ai]->pdb_atom_name;
-            if (cur.empty()) {
-                proposed[k] = cur;
-                continue;
-            }
-            const std::string canon = registry.CanonicaliseAmberAtomName(
-                cur, variant_name, ToolContext::Standard);
-            proposed[k] = canon;
-            if (canon != cur) any_rule_fired = true;
+
+// ----------------------------------------------------------------------------
+// Sibling-set predicates used by the rule InstallRules() function.
+//
+// Each predicate takes a NamingContext.sibling_input_names snapshot and
+// returns true iff the residue is in the non-canonical pre-Markley state
+// the rule corrects. Naming follows the convention:
+//   `IsLynPreMarkley` -- siblings have HZ1+HZ2 only (LYN chemistry but
+//                        non-canonical).
+//   `IsCanonicalLysAmmonium` -- siblings have HZ1+HZ2+HZ3 (charged LYS,
+//                                already canonical).
+// ----------------------------------------------------------------------------
+
+namespace {
+
+bool ContainsAll(const std::set<std::string>& siblings,
+                 std::initializer_list<const char*> names) {
+    for (const char* n : names) {
+        if (siblings.count(n) == 0) return false;
+    }
+    return true;
+}
+
+bool ContainsNone(const std::set<std::string>& siblings,
+                  std::initializer_list<const char*> names) {
+    for (const char* n : names) {
+        if (siblings.count(n) != 0) return false;
+    }
+    return true;
+}
+
+// LYN pre-Markley shape: only HZ1+HZ2 are siblings (no HZ3). Means the
+// residue carries LYN chemistry under non-canonical naming; the canonical
+// AMBER ff14SB names are HZ2+HZ3.
+bool IsLynPreMarkley(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HZ1", "HZ2"})
+        && ContainsNone(siblings, {"HZ3"});
+}
+
+// LYN canonical shape: siblings have HZ2+HZ3 (no HZ1). Already canonical.
+bool IsLynCanonical(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HZ2", "HZ3"})
+        && ContainsNone(siblings, {"HZ1"});
+}
+
+// LYS canonical-charged shape: siblings have HZ1+HZ2+HZ3. NH3+ chain form.
+bool IsLysAmmoniumCanonical(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HZ1", "HZ2", "HZ3"});
+}
+
+// GLY pre-Markley shape: collapsed methylene "HA" (no HA2/HA3).
+bool IsGlyHaPreMarkley(const std::set<std::string>& siblings) {
+    return siblings.count("HA") != 0
+        && ContainsNone(siblings, {"HA2", "HA3"});
+}
+
+// GLY second pre-Markley shape: HA1+HA2 (replacing HA2+HA3).
+bool IsGlyHa1Ha2PreMarkley(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HA1", "HA2"})
+        && ContainsNone(siblings, {"HA3"});
+}
+
+// PRO Pdb2gmx-RTP shift: HD1+HD2 instead of canonical HD2+HD3.
+bool IsProHdPdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HD1", "HD2"})
+        && ContainsNone(siblings, {"HD3"});
+}
+
+// LYS Pdb2gmx-RTP δ-methylene shift: HD1+HD2 instead of HD2+HD3.
+bool IsLysHdPdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HD1", "HD2"})
+        && ContainsNone(siblings, {"HD3"});
+}
+
+// LYS Pdb2gmx-RTP ε-methylene shift: HE1+HE2 instead of HE2+HE3.
+bool IsLysHePdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HE1", "HE2"})
+        && ContainsNone(siblings, {"HE3"});
+}
+
+// ARG Pdb2gmx-RTP δ-methylene shift: HD1+HD2 instead of HD2+HD3.
+bool IsArgHdPdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HD1", "HD2"})
+        && ContainsNone(siblings, {"HD3"});
+}
+
+// ILE Pdb2gmx-RTP δ-methyl shape: HD1+HD2+HD3 + CD instead of canonical
+// HD11+HD12+HD13 + CD1.
+bool IsIleHdMethylPdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HD1", "HD2", "HD3"})
+        && ContainsNone(siblings, {"HD11", "HD12", "HD13"});
+}
+
+// ILE Pdb2gmx-RTP γ-carbon shape: CD instead of CD1.
+bool IsIleCdPdb2gmxShape(const std::set<std::string>& siblings) {
+    return siblings.count("CD") != 0
+        && ContainsNone(siblings, {"CD1"});
+}
+
+// ILE Pdb2gmx-RTP γ1-methylene shape: HG11+HG12 instead of HG12+HG13.
+bool IsIleHg1Pdb2gmxShape(const std::set<std::string>& siblings) {
+    return ContainsAll(siblings, {"HG11", "HG12"})
+        && ContainsNone(siblings, {"HG13"});
+}
+
+}  // namespace
+
+
+// ----------------------------------------------------------------------------
+// Canonicality oracle
+//
+// Reads from AminoAcidType::atoms (the project-internal canonical chain
+// inventory) plus the variant inventory derived per residue. A name is
+// "canonical" when it appears either:
+//   (a) in the chain residue's atom list for the AminoAcid type; OR
+//   (b) in the per-variant overlay set (e.g. HID has HD1, HIE has HE2,
+//       HIP has both); OR
+//   (c) in the per-terminal cap atom inventory (H1/H2/H3 for charged
+//       N-terminus; OXT for deprotonated C-terminus; HXT for protonated;
+//       H1/H2 for neutral N-terminus).
+//
+// The oracle deliberately does NOT consult the substrate generator's
+// AtomMechanicalIdentity tables; it consults the simpler chain-name
+// inventory. The canonical names emitted by the generator are by
+// construction also present in AminoAcidType::atoms when the variant
+// is appropriate. (Two sources, same conclusion; the simpler is used
+// here.)
+// ----------------------------------------------------------------------------
+
+bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
+    if (ctx.input_name.empty()) return true;  // empty -> idempotent
+
+    // (a) Chain residue inventory.
+    const AminoAcidType& aatype = GetAminoAcidType(ctx.residue_type);
+    for (const auto& a : aatype.atoms) {
+        if (ctx.input_name == a.name) return true;
+    }
+
+    // (b) Per-variant overlay. Variants in AminoAcidType don't redeclare
+    // the chain atoms; they just describe the variant's presence/absence
+    // delta from canonical. The simplest model: HID has HD1, HIE has HE2,
+    // HIP has HD1 and HE2, ASH has HD2, GLH has HE2, LYN has HZ2 and HZ3
+    // (HZ1 absent), CYM has no HG, CYX has no HG. The chain inventory in
+    // AminoAcidType already includes HD1, HE2, HG, HD1, HE2, HZ1/2/3, HG.
+    // So (a) covers all canonical chain atoms across variants — what's
+    // missing is to know that the *absent* atoms in a variant are still
+    // legal-when-absent, which the oracle doesn't need to know (it only
+    // says "yes, HZ2 is canonical for LYS"; the load path determines
+    // which atoms actually appear).
+    //
+    // Special case: LYN canonical has HZ2 and HZ3 but NOT HZ1. The chain
+    // inventory has HZ1, so HZ1 *is* a known LYS atom name. This is why
+    // shift rules with sibling-aware predicates are required: the oracle
+    // can't distinguish "HZ1 in canonical-charged-LYS" from "HZ1 in
+    // non-canonical-LYN". Resolve() does that via map.empty + IsCanonical.
+
+    // (c) Cap atoms per terminal_state.
+    if (ctx.terminal_state == TerminalState::NtermCharged) {
+        if (ctx.input_name == "H1" || ctx.input_name == "H2"
+                || ctx.input_name == "H3") return true;
+    } else if (ctx.terminal_state == TerminalState::NtermNeutral) {
+        if (ctx.input_name == "H1" || ctx.input_name == "H2") return true;
+    } else if (ctx.terminal_state == TerminalState::CtermDeprotonated) {
+        if (ctx.input_name == "OXT") return true;
+    } else if (ctx.terminal_state == TerminalState::CtermProtonated) {
+        if (ctx.input_name == "OXT" || ctx.input_name == "HXT") return true;
+    }
+
+    // The N-terminal cap atom H1/H2/H3 might also appear on residues
+    // we don't know are N-terminal (e.g. terminal_state defaulted to
+    // Internal at load time). Whitelist them as canonical: the loader
+    // pass will not be in a position to reject these even when
+    // terminal_state is Internal. The substrate composition path takes
+    // them as cap-only literals.
+    if (ctx.input_name == "H1" || ctx.input_name == "H2"
+            || ctx.input_name == "H3") return true;
+    if (ctx.input_name == "OXT" || ctx.input_name == "HXT") return true;
+    if (ctx.input_name == "H2N") return true;  // CHARMM-port NTERM literal
+
+    return false;
+}
+
+
+// ----------------------------------------------------------------------------
+// Collect: iterate every rule, accumulate matches.
+// ----------------------------------------------------------------------------
+
+std::vector<NamingApplication>
+NamingApplicator::Collect(const NamingContext& ctx) const {
+    std::vector<NamingApplication> applications;
+    for (const NamingRule& rule : rules_) {
+        if (rule.applies && rule.applies(ctx)) {
+            applications.push_back({&rule, rule.output(ctx)});
         }
-        if (!any_rule_fired) continue;
+    }
+    return applications;
+}
 
-        // Phase 2: detect duplicates in the proposed-name set. Any
-        // duplicate means the residue is already in a canonical state
-        // that doesn't need this rewrite (canonical LYN: HZ2->HZ3
-        // creates a second HZ3). Skip in that case.
-        std::set<std::string> seen;
-        bool has_duplicate = false;
-        for (const std::string& p : proposed) {
-            if (p.empty()) continue;
-            if (!seen.insert(p).second) {
-                has_duplicate = true;
+
+// ----------------------------------------------------------------------------
+// Resolve: turn the per-atom application map into a single canonical
+// output. Body is the explicit per-case decision logic. Each branch
+// cites the project decision authorising the choice; each branch is
+// exercised by a property test.
+// ----------------------------------------------------------------------------
+
+std::string
+NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
+                          const NamingContext& ctx) const {
+    // Branch 1: zero rules fired.
+    //
+    // Project decision: if the input is already canonical for this
+    // (residue, variant, terminal), pass it through unchanged
+    // (idempotent on canonical inputs). Otherwise fail loud — an
+    // unrecognised atom name with no rule to canonicalise it is a
+    // substrate gap that the user must address before composition can
+    // succeed.
+    //
+    // Authority: spec/plan/naming-applicator-architecture-sketch-2026-05-06.md
+    // §"Algorithm" — "Map empty AND input matches a known canonical
+    // form for ctx: return input unchanged".
+    if (applications.empty()) {
+        if (IsCanonical(ctx)) return ctx.input_name;
+        FailUnresolved(ctx, applications,
+                       "no rule applies and input is not canonical");
+    }
+
+    // Branch 2: exactly one rule fired.
+    //
+    // Project decision: that rule's proposed output is the answer.
+    // Trivially correct because no other rule contests the choice.
+    //
+    // Authority: ibid. §"Algorithm" — "Map has exactly one record:
+    // return that record's proposed output".
+    if (applications.size() == 1) {
+        return applications.front().proposed_output;
+    }
+
+    // Branch 3: multiple rules fired.
+    //
+    // Project decision (3a): if every fired rule produces the SAME
+    // proposed output, return that shared output. The rules agree;
+    // there is no conflict. This typically arises when an atom is
+    // canonical in two related sources (e.g. AmberFf14SBCanonical
+    // pass-through + Markley1998 pass-through both return the input
+    // unchanged for a canonical name).
+    //
+    // Authority: ibid. §"What's locked" — rule sets are preserved as
+    // published; convergent agreement is the easiest case.
+    {
+        const std::string& first = applications.front().proposed_output;
+        bool all_agree = true;
+        for (size_t i = 1; i < applications.size(); ++i) {
+            if (applications[i].proposed_output != first) {
+                all_agree = false;
                 break;
             }
         }
-        if (has_duplicate) continue;
-
-        // Phase 3: apply rewrites.
-        for (size_t k = 0; k < res.atom_indices.size(); ++k) {
-            const size_t ai = res.atom_indices[k];
-            if (ai >= atoms.size() || !atoms[ai]) continue;
-            if (proposed[k].empty()) continue;
-            atoms[ai]->pdb_atom_name = proposed[k];
-        }
+        if (all_agree) return first;
     }
+
+    // Project decision (3b): no current branch covers this conflict
+    // combination. Fail loud — the user introduces a new branch
+    // (with a unit test) before the case can resolve.
+    //
+    // Authority: ibid. §"Algorithm" — "If a combination fires that
+    // no branch covers: fail-loud (a new project decision is needed
+    // before this case can be resolved)".
+    FailUnresolved(ctx, applications,
+                   "multiple rules fire with disagreeing outputs and no "
+                   "documented branch in Resolve() covers the combination");
+}
+
+
+[[noreturn]] void
+NamingApplicator::FailUnresolved(
+        const NamingContext& ctx,
+        const std::vector<NamingApplication>& applications,
+        std::string_view reason) const {
+    std::ostringstream map_str;
+    for (const NamingApplication& app : applications) {
+        map_str << "\n    " << NamingSourceName(app.rule->source) << "/"
+                << app.rule->name << " -> '" << app.proposed_output << "'";
+    }
+    if (applications.empty()) map_str << "\n    (empty)";
+
+    std::fprintf(stderr,
+        "FATAL: NamingApplicator: atom '%s' in residue %s seq %d chain '%s' "
+        "under source %s: %.*s. "
+        "Map:%s. "
+        "Context: variant_index=%d, terminal_state=%d. "
+        "See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md.\n",
+        ctx.input_name.c_str(),
+        GetAminoAcidType(ctx.residue_type).three_letter_code,
+        ctx.residue_sequence_number,
+        ctx.chain_id.c_str(),
+        NamingSourceName(ctx.source),
+        static_cast<int>(reason.size()), reason.data(),
+        map_str.str().c_str(),
+        ctx.variant_index,
+        static_cast<int>(ctx.terminal_state));
+    std::abort();
+}
+
+
+// ----------------------------------------------------------------------------
+// Apply: single-atom canonicalisation. Collect + Resolve.
+// ----------------------------------------------------------------------------
+
+std::string NamingApplicator::Apply(const NamingContext& ctx) const {
+    std::vector<NamingApplication> applications = Collect(ctx);
+    return Resolve(applications, ctx);
+}
+
+
+// ----------------------------------------------------------------------------
+// ApplyResidue: whole-residue convenience. Snapshots sibling input names
+// ONCE for the residue, then iterates atoms with that snapshot in each
+// per-atom NamingContext. This is essential for shift-pair rules: the
+// rule's predicate must read the original sibling set, not a partially-
+// rewritten one.
+// ----------------------------------------------------------------------------
+
+std::vector<std::string> NamingApplicator::ApplyResidue(
+        const std::vector<std::string>& input_names,
+        const std::vector<std::string>& parent_input_names,
+        AminoAcid residue_type,
+        int variant_index,
+        TerminalState terminal_state,
+        NamingSource source,
+        int residue_sequence_number,
+        std::string_view chain_id) const {
+    // Snapshot: the original input names of every atom in the residue.
+    // This is the set every per-atom rule predicate consults via
+    // ctx.sibling_input_names. The snapshot is NOT updated as we
+    // proceed atom-by-atom; the entire residue's predicates evaluate
+    // against the same starting point.
+    std::set<std::string> sibling_snapshot;
+    for (const std::string& n : input_names) {
+        if (!n.empty()) sibling_snapshot.insert(n);
+    }
+
+    std::vector<std::string> outputs;
+    outputs.reserve(input_names.size());
+    for (size_t k = 0; k < input_names.size(); ++k) {
+        NamingContext ctx;
+        ctx.source                  = source;
+        ctx.input_name              = input_names[k];
+        ctx.residue_type            = residue_type;
+        ctx.variant_index           = variant_index;
+        ctx.terminal_state          = terminal_state;
+        ctx.sibling_input_names     = sibling_snapshot;
+        ctx.parent_input_name       = (k < parent_input_names.size())
+                                      ? parent_input_names[k]
+                                      : std::string{};
+        ctx.residue_sequence_number = residue_sequence_number;
+        ctx.chain_id                = std::string(chain_id);
+        outputs.push_back(Apply(ctx));
+    }
+    return outputs;
+}
+
+
+// ----------------------------------------------------------------------------
+// InstallRules: every NamingRule is constructed here. Rules are tagged
+// with the typed NamingSource that names what they actually represent,
+// each carries a one-line rationale citing the source decision.
+//
+// Mapping from old (from_context, to_context) tags to new NamingSource:
+//   (Charmm, Standard) for fleet_amber/{1P9J,1Z9B} TPR atom names
+//      → NamingSource::Pdb2gmxAmberRtpDeviation (THIS IS THE RELABEL:
+//        the old Charmm tag was overloaded to mean "pdb2gmx-AMBER-RTP
+//        deviation in fleet_amber TPRs", NOT CHARMM force-field naming;
+//        the new tag names what the rules actually represent).
+//   (Standard, Charmm) for backbone H<->HN, OT1/OT2<->O/OXT
+//      → NamingSource::CharmmLegacy (these rules historically lived in
+//        the registry but are no longer fired by any active load path
+//        post-2026-05-02 CHARMM retirement; retained for completeness
+//        and any future legacy-CHARMM input).
+//   (Charmm, Standard) for backbone HN->H, OT1/OT2->O/OXT (pre-Markley
+//      Charmm-input collapse)
+//      → NamingSource::CharmmLegacy as above. The fleet_amber TPRs that
+//        flow through here were tagged as "Charmm" in the old code but
+//        do not in fact carry these names (no HN, no OT1/OT2 in
+//        fleet_amber topol.top).
+//   (Standard, Amber) for LYN HZ shift, GLY HA collapse
+//      → NamingSource::AmberFf14SBCanonical (these are AMBER ff14SB
+//        canonical mappings, project decisions about what the canonical
+//        target should be).
+//
+// Every rule's predicate now examines the sibling_input_names snapshot
+// rather than firing unconditionally on a single (atom_name, residue,
+// from_context, to_context) lookup. This makes the rules idempotent on
+// canonical inputs (canonical sibling sets don't match the non-canonical
+// pattern; the rule doesn't fire), removing the need for the
+// RecanonicaliseAfterProtonation guard.
+// ----------------------------------------------------------------------------
+
+void NamingApplicator::InstallRules() {
+    // ========================================================================
+    // CHARMM legacy backbone atom-name rules (retired path; rules retained
+    // for any future legacy input)
+    // ========================================================================
+    //
+    // These rules fire only when ctx.source == CharmmLegacy. The active
+    // load paths (PdbFileReader, FullSystemReader, OrcaRunLoader) do not
+    // tag inputs with CharmmLegacy. The rules are kept so a future
+    // legitimate CHARMM input path can be added by tagging its inputs
+    // appropriately, without re-deriving the well-known H/HN, OT1/OT2,
+    // O/OXT mappings.
+    //
+    // Reference: AMBER ff14SB cap convention encoded in the substrate
+    // generator's kCapCterm tables; CHARMM36m residue topology.
+
+    rules_.push_back(NamingRule{
+        NamingSource::CharmmLegacy,
+        "CharmmHnToCanonicalH",
+        "CHARMM36m backbone amide HN -> AMBER ff14SB / IUPAC H",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::CharmmLegacy
+                && c.input_name == "HN";
+        },
+        [](const NamingContext&) { return std::string("H"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::CharmmLegacy,
+        "CharmmOt1ToCanonicalO",
+        "CHARMM36m C-terminal OT1 (chain carbonyl O) -> AMBER ff14SB O",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::CharmmLegacy
+                && c.input_name == "OT1";
+        },
+        [](const NamingContext&) { return std::string("O"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::CharmmLegacy,
+        "CharmmOt2ToCanonicalOxt",
+        "CHARMM36m C-terminal OT2 (carboxyl O) -> AMBER ff14SB OXT",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::CharmmLegacy
+                && c.input_name == "OT2";
+        },
+        [](const NamingContext&) { return std::string("OXT"); },
+    });
+
+
+    // ========================================================================
+    // LYN protonation-variant H-on-NZ — sibling-aware shift to canonical
+    // ========================================================================
+    //
+    // AMBER ff14SB LYN (deprotonated lysine, neutral NH2 amine on NZ)
+    // has TWO H atoms on NZ canonically named HZ2 / HZ3 — preserving
+    // the LYS NH3+ numbering convention with HZ1 absent (the proton
+    // removed at deprotonation). Some upstream prep flows (notably
+    // the 1Z9B fleet input.pdb) carry LYN-chemistry residues with
+    // the H atoms named HZ1 / HZ2 (a pre-Markley-1998 numbering).
+    //
+    // SIBLING-AWARE: the rule fires only when ctx.sibling_input_names
+    // contains HZ1+HZ2 but NOT HZ3 (the pre-Markley LYN signature).
+    // This makes the rule IDEMPOTENT on:
+    //   - canonical LYN (HZ2+HZ3 only): predicate evaluates false; the
+    //     rule does not fire; the LynCanonicalHzPassThrough rule fires
+    //     instead and returns the input unchanged.
+    //   - canonical charged LYS (HZ1+HZ2+HZ3): predicate evaluates
+    //     false; the LysAmmoniumHzPassThrough rule fires instead.
+    //
+    // Reference: AMBER ff14SB residue templates (data/ff14sb_params.dat
+    // lines 433-453); Markley 1998 §2.1.1.
+
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "LynHz1ToHz2_PreMarkleyShift",
+        "LYN: HZ1 -> HZ2 when siblings have HZ1+HZ2 only (pre-Markley LYN)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::LYS
+                && c.input_name == "HZ1"
+                && IsLynPreMarkley(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HZ2"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "LynHz2ToHz3_PreMarkleyShift",
+        "LYN: HZ2 -> HZ3 when siblings have HZ1+HZ2 only (pre-Markley LYN)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::LYS
+                && c.input_name == "HZ2"
+                && IsLynPreMarkley(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HZ3"); },
+    });
+
+    // Pass-through for canonical LYN (HZ2+HZ3 in siblings, no HZ1).
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "LynCanonicalHzPassThrough",
+        "LYN: HZ2/HZ3 already canonical (siblings have HZ2+HZ3, no HZ1)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::LYS
+                && (c.input_name == "HZ2" || c.input_name == "HZ3")
+                && IsLynCanonical(c.sibling_input_names);
+        },
+        [](const NamingContext& c) { return c.input_name; },
+    });
+
+    // Pass-through for canonical charged LYS (HZ1+HZ2+HZ3 all present).
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "LysAmmoniumHzPassThrough",
+        "LYS: HZ1/HZ2/HZ3 canonical NH3+ when siblings have all three",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::LYS
+                && (c.input_name == "HZ1" || c.input_name == "HZ2"
+                    || c.input_name == "HZ3")
+                && IsLysAmmoniumCanonical(c.sibling_input_names);
+        },
+        [](const NamingContext& c) { return c.input_name; },
+    });
+
+
+    // ========================================================================
+    // Glycine alpha methylene — HA <-> HA2/HA3 (sibling-aware)
+    // ========================================================================
+    //
+    // Glycine has two prochiral alpha hydrogens; AMBER ff14SB +
+    // IUPAC convention names them HA2 / HA3 (Markley 1998 §2.1.2).
+    // Some fixtures collapse the methylene to a single "HA" name on
+    // GLY (pre-Markley convention) when the file format only supplies
+    // one of the two atoms. Map "HA" -> "HA2" so the substrate's
+    // GLY chain table (which keys HA2 / HA3) finds a match.
+    //
+    // SIBLING-AWARE: the rule fires only when siblings contain "HA"
+    // and lack HA2/HA3 (pre-Markley collapsed-methylene). On canonical
+    // GLY (siblings contain HA2/HA3, no HA), predicate returns false
+    // and the canonical rule fires instead.
+
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "GlyHaToHa2_PreMarkley",
+        "GLY: HA -> HA2 when siblings have HA only (pre-Markley collapse; Markley 1998 §2.1.2)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::GLY
+                && c.input_name == "HA"
+                && IsGlyHaPreMarkley(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HA2"); },
+    });
+
+    rules_.push_back(NamingRule{
+        NamingSource::AmberFf14SBCanonical,
+        "GlyHa1ToHa3_PreMarkley",
+        "GLY: HA1 -> HA3 when siblings have HA1+HA2 (pre-Markley shift)",
+        [](const NamingContext& c) {
+            return c.residue_type == AminoAcid::GLY
+                && c.input_name == "HA1"
+                && IsGlyHa1Ha2PreMarkley(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HA3"); },
+    });
+    // Note: HA2 input with siblings {HA1,HA2} hits the empty-map
+    // pass-through branch in Resolve() because HA2 is in GLY's
+    // canonical chain inventory (AminoAcidType::atoms). No explicit
+    // rule needed — the canonicality oracle covers this case.
+
+
+    // ========================================================================
+    // pdb2gmx-AMBER-RTP deviation rules — fleet-vetted load-time canonicalisation
+    // ========================================================================
+    //
+    // When pdb2gmx writes an AMBER-ff14SB topology, side-chain methylene
+    // and methyl-bearing-carbon atom names sometimes appear in older
+    // AMBER-RTP form rather than the IUPAC/AMBER canonical form. The
+    // 1P9J + 1Z9B fleet topol.top files carry these names (verified
+    // inside their `#mol_X` rtp blocks). Without these rules the
+    // canonical AMBER substrate's LookupBy fails on PRO HD1, LYS HD/HE,
+    // ILE HD/CD, ILE HG1.
+    //
+    // THESE RULES FIRE ONLY WHEN ctx.source == Pdb2gmxAmberRtpDeviation,
+    // AND siblings match the non-canonical pattern. Canonical inputs
+    // (siblings already contain HD2+HD3 etc.) do not trigger these rules
+    // — the predicate returns false. This makes the rules idempotent.
+    //
+    // Reference: spec/ChangesRequiredBeforeProductionH5Run.md;
+    // h5-reader/notes/nmr_forensics/SUMMARY.md (empirical probe).
+
+    // PRO δ-methylene: pdb2gmx HD1/HD2 → IUPAC HD2/HD3.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "ProHd1ToHd2_Pdb2gmxShift",
+        "PRO: HD1 -> HD2 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::PRO
+                && c.input_name == "HD1"
+                && IsProHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD2"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "ProHd2ToHd3_Pdb2gmxShift",
+        "PRO: HD2 -> HD3 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::PRO
+                && c.input_name == "HD2"
+                && IsProHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD3"); },
+    });
+
+    // LYS δ-methylene: pdb2gmx HD1/HD2 → IUPAC HD2/HD3.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "LysHd1ToHd2_Pdb2gmxShift",
+        "LYS: HD1 -> HD2 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::LYS
+                && c.input_name == "HD1"
+                && IsLysHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD2"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "LysHd2ToHd3_Pdb2gmxShift",
+        "LYS: HD2 -> HD3 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::LYS
+                && c.input_name == "HD2"
+                && IsLysHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD3"); },
+    });
+
+    // LYS ε-methylene: pdb2gmx HE1/HE2 → IUPAC HE2/HE3.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "LysHe1ToHe2_Pdb2gmxShift",
+        "LYS: HE1 -> HE2 when siblings have HE1+HE2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::LYS
+                && c.input_name == "HE1"
+                && IsLysHePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HE2"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "LysHe2ToHe3_Pdb2gmxShift",
+        "LYS: HE2 -> HE3 when siblings have HE1+HE2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::LYS
+                && c.input_name == "HE2"
+                && IsLysHePdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HE3"); },
+    });
+
+    // ARG δ-methylene: pdb2gmx HD1/HD2 → IUPAC HD2/HD3.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "ArgHd1ToHd2_Pdb2gmxShift",
+        "ARG: HD1 -> HD2 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ARG
+                && c.input_name == "HD1"
+                && IsArgHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD2"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "ArgHd2ToHd3_Pdb2gmxShift",
+        "ARG: HD2 -> HD3 when siblings have HD1+HD2 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ARG
+                && c.input_name == "HD2"
+                && IsArgHdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD3"); },
+    });
+
+    // ILE δ-methyl: pdb2gmx HD1/HD2/HD3 → IUPAC HD11/HD12/HD13.
+    // (3 H pseudoatom on a single methyl carbon; substrate collapses
+    // their di_index to None after methyl detection, but the names
+    // must canonicalise so LookupBy doesn't miss on the chain table.)
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleHd1ToHd11_Pdb2gmxMethylShift",
+        "ILE: HD1 -> HD11 when siblings have HD1+HD2+HD3 (pdb2gmx-AMBER-RTP methyl shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "HD1"
+                && IsIleHdMethylPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD11"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleHd2ToHd12_Pdb2gmxMethylShift",
+        "ILE: HD2 -> HD12 when siblings have HD1+HD2+HD3 (pdb2gmx-AMBER-RTP methyl shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "HD2"
+                && IsIleHdMethylPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD12"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleHd3ToHd13_Pdb2gmxMethylShift",
+        "ILE: HD3 -> HD13 when siblings have HD1+HD2+HD3 (pdb2gmx-AMBER-RTP methyl shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "HD3"
+                && IsIleHdMethylPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HD13"); },
+    });
+
+    // ILE γ-carbon: pdb2gmx CD → IUPAC CD1.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleCdToCd1_Pdb2gmxShift",
+        "ILE: CD -> CD1 when siblings have CD (no CD1) (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "CD"
+                && IsIleCdPdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("CD1"); },
+    });
+
+    // ILE γ1-methylene: pdb2gmx HG11/HG12 → IUPAC HG12/HG13. The HG21,
+    // HG22, HG23 names on the γ2-methyl already match canon — only HG1*
+    // get rewritten.
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleHg11ToHg12_Pdb2gmxShift",
+        "ILE: HG11 -> HG12 when siblings have HG11+HG12 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "HG11"
+                && IsIleHg1Pdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HG12"); },
+    });
+    rules_.push_back(NamingRule{
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        "IleHg12ToHg13_Pdb2gmxShift",
+        "ILE: HG12 -> HG13 when siblings have HG11+HG12 (pdb2gmx-AMBER-RTP shift)",
+        [](const NamingContext& c) {
+            return c.source == NamingSource::Pdb2gmxAmberRtpDeviation
+                && c.residue_type == AminoAcid::ILE
+                && c.input_name == "HG12"
+                && IsIleHg1Pdb2gmxShape(c.sibling_input_names);
+        },
+        [](const NamingContext&) { return std::string("HG13"); },
+    });
+}
+
+
+NamingApplicator& GlobalNamingApplicator() {
+    static NamingApplicator instance;
+    return instance;
 }
 
 }  // namespace nmr

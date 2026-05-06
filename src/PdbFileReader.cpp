@@ -117,6 +117,48 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 res_idx = it->second;
             }
 
+            // PDB LOADING BOUNDARY (the cifpp surface).
+            //
+            // Two-pass per-residue canonicalisation via the
+            // NamingApplicator. The first pass collects every atom's
+            // raw input name to form the sibling-set snapshot; the
+            // second pass calls applicator.Apply(ctx) per atom with
+            // the snapshot in NamingContext::sibling_input_names.
+            // Sibling-aware predicates examine the snapshot to decide
+            // whether to fire (e.g. PRO HD1->HD2 fires only when
+            // siblings show {HD1,HD2,no HD3}; on canonical {HD2,HD3}
+            // input the predicate evaluates false and the rule does
+            // not fire — the input passes through unchanged).
+            //
+            // source = NamingSource::CifppPdbInput. cifpp-loaded PDB
+            // files carry IUPAC / canonical-AMBER-ff14SB names; the
+            // applicator's pass-through branch in Resolve() returns
+            // them unchanged. Pre-Markley fixtures (LYN HZ1/HZ2 only,
+            // GLY collapsed-HA) have rules tagged AmberFf14SBCanonical
+            // that fire independent of source and produce canonical
+            // outputs.
+            //
+            // KNOWN GAP (deferred to PROPKA wiring at the
+            // PdbFileReader TODO, separate commit): residues labelled
+            // "LYS" but structurally LYN (only HZ1/HZ2 NZ-H, no HZ3)
+            // canonicalise correctly during this load-time pass via
+            // the LYN HZ1/HZ2 sibling-aware shift rules (siblings
+            // {HZ1,HZ2,no HZ3} matches the LYN-pre-Markley pattern).
+            // The post-protonation second applicator pass at
+            // FinalizeConstruction is idempotent on the now-canonical
+            // names.
+            const auto& applicator = GlobalNamingApplicator();
+
+            // First pass: harvest raw atom names for the sibling
+            // snapshot, plus the per-atom (element, position, alt-A
+            // gating) data we'll need for the second pass.
+            struct PendingAtom {
+                std::string raw_name;
+                Element     elem;
+                Vec3        pos;
+            };
+            std::vector<PendingAtom> pending;
+            pending.reserve(mono.atoms().size());
             for (auto& atom : mono.atoms()) {
                 std::string alt_id = atom.get_label_alt_id();
                 if (!alt_id.empty() && alt_id != "A") continue;
@@ -126,58 +168,39 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 if (elem == Element::Unknown) continue;
 
                 auto [x, y, z] = atom.get_location();
-                Vec3 pos(x, y, z);
+                pending.push_back({atom.get_label_atom_id(), elem, Vec3(x, y, z)});
+            }
 
-                std::string atom_name = atom.get_label_atom_id();
+            // Compute the sibling snapshot once for the residue.
+            std::vector<std::string> input_names;
+            input_names.reserve(pending.size());
+            for (const PendingAtom& p : pending) {
+                input_names.push_back(p.raw_name);
+            }
+            // Parent-input-name vector is empty (PdbFileReader doesn't
+            // resolve heavy-atom parents at load time; this happens in
+            // CovalentTopology::Resolve later).
+            const std::vector<std::string> parent_names;
 
-                // PDB LOADING BOUNDARY (the cifpp surface).
-                //
-                // cifpp returns the atom-name string verbatim from the
-                // PDB file. PDB files in the wild use IUPAC / AMBER
-                // ff14SB convention by default (Standard); cifpp does
-                // not introduce CHARMM-port spellings. Canonicalise
-                // here so that Atom::pdb_atom_name carries the AMBER
-                // ff14SB form always, and downstream consumers
-                // (substrate composition, cap lookup, charge-table
-                // cross-walk, error messages) see one canonical name
-                // set without defensive alias disjunctions.
-                //
-                // source_context is Standard. Stage 1 of
-                // CanonicaliseAmberAtomName is a same-context no-op
-                // for Standard inputs; Stage 2 fires the residue-
-                // context-keyed rules (LYN HZ1/HZ2 -> HZ2/HZ3, GLY
-                // HA -> HA2) which apply regardless of wire-format.
-                //
-                // CHARMM-port collapses (HN -> H, OT1/OT2 -> O/OXT)
-                // are NOT applied here on the assumption that
-                // cifpp-loaded PDB files are Standard. If a CHARMM-
-                // port PDB ever needs loading via PdbFileReader, the
-                // appropriate fix is to pass ToolContext::Charmm at
-                // the call site (e.g., a flag on BuildFromPdb), not
-                // to corrupt Standard inputs by firing CHARMM rules
-                // unconditionally (the wildcard CHARMM->Standard
-                // beta-methylene rule would otherwise misfire on
-                // ALA's HB1/HB2/HB3 methyl as documented in
-                // NamingRegistry.cpp's deferred-block comment).
-                //
-                // KNOWN GAP (deferred to PROPKA wiring at the
-                // PdbFileReader TODO, separate commit): residues
-                // labelled "LYS" but structurally LYN (only HZ1/HZ2
-                // NZ-H, no HZ3) cannot be canonicalised here because
-                // the residue context is "LYS". Such inputs need a
-                // downstream re-canonicalisation pass after protonation
-                // detection.
-                std::string canonical_name = GlobalNamingRegistry()
-                    .CanonicaliseAmberAtomName(atom_name, comp_id,
-                                                ToolContext::Standard);
+            const Residue& res_now = protein->ResidueAt(res_idx);
+            const auto canonical_names = applicator.ApplyResidue(
+                input_names,
+                parent_names,
+                res_now.type,
+                /*variant_index=*/-1,
+                TerminalState::Internal,
+                NamingSource::CifppPdbInput,
+                res_now.sequence_number,
+                res_now.chain_id);
 
-                auto new_atom = Atom::Create(elem);
-                new_atom->pdb_atom_name = canonical_name;
+            // Second pass: write atoms with canonical names.
+            for (size_t k = 0; k < pending.size(); ++k) {
+                auto new_atom = Atom::Create(pending[k].elem);
+                new_atom->pdb_atom_name = canonical_names[k];
                 new_atom->residue_index = res_idx;
-
                 size_t atom_idx = protein->AddAtom(std::move(new_atom));
                 protein->MutableResidueAt(res_idx).atom_indices.push_back(atom_idx);
-                positions.push_back(pos);
+                positions.push_back(pending[k].pos);
             }
         }
     }

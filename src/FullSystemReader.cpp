@@ -866,31 +866,61 @@ BuildResult FullSystemReader::BuildProtein(
         }
 
         // Atoms for this moltype, with global residue index.
+        //
+        // PDB LOADING BOUNDARY (the GROMACS TPR atomname surface).
+        //
+        // Two-pass per-residue canonicalisation via the
+        // NamingApplicator. The first pass collects every atom's raw
+        // input name (per residue) to form the sibling-set snapshot;
+        // the second pass calls applicator.Apply(ctx) per atom. The
+        // source tag is NamingSource::Pdb2gmxAmberRtpDeviation —
+        // pdb2gmx-AMBER-RTP rules (PRO/LYS/ARG δ-methylene, LYS
+        // ε-methylene, ILE δ-methyl + γ1-methylene, ILE γ-carbon)
+        // fire against this source when the sibling pattern matches.
+        // CHARMM-the-force-field is retired (2026-05-02 quarantined-
+        // legacy); the historic ToolContext::Charmm tag was overloaded
+        // to mean "pdb2gmx-AMBER-RTP deviation" — the new tag names
+        // what the rules actually represent.
+        const auto& applicator = GlobalNamingApplicator();
+
+        // Compute the per-residue sibling snapshot: gather raw input
+        // names by local_ri.
+        std::vector<std::vector<std::string>> per_residue_raw_names(n_residues);
+        std::vector<std::vector<int>>         per_residue_atom_indices(n_residues);
+        for (int ai = 0; ai < tpr_atoms.nr; ++ai) {
+            const size_t local_ri = tpr_atoms.atom[ai].resind;
+            per_residue_raw_names[local_ri].push_back(
+                *(tpr_atoms.atomname[ai]));
+            per_residue_atom_indices[local_ri].push_back(ai);
+        }
+
+        // Canonicalise per residue via ApplyResidue, then re-loop the
+        // tpr_atoms array in original order to assemble the per-atom
+        // outputs.
+        std::vector<std::string> canonical_names(tpr_atoms.nr);
+        for (size_t local_ri = 0; local_ri < n_residues; ++local_ri) {
+            const size_t global_ri = residue_offset + local_ri;
+            const Residue& res_now = protein->ResidueAt(global_ri);
+            const std::vector<std::string> parent_names;  // unresolved at TPR load
+            const auto outs = applicator.ApplyResidue(
+                per_residue_raw_names[local_ri],
+                parent_names,
+                res_now.type,
+                /*variant_index=*/-1,  // resolved at FinalizeConstruction Pass 2
+                TerminalState::Internal,
+                NamingSource::Pdb2gmxAmberRtpDeviation,
+                res_now.sequence_number,
+                res_now.chain_id);
+            for (size_t k = 0; k < outs.size(); ++k) {
+                canonical_names[per_residue_atom_indices[local_ri][k]] = outs[k];
+            }
+        }
+
         for (int ai = 0; ai < tpr_atoms.nr; ++ai) {
             auto atom = std::make_unique<Atom>();
-            std::string charmm_atom_name = *(tpr_atoms.atomname[ai]);
             const size_t local_ri = tpr_atoms.atom[ai].resind;
             const size_t global_ri = residue_offset + local_ri;
-            // Use the canonical three-letter code for the residue's
-            // CURRENT typed state (e.g. LYN if protonation detection
-            // already classified the residue, otherwise the canonical
-            // 20-name for the residue type). The residue-context-keyed
-            // canonicalisation rules (LYN HZ1/HZ2 -> HZ2/HZ3, GLY HA
-            // -> HA2) consult this name in Stage 2 of
-            // CanonicaliseAmberAtomName.
-            std::string canonical_residue =
-                ThreeLetterCodeForAminoAcid(protein->ResidueAt(global_ri).type);
-            // PDB LOADING BOUNDARY (the GROMACS TPR atomname surface).
-            //
-            // Run the unified canonicalisation: Stage 1 collapses
-            // CHARMM-port atom names (HN -> H, OT1/OT2 -> O/OXT),
-            // Stage 2 fires residue-context-keyed rules (LYN HZ1/HZ2
-            // -> HZ2/HZ3, GLY HA -> HA2). Behaviour-preserving for
-            // existing fleet TPRs whose atom names were already
-            // canonical post-CHARMM-translation.
-            atom->pdb_atom_name = registry.CanonicaliseAmberAtomName(
-                charmm_atom_name, canonical_residue,
-                ToolContext::Charmm);
+            atom->pdb_atom_name = canonical_names[ai];
             atom->element = ElementFromAtomicNumber(
                 tpr_atoms.atom[ai].atomnumber);
             atom->residue_index = global_ri;

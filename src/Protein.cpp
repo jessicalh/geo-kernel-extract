@@ -269,14 +269,91 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         atoms_[i]->parent_atom_index = bonds->HydrogenParentOf(i);
     }
 
-    // Post-protonation re-canonicalisation: now that variant_idx is
-    // resolved per residue (LYS-labelled-LYN, HIS variants, etc.),
-    // walk every resolved-variant residue and rewrite atom names
-    // against the variant's 3-letter code. Catches the LYN HZ1->HZ2 /
-    // HZ2->HZ3 fleet variance (1Z9B) that loader-time canonicalisation
-    // cannot fire because the residue label was "LYS" when the loader
-    // saw it.
-    RecanonicaliseAfterProtonation(residues_, atoms_);
+    // Post-protonation second applicator pass: now that variant_index
+    // is resolved per residue (LYS-labelled-LYN, HIS variants, etc.),
+    // walk every resolved-variant residue and rewrite atom names with
+    // the now-known variant_index in NamingContext. The applicator's
+    // sibling-aware predicates make this pass IDEMPOTENT on residues
+    // whose Pass-1 names are already canonical for the resolved variant
+    // (canonical LYN siblings {HZ2,HZ3,no HZ1} do NOT match the LYN
+    // pre-Markley pattern and the shift rules don't fire; canonical
+    // LYS-NH3+ siblings {HZ1,HZ2,HZ3} match LysAmmoniumHzPassThrough
+    // which preserves the input). The 1Z9B fleet variance — LYS-labelled
+    // residues with LYN chemistry — is captured during Pass 1 already
+    // (loader source = CifppPdbInput; siblings {HZ1,HZ2,no HZ3} fire
+    // the LYN shift rules); this Pass-2 call is idempotent on those.
+    //
+    // No source tag is preserved across passes: Pass-1 source was
+    // recorded onto Atom::pdb_atom_name as the canonical output; Pass 2
+    // operates on canonical strings tagged AmberFf14SBCanonical (the
+    // applicator's pass-through branch returns canonical inputs
+    // unchanged). Rules that fire on Pass 2 are sibling-aware shift
+    // rules that examine the (now-canonical) sibling set.
+    {
+        const auto& applicator = GlobalNamingApplicator();
+        for (Residue& res : residues_) {
+            if (!res.protonation_state_resolved) continue;
+            if (res.protonation_variant_index < 0) continue;
+            const AminoAcidType& aatype = res.AminoAcidInfo();
+            if (static_cast<size_t>(res.protonation_variant_index)
+                    >= aatype.variants.size()) continue;
+
+            // Snapshot input names + parent names from the current
+            // pdb_atom_name across the residue.
+            std::vector<std::string> input_names;
+            std::vector<std::string> parent_names;
+            input_names.reserve(res.atom_indices.size());
+            parent_names.reserve(res.atom_indices.size());
+            for (size_t ai : res.atom_indices) {
+                if (ai >= atoms_.size() || !atoms_[ai]) {
+                    input_names.push_back("");
+                    parent_names.push_back("");
+                    continue;
+                }
+                input_names.push_back(atoms_[ai]->pdb_atom_name);
+                const size_t pai = atoms_[ai]->parent_atom_index;
+                parent_names.push_back(
+                    (pai != SIZE_MAX && pai < atoms_.size() && atoms_[pai])
+                        ? atoms_[pai]->pdb_atom_name : std::string{});
+            }
+
+            // Map ResidueTerminalState -> TerminalState. The applicator
+            // accepts the typed SemanticEnums.h TerminalState; the
+            // mapping is conservative (NTerminus -> NtermCharged is
+            // the AMBER ff14SB default; NTermNeutral is reserved for
+            // PROPKA-driven distinctions not yet exposed).
+            TerminalState terminal_state = TerminalState::Internal;
+            switch (res.terminal_state) {
+                case ResidueTerminalState::NTerminus:
+                case ResidueTerminalState::NAndCTerminus:
+                    terminal_state = TerminalState::NtermCharged;
+                    break;
+                case ResidueTerminalState::CTerminus:
+                    terminal_state = TerminalState::CtermDeprotonated;
+                    break;
+                case ResidueTerminalState::Internal:
+                case ResidueTerminalState::Unknown:
+                    terminal_state = TerminalState::Internal;
+                    break;
+            }
+
+            const auto canonical_names = applicator.ApplyResidue(
+                input_names,
+                parent_names,
+                res.type,
+                res.protonation_variant_index,
+                terminal_state,
+                NamingSource::AmberFf14SBCanonical,
+                res.sequence_number,
+                res.chain_id);
+
+            for (size_t k = 0; k < res.atom_indices.size(); ++k) {
+                const size_t ai = res.atom_indices[k];
+                if (ai >= atoms_.size() || !atoms_[ai]) continue;
+                atoms_[ai]->pdb_atom_name = canonical_names[k];
+            }
+        }
+    }
 
     // Compose the per-atom AtomSemanticTable substrate. Empty for stub
     // calculator-physics fixtures (no PDB names); populated otherwise.

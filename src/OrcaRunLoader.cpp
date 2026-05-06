@@ -200,12 +200,28 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
         protein->AddResidue(std::move(res));
     }
 
-    // Add atoms
-    for (size_t ai = 0; ai < n_atoms; ++ai) {
-        auto atom = std::make_unique<Atom>();
+    // PDB LOADING BOUNDARY (the prmtop ATOM_NAME surface).
+    //
+    // prmtop already carries AMBER ff14SB canonical names, so most
+    // atom-name strings pass through unchanged. The applicator's
+    // pass-through branch in Resolve() returns canonical inputs
+    // unchanged. Any non-canonical residual (rare on prmtop loads) is
+    // covered by sibling-aware shift rules.
+    //
+    // The N-terminal cap atom H1 is preserved unchanged: H1 is a
+    // distinct cap-only atom in AMBER (kCapNtermCharged: H1, H2, H3
+    // on the +1 ammonium nitrogen), NOT a backbone amide H. The
+    // canonicality oracle whitelists H1/H2/H3 as cap-only canonical
+    // names; no rule shifts them.
+    //
+    // source = NamingSource::OrcaEcho. Rules tagged AmberFf14SBCanonical
+    // (LYN HZ shifts, GLY HA collapse) fire independent of source when
+    // the sibling pattern matches.
+    const auto& applicator = GlobalNamingApplicator();
 
-        // Find residue for this atom (so we have the residue's canonical
-        // three-letter code for residue-context-keyed canonicalisation).
+    // Per-residue sibling snapshot: collect raw atom names by residue.
+    std::vector<std::vector<std::string>> per_residue_raw_names(n_residues);
+    for (size_t ai = 0; ai < n_atoms; ++ai) {
         size_t resolved_ri = 0;
         for (size_t ri = 0; ri < n_residues; ++ri) {
             if (ai >= ranges[ri].start && ai < ranges[ri].end) {
@@ -213,27 +229,43 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
                 break;
             }
         }
+        per_residue_raw_names[resolved_ri].push_back(atom_names[ai]);
+    }
 
-        // PDB LOADING BOUNDARY (the prmtop ATOM_NAME surface).
-        //
-        // prmtop already carries AMBER ff14SB canonical names, so most
-        // atom-name strings pass through unchanged. The canonicalisation
-        // call serves as the disciplined single point where any
-        // CHARMM-port residual (HN, OT1/OT2) or LYN-context fleet
-        // variance (HZ1/HZ2 -> HZ2/HZ3) collapses to canonical, and
-        // it removes the need for downstream consumers to defensively
-        // re-alias.
-        //
-        // The N-terminal cap atom H1 is preserved unchanged: H1 is a
-        // distinct cap-only atom in AMBER (kCapNtermCharged: H1, H2,
-        // H3 on the +1 ammonium nitrogen), NOT a backbone amide H.
-        // The earlier inline `H || HN || H1` cache populator confused
-        // these and is replaced below.
-        const Residue& parent_residue = protein->ResidueAt(resolved_ri);
-        const std::string canonical_residue =
-            ThreeLetterCodeForAminoAcid(parent_residue.type);
-        atom->pdb_atom_name = registry.CanonicaliseAmberAtomName(
-            atom_names[ai], canonical_residue, ToolContext::Amber);
+    // Canonicalise per residue.
+    std::vector<std::vector<std::string>> per_residue_canonical(n_residues);
+    for (size_t ri = 0; ri < n_residues; ++ri) {
+        const Residue& res_now = protein->ResidueAt(ri);
+        const std::vector<std::string> parent_names;
+        per_residue_canonical[ri] = applicator.ApplyResidue(
+            per_residue_raw_names[ri],
+            parent_names,
+            res_now.type,
+            res_now.protonation_variant_index,
+            TerminalState::Internal,
+            NamingSource::OrcaEcho,
+            res_now.sequence_number,
+            res_now.chain_id);
+    }
+
+    // Per-residue atom counter: tracks position within each residue's
+    // canonical-names vector as we walk the global atom list in order.
+    std::vector<size_t> per_residue_cursor(n_residues, 0);
+
+    // Add atoms
+    for (size_t ai = 0; ai < n_atoms; ++ai) {
+        auto atom = std::make_unique<Atom>();
+
+        // Find residue for this atom (range membership).
+        size_t resolved_ri = 0;
+        for (size_t ri = 0; ri < n_residues; ++ri) {
+            if (ai >= ranges[ri].start && ai < ranges[ri].end) {
+                resolved_ri = ri;
+                break;
+            }
+        }
+        atom->pdb_atom_name = per_residue_canonical[resolved_ri]
+                                  [per_residue_cursor[resolved_ri]++];
 
         if (ai < atomic_numbers.size())
             atom->element = ElementFromAtomicNumber(atomic_numbers[ai]);
