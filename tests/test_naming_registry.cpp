@@ -598,10 +598,16 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
     //       empty; IsCanonical(ctx) deletion overlay returns false;
     //       FailUnresolved emits "no rule applies and input is not
     //       canonical".
-    //   (b) Validator: if a rule still fires and proposes HZ1,
-    //       post-resolution validator catches non-canonical output and
-    //       emits "non-canonical output for resolved chemistry context".
-    // Both paths are correct; the regex accepts either.
+    //
+    // The rule discipline (LysAmmoniumHzPassThrough's variant-index gate)
+    // is the primary protection; the post-resolution validator is the
+    // safety net for cases where rule discipline regresses. THIS test
+    // pins down the primary path: it asserts the rule-gated FailUnresolved
+    // diagnostic, NOT the validator path. A separate test
+    // (ValidatorCatchesRuleProducingDeletionDeniedOutput) pins down the
+    // safety-net path with a deliberately misbehaving custom rule. Each
+    // test asserts ONE protection layer; if either regresses, exactly
+    // one test fails, telling us which layer broke.
     std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
@@ -612,8 +618,7 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
                            NamingSource::AmberFf14SBCanonical,
                            siblings, /*variant_index=*/0);
     EXPECT_DEATH(app.Apply(ctx),
-                 "no rule applies and input is not canonical|"
-                 "non-canonical output for resolved chemistry context");
+                 "no rule applies and input is not canonical");
 }
 
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, TymRejectsHh) {
@@ -958,16 +963,30 @@ TEST(NamingApplicatorPostResolutionValidator, LysAmmoniumRuleDoesNotFireUnderLyn
     // misbehaving rule even without the variant gate.
     const auto& app = GlobalNamingApplicator();
 
-    // Sanity: variant_index = -1 (unresolved) + all three HZ siblings
-    // = canonical charged-LYS; rule fires and passes through.
+    // Branch 1 — variant_index = -1 (unresolved) + all three HZ
+    // siblings = canonical charged-LYS; rule fires and passes through.
+    // Confirms the rule still works correctly in its intended domain.
     auto ctx_unresolved = MakeContext("HZ1", AminoAcid::LYS,
                                       NamingSource::AmberFf14SBCanonical,
                                       {"NZ", "HZ1", "HZ2", "HZ3"});
     EXPECT_EQ(app.Apply(ctx_unresolved), "HZ1");
 
-    // The LYN-resolved + HZ1 case is already covered by
-    // NamingApplicatorVariantAwareDeletionDeathTest::LynRejectsHz1
-    // above; that test's FATAL is now reached via the rule-level fix.
+    // Branch 2 — variant_index = 0 (resolved LYN) + same all-three-HZ
+    // siblings (chemistry-mismatch fixture: residue resolved to LYN
+    // but still has HZ1). The variant gate (c.variant_index < 0) MUST
+    // block LysAmmoniumHzPassThrough from firing here. With no rule
+    // applying, IsCanonical's deletion overlay rejects HZ1 under LYN;
+    // FailUnresolved emits "no rule applies and input is not canonical".
+    //
+    // This assertion specifically pins down that the production
+    // variant gate is in place — distinct from the safety-net
+    // validator that would also catch a rule-misbehaving regression.
+    auto ctx_lyn = MakeContext("HZ1", AminoAcid::LYS,
+                               NamingSource::AmberFf14SBCanonical,
+                               {"NZ", "HZ1", "HZ2", "HZ3"},
+                               /*variant_index=*/0);
+    EXPECT_DEATH(app.Apply(ctx_lyn),
+                 "no rule applies and input is not canonical");
 }
 
 
