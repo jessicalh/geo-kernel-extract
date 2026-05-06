@@ -479,6 +479,36 @@ target_link_libraries(string_barrier_tests PRIVATE
 )
 gtest_discover_tests(string_barrier_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
+# ============================================================================
+# Topology semantic substrate integration tests
+#
+# Loads representative AMBER-prepared protein PDBs (1ubq + fleet_amber 1Z9B,
+# 1P9J), runs Protein::FinalizeConstruction, and audits the per-atom
+# AtomSemanticTable substrate populated on LegacyAmberTopology. Spot-checks
+# NTERM/CTERM cap composition, GLY HA2 prochiral, HIS variant chemistry,
+# Pro res.H == NONE, and the Bundle B post-protonation re-canonicalisation
+# of LYS-labelled-LYN-chemistry residues (1Z9B). Per
+# spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5.
+# ============================================================================
+
+add_executable(topology_semantic_integration_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/topology/test_legacy_amber_semantic_integration.cpp
+)
+target_compile_definitions(topology_semantic_integration_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(topology_semantic_integration_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(topology_semantic_integration_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_discover_tests(topology_semantic_integration_tests
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
 # fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp
 # (CHARMM/XTC fleet/1A6J_5789 fixture).
 
