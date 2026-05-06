@@ -806,6 +806,52 @@ struct AtomSemanticTable {
     // available via the generation log if needed for analysis.
     // The runtime is intentionally minimal until a calculator
     // requires a specific field on the substrate.
+
+    // ========================================================================
+    // Compositional predicate methods
+    // ========================================================================
+    //
+    // Pattern: `Ring::Intensity()` / `Ring::IsFused()` — predicates on
+    // the typed object, not on the parent topology. Calculators that
+    // ask "is this atom backbone?" / "is this a polar H?" / "is this
+    // in any ring?" call methods HERE, not per-field shortcuts on
+    // LegacyAmberTopology. Adding shortcuts there would channel
+    // calculator authors toward narrow consumption that hides substrate
+    // richness (e.g. `IsAromatic(ai)` collapses 13 distinct
+    // `RingPositionLabel` values into a single boolean).
+    //
+    // New predicates land here as calculator patterns demand them.
+    // Bundle B's typed CacheResidueBackboneIndices uses
+    // backbone_role-driven dispatch directly; the predicates below are
+    // the minimum surface that pattern needs.
+
+    constexpr bool IsBackbone() const {
+        return backbone_role != BackboneRole::None;
+    }
+    constexpr bool IsBackboneNitrogen() const {
+        return backbone_role == BackboneRole::Nitrogen;
+    }
+    constexpr bool IsBackboneAlphaCarbon() const {
+        return backbone_role == BackboneRole::AlphaCarbon;
+    }
+    constexpr bool IsBackboneCarbonylCarbon() const {
+        return backbone_role == BackboneRole::CarbonylCarbon;
+    }
+    constexpr bool IsBackboneCarbonylOxygen() const {
+        return backbone_role == BackboneRole::CarbonylOxygen;
+    }
+    constexpr bool IsBackboneAmideHydrogen() const {
+        return backbone_role == BackboneRole::AmideHydrogen;
+    }
+    constexpr bool IsBackboneAlphaHydrogen() const {
+        return backbone_role == BackboneRole::AlphaHydrogen;
+    }
+    constexpr bool IsPolarH() const {
+        return polar_h != PolarHKind::NotPolar;
+    }
+    constexpr bool InAnyRing() const {
+        return ring_position.InAnyRing();
+    }
 };
 
 

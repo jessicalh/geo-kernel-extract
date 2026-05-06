@@ -27,12 +27,16 @@
 
 #include "ProteinTopology.h"
 #include "CovalentTopology.h"
+#include "SemanticEnums.h"
+#include "Residue.h"
 #include <array>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace nmr {
+
+class Atom;
 
 // Transient bundle of invariant FF-numerical fields passed to the
 // `LegacyAmberTopology` constructor. Default-empty: loaders without
@@ -89,7 +93,8 @@ public:
     LegacyAmberTopology(size_t atom_count,
                         size_t residue_count,
                         std::unique_ptr<CovalentTopology> bonds,
-                        LegacyAmberInvariants invariants = {});
+                        LegacyAmberInvariants invariants = {},
+                        std::vector<AtomSemanticTable> atom_semantic = {});
 
     ProteinTopologyKind Kind() const override {
         return ProteinTopologyKind::LegacyAmber;
@@ -126,6 +131,70 @@ public:
     int    Atnr() const { return atnr_; }
     const std::array<int, 256>& NumNonPerturbed() const { return num_non_perturbed_; }
 
+    // ── Per-atom chemistry-substrate (AtomSemanticTable) ────────────
+    //
+    // `atom_semantic_` is composed at FinalizeConstruction time by
+    // ComposeAtomSemantic (free function below). Empty vector means
+    // "not populated" — a legitimate signal for stub calculator-physics
+    // fixtures whose atoms carry no PDB names. When populated, size
+    // equals AtomCount().
+    //
+    // Whole-row primary surface: calculators read fields off the row
+    // returned by SemanticAt(atom_index) directly. Predicate methods
+    // live on AtomSemanticTable itself, not here, per the
+    // Ring::Intensity() / Ring::IsFused() pattern (objects answer
+    // questions about themselves). Per-field shortcuts on this class
+    // were considered and rejected because they channel calculator
+    // authors toward narrow consumption that hides substrate richness
+    // (e.g. IsAromatic(ai) collapses 13 distinct RingPositionLabel
+    // values into one boolean).
+
+    bool HasAtomSemantic() const { return !atom_semantic_.empty(); }
+
+    // Returns the AtomSemanticTable for the given atom. FATAL+abort if
+    // atom_semantic_ is empty (caller must gate via HasAtomSemantic())
+    // or if atom_index is out of range. Mirrors the bonds_ FATAL pattern
+    // in the constructor.
+    const AtomSemanticTable& SemanticAt(size_t atom_index) const;
+
+    const std::vector<AtomSemanticTable>& AtomSemantic() const {
+        return atom_semantic_;
+    }
+
+    // Project the identity-tuple subset from the semantic row. Cheap
+    // convenience for typed-graph queries below; calculators that need
+    // identity directly call this rather than building one by hand.
+    AtomMechanicalIdentity IdentityAt(size_t atom_index) const {
+        const AtomSemanticTable& sem = SemanticAt(atom_index);
+        return AtomMechanicalIdentity{
+            sem.element, sem.locant, sem.branch, sem.di_index,
+            sem.backbone_role
+        };
+    }
+
+    // Typed-graph query: return atom indices in `residue_index`'s
+    // atom_indices whose mechanical identity equals `identity`.
+    // Empty result means no match. Used by Bundle B's typed
+    // CacheResidueBackboneIndices for Glycine HA disambiguation
+    // (Locant::Alpha + DiastereotopicIndex::Position2) and CB cache
+    // (Locant::Beta). Future bundles expand callers.
+    //
+    // `residues` is the protein's residue vector (the topology does
+    // not own residues; the caller passes them in for atom-index
+    // lookup). FATAL+abort if residue_index out of range.
+    std::vector<size_t> ResidueAtomsWithIdentity(
+        size_t residue_index,
+        const AtomMechanicalIdentity& identity,
+        const std::vector<Residue>& residues) const;
+
+    // Typed backbone-role lookup within a residue. Returns
+    // Residue::NONE if no atom has the role. Used by Bundle B's typed
+    // CacheResidueBackboneIndices (one call per backbone slot per
+    // residue). FATAL+abort if residue_index out of range.
+    size_t AtomWithRole(size_t residue_index,
+                        BackboneRole role,
+                        const std::vector<Residue>& residues) const;
+
 private:
     size_t atom_count_ = 0;
     size_t residue_count_ = 0;
@@ -143,6 +212,36 @@ private:
     double rep_pow_  = 12.0;
     int    atnr_     = 0;
     std::array<int, 256> num_non_perturbed_ = {};
+
+    // Per-atom typed chemistry-substrate, composed at FinalizeConstruction
+    // via ComposeAtomSemantic. Empty when the load path delivers stub
+    // atoms with no names; non-empty has size == atom_count_.
+    std::vector<AtomSemanticTable> atom_semantic_;
 };
+
+
+// Compose the per-atom AtomSemanticTable vector by walking each atom in
+// each residue, computing typed mechanical identity from the canonical
+// atom name + heavy-atom parent's canonical name (via the lifted
+// parser in src/generated/LegacyAmberSemanticTables.h), and looking up
+// the substrate row via LookupBy / LookupCap / ApplyCapDelta per
+// spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5.
+//
+// Stub-fixture guard: if no residue carries non-empty atom names
+// across all of its atoms (calculator-physics tests with raw element-
+// and-position fixtures), returns an empty vector. Calculators that
+// need substrate gate on LegacyAmberTopology::HasAtomSemantic().
+//
+// Fails fatally on:
+//   - chain atom whose (residue, variant, identity) has no LookupBy match.
+//   - cap-only atom whose (terminal_state, identity) has no LookupCap match.
+// All these cases indicate substrate gap or naming variance not caught
+// by post-protonation re-canonicalisation; they are bugs to fix, not
+// silent skips. Per the Bundle B brief: "Fail-loudly on substrate
+// misses." (Predecessor stash@{0} chose degrade-and-skip; rejected.)
+std::vector<AtomSemanticTable> ComposeAtomSemantic(
+    const std::vector<std::unique_ptr<Atom>>& atoms,
+    const std::vector<Residue>& residues,
+    const CovalentTopology& bonds);
 
 }  // namespace nmr
