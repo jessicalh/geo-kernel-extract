@@ -417,6 +417,26 @@ read this enum; output projections derive their text from typed values.
 
 ---
 
+## (WIP) Runtime atom-name canonicalisation
+
+The runtime object that canonicalises atom names from various load
+sources (PDB cifpp, AMBER pdb2gmx-RTP, CHARMM legacy, ORCA echo) into
+canonical AMBER ff14SB form is its own thing. It does NOT live on
+`Protein`, on `LegacyAmberTopology`, or on `Atom`. It owns its rule
+sets (each preserved as published with citation), its per-atom
+transient application map, and the explicit resolution method that
+documents cross-rule-set choices.
+
+Sketched object model + concrete walk-through (1Z9B LYS-vs-LYN) +
+open design questions:
+**`spec/plan/naming-applicator-architecture-sketch-2026-05-06.md`**.
+
+This section will be filled in once the architecture lands and Session
+E projections exercise the same shape across IUPAC, BMRB, and AMBER
+projection paths. Until then, the sketch is the working spec.
+
+---
+
 ## Protein
 
 Sequence and science data. What the molecule IS, independent of geometry.

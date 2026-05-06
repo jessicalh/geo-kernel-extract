@@ -519,6 +519,39 @@ equation in a comment. That IS the appropriate size.
 
 ---
 
+## (WIP) Rule-application architecture for runtime atom-name canonicalisation
+
+When multiple published rule sets contribute to translating or
+classifying the same input, the architecture under trial is: a
+containing object holds the rule sets verbatim, each rule has an
+explicit predicate and output, per atom the system accumulates a
+transient map of which rules fired (record per rule, never erased),
+and an explicit method on the containing object resolves the map to
+a single output, citing the project decision for any cross-rule-set
+choice it makes. Rule sets are preserved as published; the AI'ing
+of choice happens in the resolution method, not by editing rule sets
+to play nice.
+
+This pattern is being introduced via the `NamingRegistry` refactor;
+the substrate generator's reconciliation precedence (RDKit primary,
+Markley cross-check, CCD cross-check) is the design-time precedent.
+
+Sketched object model + concrete walk-through + open questions:
+**`spec/plan/naming-applicator-architecture-sketch-2026-05-06.md`**.
+
+This is wisdom, not religion. After the NamingRegistry refactor lands
+and Session E projections exercise the same shape, this section will
+be promoted to canonical patterns; until then, treat the sketch as
+the working architecture.
+
+Anti-patterns the architecture replaces (linguistic hallmarks): "over-
+fire," "stages," "passes that chain," guards that undo side effects
+of earlier rules. These are signals that rules are being applied
+without explicit per-instance resolution; the architecture names the
+problem instead of hiding it.
+
+---
+
 ## T2 Completeness — This Is Not Optional
 
 Every calculator must produce full rank-2 tensor output at all irrep
