@@ -506,14 +506,31 @@ takes the chain-derived `AtomSemanticTable` and overlays the cap
 entry's chemistry-level fields:
 
 - **Cap-controlled fields (overlayed from cap entry)**:
-  `planar_group`, `polar_h`, `formal_charge`, `pseudoatom`,
-  `ring_position`. Plus `is_exchangeable` recomputed from the
-  resulting `polar_h`.
+  `planar_group`, `polar_h`, `formal_charge`, `pseudoatom`. Plus
+  `is_exchangeable` recomputed from the resulting `polar_h`.
 - **Chain-controlled fields (preserved from chain)**: `element`,
   `locant`, `branch`, `di_index`, `backbone_role` (identity);
   `aromatic`, `equivalence_class` (RDKit perception); `prochiral`,
   `planar_stereo` (chemistry not affected by termini per Section 4
-  of the residue reference doc).
+  of the residue reference doc); `ring_position` (the chain row
+  carries the residue's ring membership; cap atoms are not in any
+  ring; overlaying NotInRing from the cap entry would clobber PRO's
+  Pyrrolidine_Pro membership at NTERM — for non-Pro residues the
+  chain N's ring_position is already NotInRing so the issue was
+  silent before, which is how it survived to the point of being
+  found by review).
+
+**Change note (2026-05-06)**: `ring_position` moved from cap-
+controlled to chain-controlled by codex-review Finding 1. The
+2026-05-05 §H.5 landing listed `ring_position` under cap-controlled,
+which was wrong: cap entries' `ring_position` is `NotInRing` (cap
+atoms are not in any ring), and PRO at NTERM has Pyrrolidine_Pro
+on chain N — overlaying the cap's NotInRing would silently demote
+PRO's pyrrolidine ring membership at NTERM. The fix is to remove
+the `ring_position` overlay from `ApplyCapDelta`. Companion
+regression test:
+`tests/topology/test_legacy_amber_semantic_integration.cpp ::
+LegacyAmberSemanticIntegration::ProNTermPreservesPyrrolidineRing`.
 
 The composition pseudocode at top of §H.5 should be revised to use
 `ApplyCapDelta` for the override case (chain entry exists AND cap

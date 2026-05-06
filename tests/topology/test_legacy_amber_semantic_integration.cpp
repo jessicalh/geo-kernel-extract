@@ -560,4 +560,126 @@ TEST(LegacyAmberSemanticIntegration, TypedBackboneCacheGlyHa) {
         << "Every Gly's res.CB must be NONE (no CB in Gly substrate table)";
 }
 
+
+// ============================================================================
+// PRO N-terminus pyrrolidine ring preservation — codex Finding 1 regression
+//
+// Cap-table N entries carry RingSystemKind::NotInRing as a placeholder
+// (cap atoms are not in any ring). For PRO at the N-terminus, the chain
+// N row carries RingSystemKind::Pyrrolidine_Pro — the chain row's ring
+// membership is the truth. ApplyCapDelta must NOT clobber ring_position
+// during the backbone-cap overlay; it overlays only the chemistry-level
+// fields (planar_group, polar_h, formal_charge, pseudoatom).
+//
+// The fleet_amber fixtures (1Z9B, 1P9J) do not start with PRO, so this
+// regression is exercised on a synthetic fixture built in-test.
+//
+// Per spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5
+// (post-2026-05-06 codex Finding 1 amendment).
+// ============================================================================
+
+namespace {
+
+// Build a minimal PRO-only protein. PRO at residue 1 makes it
+// NTerminus + CTerminus (single chain, single residue → NAndCTerminus,
+// per Protein::ResolveResidueTerminalStates). This drives both NTERM
+// and CTERM cap composition; we assert chain N's ring membership stays.
+//
+// Atom set: PRO chain table (14 atoms: N, CA, C, O, HA, CB, HB2, HB3,
+// CG, HG2, HG3, CD, HD2, HD3) plus N-terminal cap H1/H2/H3.
+//
+// Positions are zeros — the substrate composition path needs only typed
+// atom-name plus residue type plus terminal_state to look up the right
+// rows; bond detection is incidental.
+std::unique_ptr<nmr::Protein> MakeNTermProProtein() {
+    auto pp = std::make_unique<nmr::Protein>();
+    nmr::Protein& p = *pp;
+
+    nmr::Residue pro;
+    pro.type = nmr::AminoAcid::PRO;
+    pro.sequence_number = 1;
+    pro.chain_id = "A";
+    const size_t ri = p.AddResidue(pro);
+
+    // PRO chain atoms + NTERM cap Hs.
+    const std::pair<const char*, nmr::Element> atom_set[] = {
+        {"N",   nmr::Element::N},
+        {"CA",  nmr::Element::C},
+        {"C",   nmr::Element::C},
+        {"O",   nmr::Element::O},
+        {"HA",  nmr::Element::H},
+        {"CB",  nmr::Element::C},
+        {"HB2", nmr::Element::H},
+        {"HB3", nmr::Element::H},
+        {"CG",  nmr::Element::C},
+        {"HG2", nmr::Element::H},
+        {"HG3", nmr::Element::H},
+        {"CD",  nmr::Element::C},
+        {"HD2", nmr::Element::H},
+        {"HD3", nmr::Element::H},
+        {"H1",  nmr::Element::H},
+        {"H2",  nmr::Element::H},
+        {"H3",  nmr::Element::H},
+    };
+
+    std::vector<size_t> atom_indices;
+    atom_indices.reserve(sizeof(atom_set) / sizeof(atom_set[0]));
+    for (const auto& kv : atom_set) {
+        auto a = nmr::Atom::Create(kv.second);
+        a->pdb_atom_name = kv.first;
+        a->residue_index = ri;
+        atom_indices.push_back(p.AddAtom(std::move(a)));
+    }
+    p.MutableResidueAt(ri).atom_indices = atom_indices;
+
+    return pp;
+}
+
+}  // namespace
+
+TEST(LegacyAmberSemanticIntegration, ProNTermPreservesPyrrolidineRing) {
+    auto pp = MakeNTermProProtein();
+    nmr::Protein& p = *pp;
+
+    // FinalizeConstruction with zero positions: substrate composition
+    // runs from typed atom names; geometric bond detection does not
+    // affect the chain-N row's ring_position.
+    std::vector<nmr::Vec3> positions(p.AtomCount(), nmr::Vec3::Zero());
+    p.FinalizeConstruction(positions);
+
+    ASSERT_TRUE(p.HasTopology());
+    const auto& topology = p.LegacyAmber();
+    ASSERT_TRUE(topology.HasAtomSemantic())
+        << "Substrate must populate for a chain-named PRO residue";
+
+    // Find the chain N atom of PRO residue 1.
+    const size_t n_atom = FindAtomIndex(p, /*residue_index=*/0, "N");
+    ASSERT_NE(SIZE_MAX, n_atom) << "PRO residue must carry chain N";
+
+    const AtomSemanticTable& sem_n = topology.SemanticAt(n_atom);
+
+    // Locked: chain N's ring_position survives the backbone cap overlay.
+    EXPECT_EQ(RingSystemKind::Pyrrolidine_Pro, sem_n.ring_position.primary.ring)
+        << "PRO N at NTERM must retain Pyrrolidine_Pro after ApplyCapDelta. "
+           "If this fails, ApplyCapDelta is overwriting ring_position from "
+           "the cap entry's NotInRing placeholder — see "
+           "spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5 "
+           "and codex-review Finding 1.";
+    EXPECT_EQ(RingPositionLabel::Heteroatom_NoH,
+              sem_n.ring_position.primary.position)
+        << "PRO N retains Heteroatom_NoH ring position label";
+
+    // Locked: backbone_role survives (chain-controlled identity field).
+    EXPECT_EQ(BackboneRole::Nitrogen, sem_n.backbone_role);
+
+    // Locked: cap-controlled chemistry fields ARE applied. NTERM_CHARGED
+    // is the AMBER ff14SB default; chain N becomes formal_charge = +1.
+    // This verifies the rest of the cap overlay still fired (the bug was
+    // in over-applying ring_position; the chemistry overlay must still
+    // work).
+    EXPECT_EQ(1, sem_n.formal_charge)
+        << "PRO N at NTERM_CHARGED must have formal_charge = +1 after "
+           "cap composition; cap-delta of formal_charge survives.";
+}
+
 }  // namespace

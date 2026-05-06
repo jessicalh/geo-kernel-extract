@@ -110,14 +110,23 @@ inline void ApplyCapDelta(::nmr::AtomSemanticTable& chain_then_result,
     chain_then_result.polar_h       = cap_delta.polar_h;
     chain_then_result.formal_charge = cap_delta.formal_charge;
     chain_then_result.pseudoatom    = cap_delta.pseudoatom;
-    chain_then_result.ring_position = cap_delta.ring_position;
     chain_then_result.is_exchangeable =
         (chain_then_result.polar_h != ::nmr::PolarHKind::NotPolar);
     // NOT overridden by cap (preserved from chain):
     //   element, locant, branch, di_index, backbone_role (identity);
     //   aromatic, equivalence_class (RDKit perception);
     //   prochiral, planar_stereo (chemistry not affected by termini
-    //   per Section 4 of the residue reference doc).
+    //   per Section 4 of the residue reference doc);
+    //   ring_position. The chain row's ring membership is the truth.
+    //   Cap atoms are NOT in any ring (cap entries carry
+    //   RingSystemKind::None / RingPositionLabel::NotInRing as
+    //   placeholder defaults). For PRO at NTERM, the chain N row
+    //   correctly carries Pyrrolidine_Pro/Saturated; the backbone
+    //   cap-delta path must preserve that ring membership rather
+    //   than clobber it with the cap entry's NotInRing default.
+    //   (For non-Pro residues, chain N's ring_position is already
+    //   NotInRing, so the bug was silent before — the PRO case
+    //   surfaced it.)
 }
 
 
