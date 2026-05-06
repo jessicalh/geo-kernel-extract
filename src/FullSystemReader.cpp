@@ -871,11 +871,26 @@ BuildResult FullSystemReader::BuildProtein(
             std::string charmm_atom_name = *(tpr_atoms.atomname[ai]);
             const size_t local_ri = tpr_atoms.atom[ai].resind;
             const size_t global_ri = residue_offset + local_ri;
+            // Use the canonical three-letter code for the residue's
+            // CURRENT typed state (e.g. LYN if protonation detection
+            // already classified the residue, otherwise the canonical
+            // 20-name for the residue type). The residue-context-keyed
+            // canonicalisation rules (LYN HZ1/HZ2 -> HZ2/HZ3, GLY HA
+            // -> HA2) consult this name in Stage 2 of
+            // CanonicaliseAmberAtomName.
             std::string canonical_residue =
                 ThreeLetterCodeForAminoAcid(protein->ResidueAt(global_ri).type);
-            atom->pdb_atom_name = registry.TranslateAtomName(
+            // PDB LOADING BOUNDARY (the GROMACS TPR atomname surface).
+            //
+            // Run the unified canonicalisation: Stage 1 collapses
+            // CHARMM-port atom names (HN -> H, OT1/OT2 -> O/OXT),
+            // Stage 2 fires residue-context-keyed rules (LYN HZ1/HZ2
+            // -> HZ2/HZ3, GLY HA -> HA2). Behaviour-preserving for
+            // existing fleet TPRs whose atom names were already
+            // canonical post-CHARMM-translation.
+            atom->pdb_atom_name = registry.CanonicaliseAmberAtomName(
                 charmm_atom_name, canonical_residue,
-                ToolContext::Charmm, ToolContext::Standard);
+                ToolContext::Charmm);
             atom->element = ElementFromAtomicNumber(
                 tpr_atoms.atom[ai].atomnumber);
             atom->residue_index = global_ri;

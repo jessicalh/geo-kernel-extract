@@ -151,6 +151,118 @@ void NamingRegistry::InitialiseAtomNameRules() {
     AddAtomNameRule("HG2", "HG3", "*", ToolContext::Charmm, ToolContext::Standard);
 
     // ========================================================================
+    // C-terminal carboxyl atoms — CHARMM port → AMBER canonical
+    // ========================================================================
+    //
+    // CHARMM emits the two C-terminal oxygens as OT1 / OT2; AMBER
+    // ff14SB and IUPAC use O (the carbonyl O of the chain) and OXT
+    // (the deprotonated carboxyl O). The AMBER kCapCtermDeprotonated
+    // / kCapCtermProtonated tables key on canonical O / OXT, so
+    // CHARMM-loaded fixtures need to collapse here before substrate
+    // composition or the cap lookup misses entirely. Mapping:
+    //
+    //     CHARMM OT1  <-->  AMBER/IUPAC O   (the chain backbone carbonyl O)
+    //     CHARMM OT2  <-->  AMBER/IUPAC OXT (the C-terminal carboxyl O)
+    //
+    // Verified against the AMBER ff14SB cap convention encoded in
+    // src/generated/LegacyAmberSemanticTables.cpp's kCapCterm tables
+    // and the ff14SB parameter files at data/ff14sb_params.dat.
+    //
+    // These rules live in the (Charmm, Standard) keyspace -- they
+    // are wire-format-collapse aliases and fire only on CHARMM
+    // inputs. They do NOT have (Standard, Amber) counterparts;
+    // canonical Standard inputs already use O/OXT.
+    AddAtomNameRule("OT1", "O",   "*", ToolContext::Charmm,   ToolContext::Standard);
+    AddAtomNameRule("OT2", "OXT", "*", ToolContext::Charmm,   ToolContext::Standard);
+    AddAtomNameRule("O",   "OT1", "*", ToolContext::Standard, ToolContext::Charmm);
+    AddAtomNameRule("OXT", "OT2", "*", ToolContext::Standard, ToolContext::Charmm);
+
+    // ========================================================================
+    // LYN protonation-variant H-on-NZ naming — fleet-vintage variance
+    // ========================================================================
+    //
+    // AMBER ff14SB LYN (deprotonated lysine, neutral NH2 amine on NZ)
+    // has TWO H atoms on NZ canonically named HZ2 / HZ3 — preserving
+    // the LYS NH3+ numbering convention with HZ1 absent (the proton
+    // removed at deprotonation). Some upstream prep flows (notably
+    // the 1Z9B fleet input.pdb) carry LYN-chemistry residues with
+    // the H atoms named HZ1 / HZ2 (a pre-Markley-1998 numbering).
+    // Map those to the canonical HZ2 / HZ3 when the residue is
+    // recorded as LYN.
+    //
+    // RULES ARE RESIDUE-CONTEXT-KEYED. They fire ONLY when the
+    // residue's three-letter code is "LYN". For LYS residues
+    // (NH3+, HZ1/HZ2/HZ3) the rule does NOT fire and HZ1/HZ2/HZ3
+    // pass through canonical.
+    //
+    // The rules live in the (Standard, Amber) keyspace so they fire
+    // in Stage 2 of CanonicaliseAmberAtomName regardless of source
+    // wire-format. They do NOT have (Charmm, Standard) counterparts:
+    // putting them in both keyspaces would chain incorrectly
+    // (HZ1 -> HZ2 -> HZ3 in a single canonicalisation pass).
+    //
+    // KNOWN GAP: when a fleet PDB labels the residue "LYS" but
+    // structurally has LYN chemistry (e.g. only HZ1/HZ2 present),
+    // load-time canonicalisation here cannot know to fire. The
+    // rename then needs to happen at protonation-detection time
+    // downstream (Phase 1 step 13.2 -- PROPKA wiring at the
+    // PdbFileReader TODO; not in this commit's scope).
+    //
+    // Reference: AMBER ff14SB residue templates encoded in
+    // data/ff14sb_params.dat lines 433-453; Markley 1998 §2.1.1.
+    AddAtomNameRule("HZ1", "HZ2", "LYN", ToolContext::Standard, ToolContext::Amber);
+    AddAtomNameRule("HZ2", "HZ3", "LYN", ToolContext::Standard, ToolContext::Amber);
+
+    // ========================================================================
+    // Glycine alpha methylene — HA <-> HA2
+    // ========================================================================
+    //
+    // Glycine has two prochiral alpha hydrogens; AMBER ff14SB +
+    // IUPAC convention names them HA2 / HA3 (Markley 1998 §2.1.2).
+    // Some fixtures collapse the methylene to a single "HA" name on
+    // GLY (pre-Markley convention) when the file format only supplies
+    // one of the two atoms. Map "HA" -> "HA2" so the substrate's
+    // GLY chain table (which keys HA2 / HA3) finds a match. A third
+    // pre-Markley atom labelled "HA1" maps to "HA3".
+    //
+    // RULES ARE RESIDUE-CONTEXT-KEYED to GLY only: non-Gly residues
+    // canonically use plain HA, and aliasing HA -> HA2 there would
+    // produce non-existent atoms.
+    //
+    // Like LYN HZ above, these rules live in the (Standard, Amber)
+    // keyspace so Stage 2 of CanonicaliseAmberAtomName fires them
+    // and Stage 1 does not chain-rewrite.
+    //
+    // Reference: AminoAcidType.cpp line 14 (BB_GLY definition uses
+    // HA2 / HA3); Markley 1998 §2.1.2.
+    AddAtomNameRule("HA",  "HA2", "GLY", ToolContext::Standard, ToolContext::Amber);
+    AddAtomNameRule("HA1", "HA3", "GLY", ToolContext::Standard, ToolContext::Amber);
+
+    // ========================================================================
+    // N-terminal H2N (CHARMM port) — kept as cap-only literal H2N
+    // ========================================================================
+    //
+    // CHARMM occasionally emits a single H2N pseudo-name standing
+    // for the entire NTERM amine NH2-block. AMBER ff14SB N-termini
+    // resolve to three SEPARATE atoms H1 / H2 / H3 (charged) or
+    // two atoms H1 / H2 (neutral). The mapping is therefore
+    // 1-to-many and not a clean per-atom rename.
+    //
+    // The runtime parser's `IsCapOnlyAtomName` recognises H2N as a
+    // cap-only atom name and routes it to LookupCap. We do NOT
+    // install a NamingRegistry alias for H2N here — collapsing it
+    // would lose information (which of H1/H2/H3 it represents). The
+    // canonicalisation is intentionally a no-op for H2N; the
+    // substrate composition path treats H2N as a cap-only literal,
+    // and downstream re-protonation (when it lands) will produce
+    // the correct H1/H2/H3 atom set per terminal_state.
+    //
+    // FOLLOW-UP: when a load path produces an H2N atom that needs
+    // expansion to three H atoms, that has to happen at the load
+    // boundary (a fan-out, not a rename). Out of scope for this
+    // commit; flagged as residual work.
+
+    // ========================================================================
     // CHARMM ↔ IUPAC COVERAGE GAPS + ONE WILDCARD BUG — DEFERRED pending
     // fleet-wide vetting
     // ========================================================================
@@ -376,6 +488,30 @@ std::string NamingRegistry::TranslateAtomName(const std::string& atom_name,
 
     // No rule: return unchanged
     return atom_name;
+}
+
+
+std::string
+NamingRegistry::CanonicaliseAmberAtomName(const std::string& atom_name,
+                                           const std::string& residue_name,
+                                           ToolContext source_context) const {
+    // Stage 1: collapse the wire-format universe to Standard (canonical
+    // AMBER ff14SB / IUPAC). For Standard inputs this is a no-op via
+    // TranslateAtomName's same-context fast path; for CHARMM inputs
+    // this fires the H<->HN, OT1->O, OT2->OXT, HA->HA2 (Gly) etc. rules.
+    std::string after_stage1 = (source_context == ToolContext::Standard)
+            ? atom_name
+            : TranslateAtomName(atom_name, residue_name,
+                                 source_context, ToolContext::Standard);
+
+    // Stage 2: residue-context-keyed canonicalisation that applies
+    // even on Standard inputs (e.g. LYN HZ1->HZ2 / HZ2->HZ3 fleet
+    // variance, GLY HA->HA2 collapsed-methylene). Implemented as
+    // (Standard -> Amber) rules so the existing residue-keyed
+    // dispatch in TranslateAtomName fires; the result IS canonical
+    // AMBER ff14SB.
+    return TranslateAtomName(after_stage1, residue_name,
+                              ToolContext::Standard, ToolContext::Amber);
 }
 
 

@@ -203,20 +203,44 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
     // Add atoms
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto atom = std::make_unique<Atom>();
-        atom->pdb_atom_name = atom_names[ai];
+
+        // Find residue for this atom (so we have the residue's canonical
+        // three-letter code for residue-context-keyed canonicalisation).
+        size_t resolved_ri = 0;
+        for (size_t ri = 0; ri < n_residues; ++ri) {
+            if (ai >= ranges[ri].start && ai < ranges[ri].end) {
+                resolved_ri = ri;
+                break;
+            }
+        }
+
+        // PDB LOADING BOUNDARY (the prmtop ATOM_NAME surface).
+        //
+        // prmtop already carries AMBER ff14SB canonical names, so most
+        // atom-name strings pass through unchanged. The canonicalisation
+        // call serves as the disciplined single point where any
+        // CHARMM-port residual (HN, OT1/OT2) or LYN-context fleet
+        // variance (HZ1/HZ2 -> HZ2/HZ3) collapses to canonical, and
+        // it removes the need for downstream consumers to defensively
+        // re-alias.
+        //
+        // The N-terminal cap atom H1 is preserved unchanged: H1 is a
+        // distinct cap-only atom in AMBER (kCapNtermCharged: H1, H2,
+        // H3 on the +1 ammonium nitrogen), NOT a backbone amide H.
+        // The earlier inline `H || HN || H1` cache populator confused
+        // these and is replaced below.
+        const Residue& parent_residue = protein->ResidueAt(resolved_ri);
+        const std::string canonical_residue =
+            ThreeLetterCodeForAminoAcid(parent_residue.type);
+        atom->pdb_atom_name = registry.CanonicaliseAmberAtomName(
+            atom_names[ai], canonical_residue, ToolContext::Amber);
 
         if (ai < atomic_numbers.size())
             atom->element = ElementFromAtomicNumber(atomic_numbers[ai]);
         else
             atom->element = ElementFromSymbol(xyz[ai].element);
 
-        // Find residue for this atom
-        for (size_t ri = 0; ri < n_residues; ++ri) {
-            if (ai >= ranges[ri].start && ai < ranges[ri].end) {
-                atom->residue_index = ri;
-                break;
-            }
-        }
+        atom->residue_index = resolved_ri;
 
         // H parent: in tleap ordering, H follows its parent heavy atom
         if (atom->element == Element::H && ai > 0) {
@@ -238,15 +262,20 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
 
         // Backbone index cache from atom name
         // PDB LOADING BOUNDARY: string name → typed backbone index
-        const std::string& name = atom_names[ai];
+        //
+        // After canonicalisation, the name is canonical AMBER ff14SB.
+        // Backbone amide H (canonical "H"); HN never appears here
+        // because it canonicalises to H upstream. H1 is intentionally
+        // NOT aliased to H -- it is a distinct N-terminal cap atom.
+        // HA2 stays because Gly's backbone canonical IS HA2/HA3.
+        const std::string& name = protein->AtomAt(idx).pdb_atom_name;
         if (name == "N" && res.N == Residue::NONE) res.N = idx;
         else if (name == "CA" && res.CA == Residue::NONE) res.CA = idx;
         else if (name == "C" && res.C == Residue::NONE &&
                  protein->AtomAt(idx).element == Element::C &&
                  res.CA != Residue::NONE) res.C = idx;
         else if (name == "O" && res.O == Residue::NONE) res.O = idx;
-        else if ((name == "H" || name == "HN" || name == "H1") &&
-                 res.H == Residue::NONE) res.H = idx;
+        else if (name == "H" && res.H == Residue::NONE) res.H = idx;
         else if ((name == "HA" || name == "HA2") &&
                  res.HA == Residue::NONE) res.HA = idx;
         else if (name == "CB" && res.CB == Residue::NONE) res.CB = idx;

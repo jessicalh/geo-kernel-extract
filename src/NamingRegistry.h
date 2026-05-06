@@ -84,6 +84,34 @@ public:
                                    ToolContext from_context,
                                    ToolContext to_context) const;
 
+    // Canonicalise an atom name to its canonical AMBER ff14SB / IUPAC
+    // (Standard) form. Intended as the SINGLE call site every loader
+    // uses on the atom-name string before writing to Atom::pdb_atom_name.
+    //
+    // residue_name should be the residue's *file-format* three-letter
+    // code (LYS / LYN / GLY / etc.); residue-context-keyed rules
+    // (LYN HZ1/HZ2 -> HZ2/HZ3, GLY HA -> HA2) consult this name.
+    //
+    // source_context names the loader's wire-format universe so that
+    // CHARMM-port aliases (H -> HN, OT1/OT2 -> O/OXT) collapse here
+    // instead of being defensively re-aliased downstream. Pass
+    // ToolContext::Standard for already-canonical PDB inputs;
+    // ToolContext::Charmm for CHARMM-style names; etc.
+    //
+    // The N-terminal cap atom H1 / H2 / H3 are RETURNED UNCHANGED.
+    // They are NOT aliases of the backbone amide H -- they are
+    // distinct cap atoms (kCapNtermCharged: H1, H2, H3 on a +1
+    // ammonium nitrogen) and the runtime substrate composition path
+    // uses them as cap-only atom names. Aliasing H1 to H here would
+    // re-introduce the OrcaRunLoader latent bug.
+    //
+    // Returns the canonical AMBER name. If no rule applies, returns
+    // the input unchanged (unlike TranslateAtomName, this never
+    // returns empty -- pass-through is the documented default).
+    std::string CanonicaliseAmberAtomName(const std::string& atom_name,
+                                          const std::string& residue_name,
+                                          ToolContext source_context) const;
+
 private:
     // The 20 standard amino acids
     std::set<std::string> standard_residues_;

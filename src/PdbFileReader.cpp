@@ -5,6 +5,7 @@
 #include "ForceFieldChargeTable.h"
 #include "RuntimeEnvironment.h"
 #include "AminoAcidType.h"
+#include "NamingRegistry.h"
 #include "OperationLog.h"
 // RuntimeEnvironment::Ff14sbParams() resolves the param file location.
 // Discovery: NMR_FF14SB_PARAMS env → data/ff14sb_params.dat → TOML config.
@@ -129,8 +130,49 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
 
                 std::string atom_name = atom.get_label_atom_id();
 
+                // PDB LOADING BOUNDARY (the cifpp surface).
+                //
+                // cifpp returns the atom-name string verbatim from the
+                // PDB file. PDB files in the wild use IUPAC / AMBER
+                // ff14SB convention by default (Standard); cifpp does
+                // not introduce CHARMM-port spellings. Canonicalise
+                // here so that Atom::pdb_atom_name carries the AMBER
+                // ff14SB form always, and downstream consumers
+                // (substrate composition, cap lookup, charge-table
+                // cross-walk, error messages) see one canonical name
+                // set without defensive alias disjunctions.
+                //
+                // source_context is Standard. Stage 1 of
+                // CanonicaliseAmberAtomName is a same-context no-op
+                // for Standard inputs; Stage 2 fires the residue-
+                // context-keyed rules (LYN HZ1/HZ2 -> HZ2/HZ3, GLY
+                // HA -> HA2) which apply regardless of wire-format.
+                //
+                // CHARMM-port collapses (HN -> H, OT1/OT2 -> O/OXT)
+                // are NOT applied here on the assumption that
+                // cifpp-loaded PDB files are Standard. If a CHARMM-
+                // port PDB ever needs loading via PdbFileReader, the
+                // appropriate fix is to pass ToolContext::Charmm at
+                // the call site (e.g., a flag on BuildFromPdb), not
+                // to corrupt Standard inputs by firing CHARMM rules
+                // unconditionally (the wildcard CHARMM->Standard
+                // beta-methylene rule would otherwise misfire on
+                // ALA's HB1/HB2/HB3 methyl as documented in
+                // NamingRegistry.cpp's deferred-block comment).
+                //
+                // KNOWN GAP (deferred to PROPKA wiring at the
+                // PdbFileReader TODO, separate commit): residues
+                // labelled "LYS" but structurally LYN (only HZ1/HZ2
+                // NZ-H, no HZ3) cannot be canonicalised here because
+                // the residue context is "LYS". Such inputs need a
+                // downstream re-canonicalisation pass after protonation
+                // detection.
+                std::string canonical_name = GlobalNamingRegistry()
+                    .CanonicaliseAmberAtomName(atom_name, comp_id,
+                                                ToolContext::Standard);
+
                 auto new_atom = Atom::Create(elem);
-                new_atom->pdb_atom_name = atom_name;
+                new_atom->pdb_atom_name = canonical_name;
                 new_atom->residue_index = res_idx;
 
                 size_t atom_idx = protein->AddAtom(std::move(new_atom));
