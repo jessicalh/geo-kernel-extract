@@ -440,6 +440,50 @@ TEST(NamingApplicatorIdempotency, CanonicalChainAtomsPassThrough) {
     }
 }
 
+TEST(NamingApplicatorIdempotency, VariantExtensionAtomsPassThrough) {
+    const auto& app = GlobalNamingApplicator();
+    // Variant-only atoms (HID/HIP HD1, ASH HD2, GLH HE2) must pass
+    // through under any source when the sibling pattern is canonical
+    // for that variant. The IsCanonical oracle's per-variant atom
+    // extension makes these legal canonical inputs.
+    struct VariantCase {
+        AminoAcid res;
+        const char* atom;
+        std::set<std::string> siblings;
+        const char* note;
+    };
+    const VariantCase cases[] = {
+        // HID-form HIS: chain + HD1 present, no HE2.
+        {AminoAcid::HIS, "HD1",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "CG",
+          "ND1", "HD1", "CD2", "HD2", "CE1", "HE1", "NE2"},
+         "HID HD1"},
+        // HIP-form HIS: chain + HD1 + HE2.
+        {AminoAcid::HIS, "HD1",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3", "CG",
+          "ND1", "HD1", "CD2", "HD2", "CE1", "HE1", "NE2", "HE2"},
+         "HIP HD1"},
+        // ASH-form ASP: chain + HD2.
+        {AminoAcid::ASP, "HD2",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3",
+          "CG", "OD1", "OD2", "HD2"},
+         "ASH HD2"},
+        // GLH-form GLU: chain + HE2.
+        {AminoAcid::GLU, "HE2",
+         {"N", "H", "CA", "HA", "CB", "HB2", "HB3",
+          "CG", "HG2", "HG3", "CD", "OE1", "OE2", "HE2"},
+         "GLH HE2"},
+    };
+
+    for (const VariantCase& c : cases) {
+        auto ctx = MakeContext(c.atom, c.res,
+                               NamingSource::AmberFf14SBCanonical,
+                               c.siblings);
+        EXPECT_EQ(app.Apply(ctx), c.atom)
+            << "Variant-extension atom " << c.note << " should pass through";
+    }
+}
+
 
 // ----------------------------------------------------------------------------
 // Canonicality oracle — direct exercise

@@ -339,23 +339,41 @@ bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
         if (ctx.input_name == a.name) return true;
     }
 
-    // (b) Per-variant overlay. Variants in AminoAcidType don't redeclare
-    // the chain atoms; they just describe the variant's presence/absence
-    // delta from canonical. The simplest model: HID has HD1, HIE has HE2,
-    // HIP has HD1 and HE2, ASH has HD2, GLH has HE2, LYN has HZ2 and HZ3
-    // (HZ1 absent), CYM has no HG, CYX has no HG. The chain inventory in
-    // AminoAcidType already includes HD1, HE2, HG, HD1, HE2, HZ1/2/3, HG.
-    // So (a) covers all canonical chain atoms across variants — what's
-    // missing is to know that the *absent* atoms in a variant are still
-    // legal-when-absent, which the oracle doesn't need to know (it only
-    // says "yes, HZ2 is canonical for LYS"; the load path determines
-    // which atoms actually appear).
+    // (b) Per-variant atom-extension overlay. AminoAcidType::atoms is
+    // populated for the maximally-protonated default state, with
+    // variant-only atoms (HID's HD1, ASH's HD2, GLH's HE2) NOT included.
+    // The substrate generator's per-variant tables encode these; we
+    // hard-code the (residue, variant-extension) atom set here so the
+    // oracle recognises canonical variant-only atoms without dragging
+    // the substrate tables into runtime.
     //
-    // Special case: LYN canonical has HZ2 and HZ3 but NOT HZ1. The chain
-    // inventory has HZ1, so HZ1 *is* a known LYS atom name. This is why
-    // shift rules with sibling-aware predicates are required: the oracle
+    // Locked decisions (per spec/plan/topology-encoding-dependencies-
+    // 2026-05-05.md §A): HID adds HD1, HIE adds HE2 (already in chain
+    // for HIS — no add needed), HIP adds HD1 (HE2 already in chain),
+    // ASH adds HD2, GLH adds HE2. CYS variants (CYX, CYM), LYS LYN,
+    // ARG ARN, TYR TYM either remove atoms (variant-deletion) or
+    // re-purpose existing chain entries (LYN HZ2/HZ3 are already in
+    // LYS chain) — no atom-extension needed.
+    switch (ctx.residue_type) {
+        case AminoAcid::HIS:
+            if (ctx.input_name == "HD1") return true;  // HID/HIP
+            break;
+        case AminoAcid::ASP:
+            if (ctx.input_name == "HD2") return true;  // ASH
+            break;
+        case AminoAcid::GLU:
+            if (ctx.input_name == "HE2") return true;  // GLH
+            break;
+        default: break;
+    }
+    //
+    // Note: LYN canonical has HZ2 and HZ3 but NOT HZ1. The chain
+    // inventory has HZ1, so HZ1 *is* a known LYS atom name; the oracle
     // can't distinguish "HZ1 in canonical-charged-LYS" from "HZ1 in
-    // non-canonical-LYN". Resolve() does that via map.empty + IsCanonical.
+    // non-canonical-LYN". Resolve() does that via map.empty + IsCanonical:
+    // LYN sibling-aware shift rules fire on the {HZ1,HZ2,no HZ3} pattern;
+    // canonical sibling sets bypass the shift rules and hit the
+    // canonicality oracle's chain-inventory match.
 
     // (c) Cap atoms per terminal_state.
     if (ctx.terminal_state == TerminalState::NtermCharged) {
