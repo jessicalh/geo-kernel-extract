@@ -2,6 +2,8 @@
 #include "AminoAcidType.h"
 #include "LegacyAmberTopology.h"
 #include "ChargeSource.h"
+#include "NamingRegistry.h"
+#include "generated/LegacyAmberSemanticTables.h"
 #include <algorithm>
 #include <map>
 #include <set>
@@ -213,10 +215,15 @@ bool Protein::PrepareForceFieldCharges(
 void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
                                     LegacyAmberInvariants invariants,
                                     double bond_tolerance) {
-    // Layer 2: symbolic topology (no geometry needed)
+    // Layer 2: symbolic topology (no geometry needed). The first
+    // CacheResidueBackboneIndices() call here is string-matched and
+    // feeds the first ResolveProtonationStates pass (HIS/LYS/etc.
+    // detection from explicit H presence). The typed
+    // CacheResidueBackboneIndices_Typed() pass at the end of this
+    // function overwrites the cache from the substrate.
     ResolveResidueTerminalStates();
     CacheResidueBackboneIndices();
-    ResolveProtonationStates(false);
+    ResolveProtonationStates(/*bonds=*/nullptr);
     DetectAromaticRings();
 
     // Layer 3: geometric topology + FF-numerical invariants. The
@@ -247,18 +254,46 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         }
     }
 
+    // Second protonation pass against the now-finalized covalent
+    // topology (CYS -> CYX from the disulfide bond list). Run BEFORE
+    // LegacyAmberTopology construction so the substrate-composition
+    // step sees the final variant_index for every residue.
+    ResolveProtonationStates(bonds.get());
+
+    // Copy connectivity onto Atom for convenient calculator access.
+    // Done before substrate composition because ComposeAtomSemantic
+    // uses atom.parent_atom_index for the H-atom parent-name lookup
+    // that ParseAtomName needs.
+    for (size_t i = 0; i < atoms_.size(); ++i) {
+        atoms_[i]->bond_indices = bonds->BondIndicesFor(i);
+        atoms_[i]->parent_atom_index = bonds->HydrogenParentOf(i);
+    }
+
+    // Post-protonation re-canonicalisation: now that variant_idx is
+    // resolved per residue (LYS-labelled-LYN, HIS variants, etc.),
+    // walk every resolved-variant residue and rewrite atom names
+    // against the variant's 3-letter code. Catches the LYN HZ1->HZ2 /
+    // HZ2->HZ3 fleet variance (1Z9B) that loader-time canonicalisation
+    // cannot fire because the residue label was "LYS" when the loader
+    // saw it.
+    RecanonicaliseAfterProtonation(residues_, atoms_);
+
+    // Compose the per-atom AtomSemanticTable substrate. Empty for stub
+    // calculator-physics fixtures (no PDB names); populated otherwise.
+    std::vector<AtomSemanticTable> atom_semantic =
+        ComposeAtomSemantic(atoms_, residues_, *bonds);
+
+    // Construct the final LegacyAmberTopology with substrate populated.
     protein_topology_ = std::make_unique<LegacyAmberTopology>(
         atoms_.size(), residues_.size(), std::move(bonds),
-        std::move(invariants));
-    ResolveProtonationStates(true);
+        std::move(invariants), std::move(atom_semantic));
 
-    // Copy connectivity back to Atom objects for convenient calculator access.
-    // Calculators read atom.bond_indices and atom.parent_atom_index directly.
-    // CovalentTopology is the authority; these are copies for access convenience.
-    for (size_t i = 0; i < atoms_.size(); ++i) {
-        atoms_[i]->bond_indices = LegacyAmber().BondIndicesFor(i);
-        atoms_[i]->parent_atom_index = LegacyAmber().HydrogenParentOf(i);
-    }
+    // Typed CacheResidueBackboneIndices: overwrite res.{N, CA, C, O,
+    // H, HA, CB} with substrate-driven indices from
+    // LegacyAmber().AtomSemantic(). On stub fixtures (no substrate),
+    // this is a no-op and the string-matched cache from the first
+    // pass stays.
+    CacheResidueBackboneIndices_Typed();
 }
 
 
@@ -303,10 +338,15 @@ void Protein::ResolveResidueTerminalStates() {
 // reports this state; it does not perform identity resolution.
 // ============================================================================
 
-void Protein::ResolveProtonationStates(bool use_covalent_topology) {
+void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
+    // bonds == nullptr  : first pass. HIS/LYS/TYR/ASP/GLU variants
+    //                     from explicit H presence; CYS variant
+    //                     deferred (needs the bond graph).
+    // bonds != nullptr  : second pass. Adds CYS -> CYX from
+    //                     BondCategory::Disulfide entries.
     std::set<size_t> disulfide_sg;
-    if (use_covalent_topology && protein_topology_) {
-        for (const Bond& bond : Bonds()) {
+    if (bonds != nullptr) {
+        for (const Bond& bond : bonds->Bonds()) {
             if (bond.category == BondCategory::Disulfide) {
                 disulfide_sg.insert(bond.atom_index_a);
                 disulfide_sg.insert(bond.atom_index_b);
@@ -559,6 +599,115 @@ void Protein::CacheResidueBackboneIndices() {
         for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
             const ChiAngleDef& def = aatype.chi_angles[ci];
             for (int j = 0; j < 4; ++j) {
+                for (size_t ai : res.atom_indices) {
+                    if (atoms_[ai]->pdb_atom_name == def.atoms[j]) {
+                        res.chi[ci].a[j] = ai;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ============================================================================
+// CacheResidueBackboneIndices_Typed
+//
+// Substrate-driven backbone-index cache. Reads BackboneRole + Locant +
+// DiastereotopicIndex from the per-atom AtomSemanticTable populated by
+// ComposeAtomSemantic, and overwrites res.{N, CA, C, O, H, HA, CB}
+// with typed indices.
+//
+// Special cases:
+//   - Glycine HA: Gly's HA2/HA3 carry Locant::Alpha + DiastereotopicIndex
+//     (BackboneRole stays None per the parser convention; the typed
+//     identity already disambiguates them). Pick HA2 (Position2) to
+//     match the string-matched cache's prior assignment of res.HA = HA2.
+//   - Proline H: PRO's chain table drops the backbone amide H per the
+//     substrate dependencies §H.10 (Pro is a secondary amine); no atom
+//     has BackboneRole::AmideHydrogen, so res.H stays Residue::NONE.
+//   - CB: the substrate carries Locant::Beta + Element::C + branch{0,0}
+//     for the canonical CB. Glycine has no CB atom in its table, so
+//     res.CB stays Residue::NONE for Gly.
+//
+// Chi-angle resolver: STAYS string-matched. Audit Hotspot 2; separate
+// slice. Calculators that consume chi angles read res.chi[i] which
+// still works against the AminoAcidType chi_angles atom-name list.
+//
+// Stub-fixture path: when LegacyAmber().HasAtomSemantic() is false
+// (atoms with empty pdb_atom_name; calculator-physics tests), this
+// function is a no-op and the string-matched cache from the first
+// pass stays (which is fine — those tests don't carry residues with
+// real atom names anyway).
+// ============================================================================
+
+void Protein::CacheResidueBackboneIndices_Typed() {
+    if (!protein_topology_) return;
+    const LegacyAmberTopology& topo = LegacyAmber();
+    if (!topo.HasAtomSemantic()) return;
+
+    for (size_t res_idx = 0; res_idx < residues_.size(); ++res_idx) {
+        Residue& res = residues_[res_idx];
+
+        // Reset the backbone slots before substrate-driven repopulation.
+        // The first-pass cache wrote them from strings; the typed pass
+        // is the authoritative version and may legitimately leave a
+        // slot at NONE (Pro res.H, Gly res.CB).
+        res.N  = Residue::NONE;
+        res.CA = Residue::NONE;
+        res.C  = Residue::NONE;
+        res.O  = Residue::NONE;
+        res.H  = Residue::NONE;
+        res.HA = Residue::NONE;
+        res.CB = Residue::NONE;
+
+        for (size_t ai : res.atom_indices) {
+            if (ai >= topo.AtomSemantic().size()) continue;
+            const AtomSemanticTable& sem = topo.SemanticAt(ai);
+            switch (sem.backbone_role) {
+                case BackboneRole::Nitrogen:        res.N  = ai; break;
+                case BackboneRole::AlphaCarbon:     res.CA = ai; break;
+                case BackboneRole::CarbonylCarbon:  res.C  = ai; break;
+                case BackboneRole::CarbonylOxygen:  res.O  = ai; break;
+                case BackboneRole::AmideHydrogen:   res.H  = ai; break;
+                case BackboneRole::AlphaHydrogen:   res.HA = ai; break;
+                case BackboneRole::None:            break;
+            }
+        }
+
+        // Glycine special case. HA2/HA3 carry Locant::Alpha + di_index;
+        // BackboneRole::None. Pick HA2 (Position2) for res.HA.
+        if (res.type == AminoAcid::GLY) {
+            AtomMechanicalIdentity gly_ha2_id{
+                Element::H, Locant::Alpha, BranchAddress{},
+                DiastereotopicIndex::Position2, BackboneRole::None
+            };
+            std::vector<size_t> matches = topo.ResidueAtomsWithIdentity(
+                res_idx, gly_ha2_id, residues_);
+            if (!matches.empty()) res.HA = matches[0];
+        }
+
+        // CB cache: typed identity for the canonical sidechain Cβ
+        // (Locant::Beta, Element::C, branch{0,0}, di_index=None).
+        // Gly has no Cβ atom in its substrate table, so the lookup
+        // returns empty and res.CB stays NONE.
+        AtomMechanicalIdentity cb_id{
+            Element::C, Locant::Beta, BranchAddress{},
+            DiastereotopicIndex::None, BackboneRole::None
+        };
+        std::vector<size_t> cb_matches = topo.ResidueAtomsWithIdentity(
+            res_idx, cb_id, residues_);
+        if (!cb_matches.empty()) res.CB = cb_matches[0];
+
+        // Chi-angle resolver: STAYS string-matched (Audit Hotspot 2;
+        // separate slice). Re-resolve here so the typed pass produces
+        // the same chi indices the string-matched first pass produced.
+        const AminoAcidType& aatype = res.AminoAcidInfo();
+        for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
+            const ChiAngleDef& def = aatype.chi_angles[ci];
+            for (int j = 0; j < 4; ++j) {
+                res.chi[ci].a[j] = Residue::NONE;
                 for (size_t ai : res.atom_indices) {
                     if (atoms_[ai]->pdb_atom_name == def.atoms[j]) {
                         res.chi[ci].a[j] = ai;

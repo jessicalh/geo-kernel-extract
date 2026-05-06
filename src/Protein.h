@@ -196,13 +196,35 @@ public:
                               LegacyAmberInvariants invariants = {},
                               double bond_tolerance = 0.4);
 
-    // Individual steps (public for testing, prefer FinalizeConstruction)
+    // Individual steps (public for testing, prefer FinalizeConstruction).
+    // CacheResidueBackboneIndices() runs the string-matched pass; the
+    // typed pass at the end of FinalizeConstruction is private and
+    // overwrites the cache from the substrate.
     void DetectAromaticRings();
     void CacheResidueBackboneIndices();
 
 private:
     void ResolveResidueTerminalStates();
-    void ResolveProtonationStates(bool use_covalent_topology);
+    // Two-pass discipline:
+    //   bonds == nullptr: first pass (no covalent topology yet). Detects
+    //     HIS / ASP / GLU / LYS / TYR / ARG variants from explicit
+    //     hydrogen presence. CYS variant requires bonds; deferred.
+    //   bonds != nullptr: second pass. Adds CYS -> CYX detection from
+    //     the resolved disulfide bond list.
+    // The second pass runs BEFORE the LegacyAmberTopology that carries
+    // atom_semantic is constructed, so substrate composition has the
+    // final variant_index for every residue.
+    void ResolveProtonationStates(const CovalentTopology* bonds);
+
+    // Typed CacheResidueBackboneIndices: reads BackboneRole + Locant
+    // from `LegacyAmber().AtomSemantic()` and overwrites res.{N, CA,
+    // C, O, H, HA, CB} with substrate-driven indices. Glycine HA
+    // resolves via Locant::Alpha + DiastereotopicIndex::Position2;
+    // CB via Locant::Beta. Pro res.H stays NONE because PRO chain
+    // table drops backbone H per substrate dependencies §H.10. Chi-
+    // angle resolver inside this function is intentionally NOT typed
+    // — kept string-matched per Audit Hotspot 2; separate slice.
+    void CacheResidueBackboneIndices_Typed();
 
     std::vector<std::unique_ptr<Atom>> atoms_;
     std::vector<Residue> residues_;
