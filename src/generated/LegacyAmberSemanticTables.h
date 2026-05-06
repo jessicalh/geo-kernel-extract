@@ -159,6 +159,17 @@ struct ParsedAtomName {
     bool                       is_backbone   = false;  ///< N/CA/C/O/H/HA (and HN alias).
     bool                       is_n_terminus = false;  ///< H1/H2/H3 (extra ammonium Hs).
     bool                       is_c_terminus = false;  ///< OXT/HXT.
+    /// Cap-only-NTERM flag: this atom has NO entry in the residue's chain
+    /// table and resolves only via LookupCap(NtermCharged|NtermNeutral).
+    /// After 2026-05-06 (CharmmLegacy cleanup), this is 1:1 with
+    /// `is_n_terminus`. The intent-explicit name lets ComposeAtomSemantic
+    /// dispatch on `parsed.is_cap_only_n || parsed.is_cap_only_c` instead
+    /// of re-reading the atom-name string via IsCapOnlyAtomName(string)
+    /// (codex-review Finding 3 — "parse once, then no string work in
+    /// composition").
+    bool                       is_cap_only_n = false;
+    /// Cap-only-CTERM flag: same intent, for OXT/HXT.
+    bool                       is_cap_only_c = false;
     ::nmr::Locant              locant        = ::nmr::Locant::None;
     ::nmr::BranchAddress       branch        = {};
     ::nmr::DiastereotopicIndex di_index      = ::nmr::DiastereotopicIndex::None;
@@ -229,16 +240,26 @@ inline ParsedAtomName ParseAtomName(const std::string& name,
         }
         return p;
     }
-    // N-terminal extra ammonium Hs.
-    if (name == "H1" || name == "H2" || name == "H3" || name == "H2N") {
+    // N-terminal extra ammonium Hs (cap-only at NTERM_CHARGED /
+    // NTERM_NEUTRAL — no chain-table entry).
+    if (name == "H1" || name == "H2" || name == "H3") {
         p.is_n_terminus = true;
+        p.is_cap_only_n = true;
         return p;
     }
-    // C-terminal carboxyl atoms.
-    if (name == "OXT" || name == "HXT" || name == "OT1" || name == "OT2") {
+    // C-terminal carboxyl atoms (cap-only at CTERM_DEPROTONATED /
+    // CTERM_PROTONATED — no chain-table entry).
+    if (name == "OXT" || name == "HXT") {
         p.is_c_terminus = true;
+        p.is_cap_only_c = true;
         return p;
     }
+    // NOTE: H2N (NTERM amine literal) and OT1/OT2 (CHARMM-style C-term
+    // oxygens) were removed 2026-05-06 with the CharmmLegacy cleanup
+    // (codex-review Finding 2). No active load path emits them; if a
+    // future CHARMM-input path arises, they belong with a concrete
+    // source tag in the canonicalisation rule layer (NamingApplicator),
+    // not as silent terminus-flag aliases here.
     // Glycine alpha-Hs (only diastereotopic CH2 in the standard 20).
     if (name == "HA2" || name == "HA3") {
         p.is_backbone = true;
@@ -352,22 +373,26 @@ ComputeAtomMechanicalIdentity(::nmr::Element element,
 // Cap-only atoms have NO chain-table entry and resolve only via
 // `LookupCap`. The set is closed: NTERM_CHARGED contributes H1/H2/H3,
 // NTERM_NEUTRAL contributes H1/H2, CTERM_DEPROTONATED contributes OXT,
-// CTERM_PROTONATED contributes OXT/HXT. H2N / OT1 / OT2 are CHARMM-port
-// alternates surfaced by ParseAtomName but not cap-table-emitted; they
-// are treated as cap-only here so they reach LookupCap (which returns
-// nullptr if the cap table doesn't carry them, allowing the caller to
-// decide whether to fail-loudly or accept a benign miss).
+// CTERM_PROTONATED contributes OXT/HXT.
 //
-// Used by Protein::FinalizeConstruction to classify atoms before the
-// LookupBy / LookupCap dispatch: standard atoms must resolve via
-// LookupBy or be a hard error; cap-only atoms must resolve via
-// LookupCap or be a hard error.
+// History note: H2N / OT1 / OT2 were previously listed here as
+// CHARMM-port alternates; they were removed 2026-05-06 (codex-review
+// Finding 2) — no active load path emits them, the corresponding
+// CharmmLegacy rules had no live emitter, and CHARMM-the-force-field
+// is retired (memory `project_charmm_retired_amber_only_2026-05-02`).
+//
+// Implementation note (codex-review Finding 3): this function is a
+// THIN WRAPPER around `ParseAtomName` and consumes the typed
+// `is_cap_only_n` / `is_cap_only_c` flags that ParseAtomName already
+// populates in a single pass. Composition consumers (ComposeAtomSemantic)
+// should `ParseAtomName` once per atom and read the typed flags
+// directly, NOT call this string-taking wrapper. The wrapper exists
+// for diagnostic / spot-check use cases where a parsed object isn't
+// already in scope.
 //
 inline bool IsCapOnlyAtomName(const std::string& atom_name) {
-    return atom_name == "H1"  || atom_name == "H2"  || atom_name == "H3" ||
-           atom_name == "OXT" || atom_name == "HXT" ||
-           atom_name == "H2N" ||
-           atom_name == "OT1" || atom_name == "OT2";
+    const ParsedAtomName p = ParseAtomName(atom_name, /*parent_name=*/"");
+    return p.is_cap_only_n || p.is_cap_only_c;
 }
 
 

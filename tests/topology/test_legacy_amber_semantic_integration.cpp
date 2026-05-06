@@ -637,6 +637,173 @@ std::unique_ptr<nmr::Protein> MakeNTermProProtein() {
 
 }  // namespace
 
+// ============================================================================
+// ParseAtomName cap-only flag population — codex Finding 3 single-parse
+//
+// `ComposeAtomSemantic` parses each atom name ONCE per atom and dispatches
+// from typed flags. This unit test verifies that `ParseAtomName` populates
+// the cap-only flags correctly so the dispatch path is sound.
+// ============================================================================
+
+TEST(LegacyAmberSemanticIntegration, ParseAtomNamePopulatesCapOnlyFlags) {
+    namespace gen = nmr::topology_generated;
+
+    // NTERM cap-only set: H1, H2, H3.
+    for (const std::string& nm : {"H1", "H2", "H3"}) {
+        const gen::ParsedAtomName p = gen::ParseAtomName(nm, "");
+        EXPECT_TRUE(p.is_cap_only_n) << nm << " must set is_cap_only_n";
+        EXPECT_FALSE(p.is_cap_only_c) << nm << " must NOT set is_cap_only_c";
+        EXPECT_TRUE(p.is_n_terminus) << nm << " must set is_n_terminus";
+        EXPECT_FALSE(p.is_c_terminus) << nm << " must NOT set is_c_terminus";
+    }
+
+    // CTERM cap-only set: OXT, HXT.
+    for (const std::string& nm : {"OXT", "HXT"}) {
+        const gen::ParsedAtomName p = gen::ParseAtomName(nm, "");
+        EXPECT_TRUE(p.is_cap_only_c) << nm << " must set is_cap_only_c";
+        EXPECT_FALSE(p.is_cap_only_n) << nm << " must NOT set is_cap_only_n";
+        EXPECT_TRUE(p.is_c_terminus) << nm << " must set is_c_terminus";
+        EXPECT_FALSE(p.is_n_terminus) << nm << " must NOT set is_n_terminus";
+    }
+
+    // Backbone amide H: NOT cap-only (chain table carries this).
+    {
+        const gen::ParsedAtomName p = gen::ParseAtomName("H", "");
+        EXPECT_FALSE(p.is_cap_only_n);
+        EXPECT_FALSE(p.is_cap_only_c);
+        EXPECT_TRUE(p.is_backbone);
+        EXPECT_EQ(BackboneRole::AmideHydrogen, p.backbone_role);
+    }
+
+    // HID-variant ring atom HD1: NOT cap-only.
+    {
+        const gen::ParsedAtomName p = gen::ParseAtomName("HD1", "ND1");
+        EXPECT_FALSE(p.is_cap_only_n);
+        EXPECT_FALSE(p.is_cap_only_c);
+        EXPECT_FALSE(p.is_backbone);
+    }
+
+    // H2N / OT1 / OT2 are NOT recognised as cap-only (CharmmLegacy
+    // cleanup, codex Finding 2). They parse as element-only sidechain
+    // atoms — neither cap-only-n nor cap-only-c.
+    for (const std::string& nm : {"H2N", "OT1", "OT2"}) {
+        const gen::ParsedAtomName p = gen::ParseAtomName(nm, "");
+        EXPECT_FALSE(p.is_cap_only_n)
+            << nm << " must NOT set is_cap_only_n (CharmmLegacy retired)";
+        EXPECT_FALSE(p.is_cap_only_c)
+            << nm << " must NOT set is_cap_only_c (CharmmLegacy retired)";
+        EXPECT_FALSE(p.is_n_terminus)
+            << nm << " must NOT set is_n_terminus (CharmmLegacy retired)";
+        EXPECT_FALSE(p.is_c_terminus)
+            << nm << " must NOT set is_c_terminus (CharmmLegacy retired)";
+    }
+}
+
+TEST(LegacyAmberSemanticIntegration, IsCapOnlyAtomNameDelegatesToParser) {
+    namespace gen = nmr::topology_generated;
+
+    // The string-taking wrapper agrees with the typed parser flags.
+    EXPECT_TRUE(gen::IsCapOnlyAtomName("H1"));
+    EXPECT_TRUE(gen::IsCapOnlyAtomName("H2"));
+    EXPECT_TRUE(gen::IsCapOnlyAtomName("H3"));
+    EXPECT_TRUE(gen::IsCapOnlyAtomName("OXT"));
+    EXPECT_TRUE(gen::IsCapOnlyAtomName("HXT"));
+
+    // Backbone, chain, and sidechain names: NOT cap-only.
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("N"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("CA"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("H"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("HA"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("CB"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("HD1"));
+
+    // CharmmLegacy retired (codex Finding 2): H2N / OT1 / OT2 are NOT cap-only.
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("H2N"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("OT1"));
+    EXPECT_FALSE(gen::IsCapOnlyAtomName("OT2"));
+}
+
+
+// ============================================================================
+// AminoAcid::Unknown with named atoms — codex Finding 4 fail-loud
+//
+// `ComposeAtomSemantic` previously skipped Unknown residues silently;
+// their atom slots in the result vector kept default-constructed rows
+// (Element::Unknown etc.). HasAtomSemantic() then reported true for
+// every atom, including the unknown-residue atoms, and calculators
+// silently consumed default rows. Fix: abort if an Unknown residue
+// carries any named atom. Toy-fixture stub-proteins (atoms without
+// pdb_atom_name) keep working because the stub-fixture guard fires
+// first.
+// ============================================================================
+
+namespace {
+
+std::unique_ptr<nmr::Protein> MakeMixedKnownAndUnknownProtein() {
+    auto pp = std::make_unique<nmr::Protein>();
+    nmr::Protein& p = *pp;
+
+    // Residue 1: ALA (known, with named atoms).
+    nmr::Residue ala;
+    ala.type = nmr::AminoAcid::ALA;
+    ala.sequence_number = 1;
+    ala.chain_id = "A";
+    const size_t ri_ala = p.AddResidue(ala);
+    {
+        const std::pair<const char*, nmr::Element> ala_set[] = {
+            {"N",   nmr::Element::N},
+            {"CA",  nmr::Element::C},
+            {"C",   nmr::Element::C},
+            {"O",   nmr::Element::O},
+            {"H",   nmr::Element::H},
+            {"HA",  nmr::Element::H},
+            {"CB",  nmr::Element::C},
+            {"HB1", nmr::Element::H},
+            {"HB2", nmr::Element::H},
+            {"HB3", nmr::Element::H},
+        };
+        std::vector<size_t> atom_indices;
+        for (const auto& kv : ala_set) {
+            auto a = nmr::Atom::Create(kv.second);
+            a->pdb_atom_name = kv.first;
+            a->residue_index = ri_ala;
+            atom_indices.push_back(p.AddAtom(std::move(a)));
+        }
+        p.MutableResidueAt(ri_ala).atom_indices = atom_indices;
+    }
+
+    // Residue 2: AminoAcid::Unknown but with named atoms.
+    nmr::Residue unk;
+    unk.type = nmr::AminoAcid::Unknown;
+    unk.sequence_number = 2;
+    unk.chain_id = "A";
+    const size_t ri_unk = p.AddResidue(unk);
+    {
+        auto a = nmr::Atom::Create(nmr::Element::C);
+        a->pdb_atom_name = "X1";  // arbitrary non-standard atom name
+        a->residue_index = ri_unk;
+        p.MutableResidueAt(ri_unk).atom_indices.push_back(
+            p.AddAtom(std::move(a)));
+    }
+
+    return pp;
+}
+
+}  // namespace
+
+using LegacyAmberSemanticIntegrationDeathTest = ::testing::Test;
+
+TEST_F(LegacyAmberSemanticIntegrationDeathTest, UnknownResidueWithNamedAtomsAborts) {
+    auto pp = MakeMixedKnownAndUnknownProtein();
+    nmr::Protein& p = *pp;
+
+    std::vector<nmr::Vec3> positions(p.AtomCount(), nmr::Vec3::Zero());
+    EXPECT_DEATH(
+        p.FinalizeConstruction(positions),
+        "AminoAcid::Unknown residue.*carries .* named atom");
+}
+
+
 TEST(LegacyAmberSemanticIntegration, ProNTermPreservesPyrrolidineRing) {
     auto pp = MakeNTermProProtein();
     nmr::Protein& p = *pp;

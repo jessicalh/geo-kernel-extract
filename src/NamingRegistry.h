@@ -91,11 +91,11 @@ enum class NamingSource : uint8_t {
     /// fleet_amber/{1P9J,1Z9B}/topol.top mol_X rtp blocks.
     ///
     /// THIS ENUM VALUE REPLACES the historic `ToolContext::Charmm`
-    /// tag that was overloaded to mean "pdb2gmx-AMBER-RTP deviation
-    /// in fleet_amber TPRs". CHARMM-the-force-field is retired
-    /// (2026-05-02 quarantined-legacy); the only live consumer of the
-    /// rules formerly tagged Charmm is the AMBER trajectory loader
-    /// reading pdb2gmx-AMBER topologies via libgromacs-direct.
+    /// atom-name source tag that was overloaded to mean "pdb2gmx-AMBER-
+    /// RTP deviation in fleet_amber TPRs". CHARMM-the-force-field is
+    /// retired (2026-05-02 quarantined-legacy); the only live consumer
+    /// of the rules formerly tagged Charmm is the AMBER trajectory
+    /// loader reading pdb2gmx-AMBER topologies via libgromacs-direct.
     Pdb2gmxAmberRtpDeviation = 2,
 
     /// cifpp's PDB parsing yields IUPAC convention names (mostly
@@ -110,13 +110,6 @@ enum class NamingSource : uint8_t {
     /// already AMBER ff14SB canonical; rules tagged here handle
     /// any residual cases.
     OrcaEcho                 = 4,
-
-    /// CHARMM legacy / quarantined-XTC path (retired 2026-05-02). The
-    /// CHARMM-port collapse rules H<->HN, OT1<->O, OT2<->OXT lived
-    /// here historically. Any future load path that legitimately
-    /// produces CHARMM-force-field names taints with this source;
-    /// no current path does.
-    CharmmLegacy             = 5,
 
     /// Markley et al. 1998 J. Biomol. NMR 12:1-23 nomenclature
     /// recommendations (the IUPAC-IUB 1969 update for proteins). The
@@ -136,6 +129,19 @@ enum class NamingSource : uint8_t {
     /// perimeter labels per topology-encoding-dependencies §C.3).
     /// Currently reserved; no runtime rules tagged here yet.
     ProjectSynthesis         = 9,
+
+    // NOTE: `CharmmLegacy = 5` was removed 2026-05-06 (codex-review
+    // Finding 2). It was never tagged by any active load path; the
+    // 3 rules carrying it (HN->H, OT1->O, OT2->OXT) had no live
+    // emitter (verified: PdbFileReader / FullSystemReader /
+    // OrcaRunLoader all produce canonical AMBER ff14SB; fleet_amber
+    // 1Z9B and 1P9J fixtures have neither HN nor OT1/OT2 nor H2N).
+    // CHARMM-the-force-field is retired (2026-05-02 memory entry
+    // `project_charmm_retired_amber_only_2026-05-02`); a future
+    // legitimate CHARMM-input path can be added with a non-CHARMM-
+    // confused source tag at that time. The numeric value 5 is
+    // retired; do NOT reuse for a different concept (would alias old
+    // serialised bytes if any persisted records exist).
 };
 
 inline const char* NamingSourceName(NamingSource src) {
@@ -145,7 +151,6 @@ inline const char* NamingSourceName(NamingSource src) {
         case NamingSource::Pdb2gmxAmberRtpDeviation: return "Pdb2gmxAmberRtpDeviation";
         case NamingSource::CifppPdbInput:            return "CifppPdbInput";
         case NamingSource::OrcaEcho:                 return "OrcaEcho";
-        case NamingSource::CharmmLegacy:             return "CharmmLegacy";
         case NamingSource::Markley1998:              return "Markley1998";
         case NamingSource::BmrbAtomNomTbl:           return "BmrbAtomNomTbl";
         case NamingSource::IupacIub1969:             return "IupacIub1969";

@@ -487,7 +487,10 @@ bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
     if (ctx.input_name == "H1" || ctx.input_name == "H2"
             || ctx.input_name == "H3") return true;
     if (ctx.input_name == "OXT" || ctx.input_name == "HXT") return true;
-    if (ctx.input_name == "H2N") return true;  // CHARMM-port NTERM literal
+    // H2N / OT1 / OT2 NOT whitelisted: removed 2026-05-06 with the
+    // CharmmLegacy source (codex-review Finding 2). Any reappearance
+    // of these names from a future load path needs a concrete source
+    // tag and a rule, not silent canonicality acceptance.
 
     return false;
 }
@@ -684,23 +687,22 @@ std::vector<std::string> NamingApplicator::ApplyResidue(
 //        the old Charmm tag was overloaded to mean "pdb2gmx-AMBER-RTP
 //        deviation in fleet_amber TPRs", NOT CHARMM force-field naming;
 //        the new tag names what the rules actually represent).
-//   (Standard, Charmm) for backbone H<->HN, OT1/OT2<->O/OXT
-//      → NamingSource::CharmmLegacy (these rules historically lived in
-//        the registry but are no longer fired by any active load path
-//        post-2026-05-02 CHARMM retirement; retained for completeness
-//        and any future legacy-CHARMM input).
-//   (Charmm, Standard) for backbone HN->H, OT1/OT2->O/OXT (pre-Markley
-//      Charmm-input collapse)
-//      → NamingSource::CharmmLegacy as above. The fleet_amber TPRs that
-//        flow through here were tagged as "Charmm" in the old code but
-//        do not in fact carry these names (no HN, no OT1/OT2 in
-//        fleet_amber topol.top).
 //   (Standard, Amber) for LYN HZ shift, GLY HA collapse
 //      → NamingSource::AmberFf14SBCanonical (these are AMBER ff14SB
 //        canonical mappings, project decisions about what the canonical
 //        target should be).
 //
-// Every rule's predicate now examines the sibling_input_names snapshot
+// Removed 2026-05-06 (codex-review Finding 2): the historic
+// "(Standard, Charmm)" and "(Charmm, Standard)" CHARMM-port collapse
+// rules (HN<->H, OT1<->O, OT2<->OXT) and their CharmmLegacy source
+// tag had no live emitter — neither the fleet_amber TPRs (1Z9B,
+// 1P9J) nor any active load path (PdbFileReader, FullSystemReader,
+// OrcaRunLoader) produces HN / OT1 / OT2. CHARMM-the-force-field is
+// retired (memory `project_charmm_retired_amber_only_2026-05-02`);
+// a future CHARMM-input path can re-add these mappings under a
+// concrete source tag at that time.
+//
+// Every rule's predicate examines the sibling_input_names snapshot
 // rather than firing unconditionally on a single (atom_name, residue,
 // from_context, to_context) lookup. This makes the rules idempotent on
 // canonical inputs (canonical sibling sets don't match the non-canonical
@@ -709,55 +711,6 @@ std::vector<std::string> NamingApplicator::ApplyResidue(
 // ----------------------------------------------------------------------------
 
 void NamingApplicator::InstallRules() {
-    // ========================================================================
-    // CHARMM legacy backbone atom-name rules (retired path; rules retained
-    // for any future legacy input)
-    // ========================================================================
-    //
-    // These rules fire only when ctx.source == CharmmLegacy. The active
-    // load paths (PdbFileReader, FullSystemReader, OrcaRunLoader) do not
-    // tag inputs with CharmmLegacy. The rules are kept so a future
-    // legitimate CHARMM input path can be added by tagging its inputs
-    // appropriately, without re-deriving the well-known H/HN, OT1/OT2,
-    // O/OXT mappings.
-    //
-    // Reference: AMBER ff14SB cap convention encoded in the substrate
-    // generator's kCapCterm tables; CHARMM36m residue topology.
-
-    rules_.push_back(NamingRule{
-        NamingSource::CharmmLegacy,
-        "CharmmHnToCanonicalH",
-        "CHARMM36m backbone amide HN -> AMBER ff14SB / IUPAC H",
-        [](const NamingContext& c) {
-            return c.source == NamingSource::CharmmLegacy
-                && c.input_name == "HN";
-        },
-        [](const NamingContext&) { return std::string("H"); },
-    });
-
-    rules_.push_back(NamingRule{
-        NamingSource::CharmmLegacy,
-        "CharmmOt1ToCanonicalO",
-        "CHARMM36m C-terminal OT1 (chain carbonyl O) -> AMBER ff14SB O",
-        [](const NamingContext& c) {
-            return c.source == NamingSource::CharmmLegacy
-                && c.input_name == "OT1";
-        },
-        [](const NamingContext&) { return std::string("O"); },
-    });
-
-    rules_.push_back(NamingRule{
-        NamingSource::CharmmLegacy,
-        "CharmmOt2ToCanonicalOxt",
-        "CHARMM36m C-terminal OT2 (carboxyl O) -> AMBER ff14SB OXT",
-        [](const NamingContext& c) {
-            return c.source == NamingSource::CharmmLegacy
-                && c.input_name == "OT2";
-        },
-        [](const NamingContext&) { return std::string("OXT"); },
-    });
-
-
     // ========================================================================
     // LYN protonation-variant H-on-NZ — sibling-aware shift to canonical
     // ========================================================================

@@ -149,37 +149,13 @@ std::set<std::string> CanonicalSiblingSet(AminoAcid residue_type) {
 
 TEST(NamingApplicatorTest, RulesAreLoaded) {
     const auto& app = GlobalNamingApplicator();
-    // 23 rules expected after the 2026-05-06 install (3 CharmmLegacy +
-    // 20 across the Amber/pdb2gmx-RTP + Markley1998 vocabularies).
-    // The exact count is brittle; just assert a substantive load.
+    // ~20 rules expected after the 2026-05-06 install across the
+    // Amber/pdb2gmx-RTP + Markley1998 vocabularies. (The 3 historic
+    // CharmmLegacy rules were removed 2026-05-06 with codex Finding 2
+    // — no active load path tags inputs CharmmLegacy, fleet_amber
+    // fixtures don't contain HN/OT1/OT2.) The exact count is brittle;
+    // just assert a substantive load.
     EXPECT_GE(app.RuleCount(), 15u);
-}
-
-
-// ----------------------------------------------------------------------------
-// CharmmLegacy backbone-atom rules — H<->HN, OT1->O, OT2->OXT
-// ----------------------------------------------------------------------------
-
-TEST(NamingApplicatorTest, CharmmHnCollapsesToH) {
-    const auto& app = GlobalNamingApplicator();
-    auto ctx = MakeContext("HN", AminoAcid::ALA,
-                           NamingSource::CharmmLegacy,
-                           {"N", "HN", "CA", "HA", "C", "O",
-                            "CB", "HB1", "HB2", "HB3"});
-    EXPECT_EQ(app.Apply(ctx), "H");
-}
-
-TEST(NamingApplicatorTest, CharmmOt1OtCollapseToCanonical) {
-    const auto& app = GlobalNamingApplicator();
-    auto ctx_ot1 = MakeContext("OT1", AminoAcid::ALA,
-                               NamingSource::CharmmLegacy,
-                               {"N", "HN", "CA", "HA", "C", "OT1", "OT2"});
-    EXPECT_EQ(app.Apply(ctx_ot1), "O");
-
-    auto ctx_ot2 = MakeContext("OT2", AminoAcid::ALA,
-                               NamingSource::CharmmLegacy,
-                               {"N", "HN", "CA", "HA", "C", "OT1", "OT2"});
-    EXPECT_EQ(app.Apply(ctx_ot2), "OXT");
 }
 
 
@@ -503,7 +479,10 @@ TEST(NamingApplicatorOracle, RecognisesChainAtoms) {
 
 TEST(NamingApplicatorOracle, RecognisesCapAtoms) {
     const auto& app = GlobalNamingApplicator();
-    for (const std::string& nm : {"H1", "H2", "H3", "OXT", "HXT", "H2N"}) {
+    // H2N is intentionally NOT in this set: removed 2026-05-06 with
+    // CharmmLegacy cleanup (codex Finding 2). Any reappearance of H2N
+    // in a future load path needs a concrete source tag and rule.
+    for (const std::string& nm : {"H1", "H2", "H3", "OXT", "HXT"}) {
         auto ctx = MakeContext(nm, AminoAcid::ALA,
                                NamingSource::AmberFf14SBCanonical, {});
         EXPECT_TRUE(app.IsCanonical(ctx))
@@ -536,12 +515,13 @@ TEST(NamingApplicatorResolve, EmptyMapCanonicalInputPassesThrough) {
 
 TEST(NamingApplicatorResolve, SingleRuleFiringReturnsItsOutput) {
     const auto& app = GlobalNamingApplicator();
-    // CharmmHnToCanonicalH is the only rule that fires for ctx with
-    // source=CharmmLegacy + input=HN.
-    auto ctx = MakeContext("HN", AminoAcid::ALA,
-                           NamingSource::CharmmLegacy,
-                           {"N", "HN", "CA", "HA", "C", "O"});
-    EXPECT_EQ(app.Apply(ctx), "H");
+    // GlyHaToHa2_PreMarkley is the only rule that fires for GLY/HA
+    // input under CifppPdbInput when siblings have HA only (no HA2/HA3).
+    // This exercises the "exactly one rule" branch in Resolve().
+    auto ctx = MakeContext("HA", AminoAcid::GLY,
+                           NamingSource::CifppPdbInput,
+                           {"N", "H", "CA", "HA", "C", "O"});
+    EXPECT_EQ(app.Apply(ctx), "HA2");
 }
 
 TEST(NamingApplicatorResolve, MultipleRulesAgreeingReturnsSharedOutput) {
