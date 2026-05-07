@@ -98,13 +98,14 @@ For delocalised groups the convention used in this file is the formal Lewis stru
   - super ∈ {true=t, false=f}: true if atom is also a member of a higher-order Q super-group (Val QG, Leu QD, Arg QH, Phe/Tyr QR). For Markley letter-only labels (M alone) the M and the Q super are both true if the methyl is in QG/QD; in the row I encode the M as "M/Locant/Branch/true" because the same H-atom is counted in both.
   - "—" for atoms with no pseudoatom membership.
 - `polarH`: `PolarHKind` enum name verbatim (NotPolar, BackboneAmide, SidechainPrimaryAmide, IndoleNH, AmmoniumNH, GuanidiniumNH, ImidazoleNH, CarboxylOH, HydroxylOH_Aliphatic, HydroxylOH_Aromatic, ThiolSH, OtherPolarH).
-- `ring_primary` / `ring_secondary`: `RingMembership` shorthand `sys/pos/size/arom/het` where:
-  - sys ∈ {Benzene_Phe, Benzene_Tyr, Imidazole_His, Indole_Trp_5, Indole_Trp_6, Pyrrolidine_Pro, NotInRing}
-  - pos ∈ {Ipso, Ortho1, Ortho2, Meta1, Meta2, Para, PyrroleAlpha, PyrroleBeta, BridgeFusion, Heteroatom_NH, Heteroatom_NoH, Heteroatom_OH, Saturated, NotInRing}
-  - size: 5 or 6 (0 if NotInRing)
+- `ring_primary` / `ring_secondary` / `ring_tertiary`: `RingMembership` shorthand `sys/pos/size/arom/het` where:
+  - sys ∈ {Benzene_Phe, Benzene_Tyr, Imidazole_His, Indole_Trp_5, Indole_Trp_6, Pyrrolidine_Pro, Indole_Trp_9, NotInRing}
+  - pos ∈ {Ipso, Ortho1, Ortho2, Meta1, Meta2, Para, PyrroleAlpha, PyrroleBeta, BridgeFusion, Heteroatom_NH, Heteroatom_NoH, Heteroatom_OH, Saturated, ProRingNitrogen, ProRingAlphaCarbon, ProRingBeta, ProRingPuckerPivot, ProRingDelta, PerimeterMember, NotInRing}
+  - size: 5, 6, or 9 (0 if NotInRing)
   - arom: t/f
-  - het: integer 0/1/2 (number of heteroatoms in the ring)
+  - het: integer 0..N (number of heteroatoms in the ring)
   - "NotInRing" alone shorthand for the all-default RingMembership.
+  - The `ring_tertiary` slot is **not shown as a column in any per-residue table** to keep the table format uniform across the standard 20. Where it is populated — currently only for the indole 9-atom perimeter on TRP (`RingSystemKind::Indole_Trp_9` per Case 1995, J. Biomol. NMR 6, 341-346) — the per-atom assignments are documented in a per-residue prose note immediately following that residue's table. Treat the absence of a `ring_tertiary` column as "default `NotInRing` unless a prose note in the residue's section says otherwise." The TRP section is the only such note as of Slice A.
 - `prochiral`: `ProchiralStereo` enum name verbatim (NotProchiral, ProR, ProS, Unassigned).
 - `formal_chg`: int8 (-1, 0, +1).
 - `exch`: t/f, derived as "exch = (polarH != NotPolar)". Always true for a polar H, false otherwise.
@@ -610,28 +611,37 @@ PHE encoding matches `SynthesisedForPhe` exactly.
 
 Atoms: N, CA, HA, C, O, CB, HB2, HB3, CG, HG2, HG3, CD, HD2, HD3.
 
-Special: Pro has no backbone H (secondary amine, in-ring N). Cα is in the ring as well, but the ring labels for Cα are conventionally not encoded as ring-position (Cα is treated as backbone). Below: ring atoms are N, Cβ, Cγ, Cδ (and Cα for completeness, encoded as ring-membership-only since Pyrrolidine_Pro spans those 5 atoms).
+Special: Pro has no backbone H (secondary amine, in-ring N). Cα is in the ring AND has Locant::None — the canonical orthogonality case (`Locant` records the side-chain Greek-letter position; `RingPosition` records ring membership; the two are independent).
+
+Per-atom `ring_primary` uses the chemistry-distinct Pro labels rather than the generic `Saturated`:
+- `ProRingNitrogen` for the in-ring secondary-amine N (chemistry-distinct from generic `Heteroatom_NoH`).
+- `ProRingAlphaCarbon` for the chiral Cα.
+- `ProRingBeta` for Cβ (sidechain methylene).
+- `ProRingPuckerPivot` for Cγ (the puckering pivot — endo/exo motion drives the 1-2 ppm Cβ/Cδ exo/endo shift difference per Vega & Boyer 1979 + Schubert et al. 2002).
+- `ProRingDelta` for Cδ (methylene bonded directly to ring N).
+
+Hydrogen atoms attached to ring carbons inherit the parent C's ring label (HA → `ProRingAlphaCarbon`; HB2/HB3 → `ProRingBeta`; etc.) per the existing convention used for aromatic-ring Hs.
 
 | atom | element | planar_group | planar_stereo | pseudoatom | polarH | ring_primary | ring_secondary | prochiral | formal_chg | exch | notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| N | N | None | NA | — | NotPolar | Pyrrolidine_Pro/Heteroatom_NoH/5/f/1 | NotInRing | NotProchiral | 0 | f | secondary amine; in the ring; no H |
-| CA | C | None | NA | — | NotPolar | Pyrrolidine_Pro/Saturated/5/f/1 | NotInRing | NotProchiral | 0 | f | Cα also in ring (Markley caption: "priority leads out from main chain Cα") |
-| HA | H | None | NA | — | NotPolar | NotInRing | NotInRing | NotProchiral | 0 | f | |
+| N | N | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingNitrogen/5/f/1 | NotInRing | NotProchiral | 0 | f | secondary amine; in the ring; no H |
+| CA | C | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingAlphaCarbon/5/f/1 | NotInRing | NotProchiral | 0 | f | Locant::None + in-ring (orthogonality) |
+| HA | H | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingAlphaCarbon/5/f/1 | NotInRing | NotProchiral | 0 | f | inherits parent CA label |
 | C | C | PeptideAmide | NA | — | NotPolar | NotInRing | NotInRing | NotProchiral | 0 | f | |
 | O | O | PeptideAmide | NA | — | NotPolar | NotInRing | NotInRing | NotProchiral | 0 | f | |
-| CB | C | None | NA | — | NotPolar | Pyrrolidine_Pro/Saturated/5/f/1 | NotInRing | NotProchiral | 0 | f | |
-| HB2 | H | None | NA | Q/Beta/0/false | NotPolar | NotInRing | NotInRing | ProS | 0 | f | QB |
-| HB3 | H | None | NA | Q/Beta/0/false | NotPolar | NotInRing | NotInRing | ProR | 0 | f | QB |
-| CG | C | None | NA | — | NotPolar | Pyrrolidine_Pro/Saturated/5/f/1 | NotInRing | NotProchiral | 0 | f | |
-| HG2 | H | None | NA | Q/Gamma/0/false | NotPolar | NotInRing | NotInRing | ProS | 0 | f | QG |
-| HG3 | H | None | NA | Q/Gamma/0/false | NotPolar | NotInRing | NotInRing | ProR | 0 | f | QG |
-| CD | C | None | NA | — | NotPolar | Pyrrolidine_Pro/Saturated/5/f/1 | NotInRing | NotProchiral | 0 | f | |
-| HD2 | H | None | NA | Q/Delta/0/false | NotPolar | NotInRing | NotInRing | ProS | 0 | f | QD; Markley Fig 1 marks Hδ3 (R) on Pro — implies Hδ2=ProS (typical alternation) |
-| HD3 | H | None | NA | Q/Delta/0/false | NotPolar | NotInRing | NotInRing | ProR | 0 | f | QD; Hδ3 = ProR per Markley |
+| CB | C | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingBeta/5/f/1 | NotInRing | NotProchiral | 0 | f | |
+| HB2 | H | None | NA | Q/Beta/0/false | NotPolar | Pyrrolidine_Pro/ProRingBeta/5/f/1 | NotInRing | ProS | 0 | f | QB; inherits parent CB label |
+| HB3 | H | None | NA | Q/Beta/0/false | NotPolar | Pyrrolidine_Pro/ProRingBeta/5/f/1 | NotInRing | ProR | 0 | f | QB; inherits parent CB label |
+| CG | C | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingPuckerPivot/5/f/1 | NotInRing | NotProchiral | 0 | f | endo/exo puckering pivot |
+| HG2 | H | None | NA | Q/Gamma/0/false | NotPolar | Pyrrolidine_Pro/ProRingPuckerPivot/5/f/1 | NotInRing | ProS | 0 | f | QG; inherits parent CG label |
+| HG3 | H | None | NA | Q/Gamma/0/false | NotPolar | Pyrrolidine_Pro/ProRingPuckerPivot/5/f/1 | NotInRing | ProR | 0 | f | QG; inherits parent CG label |
+| CD | C | None | NA | — | NotPolar | Pyrrolidine_Pro/ProRingDelta/5/f/1 | NotInRing | NotProchiral | 0 | f | bonded to ring N |
+| HD2 | H | None | NA | Q/Delta/0/false | NotPolar | Pyrrolidine_Pro/ProRingDelta/5/f/1 | NotInRing | ProS | 0 | f | QD; inherits parent CD label; Markley Fig 1 marks Hδ3 (R) on Pro — implies Hδ2=ProS (typical alternation) |
+| HD3 | H | None | NA | Q/Delta/0/false | NotPolar | Pyrrolidine_Pro/ProRingDelta/5/f/1 | NotInRing | ProR | 0 | f | QD; inherits parent CD label; Hδ3 = ProR per Markley |
 
 Formal charges total: 0.
 
-Note: `RingMembership.aromatic = false` for Pro pyrrolidine. `RingMembership.planar = false` (saturated; ring-puckers; conformation-side data).
+Note: `RingMembership.aromatic = false` for Pro pyrrolidine. `RingMembership.planar = false` (saturated; ring-puckers; conformation-side data). The `Ring` class hierarchy entry is `ProPyrrolidineRing` with `Aromaticity = None`, `RingSize = 5`, `Intensity = 0` (Joule & Mills 2010 ch. 7 — saturated heterocycles do not carry π current; literal 0.0 is physics, not calibration).
 
 ### SER — serine
 
@@ -713,6 +723,7 @@ Notes:
 - The "para" position of the 6-ring is BridgeFusion (Cδ2 or Cε2), so Para is not a separate label here; the perimeter is Ortho1=Cε3, Ortho2=Cζ2, Meta1=Cζ3, Meta2=Cη2 in Markley's convention. (Bridge-relative Para is two-bonds from the BridgeFusion across the 6-ring, which would be one of Cζ3 or Cη2, but neither is labelled "Para" because the ring already has two BridgeFusion atoms.) Markley does not give "ipso/ortho/meta/para" for the indole 6-ring in published convention; the labels above (Ortho1/Ortho2/Meta1/Meta2) are the synthesis from the Markley dossier text-2:230-358 + dossier `topology-fields-research-2026-05-05.md` lines 1108-1117. **Alternative encoding option**: encode Cε3/Cζ3/Cη2/Cζ2 with positions PyrroleBeta-style or as "perimeter-1, perimeter-2, perimeter-3, perimeter-4". This is in the disagreement-log section.
 - The BridgeFusion atoms (Cδ2, Cε2) carry both `ring_primary` (5-ring per smaller-ring convention from `RingPosition` docstring) AND `ring_secondary` (6-ring).
 - planar_group: arguably both 5-ring atoms AND 6-ring atoms are part of the same delocalised "indole" π-system. The convention chosen here is to assign `Aromatic5Ring` for the pyrrole-membership atoms (CG, CD1, HD1, NE1, HE1, CE2, CD2) and `Aromatic6Ring` for the perimeter benzene atoms (CE3, HE3, CZ2, HZ2, CZ3, HZ3, CH2, HH2). The bridgeheads (CE2, CD2) are tagged Aromatic5Ring per their primary ring; the 6-ring secondary RingMembership is the "also in 6-ring" record.
+- **Indole 9-atom perimeter (`ring_tertiary`)**: every perimeter heavy atom (CG, CD1, NE1, CE2, CZ2, CH2, CZ3, CE3, CD2) and every attached H (HD1, HE1, HZ2, HH2, HZ3, HE3) carries a tertiary `RingMembership` of `Indole_Trp_9/PerimeterMember/9/t/1`. The perimeter is the conjugated π current circuit (Case 1995, J. Biomol. NMR 6, 341-346): `I = -19.2 nA/T = I(TrpPyrrole) + I(TrpBenzene)` ratio verified at unity post-2026-04-02 (HM correction; PATTERNS.md §24). The `PerimeterMember` position label is membership-only — finer per-walk-position labels (e.g. IUPAC indole N1/C2/C3/C3a/C4/C5/C6/C7/C7a numbering) are an additive future extension when a planned calculator concretely uses per-position perimeter stratification. Bridgeheads CE2 and CD2 are unique in occupying all three slots (primary=Indole_Trp_5, secondary=Indole_Trp_6, tertiary=Indole_Trp_9).
 
 ### TYR — tyrosine
 

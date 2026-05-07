@@ -371,7 +371,7 @@ roles exist. EnrichmentResult assigns them using typed properties only.
 
 ## Ring Classification (line 1179)
 
-**TRUE.** All 8 ring types as classes with virtual properties. Matches
+**TRUE.** All 9 ring types (8 aromatic + Pro pyrrolidine) as classes with virtual properties. Matches
 code exactly.
 
 ---

@@ -175,6 +175,25 @@ public:
     const char* TypeName() const override { return "HIE"; }
 };
 
+// Pro pyrrolidine: saturated 5-ring (N + Cα + Cβ + Cγ + Cδ).
+// Aromaticity is None — the ring is not π-conjugated, so the
+// ring-current intensity is identically zero. Joule & Mills 2010
+// ch. 7 (saturated heterocycles) is the chemistry citation: ring
+// current is a property of cyclic π conjugation, which pyrrolidine
+// lacks. The literal 0.0 values for Intensity / LiteratureIntensity
+// / JBLobeOffset are therefore physics, not calibration parameters,
+// and are not surfaced through CalculatorConfig.
+class ProPyrrolidineRing : public FiveMemberedRing {
+public:
+    ProPyrrolidineRing() { type_index = RingTypeIndex::ProPyrrolidine; }
+    double Intensity() const override { return 0.0; }
+    double LiteratureIntensity() const override { return 0.0; }
+    double JBLobeOffset() const override { return 0.0; }
+    int NitrogenCount() const override { return 1; }
+    RingAromaticity Aromaticity() const override { return RingAromaticity::None; }
+    const char* TypeName() const override { return "PRO"; }
+};
+
 
 // ============================================================================
 // Fused ring (TRP 9-atom indole perimeter)

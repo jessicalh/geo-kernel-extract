@@ -165,35 +165,92 @@ enum class HeuristicTier { REPORT, PASS, SILENT };
 
 enum class RingSize { FiveMembered = 5, SixMembered = 6 };
 
-enum class RingAromaticity { Full, Reduced, Weak };
+// Aromaticity classification for ring chemistries.
+// `None` covers saturated rings (Pro pyrrolidine); `Full` covers
+// six-membered aromatic carbocycles and the fully-conjugated indole
+// perimeter; `Reduced` covers five-membered aromatic heterocycles
+// like the indole pyrrole subring; `Weak` covers imidazoles
+// where ring-current strength is variant-sensitive (His HID/HIE/HIP).
+// Joule & Mills, "Heterocyclic Chemistry" 5e (2010), chapters 7
+// (saturated heterocycles), 13 (pyrroles, indoles) and 17 (imidazoles).
+enum class RingAromaticity { Full, Reduced, Weak, None };
 
 
 // ============================================================================
-// RingTypeIndex (enum) -- 8 ring types
+// RingTypeIndex (enum) -- 9 ring types
 // ============================================================================
+//
+// Indices 0..kAromaticRingTypeCount-1 are aromatic ring chemistries;
+// indices kAromaticRingTypeCount..Count-1 are saturated. Calculator
+// per-aromatic-type accumulator arrays are sized
+// `kAromaticRingTypeCount` and gate Pro out via the conventional
+// `if (ti < kAromaticRingTypeCount)` guard.
 
 enum class RingTypeIndex {
-    PheBenzene    = 0,
-    TyrPhenol     = 1,
-    TrpBenzene    = 2,
-    TrpPyrrole    = 3,
-    TrpPerimeter  = 4,
-    HisImidazole  = 5,
-    HidImidazole  = 6,
-    HieImidazole  = 7,
-    Count         = 8
+    PheBenzene     = 0,
+    TyrPhenol      = 1,
+    TrpBenzene     = 2,
+    TrpPyrrole     = 3,
+    TrpPerimeter   = 4,
+    HisImidazole   = 5,
+    HidImidazole   = 6,
+    HieImidazole   = 7,
+    ProPyrrolidine = 8,   ///< Saturated 5-ring (Pro pyrrolidine).
+                          ///< Aromaticity = None; Intensity = 0
+                          ///< (Joule & Mills 2010 ch. 7). Falls outside
+                          ///< the `< kAromaticRingTypeCount` boundary
+                          ///< for per-aromatic-type calculator
+                          ///< accumulation.
+    Count          = 9
 };
+
+/// Boundary between aromatic ring types (indices 0..7) and saturated
+/// ring types (indices 8..Count-1). Saturated rings are excluded from
+/// per-aromatic-type calculator aggregation by the conventional
+/// `if (ti < kAromaticRingTypeCount)` guard.
+///
+/// **Adoption in calculator code is deferred to the per-calculator
+/// update slices.** Bundle C / Slice A is substrate-side only: the
+/// constant is declared here and documented as the design seam, but
+/// `BiotSavartResult.cpp`, `HaighMallionResult.cpp`,
+/// `PiQuadrupoleResult.cpp`, `DispersionResult.cpp`, and
+/// `ConformationAtom.h`'s `std::array<double, 8>` per-aromatic-type
+/// accumulators continue to use the literal `8` until each
+/// calculator's own update slice picks them up. The literal `8` in
+/// `ConformationAtom.h` is also the stable NPY ABI shape (eight
+/// per-aromatic-type entries per atom in the trajectory output);
+/// changing it requires a coordinated NPY schema migration.
+///
+/// The static_asserts below pin the constant to the cross-enum
+/// invariant: `kAromaticRingTypeCount` IS the index where saturated
+/// ring types begin, and `Count` must remain strictly greater. If a
+/// future change adds a new aromatic ring at index 8 (shifting Pro
+/// to 9), the first assert fails until `kAromaticRingTypeCount` is
+/// updated to 9 too — surfacing the boundary shift at the build line
+/// instead of leaving the calculator-side guards silently
+/// off-by-one.
+inline constexpr int kAromaticRingTypeCount = 8;
+static_assert(static_cast<int>(RingTypeIndex::ProPyrrolidine) == kAromaticRingTypeCount,
+              "kAromaticRingTypeCount IS the index of the first saturated "
+              "ring type; if you re-order RingTypeIndex (e.g. inserting a "
+              "new aromatic ring before ProPyrrolidine), update the "
+              "constant in lockstep so the calculator-side aromatic "
+              "boundary guards remain correct.");
+static_assert(kAromaticRingTypeCount < static_cast<int>(RingTypeIndex::Count),
+              "kAromaticRingTypeCount must be a valid ring type index, "
+              "not the Count sentinel.");
 
 inline const char* RingTypeName(RingTypeIndex t) {
     switch (t) {
-        case RingTypeIndex::PheBenzene:   return "PHE";
-        case RingTypeIndex::TyrPhenol:    return "TYR";
-        case RingTypeIndex::TrpBenzene:   return "TRP6";
-        case RingTypeIndex::TrpPyrrole:   return "TRP5";
-        case RingTypeIndex::TrpPerimeter: return "TRP9";
-        case RingTypeIndex::HisImidazole: return "HIS";
-        case RingTypeIndex::HidImidazole: return "HID";
-        case RingTypeIndex::HieImidazole: return "HIE";
+        case RingTypeIndex::PheBenzene:     return "PHE";
+        case RingTypeIndex::TyrPhenol:      return "TYR";
+        case RingTypeIndex::TrpBenzene:     return "TRP6";
+        case RingTypeIndex::TrpPyrrole:     return "TRP5";
+        case RingTypeIndex::TrpPerimeter:   return "TRP9";
+        case RingTypeIndex::HisImidazole:   return "HIS";
+        case RingTypeIndex::HidImidazole:   return "HID";
+        case RingTypeIndex::HieImidazole:   return "HIE";
+        case RingTypeIndex::ProPyrrolidine: return "PRO";
         default: return "?";
     }
 }

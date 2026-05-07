@@ -872,9 +872,12 @@ TEST(LegacyAmberSemanticIntegration, ProNTermPreservesPyrrolidineRing) {
            "the cap entry's NotInRing placeholder — see "
            "spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5 "
            "and codex-review Finding 1.";
-    EXPECT_EQ(RingPositionLabel::Heteroatom_NoH,
+    EXPECT_EQ(RingPositionLabel::ProRingNitrogen,
               sem_n.ring_position.primary.position)
-        << "PRO N retains Heteroatom_NoH ring position label";
+        << "PRO N retains the Pro-specific ProRingNitrogen ring position "
+           "label (chemistry-distinct from generic Heteroatom_NoH; surfaces "
+           "the in-ring secondary-amine character of the Pro backbone N "
+           "per Vega & Boyer 1979, Schubert et al. 2002).";
 
     // Locked: backbone_role survives (chain-controlled identity field).
     EXPECT_EQ(BackboneRole::Nitrogen, sem_n.backbone_role);
@@ -887,6 +890,96 @@ TEST(LegacyAmberSemanticIntegration, ProNTermPreservesPyrrolidineRing) {
     EXPECT_EQ(1, sem_n.formal_charge)
         << "PRO N at NTERM_CHARGED must have formal_charge = +1 after "
            "cap composition; cap-delta of formal_charge survives.";
+}
+
+
+// ============================================================================
+// TRP indole 9-atom perimeter — Slice A added Indole_Trp_9 in the tertiary
+// RingMembership slot for the 9 perimeter heavy atoms (CG, CD1, NE1, CE2,
+// CZ2, CH2, CZ3, CE3, CD2) plus their attached H atoms (HD1, HE1, HZ2,
+// HH2, HZ3, HE3). Encodes the conjugated π current circuit (Case 1995,
+// J. Biomol. NMR 6, 341-346) as typed substrate alongside the chemical
+// 5-ring + 6-ring decomposition.
+//
+// The TRP bridgeheads CE2 and CD2 are the canonical three-membership
+// case: primary=Indole_Trp_5 + secondary=Indole_Trp_6 + tertiary=
+// Indole_Trp_9. Non-bridgehead perimeter atoms have primary + tertiary
+// populated with secondary EMPTY.
+// ============================================================================
+TEST(LegacyAmberSemanticIntegration, TrpPerimeterAtomsCarryIndoleTrp9Tertiary) {
+    const std::string fixture =
+        nmr::test::TestEnvironment::FleetAmberData() +
+        "/1P9J_5801/prep_run_20260501T141627Z/input.pdb";
+    if (!std::filesystem::exists(fixture)) {
+        GTEST_SKIP() << "fleet_amber 1P9J input.pdb not found";
+    }
+    auto result = nmr::BuildFromProtonatedPdb(fixture);
+    ASSERT_TRUE(result.Ok()) << result.error;
+    const Protein& protein = *result.protein;
+    const auto& topology = protein.LegacyAmber();
+
+    const std::vector<std::string> perimeter_heavy = {
+        "CG", "CD1", "NE1", "CE2", "CZ2", "CH2", "CZ3", "CE3", "CD2"};
+    const std::vector<std::string> bridgeheads = {"CE2", "CD2"};
+    const std::vector<std::string> non_bridge_perimeter = {
+        "CG", "CD1", "NE1", "CZ2", "CH2", "CZ3", "CE3"};
+
+    int trp_seen = 0;
+    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
+        const Residue& res = protein.ResidueAt(ri);
+        if (res.type != AminoAcid::TRP) continue;
+        ++trp_seen;
+
+        // Every perimeter heavy atom MUST carry the tertiary slot.
+        for (const auto& nm : perimeter_heavy) {
+            const size_t ai = FindAtomIndex(protein, ri, nm);
+            ASSERT_NE(SIZE_MAX, ai) << "TRP must carry " << nm;
+            const auto& sem = topology.SemanticAt(ai);
+            EXPECT_TRUE(sem.ring_position.HasTertiaryRing())
+                << "TRP perimeter atom " << nm << " must have tertiary slot populated";
+            EXPECT_EQ(RingSystemKind::Indole_Trp_9,
+                      sem.ring_position.tertiary.ring)
+                << "TRP perimeter atom " << nm << " tertiary ring must be Indole_Trp_9";
+            EXPECT_EQ(RingPositionLabel::PerimeterMember,
+                      sem.ring_position.tertiary.position)
+                << "TRP perimeter atom " << nm << " tertiary position must be PerimeterMember";
+            EXPECT_EQ(9, static_cast<int>(sem.ring_position.tertiary.ring_size))
+                << "TRP perimeter atom " << nm << " tertiary ring_size must be 9";
+        }
+
+        // Bridgeheads CE2 and CD2 occupy primary + secondary + tertiary.
+        // MembershipCount() must be 3.
+        for (const auto& nm : bridgeheads) {
+            const size_t ai = FindAtomIndex(protein, ri, nm);
+            ASSERT_NE(SIZE_MAX, ai);
+            const auto& rp = topology.SemanticAt(ai).ring_position;
+            EXPECT_EQ(3, rp.MembershipCount())
+                << "TRP bridgehead " << nm << " must be in 3 rings (5+6+9)";
+            EXPECT_EQ(RingSystemKind::Indole_Trp_5, rp.primary.ring);
+            EXPECT_EQ(RingSystemKind::Indole_Trp_6, rp.secondary.ring);
+            EXPECT_EQ(RingSystemKind::Indole_Trp_9, rp.tertiary.ring);
+        }
+
+        // Non-bridgehead perimeter atoms have primary + tertiary populated;
+        // secondary is EMPTY. MembershipCount() must be 2 (the case the
+        // old InTwoRings() predicate got wrong).
+        for (const auto& nm : non_bridge_perimeter) {
+            const size_t ai = FindAtomIndex(protein, ri, nm);
+            ASSERT_NE(SIZE_MAX, ai);
+            const auto& rp = topology.SemanticAt(ai).ring_position;
+            EXPECT_EQ(2, rp.MembershipCount())
+                << "TRP non-bridgehead perimeter atom " << nm
+                << " must be in 2 rings (primary 5/6-ring + tertiary 9-ring); "
+                   "this is the case where the old InTwoRings() returned the "
+                   "wrong answer";
+            EXPECT_TRUE(rp.HasPrimaryRing());
+            EXPECT_FALSE(rp.HasSecondaryRing())
+                << "TRP non-bridgehead " << nm
+                << " has empty secondary slot; HasSecondaryRing() must be false";
+            EXPECT_TRUE(rp.HasTertiaryRing());
+        }
+    }
+    EXPECT_GT(trp_seen, 0) << "1P9J fixture must contain at least one TRP";
 }
 
 }  // namespace

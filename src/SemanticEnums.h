@@ -501,6 +501,11 @@ enum class RingSystemKind : uint8_t {
     Indole_Trp_5    = 4,    ///< Trp pyrrole five-membered ring.
     Indole_Trp_6    = 5,    ///< Trp benzene six-membered ring fused with pyrrole.
     Pyrrolidine_Pro = 6,    ///< Pro saturated five-membered ring (non-aromatic).
+    Indole_Trp_9    = 7,    ///< Trp indole nine-atom perimeter (the
+                            ///< conjugated π current circuit; substrate-
+                            ///< encoded as a tertiary RingMembership
+                            ///< on each of the 9 perimeter atoms; Case
+                            ///< 1995, J. Biomol. NMR 6, 341-346).
 };
 
 
@@ -584,8 +589,46 @@ enum class RingPositionLabel : uint8_t {
     /// non-standard residues).
     Heteroatom_OH   = 12,
 
-    /// Saturated ring carbon (Pro C-beta, C-gamma, C-delta).
+    /// Saturated ring carbon (generic; reserved for non-Pro saturated
+    /// ring chemistry that may be added later). Pro ring atoms now
+    /// carry the Pro-specific position labels below.
     Saturated       = 13,
+
+    /// Pro pyrrolidine N (in-ring secondary amine; backbone nitrogen
+    /// also serves as the ring's heteroatom). Distinguished from
+    /// `Heteroatom_NoH` to surface that this is the chemistry-distinct
+    /// pyrrolidine nitrogen with backbone-amide character (Vega &
+    /// Boyer 1979; Schubert et al. 2002 — Pro N chemistry differs from
+    /// generic ring heteroatom).
+    ProRingNitrogen     = 14,
+
+    /// Pro pyrrolidine C-alpha (chiral centre AND in-ring atom; the
+    /// orthogonality of `Locant` and `RingPosition` is the canonical
+    /// case here — Locant::None plus ring-membership via this label).
+    ProRingAlphaCarbon  = 15,
+
+    /// Pro pyrrolidine C-beta (sidechain methylene; chemistry-distinct
+    /// from the saturated puckering pivot at Cgamma).
+    ProRingBeta         = 16,
+
+    /// Pro pyrrolidine C-gamma (the puckering pivot — endo/exo motion
+    /// drives the 1-2 ppm Cbeta/Cdelta exo/endo shift difference;
+    /// Schubert et al. 2002).
+    ProRingPuckerPivot  = 17,
+
+    /// Pro pyrrolidine C-delta (sidechain methylene bonded directly
+    /// to the ring N; chemistry-distinct from Cbeta because of N
+    /// proximity).
+    ProRingDelta        = 18,
+
+    /// Generic membership label for ring-system slots whose per-atom
+    /// walk-position taxonomy has not yet been committed. Used by the
+    /// tertiary `RingMembership` slot for atoms in the indole 9-atom
+    /// perimeter (`RingSystemKind::Indole_Trp_9`); finer-grained
+    /// perimeter labels are an additive future extension when a
+    /// concrete planned calculator wants per-walk-position
+    /// stratification.
+    PerimeterMember     = 19,
 };
 
 
@@ -600,35 +643,66 @@ enum class RingPositionLabel : uint8_t {
 struct RingMembership {
     RingSystemKind    ring          = RingSystemKind::NotInRing;
     RingPositionLabel position      = RingPositionLabel::NotInRing;
-    uint8_t           ring_size     = 0;       ///< 5 or 6, 0 if NotInRing.
+    uint8_t           ring_size     = 0;       ///< 5, 6, or 9 (TRP indole perimeter); 0 if NotInRing.
     bool              aromatic      = false;   ///< True for aromatic rings; false for Pro.
     bool              planar        = false;   ///< Aromatic + His-protonation-state-dependent.
-    uint8_t           n_heteroatoms = 0;       ///< 0 (Phe), 1 (Trp pyrrole), 2 (His).
+    uint8_t           n_heteroatoms = 0;       ///< 0 (Phe), 1 (Trp pyrrole / Pro / Indole_Trp_9), 2 (His).
+
+    /// True iff this slot carries a non-default ring membership.
+    constexpr bool IsPopulated() const { return ring != RingSystemKind::NotInRing; }
 };
 
 
 // ============================================================================
-// RingPosition -- combined primary + secondary ring memberships
+// RingPosition -- combined primary + secondary + tertiary ring memberships
 // ============================================================================
 //
-// For atoms in a single ring, `secondary.ring == NotInRing`. For Trp
-// bridgehead atoms (C-delta2, C-epsilon2), both `primary` (the
-// 5-ring per the smaller-ring convention) and `secondary` (the
-// 6-ring) are populated.
+// For atoms in a single ring, `secondary.ring == NotInRing` and
+// `tertiary.ring == NotInRing`. For Trp bridgehead atoms (C-delta2,
+// C-epsilon2), `primary` (the 5-ring per the smaller-ring convention),
+// `secondary` (the 6-ring), AND `tertiary` (the 9-atom indole
+// perimeter) are all populated.
+//
+// All 9 indole perimeter atoms (CG, CD1, NE1, CE2, CZ2, CH2, CZ3,
+// CE3, CD2) carry a tertiary `RingMembership` whose `ring` field is
+// `RingSystemKind::Indole_Trp_9`. This encodes the conjugated π
+// current circuit (Case 1995, J. Biomol. NMR 6, 341-346) as typed
+// substrate alongside the chemical 5-ring + 6-ring decomposition.
 //
 // Locant and RingPosition are ORTHOGONAL: `Locant` records the
 // backbone-vs-side-chain Greek-letter position; `RingPosition`
 // records ring membership. An atom can be in a ring AND have
 // `Locant::None`. Pro C-alpha is the canonical example: it is in
-// the pyrrolidine ring (`Pyrrolidine_Pro/Saturated/5/f/1`) AND has
-// `Locant::None` because Locant is reserved for side-chain atoms.
+// the pyrrolidine ring (`Pyrrolidine_Pro/ProRingAlphaCarbon/5/f/1`)
+// AND has `Locant::None` because Locant is reserved for side-chain
+// atoms.
 //
 struct RingPosition {
     RingMembership primary;
     RingMembership secondary;
+    RingMembership tertiary;
 
-    constexpr bool InAnyRing() const { return primary.ring != RingSystemKind::NotInRing; }
-    constexpr bool InTwoRings() const { return secondary.ring != RingSystemKind::NotInRing; }
+    /// Slot-presence predicates. The slots are not always filled in
+    /// order: a TRP non-bridgehead perimeter atom carries
+    /// {primary=Indole_Trp_5 (or Indole_Trp_6), secondary=NotInRing,
+    /// tertiary=Indole_Trp_9} — primary AND tertiary populated, with
+    /// secondary empty. Use these predicates to ask the right
+    /// question, not count-based predicates.
+    constexpr bool HasPrimaryRing() const   { return primary.IsPopulated();   }
+    constexpr bool HasSecondaryRing() const { return secondary.IsPopulated(); }
+    constexpr bool HasTertiaryRing() const  { return tertiary.IsPopulated();  }
+
+    /// Number of ring slots actually populated for this atom (0..3).
+    /// Counts the populated slots regardless of which ones; for the
+    /// TRP non-bridgehead perimeter case described above, returns 2.
+    constexpr int MembershipCount() const {
+        return (primary.IsPopulated()   ? 1 : 0)
+             + (secondary.IsPopulated() ? 1 : 0)
+             + (tertiary.IsPopulated()  ? 1 : 0);
+    }
+
+    /// True iff this atom is in any ring (any slot populated).
+    constexpr bool IsInAnyRing() const { return MembershipCount() > 0; }
 };
 
 
@@ -849,8 +923,8 @@ struct AtomSemanticTable {
     constexpr bool IsPolarH() const {
         return polar_h != PolarHKind::NotPolar;
     }
-    constexpr bool InAnyRing() const {
-        return ring_position.InAnyRing();
+    constexpr bool IsInAnyRing() const {
+        return ring_position.IsInAnyRing();
     }
 };
 

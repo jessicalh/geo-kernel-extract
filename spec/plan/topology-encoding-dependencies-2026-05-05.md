@@ -63,8 +63,34 @@ Per review item 11d and cross-cutting observations:
   Locant::None — the two fields are orthogonal: Locant tells you the
   backbone-vs-side-chain Greek-letter position; RingPosition tells you
   ring membership. Pro Cα is in the pyrrolidine ring with Locant::None."
+  Extended (Slice A) with the `tertiary` slot for atoms in three rings
+  — TRP indole bridgeheads CE2/CD2 occupy primary (Indole_Trp_5) +
+  secondary (Indole_Trp_6) + tertiary (Indole_Trp_9 perimeter); other
+  perimeter atoms occupy primary + tertiary.
 - `RingPositionLabel::Ortho1` / `Ortho2`: extend comment to cover the
   Trp 6-ring perimeter convention (Ortho1=Cε3, Ortho2=Cζ2 — see Section D).
+- `RingPositionLabel` Pro-specific values (Slice A): `ProRingNitrogen`,
+  `ProRingAlphaCarbon`, `ProRingBeta`, `ProRingPuckerPivot` (Cγ —
+  endo/exo motion drives 1-2 ppm shift difference per Vega & Boyer
+  1979 and Schubert et al. 2002), `ProRingDelta`. Replaces the generic
+  `Saturated` label for Pro ring atoms.
+- `RingPositionLabel::PerimeterMember` (Slice A): membership-only
+  position label for the indole 9-atom perimeter tertiary slot. Finer
+  per-walk-position labels (e.g. IUPAC indole numbering) are an
+  additive future extension when a planned calculator concretely
+  uses per-position perimeter stratification.
+- `RingSystemKind::Indole_Trp_9` (Slice A): the conjugated π current
+  circuit for indole (Case 1995, J. Biomol. NMR 6, 341-346). Distinct
+  from `Indole_Trp_5` and `Indole_Trp_6`, which encode the chemical
+  ring decomposition (5-ring pyrrole + 6-ring benzo); the perimeter
+  is the empirical ring-current target with `I = -19.2 nA/T`
+  (= I(TrpPyrrole) + I(TrpBenzene), unity ratio post-2026-04-02 HM
+  correction).
+- `RingAromaticity::None` (Slice A): saturated rings (Pro pyrrolidine).
+  `ProPyrrolidineRing` class uses literal `0.0` for Intensity /
+  LiteratureIntensity / JBLobeOffset (Joule & Mills 2010 ch. 7 —
+  saturated heterocycles do not carry π current; physics, not
+  calibration).
 - `PseudoatomKind` comment block: "N-terminal H1/H2/H3 are encoded as
   Q-with-Locant=None, treating them as a 3-H equivalent group. Markley
   Table 1 does not list a pseudoatom for these terminus-specific Hs;
@@ -218,7 +244,17 @@ need to be regenerated against the new default tautomer.
 
 Locant is for sidechain atoms (Greek-letter rule); RingPosition is
 ring-membership. The two fields are orthogonal. Pro Cα has Locant::None
-AND ring_primary = Pyrrolidine_Pro/Saturated/5/f/1.
+AND ring_primary = Pyrrolidine_Pro/ProRingAlphaCarbon/5/f/1.
+
+The five Pro-specific RingPositionLabel values (`ProRingNitrogen`,
+`ProRingAlphaCarbon`, `ProRingBeta`, `ProRingPuckerPivot`,
+`ProRingDelta`) replace the generic `Saturated` for Pro ring atoms
+to surface chemistry-distinct positions: Cα as the chiral centre,
+Cγ as the puckering pivot driving the 1-2 ppm Cβ/Cδ exo/endo shift
+difference (Vega & Boyer 1979; Schubert et al. 2002), Cδ as the
+methylene bonded to ring N. Hydrogens attached to ring carbons
+inherit the parent C's label. The `Saturated` label is preserved
+in the enum for any future non-Pro saturated ring chemistry.
 
 This is documented in SemanticEnums.h per Section A.3 above.
 

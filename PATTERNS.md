@@ -590,7 +590,10 @@ structure despite different formulations.
 
 ### Per-type T2 decomposition
 
-Per-ring-type T2 arrays (8 ring types × 5 T2 components) are stored
+Per-aromatic-ring-type T2 arrays (8 aromatic ring types × 5 T2
+components; sized at the substrate-side `kAromaticRingTypeCount`
+boundary, with Pro pyrrolidine excluded by the
+`if (ti < kAromaticRingTypeCount)` calculator-side guard) are stored
 for BiotSavart, HaighMallion, PiQuadrupole, RingSusceptibility, and
 Dispersion. These are the features that distinguish which ring type
 produces which angular pattern at which atom.

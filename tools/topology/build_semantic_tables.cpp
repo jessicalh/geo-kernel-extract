@@ -1513,6 +1513,18 @@ SynthesisedFields SynthesisedForPhe(const std::string& atom_id, const ParsedName
 // Cα is in the ring AND has Locant::None (orthogonality, dependencies
 // §D.2). RingMembership.aromatic=false; RingMembership.planar=false
 // (saturated; ring puckering is conformation-side).
+//
+// Per-atom RingPositionLabel uses the chemistry-distinct Pro labels
+// (ProRingNitrogen / ProRingAlphaCarbon / ProRingBeta /
+// ProRingPuckerPivot / ProRingDelta) rather than the generic
+// `Saturated` label. The five labels surface puckering chemistry
+// (Cγ as endo/exo pivot driving the 1-2 ppm Cβ/Cδ exo/endo shift
+// difference; Vega & Boyer 1979, Schubert et al. 2002), backbone
+// chemistry (N as in-ring secondary amine), and the canonical
+// orthogonality case (Cα in ring with Locant::None).
+//
+// Hydrogens attached to ring carbons inherit the parent C's typed
+// label per the existing convention used for aromatic rings.
 SynthesisedFields SynthesisedForPro(const std::string& atom_id, const ParsedName& /*parsed*/) {
     SynthesisedFields s;
     s.prochiral = MarkleyMethyleneProchiral(atom_id);  // β/γ/δ methylenes
@@ -1526,17 +1538,28 @@ SynthesisedFields SynthesisedForPro(const std::string& atom_id, const ParsedName
         s.ring_pos.primary.n_heteroatoms = 1;
     };
 
-    // Pro N: in ring, secondary amine (no H), planar_group = None.
-    if (atom_id == "N") set_ring_pyrrolidine(RingPositionLabel::Heteroatom_NoH);
-    // Pro Cα: in ring, but Locant::None per the orthogonality rule.
-    if (atom_id == "CA") set_ring_pyrrolidine(RingPositionLabel::Saturated);
+    // Pro N: in ring, secondary amine (no H in the ring), planar_group = None.
+    if (atom_id == "N") set_ring_pyrrolidine(RingPositionLabel::ProRingNitrogen);
+    // Pro Cα + HA: in ring, Locant::None per the orthogonality rule.
+    if (atom_id == "CA" || atom_id == "HA") {
+        set_ring_pyrrolidine(RingPositionLabel::ProRingAlphaCarbon);
+    }
     // Backbone C and O still in PeptideAmide (next residue's amide partner).
     if (atom_id == "C" || atom_id == "O") {
         s.planar_group = PlanarGroupKind::PeptideAmide;
     }
-    // Cβ, Cγ, Cδ: saturated ring carbons.
-    if (atom_id == "CB" || atom_id == "CG" || atom_id == "CD") {
-        set_ring_pyrrolidine(RingPositionLabel::Saturated);
+    // Cβ + HB2/HB3: sidechain methylene, distinct from the Cγ pucker pivot.
+    if (atom_id == "CB" || atom_id == "HB2" || atom_id == "HB3") {
+        set_ring_pyrrolidine(RingPositionLabel::ProRingBeta);
+    }
+    // Cγ + HG2/HG3: the puckering pivot atom (endo/exo motion).
+    if (atom_id == "CG" || atom_id == "HG2" || atom_id == "HG3") {
+        set_ring_pyrrolidine(RingPositionLabel::ProRingPuckerPivot);
+    }
+    // Cδ + HD2/HD3: methylene bonded directly to the ring N (chemistry-
+    // distinct from Cβ because of N proximity).
+    if (atom_id == "CD" || atom_id == "HD2" || atom_id == "HD3") {
+        set_ring_pyrrolidine(RingPositionLabel::ProRingDelta);
     }
     // Methylene Hs: QB / QG / QD pseudoatoms.
     if (atom_id == "HB2" || atom_id == "HB3") {
@@ -1675,6 +1698,32 @@ SynthesisedFields SynthesisedForTrp(const std::string& atom_id, const ParsedName
     else if (atom_id == "CZ2" || atom_id == "HZ2")  set_6ring(RingPositionLabel::Ortho2);
     else if (atom_id == "CZ3" || atom_id == "HZ3")  set_6ring(RingPositionLabel::Meta1);
     else if (atom_id == "CH2" || atom_id == "HH2")  set_6ring(RingPositionLabel::Meta2);
+
+    // Indole 9-atom perimeter (Case 1995, J. Biomol. NMR 6, 341-346):
+    // a third ring system covering all 9 heavy atoms of the conjugated
+    // π current circuit. Encoded in the tertiary RingMembership slot.
+    // The 9-atom perimeter set is the UNION of the 5-ring and 6-ring
+    // heavy atoms (the bridgeheads CE2 and CD2 ARE in the perimeter,
+    // not removed); what's "missing" relative to the dual-ring walk
+    // is the shared bridgehead-fusion edge between CE2 and CD2 — the
+    // perimeter wraps the outside of the indole, not crossing the
+    // fusion. Ring-attached H atoms inherit perimeter membership per
+    // the convention used for primary/secondary slots.
+    auto set_perimeter_tertiary = [&]() {
+        s.ring_pos.tertiary.ring          = RingSystemKind::Indole_Trp_9;
+        s.ring_pos.tertiary.position      = RingPositionLabel::PerimeterMember;
+        s.ring_pos.tertiary.ring_size     = 9;
+        s.ring_pos.tertiary.aromatic      = true;
+        s.ring_pos.tertiary.planar        = true;
+        s.ring_pos.tertiary.n_heteroatoms = 1;  // NE1 is the sole heteroatom.
+    };
+    if (atom_id == "CG"  || atom_id == "CD1" || atom_id == "HD1" ||
+        atom_id == "NE1" || atom_id == "HE1" || atom_id == "CE2" ||
+        atom_id == "CZ2" || atom_id == "HZ2" || atom_id == "CH2" ||
+        atom_id == "HH2" || atom_id == "CZ3" || atom_id == "HZ3" ||
+        atom_id == "CE3" || atom_id == "HE3" || atom_id == "CD2") {
+        set_perimeter_tertiary();
+    }
 
     if (atom_id == "HE1") s.polar_h = PolarHKind::IndoleNH;
     return s;
@@ -2476,26 +2525,33 @@ const char* RingSystemLiteral(RingSystemKind r) {
         case RingSystemKind::Indole_Trp_5:    return "nmr::RingSystemKind::Indole_Trp_5";
         case RingSystemKind::Indole_Trp_6:    return "nmr::RingSystemKind::Indole_Trp_6";
         case RingSystemKind::Pyrrolidine_Pro: return "nmr::RingSystemKind::Pyrrolidine_Pro";
+        case RingSystemKind::Indole_Trp_9:    return "nmr::RingSystemKind::Indole_Trp_9";
     }
     return "nmr::RingSystemKind::NotInRing";
 }
 
 const char* RingPositionLabelLiteral(RingPositionLabel r) {
     switch (r) {
-        case RingPositionLabel::NotInRing:      return "nmr::RingPositionLabel::NotInRing";
-        case RingPositionLabel::Ipso:           return "nmr::RingPositionLabel::Ipso";
-        case RingPositionLabel::Ortho1:         return "nmr::RingPositionLabel::Ortho1";
-        case RingPositionLabel::Ortho2:         return "nmr::RingPositionLabel::Ortho2";
-        case RingPositionLabel::Meta1:          return "nmr::RingPositionLabel::Meta1";
-        case RingPositionLabel::Meta2:          return "nmr::RingPositionLabel::Meta2";
-        case RingPositionLabel::Para:           return "nmr::RingPositionLabel::Para";
-        case RingPositionLabel::PyrroleAlpha:   return "nmr::RingPositionLabel::PyrroleAlpha";
-        case RingPositionLabel::PyrroleBeta:    return "nmr::RingPositionLabel::PyrroleBeta";
-        case RingPositionLabel::BridgeFusion:   return "nmr::RingPositionLabel::BridgeFusion";
-        case RingPositionLabel::Heteroatom_NH:  return "nmr::RingPositionLabel::Heteroatom_NH";
-        case RingPositionLabel::Heteroatom_NoH: return "nmr::RingPositionLabel::Heteroatom_NoH";
-        case RingPositionLabel::Heteroatom_OH:  return "nmr::RingPositionLabel::Heteroatom_OH";
-        case RingPositionLabel::Saturated:      return "nmr::RingPositionLabel::Saturated";
+        case RingPositionLabel::NotInRing:           return "nmr::RingPositionLabel::NotInRing";
+        case RingPositionLabel::Ipso:                return "nmr::RingPositionLabel::Ipso";
+        case RingPositionLabel::Ortho1:              return "nmr::RingPositionLabel::Ortho1";
+        case RingPositionLabel::Ortho2:              return "nmr::RingPositionLabel::Ortho2";
+        case RingPositionLabel::Meta1:               return "nmr::RingPositionLabel::Meta1";
+        case RingPositionLabel::Meta2:               return "nmr::RingPositionLabel::Meta2";
+        case RingPositionLabel::Para:                return "nmr::RingPositionLabel::Para";
+        case RingPositionLabel::PyrroleAlpha:        return "nmr::RingPositionLabel::PyrroleAlpha";
+        case RingPositionLabel::PyrroleBeta:         return "nmr::RingPositionLabel::PyrroleBeta";
+        case RingPositionLabel::BridgeFusion:        return "nmr::RingPositionLabel::BridgeFusion";
+        case RingPositionLabel::Heteroatom_NH:       return "nmr::RingPositionLabel::Heteroatom_NH";
+        case RingPositionLabel::Heteroatom_NoH:      return "nmr::RingPositionLabel::Heteroatom_NoH";
+        case RingPositionLabel::Heteroatom_OH:       return "nmr::RingPositionLabel::Heteroatom_OH";
+        case RingPositionLabel::Saturated:           return "nmr::RingPositionLabel::Saturated";
+        case RingPositionLabel::ProRingNitrogen:     return "nmr::RingPositionLabel::ProRingNitrogen";
+        case RingPositionLabel::ProRingAlphaCarbon:  return "nmr::RingPositionLabel::ProRingAlphaCarbon";
+        case RingPositionLabel::ProRingBeta:         return "nmr::RingPositionLabel::ProRingBeta";
+        case RingPositionLabel::ProRingPuckerPivot:  return "nmr::RingPositionLabel::ProRingPuckerPivot";
+        case RingPositionLabel::ProRingDelta:        return "nmr::RingPositionLabel::ProRingDelta";
+        case RingPositionLabel::PerimeterMember:     return "nmr::RingPositionLabel::PerimeterMember";
     }
     return "nmr::RingPositionLabel::NotInRing";
 }
@@ -2542,7 +2598,8 @@ std::string EmitEntryLiteral(const AtomSemanticEntry& e) {
       << ", " << PseudoatomLiteral(e.pseudoatom)
       << ", " << PolarHLiteral(e.polar_h)
       << ", {" << RingMembershipLiteral(e.ring_position.primary)
-      <<  ", " << RingMembershipLiteral(e.ring_position.secondary) << "}"
+      <<  ", " << RingMembershipLiteral(e.ring_position.secondary)
+      <<  ", " << RingMembershipLiteral(e.ring_position.tertiary) << "}"
       << ", " << (e.aromatic ? "true" : "false")
       << ", " << static_cast<int>(e.formal_charge)
       << ", " << (e.is_exchangeable ? "true" : "false")

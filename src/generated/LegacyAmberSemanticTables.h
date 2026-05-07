@@ -121,12 +121,14 @@ inline void ApplyCapDelta(::nmr::AtomSemanticTable& chain_then_result,
     //   Cap atoms are NOT in any ring (cap entries carry
     //   RingSystemKind::None / RingPositionLabel::NotInRing as
     //   placeholder defaults). For PRO at NTERM, the chain N row
-    //   correctly carries Pyrrolidine_Pro/Saturated; the backbone
-    //   cap-delta path must preserve that ring membership rather
-    //   than clobber it with the cap entry's NotInRing default.
-    //   (For non-Pro residues, chain N's ring_position is already
-    //   NotInRing, so the bug was silent before — the PRO case
-    //   surfaced it.)
+    //   correctly carries Pyrrolidine_Pro/ProRingNitrogen (the Pro-
+    //   specific position label introduced in Slice A; replaces the
+    //   generic Heteroatom_NoH that earlier versions used); the
+    //   backbone cap-delta path must preserve that ring membership
+    //   rather than clobber it with the cap entry's NotInRing
+    //   default. (For non-Pro residues, chain N's ring_position is
+    //   already NotInRing, so the bug was silent before — the PRO
+    //   case surfaced it.)
 }
 
 

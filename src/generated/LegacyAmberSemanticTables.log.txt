@@ -970,20 +970,20 @@ non_chain_atoms_filtered_total = 1
 entries_built = 14
 
 ==== entries-spot-check::PRO ====
-0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=0 polarH=0 ring_pos=11 arom=0 hyb=2 eqcls=12
-1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=14
+0_N = elem=2 loc=0 branch=0/0 di=0 bbrole=1 prochiral=0 planar=0 polarH=0 ring_pos=14 arom=0 hyb=2 eqcls=12
+1_CA = elem=1 loc=0 branch=0/0 di=0 bbrole=2 prochiral=0 planar=0 polarH=0 ring_pos=15 arom=0 hyb=2 eqcls=14
 2_C = elem=1 loc=0 branch=0/0 di=0 bbrole=3 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=11
 3_O = elem=3 loc=0 branch=0/0 di=0 bbrole=4 prochiral=0 planar=1 polarH=0 ring_pos=0 arom=0 hyb=1 eqcls=9
-4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=16
-5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=15
-6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=13 arom=0 hyb=2 eqcls=13
-7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=4
-8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=7
-10_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-11_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=5
-12_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
-13_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=0 arom=0 hyb=3 eqcls=2
+4_CB = elem=1 loc=2 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=16 arom=0 hyb=2 eqcls=16
+5_CG = elem=1 loc=3 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=17 arom=0 hyb=2 eqcls=15
+6_CD = elem=1 loc=4 branch=0/0 di=0 bbrole=0 prochiral=0 planar=0 polarH=0 ring_pos=18 arom=0 hyb=2 eqcls=13
+7_HA = elem=0 loc=1 branch=0/0 di=0 bbrole=6 prochiral=0 planar=0 polarH=0 ring_pos=15 arom=0 hyb=3 eqcls=4
+8_HB2 = elem=0 loc=2 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=16 arom=0 hyb=3 eqcls=7
+9_HB3 = elem=0 loc=2 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=16 arom=0 hyb=3 eqcls=7
+10_HG2 = elem=0 loc=3 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=17 arom=0 hyb=3 eqcls=5
+11_HG3 = elem=0 loc=3 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=17 arom=0 hyb=3 eqcls=5
+12_HD2 = elem=0 loc=4 branch=0/0 di=2 bbrole=0 prochiral=2 planar=0 polarH=0 ring_pos=18 arom=0 hyb=3 eqcls=2
+13_HD3 = elem=0 loc=4 branch=0/0 di=3 bbrole=0 prochiral=1 planar=0 polarH=0 ring_pos=18 arom=0 hyb=3 eqcls=2
 status = OK
 
 ==== process-residue::SER ====

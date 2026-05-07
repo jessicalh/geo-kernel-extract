@@ -937,7 +937,7 @@ Virtual const properties (overridden by each type class):
 | literature_intensity | double | nA/T | Giessner-Prettre 1969 literature value |
 | jb_lobe_offset | double | Angstroms | Johnson-Bovey pi-electron lobe offset |
 | nitrogen_count | int | - | Number of nitrogen atoms in ring |
-| aromaticity | RingAromaticity enum | - | Full, Reduced, Weak |
+| aromaticity | RingAromaticity enum | - | Full, Reduced, Weak, None (None for Pro pyrrolidine) |
 | ring_size | int | - | Number of vertex atoms (5, 6, or 9) |
 | type_name | string | - | "PHE", "TYR", etc. |
 
@@ -1052,16 +1052,23 @@ is how ring properties are built.
 
 ```
 enum class RingTypeIndex {
-    PheBenzene    = 0,
-    TyrPhenol     = 1,
-    TrpBenzene    = 2,
-    TrpPyrrole    = 3,
-    TrpPerimeter  = 4,
-    HisImidazole  = 5,
-    HidImidazole  = 6,
-    HieImidazole  = 7,
-    Count         = 8
+    PheBenzene     = 0,
+    TyrPhenol      = 1,
+    TrpBenzene     = 2,
+    TrpPyrrole     = 3,
+    TrpPerimeter   = 4,
+    HisImidazole   = 5,
+    HidImidazole   = 6,
+    HieImidazole   = 7,
+    ProPyrrolidine = 8,   // saturated 5-ring (Pro); Aromaticity=None,
+                          // Intensity=0 per Joule & Mills 2010 ch. 7
+    Count          = 9
 };
+
+// Boundary between aromatic ring types (indices 0..7) and saturated
+// ring types (indices 8..Count-1). Calculator per-aromatic-type
+// accumulators gate Pro out via `if (ti < kAromaticRingTypeCount)`.
+inline constexpr int kAromaticRingTypeCount = 8;
 ```
 
 ### Ring geometry (conformation-dependent, on ProteinConformation)
