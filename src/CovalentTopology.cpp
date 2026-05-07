@@ -59,17 +59,21 @@ static std::vector<std::pair<size_t, size_t>> DetectBondsViaOpenBabel(
 // CovalentTopology::Resolve
 //
 // The geometry→topology boundary. Takes atoms (with canonical names),
-// residues (with backbone indices cached), rings (detected), and ONE
-// set of positions. Returns a self-contained topology object.
+// residues (with backbone indices cached), and ONE set of positions.
+// Returns a self-contained topology object with bonds detected and
+// categorised — except aromatic-bond tagging, which is a separate
+// post-Resolve overlay (TagAromaticBonds) that runs once aromatic
+// rings have been constructed from the substrate.
 //
-// Same detection and classification logic as the old
-// Protein::DetectCovalentBonds, same bond categories, same H parent
-// assignment. Moved here to make the boundary explicit.
+// Bundle C / Slice B (2026-05-07): Resolve no longer takes rings as
+// input. The substrate-driven ring construction
+// (RingTopology::ConstructFromSubstrate) runs AFTER ComposeAtomSemantic,
+// so rings don't exist when Resolve runs. The aromatic-tagging overlay
+// is invoked from FinalizeConstruction once rings are produced.
 // ============================================================================
 
 std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         const std::vector<std::unique_ptr<Atom>>& atoms,
-        const std::vector<std::unique_ptr<Ring>>& rings,
         const std::vector<Residue>& residues,
         const std::vector<Vec3>& positions,
         double bond_tolerance) {
@@ -81,13 +85,10 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     topo->h_parent_.assign(n_atoms, SIZE_MAX);
 
     // ---------------------------------------------------------------
-    // Pre-build typed lookup structures (no string access)
+    // Pre-build typed lookup structures (no string access).
+    // The aromatic_atoms set is no longer built here — aromatic
+    // categorisation moved to TagAromaticBonds(rings) overlay.
     // ---------------------------------------------------------------
-
-    std::set<size_t> aromatic_atoms;
-    for (const auto& ring : rings)
-        for (size_t ai : ring->atom_indices)
-            aromatic_atoms.insert(ai);
 
     std::vector<bool> is_backbone(n_atoms, false);
     for (const auto& res : residues) {
@@ -139,11 +140,12 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
             bond.order = BondOrder::Single;
             bond.category = BondCategory::Disulfide;
         }
-        // Aromatic: both atoms in the aromatic set
-        else if (aromatic_atoms.count(i) > 0 && aromatic_atoms.count(j) > 0) {
-            bond.order = BondOrder::Aromatic;
-            bond.category = BondCategory::Aromatic;
-        }
+        // Aromatic categorisation moved to TagAromaticBonds(rings),
+        // called as a post-Resolve overlay once substrate-driven
+        // ring construction has produced the aromatic ring set
+        // (Bundle C / Slice B). Bonds whose endpoints are both ring
+        // members fall through here to backbone/sidechain treatment
+        // and get rewritten by the overlay.
         else {
             bool a_bb = is_backbone[i];
             bool b_bb = is_backbone[j];
@@ -225,6 +227,46 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     }
 
     return topo;
+}
+
+
+// ============================================================================
+// TagAromaticBonds: post-Resolve overlay that tags bonds whose both
+// endpoints sit in any aromatic ring. Lifted from the pre-Bundle-C
+// aromatic branch in Resolve. Mirrors the OverrideDisulfides shape:
+// authoritative-chemistry overlay applied after the geometric pass.
+//
+// Disulfide-precedence note: Resolve already tagged S-S bonds as
+// BondCategory::Disulfide. This overlay does NOT demote those — it
+// only rewrites bonds whose category is anything other than
+// Disulfide. Biologically irrelevant (no aromatic ring contains an S
+// that bonds another S) but worth being explicit so the precedence
+// is documented rather than incidental.
+// ============================================================================
+
+void CovalentTopology::TagAromaticBonds(
+        const std::vector<std::unique_ptr<Ring>>& rings) {
+
+    // Flatten all aromatic-ring atom indices into one set. Saturated
+    // rings (Pro pyrrolidine) live in a parallel collection on
+    // LegacyAmberTopology and are not passed here; only aromatic
+    // rings produce Aromatic bond tags.
+    std::set<size_t> aromatic_atoms;
+    for (const auto& ring : rings) {
+        for (size_t ai : ring->atom_indices) {
+            aromatic_atoms.insert(ai);
+        }
+    }
+    if (aromatic_atoms.empty()) return;
+
+    for (Bond& bond : bonds_) {
+        if (bond.category == BondCategory::Disulfide) continue;
+        if (aromatic_atoms.count(bond.atom_index_a) > 0 &&
+            aromatic_atoms.count(bond.atom_index_b) > 0) {
+            bond.order = BondOrder::Aromatic;
+            bond.category = BondCategory::Aromatic;
+        }
+    }
 }
 
 

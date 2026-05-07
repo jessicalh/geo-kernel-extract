@@ -27,6 +27,7 @@
 
 #include "ProteinTopology.h"
 #include "CovalentTopology.h"
+#include "RingTopology.h"
 #include "SemanticEnums.h"
 #include "Residue.h"
 #include <array>
@@ -94,7 +95,8 @@ public:
                         size_t residue_count,
                         std::unique_ptr<CovalentTopology> bonds,
                         LegacyAmberInvariants invariants = {},
-                        std::vector<AtomSemanticTable> atom_semantic = {});
+                        std::vector<AtomSemanticTable> atom_semantic = {},
+                        std::unique_ptr<RingTopology> rings = {});
 
     ProteinTopologyKind Kind() const override {
         return ProteinTopologyKind::LegacyAmber;
@@ -114,6 +116,36 @@ public:
     }
     size_t HydrogenParentOf(size_t atom_index) const {
         return bonds_->HydrogenParentOf(atom_index);
+    }
+
+    // ── Ring topology ───────────────────────────────────────────────
+    //
+    // Aromatic rings (PHE/TYR/HIS-variants/TRP-{benzene,pyrrole,9}) and
+    // saturated rings (Pro pyrrolidine) live in a RingTopology
+    // companion object owned here, parallel to CovalentTopology.
+    // Bundle C / Slice B (2026-05-07) moved storage off Protein per the
+    // legacy-amber-implementation-brief Authority Map.
+    //
+    // Stub-fixture path: RingTopology can be empty (rings_->AromaticCount()
+    // == 0 and SaturatedCount() == 0) when atom_semantic_ is empty;
+    // construction guarantees rings_ is non-null after the constructor
+    // returns.
+    const RingTopology& Rings() const { return *rings_; }
+
+    size_t AromaticRingCount() const { return rings_->AromaticCount(); }
+    const Ring& AromaticRingAt(size_t i) const {
+        return rings_->AromaticAt(i);
+    }
+    const std::vector<std::unique_ptr<Ring>>& AromaticRingList() const {
+        return rings_->Aromatic();
+    }
+
+    size_t SaturatedRingCount() const { return rings_->SaturatedCount(); }
+    const Ring& SaturatedRingAt(size_t i) const {
+        return rings_->SaturatedAt(i);
+    }
+    const std::vector<std::unique_ptr<Ring>>& SaturatedRingList() const {
+        return rings_->Saturated();
     }
 
     // ── Invariant FF-numerical fields ───────────────────────────────
@@ -217,6 +249,11 @@ private:
     // via ComposeAtomSemantic. Empty when the load path delivers stub
     // atoms with no names; non-empty has size == atom_count_.
     std::vector<AtomSemanticTable> atom_semantic_;
+
+    // Aromatic + saturated rings. Built by RingTopology::ConstructFromSubstrate
+    // at FinalizeConstruction. Always non-null after construction; empty
+    // (zero rings) is the legitimate stub-fixture signal.
+    std::unique_ptr<RingTopology> rings_;
 };
 
 

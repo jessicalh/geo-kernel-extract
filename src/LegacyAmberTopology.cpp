@@ -17,7 +17,8 @@ LegacyAmberTopology::LegacyAmberTopology(
         size_t residue_count,
         std::unique_ptr<CovalentTopology> bonds,
         LegacyAmberInvariants invariants,
-        std::vector<AtomSemanticTable> atom_semantic)
+        std::vector<AtomSemanticTable> atom_semantic,
+        std::unique_ptr<RingTopology> rings)
     : atom_count_(atom_count)
     , residue_count_(residue_count)
     , bonds_(std::move(bonds))
@@ -30,7 +31,8 @@ LegacyAmberTopology::LegacyAmberTopology(
     , rep_pow_(invariants.rep_pow)
     , atnr_(invariants.atnr)
     , num_non_perturbed_(invariants.num_non_perturbed)
-    , atom_semantic_(std::move(atom_semantic)) {
+    , atom_semantic_(std::move(atom_semantic))
+    , rings_(std::move(rings)) {
     if (!bonds_) {
         std::fprintf(stderr,
             "FATAL: LegacyAmberTopology requires a CovalentTopology.\n");
@@ -41,6 +43,13 @@ LegacyAmberTopology::LegacyAmberTopology(
             "FATAL: LegacyAmberTopology atom_semantic size %zu != atom_count %zu.\n",
             atom_semantic_.size(), atom_count_);
         std::abort();
+    }
+    // Default: empty RingTopology if caller didn't supply one. This
+    // keeps stub-fixture call sites simple — they pass `{}` (or omit)
+    // and get an empty topology (AromaticCount() == 0,
+    // SaturatedCount() == 0). The accessors never need to null-check.
+    if (!rings_) {
+        rings_ = std::make_unique<RingTopology>();
     }
 }
 

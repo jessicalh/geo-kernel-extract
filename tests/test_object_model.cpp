@@ -2,6 +2,7 @@
 #include "Protein.h"
 #include "ConformationResult.h"
 #include "ProteinConformation.h"
+#include "PhysicalConstants.h"
 
 using namespace nmr;
 
@@ -46,8 +47,43 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     }
     p.MutableResidueAt(ri_phe).atom_indices = phe_indices;
 
-    p.CacheResidueBackboneIndices();
-    p.DetectAromaticRings();
+    // Bundle C / Slice B (2026-05-07): ring detection is substrate-
+    // driven and requires FinalizeConstruction with positions. The
+    // tiny fixture places the PHE ring as a regular hexagon at the
+    // benzene C-C bond length (Allen 1987, see PhysicalConstants.h)
+    // and the ALA backbone in a separate region for bond detection.
+    // The substrate produces one PheBenzeneRing with atom_indices
+    // in canonical Ipso/Ortho1/Meta1/Para/Meta2/Ortho2 walk order.
+    //
+    // Hexagon geometry: regular hexagon with side r = BENZENE_CC.
+    // Vertex i at (r*cos(theta_i), r*sin(theta_i)) where theta_i =
+    // i * 60 deg, after rotation so vertex 0 sits at the origin.
+    // Pre-computed cos/sin avoids std::cos/std::sin in constexpr
+    // and keeps the literal sequence inspectable.
+    constexpr double r  = BENZENE_CC_BOND_LENGTH;     // 1.40 A; Allen 1987
+    constexpr double rh = r * 0.5;                    // r/2
+    constexpr double rs = r * 0.8660254037844386;     // r * sqrt(3)/2
+
+    // ALA backbone placed away from the PHE ring (offset 10 A in x)
+    // at Engh-Huber peptide ideal geometries (PhysicalConstants.h).
+    constexpr double pep_n_ca = PEPTIDE_N_CA_BOND_LENGTH;     // 1.458 A; Engh-Huber 1991
+    constexpr double pep_ca_c = PEPTIDE_CA_C_BOND_LENGTH;     // 1.525 A; Engh-Huber 1991
+    constexpr double pep_c_o  = PEPTIDE_C_O_DOUBLE_BOND_LENGTH; // 1.231 A; Engh-Huber 1991
+    constexpr double offset_x = 10.0;  // arbitrary; positions ALA away from PHE
+
+    std::vector<Vec3> positions = {
+        Vec3(offset_x,                          0.0,        0.0),  // ALA N
+        Vec3(offset_x + pep_n_ca,               0.0,        0.0),  // ALA CA
+        Vec3(offset_x + pep_n_ca + pep_ca_c,    0.0,        0.0),  // ALA C
+        Vec3(offset_x + pep_n_ca + pep_ca_c,    pep_c_o,    0.0),  // ALA O
+        Vec3( 0.0,       0.0,         0.0),                        // PHE CG  (Ipso)
+        Vec3( r,         0.0,         0.0),                        // PHE CD1 (Ortho1)
+        Vec3( r + rh,    rs,          0.0),                        // PHE CE1 (Meta1)
+        Vec3( r,         2.0 * rs,    0.0),                        // PHE CZ  (Para)
+        Vec3( 0.0,       2.0 * rs,    0.0),                        // PHE CE2 (Meta2)
+        Vec3(-rh,        rs,          0.0),                        // PHE CD2 (Ortho2)
+    };
+    p.FinalizeConstruction(positions);
 
     return pp;
 }

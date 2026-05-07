@@ -18,7 +18,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 // ALA
 { AminoAcid::ALA, "ALA", 'A', false, false, true, 0, 0,
   {BB, {"CB",E::C,false},{"HB1",E::H,false},{"HB2",E::H,false},{"HB3",E::H,false}},
-  {}, {}, {} },
+  {}, {} },
 
 // ARG (pKa ~12.5, almost always +1, but PROPKA predicts it)
 { AminoAcid::ARG, "ARG", 'R', false, true, true, 4, +1,
@@ -30,7 +30,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CZ",E::C,false},
    {"NH1",E::N,false},{"HH11",E::H,false},{"HH12",E::H,false},
    {"NH2",E::N,false},{"HH21",E::H,false},{"HH22",E::H,false}},
-  {},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","NE"}, {"CG","CD","NE","CZ"}},
   {{"ARN", "deprotonated arginine", 0, "deprotonated"}} },
 
@@ -40,14 +39,14 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"CG",E::C,false},{"OD1",E::O,false},
    {"ND2",E::N,false},{"HD21",E::H,false},{"HD22",E::H,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}}, {} },
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}}, {} },
 
 // ASP
 { AminoAcid::ASP, "ASP", 'D', false, true, true, 2, -1,
   {BB,
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"CG",E::C,false},{"OD1",E::O,false},{"OD2",E::O,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}},
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","OD1"}},
   {{"ASH", "protonated aspartate", 0, "protonated"}} },
 
 // CYS
@@ -55,7 +54,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
   {BB,
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"SG",E::S,false},{"HG",E::H,false}},
-  {}, {{"N","CA","CB","SG"}},
+  {{"N","CA","CB","SG"}},
   {{"CYX", "disulfide bonded", 0, "disulfide"}, {"CYM", "deprotonated thiolate", -1, "deprotonated"}} },
 
 // GLN
@@ -65,7 +64,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
    {"CD",E::C,false},{"OE1",E::O,false},
    {"NE2",E::N,false},{"HE21",E::H,false},{"HE22",E::H,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}}, {} },
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}}, {} },
 
 // GLU
 { AminoAcid::GLU, "GLU", 'E', false, true, true, 3, -1,
@@ -73,12 +72,12 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
    {"CD",E::C,false},{"OE1",E::O,false},{"OE2",E::O,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}},
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","OE1"}},
   {{"GLH", "protonated glutamate", 0, "protonated"}} },
 
 // GLY
 { AminoAcid::GLY, "GLY", 'G', false, false, true, 0, 0,
-  {BB_GLY}, {}, {}, {} },
+  {BB_GLY}, {}, {} },
 
 // HIS
 { AminoAcid::HIS, "HIS", 'H', true, true, true, 2, +1,
@@ -89,7 +88,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CD2",E::C,false},{"HD2",E::H,false},
    {"CE1",E::C,false},{"HE1",E::H,false},
    {"NE2",E::N,false},{"HE2",E::H,false}},
-  {{RingTypeIndex::HisImidazole, {"CG","ND1","CE1","NE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","ND1"}},
   {{"HID", "Nd-protonated (delta)", 0, "delta"},
    {"HIE", "Ne-protonated (epsilon)", 0, "epsilon"},
@@ -102,7 +100,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CG1",E::C,false},{"HG12",E::H,false},{"HG13",E::H,false},
    {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false},
    {"CD1",E::C,false},{"HD11",E::H,false},{"HD12",E::H,false},{"HD13",E::H,false}},
-  {}, {{"N","CA","CB","CG1"}, {"CA","CB","CG1","CD1"}}, {} },
+  {{"N","CA","CB","CG1"}, {"CA","CB","CG1","CD1"}}, {} },
 
 // LEU
 { AminoAcid::LEU, "LEU", 'L', false, false, true, 2, 0,
@@ -111,7 +109,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CG",E::C,false},{"HG",E::H,false},
    {"CD1",E::C,false},{"HD11",E::H,false},{"HD12",E::H,false},{"HD13",E::H,false},
    {"CD2",E::C,false},{"HD21",E::H,false},{"HD22",E::H,false},{"HD23",E::H,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
 // LYS
 { AminoAcid::LYS, "LYS", 'K', false, true, true, 4, +1,
@@ -121,7 +119,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CD",E::C,false},{"HD2",E::H,false},{"HD3",E::H,false},
    {"CE",E::C,false},{"HE2",E::H,false},{"HE3",E::H,false},
    {"NZ",E::N,false},{"HZ1",E::H,false},{"HZ2",E::H,false},{"HZ3",E::H,false}},
-  {},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}, {"CB","CG","CD","CE"}, {"CG","CD","CE","NZ"}},
   {{"LYN", "deprotonated lysine", 0, "deprotonated"}} },
 
@@ -132,7 +129,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
    {"SD",E::S,false},
    {"CE",E::C,false},{"HE1",E::H,false},{"HE2",E::H,false},{"HE3",E::H,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","SD"}, {"CB","CG","SD","CE"}}, {} },
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","SD"}, {"CB","CG","SD","CE"}}, {} },
 
 // PHE
 { AminoAcid::PHE, "PHE", 'F', true, false, true, 2, 0,
@@ -144,7 +141,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CE1",E::C,false},{"HE1",E::H,false},
    {"CE2",E::C,false},{"HE2",E::H,false},
    {"CZ",E::C,false},{"HZ",E::H,false}},
-  {{RingTypeIndex::PheBenzene, {"CG","CD1","CE1","CZ","CE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
 // PRO
@@ -153,14 +149,14 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"CG",E::C,false},{"HG2",E::H,false},{"HG3",E::H,false},
    {"CD",E::C,false},{"HD2",E::H,false},{"HD3",E::H,false}},
-  {}, {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}}, {} },
+  {{"N","CA","CB","CG"}, {"CA","CB","CG","CD"}}, {} },
 
 // SER
 { AminoAcid::SER, "SER", 'S', false, false, true, 1, 0,
   {BB,
    {"CB",E::C,false},{"HB2",E::H,false},{"HB3",E::H,false},
    {"OG",E::O,false},{"HG",E::H,false}},
-  {}, {{"N","CA","CB","OG"}}, {} },
+  {{"N","CA","CB","OG"}}, {} },
 
 // THR
 { AminoAcid::THR, "THR", 'T', false, false, true, 1, 0,
@@ -168,7 +164,7 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CB",E::C,false},{"HB",E::H,false},
    {"OG1",E::O,false},{"HG1",E::H,false},
    {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false}},
-  {}, {{"N","CA","CB","OG1"}}, {} },
+  {{"N","CA","CB","OG1"}}, {} },
 
 // TRP
 { AminoAcid::TRP, "TRP", 'W', true, false, true, 2, 0,
@@ -183,9 +179,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CZ2",E::C,false},{"HZ2",E::H,false},
    {"CZ3",E::C,false},{"HZ3",E::H,false},
    {"CH2",E::C,false},{"HH2",E::H,false}},
-  {{RingTypeIndex::TrpBenzene,   {"CD2","CE2","CZ2","CH2","CZ3","CE3"}},
-   {RingTypeIndex::TrpPyrrole,   {"CG","CD1","NE1","CE2","CD2"}},
-   {RingTypeIndex::TrpPerimeter, {"CG","CD1","NE1","CE2","CZ2","CH2","CZ3","CE3","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}}, {} },
 
 // TYR
@@ -198,7 +191,6 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CE1",E::C,false},{"HE1",E::H,false},
    {"CE2",E::C,false},{"HE2",E::H,false},
    {"CZ",E::C,false},{"OH",E::O,false},{"HH",E::H,false}},
-  {{RingTypeIndex::TyrPhenol, {"CG","CD1","CE1","CZ","CE2","CD2"}}},
   {{"N","CA","CB","CG"}, {"CA","CB","CG","CD1"}},
   {{"TYM", "deprotonated tyrosinate", -1, "deprotonated"}} },
 
@@ -208,11 +200,11 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
    {"CB",E::C,false},{"HB",E::H,false},
    {"CG1",E::C,false},{"HG11",E::H,false},{"HG12",E::H,false},{"HG13",E::H,false},
    {"CG2",E::C,false},{"HG21",E::H,false},{"HG22",E::H,false},{"HG23",E::H,false}},
-  {}, {{"N","CA","CB","CG1"}}, {} },
+  {{"N","CA","CB","CG1"}}, {} },
 
 // Unknown
 { AminoAcid::Unknown, "UNK", 'X', false, false, false, 0, 0,
-  {}, {}, {}, {} },
+  {}, {}, {} },
 
 };
 

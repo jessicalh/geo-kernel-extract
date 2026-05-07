@@ -55,18 +55,45 @@ public:
     // The geometry→topology boundary. Explicit.
     //
     // Requires: atoms with canonical names, residues with backbone
-    // indices cached, rings detected. These are the output of
-    // symbolic topology resolution (layers 1-2 of the loading pipeline).
+    // indices cached. These are the output of symbolic topology
+    // resolution (layers 1-2 of the loading pipeline).
     //
     // Positions are used ONLY for bond detection (covalent radius
     // distance check) and H parent assignment (nearest bonded heavy
     // atom). After Resolve(), the positions are not stored.
+    //
+    // Bundle C / Slice B (2026-05-07): Resolve no longer takes a
+    // rings parameter. The aromatic-bond categorisation overlay
+    // moved to TagAromaticBonds(rings), which is called AFTER ring
+    // construction (which is now substrate-driven and must run after
+    // ComposeAtomSemantic). Pre-rings Resolve produces the bond
+    // graph + non-aromatic categorisation; TagAromaticBonds is the
+    // post-pass overlay that mirrors OverrideDisulfides's shape.
     static std::unique_ptr<CovalentTopology> Resolve(
         const std::vector<std::unique_ptr<Atom>>& atoms,
-        const std::vector<std::unique_ptr<Ring>>& rings,
         const std::vector<Residue>& residues,
         const std::vector<Vec3>& positions,
         double bond_tolerance = 0.4);
+
+    // Tag bonds whose both endpoints sit in any aromatic ring as
+    // BondCategory::Aromatic / BondOrder::Aromatic. Lifted from
+    // Resolve()'s pre-Bundle-C aromatic branch (lines 87-90 +
+    // 143-146 of the pre-split CovalentTopology.cpp). Mirrors
+    // OverrideDisulfides's shape: a post-Resolve overlay that
+    // applies authoritative chemistry on top of geometry-derived
+    // categorisation.
+    //
+    // Precedence note: Resolve's geometric categorisation puts S-S
+    // bonds in BondCategory::Disulfide first; this overlay does NOT
+    // demote disulfides to aromatic even if both S atoms were ever
+    // in an aromatic ring (which is biologically impossible — no
+    // aromatic ring contains an S that bonds another S). The
+    // disulfide-precedence-over-aromatic behaviour is preserved
+    // because the overlay only rewrites bonds whose category is
+    // anything OTHER than Disulfide. See the matching note in the
+    // pre-split Resolve at the original lines 137-141.
+    void TagAromaticBonds(
+        const std::vector<std::unique_ptr<Ring>>& rings);
 
     // Bond access
     size_t BondCount() const { return bonds_.size(); }

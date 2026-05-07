@@ -174,6 +174,7 @@ add_library(nmr_shielding
     src/AminoAcidType.cpp
     src/Atom.cpp
     src/Ring.cpp
+    src/RingTopology.cpp
     src/Protein.cpp
     src/LegacyAmberTopology.cpp
     src/CovalentTopology.cpp

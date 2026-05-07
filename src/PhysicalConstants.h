@@ -104,6 +104,33 @@ constexpr int SEQUENTIAL_EXCLUSION_THRESHOLD = 2;
 
 
 // ============================================================================
+// Reference bond lengths (Angstroms)
+//
+// Allen, F. H., Kennard, O., Watson, D. G., Brammer, L., Orpen, A. G.,
+// & Taylor, R. (1987). "Tables of bond lengths determined by X-ray and
+// neutron diffraction. Part 1. Bond lengths in organic compounds."
+// J. Chem. Soc., Perkin Trans. 2, S1-S19. DOI: 10.1039/P298700000S1.
+//
+// These are reference geometric scales used by synthetic test fixtures
+// to place atoms at chemically realistic distances. Calculators don't
+// consume them — bond detection is geometric (covalent-radius sum +
+// tolerance) — but the test fixtures need defensible numbers rather
+// than literal magic constants.
+// ============================================================================
+
+// Aromatic C-C bond length (benzene, X-ray + neutron average).
+// Allen 1987 Table 1: aromatic C(sp2)-C(sp2) bond is 1.395 +- 0.003 A.
+constexpr double BENZENE_CC_BOND_LENGTH = 1.40;
+
+// Backbone peptide bond reference scales. Engh & Huber, Acta Cryst.
+// A47, 392-400 (1991). DOI: 10.1107/S0108767391001071. The Engh-Huber
+// values are the de facto standard for peptide ideal geometries.
+constexpr double PEPTIDE_N_CA_BOND_LENGTH    = 1.458;  // A; Engh-Huber 1991 Table 1
+constexpr double PEPTIDE_CA_C_BOND_LENGTH    = 1.525;  // A; Engh-Huber 1991 Table 1
+constexpr double PEPTIDE_C_O_DOUBLE_BOND_LENGTH = 1.231;  // A; Engh-Huber 1991 Table 1
+
+
+// ============================================================================
 // Bondi van der Waals radii (Angstroms)
 //
 // Bondi, A. J. Phys. Chem. 68, 441-451 (1964).

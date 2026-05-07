@@ -170,6 +170,39 @@ const CovalentTopology& Protein::BondTopology() const {
     return LegacyAmber().Bonds();
 }
 
+// ============================================================================
+// Ring access — delegated through RingTopology on LegacyAmberTopology.
+// Bundle C / Slice B (2026-05-07): mirrors the bond delegation above.
+// `RingCount()` and `SaturatedRingCount()` return 0 when no topology
+// is attached (pre-FinalizeConstruction state); the `*At(i)` and
+// `*s()` accessors require a topology and abort if called without one
+// (matches BondAt(i)).
+// ============================================================================
+
+size_t Protein::RingCount() const {
+    return protein_topology_ ? LegacyAmber().AromaticRingCount() : 0;
+}
+
+const Ring& Protein::RingAt(size_t i) const {
+    return LegacyAmber().AromaticRingAt(i);
+}
+
+const std::vector<std::unique_ptr<Ring>>& Protein::Rings() const {
+    return LegacyAmber().AromaticRingList();
+}
+
+size_t Protein::SaturatedRingCount() const {
+    return protein_topology_ ? LegacyAmber().SaturatedRingCount() : 0;
+}
+
+const Ring& Protein::SaturatedRingAt(size_t i) const {
+    return LegacyAmber().SaturatedRingAt(i);
+}
+
+const std::vector<std::unique_ptr<Ring>>& Protein::SaturatedRings() const {
+    return LegacyAmber().SaturatedRingList();
+}
+
 const ForceFieldChargeTable& Protein::ForceFieldCharges() const {
     if (!force_field_charges_) {
         fprintf(stderr, "FATAL: Protein::ForceFieldCharges() -- no loaded force-field charges.\n");
@@ -224,12 +257,16 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     ResolveResidueTerminalStates();
     CacheResidueBackboneIndices();
     ResolveProtonationStates(/*bonds=*/nullptr);
-    DetectAromaticRings();
 
     // Layer 3: geometric topology + FF-numerical invariants. The
     // value-pack is moved into the topology's plain fields and goes out
     // of scope after this call. Loaders without source FF data pass {}.
-    auto bonds = CovalentTopology::Resolve(atoms_, rings_, residues_,
+    //
+    // Bundle C / Slice B (2026-05-07): rings are no longer an input
+    // here. The aromatic-bond categorisation moved to a post-Resolve
+    // overlay (CovalentTopology::TagAromaticBonds), called below
+    // after substrate-driven ring construction.
+    auto bonds = CovalentTopology::Resolve(atoms_, residues_,
                                            positions, bond_tolerance);
 
     // Apply pdb2gmx's authoritative disulfide pairing (TPR bonded list
@@ -360,10 +397,25 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
     std::vector<AtomSemanticTable> atom_semantic =
         ComposeAtomSemantic(atoms_, residues_, *bonds);
 
-    // Construct the final LegacyAmberTopology with substrate populated.
+    // Substrate-driven ring construction (Bundle C / Slice B). Reads
+    // typed RingPosition slots from the substrate; produces aromatic
+    // rings (PHE/TYR/HIS-variants/TRP-{benzene,pyrrole,9}) and
+    // saturated rings (Pro pyrrolidine) in canonical cyclic walk
+    // order. Stub fixtures (empty atom_semantic) get an empty
+    // RingTopology. See spec/plan/ring-investigation-2026-05-06/.
+    auto rings = RingTopology::ConstructFromSubstrate(
+        residues_, atom_semantic, *bonds);
+
+    // Aromatic-bond tagging overlay: now that rings exist, tag bonds
+    // whose both endpoints sit in any aromatic ring. Mirrors the
+    // OverrideDisulfides post-Resolve pattern.
+    bonds->TagAromaticBonds(rings->Aromatic());
+
+    // Construct the final LegacyAmberTopology with substrate + rings.
     protein_topology_ = std::make_unique<LegacyAmberTopology>(
         atoms_.size(), residues_.size(), std::move(bonds),
-        std::move(invariants), std::move(atom_semantic));
+        std::move(invariants), std::move(atom_semantic),
+        std::move(rings));
 
     // Typed CacheResidueBackboneIndices: overwrite res.{N, CA, C, O,
     // H, HA, CB} with substrate-driven indices from
@@ -532,118 +584,14 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
 
 
 // ============================================================================
-// DetectAromaticRings -- from residue types and atom presence
+// DetectAromaticRings: REMOVED Bundle C / Slice B (2026-05-07).
 //
-// PDB LOADING BOUNDARY: string comparisons are used here to match PDB atom
-// names against ring definitions from the AminoAcidType table. This is the
-// translation from PDB naming to typed ring objects. After this function,
-// rings are typed objects (PheBenzeneRing, HisImidazoleRing, etc.) with
-// atom indices -- no further string work.
-//
-// HIS tautomer detection: checks for "HD1" and "HE2" hydrogen atoms to
-// determine protonation state (HID/HIE/HIP). This is at the loading
-// boundary where the PDB hydrogen names are the authoritative source.
+// Ring construction is now substrate-driven via
+// RingTopology::ConstructFromSubstrate, called from
+// FinalizeConstruction after ComposeAtomSemantic. Rings live on
+// LegacyAmberTopology (parallel to bonds on CovalentTopology) and
+// are reached through the delegating accessors above.
 // ============================================================================
-
-void Protein::DetectAromaticRings() {
-    rings_.clear();
-
-    // For TRP: track the 5-ring and 6-ring indices to set fused partners
-    struct TrpRingIndices {
-        size_t benzene_idx = SIZE_MAX;
-        size_t pyrrole_idx = SIZE_MAX;
-        size_t perimeter_idx = SIZE_MAX;
-    };
-    std::map<size_t, TrpRingIndices> trp_rings;
-
-    for (size_t ri = 0; ri < residues_.size(); ++ri) {
-        const Residue& res = residues_[ri];
-        const AminoAcidType& aatype = res.AminoAcidInfo();
-
-        if (!aatype.is_aromatic) continue;
-
-        // Build a name->atom_index map for this residue
-        std::map<std::string, size_t> name_to_idx;
-        for (size_t ai : res.atom_indices) {
-            name_to_idx[atoms_[ai]->pdb_atom_name] = ai;
-        }
-
-        for (const auto& ring_def : aatype.rings) {
-            // Check all ring atoms are present
-            std::vector<size_t> atom_indices;
-            bool all_present = true;
-            for (const char* aname : ring_def.atom_names) {
-                auto it = name_to_idx.find(aname);
-                if (it == name_to_idx.end()) {
-                    all_present = false;
-                    break;
-                }
-                atom_indices.push_back(it->second);
-            }
-            if (!all_present) continue;
-
-            // Determine ring type -- for HIS, use the construction-resolved
-            // protonation_variant_index when available, otherwise fall back
-            // to string checks at the PDB loading boundary.
-            RingTypeIndex effective_type = ring_def.type_index;
-            if (res.type == AminoAcid::HIS) {
-                if (res.protonation_variant_index >= 0) {
-                    // Typed path: read from protonation_variant_index
-                    // (prepared during Protein construction)
-                    // 0 = HID, 1 = HIE, 2 = HIP
-                    switch (res.protonation_variant_index) {
-                        case 0: effective_type = RingTypeIndex::HidImidazole; break;
-                        case 1: effective_type = RingTypeIndex::HieImidazole; break;
-                        case 2: effective_type = RingTypeIndex::HisImidazole; break;
-                        default: break;  // keep HisImidazole (ambiguous)
-                    }
-                } else {
-                    // PDB LOADING BOUNDARY fallback: protonation not yet
-                    // detected (e.g., crystal structure with no H). Check
-                    // hydrogen atom names to determine tautomer.
-                    bool has_HD1 = name_to_idx.find("HD1") != name_to_idx.end();
-                    bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
-                    if (has_HD1 && has_HE2) {
-                        effective_type = RingTypeIndex::HisImidazole;
-                    } else if (has_HD1) {
-                        effective_type = RingTypeIndex::HidImidazole;
-                    } else if (has_HE2) {
-                        effective_type = RingTypeIndex::HieImidazole;
-                    }
-                    // else: no H on either N -- keep HisImidazole (ambiguous)
-                }
-            }
-
-            auto ring = CreateRing(effective_type);
-            ring->atom_indices = std::move(atom_indices);
-            ring->parent_residue_index = ri;
-            ring->parent_residue_number = res.sequence_number;
-
-            size_t ring_idx = rings_.size();
-            rings_.push_back(std::move(ring));
-
-            // Track TRP rings for fused partner assignment
-            if (res.type == AminoAcid::TRP) {
-                auto& trp = trp_rings[ri];
-                if (effective_type == RingTypeIndex::TrpBenzene)
-                    trp.benzene_idx = ring_idx;
-                else if (effective_type == RingTypeIndex::TrpPyrrole)
-                    trp.pyrrole_idx = ring_idx;
-                else if (effective_type == RingTypeIndex::TrpPerimeter)
-                    trp.perimeter_idx = ring_idx;
-            }
-        }
-    }
-
-    // Set fused partner indices for TRP rings
-    for (auto& kv : trp_rings) {
-        auto& trp = kv.second;
-        if (trp.benzene_idx != SIZE_MAX && trp.pyrrole_idx != SIZE_MAX) {
-            rings_[trp.benzene_idx]->fused_partner_index = trp.pyrrole_idx;
-            rings_[trp.pyrrole_idx]->fused_partner_index = trp.benzene_idx;
-        }
-    }
-}
 
 
 // ============================================================================

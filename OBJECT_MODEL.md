@@ -468,32 +468,69 @@ No agent creates a ProteinConformation directly. No loose conformations.
 |----------|------|------|--------|
 | residues | vector<Residue> | - | construction |
 | atoms | vector<unique_ptr<Atom>> | - | construction |
-| aromatic_rings | vector<Ring> | - | construction (topology only) |
-| covalent_bonds | vector<Bond> | - | construction |
+| protein_topology_ | unique_ptr<ProteinTopology> | - | FinalizeConstruction (concrete: LegacyAmberTopology) |
+| force_field_charges_ | unique_ptr<ForceFieldChargeTable> | - | loader-supplied |
 | build_context | unique_ptr<ProteinBuildContext> | - | construction |
 | conformations | vector<unique_ptr<ProteinConformation>> | - | via factory methods |
 
-### Query methods
-- `AtomAt(size_t) -> const Atom&`
-- `ResidueAt(size_t) -> const Residue&`
-- `RingAt(size_t) -> const Ring&`
-- `BondAt(size_t) -> const Bond&`
+Bundle C / Slice B (2026-05-07): bonds and rings are no longer Protein
+fields. Both live on `LegacyAmberTopology` (bonds via `CovalentTopology`,
+rings via `RingTopology`) and Protein exposes them as projection
+accessors. See the LegacyAmberTopology section for the storage details.
+
+### Query methods (delegating projections)
+- `AtomAt(size_t) -> const Atom&` (atoms_ direct)
+- `ResidueAt(size_t) -> const Residue&` (residues_ direct)
+- `BondAt(size_t) -> const Bond&` (delegates via LegacyAmber().BondAt)
+- `RingAt(size_t) -> const Ring&` (aromatic-only, delegates via LegacyAmber().AromaticRingAt)
+- `SaturatedRingAt(size_t) -> const Ring&` (Pro pyrrolidine, delegates via LegacyAmber().SaturatedRingAt)
 - `AtomCount() -> size_t`
 - `ResidueCount() -> size_t`
-- `RingCount() -> size_t`
+- `RingCount() -> size_t` (aromatic-only)
+- `SaturatedRingCount() -> size_t`
 - `BondCount() -> size_t`
 
 ### Construction: FinalizeConstruction
 
 Every loader must call `FinalizeConstruction(positions)` after adding
-all atoms and residues. This single call performs, in order:
-1. `CacheResidueBackboneIndices()` — backbone N/CA/C/O/H/HA indices
-2. `DetectAromaticRings()` — from AminoAcidType + atom presence
-3. `DetectCovalentBonds(positions)` — via OpenBabel bond perception
+all atoms and residues. Bundle C / Slice B (2026-05-07) reordered the
+internal sequence so substrate-driven ring construction follows
+substrate composition; the externally-visible contract (one call,
+positions, optional invariants value-pack) is unchanged. The 13-step
+sequence:
 
-Order matters: rings need backbone cache (to know residue types),
-bonds need rings (to classify aromatic bonds). Call BEFORE creating
-any ProteinConformation.
+1. `ResolveResidueTerminalStates()` — per-chain N/C-term tagging.
+2. `CacheResidueBackboneIndices()` — string-matched first pass for
+   `res.{N, CA, C, O, H, HA, CB}` (overwritten by step 13).
+3. `ResolveProtonationStates(nullptr)` — first pass; HIS/LYS/etc.
+   variants from explicit-H presence.
+4. `CovalentTopology::Resolve` — geometric bond detection +
+   non-aromatic categorisation. **No rings parameter** post-Bundle-C
+   (aromatic tagging is now a separate overlay).
+5. `CovalentTopology::OverrideDisulfides` — when authority is present.
+6. `ResolveProtonationStates(bonds)` — second pass; CYS → CYX from
+   the disulfide bond list.
+7. Copy `bonds.bond_indices_for(i)` and `h_parent` back onto
+   `Atom.bond_indices` / `parent_atom_index` (substrate composition
+   reads these).
+8. Post-protonation re-canonicalisation (NamingApplicator second
+   pass against now-resolved variants).
+9. `ComposeAtomSemantic()` — typed substrate per atom.
+10. `RingTopology::ConstructFromSubstrate()` — substrate-driven ring
+    construction (replaces pre-Bundle-C `DetectAromaticRings`).
+    Aromatic rings → `aromatic_`, Pro pyrrolidine → `saturated_`.
+    Canonical cyclic walk per kind via the explicit
+    `RingTopology::CanonicalCyclicWalk` dispatcher.
+11. `bonds->TagAromaticBonds(rings.Aromatic())` — overlay that tags
+    bonds whose both endpoints sit in any aromatic ring (mirrors
+    `OverrideDisulfides` shape).
+12. Construct `LegacyAmberTopology` with bonds + invariants +
+    atom_semantic + rings, sealed plain-const.
+13. `CacheResidueBackboneIndices_Typed()` — substrate-driven typed
+    cache; overwrites step 2's string-matched values from
+    `BackboneRole`.
+
+Call BEFORE creating any ProteinConformation.
 
 ### Ownership and lifetime
 Protein is non-movable and non-copyable. It lives on the heap via

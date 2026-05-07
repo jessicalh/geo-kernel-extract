@@ -572,13 +572,19 @@ TEST_F(UnifiedHisTest, ProtonationDrivesRingType) {
 
     auto& conf = protein.Conformation();
 
-    // Run protonation detection FIRST
+    // Run protonation detection (diagnostic projection over the
+    // already-resolved residue state from FinalizeConstruction).
     auto prot = ProtonationDetectionResult::Compute(conf);
     ASSERT_NE(prot, nullptr);
     conf.AttachResult(std::move(prot));
 
-    // Now re-detect rings (uses protonation_variant_index for HIS)
-    protein.DetectAromaticRings();
+    // Bundle C / Slice B (2026-05-07): rings are constructed during
+    // FinalizeConstruction inside BuildFromProtonatedPdb using the
+    // resolved variant_index. ProtonationDetectionResult is a
+    // post-construction diagnostic; rings already exist with the
+    // correct typed dispatch (HID/HIE/HIP variants). The pre-Bundle-C
+    // re-detection call (`protein.DetectAromaticRings()`) was the
+    // string-based path that has since been deleted.
 
     // Verify HIS ring types match protonation variants
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {

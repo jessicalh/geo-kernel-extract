@@ -34,18 +34,26 @@ TEST(AminoAcid, ProtonationVariants) {
     EXPECT_EQ(ash, AminoAcid::ASP);
 }
 
-TEST(AminoAcidType, PHERingDefined) {
+// Bundle C / Slice B (2026-05-07): the previous PHERingDefined and
+// TRPThreeRings tests asserted on AminoAcidType::rings (the
+// AminoAcidRing struct + per-residue rings[] arrays). Both were
+// deleted along with the string-based DetectAromaticRings. The
+// equivalent post-Bundle-C assertions ("PHE produces one
+// PheBenzeneRing", "TRP produces TrpBenzene + TrpPyrrole +
+// TrpPerimeter") run end-to-end on real fixtures (1UBQ, 1P9J) via
+// existing tests in test_pdb_loading and test_foundation_results,
+// since rings now require positions + substrate. The static
+// presence-of-table assertions have no equivalent because the
+// table itself has been retired.
+
+TEST(AminoAcidType, PHEIsAromatic) {
     const auto& phe = GetAminoAcidType(AminoAcid::PHE);
     EXPECT_TRUE(phe.is_aromatic);
-    EXPECT_EQ(phe.rings.size(), 1);
-    EXPECT_EQ(phe.rings[0].type_index, RingTypeIndex::PheBenzene);
-    EXPECT_EQ(phe.rings[0].atom_names.size(), 6);
 }
 
-TEST(AminoAcidType, TRPThreeRings) {
+TEST(AminoAcidType, TRPIsAromatic) {
     const auto& trp = GetAminoAcidType(AminoAcid::TRP);
     EXPECT_TRUE(trp.is_aromatic);
-    EXPECT_EQ(trp.rings.size(), 3);
 }
 
 TEST(AminoAcidType, HISVariants) {

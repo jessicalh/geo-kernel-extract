@@ -64,12 +64,28 @@ public:
     size_t AddResidue(Residue residue);
 
     // ================================================================
-    // Ring access
+    // Ring access (delegated through RingTopology on LegacyAmberTopology)
+    //
+    // Bundle C / Slice B (2026-05-07): ring storage moved to
+    // LegacyAmberTopology::Rings(), parallel to how bonds delegate
+    // through CovalentTopology. The public Protein API is unchanged
+    // for aromatic rings — `RingCount()` / `RingAt(i)` / `Rings()`
+    // still mean aromatic-only — and gains symmetric accessors for
+    // saturated rings (Pro pyrrolidine). Calculator code consumers
+    // see the same calling shape.
+    //
+    // Stub-fixture path: when LegacyAmberTopology has no ring topology
+    // attached (no FinalizeConstruction yet), these accessors return
+    // 0 / abort respectively, mirroring BondCount() / BondAt().
     // ================================================================
 
-    size_t RingCount() const { return rings_.size(); }
-    const Ring& RingAt(size_t i) const { return *rings_[i]; }
-    const std::vector<std::unique_ptr<Ring>>& Rings() const { return rings_; }
+    size_t RingCount() const;
+    const Ring& RingAt(size_t i) const;
+    const std::vector<std::unique_ptr<Ring>>& Rings() const;
+
+    size_t SaturatedRingCount() const;
+    const Ring& SaturatedRingAt(size_t i) const;
+    const std::vector<std::unique_ptr<Ring>>& SaturatedRings() const;
 
     // ================================================================
     // Bond access (delegated through CovalentTopology)
@@ -200,7 +216,13 @@ public:
     // CacheResidueBackboneIndices() runs the string-matched pass; the
     // typed pass at the end of FinalizeConstruction is private and
     // overwrites the cache from the substrate.
-    void DetectAromaticRings();
+    //
+    // Bundle C / Slice B (2026-05-07): DetectAromaticRings was deleted.
+    // Ring construction is now substrate-driven via
+    // RingTopology::ConstructFromSubstrate, called inside
+    // FinalizeConstruction after ComposeAtomSemantic. Tests that
+    // previously called DetectAromaticRings() directly must call
+    // FinalizeConstruction() with positions instead.
     void CacheResidueBackboneIndices();
 
 private:
@@ -228,7 +250,9 @@ private:
 
     std::vector<std::unique_ptr<Atom>> atoms_;
     std::vector<Residue> residues_;
-    std::vector<std::unique_ptr<Ring>> rings_;
+    // Rings live on LegacyAmberTopology::Rings() post-Bundle-C / Slice B.
+    // Protein keeps no ring storage of its own; ring access goes through
+    // delegation methods declared above.
     std::unique_ptr<ProteinTopology> protein_topology_;
     std::unique_ptr<ForceFieldChargeTable> force_field_charges_;
     std::unique_ptr<ProteinBuildContext> build_context_ =

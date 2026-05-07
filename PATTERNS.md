@@ -755,15 +755,26 @@ wt_conf.AttachResult(std::move(delta));
 ### 18. FinalizeConstruction: one call, correct order
 
 Every loader must call `protein->FinalizeConstruction(positions)`
-after adding all atoms and residues. This performs:
-1. CacheResidueBackboneIndices (needs residues)
-2. DetectAromaticRings (needs backbone cache for residue types)
-3. DetectCovalentBonds (needs rings for aromatic bond classification)
+after adding all atoms and residues. The post-Bundle-C / Slice B
+(2026-05-07) sequence is documented in `OBJECT_MODEL.md` under
+Protein → Construction; the externally-visible contract is the
+same one call.
 
-Order matters. The OrcaRunLoader originally missed this entirely,
-producing proteins with zero rings and zero bonds. Both PdbFileReader
-and OrcaRunLoader now call FinalizeConstruction. Any future loader
-must do the same.
+Internal ordering principle: substrate-driven steps (substrate
+composition, substrate-driven ring construction, typed backbone
+cache) follow the substrate's prerequisites — protonation must be
+resolved, bonds must exist, atom names must be canonicalised
+post-protonation. `CovalentTopology::Resolve` no longer takes rings
+as input; aromatic-bond tagging is a post-rings overlay
+(`TagAromaticBonds`) that mirrors `OverrideDisulfides`'s shape.
+`Protein::DetectAromaticRings` no longer exists — ring construction
+is `RingTopology::ConstructFromSubstrate`, owned by
+`LegacyAmberTopology`.
+
+Order matters. The OrcaRunLoader originally missed FinalizeConstruction
+entirely, producing proteins with zero rings and zero bonds. Both
+PdbFileReader and OrcaRunLoader now call FinalizeConstruction. Any
+future loader must do the same.
 
 ### 19. The full McConnell tensor is NOT Δχ × K
 

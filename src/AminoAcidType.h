@@ -54,11 +54,13 @@ struct ChiAngleDef {
     const char* atoms[4];
 };
 
-// A ring belonging to this amino acid.
-struct AminoAcidRing {
-    RingTypeIndex type_index;
-    std::vector<const char*> atom_names;
-};
+// AminoAcidRing struct + rings[] field were deleted in Bundle C /
+// Slice B (2026-05-07). The string-based ring atom-name table that
+// pre-Bundle-C DetectAromaticRings consumed has been replaced by the
+// substrate-driven RingTopology::ConstructFromSubstrate, which reads
+// typed RingPosition slots from each atom's AtomSemanticTable. No
+// caller outside the deleted DetectAromaticRings consumed these
+// fields.
 
 class AminoAcidType {
 public:
@@ -73,7 +75,6 @@ public:
     int             charged_formal_charge;
 
     std::vector<AminoAcidAtom> atoms;
-    std::vector<AminoAcidRing> rings;
     std::vector<ChiAngleDef>   chi_angles;
     std::vector<ProtonationVariant> variants;
 
