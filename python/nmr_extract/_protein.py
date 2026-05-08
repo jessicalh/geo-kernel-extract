@@ -128,10 +128,179 @@ class OrcaGroup:
 
 @dataclass(frozen=True)
 class DeltaGroup:
+    """WT - mutant deltas, indexed by WT atom row.
+
+    `shielding` is the total DFT shielding delta (sigma_total = sigma_dia
+    + sigma_para). The dia/para components are also stored on each side
+    AND as deltas — six tensors total — so analyses can stratify the
+    mutation shift by physical mechanism (electron-density change vs.
+    orbital-response change) without joining against the per-conformation
+    ORCA NPYs in two extraction directories.
+
+    All component tensors are optional; they are present when an ORCA
+    NMR output file accompanied both the WT and mutant runs.
+    """
     shielding: ShieldingTensor
     scalars: DeltaScalars
     apbs: Optional[DeltaAPBS]
     ring_proximity: DeltaRingProximity
+
+    # WT side
+    wt_shielding_diamagnetic: Optional[ShieldingTensor] = None
+    wt_shielding_paramagnetic: Optional[ShieldingTensor] = None
+    # mut side
+    mut_shielding_diamagnetic: Optional[ShieldingTensor] = None
+    mut_shielding_paramagnetic: Optional[ShieldingTensor] = None
+    # WT - mut for each component
+    delta_shielding_diamagnetic: Optional[ShieldingTensor] = None
+    delta_shielding_paramagnetic: Optional[ShieldingTensor] = None
+
+
+# ── Per-atom invariant categorical record ───────────────────────────
+
+
+class CategoryInfo:
+    """Per-atom invariant categorical record from ``atoms_category_info.npy``.
+
+    One structured-dtype row per atom, populated by ``CategoryInfoProjection``
+    at one-shot per-protein emission time. Holds every categorical fact
+    the C++ side knows about each atom: identity (atom_index, residue_index,
+    element), atom names across naming systems (AMBER / IUPAC / BMRB),
+    per-residue 3-letter / 1-letter codes (also AMBER / IUPAC / BMRB),
+    mechanical identity (locant, branch, di_index, backbone_role), and
+    chemistry classification (prochiral, planar group/stereo, polar-H
+    kind, ring position, pseudoatom membership, aromatic, formal_charge,
+    is_exchangeable). See ``src/CategoryInfoProjection.h`` and
+    ``src/SemanticEnums.h`` for the enum value mappings.
+
+    Convenience properties decode the most-used columns; the rest are
+    accessible as raw int8 arrays via ``info.data[<field>]``. Do
+    stratification with numpy boolean masks:
+
+        info.is_backbone & (info.element == 7)            # backbone N
+        info.is_aromatic & (info.element == 6)            # aromatic C
+        info.amber_residue_3letter == b'CYX'              # disulfide CYS
+        info.data['polar_h_kind'] != 0                    # any polar H
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.dtype.fields is None:
+            raise ValueError(
+                "CategoryInfo: expected a numpy structured array; got "
+                f"flat dtype {data.dtype}. The C++ writer emits a "
+                "structured-dtype NPY; if this fires, the file is "
+                "either truncated or the schema diverged from the "
+                "loader.")
+        self._data = data
+
+    # ── Raw access ──
+    @property
+    def data(self) -> np.ndarray:
+        """Raw numpy structured array. All fields per ``data.dtype.names``."""
+        return self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def n_atoms(self) -> int:
+        return len(self._data)
+
+    # ── Decoded string columns ──
+    @property
+    def amber_atom_name(self) -> np.ndarray:
+        """Per-atom AMBER ff14SB atom name as ``bytes`` (S8)."""
+        return self._data["amber_atom_name"]
+
+    @property
+    def iupac_atom_name(self) -> np.ndarray:
+        return self._data["iupac_atom_name"]
+
+    @property
+    def bmrb_atom_name(self) -> np.ndarray:
+        return self._data["bmrb_atom_name"]
+
+    @property
+    def amber_residue_3letter(self) -> np.ndarray:
+        """Variant-specific AMBER residue name (CYX / HID / ASH / ...)."""
+        return self._data["amber_residue_3letter"]
+
+    @property
+    def iupac_residue_3letter(self) -> np.ndarray:
+        """Canonical IUPAC residue name (CYS / HIS / ASP / ...)."""
+        return self._data["iupac_residue_3letter"]
+
+    @property
+    def bmrb_residue_3letter(self) -> np.ndarray:
+        """Canonical BMRB residue name (== IUPAC for the standard 20)."""
+        return self._data["bmrb_residue_3letter"]
+
+    @property
+    def residue_1letter(self) -> np.ndarray:
+        return self._data["residue_1letter"]
+
+    # ── Numeric columns commonly used in stratification ──
+    @property
+    def atom_index(self) -> np.ndarray:
+        return self._data["atom_index"]
+
+    @property
+    def residue_index(self) -> np.ndarray:
+        return self._data["residue_index"]
+
+    @property
+    def element(self) -> np.ndarray:
+        """Per-atom atomic number as int8. 1=H, 6=C, 7=N, 8=O, 16=S.
+
+        Matches the convention of the existing ``element.npy``; codex
+        can stratify by element with ``info.element == 6`` etc.
+        """
+        return self._data["element"]
+
+    @property
+    def residue_type(self) -> np.ndarray:
+        """Per-atom AminoAcid enum index (canonical, NOT variant-aware)."""
+        return self._data["residue_type"]
+
+    @property
+    def residue_variant_index(self) -> np.ndarray:
+        """AMBER protonation variant index per residue. -1 = canonical."""
+        return self._data["residue_variant_index"]
+
+    @property
+    def terminal_state(self) -> np.ndarray:
+        """ResidueTerminalState int: Internal/Nterm{Charged,Neutral}/Cterm{...}."""
+        return self._data["terminal_state"]
+
+    @property
+    def formal_charge(self) -> np.ndarray:
+        return self._data["formal_charge"]
+
+    # ── Convenience boolean masks ──
+    @property
+    def is_backbone(self) -> np.ndarray:
+        """``backbone_role != None`` — N/CA/C/O/H/HA backbone slots."""
+        return self._data["backbone_role"] != 0
+
+    @property
+    def is_aromatic(self) -> np.ndarray:
+        return self._data["aromatic"] != 0
+
+    @property
+    def is_exchangeable(self) -> np.ndarray:
+        return self._data["is_exchangeable"] != 0
+
+    @property
+    def is_polar_h(self) -> np.ndarray:
+        """``polar_h_kind != NotPolar`` — atoms classified as exchangeable Hs."""
+        return self._data["polar_h_kind"] != 0
+
+    @property
+    def in_super_group(self) -> np.ndarray:
+        """In a Markley super-aggregate (QG/QD/QH/QR)."""
+        return self._data["in_super_group"] != 0
 
 
 @dataclass(frozen=True)
@@ -249,6 +418,9 @@ class Protein:
     orca: Optional[OrcaGroup] = None
     delta: Optional[DeltaGroup] = None
     aimnet2: Optional[AIMNet2Group] = None
+
+    # Per-atom invariant categorical record (CategoryInfoProjection).
+    category_info: Optional[CategoryInfo] = None
 
     # Explicit solvent (trajectory path only)
     water_field: Optional[WaterFieldGroup] = None
@@ -397,7 +569,21 @@ def load(path: str | Path) -> Protein:
             scalars=get("delta_scalars"),
             apbs=get("delta_apbs"),
             ring_proximity=get("delta_ring_proximity"),
+            wt_shielding_diamagnetic=get("wt_shielding_diamagnetic"),
+            wt_shielding_paramagnetic=get("wt_shielding_paramagnetic"),
+            mut_shielding_diamagnetic=get("mut_shielding_diamagnetic"),
+            mut_shielding_paramagnetic=get("mut_shielding_paramagnetic"),
+            delta_shielding_diamagnetic=get("delta_shielding_diamagnetic"),
+            delta_shielding_paramagnetic=get("delta_shielding_paramagnetic"),
         )
+
+    # Per-atom invariant categorical record (optional; CategoryInfoProjection
+    # emits it whenever LegacyAmber substrate is populated, which is every
+    # production load path). The catalog declares wrapper=np.ndarray to
+    # avoid a circular import; we wrap to CategoryInfo here.
+    category_info = None
+    if "atoms_category_info" in available:
+        category_info = CategoryInfo(available["atoms_category_info"])
 
     # AIMNet2 (optional)
     aimnet2 = None
@@ -472,4 +658,5 @@ def load(path: str | Path) -> Protein:
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
         eeq=eeq,
+        category_info=category_info,
     )

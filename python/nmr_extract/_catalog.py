@@ -162,10 +162,29 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("orca_paramagnetic","orca", ShieldingTensor,         9,    False, "Orca DFT paramagnetic"),
 
     # ── Mutation delta (MutationDeltaResult.cpp) ─────────────────
-    ArraySpec("delta_shielding",       "delta", ShieldingTensor,       9,    False, "WT-ALA shielding delta"),
+    ArraySpec("delta_shielding",       "delta", ShieldingTensor,       9,    False, "WT-ALA shielding delta (total)"),
     ArraySpec("delta_scalars",         "delta", DeltaScalars,          6,    False, "Delta metadata + match info"),
     ArraySpec("delta_apbs",            "delta", DeltaAPBS,             12,   False, "APBS delta E + EFG"),
     ArraySpec("delta_ring_proximity",  "delta", DeltaRingProximity,    None, False, "Removed ring geometry (variable cols)"),
+    # DFT shielding component decomposition: WT side, mut side, deltas;
+    # diamagnetic and paramagnetic. sigma_total = sigma_dia + sigma_para;
+    # the existing delta_shielding satisfies that identity at ORCA's
+    # output precision (~1e-3 ppm). Stratifies mutation shifts by
+    # physical mechanism.
+    ArraySpec("wt_shielding_diamagnetic",     "delta", ShieldingTensor, 9, False, "WT diamagnetic shielding (matched, by WT atom row)"),
+    ArraySpec("wt_shielding_paramagnetic",    "delta", ShieldingTensor, 9, False, "WT paramagnetic shielding (matched, by WT atom row)"),
+    ArraySpec("mut_shielding_diamagnetic",    "delta", ShieldingTensor, 9, False, "mut diamagnetic shielding (matched, by WT atom row)"),
+    ArraySpec("mut_shielding_paramagnetic",   "delta", ShieldingTensor, 9, False, "mut paramagnetic shielding (matched, by WT atom row)"),
+    ArraySpec("delta_shielding_diamagnetic",  "delta", ShieldingTensor, 9, False, "WT - mut diamagnetic shielding delta"),
+    ArraySpec("delta_shielding_paramagnetic", "delta", ShieldingTensor, 9, False, "WT - mut paramagnetic shielding delta"),
+
+    # ── Per-atom invariant categorical record (CategoryInfoProjection.cpp) ──
+    # Structured-dtype NPY (~31 fields). One-shot per protein, NOT per-
+    # conformation. Wrapper is np.ndarray here (delivered as the raw
+    # structured array) and `load()` in _protein.py wraps it as
+    # CategoryInfo — a circular import would result if the catalog
+    # referenced the wrapper class directly.
+    ArraySpec("atoms_category_info",   "identity", np.ndarray, None, False, "Per-atom invariant categorical record (structured dtype)"),
 
     # ── AIMNet2 (AIMNet2Result.cpp) ─────────────────────────────
     # Required in production output per project_aimnet2_contract_20260426.

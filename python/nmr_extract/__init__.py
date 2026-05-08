@@ -29,7 +29,7 @@ from ._tensors import (
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
-from ._protein import AIMNet2Group, WaterPolarizationGroup, EeqGroup
+from ._protein import AIMNet2Group, WaterPolarizationGroup, EeqGroup, CategoryInfo
 
 __all__ = [
     "load",
@@ -55,6 +55,7 @@ __all__ = [
     "AIMNet2Group",
     "WaterPolarizationGroup",
     "EeqGroup",
+    "CategoryInfo",
     "load_trajectory",
     "TrajectoryData",
     "TrajectoryRollup",

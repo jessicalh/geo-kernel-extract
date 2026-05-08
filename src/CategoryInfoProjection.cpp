@@ -399,8 +399,13 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         const int32_t res_idx_val = static_cast<int32_t>(atom.residue_index);
         std::memcpy(row + off, &res_idx_val, 4); off += 4;
 
-        // ── element (int8) ──
-        row[off++] = static_cast<int8_t>(atom.element);
+        // ── element (int8 atomic number) ──
+        // We emit ATOMIC NUMBER for SDK consistency with element.npy
+        // (which the existing ConformationResult identity block emits
+        // as atomic number too). The internal Element enum index would
+        // be sufficient for typed-identity matching but confuses
+        // downstream analyses that expect 6=C/7=N/8=O conventions.
+        row[off++] = static_cast<int8_t>(AtomicNumberForElement(atom.element));
 
         // ── Atom names ──
         const std::string& amber_name = atom.pdb_atom_name;
