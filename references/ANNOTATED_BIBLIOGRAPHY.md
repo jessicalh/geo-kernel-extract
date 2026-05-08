@@ -2084,3 +2084,42 @@ closest prior art. A thesis committee member who reads only these
 Add C4 (SPARTA+) or C5 (SHIFTX2) as the empirical baseline
 comparator and D7 (Grisafi tensor kernels) if the committee has
 a methods focus. That gives 14-16 core citations.
+
+---
+
+## Reference data tables (machine-readable)
+
+### bmrb_data/atom_nom.tbl
+
+BMRB hydrogen atom-naming cross-walk: BMRB ↔ {SC stereo, PDB
+legacy, UCSF/Mardigras, XPLOR 3.1, MSI/InsightII, SYBYL 6.2,
+MIDAS+, DIANA}. Original by Charles Hoogstraten, maintained at
+BMRB. The "BMRB" column is the IUPAC/IUB Biochemistry 9, 3471-3479
+[1970] standard, refined by Markley et al. 1998 (J. Biomol. NMR
+12:1-23). For all 20 standard amino acids: backbone + side-chain
+heavy atoms + hydrogens, with diastereotopic stereo assignment
+(pro-R / pro-S) on prochiral methylenes/methyls and Z/E on the
+planar amide / guanidinium / phenolate groups (Asn HD21/HD22, Gln
+HE21/HE22, Arg NH1/NH2 + HH11/HH12/HH21/HH22).
+
+Fetched 2026-05-08 from `https://bmrb.io/ref_info/atom_nom.tbl`.
+Saved at `references/bmrb_data/atom_nom.tbl` (12 KB, tab-separated;
+header comments + per-residue rows; pynmrstar-independent — readable
+with Python's `csv` at `delimiter='\t'`).
+
+**What's NOT in the table:** AMBER protonation variants (HID/HIE/
+HIP, CYX, CYM, LYN, ASH, GLH — atom names within the variant
+match the standard residue, but BMRB stores residue type as the
+canonical 3-letter); terminal caps (ACE, NME, NHE — only generic
+X H1/H2/H3 / O' / O''); non-standard residues (modifications,
+PTMs); pseudoatom Q-labels (lives in BMRB's separate
+`pseudoatom_lib.tbl`); multi-chain Entity_assembly_ID handling
+(per-entry, not per-table).
+
+**Used by:** the output-side BMRB / IUPAC name projection at NPY
+emission (planned). The input-side `NamingApplicator`
+(input-canonicalisation, see
+`spec/plan/naming-applicator-architecture-sketch-2026-05-06.md`)
+does NOT consume this table — input and output sides stay
+architecturally separate; see memory entry
+`feedback_naming_input_output_asymmetry`.

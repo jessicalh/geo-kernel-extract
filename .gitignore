@@ -93,6 +93,13 @@ tests/data/fleet_amber/
 # `nmr_extract` against a fleet pose; machine-local, not repo material.
 tests/data/sdk_geo_only/
 
+# MolProbity validation runs — per-frame PDBs + trajectory.h5 +
+# validation outputs from FramePdbEmitter + tools/molprobity_validate.py.
+# Multi-GB per protein, regenerable from tests/data/fleet_amber/ +
+# the wrapper script; machine-local, not repo material. Persistent
+# paper-archival copies live at /shared/2026Thesis/paper_archive/.
+molprobity_runs/
+
 # Reference-corpus derived files — trivially regenerable from
 # references/*.pdf via scripts/references/ingest_pdf.sh. At ~500
 # papers these would add ~2 GB. Source-of-truth is the PDFs plus
