@@ -299,12 +299,30 @@ target_link_libraries(nmr_shielding PUBLIC
     ${TORCH_LIBRARIES}
 )
 
+# Match HDF5 1.10 headers to the 1.10 .so for every TU in the library —
+# OpenBabel/MOPAC's micromamba include path contributes 1.14 headers
+# which causes HighFive to emit H5Treclaim and bakes mismatched
+# H5_VERS_* into compilation units; the link library is system
+# libhdf5 1.10. Without this prepend, the library's WriteH5 paths
+# (TrajectoryProtein, *TimeSeriesTrajectoryResult, etc.) compile against
+# 1.14 and crash at runtime when HDF5 init detects the mismatch.
+# Same hazard pattern as the gromacs_streaming_tests / nmr-viewer
+# fixes below.
+target_include_directories(nmr_shielding BEFORE PUBLIC
+    /usr/include/hdf5/serial
+)
+
 # ============================================================================
 # CLI executable
 # ============================================================================
 
 add_executable(nmr_extract src/nmr_extract.cpp)
 target_link_libraries(nmr_extract PRIVATE nmr_shielding)
+# Same HDF5-1.10-headers prepend for nmr_extract.cpp itself (the
+# RunTrajectory WriteH5 site is in this TU).
+target_include_directories(nmr_extract BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
 
 
 # ============================================================================

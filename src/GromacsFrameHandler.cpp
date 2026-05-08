@@ -138,10 +138,14 @@ bool GromacsFrameHandler::ReadNextFrame() {
     // sentinels with real values.
     trr_has_v_ = !raw_v_.empty() && !std::isnan(raw_v_[0]);
 
-    // Box matrix in Å (TRR stores in nm).
+    // Box matrix in Å (TRR stores in nm). Transpose at the boundary:
+    // GROMACS rvec[3] is row-of-vectors (box_rv[i] is the i-th lattice
+    // vector); we store as column-of-vectors so col(i) = lattice vector i,
+    // matching Eigen's idiomatic Vector3d-as-column and
+    // FramePdbEmitter::BoxToCellParameters' contract.
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            box_matrix_(i, j) = static_cast<double>(box_rv[i][j]) * 10.0;
+            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * 10.0;
         }
     }
 

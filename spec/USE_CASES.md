@@ -125,6 +125,26 @@ CSV catalog. The Python SDK reads both via `load_trajectory()`.
 This is CLI-only. The viewer returns immediately if trajectory mode
 is dispatched — it is a batch operation, not interactive
 
+### Optional opt-in PDB emission (FramePdbEmitter)
+
+Five flags drive `FramePdbEmitter`, a singleton projection-only output
+that writes one PDB per accepted frame alongside the calculator output.
+Inert unless `--emit-frame-pdbs` is set:
+
+    --emit-frame-pdbs DIR    Output directory; activates the emitter
+    --pdb-stride N           Emit every N-th frame as read (default 1)
+    --pdb-from-ps T0         Skip frames with time_ps < T0 (default -inf)
+    --pdb-to-ps   T1         Skip frames with time_ps >= T1 (default +inf)
+    --pdb-decorator TAG      Optional run tag in the filename
+
+Filename: `{stem}{_decorator?}_f{NNNNNN}_t{ps:.1f}.pdb`, stem derived
+from the trajectory directory basename (preserve-IDs convention). PDBs
+include HEADER, CRYST1 (from the TRR box matrix when present), ATOM
+with hydrogens, TER between biological chains, CONECT for disulfide
+bonds, and END. Drives MolProbity validation of the typed-substrate →
+PDB projection, and bulk ORCA-input prep. Singleton + reads-only
+(touches no model objects); see `src/FramePdbEmitter.{h,cpp}`.
+
 ---
 
 ## Use Case F: Analysis trajectory (exhaustive per-frame H5)
@@ -137,8 +157,10 @@ and GNN message design.
 
 **Input:** protein directory containing md.tpr, md.xtc, md.edr (all required),
 AIMNet2 model (required)
-**Output:** `{protein_id}_analysis.h5` — exhaustive per-frame data,
-PDB snapshots at ~1ns intervals (ORCA inputs)
+**Output:** `{protein_id}_analysis.h5` — exhaustive per-frame data.
+Per-frame PDB emission is no longer auto-emitted at a fixed cadence;
+opt into the `--emit-frame-pdbs` flag set documented in Use Case E
+(applies to `--trajectory` paths once the analysis path is restored).
 
     nmr_extract --trajectory --analysis /path/to/protein_dir \
                 --aimnet2 model.jpt --output /path/to/output
@@ -147,7 +169,9 @@ Single-pass architecture with stride 2 (~625 of 1250 frames):
 all calculators run every sampled frame (APBS, AIMNet2 mandatory,
 MOPAC skipped). AnalysisWriter buffers per-frame data in memory,
 writes the complete H5 at end. ~1.7 GB per protein at 4000 atoms.
-PDB snapshots written at ~1ns intervals for DFT (ORCA) input.
+(PDB emission is now the opt-in `FramePdbEmitter` mechanism documented
+in Use Case E; auto-snapshot at fixed intervals was retired with
+AnalysisWriter.)
 
 The H5 is self-contained: typed topology (bonds, rings, enrichment),
 per-frame physics groups (ring_current, efg, bond_aniso, quadrupole,
