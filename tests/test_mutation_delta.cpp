@@ -352,3 +352,123 @@ TEST_F(MutationDeltaTest, AccessViaTemplateAfterAttach) {
     EXPECT_EQ(d.MutationSites().size(), 4u);
     EXPECT_FALSE(d.Summary().by_element.empty());
 }
+
+
+// ============================================================================
+// Typed-identity matcher invariants (rewrite landed 2026-05-08).
+//
+// These tests exercise the new substrate-typed-identity matching block
+// and document the methodology guarantees the rewrite delivers:
+//   * Mechanical-swap fixtures produce zero-drift bound matches.
+//   * Mutation residues are wholly excluded from binding.
+//   * Non-mutation residues bijection: every WT atom finds a unique
+//     mut atom (for this fixture there are no variant differences).
+//
+// See spec/plan/category-info-projection-implementation-plan-2026-05-08.md §8.
+// ============================================================================
+
+TEST_F(MutationDeltaTest, MechanicalSwapDriftIsSubAngstrom) {
+    auto& wt_conf = wt_.protein->Conformation();
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_.protein->Conformation());
+    ASSERT_NE(delta, nullptr);
+
+    // For the A0A7C5FAR6 fixture, every non-mutation atom should be in
+    // (essentially) the same coordinates between WT and mut — that's
+    // the structural assumption of the mechanical-mutation pipeline.
+    // The typed matcher binds by identity; this test documents that
+    // those bindings DO agree with spatial proximity at sub-Angstrom
+    // distances on real fixture data.
+    double max_drift = 0.0;
+    for (size_t wi = 0; wi < wt_conf.AtomCount(); ++wi) {
+        if (!delta->HasMatch(wi)) continue;
+        max_drift = std::max(max_drift, delta->MatchDistanceAt(wi));
+    }
+    EXPECT_LT(max_drift, 0.5)
+        << "max bound-atom drift " << max_drift << " Å — mechanical-swap "
+        "fixture should produce near-zero drift across all bound atoms. "
+        "Drift > 0.5 Å indicates the mut-generation pipeline changed the "
+        "non-mutation coordinates, the substrate is mis-tagging atoms, "
+        "or rotamers flipped (in which case typed match is correct and "
+        "this assertion's threshold should be relaxed to characterise "
+        "the new fixture).";
+}
+
+
+TEST_F(MutationDeltaTest, MutationSiteAtomsAreNotBound) {
+    auto& wt_conf = wt_.protein->Conformation();
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_.protein->Conformation());
+    ASSERT_NE(delta, nullptr);
+
+    const Protein& p = wt_conf.ProteinRef();
+
+    // Build the set of mutation residue indices.
+    std::set<size_t> mutation_residues;
+    for (const auto& site : delta->MutationSites()) {
+        mutation_residues.insert(site.residue_index);
+    }
+    ASSERT_FALSE(mutation_residues.empty())
+        << "Test fixture should have at least one mutation site.";
+
+    // Every WT atom in a mutation residue must be unmatched. The pre-
+    // 2026-05-08 spatial matcher silently bound across this boundary
+    // (e.g., WT PHE-CG to mut ALA-CB by proximity) — the typed matcher
+    // refuses, surfacing the chemistry difference cleanly.
+    size_t mutation_atoms_total = 0;
+    size_t mutation_atoms_bound_in_error = 0;
+    for (size_t wi = 0; wi < p.AtomCount(); ++wi) {
+        if (!mutation_residues.count(p.AtomAt(wi).residue_index)) continue;
+        ++mutation_atoms_total;
+        if (delta->HasMatch(wi)) ++mutation_atoms_bound_in_error;
+    }
+    EXPECT_GT(mutation_atoms_total, 0u)
+        << "Mutation residues should contain WT atoms.";
+    EXPECT_EQ(0u, mutation_atoms_bound_in_error)
+        << mutation_atoms_bound_in_error << " WT atoms in mutation residues "
+        "were bound to mut atoms — the typed matcher should refuse all "
+        "bindings across mutation chemistry boundaries.";
+}
+
+
+TEST_F(MutationDeltaTest, NonMutationResiduesAchieveBijection) {
+    auto& wt_conf = wt_.protein->Conformation();
+    auto delta = MutationDeltaResult::Compute(wt_conf, ala_.protein->Conformation());
+    ASSERT_NE(delta, nullptr);
+
+    const Protein& p = wt_conf.ProteinRef();
+
+    // For mutation-free residues with matching variant index, every
+    // WT atom must find a unique mut atom (the typed identity tuple
+    // is unique-within-residue except for equivalent-H sets, which
+    // bind by consume-in-order). Bijection is the strict guarantee.
+    std::set<size_t> mutation_residues;
+    for (const auto& site : delta->MutationSites()) {
+        mutation_residues.insert(site.residue_index);
+    }
+
+    std::set<size_t> mut_atoms_used;
+    size_t non_mut_atoms = 0;
+    size_t non_mut_unmatched = 0;
+    for (size_t wi = 0; wi < p.AtomCount(); ++wi) {
+        const size_t ri = p.AtomAt(wi).residue_index;
+        if (mutation_residues.count(ri)) continue;
+        ++non_mut_atoms;
+        if (!delta->HasMatch(wi)) {
+            ++non_mut_unmatched;
+            continue;
+        }
+        const size_t mi = delta->MutantAtomFor(wi);
+        EXPECT_EQ(0u, mut_atoms_used.count(mi))
+            << "mut atom " << mi << " is bound to two WT atoms — typed "
+            "matcher's consume-in-order should produce 1:1 binding.";
+        mut_atoms_used.insert(mi);
+    }
+    EXPECT_GT(non_mut_atoms, 0u);
+    // For this fixture (no variant differences), every non-mutation
+    // WT atom should match. The new matcher's `no_id_match` and
+    // `variant_unmatched` counters surface deviations elsewhere.
+    EXPECT_EQ(0u, non_mut_unmatched)
+        << non_mut_unmatched << " WT atoms in non-mutation residues "
+        "were not matched. Either the substrate is incomplete on this "
+        "fixture (regression in ComposeAtomSemantic), or the fixture "
+        "contains a variant difference the test wasn't expecting.";
+}

@@ -1,5 +1,6 @@
 #include "MutationDeltaResult.h"
 #include "Protein.h"
+#include "LegacyAmberTopology.h"
 #include "OrcaShieldingResult.h"
 #include "ApbsFieldResult.h"
 #include "MopacResult.h"
@@ -9,11 +10,15 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
+#include "SemanticEnums.h"
+#include "generated/LegacyAmberSemanticTables.h"
 
-#include <nanoflann.hpp>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <map>
+#include <set>
+#include <vector>
 
 namespace nmr {
 
@@ -28,21 +33,29 @@ std::vector<std::type_index> MutationDeltaResult::Dependencies() const {
 
 
 // ============================================================================
-// Atom matching KD-tree
+// Atom matching: substrate-typed-identity, no spatial dependence
+//
+// Replaces the pre-2026-05-08 KD-tree+greedy-NN matcher (`MatchCloud`,
+// `MatchTree`, `MATCH_TOLERANCE`, second-chance-pass, evicted-claims
+// bookkeeping) with binding by `(residue_index, AtomMechanicalIdentity)`
+// against the LegacyAmber substrate. The replaced matcher silently
+// rebound across mutation sites, variant differences, and rotamer
+// flips — fine for mechanical-swap PDB mutants where coordinates are
+// pinned, indefensible as soon as coordinates drift. See the design
+// pass at spec/plan/category-info-projection-implementation-plan-2026-05-08.md
+// §8 (MutationDeltaResult matchup rewrite).
+//
+// Within a residue, atoms with collision-equal identity tuples (methyl
+// HB1/HB2/HB3 etc.) bind by consume-in-order: each mut atom is taken
+// at most once, in residue-atom-index order. The choice within an
+// equivalence class is arbitrary, deterministic, and chemically
+// immaterial — the substrate has stamped these atoms as equivalent.
+// No atom-name string crosses the boundary.
+//
+// Spatial nearest-neighbor distance is computed AFTER binding as a
+// reality check (drift on bound, sanity-check on rejected). It does
+// not enter the binding decision.
 // ============================================================================
-
-struct MatchCloud {
-    std::vector<Vec3> points;
-    size_t kdtree_get_point_count() const { return points.size(); }
-    double kdtree_get_pt(size_t idx, size_t dim) const { return points[idx](dim); }
-    template<class BBOX> bool kdtree_get_bbox(BBOX&) const { return false; }
-};
-
-using MatchTree = nanoflann::KDTreeSingleIndexAdaptor<
-    nanoflann::L2_Simple_Adaptor<double, MatchCloud>,
-    MatchCloud, 3, size_t>;
-
-static constexpr double MATCH_TOLERANCE = 0.5;  // Angstroms
 
 
 // ============================================================================
@@ -262,74 +275,145 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
                      mut_conf.HasResult<MolecularGraphResult>();
     bool has_geom = wt_conf.HasResult<GeometryResult>();
 
-    // ---- Build KD-tree over mutant positions ----
+    // ---- Substrate-required check ----
+
+    if (!wt_protein.LegacyAmber().HasAtomSemantic() ||
+        !mut_protein.LegacyAmber().HasAtomSemantic()) {
+        OperationLog::Error("MutationDeltaResult::Compute",
+            "typed-identity matching requires LegacyAmber substrate on "
+            "both proteins (HasAtomSemantic() returned false). The "
+            "spatial matcher this Result used to fall back on has been "
+            "retired; no fallback path exists. Verify the upstream "
+            "loader populated AtomSemantic via ComposeAtomSemantic.");
+        return nullptr;
+    }
+
+    // ---- Per-residue lookup over mut atoms ----
 
     const size_t wt_count = wt_conf.AtomCount();
     const size_t mut_count = mut_conf.AtomCount();
 
-    MatchCloud mut_cloud;
-    mut_cloud.points.resize(mut_count);
-    for (size_t i = 0; i < mut_count; ++i)
-        mut_cloud.points[i] = mut_conf.PositionAt(i);
+    std::vector<bool> residue_is_mutation(wt_protein.ResidueCount(), false);
+    for (const auto& site : mutation_sites)
+        residue_is_mutation[site.residue_index] = true;
 
-    MatchTree mut_tree(3, mut_cloud, nanoflann::KDTreeSingleIndexAdaptorParams(10));
-    mut_tree.buildIndex();
-
-    // ---- Atom matching: greedy nearest-neighbor + element filter + bijection ----
-
-    struct Claim { size_t wt_index = SIZE_MAX; double distance = 1e30; };
-    std::vector<Claim> mut_claimed(mut_count);
-    std::vector<size_t> wt_to_mut(wt_count, SIZE_MAX);
-    std::vector<size_t> evicted;
-
-    for (size_t wi = 0; wi < wt_count; ++wi) {
-        Vec3 wt_pos = wt_conf.PositionAt(wi);
-        Element wt_elem = wt_protein.AtomAt(wi).element;
-
-        const size_t k = 5;
-        size_t indices[5]; double dists_sq[5];
-        size_t found = mut_tree.knnSearch(wt_pos.data(), k, indices, dists_sq);
-
-        for (size_t n = 0; n < found; ++n) {
-            size_t mi = indices[n];
-            double dist = std::sqrt(dists_sq[n]);
-            if (dist > MATCH_TOLERANCE) break;
-            if (wt_elem != mut_protein.AtomAt(mi).element) continue;
-
-            if (dist < mut_claimed[mi].distance) {
-                size_t old_wt = mut_claimed[mi].wt_index;
-                if (old_wt != SIZE_MAX) {
-                    wt_to_mut[old_wt] = SIZE_MAX;
-                    evicted.push_back(old_wt);
-                }
-                wt_to_mut[wi] = mi;
-                mut_claimed[mi] = {wi, dist};
-            }
-            break;
-        }
+    // Per non-mutation residue: ordered list of (mut_atom_index, identity).
+    // Atoms get consumed in residue-atom-index order as WT atoms claim
+    // matches — equivalent-H sets bind position-by-position.
+    std::map<size_t, std::vector<std::pair<size_t, AtomMechanicalIdentity>>>
+        mut_residue_pool;
+    for (size_t mi = 0; mi < mut_count; ++mi) {
+        const size_t ri = mut_protein.AtomAt(mi).residue_index;
+        if (ri >= residue_is_mutation.size() || residue_is_mutation[ri])
+            continue;
+        const auto& sem = mut_protein.LegacyAmber().SemanticAt(mi);
+        mut_residue_pool[ri].push_back({mi,
+            AtomMechanicalIdentity{sem.element, sem.locant, sem.branch,
+                                    sem.di_index, sem.backbone_role}});
     }
 
-    // Second-chance pass for evicted atoms
-    for (size_t wi : evicted) {
-        if (wt_to_mut[wi] != SIZE_MAX) continue;
-        Vec3 wt_pos = wt_conf.PositionAt(wi);
-        Element wt_elem = wt_protein.AtomAt(wi).element;
+    // ---- Atom matching: typed identity, residue-local, consume-in-order ----
 
-        const size_t k = 5;
-        size_t indices[5]; double dists_sq[5];
-        size_t found = mut_tree.knnSearch(wt_pos.data(), k, indices, dists_sq);
+    std::vector<size_t> wt_to_mut(wt_count, SIZE_MAX);
 
-        for (size_t n = 0; n < found; ++n) {
-            size_t mi = indices[n];
-            double dist = std::sqrt(dists_sq[n]);
-            if (dist > MATCH_TOLERANCE) break;
-            if (wt_elem != mut_protein.AtomAt(mi).element) continue;
-            if (mut_claimed[mi].wt_index == SIZE_MAX) {
-                wt_to_mut[wi] = mi;
-                mut_claimed[mi] = {wi, dist};
+    // Diagnostic counters. Mutation-skipped is counted at the atom
+    // level (not residue) so the totals add up to wt_count.
+    size_t mutation_skipped = 0;
+    size_t variant_unmatched = 0;
+    size_t no_id_match = 0;
+    std::set<size_t> variant_residues_seen;
+
+    for (size_t wi = 0; wi < wt_count; ++wi) {
+        const Atom& wt_a = wt_protein.AtomAt(wi);
+        const size_t ri = wt_a.residue_index;
+
+        if (residue_is_mutation[ri]) {
+            ++mutation_skipped;
+            continue;
+        }
+
+        // Variant difference at this residue is per-atom — common atoms
+        // still bind, only variant-specific atoms (HID HD1 vs. HIE HE2)
+        // surface as no-match. Track residue-level so the diagnostic
+        // log can name them.
+        const bool variant_diff =
+            (wt_protein.ResidueAt(ri).protonation_variant_index !=
+             mut_protein.ResidueAt(ri).protonation_variant_index);
+        if (variant_diff) variant_residues_seen.insert(ri);
+
+        const auto& wt_sem = wt_protein.LegacyAmber().SemanticAt(wi);
+        const AtomMechanicalIdentity wt_id{
+            wt_sem.element, wt_sem.locant, wt_sem.branch,
+            wt_sem.di_index, wt_sem.backbone_role};
+
+        // Consume the first matching mut atom in this residue's pool.
+        // Equivalent-H sets land in residue-atom-index order — this is
+        // chemically arbitrary but deterministic, and the substrate has
+        // already declared these atoms equivalent.
+        auto& pool = mut_residue_pool[ri];
+        bool bound = false;
+        for (auto it = pool.begin(); it != pool.end(); ++it) {
+            if (it->second == wt_id) {
+                wt_to_mut[wi] = it->first;
+                pool.erase(it);
+                bound = true;
                 break;
             }
         }
+        if (!bound) {
+            if (variant_diff) ++variant_unmatched;
+            else              ++no_id_match;
+        }
+    }
+
+    // ---- Spatial-NN sanity check (post-binding) ----
+    //
+    // For bound atoms: drift = ||pos_wt - pos_mut||. Mechanical-swap
+    // mutants put non-mutation atoms at near-identical coordinates; large
+    // drift surfaces rotamer flips or coordinate drift, which the typed
+    // matcher handles correctly while this metric makes them visible.
+    //
+    // For rejected atoms: same-element nearest mut atom + distance. A
+    // nearby same-element neighbour confirms the mechanical-mutation
+    // pipeline's structural integrity (rejection is chemistry-only). The
+    // distance does NOT enter the binding decision; it's the methodology
+    // section's reality check.
+
+    auto SameElementSpatialNn = [&](size_t wi) -> double {
+        const Vec3 wp = wt_conf.PositionAt(wi);
+        const Element we = wt_protein.AtomAt(wi).element;
+        double best = std::numeric_limits<double>::infinity();
+        for (size_t mi = 0; mi < mut_count; ++mi) {
+            if (mut_protein.AtomAt(mi).element != we) continue;
+            const double d = (wp - mut_conf.PositionAt(mi)).norm();
+            if (d < best) best = d;
+        }
+        return best;
+    };
+
+    std::vector<double> bound_drifts;
+    bound_drifts.reserve(wt_count);
+    for (size_t wi = 0; wi < wt_count; ++wi) {
+        if (wt_to_mut[wi] == SIZE_MAX) continue;
+        bound_drifts.push_back(
+            (wt_conf.PositionAt(wi)
+             - mut_conf.PositionAt(wt_to_mut[wi])).norm());
+    }
+    double drift_med = 0.0, drift_max = 0.0;
+    if (!bound_drifts.empty()) {
+        std::vector<double> sorted = bound_drifts;
+        std::sort(sorted.begin(), sorted.end());
+        drift_med = sorted[sorted.size() / 2];
+        drift_max = sorted.back();
+    }
+
+    size_t reject_within_0_5 = 0, reject_within_2_0 = 0, reject_far = 0;
+    for (size_t wi = 0; wi < wt_count; ++wi) {
+        if (wt_to_mut[wi] != SIZE_MAX) continue;
+        const double d = SameElementSpatialNn(wi);
+        if      (d < 0.5) ++reject_within_0_5;
+        else if (d < 2.0) ++reject_within_2_0;
+        else              ++reject_far;
     }
 
     // ---- DSSP residue-level lookup helpers ----
@@ -358,7 +442,10 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
         MatchedAtomData data;
         data.wt_index = wi;
         data.mut_index = mi;
-        data.match_distance = mut_claimed[mi].distance;
+        // Drift between identity-bound atoms — diagnostic only (the
+        // binding criterion was substrate identity, not proximity).
+        data.match_distance = (wt_conf.PositionAt(wi)
+                               - mut_conf.PositionAt(mi)).norm();
 
         // WT atom identity (typed, not strings)
         data.element = wt_protein.AtomAt(wi).element;
@@ -369,9 +456,30 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
 
         const auto& mut_ca = mut_conf.AtomAt(mi);
 
-        // DFT shielding delta: WT - mutant
+        // DFT shielding total delta: WT - mutant.
         data.delta_shielding = wt_ca.orca_shielding_total - mut_ca.orca_shielding_total;
         data.delta_shielding_spherical = SphericalTensor::Decompose(data.delta_shielding);
+
+        // DFT shielding component decomposition (dia + para = total).
+        // Sides are direct copies; deltas are wt - mut.
+        data.wt_shielding_diamagnetic            = wt_ca.orca_shielding_diamagnetic;
+        data.wt_shielding_diamagnetic_spherical  = wt_ca.orca_shielding_diamagnetic_spherical;
+        data.wt_shielding_paramagnetic           = wt_ca.orca_shielding_paramagnetic;
+        data.wt_shielding_paramagnetic_spherical = wt_ca.orca_shielding_paramagnetic_spherical;
+
+        data.mut_shielding_diamagnetic            = mut_ca.orca_shielding_diamagnetic;
+        data.mut_shielding_diamagnetic_spherical  = mut_ca.orca_shielding_diamagnetic_spherical;
+        data.mut_shielding_paramagnetic           = mut_ca.orca_shielding_paramagnetic;
+        data.mut_shielding_paramagnetic_spherical = mut_ca.orca_shielding_paramagnetic_spherical;
+
+        data.delta_shielding_diamagnetic =
+            wt_ca.orca_shielding_diamagnetic - mut_ca.orca_shielding_diamagnetic;
+        data.delta_shielding_diamagnetic_spherical =
+            SphericalTensor::Decompose(data.delta_shielding_diamagnetic);
+        data.delta_shielding_paramagnetic =
+            wt_ca.orca_shielding_paramagnetic - mut_ca.orca_shielding_paramagnetic;
+        data.delta_shielding_paramagnetic_spherical =
+            SphericalTensor::Decompose(data.delta_shielding_paramagnetic);
 
         // ff14SB charge delta
         data.delta_partial_charge = wt_ca.partial_charge - mut_ca.partial_charge;
@@ -440,12 +548,32 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
 
     OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",
         "matched=" + std::to_string(matched) +
-        " unmatched_wt=" + std::to_string(unmatched) +
+        " mutation_skipped=" + std::to_string(mutation_skipped) +
+        " variant_residues=" + std::to_string(variant_residues_seen.size()) +
+        " variant_unmatched=" + std::to_string(variant_unmatched) +
+        " no_id_match=" + std::to_string(no_id_match) +
         " mutation_sites=" + std::to_string(result->mutation_sites_.size()) +
         " removed_rings=" + std::to_string(removed_ring_indices.size()) +
         " has_apbs=" + std::to_string(has_apbs) +
         " has_dssp=" + std::to_string(has_dssp) +
         " has_graph=" + std::to_string(has_graph));
+
+    // Drift on bound atoms (rotamer-flip / coordinate-drift indicator).
+    OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",
+        "drift_med=" + std::to_string(drift_med) +
+        " drift_max=" + std::to_string(drift_max) +
+        " bound_count=" + std::to_string(bound_drifts.size()));
+
+    // Spatial-NN sanity check on rejections — confirms mechanical-swap
+    // structural integrity without the binding criterion depending on
+    // it. See methodology paragraph in the spec/plan/category-info-
+    // projection-implementation-plan-2026-05-08.md slice for the
+    // intended thesis prose.
+    OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",
+        "rejection_spatial_nn"
+        " within_0.5A=" + std::to_string(reject_within_0_5) +
+        " within_2A=" + std::to_string(reject_within_2_0) +
+        " far=" + std::to_string(reject_far));
 
     // Log summary by element
     for (const auto& bin : result->summary_.by_element) {
@@ -559,7 +687,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     const size_t N = conf.AtomCount();
     int written = 0;
 
-    // delta_shielding: (N, 9) — DFT shielding delta as SphericalTensor
+    // delta_shielding: (N, 9) — DFT shielding total delta as SphericalTensor.
     {
         std::vector<double> data(N * 9, 0.0);
         for (size_t i = 0; i < N; ++i)
@@ -568,6 +696,35 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/delta_shielding.npy", data.data(), N, 9);
         written++;
     }
+
+    // DFT shielding component decomposition: WT side, mut side, and
+    // delta for both diamagnetic and paramagnetic. All (N, 9) packed
+    // SphericalTensors. Total = dia + para; the existing delta_shielding
+    // and these two component deltas satisfy delta_shielding ==
+    // delta_shielding_diamagnetic + delta_shielding_paramagnetic
+    // analytically.
+    auto WriteShieldingComponent = [&](const std::string& filename,
+                                        SphericalTensor MatchedAtomData::* field) {
+        std::vector<double> data(N * 9, 0.0);
+        for (size_t i = 0; i < N; ++i)
+            if (HasMatch(i))
+                PackST(matched_atoms_[wt_to_matched_[i]].*field, &data[i*9]);
+        NpyWriter::WriteFloat64(output_dir + "/" + filename, data.data(), N, 9);
+    };
+
+    WriteShieldingComponent("wt_shielding_diamagnetic.npy",
+        &MatchedAtomData::wt_shielding_diamagnetic_spherical);
+    WriteShieldingComponent("wt_shielding_paramagnetic.npy",
+        &MatchedAtomData::wt_shielding_paramagnetic_spherical);
+    WriteShieldingComponent("mut_shielding_diamagnetic.npy",
+        &MatchedAtomData::mut_shielding_diamagnetic_spherical);
+    WriteShieldingComponent("mut_shielding_paramagnetic.npy",
+        &MatchedAtomData::mut_shielding_paramagnetic_spherical);
+    WriteShieldingComponent("delta_shielding_diamagnetic.npy",
+        &MatchedAtomData::delta_shielding_diamagnetic_spherical);
+    WriteShieldingComponent("delta_shielding_paramagnetic.npy",
+        &MatchedAtomData::delta_shielding_paramagnetic_spherical);
+    written += 6;
 
     // delta_scalars: (N, 6) — [matched, delta_T0, nearest_ring_dist, delta_charge, delta_mopac_charge, match_dist]
     {

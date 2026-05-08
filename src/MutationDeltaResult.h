@@ -58,9 +58,41 @@ struct MatchedAtomData {
     bool is_backbone = false;
     size_t residue_index = 0;
 
-    // DFT shielding delta (always present — OrcaShieldingResult required)
+    // DFT shielding delta (always present — OrcaShieldingResult required).
+    // Total = diamagnetic + paramagnetic; the Total delta is the sum of
+    // the two component deltas, but we keep all three as primary fields
+    // so consumers don't have to reconstruct.
     Mat3 delta_shielding = Mat3::Zero();
     SphericalTensor delta_shielding_spherical;
+
+    // DFT shielding component decomposition.
+    //
+    // Diamagnetic = rigid-electron contribution (shape-dependent, scales
+    // with electron density near the nucleus). Paramagnetic = orbital-
+    // response contribution (chemistry-dependent, sensitive to occupied/
+    // virtual orbital mixing). σ_total = σ_dia + σ_para always holds
+    // analytically; both component deltas plus the total are emitted so
+    // analyses can stratify mutation-shift mechanism (electron-density
+    // shift vs. orbital-response shift).
+    //
+    // Both comparison sides AND the differences are stored. WT/mut sides
+    // duplicate per-conformation NPYs (orca_diamagnetic.npy etc.) but
+    // join-aligned to the WT atom row order, so consumers don't need a
+    // separate mut-extraction directory.
+    Mat3 wt_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor wt_shielding_diamagnetic_spherical;
+    Mat3 wt_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor wt_shielding_paramagnetic_spherical;
+
+    Mat3 mut_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor mut_shielding_diamagnetic_spherical;
+    Mat3 mut_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor mut_shielding_paramagnetic_spherical;
+
+    Mat3 delta_shielding_diamagnetic = Mat3::Zero();
+    SphericalTensor delta_shielding_diamagnetic_spherical;
+    Mat3 delta_shielding_paramagnetic = Mat3::Zero();
+    SphericalTensor delta_shielding_paramagnetic_spherical;
 
     // APBS delta
     Vec3 delta_efield = Vec3::Zero();
