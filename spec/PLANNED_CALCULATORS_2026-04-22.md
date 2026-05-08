@@ -374,3 +374,123 @@ store), `6ec9bff` (Bundle C ring substrate), `8accdb6`
 implemented. Earlier audit docs (now in bones/) sometimes referred to
 this as "Phase 1 companion landed" — the substrate side did, the
 per-frame Result did not. This entry is the canonical pending pointer.
+
+---
+
+### Amendment 2026-05-08(b) — `AIMNet2PolarisabilityResult` (new, conformation-level)
+
+#### What
+Per-atom charge sensitivity computed by a **single autograd backward
+pass** through the TorchScript AIMNet2 model:
+`d(q_i)/d(r_i)` as a per-atom 3-vector (gradient of atom i's predicted
+charge with respect to its own position), reduced to a scalar magnitude
+or kept as a vector — both useful for stratification.
+
+This is the autograd path documented in `src/AIMNet2Result.cpp` lines
+465–490 ("Charge sensitivity: autograd path (future)") that has been
+PENDING since the AIMNet2 calculator landed.
+
+#### Why
+Polarisability is a real physical dimension in shielding prediction —
+Stage 1 dimension inventory shows charge polarisation contributes
+**+0.197 R²** for carbon, the dominant element-specific gap between
+geometry-only and charge-aware models. The deleted random-bulk-
+perturbation approach was correctly retired (random splats are non-
+comparable across frames and lie about solvation when applied to other
+conformations). The autograd path replaces it with a deterministic,
+per-conformation, physically meaningful quantity at a fraction of the
+cost.
+
+The substrate landed in 2026-05-08 (`atoms_category_info.npy`) gives
+codex per-atom typed identity columns, so polarisability-by-atom-type /
+by-ring-position / by-protonation-state stratification becomes a single
+boolean-mask operation for the thesis chapter.
+
+#### Type
+`ConformationResult` subclass. Per-atom field on `ConformationAtom` for
+`aimnet2_polarisability_vector` (Vec3) and / or
+`aimnet2_polarisability_scalar` (norm).
+
+#### Dependencies
+- `AIMNet2Result` (uses the same loaded model; Compute either runs the
+  forward pass with `requires_grad=True` on coordinates, OR caches the
+  required intermediate state at AIMNet2Result::Compute time and runs
+  backward separately).
+- `Session::Aimnet2Model()` (model lifetime).
+
+#### NPY emission (planned)
+- `aimnet2_polarisability.npy` (N, 3) — per-atom gradient vector
+- `aimnet2_polarisability_scalar.npy` (N,) — norm of the per-atom
+  gradient vector
+  
+Both indexed by atom row, parallel to existing `aimnet2_charges.npy`.
+
+#### Pre-flight blocker — `.jpt` requires_grad support
+
+The TorchScript model export at
+`/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt`
+must propagate gradients through the coordinate input tensor. This is
+**unverified**. The calculator should NOT be written until a 10-line
+Python check confirms:
+
+```python
+import torch
+m = torch.jit.load("data/models/aimnet2_wb97m_0.jpt")
+coords = torch.randn(1, N, 3, requires_grad=True)
+# … run forward …
+charges.sum().backward()
+assert coords.grad is not None and coords.grad.norm() > 0
+```
+
+If the check passes, the C++ calculator is ~50 lines (forward without
+`NoGradGuard`, single backward, copy gradients off CPU). If the check
+fails, the AIMNet2 weights need to be re-exported from the original
+PyTorch with grad-tracking enabled — that's a model-asset task
+upstream of the calculator.
+
+#### Cost estimate (rough)
+
+Per-frame:
+- Forward pass on 4000-atom protein: ~1.4 s (linear extrapolation from
+  the polarisability-roadmap's 0.17 s @ 479 atoms).
+- Backward pass: 2–3× forward typical for graph-NN-with-attention →
+  ~3–5 s.
+- Total: ~5–6 s per frame.
+
+Aggregate for plausible thesis-chapter scopes:
+
+| Target | Frames | Hours at 5 s/frame |
+|---|---|---|
+| 1 representative protein × 25 ns (1250 frames) | 1.25K | ~1.7 h |
+| 10 calibration proteins × 25 ns | 12.5K | ~17 h (overnight) |
+| 685-protein fleet × DFT pose set (26 frames each) | 17.8K | ~25 h |
+| Full 685-protein fleet × every frame | 857K | ~50 days (not affordable) |
+
+The 2-page thesis chapter budget is the 1-protein or 10-protein scope —
+overnight on one GPU.
+
+#### Origin
+- `spec/POLARISABILITY_ROADMAP_2026-04-13.md` is the broader
+  five-approaches landscape (items 1, 2, 4 landed: SasaResult surface
+  normal, HydrationGeometryResult, EeqResult; items 3, 5 remain).
+- `src/AIMNet2Result.cpp:465-490` carries the autograd-path TODO with
+  the design described verbatim.
+- Original (now-deleted) random-bulk-perturbation approach was retired
+  on 2026-04-12 (perturbation method deleted) and the SDK slot cleaned
+  up in commit `7390a6d` (2026-05-05). Earlier estimates of the
+  polarisability cost were from per-atom × 3-direction × 2-sided
+  perturbation (~6N forward passes per frame, blew up by ~4 orders of
+  magnitude); the autograd path is **one** backward pass per frame
+  total — orders of magnitude cheaper, hence the recovery of this
+  calculator as a tractable thesis-chapter target.
+
+#### Risk
+Medium. The `.jpt` autograd-support unknown is the only structural
+blocker. If it works, the calculator is straightforward; if it
+doesn't, the project needs an upstream model regeneration. Either
+way, the FIRST step is the 10-line Python check, NOT writing C++.
+
+#### Status
+**PENDING.** Pre-flight `.jpt` requires_grad check is the gating
+investigation. Calculator implementation, NPY emission, SDK wrapper
+all downstream of that check.
