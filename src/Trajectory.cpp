@@ -4,6 +4,7 @@
 #include "RunConfiguration.h"
 #include "Session.h"
 #include "AIMNet2Result.h"          // AIMNet2Model (forward use)
+#include "FramePdbEmitter.h"
 #include "GromacsFrameHandler.h"
 #include "ProteinConformation.h"
 #include "OperationRunner.h"
@@ -187,6 +188,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
             return kCalculatorPipelineFailed;
         }
         tp.DispatchCompute(conf0, *this, /*frame_idx=*/0, handler_->Time());
+        FramePdbEmitter::OnFrame(conf0, /*frame_idx=*/0, handler_->Time(),
+                                 &env_.box_matrix);
         frame_times_.push_back(handler_->Time());
         frame_indices_.push_back(0);
         frame_count_ = 1;
@@ -233,6 +236,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
             return kCalculatorPipelineFailed;
         }
         tp.DispatchCompute(*conf, *this, handler_->Index(), handler_->Time());
+        FramePdbEmitter::OnFrame(*conf, handler_->Index(), handler_->Time(),
+                                 &env_.box_matrix);
 
         frame_times_.push_back(handler_->Time());
         frame_indices_.push_back(handler_->Index());

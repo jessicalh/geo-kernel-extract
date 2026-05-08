@@ -214,6 +214,7 @@ add_library(nmr_shielding
     src/GromacsEnergyResult.cpp
     src/GromacsFramePullResult.cpp
     src/GromacsToAmberReadbackBlock.cpp
+    src/FramePdbEmitter.cpp
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
     src/HydrationShellResult.cpp
@@ -542,6 +543,7 @@ add_executable(gromacs_streaming_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
     tests/test_amber_streaming.cpp
+    tests/test_frame_pdb_emitter.cpp
 )
 target_compile_definitions(gromacs_streaming_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"

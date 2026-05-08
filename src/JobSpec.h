@@ -17,6 +17,8 @@
 //
 
 #include "OrcaRunLoader.h"       // OrcaRunFiles
+#include <cstddef>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -54,6 +56,19 @@ struct JobSpec {
     std::string traj_xtc;        // {traj_dir}/production.trr (field still named traj_xtc)
     std::string traj_edr;        // {traj_dir}/production.edr
     bool analysis = false;       // --analysis: exhaustive per-frame H5 (see ANALYSIS_TRAJECTORY spec)
+
+    // -- Trajectory PDB emission (opt-in option layered on trajectory) --
+    // --emit-frame-pdbs DIR turns it on; the four parameter flags below
+    // control which frames are emitted and how files are named. Stem is
+    // not a CLI parameter -- derived from the trajectory directory's
+    // basename (preserve-IDs convention). See FramePdbEmitter.h.
+    std::string emit_frame_pdbs_dir;     // --emit-frame-pdbs DIR; empty = off
+    std::size_t pdb_stride = 1;          // --pdb-stride N; default 1
+    double      pdb_from_ps =
+        -std::numeric_limits<double>::infinity();  // --pdb-from-ps T0
+    double      pdb_to_ps =
+         std::numeric_limits<double>::infinity();  // --pdb-to-ps T1
+    std::string pdb_decorator;           // --pdb-decorator TAG; optional run tag
 
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)

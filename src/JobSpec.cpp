@@ -160,6 +160,21 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
                                                     // value is now the TRR path.
         spec.traj_edr = dir + "/production.edr";
 
+        // ── Optional PDB-frame emission (opt-in) ───────────────────
+        // Five flags: turn-on (--emit-frame-pdbs DIR) plus four
+        // parameter flags. Stem derives from the trajectory dir's
+        // basename, not a CLI flag (preserve-IDs convention). See
+        // FramePdbEmitter.h.
+        spec.emit_frame_pdbs_dir = GetArg(argc, argv, "--emit-frame-pdbs");
+        spec.pdb_decorator       = GetArg(argc, argv, "--pdb-decorator");
+        std::string s_stride  = GetArg(argc, argv, "--pdb-stride");
+        std::string s_from_ps = GetArg(argc, argv, "--pdb-from-ps");
+        std::string s_to_ps   = GetArg(argc, argv, "--pdb-to-ps");
+        if (!s_stride.empty())  spec.pdb_stride  = std::strtoull(s_stride.c_str(), nullptr, 10);
+        if (!s_from_ps.empty()) spec.pdb_from_ps = std::atof(s_from_ps.c_str());
+        if (!s_to_ps.empty())   spec.pdb_to_ps   = std::atof(s_to_ps.c_str());
+        if (spec.pdb_stride == 0) spec.pdb_stride = 1;  // 0 is meaningless
+
         return spec;
     }
 
@@ -415,7 +430,14 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
         "  --analysis-h5 FILE  Companion analysis H5 (viewer only; ignored by nmr_extract)\n"
-        "  --help, -h       Show this message\n",
+        "  --help, -h       Show this message\n"
+        "\n"
+        "Trajectory PDB-frame emission (--trajectory only):\n"
+        "  --emit-frame-pdbs DIR   Opt-in: write per-frame PDBs into DIR\n"
+        "  --pdb-stride N          Emit every N-th frame as read (default 1)\n"
+        "  --pdb-from-ps T0        Skip frames with time_ps < T0 (default -inf)\n"
+        "  --pdb-to-ps   T1        Skip frames with time_ps >= T1 (default +inf)\n"
+        "  --pdb-decorator TAG     Optional run tag included in the filename\n",
         prog, prog, prog, prog, prog, prog);
 }
 

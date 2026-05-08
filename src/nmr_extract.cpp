@@ -22,6 +22,7 @@
 #include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
 #include "GromacsFrameHandler.h"
+#include "FramePdbEmitter.h"
 
 #include <highfive/H5File.hpp>
 
@@ -232,6 +233,24 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
     if (!tp.BuildFromTrajectory(spec.traj_dir)) {
         fprintf(stderr, "ERROR: %s\n", tp.Error().c_str());
         return 1;
+    }
+
+    // ── Optional FramePdbEmitter (opt-in via --emit-frame-pdbs) ──
+    // Stem derives from the trajectory directory's basename
+    // (preserve-IDs convention). Singleton stays inert if the flag
+    // wasn't passed; OnFrame in Trajectory::Run is then a no-op.
+    if (!spec.emit_frame_pdbs_dir.empty()) {
+        FramePdbEmitter::Config cfg;
+        cfg.output_dir = spec.emit_frame_pdbs_dir;
+        cfg.stem       = fs::path(spec.traj_dir).filename().string();
+        if (cfg.stem.empty()) {
+            cfg.stem = fs::path(spec.traj_dir).parent_path().filename().string();
+        }
+        cfg.decorator  = spec.pdb_decorator;
+        cfg.stride     = spec.pdb_stride;
+        cfg.from_ps    = spec.pdb_from_ps;
+        cfg.to_ps      = spec.pdb_to_ps;
+        FramePdbEmitter::Configure(tp.ProteinRef(), std::move(cfg));
     }
 
     // ── Trajectory: file paths + EDR preload ─────────────────────
