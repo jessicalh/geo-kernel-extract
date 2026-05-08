@@ -4,28 +4,38 @@
 
 ## Reading Order
 
-### Active migration/interruption note
+### Recent landings (post-AMBER-slice + topology + projection)
 
-If the task touches topology, charge/radius assignment, AMBER terminal
-state handling, GROMACS/CHARMM TPR loading, or APBS radii, first read
-**spec/plan/current-topology-anchor-2026-04-29.md**. That document is
-the active context-recovery anchor for the 2026-04-29 topology work and
-the AMBER/APBS/GROMACS interruption currently sitting above it.
+The 2026-04-29 → 2026-05-08 work landed across `master`:
 
-For the immediate AMBER terminal/protonation charge issue, also read
-**spec/plan/amber-terminal-charge-generation-2026-04-29.md** before
-writing code. It preserves the current AMBER findings and parks the
-GROMACS observations for later.
+- **AMBER charge slice** (six implementation steps; commits `4ba5491`
+  through `6ec9bff`): substrate-first sequencing, AMBER as project
+  standard, `LegacyAmberTopology` typed contract, `ForceFieldChargeTable`
+  on Protein.
+- **NamingApplicator + name canonicalisation** (commit `4ac7d79` and
+  follow-ups through `67be414`): typed-rule load-time canonicalisation
+  with per-atom transient application maps; CHARMM retired as project
+  context.
+- **Bundle C — substrate-driven rings** (commits `d7b78d4` Slice A;
+  `6ec9bff` Slice B): per-residue ring inventory from
+  `LegacyAmber().SemanticAt(ai).ring_position`, no string-table walk.
+- **CategoryInfoProjection slice** (commit `8accdb6`): one structured
+  NPY per protein (`atoms_category_info.npy`) with ~31 typed fields;
+  AMBER → IUPAC / BMRB name projection at the NPY emission boundary.
+- **MutationDeltaResult typed-identity matchup + dia/para components**
+  (commit `e1b5bcc`): substrate-typed binding by
+  `(residue_index, AtomMechanicalIdentity)`; spatial-NN sanity check on
+  rejections; six new dia/para shielding NPYs.
+- **SDK round-trip** (commit `d1ad904`): Python wrapper class for
+  `atoms_category_info.npy`, extended `DeltaGroup`, `atom_nom.tbl`
+  pre-flight consistency tests.
 
-**Today's central plan (2026-04-29; LOAD-BEARING):**
-**spec/plan/amber-implementation-plan-2026-04-29.md** is the
-1807-line capture-of-decisions for the day. It locks O2/O3/O4,
-contains the crystal projection rule, the substrate-vs-conformation
-split, the drift policy, and the post-slice sequencing
-(PHASE 0 → PHASE 1 (N1.A–G) → PHASE 2 → OpenBabel exit → N4). The
-six implementation steps are green in the working tree (62/62 tests
-passing) but uncommitted. **Read this BEFORE writing code on any
-post-AMBER-slice work.**
+Detailed planning docs that captured the design decisions for those
+landings are retired to `spec/plan/bones/`. The pending forward work
+(planned calculators that consume the substrate, including
+`PlanarGeometryResult`) lives in
+`spec/PLANNED_CALCULATORS_2026-04-22.md` (with a 2026-05-08 amendment)
+and `spec/plan/planned-calculator-substrate-audit-2026-05-06.md`.
 
 ### Tier 1 — Start here (what the system is)
 

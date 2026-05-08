@@ -296,4 +296,81 @@ Speculative. Not on any roadmap.
 
 ## Amendments
 
-*(None yet. Append amendments below, never rewrite above.)*
+### Amendment 2026-05-08 — `PlanarGeometryResult` (new, conformation-level)
+
+#### What
+Per-frame `ConformationResult` companion to the `LegacyAmber` substrate's
+typed planar-group / ring-position fields. Per-conformation values for:
+
+- ω (peptide-bond planarity dihedral) per peptide bond.
+- Ring-flip state per Ring.
+- sp2 pyramidalization per planar-group atom.
+- Ring-pucker phase (Pro pyrrolidine and other saturated rings).
+
+The substrate carries the typed *classification*
+(`PlanarGroupKind`, `PlanarStereo`, `RingPosition` — landed in
+the 2026-05-05 → 2026-05-08 topology slice). This calculator carries
+the actual *deviation from canonical* in each frame.
+
+#### Why
+The substrate names the chemistry ("this atom is in a peptide-amide
+planar group, expected E-stereo"); only the conformation knows whether
+the actual ω deviates from 180° in this frame, or whether a ring is
+flipped. Stratification analyses (per-SS CSA, mutation-shift mechanism,
+ProCS15-class rebuilds) need both pieces. ProCS15 is the cautionary
+tale: fixing ω = 180° in the substrate scan loses 5–14% of backbone
+shielding signal. Capturing per-frame deviation makes the calculator–
+substrate pair complete and is the load-bearing reason the substrate
+slice locked in `PlanarStereo` / `PlanarGroupKind` enums.
+
+#### Type
+`ConformationResult` subclass. Per-frame field on `ConformationAtom`
+for sp2 pyramidalization; per-bond / per-residue companion store for ω;
+per-`Ring` field for flip + pucker.
+
+#### Dependencies
+- `GeometryResult` (positions, derived planes / dihedrals).
+- `LegacyAmberTopology::HasAtomSemantic()` (substrate must be present;
+  `PlanarGroupKind` / `PlanarStereo` / `RingPosition` drive which atoms
+  / bonds / rings this calculator visits).
+
+#### NPY emission (planned)
+Per-frame planar-geometry NPYs paired with the per-protein
+`atoms_category_info.npy`:
+
+- `omega_actual.npy`, `omega_deviation.npy` — per peptide bond
+- Ring-flip state and pucker phase per ring
+- Per-atom sp2 pyramidalization
+
+Schema details preserved in the topology-substrate implementation plan
+(retired to `spec/plan/bones/` 2026-05-08; that doc is the prose
+source for the design intent above).
+
+#### Origin
+Topology slice (Bundle B/C, 2026-05-05 → 2026-05-08). The substrate
+side landed (`LegacyAmberSemanticTables`, `atoms_category_info.npy`,
+typed identity matchup); the per-frame conformation companion did NOT.
+Captured here so the design intent survives the bones retirement.
+
+#### Cost estimate (rough)
+One pass over residues for ω (per-peptide-bond dihedral, four atoms);
+one pass over rings for flip / pucker (Cremer–Pople or simpler proxy);
+one pass over planar-group atoms for sp2 pyramidalization (out-of-plane
+distance from the three substituents' plane). All conformation-only,
+no expensive electronic-structure work. Should fit comfortably in the
+existing per-frame `OperationRunner::Run` budget.
+
+#### Risk
+Low. The math is well-trodden (ω is a standard Ramachandran companion
+angle; Cremer–Pople pucker has been in MD analysis for decades). The
+substrate's typed driver (PlanarGroupKind / RingPosition) means the
+calculator does not need to recompute "is this atom in a peptide
+amide?" — the substrate already says so.
+
+#### Status
+**PENDING.** Substrate landed in commits `ba647cd` (atom_semantic
+store), `6ec9bff` (Bundle C ring substrate), `8accdb6`
+(CategoryInfoProjection NPY). Per-frame `PlanarGeometryResult` not yet
+implemented. Earlier audit docs (now in bones/) sometimes referred to
+this as "Phase 1 companion landed" — the substrate side did, the
+per-frame Result did not. This entry is the canonical pending pointer.

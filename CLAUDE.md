@@ -15,310 +15,101 @@ against the tree. Human-oriented project description lives in
 
 ## Current state — read this BEFORE the rest of CLAUDE.md
 
-### 2026-04-29 working-tree status (load-bearing)
+### Landed (master at HEAD `d1ad904`)
 
-A 2026-04-26 attempt to add an IUPAC topology layer was reverted on
-2026-04-27. Master HEAD is `f8729e3` (post-revert clean; origin/master
-matches local). **The working tree on top of that has the AMBER charge
-slice steps 1–6 fully landed — ~18 new src files, ~30 modified files,
-3 new test files — uncommitted and awaiting review.**
+The 2026-04-29 → 2026-05-08 work landed across `master`:
 
-The active plan is captured in
-**`spec/plan/amber-implementation-plan-2026-04-29.md`** (1807 lines;
-the load-bearing capture-of-decisions for the day). It locks O2/O3/O4,
-contains the crystal projection rule, the substrate-vs-conformation
-split, and the post-slice sequencing. **Read it.** It is the single
-most-important doc for understanding what was decided and why.
+- **AMBER charge slice + AMBER-as-project-standard** (commits `4ba5491`
+  through `91e4124` and follow-ups). Substrate-first sequencing,
+  `LegacyAmberTopology` typed contract on `Protein`,
+  `ForceFieldChargeTable` as a first-class object, AMBER terminal-
+  residue + cap handling. CHARMM context retired.
+- **GROMACS readback block** (commit family May 2). Selective-authority
+  merge of GROMACS-pdb2gmx FF-port labels to canonical AMBER labels via
+  the `topol.top` rtp comment line — compiler-trace shape: read at
+  load, applied to typed slots (`Residue.type`,
+  `Residue.protonation_variant_index`), discarded.
+- **Bundle B + C — substrate generator + ring substrate** (commits
+  through `6ec9bff`). Typed `AtomSemanticTable` records emitted by
+  cifpp + RDKit build-time generator (NOT linked into the runtime
+  library); per-residue ring inventory now reads from substrate
+  (`SemanticAt(ai).ring_position`) instead of walking string tables.
+- **NamingApplicator + load-time canonicalisation** (commit `85de965`,
+  `4ac7d79`, through `67be414`). Typed rule-set application, per-atom
+  transient maps, post-protonation re-canonicalisation. Closes the
+  PdbFileReader bypass so every loader path canonicalises.
+- **FramePdbEmitter** (commits `6639f88`, `85c1637`). Opt-in per-frame
+  PDB writer for trajectory runs; production-validated on 1P9J.
+- **CategoryInfoProjection slice** (commits `8accdb6`, `e1b5bcc`,
+  `d1ad904`, 2026-05-08). One structured NPY per protein
+  (`atoms_category_info.npy`, ~31 fields) carrying the categorical
+  identity record; AMBER → IUPAC / BMRB name projection at the NPY
+  emission boundary; `MutationDeltaResult` typed-identity matchup with
+  spatial-NN sanity check; six new dia/para shielding NPYs (WT side,
+  mut side, deltas); Python SDK `CategoryInfo` wrapper + `atom_nom.tbl`
+  pre-flight consistency tests.
 
-**Status of the six implementation steps:** all six steps green in
-the working tree; 62/62 acceptance tests passing across the AMBER
-suite (`AmberCharge*`, `AmberFlatTable*`, `AmberPreparation*`,
-`AmberLeapInput*`, `AmberPreparedCharge*`) plus the pre-existing gate
-(`ChargeFF14SB*`, `ApbsFF14SB*`, `PrmtopChargeTest`, `OrcaRunTest`,
-`FleetLoaderTest.ChargesReturned`). Per-step commit boundaries are
-intentional but commits are not yet made — pending user review.
+### Pending forward work
 
-**Pre-existing fixture failures (not regressions from this slice):**
-At the time the 2026-04-29 slice landed, the full-suite ctest reported
-5 failures. Two distinct root causes were involved, originally
-mis-attributed to one. Both are RESOLVED as of the 2026-05-04 cleanup
-checkin — leaving for archival reference:
+- **Calculator walkthrough** — bring existing classical calculators
+  (`BiotSavartResult`, `McConnellResult`, `CoulombResult`,
+  `HaighMallionResult`, etc.) onto the typed substrate. Each calculator
+  gets a before / after audit pass with codex 5.5 xhigh as reviewer.
+  The substrate's typed identity fields (`SemanticAt(ai)`) replace
+  string-discrimination inside calculator code.
+- **Planned calculators** — captured in
+  `spec/PLANNED_CALCULATORS_2026-04-22.md` (with 2026-05-08 amendment
+  for `PlanarGeometryResult`),
+  `spec/PLANNED_CALCULATORS_TIME_SERIES_2026-04-24.md`, and
+  `spec/NMR_EXTRACT_DESIDERATA_2026-04-22.md`.
+- **`PlanarGeometryResult`** specifically — per-frame conformation
+  companion to the substrate's `PlanarGroupKind` / `RingPosition`
+  fields. Substrate side LANDED; calculator side PENDING. See the
+  Amendment 2026-05-08 in `spec/PLANNED_CALCULATORS_2026-04-22.md`.
 
-1. Fleet-trim cause: `FleetLoaderTest.HasTenFrames`,
-   `FleetLoaderTest.PositionsDifferBetweenFrames`,
-   `FleetLoaderTest.FullPipelineAllFrames`,
-   `JobSpecE2E.FleetLibraryDirect`. Root cause was the
-   `tests/data/fleet/1A6J_5789/poses/ensemble.json` fixture trim from
-   master commit `b69d55c "SmokeFleet.AllPoses: trim to 1 pose; bless
-   regenerated"`. These tests expected 10 frames; the trimmed fixture
-   declared 1. Resolved 2026-05-04 by retiring the entire CHARMM fleet
-   path to `tests/bones/` (Phase 1 of `spec/plan/session-handoff-20260503.md`).
+### Planning artefacts
 
-2. Bless-deferral cause: `SmokeTest.NoDft`. NOT a fleet-trim issue.
-   Root cause was `data/ff14sb_params.dat` regenerated by this slice's
-   commit `6f66363` plus the byte-identical bless contract being too
-   strict for that kind of substrate change. Resolved 2026-05-04 by
-   replacing byte-identity with tolerance + nonzero-fraction sanity
-   (`tests/BlessCompare.{h,cpp}` + `tests/golden/blessed/bless_policy.toml`)
-   and re-blessing `tests/golden/blessed/nodft/`. See
-   `tests/golden/blessed/BLESS_NOTES.md` for the drift table.
+- **Active pending design**:
+  `spec/plan/openai-5.5-strong-architecture-layout.md` (architecture
+  record), `spec/plan/planned-calculator-substrate-audit-2026-05-06.md`
+  (substrate ↔ planned-calculator map),
+  `spec/plan/comprehensive-calculator-inventory-2026-04-30.md`,
+  `spec/plan/md-rerun-685-discussion-priors-2026-04-30.md` (fleet ops).
+- **Retired to bones**: detailed planning that captured the AMBER /
+  topology / substrate / projection slices' design decisions lives at
+  `spec/plan/bones/`. The decisions themselves are in `master`; the
+  prose history is preserved for archaeology only. Do not consult
+  bones/ docs to drive new work — they describe pre-landing state.
 
-Net: full ctest is 347/347 pass, 11 environment-dependent skips. See
-`tests/TEST_HEALTH.md` for the current authoritative status.
-
-**Locked decisions (2026-04-29):**
-
-```text
-O2  --orca / --mutant require an upstream PRMTOP. Hard fail
-    otherwise; no fall-through to the flat ff14SB table on those paths.
-O3  Cap atom geometry does not affect ff14SB charges. Atom positions
-    do not enter charge or radius lookup. Ideal-geometry caps are
-    sufficient permanently. (Was a "non-question" — recorded as such.)
-O4  NME chosen as the default C-terminal cap under
-    UseCappedFragmentsForUnsupportedTerminalVariants. Preserves the
-    INTERNAL backbone chemistry of the host residue; NHE is not used.
-Drift policy  "Drift is OK. Surprise is not." Bit-identity for its
-    own sake is engineering hygiene; understanding-the-drift is the
-    science. Methods text cites the drift report.
-AMBER as project standard  All MD trajectories will be AMBER; the
-    CHARMM/GROMACS-from-TPR loader becomes quarantined legacy.
-Substrate vs conformation split  Invariant facts (chemistry, pH-
-    determined state under fixed-protonation MD) live on
-    LegacyAmberTopology; conformation-dependent facts (geometry, ω,
-    chi values, rotamer classification) live on ProteinConformation
-    via calculators. Mixing scopes is a category error.
-OpenBabel exit is a CONSEQUENCE of Phase 2 calculator migration,
-    not a precursor. There is no "swap OpenBabel" phase.
-Crystal projection rule  Names (AMBER / IUPAC / BMRB) are PURE
-    FUNCTIONS on the typed substrate, never cached strings.
-Substrate-first sequencing  Phase 1 (substrate build-out, complete)
-    runs before Phase 2 (existing-calculator migration). Migrating
-    against a partial substrate forces every calculator through twice.
-```
-
-**Reading order for the next session, in this order:**
-
-1. `spec/plan/current-topology-anchor-2026-04-29.md` — anchor for the
-   active interruption.
-2. `spec/plan/amber-terminal-charge-generation-2026-04-29.md` —
-   AMBER-side policy: standard residue templates, capping, no
-   extractor-local chemistry.
-3. `spec/plan/legacy-amber-implementation-brief-2026-04-29.md` —
-   small-object-model contract.
-4. `spec/plan/pre-iupac-cruft-map-2026-04-29.md` — defensive cleanup
-   notes against the pre-IUPAC string surface.
-5. **`spec/plan/amber-implementation-plan-2026-04-29.md` — TODAY'S
-   CENTRAL PLAN. Locks O2/O3/O4. Six steps. Crystal projection rule.
-   Substrate-vs-conformation split. Post-slice sequencing PHASE 0 →
-   PHASE 1 (N1.A–G) → PHASE 2 → OpenBabel exit → N4.**
-6. `spec/plan/openai-5.5-strong-architecture-layout.md` —
-   architecture record.
-
-**Next task (tomorrow morning):** PHASE 0 — AMBER trajectory loader
-input path. Seals the AMBER-only stance across all five input methods
-(`--pdb`, `--protonated-pdb`, `--orca`, `--mutant`, `--trajectory`).
-After PHASE 0, every Phase 1 substrate field can be tested against
-all five paths.
-
-Older docs that pre-date today's decisions but might still be
-encountered:
-
-- **`spec/plan/openai-5.5-strong-architecture-layout.md`** — naming and
-  ABC architecture; today's plan doc is consistent with it but more
-  specific. Read after the central plan, not before.
-- **`KNOWN_BUGS.md`** — documented bugs. Bug 4's "fix when resources
-  permit" framing is being overtaken right now; Bug 4 IS the shape
-  this slice dissolves. Read with that update in mind.
-- **`spec/EVIL_STRING_AUDIT_2026-04-28.md`** — full inventory of
-  consumer sites (28 actual). Inventory data is still authoritative;
-  phasing recommendation is superseded by the central plan.
-- Memory entries `project_iupac_revert_2026-04-27`,
-  `project_proteintopology_architecture`, and
-  `feedback_resource_constraint`. Loaded automatically at session start.
-
-**Working-tree contents that are uncommitted but real:**
-
-```text
-src/  (new, untracked)
-    ProteinTopology.h
-    LegacyAmberTopology.{h,cpp}
-    ForceFieldChargeTable.{h,cpp}
-    CalculatorContract.h
-    AmberChargeResolver.{h,cpp}
-    AmberLeapInput.{h,cpp}
-    AmberPreparedChargeSource.{h,cpp}
-
-src/  (modified)
-    Protein.{h,cpp}, ChargeSource.{h,cpp},
-    ChargeAssignmentResult.{h,cpp},
-    ProtonationDetectionResult.{h,cpp},
-    RuntimeEnvironment.{h,cpp}, Residue.h,
-    ConformationAtom.h, ApbsFieldResult.{h,cpp},
-    PdbFileReader.{h,cpp}, OrcaRunLoader.cpp,
-    GromacsEnsembleLoader.cpp, FullSystemReader.cpp,
-    TrajectoryProtein.cpp, plus minor edits
-
-tests/  (new)
-    test_amber_charge_resolver.cpp
-    test_amber_leap_input.cpp
-    test_amber_prepared_charge_source.cpp
-
-data/  (regenerated)
-    ff14sb_params.dat (from tools/amber/generate_ff14sb_pb_table.py)
-```
-
-### 2026-05-02 update — additive, original 2026-04-29 block above stays
-
-Read after the 2026-04-29 block; this notes what landed since then.
-
-**HEAD is now `590a754`**, not `f8729e3`. The AMBER charge slice is
-committed across six per-step commits (the slice's "GREEN, uncommitted"
-status in the block above is no longer true). Several follow-on
-commits today (Sat May 2 2026) added libgromacs-direct delegation
-(`gmx_mtop_generate_local_top`), TRR via `gmx_trr_*` replacing the
-prior XTC reader, and the `LegacyAmberInvariants` value-pack for
-FF-numerical capture into `LegacyAmberTopology`. Five pre-existing
-FleetLoader fixture failures named in the block above are still
-present and still inert per the same reasoning.
-
-**Project framing changes (decided this conversation):**
-
-- **CHARMM retired, AMBER-only via TRR, libgromacs-direct is the rule.**
-  No `gmx dump` subprocess; no hand-rolled walkers. Quarantined-legacy
-  code that should NOT be invoked from new paths: `src/xtc_reader.h`,
-  `src/GromacsEnsembleLoader.{h,cpp}`,
-  `src/ChargeSource.cpp::GmxTprChargeSource::LoadCharges` (subprocess).
-- **Per-frame source-specific data (velocities, box matrix, future
-  EDR row + solvent fold-in) goes in `GromacsFramePullResult`** — the
-  catch-all CR landed today at `src/GromacsFramePullResult.{h,cpp}`,
-  attached when `RunOptions::velocities` or `box_matrix` is non-null.
-  Per-frame data does NOT go as direct fields on ProteinConformation
-  (PDB and GROMACS are both legal load paths; conditional-empty
-  fields are the wrong shape).
-- **Invariant FF data lives on `LegacyAmberTopology` as plain const
-  fields** populated through a `LegacyAmberInvariants` value-pack at
-  construction. Earlier today's `AmberFFData` wrapper struct +
-  Attach/Has/Optional/Mutable accessors was the wrong shape; replaced
-  with plain fields (committed in the working tree, not yet on a
-  named commit).
-- **HISH-class FF-port labels and similar are a selective-authority
-  merge, not aliases.** GROMACS is the chemistry authority for
-  decisions it made (disulfide, protonation, terminal); topol.top
-  rtp comment line is the authority for canonical AMBER labels when
-  GROMACS rewrote `.name` to a port label. The merge logic —
-  `GromacsToAmberReadbackBlock` — is a compiler trace: read during
-  loading, applied to typed slots (`Residue.type`,
-  `Residue.protonation_variant_index`), optionally audit-emitted as
-  JSON, discarded. Calculators see only compiled facts. **Landed
-  2026-05-02** in `src/GromacsToAmberReadbackBlock.{h,cpp}` plus
-  optional `readback` arg on `FullSystemReader::BuildProtein`. Design
-  at `spec/plan/gromacs-to-amber-readback-block-design-2026-05-02.md`.
-- **Source-available capture at the boundary** (PDB atoms, TPR FF
-  data, TRR frame, EDR row) is the rule. It is NOT speculative. It
-  is distinct from calculator fairy-fields. See memory
-  `feedback_capture_at_the_boundary`.
-
-**New memory entries loaded automatically on session start:**
-
-- `project_charmm_retired_amber_only_2026-05-02`
-- `feedback_capture_at_the_boundary`
-- `feedback_no_attach_lifecycle_for_invariant_data`
-- `feedback_readback_block_is_a_compiler_trace`
-
-**Real bugs remaining in working tree:**
-
-- Orphan `ConformationAtom` schema fields (`G_iso_exp_sum`,
-  `G_T2_exp_sum`, `G_iso_var_8A`, `mean_ring_distance`,
-  `nearest_ring_atom_distance`) — schema with no producer. User
-  direction recorded in `running_plan_notes.md`: "we probably want
-  those" → implement producers, don't drop schema.
-- Duplicated PRMTOP parsing across the prepared AMBER and existing
-  charge paths. Local cleanup target after the authority-boundary
-  bugs settle.
-- Cap pseudo-residues (NHE / ACE / NME) not yet supported. The
-  `AminoAcid` enum and `Residue.terminal_state` enum would need
-  small extensions; not relevant for current 1P9J/1Z9B fixtures
-  (standard charged termini only). Design note in the readback
-  block doc.
-
-**What landed today, by file:**
-
-- `src/GromacsToAmberReadbackBlock.{h,cpp}` — new (untracked). The
-  selective-authority merge: parses topol.top rtp comment lines,
-  resolves canonical 3-letter codes + protonation variant indices,
-  emits JSON audit, dies at end of `BuildProtein`. Strings stay
-  inside the block; only typed enum + int values land on `Residue`.
-- `src/CovalentTopology.{h,cpp}` — `DisulfidePair` struct +
-  `OverrideDisulfides` method. The chemistry-authority overlay:
-  geometric SG-SG inference at line 134 stops being source of truth
-  on the trajectory path; authority pairs from the TPR bonded list
-  drive `BondCategory::Disulfide` tagging. Geometric Disulfide tags
-  not in authority get demoted; force-adds when geometry missed an
-  SG-SG bond pdb2gmx recorded.
-- `src/GromacsFramePullResult.{h,cpp}` — new (untracked).
-- `src/OperationRunner.{h,cpp}` — `RunOptions::velocities`/`box_matrix`
-  pointers + attach block for the new CR.
-- `src/Trajectory.{cpp,h}` — `TrajectoryEnv::velocities`/`box_matrix`,
-  populated each frame from the handler.
-- `src/ProteinConformation.h` — velocities/box_matrix removed (they
-  live in the catch-all CR now).
-- `src/RunConfiguration.cpp` — `GromacsFramePullResult` registered in
-  `PerFrameExtractionSet`.
-- `src/AminoAcidType.{h,cpp}` — single shared
-  `VariantIndexFromForceFieldName` helper plus
-  `BaseFfPortNameFromGromacsRtp` and
-  `CanonicalThreeLetterFromGromacsRtp` for readback-block resolution.
-  Replaces the broken local helper at `FullSystemReader.cpp:87`
-  whose ASH/GLH/CYX/CYM/LYN indices were wrong.
-- `src/GromacsFrameHandler.cpp` — TRR velocity-presence detection by
-  NaN sentinel survival (was unconditionally `true`).
-- `src/LegacyAmberTopology.{h,cpp}` — plain-field shape, value-pack
-  constructor; `AmberFFData` wrapper + Attach/Has/FFData/Optional
-  removed.
-- `src/Protein.{h,cpp}` — `MutableLegacyAmber` removed;
-  `FinalizeConstruction` signature gains optional
-  `LegacyAmberInvariants` value-pack. After `CovalentTopology::Resolve`
-  runs, applies `OverrideDisulfides` from the value-pack's
-  `disulfide_pairs` field — the principled authority chain for
-  SG-SG categorization on trajectory loads.
-- `src/FullSystemReader.{h,cpp}` — populates `LegacyAmberInvariants`
-  in place of `AmberFFData`; `ConsumeAmberInvariants()` accessor.
-  `BuildProtein` signature gains optional
-  `GromacsToAmberReadbackBlock*` argument; per-residue lookup uses
-  block.residues when present (sets typed `Residue.type` +
-  `protonation_variant_index` directly), falls back to
-  `NamingRegistry::ToCanonical` otherwise. After the residue/atom
-  loops, scans `BondedParameters.interactions` for SG-SG
-  inter-residue bonds between CYX residues and populates
-  `amber_invariants_.disulfide_pairs` — the typed authority record
-  flows to `FinalizeConstruction` via `ConsumeAmberInvariants()`.
-  Strict validation: when readback is non-null, every protein
-  residue index must have a populated entry; missing/empty hard-fails.
-- `tests/test_amber_trajectory.cpp` — parses topol.top per
-  documented path convention (`<production_dir>/../topol.top`),
-  passes the readback block to `BuildProtein`. The 3 previously
-  HISH-blocked tests now pass.
-- `src/TrajectoryProtein.cpp` — passes invariants through
-  `FinalizeConstruction`; the post-hoc `AttachAmberFFData` call is
-  gone.
-
-The 2026-04-29 block above remains the load-bearing reading-order +
-locked-decisions reference. This 2026-05-02 update changes none of
-those decisions; it records what was acted on between then and now.
+### Operational rules that still apply
 
 The "iupac topology" episode was a multi-week mistake. **Do not
 investigate it from git history, branches, or filenames.** The
 preservation branch was deleted; an emergency tar.gz sits at
-`/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz`
-and should not be extracted. Extracting it would put you back in
-the trap that produced the revert in the first place. The memory
-entries plus today's central plan are the durable architectural record.
+`/shared/2026Thesis/iupac-fix-attempt-archive-2026-04-27.tar.gz` and
+should not be extracted. Extracting it would put you back in the trap
+that produced the revert in the first place.
 
-If you find yourself thinking "let me check git log to understand
-the recent history" or "let me look at this old branch" or "this
-filename mentions IUPAC, let me investigate" — **stop and verify
-with the user first.** Archaeology costs context. The memory
-entries are designed to give the picture without the cost.
+If you find yourself thinking "let me check git log to understand the
+recent history" or "let me look at this old branch" or "this filename
+mentions IUPAC, let me investigate" — **stop and verify with the user
+first.** Archaeology costs context. The memory entries plus this
+section's landed-work bullet list are the durable architectural record.
+
+Memory entries loaded automatically at session start that codify
+operational discipline:
+
+- `project_iupac_revert_2026-04-27`
+- `project_proteintopology_architecture`
+- `project_charmm_retired_amber_only_2026-05-02`
+- `feedback_resource_constraint`
+- `feedback_capture_at_the_boundary`
+- `feedback_no_attach_lifecycle_for_invariant_data`
+- `feedback_readback_block_is_a_compiler_trace`
+
+<!-- Pre-2026-05-08 working-tree status retired here; the slices above
+     have all landed in master. Detailed planning prose is in
+     spec/plan/bones/. -->
 
 ## Working-directory convention — read this before anything else
 

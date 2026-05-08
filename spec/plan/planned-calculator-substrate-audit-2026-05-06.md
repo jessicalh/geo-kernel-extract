@@ -890,13 +890,17 @@ needs the provenance recorded at H5-emission boundary.
 **Planned consumer:** B4 distributed ring current (HID vs HIE
 asymmetry needs per-frame planarity), 12.7/12.8 (chi-angle work).
 
-**Substrate status:** **Already designed and explicitly committed as
-the conformation-side companion**:
+**Substrate status:** **Designed as the conformation-side companion;
+substrate landed, calculator NOT yet implemented (status corrected
+2026-05-08).** Original design at
 `topology-substrate-implementation-plan-2026-05-05.md` §"Architecture
 in one paragraph" line 28: "Conformation-dependent geometry (peptide
 ω, ring-flip state, sp2 pyramidalization, ring-pucker phase) lands as
 a per-frame `PlanarGeometryResult` ConformationResult companion".
-**Not a substrate gap; PlanarGeometryResult lands paired with substrate
+**Not a substrate gap; PlanarGeometryResult is canonically PENDING in
+`spec/PLANNED_CALCULATORS_2026-04-22.md` (Amendment 2026-05-08).
+Original design doc is now in spec/plan/bones/. Calculator pairs with
+substrate
 in C+D (the same Phase 1 sequencing).**
 
 ### Gap G9 — Cross-residue topology (peptide-bond i to i+1)
@@ -937,7 +941,7 @@ straightforward.
 | G5 | solvent class | conformation-side | NOT a substrate gap |
 | G6 | titration-state(t) | Phase 2 | NOT Phase 1 |
 | G7 | provenance.confidence | designed, not runtime | Promote at H5 emission |
-| G8 | per-frame planarity | PlanarGeometryResult | LANDED as Phase 1 companion |
+| G8 | per-frame planarity | PlanarGeometryResult | substrate side LANDED; calculator PENDING (see `spec/PLANNED_CALCULATORS_2026-04-22.md` Amendment 2026-05-08) |
 | G9 | cross-residue topo | on Residue | NOT a substrate gap |
 | G10 | equivalence_class | already in record | Add accessor in Phase 1 |
 
@@ -1189,8 +1193,9 @@ is the right place to land it; the dependency graph is well-shaped.
 Per `topology-substrate-implementation-plan-2026-05-05.md` §Sequencing:
 
 - **Session B**: generator + tables + provenance — LANDED.
-- **Session C+D**: substrate fields on `LegacyAmberTopology` +
-  PlanarGeometryResult per-frame companion — Phase 1 work.
+- **Session C+D**: substrate fields on `LegacyAmberTopology` LANDED.
+  PlanarGeometryResult per-frame companion still PENDING; tracked in
+  `spec/PLANNED_CALCULATORS_2026-04-22.md` Amendment 2026-05-08.
 - **Session E**: IUPAC + BMRB + cross-system projections — projection
   layer.
 
