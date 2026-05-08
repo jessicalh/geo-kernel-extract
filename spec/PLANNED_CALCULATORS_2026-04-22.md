@@ -494,3 +494,66 @@ way, the FIRST step is the 10-line Python check, NOT writing C++.
 **PENDING.** Pre-flight `.jpt` requires_grad check is the gating
 investigation. Calculator implementation, NPY emission, SDK wrapper
 all downstream of that check.
+
+---
+
+### Amendment 2026-05-08(c) — Illustrative test peptides for workbook chapters
+
+When the calculator-walkthrough chapters land in the thesis, two test
+peptides serve as illustrative substrates for the Mathematica
+workbooks that visualise each calculator's per-atom output. Pinning
+the choice here so the calculator work picks the same substrates and
+the workbook chapters all share a comparable geometric reference.
+
+#### Primary: Trp-cage (TC5b)
+
+Sequence `NLYIQWLKDGGPSSGRPPPS`, 20 residues. Real folded mini-protein;
+PDB `1L2Y` (NMR ensemble, Neidigh / Andersen 2002) and `2JOF` (high-
+resolution variant). Covers Trp (fused indole rings), Tyr (aromatic
++ hydroxyl), Pro (saturated 5-ring + no backbone H — four prolines,
+unusually rich), Gly (HA2/HA3 inversion case), Asp / Lys / Arg
+(charged sidechains), Asn / Gln / Ser (polar amides + hydroxyl),
+Leu / Ile / Val (β-branched + methyl super-groups).
+
+Used as the **primary illustrative substrate**: folded geometry,
+heavily NMR-validated, established benchmark in MD/folding/shielding
+literature, citation-friendly. Workbook figures from a real folded
+peptide carry more weight than an extended-conformation synthetic.
+
+Coverage gap: A, C, E, F, H, M, T, V are absent (8 of 20 canonical
+residues). The chemistry features driving those (methyl, disulfide,
+carboxylate, simple aromatic 6-ring, imidazole variants, sulfur,
+β-hydroxyl, branched β) are partly compensated by Trp's indole +
+Tyr's aromatic-OH + Asp/Asn carboxyl/amide. But for full demonstration
+of e.g. PHE-vs-TYR ring-current contrasts, or HID/HIE/HIP variant
+chemistry, Trp-cage isn't enough.
+
+#### Companion: synthetic all-canonical peptide
+
+Designed 22-residue peptide for chemistry features Trp-cage doesn't
+reach. Suggested sequence: `ACDEFGHIKLMNPQRSTVWYCV` — one of each
+canonical residue, plus a second Cys (so the CYX disulfide variant
+has a partner) and a second Val (so the methyl super-group QG
+aggregator has two methyl-pair instances).
+
+Linear extended conformation built via `tleap` from the sequence; no
+fold required because the workbook chapters need the chemistry, not
+the structure. The PDB and topology files commit to
+`tests/data/illustrative_peptides/` (or wherever the calculator work
+chooses) so all workbooks load the same reference geometry.
+
+Generation deferred until the calculator-walkthrough work begins.
+~5-line tleap script; the geometry is stable across rebuilds because
+tleap deterministically applies ff14SB ideal angles + the standard
+extended-chain φ/ψ.
+
+#### Variant peptides
+
+HID / HIE / HIP, ASH, GLH, LYN, ARN, TYM, CYX-as-disulfide-pair are
+mutually exclusive within a single residue — a HIS is one variant at
+a time. Don't try to cram all variants into one peptide. The natural
+shape is **multiple peptide instances**: swap one residue in either
+Trp-cage or the synthetic peptide, re-run the calculator, compare
+outputs side-by-side. The categorical record from
+`atoms_category_info.npy` makes "this is the HID instance, this is
+the HIE instance" trivially identifiable in the join.
