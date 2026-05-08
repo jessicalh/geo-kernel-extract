@@ -4,6 +4,7 @@
 #include "RunConfiguration.h"
 #include "Session.h"
 #include "AIMNet2Result.h"          // AIMNet2Model (forward use)
+#include "CategoryInfoProjection.h"
 #include "FramePdbEmitter.h"
 #include "GromacsFrameHandler.h"
 #include "ProteinConformation.h"
@@ -161,6 +162,21 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     base_opts.charge_source = tp.Charges();
     if (tp.HasBondedParams()) base_opts.bonded_params = &tp.BondedParams();
     base_opts.aimnet2_model = session.Aimnet2Model();
+
+    // =========================================================
+    // Per-Protein topology-invariant emission (one-shot)
+    // =========================================================
+    // CategoryInfoProjection's structured NPY (atoms_category_info.npy)
+    // is invariant for the lifetime of the Protein. Emit ONCE here,
+    // before any per-frame work, so the per-frame loop doesn't
+    // redundantly rewrite identical data N times. Inert when the
+    // session didn't configure a bmrb_atom_nom path; in that case
+    // the NPY emits AMBER names as the IUPAC/BMRB fallback with
+    // provenance=MissLogged for every atom.
+    if (!output_dir_.empty()) {
+        CategoryInfoProjection::WriteFeatures(tp.ProteinRef(),
+                                               output_dir_.string());
+    }
 
     // =========================================================
     // Phase 6: frame 0 — env + calc + dispatch + record

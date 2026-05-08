@@ -13,11 +13,14 @@
 // exactly what the program thinks its environment is.
 //
 // Live surface:
-//   ff14sb_params — BuildFromPdb charge assignment
-//   tleap         — AmberPreparedChargeSource runtime topology generation
-//                   (resolved from TOML / AMBERHOME / PATH / conda)
-//   tmpdir        — temp files for MOPAC and AmberPreparedChargeSource
-//                   work directories
+//   ff14sb_params  — BuildFromPdb charge assignment
+//   tleap          — AmberPreparedChargeSource runtime topology generation
+//                    (resolved from TOML / AMBERHOME / PATH / conda)
+//   tmpdir         — temp files for MOPAC and AmberPreparedChargeSource
+//                    work directories
+//   bmrb_atom_nom  — references/bmrb_data/atom_nom.tbl path; consumed by
+//                    CategoryInfoProjection at session start. Empty =
+//                    projection runs inert (no atom_nom.tbl-driven names).
 //
 // MOPAC is linked (libmopac.so), not a binary path. tleap IS a
 // binary path (subprocess invocation by AmberPreparedChargeSource).
@@ -42,6 +45,7 @@ public:
     static const std::string& Tleap();
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
+    static const std::string& BmrbAtomNom();
 
     // Verify live tools exist. Returns list of missing (name + path).
     static std::vector<std::string> Verify();
@@ -61,6 +65,7 @@ private:
     static std::string tleap_;
     static std::string ff14sb_params_;
     static std::string tmpDir_;
+    static std::string bmrb_atom_nom_;
     static std::string processGuid_;
     static bool loaded_;
 };

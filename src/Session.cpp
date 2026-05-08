@@ -1,6 +1,7 @@
 #include "Session.h"
 
 #include "AIMNet2Result.h"        // AIMNet2Model::Load
+#include "CategoryInfoProjection.h"
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 
@@ -29,6 +30,14 @@ Status Session::LoadFromToml() {
     RuntimeEnvironment::Load();
     OperationLog::LoadChannelConfig();
     OperationLog::LogSessionStart();
+
+    // CategoryInfoProjection: one-shot setup of the output-side per-atom
+    // categorical record (atom_nom.tbl). Inert when bmrb_atom_nom path is
+    // not set in TOML; emission then runs but emits AMBER names as
+    // fallback (provenance=MissLogged for every atom).
+    CategoryInfoProjection::Config cic_cfg;
+    cic_cfg.atom_nom_tbl = RuntimeEnvironment::BmrbAtomNom();
+    CategoryInfoProjection::Configure(std::move(cic_cfg));
     return kOk;
 }
 

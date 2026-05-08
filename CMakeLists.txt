@@ -238,6 +238,7 @@ add_library(nmr_shielding
     src/EnrichmentResult.cpp
     src/MolecularGraphResult.cpp
     src/RuntimeEnvironment.cpp
+    src/CategoryInfoProjection.cpp
     src/OperationLog.cpp
     src/OperationRunner.cpp
     src/ConformationResult.cpp
@@ -530,6 +531,34 @@ target_link_libraries(topology_semantic_integration_tests PRIVATE
     GTest::gtest
 )
 gtest_discover_tests(topology_semantic_integration_tests
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+# ============================================================================
+# CategoryInfoProjection tests
+#
+# Loads 1UBQ via BuildFromProtonatedPdb, configures the projection from
+# RuntimeEnvironment::BmrbAtomNom(), and asserts atom_nom.tbl-driven
+# IUPAC/BMRB queries (Gly Hα inversion, methylene stereo, residue
+# variant 3-letter mapping). NPY file lands with a structured-dtype
+# header naming all expected fields.
+# ============================================================================
+
+add_executable(category_info_projection_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_category_info_projection.cpp
+)
+target_compile_definitions(category_info_projection_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(category_info_projection_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(category_info_projection_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_discover_tests(category_info_projection_tests
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp

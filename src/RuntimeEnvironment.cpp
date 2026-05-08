@@ -18,6 +18,7 @@ std::string RuntimeEnvironment::mopac_;
 std::string RuntimeEnvironment::tleap_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
+std::string RuntimeEnvironment::bmrb_atom_nom_;
 std::string RuntimeEnvironment::processGuid_;
 bool RuntimeEnvironment::loaded_ = false;
 
@@ -94,7 +95,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
-    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir;
+    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir, toml_bmrb_atom_nom;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -121,6 +122,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             else if (key == "tleap")          toml_tleap = val;
             else if (key == "ff14sb_params") toml_ff14sb = val;
             else if (key == "tmpdir")        toml_tmpdir = val;
+            else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
         }
         OperationLog::Info("RuntimeEnvironment::Load", "read " + path);
     } else {
@@ -182,6 +184,15 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
     fs::create_directories(tmpDir_);
 
+    // bmrb_atom_nom: TOML → env var → empty.
+    // Empty is OK; CategoryInfoProjection runs inert in that case.
+    if (!toml_bmrb_atom_nom.empty() && fs::exists(toml_bmrb_atom_nom)) {
+        bmrb_atom_nom_ = toml_bmrb_atom_nom;
+    } else {
+        const char* env = std::getenv("NMR_BMRB_ATOM_NOM");
+        if (env && fs::exists(env)) bmrb_atom_nom_ = env;
+    }
+
     // --- Mark loaded ---
 
     loaded_ = true;
@@ -198,6 +209,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         " tleap=" + status(tleap_) +
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
+        " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
         " guid=" + processGuid_);
 }
 
@@ -226,5 +238,6 @@ const std::string& RuntimeEnvironment::Mopac()          { RequireLoaded(); retur
 const std::string& RuntimeEnvironment::Tleap()          { RequireLoaded(); return tleap_; }
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
+const std::string& RuntimeEnvironment::BmrbAtomNom()   { RequireLoaded(); return bmrb_atom_nom_; }
 
 }  // namespace nmr
