@@ -473,6 +473,58 @@ These are not new kernels; they are corrections / refinements to existing calcul
 
 **References:** Akram et al. 2026 *Chem Rev* (recommendation); fragment-QM/MM literature (3.5 Å cutoff convention).
 
+### 11.8 `PlanarGeometryResult` (PLANNED, conformation-side companion to substrate)
+
+**Plain English:** Per-frame conformation companion to the
+`LegacyAmber` substrate's typed planar-group / ring-position fields.
+Computes ω (peptide-bond planarity dihedral) per peptide bond,
+ring-flip state per Ring, sp2 pyramidalization per planar-group atom,
+and ring-pucker phase (Pro pyrrolidine + other saturated rings).
+
+**Physics:** The substrate carries the typed *classification*
+(`PlanarGroupKind`, `PlanarStereo`, `RingPosition` — landed in the
+2026-05-05 → 2026-05-08 topology slice). This calculator carries the
+*deviation from canonical* in each frame. ProCS15 cautionary tale:
+fixing ω = 180° in the substrate scan loses 5–14% of backbone
+shielding signal; per-frame ω deviation is the missing dynamic
+dimension. Pro pucker phase is the standard Cremer–Pople reduction.
+
+**References:** Cremer & Pople 1975 (ring-puckering coordinates);
+ProCS15 ω-deviation analysis. Source design: amendment in
+`spec/PLANNED_CALCULATORS_2026-04-22.md` (Amendment 2026-05-08(a)).
+
+**Status note:** Substrate side LANDED (commits `ba647cd`, `6ec9bff`,
+`8accdb6`); per-frame Result PENDING.
+
+### 11.9 `AIMNet2PolarisabilityResult` (PLANNED, autograd-backed extension of AIMNet2Result)
+
+**Plain English:** Per-atom charge sensitivity computed by a single
+autograd backward pass through the TorchScript AIMNet2 model:
+`d(q_i)/d(r_i)` as a per-atom 3-vector with optional scalar norm.
+One backward pass per frame, ~3–5 s on a 4000-atom protein.
+
+**Physics:** Charge polarisation contributes +0.197 R² for carbon (Stage 1
+dimension inventory) — the dominant element-specific gap between
+geometry-only and charge-aware models. The autograd path replaces
+the (correctly-deleted) random-bulk-perturbation approach, which
+produced conformation-specific noise non-comparable across frames
+and lied about solvation when applied to other conformations. The
+autograd Jacobian is deterministic, per-conformation, and physically
+meaningful.
+
+**References:** AIMNet2 model (`data/models/aimnet2_wb97m_0.jpt`);
+`spec/POLARISABILITY_ROADMAP_2026-04-13.md` (broader 5-approach
+landscape); `src/AIMNet2Result.cpp:465-490` (verbatim TODO comment
+preserving the design intent); amendment in
+`spec/PLANNED_CALCULATORS_2026-04-22.md` (Amendment 2026-05-08(b)).
+
+**Status note:** PENDING; pre-flight gating investigation is whether
+the `.jpt` model export propagates gradients through the coordinate
+input tensor (10-line Python check before any C++). If `requires_grad`
+on coords works, the calculator is ~50 lines; if not, the AIMNet2
+weights need re-exporting from the original PyTorch with grad
+tracking enabled.
+
 ---
 
 ## Section 12 — Trajectory aggregators (PLANNED)
