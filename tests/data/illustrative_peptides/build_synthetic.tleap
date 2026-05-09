@@ -1,0 +1,30 @@
+source leaprc.protein.ff14SB
+
+# Synthetic 22-residue all-canonical peptide for calculator-walkthrough
+# workbooks. Sequence ACDEFGHIKLMNPQRSTVWYCV — one of each canonical AA
+# plus a second Cys at position 21 (paired with position 2 via SS bond)
+# and a second Val at position 22 (so methyl super-group QG is exercised
+# more than once). HIS instantiated as HIE (epsilon-protonated) per the
+# project's HIS default convention.
+
+mol = sequence {
+    ALA CYX ASP GLU PHE GLY HIE ILE LYS LEU
+    MET ASN PRO GLN ARG SER THR VAL TRP TYR
+    CYX VAL
+}
+
+# Disulfide between Cys-2 and Cys-21. CYX residues already have the
+# disulfide-bonded atom types (S not SH; no HG); the bond command
+# wires the SG atoms together.
+bond mol.2.SG mol.21.SG
+
+# Quick check.
+check mol
+charge mol
+
+# Save PDB. No solvation, no minimisation — extended conformation as
+# tleap emits it. Calculator workbooks consume the geometry as-is;
+# fold is not required.
+savepdb mol synthetic_22mer.pdb
+
+quit
