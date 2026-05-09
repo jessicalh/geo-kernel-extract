@@ -413,6 +413,33 @@ These are not new kernels; they are corrections / refinements to existing calcul
 
 **References:** Sahakyan & Vendruscolo 2013 *J Phys Chem B* 117, 1989; learn/docs/element_physics_2026-04-10.md (project-internal validation).
 
+### Section 10 status (2026-05-09)
+
+All six items remain **PENDING**. None landed during the 2026-04-29 →
+2026-05-08 topology / projection / SDK slices, which were structural
+work on substrate and naming, not calibration / kernel-pass
+improvements. Specifically:
+
+- **10.1** Ring-normal stability fix — `Ring::ComputeGeometry`
+  (`src/Ring.cpp:8-49`) still uses the single SVD on all ring
+  vertices. The 10.1-recommended two-normals-averaged approach is
+  not implemented.
+- **10.2** Single-loop default audit — `calculator_params.toml`
+  `jb_lobe_offset` values are non-zero (0.50 / 0.52 / 0.60 / 0.64),
+  meaning the two-loop Johnson-Bovey model is the default. The
+  10.2-recommended single-loop (S=0) audit against the
+  Agarwal 1977 paracyclophane benchmark has not been performed.
+- **10.3** H-bond geometry angle θ — `HBondResult` not re-read for
+  this status pass; assume PENDING. A small follow-up read can
+  confirm whether the angle-vs-distance refactor recommendation is
+  still applicable to the current implementation.
+- **10.4–10.6** Validation / test / audit items — not addressed.
+
+These are genuine forward calibration / improvement work. They do
+not block the calculator-walkthrough phase but are good targets for
+the next calibration run when the 2300-protein RefDB pass is
+scheduled.
+
 ---
 
 ## Section 11 — NEW geometric kernels (planned, literature-driven)

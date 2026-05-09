@@ -1,5 +1,66 @@
 # nmr-extract Desiderata — Session 0 consolidated pass (2026-04-22 pm)
 
+## 2026-05-09 status pass
+
+Two weeks have passed; significant slices have landed. This header
+records what's done so future sessions don't mistake landed items
+for pending ones. The body of the document is preserved as-is — for
+many unlanded items it remains the only canonical home, so retirement
+to bones/ is not yet safe.
+
+**Net status (per 2026-05-09 Explore-agent audit):**
+
+- **5 LANDED**: substrate-driven topology (`atoms_category_info.npy`),
+  NamingApplicator load-time canonicalisation, MutationDeltaResult
+  typed-identity matchup + dia/para components, FramePdbEmitter
+  trajectory PDB writer, TrajectoryResult as first-class object.
+
+- **3 PARTIAL**: PlanarGeometryResult (substrate side landed,
+  per-frame Result PENDING; captured in
+  `spec/PLANNED_CALCULATORS_2026-04-22.md` Amendment 2026-05-08(a));
+  AIMNet2PolarisabilityResult (autograd path, PENDING with .jpt
+  requires_grad pre-flight gating; Amendment 2026-05-08(b));
+  B.1 unified KernelSource hierarchy (superseded-in-spirit by the
+  Ring class hierarchy and substrate-driven kernel evaluation —
+  Bundle C).
+
+- **~25 PENDING items, NO canonical capture outside this document**:
+  - Section A: A.1 CSAPrincipalAxis, A.2 AmideTensorGeometry, A.3
+    BulkSusceptibilityAccumulator, A.4 NICSProbe, A.6
+    ParamagneticRelaxationEnhancement, A.8 MemoryKernelExtraction,
+    A.9 ErgodicityMetric, A.10 CCRRate, A.11 BenchmarkBackCalculation.
+    (A.5 PCS, A.7 GreenKubo, D.1 per-SS CSA stratification
+    are captured in `spec/PLANNED_CALCULATORS_2026-04-22.md` §1, §2, §3.)
+  - Section B variations: B.2–B.7 (smooth cutoffs, multipole
+    Coulomb, distributed ring current, H-bond cooperativity, MOPAC
+    shielding_contribution, C8 dispersion).
+  - Section C I/O: C.1–C.8 (ORCA bond orders, ExperimentalReferenceLoader,
+    lanthanide inputs, magnetizability, irrep metadata, units/signs,
+    bench H5 slices, TrajectoryResult schema formalisation).
+  - Section D diagnostics: D.2 T2-residual map, D.3 T2-correlation map.
+  - Section E: E.2 event menu, E.3 probe-point API, E.5 calibration-
+    raw separation enforcement, E.6 per-bench pipeline mode.
+
+- **Section F (scope-out)** items remain WONTFIX as intended.
+
+**Why this document does NOT retire to bones/ in the 2026-05-09**
+**cleanup pass.** The ~25 pending items above have design intent
+(physics references, dependencies, validation-bench mapping) only
+in this document. Retiring without migrating them to canonical
+pending homes — `spec/PLANNED_CALCULATORS_2026-04-22.md` amendments,
+`spec/plan/comprehensive-calculator-inventory-2026-04-30.md` Section
+amendments, or new I/O / diagnostics docs — would lose that intent.
+
+Migration of the uncaptured items is a separate ~2–3 hour slice
+tracked as Tier 2.5 in
+`spec/plan/post-topology-doc-cleanup-2026-05-09.md`. Until that
+slice completes, this document remains the **active canonical home**
+for those items. Re-read this header against the body when picking
+up forward calculator work; pending items the body describes are
+pending unless this header says otherwise.
+
+---
+
 **Status:** Note, not spec. Consolidates every calculator,
 variation, input/output surface, diagnostic, and architectural
 idea surfaced during the 2026-04-22 Session 0 literature pass for

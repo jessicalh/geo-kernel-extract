@@ -100,14 +100,15 @@ plan retires to `spec/plan/bones/`.
       architectural rules that should auto-load from sessions started
       conventionally.
 
-- [ ] **NMR_EXTRACT_DESIDERATA_2026-04-22.md Done-vs-Pending pass**
-      — Section A "New calculators / `ConformationResult` additions"
-      has 8 thematic groups (A.1–A.8). Some items landed (categorical
-      name projection, several substrate fields, ring substrate). A
-      pass through the doc to mark each item with a status (LANDED /
-      PENDING / SUPERSEDED / DEFERRED) so future sessions don't
-      mistake landed items for pending ones. ~30 min Explore agent or
-      direct read.
+- [x] **NMR_EXTRACT_DESIDERATA_2026-04-22.md Done-vs-Pending pass**
+      — Status header landed 2026-05-09. Per the Explore-agent audit,
+      5 items LANDED, 3 PARTIAL, ~25 PENDING. The doc does NOT retire
+      to bones/ in this pass — for ~25 PENDING items it remains the
+      only canonical design-intent home. Doc retirement requires
+      first migrating those items to canonical pending homes
+      (PLANNED_CALCULATORS amendments, comprehensive-inventory
+      amendments, or new I/O / diagnostics docs). That migration is
+      Tier 2.5 (separate ~2–3 hour slice).
 
 - [ ] **Comprehensive inventory Section 10 IMPROVEMENT entries** —
       three items: ring-normal stability fix
@@ -115,6 +116,44 @@ plan retires to `spec/plan/bones/`.
       audit (BiotSavartResult), H-bond geometry angle θ over distance
       d. Verify whether any landed during the 2026-05-08 → 09 work
       and update status accordingly.
+
+### Tier 2.5 — DESIDERATA item migration (separate slice, deferred)
+
+Surfaced by the 2026-05-09 Explore-agent audit. ~25 items in
+`spec/NMR_EXTRACT_DESIDERATA_2026-04-22.md` Sections A–E have design
+intent (physics references, dependencies, validation-bench mapping)
+recorded only in that document. Migrating them to canonical pending
+homes is required before DESIDERATA can retire to bones/. Estimated
+~2–3 hours; not in the original cleanup pass.
+
+Items needing migration, by destination:
+
+- **PLANNED_CALCULATORS_2026-04-22.md amendments** (new
+  ConformationResults: A.1 CSAPrincipalAxis, A.2 AmideTensorGeometry,
+  A.3 BulkSusceptibilityAccumulator, A.4 NICSProbe,
+  A.6 ParamagneticRelaxationEnhancement, A.8 MemoryKernelExtraction,
+  A.9 ErgodicityMetric, A.10 CCRRate, A.11 BenchmarkBackCalculation).
+  ~9 amendments.
+- **comprehensive-calculator-inventory-2026-04-30.md Section 10
+  amendments** (kernel-pass improvements: B.2 smooth cutoffs,
+  B.3 multipole Coulomb, B.4 distributed ring current,
+  B.5 H-bond cooperativity, B.6 MOPAC shielding_contribution,
+  B.7 C8 dispersion). 6 entries; some may already overlap with
+  Section 10 entries — verify and consolidate.
+- **New `spec/I_O_AND_SCHEMA_2026-XX-YY.md`** consolidating Section C
+  items (C.1–C.8: ORCA bond orders, ExperimentalReferenceLoader,
+  lanthanide inputs, magnetizability, irrep metadata, units/signs,
+  bench H5 slices, TrajectoryResult schema formalisation).
+- **New `spec/DIAGNOSTICS_AND_WORKFLOWS_2026-XX-YY.md`** consolidating
+  Section D and applicable Section E items (D.2 T2-residual map,
+  D.3 T2-correlation map, E.2 event menu, E.3 probe-point API,
+  E.6 per-bench pipeline mode). E.5 calibration-raw enforcement
+  goes in PATTERNS.md as a discipline rule.
+
+After migration completes, DESIDERATA retires to `spec/plan/bones/`
+with a final-state footer like the EVIL_STRING audit.
+
+- [ ] Tier 2.5 — DESIDERATA item migration (deferred to its own slice)
 
 ### Tier 3 — Real engineering work (delicate)
 
