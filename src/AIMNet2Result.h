@@ -76,26 +76,24 @@ public:
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
 
-private:
-    const ProteinConformation* conf_ = nullptr;
-
     // Build the padded half-neighbour matrix for AIMNet2.
     // Returns (N+1, max_nb) int32 tensor, sentinel = N.
+    //
+    // Public so AIMNet2PolarisabilityResult can reuse the convention
+    // when building its own input dict (chained via Dependencies()
+    // for ordering, but does not share state with this Result).
     static torch::Tensor BuildNeighbourMatrix(
         const ProteinConformation& conf,
         double cutoff_sq, int max_nb);
+
+private:
+    const ProteinConformation* conf_ = nullptr;
 
     // Compute Coulomb EFG from AIMNet2 charges, decomposed by source.
     // Same dipolar kernel as CoulombResult.
     static void ComputeCoulombEFG(
         ProteinConformation& conf,
         double cutoff);
-
-    // Compute charge sensitivity via autograd (if enabled in TOML).
-    // Stores on ConformationAtom, per-conformation.
-    static void ComputeChargeSensitivityAutograd(
-        ProteinConformation& conf,
-        AIMNet2Model& model);
 };
 
 }  // namespace nmr

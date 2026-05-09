@@ -196,5 +196,16 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG total"),
     ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG aromatic"),
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG backbone"),
+
+    # ── AIMNet2 polarisability (AIMNet2PolarisabilityResult.cpp) ─────
+    # Opt-in (--aimnet2-polarisability), separate Result. Per Amendment
+    # 2026-05-08(b). Vector is dL/d(r_i) where L = sum_j q_j^2 over
+    # non-sentinel atoms (charge-conservation makes sum(q) gradient
+    # near-zero, so the L2 of charges is the cheapest single-pass
+    # objective with non-trivial gradient). Scalar is the L2 norm of
+    # the vector. required=False because emission is gated on the
+    # JobSpec test flag, NOT a production contract.
+    ArraySpec("aimnet2_polarisability",        "aimnet2", VectorField, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))"),
+    ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,  None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)"),
 ]}
 # fmt: on

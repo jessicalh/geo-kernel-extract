@@ -62,6 +62,7 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.aimnet2_polarisability = spec.aimnet2_polarisability;
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -104,6 +105,7 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.aimnet2_polarisability = spec.aimnet2_polarisability;
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -146,6 +148,7 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.aimnet2_polarisability = spec.aimnet2_polarisability;
     if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
 
@@ -190,6 +193,7 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     wt_opts.skip_apbs    = spec.skip_apbs;
     wt_opts.skip_coulomb = spec.skip_coulomb;
     wt_opts.aimnet2_model = session.Aimnet2Model();
+    wt_opts.aimnet2_polarisability = spec.aimnet2_polarisability;
     if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
 
@@ -200,6 +204,7 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     ala_opts.skip_apbs    = spec.skip_apbs;
     ala_opts.skip_coulomb = spec.skip_coulomb;
     ala_opts.aimnet2_model = session.Aimnet2Model();
+    ala_opts.aimnet2_polarisability = spec.aimnet2_polarisability;
     if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 

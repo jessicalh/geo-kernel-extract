@@ -59,6 +59,11 @@ struct RunOptions {
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     AIMNet2Model* aimnet2_model = nullptr;
 
+    // Opt-in: attach AIMNet2PolarisabilityResult after AIMNet2Result.
+    // Test flag — JobSpec --aimnet2-polarisability. Approximately
+    // doubles per-frame AIMNet2 cost.
+    bool aimnet2_polarisability = false;
+
     // Per-frame energy from GROMACS .edr (preloaded by Trajectory).
     // Null = skip GromacsEnergyResult. O(1) per frame.
     // Set by GromacsFrameHandler via trajectory->EnergyAtTime() after

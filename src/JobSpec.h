@@ -81,6 +81,11 @@ struct JobSpec {
     bool skip_apbs    = false;   // --no-apbs:    skip Poisson-Boltzmann
     bool skip_coulomb = false;   // --no-coulomb:  skip vacuum Coulomb EFG (APBS preferred)
     std::string aimnet2_model_path;  // --aimnet2 MODEL: path to .jpt file (empty = skip)
+    // --aimnet2-polarisability: opt-in test flag. When set, attach
+    // AIMNet2PolarisabilityResult after AIMNet2Result (chains via the
+    // typed Dependencies()). Approximately doubles per-frame AIMNet2 cost
+    // (separate forward+backward). Per Amendment 2026-05-08(b).
+    bool aimnet2_polarisability = false;
 
     // -- Diagnostics --
     std::vector<std::string> warnings;   // non-fatal (e.g., "NMR .out not found")

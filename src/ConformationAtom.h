@@ -292,6 +292,12 @@ public:
     SphericalTensor aimnet2_EFG_aromatic_spherical;
     SphericalTensor aimnet2_shielding_contribution;
 
+    // Charge-polarisation gradient via autograd (AIMNet2PolarisabilityResult).
+    // Vector is dL/d(r_i) where L = sum_j q_j^2 over non-sentinel atoms;
+    // scalar is its L2 norm. Charge-weighted per-atom polarisability.
+    Vec3 aimnet2_polarisability_vector = Vec3::Zero();
+    double aimnet2_polarisability_scalar = 0.0;
+
     // === Solvent-accessible surface area (SasaResult) ===
     double atom_sasa = 0.0;  // Shrake-Rupley SASA (A^2)
     Vec3 sasa_normal = Vec3::Zero();  // outward surface normal from non-occluded test points

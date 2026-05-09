@@ -21,6 +21,7 @@
 #include "OrcaShieldingResult.h"
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
+#include "AIMNet2PolarisabilityResult.h"
 #include "SasaResult.h"
 #include "GromacsEnergyResult.h"
 #include "GromacsFramePullResult.h"
@@ -177,6 +178,14 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (opts.aimnet2_model) {
         if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
                 return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;
+
+        // Opt-in polarisability — separate Result, gated on test flag.
+        // Chains via Dependencies(); runs its own forward+backward pass.
+        if (opts.aimnet2_polarisability) {
+            if (!TimedAttach(conf, "AIMNet2PolarisabilityResult", out, [&]{
+                    return AIMNet2PolarisabilityResult::Compute(
+                        conf, *opts.aimnet2_model); })) return out;
+        }
     }
 
     // Explicit solvent calculators: MUST succeed if solvent provided.
