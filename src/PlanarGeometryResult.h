@@ -86,6 +86,7 @@ public:
     // ── Per-residue queries ────────────────────────────────────────
     const std::vector<double>& OmegaActual() const { return omega_actual_; }
     const std::vector<double>& OmegaDeviation() const { return omega_deviation_; }
+    const std::vector<uint8_t>& OmegaIsXpro() const { return omega_is_xpro_; }
 
     // ── Per-ring queries ───────────────────────────────────────────
     const std::vector<double>& AromaticChi2() const { return aromatic_chi2_; }
@@ -95,11 +96,15 @@ public:
 private:
     const ProteinConformation* conf_ = nullptr;
 
-    // Per-residue: indexed by Protein residue index. NaN = no peptide
-    // bond into the next residue (C-terminus, or i+1 is Pro for
-    // omega — see header). Length = ResidueCount().
-    std::vector<double> omega_actual_;
-    std::vector<double> omega_deviation_;
+    // Per-residue: indexed by Protein residue index. NaN at C-terminus
+    // (no i+1) or where the next residue's backbone N/CA cache is
+    // missing. X→Pro bonds are emitted with their actual ω value
+    // (cis/trans isomerism is a real signal, not a deviation), and
+    // the `omega_is_xpro_` mask flags those rows for the consumer to
+    // interpret. Length = ResidueCount() for all three vectors.
+    std::vector<double>  omega_actual_;
+    std::vector<double>  omega_deviation_;
+    std::vector<uint8_t> omega_is_xpro_;   // 1 if i+1 is Pro, else 0; 0 at C-term
 
     // Per aromatic ring: indexed by LegacyAmberTopology::AromaticRingAt
     // index. NaN if parent residue has no χ₂ defined. Length =

@@ -101,15 +101,29 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     for (const auto& p : positions) G += p;
     G /= 5.0;
 
-    // Mean-plane normal via SVD-style cross-product trick on edge
-    // vectors. For a near-planar 5-ring, a robust normal is the
-    // average of edge cross products.
-    Vec3 n = Vec3::Zero();
+    // Mean-plane normal via the canonical Cremer-Pople 1975
+    // construction, Eqs 11–12: orthogonal sin/cos-weighted basis from
+    // the displacement vectors, with the normal as the cross product.
+    //
+    //   R'₁ = Σⱼ (rⱼ - G) sin(2π j / N)
+    //   R'₂ = Σⱼ (rⱼ - G) cos(2π j / N)
+    //   n   = R'₁ × R'₂
+    //
+    // The simpler edge-cross-product accumulator
+    //   n = Σⱼ rⱼ × rⱼ₊₁
+    // gives a normal anti-parallel to the canonical direction for the
+    // standard cyclic atom order of a pyrrolidine 5-ring, which inverts
+    // the (Q, θ) phase by 180° and silently swaps envelope/twist
+    // endo/exo labels (caught in adversarial review 2026-05-09).
+    Vec3 R1 = Vec3::Zero();
+    Vec3 R2 = Vec3::Zero();
     for (size_t j = 0; j < 5; ++j) {
-        const Vec3 r_j   = positions[j] - G;
-        const Vec3 r_jp1 = positions[(j + 1) % 5] - G;
-        n += r_j.cross(r_jp1);
+        const Vec3 r_j = positions[j] - G;
+        const double phi = 2.0 * M_PI * static_cast<double>(j) / 5.0;
+        R1 += r_j * std::sin(phi);
+        R2 += r_j * std::cos(phi);
     }
+    const Vec3 n = R1.cross(R2);
     const double n_norm = n.norm();
     if (n_norm < 1e-12) return {kNaN, kNaN};
     const Vec3 n_hat = n / n_norm;
@@ -158,6 +172,13 @@ bool ThreeBondedNeighbours(const Protein& protein, size_t ai,
         neighbours[k] = (b.atom_index_a == ai) ? b.atom_index_b
                                                 : b.atom_index_a;
     }
+    // Canonical sort by atom_index. Bond order in `bond_indices` is
+    // not guaranteed stable across builds (nor across proteins of
+    // similar size), so sorting makes the pyramidalization sign
+    // build-stable and chemistry-portable. Without this, a join of
+    // pyramidalization NPYs across the 720-protein fleet would
+    // silently mix sign conventions.
+    std::sort(neighbours.begin(), neighbours.end());
     return true;
 }
 
@@ -245,18 +266,27 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     // ──────────────────────────────────────────────────────────────
     // 2. Per-residue ω (Cα(i)-C(i)-N(i+1)-Cα(i+1)) and Δω
     //
-    // NaN at: C-terminus (no i+1), residues with bad atom indices,
-    // and at the bond INTO Pro (i+1.type == Pro). Cα(i+1) cache holds
-    // the next residue's CA index.
+    // ω is emitted for every well-defined peptide bond, INCLUDING
+    // X→Pro bonds. cis/trans isomerism at X-Pro is a real
+    // conformational signal, not a "non-planar amide" deviation, but
+    // the value itself is what the consumer wants. The
+    // `omega_is_xpro` mask tags those rows so the BMRB-stratified
+    // atlas can interpret deviation values appropriately at the
+    // consumer side (per the project's no-fallback / no-in-band-
+    // sentinel discipline; see feedback_huxley_data_discipline +
+    // PATTERNS.md "Diagnostic error messages").
+    //
+    // NaN at: C-terminus (no i+1), residues with missing N/CA/C
+    // backbone-cache atoms (incomplete structure).
     // ──────────────────────────────────────────────────────────────
     result_ptr->omega_actual_.assign(N_res, kNaN);
     result_ptr->omega_deviation_.assign(N_res, kNaN);
+    result_ptr->omega_is_xpro_.assign(N_res, 0);
     int omega_valid = 0;
+    int omega_xpro = 0;
     for (size_t ri = 0; ri + 1 < N_res; ++ri) {
         const Residue& res_i  = protein.ResidueAt(ri);
         const Residue& res_ip = protein.ResidueAt(ri + 1);
-
-        if (res_ip.type == AminoAcid::PRO) continue;  // X-Pro: cis/trans isomerism, not deviation
 
         if (res_i.CA  == Residue::NONE) continue;
         if (res_i.C   == Residue::NONE) continue;
@@ -271,6 +301,10 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
 
         result_ptr->omega_actual_[ri] = omega;
         result_ptr->omega_deviation_[ri] = WrapPi(omega - M_PI);
+        if (res_ip.type == AminoAcid::PRO) {
+            result_ptr->omega_is_xpro_[ri] = 1;
+            ++omega_xpro;
+        }
         ++omega_valid;
     }
 
@@ -333,6 +367,7 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         " planar atoms, max |pyr|=" + std::to_string(max_abs_pyr) +
         " A; omega valid=" + std::to_string(omega_valid) +
         "/" + std::to_string(N_res) +
+        " (xpro=" + std::to_string(omega_xpro) + ")" +
         "; aromatic_chi2 valid=" + std::to_string(chi2_valid) +
         "/" + std::to_string(N_arom) +
         "; pucker valid=" + std::to_string(pucker_valid) +
@@ -396,6 +431,18 @@ int PlanarGeometryResult::WriteFeatures(
         const auto& v = pucker_theta_;
         NpyWriter::WriteFloat64(output_dir + "/pucker_theta.npy",
                                 v.data(), v.size());
+        written++;
+    }
+
+    // omega_is_xpro.npy (R,) int8 — per-residue mask: 1 where the
+    // bond into i+1 is X→Pro (cis/trans isomerism is real signal
+    // there, not a deviation), 0 otherwise. Use this to interpret
+    // omega_deviation rows at the consumer side.
+    {
+        const auto& v = omega_is_xpro_;
+        NpyWriter::WriteInt8(output_dir + "/omega_is_xpro.npy",
+                             reinterpret_cast<const int8_t*>(v.data()),
+                             v.size());
         written++;
     }
 

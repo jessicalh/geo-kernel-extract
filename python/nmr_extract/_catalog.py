@@ -227,5 +227,6 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aromatic_chi2",     "planar_geometry", np.ndarray, None, False, "Per-aromatic-ring χ₂ (parent residue, radians); ring-flip observable per Akke-Weininger 2023"),
     ArraySpec("pucker_Q",          "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople puckering amplitude (Å); 5-rings only"),
     ArraySpec("pucker_theta",      "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople phase angle (degrees, [0, 360))"),
+    ArraySpec("omega_is_xpro",     "planar_geometry", np.ndarray, None, False, "Per-residue mask: 1 where the bond into i+1 is X→Pro (cis/trans isomerism is real signal there, not 'non-planar amide' deviation)"),
 ]}
 # fmt: on

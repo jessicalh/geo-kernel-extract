@@ -45,6 +45,15 @@ public:
                      {count});
     }
 
+    // Write a 1D array of int8. Useful for boolean masks where int32
+    // would be 4× the disk size for no information gain.
+    static bool WriteInt8(const std::string& path,
+                          const int8_t* data,
+                          size_t count) {
+        return Write(path, "|i1", data, count * sizeof(int8_t),
+                     {count});
+    }
+
 private:
     static bool Write(const std::string& path,
                       const char* descr,
