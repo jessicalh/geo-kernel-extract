@@ -175,17 +175,18 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             return EeqResult::Compute(conf); })) return out;
 
     // AIMNet2: FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
+    // Polarisability runs unconditionally after AIMNet2Result; chains
+    // via Dependencies() for ordering and runs its own forward+backward
+    // pass. Per Amendment 2026-05-08(b); landed always-on after the
+    // 1UBQ smoke test showed ~250 ms per call (cheap relative to the
+    // standard pipeline). Trajectory mode is unaffected — that path
+    // dispatches via RunConfiguration, not RunOptions.
     if (opts.aimnet2_model) {
         if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
                 return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;
-
-        // Opt-in polarisability — separate Result, gated on test flag.
-        // Chains via Dependencies(); runs its own forward+backward pass.
-        if (opts.aimnet2_polarisability) {
-            if (!TimedAttach(conf, "AIMNet2PolarisabilityResult", out, [&]{
-                    return AIMNet2PolarisabilityResult::Compute(
-                        conf, *opts.aimnet2_model); })) return out;
-        }
+        if (!TimedAttach(conf, "AIMNet2PolarisabilityResult", out, [&]{
+                return AIMNet2PolarisabilityResult::Compute(
+                    conf, *opts.aimnet2_model); })) return out;
     }
 
     // Explicit solvent calculators: MUST succeed if solvent provided.

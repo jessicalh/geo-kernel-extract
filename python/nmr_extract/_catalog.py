@@ -35,6 +35,7 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
+    AIMNet2Polarisability,
 )
 from ._ring import RingContributions, RingGeometry
 
@@ -198,14 +199,16 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG backbone"),
 
     # ── AIMNet2 polarisability (AIMNet2PolarisabilityResult.cpp) ─────
-    # Opt-in (--aimnet2-polarisability), separate Result. Per Amendment
-    # 2026-05-08(b). Vector is dL/d(r_i) where L = sum_j q_j^2 over
-    # non-sentinel atoms (charge-conservation makes sum(q) gradient
-    # near-zero, so the L2 of charges is the cheapest single-pass
-    # objective with non-trivial gradient). Scalar is the L2 norm of
-    # the vector. required=False because emission is gated on the
-    # JobSpec test flag, NOT a production contract.
-    ArraySpec("aimnet2_polarisability",        "aimnet2", VectorField, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))"),
-    ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,  None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)"),
+    # Always-on after the JobSpec --aimnet2 model is loaded (per the
+    # 2026-05-09 promotion of Amendment 2026-05-08(b) from a test flag
+    # to standard non-trajectory pipeline; trajectory mode unchanged).
+    # Vector is dL/d(r_i) where L = sum_j q_j^2 over non-sentinel atoms
+    # (charge-conservation makes sum(q) gradient near-zero, so the L2
+    # of charges is the cheapest single-pass objective with non-trivial
+    # gradient). Scalar is the L2 norm of the vector. required=False
+    # because old extraction outputs (pre-2026-05-09) do not include
+    # them; new outputs always do when AIMNet2 is loaded.
+    ArraySpec("aimnet2_polarisability",        "aimnet2", AIMNet2Polarisability, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))"),
+    ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)"),
 ]}
 # fmt: on

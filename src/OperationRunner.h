@@ -57,12 +57,10 @@ struct RunOptions {
 
     // AIMNet2: loaded model for neural network charges + EFG.
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
+    // When set, OperationRunner::Run also attaches
+    // AIMNet2PolarisabilityResult automatically (single forward+backward
+    // pass, ~250 ms on a 1200-atom protein).
     AIMNet2Model* aimnet2_model = nullptr;
-
-    // Opt-in: attach AIMNet2PolarisabilityResult after AIMNet2Result.
-    // Test flag — JobSpec --aimnet2-polarisability. Approximately
-    // doubles per-frame AIMNet2 cost.
-    bool aimnet2_polarisability = false;
 
     // Per-frame energy from GROMACS .edr (preloaded by Trajectory).
     // Null = skip GromacsEnergyResult. O(1) per frame.

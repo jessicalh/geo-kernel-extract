@@ -63,8 +63,6 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     spec.skip_apbs    = HasFlag(argc, argv, "--no-apbs");
     spec.skip_coulomb = HasFlag(argc, argv, "--no-coulomb");
     spec.aimnet2_model_path = GetArg(argc, argv, "--aimnet2");
-    spec.aimnet2_polarisability =
-        HasFlag(argc, argv, "--aimnet2-polarisability");
     spec.analysis_h5_path   = GetArg(argc, argv, "--analysis-h5");
 
     // ---- Mode dispatch ----
@@ -431,7 +429,6 @@ void PrintJobSpecUsage(const char* prog) {
         "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
-        "  --aimnet2-polarisability  Opt-in: per-atom charge-polarisation gradient via autograd\n"
         "  --analysis-h5 FILE  Companion analysis H5 (viewer only; ignored by nmr_extract)\n"
         "  --help, -h       Show this message\n"
         "\n"

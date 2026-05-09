@@ -35,6 +35,7 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
+    AIMNet2Polarisability,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG
@@ -310,6 +311,11 @@ class AIMNet2Group:
     efg: EFGTensor
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
+    # Polarisability fields are present only when the extraction was run
+    # with AIMNet2 model loaded after the 2026-05-09 always-on promotion
+    # of AIMNet2PolarisabilityResult. Old outputs leave these as None.
+    polarisability: Optional[AIMNet2Polarisability] = None
+    polarisability_scalar: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -594,6 +600,10 @@ def load(path: str | Path) -> Protein:
             efg=get("aimnet2_efg"),
             efg_aromatic=get("aimnet2_efg_aromatic"),
             efg_backbone=get("aimnet2_efg_backbone"),
+            polarisability=get("aimnet2_polarisability")
+                if "aimnet2_polarisability" in available else None,
+            polarisability_scalar=get("aimnet2_polarisability_scalar")
+                if "aimnet2_polarisability_scalar" in available else None,
         )
 
     # Water field (trajectory path — optional)

@@ -711,3 +711,44 @@ class AIMNet2AimEmbedding:
         return f"AIMNet2AimEmbedding(shape={self._data.shape})"
 
 
+class AIMNet2Polarisability:
+    """(N, 3) per-atom charge-polarisation gradient via autograd.
+
+    The vector field is dL/d(r_i) where L = sum_j q_j^2 over
+    non-sentinel atoms (the L2-of-charges objective; sum(q) is
+    constant under AIMNet2's charge-conservation projection so its
+    gradient is ~0). Charge-weighted per-atom polarisability gradient.
+
+    Companion scalar is the L2 norm of the vector, stored separately
+    in `aimnet2_polarisability_scalar.npy`.
+    """
+
+    __slots__ = ("_data",)
+    IRREPS = "1x1o"  # vector under SO(3); odd parity
+
+    def __init__(self, data: np.ndarray):
+        if data.ndim == 2 and data.shape[-1] != 3:
+            raise ValueError(
+                f"AIMNet2Polarisability: expected last dim 3, got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    @property
+    def vectors(self) -> np.ndarray:
+        """Per-atom polarisability gradient vectors ``(N, 3)``."""
+        return self._data
+
+    @property
+    def norms(self) -> np.ndarray:
+        """Per-atom L2 norm ``(N,)``. Equal to ``aimnet2_polarisability_scalar.npy``
+        up to floating-point precision; this property recomputes from the
+        vectors so it's always consistent with the loaded vector field."""
+        return np.linalg.norm(self._data, axis=-1)
+
+    def __repr__(self) -> str:
+        return f"AIMNet2Polarisability(shape={self._data.shape})"
+
+
