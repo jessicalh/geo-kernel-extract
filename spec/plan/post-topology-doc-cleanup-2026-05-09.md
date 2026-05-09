@@ -157,14 +157,22 @@ with a final-state footer like the EVIL_STRING audit.
 
 ### Tier 3 — Real engineering work (delicate)
 
-- [ ] **Chi-angle resolver migration** (`Protein.cpp:732-743` and
-      `624-634`) — the EVIL_STRING audit confirmed this is the one
-      calculator-adjacent string site remaining. Currently chi-angle
-      atom lookup is string-based (`"CB"`, `"CG"`, etc.). Migration:
-      use `LegacyAmber().SemanticAt(ai)` mechanical-identity tuple
-      to look up chi-angle atoms typed. Real C++ slice; needs
-      targeted test surveillance. Lands as a small standalone
-      commit.
+- [x] **Chi-angle resolver migration** in
+      `CacheResidueBackboneIndices_Typed` (`Protein.cpp:728-751`)
+      complete 2026-05-09. Each chi-atom name from
+      `AminoAcidType::chi_angles` is now converted to an
+      `AtomMechanicalIdentity` via
+      `topology_generated::ComputeAtomMechanicalIdentity` and looked
+      up via `LegacyAmberTopology::ResidueAtomsWithIdentity`. Strings
+      stay at the AAType-table boundary; the lookup is typed.
+      Bit-equivalent for canonical AMBER input on this fixture. The
+      first-pass chi-angle string match in
+      `CacheResidueBackboneIndices` (lines 624-634) is left in place
+      as the loader-boundary fallback — that's sanctioned per
+      PATTERNS.md "Naming boundary." Tests:
+      LegacyAmberSemanticIntegration 14/14, CategoryInfoProjection
+      10/10, MutationDelta 14/14, structure-tests chi/DSSP filter
+      13/13.
 
 - [ ] (DEFERRED, codex-conditional) **`pseudoatom_super_group` enum**
       on the structured NPY — currently emit only `in_super_group`

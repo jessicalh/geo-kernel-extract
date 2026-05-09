@@ -656,9 +656,12 @@ void Protein::CacheResidueBackboneIndices() {
 //     for the canonical CB. Glycine has no CB atom in its table, so
 //     res.CB stays Residue::NONE for Gly.
 //
-// Chi-angle resolver: STAYS string-matched. Audit Hotspot 2; separate
-// slice. Calculators that consume chi angles read res.chi[i] which
-// still works against the AminoAcidType chi_angles atom-name list.
+// Chi-angle resolver: typed-identity (post-2026-05-09). Each chi-atom
+// name from `AminoAcidType::chi_angles[ci].atoms[j]` is converted to
+// an AtomMechanicalIdentity tuple via `ComputeAtomMechanicalIdentity`,
+// then looked up via `LegacyAmberTopology::ResidueAtomsWithIdentity`.
+// Bit-equivalent to the prior string match for canonical AMBER input;
+// no string discrimination in the typed pass.
 //
 // Stub-fixture path: when LegacyAmber().HasAtomSemantic() is false
 // (atoms with empty pdb_atom_name; calculator-physics tests), this
@@ -725,20 +728,35 @@ void Protein::CacheResidueBackboneIndices_Typed() {
             res_idx, cb_id, residues_);
         if (!cb_matches.empty()) res.CB = cb_matches[0];
 
-        // Chi-angle resolver: STAYS string-matched (Audit Hotspot 2;
-        // separate slice). Re-resolve here so the typed pass produces
-        // the same chi indices the string-matched first pass produced.
+        // Chi-angle resolver: typed-identity. Each chi-atom name from
+        // AminoAcidType::chi_angles is converted to an
+        // AtomMechanicalIdentity tuple via ComputeAtomMechanicalIdentity,
+        // then looked up via the substrate. Strings stay at the AAType-
+        // table boundary; the lookup is typed.
+        //
+        // The chi-atom names in AminoAcidType are canonical AMBER ff14SB
+        // (N, CA, CB, CG, CD, OD1, NE, NZ, etc.) — heavy atoms only,
+        // which simplifies the parse: ParseAtomName's H-disambiguation
+        // (parent_name) is unused. Pass empty string for parent.
         const AminoAcidType& aatype = res.AminoAcidInfo();
         for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
             const ChiAngleDef& def = aatype.chi_angles[ci];
             for (int j = 0; j < 4; ++j) {
                 res.chi[ci].a[j] = Residue::NONE;
-                for (size_t ai : res.atom_indices) {
-                    if (atoms_[ai]->pdb_atom_name == def.atoms[j]) {
-                        res.chi[ci].a[j] = ai;
-                        break;
-                    }
-                }
+                const std::string atom_name = def.atoms[j];
+                if (atom_name.empty()) continue;
+
+                const Element elem =
+                    topology_generated::ElementFromAtomName(atom_name);
+                if (elem == Element::Unknown) continue;
+
+                const AtomMechanicalIdentity id =
+                    topology_generated::ComputeAtomMechanicalIdentity(
+                        elem, atom_name, /*parent_name=*/"");
+
+                std::vector<size_t> matches =
+                    topo.ResidueAtomsWithIdentity(res_idx, id, residues_);
+                if (!matches.empty()) res.chi[ci].a[j] = matches[0];
             }
         }
     }
