@@ -396,11 +396,13 @@ typed objects already have the answer.
 ### The naming boundary: cross once, then typed objects forever
 
 Translations between naming systems (PDB, AMBER, CHARMM, ORCA) happen
-in one place: the NamingRegistry. It translates at the tool boundary —
-when we read a PDB, when we prepare input for tleap, when we parse ORCA
-output. Each translation is explicit, labelled with source and
-destination environments, and performed all at once to the shared
-library standard.
+in one place on the input side: the `NamingApplicator` rule-set
+machinery in `NamingRegistry.{h,cpp}`. It translates at the tool
+boundary — when we read a PDB, when we prepare input for tleap, when
+we parse ORCA output, when we ingest a GROMACS trajectory. Each
+translation is explicit, labelled with source and destination
+environments, and performed all at once to the canonical AMBER ff14SB
+standard. Calculators downstream see only typed substrate.
 
 After translation, typed objects carry their properties. Element is an
 enum. AtomRole is an enum. BondCategory is an enum. RingTypeIndex is an
@@ -410,6 +412,20 @@ The AminoAcidType table is the single authority for amino acid
 chemistry: atoms, rings, chi angles, protonation variants. Every agent
 that needs to know "what atoms does this residue have?" reads
 AminoAcidType, not a string table and not cifpp.
+
+**Output side: symmetric pattern, asymmetric discipline.** The mirror
+of `NamingApplicator` at the NPY emission boundary is
+`CategoryInfoProjection` (`src/CategoryInfoProjection.{h,cpp}`).
+Output-only invocation, gated on `LegacyAmber().HasAtomSemantic()`,
+emits `atoms_category_info.npy` with AMBER / IUPAC / BMRB names per
+atom (and per residue), plus the typed substrate fields. Where the
+input side fails-loud on unknown (wrong name = wrong physics, no
+tolerance), the output side has logged-fallback (output is for ML
+matching against experimental records; tolerance + provenance
+acceptable, errors cost data points not physics). The architectural
+asymmetry is the point — see
+`feedback_naming_input_output_asymmetry` and `OBJECT_MODEL.md`
+"Runtime atom-name canonicalisation."
 
 Grep markers: `== "H"`, `== "CA"`, `== "PHE"`, `find("HIS")`,
 `atom_name`, `res_name` in any calculator, result, or feature code.
@@ -519,32 +535,49 @@ equation in a comment. That IS the appropriate size.
 
 ---
 
-## (WIP) Rule-application architecture for runtime atom-name canonicalisation
+## Rule-application architecture for runtime atom-name canonicalisation
 
 When multiple published rule sets contribute to translating or
-classifying the same input, the architecture under trial is: a
-containing object holds the rule sets verbatim, each rule has an
+classifying the same input, the architecture is: a containing object
+holds the rule sets verbatim (each tagged with a typed source enum
+identifying the scientific or project provenance), each rule has an
 explicit predicate and output, per atom the system accumulates a
 transient map of which rules fired (record per rule, never erased),
 and an explicit method on the containing object resolves the map to
 a single output, citing the project decision for any cross-rule-set
-choice it makes. Rule sets are preserved as published; the AI'ing
-of choice happens in the resolution method, not by editing rule sets
-to play nice.
+choice it makes. Rule sets are preserved as published; cross-rule-set
+choice happens in the resolution method, not by editing rule sets to
+play nice with each other.
 
-This pattern is being introduced via the `NamingRegistry` refactor;
-the substrate generator's reconciliation precedence (RDKit primary,
-Markley cross-check, CCD cross-check) is the design-time precedent.
+The pattern is realised in two places, end-to-end across the
+input-vs-output naming asymmetry:
 
-Sketched object model + concrete walk-through + open questions:
-**`spec/plan/naming-applicator-architecture-sketch-2026-05-06.md`**.
+- **Input side — `NamingApplicator`** (class in
+  `src/NamingRegistry.{h,cpp}`, landed commit `4ac7d79`). Replaces
+  the pre-2026-05-06 flat-map + duplicate-detection guard with a
+  flat list of `NamingRule` entries each tagged with a typed
+  `NamingSource` enum value. Applied at every loader boundary
+  (PdbFileReader, OrcaRunLoader, FullSystemReader, GromacsEnsembleLoader)
+  via `GlobalNamingApplicator()`; produces a typed canonicalisation
+  outcome per atom; logs which rules fired; fail-loud on contradictions
+  the resolver cannot decide.
 
-This is wisdom, not religion. After the NamingRegistry refactor lands
-and Session E projections exercise the same shape, this section will
-be promoted to canonical patterns; until then, treat the sketch as
-the working architecture.
+- **Output side — `CategoryInfoProjection`** (`src/CategoryInfoProjection.{h,cpp}`,
+  landed commit `8accdb6`). Output-only invocation at NPY emission.
+  Reads typed substrate, projects to BMRB / IUPAC / AMBER conventional
+  names. Logged-fallback acceptable (output is for ML matching against
+  experimental records; tolerance + provenance is the discipline,
+  errors cost data points not physics). The asymmetry from the input
+  side is architectural — see
+  `feedback_naming_input_output_asymmetry`.
 
-Anti-patterns the architecture replaces (linguistic hallmarks): "over-
+The substrate generator's reconciliation precedence (RDKit primary,
+Markley cross-check, CCD cross-check) was the design-time precedent
+for this runtime rule-application pattern. Both endpoints follow the
+same shape: rule sets preserved, transient application map per atom,
+explicit resolution method.
+
+Anti-patterns this architecture replaces (linguistic hallmarks): "over-
 fire," "stages," "passes that chain," guards that undo side effects
 of earlier rules. These are signals that rules are being applied
 without explicit per-instance resolution; the architecture names the

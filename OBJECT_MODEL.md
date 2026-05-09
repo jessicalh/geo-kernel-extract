@@ -417,23 +417,56 @@ read this enum; output projections derive their text from typed values.
 
 ---
 
-## (WIP) Runtime atom-name canonicalisation
+## Runtime atom-name canonicalisation
 
-The runtime object that canonicalises atom names from various load
-sources (PDB cifpp, AMBER pdb2gmx-RTP, CHARMM legacy, ORCA echo) into
-canonical AMBER ff14SB form is its own thing. It does NOT live on
-`Protein`, on `LegacyAmberTopology`, or on `Atom`. It owns its rule
-sets (each preserved as published with citation), its per-atom
-transient application map, and the explicit resolution method that
-documents cross-rule-set choices.
+Atom-name canonicalisation runs at the loader boundary on input and at
+the NPY emission boundary on output. The two ends are distinct objects
+with deliberately asymmetric discipline (per
+`feedback_naming_input_output_asymmetry`):
 
-Sketched object model + concrete walk-through (1Z9B LYS-vs-LYN) +
-open design questions:
-**`spec/plan/naming-applicator-architecture-sketch-2026-05-06.md`**.
+**Input side: `NamingApplicator`** — class in `src/NamingRegistry.{h,cpp}`
+(landed commit `4ac7d79`). Holds a flat list of `NamingRule` entries
+each tagged with a typed `NamingSource` enum value identifying the
+scientific or project source (Markley, IUPAC, AMBER ff14SB, CHARMM-port,
+project-decision-2026-04-26, etc.). Applied at every loader boundary
+via `GlobalNamingApplicator()`. Per atom, accumulates a transient
+application map of which rules fired, then resolves to a single typed
+canonicalisation outcome via an explicit resolution method that cites
+the cross-rule-set choice. Fail-loud on contradictions the resolver
+cannot decide. Wrong name on input means wrong physics — no tolerance.
 
-This section will be filled in once the architecture lands and Session
-E projections exercise the same shape across IUPAC, BMRB, and AMBER
-projection paths. Until then, the sketch is the working spec.
+The `NamingApplicator` does NOT live on `Protein`, `LegacyAmberTopology`,
+or `Atom`. It is its own object; the canonicalisation result is what
+those typed objects carry, not the rule machinery. Loaders that touch
+the `NamingApplicator` are: `PdbFileReader`, `OrcaRunLoader`,
+`FullSystemReader`, `GromacsEnsembleLoader` (the four input boundaries).
+
+**Output side: `CategoryInfoProjection`** — class in
+`src/CategoryInfoProjection.{h,cpp}` (landed commit `8accdb6`).
+FramePdbEmitter-shaped: static methods, file-local state, no instance.
+Configured once at `Session::LoadFromToml` from
+`RuntimeEnvironment::BmrbAtomNom()` (the path to BMRB's
+`atom_nom.tbl`). Output-only invocation at NPY emission boundary;
+emits `atoms_category_info.npy` with AMBER / IUPAC / BMRB names per
+atom (and per residue 3-letter), plus typed substrate fields,
+provenance for the atom_nom.tbl-driven lookups, and a configure-time
+deep-consistency check that fails loud if the table is truncated or
+the parser regresses. Logged-fallback acceptable on output — errors
+cost data points not physics; tolerance + provenance is the
+discipline.
+
+**Asymmetric on purpose.** Input: fail-loud, no tolerance, every
+unknown is a chemistry hazard. Output: logged-fallback, tolerance,
+errors cost data points not physics. The two sides never share an
+abstraction. See PATTERNS.md "The naming boundary: cross once" + the
+"Rule-application architecture for runtime atom-name canonicalisation"
+canonical pattern, which describes both endpoints.
+
+**Substrate fields** (the typed values calculators see) are the
+`AtomSemanticTable` records on `LegacyAmberTopology`, populated by
+`ComposeAtomSemantic` at `FinalizeConstruction` time from the
+typed-substrate generator's output. See the LegacyAmberTopology
+section.
 
 ---
 

@@ -266,3 +266,53 @@ above are added and pass), the evil string is gone.
 | NamingRegistry rules needed but missing | 0 (Standard ↔ CHARMM is in place; just call it) |
 | Test gaps (silent-corruption modes uncovered) | 5 |
 | Estimated session count | 2-3 focused sessions through full test |
+
+---
+
+## Final-state footer — 2026-05-09
+
+This audit is **resolved**. Per the 2026-05-09 Explore-agent refresh
+against current `master`:
+
+- **All 13 critical-correctness sites migrated.** Charge, backbone,
+  protonation. Sites 3–4 (`Protein::DetectAromaticRings`) deleted —
+  ring construction moved to substrate-driven
+  `RingTopology::ConstructFromSubstrate` (Bundle C Slice B, commit
+  `6ec9bff`, 2026-05-07). Sites 7–13 (`ProtonationDetectionResult`
+  variant detection) refactored — responsibility now at the loading
+  boundary (`Protein::ResolveProtonationStates`), feeding typed
+  `res.protonation_variant_index` for downstream typed dispatch.
+  Sites 1–2 (`ChargeSource`) refactored — uses
+  `Ff14sbVariantResidueName(res.protonation_variant_index)` instead of
+  H-sniffing.
+- **All 4 loaders canonicalise** through `GlobalNamingApplicator()`
+  (commit `4ac7d79` and follow-ups, 2026-05-06). The two raw-assigning
+  loaders (PdbFileReader, OrcaRunLoader) now call the applicator at
+  the boundary; FullSystemReader and GromacsEnsembleLoader already
+  did. The flat-map + duplicate-detection guard is replaced by a flat
+  list of `NamingRule` entries each tagged with a typed `NamingSource`
+  enum value.
+- **Cross-protein matching** is now substrate-typed (commit
+  `e1b5bcc`, 2026-05-08): `MutationDeltaResult` binds by
+  `(residue_index, AtomMechanicalIdentity)` against the substrate.
+  The KD-tree-on-positions matcher this audit referenced is retired.
+- **Cosmetic sites unchanged** (8 sites: PDB formatting, error
+  messages, display labels). These are not dispatch sites; they are
+  correctly string-using at human-facing surfaces.
+- **One deferred site remains**: chi-angle resolver
+  (`Protein.cpp:732-743` and `624-634`). String-based atom lookup for
+  chi-angle dihedrals. Tracked as a small standalone migration in
+  `spec/plan/post-topology-doc-cleanup-2026-05-09.md` Tier 3.
+
+Bug 4 in `KNOWN_BUGS.md` (the architectural framing of the audit's
+problem) is dissolved by the `LegacyAmberTopology` + typed-substrate
+landing. This audit doc is retired to `spec/plan/bones/` for
+archaeology — the inventory data remains correct, but it no longer
+guides forward work.
+
+Inventory data integrity check: of the original 28 consumer sites,
+13 critical migrated, 8 cosmetic unchanged, 1 export-surface (H5
+passthrough of `pdb_atom_name`) sanctioned, 1 chi-angle deferred. 5
+sites earlier-counted as "still pending" turned out to be
+sanctioned-and-fine on re-read. Net: 0 silent-corruption paths
+remain in calculator / Result code.

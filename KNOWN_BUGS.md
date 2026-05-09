@@ -1,59 +1,130 @@
 # Known bugs and architectural debt
 
-## 2026-04-29 update — bugs are being fixed now (not "when resources permit")
+## 2026-05-09 update — substantially all resolved
 
-The "Why this document exists" framing below was written when the
-LegacyAmberTopology rebuild was a 10–20-session future task. **As of
-2026-04-29 evening, the AMBER charge slice (steps 1–6) is GREEN in
-the working tree, dissolving Bug 4's deeper shape directly.**
+The 2026-04-29 AMBER charge slice + 2026-05-06 NamingApplicator +
+2026-05-07 Bundle C ring substrate + 2026-05-08 CategoryInfoProjection
++ MutationDeltaResult typed-identity matchup landings, taken together,
+**resolve every bug originally documented here**. Status table
+matched against current `master`:
 
 ```text
-Bug 1 (silent ff14SB charge fallback)         FIXED in working tree.
-                                              ParamFileChargeSource now
-                                              loud-fails on missing
-                                              terminal templates and on
-                                              missing rows. Six new
-                                              tests pin the behaviour
-                                              (test_foundation_results.cpp).
+Bug 1 (silent ff14SB charge fallback)          RESOLVED. ParamFileChargeSource
+                                               loud-fails on missing terminal
+                                               templates and missing rows.
+                                               Six tests in
+                                               test_foundation_results.cpp.
+                                               Fixed in the AMBER charge slice
+                                               (commits 4ba5491-91e4124).
 
-Bug 2 (string-keyed dispatch ~50 sites)       Path forward is via
-                                              N1 substrate work
-                                              (post-slice). The slice
-                                              moved the construction-
-                                              boundary string reads
-                                              into typed quarantine
-                                              (Protein::ResolveProtonationStates)
-                                              and adds a typed predicate
-                                              (AnalyzeFlatTableCoverage)
-                                              for the flat-table path.
+Bug 2 (string-keyed dispatch ~50 sites)        RESOLVED. Per the 2026-05-09
+                                               EVIL_STRING audit refresh
+                                               (now retired to
+                                               spec/plan/bones/), all 13
+                                               critical-correctness sites
+                                               migrated to typed-substrate
+                                               access. 8 cosmetic sites
+                                               (PDB formatting, error
+                                               messages, display labels)
+                                               correctly retain string use
+                                               at human-facing surfaces.
+                                               1 chi-angle resolver site
+                                               deferred — tracked in
+                                               spec/plan/post-topology-doc-
+                                               cleanup-2026-05-09.md Tier 3.
 
-Bug 4 (pdb_atom_name forgotten-source string) ACTIVE WORK. The slice's
-                                              LegacyAmberTopology +
-                                              ForceFieldChargeTable
-                                              landing IS the resolution
-                                              shape. Post-slice N1 work
-                                              extends it with the
-                                              calculable substrate
-                                              (locant, branch_index,
-                                              hybridisation, etc.).
+Bug 3 (deferred CHARMM↔IUPAC rules)           RESOLVED. The
+                                               commented-out rules
+                                               (NamingRegistry.cpp:172-307
+                                               originally) are now active in
+                                               the NamingApplicator (commit
+                                               4ac7d79 and follow-ups).
+                                               GLY pre-Markley, PRO/LYS/ARG
+                                               δ-methylene, ILE δ-methyl,
+                                               ALA β-methyl wildcard fix
+                                               all in place per
+                                               NamingRegistry.cpp:250-289.
 
-Regression 1 (delta-channel + run-boundary)   Bundled with the
-                                              MutationDelta migration in
-                                              N2 (post-slice).
+Bug 4 (pdb_atom_name forgotten-source string)  RESOLVED. All 4 loaders
+                                               canonicalise through
+                                               GlobalNamingApplicator() at
+                                               the boundary. The
+                                               LegacyAmberTopology +
+                                               ForceFieldChargeTable
+                                               landing typed the implicit-
+                                               AMBER assumption rather than
+                                               enforcing it. Atom names
+                                               surface as typed substrate
+                                               fields downstream
+                                               (SemanticAt(ai).backbone_role,
+                                               .locant, etc.); the
+                                               pdb_atom_name string remains
+                                               on Atom for output
+                                               projection only.
+
+Design choice 1 (KD-tree position matching)    RESOLVED. MutationDeltaResult
+                                               typed-identity matchup
+                                               landed in commit e1b5bcc
+                                               (2026-05-08): binds by
+                                               (residue_index,
+                                               AtomMechanicalIdentity);
+                                               consume-in-order for
+                                               equivalent-H sets;
+                                               spatial-NN diagnostic on
+                                               rejections. KD-tree +
+                                               nanoflann + MATCH_TOLERANCE
+                                               removed.
+
+Regression 1 part 1 (delta channel collapse)   RESOLVED. Six new dia/para
+                                               NPYs landed in commit
+                                               e1b5bcc: wt_/mut_/delta_ ×
+                                               diamagnetic/paramagnetic.
+                                               σ_total = σ_dia + σ_para
+                                               within ORCA output precision.
+
+Regression 1 part 2 (ORCA load silent-Ok)      PARTIAL. The
+                                               OperationRunner per-conformation
+                                               failure path propagates correctly
+                                               (RunMutantComparison checks
+                                               WT/ALA wt_result.Ok at
+                                               OperationRunner.cpp:251 and
+                                               260). However, ORCA
+                                               shielding-load failure
+                                               specifically still logs Error
+                                               and continues silently
+                                               (OperationRunner.cpp:218-223).
+                                               This is a small focused fix
+                                               separate from the
+                                               typed-substrate work — change
+                                               line 222 to set out.error and
+                                               return early. Tracked as a
+                                               near-term fix but not in the
+                                               post-topology cleanup pass
+                                               since it is calculator-side
+                                               correctness, not doc surgery.
+
+Regression 1 part 3 (collision-fatal in        RESOLVED-BY-DESIGN. The
+                       cross-protein lookup)   typed-identity consume-in-order
+                                               matcher binds each mut atom
+                                               at most once by construction.
+                                               No collision check is needed
+                                               because collisions cannot
+                                               occur — equivalent-H sets
+                                               within a residue are bound
+                                               position-by-position from a
+                                               consumed pool.
 ```
 
-**Read this BEFORE the rest of this file:**
-**`spec/plan/amber-implementation-plan-2026-04-29.md`** — today's
-central capture-of-decisions. It contains the full status of the six
-implementation steps, the locked decisions (O2/O3/O4, drift policy,
-substrate-vs-conformation split, AMBER-as-standard, OpenBabel-exit-as-
-consequence, crystal projection rule), and the post-slice sequencing
-(PHASE 0 → PHASE 1 (N1.A–G) → PHASE 2 → OpenBabel exit → N4).
+The pointer to the active plan section at the bottom of this file
+(`spec/plan/openai-5.5-strong-architecture-layout.md`) remains the
+architectural reference. Operational reference is memory entry
+`project_proteintopology_architecture`.
 
 The rest of this document is preserved as the original honest list of
-bugs as documented post-revert; the list was correct at the time and
-remains diagnostic, but the "deferred indefinitely" framing is overtaken
-by the active work.
+bugs as documented post-revert. The descriptions remain diagnostic and
+historically accurate; the "deferred indefinitely" framing is overtaken
+by the resolution table above. **One residual remains — Regression 1
+part 2 (ORCA silent-Ok at `OperationRunner.cpp:218-223`).**
 
 ---
 
