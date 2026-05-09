@@ -439,7 +439,8 @@ The `NamingApplicator` does NOT live on `Protein`, `LegacyAmberTopology`,
 or `Atom`. It is its own object; the canonicalisation result is what
 those typed objects carry, not the rule machinery. Loaders that touch
 the `NamingApplicator` are: `PdbFileReader`, `OrcaRunLoader`,
-`FullSystemReader`, `GromacsEnsembleLoader` (the four input boundaries).
+`FullSystemReader` (three input boundaries; `GromacsEnsembleLoader`
+was retired 2026-05-04).
 
 **Output side: `CategoryInfoProjection`** — class in
 `src/CategoryInfoProjection.{h,cpp}` (landed commit `8accdb6`).

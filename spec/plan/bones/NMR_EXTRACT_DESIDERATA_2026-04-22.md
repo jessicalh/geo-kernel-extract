@@ -500,4 +500,38 @@ external validation bench:
 
 ## Amendments
 
-*(None yet. Append below, never rewrite above.)*
+*(None.)*
+
+---
+
+## Retirement footer (2026-05-09)
+
+Retired to `spec/plan/bones/` after the post-topology doc-cleanup
+pass. Migrations:
+
+- **§A new calculators** → 9 amendments 2026-05-09(a–i) in
+  `spec/PLANNED_CALCULATORS_2026-04-22.md`
+  (CSAPrincipalAxis, AmideTensorGeometry, BulkSusceptibilityAccumulator,
+  NICSProbeEvaluator, ParamagneticRelaxationEnhancement,
+  MemoryKernelExtraction, ErgodicityMetric, CCRRate,
+  BenchmarkBackCalculation). A.5 PCS, A.7 GreenKubo, A.12–A.13
+  remained in PLANNED_CALCULATORS §1–§3 / out of scope.
+- **§C input/output surfaces** → 7 sections in
+  `spec/I_O_AND_SCHEMA_2026-05-09.md` (C.1, C.2, C.4, C.5, C.6,
+  C.7, C.8). C.3 lanthanide-tag input pairs with PCS in
+  PLANNED_CALCULATORS §2.
+- **§D diagnostics + applicable §E items** → 5 sections in
+  `spec/DIAGNOSTICS_AND_WORKFLOWS_2026-05-09.md` (D.2, D.3 with
+  D.5 as sub-case; E.2, E.3, E.6).
+
+Not migrated:
+
+- **§B.2–B.7 kernel-pass variations** — design intent preserved
+  in the body of this retired doc. Future kernel-improvement work
+  can pull from here as a starting point; not pre-organised into
+  comprehensive-inventory §10.
+- **§E.5 calibration-ready vs raw-geometric separation** — already
+  covered by PATTERNS.md §6 "Shielding contribution contract" and
+  OBJECT_MODEL.md "Calculator Shielding Contribution Contract".
+  No additional rule added.
+- **§F scope-out** items remain WONTFIX as intended.

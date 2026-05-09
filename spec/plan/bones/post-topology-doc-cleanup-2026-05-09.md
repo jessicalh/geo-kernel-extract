@@ -247,3 +247,53 @@ Total estimated cost: 3–4 hours across the work.
 The plan retires to `spec/plan/bones/` with the AIMNet2 pre-flight
 result and any decisions made during execution preserved as a
 footer.
+
+---
+
+## Retirement footer (2026-05-09)
+
+All tiers landed:
+
+- **Tier 1 doc surgeries** — committed `e7c1b68`. PATTERNS.md
+  rule-application architecture promoted from WIP, output side
+  added to "Naming boundary"; OBJECT_MODEL Runtime atom-name
+  canonicalisation promoted; EVIL_STRING_AUDIT retired to bones;
+  KNOWN_BUGS audit pass.
+- **Tier 2 decisions** — committed `7b986b1`. Three pre-Bundle-C
+  `tests/topology/*` files retired to bones; memory keyspace fixed
+  (feedback memories copied to canonical project keyspace);
+  DESIDERATA status header landed (migrations + retirement
+  rationale); Section 10 status footer.
+- **Tier 2.5 DESIDERATA migration** — committed in this slice.
+  9 PLANNED_CALCULATORS amendments + 2 new docs
+  (`spec/I_O_AND_SCHEMA_2026-05-09.md`,
+  `spec/DIAGNOSTICS_AND_WORKFLOWS_2026-05-09.md`). DESIDERATA
+  retired to bones with final-state footer.
+- **Tier 3 chi-angle resolver migration** — committed `cb8b322`.
+- **Tier 4 illustrative peptides** — committed `d898ab2`. AIMNet2
+  `.jpt` requires_grad pre-flight: PASSED 2026-05-09 (autograd
+  path viable; AIMNet2PolarisabilityResult slice unblocked).
+
+E.5 calibration-ready vs raw-geometric: NOT added to PATTERNS.md
+(rule already present in §6 + OBJECT_MODEL "Calculator Shielding
+Contribution Contract"; PATTERNS.md size discipline argues against
+restating).
+
+DESIDERATA §B.2–B.7 NOT migrated to comprehensive-inventory §10;
+design intent preserved in retired DESIDERATA body. Future kernel-
+improvement work pulls from there as starting point.
+
+Three small in-doc fixes during this slice (verification-driven):
+OBJECT_MODEL drops `GromacsEnsembleLoader` from NamingApplicator
+loader list (retired 2026-05-04); Amendment 2026-05-09(a) drops
+the `StreamCalculator` reference in favour of "when a runtime
+calibration path lands"; DIAGNOSTICS §3 adds a short
+architectural-state note about `ChiRotamerSelectionTrajectoryResult`
+already existing as a rotamer-selection TR.
+
+Cosmetic naming inaccuracies in the agent-translated docs
+(RingNormalResult, Ring::centroid_atoms, QtBiotSavartCalc-as-
+class) left as-is — these docs describe pending work and the
+relevant API surface is likely to move before implementation.
+
+Plan retired to `spec/plan/bones/`.
