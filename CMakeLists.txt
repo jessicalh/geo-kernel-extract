@@ -248,6 +248,7 @@ add_library(nmr_shielding
     src/JobSpec.cpp
     src/AIMNet2Result.cpp
     src/AIMNet2PolarisabilityResult.cpp
+    src/PlanarGeometryResult.cpp
     src/BondedEnergyResult.cpp
 )
 
@@ -432,6 +433,7 @@ nmr_test_target(structure_tests
     tests/test_apbs_wired.cpp
     tests/test_apbs_ff14sb.cpp
     tests/test_aimnet2_polarisability.cpp
+    tests/test_planar_geometry_result.cpp
     tests/test_protonation_pipeline.cpp
     tests/test_mcconnell_result.cpp
     tests/test_coulomb_result.cpp

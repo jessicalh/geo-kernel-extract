@@ -298,6 +298,13 @@ public:
     Vec3 aimnet2_polarisability_vector = Vec3::Zero();
     double aimnet2_polarisability_scalar = 0.0;
 
+    // === Planar geometry (PlanarGeometryResult) ===
+    // Signed out-of-plane displacement (Å) at every atom whose
+    // AtomSemanticTable::planar_group != None; zero for non-planar
+    // atoms or atoms whose bond graph does not yield exactly three
+    // neighbours. Sign by improper-dihedral right-hand rule.
+    double pyramidalization = 0.0;
+
     // === Solvent-accessible surface area (SasaResult) ===
     double atom_sasa = 0.0;  // Shrake-Rupley SASA (A^2)
     Vec3 sasa_normal = Vec3::Zero();  // outward surface normal from non-occluded test points

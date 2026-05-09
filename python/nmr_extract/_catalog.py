@@ -210,5 +210,22 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # them; new outputs always do when AIMNet2 is loaded.
     ArraySpec("aimnet2_polarisability",        "aimnet2", AIMNet2Polarisability, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))"),
     ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)"),
+
+    # ── Planar geometry (PlanarGeometryResult.cpp) ───────────────────
+    # Per Amendment 2026-05-08(a). Conformation-only quantities derived
+    # from positions; runs whenever the substrate (LegacyAmber
+    # AtomSemanticTable) is populated. Six NPYs with three different
+    # axes (per-atom, per-residue, per-ring) — the reader's wrapper
+    # picks shape from the catalog cols field.
+    #
+    # Conventions: pyramidalization sign by improper-dihedral right-
+    # hand rule; omega in radians; Cremer-Pople θ in degrees [0, 360).
+    # required=False because pre-2026-05-09 extractions don't carry them.
+    ArraySpec("pyramidalization",  "planar_geometry", np.ndarray, None, False, "Per-atom signed sp2 out-of-plane displacement (Å); 0 for non-planar atoms"),
+    ArraySpec("omega_actual",      "planar_geometry", np.ndarray, None, False, "Per-residue ω (Cα-C-N-Cα to next), radians; NaN at C-term and X-Pro"),
+    ArraySpec("omega_deviation",   "planar_geometry", np.ndarray, None, False, "Per-residue ω - π wrapped to (-π, π]; NaN where omega_actual is NaN"),
+    ArraySpec("aromatic_chi2",     "planar_geometry", np.ndarray, None, False, "Per-aromatic-ring χ₂ (parent residue, radians); ring-flip observable per Akke-Weininger 2023"),
+    ArraySpec("pucker_Q",          "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople puckering amplitude (Å); 5-rings only"),
+    ArraySpec("pucker_theta",      "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople phase angle (degrees, [0, 360))"),
 ]}
 # fmt: on

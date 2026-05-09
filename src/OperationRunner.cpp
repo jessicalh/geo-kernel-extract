@@ -22,6 +22,7 @@
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
 #include "AIMNet2PolarisabilityResult.h"
+#include "PlanarGeometryResult.h"
 #include "SasaResult.h"
 #include "GromacsEnergyResult.h"
 #include "GromacsFramePullResult.h"
@@ -91,6 +92,15 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
             return SpatialIndexResult::Compute(conf); })) return out;
     if (!TimedAttach(conf, "EnrichmentResult", out, [&]{
             return EnrichmentResult::Compute(conf); })) return out;
+
+    // Planar geometry — gated on substrate presence so stub-fixture
+    // tests that don't populate AtomSemanticTable still pass through
+    // OperationRunner::Run. Production loaders (PDB, ProtonatedPdb,
+    // ORCA, Mutant) always populate substrate at FinalizeConstruction.
+    if (conf.ProteinRef().LegacyAmber().HasAtomSemantic()) {
+        if (!TimedAttach(conf, "PlanarGeometryResult", out, [&]{
+                return PlanarGeometryResult::Compute(conf); })) return out;
+    }
 
     // DSSP
     if (!opts.skip_dssp) {

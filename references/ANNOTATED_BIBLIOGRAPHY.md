@@ -1783,6 +1783,23 @@ nuclei." *J. Phys. Chem. B* 117, 9886--9900. DOI: 10.1021/jp4058065
 CEST-based detection of slow ring flips at near-degenerate shifts.
 Paywalled.
 
+### Ring puckering — geometric parameterisation
+
+**[CORE] M18a. Cremer, D. & Pople, J. A. (1975)** "A general
+definition of ring puckering coordinates." *J. Am. Chem. Soc.* 97,
+1354--1358. DOI: 10.1021/ja00839a011
+
+Canonical reference for the (Q, θ) puckering parameters used by
+crystallographers and the MD-analysis community (gmx, AmberTools,
+MDAnalysis). For an N-membered ring, projects each atom's
+displacement from the mean plane onto sin/cos basis functions of
+phase angle 2π(j-1)/N, yielding amplitude Q (Å) and phase θ
+(degrees). For 5-rings (proline pyrrolidine in proteins), single
+(Q₂, θ₂) pair; θ₂ mod 72° classifies envelope (E) vs twist (T)
+conformations. Used as the per-saturated-ring output of
+`PlanarGeometryResult` (commit landing 2026-05-09). **Library
+needed** (pre-2000 journal).
+
 ### Essential dynamics and collective motion
 
 **[CORE] M19. Amadei, A., Linssen, A.B.M. & Berendsen, H.J.C.
