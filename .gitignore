@@ -113,3 +113,9 @@ references-images/
 # data/ccd/README.md for fetch command.
 data/ccd/*
 !data/ccd/README.md
+
+# Larsen 2015 ProCS15 H-bond DFT grids — regenerable from
+# /mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar via
+# scripts/larsen_hbond_grid_parse/parse_larsen_hbond_grids.py.
+# ~10 MB total (6 archive grids).
+data/larsen_hbond_grids/
