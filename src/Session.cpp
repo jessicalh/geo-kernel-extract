@@ -4,7 +4,9 @@
 #include "CategoryInfoProjection.h"
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
+#include "TripeptideDftTable.h"
 
+#include <exception>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -38,6 +40,31 @@ Status Session::LoadFromToml() {
     CategoryInfoProjection::Config cic_cfg;
     cic_cfg.atom_nom_tbl = RuntimeEnvironment::BmrbAtomNom();
     CategoryInfoProjection::Configure(std::move(cic_cfg));
+    return kOk;
+}
+
+
+Status Session::LoadTripeptideDftTable() {
+    const std::string& dsn = RuntimeEnvironment::TensorCs15Dsn();
+    if (dsn.empty()) {
+        OperationLog::Info(LogCalcOther, "Session::LoadTripeptideDftTable",
+            "no [databases].tensorcs15 DSN — table not loaded "
+            "(TripeptideBackboneShieldingResult will skip).");
+        return kOk;
+    }
+    try {
+        tripeptide_dft_table_ =
+            std::make_unique<TripeptideDftTable>(dsn);
+    } catch (const std::exception& e) {
+        last_error_ =
+            "Session::LoadTripeptideDftTable: " + std::string(e.what());
+        OperationLog::Error("Session::LoadTripeptideDftTable",
+                            last_error_);
+        tripeptide_dft_table_.reset();
+        return kSessionTripeptideDbLoadFailed;
+    }
+    OperationLog::Info(LogCalcOther, "Session::LoadTripeptideDftTable",
+                       "tensorcs15 connection open");
     return kOk;
 }
 

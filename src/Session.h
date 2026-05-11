@@ -29,6 +29,10 @@ struct AIMNet2Model;  // defined in AIMNet2Result.h; forward-declared
                       // here to avoid pulling torch into every header
                       // that sees Session.
 
+class TripeptideDftTable;  // defined in TripeptideDftTable.h;
+                           // forward-declared so consumers don't need
+                           // libpq-fe.h transitively.
+
 class Session {
 public:
     Session();
@@ -52,6 +56,14 @@ public:
     // Pass the resolved path (JobSpec + fallback from TOML).
     Status LoadAimnet2Model(const std::string& path);
 
+    // Optional. Open a libpq connection to the local tensorcs15 replica
+    // and own the TripeptideDftTable for the Session lifetime. The DSN
+    // (libpq kv-pair string) comes from RuntimeEnvironment::TensorCs15Dsn.
+    // Empty DSN → kOk with table_ left null; calculators that depend
+    // on the table check HasTripeptideDftTable() and return nullptr at
+    // Compute when absent.
+    Status LoadTripeptideDftTable();
+
     // Accessors. AIMNet2Model pointer is the persistent resource; the
     // other subsystems (RuntimeEnvironment, CalculatorConfig,
     // OperationLog) continue to be read via their existing static
@@ -60,12 +72,22 @@ public:
     AIMNet2Model* Aimnet2Model() const { return aimnet2_model_.get(); }
     bool HasAimnet2Model() const { return aimnet2_model_ != nullptr; }
 
+    // Tripeptide DFT table accessor. Const because calculators only
+    // read; the table internally serialises libpq access.
+    const TripeptideDftTable* TripeptideDftTablePtr() const {
+        return tripeptide_dft_table_.get();
+    }
+    bool HasTripeptideDftTable() const {
+        return tripeptide_dft_table_ != nullptr;
+    }
+
     // Error string corresponding to the last non-ok status from one
     // of this Session's Load calls. Empty when status was ok.
     const std::string& LastError() const { return last_error_; }
 
 private:
     std::unique_ptr<AIMNet2Model> aimnet2_model_;
+    std::unique_ptr<TripeptideDftTable> tripeptide_dft_table_;
     std::string last_error_;
 };
 

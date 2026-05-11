@@ -49,6 +49,106 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   mut side, deltas); Python SDK `CategoryInfo` wrapper + `atom_nom.tbl`
   pre-flight consistency tests.
 
+- **Tripeptide BB + Neighbor calculators + DFT backend** (2026-05-10/11).
+  `TripeptideDftTable` (libpq loader against local `tensorcs15` Postgres
+  replica), `TripeptidePoseAssembler` (two-path validation: DFT canonical
+  ordering + typed substrate role cross-check; Vec3 residual recording
+  as ML feature), `TripeptideBackboneShieldingResult` (σ_BB^i per Larsen
+  2015), `TripeptideNeighborShieldingResult` (Δσ_BB^{i±1} per Larsen Eq
+  3 cap-side reading — paper-verified against the Cβ/Val worked example).
+  Smoke tests green on `1UBQ_pm6dh3plus.pdb`. `RuntimeEnvironment` now
+  has section-aware TOML parser exposing `[databases].tensorcs15` DSN;
+  `Session::LoadTripeptideDftTable` opens the libpq connection once and
+  holds for the session lifetime. CMakeLists adds `PostgreSQL::PostgreSQL`.
+  Full record at `spec/plan/session_2026-05-10_part2_tripeptide_calculators.md`.
+
+- **LarsenResidue perception-driven model** (2026-05-11; three rounds
+  of adversarial review by codex xhigh + opus general-purpose all
+  landed same day). Replaces the retired positional-ordering-table
+  design with bond-graph perception at the `TripeptideDftTable` load
+  boundary. `src/LarsenResidue.{h,cpp}` builds typed
+  `AtomMechanicalIdentity` per DFT atom via **K=3 Weisfeiler-Lehman
+  multi-round graph isomorphism** against canonical `AminoAcidType`
+  chemistry (HID/HIE/HIP variants strictly enforced via protein-side
+  `Residue::protonation_variant_index` hint; ACE/NME hand-coded).
+  `LarsenTripeptide` cached on `TripeptideDftRecord`.
+  `TripeptidePoseAssembler` central matching is **purely typed-identity**
+  end-to-end with always-relaxed candidate set (drops BranchAddress +
+  DiastereotopicIndex) and nearest-spatial tiebreak — the within-pair
+  swap for graph-automorphic atom pairs (PHE/TYR CD1↔CD2, ARG NH1↔NH2,
+  etc.) resolves by spatial distance. Cap and central assembly
+  **decline the residue** when perception fails (no heuristic
+  fallback — perception or nothing). The chi1-grid sidechain re-
+  rotation `Rsc` was **removed** so position and tensor share the same
+  rotation (the BB Kabsch); chi-grid coarseness lives in the Vec3
+  `residual_vec` ML feature.
+
+  **DB-side integrity:** `MergeGeometryAndTensors` keys by `atom_idx`
+  (not parallel-vector position) with duplicate detection + same-element
+  cross-check; silent corruption from a reordered JSONB is structurally
+  impossible. DSN is redacted via `PQconninfoParse` (handles case-
+  insensitive keys, quoted values with spaces, URI form). The
+  `IdentifyCentralBackbone`/`IdentifyAlaCap`/`IdentifyCTermAlaCap` legacy
+  public APIs and the deprecated `central_n/ca/c/o` record fields are
+  **deleted** — runtime is perception-only.
+
+  **Always-on in nmr_extract** when `[databases].tensorcs15` DSN is
+  configured: `Session::LoadTripeptideDftTable` is called in main,
+  `RunOptions::tripeptide_dft_table` is threaded through all 5
+  single-frame run sites + the trajectory mode, `OperationRunner::Run`
+  attaches both `TripeptideBackboneShieldingResult` and
+  `TripeptideNeighborShieldingResult` when the table is loaded. The
+  BB + Neighbor calculator chi-fallback loops break on
+  `IsHit() && larsen.has_value()` so a perception failure at chi depth
+  N retries at shallower chi rather than abandoning the residue. The
+  AAA reference query in the Neighbor calculator fails loud if its
+  larsen is absent — every per-residue assembly subtracts that
+  reference, so a silent AAA-reference perception failure would zero
+  every Δσ_BB^{i±1} contribution; that failure mode is now caught at
+  module entry.
+
+  **Python SDK** (`python/nmr_extract/_catalog.py`) carries 7
+  `tripeptide_*` ArraySpec entries so Python consumers see the new
+  NPYs alongside everything else.
+
+  **Tests:** 5 dedicated structure tests registered in
+  `structure_tests`:
+  - `LarsenResiduePerceptionTest.AllCombinationsPerceiveCleanly` —
+    parity across all 20 (residue, frame_type) DB combos.
+  - `LarsenResidueAgainstSourceLogTest.AaaLogPerceivesCleanly` —
+    parses AAA Gaussian log directly, perception runs independent of
+    DB (drift detector).
+  - `LarsenResidueSerSidechainTest.OgAndBackboneOHaveDistinctIdentities`
+    — SER OG ↔ BB O identity-distinctness regression.
+  - `TripeptideBackboneShieldingTest.RunsOn1UbqPm6` and
+    `TripeptideNeighborShieldingTest.RunsOn1UbqPm6` — end-to-end smoke
+    on `1UBQ_pm6dh3plus.pdb`.
+
+  **DB-side faithfulness verified:** DB row 21755 byte-for-byte
+  matches the original Gaussian log `AAA_4_54_nmr.log`.
+
+  **Final smoke on 1UBQ_pm6dh3plus.pdb:**
+  - BB **1205/1232 atoms assigned** (was 1033 with all-heuristic) —
+    97.8% atom coverage.
+  - BB **mean RMSD 0.015 Å** (was 0.547, 36× better).
+  - Neighbor 76/76 residues received contributions (was 75/76).
+  - 114/114 unit tests pass.
+  - 5/5 tripeptide structure tests pass.
+  - 88/88 Python SDK tests pass.
+
+  Full design at `spec/plan/larsen-residue-design-2026-05-11.md`;
+  retires `spec/plan/typed-tripeptide-topology-design-2026-05-10.md`
+  (no code landed from the old design). Adversarial review provenance
+  in `project_larsen_residue_model` memory entry.
+
+  **Known queued (not blocking):** trajectory mode wires the per-frame
+  calculators but has no `TimeSeriesTrajectoryResult` emission surface
+  yet — per-frame tensors compute correctly and land on each frame's
+  `ConformationAtom` fields, but the H5/NPY surface that surfaces
+  them for downstream is queued as
+  `TripeptideShieldingTimeSeriesTrajectoryResult` (mirror of
+  `BsShieldingTimeSeriesTrajectoryResult`).
+
 ### Pending forward work
 
 - **Calculator walkthrough** — bring existing classical calculators
@@ -106,6 +206,15 @@ operational discipline:
 - `feedback_capture_at_the_boundary`
 - `feedback_no_attach_lifecycle_for_invariant_data`
 - `feedback_readback_block_is_a_compiler_trace`
+- `feedback_two_path_validation` (2026-05-10 — cross-substrate matching)
+- `feedback_residual_as_ml_feature` (2026-05-10 — Vec3 not scalar)
+- `project_tripeptide_calculators_landed` (2026-05-10/11)
+- `project_larsen_residue_model` (2026-05-11 — perception-driven; supersedes
+  the retired `project_typed_tripeptide_topology_design`)
+- `feedback_identity_from_chemistry_not_position` (2026-05-11 — perception
+  over ordering tables)
+- `project_larsen_neighbor_axa_reuse` (CORRECTED 2026-05-10 — read at
+  cap atoms, not central)
 
 <!-- Pre-2026-05-08 working-tree status retired here; the slices above
      have all landed in master. Detailed planning prose is in

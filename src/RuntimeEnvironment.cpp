@@ -19,6 +19,7 @@ std::string RuntimeEnvironment::tleap_;
 std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
 std::string RuntimeEnvironment::bmrb_atom_nom_;
+std::string RuntimeEnvironment::tensorcs15_dsn_;
 std::string RuntimeEnvironment::processGuid_;
 bool RuntimeEnvironment::loaded_ = false;
 
@@ -95,34 +96,52 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
-    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir, toml_bmrb_atom_nom;
+    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir,
+                toml_bmrb_atom_nom, toml_tensorcs15_dsn;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
         std::string line;
+        std::string current_section;   // empty = top-level
+        auto trim = [](std::string& s) {
+            while (!s.empty() && (s.front() == ' ' || s.front() == '\t' ||
+                                  s.front() == '"'))
+                s.erase(s.begin());
+            while (!s.empty() && (s.back() == ' ' || s.back() == '\t' ||
+                                  s.back() == '"'))
+                s.pop_back();
+        };
         while (std::getline(in, line)) {
             auto pos = line.find('#');
             if (pos != std::string::npos) line = line.substr(0, pos);
+
+            // Section header [name]: track and continue
+            std::string stripped = line;
+            trim(stripped);
+            if (stripped.size() >= 2 &&
+                stripped.front() == '[' && stripped.back() == ']') {
+                current_section = stripped.substr(1, stripped.size() - 2);
+                trim(current_section);
+                continue;
+            }
+
             if (line.find('=') == std::string::npos) continue;
 
             auto eq = line.find('=');
             std::string key = line.substr(0, eq);
             std::string val = line.substr(eq + 1);
-
-            auto trim = [](std::string& s) {
-                while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '"'))
-                    s.erase(s.begin());
-                while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '"'))
-                    s.pop_back();
-            };
             trim(key);
             trim(val);
 
-            if      (key == "mopac")          toml_mopac = val;
-            else if (key == "tleap")          toml_tleap = val;
-            else if (key == "ff14sb_params") toml_ff14sb = val;
-            else if (key == "tmpdir")        toml_tmpdir = val;
-            else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
+            if (current_section.empty()) {
+                if      (key == "mopac")         toml_mopac = val;
+                else if (key == "tleap")         toml_tleap = val;
+                else if (key == "ff14sb_params") toml_ff14sb = val;
+                else if (key == "tmpdir")        toml_tmpdir = val;
+                else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
+            } else if (current_section == "databases") {
+                if (key == "tensorcs15") toml_tensorcs15_dsn = val;
+            }
         }
         OperationLog::Info("RuntimeEnvironment::Load", "read " + path);
     } else {
@@ -193,6 +212,17 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (env && fs::exists(env)) bmrb_atom_nom_ = env;
     }
 
+    // tensorcs15 connection string: TOML → env var → empty. Empty is
+    // OK; Session::LoadTripeptideDftTable will skip and the calculator
+    // returns nullptr at Compute. The DSN is a libpq kv-pair string,
+    // not a path, so we don't fs::exists-check it.
+    if (!toml_tensorcs15_dsn.empty()) {
+        tensorcs15_dsn_ = toml_tensorcs15_dsn;
+    } else {
+        const char* env = std::getenv("NMR_TENSORCS15_DSN");
+        if (env) tensorcs15_dsn_ = env;
+    }
+
     // --- Mark loaded ---
 
     loaded_ = true;
@@ -210,6 +240,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
         " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
+        " tensorcs15_dsn=" + status(tensorcs15_dsn_) +
         " guid=" + processGuid_);
 }
 
@@ -239,5 +270,6 @@ const std::string& RuntimeEnvironment::Tleap()          { RequireLoaded(); retur
 const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return ff14sb_params_; }
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
 const std::string& RuntimeEnvironment::BmrbAtomNom()   { RequireLoaded(); return bmrb_atom_nom_; }
+const std::string& RuntimeEnvironment::TensorCs15Dsn() { RequireLoaded(); return tensorcs15_dsn_; }
 
 }  // namespace nmr

@@ -18,6 +18,14 @@ endif()
 
 find_package(Eigen3 REQUIRED)
 find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
+
+# PostgreSQL libpq — required for TripeptideDftTable (ProCS15 tripeptide
+# DFT data lookup against the local tensorcs15 replica). The DSN is
+# read from ~/.nmr_tools.toml [databases].tensorcs15. No DSN configured
+# means TripeptideBackboneShieldingResult skips at Compute time;
+# linking is unconditional so the calculator code is always present.
+find_package(PostgreSQL REQUIRED)
+message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARIES}")
 if(NOT dssp_FOUND)
     # Manual fallback for machines without dssp cmake config (Ubuntu 22.04).
     # Requires libdssp.a + dssp.hpp installed to /usr/local, cifpp from apt.
@@ -250,6 +258,11 @@ add_library(nmr_shielding
     src/AIMNet2PolarisabilityResult.cpp
     src/PlanarGeometryResult.cpp
     src/BondedEnergyResult.cpp
+    src/TripeptideDftTable.cpp
+    src/TripeptidePoseAssembler.cpp
+    src/TripeptideBackboneShieldingResult.cpp
+    src/TripeptideNeighborShieldingResult.cpp
+    src/LarsenResidue.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -295,6 +308,7 @@ target_link_libraries(nmr_shielding PUBLIC
     ${REDUCE_LIBPDB}
     ${REDUCE_TOOLCLASSES}
     ${MOPAC_LIB}
+    PostgreSQL::PostgreSQL
     apbs_bridge
     extern_headers
     highfive
@@ -446,6 +460,11 @@ nmr_test_target(structure_tests
     tests/test_calculation_runner.cpp
     tests/test_pipeline_and_sample.cpp
     tests/test_write_features.cpp
+    tests/test_tripeptide_backbone_shielding.cpp
+    tests/test_tripeptide_neighbor_shielding.cpp
+    tests/test_larsen_residue_perception.cpp
+    tests/test_larsen_residue_against_source_log.cpp
+    tests/test_larsen_residue_ser_sidechain.cpp
 )
 
 # ── Trajectory tests (~5 min) — AMBER trajectory loader (fleet_amber/) ─

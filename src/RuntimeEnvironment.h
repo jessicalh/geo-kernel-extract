@@ -21,6 +21,12 @@
 //   bmrb_atom_nom  — references/bmrb_data/atom_nom.tbl path; consumed by
 //                    CategoryInfoProjection at session start. Empty =
 //                    projection runs inert (no atom_nom.tbl-driven names).
+//   tensorcs15_dsn — libpq connection string for the local tensorcs15
+//                    Postgres replica (ProCS15 tripeptide DFT data).
+//                    Read from [databases].tensorcs15 in the TOML.
+//                    Consumed by Session::LoadTripeptideDftTable.
+//                    Empty = TripeptideBackboneShieldingResult cannot
+//                    run; the calculator returns nullptr at Compute.
 //
 // MOPAC is linked (libmopac.so), not a binary path. tleap IS a
 // binary path (subprocess invocation by AmberPreparedChargeSource).
@@ -46,6 +52,7 @@ public:
     static const std::string& Ff14sbParams();
     static const std::string& TmpDir();
     static const std::string& BmrbAtomNom();
+    static const std::string& TensorCs15Dsn();
 
     // Verify live tools exist. Returns list of missing (name + path).
     static std::vector<std::string> Verify();
@@ -66,6 +73,7 @@ private:
     static std::string ff14sb_params_;
     static std::string tmpDir_;
     static std::string bmrb_atom_nom_;
+    static std::string tensorcs15_dsn_;
     static std::string processGuid_;
     static bool loaded_;
 };

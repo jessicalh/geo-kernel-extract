@@ -162,6 +162,17 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     base_opts.charge_source = tp.Charges();
     if (tp.HasBondedParams()) base_opts.bonded_params = &tp.BondedParams();
     base_opts.aimnet2_model = session.Aimnet2Model();
+    // Tripeptide DFT lookup table: per-frame compute is wired here even
+    // though trajectory mode does not currently have a TimeSeries-result
+    // emission surface for the per-atom tensors. The data lands on each
+    // frame's ConformationAtom (tripeptide_bb_shielding_tensor etc.) and
+    // is consumed in-memory by anything that reads ConformationResult
+    // attachments directly. A TripeptideShieldingTimeSeriesTrajectoryResult
+    // (mirror of BsShieldingTimeSeriesTrajectoryResult) is the queued
+    // emission feature; without it, NPY files are not produced. Wiring
+    // is harmless absent the emission surface and required for downstream
+    // when the emission lands.
+    base_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
 
     // =========================================================
     // Per-Protein topology-invariant emission (one-shot)

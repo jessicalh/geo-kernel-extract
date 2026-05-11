@@ -271,6 +271,60 @@ public:
     SphericalTensor orca_shielding_paramagnetic_spherical;
     bool has_orca_shielding = false;
 
+    // === Tripeptide DFT shielding (TripeptideBackboneShieldingResult) ===
+    //
+    // Per-atom DFT shielding tensor pulled from the ProCS15 tripeptide
+    // database (tensorcs15.raw_dft_calculations) via Kabsch alignment
+    // of the tripeptide's central N/CA/C onto the protein backbone +
+    // sidechain re-rotation around CA-CB. The matched tripeptide
+    // atom's full Mat3 (T0+T1+T2 preserved) is rotated by the same R
+    // and stored here; ppm.
+    //
+    // tripeptide_bb_method_tag carries the frame_type discriminator
+    // from the source row (so downstream calibration can route SER
+    // PBE separately from the rest's OPBE — see
+    // project_serine_pbe_discontinuity):
+    //   0 = no match (tripeptide_bb_has_match == false)
+    //   1 = gaussian_standard_orientation (OPBE/6-31G(d,p), 19 residues)
+    //   2 = orca_input_orientation        (PBE/6-31G(d,p), SER regen)
+    //
+    // tripeptide_bb_match_distance is the post-alignment distance from
+    // the aligned tripeptide atom to the matched protein atom (Å).
+    // Backbone atoms typically ≤ 0.5 Å (grid coarseness); sidechain
+    // atoms can be 1-3 Å due to chi residual mismatch.
+    Mat3 tripeptide_bb_shielding_tensor = Mat3::Zero();
+    SphericalTensor tripeptide_bb_shielding_spherical;
+    double tripeptide_bb_match_distance = 0.0;
+    // Post-Kabsch residual vector: aligned_position − protein_position.
+    // The displacement IS the feature for the upstream ML model — both
+    // direction and magnitude matter (the model may discover that
+    // certain residual orientations correlate with shielding bias).
+    Vec3 tripeptide_bb_residual_vec = Vec3::Zero();
+    bool tripeptide_bb_has_match = false;
+    uint8_t tripeptide_bb_method_tag = 0;
+
+    // === Tripeptide neighbor Δσ_BB^{i±1} (TripeptideNeighborShieldingResult) ===
+    //
+    // Per Larsen 2015 Eq 3: the shielding shift on residue i due to
+    // the chemical identity of flanking residue (i±1), computed via
+    // AXA-scan reuse rather than new DFT (see
+    // project_larsen_neighbor_axa_reuse):
+    //
+    //     Δσ_BB^{i-1}(i) = σ_BB^{i-1}(φ_{i-1}, ψ_{i-1}, χ_{i-1}, …)
+    //                      − σ_A(φ_std = -120°, ψ_std = 140°)
+    //
+    // Stored as the SUM of (i-1) + (i+1) contributions at each
+    // central-atom counterpart. Per-side breakdown is not retained
+    // here.
+    Mat3 tripeptide_neighbor_shielding_tensor = Mat3::Zero();
+    SphericalTensor tripeptide_neighbor_shielding_spherical;
+    // Per-direction residual vectors. Stored separately so the ML
+    // model can attend to each contribution's alignment quality
+    // independently. Zero when that direction had no contribution.
+    Vec3 tripeptide_neighbor_residual_vec_prev = Vec3::Zero();   // i-1 contribution
+    Vec3 tripeptide_neighbor_residual_vec_next = Vec3::Zero();   // i+1 contribution
+    bool tripeptide_neighbor_has_match = false;
+
     // === Predictions (PredictionResult) ===
     double predicted_T0 = 0.0;
     std::array<double, 5> predicted_T2 = {};

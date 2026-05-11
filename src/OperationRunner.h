@@ -34,6 +34,7 @@ class Protein;
 struct AIMNet2Model;  // forward declaration (AIMNet2Result.h)
 struct BondedParameters;  // forward declaration (BondedEnergyResult.h)
 struct GromacsEnergy;     // forward declaration (GromacsEnergyResult.h)
+class  TripeptideDftTable; // forward declaration (TripeptideDftTable.h)
 
 struct RunOptions {
     // Charges — required for real physics.
@@ -89,6 +90,14 @@ struct RunOptions {
 
     // DFT: load ORCA shielding tensors after calculators.
     std::string orca_nmr_path;
+
+    // Tripeptide DFT lookup table (ProCS15 tensorcs15 replica).
+    // Null = skip tripeptide backbone + neighbor shielding results.
+    // When set, OperationRunner::Run attaches both
+    // TripeptideBackboneShieldingResult and
+    // TripeptideNeighborShieldingResult. Owned by Session for the
+    // process lifetime; borrowed here per run.
+    const TripeptideDftTable* tripeptide_dft_table = nullptr;
 };
 
 struct RunResult {

@@ -62,6 +62,7 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -104,6 +105,7 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
@@ -146,6 +148,7 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
     opts.skip_apbs    = spec.skip_apbs;
     opts.skip_coulomb = spec.skip_coulomb;
     opts.aimnet2_model = session.Aimnet2Model();
+    opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
 
@@ -190,6 +193,7 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     wt_opts.skip_apbs    = spec.skip_apbs;
     wt_opts.skip_coulomb = spec.skip_coulomb;
     wt_opts.aimnet2_model = session.Aimnet2Model();
+    wt_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
 
@@ -200,6 +204,7 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     ala_opts.skip_apbs    = spec.skip_apbs;
     ala_opts.skip_coulomb = spec.skip_coulomb;
     ala_opts.aimnet2_model = session.Aimnet2Model();
+    ala_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 
@@ -366,6 +371,18 @@ int main(int argc, char* argv[]) {
     // the file exists. Required for every non-None mode per
     // feedback_aimnet2_required_no_weasel; load failure is fatal.
     if (session.LoadAimnet2Model(spec.aimnet2_model_path) != kOk) {
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        return 1;
+    }
+
+    // Tripeptide DFT table: always-on when ~/.nmr_tools.toml has a
+    // [databases].tensorcs15 DSN. Empty DSN leaves the table null;
+    // OperationRunner's tripeptide attach blocks short-circuit on null
+    // and the run continues without tripeptide_* outputs. A fatal load
+    // failure (DSN set but libpq connection refused) aborts — we'd
+    // rather see the error than silently drop tripeptide outputs from
+    // a fleet run that the operator expected to include them.
+    if (session.LoadTripeptideDftTable() != kOk) {
         fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
         return 1;
     }

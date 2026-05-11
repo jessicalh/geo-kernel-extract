@@ -228,5 +228,20 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("pucker_Q",          "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople puckering amplitude (Å); 5-rings only"),
     ArraySpec("pucker_theta",      "planar_geometry", np.ndarray, None, False, "Per-saturated-ring Cremer-Pople phase angle (degrees, [0, 360))"),
     ArraySpec("omega_is_xpro",     "planar_geometry", np.ndarray, None, False, "Per-residue mask: 1 where the bond into i+1 is X→Pro (cis/trans isomerism is real signal there, not 'non-planar amide' deviation)"),
+
+    # ── Tripeptide DFT shielding ────────────────────────────────────
+    # ProCS15 (Larsen 2015) tripeptide DFT lookup. σ_BB^i emitted on
+    # backbone N/CA/C/O/H/HA and central-residue sidechain atoms per
+    # the typed-identity-matched LarsenResidue model. Δσ_BB^{i±1}
+    # neighbor correction emitted at the central residue's atoms per
+    # Larsen Eq 3 cap-side reading. required=False because the
+    # tensorcs15 DB is not available on every host.
+    ArraySpec("tripeptide_bb_shielding",          "tripeptide", ShieldingTensor, 9,    False, "σ_BB^i — Mat3 (ppm) from typed-identity match against Larsen 2015 AXA tripeptide DFT row"),
+    ArraySpec("tripeptide_bb_residual_vec",       "tripeptide", VectorField,     3,    False, "σ_BB^i match residual: aligned_dft - protein position; Vec3 ML feature (magnitude + direction)"),
+    ArraySpec("tripeptide_bb_match_distance",     "tripeptide", np.ndarray,      None, False, "σ_BB^i match distance (Å) — magnitude of residual_vec"),
+    ArraySpec("tripeptide_bb_method_tag",         "tripeptide", np.ndarray,      None, False, "DFT method discriminator: 0=none, 1=OPBE Gaussian (Larsen), 2=PBE ORCA (project SER regen)"),
+    ArraySpec("tripeptide_neighbor_shielding",    "tripeptide", ShieldingTensor, 9,    False, "Δσ_BB^{i±1} — neighbour correction at residue i from i±1 cap reads (Larsen 2015 Eq 3)"),
+    ArraySpec("tripeptide_neighbor_residual_vec_prev", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i-1} match residual at the C-term ALA cap of (i-1)'s tripeptide; Vec3"),
+    ArraySpec("tripeptide_neighbor_residual_vec_next", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i+1} match residual at the N-term ALA cap of (i+1)'s tripeptide; Vec3"),
 ]}
 # fmt: on
