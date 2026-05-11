@@ -319,6 +319,57 @@ class AIMNet2Group:
 
 
 @dataclass(frozen=True)
+class PlanarGeometryGroup:
+    """Planar and near-planar geometry outputs from PlanarGeometryResult.
+
+    Axes are intentionally kept explicit because the result mixes atom,
+    residue, aromatic-ring, and saturated-ring quantities:
+
+    - ``pyramidalization`` is per atom, shape ``(N,)``.
+    - ``omega_actual``, ``omega_deviation``, and ``omega_is_xpro`` are
+      per residue, shape ``(R,)``.
+    - ``aromatic_chi2`` is per aromatic ring.
+    - ``pucker_Q`` and ``pucker_theta`` are per saturated ring.
+
+    Convenience methods project the residue-level omega arrays back to
+    atom rows using ``Protein.residue_index``. Ring-level arrays are not
+    projected here because aromatic and saturated ring axes are distinct
+    from the existing per-aromatic-ring ``RingGeometry`` table.
+    """
+    pyramidalization: Optional[np.ndarray] = None
+    omega_actual: Optional[np.ndarray] = None
+    omega_deviation: Optional[np.ndarray] = None
+    omega_is_xpro: Optional[np.ndarray] = None
+    aromatic_chi2: Optional[np.ndarray] = None
+    pucker_Q: Optional[np.ndarray] = None
+    pucker_theta: Optional[np.ndarray] = None
+
+    @staticmethod
+    def _per_atom_residue_values(values: Optional[np.ndarray],
+                                 residue_index: np.ndarray) -> np.ndarray:
+        out = np.full(len(residue_index), np.nan, dtype=np.float64)
+        if values is None:
+            return out
+        vals = np.asarray(values)
+        ri = np.asarray(residue_index, dtype=np.intp)
+        ok = (ri >= 0) & (ri < len(vals))
+        out[ok] = vals[ri[ok]]
+        return out
+
+    def omega_actual_per_atom(self, residue_index: np.ndarray) -> np.ndarray:
+        """Per-atom omega angle by each atom's parent residue."""
+        return self._per_atom_residue_values(self.omega_actual, residue_index)
+
+    def omega_deviation_per_atom(self, residue_index: np.ndarray) -> np.ndarray:
+        """Per-atom wrapped omega deviation by each atom's parent residue."""
+        return self._per_atom_residue_values(self.omega_deviation, residue_index)
+
+    def omega_is_xpro_per_atom(self, residue_index: np.ndarray) -> np.ndarray:
+        """Per-atom X-Pro mask by each atom's parent residue."""
+        return self._per_atom_residue_values(self.omega_is_xpro, residue_index)
+
+
+@dataclass(frozen=True)
 class WaterFieldGroup:
     """Explicit water E-field and EFG from full-system trajectory."""
     efield: VectorField             # (N, 3) total water E-field
@@ -377,6 +428,44 @@ class EeqGroup:
     cn: np.ndarray                  # (N,) coordination number
 
 
+@dataclass(frozen=True)
+class TripeptideGroup:
+    """ProCS15 (Larsen 2015) tripeptide DFT shielding lookup.
+
+    σ_BB^i (the central-residue backbone-shielding tensor) and
+    Δσ_BB^{i±1} (the cap-side neighbour correction per Larsen Eq 3) are
+    emitted by the C++ ``TripeptideBackboneShieldingResult`` and
+    ``TripeptideNeighborShieldingResult`` calculators when the
+    extraction is run against a host that has the ``tensorcs15``
+    PostgreSQL replica available (DSN configured under
+    ``[databases].tensorcs15`` in the runtime TOML).
+
+    All fields are optional; the group is attached to a Protein only
+    when at least one of the seven NPY files is present on disk.
+
+    Per-atom convention:
+    - ``bb_shielding`` carries the tensor on backbone N/CA/C/O/H/HA and
+      central-residue sidechain atoms, NaN-filled elsewhere.
+    - ``neighbor_shielding`` carries the summed Δσ_{i-1} + Δσ_{i+1}.
+    - ``bb_residual_vec`` is the central-residue match residual
+      (aligned_dft - protein_position) as a Vec3, NaN where the residue
+      had no central match.
+    - ``neighbor_residual_vec_prev/_next`` carry the per-direction cap
+      residuals. NaN distinguishes "the i-1 (or i+1) direction did not
+      contribute" from a coincidentally-zero residual.
+    - ``bb_method_tag`` encodes the DFT engine that produced the row
+      (1=OPBE Gaussian per Larsen, 2=PBE ORCA per the SER regen). 0
+      means no match.
+    """
+    bb_shielding: Optional[ShieldingTensor] = None
+    bb_residual_vec: Optional[VectorField] = None
+    bb_match_distance: Optional[np.ndarray] = None
+    bb_method_tag: Optional[np.ndarray] = None
+    neighbor_shielding: Optional[ShieldingTensor] = None
+    neighbor_residual_vec_prev: Optional[VectorField] = None
+    neighbor_residual_vec_next: Optional[VectorField] = None
+
+
 # ── Top-level protein container ─────────────────────────────────────
 
 
@@ -424,6 +513,7 @@ class Protein:
     orca: Optional[OrcaGroup] = None
     delta: Optional[DeltaGroup] = None
     aimnet2: Optional[AIMNet2Group] = None
+    planar_geometry: Optional[PlanarGeometryGroup] = None
 
     # Per-atom invariant categorical record (CategoryInfoProjection).
     category_info: Optional[CategoryInfo] = None
@@ -436,6 +526,10 @@ class Protein:
 
     # Geometry-dependent charges
     eeq: Optional[EeqGroup] = None
+
+    # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — emitted when
+    # the extractor was run with the tensorcs15 Postgres DSN configured.
+    tripeptide: Optional[TripeptideGroup] = None
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -606,6 +700,36 @@ def load(path: str | Path) -> Protein:
                 if "aimnet2_polarisability_scalar" in available else None,
         )
 
+    # Planar geometry (optional in pre-2026-05-09 outputs and in unusual
+    # fixtures where the topology substrate is not populated).
+    planar_geometry = None
+    planar_stems = {
+        "pyramidalization",
+        "omega_actual",
+        "omega_deviation",
+        "omega_is_xpro",
+        "aromatic_chi2",
+        "pucker_Q",
+        "pucker_theta",
+    }
+    if any(stem in available for stem in planar_stems):
+        planar_geometry = PlanarGeometryGroup(
+            pyramidalization=get("pyramidalization")
+                if "pyramidalization" in available else None,
+            omega_actual=get("omega_actual")
+                if "omega_actual" in available else None,
+            omega_deviation=get("omega_deviation")
+                if "omega_deviation" in available else None,
+            omega_is_xpro=get("omega_is_xpro")
+                if "omega_is_xpro" in available else None,
+            aromatic_chi2=get("aromatic_chi2")
+                if "aromatic_chi2" in available else None,
+            pucker_Q=get("pucker_Q")
+                if "pucker_Q" in available else None,
+            pucker_theta=get("pucker_theta")
+                if "pucker_theta" in available else None,
+        )
+
     # Water field (trajectory path — optional)
     water_field = None
     if "water_efield" in available:
@@ -633,6 +757,39 @@ def load(path: str | Path) -> Protein:
         eeq = EeqGroup(
             charges=get("eeq_charges"),
             cn=get("eeq_cn"),
+        )
+
+    # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — attached when
+    # any of the seven tripeptide NPYs is present. Individual fields
+    # are wrapped (or left None) based on per-stem availability so a
+    # partial output (e.g., BB calculator ran but Neighbor did not) is
+    # still consumable.
+    tripeptide = None
+    tripeptide_stems = {
+        "tripeptide_bb_shielding",
+        "tripeptide_bb_residual_vec",
+        "tripeptide_bb_match_distance",
+        "tripeptide_bb_method_tag",
+        "tripeptide_neighbor_shielding",
+        "tripeptide_neighbor_residual_vec_prev",
+        "tripeptide_neighbor_residual_vec_next",
+    }
+    if any(stem in available for stem in tripeptide_stems):
+        tripeptide = TripeptideGroup(
+            bb_shielding=get("tripeptide_bb_shielding")
+                if "tripeptide_bb_shielding" in available else None,
+            bb_residual_vec=get("tripeptide_bb_residual_vec")
+                if "tripeptide_bb_residual_vec" in available else None,
+            bb_match_distance=get("tripeptide_bb_match_distance")
+                if "tripeptide_bb_match_distance" in available else None,
+            bb_method_tag=get("tripeptide_bb_method_tag")
+                if "tripeptide_bb_method_tag" in available else None,
+            neighbor_shielding=get("tripeptide_neighbor_shielding")
+                if "tripeptide_neighbor_shielding" in available else None,
+            neighbor_residual_vec_prev=get("tripeptide_neighbor_residual_vec_prev")
+                if "tripeptide_neighbor_residual_vec_prev" in available else None,
+            neighbor_residual_vec_next=get("tripeptide_neighbor_residual_vec_next")
+                if "tripeptide_neighbor_residual_vec_next" in available else None,
         )
 
     return Protein(
@@ -663,10 +820,12 @@ def load(path: str | Path) -> Protein:
         orca=orca,
         delta=delta,
         aimnet2=aimnet2,
+        planar_geometry=planar_geometry,
         water_field=water_field,
         hydration=hydration,
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
         eeq=eeq,
         category_info=category_info,
+        tripeptide=tripeptide,
     )

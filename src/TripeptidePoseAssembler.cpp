@@ -446,17 +446,35 @@ bool AssembleCentralTyped(
     for (std::size_t i = 0; i < larsen.atoms.size(); ++i) {
         const auto& perc = larsen.atoms[i];
 
-        // ALWAYS use relaxed identity matching (drop BranchAddress +
-        // DiastereotopicIndex from the equality check) and let nearest-
-        // spatial within the candidate set resolve the within-class
-        // assignment. This closes the within-pair scramble for
-        // graph-automorphic atom pairs that K=3 Weisfeiler-Lehman in
-        // MatchPiece cannot split (CD1↔CD2, CE1↔CE2 on PHE/TYR,
-        // NH1↔NH2 on ARG, HD21↔HD22 on ASN, etc.). Strict match would
-        // lock in MatchPiece's arbitrary within-class assignment and
-        // silently swap tensors across symmetric positions.
+        // Dispatch on the perception's per-atom ambiguity flag:
+        //
+        //   - canonical_assignment_ambiguous=false (singleton K=3 WL
+        //     class — the common case): use STRICT identity match.
+        //     BranchAddress + DiastereotopicIndex are determined by
+        //     the bond graph and bind to the protein side per the
+        //     Markley 1998 CIP convention. ILE CG1/CG2 are the
+        //     canonical example: K=3 WL distinguishes them at K=1
+        //     already (CG1 has a methylene+CD1 extension; CG2 is a
+        //     terminal methyl), so the canonical name choice is
+        //     chemistry-deterministic and must not be relaxed away.
+        //
+        //   - canonical_assignment_ambiguous=true (multi-atom WL
+        //     class — residual graph-automorphic pairs): use RELAXED
+        //     match, dropping BranchAddress + DiastereotopicIndex,
+        //     and resolve the within-class assignment by nearest-
+        //     spatial. PHE/TYR CD1↔CD2, ARG NH1↔NH2, ASN HD21↔HD22,
+        //     and methyl-Hs land here. K rounds of WL cannot split
+        //     these by graph alone; the spatial pose makes the call.
+        //
+        // The previous always-relaxed setting (round-3 fix for the
+        // aromatic CD/CE scramble) was over-broad: it silently
+        // dropped CIP-derived BranchAddress binding for
+        // chemistry-distinct branches like ILE CG1/CG2, allowing
+        // nearest-spatial to swap them under non-canonical chi
+        // orientations.
+        const bool relaxed = perc.canonical_assignment_ambiguous;
         std::vector<std::size_t> cand =
-            candidate_protein_atoms(perc.identity, /*relaxed=*/true);
+            candidate_protein_atoms(perc.identity, relaxed);
         if (cand.empty()) {
             ++out.n_substrate_disagreements;
             continue;

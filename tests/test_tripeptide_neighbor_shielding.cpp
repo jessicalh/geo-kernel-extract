@@ -118,7 +118,19 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
     // matched atoms. The cap-side Kabsch aligns flanking-ALA N/CA/C
     // onto residue i's N/CA/C; the AAA reference is also at standard
     // angles, so AXA and AAA residuals should both be small.
+    //
+    // Per M4 contract, the per-direction residual is NaN whenever a
+    // direction had no contribution at all (terminal residue's
+    // missing i-1 / i+1, or chain break). The previous formulation
+    // here read .norm() on every has_match atom and compared the
+    // result against 3.0 — NaN comparisons evaluate false in C++ so
+    // an entire direction being absent everywhere would silently
+    // pass the extreme bound check. The fix is to count finite
+    // residuals separately and only fold finite vectors into the
+    // max/extreme tallies; the test then also asserts non-trivial
+    // finite coverage in each direction.
     int n_atoms_with_neighbor = 0;
+    int n_finite_prev = 0, n_finite_next = 0;
     int n_extreme_prev = 0, n_extreme_next = 0;
     double max_prev = 0.0, max_next = 0.0;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
@@ -127,12 +139,26 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
         ++n_atoms_with_neighbor;
         const double pr = ca.tripeptide_neighbor_residual_vec_prev.norm();
         const double nr = ca.tripeptide_neighbor_residual_vec_next.norm();
-        if (pr > max_prev) max_prev = pr;
-        if (nr > max_next) max_next = nr;
-        if (pr > 3.0) ++n_extreme_prev;
-        if (nr > 3.0) ++n_extreme_next;
+        if (std::isfinite(pr)) {
+            ++n_finite_prev;
+            if (pr > max_prev) max_prev = pr;
+            if (pr > 3.0) ++n_extreme_prev;
+        }
+        if (std::isfinite(nr)) {
+            ++n_finite_next;
+            if (nr > max_next) max_next = nr;
+            if (nr > 3.0) ++n_extreme_next;
+        }
     }
     EXPECT_GT(n_atoms_with_neighbor, 200);
+    EXPECT_GT(n_finite_prev, 100)
+        << "expected most has_match atoms to also have a finite "
+           "i-1 residual; got " << n_finite_prev << " finite of "
+        << n_atoms_with_neighbor << " has_match atoms";
+    EXPECT_GT(n_finite_next, 100)
+        << "expected most has_match atoms to also have a finite "
+           "i+1 residual; got " << n_finite_next << " finite of "
+        << n_atoms_with_neighbor << " has_match atoms";
     EXPECT_LT(n_extreme_prev, 20)
         << "more than 20 atoms have prev-direction residual > 3 Å "
         << "(max=" << max_prev << " Å) — likely Kabsch issue";

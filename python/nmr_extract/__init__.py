@@ -26,10 +26,18 @@ from ._tensors import (
     MopacGlobal,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
+    AIMNet2Polarisability,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec
-from ._protein import AIMNet2Group, WaterPolarizationGroup, EeqGroup, CategoryInfo
+from ._protein import (
+    AIMNet2Group,
+    PlanarGeometryGroup,
+    WaterPolarizationGroup,
+    EeqGroup,
+    CategoryInfo,
+    TripeptideGroup,
+)
 
 __all__ = [
     "load",
@@ -50,12 +58,15 @@ __all__ = [
     "ArraySpec",
     "AIMNet2Charges",
     "AIMNet2AimEmbedding",
+    "AIMNet2Polarisability",
     "MopacScalars",
     "MopacGlobal",
     "AIMNet2Group",
+    "PlanarGeometryGroup",
     "WaterPolarizationGroup",
     "EeqGroup",
     "CategoryInfo",
+    "TripeptideGroup",
     "load_trajectory",
     "TrajectoryData",
     "TrajectoryRollup",

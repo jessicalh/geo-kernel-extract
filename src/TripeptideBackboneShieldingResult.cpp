@@ -171,6 +171,30 @@ TripeptideBackboneShieldingResult::Compute(
         const int his_hint = (res.type == AminoAcid::HIS)
             ? res.protonation_variant_index : -1;
 
+        // The tensorcs15 DB schema as inspected 2026-05-11 carries the
+        // HIP variant exclusively for HIS (AHA rows uniformly have 18
+        // central atoms = HID + HE2 + HD1). A protein-side HID
+        // (variant_idx=0) or HIE (variant_idx=1) residue will fail
+        // perception (piece_n=17 vs canonical HIP=18 atom-count
+        // mismatch in the variant try-loop) and yield no σ_BB^i for
+        // that residue. Surface this loudly rather than letting the
+        // residue silently disappear from the output; the user can
+        // then either re-protonate the input to HIP or accept the
+        // missing-σ_BB^i for that residue. Trigger to revisit:
+        // tensorcs15 ingest gains HID/HIE rows for HIS.
+        if (res.type == AminoAcid::HIS &&
+            (his_hint == 0 || his_hint == 1)) {
+            OperationLog::Warn(
+                "TripeptideBackboneShieldingResult::Compute",
+                "residue " + std::to_string(res.sequence_number) +
+                " HIS variant_idx=" + std::to_string(his_hint) +
+                " (" + (his_hint == 0 ? "HID" : "HIE") +
+                ") is not in tensorcs15 (which carries HIP only); "
+                "perception will fail and σ_BB^i will be absent for "
+                "this residue. Re-protonate the input to HIP if "
+                "σ_BB^i coverage at this residue is required.");
+        }
+
         // Query DB with chi-fallback.
         TripeptideDftRecord entry;
         int n_chi_used = n_chi_set;

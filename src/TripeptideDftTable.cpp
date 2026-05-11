@@ -488,10 +488,19 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     if (n_chi >= 3) where += " AND chi3=" + std::to_string(g_chi3);
     if (n_chi >= 4) where += " AND chi4=" + std::to_string(g_chi4);
 
+    // ORDER BY calc_id ASC: when the chi-fallback drops axes from the
+    // WHERE clause, multiple rows can match (different chi values at
+    // the dropped depths). Without a deterministic ordering, the row
+    // returned depends on the PostgreSQL planner's row-emission order
+    // — i.e., session-arbitrary and not stable across replays. calc_id
+    // is the cheapest stable key (single index lookup); using a chi-
+    // distance metric would be geometrically nicer but bake into a hot
+    // path the calculators call thousands of times per protein.
     const std::string query =
         "SELECT calc_id, tripeptide, phi, psi, chi1, chi2, chi3, chi4, "
         "n_atoms, frame_type, geometry::text, tensors::text "
-        "FROM raw_dft_calculations WHERE " + where + " LIMIT 1";
+        "FROM raw_dft_calculations WHERE " + where +
+        " ORDER BY calc_id ASC LIMIT 1";
 
     PGresult* res = PQexec(conn_, query.c_str());
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {

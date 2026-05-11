@@ -129,19 +129,37 @@ struct AssembledTripeptide {
 // Assemble a tripeptide DFT record's data onto a protein residue's
 // pose. See top-of-file for the two-path validation discipline.
 //
-// validation_threshold_A: atoms whose residual_distance exceeds this
-// are excluded from aligned_atoms. Default 3.0 Å — wide enough to
-// keep legitimate chi-grid-coarseness mismatches on sidechain atoms
-// (residuals 1.5-2.5 Å are normal), tight enough to catch genuine
-// mismappings (which land 5-10 Å off). The residual_vec is then
-// fed to the ML model as a feature alongside the rotated tensor —
-// magnitude and direction both matter to downstream calibration.
+// validation_threshold_A: the threshold's role differs between the
+// cap path and the central path.
+//
+//   * Cap path (`AssembleAlaCap` → `EmitAlignedAtom`): atoms whose
+//     residual_distance exceeds this ARE excluded from
+//     aligned_atoms. The cap path's seven slots are tightly
+//     constrained by typed identity so a large residual on a
+//     BB/Cβ atom indicates a Kabsch failure or a substrate
+//     disagreement worth excising.
+//   * Central path (`AssembleCentralTyped`): atoms whose
+//     residual_distance exceeds this are kept but counted in
+//     `out.n_above_threshold` as a diagnostic stat. The residual
+//     itself is the load-bearing ML feature
+//     (per `feedback_residual_as_ml_feature`); rejection on
+//     residual magnitude would discard signal the calibration
+//     expects to consume. Chi-grid coarseness puts deep-sidechain
+//     atoms (Arg/Lys terminal N region) at 2-4 Å residual
+//     routinely, which is normal not a Kabsch failure.
+//
+// Default 3.0 Å — chosen for the cap-path gate; on the central path
+// it is the threshold above which n_above_threshold ticks.
 //
 // substrate_check_strict: when true, atoms whose typed substrate role
 // doesn't match the canonical cap-slot role are excluded from
 // aligned_atoms (and the disagreement is logged). When false they
 // are kept with substrate_role_agrees=false. Default true: the
 // substrate cross-check is the load-bearing independent validation.
+// Applies to the cap path's per-slot dispatch in `EmitAlignedAtom`;
+// the central path uses typed-identity-equality at the candidate
+// step and substrate_role_agrees is set to true by construction
+// (a non-empty candidate set means the chemistry agreed).
 //
 // Returns AssembledTripeptide with ok=false on hard structural error:
 //   - Protein residue's backbone N/CA/C cache incomplete

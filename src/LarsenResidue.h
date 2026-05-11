@@ -19,9 +19,16 @@
 //   NME (methylamide)  -- 6 atoms, no carbonyl-O, has amide H
 //
 // Perception algorithm (in detail in
-// spec/plan/larsen-residue-design-2026-05-11.md and implemented by
-// the Python POC scripts/perceive_larsen_tripeptide.py which is the
-// validated spec for this C++ port):
+// spec/plan/larsen-residue-design-2026-05-11.md). The Python script
+// at scripts/perceive_larsen_tripeptide.py is the original algorithm
+// prototype that validated the bond-graph + WL approach against
+// every (tripeptide, frame_type) DB combination and the AAA Gaussian
+// log — it is NOT a normative spec for the C++ object model. Names
+// die at canonical construction; runtime identity is the typed
+// AtomMechanicalIdentity stamped by the generated topology table.
+// The Python script still returns canonical atom names from its
+// `match_piece` because it predates the typed-substrate work; treat
+// it as a diagnostic tool, not as the contract this code must match.
 //
 //   1. Build bond graph from (position, element) with element-pair-
 //      specific distance cutoffs.
@@ -88,6 +95,20 @@ public:
         double                isotropic        = 0.0;
         double                anisotropy       = 0.0;
         std::array<double, 5> t2_components    = {};
+
+        // True iff the canonical name was chosen within a K=3
+        // Weisfeiler-Lehman signature class of size ≥ 2 — the bond
+        // graph cannot distinguish this atom from a graph-automorphic
+        // sibling (PHE/TYR CD1↔CD2, ARG NH1↔NH2, ASN/GLN HD21↔HD22,
+        // methyl-Hs whose DiastereotopicIndex collapses). The
+        // chemical identity tuple (Element, Locant, BackboneRole) is
+        // sound; only the within-class label (BranchAddress and
+        // DiastereotopicIndex) is interchangeable. Matchers should
+        // drop those two fields and resolve by nearest-spatial when
+        // this flag is true. For singleton WL classes (the common
+        // case after K=3 — chemistry-distinct branches like ILE
+        // CG1/CG2 land here), strict identity match is correct.
+        bool canonical_assignment_ambiguous = false;
     };
 
     // One bond in the perceived covalent graph. Indices are into

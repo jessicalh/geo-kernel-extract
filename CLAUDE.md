@@ -62,7 +62,7 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   holds for the session lifetime. CMakeLists adds `PostgreSQL::PostgreSQL`.
   Full record at `spec/plan/session_2026-05-10_part2_tripeptide_calculators.md`.
 
-- **LarsenResidue perception-driven model** (2026-05-11; three rounds
+- **LarsenResidue perception-driven model** (2026-05-11; six rounds
   of adversarial review by codex xhigh + opus general-purpose all
   landed same day). Replaces the retired positional-ordering-table
   design with bond-graph perception at the `TripeptideDftTable` load
@@ -73,15 +73,42 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   `Residue::protonation_variant_index` hint; ACE/NME hand-coded).
   `LarsenTripeptide` cached on `TripeptideDftRecord`.
   `TripeptidePoseAssembler` central matching is **purely typed-identity**
-  end-to-end with always-relaxed candidate set (drops BranchAddress +
-  DiastereotopicIndex) and nearest-spatial tiebreak — the within-pair
-  swap for graph-automorphic atom pairs (PHE/TYR CD1↔CD2, ARG NH1↔NH2,
-  etc.) resolves by spatial distance. Cap and central assembly
-  **decline the residue** when perception fails (no heuristic
+  end-to-end. Per-perceived-atom dispatch on the round-4
+  `canonical_assignment_ambiguous` flag on `LarsenResidue::PerAtom`:
+  singleton WL class → STRICT identity match (BranchAddress +
+  DiastereotopicIndex bind, per Markley 1998 CIP; protects
+  chemistry-distinct branches like ILE CG1/CG2); multi-atom WL class
+  → relaxed match dropping BranchAddress + DiastereotopicIndex with
+  nearest-spatial tiebreak (resolves graph-automorphic pairs like
+  PHE CD1↔CD2 that no K rounds of WL can split). Cap and central
+  assembly **decline the residue** when perception fails (no heuristic
   fallback — perception or nothing). The chi1-grid sidechain re-
   rotation `Rsc` was **removed** so position and tensor share the same
   rotation (the BB Kabsch); chi-grid coarseness lives in the Vec3
   `residual_vec` ML feature.
+
+  **Names die at canonical construction (round 4):**
+  `MatchPiece` returns canonical NODE INDICES, not atom-name strings.
+  `FinalizeAdjacency` translates the name-keyed bond list to index-
+  keyed `adj_by_idx`; runtime WL signatures, `MatchPiece`, and
+  `EmitPiece` all operate on canonical node indices. `EmitPiece`
+  reads typed identity directly from `canon.atoms[canon_idx].identity`
+  and dispatches the role-pinned slot cache (N_idx, CA_idx, ...)
+  by `BackboneRole`/`Locant` enum values — no name comparisons in
+  perception's hot path.
+
+  **Canonical identities grounded in generated topology table
+  (round 5):** Chain atoms (NCapAla/CCapAla/Central) route through
+  `StampChainIdentitiesViaTable`, which mirrors
+  `ComposeAtomSemantic` from `src/LegacyAmberTopology.cpp:233`:
+  parse name → build identity → apply methyl-H pseudoatom collapse
+  via canonical bond graph (parent has 3+ H neighbours → clear DI)
+  → `topology_generated::LookupBy(aa, variant_idx, identity)`. The
+  row's identity is the authoritative typed tuple. Lookup miss is
+  FATAL with the same shape as the protein side's
+  `FatalSubstrateMiss`. Both substrates speak identical typed
+  vocabulary post-collapse. Cap atoms (ACE/NME) stay hand-coded
+  since they are not in the standard-20 substrate table.
 
   **DB-side integrity:** `MergeGeometryAndTensors` keys by `atom_idx`
   (not parallel-vector position) with duplicate detection + same-element
@@ -107,11 +134,49 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   every Δσ_BB^{i±1} contribution; that failure mode is now caught at
   module entry.
 
-  **Python SDK** (`python/nmr_extract/_catalog.py`) carries 7
-  `tripeptide_*` ArraySpec entries so Python consumers see the new
-  NPYs alongside everything else.
+  **Python SDK** (round 4): `python/nmr_extract/_catalog.py` carries
+  7 `tripeptide_*` ArraySpec entries; `python/nmr_extract/_protein.py`
+  exposes `TripeptideGroup` attached on `Protein.tripeptide` when
+  any tripeptide NPY is present; exported from
+  `nmr_extract.__init__`.
 
-  **Tests:** 5 dedicated structure tests registered in
+  **Determinism (round 4 M3):** `TripeptideDftTable::QueryNearest`
+  adds `ORDER BY calc_id ASC` so chi-fallback row selection is
+  stable across sessions (previously planner-dependent).
+
+  **Per-direction neighbour residual semantics (round 4 M4):**
+  `TripeptideNeighborShieldingResult` NaN-initialises the per-
+  direction `tripeptide_neighbor_residual_vec_{prev,next}` in the
+  per-conf reset loop; the WriteFeatures emitter mirrors the BB
+  NaN-fill pattern. Downstream ML reads NaN as "no contribution in
+  this direction" — distinguished from a coincidentally-zero
+  residual.
+
+  **Round 6 follow-ups (post-R5 investigation):**
+  - tensorcs15 DB carries HIP only for HIS (verified by query).
+    `TripeptideBackboneShieldingResult::Compute` and
+    `TripeptideNeighborShieldingResult::Compute` now emit a
+    structured `OperationLog::Warn` when a HIS residue has
+    `protonation_variant_index ∈ {0, 1}` (HID/HIE) so the
+    silently-skipped residue is no longer silent.
+  - `StampChainIdentitiesViaTable` FATAL message now anchors to
+    `LarsenResiduePerceptionTest.AllCombinationsPerceiveCleanly`
+    as positive coverage so future developers know where to
+    verify if they touch one side of the chemistry sync.
+  - `test_larsen_residue_wl_ambiguity.cpp` gains
+    `ChiFallbackIsDeterministic` — verifies `ORDER BY calc_id
+    ASC` produces the same row on repeated queries at a
+    fallback depth (ARG at -180/-180, n_chi_axes=0).
+  - HBondHα `project_hbond_halpha_design` memory entry now phrases
+    the sidechain-O-acceptor exclusion as "Phase 1 scope, revisit
+    trigger: post-calibration per-acceptor-class residual".
+  - `larsen-residue-design-2026-05-11.md` Open Question §1
+    (prochiral methylene H disambiguation) now phrases Phase-2
+    as "stays unimplemented unless calibration shows systematic
+    pro-R/pro-S bias on methylene Hα/HB/HG/HD/HE pairs" with
+    explicit trigger condition.
+
+  **Tests:** 8 dedicated structure tests registered in
   `structure_tests`:
   - `LarsenResiduePerceptionTest.AllCombinationsPerceiveCleanly` —
     parity across all 20 (residue, frame_type) DB combos.
@@ -120,21 +185,37 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
     DB (drift detector).
   - `LarsenResidueSerSidechainTest.OgAndBackboneOHaveDistinctIdentities`
     — SER OG ↔ BB O identity-distinctness regression.
+  - `LarsenResidueWlAmbiguityTest.IleCg1AndCg2AreChemistryDistinct`
+    (round 4) — ILE CG1/CG2 perceive as singleton (chemistry-
+    distinct via K=1 WL split); `canonical_assignment_ambiguous=false`.
+  - `LarsenResidueWlAmbiguityTest.PheCdAndCeAreGraphAutomorphic`
+    (round 4) — PHE CD1/CD2/CE1/CE2 perceive as ambiguous (graph-
+    automorphic; no K splits); PHE CZ singleton.
+  - `LarsenResidueWlAmbiguityTest.ChiFallbackIsDeterministic`
+    (round 6) — `ORDER BY calc_id ASC` makes chi-fallback row
+    selection deterministic; two consecutive queries at
+    (ARG, -180, -180, n_chi=0) return the same calc_id.
   - `TripeptideBackboneShieldingTest.RunsOn1UbqPm6` and
     `TripeptideNeighborShieldingTest.RunsOn1UbqPm6` — end-to-end smoke
     on `1UBQ_pm6dh3plus.pdb`.
 
+  Python SDK adds `python/tests/test_tripeptide_group.py` (7 tests:
+  catalog registration, optional-spec discipline, group attachment,
+  dtype, NaN-fill contract for per-direction neighbour residual,
+  absent-NPYs → `tripeptide=None`).
+
   **DB-side faithfulness verified:** DB row 21755 byte-for-byte
   matches the original Gaussian log `AAA_4_54_nmr.log`.
 
-  **Final smoke on 1UBQ_pm6dh3plus.pdb:**
-  - BB **1205/1232 atoms assigned** (was 1033 with all-heuristic) —
-    97.8% atom coverage.
-  - BB **mean RMSD 0.015 Å** (was 0.547, 36× better).
-  - Neighbor 76/76 residues received contributions (was 75/76).
-  - 114/114 unit tests pass.
-  - 5/5 tripeptide structure tests pass.
-  - 88/88 Python SDK tests pass.
+  **Smoke on 1UBQ_pm6dh3plus.pdb (post-round-4, unchanged from rounds 1-3):**
+  - BB **74/76 residues / 1205/1232 atoms assigned** (was 1033 with
+    all-heuristic) — 97.8% atom coverage.
+  - BB **mean RMSD 0.015 Å** (was 0.547, 36× better) / max 0.048 Å.
+  - Neighbor 76/76 residues received contributions (was 75/76) /
+    522 atom accumulations.
+  - 217 non-tripeptide unit tests pass.
+  - 7/7 tripeptide structure tests pass.
+  - 95/95 Python SDK tests pass.
 
   Full design at `spec/plan/larsen-residue-design-2026-05-11.md`;
   retires `spec/plan/typed-tripeptide-topology-design-2026-05-10.md`

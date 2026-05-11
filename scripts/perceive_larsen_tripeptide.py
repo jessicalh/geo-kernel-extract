@@ -500,14 +500,24 @@ def match_piece(
     canon_adj: dict[str, set[str]],
     debug: bool = False,
     debug_label: str = "",
-) -> Optional[dict[int, str]]:
+) -> Optional[tuple[dict[int, str], dict[int, bool]]]:
     """Match perceived atoms (0-indexed in full record) to canonical
-    atom names. Returns {perceived_idx: canonical_name} or None.
+    atom names. Returns ``(name_by_perceived, ambiguous_by_perceived)``
+    or None on failure.
 
-    Canonical atoms with degenerate signatures form an equivalence
-    class; perceived atoms with the same signature class get assigned
-    to *any* canonical name in that class (the chemistry equivalence
-    is the point — DiastereotopicIndex collapse for methyl-Hs).
+    ``ambiguous_by_perceived[p]`` is True iff the canonical name for
+    perceived atom ``p`` was chosen from a WL signature class of size
+    ≥ 2 — i.e., the graph isomorphism could not distinguish the atom
+    from a sibling (PHE/TYR CD1↔CD2, ARG NH1↔NH2, ASN HD21↔HD22,
+    methyl-Hs whose DiastereotopicIndex collapses). Singleton classes
+    (the common case after K=3 WL, including chemistry-distinct
+    branches like ILE CG1/CG2) flag False — the canonical
+    BranchAddress + DiastereotopicIndex are deterministic.
+
+    The flag is consumed downstream by the assembler: ambiguous=True
+    relaxes the typed-identity equality to (Element, Locant,
+    BackboneRole) and resolves the within-class assignment by
+    nearest-spatial. ambiguous=False keeps strict identity binding.
     """
     canon_elem = {n: e for n, e in canon_atoms}
     # Build adjacency restricted to this piece (in the full graph).
@@ -546,7 +556,8 @@ def match_piece(
             print(f"    only perceived: {only_perceived}", file=sys.stderr)
         return None  # signature sets differ → not isomorphic
 
-    out: dict[int, str] = {}
+    names_out: dict[int, str] = {}
+    ambig_out: dict[int, bool] = {}
     for sig in canon_by_sig:
         cs = canon_by_sig[sig]; ps = perceived_by_sig[sig]
         if len(cs) != len(ps):
@@ -555,12 +566,14 @@ def match_piece(
                       f"canonical={len(cs)} perceived={len(ps)}",
                       file=sys.stderr)
             return None  # cardinality mismatch within signature class
+        ambiguous = len(cs) > 1
         # Map perceived atoms to canonical atoms 1:1 in arbitrary order
         # within the equivalence class.
         for p_idx, c_name in zip(ps, cs):
-            out[p_idx] = c_name
+            names_out[p_idx] = c_name
+            ambig_out[p_idx] = ambiguous
 
-    return out
+    return names_out, ambig_out
 
 
 # ---------------------------------------------------------------------------
@@ -619,10 +632,12 @@ def perceive(atoms: list[dict], expected_central_one_letter: str,
 
     pieces_out: list[dict] = []
     for kind, piece in zip(kinds, ordered):
-        # Initialise canon_atoms/canon_adj/mapping for all paths.
+        # Initialise canon_atoms/canon_adj and the dual outputs from
+        # match_piece (names + per-perceived-atom ambiguous flag).
         canon_atoms: list[tuple[str, str]] = []
         canon_adj: dict[str, set[str]] = {}
-        mapping: Optional[dict[int, str]] = None
+        names_map: Optional[dict[int, str]] = None
+        ambig_map: Optional[dict[int, bool]] = None
 
         if kind == "ACE":
             canon_atoms = ACE_ATOMS; canon_adj = canonical_adj_for_cap(ACE_ATOMS, ACE_BONDS)
@@ -632,7 +647,9 @@ def perceive(atoms: list[dict], expected_central_one_letter: str,
             canon_atoms = CANONICAL["ALA"]; canon_adj = canonical_adj("ALA")
         elif expected_central_three == "HIS":
             # HIS Central: try each HIS variant; pick the one matching.
-            variant_match: Optional[tuple[str, list[tuple[str, str]], dict[str, set[str]], dict[int, str]]] = None
+            variant_match: Optional[tuple[
+                str, list[tuple[str, str]], dict[str, set[str]],
+                dict[int, str], dict[int, bool]]] = None
             for variant_name, variant_atoms in HIS_VARIANTS.items():
                 if len(piece) != len(variant_atoms):
                     continue
@@ -643,37 +660,41 @@ def perceive(atoms: list[dict], expected_central_one_letter: str,
                                 debug_label=f"Central/{variant_name}")
                 if m is not None:
                     variant_match = (variant_name, variant_atoms,
-                                      var_canon_adj, m); break
+                                      var_canon_adj, m[0], m[1]); break
             if variant_match is None:
                 return {"ok": False,
                         "reason": f"Central: no HIS variant matched "
                                   f"perceived_n={len(piece)}"}
-            _, canon_atoms, canon_adj, mapping = variant_match
+            _, canon_atoms, canon_adj, names_map, ambig_map = variant_match
         else:  # Central, not HIS
             canon_atoms = CANONICAL[expected_central_three]
             canon_adj   = canonical_adj(expected_central_three)
             if len(piece) != len(canon_atoms):
                 return {"ok": False,
                         "reason": f"{kind}: atom-count mismatch perceived={len(piece)} canonical={len(canon_atoms)}"}
-            mapping = match_piece(piece, elements, adj, canon_atoms,
-                                   canon_adj, debug=debug,
-                                   debug_label=kind)
-            if mapping is None:
+            res = match_piece(piece, elements, adj, canon_atoms,
+                              canon_adj, debug=debug,
+                              debug_label=kind)
+            if res is None:
                 return {"ok": False,
                         "reason": f"{kind}: graph-isomorphism failed"}
+            names_map, ambig_map = res
 
         # For non-Central pieces, do the count + match steps now.
         if kind != "Central":
             if len(piece) != len(canon_atoms):
                 return {"ok": False,
                         "reason": f"{kind}: atom-count mismatch perceived={len(piece)} canonical={len(canon_atoms)}"}
-            mapping = match_piece(piece, elements, adj, canon_atoms,
-                                   canon_adj, debug=debug,
-                                   debug_label=kind)
-            if mapping is None:
+            res = match_piece(piece, elements, adj, canon_atoms,
+                              canon_adj, debug=debug,
+                              debug_label=kind)
+            if res is None:
                 return {"ok": False,
                         "reason": f"{kind}: graph-isomorphism failed"}
+            names_map, ambig_map = res
 
+        # mypy: names_map / ambig_map are populated on every reachable path above.
+        assert names_map is not None and ambig_map is not None
         pieces_out.append({
             "kind": kind,
             "residue": "ALA" if kind in ("NCapAla","CCapAla")
@@ -682,7 +703,8 @@ def perceive(atoms: list[dict], expected_central_one_letter: str,
                        else expected_central_three,
             "atoms": [{"dft_atom_idx": atoms[i]["atom_idx"],
                        "element": atoms[i]["element"],
-                       "canonical_name": mapping[i]}
+                       "canonical_name": names_map[i],
+                       "canonical_assignment_ambiguous": ambig_map[i]}
                       for i in piece],
         })
 

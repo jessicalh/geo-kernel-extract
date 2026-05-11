@@ -149,12 +149,24 @@ TripeptideNeighborShieldingResult::Compute(
     result->residue_matches_.assign(N_res, ResidueMatch{});
 
     // Reset per-atom accumulators.
+    //
+    // Per-direction residual vectors are NaN-initialised (not zero) so
+    // that downstream ML can distinguish "no contribution from this
+    // direction" from a coincidental zero-magnitude residual. The
+    // conditional setters below overwrite only the directions that
+    // contributed; absent directions stay NaN and propagate through
+    // WriteFeatures to the NPY. The summed shielding tensor stays
+    // Zero-initialised because there's no ambiguity: it's the sum, and
+    // tripeptide_neighbor_has_match flags whether ANY direction
+    // contributed.
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+    const Vec3 kNanVec3{kNaN, kNaN, kNaN};
     for (std::size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
         ca.tripeptide_neighbor_shielding_tensor    = Mat3::Zero();
         ca.tripeptide_neighbor_shielding_spherical = SphericalTensor{};
-        ca.tripeptide_neighbor_residual_vec_prev   = Vec3::Zero();
-        ca.tripeptide_neighbor_residual_vec_next   = Vec3::Zero();
+        ca.tripeptide_neighbor_residual_vec_prev   = kNanVec3;
+        ca.tripeptide_neighbor_residual_vec_next   = kNanVec3;
         ca.tripeptide_neighbor_has_match           = false;
     }
 
@@ -222,6 +234,26 @@ TripeptideNeighborShieldingResult::Compute(
             // neighbor sits as central).
             const int neigh_his_hint = (neigh.type == AminoAcid::HIS)
                 ? neigh.protonation_variant_index : -1;
+
+            // tensorcs15 carries HIP only (see comment in
+            // TripeptideBackboneShieldingResult::Compute). A HID/HIE
+            // neighbour fails perception, so Δσ_BB from THAT direction
+            // never contributes to residue `ri`'s sum. The
+            // accumulation continues from the other direction if its
+            // neighbour is present. Surface the gap per-direction.
+            if (neigh.type == AminoAcid::HIS &&
+                (neigh_his_hint == 0 || neigh_his_hint == 1)) {
+                OperationLog::Warn(
+                    "TripeptideNeighborShieldingResult::Compute",
+                    "neighbour residue " +
+                    std::to_string(neigh.sequence_number) +
+                    " (HIS variant_idx=" +
+                    std::to_string(neigh_his_hint) + ", " +
+                    (neigh_his_hint == 0 ? "HID" : "HIE") +
+                    ") is not in tensorcs15 (HIP only); this direction "
+                    "will contribute no Δσ_BB to residue " +
+                    std::to_string(protein.ResidueAt(ri).sequence_number));
+            }
 
             // Query with chi-fallback.
             TripeptideDftRecord rec_axa;
@@ -388,10 +420,14 @@ int TripeptideNeighborShieldingResult::WriteFeatures(
         ++written;
     }
 
-    // (N, 3) residual vec from i-1 direction. Zero where that
-    // direction had no contribution. Fed to ML alongside the tensor.
+    // (N, 3) residual vec from i-1 direction. NaN where that direction
+    // had no contribution (so downstream ML distinguishes absent
+    // contribution from a coincidentally-zero residual). The
+    // ConformationAtom field is NaN-initialised in Compute's reset loop
+    // and only overwritten when the i-1 direction contributed; the
+    // copy here is unconditional and NaN naturally propagates.
     {
-        std::vector<double> data(N * 3, 0.0);
+        std::vector<double> data(N * 3, kNaN);
         for (std::size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             data[i * 3 + 0] = ca.tripeptide_neighbor_residual_vec_prev.x();
@@ -404,9 +440,10 @@ int TripeptideNeighborShieldingResult::WriteFeatures(
         ++written;
     }
 
-    // (N, 3) residual vec from i+1 direction.
+    // (N, 3) residual vec from i+1 direction. NaN where that direction
+    // had no contribution; see prev-direction comment for rationale.
     {
-        std::vector<double> data(N * 3, 0.0);
+        std::vector<double> data(N * 3, kNaN);
         for (std::size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             data[i * 3 + 0] = ca.tripeptide_neighbor_residual_vec_next.x();
