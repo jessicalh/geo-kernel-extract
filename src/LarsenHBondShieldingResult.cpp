@@ -4,11 +4,13 @@
 #include "DsspResult.h"
 #include "GeometryChoice.h"
 #include "LarsenHBondGrid.h"
+#include "LegacyAmberTopology.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
+#include "SemanticEnums.h"
 #include "SpatialIndexResult.h"
 #include "Types.h"
 
@@ -124,18 +126,49 @@ std::array<AcceptorReadout, 3> ExtractAcceptorReadouts(const LarsenHBondRecord& 
 
 
 // Map LarsenContribDispatch::TargetAtom to the protein-side atom
-// index on a specific Residue. Returns Residue::NONE if not present.
-std::size_t TargetAtomIndex(const Residue& res, LarsenContribDispatch::TargetAtom t) {
+// indices on a specific Residue. Returns a list because TA::HA can
+// resolve to MULTIPLE atoms on glycine (HA2 + HA3 — both prochiral
+// α-hydrogens). For non-GLY residues the returned list has one
+// element (the single Hα). For other target slots the list is at most
+// one element (or empty if absent — e.g. CB for GLY).
+//
+// Implementation: HA enumeration is substrate-driven via
+// AtomSemanticTable::IsAnyAlphaHydrogen() rather than hard-coded
+// (matches `feedback_identity_from_chemistry_not_position`). The
+// predicate fires on both `BackboneRole::AlphaHydrogen` (non-GLY HA)
+// and `(Element::H, Locant::Alpha, BackboneRole::None)` (GLY HA2/HA3
+// per Markley convention; see SemanticEnums.h:85-98).
+//
+// This same enumeration carries over to Phase 2 (Hα donor work): each
+// GLY HA atom enumerates separately as a donor candidate, but at the
+// readout-target side the fan-out is captured here.
+std::vector<std::size_t> TargetAtomIndices(
+        const Protein& protein,
+        const Residue& res,
+        LarsenContribDispatch::TargetAtom t) {
     using TA = LarsenContribDispatch::TargetAtom;
+    std::vector<std::size_t> out;
+    out.reserve(2);  // GLY HA is the only multi-atom case (2 entries).
+    auto add_if_set = [&](std::size_t idx) {
+        if (idx != Residue::NONE) out.push_back(idx);
+    };
     switch (t) {
-        case TA::N:  return res.N;
-        case TA::CA: return res.CA;
-        case TA::CB: return res.CB;
-        case TA::C:  return res.C;
-        case TA::HA: return res.HA;
-        case TA::HN: return res.H;
-        default:     return Residue::NONE;
+        case TA::N:  add_if_set(res.N);  break;
+        case TA::CA: add_if_set(res.CA); break;
+        case TA::CB: add_if_set(res.CB); break;
+        case TA::C:  add_if_set(res.C);  break;
+        case TA::HN: add_if_set(res.H);  break;
+        case TA::HA: {
+            const auto& topo = protein.LegacyAmber();
+            for (std::size_t ai : res.atom_indices) {
+                const AtomSemanticTable& sem = topo.SemanticAt(ai);
+                if (sem.IsAnyAlphaHydrogen()) out.push_back(ai);
+            }
+            break;
+        }
+        default: break;
     }
+    return out;
 }
 
 
@@ -188,9 +221,23 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 
     GeometryChoiceBuilder choices(conf);
 
-    // Track which amide H atoms received any contribution (for Δσ_w
-    // sweep at the end).
-    std::vector<bool> amide_h_has_pair(n_atoms, false);
+    // Three separate bookkeeping buckets for amide H atoms:
+    //   amide_h_dssp_paired : DSSP detected ANY H-bond involving this
+    //     amide H (donor side), regardless of whether our grid lookup
+    //     could be performed. Used to suppress the Δσ_w water term —
+    //     if DSSP saw the bond, it's not solvent-exposed even if our
+    //     grid couldn't compute its contribution (e.g. C-terminus
+    //     acceptor, out-of-range θ).
+    //   amide_h_grid_paired : grid lookup succeeded and a tensor
+    //     contribution landed somewhere. Used for atoms-with-
+    //     contribution counting.
+    //   The two diverge whenever a DSSP pair is detected but the
+    //     grid path skips (C-term acceptor, NaN geometry, etc.).
+    //     Without this split, those donor Hs were spuriously assigned
+    //     the water term despite being H-bonded.
+    std::vector<bool> amide_h_dssp_paired(n_atoms, false);
+    std::vector<bool> amide_h_grid_paired(n_atoms, false);
+    int n_pairs_dssp_only = 0;  // DSSP-detected, grid-skipped — for log
 
     // ------------------------------------------------------------------
     // Step 1: DSSP-driven pair resolution. Same iteration shape as
@@ -226,6 +273,16 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         return cur.chain_id == prev.chain_id;
     };
 
+    // Helper: mark `amide_h_dssp_paired` for a donor amide H that
+    // DSSP detected as forming an H-bond, regardless of whether our
+    // grid path can later process it. Suppresses the spurious water
+    // term on grid-omitted-but-DSSP-detected pairs.
+    auto mark_dssp_pair = [&](std::size_t donor_h_idx) {
+        if (donor_h_idx != Residue::NONE) {
+            amide_h_dssp_paired[donor_h_idx] = true;
+        }
+    };
+
     for (std::size_t ri = 0; ri < n_residues; ++ri) {
         const auto&     dr  = dssp.AllResidues()[ri];
         const Residue&  res = protein.ResidueAt(ri);
@@ -236,11 +293,13 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             if (acc_ri == SIZE_MAX || acc_ri >= n_residues) continue;
             const Residue& acc_res = protein.ResidueAt(acc_ri);
 
-            // Donor frame requires: HN (this res), N (this res),
-            // C'(i−1) (preceding residue, same chain). Skip if any is
-            // missing.
+            // Donor amide H must exist for any DSSP H-bond here; mark
+            // dssp-paired before any frame-related skip.
             if (res.H == Residue::NONE || res.N == Residue::NONE) continue;
             if (acc_res.O == Residue::NONE || acc_res.C == Residue::NONE) continue;
+            mark_dssp_pair(res.H);
+
+            // Frame requires C'(i−1) in the same chain.
             if (!has_same_chain_prev(ri)) {
                 choices.Record(CalculatorId::LarsenHBond, resolution_key++,
                     "amide donor at N-term or chain boundary",
@@ -248,6 +307,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                         AddNumber(gc, "residue", static_cast<double>(ri), "index");
                         AddNumber(gc, "rejection", 1.0, "no_preceding_C_in_same_chain");
                     });
+                ++n_pairs_dssp_only;  // DSSP saw it, grid can't process
                 continue;
             }
             auto key = std::make_pair(res.N, acc_res.O);
@@ -273,7 +333,12 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             const Residue& don_res = protein.ResidueAt(don_ri);
             if (don_res.H == Residue::NONE || don_res.N == Residue::NONE) continue;
             if (res.O == Residue::NONE || res.C == Residue::NONE) continue;
-            if (!has_same_chain_prev(don_ri)) continue;  // can't build frame
+            mark_dssp_pair(don_res.H);
+
+            if (!has_same_chain_prev(don_ri)) {
+                ++n_pairs_dssp_only;
+                continue;  // can't build frame
+            }
 
             auto key = std::make_pair(don_res.N, res.O);
             if (seen.count(key)) continue;
@@ -349,6 +414,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                         static_cast<double>(pair.acceptor_residue_idx), "index");
                     AddNumber(gc, "rejection", 1.0, "no_next_residue_for_dihedral");
                 });
+            ++n_pairs_dssp_only;
             continue;
         }
         Vec3 accept_thd_pos = conf.PositionAt(accthird_idx);
@@ -366,6 +432,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     AddNumber(gc, "theta_deg", geom.theta_deg, "degrees");
                     AddNumber(gc, "rejection", 1.0, "theta_out_of_range");
                 });
+            ++n_pairs_dssp_only;
             continue;
         }
 
@@ -383,6 +450,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                     AddNumber(gc, "rho_deg",    geom.rho_deg, "degrees");
                     AddNumber(gc, "rejection",  1.0, "grid_miss");
                 });
+            ++n_pairs_dssp_only;
             continue;
         }
 
@@ -394,12 +462,19 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         auto donor_readouts    = ExtractDonorReadouts(rec);
         auto acceptor_readouts = ExtractAcceptorReadouts(rec);
 
-        // Track which protein atoms received any contribution from
-        // this pair. After dispatch, each contributor's larsen_hbond_*
-        // bookkeeping (n_pairs, any_corner_imputed) is updated exactly
-        // once — not per-class — so a pair that contributes to N(i)
-        // via both 1°HB and 2°HαB increments n_pairs by 1, not 2.
-        std::set<std::size_t> contributors_this_pair;
+        // Track contributors in TWO sets so the diagnostic CB doesn't
+        // contaminate the Table-2-only larsen_hbond_n_pairs counter:
+        //
+        //   table2_contributors: atoms receiving a contribution under
+        //     one of the four real Table 2 classes (1°HB, 2°HB,
+        //     1°HαB, 2°HαB). Increment n_pairs + propagate
+        //     any_corner_imputed.
+        //   diagnostic_contributors: atoms receiving only the Cβ
+        //     diagnostic write. Propagate any_corner_imputed only —
+        //     n_pairs is the "Table-2-contribution count" per
+        //     ConformationAtom doc.
+        std::set<std::size_t> table2_contributors;
+        std::set<std::size_t> diagnostic_contributors;
 
         using Term = LarsenContribDispatch::Term;
         using TA   = LarsenContribDispatch::TargetAtom;
@@ -415,31 +490,40 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         // diagnostic is trivially zero. Phase 2 ALA donor adds CB and
         // the diagnostic becomes load-bearing.
         for (const auto& dr_readout : donor_readouts) {
-            if (!dr_readout.present)               continue;
-            if (dr_readout.target != TA::CB)       continue;
-            std::size_t target_ai = TargetAtomIndex(don_res, TA::CB);
-            if (target_ai == Residue::NONE)        continue;
+            if (!dr_readout.present)         continue;
+            if (dr_readout.target != TA::CB) continue;
+            auto targets = TargetAtomIndices(protein, don_res, TA::CB);
+            if (targets.empty())             continue;
             Mat3 sigma_lab = RotateTensorToProteinLabFrame(
                 dr_readout.canonical_tensor, R_protein);
-            conf.MutableAtomAt(target_ai).larsen_hbond_diagnostic_CB += sigma_lab;
-            contributors_this_pair.insert(target_ai);
+            for (std::size_t target_ai : targets) {
+                conf.MutableAtomAt(target_ai).larsen_hbond_diagnostic_CB += sigma_lab;
+                diagnostic_contributors.insert(target_ai);
+            }
         }
 
         // Donor-side dispatch: 1°HB readouts apply to donor residue i.
         // CB is handled above (Cβ-diagnostic branch). All other
         // readouts go through the Table 2 dispatch table.
         for (const auto& dr_readout : donor_readouts) {
-            if (!dr_readout.present)               continue;
-            if (dr_readout.target == TA::CB)       continue;  // handled above
+            if (!dr_readout.present)         continue;
+            if (dr_readout.target == TA::CB) continue;  // handled above
             if (!LarsenContribDispatch::Applies(dr_readout.target, Term::Primary_HB))
                 continue;
-            std::size_t target_ai = TargetAtomIndex(don_res, dr_readout.target);
-            if (target_ai == Residue::NONE)        continue;
+            // TargetAtomIndices returns a LIST — for GLY HA it's two
+            // atoms (HA2 + HA3); for everything else, one. The same
+            // tensor is applied to each atom in the list (each is an
+            // α-hydrogen at its own position, subject to the same
+            // H-bond perturbation Larsen's grid encodes).
+            auto targets = TargetAtomIndices(protein, don_res, dr_readout.target);
+            if (targets.empty())             continue;
             Mat3 sigma_lab = RotateTensorToProteinLabFrame(
                 dr_readout.canonical_tensor, R_protein);
-            AccumulateContribution(
-                conf.MutableAtomAt(target_ai), Term::Primary_HB, sigma_lab);
-            contributors_this_pair.insert(target_ai);
+            for (std::size_t target_ai : targets) {
+                AccumulateContribution(
+                    conf.MutableAtomAt(target_ai), Term::Primary_HB, sigma_lab);
+                table2_contributors.insert(target_ai);
+            }
         }
 
         // Acceptor-side dispatch: 2°HB readouts apply to acceptor's i+1
@@ -447,35 +531,44 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         if (acceptor_has_next) {
             const Residue& next_res = protein.ResidueAt(i_plus_1);
             for (const auto& ac_readout : acceptor_readouts) {
-                if (!ac_readout.present)           continue;
+                if (!ac_readout.present) continue;
                 if (!LarsenContribDispatch::Applies(ac_readout.target, Term::Secondary_HB))
                     continue;
-                std::size_t target_ai = TargetAtomIndex(next_res, ac_readout.target);
-                if (target_ai == Residue::NONE)    continue;
+                auto targets = TargetAtomIndices(protein, next_res, ac_readout.target);
+                if (targets.empty())     continue;
                 Mat3 sigma_lab = RotateTensorToProteinLabFrame(
                     ac_readout.canonical_tensor, R_protein);
-                AccumulateContribution(
-                    conf.MutableAtomAt(target_ai), Term::Secondary_HB, sigma_lab);
-                contributors_this_pair.insert(target_ai);
+                for (std::size_t target_ai : targets) {
+                    AccumulateContribution(
+                        conf.MutableAtomAt(target_ai), Term::Secondary_HB, sigma_lab);
+                    table2_contributors.insert(target_ai);
+                }
             }
         }
 
-        // Per-pair bookkeeping for each contributor:
-        //   n_pairs += 1
-        //   any_corner_imputed |= rec.any_corner_imputed
-        for (std::size_t ai : contributors_this_pair) {
+        // Per-pair bookkeeping:
+        //   Table 2 contributors: n_pairs += 1, any_corner_imputed |= imp.
+        //   Diagnostic-only contributors (CB): any_corner_imputed |= imp.
+        //   (n_pairs counts ONLY real Table 2 contributions per the
+        //    ConformationAtom field doc.)
+        for (std::size_t ai : table2_contributors) {
             ConformationAtom& a = conf.MutableAtomAt(ai);
             a.larsen_hbond_n_pairs += 1;
-            if (rec.any_corner_imputed) {
-                a.larsen_hbond_any_corner_imputed = true;
-            }
+            if (rec.any_corner_imputed) a.larsen_hbond_any_corner_imputed = true;
+        }
+        for (std::size_t ai : diagnostic_contributors) {
+            if (table2_contributors.count(ai)) continue;  // already handled
+            ConformationAtom& a = conf.MutableAtomAt(ai);
+            if (rec.any_corner_imputed) a.larsen_hbond_any_corner_imputed = true;
         }
 
         // Inclusion GeometryChoice record (per PATTERNS.md "every
         // inclusion, exclusion, and triggered event gets a Record()").
         choices.Record(CalculatorId::LarsenHBond, resolution_key++,
             "pair included",
-            [pair, rec, n_contrib = contributors_this_pair.size()]
+            [pair, rec,
+             n_table2 = table2_contributors.size(),
+             n_diag   = diagnostic_contributors.size()]
             (GeometryChoice& gc) {
                 AddNumber(gc, "donor_residue",
                     static_cast<double>(pair.donor_residue_idx), "index");
@@ -484,14 +577,16 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                 AddNumber(gc, "r_angstrom", rec.r_angstrom, "A");
                 AddNumber(gc, "theta_deg",  rec.theta_deg,  "degrees");
                 AddNumber(gc, "rho_deg",    rec.rho_deg,    "degrees");
-                AddNumber(gc, "n_contributors",
-                    static_cast<double>(n_contrib), "atoms");
+                AddNumber(gc, "n_table2_contributors",
+                    static_cast<double>(n_table2), "atoms");
+                AddNumber(gc, "n_diagnostic_contributors",
+                    static_cast<double>(n_diag), "atoms");
                 AddNumber(gc, "any_corner_imputed",
                     rec.any_corner_imputed ? 1.0 : 0.0, "bool");
             });
 
-        // Bookkeeping: mark this amide H as having a pair (for water-term sweep).
-        amide_h_has_pair[pair.donor_H_idx] = true;
+        // Bookkeeping: grid lookup succeeded and contributed.
+        amide_h_grid_paired[pair.donor_H_idx] = true;
 
         // Per-pair record stored on the result (for Phase 2 per-pair NPY).
         PairRecord pr;
@@ -514,13 +609,18 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     }
 
     // ------------------------------------------------------------------
-    // Step 3: Water term sweep. For each amide H atom, if zero pairs
-    // involved it as donor, set larsen_hbond_water_term = 2.07 ppm.
+    // Step 3: Water term sweep. Δσ_w = 2.07 ppm applies to amide Hs
+    // that are SOLVENT-EXPOSED (no H-bond at all). We use
+    // amide_h_dssp_paired (NOT amide_h_grid_paired) — if DSSP detected
+    // any H-bond involving this amide H, it's not solvent-exposed even
+    // if our grid path couldn't compute the contribution (C-terminus
+    // acceptor, out-of-range θ, etc.). Spurious water assignment was
+    // the codex M2 finding.
     // ------------------------------------------------------------------
     for (std::size_t ri = 0; ri < n_residues; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.H == Residue::NONE) continue;  // PRO etc.
-        if (amide_h_has_pair[res.H]) continue;
+        if (amide_h_dssp_paired[res.H]) continue;
         conf.MutableAtomAt(res.H).larsen_hbond_water_term = kWaterTerm_ppm;
         ++result_ptr->amide_hs_unbound_;
     }
@@ -553,8 +653,11 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         if (has_any) ++result_ptr->atoms_with_contribution_;
     }
 
+    result_ptr->pairs_dssp_only_ = n_pairs_dssp_only;
+
     OperationLog::Info(LogCalcOther, "LarsenHBondShieldingResult::Compute",
-        "pairs=" + std::to_string(result_ptr->pairs_.size())
+        "pairs_grid_included=" + std::to_string(result_ptr->pairs_.size())
+        + " pairs_dssp_only_grid_skipped=" + std::to_string(n_pairs_dssp_only)
         + " atoms_with_contribution=" + std::to_string(result_ptr->atoms_with_contribution_)
         + " amide_hs_with_water_term=" + std::to_string(result_ptr->amide_hs_unbound_));
 

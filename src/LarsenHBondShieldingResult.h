@@ -155,7 +155,20 @@ public:
     const std::vector<PairRecord>& Pairs() const { return pairs_; }
 
     // Aggregate stats.
+    //
+    // PairsFound returns the count of pairs the grid path successfully
+    // processed (a tensor was computed and accumulated).
+    // PairsDsspOnly returns the count of DSSP-detected pairs that our
+    // grid path SKIPPED (C-terminus acceptor with no N(j+1) for ρ,
+    // out-of-range θ, grid miss, chain boundary). The two together
+    // sum to the total DSSP-detected H-bond pair count for atoms with
+    // both ends present.
+    // AmideHsUnboundWithWater counts amide Hs that received the
+    // Δσ_w = 2.07 ppm term — gated on `amide_h_dssp_paired`, NOT on
+    // grid-paired. A grid-skipped pair does NOT trigger spurious
+    // water-term assignment (codex M2 fix).
     int    PairsFound()        const { return static_cast<int>(pairs_.size()); }
+    int    PairsDsspOnly()     const { return pairs_dssp_only_; }
     int    AtomsWithContribution() const { return atoms_with_contribution_; }
     int    AmideHsUnboundWithWater() const { return amide_hs_unbound_; }
 
@@ -165,6 +178,7 @@ private:
     std::vector<PairRecord> pairs_;
     int atoms_with_contribution_ = 0;
     int amide_hs_unbound_ = 0;
+    int pairs_dssp_only_ = 0;
 };
 
 

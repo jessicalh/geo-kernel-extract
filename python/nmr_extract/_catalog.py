@@ -243,5 +243,23 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("tripeptide_neighbor_shielding",    "tripeptide", ShieldingTensor, 9,    False, "Δσ_BB^{i±1} — neighbour correction at residue i from i±1 cap reads (Larsen 2015 Eq 3)"),
     ArraySpec("tripeptide_neighbor_residual_vec_prev", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i-1} match residual at the C-term ALA cap of (i-1)'s tripeptide; Vec3, NaN where i-1 direction had no contribution"),
     ArraySpec("tripeptide_neighbor_residual_vec_next", "tripeptide", VectorField, 3,   False, "Δσ_BB^{i+1} match residual at the N-term ALA cap of (i+1)'s tripeptide; Vec3, NaN where i+1 direction had no contribution"),
+
+    # ────────────────────────────────────────────────────────────────
+    # Larsen H-bond shielding contributions
+    # (src/LarsenHBondShieldingResult.cpp). Phase 1 emits amide-H /
+    # backbone-O subset (DSSP-resolved); Hα donors + sidechain
+    # acceptors land in Phase 2. Methods accumulate side-by-side with
+    # the kernel-form HBondResult — see feedback_methods_accumulate
+    # memory entry. NPY layout is SphericalTensor-packed
+    # (T0 + T1 + T2 = 9 columns) per HBondResult convention.
+    # ────────────────────────────────────────────────────────────────
+    ArraySpec("larsen_hbond_shielding",                  "larsen_hbond", ShieldingTensor, 9, False, "Σ Larsen H-bond contributions across all four Table 2 classes (1°HB + 2°HB + 1°HαB + 2°HαB) — ppm, lab frame"),
+    ArraySpec("larsen_hbond_1pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HB per Larsen 2015 — primary amide-H donor contribution on donor residue i atoms"),
+    ArraySpec("larsen_hbond_2pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HB per Larsen 2015 — secondary amide-H donor contribution on acceptor's residue i+1 atoms"),
+    ArraySpec("larsen_hbond_1pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HαB per Larsen 2015 — primary Hα donor contribution (Phase 2)"),
+    ArraySpec("larsen_hbond_2pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HαB per Larsen 2015 — secondary Hα donor contribution (Phase 2)"),
+    ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic readout — Larsen Table 2 says Cβ gets NO contribution; we emit anyway as reality check, should be near-zero"),
+    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms that DSSP detected as solvent-exposed (no H-bond partner)"),
+    ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes (diagnostic CB does NOT count here)"),
 ]}
 # fmt: on

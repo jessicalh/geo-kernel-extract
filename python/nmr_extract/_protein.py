@@ -466,6 +466,58 @@ class TripeptideGroup:
     neighbor_residual_vec_next: Optional[VectorField] = None
 
 
+@dataclass(frozen=True)
+class LarsenHBondGroup:
+    """Larsen 2015 ProCS15 H-bond term shielding contributions.
+
+    Per Larsen 2015 Eq 5, each H-bond pair contributes four terms (1° +
+    2° on each of HB / HαB) plus a water-term offset Δσ_w on amide H
+    atoms with no H-bond partner. Tensors are ppm in the protein lab
+    frame (rotated from the canonical donor frame at calculator time)
+    and emitted as SphericalTensor-packed (T0+T1+T2 = 9 cols).
+
+    Methods accumulate side-by-side with the kernel-form ``HBondGroup``
+    — both calculators cover overlapping physics (amide-H / backbone-O
+    subset) but use different formulations (kernel × η vs grid lookup).
+    Per-atom-type differences are themselves thesis-reportable. See
+    ``feedback_methods_accumulate`` memory entry.
+
+    Phase 1 (landed) covers amide-H donor / backbone-O acceptor only.
+    Phase 2 adds Hα donors (via spatial search) and sidechain
+    acceptors. The Phase 1 fields are populated; the Phase 2 fields
+    (1pHaB / 2pHaB) are present-but-zero until Phase 2 lands.
+
+    Per-atom convention:
+
+    - ``shielding`` is the sum over all four contribution classes that
+      apply at this atom per Larsen 2015 Table 2 dispatch (encoded as
+      ``LarsenContribDispatch::Applies`` in the C++ side). Cβ does NOT
+      contribute (Table 2 says so) — its zero column here is the
+      physics statement, not an absence.
+    - The per-class columns hold each contribution separately for
+      downstream ML stratification.
+    - ``diagnostic_CB`` should be near-zero in production (Larsen Table
+      2 says Cβ gets no HB term; non-zero would signal a pipeline bug
+      in the parser/loader/rotation path).
+    - ``water_term`` is 2.07 ppm isotropic on amide Hs that DSSP saw as
+      solvent-exposed. A C-term-acceptor H-bond that our grid path
+      couldn't process is NOT spuriously assigned the water term —
+      the DSSP-paired bookkeeping is separate from the grid-paired
+      bookkeeping (codex M2).
+    - ``count`` counts H-bond pairs that contributed to this atom under
+      any of the four Table 2 classes — the diagnostic CB does NOT
+      increment it.
+    """
+    shielding: Optional[ShieldingTensor] = None
+    pHB_1: Optional[ShieldingTensor] = None
+    pHB_2: Optional[ShieldingTensor] = None
+    pHaB_1: Optional[ShieldingTensor] = None
+    pHaB_2: Optional[ShieldingTensor] = None
+    diagnostic_CB: Optional[ShieldingTensor] = None
+    water_term: Optional[np.ndarray] = None
+    count: Optional[np.ndarray] = None
+
+
 # ── Top-level protein container ─────────────────────────────────────
 
 
@@ -530,6 +582,7 @@ class Protein:
     # Tripeptide DFT shielding (ProCS15 / Larsen 2015) — emitted when
     # the extractor was run with the tensorcs15 Postgres DSN configured.
     tripeptide: Optional[TripeptideGroup] = None
+    larsen_hbond: Optional[LarsenHBondGroup] = None
 
 
 # ── Loader ──────────────────────────────────────────────────────────
@@ -792,6 +845,40 @@ def load(path: str | Path) -> Protein:
                 if "tripeptide_neighbor_residual_vec_next" in available else None,
         )
 
+    # Larsen H-bond term shielding (Larsen 2015) — Phase 1 covers
+    # amide-H / backbone-O subset; Phase 2 adds Hα + sidechain. Group
+    # attached if any larsen_hbond_* NPY is present.
+    larsen_hbond = None
+    larsen_hbond_stems = {
+        "larsen_hbond_shielding",
+        "larsen_hbond_1pHB_shielding",
+        "larsen_hbond_2pHB_shielding",
+        "larsen_hbond_1pHaB_shielding",
+        "larsen_hbond_2pHaB_shielding",
+        "larsen_hbond_diagnostic_CB_shielding",
+        "larsen_hbond_water_term",
+        "larsen_hbond_count",
+    }
+    if any(stem in available for stem in larsen_hbond_stems):
+        larsen_hbond = LarsenHBondGroup(
+            shielding=get("larsen_hbond_shielding")
+                if "larsen_hbond_shielding" in available else None,
+            pHB_1=get("larsen_hbond_1pHB_shielding")
+                if "larsen_hbond_1pHB_shielding" in available else None,
+            pHB_2=get("larsen_hbond_2pHB_shielding")
+                if "larsen_hbond_2pHB_shielding" in available else None,
+            pHaB_1=get("larsen_hbond_1pHaB_shielding")
+                if "larsen_hbond_1pHaB_shielding" in available else None,
+            pHaB_2=get("larsen_hbond_2pHaB_shielding")
+                if "larsen_hbond_2pHaB_shielding" in available else None,
+            diagnostic_CB=get("larsen_hbond_diagnostic_CB_shielding")
+                if "larsen_hbond_diagnostic_CB_shielding" in available else None,
+            water_term=get("larsen_hbond_water_term")
+                if "larsen_hbond_water_term" in available else None,
+            count=get("larsen_hbond_count")
+                if "larsen_hbond_count" in available else None,
+        )
+
     return Protein(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -828,4 +915,5 @@ def load(path: str | Path) -> Protein:
         eeq=eeq,
         category_info=category_info,
         tripeptide=tripeptide,
+        larsen_hbond=larsen_hbond,
     )

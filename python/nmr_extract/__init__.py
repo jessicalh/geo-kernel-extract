@@ -37,6 +37,7 @@ from ._protein import (
     EeqGroup,
     CategoryInfo,
     TripeptideGroup,
+    LarsenHBondGroup,
 )
 
 __all__ = [
@@ -67,6 +68,7 @@ __all__ = [
     "EeqGroup",
     "CategoryInfo",
     "TripeptideGroup",
+    "LarsenHBondGroup",
     "load_trajectory",
     "TrajectoryData",
     "TrajectoryRollup",

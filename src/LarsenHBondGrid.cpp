@@ -111,7 +111,67 @@ std::vector<double> ReadAxis(HighFive::File& f, const std::string& name) {
 }
 
 
-void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g) {
+// Schema validation: each archive identity (ALA vs NMA donor, NMA vs
+// HOMe/COO acceptor) has a specific MANDATORY set of readout
+// datasets. Optional reads previously allowed silent zeroing if a
+// mandatory dataset was missing (codex M3 finding). After loading,
+// check the archive's expected set against what was read and throw on
+// any mismatch.
+//
+// Mandatory rules per archive:
+//   All archives: donor_N, donor_CA, donor_C, donor_HA, donor_HN.
+//   ALA donor archives (ALANMA/ALACOH/ALACOO): donor_CB present.
+//   NMA donor archives (NMANMA/NMACOH/NMACOO): donor_CB ABSENT
+//     (NMA has no Cβ — presence would be a parser regression).
+//   NMA acceptor archives (NMANMA, ALANMA): acceptor_N, _HN, _HA all
+//     present.
+//   HOMe / COO acceptor archives: acceptor_* all ABSENT (Larsen 2015
+//     does not define 2° terms for those acceptor classes).
+void ValidateSchema(const fs::path& h5_path,
+                    const LarsenHBondDenseGrid& g,
+                    const std::string& archive_stem) {
+    auto fail = [&](const std::string& msg) {
+        throw std::runtime_error(
+            "LarsenHBondGrid: schema validation failed for " +
+            h5_path.string() + " (" + archive_stem + "): " + msg);
+    };
+    if (g.donor_N.empty()) fail("missing mandatory donor_N");
+    if (g.donor_CA.empty()) fail("missing mandatory donor_CA");
+    if (g.donor_C.empty())  fail("missing mandatory donor_C");
+    if (g.donor_HA.empty()) fail("missing mandatory donor_HA");
+    if (g.donor_HN.empty()) fail("missing mandatory donor_HN");
+
+    const bool is_ala_donor = archive_stem.substr(0, 3) == "ALA";
+    const bool is_nma_donor = archive_stem.substr(0, 3) == "NMA";
+    if (!is_ala_donor && !is_nma_donor) {
+        fail("archive stem does not start with ALA or NMA");
+    }
+    if (is_ala_donor && g.donor_CB.empty()) {
+        fail("ALA donor archive missing mandatory donor_CB");
+    }
+    if (is_nma_donor && !g.donor_CB.empty()) {
+        fail("NMA donor archive has unexpected donor_CB (NMA has no Cβ)");
+    }
+
+    const bool is_nma_acceptor = (archive_stem == "NMANMA"
+                                  || archive_stem == "ALANMA");
+    if (is_nma_acceptor) {
+        if (g.acceptor_N.empty())  fail("NMA acceptor missing acceptor_N");
+        if (g.acceptor_HN.empty()) fail("NMA acceptor missing acceptor_HN");
+        if (g.acceptor_HA.empty()) fail("NMA acceptor missing acceptor_HA");
+    } else {
+        if (!g.acceptor_N.empty() ||
+            !g.acceptor_HN.empty() ||
+            !g.acceptor_HA.empty()) {
+            fail("non-NMA acceptor archive has unexpected acceptor_* data "
+                 "(only NMA acceptor grids have a defined i+1 mapping)");
+        }
+    }
+}
+
+
+void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g,
+             const std::string& archive_stem) {
     if (!fs::exists(h5_path)) {
         throw std::runtime_error(
             "LarsenHBondGrid: file not found: " + h5_path.string());
@@ -141,6 +201,8 @@ void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g) {
     g.has_donor_CB         = !g.donor_CB.empty();
     g.has_acceptor_readouts = !g.acceptor_N.empty();
     g.has_validity_mask    = !g.validity_mask.empty();
+
+    ValidateSchema(h5_path, g, archive_stem);
 }
 
 
@@ -414,7 +476,7 @@ LarsenHBondGrid::LarsenHBondGrid(const std::string& data_dir)
     }
     for (int i = 0; i < 6; ++i) {
         fs::path h5 = dir / (std::string(kArchiveStems[i]) + "_dense.h5");
-        LoadOne(h5, grids_[i]);
+        LoadOne(h5, grids_[i], kArchiveStems[i]);
     }
     loaded_ = true;
     OperationLog::Info(LogCalcOther, "LarsenHBondGrid",
@@ -434,6 +496,21 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     rec.r_angstrom = geom.r_angstrom;
     rec.theta_deg  = geom.theta_deg;
     rec.rho_deg    = WrapRho(geom.rho_deg);  // canonical-form ρ for diagnostics
+
+    // NaN/Inf guard: malformed hydrogens or coincident atoms upstream
+    // can send NaN through ComputeLarsenHBondGeometry's normalizations.
+    // LookupAxis's std::floor / std::clamp paths are undefined on NaN;
+    // return a clean non-hit here instead.
+    if (!std::isfinite(geom.r_angstrom) ||
+        !std::isfinite(geom.theta_deg)  ||
+        !std::isfinite(geom.rho_deg)) {
+        OperationLog::Warn("LarsenHBondGrid::QueryNearest",
+            "non-finite query geometry (r="
+            + std::to_string(geom.r_angstrom) + " theta="
+            + std::to_string(geom.theta_deg)  + " rho="
+            + std::to_string(geom.rho_deg) + ")");
+        return rec;
+    }
 
     int idx = ArchiveIndex(donor_class, acceptor_class);
     if (idx < 0) {
