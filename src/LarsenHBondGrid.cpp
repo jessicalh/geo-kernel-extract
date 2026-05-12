@@ -31,8 +31,11 @@ const char* const kArchiveStems[6] = {
     "NMANMA", "NMACOH", "NMACOO", "ALANMA", "ALACOH", "ALACOO",
 };
 
+// Axis-bound tolerance for FP round-trip noise (1e-9 of an axis step).
+constexpr double kAxisBoundTolerance = 1e-9;
 
-// Read a 3D float32 (Nr × Ntheta × Nrho × 3 × 3) dataset into a flat
+
+// Read a 5D float32 (Nr × Ntheta × Nrho × 3 × 3) dataset into a flat
 // std::vector<float> (row-major). Returns empty vector if the dataset
 // doesn't exist (some archives don't have CB or acceptor readouts).
 std::vector<float> ReadFlatTensorOptional(HighFive::File& f,
@@ -47,6 +50,27 @@ std::vector<float> ReadFlatTensorOptional(HighFive::File& f,
     }
     std::size_t total = dims[0] * dims[1] * dims[2] * 9;
     std::vector<float> flat(total);
+    ds.read(flat.data());
+    return flat;
+}
+
+
+std::vector<std::uint8_t> ReadValidityMaskOptional(HighFive::File& f,
+                                                   int Nr, int Ntheta,
+                                                   int Nrho) {
+    const std::string name = "validity_mask";
+    if (!f.exist(name)) return {};
+    auto ds = f.getDataSet(name);
+    auto dims = ds.getDimensions();
+    if (dims.size() != 3 ||
+        static_cast<int>(dims[0]) != Nr ||
+        static_cast<int>(dims[1]) != Ntheta ||
+        static_cast<int>(dims[2]) != Nrho) {
+        throw std::runtime_error(
+            "LarsenHBondGrid: validity_mask shape mismatch");
+    }
+    std::vector<std::uint8_t> flat(
+        static_cast<std::size_t>(Nr) * Ntheta * Nrho);
     ds.read(flat.data());
     return flat;
 }
@@ -91,8 +115,11 @@ void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g) {
     g.acceptor_HN = ReadFlatTensorOptional(f, "acceptor_HN");
     g.acceptor_HA = ReadFlatTensorOptional(f, "acceptor_HA");
 
+    g.validity_mask = ReadValidityMaskOptional(f, g.Nr, g.Ntheta, g.Nrho);
+
     g.has_donor_CB         = !g.donor_CB.empty();
     g.has_acceptor_readouts = !g.acceptor_N.empty();
+    g.has_validity_mask    = !g.validity_mask.empty();
 }
 
 
@@ -100,9 +127,6 @@ void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g) {
 // where 0 ≤ f* ≤ 1. Indices are clamped at boundaries (caller ensures
 // they're in range; periodic ρ wrap is handled by the caller via the
 // next_irho parameter).
-//
-// flat[ir, ith, irho, row, col] is at index
-//   ir * (Nth * Nrho * 9) + ith * (Nrho * 9) + irho * 9 + row * 3 + col.
 Mat3 TrilinearMat3(const std::vector<float>& flat,
                    int Nth, int Nrho,
                    int ir, int ith, int irho,
@@ -140,9 +164,34 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
 }
 
 
+// Check if any of the 8 corner cells (ir,ith,irho), (ir+1,...), ..., (ir+1,ith+1,irho+1)
+// is an imputed bin (validity_mask == 0). Returns false if the grid has
+// no mask.
+bool AnyCornerImputed(const LarsenHBondDenseGrid& g,
+                      int ir, int ith, int irho,
+                      int ir_next, int ith_next, int irho_next) {
+    if (!g.has_validity_mask) return false;
+    auto idx = [&](int i_r, int i_th, int i_rho) -> std::size_t {
+        return static_cast<std::size_t>(i_r) * g.Ntheta * g.Nrho
+             + static_cast<std::size_t>(i_th) * g.Nrho
+             + static_cast<std::size_t>(i_rho);
+    };
+    int rs[2] = {ir, ir_next};
+    int ths[2] = {ith, ith_next};
+    int rhos[2] = {irho, irho_next};
+    for (int a = 0; a < 2; ++a)
+        for (int b = 0; b < 2; ++b)
+            for (int c = 0; c < 2; ++c)
+                if (g.validity_mask[idx(rs[a], ths[b], rhos[c])] == 0)
+                    return true;
+    return false;
+}
+
+
 // For a regular ascending axis, return (idx, frac) such that
 // axis[idx] + frac * (axis[idx+1] - axis[idx]) == value, with frac in
-// [0, 1) when value is in range. Returns idx=-1 when out-of-range.
+// [0, 1) when value is in range. Returns idx=-1 when strictly out-of-range
+// (after a small FP tolerance clamp at the bounds).
 struct AxisLookup {
     int idx = -1;
     int idx_next = -1;
@@ -157,16 +206,13 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
 
     if (periodic) {
         // Wrap value to [axis[0], axis[0] + period).
-        double period = axis.back() - axis[0]
-                        + (axis[1] - axis[0]);  // wrap step
+        double step = axis[1] - axis[0];
+        double period = axis.back() - axis[0] + step;  // full periodic period
         double v = value;
         // Bring v into the half-open interval starting at axis[0].
         v = axis[0] + std::fmod(v - axis[0], period);
         if (v < axis[0]) v += period;
 
-        // Find idx such that axis[idx] ≤ v < axis[idx+1] (or last bin wraps).
-        // Uniform-step assumption: step = axis[1] - axis[0].
-        double step = axis[1] - axis[0];
         double f = (v - axis[0]) / step;
         int i = static_cast<int>(std::floor(f));
         i = std::min(i, n - 1);
@@ -182,12 +228,14 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         return out;
     }
 
-    if (value < axis.front() || value > axis.back()) {
+    double step = axis[1] - axis[0];
+    double tol = std::abs(step) * kAxisBoundTolerance;
+    if (value < axis.front() - tol || value > axis.back() + tol) {
         return out;  // out-of-range
     }
-    // Find bin via uniform-step shortcut.
-    double step = axis[1] - axis[0];
-    double f = (value - axis[0]) / step;
+    // Clamp tiny FP overshoot to axis bounds.
+    double v = std::clamp(value, axis.front(), axis.back());
+    double f = (v - axis.front()) / step;
     int i = static_cast<int>(std::floor(f));
     i = std::min(i, n - 2);
     i = std::max(i, 0);
@@ -200,7 +248,76 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
 }
 
 
+// Wrap ρ to canonical [-180, 180) range, matching what the loader
+// queries the axis on.
+double WrapRho(double rho_deg) {
+    double w = std::fmod(rho_deg + 180.0, 360.0);
+    if (w < 0.0) w += 360.0;
+    return w - 180.0;
+}
+
+
 }  // namespace
+
+
+// -----------------------------------------------------------------------------
+// Free functions: ComputeLarsenHBondGeometry, ComputeLarsenDonorFrame
+// -----------------------------------------------------------------------------
+
+LarsenHBondGeometry ComputeLarsenHBondGeometry(
+    const Vec3& donor_H_pos,
+    const Vec3& acceptor_O_pos,
+    const Vec3& acceptor_C_pos,
+    const Vec3& acceptor_third_pos) {
+
+    LarsenHBondGeometry geom;
+    Vec3 H_to_O = acceptor_O_pos - donor_H_pos;
+    geom.r_angstrom = H_to_O.norm();
+
+    // theta at acceptor O: angle between (O→H) and (O→C).
+    Vec3 O_to_H = donor_H_pos - acceptor_O_pos;
+    Vec3 O_to_C = acceptor_C_pos - acceptor_O_pos;
+    double cos_theta = O_to_H.dot(O_to_C) / (O_to_H.norm() * O_to_C.norm());
+    cos_theta = std::clamp(cos_theta, -1.0, 1.0);
+    geom.theta_deg = std::acos(cos_theta) * (180.0 / M_PI);
+
+    // rho dihedral: H - O - C - third. Standard IUPAC convention via
+    // atan2(cross(n1, b2_norm) · n2, n1 · n2).
+    Vec3 b1 = acceptor_O_pos     - donor_H_pos;
+    Vec3 b2 = acceptor_C_pos     - acceptor_O_pos;
+    Vec3 b3 = acceptor_third_pos - acceptor_C_pos;
+    Vec3 n1 = b1.cross(b2);
+    Vec3 n2 = b2.cross(b3);
+    Vec3 m1 = n1.cross(b2.normalized());
+    double x = n1.dot(n2);
+    double y = m1.dot(n2);
+    geom.rho_deg = std::atan2(y, x) * (180.0 / M_PI);
+
+    return geom;
+}
+
+
+Mat3 ComputeLarsenDonorFrame(
+    const Vec3& donor_H_pos,
+    const Vec3& donor_anchor_pos,
+    const Vec3& donor_third_pos) {
+
+    // z = normalize(donor_H − donor_anchor)
+    Vec3 z = (donor_H_pos - donor_anchor_pos).normalized();
+    // x = component of (donor_H − donor_third) orthogonal to z, normalized
+    Vec3 v3 = donor_H_pos - donor_third_pos;
+    Vec3 x_raw = v3 - (v3.dot(z)) * z;
+    Vec3 x = x_raw.normalized();
+    Vec3 y = z.cross(x);
+
+    // Rotation matrix: rows are canonical basis vectors expressed in log frame.
+    // R @ v_log = v_canonical, so R has rows [x; y; z].
+    Mat3 R;
+    R.row(0) = x;
+    R.row(1) = y;
+    R.row(2) = z;
+    return R;
+}
 
 
 // -----------------------------------------------------------------------------
@@ -257,12 +374,12 @@ LarsenHBondGrid::~LarsenHBondGrid() = default;
 LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     HBondDonorClass donor_class,
     HBondAcceptorClass acceptor_class,
-    double r, double theta, double rho) const {
+    const LarsenHBondGeometry& geom) const {
 
     LarsenHBondRecord rec;
-    rec.r = r;
-    rec.theta = theta;
-    rec.rho = rho;
+    rec.r_angstrom = geom.r_angstrom;
+    rec.theta_deg  = geom.theta_deg;
+    rec.rho_deg    = WrapRho(geom.rho_deg);  // canonical-form ρ for diagnostics
 
     int idx = ArchiveIndex(donor_class, acceptor_class);
     if (idx < 0) {
@@ -272,11 +389,11 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     }
     const LarsenHBondDenseGrid& g = grids_[idx];
 
-    AxisLookup lr = LookupAxis(g.r_axis, r, /*periodic=*/false);
+    AxisLookup lr = LookupAxis(g.r_axis, geom.r_angstrom, /*periodic=*/false);
     if (lr.idx < 0) return rec;  // r out of range
-    AxisLookup lth = LookupAxis(g.theta_axis, theta, /*periodic=*/false);
+    AxisLookup lth = LookupAxis(g.theta_axis, geom.theta_deg, /*periodic=*/false);
     if (lth.idx < 0) return rec;  // θ out of range
-    AxisLookup lrho = LookupAxis(g.rho_axis, rho, /*periodic=*/true);
+    AxisLookup lrho = LookupAxis(g.rho_axis, rec.rho_deg, /*periodic=*/true);
 
     auto interp = [&](const std::vector<float>& flat) -> Mat3 {
         if (flat.empty()) return Mat3::Zero();
@@ -303,10 +420,14 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     }
 
     // Update snapped coords to the interpolation cell base for diagnostics.
-    rec.r     = g.r_axis[lr.idx]   + lr.frac   * (g.r_axis[lr.idx_next]   - g.r_axis[lr.idx]);
-    rec.theta = g.theta_axis[lth.idx] + lth.frac * (g.theta_axis[lth.idx_next] - g.theta_axis[lth.idx]);
-    // ρ snapped: leave as input (already wrapped to grid range internally).
-    rec.rho = rho;
+    rec.r_angstrom = g.r_axis[lr.idx]
+                     + lr.frac * (g.r_axis[lr.idx_next] - g.r_axis[lr.idx]);
+    rec.theta_deg = g.theta_axis[lth.idx]
+                    + lth.frac * (g.theta_axis[lth.idx_next] - g.theta_axis[lth.idx]);
+    // rho_deg stays as the wrapped value computed above.
+
+    rec.any_corner_imputed = AnyCornerImputed(
+        g, lr.idx, lth.idx, lrho.idx, lr.idx_next, lth.idx_next, lrho.idx_next);
 
     rec.is_hit = true;
     return rec;

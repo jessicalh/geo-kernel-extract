@@ -62,28 +62,62 @@ OPBE/6-311++G(2d,p) on isolated PM6-optimised NMA + Ac-A-NMe, swap
 the parser's `compute_reference_and_subtract` to subtract those
 values instead.
 
-## Filename ↔ geometry caveats
+## Geometry contract (load-bearing for any consumer)
+
+`(r, θ, ρ)` are computed from four atom positions:
+
+```
+donor_H        the donor hydrogen atom (Hα for ALA donor, amide H for NMA donor)
+acceptor_O     the H-bond acceptor oxygen
+acceptor_C     the heavy atom bonded to acceptor_O (carbonyl C, hydroxyl C, …)
+acceptor_third the second neighbour, used for the dihedral
+```
+
+Definitions:
+
+```
+r       = |donor_H − acceptor_O|                  (Å)
+θ       = angle at vertex acceptor_O,
+          between (acceptor_O → donor_H) and
+                  (acceptor_O → acceptor_C)       (degrees, 90 to 180)
+ρ       = dihedral(donor_H, acceptor_O,
+                   acceptor_C, acceptor_third),
+          standard IUPAC convention via
+          atan2(cross_n1·b2̂, n1·n2)              (degrees, −180 to 180)
+```
+
+**All units are degrees** — the C++ loader (`src/LarsenHBondGrid.h`)
+exposes the same conventions via the `LarsenHBondGeometry` typed
+struct (`r_angstrom`, `theta_deg`, `rho_deg`) and free functions
+`ComputeLarsenHBondGeometry` and `ComputeLarsenDonorFrame` for
+runtime use.
+
+## Filename ↔ measured-geometry caveats
 
 Verified empirically across 10 sampled logs (2026-05-11):
 
 - **NMA donor archives**: r_filename ≈ r_actual (offset ≤ 0.001 Å).
-  θ_filename = θ_actual at the O vertex (Hα–O–C(=O) angle).
-  ρ_filename = −ρ_actual (sign-flip; Larsen's dihedral convention
-  opposite to standard IUPAC).
+  θ_filename = θ_actual at the O vertex.
+  ρ_filename = −ρ_actual — Larsen's filename uses the opposite sign
+  convention from IUPAC.
 - **ALA donor archives**: r_filename = r_actual + 0.2 Å (consistent
   offset of one grid step — likely off-by-one in Larsen's input-file
-  labeling). θ matches as above. ρ sign-flipped as above.
+  labeling). θ matches as above. ρ filename-sign-flipped as above.
 
-Parser keys grid on **actual measured (r, θ, ρ)**, not filename
-values. Filenames are labels only.
+The parser keys the grid on the **actual measured (r, θ, ρ)** in
+IUPAC sign convention, not filename values. Consumers compute (r, θ,
+ρ) from atom positions and query the grid directly — do NOT negate
+Larsen's published filename ρ.
 
 ## Known limitations
 
 1. **Scattered grid**: PM6-optimisation of monomers introduces small
    geometric scatter, so the rho axis has ~100-300 distinct values
-   rather than the nominal 24-25. The C++ grid loader bins to nearest
-   nominal axis value at load time, or does scattered nearest-N
-   interpolation.
+   rather than the nominal 24-25. Resolved in `pre_compute_dense_grids.py`
+   by binning to the nominal grid first, then evaluating a periodic
+   cubic spline on a 5×/2×/3× denser grid. The C++ loader does
+   trilinear lookup on this dense grid (cubic smoothness is baked in
+   via the pre-compute).
 
 2. **Close-approach extremes**: at r near 1.5 Å (NMA donor minimum)
    some grid points have large |Δσ| (up to ~600 ppm on N) where DFT
@@ -91,13 +125,22 @@ values. Filenames are labels only.
    smoothed these via interpolation. The calculator may want to clip
    or de-weight near-collision points.
 
-3. **Larsen-failed DFT logs**: Some grid points failed Gaussian
+3. **Imputed cells** (nearest-neighbour-filled holes from Larsen-
+   failed DFT calculations): the dense `.h5` carries a
+   `validity_mask` (uint8, shape `(Nr, Nθ, Nρ)`) marking which dense
+   cells correspond to real DFT vs nearest-neighbour-filled nominal
+   bins. The C++ loader exposes this per-query via
+   `LarsenHBondRecord::any_corner_imputed` (true if any of the 8
+   trilinear corners is an imputed bin). ALA archives have ~3-4%
+   imputed bins; NMA archives are nearly complete.
+
+4. **Larsen-failed DFT logs**: Some grid points failed Gaussian
    optimization ("Error termination via Lnk1e ... Small interatomic
    distances encountered"); these are skipped at parse time and
    filled by runtime trilinear interpolation from neighbouring grid
    points.
 
-4. **Duplicate filenames**: Larsen's archive contains some duplicate
+5. **Duplicate filenames**: Larsen's archive contains some duplicate
    geometries (same r, θ, ρ from different filename labels). Parser
    detects and skips duplicates by rounded geometry key.
 

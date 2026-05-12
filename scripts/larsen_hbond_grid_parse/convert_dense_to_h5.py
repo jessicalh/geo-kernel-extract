@@ -30,12 +30,17 @@ def convert(npz_path: Path, h5_path: Path) -> None:
         # Donor/acceptor readouts (5D float32, shape (Nr, Nθ, Nρ, 3, 3))
         for key in data.files:
             if key.startswith(("donor_", "acceptor_")):
-                # Store as float32 to match the source; C++ side casts to double
-                # at runtime if needed (Eigen Mat3 is double precision).
                 h5.create_dataset(
                     key, data=data[key].astype(np.float32),
                     compression="gzip", compression_opts=4,
                 )
+        # Validity mask (Nr × Nθ × Nρ uint8): 1 = real DFT, 0 = imputed.
+        if "validity_mask" in data.files:
+            h5.create_dataset(
+                "validity_mask",
+                data=data["validity_mask"].astype(np.uint8),
+                compression="gzip", compression_opts=4,
+            )
         # Stem (for self-identification)
         h5.attrs["stem"] = h5_path.stem.replace("_dense", "")
         h5.attrs["nr"] = int(data["r_axis"].shape[0])

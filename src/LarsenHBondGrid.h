@@ -1,8 +1,9 @@
 #pragma once
 //
 // LarsenHBondGrid: HDF5-backed loader for Larsen 2015 ProCS15 H-bond
-// DFT grids. Provides a unified `QueryNearest(donor_class, acceptor_class,
-// r, theta, rho)` lookup over 6 (donor × acceptor) grids:
+// DFT grids. Provides a unified
+//   `QueryNearest(donor_class, acceptor_class, LarsenHBondGeometry)`
+// lookup over 6 (donor × acceptor) grids:
 //
 //   AmideHydrogen × {BackboneCarbonyl, Hydroxyl, Carboxylate}   (Δσ_HB)
 //   AlphaHydrogen × {BackboneCarbonyl, Hydroxyl, Carboxylate}   (Δσ_HαB)
@@ -18,18 +19,84 @@
 // dense grid). ρ wraps periodically at ±180°. Out-of-range (r outside
 // the r-axis bounds, θ outside [90°, 180°]) returns is_hit=false; the
 // calculator side decides whether to clamp, fall back, or skip.
+// A small FP tolerance (1e-9) absorbs computed-value noise at the
+// axis bounds (e.g. θ = 180.0 + 1e-12 from cos/acos round-trip).
 //
-// Tensors are stored and returned in the CANONICAL DONOR FRAME defined
-// by the parser:
-//   - origin at donor H (Hα for ALA donor, amide H for NMA donor);
-//   - z-axis along donor_anchor → donor_H (Cα→Hα or N→H);
-//   - x-axis in the donor_anchor / donor_third / donor_H plane;
-//   - y-axis = z × x.
-// The consumer at calculator runtime must compute the same canonical
-// frame from the protein's atom positions and rotate the returned
-// tensor into the protein lab frame.
+// ─────────────────────────────────────────────────────────────────────
+// Geometry contract — what θ and ρ mean
+// ─────────────────────────────────────────────────────────────────────
 //
-// Per-archive readout atoms:
+// The four atoms used to define the geometry are:
+//
+//   donor_H       — the donor hydrogen (Hα for ALA donor; HN for NMA
+//                   donor).
+//   acceptor_O    — the H-bond acceptor oxygen.
+//   acceptor_C    — the heavy atom bonded to acceptor_O. For carbonyl
+//                   acceptors this is the C=O carbon; for hydroxyl
+//                   acceptors this is the sp3 C bonded to OH.
+//   acceptor_third — the second neighbour used to disambiguate the
+//                   dihedral. Per-acceptor-class mapping below.
+//
+// Geometry definitions:
+//
+//   r       = |donor_H − acceptor_O|                            (Å)
+//   theta   = angle(donor_H — acceptor_O — acceptor_C),
+//             vertex at acceptor_O. 90° to 180°.                (deg)
+//   rho     = dihedral(donor_H, acceptor_O, acceptor_C,
+//                       acceptor_third),
+//             standard IUPAC convention (atan2 of cross products),
+//             −180° to +180°.                                    (deg)
+//
+// IMPORTANT: Larsen 2015's filename ρ has the opposite sign from the
+// IUPAC convention this loader uses. The parser keys the grid on the
+// IUPAC-sign ρ (from the actual atomic positions in the Gaussian
+// logs), so callers should compute IUPAC-sign ρ from the protein
+// atoms — do NOT negate the Larsen filename value.
+//
+// ─────────────────────────────────────────────────────────────────────
+// Per-class atom-role mapping
+// ─────────────────────────────────────────────────────────────────────
+//
+//   Donor class         donor_H     donor_anchor   donor_third
+//   ───────────────     ─────────   ────────────   ──────────────────
+//   AlphaHydrogen       Hα(i)        Cα(i)          N(i)                (own amide N)
+//   AmideHydrogen       HN(i)        N(i)           C'(i−1)             (PRECEDING residue's carbonyl C)
+//
+//   Acceptor class       acceptor_O   acceptor_C    acceptor_third
+//   ─────────────────    ──────────   ───────────   ──────────────
+//   BackboneCarbonyl     O(j)         C'(j)         N(j+1)
+//   SidechainCarbonyl    Asn OD1 /    Asn CG /      Asn ND2 /
+//                        Gln OE1      Gln CD        Gln NE2
+//   HydroxylOxygen       SER OG /     SER CB /      SER HG /
+//                        THR OG1 /    THR CB /      THR HG1 /
+//                        TYR OH       TYR CZ        TYR HH
+//   CarboxylateOxygen    closer of    ASP CG /      OTHER O on the
+//                        Asp OD1/2,   GLU CD,       carboxylate C
+//                        Glu OE1/2,   C-term C      (the symmetric
+//                        or C-term O                 carboxylate O)
+//
+// The canonical donor frame (used to store / return tensors) is
+// defined entirely by the three donor atoms, NOT by the protein
+// secondary structure or by acceptor atoms. Tensor rotation at runtime
+// is the caller's responsibility (see ComputeLarsenDonorFrame).
+//
+// ─────────────────────────────────────────────────────────────────────
+// Canonical donor frame
+// ─────────────────────────────────────────────────────────────────────
+//
+//   origin   = donor_H
+//   z-axis   = normalize(donor_H − donor_anchor)        (anchor → H)
+//   x-axis   = component of (donor_H − donor_third) orthogonal to z,
+//              normalized   (i.e. in the (donor_anchor, donor_third,
+//                            donor_H) plane, pointing toward donor_third
+//                            relative to z)
+//   y-axis   = cross(z, x)
+//
+// The free function `ComputeLarsenDonorFrame(h_pos, anchor_pos,
+// third_pos)` builds this rotation matrix; the parser and the future
+// calculator both use it to keep the tensor basis consistent.
+//
+// Per-archive readout atoms (in the canonical frame above):
 //   ALA donor: donor {N, CA, CB, C, HA, HN}
 //   NMA donor: donor {N, CA, C, HA, HN}      (no CB — NMA has no sidechain)
 //   NMA acceptor (Backbone): acceptor {N, HN, HA}  (Δσ_2° contributions,
@@ -48,6 +115,13 @@
 // Reference subtraction: parser-side. Grids store Δσ (free-monomer σ
 // subtracted via r-max-edge proxy; see parser README for the
 // approximation). No further subtraction at runtime.
+//
+// Validity mask: each archive carries a uint8 mask (Nr × Nθ × Nρ)
+// marking which nominal-grid cells came from real DFT vs were filled
+// by nearest-neighbour imputation in the Python pre-compute (Larsen
+// 2015 noted some close-approach DFT calcs failed; these are filled
+// for spline continuity). Accessible via IsCellImputed(donor_class,
+// acceptor_class, r, theta, rho) for diagnostic queries.
 //
 
 #include "Types.h"
@@ -81,6 +155,47 @@ enum class HBondAcceptorClass : std::uint8_t {
 };
 
 
+// Typed H-bond geometry. Encapsulates the three scan parameters
+// `r`, `theta`, `rho` with explicit units in the field names so a
+// caller can't accidentally swap degrees↔radians at the API boundary.
+// All values are computed from the four atom positions per the
+// contract documented in the file header.
+struct LarsenHBondGeometry {
+    double r_angstrom = 0.0;   // |donor_H − acceptor_O|, Å.
+    double theta_deg  = 0.0;   // angle(donor_H, acceptor_O, acceptor_C), [90, 180].
+    double rho_deg    = 0.0;   // dihedral(donor_H, acceptor_O, acceptor_C,
+                               // acceptor_third), IUPAC sign, [−180, 180].
+};
+
+
+// Compute (r, θ, ρ) from the four atom positions per the geometry
+// contract. Free function so both the parser (Python side, conceptually)
+// and the calculator (C++ runtime, future) compute geometry the same
+// way. ρ uses standard IUPAC dihedral convention (atan2 of cross
+// products), matching what the parser keys grid bins on.
+LarsenHBondGeometry ComputeLarsenHBondGeometry(
+    const Vec3& donor_H_pos,
+    const Vec3& acceptor_O_pos,
+    const Vec3& acceptor_C_pos,
+    const Vec3& acceptor_third_pos);
+
+
+// Compute the canonical-donor-frame rotation matrix R such that
+//     v_canonical = R * (v_log − donor_H_pos)
+// (the canonical frame is centered at donor_H; this function returns
+// only the rotation, not the translation). See the file header for
+// the canonical-frame definition.
+//
+// Caller plugs in the three protein atom positions according to the
+// per-class mapping table in the file header (Hα/Cα/N for ALA donor;
+// HN/N/C'(i−1) for NMA donor — note the PRECEDING residue's carbonyl C
+// for the amide-H case, NOT this residue's CA).
+Mat3 ComputeLarsenDonorFrame(
+    const Vec3& donor_H_pos,
+    const Vec3& donor_anchor_pos,
+    const Vec3& donor_third_pos);
+
+
 // Returned tensors per readout. Each Mat3 is the rotation-invariant
 // shielding contribution in the CANONICAL DONOR FRAME (consumer
 // rotates to protein lab frame at calculator runtime).
@@ -107,10 +222,18 @@ struct LarsenHBondRecord {
     bool has_donor_CB         = false;
     bool has_acceptor_readouts = false;
 
-    // Snapped / interpolated query coordinates (for diagnostic logging).
-    double r     = 0.0;
-    double theta = 0.0;
-    double rho   = 0.0;
+    // Snapped / interpolated query coordinates, after FP tolerance
+    // clamp on r/θ and periodic wrap on ρ to [−180°, +180°). Use these
+    // (not the raw input) when logging diagnostics so the canonical
+    // grid coordinates are what's recorded.
+    double r_angstrom = 0.0;
+    double theta_deg  = 0.0;
+    double rho_deg    = 0.0;
+
+    // True iff any of the 8 trilinear corner cells was an imputed bin
+    // (nearest-neighbour fill of a Larsen-failed DFT grid point).
+    // The calculator may want to log + downweight or skip these.
+    bool any_corner_imputed = false;
 
     bool is_hit = false;
     bool IsHit() const { return is_hit; }
@@ -140,8 +263,14 @@ struct LarsenHBondDenseGrid {
     std::vector<float> acceptor_HN;
     std::vector<float> acceptor_HA;
 
+    // Validity mask: Nr × Nθ × Nρ uint8, 1 = real DFT, 0 = imputed by
+    // nearest-neighbour fill at parse time. Empty if the archive did
+    // not emit a mask (older grids).
+    std::vector<std::uint8_t> validity_mask;
+
     bool has_donor_CB         = false;
     bool has_acceptor_readouts = false;
+    bool has_validity_mask    = false;
 };
 
 
@@ -156,23 +285,27 @@ public:
     LarsenHBondGrid(const LarsenHBondGrid&) = delete;
     LarsenHBondGrid& operator=(const LarsenHBondGrid&) = delete;
 
-    // Query the grid at (r, theta, rho) for the given donor + acceptor
-    // class. r in Å, theta in degrees, rho in degrees.
+    // Query the grid at the given (donor_class, acceptor_class, geom)
+    // tuple. Returns a record with is_hit=true if (r, θ) are within the
+    // grid bounds (with ±1e-9 FP tolerance at the bounds). is_hit=false
+    // if outside; tensors are then zeroed (the caller decides whether
+    // to clamp, fall back, or skip).
     //
-    // Returns a record with is_hit=true if (r, theta) are within the
-    // grid bounds. is_hit=false if outside; tensors are then zeroed
-    // (the caller decides whether to clamp, fall back, or skip).
-    //
-    // rho is wrapped periodically to [-180, 180) before lookup.
+    // ρ is wrapped periodically to [-180, 180) before lookup. The
+    // record's rho_deg field carries the wrapped value (NOT the raw
+    // input) for diagnostic clarity.
     //
     // Trilinear interpolation across the 8 corner cells. The cubic
     // smoothness is baked into the dense grid via the Python pre-
     // compute step; trilinear is sufficient at the dense-grid
     // resolution (5×/2×/3× denser than the original DFT scan).
+    //
+    // The record's `any_corner_imputed` flag is set if any of the 8
+    // corner cells came from nearest-neighbour fill at parse time.
     LarsenHBondRecord QueryNearest(
         HBondDonorClass    donor_class,
         HBondAcceptorClass acceptor_class,
-        double r, double theta, double rho) const;
+        const LarsenHBondGeometry& geom) const;
 
     // Health probe.
     bool IsLoaded() const { return loaded_; }

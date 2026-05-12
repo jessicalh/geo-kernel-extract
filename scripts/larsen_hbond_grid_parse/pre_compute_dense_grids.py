@@ -335,6 +335,41 @@ def process_archive(stem: str) -> ArchiveSummary:
     for full_key, vals in dense_per_readout.items():
         out_dict[full_key] = vals.astype(np.float32)
 
+    # Validity mask: at each dense (i_r, i_th, i_rh), 1 if the nearest
+    # nominal bin had real DFT data, 0 if it was imputed by nearest-
+    # neighbour fill above. Allows downstream (C++ calculator) to
+    # distinguish supported regions from imputed ones — useful for
+    # diagnostics and for weighting decisions.
+    #
+    # Mapping from dense index to nominal index uses nearest-neighbor
+    # (round). With dense densities 5×/2×/3×, every Kth dense cell sits
+    # exactly on a nominal bin; cells between are mapped to the closer
+    # nominal.
+    dense_valid = np.ones(
+        (len(dense_r), len(dense_theta), len(dense_rho)),
+        dtype=np.uint8,
+    )
+    # Per-axis nominal-index lookup for each dense bin.
+    nominal_ir = np.clip(
+        np.round((dense_r - r_axis[0]) / r_step).astype(np.int64),
+        0, nr - 1,
+    )
+    nominal_ith = np.clip(
+        np.round((dense_theta - theta_axis[0]) / NOMINAL_THETA_STEP).astype(np.int64),
+        0, nth - 1,
+    )
+    # ρ axis is periodic. dense_rho spans [-180, 180) at dense_rho_step.
+    nominal_irh = np.round(
+        (dense_rho - rho_axis[0]) / NOMINAL_RHO_STEP
+    ).astype(np.int64) % nrh
+
+    # Outer-product index into the nominal valid array.
+    # valid[ir_nominal, ith_nominal, irh_nominal] → dense_valid[i_r, i_th, i_rh].
+    valid_uint = valid.astype(np.uint8)
+    # Use np.ix_ for broadcasted index extraction.
+    dense_valid = valid_uint[np.ix_(nominal_ir, nominal_ith, nominal_irh)]
+    out_dict["validity_mask"] = dense_valid
+
     np.savez_compressed(out_path, **out_dict)
     output_size_mb = os.path.getsize(out_path) / (1024.0 * 1024.0)
 

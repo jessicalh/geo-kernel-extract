@@ -246,9 +246,9 @@ struct LarsenHBondPair {
     int                       donor_atom_idx;
     int                       acceptor_atom_idx;
     HBondAcceptorClass        acceptor_class;
-    double                    rOH;            // Å
-    double                    theta;          // radians, donor frame
-    double                    rho;            // radians, donor frame
+    // Geometry — degrees throughout (NOT radians). The LarsenHBondGrid
+    // loader consumes this same `LarsenHBondGeometry` struct directly.
+    LarsenHBondGeometry       geom;            // r_angstrom, theta_deg, rho_deg
     // 1° contributions (donor's residue i atoms)
     std::array<Mat3, 6>       primary_tensors;    // {N, CA, CB, C', Hα, HN}
     // 2° contributions (acceptor's residue i+1 atoms, NMA acceptor only)
