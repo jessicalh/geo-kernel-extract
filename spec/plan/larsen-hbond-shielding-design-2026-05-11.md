@@ -6,18 +6,31 @@ Larsen 2015's four hydrogen-bond contribution terms
 using the Larsen ProCS15 H-bond DFT grid data unpacked from
 `/mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar`.
 
-This **supersedes** the kernel × η design captured in the memory entry
-`project_hbond_halpha_design` (2026-05-10). That design rested on the
-premise that Larsen's H-bond DFT grid was not accessible. It is — six
-nested archives, ~20K Gaussian logs, full T2 tensors at OPBE/6-31G(d,p).
-The kernel × η simplification is replaced by direct grid lookup with
-reference subtraction, matching Larsen's actual treatment.
+This document **supersedes the planning** captured in the memory
+entry `project_hbond_halpha_design` (2026-05-10). That design rested
+on the premise that Larsen's H-bond DFT grid was not accessible. It
+is — six nested archives, ~20K Gaussian logs, full T2 tensors at
+OPBE/6-31G(d,p). The grid-lookup formulation here replaces the
+kernel × η simplification *as the next-gen design*, but the kernel-
+form `HBondResult` calculator already in the codebase **stays — not
+retired**.
 
-`project_hbond_halpha_design` is **retired** by this document.
+The thesis discipline: **methods accumulate, differences are
+reportable**. The existing kernel-form `HBondResult` and the new
+grid-form `LarsenHBondShieldingResult` are sibling calculators
+covering overlapping physics (amide-H donor). Both run in the
+pipeline. Both emit their own NPYs. Their per-atom-type residuals
+on the same protein become methodological output — a coordinate in
+the formulation-space, not redundant code. See memory
+`feedback_methods_accumulate`.
 
-The existing `HBondResult` calculator (kernel-style amide H bond)
-is **not modified**; it will be retired in a separate atomic step
-once `LarsenHBondShieldingResult` is producing trusted numbers.
+Per the same principle: Larsen Table 2 says some atom types receive
+NO contribution from a given term (e.g. Cβ never gets an HB term).
+The calculator still computes and emits those readouts — they should
+be near-zero, and confirming the near-zero is the reality check that
+the upstream parser → loader → frame-rotation pipeline is honest.
+A non-zero "should be zero" cell is a methodological signal, not a
+bug to silently filter out.
 
 ## Status
 
@@ -433,66 +446,292 @@ Acceptance criterion: 5+ structure tests pass; grid load is fast
 Outputs:
 - `src/LarsenHBondShieldingResult.{h,cpp}`.
 - `tests/test_larsen_hbond_shielding.cpp` — structure tests + 1UBQ smoke.
-- New substrate predicates added to `AtomSemanticTable` as listed above.
+- New substrate predicates added to `AtomSemanticTable`.
 - Registration in calculator pipeline.
 
-Steps:
-1. Add the new substrate predicates (`IsAnyAlphaHydrogen`,
-   `IsSidechainCarboxylateOxygen`, `IsSidechainAmideOxygen`) to
-   `AtomSemanticTable` and verify by structure test.
-2. Implement donor-side iteration: for each donor atom (amide H or Hα),
-   find candidate acceptor atoms via SpatialIndexResult (rOH ∈
-   [1.8, 4.2] Å), gate by acceptor class, compute (rOH, θ, ρ) in the
-   canonical donor frame.
-3. Look up Δσ tensors via `LarsenHBondGrid::QueryNearest`. Transform
-   each readout tensor from grid frame to protein frame using
-   donor-side Kabsch alignment (analog of
-   `TripeptidePoseAssembler::AlignDonorFrame`).
-4. Apply per-atom Table 2 dispatch: distribute 1° contributions to
-   donor residue i's {N, CA, CB, C', Hα, HN} per Table 2 cells; for
-   NMA-acceptor pairs, distribute 2° contributions to acceptor
-   residue i+1's {N, H, Hα-stand-in} per Table 2 cells.
-5. Track which amide H atoms received any H-bond contribution; assign
-   Δσ_w = 2.07 ppm to those that did not.
-6. Smoke on `1UBQ_pm6dh3plus.pdb`: assert non-zero contributions,
-   finite tensors, count of H-bonds in expected range (Ubiquitin has
-   ~60 backbone H-bonds in α-helix + β-sheet).
+#### Substrate predicate additions
+
+Three new predicates on `AtomSemanticTable` + one calculator-side
+helper:
+
+```cpp
+// AtomSemanticTable predicates (constexpr, header-only)
+constexpr bool IsAnyAlphaHydrogen() const {
+    // Covers non-GLY HA (BackboneRole::AlphaHydrogen) AND
+    // GLY HA2/HA3 (Locant::Alpha + BackboneRole::None per Markley).
+    return backbone_role == BackboneRole::AlphaHydrogen
+        || (element == Element::H && locant == Locant::Alpha
+            && backbone_role == BackboneRole::None);
+}
+
+constexpr bool IsSidechainCarboxylateOxygen() const {
+    return element == Element::O
+        && planar_group == PlanarGroupKind::Carboxylate;
+}
+
+constexpr bool IsSidechainAmideOxygen() const {
+    // ASN OD1, GLN OE1 — note: PlanarGroupKind::SidechainAmide also
+    // includes the amide N (ND2/NE2). Filter to Element::O to get
+    // just the carbonyl O.
+    return element == Element::O
+        && planar_group == PlanarGroupKind::SidechainAmide;
+}
+```
+
+```cpp
+// Calculator-side helper (NOT a substrate field — requires bond-walk)
+//
+// SER OG / THR OG1 / TYR OH are hydroxyl O atoms. The substrate
+// has no single-field marker for this. Walk to bonded H atoms and
+// check PolarHKind::HydroxylOH_Aliphatic or HydroxylOH_Aromatic.
+bool IsHydroxylOxygen(const Protein& p, int ai);
+```
+
+#### Per-class atom-role resolution algorithm
+
+For each candidate donor `(residue_i, donor_atom_idx)`, compute the
+THREE positions `(donor_H, donor_anchor, donor_third)` via the
+following table:
+
+| Donor class           | donor_H        | donor_anchor   | donor_third                   |
+|-----------------------|----------------|----------------|-------------------------------|
+| AlphaHydrogen (non-GLY) | `Hα(i)`       | `Cα(i)`        | `N(i)`                         |
+| AlphaHydrogen (GLY HA2/HA3) | the specific HA atom | `Cα(i)` | `N(i)`                  |
+| AmideHydrogen          | `HN(i)`       | `N(i)`         | `C'(i-1)`  — PRECEDING residue |
+
+GLY edge case: GLY has TWO α-hydrogens (HA2 and HA3). Each is
+processed as a separate donor candidate. `Cα(i)` and `N(i)` are
+shared anchors. The chosen HA atom is whichever H is bonded to `Cα`
+(both qualify, both run independently).
+
+N-terminus edge: for the first residue, `C'(i-1)` does not exist.
+NMA-donor pairing skips this residue with a logged Info message.
+
+PRO edge: PRO has no backbone amide H (secondary amine N). The
+substrate predicate `IsBackboneAmideHydrogen()` is already false for
+PRO N — so PRO is silently excluded from the donor iteration. No
+extra check needed.
+
+For each acceptor atom `(residue_j, acceptor_atom_idx)`, compute the
+THREE positions `(acceptor_O, acceptor_C, acceptor_third)`:
+
+| Acceptor class       | acceptor_O   | acceptor_C    | acceptor_third          |
+|----------------------|--------------|---------------|-------------------------|
+| BackboneCarbonyl     | `O(j)`       | `C'(j)`       | `N(j+1)`                 |
+| SidechainCarbonyl (ASN) | `OD1(j)`  | `CG(j)`       | `ND2(j)`                  |
+| SidechainCarbonyl (GLN) | `OE1(j)`  | `CD(j)`       | `NE2(j)`                  |
+| HydroxylOxygen (SER) | `OG(j)`      | `CB(j)`       | `HG(j)`                   |
+| HydroxylOxygen (THR) | `OG1(j)`     | `CB(j)`       | `HG1(j)`                  |
+| HydroxylOxygen (TYR) | `OH(j)`      | `CZ(j)`       | `HH(j)`                   |
+| CarboxylateOxygen (ASP) | OD1 or OD2 (closer) | `CG(j)` | other OD              |
+| CarboxylateOxygen (GLU) | OE1 or OE2 (closer) | `CD(j)` | other OE              |
+| CarboxylateOxygen (C-term) | O or OXT (closer) | `C(j)`  | other terminal O     |
+
+C-terminus edge: for the last residue, `N(j+1)` does not exist. The
+BackboneCarbonyl 2° term cannot be assigned (no i+1 atoms). Mark
+the 2° contribution as un-applicable for that pair; the 1° term
+still applies.
+
+Acceptor selection for carboxylate (symmetric carboxylate has 2 Os):
+pick the O closer to the candidate donor H. The carboxylate is
+symmetric in DFT but the grid was scanned with respect to a specific
+O; picking the closer one matches Larsen's "the H bonds to whichever
+O is in range."
+
+#### Larsen Table 2 dispatch — constexpr encoding
+
+```cpp
+// (atom_type, contribution_term) → applies (true/false).
+// Encodes Larsen 2015 Table 2 exactly. Calculator iterates over
+// readout atoms and consults this table per (target, term).
+//
+// Cβ row is INTENTIONALLY all-false per Larsen — we emit the Cβ
+// contribution anyway as a diagnostic ("must be near zero in
+// production output").
+struct LarsenContribDispatch {
+    enum class TargetAtom : std::uint8_t {
+        N = 0, CA, CB, C, HA, HN, Count
+    };
+    enum class Term : std::uint8_t {
+        Primary_HB = 0, Secondary_HB,
+        Primary_HaB, Secondary_HaB,
+        RingCurrent, Water,
+        Count
+    };
+    static constexpr bool Applies(TargetAtom t, Term term) {
+        // Table 2 from Larsen 2015 PeerJ:
+        //                    1HB 2HB 1HaB 2HaB RC w
+        // N                  x   x   .   x    .  .
+        // Ca                 .   x   .   .    .  .
+        // Cb                 .   .   .   .    .  .   (all-zero diagnostic)
+        // C                  .   x   .   .    .  .
+        // Ha                 x   x   x   x    x  .
+        // HN                 x   x   x   x    x  x
+        constexpr bool table[6][6] = {
+            //  1HB    2HB    1HaB   2HaB   RC     w
+            {  true,  true, false,  true, false, false }, // N
+            { false,  true, false, false, false, false }, // CA
+            { false, false, false, false, false, false }, // CB
+            { false,  true, false, false, false, false }, // C
+            {  true,  true,  true,  true,  true, false }, // HA
+            {  true,  true,  true,  true,  true,  true }, // HN
+        };
+        return table[(int)t][(int)term];
+    }
+};
+```
+
+The all-false `Cβ` row is the user-decided diagnostic discipline
+(`feedback_methods_accumulate`): we still compute Cβ contributions
+and emit them, expecting near-zero in production. A test asserts
+this expectation.
+
+#### Output NPYs — per-contribution-class detail for ML stratification
+
+| File                                  | Shape          | Description                                |
+|---------------------------------------|----------------|--------------------------------------------|
+| `larsen_hbond_count.npy`              | (N,) int32     | Number of HB pairs per atom (Σ all classes)|
+| `larsen_hbond_count_by_class.npy`     | (N, 4) int32   | Per-acceptor-class count [BB, SchAmide, OH, COO] |
+| `larsen_hbond_total_tensor.npy`       | (N, 3, 3)      | Σ tensor in protein lab frame, all classes |
+| `larsen_hbond_total_spherical.npy`    | (N, 9)         | T0+T1+T2 of total                          |
+| `larsen_hbond_1pHB_tensor.npy`        | (N, 3, 3)      | Σ 1°HB contributions (amide-H donor only)  |
+| `larsen_hbond_2pHB_tensor.npy`        | (N, 3, 3)      | Σ 2°HB contributions                        |
+| `larsen_hbond_1pHaB_tensor.npy`       | (N, 3, 3)      | Σ 1°HαB contributions (Hα donor only)      |
+| `larsen_hbond_2pHaB_tensor.npy`       | (N, 3, 3)      | Σ 2°HαB contributions                       |
+| `larsen_hbond_water_term.npy`         | (N,) float64   | Δσ_w (2.07 ppm on HN with no HB pair, else 0; zero for non-HN atoms) |
+| `larsen_hbond_diagnostic_CB.npy`      | (N, 3, 3)      | Cβ contributions (should be near-zero — diagnostic) |
+| `larsen_hbond_pairs.npy`              | (N_pairs, 9)   | Per-pair: [donor_ai, acceptor_ai, donor_class, acceptor_class, r, θ, ρ, isotropic_total, any_corner_imputed] |
+| `larsen_vs_kernel_hb_residual.npy`    | (N, 3, 3)      | Per-atom Mat3 diff: LarsenHBond − HBondResult on amide-H targets (zero where one or both did not contribute) |
+
+Calculator never returns nullptr; it returns a result with all-zero
+fields if `Session::HasLarsenHBondGrid()` is false. The optional
+nature is encoded in the data, not the calculator presence.
+
+#### SDK wiring
+
+Add `LarsenHBondGroup` dataclass to `python/nmr_extract/_protein.py`
+mirroring `TripeptideGroup`. Attached on `Protein.larsen_hbond` when
+any of the NPYs is present. Add 12 ArraySpec entries to
+`python/nmr_extract/_catalog.py`. Add SDK tests in
+`python/tests/test_larsen_hbond_group.py`.
+
+#### Steps
+
+1. Add the new substrate predicates to `AtomSemanticTable` (header-
+   only change; constexpr; verified by structure test). Build +
+   verify.
+2. Add `IsHydroxylOxygen(protein, ai)` calculator-side helper.
+3. Encode `LarsenContribDispatch` table in
+   `LarsenHBondShieldingResult.h` (constexpr).
+4. Implement donor-side iteration. For each candidate donor: resolve
+   the three frame atoms per the role-table above. Skip donors where
+   any frame atom is unavailable (e.g. N-terminus for NMA donor),
+   with Info log.
+5. For each donor, query SpatialIndexResult for candidate acceptor
+   atoms within rOH ∈ [1.8, 4.2] Å of `donor_H`.
+6. For each candidate acceptor: classify (BackboneCarbonyl,
+   SidechainCarbonyl, HydroxylOxygen, CarboxylateOxygen). Skip if
+   classification fails. Resolve acceptor's three frame atoms.
+7. Compute `LarsenHBondGeometry` via `ComputeLarsenHBondGeometry`.
+   Gate on θ ∈ [90°, 180°] (out-of-range = no H-bond physics here).
+8. Query `LarsenHBondGrid::QueryNearest`. Skip if `!is_hit`. Apply
+   `RotateTensorToProteinLabFrame` per readout using the protein-
+   side `ComputeLarsenDonorFrame` rotation.
+9. Distribute readouts per Table 2 dispatch:
+    - 1° readouts to donor residue i's atoms (N/CA/CB/C/HA/HN).
+    - 2° readouts to acceptor residue (i+1 for backbone-O acceptor)
+      atoms (N/HA/HN). Skip if i+1 doesn't exist.
+10. After all pairs processed, sweep amide-H atoms. Any with zero HB
+    pair contribution gets `Δσ_w = 2.07 ppm` in the isotropic
+    component (no tensor structure).
+11. Emit NPYs per the table above. Compute
+    `larsen_vs_kernel_hb_residual.npy` from `HBondResult`'s output
+    on the same protein (read its NPY values, take per-atom diff).
+12. Smoke on `1UBQ_pm6dh3plus.pdb`:
+    - Assert ≥ 40 backbone H-bonds detected (Ubiquitin has ~60 in
+      published structure; we expect somewhat fewer with strict
+      geometric criteria).
+    - Assert all tensors finite.
+    - Assert Cβ diagnostic NPY has |entries| < 0.5 ppm (near-zero
+      reality check).
+    - Assert at least 5 amide-H atoms received `Δσ_w = 2.07 ppm`.
 
 Acceptance criterion: smoke passes, structure tests for substrate
-predicates pass, per-atom Table 2 dispatch verified by inspection of
-NPY outputs against Table 2.
+predicates pass, Table 2 dispatch verified by unit test (one test
+per cell asserting Applies() == expected), Cβ diagnostic NPY passes
+the near-zero assertion.
 
-### Session 4 — SDK wiring + Larsen-comparison smoke + adversarial review
+### Session 4 — SDK wiring + multi-source reality checks + adversarial review
 
 Outputs:
-- `python/nmr_extract/_catalog.py` — 6 new ArraySpec entries.
-- `python/nmr_extract/_protein.py` — `LarsenHBondGroup` dataclass attached on `Protein.larsen_hbond`.
+- `python/nmr_extract/_catalog.py` — 12 new ArraySpec entries.
+- `python/nmr_extract/_protein.py` — `LarsenHBondGroup` dataclass.
 - `python/tests/test_larsen_hbond_group.py` — SDK tests.
-- `tests/test_larsen_hbond_against_published.cpp` — compare Ubiquitin
-  per-atom shieldings vs Larsen 2015 Table 1's published RMSDs.
+- `tests/test_larsen_hbond_against_published.cpp` — Larsen Table 1
+  RMSDs comparison.
+- `scripts/larsen_validation/` — Python-side scripts for the three
+  reality-check comparisons (Table 1, .procs, multi-predictor).
 - Codex xhigh adversarial review.
 
 Steps:
-1. SDK wiring (mirror `TripeptideGroup`).
-2. Run extraction on `1UBQ_pm6dh3plus.pdb`. Compare per-atom
-   shieldings against Larsen 2015 Table 1's published `ProCS15` row
-   (this requires combining our LarsenHBond output with our existing
-   Tripeptide BB + Neighbor outputs and Ring-Current outputs to get
-   the full ProCS15 sum). Per-atom-type RMSD should be within ~0.1
-   ppm of Larsen's published values if the implementation is faithful.
-   Larger residuals → bug.
-3. Adversarial review by codex xhigh. Focus areas: frame convention,
-   reference subtraction sign, Table 2 dispatch correctness,
-   periodic-ρ wrap. Fix findings.
 
-Acceptance criterion: extracted Ubiquitin Hα RMSD ≤ 0.7 ppm
-(Larsen's published 0.6 ppm + tolerance for our slightly different
-geometry pipeline); HN ≤ 0.9 ppm; C' ≤ 2.2 ppm; all of Larsen Table 1
-within 0.1 ppm. Adversarial review findings addressed.
+1. SDK wiring (mirror `TripeptideGroup`). 12 ArraySpec entries cover
+   per-atom totals + per-contribution-class detail + Cβ diagnostic +
+   water term + kernel-vs-grid residual + per-pair detail.
+2. **Reality check 1 — Larsen 2015 Table 1.** Run extraction on
+   `1UBQ_pm6dh3plus.pdb`. Combine TripeptideBackboneShieldingResult
+   + TripeptideNeighborShieldingResult + LarsenHBondShieldingResult +
+   RingCurrent (existing). Compute per-atom-type RMSD against BMRB
+   experimental shifts (from our existing BMRB ingestion).
+   Expected: within ~0.1 ppm of Larsen's published ProCS15 row
+   (Cα 1.7, Cβ 2.5, C' 2.1, Hα 0.6, HN 0.7, N 4.4).
+3. **Reality check 2 — Larsen's actual .procs predictor output.**
+   Parse `predictions/qm/1UBQ_pm6dh3plus.procs` (from
+   `/mnt/expansion/larsen_archive/predictions.tar.bz2`). Compare our
+   per-atom σ outputs to Larsen's per-atom prediction, keyed by
+   `(resseq, atom_name)`. Mask N-term H/HA (sentinel-zero) and
+   Pro-Cβ (sentinel-zero in Larsen). Compute correlation + per-
+   atom-type residual distributions. Report any systematic offsets.
+   Expected: r > 0.99 per atom type; if not, surface as a thesis-
+   reportable methodological coordinate.
+4. **Reality check 3 — 6-predictor methodology scatter.** Parse
+   `predictions/charmm/*` (CharmM, CamShift, PPM, SHIFTX2, SPARTA+
+   on 1UBQ + 2OED). Build a 7-way scatter (our output + 6 published
+   predictors). Report where we cluster in methodology space.
+5. **Reality check 0 — Larsen's whole-protein DFT (`proteinnmrlogs`).**
+   Parse `proteinnmrlogs/1UBQ_pm6dh3plus.log` per the existing
+   Gaussian shielding-tensor parser. 1232 atom tensors. This is the
+   ground-truth DFT — our combined predictor's job is to approximate
+   it. Compute per-atom RMSD AND tensor-level (Frobenius) residual.
+   This is the same analysis Larsen reports in his Table 1.
+6. **Side-by-side: HBondResult vs LarsenHBondShieldingResult.**
+   Per-atom-type residual between the two formulations on the same
+   protein. Expected: correlation r > 0.9 on amide-H isotropic; full-
+   tensor differences are the methodological coordinate.
+7. **Adversarial review** by codex xhigh. Focus areas: frame
+   convention, reference subtraction sign, Table 2 dispatch
+   correctness, periodic-ρ wrap, NPY layout. Fix findings.
 
-Where session 5 might happen: parser frame-convention issue in S1, or
-Larsen-comparison residuals too large in S4. Both are real risk
+Acceptance criterion: per-atom-type Ubiquitin RMSD ≤ 0.1 ppm above
+Larsen Table 1's ProCS15 row across Cα/Cβ/C'/Hα/HN/N. .procs
+correlation r ≥ 0.99 per atom type. All four reality checks have
+their residual distributions emitted as NPY artifacts for analysis.
+Adversarial review findings addressed.
+
+Where session 5 might happen: parser frame-convention issue in S1,
+.procs residuals too large to attribute to methodology differences in
+S4, or unforeseen calibration coupling in S4. All are real risk
 surfaces.
+
+### Session 5+ — calibration integration
+
+Methods accumulate (`feedback_methods_accumulate`). The new HBond
+calculator's NPYs become 4+ new features in the calibration ridge
+regression. `HBondResult` stays in the pipeline as a parallel
+methodology coordinate. Per-atom-type residual stratification is
+extended to include the kernel-vs-grid difference. Out of scope for
+the 4-session H-bond build; flagged here so the design respects the
+forward path.
 
 ## Session 1 reconnaissance — findings 2026-05-11
 
@@ -605,47 +844,95 @@ walk to bonded H atoms and check `PolarHKind`. TYR OH carries
 calculator-side helper `IsHydroxylOxygen(ai)` does the bond-walk; this
 is not a new substrate field, just a calculator-side utility.
 
-## Smoke target
+## Smoke target — three accumulating reality checks
 
-`1UBQ_pm6dh3plus.pdb` from `/mnt/expansion/larsen_archive/structures/`.
-This is Larsen 2015's exact NMR-input geometry. Running our full
-ProCS15-equivalent on this PDB and comparing per-atom-type RMSDs to
-Larsen Table 1 is the byte-level proof that our port is correct.
+`1UBQ_pm6dh3plus.pdb` from `/mnt/expansion/larsen_archive/structures/`
+is Larsen 2015's exact NMR-input geometry. Three independent
+comparison signals are available from the ERDA archive (fetched
+2026-05-12):
 
-Expected Ubiquitin RMSDs (from Larsen 2015 Table 1, ProCS15 row):
-- Cα: 1.7 ppm
-- Cβ: 2.5 ppm
-- C': 2.1 ppm
-- Hα: 0.6 ppm
-- HN: 0.7 ppm
-- N:  4.4 ppm
+**Reality check 1 — vs Larsen 2015 Table 1 RMSDs.** Per-atom-type
+RMSDs of our combined output (TripeptideBackboneShieldingResult +
+TripeptideNeighborShieldingResult + LarsenHBondShieldingResult +
+RingCurrent) against published experimental shifts. Larsen's ProCS15
+row for Ubiquitin:
+
+- Cα: 1.7 ppm — Cβ: 2.5 ppm — C': 2.1 ppm
+- Hα: 0.6 ppm — HN: 0.7 ppm — N: 4.4 ppm
+
+Our numbers should land within ~0.1 ppm of these if the port is
+faithful.
+
+**Reality check 2 — vs Larsen's actual ProCS predictor output.** The
+file `predictions/qm/1UBQ_pm6dh3plus.procs` (fetched from ERDA
+`predictions.tar.bz2`) is the per-atom shielding prediction Larsen's
+ProCS predictor produces on this exact PDB. 447 atom-rows
+(BB + Cβ subset; N-term H/HA and Pro-Cβ are sentinel-zero per
+Larsen's predictor convention). Format: whitespace-delimited
+`<idx> <resseq> <RES3> <ATOM> <ELEMENT> <shielding_ppm>`.
+
+Key byte-faithful comparison points:
+- Match our per-atom σ output against `.procs` per-atom σ at the
+  BB+Cβ subset, keyed by `(resseq, atom_name)`.
+- Expect zero residual modulo our methodological differences (PM6
+  geometry tweaks, reference σ proxy vs Larsen's actual free-monomer
+  DFT).
+- Per-atom-type residual distribution becomes part of the thesis
+  methodology report.
+
+Same comparison available for `2OED_pm6dh3plus.pdb` (GB3).
+
+**Reality check 3 — vs 6 other predictors.** `predictions/charmm/`
+holds CharmM, CamShift, PPM, SHIFTX2, SPARTA+ outputs on the same
+proteins. Useful as a methodology-space scatter plot — where do these
+6 published predictors converge or disagree, and where does our
+output land in that space.
+
+Plus the predicted ensembles (`predictions/ensembles/`) on 5 NMR-
+solution structures (1D3Z, 1XQQ, 2K39, 2KOX, 2LJ5) for Stage 2
+trajectory cross-validation later.
+
+**Reality check 0 (baseline) — vs Larsen's own DFT on the same PDB.**
+`proteinnmrlogs.tar.bz2` contains `1UBQ_pm6dh3plus.log` —
+Larsen's Gaussian 09 GIAO OPBE/6-31G(d,p) DFT run on this exact
+geometry (22 days CPU time, normal termination). 1232 atom shielding
+tensors. This is the GROUND TRUTH that ProCS aims to predict.
+Comparing OUR combined-predictor output to THIS DFT output is the
+absolute floor on ProCS-equivalent accuracy — the same comparison
+Larsen reports in Table 1. We can reproduce that exact analysis.
 
 Our numbers should be within 0.1 ppm of these if the port is faithful.
 
-## HBondResult retirement (separate later step)
+## HBondResult and LarsenHBondShieldingResult — sibling calculators
 
-The existing `HBondResult` calculator uses a kernel-style amide H bond
-shape. It is **not modified** during this work. Once
-`LarsenHBondShieldingResult` is producing trusted numbers (post-session
-4), retirement happens in its own atomic step:
+Both calculators stay in the codebase and pipeline forever. They cover
+overlapping physics (amide-H donor for the backbone O acceptor case)
+but use different formulations:
 
-1. Identify all consumers: `python/nmr_extract/_catalog.py` ArraySpec
-   entries, `python/nmr_extract/_protein.py` `HBondGroup`, `learn/`
-   calibration TOML, ridge regression's 55-kernel set, smoke tests.
-2. Confirm `LarsenHBondShieldingResult` subsumes HBondResult's function
-   (amide donor → backbone O acceptor, the textbook H-bond).
-3. Delete `src/HBondResult.{h,cpp}`, remove from CMake, remove catalog
-   entries, remove SDK group, delete tests.
-4. Verify calibration ridge regression still fits sanely (the new
-   calculator should be a strict improvement).
-5. Single atomic commit.
+- `HBondResult`: kernel × η, geometric-only.
+- `LarsenHBondShieldingResult`: DFT grid lookup against Larsen 2015
+  scans.
 
-This is bookkeeping work that needs careful auditing. Not bundled with
-the build sessions.
+Each emits its own NPYs. The Python SDK exposes both groups. The
+calibration pipeline consumes both. The PER-ATOM-TYPE DIFFERENCE
+between them is itself a thesis-reportable output — a coordinate in
+methodology space describing where the kernel-form captures or misses
+geometries that the grid-form encodes faithfully.
+
+Reality-check pattern:
+
+- For amide-H donors with backbone-O acceptors (the only physics class
+  both calculators cover), emit a `larsen_vs_kernel_hb_residual.npy`
+  per-atom Mat3 difference. Expect correlation r > 0.9 on
+  isotropic; geometry-specific residuals are part of the analysis.
+- Hα donors and sidechain-O acceptors are LarsenHBondShieldingResult-
+  only — no comparison signal there.
+
+Per `feedback_methods_accumulate` (memory).
 
 ## Cross-references
 
-- Memory entry `project_hbond_halpha_design` — RETIRED by this document.
+- Memory entry `project_hbond_halpha_design` — PLANNING-SUPERSEDED by this document; the kernel-form `HBondResult` still in the codebase is NOT retired (see `feedback_methods_accumulate`).
 - Memory entry `reference_erda_archive_missing_files` — the archive
   contents lookup.
 - Memory entry `project_larsen_residue_model` — the perception
