@@ -340,22 +340,32 @@ public:
     // amide-H/backbone-O subset. Per-atom-type residuals between the
     // two are themselves thesis-reportable.
     //
-    // larsen_hbond_total_tensor is the SUM over all contribution classes
-    // that apply at this atom (1°HB + 2°HB + 1°HαB + 2°HαB) per Table 2.
-    // The per-class fields hold each contribution separately for ML
-    // feature stratification. Tensors are in protein lab frame (already
-    // rotated from canonical donor frame via RotateTensorToProteinLabFrame).
-    Mat3 larsen_hbond_total_tensor = Mat3::Zero();
-    SphericalTensor larsen_hbond_total_spherical;
-    Mat3 larsen_hbond_1pHB_tensor  = Mat3::Zero();
-    Mat3 larsen_hbond_2pHB_tensor  = Mat3::Zero();
-    Mat3 larsen_hbond_1pHaB_tensor = Mat3::Zero();
-    Mat3 larsen_hbond_2pHaB_tensor = Mat3::Zero();
+    // larsen_hbond_shielding_tensor is the SUM over all contribution
+    // classes that apply at this atom (1°HB + 2°HB + 1°HαB + 2°HαB) per
+    // Larsen Table 2. Per-class fields hold each contribution separately
+    // for ML feature stratification. Tensors are in protein lab frame
+    // (already rotated from canonical donor frame via
+    // RotateTensorToProteinLabFrame).
+    //
+    // Pattern 11 (PATTERNS.md): every tensor is stored as BOTH Mat3
+    // AND SphericalTensor — every Mat3 below has a `*_spherical`
+    // companion. Downstream consumers never decompose at point of use.
+    Mat3            larsen_hbond_shielding_tensor    = Mat3::Zero();
+    SphericalTensor larsen_hbond_shielding_spherical;
+    Mat3            larsen_hbond_1pHB_tensor         = Mat3::Zero();
+    SphericalTensor larsen_hbond_1pHB_spherical;
+    Mat3            larsen_hbond_2pHB_tensor         = Mat3::Zero();
+    SphericalTensor larsen_hbond_2pHB_spherical;
+    Mat3            larsen_hbond_1pHaB_tensor        = Mat3::Zero();
+    SphericalTensor larsen_hbond_1pHaB_spherical;
+    Mat3            larsen_hbond_2pHaB_tensor        = Mat3::Zero();
+    SphericalTensor larsen_hbond_2pHaB_spherical;
     // Cβ diagnostic — Larsen Table 2 says Cβ gets NO HB contribution;
     // we compute and emit it anyway to verify the parser→loader→
     // rotation pipeline produces near-zero where the physics expects
     // it (reality check per feedback_methods_accumulate).
-    Mat3 larsen_hbond_diagnostic_CB = Mat3::Zero();
+    Mat3            larsen_hbond_diagnostic_CB       = Mat3::Zero();
+    SphericalTensor larsen_hbond_diagnostic_CB_spherical;
     // Water term: 2.07 ppm isotropic on amide H atoms that received
     // ZERO H-bond pair contributions (Larsen Δσ_w, NMA-water complex
     // value). Zero for non-HN atoms and for HN atoms with any pair.

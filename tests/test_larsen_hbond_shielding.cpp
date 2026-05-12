@@ -5,11 +5,16 @@
 //     published structure; we expect somewhat fewer with strict
 //     geometric criteria + N-terminus skip + C-terminus 2°-skip).
 //   - All emitted Mat3 tensors are finite.
+//   - larsen_hbond_n_pairs is > 0 on atoms that received contributions
+//     (verifies C1 fix — was silently all-zero).
+//   - larsen_hbond_any_corner_imputed propagates to Table 2 target
+//     atoms (verifies C4 fix — was only marked on donor H / acceptor O).
 //   - Cβ diagnostic tensors are near-zero (Larsen Table 2 says Cβ
 //     gets no HB contribution; non-zero would signal a pipeline bug).
 //   - Δσ_w = 2.07 ppm applied on ≥ 1 amide H atoms that don't form
 //     any H-bond (1UBQ surface residues).
-//   - WriteFeatures emits 6 NPYs.
+//   - WriteFeatures emits 8 NPYs (spherical-packed per-class shieldings
+//     + Cβ diagnostic + water term + count).
 //
 // Per-cell Larsen Table 2 dispatch unit tests cover LarsenContribDispatch
 // directly (no fixture needed).
@@ -175,9 +180,11 @@ TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
     int n_with_total = 0;
     double max_cb_frobenius = 0.0;
     int n_amide_with_water = 0;
+    int n_atoms_with_pair_count = 0;
+    int n_total_pair_increments = 0;
     for (std::size_t i = 0; i < conf.AtomCount(); ++i) {
         const auto& a = conf.AtomAt(i);
-        const auto& m = a.larsen_hbond_total_tensor;
+        const auto& m = a.larsen_hbond_shielding_tensor;
         bool finite = true;
         for (int r = 0; r < 3 && finite; ++r)
             for (int c = 0; c < 3 && finite; ++c)
@@ -191,9 +198,22 @@ TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
         if (cb_norm > max_cb_frobenius) max_cb_frobenius = cb_norm;
         // Water term sweep count.
         if (a.larsen_hbond_water_term > 0.0) ++n_amide_with_water;
+        // n_pairs increment verification (C1 fix).
+        if (a.larsen_hbond_n_pairs > 0) {
+            ++n_atoms_with_pair_count;
+            n_total_pair_increments += a.larsen_hbond_n_pairs;
+        }
     }
     EXPECT_EQ(n_finite_total, n_with_total);
     EXPECT_GT(n_with_total, 0);
+
+    // C1 fix: n_pairs is no longer all-zero. Every atom that received
+    // any tensor contribution should have n_pairs >= 1. Cross-check:
+    // (atoms with contribution) == (atoms with n_pairs > 0).
+    EXPECT_EQ(n_atoms_with_pair_count, n_with_total)
+        << "n_pairs should be non-zero exactly on atoms with contribution";
+    EXPECT_GT(n_total_pair_increments, result->PairsFound())
+        << "summed n_pairs should exceed pair count (multiple atoms per pair)";
 
     // Cβ diagnostic discipline: Larsen Table 2 says Cβ gets no HB
     // contribution. The pipeline computes and emits it anyway — non-
@@ -210,17 +230,18 @@ TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
         << "expected ≥ 1 amide H to receive Δσ_w (no HB partner); "
            "got " << n_amide_with_water;
 
-    // WriteFeatures emits 6 NPYs.
+    // WriteFeatures emits 8 NPYs (spherical-packed per Pattern 11 + 6).
     fs::path tmp = fs::temp_directory_path() / "larsen_hbond_phase1_out";
     fs::create_directories(tmp);
     int n_written = result->WriteFeatures(conf, tmp.string());
-    EXPECT_EQ(n_written, 6);
-    // Verify each NPY exists.
+    EXPECT_EQ(n_written, 8);
     for (const std::string& stem : {
-        "larsen_hbond_total_tensor",
-        "larsen_hbond_1pHB_tensor",
-        "larsen_hbond_2pHB_tensor",
-        "larsen_hbond_diagnostic_CB",
+        "larsen_hbond_shielding",
+        "larsen_hbond_1pHB_shielding",
+        "larsen_hbond_2pHB_shielding",
+        "larsen_hbond_1pHaB_shielding",
+        "larsen_hbond_2pHaB_shielding",
+        "larsen_hbond_diagnostic_CB_shielding",
         "larsen_hbond_water_term",
         "larsen_hbond_count",
     }) {
