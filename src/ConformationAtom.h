@@ -325,6 +325,47 @@ public:
     Vec3 tripeptide_neighbor_residual_vec_next = Vec3::Zero();   // i+1 contribution
     bool tripeptide_neighbor_has_match = false;
 
+    // === Larsen H-bond contributions (LarsenHBondShieldingResult) ===
+    //
+    // Per Larsen 2015 Eq 5: Δσ_HB^i (amide donor) and Δσ_HαB^i (Hα donor)
+    // are H-bond contribution terms read from DFT grid lookups against
+    // the 6 (donor × acceptor) ProCS15 archives. Each H-bond pair
+    // contributes a 1° term (donor-residue effect) and a 2° term
+    // (acceptor's residue i+1, for NMA acceptor only). Per-atom-type
+    // dispatch follows Larsen Table 2; see LarsenContribDispatch in
+    // src/LarsenHBondShieldingResult.h.
+    //
+    // Methods accumulate (feedback_methods_accumulate): these fields
+    // coexist with HBondResult's kernel-form output for the
+    // amide-H/backbone-O subset. Per-atom-type residuals between the
+    // two are themselves thesis-reportable.
+    //
+    // larsen_hbond_total_tensor is the SUM over all contribution classes
+    // that apply at this atom (1°HB + 2°HB + 1°HαB + 2°HαB) per Table 2.
+    // The per-class fields hold each contribution separately for ML
+    // feature stratification. Tensors are in protein lab frame (already
+    // rotated from canonical donor frame via RotateTensorToProteinLabFrame).
+    Mat3 larsen_hbond_total_tensor = Mat3::Zero();
+    SphericalTensor larsen_hbond_total_spherical;
+    Mat3 larsen_hbond_1pHB_tensor  = Mat3::Zero();
+    Mat3 larsen_hbond_2pHB_tensor  = Mat3::Zero();
+    Mat3 larsen_hbond_1pHaB_tensor = Mat3::Zero();
+    Mat3 larsen_hbond_2pHaB_tensor = Mat3::Zero();
+    // Cβ diagnostic — Larsen Table 2 says Cβ gets NO HB contribution;
+    // we compute and emit it anyway to verify the parser→loader→
+    // rotation pipeline produces near-zero where the physics expects
+    // it (reality check per feedback_methods_accumulate).
+    Mat3 larsen_hbond_diagnostic_CB = Mat3::Zero();
+    // Water term: 2.07 ppm isotropic on amide H atoms that received
+    // ZERO H-bond pair contributions (Larsen Δσ_w, NMA-water complex
+    // value). Zero for non-HN atoms and for HN atoms with any pair.
+    double larsen_hbond_water_term = 0.0;
+    // Pair count contributing to this atom (across all 4 classes).
+    int  larsen_hbond_n_pairs = 0;
+    // True iff any of the 8 trilinear corner cells in any grid lookup
+    // serving this atom was an imputed (nearest-neighbour-filled) bin.
+    bool larsen_hbond_any_corner_imputed = false;
+
     // === Predictions (PredictionResult) ===
     double predicted_T0 = 0.0;
     std::array<double, 5> predicted_T2 = {};

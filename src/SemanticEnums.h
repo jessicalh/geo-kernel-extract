@@ -920,6 +920,23 @@ struct AtomSemanticTable {
     constexpr bool IsBackboneAlphaHydrogen() const {
         return backbone_role == BackboneRole::AlphaHydrogen;
     }
+    constexpr bool IsAnyAlphaHydrogen() const {
+        // Covers non-GLY HA (BackboneRole::AlphaHydrogen) AND
+        // GLY HA2/HA3 (Locant::Alpha + BackboneRole::None per Markley).
+        return backbone_role == BackboneRole::AlphaHydrogen
+            || (element == Element::H && locant == Locant::Alpha
+                && backbone_role == BackboneRole::None);
+    }
+    constexpr bool IsSidechainCarboxylateOxygen() const {
+        return element == Element::O
+            && planar_group == PlanarGroupKind::Carboxylate;
+    }
+    constexpr bool IsSidechainAmideOxygen() const {
+        // ASN OD1, GLN OE1 — PlanarGroupKind::SidechainAmide also includes
+        // ND2/NE2 nitrogens. Filter to Element::O to get just the carbonyl O.
+        return element == Element::O
+            && planar_group == PlanarGroupKind::SidechainAmide;
+    }
     constexpr bool IsPolarH() const {
         return polar_h != PolarHKind::NotPolar;
     }

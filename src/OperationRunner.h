@@ -35,6 +35,7 @@ struct AIMNet2Model;  // forward declaration (AIMNet2Result.h)
 struct BondedParameters;  // forward declaration (BondedEnergyResult.h)
 struct GromacsEnergy;     // forward declaration (GromacsEnergyResult.h)
 class  TripeptideDftTable; // forward declaration (TripeptideDftTable.h)
+class  LarsenHBondGrid;    // forward declaration (LarsenHBondGrid.h)
 
 struct RunOptions {
     // Charges — required for real physics.
@@ -98,6 +99,13 @@ struct RunOptions {
     // TripeptideNeighborShieldingResult. Owned by Session for the
     // process lifetime; borrowed here per run.
     const TripeptideDftTable* tripeptide_dft_table = nullptr;
+
+    // LarsenHBondGrid pointer. Borrowed; Session owns.
+    // Null = skip LarsenHBondShieldingResult.
+    // When set, OperationRunner::Run attaches the calculator after the
+    // tripeptide block. Methods accumulate side-by-side with the
+    // kernel-form HBondResult (feedback_methods_accumulate).
+    const LarsenHBondGrid* larsen_hbond_grid = nullptr;
 };
 
 struct RunResult {

@@ -22,6 +22,7 @@
 #include "MutationDeltaResult.h"
 #include "AIMNet2Result.h"
 #include "TripeptideBackboneShieldingResult.h"
+#include "LarsenHBondShieldingResult.h"
 #include "TripeptideNeighborShieldingResult.h"
 #include "AIMNet2PolarisabilityResult.h"
 #include "PlanarGeometryResult.h"
@@ -256,6 +257,16 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         if (!TimedAttach(conf, "TripeptideNeighborShieldingResult", out, [&]{
                 return TripeptideNeighborShieldingResult::Compute(
                     conf, *opts.tripeptide_dft_table); })) return out;
+    }
+
+    // LarsenHBondShieldingResult: Larsen 2015 ProCS15 H-bond terms
+    // via direct DFT grid lookup. Runs in parallel with the kernel-
+    // form HBondResult (methods accumulate; feedback_methods_accumulate).
+    // Phase 1 covers amide-H donor + backbone-O acceptor (DSSP subset).
+    if (opts.larsen_hbond_grid) {
+        if (!TimedAttach(conf, "LarsenHBondShieldingResult", out, [&]{
+                return LarsenHBondShieldingResult::Compute(
+                    conf, *opts.larsen_hbond_grid); })) return out;
     }
 
     // --- Tier 2: DFT comparison (optional) ---

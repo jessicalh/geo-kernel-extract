@@ -173,6 +173,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // is harmless absent the emission surface and required for downstream
     // when the emission lands.
     base_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
+    base_opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
 
     // =========================================================
     // Per-Protein topology-invariant emission (one-shot)
