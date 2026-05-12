@@ -19,9 +19,11 @@ Per archive, emits:
   - `<DONOR><ACCEPTOR>_meta.json` — human-readable metadata.
 
 Reference subtraction (parser provides Δσ = σ_grid − σ_ref):
-  - Reference σ per readout atom = average over the largest r-edge
-    grid points (r ≥ r_max − 1 grid step). Proxy for free-monomer
-    DFT (not in our ERDA archive). Documented limitation.
+  - Reference σ per readout atom = the largest-r tensor at the same
+    nominal (θ, ρ) bin. This orientation-matched r-max surface is a
+    proxy for free-monomer DFT (not in our ERDA archive). A single
+    global r-max average is invalid for full tensors because the
+    anisotropic shielding frame rotates with θ/ρ.
 
 Usage:
   python3 parse_larsen_hbond_grids.py \\
@@ -84,6 +86,14 @@ ARCHIVE_CONFIG = {
     "ALACOO": ("ALA", "Acetate"),
 }
 
+NOMINAL_R_STEP = {
+    "NMA": 0.125,
+    "ALA": 0.200,
+}
+NOMINAL_THETA_STEP_DEG = 10.0
+NOMINAL_RHO_STEP_DEG = 15.0
+NOMINAL_RHO_BINS = int(round(360.0 / NOMINAL_RHO_STEP_DEG))
+
 
 # Readout atom names per donor — these are the atoms Larsen 2015 Table 2
 # specifies as receiving 1° (donor-side) and 2° (acceptor-side) contributions.
@@ -99,12 +109,26 @@ DONOR_READOUTS = {
 }
 
 ACCEPTOR_READOUTS = {
-    # NMA acceptor's atoms (Δσ_2° readouts — representing residue i+1)
-    # The acceptor NMA's amide N+H are read as i+1's N+HN; one methyl's
-    # 3 Hs averaged to represent i+1's HA.
-    "NMA": ["N", "HN", "HA"],  # Hα = methyl-3H-average
-    "HOMe": [],   # No 2° readout — no i+1 mapping for methanol
-    "Acetate": [],  # No 2° readout — no i+1 mapping for acetate
+    # NMA acceptor's atoms (Δσ_2° readouts).
+    # The acceptor NMA's amide group physically straddles two protein
+    # residues j and j+1 (where j = the acceptor residue, j+1 = next):
+    #
+    #   • N, HN  — amide N + H on the N side → represent N(j+1), HN(j+1)
+    #   • CA     — methyl C bonded to N      → represents Cα(j+1)
+    #   • HA     — average of 3 methyl Hs on
+    #              that methyl                → represents Hα(j+1)
+    #   • C      — carbonyl C bonded to the
+    #              acceptor O                 → represents C'(j) (the
+    #                                          acceptor's OWN residue's
+    #                                          carbonyl C, NOT j+1's)
+    #
+    # Per Larsen 2015 Table 2 the 2°HB term lands on N, Cα, C', Hα, HN —
+    # all 5 readouts are needed. Without the CA + C readouts (added
+    # 2026-05-12 after codex review) the C' 2°HB contribution (largest
+    # per Larsen Table 1, ~2.1 ppm RMSD) was silently zero.
+    "NMA": ["N", "CA", "C", "HA", "HN"],
+    "HOMe": [],   # Methanol acceptor: no amide group → no 2°HB readouts.
+    "Acetate": [],  # Acetate acceptor: no amide group → no 2°HB readouts.
 }
 
 
@@ -524,17 +548,31 @@ def perceive_canonical(
             acceptor_third = ns_on_C[0]
         elif cs_on_C:
             acceptor_third = cs_on_C[0]
-        # 2° readouts (acceptor's amide group → represents i+1 backbone)
+        # 2° readouts. Mapping (NMA's amide group straddles residues j and j+1):
+        #   • acceptor_C  = NMA's carbonyl C (bonded to the acceptor O) →
+        #                   represents C'(j), the acceptor's OWN residue's C.
+        #   • acceptor_N  = NMA's amide N → represents N(j+1).
+        #   • acceptor_HN = H on the amide N → represents HN(j+1).
+        #   • acceptor_CA = methyl C bonded to amide N → represents Cα(j+1).
+        #   • acceptor_HA = average of 3 methyl Hs on that methyl → Hα(j+1).
+        acceptor_readout["C"] = acceptor_C
         amide_N = ns_on_C[0] if ns_on_C else None
         if amide_N is not None:
             acceptor_readout["N"] = amide_N
+            # In NMA, amide_N has TWO C neighbours: the methyl-C bonded
+            # to N (the Cα(j+1) analog) AND the carbonyl C bonded to N
+            # (= acceptor_C, the C'(j) analog). Distinguish by methyl-H
+            # count — only the methyl C has 3 bonded Hs; the carbonyl C
+            # has 0. Without this check the loop would overwrite CA with
+            # whichever C comes last in adj[amide_N], producing
+            # acceptor_CA == acceptor_C (identical tensors).
             for x in adj[amide_N]:
                 if elem[x] == "H":
                     acceptor_readout["HN"] = x
-                # The methyl on the N (representing i+1's Cα methyl, Hα stand-in)
                 elif elem[x] == "C":
                     methyl_Hs = [y for y in adj[x] if elem[y] == "H"]
                     if len(methyl_Hs) == 3:
+                        acceptor_readout["CA"] = x
                         acceptor_readout["HA"] = methyl_Hs[0]
                         acceptor_readout["_HA_average"] = tuple(methyl_Hs)
     elif acceptor_kind == "HOMe":
@@ -840,50 +878,116 @@ def build_archive_grid(
     )
 
 
-def compute_reference_and_subtract(grid: ArchiveGrid) -> None:
-    """Reference σ per readout = average over r-max grid edge.
+def _wrap_rho_deg(rho: float) -> float:
+    return ((rho + 180.0) % 360.0) - 180.0
 
-    For each readout atom (donor + acceptor): compute mean σ across grid
-    points where r is at or above (max_r - one_grid_step). Subtract this
-    reference from every grid point's σ → grid stores Δσ.
+
+def _nominal_r_index(donor_kind: str, r: float) -> int:
+    step = NOMINAL_R_STEP[donor_kind]
+    return int(round(r / step))
+
+
+def _nominal_angular_key(theta: float, rho: float) -> tuple[int, int]:
+    theta_idx = int(round(theta / NOMINAL_THETA_STEP_DEG))
+    rho_wrapped = _wrap_rho_deg(rho)
+    rho_idx = int(round((rho_wrapped + 180.0) / NOMINAL_RHO_STEP_DEG))
+    return theta_idx, rho_idx % NOMINAL_RHO_BINS
+
+
+def _angular_distance2(a: tuple[int, int], b: tuple[int, int]) -> float:
+    d_theta = (a[0] - b[0]) * NOMINAL_THETA_STEP_DEG
+    d_rho_bins = abs(a[1] - b[1])
+    d_rho_bins = min(d_rho_bins, NOMINAL_RHO_BINS - d_rho_bins)
+    d_rho = d_rho_bins * NOMINAL_RHO_STEP_DEG
+    return d_theta * d_theta + d_rho * d_rho
+
+
+def _nearest_reference(
+    refs_by_key: dict[tuple[int, int], np.ndarray],
+    key: tuple[int, int],
+) -> tuple[np.ndarray, bool]:
+    if key in refs_by_key:
+        return refs_by_key[key], False
+    if not refs_by_key:
+        raise ValueError("empty angular reference surface")
+    nearest_key = min(refs_by_key, key=lambda k: _angular_distance2(k, key))
+    return refs_by_key[nearest_key], True
+
+
+def compute_reference_and_subtract(grid: ArchiveGrid) -> None:
+    """Subtract an orientation-matched r-max reference surface.
+
+    Full shielding tensors are orientation-dependent in the canonical donor
+    frame. A single average tensor over the whole r-max edge cancels isotropic
+    shielding reasonably, but leaves rotated absolute shielding anisotropy as a
+    fake H-bond T2 signal. Instead, use the largest nominal-r layer as a
+    (theta, rho) reference surface and subtract the tensor from the same
+    nominal angular bin for every grid point.
     """
     if not grid.points:
         return
-    max_r = max(p.r for p in grid.points)
-    rs = sorted({round(p.r, 3) for p in grid.points})
-    grid_step_r = rs[1] - rs[0] if len(rs) >= 2 else 0.2
-    r_threshold = max_r - grid_step_r * 0.5  # only the largest-r layer
-    edge_points = [p for p in grid.points if p.r >= r_threshold]
+
+    max_r_idx = max(_nominal_r_index(grid.donor_kind, p.r) for p in grid.points)
+    edge_points = [
+        p for p in grid.points
+        if _nominal_r_index(grid.donor_kind, p.r) == max_r_idx
+    ]
     if not edge_points:
         raise ValueError(f"no points at r-max edge for {grid.archive_stem}")
 
-    # Reference per readout atom
-    donor_ref: dict[str, np.ndarray] = {}
+    # Reference per readout atom and nominal angular bin.
+    donor_ref_samples: dict[str, dict[tuple[int, int], list[np.ndarray]]] = {}
     for name in grid.donor_readout_names:
-        if name not in edge_points[0].donor_sigma:
-            continue
-        avg = np.mean([p.donor_sigma[name] for p in edge_points if name in p.donor_sigma], axis=0)
-        donor_ref[name] = avg
-    acceptor_ref: dict[str, np.ndarray] = {}
+        donor_ref_samples[name] = defaultdict(list)
+    acceptor_ref_samples: dict[str, dict[tuple[int, int], list[np.ndarray]]] = {}
     for name in grid.acceptor_readout_names:
-        if not edge_points[0].acceptor_sigma:
-            continue
-        if name not in edge_points[0].acceptor_sigma:
-            continue
-        avg = np.mean([p.acceptor_sigma[name] for p in edge_points if name in p.acceptor_sigma], axis=0)
-        acceptor_ref[name] = avg
+        acceptor_ref_samples[name] = defaultdict(list)
+
+    for p in edge_points:
+        key = _nominal_angular_key(p.theta, p.rho)
+        for name in grid.donor_readout_names:
+            if name in p.donor_sigma:
+                donor_ref_samples[name][key].append(p.donor_sigma[name])
+        for name in grid.acceptor_readout_names:
+            if name in p.acceptor_sigma:
+                acceptor_ref_samples[name][key].append(p.acceptor_sigma[name])
+
+    donor_ref: dict[str, dict[tuple[int, int], np.ndarray]] = {}
+    for name, by_key in donor_ref_samples.items():
+        donor_ref[name] = {
+            key: np.mean(vals, axis=0)
+            for key, vals in by_key.items()
+        }
+    acceptor_ref: dict[str, dict[tuple[int, int], np.ndarray]] = {}
+    for name, by_key in acceptor_ref_samples.items():
+        acceptor_ref[name] = {
+            key: np.mean(vals, axis=0)
+            for key, vals in by_key.items()
+        }
 
     # Subtract from every point
+    fallback_count = 0
     for p in grid.points:
-        for name, ref in donor_ref.items():
+        key = _nominal_angular_key(p.theta, p.rho)
+        for name, ref_by_key in donor_ref.items():
             if name in p.donor_sigma:
+                ref, used_fallback = _nearest_reference(ref_by_key, key)
+                fallback_count += int(used_fallback)
                 p.donor_sigma[name] = p.donor_sigma[name] - ref
-        for name, ref in acceptor_ref.items():
+        for name, ref_by_key in acceptor_ref.items():
             if name in p.acceptor_sigma:
+                ref, used_fallback = _nearest_reference(ref_by_key, key)
+                fallback_count += int(used_fallback)
                 p.acceptor_sigma[name] = p.acceptor_sigma[name] - ref
 
+    angular_bin_count = len({
+        _nominal_angular_key(p.theta, p.rho)
+        for p in edge_points
+    })
     print(f"  [{grid.archive_stem}] reference subtracted from "
-          f"{len(edge_points)} r-max edge points (r ≥ {r_threshold:.3f} Å)")
+          f"{len(edge_points)} nominal r-max points "
+          f"(r-index {max_r_idx}, {angular_bin_count} angular bins; "
+          f"{fallback_count} nearest-angular fallbacks)")
 
 
 def emit_grid(grid: ArchiveGrid, out_dir: Path) -> None:
@@ -945,7 +1049,10 @@ def emit_grid(grid: ArchiveGrid, out_dir: Path) -> None:
             "acceptor_readout_atoms": {k: v + 1 for k, v in grid.canon.acceptor_readout.items()
                                        if isinstance(v, int)},
         },
-        "reference_subtraction_method": "r-max-edge average (proxy for free-monomer DFT)",
+        "reference_subtraction_method": (
+            "orientation-matched nominal-r-max theta/rho surface "
+            "(proxy for free-monomer DFT)"
+        ),
     }
     meta_path = out_dir / f"{grid.archive_stem}_meta.json"
     with open(meta_path, "w") as f:

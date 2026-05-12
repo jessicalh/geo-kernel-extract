@@ -344,12 +344,17 @@ TEST_F(LarsenHBondShieldingTest, GlyHaFanOutHitsBothHA) {
 }
 
 
-// Mass-conservation: every DSSP-detected amide-H pair lands in
-// exactly one of {grid-included, grid-skipped-but-dssp-paired} —
-// none silently appear as water-term-unbound. This is the codex M2
-// fix: a C-term acceptor pair that the grid skips should NOT trigger
-// the spurious water-term assignment.
-TEST_F(LarsenHBondShieldingTest, DsspPairBookkeepingMassConservation) {
+// Mass-conservation: every geometric candidate the spatial sweep
+// classified gets accounted for as either a successful pair or a
+// counted skip (codex finding F4, 2026-05-12). No silent drops.
+//
+// Also: an amide H can legitimately carry BOTH a water term (it had
+// no H-bond candidate as DONOR) AND a non-zero n_pairs (it received
+// 2°HB contributions as the i+1 TARGET of someone else's H-bond).
+// Those are independent — donor status and target status are
+// orthogonal. The earlier DSSP-era mutual-exclusion assertion was a
+// bookkeeping artefact, not physics.
+TEST_F(LarsenHBondShieldingTest, GeometricCandidateMassConservation) {
     auto& conf = protein->Conformation();
     auto geo = GeometryResult::Compute(conf);
     ASSERT_TRUE(conf.AttachResult(std::move(geo)));
@@ -364,29 +369,43 @@ TEST_F(LarsenHBondShieldingTest, DsspPairBookkeepingMassConservation) {
         conf, *session.LarsenHBondGridPtr());
     ASSERT_NE(result, nullptr);
 
-    // Every amide H atom that has water_term > 0 must NOT have been
-    // a donor in any DSSP-detected H-bond. We can't directly enumerate
-    // DSSP edges here, but the cross-check is: an atom can't have BOTH
-    // water_term > 0 AND larsen_hbond_n_pairs > 0 — those are mutually
-    // exclusive.
-    int n_double_dipped = 0;
+    // Pairs that reached the grid path and either succeeded or were
+    // counted as skipped. The two counts together are the total of
+    // geometric candidates the dispatch evaluated — none were silently
+    // dropped (cf. codex F4: missing-frame-atoms early-returns used to
+    // bypass the counter).
+    const int n_found   = result->PairsFound();
+    const int n_skipped = result->PairsGridSkipped();
+    EXPECT_GE(n_found,   40) << "1UBQ should yield ≥ 40 grid-paired pairs";
+    EXPECT_GE(n_skipped, 0)  << "skip counter must be non-negative";
+
+    // Water term + n_pairs can both be > 0 on the same amide H without
+    // contradicting the gate. The interesting invariant is that EVERY
+    // amide H with water_term > 0 had ZERO geometric H-bond candidates
+    // as a donor (θ ≥ 90° in 4.2 Å). We can't recompute the per-atom
+    // donor-paired flag from result alone, but we can verify the
+    // overall count is finite + the water term is exactly 2.07 ppm
+    // where it fires.
+    constexpr double kWater_ppm = 2.07;
+    int n_water_total = 0;
     for (std::size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& a = conf.AtomAt(ai);
-        if (a.larsen_hbond_water_term > 0.0 &&
-            a.larsen_hbond_n_pairs > 0) {
-            ++n_double_dipped;
+        if (a.larsen_hbond_water_term > 0.0) {
+            EXPECT_DOUBLE_EQ(a.larsen_hbond_water_term, kWater_ppm)
+                << "water term must be Larsen's calibrated 2.07 ppm "
+                << "isotropic; atom_idx=" << ai;
+            ++n_water_total;
         }
     }
-    EXPECT_EQ(n_double_dipped, 0)
-        << "amide H atoms got BOTH water term AND a pair contribution — "
-           "the dssp_paired bookkeeping was supposed to make these mutually "
-           "exclusive. n_double_dipped=" << n_double_dipped;
-
-    // Counts reported in the log: grid-paired vs DSSP-only-skipped.
-    // The sum is the total DSSP-detected pair count (with bookkeeping
-    // for omitted ones surfaced).
-    EXPECT_GE(result->PairsFound(), 40);
-    EXPECT_GE(result->PairsGridSkipped(), 0);  // may be zero; expose for inspection.
+    EXPECT_EQ(n_water_total, result->AmideHsUnboundWithWater())
+        << "per-atom water_term count must match aggregate";
+    // 1UBQ has ~76 amide Hs; some are solvent-exposed. After the F2
+    // gate fix the water-term count should be > 0 (the earlier eager
+    // gate suppressed it for ~all amide Hs). Bound is intentionally
+    // loose — exact number depends on solvent accessibility geometry.
+    EXPECT_GT(n_water_total, 0)
+        << "expected ≥ 1 solvent-exposed amide H on 1UBQ to receive "
+           "the water term; saw 0 (F2 gate may be too aggressive)";
 }
 
 
@@ -440,4 +459,72 @@ TEST_F(LarsenHBondShieldingTest, GridSchemaValidationPassed) {
     const LarsenHBondGrid* g = session.LarsenHBondGridPtr();
     ASSERT_NE(g, nullptr);
     EXPECT_TRUE(g->IsLoaded());
+}
+
+
+// F1 reality check (codex finding, 2026-05-12): after adding acceptor_CA
+// and acceptor_C grid readouts, Cα and C' atoms in residues that are
+// H-bond targets must accumulate Δσ_2°HB contributions. Before F1,
+// Larsen Table 2 said these atoms get 2°HB but the grid lacked the
+// tensors so they were silently zero — particularly C', the largest
+// 2°HB term per Larsen Table 1 (~2.1 ppm RMSD on Ub).
+TEST_F(LarsenHBondShieldingTest, CaAndCReceive2pHBContributions) {
+    auto& conf = protein->Conformation();
+    auto geo = GeometryResult::Compute(conf);
+    ASSERT_TRUE(conf.AttachResult(std::move(geo)));
+    auto sp = SpatialIndexResult::Compute(conf);
+    ASSERT_TRUE(conf.AttachResult(std::move(sp)));
+    auto en = EnrichmentResult::Compute(conf);
+    ASSERT_TRUE(conf.AttachResult(std::move(en)));
+    auto dssp = DsspResult::Compute(conf);
+    ASSERT_TRUE(conf.AttachResult(std::move(dssp)));
+
+    auto result = LarsenHBondShieldingResult::Compute(
+        conf, *session.LarsenHBondGridPtr());
+    ASSERT_NE(result, nullptr);
+
+    const Protein& protein_ref = conf.ProteinRef();
+    const auto& topo = protein_ref.LegacyAmber();
+
+    int n_ca_with_2pHB = 0;
+    int n_c_with_2pHB  = 0;
+    double max_ca_2pHB = 0.0;
+    double max_c_2pHB  = 0.0;
+    for (std::size_t ai = 0; ai < conf.AtomCount(); ++ai) {
+        const auto& sem = topo.SemanticAt(ai);
+        const auto& a = conf.AtomAt(ai);
+        const double n = a.larsen_hbond_2pHB_tensor.norm();
+        if (n <= 1e-9) continue;
+        if (sem.backbone_role == BackboneRole::AlphaCarbon) {
+            ++n_ca_with_2pHB;
+            max_ca_2pHB = std::max(max_ca_2pHB, n);
+        } else if (sem.backbone_role == BackboneRole::CarbonylCarbon) {
+            ++n_c_with_2pHB;
+            max_c_2pHB = std::max(max_c_2pHB, n);
+        }
+    }
+
+    // 1UBQ has ~149 grid-paired H-bonds; many should land 2°HB on the
+    // i+1 Cα and on the acceptor's own C atom. Loose lower bound to
+    // detect pipeline regressions, not assert exact counts.
+    EXPECT_GT(n_ca_with_2pHB, 10)
+        << "Cα atoms with Δσ_2°HB > 0 should exceed 10 on 1UBQ; F1 "
+           "regression: acceptor_CA may not be wired through.";
+    EXPECT_GT(n_c_with_2pHB,  10)
+        << "C' atoms with Δσ_2°HB > 0 should exceed 10 on 1UBQ; F1 "
+           "regression: acceptor_C may not be wired through. "
+           "C' Δσ_2°HB is Larsen's largest 2°HB term (~2.1 ppm RMSD).";
+
+    // Magnitude sanity. The parser subtracts an orientation-matched
+    // r-max reference surface; if that regresses to a global r-max
+    // average, rotated absolute shielding anisotropy leaks into the
+    // H-bond tensor and 1UBQ produces >200 ppm norms on C'/Cα. Keep a
+    // deliberately loose but load-bearing upper bound here: real 1UBQ
+    // values stay well below this after orientation-matched subtraction.
+    EXPECT_LT(max_ca_2pHB, 100.0)
+        << "Cα Δσ_2°HB max=" << max_ca_2pHB
+        << " ppm — likely reference-surface or tensor-frame regression";
+    EXPECT_LT(max_c_2pHB,  100.0)
+        << "C' Δσ_2°HB max=" << max_c_2pHB
+        << " ppm — likely reference-surface or tensor-frame regression";
 }

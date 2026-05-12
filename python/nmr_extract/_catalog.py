@@ -42,13 +42,24 @@ from ._ring import RingContributions, RingGeometry
 
 @dataclass(frozen=True)
 class ArraySpec:
-    """Metadata for one NPY file produced by the C++ extractor."""
+    """Metadata for one NPY file produced by the C++ extractor.
+
+    `is_feature` is the ML-eligibility flag: True means this array is
+    intended as input to downstream ridge / model fitting; False means
+    it is metadata (counts, water-term-as-isotropic-offset, parser-
+    pipeline diagnostics) or an aggregate that would introduce a
+    structural linear dependence with other arrays already in the
+    feature set (e.g. a `total = sum(per-class)` shielding). Loaders
+    in `learn/` should filter by `is_feature=True` when assembling
+    the regression design matrix. Default True so existing arrays
+    keep their current behaviour."""
     stem: str                   # filename without .npy
     group: str                  # logical group (e.g. "biot_savart")
     wrapper: type               # Python wrapper class
     cols: Optional[int]         # expected last dim (None = variable or 1D)
     required: bool              # False for optional calculators
     description: str
+    is_feature: bool = True
 
 
 # fmt: off
@@ -246,20 +257,62 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ────────────────────────────────────────────────────────────────
     # Larsen H-bond shielding contributions
-    # (src/LarsenHBondShieldingResult.cpp). Phase 1 emits amide-H /
-    # backbone-O subset (DSSP-resolved); Hα donors + sidechain
-    # acceptors land in Phase 2. Methods accumulate side-by-side with
-    # the kernel-form HBondResult — see feedback_methods_accumulate
-    # memory entry. NPY layout is SphericalTensor-packed
-    # (T0 + T1 + T2 = 9 columns) per HBondResult convention.
+    # (src/LarsenHBondShieldingResult.cpp). Direct DFT-grid lookup
+    # against Larsen 2015 ProCS15 6-archive scan (NMA|ALA donor ×
+    # NMA|HOMe|Acetate acceptor). Donor enumeration is spatial:
+    # backbone amide H (HN) and any α-hydrogen (HA, plus GLY HA2/HA3)
+    # within 4.2 Å of any acceptor O classified as one of
+    # BackboneCarbonyl / SidechainCarbonyl / Hydroxyl / Carboxylate.
+    # No DSSP — Larsen's framework is geometric (θ ≥ 90° is the gate),
+    # and the spatial sweep IS the H-bond finder.
+    #
+    # Per-class Mat3 contributions are decomposed per Pattern 11 into
+    # SphericalTensor (T0 + T1 + T2 = 9 columns) and accumulated to
+    # ConformationAtom. Methods accumulate side-by-side with the
+    # kernel-form HBondResult — see feedback_methods_accumulate memory
+    # entry.
+    #
+    # ML ELIGIBILITY NOTE (per audit 2026-05-13):
+    #   `larsen_hbond_shielding` is the ELEMENT-WISE SUM of the four
+    #   per-class tensors. Including it AND the per-class breakdown in
+    #   the same regression introduces a structural linear dependence
+    #   that ridge will silently distribute coefficients across. The
+    #   per-class breakdown is the more informative form (each class
+    #   carries distinct physics per Larsen Table 1) so the aggregate
+    #   is marked `is_feature=False`. Pick one form per regression.
+    #
+    #   `larsen_hbond_diagnostic_CB_shielding` is a parser-pipeline
+    #   reality check (Larsen Table 2 says Cβ gets NO H-bond term; we
+    #   emit anyway to verify the rotation pipeline produces what the
+    #   physics predicts). NOT a feature — `is_feature=False`.
+    #
+    #   `larsen_hbond_count` is per-atom metadata (number of pairs the
+    #   atom received contributions from). Strongly correlated with
+    #   shielding magnitude; not a clean physics feature on its own.
+    #   `is_feature=False`.
+    #
+    #   `larsen_hbond_water_term` IS a real Larsen term (Δσ_w = 2.07
+    #   ppm isotropic on solvent-exposed amide Hs) and stays
+    #   `is_feature=True` even though it's binary 0-or-2.07.
     # ────────────────────────────────────────────────────────────────
-    ArraySpec("larsen_hbond_shielding",                  "larsen_hbond", ShieldingTensor, 9, False, "Σ Larsen H-bond contributions across all four Table 2 classes (1°HB + 2°HB + 1°HαB + 2°HαB) — ppm, lab frame"),
-    ArraySpec("larsen_hbond_1pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HB per Larsen 2015 — primary amide-H donor contribution on donor residue i atoms"),
-    ArraySpec("larsen_hbond_2pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HB per Larsen 2015 — secondary amide-H donor contribution on acceptor's residue i+1 atoms"),
-    ArraySpec("larsen_hbond_1pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HαB per Larsen 2015 — primary Hα donor contribution (Phase 2)"),
-    ArraySpec("larsen_hbond_2pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HαB per Larsen 2015 — secondary Hα donor contribution (Phase 2)"),
-    ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic readout — Larsen Table 2 says Cβ gets NO contribution; we emit anyway as reality check, should be near-zero"),
-    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms that DSSP detected as solvent-exposed (no H-bond partner)"),
-    ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes (diagnostic CB does NOT count here)"),
+    ArraySpec("larsen_hbond_shielding",                  "larsen_hbond", ShieldingTensor, 9, False, "Σ Larsen H-bond contributions across all four Table 2 classes (1°HB + 2°HB + 1°HαB + 2°HαB) — ppm, lab frame. Structurally = sum of the four per-class arrays; NOT a feature.", is_feature=False),
+    ArraySpec("larsen_hbond_1pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HB per Larsen 2015 Table 2 — primary amide-H donor contribution applied to donor residue i atoms"),
+    ArraySpec("larsen_hbond_2pHB_shielding",             "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HB per Larsen 2015 Table 2 — secondary amide-H donor contribution. N/Cα/Hα/HN apply to acceptor residue j+1; C' applies to acceptor's OWN residue j"),
+    ArraySpec("larsen_hbond_1pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_1°HαB per Larsen 2015 Table 2 — primary Hα donor contribution applied to donor residue i atoms"),
+    ArraySpec("larsen_hbond_2pHaB_shielding",            "larsen_hbond", ShieldingTensor, 9, False, "Δσ_2°HαB per Larsen 2015 Table 2 — secondary Hα donor contribution. N/Cα/Hα/HN apply to acceptor residue j+1; C' applies to acceptor's OWN residue j"),
+    ArraySpec("larsen_hbond_diagnostic_CB_shielding",    "larsen_hbond", ShieldingTensor, 9, False, "Cβ diagnostic — Larsen Table 2 says Cβ gets NO contribution; emitted as parser→loader→frame-rotation reality check. NOT a feature.", is_feature=False),
+    ArraySpec("larsen_hbond_water_term",                 "larsen_hbond", np.ndarray,      None, False, "Δσ_w = 2.07 ppm isotropic on amide H atoms with NO geometric H-bond candidate (θ ≥ 90° in 4.2 Å); proxies the NMA+water complex Larsen scanned for solvent-exposed amides"),
+    ArraySpec("larsen_hbond_count",                      "larsen_hbond", np.ndarray,      None, False, "Per-atom count of H-bond pairs that contributed under any of the four Table 2 classes; metadata, NOT a feature.", is_feature=False),
 ]}
 # fmt: on
+
+
+def feature_specs() -> dict[str, ArraySpec]:
+    """Return only the catalog entries marked as ML features.
+
+    Loaders in `learn/` should call this when assembling the regression
+    design matrix so that metadata arrays (counts, diagnostic CB,
+    structural-sum aggregates) are not silently handed to ridge. See
+    the ArraySpec docstring for the `is_feature` semantics.
+    """
+    return {stem: spec for stem, spec in CATALOG.items() if spec.is_feature}

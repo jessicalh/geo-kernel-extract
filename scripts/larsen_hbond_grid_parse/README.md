@@ -50,12 +50,17 @@ the resulting Δσ in pre-interpolated `.npy` files (probably in
 `predictions.tar.bz2` or `proteinnmrlogs.tar.bz2`, both unfetched
 from ERDA).
 
-This parser uses the **r-max grid edge as a proxy reference**: per
-readout atom, reference σ = mean over grid points where r is within
-one grid step of r_max. Subtracted from every grid point's σ to give
-approximate Δσ. Bias is small (~0.1 ppm; H-bond effect at r ≥ 3.8 Å
-for ALA donor and r ≥ 2.875 Å for NMA donor is near-zero per the
-Larsen Table 1 RMSD scale) but documented.
+This parser uses an **orientation-matched r-max surface** as a proxy
+reference: per readout atom and nominal `(θ, ρ)` bin, reference σ is
+the tensor at the largest nominal r layer for that same angular bin.
+That reference is subtracted from every grid point in the same
+nominal angular bin to give approximate Δσ. This matters for full
+tensors: a single global r-max average may cancel isotropic shielding
+reasonably, but it leaves rotated absolute shielding anisotropy behind
+as fake H-bond T2 signal.
+
+Bias remains because the true free-monomer σ is not available, but the
+r-max surface is near zero-contact and preserves tensor orientation.
 
 To replace with actual free-monomer σ later: run Gaussian 09 GIAO
 OPBE/6-311++G(2d,p) on isolated PM6-optimised NMA + Ac-A-NMe, swap

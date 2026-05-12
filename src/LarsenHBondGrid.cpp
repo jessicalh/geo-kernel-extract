@@ -158,13 +158,17 @@ void ValidateSchema(const fs::path& h5_path,
     if (is_nma_acceptor) {
         if (g.acceptor_N.empty())  fail("NMA acceptor missing acceptor_N");
         if (g.acceptor_HN.empty()) fail("NMA acceptor missing acceptor_HN");
+        if (g.acceptor_CA.empty()) fail("NMA acceptor missing acceptor_CA");
+        if (g.acceptor_C.empty())  fail("NMA acceptor missing acceptor_C");
         if (g.acceptor_HA.empty()) fail("NMA acceptor missing acceptor_HA");
     } else {
         if (!g.acceptor_N.empty() ||
             !g.acceptor_HN.empty() ||
+            !g.acceptor_CA.empty() ||
+            !g.acceptor_C.empty() ||
             !g.acceptor_HA.empty()) {
             fail("non-NMA acceptor archive has unexpected acceptor_* data "
-                 "(only NMA acceptor grids have a defined i+1 mapping)");
+                 "(only NMA acceptor grids have a defined j/j+1 mapping)");
         }
     }
 }
@@ -194,6 +198,8 @@ void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g,
 
     g.acceptor_N  = ReadFlatTensorOptional(f, "acceptor_N",  g.Nr, g.Ntheta, g.Nrho);
     g.acceptor_HN = ReadFlatTensorOptional(f, "acceptor_HN", g.Nr, g.Ntheta, g.Nrho);
+    g.acceptor_CA = ReadFlatTensorOptional(f, "acceptor_CA", g.Nr, g.Ntheta, g.Nrho);
+    g.acceptor_C  = ReadFlatTensorOptional(f, "acceptor_C",  g.Nr, g.Ntheta, g.Nrho);
     g.acceptor_HA = ReadFlatTensorOptional(f, "acceptor_HA", g.Nr, g.Ntheta, g.Nrho);
 
     g.validity_mask = ReadValidityMaskOptional(f, g.Nr, g.Ntheta, g.Nrho);
@@ -548,6 +554,8 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     if (g.has_acceptor_readouts) {
         rec.acceptor_N  = interp(g.acceptor_N);
         rec.acceptor_HN = interp(g.acceptor_HN);
+        rec.acceptor_CA = interp(g.acceptor_CA);
+        rec.acceptor_C  = interp(g.acceptor_C);
         rec.acceptor_HA = interp(g.acceptor_HA);
     }
 

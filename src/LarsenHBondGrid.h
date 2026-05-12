@@ -255,8 +255,17 @@ struct LarsenHBondRecord {
     Mat3 donor_HA = Mat3::Zero();
     Mat3 donor_HN = Mat3::Zero();
 
+    // NMA acceptor archives (NMANMA, ALANMA) carry 5 readouts:
+    //   acceptor_N, acceptor_HN, acceptor_CA, acceptor_HA → represent
+    //     residue j+1 (the residue downstream of the H-bond acceptor).
+    //   acceptor_C  → represents C'(j), the acceptor's OWN residue's
+    //     carbonyl C — NOT j+1. Dispatched to a different target by the
+    //     calculator. See Larsen 2015 Table 2 for the per-atom-type
+    //     mapping.
     Mat3 acceptor_N  = Mat3::Zero();
     Mat3 acceptor_HN = Mat3::Zero();
+    Mat3 acceptor_CA = Mat3::Zero();
+    Mat3 acceptor_C  = Mat3::Zero();
     Mat3 acceptor_HA = Mat3::Zero();
 
     bool has_donor_CB         = false;
@@ -299,8 +308,13 @@ struct LarsenHBondDenseGrid {
     std::vector<float> donor_HN;
 
     // Acceptor readouts (NMA acceptor archives only; empty otherwise).
+    // CA + C added 2026-05-12 to faithfully apply Larsen 2015 Table 2:
+    //   acceptor_CA represents Cα(j+1)
+    //   acceptor_C  represents C'(j) (acceptor's OWN residue's C)
     std::vector<float> acceptor_N;
     std::vector<float> acceptor_HN;
+    std::vector<float> acceptor_CA;
+    std::vector<float> acceptor_C;
     std::vector<float> acceptor_HA;
 
     // Validity mask: Nr × Nθ × Nρ uint8, 1 = real DFT, 0 = imputed by
