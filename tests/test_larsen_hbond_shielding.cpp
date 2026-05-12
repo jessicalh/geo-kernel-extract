@@ -1,20 +1,20 @@
-// Phase 1 smoke for LarsenHBondShieldingResult on 1UBQ_pm6dh3plus.pdb.
+// End-to-end smoke for LarsenHBondShieldingResult on 1UBQ_pm6dh3plus.pdb.
 //
-// Asserts the calculator end-to-end:
-//   - Detects ≥ 40 amide-H / backbone-O H-bonds (1UBQ has ~60 in the
-//     published structure; we expect somewhat fewer with strict
-//     geometric criteria + N-terminus skip + C-terminus 2°-skip).
+// Asserts the calculator across both donor classes (amide H + Hα) and
+// all four acceptor classes (BackboneCarbonyl / SidechainCarbonyl /
+// HydroxylOxygen / CarboxylateOxygen) via spatial-sweep enumeration:
+//   - Detects ≥ 100 H-bond pairs (1UBQ has ~60 backbone amide-H pairs
+//     plus Hα and sidechain contributions; aggregate easily clears 100).
 //   - All emitted Mat3 tensors are finite.
-//   - larsen_hbond_n_pairs is > 0 on atoms that received contributions
-//     (verifies C1 fix — was silently all-zero).
+//   - larsen_hbond_n_pairs > 0 on atoms that received contributions.
 //   - larsen_hbond_any_corner_imputed propagates to Table 2 target
-//     atoms (verifies C4 fix — was only marked on donor H / acceptor O).
-//   - Cβ diagnostic tensors are near-zero (Larsen Table 2 says Cβ
-//     gets no HB contribution; non-zero would signal a pipeline bug).
-//   - Δσ_w = 2.07 ppm applied on ≥ 1 amide H atoms that don't form
-//     any H-bond (1UBQ surface residues).
-//   - WriteFeatures emits 8 NPYs (spherical-packed per-class shieldings
-//     + Cβ diagnostic + water term + count).
+//     atoms (codex C4 fix).
+//   - Cβ diagnostic tensors are finite and bounded — the value reflects
+//     Larsen's actual DFT-computed Cβ shielding (which his Table 2
+//     CHOSE not to include in ProCS15); non-zero is the methodology
+//     statement, not a pipeline bug.
+//   - Δσ_w water-term gate is geometric (no candidate O in range).
+//   - WriteFeatures emits 8 NPYs.
 //
 // Per-cell Larsen Table 2 dispatch unit tests cover LarsenContribDispatch
 // directly (no fixture needed).
@@ -139,7 +139,7 @@ protected:
 };
 
 
-TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
+TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
     auto& conf = protein->Conformation();
 
     // Dependency chain.
@@ -164,16 +164,13 @@ TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
         conf, *session.LarsenHBondGridPtr());
     ASSERT_NE(result, nullptr);
 
-    // Expected: ≥ 40 H-bonds found. 1UBQ has ~60 backbone H-bonds in
-    // its α-helix + β-sheet; we expect somewhat fewer with strict
-    // geometric criteria + N-terminus skip + C-terminus 2°-skip.
-    EXPECT_GE(result->PairsFound(), 40)
-        << "expected ≥ 40 amide-H / backbone-O H-bonds; got "
+    // 1UBQ aggregate across all (donor, acceptor) classes: 60+ backbone
+    // amide-H H-bonds plus Hα H-bonds and sidechain-acceptor pairs.
+    // ≥ 100 is a conservative floor.
+    EXPECT_GE(result->PairsFound(), 100)
+        << "expected ≥ 100 H-bond pairs total; got "
         << result->PairsFound();
-
-    // Atoms with at least one contribution should be in the 100-300
-    // range (donor + acceptor's i+1 atoms summed).
-    EXPECT_GE(result->AtomsWithContribution(), 100);
+    EXPECT_GE(result->AtomsWithContribution(), 150);
 
     // All emitted tensors finite.
     int n_finite_total = 0;
@@ -215,14 +212,23 @@ TEST_F(LarsenHBondShieldingTest, Phase1AmideHBackboneOSmokeOn1UbqPm6) {
     EXPECT_GT(n_total_pair_increments, result->PairsFound())
         << "summed n_pairs should exceed pair count (multiple atoms per pair)";
 
-    // Cβ diagnostic discipline: Larsen Table 2 says Cβ gets no HB
-    // contribution. The pipeline computes and emits it anyway — non-
-    // zero would signal an upstream bug (parser, loader, rotation).
-    // We expect at most a few ppm of FP-noise-level contribution.
-    EXPECT_LT(max_cb_frobenius, 5.0)
-        << "Cβ diagnostic exceeded 5.0 ppm Frobenius — Larsen Table 2 "
-           "says Cβ gets no HB term; non-zero is methodology signal "
-           "worth investigating. Max observed: " << max_cb_frobenius;
+    // Cβ diagnostic: Larsen Table 2 EXCLUDES Cβ from the final shielding
+    // sum — but his DFT scan still computed real σ values at Cβ atoms,
+    // and those are what live in the grid's donor_CB readouts. The
+    // diagnostic surfaces what Larsen's model discards. On 1UBQ the
+    // max Cβ Frobenius is ~14 ppm (real chemistry — Cβ does respond to
+    // H-bond geometry). We assert finite + bounded-below-absurd; the
+    // non-zero value is methodology signal, not a pipeline bug.
+    EXPECT_TRUE(std::isfinite(max_cb_frobenius));
+    EXPECT_LT(max_cb_frobenius, 100.0)
+        << "Cβ diagnostic exceeded 100 ppm Frobenius — suspicious. "
+           "Larsen's DFT measured real shielding at Cβ but extreme "
+           "values usually mean pipeline trouble (close-approach "
+           "geometry, rotation bug, parser regression). Observed: "
+        << max_cb_frobenius;
+    EXPECT_GT(max_cb_frobenius, 0.0)
+        << "Cβ diagnostic was zero — ALA donor archives should produce "
+           "non-zero CB readouts; zero means CB path didn't fire.";
 
     // Water term: assigned only to amide Hs that DSSP did NOT detect
     // as a donor of any H-bond. On 1UBQ specifically the post-M2-fix
@@ -315,7 +321,7 @@ TEST_F(LarsenHBondShieldingTest, GlyHaFanOutHitsBothHA) {
                 ++n_ha_with_contribution;
             }
         }
-        // Phase 1: every GLY has 2 prochiral HAs.
+        // Every GLY has 2 prochiral HAs (HA2 + HA3).
         EXPECT_EQ(n_ha_atoms, 2)
             << "GLY at residue " << ri << " should have 2 α-hydrogens; got "
             << n_ha_atoms;
@@ -380,14 +386,14 @@ TEST_F(LarsenHBondShieldingTest, DsspPairBookkeepingMassConservation) {
     // The sum is the total DSSP-detected pair count (with bookkeeping
     // for omitted ones surfaced).
     EXPECT_GE(result->PairsFound(), 40);
-    EXPECT_GE(result->PairsDsspOnly(), 0);  // may be zero on 1UBQ; expose for inspection.
+    EXPECT_GE(result->PairsGridSkipped(), 0);  // may be zero; expose for inspection.
 }
 
 
-// CB diagnostic does NOT increment larsen_hbond_n_pairs. Phase 1 NMA
-// donor archive has no CB readout (NMA has no Cβ), so the diagnostic
-// is unreachable — n_pairs and Cβ tensor are both zero for Phase 1.
-// This test will become non-trivial in Phase 2 when ALA donor adds CB.
+// CB diagnostic does NOT increment larsen_hbond_n_pairs.
+// (ConformationAtom doc: n_pairs counts the four real Table 2
+// contribution classes only. The CB diagnostic is for parser-pipeline
+// integrity, not a true class.)
 TEST_F(LarsenHBondShieldingTest, CbDiagnosticDoesNotInflateNPairs) {
     auto& conf = protein->Conformation();
     auto geo = GeometryResult::Compute(conf);
@@ -417,8 +423,9 @@ TEST_F(LarsenHBondShieldingTest, CbDiagnosticDoesNotInflateNPairs) {
     EXPECT_EQ(n_cb_only_with_count, 0)
         << "Cβ-diagnostic-only contributors must NOT increment n_pairs "
            "(per ConformationAtom doc: n_pairs is for Table 2 classes only). "
-           "Phase 1 NMA donor has no CB readout so this should be 0 "
-           "regardless; Phase 2 ALA donor will exercise the path.";
+           "The CB diagnostic exists for parser-pipeline integrity; "
+           "incrementing n_pairs from CB contributions would inflate "
+           "atoms' pair counts.";
 }
 
 

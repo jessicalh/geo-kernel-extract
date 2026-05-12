@@ -10,43 +10,44 @@
 //   Δσ_HαB^i = Δσ_1°HαB(rHαO, θ, ρ) + Δσ_2°HαB(rOHα, θO, ρO)   (Hα donor)
 //
 // Plus the water term Δσ_w = 2.07 ppm isotropic on amide H atoms that
-// receive no H-bond pair contribution.
+// have no geometric H-bond candidate at all (solvent-exposed amides
+// per Larsen's NMA-water complex DFT).
 //
 // Methods accumulate (feedback_methods_accumulate): this calculator
 // runs side-by-side with the kernel-form HBondResult. Both emit their
 // own NPYs. The kernel-vs-grid per-atom-type residual is itself a
-// methodological coordinate, not redundant.
+// methodological coordinate.
 //
-// PHASE 1 SCOPE (this commit): amide H donor + backbone-O acceptor only
-// (the DSSP-resolved subset, mirroring HBondResult's iteration shape).
-// Phase 2 adds Hα donors via SpatialIndexResult and sidechain
-// acceptors (hydroxyl, carboxylate). The 6-grid LarsenHBondGrid is
-// already loaded for all 8 (donor, acceptor) pairs at Session init.
+// Enumeration: spatial-search-driven over SpatialIndexResult. For each
+// donor candidate (substrate-typed amide H or any α-hydrogen via
+// IsAnyAlphaHydrogen — GLY HA2 and HA3 enumerate as separate donors),
+// find candidate acceptor O atoms within kSpatialCutoff_A. Each
+// candidate O is classified (Backbone / SidechainCarbonyl / Hydroxyl /
+// Carboxylate) via ClassifyAcceptor; the (donor_class, acceptor_class)
+// pair routes to one of 6 Larsen grids. Larsen's framework is
+// geometric (not DSSP-energy-based), and the spatial sweep IS the
+// H-bond finder.
 //
 // Per-atom-type contribution dispatch follows Larsen 2015 Table 2,
-// encoded as a constexpr table below. Cβ row is all-false per Larsen
-// — calculator still emits a diagnostic Cβ tensor (should be near-zero)
-// to verify the parser → loader → rotation pipeline.
+// encoded as `LarsenContribDispatch::Applies` below. Cβ row is
+// intentionally all-false per Larsen — the calculator still emits a
+// diagnostic Cβ tensor (should be near-zero) to verify the parser →
+// loader → rotation pipeline produces what the physics predicts.
 //
 // Output per-atom fields land on ConformationAtom: larsen_hbond_*.
 // NPYs emitted by WriteFeatures.
 //
-// Structural deviation from PATTERNS.md §6 (note for code reviewers):
-// §6 specifies BOTH a "geometric output (natural units)" AND a
-// "shielding_contribution SphericalTensor (ppm)". For grid-lookup
-// calculators like this one, the DFT grid output IS the calibrated
-// ppm shielding directly — there is no separable kernel × parameter
-// stage to factor out. The "geometric output" and "shielding
-// contribution" collapse to one tensor per readout. Pattern 11 (both
-// Mat3 AND SphericalTensor stored) is satisfied at every per-class
-// field on ConformationAtom.
+// Structural deviation from PATTERNS.md §6: grid-lookup calculators
+// like this one have no separable kernel × parameter stage — the DFT
+// grid output IS the calibrated ppm shielding directly. Pattern 11
+// (both Mat3 AND SphericalTensor stored) is satisfied at every
+// per-class field on ConformationAtom.
 //
-// Sign verification (PATTERNS.md §22) is currently transitive: the
-// LarsenHBondGrid loader test `TightHBondGeometryGivesNonzeroHα` locks
-// the loader's sign at a known geometry. The calculator inherits by
-// composition. A calibrated-sign end-to-end test against Larsen's
-// published 1UBQ .procs / DFT log lands in Session 4 (reality-check
-// pass).
+// Sign verification (PATTERNS.md §22): transitive via the
+// LarsenHBondGrid loader test `TightHBondGeometryGivesNonzeroHα`,
+// which locks the loader's sign at a known geometry. End-to-end
+// calibrated-sign test against Larsen's published 1UBQ .procs / DFT
+// log lands in the reality-check pass alongside SDK comparison.
 
 #include "ConformationResult.h"
 #include "LarsenHBondGrid.h"
@@ -127,9 +128,9 @@ public:
 
     std::vector<std::type_index> Dependencies() const override;
 
-    // Factory. Phase 1: iterates DSSP-resolved H-bonds (amide-H donor,
-    // backbone-O acceptor). Returns nullptr only on hard structural
-    // errors (zero atoms, grid not loaded).
+    // Factory. Returns nullptr only on hard structural errors (zero
+    // atoms, grid not loaded). Per-pair classification failures are
+    // logged via GeometryChoiceBuilder and skipped silently.
     static std::unique_ptr<LarsenHBondShieldingResult> Compute(
         ProteinConformation& conf,
         const LarsenHBondGrid& grid);
@@ -156,20 +157,19 @@ public:
 
     // Aggregate stats.
     //
-    // PairsFound returns the count of pairs the grid path successfully
-    // processed (a tensor was computed and accumulated).
-    // PairsDsspOnly returns the count of DSSP-detected pairs that our
-    // grid path SKIPPED (C-terminus acceptor with no N(j+1) for ρ,
-    // out-of-range θ, grid miss, chain boundary). The two together
-    // sum to the total DSSP-detected H-bond pair count for atoms with
-    // both ends present.
+    // PairsFound counts pairs the grid path successfully processed
+    // (geometry computed, grid hit, tensors accumulated).
+    // PairsGridSkipped counts geometric H-bond candidates the grid
+    // path SKIPPED (out-of-range θ, grid miss, no i+1 mapping for the
+    // 2° term on C-terminus acceptor). The two together sum to the
+    // total geometric H-bond candidate count.
     // AmideHsUnboundWithWater counts amide Hs that received the
-    // Δσ_w = 2.07 ppm term — gated on `amide_h_dssp_paired`, NOT on
-    // grid-paired. A grid-skipped pair does NOT trigger spurious
-    // water-term assignment (codex M2 fix).
-    int    PairsFound()        const { return static_cast<int>(pairs_.size()); }
-    int    PairsDsspOnly()     const { return pairs_dssp_only_; }
-    int    AtomsWithContribution() const { return atoms_with_contribution_; }
+    // Δσ_w = 2.07 ppm term — gated on "ZERO geometric H-bond
+    // candidates found." A grid-skipped pair does NOT trigger spurious
+    // water-term assignment.
+    int    PairsFound()             const { return static_cast<int>(pairs_.size()); }
+    int    PairsGridSkipped()       const { return pairs_grid_skipped_; }
+    int    AtomsWithContribution()  const { return atoms_with_contribution_; }
     int    AmideHsUnboundWithWater() const { return amide_hs_unbound_; }
 
 private:
@@ -178,7 +178,7 @@ private:
     std::vector<PairRecord> pairs_;
     int atoms_with_contribution_ = 0;
     int amide_hs_unbound_ = 0;
-    int pairs_dssp_only_ = 0;
+    int pairs_grid_skipped_ = 0;
 };
 
 

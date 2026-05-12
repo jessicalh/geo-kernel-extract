@@ -259,15 +259,13 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                     conf, *opts.tripeptide_dft_table); })) return out;
     }
 
-    // LarsenHBondShieldingResult: Larsen 2015 ProCS15 H-bond terms
-    // via direct DFT grid lookup. Runs in parallel with the kernel-
+    // LarsenHBondShieldingResult: Larsen 2015 ProCS15 H-bond terms via
+    // direct DFT grid lookup. Spatial-enumeration based — H-bond
+    // candidates come from SpatialIndexResult rather than DSSP, which
+    // covers both amide H AND Hα donors uniformly and matches Larsen's
+    // geometric H-bond criterion. Runs in parallel with the kernel-
     // form HBondResult (methods accumulate; feedback_methods_accumulate).
-    // Phase 1 covers amide-H donor + backbone-O acceptor (DSSP subset).
-    // Gated on HasResult<DsspResult>() — same shape as HBondResult
-    // above. When opts.skip_dssp or DSSP::Compute returned nullptr,
-    // we silently skip rather than hard-aborting on Compute's
-    // conf.Result<DsspResult>() lookup.
-    if (opts.larsen_hbond_grid && conf.HasResult<DsspResult>()) {
+    if (opts.larsen_hbond_grid) {
         if (!TimedAttach(conf, "LarsenHBondShieldingResult", out, [&]{
                 return LarsenHBondShieldingResult::Compute(
                     conf, *opts.larsen_hbond_grid); })) return out;
