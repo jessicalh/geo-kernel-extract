@@ -134,13 +134,14 @@ TEST_F(LarsenHBondGridTest, AcceptorReadoutsOnlyForBackboneCarbonyl) {
 
 // Out-of-range r returns is_hit=false.
 TEST_F(LarsenHBondGridTest, OutOfRangeR) {
-    // r = 10 Å is well outside every archive's r_axis (1.5/1.6/1.8 → 4.0).
+    // r = 10 Å is well above every archive's r-axis maximum (4.0 Å).
     auto rec = grid->QueryNearest(
         HBondDonorClass::AlphaHydrogen,
         HBondAcceptorClass::BackboneCarbonyl,
         LarsenHBondGeometry{10.0, 150.0, 0.0});
     EXPECT_FALSE(rec.IsHit());
-    // r = 0.5 Å is below every minimum.
+    // r = 0.5 Å is below every archive's minimum (1.5 Å NMA donor /
+    // 1.6 Å ALA donor on the dense-grid axes).
     auto rec2 = grid->QueryNearest(
         HBondDonorClass::AlphaHydrogen,
         HBondAcceptorClass::BackboneCarbonyl,
@@ -232,6 +233,48 @@ TEST_F(LarsenHBondGridTest, InterpolationProducesFiniteOutput) {
 }
 
 
+// any_corner_imputed propagates from the loaded mask. ALA donor
+// archives have ~3-4% imputed nominal bins (Larsen-failed DFT calcs
+// at close-approach geometries); scanning a coarse grid of queries
+// should encounter at least one imputed cell.
+TEST_F(LarsenHBondGridTest, ImputedCornersAreReported) {
+    int n_imputed = 0;
+    int n_total = 0;
+    for (double r = 1.8; r <= 4.0; r += 0.2) {
+        for (double th = 90.0; th <= 180.0; th += 10.0) {
+            for (double rho = -180.0; rho < 180.0; rho += 30.0) {
+                auto rec = grid->QueryNearest(
+                    HBondDonorClass::AlphaHydrogen,
+                    HBondAcceptorClass::BackboneCarbonyl,
+                    LarsenHBondGeometry{r, th, rho});
+                if (!rec.IsHit()) continue;
+                ++n_total;
+                if (rec.any_corner_imputed) ++n_imputed;
+            }
+        }
+    }
+    EXPECT_GT(n_total, 100) << "expected many hits in coarse scan";
+    EXPECT_GT(n_imputed, 0)
+        << "ALA donor archive should have some imputed cells; "
+           "none reported across " << n_total << " queries — "
+           "validity_mask wiring may be broken.";
+}
+
+
+// At a well-supported geometry, the mask should report no imputed
+// corners. Picks the dead center of the well-populated theta=150°
+// region (NMA donor, all rho values dense).
+TEST_F(LarsenHBondGridTest, CentralGeometryHasNoImputedCorners) {
+    auto rec = grid->QueryNearest(
+        HBondDonorClass::AmideHydrogen,
+        HBondAcceptorClass::BackboneCarbonyl,
+        LarsenHBondGeometry{2.0, 150.0, 0.0});
+    ASSERT_TRUE(rec.IsHit());
+    EXPECT_FALSE(rec.any_corner_imputed)
+        << "central NMA geometry should not hit imputed cells";
+}
+
+
 // Sanity: ALA donor at the "tight near-linear H-bond" geometry should
 // produce a non-zero Hα contribution (Larsen Δσ_HαB is biggest in this
 // region). The parser smoke showed isotropic ~-2 ppm at this geometry.
@@ -249,7 +292,11 @@ TEST_F(LarsenHBondGridTest, TightHBondGeometryGivesNonzeroHα) {
 
 
 // F3: ComputeLarsenDonorFrame returns an orthonormal rotation matrix
-// with z aligned to (anchor → H) and x in the (anchor, third, H) plane.
+// with z aligned to (anchor → H) and x in the (anchor, third, H) plane,
+// pointing in the (H − third) direction projected orthogonal to z.
+// Tests x AND y AND z direction to lock in the sign convention (a
+// y-sign-flipped frame would still be orthonormal with det +1, but
+// would silently swap two coords on every transformed tensor).
 TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
     Vec3 H(1.0, 0.0, 0.0);
     Vec3 anchor(0.0, 0.0, 0.0);    // → z axis goes anchor→H = +x
@@ -268,35 +315,121 @@ TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
     EXPECT_NEAR(z_lab.x(), 1.0, 1e-10);
     EXPECT_NEAR(z_lab.y(), 0.0, 1e-10);
     EXPECT_NEAR(z_lab.z(), 0.0, 1e-10);
+
+    // x-axis is the projection of (H − third) = (1,−1,0) onto the
+    // plane orthogonal to z (which is the +x lab axis), normalized.
+    // The component perpendicular to z is (0,−1,0), so x_lab = (0,−1,0).
+    Vec3 x_lab = R.row(0);
+    EXPECT_NEAR(x_lab.x(), 0.0, 1e-10);
+    EXPECT_NEAR(x_lab.y(), -1.0, 1e-10);
+    EXPECT_NEAR(x_lab.z(), 0.0, 1e-10);
+
+    // y = z × x = (1,0,0) × (0,−1,0) = (0·0 − 0·−1, 0·0 − 1·0,
+    //                                    1·−1 − 0·0) = (0, 0, −1).
+    Vec3 y_lab = R.row(1);
+    EXPECT_NEAR(y_lab.x(), 0.0, 1e-10);
+    EXPECT_NEAR(y_lab.y(), 0.0, 1e-10);
+    EXPECT_NEAR(y_lab.z(), -1.0, 1e-10);
+}
+
+
+// Degenerate ComputeLarsenDonorFrame inputs return identity (with a
+// logged warning) rather than NaN-poisoning the result.
+TEST(LarsenHBondGridHelpers, DonorFrameDegenerateReturnsIdentity) {
+    Vec3 H(1.0, 0.0, 0.0);
+    Vec3 anchor_same(1.0, 0.0, 0.0);   // coincident with H
+    Vec3 third(0.0, 1.0, 0.0);
+    Mat3 R1 = ComputeLarsenDonorFrame(H, anchor_same, third);
+    EXPECT_NEAR((R1 - Mat3::Identity()).norm(), 0.0, 1e-12);
+
+    Vec3 anchor(0.0, 0.0, 0.0);
+    Vec3 third_same(1.0, 0.0, 0.0);    // coincident with H
+    Mat3 R2 = ComputeLarsenDonorFrame(H, anchor, third_same);
+    EXPECT_NEAR((R2 - Mat3::Identity()).norm(), 0.0, 1e-12);
+
+    Vec3 third_collinear(2.0, 0.0, 0.0);  // on the anchor→H line
+    Mat3 R3 = ComputeLarsenDonorFrame(H, anchor, third_collinear);
+    EXPECT_NEAR((R3 - Mat3::Identity()).norm(), 0.0, 1e-12);
 }
 
 
 // F3 + geometry contract: ComputeLarsenHBondGeometry computes the
-// expected angle/dihedral on a synthetic geometry.
-//
-// Setup: donor H at origin, acceptor O at +x (1 Å away), acceptor C
-// at +x_lab + small +y (so H-O-C angle is 180° minus small), third
-// atom at +x_lab + +y2 + 0 (in the same plane → ρ = 0 ish).
-TEST(LarsenHBondGridHelpers, GeometryComputesCorrectAngleAndDihedral) {
-    // Linear chain: H — O — C — third, all on +x axis. θ should be
-    // 180°, ρ undefined (third must be off the chain), so place third
-    // off-axis.
+// expected angle on a synthetic geometry, and θ-range is correct.
+TEST(LarsenHBondGridHelpers, GeometryComputesCorrectAngleRange) {
+    // Bent geometry: H at origin, O at (1,0,0), C at (1,1,0) → angle
+    // at O (between O→H and O→C) is 90°. Third off-plane for a
+    // well-defined dihedral.
     Vec3 H(0.0, 0.0, 0.0);
     Vec3 O(1.0, 0.0, 0.0);
-    Vec3 C(2.0, 0.0, 0.0);
-    Vec3 third(2.5, 1.0, 0.0);  // in xy-plane → ρ = 180° (flat)
-    auto g = ComputeLarsenHBondGeometry(H, O, C, third);
+    Vec3 C_bent(1.0, 1.0, 0.0);
+    Vec3 third_bent(2.0, 1.0, 1.0);
+    auto g = ComputeLarsenHBondGeometry(H, O, C_bent, third_bent);
     EXPECT_NEAR(g.r_angstrom, 1.0, 1e-10);
-    EXPECT_NEAR(g.theta_deg, 180.0, 1e-6);
-    // Flat (planar) geometry: ρ = 180° (trans configuration of third).
-    EXPECT_TRUE(std::abs(std::abs(g.rho_deg) - 180.0) < 1e-6
-                || std::abs(g.rho_deg) < 1e-6)
-        << "planar setup should give ρ = 0° or 180°; got " << g.rho_deg;
+    EXPECT_NEAR(g.theta_deg, 90.0, 1e-6);
+}
 
-    // Bent θ. Place C at (2, 1, 0); ∠ H-O-C should be < 180°.
-    Vec3 C_bent(2.0, 1.0, 0.0);
-    Vec3 third_bent(2.5, 1.5, 0.0);
-    auto g2 = ComputeLarsenHBondGeometry(H, O, C_bent, third_bent);
-    EXPECT_LT(g2.theta_deg, 180.0);
-    EXPECT_GT(g2.theta_deg, 90.0);
+
+// IUPAC dihedral sign is locked in by a non-degenerate analytic case.
+// A future refactor of the dihedral sign (e.g. swapping atan2(y,x) →
+// atan2(-y,x)) would silently re-flip the grid lookup back to Larsen's
+// filename convention, querying the wrong ρ lobe. This test catches that.
+TEST(LarsenHBondGridHelpers, DihedralSignIsIupac) {
+    // H=(0,0,0), O=(1,0,0), C=(1,1,0), third=(2,2,1).
+    //   b1 = O − H = (1,0,0)
+    //   b2 = C − O = (0,1,0)
+    //   b3 = third − C = (1,1,1)
+    //   n1 = b1 × b2 = (0,0,1)
+    //   n2 = b2 × b3 = (1,0,-1)
+    //   m1 = n1 × b2̂ = (0,0,1) × (0,1,0) = (-1,0,0)
+    //   x = n1·n2 = -1, y = m1·n2 = -1
+    //   ρ = atan2(-1, -1) = -135°
+    Vec3 H(0.0, 0.0, 0.0);
+    Vec3 O(1.0, 0.0, 0.0);
+    Vec3 C(1.0, 1.0, 0.0);
+    Vec3 third(2.0, 2.0, 1.0);
+    auto g = ComputeLarsenHBondGeometry(H, O, C, third);
+    EXPECT_NEAR(g.rho_deg, -135.0, 1e-6)
+        << "IUPAC dihedral convention should give -135° at this geometry";
+
+    // Mirror through z-plane: third = (2,2,−1). ρ should flip sign.
+    Vec3 third_mirror(2.0, 2.0, -1.0);
+    auto g2 = ComputeLarsenHBondGeometry(H, O, C, third_mirror);
+    EXPECT_NEAR(g2.rho_deg, +135.0, 1e-6)
+        << "z-mirror should flip dihedral sign";
+}
+
+
+// RotateTensorToProteinLabFrame applies σ_lab = Rᵀ · σ_canonical · R.
+// Identity rotation preserves σ. A 90° z-rotation permutes diagonal
+// entries as expected.
+TEST(LarsenHBondGridHelpers, RotateTensorToProteinLabFrameMath) {
+    Mat3 sigma_canonical;
+    sigma_canonical << 100.0,   0.0,  0.0,
+                         0.0,  50.0,  0.0,
+                         0.0,   0.0, 10.0;
+
+    // Identity: σ_lab == σ_canonical.
+    Mat3 sigma_lab_id = RotateTensorToProteinLabFrame(sigma_canonical,
+                                                      Mat3::Identity());
+    EXPECT_NEAR((sigma_lab_id - sigma_canonical).norm(), 0.0, 1e-12);
+
+    // 90° rotation around z. R has rows [x; y; z] where x = (0,1,0)
+    // (e_x_canonical = e_y_lab), y = (-1,0,0), z = (0,0,1).
+    //   R = [[0, 1, 0], [-1, 0, 0], [0, 0, 1]]
+    //   σ_lab = R.T · σ_canonical · R
+    //         = [[ 50,  0,  0],
+    //            [  0,100,  0],
+    //            [  0,  0, 10]]
+    // (in the lab frame, the principal axis with value 100 is now along
+    //  +y_lab; the 50 is along +x_lab.)
+    Mat3 R_z90;
+    R_z90 <<  0.0,  1.0, 0.0,
+             -1.0,  0.0, 0.0,
+              0.0,  0.0, 1.0;
+    Mat3 sigma_lab_z90 = RotateTensorToProteinLabFrame(sigma_canonical, R_z90);
+    Mat3 expected;
+    expected <<  50.0,   0.0,  0.0,
+                  0.0, 100.0,  0.0,
+                  0.0,   0.0, 10.0;
+    EXPECT_NEAR((sigma_lab_z90 - expected).norm(), 0.0, 1e-10);
 }

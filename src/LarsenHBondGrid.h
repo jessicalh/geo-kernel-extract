@@ -117,11 +117,30 @@
 // approximation). No further subtraction at runtime.
 //
 // Validity mask: each archive carries a uint8 mask (Nr × Nθ × Nρ)
-// marking which nominal-grid cells came from real DFT vs were filled
-// by nearest-neighbour imputation in the Python pre-compute (Larsen
-// 2015 noted some close-approach DFT calcs failed; these are filled
-// for spline continuity). Accessible via IsCellImputed(donor_class,
-// acceptor_class, r, theta, rho) for diagnostic queries.
+// marking which dense-grid cells correspond to nominal bins where
+// real DFT data existed (1) vs nominal bins that were filled by
+// nearest-neighbour imputation at parse time (0). Larsen 2015 noted
+// some close-approach DFT calcs failed; the pre-compute fills them
+// for spline continuity. The dense mask is a nearest-nominal lookup
+// (approximate — a dense cell whose nearest nominal is valid but
+// whose cubic-spline stencil includes imputed nominals is still
+// marked valid). Per-query, the `any_corner_imputed` field on
+// `LarsenHBondRecord` is true iff any of the 8 trilinear corner
+// cells is an imputed bin under this nearest-nominal definition.
+//
+//
+// Tensor rotation contract (CRITICAL for the calculator):
+//
+//   Grid tensors are stored such that
+//     σ_canonical_stored = R_log · σ_log · R_logᵀ
+//   where R_log = ComputeLarsenDonorFrame applied to the log-frame
+//   donor atoms. At runtime, the calculator computes
+//     R_protein = ComputeLarsenDonorFrame(H_p, anchor_p, third_p)
+//   from protein-side atom positions and recovers the protein-lab-
+//   frame tensor via
+//     σ_lab = R_proteinᵀ · σ_canonical · R_protein.
+//   Use `RotateTensorToProteinLabFrame(σ_canonical, R_protein)` so
+//   this multiplication direction is hidden at the call site.
 //
 
 #include "Types.h"
@@ -190,10 +209,31 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
 // per-class mapping table in the file header (Hα/Cα/N for ALA donor;
 // HN/N/C'(i−1) for NMA donor — note the PRECEDING residue's carbonyl C
 // for the amide-H case, NOT this residue's CA).
+//
+// Returns Mat3::Identity if any of the three reference vectors is
+// degenerate (donor_H coincident with donor_anchor or donor_third, or
+// donor_third on the donor_anchor → donor_H line). Logs a warning via
+// OperationLog::Warn. Real protein geometry should never trigger this
+// — it's a guard against misconfigured callers.
 Mat3 ComputeLarsenDonorFrame(
     const Vec3& donor_H_pos,
     const Vec3& donor_anchor_pos,
     const Vec3& donor_third_pos);
+
+
+// Transform a tensor returned by QueryNearest from the CANONICAL DONOR
+// FRAME (in which grid tensors are stored) into the protein lab frame.
+//
+// `R_protein` is the rotation matrix returned by ComputeLarsenDonorFrame
+// applied to the protein-side atom positions. The grid tensors satisfy
+//   σ_canonical = R_log · σ_log · R_logᵀ
+// at parse time, so the corresponding lab-frame tensor is
+//   σ_lab = R_proteinᵀ · σ_canonical · R_protein.
+// Use this helper to avoid hand-rolling the multiplication and getting
+// the direction wrong.
+Mat3 RotateTensorToProteinLabFrame(
+    const Mat3& sigma_canonical,
+    const Mat3& R_protein);
 
 
 // Returned tensors per readout. Each Mat3 is the rotation-invariant

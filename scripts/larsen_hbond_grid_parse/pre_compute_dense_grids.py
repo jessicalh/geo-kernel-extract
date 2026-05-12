@@ -286,23 +286,45 @@ def process_archive(stem: str) -> ArchiveSummary:
         bins_per_readout[full_key] = accum
 
     # 4. Detect holes and convert sums to means.
-    valid = counts > 0
-    n_holes = int((~valid).sum())
-    n_bins_filled = int(valid.sum())
-    n_bins_total = int(valid.size)
+    valid_geom = counts > 0
+    n_holes_geom = int((~valid_geom).sum())
+    n_bins_filled = int(valid_geom.sum())
+    n_bins_total = int(valid_geom.size)
 
     # Per-readout binned-mean tensors. Holes get NaN first then filled later.
+    # The validity_mask we ultimately save intersects geom-validity with
+    # per-readout finiteness: a bin is "real" only if (a) at least one
+    # scattered point landed in it AND (b) the resulting tensor is finite
+    # for every readout used by this archive. If any readout's mean is
+    # NaN/Inf at a "geometric-valid" bin (could happen if an upstream
+    # parser change emits NaN sentinels), we mark the bin imputed so
+    # nearest-neighbour fill kicks in.
     binned_per_readout: dict[str, np.ndarray] = {}
+    valid_readout_intersect = valid_geom.copy()
     for full_key, accum in bins_per_readout.items():
         mean = np.where(
-            valid[..., None, None],
+            valid_geom[..., None, None],
             accum / np.maximum(counts, 1)[..., None, None],
             np.nan,
         )
-        # Fill nearest-neighbour for holes (cubic spline can't tolerate NaN).
-        if n_holes > 0:
-            mean = fill_holes_nearest(mean, valid, r_axis, theta_axis, rho_axis)
+        # Mark as invalid any geometric-valid bin where the tensor is
+        # non-finite (NaN/Inf). Subsequent fill_holes_nearest will fill.
+        per_readout_nan = ~np.all(np.isfinite(mean), axis=(-2, -1))
+        valid_readout_intersect &= ~per_readout_nan
         binned_per_readout[full_key] = mean
+
+    # Fill holes per-readout using the intersected validity, then
+    # cubic-spline-interpolate. This guards the spline from any NaN /
+    # Inf upstream contamination.
+    n_holes = int((~valid_readout_intersect).sum())
+    for full_key, mean in binned_per_readout.items():
+        if n_holes > 0:
+            mean = fill_holes_nearest(
+                mean, valid_readout_intersect, r_axis, theta_axis, rho_axis
+            )
+        binned_per_readout[full_key] = mean
+
+    valid = valid_readout_intersect  # the canonical validity used below
 
     # 5/6. Build dense axes and cubic-spline-interpolate.
     dense_r = np.linspace(

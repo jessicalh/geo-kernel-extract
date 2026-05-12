@@ -38,19 +38,40 @@ constexpr double kAxisBoundTolerance = 1e-9;
 // Read a 5D float32 (Nr × Ntheta × Nrho × 3 × 3) dataset into a flat
 // std::vector<float> (row-major). Returns empty vector if the dataset
 // doesn't exist (some archives don't have CB or acceptor readouts).
+// Validates ALL five dimensions against expected_Nr / Ntheta / Nrho;
+// throws on mismatch (catches regenerated-archive shape drift).
 std::vector<float> ReadFlatTensorOptional(HighFive::File& f,
-                                          const std::string& name) {
+                                          const std::string& name,
+                                          int expected_Nr,
+                                          int expected_Ntheta,
+                                          int expected_Nrho) {
     if (!f.exist(name)) return {};
     auto ds = f.getDataSet(name);
     auto dims = ds.getDimensions();
-    if (dims.size() != 5 || dims[3] != 3 || dims[4] != 3) {
+    if (dims.size() != 5 ||
+        static_cast<int>(dims[0]) != expected_Nr ||
+        static_cast<int>(dims[1]) != expected_Ntheta ||
+        static_cast<int>(dims[2]) != expected_Nrho ||
+        dims[3] != 3 || dims[4] != 3) {
         throw std::runtime_error(
             "LarsenHBondGrid: dataset " + name +
-            " has unexpected shape (expected (Nr, Nθ, Nρ, 3, 3))");
+            " has unexpected shape (expected (" +
+            std::to_string(expected_Nr) + ", " +
+            std::to_string(expected_Ntheta) + ", " +
+            std::to_string(expected_Nrho) +
+            ", 3, 3))");
     }
     std::size_t total = dims[0] * dims[1] * dims[2] * 9;
     std::vector<float> flat(total);
     ds.read(flat.data());
+    // Reject NaN/Inf in stored tensors. Parser/pre-compute should never
+    // emit these; the assertion catches drift in the upstream pipeline.
+    for (float v : flat) {
+        if (!std::isfinite(v)) {
+            throw std::runtime_error(
+                "LarsenHBondGrid: non-finite value in dataset " + name);
+        }
+    }
     return flat;
 }
 
@@ -104,16 +125,16 @@ void LoadOne(const fs::path& h5_path, LarsenHBondDenseGrid& g) {
     g.Ntheta = static_cast<int>(g.theta_axis.size());
     g.Nrho = static_cast<int>(g.rho_axis.size());
 
-    g.donor_N  = ReadFlatTensorOptional(f, "donor_N");
-    g.donor_CA = ReadFlatTensorOptional(f, "donor_CA");
-    g.donor_CB = ReadFlatTensorOptional(f, "donor_CB");
-    g.donor_C  = ReadFlatTensorOptional(f, "donor_C");
-    g.donor_HA = ReadFlatTensorOptional(f, "donor_HA");
-    g.donor_HN = ReadFlatTensorOptional(f, "donor_HN");
+    g.donor_N  = ReadFlatTensorOptional(f, "donor_N",  g.Nr, g.Ntheta, g.Nrho);
+    g.donor_CA = ReadFlatTensorOptional(f, "donor_CA", g.Nr, g.Ntheta, g.Nrho);
+    g.donor_CB = ReadFlatTensorOptional(f, "donor_CB", g.Nr, g.Ntheta, g.Nrho);
+    g.donor_C  = ReadFlatTensorOptional(f, "donor_C",  g.Nr, g.Ntheta, g.Nrho);
+    g.donor_HA = ReadFlatTensorOptional(f, "donor_HA", g.Nr, g.Ntheta, g.Nrho);
+    g.donor_HN = ReadFlatTensorOptional(f, "donor_HN", g.Nr, g.Ntheta, g.Nrho);
 
-    g.acceptor_N  = ReadFlatTensorOptional(f, "acceptor_N");
-    g.acceptor_HN = ReadFlatTensorOptional(f, "acceptor_HN");
-    g.acceptor_HA = ReadFlatTensorOptional(f, "acceptor_HA");
+    g.acceptor_N  = ReadFlatTensorOptional(f, "acceptor_N",  g.Nr, g.Ntheta, g.Nrho);
+    g.acceptor_HN = ReadFlatTensorOptional(f, "acceptor_HN", g.Nr, g.Ntheta, g.Nrho);
+    g.acceptor_HA = ReadFlatTensorOptional(f, "acceptor_HA", g.Nr, g.Ntheta, g.Nrho);
 
     g.validity_mask = ReadValidityMaskOptional(f, g.Nr, g.Ntheta, g.Nrho);
 
@@ -208,6 +229,11 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         // Wrap value to [axis[0], axis[0] + period).
         double step = axis[1] - axis[0];
         double period = axis.back() - axis[0] + step;  // full periodic period
+        // Sanity check: for the H-bond ρ axis the period must be 360°.
+        // If a future grid breaks this invariant the wrap is wrong; bail.
+        if (std::abs(period - 360.0) > 1e-6) {
+            return out;  // idx remains -1 — caller bails on miss
+        }
         double v = value;
         // Bring v into the half-open interval starting at axis[0].
         v = axis[0] + std::fmod(v - axis[0], period);
@@ -302,11 +328,32 @@ Mat3 ComputeLarsenDonorFrame(
     const Vec3& donor_anchor_pos,
     const Vec3& donor_third_pos) {
 
-    // z = normalize(donor_H − donor_anchor)
-    Vec3 z = (donor_H_pos - donor_anchor_pos).normalized();
-    // x = component of (donor_H − donor_third) orthogonal to z, normalized
+    constexpr double kTinyVec = 1e-9;
+
+    // z = normalize(donor_H − donor_anchor). Bail on coincident atoms.
+    Vec3 z_raw = donor_H_pos - donor_anchor_pos;
+    if (z_raw.norm() < kTinyVec) {
+        OperationLog::Warn("ComputeLarsenDonorFrame",
+            "donor_H and donor_anchor coincide; returning identity rotation");
+        return Mat3::Identity();
+    }
+    Vec3 z = z_raw.normalized();
+
+    // x = component of (donor_H − donor_third) orthogonal to z, normalized.
+    // Bail if third is coincident with H or lies on the anchor→H line
+    // (the orthogonal component is then zero).
     Vec3 v3 = donor_H_pos - donor_third_pos;
+    if (v3.norm() < kTinyVec) {
+        OperationLog::Warn("ComputeLarsenDonorFrame",
+            "donor_H and donor_third coincide; returning identity rotation");
+        return Mat3::Identity();
+    }
     Vec3 x_raw = v3 - (v3.dot(z)) * z;
+    if (x_raw.norm() < kTinyVec) {
+        OperationLog::Warn("ComputeLarsenDonorFrame",
+            "donor_third on the anchor→H line; returning identity rotation");
+        return Mat3::Identity();
+    }
     Vec3 x = x_raw.normalized();
     Vec3 y = z.cross(x);
 
@@ -317,6 +364,13 @@ Mat3 ComputeLarsenDonorFrame(
     R.row(1) = y;
     R.row(2) = z;
     return R;
+}
+
+
+Mat3 RotateTensorToProteinLabFrame(
+    const Mat3& sigma_canonical,
+    const Mat3& R_protein) {
+    return R_protein.transpose() * sigma_canonical * R_protein;
 }
 
 
@@ -394,6 +448,7 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
     AxisLookup lth = LookupAxis(g.theta_axis, geom.theta_deg, /*periodic=*/false);
     if (lth.idx < 0) return rec;  // θ out of range
     AxisLookup lrho = LookupAxis(g.rho_axis, rec.rho_deg, /*periodic=*/true);
+    if (lrho.idx < 0) return rec;  // ρ axis malformed (e.g. period != 360°)
 
     auto interp = [&](const std::vector<float>& flat) -> Mat3 {
         if (flat.empty()) return Mat3::Zero();
@@ -419,12 +474,11 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
         rec.acceptor_HA = interp(g.acceptor_HA);
     }
 
-    // Update snapped coords to the interpolation cell base for diagnostics.
-    rec.r_angstrom = g.r_axis[lr.idx]
-                     + lr.frac * (g.r_axis[lr.idx_next] - g.r_axis[lr.idx]);
-    rec.theta_deg = g.theta_axis[lth.idx]
-                    + lth.frac * (g.theta_axis[lth.idx_next] - g.theta_axis[lth.idx]);
-    // rho_deg stays as the wrapped value computed above.
+    // r/θ remain the (clamped, in-range) query values; ρ is the
+    // canonical wrapped form set above. (Earlier code recomputed
+    // r/θ from axis * frac which round-tripped the FP-clamped
+    // input — equivalent but confusing; we now leave them as the
+    // canonical query coords.)
 
     rec.any_corner_imputed = AnyCornerImputed(
         g, lr.idx, lth.idx, lrho.idx, lr.idx_next, lth.idx_next, lrho.idx_next);
