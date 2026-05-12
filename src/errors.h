@@ -39,6 +39,7 @@ enum ErrorCode : std::int32_t {
     kSessionCalculatorConfigBad  = 0x0003,
     kSessionValidationFailed     = 0x0004,
     kSessionTripeptideDbLoadFailed = 0x0005,
+    kSessionLarsenHBondGridLoadFailed = 0x0006,
 
     // Framework: TrajectoryProtein construction
     kTprReadFailed               = 0x0010,

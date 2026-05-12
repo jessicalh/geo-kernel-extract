@@ -20,6 +20,7 @@ std::string RuntimeEnvironment::ff14sb_params_;
 std::string RuntimeEnvironment::tmpDir_;
 std::string RuntimeEnvironment::bmrb_atom_nom_;
 std::string RuntimeEnvironment::tensorcs15_dsn_;
+std::string RuntimeEnvironment::larsen_hbond_grid_dir_;
 std::string RuntimeEnvironment::processGuid_;
 bool RuntimeEnvironment::loaded_ = false;
 
@@ -97,7 +98,8 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
 
     std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir,
-                toml_bmrb_atom_nom, toml_tensorcs15_dsn;
+                toml_bmrb_atom_nom, toml_tensorcs15_dsn,
+                toml_larsen_hbond_grid_dir;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -139,6 +141,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
                 else if (key == "ff14sb_params") toml_ff14sb = val;
                 else if (key == "tmpdir")        toml_tmpdir = val;
                 else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
+                else if (key == "larsen_hbond_grids") toml_larsen_hbond_grid_dir = val;
             } else if (current_section == "databases") {
                 if (key == "tensorcs15") toml_tensorcs15_dsn = val;
             }
@@ -223,6 +226,17 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (env) tensorcs15_dsn_ = env;
     }
 
+    // larsen_hbond_grids directory: TOML → env var → empty. Empty is
+    // OK; Session::LoadLarsenHBondGrid will skip. Fs-check the path
+    // and only adopt it when it exists (mirrors bmrb_atom_nom).
+    if (!toml_larsen_hbond_grid_dir.empty() &&
+        fs::exists(toml_larsen_hbond_grid_dir)) {
+        larsen_hbond_grid_dir_ = toml_larsen_hbond_grid_dir;
+    } else {
+        const char* env = std::getenv("NMR_LARSEN_HBOND_GRIDS");
+        if (env && fs::exists(env)) larsen_hbond_grid_dir_ = env;
+    }
+
     // --- Mark loaded ---
 
     loaded_ = true;
@@ -241,6 +255,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         " tmpdir=" + status(tmpDir_) +
         " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
         " tensorcs15_dsn=" + status(tensorcs15_dsn_) +
+        " larsen_hbond_grids=" + status(larsen_hbond_grid_dir_) +
         " guid=" + processGuid_);
 }
 
@@ -271,5 +286,6 @@ const std::string& RuntimeEnvironment::Ff14sbParams()  { RequireLoaded(); return
 const std::string& RuntimeEnvironment::TmpDir()        { RequireLoaded(); return tmpDir_; }
 const std::string& RuntimeEnvironment::BmrbAtomNom()   { RequireLoaded(); return bmrb_atom_nom_; }
 const std::string& RuntimeEnvironment::TensorCs15Dsn() { RequireLoaded(); return tensorcs15_dsn_; }
+const std::string& RuntimeEnvironment::LarsenHBondGridDir() { RequireLoaded(); return larsen_hbond_grid_dir_; }
 
 }  // namespace nmr

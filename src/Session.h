@@ -33,6 +33,10 @@ class TripeptideDftTable;  // defined in TripeptideDftTable.h;
                            // forward-declared so consumers don't need
                            // libpq-fe.h transitively.
 
+class LarsenHBondGrid;     // defined in LarsenHBondGrid.h;
+                           // forward-declared so consumers don't need
+                           // HighFive headers transitively.
+
 class Session {
 public:
     Session();
@@ -64,6 +68,14 @@ public:
     // Compute when absent.
     Status LoadTripeptideDftTable();
 
+    // Optional. Load the 6 dense Larsen H-bond DFT grids (HDF5) and
+    // own the LarsenHBondGrid for the Session lifetime. The directory
+    // comes from RuntimeEnvironment::LarsenHBondGridDir. Empty dir →
+    // kOk with grid left null; calculators that depend on the grid
+    // check HasLarsenHBondGrid() and return nullptr at Compute when
+    // absent.
+    Status LoadLarsenHBondGrid();
+
     // Accessors. AIMNet2Model pointer is the persistent resource; the
     // other subsystems (RuntimeEnvironment, CalculatorConfig,
     // OperationLog) continue to be read via their existing static
@@ -81,6 +93,14 @@ public:
         return tripeptide_dft_table_ != nullptr;
     }
 
+    // Larsen H-bond grid accessor. Read-only after load.
+    const LarsenHBondGrid* LarsenHBondGridPtr() const {
+        return larsen_hbond_grid_.get();
+    }
+    bool HasLarsenHBondGrid() const {
+        return larsen_hbond_grid_ != nullptr;
+    }
+
     // Error string corresponding to the last non-ok status from one
     // of this Session's Load calls. Empty when status was ok.
     const std::string& LastError() const { return last_error_; }
@@ -88,6 +108,7 @@ public:
 private:
     std::unique_ptr<AIMNet2Model> aimnet2_model_;
     std::unique_ptr<TripeptideDftTable> tripeptide_dft_table_;
+    std::unique_ptr<LarsenHBondGrid> larsen_hbond_grid_;
     std::string last_error_;
 };
 

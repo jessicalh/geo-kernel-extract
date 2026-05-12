@@ -263,6 +263,7 @@ add_library(nmr_shielding
     src/TripeptideBackboneShieldingResult.cpp
     src/TripeptideNeighborShieldingResult.cpp
     src/LarsenResidue.cpp
+    src/LarsenHBondGrid.cpp
 )
 
 target_include_directories(nmr_shielding PUBLIC
@@ -466,6 +467,7 @@ nmr_test_target(structure_tests
     tests/test_larsen_residue_against_source_log.cpp
     tests/test_larsen_residue_ser_sidechain.cpp
     tests/test_larsen_residue_wl_ambiguity.cpp
+    tests/test_larsen_hbond_grid.cpp
 )
 
 # ── Trajectory tests (~5 min) — AMBER trajectory loader (fleet_amber/) ─

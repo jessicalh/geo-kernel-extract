@@ -2,6 +2,7 @@
 
 #include "AIMNet2Result.h"        // AIMNet2Model::Load
 #include "CategoryInfoProjection.h"
+#include "LarsenHBondGrid.h"
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 #include "TripeptideDftTable.h"
@@ -65,6 +66,31 @@ Status Session::LoadTripeptideDftTable() {
     }
     OperationLog::Info(LogCalcOther, "Session::LoadTripeptideDftTable",
                        "tensorcs15 connection open");
+    return kOk;
+}
+
+
+Status Session::LoadLarsenHBondGrid() {
+    const std::string& dir = RuntimeEnvironment::LarsenHBondGridDir();
+    if (dir.empty()) {
+        OperationLog::Info(LogCalcOther, "Session::LoadLarsenHBondGrid",
+            "no larsen_hbond_grids path — grid not loaded "
+            "(LarsenHBondShieldingResult will skip).");
+        return kOk;
+    }
+    try {
+        larsen_hbond_grid_ =
+            std::make_unique<LarsenHBondGrid>(dir);
+    } catch (const std::exception& e) {
+        last_error_ =
+            "Session::LoadLarsenHBondGrid: " + std::string(e.what());
+        OperationLog::Error("Session::LoadLarsenHBondGrid",
+                            last_error_);
+        larsen_hbond_grid_.reset();
+        return kSessionLarsenHBondGridLoadFailed;
+    }
+    OperationLog::Info(LogCalcOther, "Session::LoadLarsenHBondGrid",
+                       "6 dense H-bond grids loaded from " + dir);
     return kOk;
 }
 

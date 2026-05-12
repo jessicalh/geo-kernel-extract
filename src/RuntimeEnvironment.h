@@ -27,6 +27,11 @@
 //                    Consumed by Session::LoadTripeptideDftTable.
 //                    Empty = TripeptideBackboneShieldingResult cannot
 //                    run; the calculator returns nullptr at Compute.
+//   larsen_hbond_grids — directory holding the 6 dense.h5 grids
+//                    produced by scripts/larsen_hbond_grid_parse/.
+//                    Read from top-level `larsen_hbond_grids` key in
+//                    the TOML. Consumed by Session::LoadLarsenHBondGrid.
+//                    Empty = LarsenHBondShieldingResult cannot run.
 //
 // MOPAC is linked (libmopac.so), not a binary path. tleap IS a
 // binary path (subprocess invocation by AmberPreparedChargeSource).
@@ -53,6 +58,7 @@ public:
     static const std::string& TmpDir();
     static const std::string& BmrbAtomNom();
     static const std::string& TensorCs15Dsn();
+    static const std::string& LarsenHBondGridDir();
 
     // Verify live tools exist. Returns list of missing (name + path).
     static std::vector<std::string> Verify();
@@ -74,6 +80,7 @@ private:
     static std::string tmpDir_;
     static std::string bmrb_atom_nom_;
     static std::string tensorcs15_dsn_;
+    static std::string larsen_hbond_grid_dir_;
     static std::string processGuid_;
     static bool loaded_;
 };
