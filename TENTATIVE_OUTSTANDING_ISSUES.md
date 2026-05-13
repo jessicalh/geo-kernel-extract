@@ -270,6 +270,31 @@ Entry conventions:
 - **Action:** Pre-MDP-lock audit on a 2-protein subset; histogram Δθ
   between independent ring normals.
 
+### OI-044 — `BsShieldingTimeSeriesTrajectoryResult::Finalize` latent UB
+
+- **Verified:** `src/BsShieldingTimeSeriesTrajectoryResult.cpp:62-88`
+  uses the same swap-then-leave-n_frames pattern that produced the
+  Finalize-idempotency UB in `TripeptideBackbone/NeighborShieldingTimeSeries`
+  (fixed at `bb657f5`). Bs's pattern reads `src[f]` on empty
+  `per_atom_shielding_[i]` on any second `Finalize` call.
+- **Source:** discovered during pilot cleanup; same code shape, fixed
+  in the Tripeptide TRs via bounds-check, not yet propagated to Bs.
+- **Action:** apply the same bounds-check pattern when Bs is next
+  touched. No test currently exercises double-Finalize on Bs, so the
+  bug is latent.
+
+### OI-045 — 10 more trajectory-scope TRs queued for the Tripeptide / Larsen bundle
+
+- **Status:** queued for next session per the
+  `project_tripeptide_tr_pilot_landed` memory entry.
+- **Inventory:** BB residual_vec (Vec3), BB method_tag (int), Neighbor
+  residual_vec_prev/next (Vec3 ×2), Larsen 1pHB/2pHB/1pHaB/2pHaB
+  shielding (SphericalTensor ×4), Larsen water_term (scalar),
+  Larsen count (int).
+- **Discipline:** sequential foreground (per user 2026-05-13). Begin
+  with `TripeptideBackboneResidualVecTimeSeries` to establish the
+  Vec3-buffer + 3-component H5 emission pattern.
+
 ### OI-043 — `tests/data/fleet_amber/_backup_round{1,2}_*` disk hygiene
 
 - **Verified:** Both `_backup_round1_15ns_2.5nm_padding_20260501/` and
