@@ -85,7 +85,7 @@ def write_minimal_topology_sidecar(
     n_saturated_rings: int = 0,
     protein_id: str = "test_fixture",
 ) -> None:
-    """Write the four files ``TopologySidecar::WriteFeatures`` emits.
+    """Write the five files ``TopologySidecar::WriteFeatures`` emits.
 
     Defaults to an empty topology: zero bonds, zero rings, zero
     ring memberships. The axis-size declarations in the manifest

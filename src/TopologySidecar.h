@@ -22,7 +22,7 @@
 // state. Called once per Protein from each entry point alongside the
 // CategoryInfoProjection call.
 //
-// All four output files are INVARIANT per-protein -- topology does not
+// All five output files are INVARIANT per-protein -- topology does not
 // change between conformations or trajectory frames. Calling
 // WriteFeatures multiple times per Protein on the same output_dir is
 // idempotent; the second write overwrites with bit-identical content.
@@ -43,9 +43,10 @@ class Protein;
 
 class TopologySidecar {
 public:
-    // Emit bonds.npy, rings.npy, ring_membership.npy, and
+    // Emit residues.npy, bonds.npy, rings.npy, ring_membership.npy, and
     // extraction_manifest.json to ``output_dir``. Returns the number of
-    // files written. Idempotent; safe to call multiple times.
+    // files written (5 on full success). Idempotent; safe to call
+    // multiple times.
     //
     // ``protein_id`` is recorded in the manifest. Empty string is
     // acceptable; callers typically pass fs::path(output_dir).filename().
