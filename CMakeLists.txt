@@ -213,6 +213,7 @@ add_library(nmr_shielding
     src/Session.cpp
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
+    src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -667,6 +668,47 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
     highfive
 )
 gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+# ============================================================================
+# TripeptideBackboneShieldingTimeSeries tests
+#
+# Discipline + integration tests for the FO-pattern dense-buffer TR
+# that captures the per-frame tripeptide-backbone DFT shielding tensor
+# (Larsen 2015 σ_BB^i) into a /trajectory/tripeptide_bb_shielding_
+# time_series/ H5 group. Mirrors gromacs_streaming_tests's
+# BondLengthStats discipline trio (Frame0Semantics, FinalizeIdempotency,
+# H5RoundTrip) against the 1P9J_5801 fleet_amber fixture, plus a
+# 4-frame synthetic unit test that drives Compute/Finalize directly
+# on hand-set tripeptide_bb_shielding_spherical values, and an
+# integration fingerprint test guarded on the tensorcs15 DSN.
+# ============================================================================
+
+add_executable(tripeptide_bb_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_bb_shielding_time_series.cpp
+)
+target_compile_definitions(tripeptide_bb_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+# Same HDF5 1.10 header / 1.10 .so hazard as gromacs_streaming_tests
+# above — the per-TR H5 round-trip read goes through HighFive in this
+# TU.
+target_include_directories(tripeptide_bb_shielding_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+# PRE_TEST discovery so the test binary isn't executed at build time
+# (the build-host LD_LIBRARY_PATH does not match the test ENVIRONMENT —
+# OpenSSL/libcrypto resolution diverges between build and test).
+gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
 # (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).

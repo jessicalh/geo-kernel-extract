@@ -31,6 +31,8 @@
 // Concrete TrajectoryResults populating the canonical configurations.
 #include "BsWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
+#include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
+#include "TripeptideBackboneShieldingResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
@@ -126,6 +128,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GromacsFramePullResult));
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
+    c.RequireConformationResult(typeid(TripeptideBackboneShieldingResult));
 
     // Attach order is dispatch order. BsWelford runs first so
     // downstream TRs that cross-read its fields
@@ -137,6 +140,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BsShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
