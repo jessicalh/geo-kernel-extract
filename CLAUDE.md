@@ -40,6 +40,24 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   PdbFileReader bypass so every loader path canonicalises.
 - **FramePdbEmitter** (commits `6639f88`, `85c1637`). Opt-in per-frame
   PDB writer for trajectory runs; production-validated on 1P9J.
+- **Topology sidecar** (commits `f2781da`, `dc50917`, 2026-05-13).
+  Per-protein invariant topology projections alongside every nmr_extract
+  run: extends `atoms_category_info.npy` with 6 new fields (`chain_id`,
+  `residue_number`, `insertion_code`, `parent_atom_index`,
+  `ff_atom_type_string`, `equivalence_class`); new `TopologySidecar`
+  class emits `residues.npy` + `bonds.npy` + `rings.npy` +
+  `ring_membership.npy` + `extraction_manifest.json` (codex
+  TOPOLOGY_SIDECAR_CONTRACT). `ArraySpec` gains `native_axis` / `irreps`
+  / `units` / `sign_convention` / `tensor_rank` / `parity` / `mechanism`
+  fields populated for all ~108 CATALOG entries (resolves OI-016).
+  Python SDK enforces invariants in `load()`: required-file check +
+  manifest-vs-actual axis sizes + bond endpoint range + ring membership
+  refs + residues.atom_count.sum() == n_atoms. Malformed exports fail
+  loud. `learn/extract.py` STAGE1_AUDIT_OUTPUTS extended; `learn/src/
+  secondary/loader.py` no longer silently skips on FileNotFoundError /
+  ValueError. R-side regex-mechanism refactor (OI-120) is the
+  downstream consumer.
+
 - **CategoryInfoProjection slice** (commits `8accdb6`, `e1b5bcc`,
   `d1ad904`, 2026-05-08). One structured NPY per protein
   (`atoms_category_info.npy`, ~31 fields) carrying the categorical

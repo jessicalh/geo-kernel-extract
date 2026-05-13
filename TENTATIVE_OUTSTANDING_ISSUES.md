@@ -124,16 +124,11 @@ Entry conventions:
 
 ### OI-016 — H5 schema lacks irrep / units / sign-convention metadata
 
-- **Verified:** `python/nmr_extract/_catalog.py` has no `irreps`,
-  `units`, or `sign_convention` fields on `ArraySpec`.
-  `fileformat/analysis_file.cpp:701-748` writes a small ad-hoc set
-  of unit strings on energy/pressure/temperature/radians and nothing
-  tensor-side. The Python SDK (`_catalog.py` + `_tensors.py`)
-  encapsulates the contract today; the gap only bites a raw-H5
-  consumer that bypasses the SDK. None exist yet.
-- **Source:** `spec/plan/bones/I_O_AND_SCHEMA_2026-05-09.md` §§4–5.
-- **Action:** Pay down when an external (non-SDK) consumer appears.
-  Zero-cost extension to `ArraySpec` + H5 emit.
+- **Resolved:** commits `f2781da` + `dc50917` (2026-05-13 topology
+  sidecar landing). `ArraySpec` gained `native_axis`, `irreps`,
+  `units`, `sign_convention`, `tensor_rank`, `parity`, `mechanism`,
+  populated for all ~108 CATALOG entries. R-side regex-mechanism
+  refactor (OI-120) is the downstream consumer.
 
 ### OI-017 — Prochiral methylene H disambiguation in `LarsenResidue`
 
@@ -384,8 +379,10 @@ Entry conventions:
 
 ## Resolved (kept for provenance)
 
-(Empty. New resolutions land here with the resolving commit hash and
-the original OI-NNN.)
+- **OI-016** — `ArraySpec` irrep / units / sign-convention metadata.
+  Resolved by topology sidecar landing 2026-05-13 (`f2781da` +
+  `dc50917`). Still listed under "Open decisions" above with the
+  resolved note in place.
 
 ---
 
