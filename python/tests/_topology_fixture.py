@@ -39,6 +39,7 @@ _RESIDUES_DTYPE = np.dtype([
     ("is_aromatic", "i1"),
     ("is_titratable", "i1"),
     ("has_amide_h", "i1"),
+    ("is_xpro_context", "i1"),
 ])
 
 _BONDS_DTYPE = np.dtype([
@@ -115,12 +116,25 @@ def write_minimal_topology_sidecar(
             residues[i]["next_residue_index"] = i + 1 if i + 1 < n_residues else -1
     np.save(out_dir / "residues.npy", residues)
 
-    np.save(out_dir / "bonds.npy", np.zeros(n_bonds, dtype=_BONDS_DTYPE))
+    bonds = np.zeros(n_bonds, dtype=_BONDS_DTYPE)
+    for i in range(n_bonds):
+        bonds[i]["bond_index"] = i
+        bonds[i]["atom_index_a"] = min(i, max(0, n_atoms - 1))
+        bonds[i]["atom_index_b"] = min(i + 1, max(0, n_atoms - 1))
+    np.save(out_dir / "bonds.npy", bonds)
 
     rings = np.zeros(n_aromatic_rings + n_saturated_rings, dtype=_RINGS_DTYPE)
-    # Mark the saturated rows -- aromatic rows come first, saturated next.
-    for i in range(n_aromatic_rings, n_aromatic_rings + n_saturated_rings):
+    # Aromatic rows come first, saturated rows next. ring_id is the
+    # absolute row; native_axis_index is contiguous within each kind.
+    for i in range(n_aromatic_rings):
+        rings[i]["ring_id"] = i
+        rings[i]["ring_kind"] = 0
+        rings[i]["native_axis_index"] = i
+    for si in range(n_saturated_rings):
+        i = n_aromatic_rings + si
+        rings[i]["ring_id"] = i
         rings[i]["ring_kind"] = 1
+        rings[i]["native_axis_index"] = si
     np.save(out_dir / "rings.npy", rings)
 
     np.save(out_dir / "ring_membership.npy",

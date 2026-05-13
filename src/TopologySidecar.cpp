@@ -120,10 +120,11 @@ constexpr const char* kResiduesDtypeDescr =
     " ('is_proline', 'i1'),"
     " ('is_aromatic', 'i1'),"
     " ('is_titratable', 'i1'),"
-    " ('has_amide_h', 'i1')]";
+    " ('has_amide_h', 'i1'),"
+    " ('is_xpro_context', 'i1')]";
 
 constexpr size_t kResidueRecordSize =
-    4 + 2 + 4 + 1 + 1 + 4 + 4 + 1 + 1 + 1 + 4 + 4 + 1 + 1 + 4 + 1 + 1 + 1 + 1;
+    4 + 2 + 4 + 1 + 1 + 4 + 4 + 1 + 1 + 1 + 4 + 4 + 1 + 1 + 4 + 1 + 1 + 1 + 1 + 1;
 
 void PackFixedString(unsigned char* dst, size_t dst_size,
                        const std::string& src,
@@ -218,6 +219,12 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         row[off++] = (r.type != AminoAcid::Unknown && r.IsAromatic()) ? 1 : 0;
         row[off++] = (r.type != AminoAcid::Unknown && r.IsTitratable()) ? 1 : 0;
         row[off++] = (r.type != AminoAcid::Unknown && r.HasAmideH()) ? 1 : 0;
+        // is_xpro_context: this residue's i+1 is PRO. Relevant for the
+        // (i, i+1) peptide-bond omega — X→Pro permits cis isomerism that
+        // standard non-Pro context does not. -1 next means chain end.
+        const bool x_pro =
+            (next_idx >= 0 && next_type == static_cast<int8_t>(AminoAcid::PRO));
+        row[off++] = x_pro ? 1 : 0;
 
         if (off != kResidueRecordSize) {
             std::fprintf(stderr,
@@ -467,6 +474,7 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     j << "{\n";
     j << "  \"schema_version\": \"1.0\",\n";
     j << "  \"extractor\": \"nmr_extract\",\n";
+    j << "  \"extractor_version\": \"0.2.0\",\n";
     j << "  \"generated_at_utc\": \"" << Iso8601UtcNow() << "\",\n";
     j << "  \"protein_id\": \"" << protein_id << "\",\n";
     j << "  \"topology\": {\n";
@@ -474,6 +482,36 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     j << "    \"has_atom_semantic\": " << (has_substrate ? "true" : "false") << ",\n";
     j << "    \"has_ff_atom_types\": " << (has_ff_types ? "true" : "false") << ",\n";
     j << "    \"has_ff_mass\": " << (has_mass ? "true" : "false") << "\n";
+    j << "  },\n";
+    // enum_vocab — integer-to-name mapping for the typed enum columns in
+    // residues.npy / bonds.npy / rings.npy so a consumer reading
+    // `bond_order == 4` knows it's `Peptide` without grepping the source.
+    // Per codex contract `enum_vocab_refs`. Mirrors:
+    //   ResidueTerminalState (Residue.h), BondOrder / BondCategory /
+    //   RingTypeIndex / AminoAcid (Types.h).
+    j << "  \"enum_vocab\": {\n";
+    j << "    \"terminal_state\": {\"0\":\"Internal\",\"1\":\"NTerminus\","
+      <<                          "\"2\":\"CTerminus\",\"3\":\"NAndCTerminus\","
+      <<                          "\"4\":\"Unknown\"},\n";
+    j << "    \"bond_order\": {\"0\":\"Single\",\"1\":\"Double\",\"2\":\"Triple\","
+      <<                       "\"3\":\"Aromatic\",\"4\":\"Peptide\",\"5\":\"Unknown\"},\n";
+    j << "    \"bond_category\": {\"0\":\"PeptideCO\",\"1\":\"PeptideCN\","
+      <<                          "\"2\":\"BackboneOther\",\"3\":\"SidechainCO\","
+      <<                          "\"4\":\"Aromatic\",\"5\":\"Disulfide\","
+      <<                          "\"6\":\"SidechainOther\",\"7\":\"Unknown\"},\n";
+    j << "    \"ring_kind\": {\"0\":\"aromatic\",\"1\":\"saturated\"},\n";
+    j << "    \"ring_type_index\": {\"0\":\"PheBenzene\",\"1\":\"TyrPhenol\","
+      <<                            "\"2\":\"TrpBenzene\",\"3\":\"TrpPyrrole\","
+      <<                            "\"4\":\"TrpPerimeter\",\"5\":\"HisImidazole\","
+      <<                            "\"6\":\"HidImidazole\",\"7\":\"HieImidazole\","
+      <<                            "\"8\":\"ProPyrrolidine\"},\n";
+    j << "    \"residue_type\": {\"0\":\"ALA\",\"1\":\"ARG\",\"2\":\"ASN\","
+      <<                         "\"3\":\"ASP\",\"4\":\"CYS\",\"5\":\"GLN\","
+      <<                         "\"6\":\"GLU\",\"7\":\"GLY\",\"8\":\"HIS\","
+      <<                         "\"9\":\"ILE\",\"10\":\"LEU\",\"11\":\"LYS\","
+      <<                         "\"12\":\"MET\",\"13\":\"PHE\",\"14\":\"PRO\","
+      <<                         "\"15\":\"SER\",\"16\":\"THR\",\"17\":\"TRP\","
+      <<                         "\"18\":\"TYR\",\"19\":\"VAL\",\"20\":\"Unknown\"}\n";
     j << "  },\n";
     j << "  \"axis_sizes\": {\n";
     j << "    \"atom\": " << protein.AtomCount() << ",\n";

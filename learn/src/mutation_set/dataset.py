@@ -6,6 +6,7 @@ through their respective modules, applies normalization.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,7 +92,7 @@ class CalibrationDataset(Dataset):
             result, err = _build_one(features_dir / pid, cfg, layout)
             if result is None:
                 if err:
-                    print(f"  skip {pid}: {err}")
+                    print(f"  skip {pid}: {err}", file=sys.stderr)
                 continue
             n = len(result["target"])
             all_s.append(result["scalars"])

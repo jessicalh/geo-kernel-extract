@@ -187,10 +187,18 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // the NPY emits AMBER names as the IUPAC/BMRB fallback with
     // provenance=MissLogged for every atom.
     if (!output_dir_.empty()) {
-        CategoryInfoProjection::WriteFeatures(tp.ProteinRef(),
-                                               output_dir_.string());
-        TopologySidecar::WriteFeatures(tp.ProteinRef(),
-                                        output_dir_.string());
+        const int cat = CategoryInfoProjection::WriteFeatures(
+            tp.ProteinRef(), output_dir_.string());
+        const int topo = TopologySidecar::WriteFeatures(
+            tp.ProteinRef(), output_dir_.string());
+        if (cat != 1 || topo != 5) {
+            fprintf(stderr, "ERROR: Trajectory incomplete sidecar emission "
+                    "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
+                    cat, topo);
+            // Trajectory::Run cannot return mid-flight without restructuring;
+            // log the loud error and continue. Downstream SDK load() will
+            // fail loud on missing files, so the corruption surfaces there.
+        }
     }
 
     // =========================================================

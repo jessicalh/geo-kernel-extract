@@ -74,8 +74,16 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
     }
 
     fs::create_directories(spec.output_dir);
-    CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
-    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+    {
+        const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+        const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+        if (cat != 1 || topo != 5) {
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
+                    "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
+                    cat, topo);
+            return 1;
+        }
+    }
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -119,8 +127,16 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
     }
 
     fs::create_directories(spec.output_dir);
-    CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
-    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+    {
+        const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+        const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+        if (cat != 1 || topo != 5) {
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
+                    "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
+                    cat, topo);
+            return 1;
+        }
+    }
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -166,8 +182,16 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
     }
 
     fs::create_directories(spec.output_dir);
-    CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
-    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+    {
+        const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+        const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
+        if (cat != 1 || topo != 5) {
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
+                    "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
+                    cat, topo);
+            return 1;
+        }
+    }
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -226,8 +250,16 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     }
 
     fs::create_directories(spec.output_dir);
-    CategoryInfoProjection::WriteFeatures(*wt_build.protein, spec.output_dir);
-    TopologySidecar::WriteFeatures(*wt_build.protein, spec.output_dir);
+    {
+        const int cat = CategoryInfoProjection::WriteFeatures(*wt_build.protein, spec.output_dir);
+        const int topo = TopologySidecar::WriteFeatures(*wt_build.protein, spec.output_dir);
+        if (cat != 1 || topo != 5) {
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
+                    "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
+                    cat, topo);
+            return 1;
+        }
+    }
     int arrays = ConformationResult::WriteAllFeatures(wt_conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",

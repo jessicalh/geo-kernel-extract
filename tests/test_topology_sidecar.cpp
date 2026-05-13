@@ -293,6 +293,37 @@ TEST_F(TopologySidecarTest, ManifestAxisSizesExactlyMatchProtein) {
     EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().AromaticRingCount() +
                                   protein_->LegacyAmber().SaturatedRingCount()),
               ExtractAxisSize(j, "ring"));
+
+    // ring_membership axis size must match the sum of per-ring vertex counts.
+    std::size_t expected_membership = 0;
+    const auto& rt = protein_->LegacyAmber().Rings();
+    for (std::size_t i = 0; i < rt.AromaticCount(); ++i) {
+        expected_membership += rt.AromaticAt(i).atom_indices.size();
+    }
+    for (std::size_t i = 0; i < rt.SaturatedCount(); ++i) {
+        expected_membership += rt.SaturatedAt(i).atom_indices.size();
+    }
+    EXPECT_EQ(static_cast<int>(expected_membership),
+              ExtractAxisSize(j, "ring_membership"));
+}
+
+TEST_F(TopologySidecarTest, ManifestEnumVocabPresent) {
+    const std::string j = ReadFileText(dir_ / "extraction_manifest.json");
+    ASSERT_FALSE(j.empty());
+
+    // enum_vocab block resolves codex's enum_vocab_refs requirement.
+    // Consumers reading bond_order == 4 need to know that's Peptide.
+    EXPECT_NE(j.find("\"enum_vocab\""), std::string::npos);
+    EXPECT_NE(j.find("\"terminal_state\""), std::string::npos);
+    EXPECT_NE(j.find("\"bond_order\""), std::string::npos);
+    EXPECT_NE(j.find("\"bond_category\""), std::string::npos);
+    EXPECT_NE(j.find("\"ring_kind\""), std::string::npos);
+    EXPECT_NE(j.find("\"ring_type_index\""), std::string::npos);
+    EXPECT_NE(j.find("\"residue_type\""), std::string::npos);
+    // Spot-check specific value bindings.
+    EXPECT_NE(j.find("\"4\":\"Peptide\""), std::string::npos);
+    EXPECT_NE(j.find("\"0\":\"PheBenzene\""), std::string::npos);
+    EXPECT_NE(j.find("\"14\":\"PRO\""), std::string::npos);
 }
 
 TEST_F(TopologySidecarTest, ManifestAxisAlignmentClaimsAreCorrect) {

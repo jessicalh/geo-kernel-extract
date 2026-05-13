@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -206,7 +207,11 @@ def run(cfg: Config, max_proteins: int = 0):
 
         try:
             p = nmr_extract.load(features / pid)
-        except Exception:
+        except (FileNotFoundError, ValueError) as e:
+            # Loud skip: strict SDK fails closed on missing or malformed
+            # topology sidecars; print so fleet runs are auditable.
+            print(f"[orca_dia_para] SKIP {pid}: {type(e).__name__}: {e}",
+                  file=sys.stderr)
             continue
 
         if p.delta is None or p.delta.shielding is None:

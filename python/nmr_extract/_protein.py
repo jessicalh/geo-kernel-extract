@@ -335,12 +335,14 @@ class CategoryInfo:
 
     @property
     def parent_atom_index(self) -> np.ndarray:
-        """For hydrogens, the index of the bonded heavy atom. -1 otherwise.
+        """For element 1 (H) atoms, the bonded heavy atom's index.
 
-        Reflects ``Atom::parent_atom_index`` (Atom.h:29). The C++ side
-        uses ``SIZE_MAX`` as the non-hydrogen sentinel; the projection
-        maps that to ``-1`` so consumers can mask via
-        ``info.parent_atom_index >= 0``.
+        All other elements read ``-1``. Reflects
+        ``Atom::parent_atom_index`` (Atom.h:29); ``SIZE_MAX`` is mapped
+        to ``-1`` at projection time. Hydrogens whose parent wasn't
+        assigned (rare; happens for isolated atoms) also read ``-1`` —
+        cross-check ``element == 1`` to distinguish unassigned-H from
+        heavy-atom-by-convention.
         """
         return self._data["parent_atom_index"]
 
@@ -490,6 +492,16 @@ class Residues:
     @property
     def has_amide_h(self) -> np.ndarray:
         return self._data["has_amide_h"] != 0
+
+    @property
+    def is_xpro_context(self) -> np.ndarray:
+        """True when residue ``i+1`` is PRO (X→Pro peptide context).
+
+        Relevant for the ``(i, i+1)`` ω dihedral — X→Pro permits cis
+        isomerism that standard non-Pro context does not. False at
+        chain ends (``next_residue_index == -1``).
+        """
+        return self._data["is_xpro_context"] != 0
 
 
 class Bonds:
@@ -1056,7 +1068,9 @@ def _wrap(spec, data: np.ndarray):
 
 
 def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
-                                    protein_id: str) -> None:
+                                    protein_id: str,
+                                    atom_residue_index: np.ndarray | None = None
+                                    ) -> None:
     """Cross-check declared axis sizes + reference integrity.
 
     Codex contract first-pass validation gates: the manifest declares
@@ -1091,6 +1105,74 @@ def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
     check_axis("ring", tg.rings.n_rings)
     check_axis("ring_membership", tg.ring_membership.n_rows)
 
+    # Residue's atom_count sums to total atom count (each atom belongs
+    # to exactly one residue in our model).
+    if tg.residues.n_residues > 0:
+        if (tg.residues.atom_count < 0).any():
+            raise ValueError(
+                f"{protein_id}: residues.npy atom_count contains negative values")
+        total_atoms_from_residues = int(tg.residues.atom_count.sum())
+        if total_atoms_from_residues != n_atoms:
+            raise ValueError(
+                f"{protein_id}: residues.npy atom_count sums to "
+                f"{total_atoms_from_residues}; atom axis size is {n_atoms}")
+
+    if atom_residue_index is not None:
+        ari = np.asarray(atom_residue_index)
+        if len(ari) != n_atoms:
+            raise ValueError(
+                f"{protein_id}: residue_index.npy has {len(ari)} rows; "
+                f"atom axis size is {n_atoms}")
+        if tg.residues.n_residues == 0 and n_atoms != 0:
+            raise ValueError(
+                f"{protein_id}: residue axis is empty but atom axis has "
+                f"{n_atoms} rows")
+        if tg.residues.n_residues > 0:
+            bad_atom_residue = (
+                (ari < 0) | (ari >= tg.residues.n_residues)
+            )
+            if bad_atom_residue.any():
+                raise ValueError(
+                    f"{protein_id}: residue_index.npy references outside "
+                    f"the residue axis [0, {tg.residues.n_residues})")
+            atom_counts = np.bincount(
+                ari.astype(np.intp), minlength=tg.residues.n_residues)
+            if not np.array_equal(atom_counts, tg.residues.atom_count):
+                raise ValueError(
+                    f"{protein_id}: residue_index.npy counts do not match "
+                    "residues.npy atom_count")
+
+    def check_row_identity(label: str, values: np.ndarray) -> None:
+        expected = np.arange(len(values), dtype=values.dtype)
+        if not np.array_equal(values, expected):
+            raise ValueError(
+                f"{protein_id}: {label} must equal its row index for every row")
+
+    check_row_identity("residues.npy residue_index", tg.residues.residue_index)
+    check_row_identity("bonds.npy bond_index", tg.bonds.bond_index)
+    check_row_identity("rings.npy ring_id", tg.rings.ring_id)
+
+    # Atom-axis residue_index.npy references the residue axis.
+    ri = np.asarray(tg.residues.residue_index)
+    if tg.residues.n_residues > 0:
+        bad_prev = (
+            (tg.residues.prev_residue_index != -1) &
+            ((tg.residues.prev_residue_index < 0) |
+             (tg.residues.prev_residue_index >= tg.residues.n_residues))
+        )
+        bad_next = (
+            (tg.residues.next_residue_index != -1) &
+            ((tg.residues.next_residue_index < 0) |
+             (tg.residues.next_residue_index >= tg.residues.n_residues))
+        )
+        if bad_prev.any() or bad_next.any():
+            raise ValueError(
+                f"{protein_id}: residues.npy prev/next residue references "
+                f"outside the residue axis [0, {tg.residues.n_residues})")
+        if np.any(ri < 0):
+            raise ValueError(
+                f"{protein_id}: residues.npy residue_index contains negative rows")
+
     # Bond endpoints reference the atom axis.
     bonds = tg.bonds
     if bonds.n_bonds > 0:
@@ -1115,15 +1197,6 @@ def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
                 f"{protein_id}: ring_membership.npy carries ring_id outside "
                 f"the ring axis [0, {tg.rings.n_rings})")
 
-    # Residue's atom_count sums to total atom count (each atom belongs
-    # to exactly one residue in our model).
-    if tg.residues.n_residues > 0:
-        total_atoms_from_residues = int(tg.residues.atom_count.sum())
-        if total_atoms_from_residues != n_atoms:
-            raise ValueError(
-                f"{protein_id}: residues.npy atom_count sums to "
-                f"{total_atoms_from_residues}; atom axis size is {n_atoms}")
-
     # Fused-ring partner index must reference a valid ring (-1 = none).
     rings = tg.rings
     if rings.n_rings > 0:
@@ -1133,6 +1206,37 @@ def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
             raise ValueError(
                 f"{protein_id}: rings.npy has fused_partner_ring_id outside "
                 f"[-1, {rings.n_rings})")
+
+        parent = rings.parent_residue_index
+        bad_parent = (
+            (parent < 0) | (parent >= tg.residues.n_residues)
+        )
+        if bad_parent.any():
+            raise ValueError(
+                f"{protein_id}: rings.npy parent_residue_index outside the "
+                f"residue axis [0, {tg.residues.n_residues})")
+
+        for kind, axis_name in ((0, "aromatic_ring"), (1, "saturated_ring")):
+            mask = rings.ring_kind == kind
+            native = np.asarray(rings.native_axis_index[mask])
+            expected = np.arange(len(native), dtype=native.dtype)
+            if not np.array_equal(native, expected):
+                raise ValueError(
+                    f"{protein_id}: rings.npy native_axis_index for "
+                    f"{axis_name} must be contiguous 0..N-1")
+
+        valid_kinds = (rings.ring_kind == 0) | (rings.ring_kind == 1)
+        if not valid_kinds.all():
+            raise ValueError(
+                f"{protein_id}: rings.npy ring_kind must be 0 aromatic or "
+                "1 saturated")
+
+        membership_counts = np.bincount(
+            rm.ring_id.astype(np.intp), minlength=rings.n_rings)
+        if not np.array_equal(membership_counts, rings.atom_count):
+            raise ValueError(
+                f"{protein_id}: rings.npy atom_count does not match "
+                "ring_membership.npy rows per ring")
 
 
 def load(path: str | Path) -> Protein:
@@ -1296,7 +1400,8 @@ def load(path: str | Path) -> Protein:
         ring_membership=RingMembership(available["ring_membership"]),
         manifest=manifest_obj,
     )
-    _validate_topology_invariants(topology_group, n_atoms, protein_id)
+    _validate_topology_invariants(
+        topology_group, n_atoms, protein_id, available.get("residue_index"))
 
     # AIMNet2 (optional)
     aimnet2 = None
