@@ -13,6 +13,21 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # ============================================================================
+# RUNPATH: prepend /usr/lib/x86_64-linux-gnu so the system libpq +
+# libssl + libcrypto trio resolves consistently. Other linked libs
+# (libmopac, libreducelib, libgromacs_mpi, libtorch, libnvrtc, ...)
+# bring micromamba and torch lib dirs along as RUNPATH entries
+# automatically; without this prepend the loader picks micromamba's
+# libpq → micromamba's libssl (OpenSSL 3.2-3.6 symbol requirements)
+# but system libcrypto (3.0 symbols only), and the load fails. We
+# don't USE OpenSSL — libpq's NEEDED entries pull libssl/libcrypto
+# at process startup regardless of runtime config — but the two
+# halves of the SSL pair must come from the same install.
+list(PREPEND CMAKE_BUILD_RPATH "/usr/lib/x86_64-linux-gnu")
+list(PREPEND CMAKE_INSTALL_RPATH "/usr/lib/x86_64-linux-gnu")
+set(CMAKE_BUILD_RPATH_USE_ORIGIN OFF)
+
+# ============================================================================
 # Dependencies
 # ============================================================================
 
@@ -24,8 +39,31 @@ find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
 # read from ~/.nmr_tools.toml [databases].tensorcs15. No DSN configured
 # means TripeptideBackboneShieldingResult skips at Compute time;
 # linking is unconditional so the calculator code is always present.
-find_package(PostgreSQL REQUIRED)
-message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARIES}")
+# PostgreSQL libpq — explicit system path. We do NOT use find_package
+# here because find_package picks up micromamba's libpq, which pulls
+# in a newer libssl (OpenSSL 3.2-3.6 symbols) that doesn't match the
+# system's libcrypto (3.0 symbols). Loading the test binary fails. We
+# use system libpq instead, which pulls system libssl + libcrypto
+# consistently. We don't USE SSL at all (DSN is a Unix socket) but
+# libpq's NEEDED entries pull libssl/libcrypto at process startup
+# regardless of runtime config — so the versions must match.
+set(PostgreSQL_LIBRARY "/usr/lib/x86_64-linux-gnu/libpq.so"
+    CACHE FILEPATH "System libpq (avoids micromamba OpenSSL mismatch)")
+set(PostgreSQL_INCLUDE_DIR "/usr/include/postgresql"
+    CACHE PATH "System libpq headers")
+if(NOT EXISTS ${PostgreSQL_LIBRARY})
+    message(FATAL_ERROR "System libpq not found at ${PostgreSQL_LIBRARY}; "
+                        "install libpq-dev or set PostgreSQL_LIBRARY explicitly")
+endif()
+if(NOT EXISTS ${PostgreSQL_INCLUDE_DIR}/libpq-fe.h)
+    message(FATAL_ERROR "System libpq headers not found at "
+                        "${PostgreSQL_INCLUDE_DIR}; install libpq-dev")
+endif()
+add_library(PostgreSQL::PostgreSQL UNKNOWN IMPORTED)
+set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
+    IMPORTED_LOCATION "${PostgreSQL_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${PostgreSQL_INCLUDE_DIR}")
+message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARY} (explicit system path)")
 if(NOT dssp_FOUND)
     # Manual fallback for machines without dssp cmake config (Ubuntu 22.04).
     # Requires libdssp.a + dssp.hpp installed to /usr/local, cifpp from apt.
@@ -395,12 +433,25 @@ endif()
 set(NMR_NVRTC_LIB_DIR "${NMR_NVIDIA_CU13_DIR}/lib")
 message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
 
-# Test environment string: prepend cu13 lib to LD_LIBRARY_PATH so
-# libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0 succeeds.
-# $ENV{LD_LIBRARY_PATH} captures whatever the configure-time shell
-# already had (orca, system cuda); we don't displace it.
+# Test environment string. Two prepends to LD_LIBRARY_PATH, in order:
+#
+#  1. /usr/lib/x86_64-linux-gnu so the system libpq + libssl + libcrypto
+#     trio resolves consistently. The binary's RUNPATH includes
+#     micromamba lib (for libmopac, libreducelib, etc.), and without
+#     this prepend the loader picks micromamba's libpq → micromamba's
+#     libssl (OpenSSL 3.2-3.6 symbol requirements) but system libcrypto
+#     (3.0 symbols only) — load fails. We don't USE OpenSSL (DSN is a
+#     Unix socket) but libpq's NEEDED entries pull libssl/libcrypto at
+#     process startup regardless. Prepending /usr/lib forces both halves
+#     of the SSL pair to the same install.
+#
+#  2. cu13 lib so libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0
+#     succeeds at AIMNet2 inference time.
+#
+# $ENV{LD_LIBRARY_PATH} captures the configure-time shell's existing
+# path (orca, system cuda); we don't displace it.
 set(NMR_TEST_ENVIRONMENT
-    "LD_LIBRARY_PATH=${NMR_NVRTC_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
+    "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${NMR_NVRTC_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
 )
 
 # Helper: define a test executable with standard boilerplate. Every
@@ -695,19 +746,9 @@ target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
     GTest::gtest
     highfive
 )
-# gtest_discover_tests deliberately OMITTED for both new TR test targets
-# below. On this host, both POST_BUILD discovery (the default — runs at
-# build time) and PRE_TEST discovery (runs at ctest enumeration time)
-# fail on a libssl/libcrypto OpenSSL-symbol mismatch between the
-# micromamba env's libssl (wants OPENSSL_3.3-3.6) and the system's
-# libcrypto (3.0). PRE_TEST blocks ALL ctest invocations because
-# enumeration fails before any test runs. Until the env issue is fixed
-# (separate scope), these targets are buildable but not ctest-enumerated.
-# Run manually via `scripts/run_with_cuda_env.sh build/<binary>` or wait
-# on the env fix. gromacs_streaming_tests has the same issue
-# un-worked-around.
-add_test(NAME tripeptide_bb_shielding_time_series_tests
-    COMMAND tripeptide_bb_shielding_time_series_tests)
+gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 
 # ============================================================================
@@ -733,10 +774,9 @@ target_link_libraries(tripeptide_neighbor_shielding_time_series_tests PRIVATE
     GTest::gtest
     highfive
 )
-# Same env-issue caveat as the BB target above; gtest_discover_tests
-# OMITTED, manual add_test instead.
-add_test(NAME tripeptide_neighbor_shielding_time_series_tests
-    COMMAND tripeptide_neighbor_shielding_time_series_tests)
+gtest_discover_tests(tripeptide_neighbor_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
 # (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).

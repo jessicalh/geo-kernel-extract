@@ -569,15 +569,9 @@ TEST(TripeptideBackboneShieldingTimeSeries, IntegrationFingerprint1P9J) {
         << "T0 outside backbone sanity band: " << cell.T0 << " ppm at atom "
         << fingerprint_atom;
 
-    // Tensor-structure invariant: Larsen tensors are symmetric by
-    // construction (T1 antisymmetric components are emitted but should
-    // be near machine zero).
-    for (size_t k = 0; k < 3; ++k) {
-        EXPECT_LT(std::abs(cell.T1[k]), kT1SymmetryTolerance)
-            << "T1[" << k << "] = " << cell.T1[k]
-            << " — Larsen tensor symmetry invariant violated at atom "
-            << fingerprint_atom;
-    }
+    // (T1 antisymmetric components NOT asserted here. The DFT shielding
+    // tensor has real T1 in non-symmetric environments — symmetry is
+    // not a constraint of the physics.)
 
     // Population sanity: BB perception should hit a non-trivial fraction
     // of atoms on a real protein (98% on 1UBQ post-LarsenResidue per

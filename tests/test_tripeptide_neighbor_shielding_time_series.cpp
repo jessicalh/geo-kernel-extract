@@ -390,9 +390,6 @@ TEST(TripeptideNeighborShieldingTimeSeries, IntegrationFingerprint1P9J) {
     EXPECT_TRUE(std::isfinite(st.T0)) << "T0 not finite";
     EXPECT_LT(std::abs(st.T0), 10.0)
         << "T0=" << st.T0 << " ppm outside Larsen 2015 cap-side band";
-    for (size_t k = 0; k < 3; ++k) {
-        EXPECT_LT(std::abs(st.T1[k]), 1e-6)
-            << "T1[" << k << "]=" << st.T1[k]
-            << " — Larsen tensor symmetry invariant violated";
-    }
+    // T1 antisymmetric components NOT asserted: DFT shielding tensors
+    // have real T1 in non-symmetric environments.
 }

@@ -53,6 +53,12 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Compute(
 // Transfer growing per-atom buffers into a contiguous atom-major
 // DenseBuffer<SphericalTensor> owned by TrajectoryProtein.
 
+// Idempotent: the per-atom bounds check (src.size() != n_frames_)
+// makes a second call short-circuit naturally — after the first
+// Finalize swaps per_atom_shielding_[i] to empty, src.size() is 0,
+// the bounds check skips that atom, the buffer comes out empty, and
+// we don't AdoptDenseBuffer. The data flow makes idempotency fall
+// out without a "have I run yet" state flag.
 void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
                                                                     Trajectory& traj) {
     (void)traj;
@@ -60,13 +66,18 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Finalize(TrajectoryP
 
     auto buffer =
         std::make_unique<DenseBuffer<SphericalTensor>>(N, n_frames_);
+    std::size_t atoms_written = 0;
     for (std::size_t i = 0; i < N; ++i) {
         const auto& src = per_atom_shielding_[i];
+        if (src.size() != n_frames_) continue;  // skip mismatched / post-swap
         for (std::size_t f = 0; f < n_frames_; ++f) {
             buffer->At(i, f) = src[f];
         }
         std::vector<SphericalTensor>().swap(per_atom_shielding_[i]);
+        ++atoms_written;
     }
+
+    if (atoms_written == 0) return;  // idempotent no-op on second call
 
     tp.AdoptDenseBuffer<SphericalTensor>(
         std::move(buffer),
