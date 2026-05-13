@@ -213,6 +213,7 @@ add_library(nmr_shielding
     src/Session.cpp
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
+    src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -638,6 +639,35 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
     highfive
 )
 gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+# ============================================================================
+# TripeptideNeighborShieldingTimeSeries TR coverage (per-TR pattern,
+# AMBER fixture). Frame-0 semantics + Finalize idempotency + H5 round-
+# trip + integration fingerprint on chain A central CA at frame 0.
+# Same HDF5 1.10 / HighFive arrangement as gromacs_streaming_tests
+# because the H5 round-trip test reads via HighFive directly.
+# ============================================================================
+
+add_executable(tripeptide_neighbor_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_neighbor_shielding_time_series.cpp
+)
+target_compile_definitions(tripeptide_neighbor_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(tripeptide_neighbor_shielding_time_series_tests BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+# Link nmr_shielding only; highfive arrives transitively (PUBLIC linked
+# by nmr_shielding above) so the H5 round-trip test in this TU has the
+# HighFive includes. Mirrors structure_tests which does the same.
+target_link_libraries(tripeptide_neighbor_shielding_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_discover_tests(tripeptide_neighbor_shielding_time_series_tests
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
 # (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).
