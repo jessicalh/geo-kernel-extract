@@ -51,7 +51,7 @@
 // out of this generator into the runtime header so the generator and
 // the runtime share a SINGLE copy. This file used to carry private
 // duplicates; they are removed and the generator now calls the lifted
-// versions inline. See spec/plan/topology-and-identity-pivot-synthesis-2026-05-05.md
+// versions inline. See spec/plan/bones/topology-and-identity-pivot-synthesis-2026-05-05.md
 // §13.1 for the rationale.
 #include "generated/LegacyAmberSemanticTables.h"
 
@@ -676,7 +676,7 @@ struct SynthesisedFields {
 //
 // Each function below encodes one (residue, variant) block from the
 // signed-off reference document
-// `spec/plan/topology-residue-reference-2026-05-05.md` Section 3
+// `spec/plan/bones/topology-residue-reference-2026-05-05.md` Section 3
 // (alphabetical per-residue blocks) + Section 2 conventions (charge
 // placement, residue-specific E/Z, Markley alternation rule).
 //
@@ -1861,7 +1861,7 @@ struct AtomSemanticEntry {
     // table is keyed by typed structural matching against
     // AtomMechanicalIdentity (Element + Locant + Branch + DiIndex +
     // BackboneRole), per §H of
-    // spec/plan/topology-encoding-dependencies-2026-05-05.md).
+    // spec/plan/bones/topology-encoding-dependencies-2026-05-05.md).
     std::string               atom_id_for_log;
 
     // Mechanical-identity fields (the typed lookup key).
@@ -1916,7 +1916,7 @@ AtomSemanticEntry BuildAtomSemanticEntry(const std::string& atom_id,
     // Locant + Branch + DiastereotopicIndex + BackboneRole come from the
     // parser. Together these five form the AtomMechanicalIdentity tuple
     // used by the generated `LookupBy` function. See §H of
-    // `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+    // `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
     e.element       = ElementFromSymbol(ccd_type_symbol);
     e.locant        = parsed.locant;
     e.branch        = parsed.branch;
@@ -2074,7 +2074,7 @@ SynthesisedFields DispatchSynthesised(const std::string& code,
 // terminal-state tables (`kCapNtermCharged`, `kCapNtermNeutral`,
 // `kCapCtermDeprotonated`, `kCapCtermProtonated`) only when a residue
 // is actually at a chain end. Per §H.4 of
-// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
 //
 // The five names below are residue-independent: the chemistry of
 // NTERM_CHARGED Hs (H1/H2/H3) is the same on every residue's N
@@ -2379,7 +2379,7 @@ void LogEntriesSpotCheck(const std::vector<AtomSemanticEntry>& entries,
 // tables) keyed on AtomMechanicalIdentity (Element + Locant +
 // BranchAddress + DiastereotopicIndex + BackboneRole) -- typed
 // structural matching, NOT atom_local_idx and NOT atom_id strings.
-// Per §H of spec/plan/topology-encoding-dependencies-2026-05-05.md.
+// Per §H of spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.
 // The output includes only typed-enum references; no std::string
 // literals carrying chemistry data, no gemmi/RDKit/cifpp symbols, no
 // Eigen.
@@ -2583,7 +2583,7 @@ std::string PseudoatomLiteral(const PseudoatomMembership& p) {
 // The first five fields (Element, Locant, BranchAddress,
 // DiastereotopicIndex, BackboneRole) form the AtomMechanicalIdentity
 // tuple used by the generated `LookupBy` function -- see §H of
-// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
 std::string EmitEntryLiteral(const AtomSemanticEntry& e) {
     std::ostringstream o;
     o << "    { " << ElementLiteral(e.element)
@@ -2630,7 +2630,7 @@ struct CapTableEntries {
 
 
 // Build one cap-atom AtomSemanticEntry. Cap chemistry is hand-encoded
-// from §4 of `spec/plan/topology-residue-reference-2026-05-05.md`.
+// from §4 of `spec/plan/bones/topology-residue-reference-2026-05-05.md`.
 // The mechanical-identity tuple (Element, Locant, Branch, DiIndex,
 // BackboneRole) for cap atoms uses Locant::None and BackboneRole::None
 // for terminus-added Hs / Os (they are neither sidechain Greek-letter
@@ -2965,7 +2965,7 @@ void EmitCppFile(const std::string& output_path,
     out << "// arrays are NOT used as runtime keys; the LookupBy / LookupCap\n";
     out << "// functions emitted at the bottom of this file own the lookup.\n";
     out << "// See section H of\n";
-    out << "// `spec/plan/topology-encoding-dependencies-2026-05-05.md` for\n";
+    out << "// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md` for\n";
     out << "// the architectural rationale (typed identity instead of\n";
     out << "// atom_local_idx; cap atoms partitioned out of per-residue tables).\n";
     out << "//\n";
@@ -3017,7 +3017,7 @@ void EmitCppFile(const std::string& output_path,
     // Cap tables (per §H.4 of the dependencies file). One per
     // TerminalState; chain atoms live in the per-residue tables above.
     out << "// === Terminal-state cap tables ===\n";
-    out << "// Per spec/plan/topology-residue-reference-2026-05-05.md Section 4.\n";
+    out << "// Per spec/plan/bones/topology-residue-reference-2026-05-05.md Section 4.\n";
     out << "// Cap atoms (OXT, HXT, H1, H2, H3) are residue-independent; one\n";
     out << "// table per terminal state covers all 20 standard residues.\n";
     out << "\n";
@@ -3074,7 +3074,7 @@ void EmitCppFile(const std::string& output_path,
     out << "// (index spaces don't align across CCD, AmberAminoAcidVariantTable,\n";
     out << "// and other producers; typed structural matching gives unambiguous\n";
     out << "// lookup that survives any reordering of either side). Per §H.2 of\n";
-    out << "// spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
+    out << "// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.\n";
     out << "namespace detail {\n";
     out << "    constexpr const AtomSemanticTable*\n";
     out << "    LookupInArray(const AtomSemanticTable* base, std::size_t n,\n";
@@ -3169,7 +3169,7 @@ void EmitCppFile(const std::string& output_path,
     out << "// (H1, H2, H3, OXT, HXT) carry BackboneRole::None and only match\n";
     out << "// via the cap-table lookup.\n";
     out << "//\n";
-    out << "// Per §H.4 + §H.5 of spec/plan/topology-encoding-dependencies-2026-05-05.md.\n";
+    out << "// Per §H.4 + §H.5 of spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.\n";
     out << "const AtomSemanticTable*\n";
     out << "LookupCap(nmr::TerminalState state,\n";
     out << "          const AtomMechanicalIdentity& identity) {\n";
@@ -3463,7 +3463,7 @@ int main(int argc, char** argv) {
     }
 
     // Build the four terminal-state cap tables. Per §H.4 of
-    // spec/plan/topology-encoding-dependencies-2026-05-05.md, cap
+    // spec/plan/bones/topology-encoding-dependencies-2026-05-05.md, cap
     // chemistry is residue-independent; one table per terminal state
     // covers all 20 standard residues.
     auto cap_tables = BuildCapTables(log);

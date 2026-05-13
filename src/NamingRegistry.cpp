@@ -183,7 +183,7 @@ NamingRegistry& GlobalNamingRegistry() {
 // discarded). The chosen output is what persists, written by the caller
 // onto Atom::pdb_atom_name.
 //
-// See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md.
+// See spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md.
 // ============================================================================
 
 NamingApplicator::NamingApplicator() {
@@ -491,7 +491,7 @@ bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
     // oracle recognises canonical variant-only atoms without dragging
     // the substrate tables into runtime.
     //
-    // Locked decisions (per spec/plan/topology-encoding-dependencies-
+    // Locked decisions (per spec/plan/bones/topology-encoding-dependencies-
     // 2026-05-05.md §A): HID adds HD1, HIE adds HE2 (already in chain
     // for HIS — no add needed), HIP adds HD1 (HE2 already in chain),
     // ASH adds HD2, GLH adds HE2. CYS variants (CYX, CYM), LYS LYN,
@@ -616,7 +616,7 @@ NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
     // substrate gap that the user must address before composition can
     // succeed.
     //
-    // Authority: spec/plan/naming-applicator-architecture-sketch-2026-05-06.md
+    // Authority: spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md
     // §"Algorithm" — "Map empty AND input matches a known canonical
     // form for ctx: return input unchanged".
     if (applications.empty()) {
@@ -656,7 +656,7 @@ NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
     // NamingApplicatorMultiRuleResolve (codex Finding 6) via a
     // test-only `NamingApplicator(CustomRules)` constructor.
     //
-    // Authority: spec/plan/naming-applicator-architecture-sketch-
+    // Authority: spec/plan/bones/naming-applicator-architecture-sketch-
     // 2026-05-06.md §"What's locked" — rule sets are preserved as
     // published; convergent agreement is the easiest case.
     {
@@ -701,7 +701,7 @@ NamingApplicator::FailUnresolved(
         "under source %s: %.*s. "
         "Map:%s. "
         "Context: variant_index=%d, terminal_state=%d. "
-        "See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md.\n",
+        "See spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md.\n",
         ctx.input_name.c_str(),
         GetAminoAcidType(ctx.residue_type).three_letter_code,
         ctx.residue_sequence_number,
@@ -762,7 +762,7 @@ NamingApplicator::FailValidator(
         "recognise non-canonical INPUT (rules exist to repair) but their "
         "OUTPUT must be canonical for the resolved chemistry context; "
         "the canonicality oracle is the authority on canonical form. "
-        "See spec/plan/naming-applicator-architecture-sketch-2026-05-06.md "
+        "See spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md "
         "and the 2026-05-06 codex round-2 review.\n",
         ctx.input_name.c_str(),
         chosen_output.c_str(),
@@ -800,7 +800,7 @@ std::string NamingApplicator::Apply(const NamingContext& ctx) const {
             "Pdb2gmxAmberRtpDeviation, OrcaEcho, AmberFf14SBCanonical, "
             "etc.); Unknown indicates a loader bug. Atom '%s' in "
             "residue %s seq %d chain '%s'. "
-            "See spec/plan/naming-applicator-architecture-sketch-"
+            "See spec/plan/bones/naming-applicator-architecture-sketch-"
             "2026-05-06.md and codex Finding CC2.\n",
             ctx.input_name.c_str(),
             GetAminoAcidType(ctx.residue_type).three_letter_code,
@@ -825,7 +825,7 @@ std::string NamingApplicator::Apply(const NamingContext& ctx) const {
     // paths fail-loud; either FATAL (unresolved or non-canonical
     // output) is correct rejection of an unsafe canonicalisation.
     //
-    // Per spec/plan/naming-applicator-architecture-sketch-2026-05-06.md
+    // Per spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md
     // and the 2026-05-06 codex round-2 review.
     NamingContext output_ctx = ctx;
     output_ctx.input_name = output;
@@ -1079,7 +1079,7 @@ void NamingApplicator::InstallRules() {
     // (siblings already contain HD2+HD3 etc.) do not trigger these rules
     // — the predicate returns false. This makes the rules idempotent.
     //
-    // Reference: spec/ChangesRequiredBeforeProductionH5Run.md;
+    // Reference: spec/plan/bones/ChangesRequiredBeforeProductionH5Run.md;
     // h5-reader/notes/nmr_forensics/SUMMARY.md (empirical probe).
 
     // PRO δ-methylene: pdb2gmx HD1/HD2 → IUPAC HD2/HD3.
@@ -1305,7 +1305,7 @@ void NamingApplicator::InstallRules() {
     // retired (memory `project_charmm_retired_amber_only_2026-05-02`);
     // no live consumer needs canonical → CHARMM-conventional output.
     //
-    // Reference: spec/plan/naming-applicator-architecture-sketch-2026-05-06.md;
+    // Reference: spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md;
     // Markley et al. 1998 J. Biomol. NMR 12:1-23 §2.1.2.
 
     rules_.push_back(NamingRule{

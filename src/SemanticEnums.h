@@ -20,7 +20,7 @@
 //   into src/generated/LegacyAmberSemanticTables.cpp.
 // - The runtime library libnmr_shielding.a does not link RDKit at
 //   all. The string barrier is enforced by the linker, not by code
-//   review. See spec/plan/topology-substrate-implementation-plan-2026-05-05.md.
+//   review. See spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md.
 //
 // Citation pattern:
 // - Every typed-enum value has a docstring with a chemistry citation,
@@ -52,7 +52,7 @@ namespace nmr {
 //
 // Used to select among the four cap-atom tables emitted alongside the
 // 30 residue tables (per §H.4 of
-// `spec/plan/topology-encoding-dependencies-2026-05-05.md`). The chain
+// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`). The chain
 // itself uses Internal; an N-terminal residue has its terminus_state set
 // to NtermCharged (default ammonium NH3+) or NtermNeutral (NH2 form);
 // a C-terminal residue has CtermDeprotonated (carboxylate COO-) or
@@ -339,7 +339,7 @@ enum class PlanarStereo : uint8_t {
 //
 // XPLOR / CARA / DIANA introduce additional letters (X, Y, S, T)
 // but those are NOT IUPAC and are not adopted here. See research
-// dossier `spec/plan/topology-fields-research-2026-05-05.md`
+// dossier `spec/plan/bones/topology-fields-research-2026-05-05.md`
 // "Field 6" for evidence.
 //
 // Terminus convention (synthesised, not Markley-canonical):
@@ -844,7 +844,7 @@ struct SemanticProvenance {
 // `AtomMechanicalIdentity` (Element + Locant + BranchAddress +
 // DiastereotopicIndex + BackboneRole) -- NOT atom_local_idx and NOT
 // atom_id strings; per §H of
-// `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
 //
 // Provenance is NOT carried in the runtime record (it lives in the
 // generation log, src/generated/LegacyAmberSemanticTables.log.txt,
@@ -856,7 +856,7 @@ struct AtomSemanticTable {
     // Mechanical-identity fields. These five fields together form the
     // typed lookup key (`AtomMechanicalIdentity` below) used by the
     // generated `LookupBy` function at runtime composition. See §H of
-    // `spec/plan/topology-encoding-dependencies-2026-05-05.md`.
+    // `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
     Element               element           = Element::Unknown;
     Locant                locant            = Locant::None;
     BranchAddress         branch            = {};
@@ -978,7 +978,7 @@ struct AtomSemanticTable {
 // mechanical identity. The collisions above are limited to chemically
 // equivalent sets where any-of-three is the right answer.
 //
-// See §H of `spec/plan/topology-encoding-dependencies-2026-05-05.md`
+// See §H of `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`
 // for the full architectural rationale; section H.1 defines this
 // tuple, H.2 the lookup function, H.4 the cap-table separation.
 //

@@ -35,7 +35,7 @@ separate IUPACAnnotation class.
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
 pH scanning and re-protonation but was never needed for the actual use
-cases (A-D in USE_CASES.md). The system creates one Protein per input
+cases (A-D in spec/plan/bones/USE_CASES.md). The system creates one Protein per input
 source with N conformations, each independently enriched. There is no
 protein copying. Do not implement copy-and-modify. The sections remain
 as design history documenting how the Protein/ProteinConformation
@@ -1843,7 +1843,7 @@ of one such decision — what was decided, on which model objects, with
 what value, for what physics reason. Created by calculators, deposited
 on the conformation, drawable in the viewer.
 
-See spec/GEOMETRY_CHOICE_BRIEF.md for the full design and per-calculator
+See spec/plan/bones/GEOMETRY_CHOICE_BRIEF.md for the full design and per-calculator
 manifest. Prior CalculationArea type vocabulary is in learn/bones/.
 
 ---
@@ -2483,7 +2483,7 @@ The flow is: C++ geometric kernels → NPY features (via WriteFeatures)
 
 The calibrated values override literature defaults for ring current
 intensities, bond anisotropies, Buckingham coefficients, and other
-calculator-specific parameters. See CALCULATOR_PARAMETER_API.md for
+calculator-specific parameters. See spec/plan/bones/CALCULATOR_PARAMETER_API.md for
 the full parameter set (93 parameters with equations and references).
 
 Feature extraction is distributed: each ConformationResult writes its

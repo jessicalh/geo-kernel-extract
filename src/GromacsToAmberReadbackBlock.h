@@ -36,7 +36,7 @@
 // duration of the load and the JSON audit emission. They are never copied
 // onto Residue, Atom, or any persistent typed object.
 //
-// Design doc: spec/plan/gromacs-to-amber-readback-block-design-2026-05-02.md
+// Design doc: spec/plan/bones/gromacs-to-amber-readback-block-design-2026-05-02.md
 // Companion memory: feedback_readback_block_is_a_compiler_trace
 //
 

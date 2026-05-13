@@ -123,7 +123,7 @@ void ValidateVariantIndices();
 // for amber14sb, etc.) are NOT handled here — those are resolved
 // upstream by reading the topol.top rtp comment line, per the
 // GromacsToAmberReadbackBlock design (compiler-trace shape; see
-// spec/plan/gromacs-to-amber-readback-block-design-2026-05-02.md and
+// spec/plan/bones/gromacs-to-amber-readback-block-design-2026-05-02.md and
 // memory feedback_readback_block_is_a_compiler_trace). Callers should
 // pass canonical AMBER/CHARMM names, not GROMACS FF-port labels.
 int VariantIndexFromForceFieldName(AminoAcid type, const std::string& ff_name);

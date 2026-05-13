@@ -133,6 +133,34 @@ Status transitions: tentative → validated (promoted to memory / evidence card 
 
 ---
 
+## 2026-05-10 — [TENTATIVE] — 1P9J is a directly Markwick-testable calibration protein
+
+**Source:** wingens-walma-2003 → `wingens-walma-2003-t1e-egf-tgfa-chimera-summary.txt`
+
+**Claim (paraphrased):** Wingens et al. report per-residue ¹⁵N R₁, R₁ρ, and {¹H}-¹⁵N NOE for T1E (PDB 1P9J), deposited as BMRB 5801. Modelfree analysis gives S² 0.2–0.7 with τₑ > 500 ps in the termini, and roughly 40 % of residues require an Rex term concentrated in the A-loop and at spatially clustered positions across the β-strands (Asp7+Cys8 in the N terminus; Met23+Tyr24+Ile25 in β1; Tyr31+Ala32 in β2). This is exactly the kind of independently-measured ms-µs and ps-ns dynamics dataset that Markwick et al. (2010) prescribed for cross-validating MD-shift averaging, located on a protein already in our 10-protein Stage 2 calibration set.
+
+**Why it might matter:** Once Stage 2 per-frame DFTs and MD-extracted kernels are aligned for 1P9J, the per-residue improvement in tensor-prediction residual (vs. a static-structure reference) can be plotted against BMRB 5801's per-residue Rex and {¹H}-¹⁵N NOE values. A spatial coincidence between improvement and experimentally-mobile residues would corroborate the averaging hypothesis; a non-coincidence (or a coincidence in the opposite direction) would be a substantive finding that the per-frame kernels are not picking up the dynamics signal on this system. Either result is reportable.
+
+**How to validate:** When Stage 2 analysis is ready on 1P9J, pull BMRB 5801's R₁/R₁ρ/hetNOE per residue (it's already in the experimental-shift workspace per the NMR forensics layer), compute per-residue improvement vs. a single-conformer reference, correlate spatially. Diagnostic, not a training target — do not optimise toward it.
+
+**Status:** tentative — pending Stage 2 completion on 1P9J.
+
+---
+
+## 2026-05-10 — [TENTATIVE] — 1P9J starting-conformer choice may bias Stage 2 trajectory basin
+
+**Source:** wingens-walma-2003 → `wingens-walma-2003-t1e-egf-tgfa-chimera-summary.txt`
+
+**Claim (paraphrased):** Wingens et al. report that of the 36 deposited NMR conformers in PDB 1P9J, only 4 contain the receptor-bound triple β-sheet (N-terminus paired antiparallel with the B-loop). The remaining 32 show the N-terminus extended but not paired. Hinge-bending between the N- and C-terminal halves is supported by the ensemble's whole-protein backbone r.m.s. deviation (2.43 ± 0.63 Å) being much larger than its per-loop r.m.s. deviations (1.27 / 0.91 Å), and corroborated by Rex patterns at the N/C-half interface residues (Asp13, Gly14, Tyr15, Cys16, Val21, Glu42, Arg43, Gln45, Tyr46).
+
+**Why it might matter:** The Stage 2 MD on 1P9J is seeded from one specific conformer. If that seed was drawn from the 4/36 triple-β-sheet basin, the 25 ns trajectory may dwell in receptor-bound-like geometry that biases the per-frame shielding kernels for residues at the N-terminus / B-loop interface (His4, Phe5, Met23, Leu28). If it was drawn from one of the 32 other conformers, the trajectory is more likely to remain in the ensemble's modal extended-N-terminus state. Either way, the result is conditional on the seed.
+
+**How to validate:** Identify which conformer of 1P9J was used to seed the Stage 2 MD (record in the MD-prep script for this protein; the historical `fleet-manager-tasks/` notes now live in `spec/plan/bones/fleet-manager-tasks/` and reflect the CHARMM-era setup, not the current Option B AMBER protocol). Compare its N-terminus geometry against the four triple-β-sheet members of the deposited ensemble. If documentation is sparse, check the trajectory's first frame for the pairing pattern. Not load-bearing for the kernel correlation itself, but load-bearing for any per-residue claim about dynamics at the N-terminus / B-loop interface on this protein.
+
+**Status:** tentative — needs a one-line check of MD setup provenance.
+
+---
+
 # Journal (resolved entries)
 
 Entries move here when validated, rejected, or superseded. Keep one line on what changed so future readers see the trail.

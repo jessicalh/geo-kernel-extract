@@ -11,7 +11,7 @@
 // the atom-semantic substrate. Putting ring storage on Protein was
 // pre-existing technical debt that the substrate-driven construction
 // path makes intolerable to compound. See
-// `spec/plan/legacy-amber-implementation-brief-2026-04-29.md` and
+// `spec/plan/bones/legacy-amber-implementation-brief-2026-04-29.md` and
 // memory `feedback_object_model_scope_discipline`.
 //
 // Construction is substrate-driven. ConstructFromSubstrate reads

@@ -1230,7 +1230,7 @@ blocks any attempt to mutate the instant-observation buffer. The
 legitimate TR write surface stays public: `MutableAtomAt(i)`,
 `AdoptDenseBuffer<T>`, per-atom events bag, and
 `traj.MutableSelections()`. Rationale and scope:
-`spec/TRAJECTORY_WRITE_SURFACE_2026-04-24.md`; discipline:
+`spec/plan/bones/TRAJECTORY_WRITE_SURFACE_2026-04-24.md`; discipline:
 `feedback_object_model_scope_discipline` memory.
 
 ### 15. Trajectory::Run orchestrates; factories see a finalized Protein; handler reads

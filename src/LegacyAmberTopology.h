@@ -262,7 +262,7 @@ private:
 // atom name + heavy-atom parent's canonical name (via the lifted
 // parser in src/generated/LegacyAmberSemanticTables.h), and looking up
 // the substrate row via LookupBy / LookupCap / ApplyCapDelta per
-// spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5.
+// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5.
 //
 // Stub-fixture guard: if no residue carries non-empty atom names
 // across all of its atoms (calculator-physics tests with raw element-

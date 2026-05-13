@@ -24,7 +24,7 @@
 //      std::string literals carrying chemistry data (only typed-enum
 //      identifier text, which is compile-time).
 //
-// See spec/plan/topology-substrate-implementation-plan-2026-05-05.md
+// See spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md
 // for the architectural rationale.
 
 #include <array>
@@ -188,7 +188,7 @@ TEST(StringBarrier, RdkitAndGemmiNeverInRuntimeSrc) {
         << "gemmi appears in src/ runtime files. gemmi is not currently used "
            "by the project; if a new chemistry source is being added, the "
            "decision should be reviewed against the string barrier in "
-           "spec/plan/topology-substrate-implementation-plan-2026-05-05.md. "
+           "spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md. "
            "Violations:\n"
         << [&gemmi_users]{ std::string s; for (const auto& v : gemmi_users) s += v + "\n"; return s; }();
 }

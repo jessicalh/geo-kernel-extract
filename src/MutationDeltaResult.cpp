@@ -42,7 +42,7 @@ std::vector<std::type_index> MutationDeltaResult::Dependencies() const {
 // rebound across mutation sites, variant differences, and rotamer
 // flips — fine for mechanical-swap PDB mutants where coordinates are
 // pinned, indefensible as soon as coordinates drift. See the design
-// pass at spec/plan/category-info-projection-implementation-plan-2026-05-08.md
+// pass at spec/plan/bones/category-info-projection-implementation-plan-2026-05-08.md
 // §8 (MutationDeltaResult matchup rewrite).
 //
 // Within a residue, atoms with collision-equal identity tuples (methyl
@@ -566,7 +566,7 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
 
     // Spatial-NN sanity check on rejections — confirms mechanical-swap
     // structural integrity without the binding criterion depending on
-    // it. See methodology paragraph in the spec/plan/category-info-
+    // it. See methodology paragraph in the spec/plan/bones/category-info-
     // projection-implementation-plan-2026-05-08.md slice for the
     // intended thesis prose.
     OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",

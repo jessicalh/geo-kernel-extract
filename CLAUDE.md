@@ -218,7 +218,7 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   - 95/95 Python SDK tests pass.
 
   Full design at `spec/plan/larsen-residue-design-2026-05-11.md`;
-  retires `spec/plan/typed-tripeptide-topology-design-2026-05-10.md`
+  retires `spec/plan/bones/typed-tripeptide-topology-design-2026-05-10.md`
   (no code landed from the old design). Adversarial review provenance
   in `project_larsen_residue_model` memory entry.
 
@@ -400,10 +400,6 @@ them before modifying anything in the named directory.
   blessed smoke-test baselines (machine-local, gitignored).
   `tests/data/fleet_test_large/` is a 295 MB MD trajectory fixture
   set; gitignored, regenerable.
-- **`protonation/`** — design documents for the protonation
-  pipeline (BUILDER_AGENT_PROMPT, BUILDER_ANALYSIS, DESIGN_HISTORY).
-- **`fleet-manager-tasks/`** — coordination notes for fleet
-  extraction runs (RERUN_FULL_SYSTEM, STATE).
 - **`baseline_features/`**, **`calibration/`**, **`train/`** —
   per-protein output workspaces. Mostly machine-local; see
   `.gitignore`. Some data here is produced by batch runs of
@@ -456,10 +452,10 @@ Pick the row that matches the task and read in order.
   `spec/plan/openai-5.5-strong-architecture-layout.md` and memory entry
   `project_proteintopology_architecture`; catalog Appendix F; H5
   metadata schema), see
-  `spec/pending_include_trajectory_scope_2026-04-22.md` — not
-  authoritative for anything landed. Historical landing records:
-  `spec/TRAJECTORY_LANDING_STATE_2026-04-23.md` +
-  `TRAJECTORY_REFACTOR_GAPS_2026-04-23.md`. The trajectory object
+  `spec/plan/bones/pending_include_trajectory_scope_2026-04-22.md` —
+  not authoritative for anything landed. Historical landing records:
+  `spec/plan/bones/TRAJECTORY_LANDING_STATE_2026-04-23.md` +
+  `spec/plan/bones/TRAJECTORY_REFACTOR_GAPS_2026-04-23.md`. The trajectory object
   model is deliberate organising principle — buffers from ctor,
   named operations on entities are rooms not wrappers, the per-frame
   loop is four lines. Multiple sessions re-derived this through

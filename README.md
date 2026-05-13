@@ -16,7 +16,7 @@ See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
 
 ## Dependencies
 
-Full inventory: [spec/DEPENDENCIES.md](spec/DEPENDENCIES.md)
+Full inventory: [spec/plan/bones/DEPENDENCIES.md](spec/plan/bones/DEPENDENCIES.md)
 
 **System packages:**
 ```

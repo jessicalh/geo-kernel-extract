@@ -7,7 +7,7 @@ This tool reads the wwPDB Chemical Component Dictionary
 perception (CIP labelling, canonical rank, aromaticity,
 hybridisation, bond-type), applies the per-field reconciliation
 precedence table specified in
-`spec/plan/topology-substrate-implementation-plan-2026-05-05.md`,
+`spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md`,
 and emits a typed-enum constexpr table consumed at runtime by
 `LegacyAmberTopology`.
 

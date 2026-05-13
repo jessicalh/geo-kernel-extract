@@ -2,9 +2,13 @@
 """Dump one canonical DFT-output row per (tripeptide, frame_type).
 
 Phase 1 step 1 of the typed-tripeptide-topology refactor
-(spec/plan/typed-tripeptide-topology-design-2026-05-10.md). The output
-JSON is the source the user reviews before hand-authoring
-data/topology/tripeptide_orderings.toml.
+(spec/plan/bones/typed-tripeptide-topology-design-2026-05-10.md — RETIRED
+2026-05-11 before any of its code landed; this script is an orphan from
+that retired plan and is not called from any test or production path).
+The output JSON was the source the user reviewed before hand-authoring
+data/topology/tripeptide_orderings.toml; the refactor was replaced by
+the perception-driven LarsenResidue model and this script never went
+into production use.
 
 DSN is read from ~/.nmr_tools.toml [databases].tensorcs15 to keep the
 script in line with how Session loads its libpq connection at runtime.

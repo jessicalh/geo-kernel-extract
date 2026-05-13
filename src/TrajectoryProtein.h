@@ -30,7 +30,7 @@ class TrajectoryProtein {
     // canonical-conformation accessor (Phase 6 OperationRunner call).
     // TrajectoryResults never mutate the per-instant buffer — that
     // discipline is compile-time enforced by keeping the non-const
-    // path private. See spec/TRAJECTORY_WRITE_SURFACE_2026-04-24.md.
+    // path private. See spec/plan/bones/TRAJECTORY_WRITE_SURFACE_2026-04-24.md.
     friend class Trajectory;
 
 public:

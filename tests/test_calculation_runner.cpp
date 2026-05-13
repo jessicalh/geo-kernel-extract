@@ -3,7 +3,7 @@
 // test_operation_runner.cpp
 //
 // Tests the OperationRunner sequences against real data.
-// Mirrors the use cases in spec/USE_CASES.md.
+// Mirrors the use cases in spec/plan/bones/USE_CASES.md.
 //
 
 #include <gtest/gtest.h>

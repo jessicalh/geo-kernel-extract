@@ -364,7 +364,7 @@ TEST_F(MutationDeltaTest, AccessViaTemplateAfterAttach) {
 //   * Non-mutation residues bijection: every WT atom finds a unique
 //     mut atom (for this fixture there are no variant differences).
 //
-// See spec/plan/category-info-projection-implementation-plan-2026-05-08.md §8.
+// See spec/plan/bones/category-info-projection-implementation-plan-2026-05-08.md §8.
 // ============================================================================
 
 TEST_F(MutationDeltaTest, MechanicalSwapDriftIsSubAngstrom) {

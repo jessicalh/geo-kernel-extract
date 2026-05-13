@@ -11,7 +11,7 @@
 // arrays are NOT used as runtime keys; the LookupBy / LookupCap
 // functions emitted at the bottom of this file own the lookup.
 // See section H of
-// `spec/plan/topology-encoding-dependencies-2026-05-05.md` for
+// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md` for
 // the architectural rationale (typed identity instead of
 // atom_local_idx; cap atoms partitioned out of per-residue tables).
 //
@@ -648,7 +648,7 @@ constexpr std::array<AtomSemanticTable, 20> kTyrAtoms_TYM = {{
 }};
 
 // === Terminal-state cap tables ===
-// Per spec/plan/topology-residue-reference-2026-05-05.md Section 4.
+// Per spec/plan/bones/topology-residue-reference-2026-05-05.md Section 4.
 // Cap atoms (OXT, HXT, H1, H2, H3) are residue-independent; one
 // table per terminal state covers all 20 standard residues.
 
@@ -708,7 +708,7 @@ constexpr std::array<AtomSemanticTable, 4> kCapCtermProtonated = {{
 // (index spaces don't align across CCD, AmberAminoAcidVariantTable,
 // and other producers; typed structural matching gives unambiguous
 // lookup that survives any reordering of either side). Per §H.2 of
-// spec/plan/topology-encoding-dependencies-2026-05-05.md.
+// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.
 namespace detail {
     constexpr const AtomSemanticTable*
     LookupInArray(const AtomSemanticTable* base, std::size_t n,
@@ -917,7 +917,7 @@ LookupBy(nmr::AminoAcid residue, std::uint8_t variant_idx,
 // (H1, H2, H3, OXT, HXT) carry BackboneRole::None and only match
 // via the cap-table lookup.
 //
-// Per §H.4 + §H.5 of spec/plan/topology-encoding-dependencies-2026-05-05.md.
+// Per §H.4 + §H.5 of spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.
 const AtomSemanticTable*
 LookupCap(nmr::TerminalState state,
           const AtomMechanicalIdentity& identity) {

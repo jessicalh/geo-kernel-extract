@@ -29,7 +29,7 @@
 //   7. HIS variant coverage (HID/HIE/HIP) — substrate row chemistry
 //      checked where the fixture has them.
 //
-// Per spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5.
+// Per spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5.
 
 #include <gtest/gtest.h>
 
@@ -574,7 +574,7 @@ TEST(LegacyAmberSemanticIntegration, TypedBackboneCacheGlyHa) {
 // The fleet_amber fixtures (1Z9B, 1P9J) do not start with PRO, so this
 // regression is exercised on a synthetic fixture built in-test.
 //
-// Per spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5
+// Per spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5
 // (post-2026-05-06 codex Finding 1 amendment).
 // ============================================================================
 
@@ -870,7 +870,7 @@ TEST(LegacyAmberSemanticIntegration, ProNTermPreservesPyrrolidineRing) {
         << "PRO N at NTERM must retain Pyrrolidine_Pro after ApplyCapDelta. "
            "If this fails, ApplyCapDelta is overwriting ring_position from "
            "the cap entry's NotInRing placeholder — see "
-           "spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5 "
+           "spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5 "
            "and codex-review Finding 1.";
     EXPECT_EQ(RingPositionLabel::ProRingNitrogen,
               sem_n.ring_position.primary.position)

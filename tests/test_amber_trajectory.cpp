@@ -6,7 +6,7 @@
 // GROMACS interaction is via the linked C++ API (read_tpx_state /
 // xdrfile) — no subprocess `gmx dump` or `gmx trjconv` calls. See the
 // "GROMACS doctrine" note in
-// spec/plan/amber-implementation-plan-2026-04-29.md.
+// spec/plan/bones/amber-implementation-plan-2026-04-29.md.
 //
 // Tests SKIP when fixtures are absent (the AMBER trajectory tree is
 // gitignored at tests/data/fleet_amber/ and generated via the fleet
