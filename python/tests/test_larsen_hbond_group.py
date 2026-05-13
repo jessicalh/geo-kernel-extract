@@ -19,6 +19,8 @@ from nmr_extract import (
     load,
 )
 
+from _topology_fixture import write_minimal_topology_sidecar
+
 
 N_ATOMS = 24
 
@@ -152,6 +154,7 @@ class TestLarsenHBondLoad:
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
         _larsen_hbond_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         return tmp_path
 
     def test_larsen_hbond_group_attached(self, fake_extraction):
@@ -201,6 +204,7 @@ class TestLarsenHBondLoad:
         """If NO larsen_hbond_* NPY is present, the group is None."""
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         # No larsen_hbond_* npys written.
         p = load(tmp_path)
         assert p.larsen_hbond is None

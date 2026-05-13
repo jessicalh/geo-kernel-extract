@@ -285,9 +285,17 @@ TEST_F(CategoryInfoProjectionTest, WriteFeaturesEmitsNpy) {
     EXPECT_NE(header.find("'pseudoatom_kind'"), std::string::npos);
     EXPECT_NE(header.find("'iupac_naming_provenance'"), std::string::npos);
 
+    // 2026-05-13 topology sidecar extension: 6 new fields projected from
+    // existing typed substrate. Each must be present in the dtype header.
+    EXPECT_NE(header.find("'chain_id'"), std::string::npos);
+    EXPECT_NE(header.find("'residue_number'"), std::string::npos);
+    EXPECT_NE(header.find("'insertion_code'"), std::string::npos);
+    EXPECT_NE(header.find("'parent_atom_index'"), std::string::npos);
+    EXPECT_NE(header.find("'ff_atom_type_string'"), std::string::npos);
+    EXPECT_NE(header.find("'equivalence_class'"), std::string::npos);
+
     // Total file size: 10 prefix + header + N * record_size. The record
-    // size is internal but stable; verify the file is at least header +
-    // (N atoms × 50 bytes) — the schema's minimum row width.
+    // size is internal; verify it's an integer multiple of atom count.
     const std::size_t prefix_plus_header = 10 + header_len;
     ASSERT_GT(all.size(), prefix_plus_header);
     const std::size_t data_bytes = all.size() - prefix_plus_header;

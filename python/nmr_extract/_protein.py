@@ -303,6 +303,347 @@ class CategoryInfo:
         """In a Markley super-aggregate (QG/QD/QH/QR)."""
         return self._data["in_super_group"] != 0
 
+    # ── Topology sidecar fields (2026-05-13 extension) ──
+    # Direct dtype access. An old NPY without these columns produces
+    # KeyError at access -- the model is canonical, the file is wrong.
+
+    @property
+    def chain_id(self) -> np.ndarray:
+        """Per-atom chain identifier (``|S2`` bytes; empty if not multi-chain).
+
+        Reflects ``Residue::chain_id`` (Residue.h:40).
+        """
+        return self._data["chain_id"]
+
+    @property
+    def residue_number(self) -> np.ndarray:
+        """Per-atom biological residue number (PDB sequence_number).
+
+        Reflects ``Residue::sequence_number`` (Residue.h:39). Independent
+        from the dense ``residue_index`` axis -- this is the source-level
+        biological numbering that BMRB/RefDB joins key on.
+        """
+        return self._data["residue_number"]
+
+    @property
+    def insertion_code(self) -> np.ndarray:
+        """Per-atom PDB insertion code (``|S1``; empty when absent).
+
+        Reflects ``Residue::insertion_code`` (Residue.h:41).
+        """
+        return self._data["insertion_code"]
+
+    @property
+    def parent_atom_index(self) -> np.ndarray:
+        """For hydrogens, the index of the bonded heavy atom. -1 otherwise.
+
+        Reflects ``Atom::parent_atom_index`` (Atom.h:29). The C++ side
+        uses ``SIZE_MAX`` as the non-hydrogen sentinel; the projection
+        maps that to ``-1`` so consumers can mask via
+        ``info.parent_atom_index >= 0``.
+        """
+        return self._data["parent_atom_index"]
+
+    @property
+    def ff_atom_type_string(self) -> np.ndarray:
+        """Per-atom AMBER ff14SB atom type string (``|S4``; empty if no FF data).
+
+        Reflects ``LegacyAmberTopology::AtomtypeString(ai)``
+        (LegacyAmberTopology.h:158). Populated when the load path
+        supplied FF data (PRMTOP / GROMACS readback); empty for
+        PDB-only loads per LegacyAmberInvariants's empty-vector
+        convention.
+        """
+        return self._data["ff_atom_type_string"]
+
+    @property
+    def equivalence_class(self) -> np.ndarray:
+        """Per-atom RDKit canonical-rank equivalence class.
+
+        Reflects ``AtomSemanticTable::equivalence_class``
+        (SemanticEnums.h:877). Populated by the substrate generator
+        (``tools/topology/build_semantic_tables.cpp``) from RDKit
+        canonical_rank. Zero is the unassigned sentinel; consumers
+        should mask via ``> 0`` for equivalence-class stratification.
+        """
+        return self._data["equivalence_class"]
+
+
+# ─── Topology-sidecar additive projections ──────────────────────────
+#
+# Bonds / Rings / RingMembership / ExtractionManifest.
+#
+# Wrappers over the structured-NPY / JSON sibling artifacts emitted by
+# ``src/TopologySidecar.cpp``. Same architectural shape as
+# ``CategoryInfo``: thin views on a structured array (or parsed JSON)
+# with convenience accessors; no model is built.
+#
+
+class Bonds:
+    """Per-bond record from ``bonds.npy``.
+
+    One row per bond from ``LegacyAmberTopology::BondList()``. The
+    structured dtype carries: ``bond_index``, ``atom_index_a``,
+    ``atom_index_b``, ``bond_order`` (BondOrder enum), ``bond_category``
+    (BondCategory enum), ``is_rotatable``, ``is_aromatic``,
+    ``is_peptide``, ``is_backbone``.
+
+    See ``src/TopologySidecar.cpp`` for the canonical dtype declaration.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.dtype.fields is None:
+            raise ValueError(
+                "Bonds: expected a numpy structured array; got "
+                f"flat dtype {data.dtype}.")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def n_bonds(self) -> int:
+        return len(self._data)
+
+    @property
+    def bond_index(self) -> np.ndarray:
+        return self._data["bond_index"]
+
+    @property
+    def atom_index_a(self) -> np.ndarray:
+        return self._data["atom_index_a"]
+
+    @property
+    def atom_index_b(self) -> np.ndarray:
+        return self._data["atom_index_b"]
+
+    @property
+    def bond_order(self) -> np.ndarray:
+        """BondOrder enum: 0=Single 1=Double 2=Triple 3=Aromatic 4=Peptide 5=Unknown."""
+        return self._data["bond_order"]
+
+    @property
+    def bond_category(self) -> np.ndarray:
+        """BondCategory enum: 0=PeptideCO 1=PeptideCN 2=BackboneOther 3=SidechainCO 4=Aromatic 5=Disulfide 6=SidechainOther 7=Unknown."""
+        return self._data["bond_category"]
+
+    @property
+    def is_rotatable(self) -> np.ndarray:
+        return self._data["is_rotatable"] != 0
+
+    @property
+    def is_aromatic(self) -> np.ndarray:
+        return self._data["is_aromatic"] != 0
+
+    @property
+    def is_peptide(self) -> np.ndarray:
+        return self._data["is_peptide"] != 0
+
+    @property
+    def is_backbone(self) -> np.ndarray:
+        return self._data["is_backbone"] != 0
+
+
+class Rings:
+    """Per-ring record from ``rings.npy``.
+
+    One row per ring from ``LegacyAmberTopology::Rings()``. Aromatic
+    rings come first (rows ``0..aromatic_ring_count-1``), then
+    saturated rings. ``ring_id`` is the absolute row index;
+    ``native_axis_index`` is the index within the aromatic-only or
+    saturated-only axis (matches ``ring_geometry.npy`` row order for
+    aromatic).
+
+    Dtype: ``ring_id`` ``ring_kind`` (0=aromatic, 1=saturated)
+    ``ring_type_index`` (RingTypeIndex enum) ``atom_count``
+    ``native_axis_index`` ``parent_residue_index``
+    ``parent_residue_number`` ``fused_partner_ring_id`` (-1 if not fused).
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.dtype.fields is None:
+            raise ValueError(
+                "Rings: expected a numpy structured array; got "
+                f"flat dtype {data.dtype}.")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def n_rings(self) -> int:
+        return len(self._data)
+
+    @property
+    def ring_id(self) -> np.ndarray:
+        return self._data["ring_id"]
+
+    @property
+    def ring_kind(self) -> np.ndarray:
+        """0 = aromatic, 1 = saturated."""
+        return self._data["ring_kind"]
+
+    @property
+    def is_aromatic(self) -> np.ndarray:
+        return self._data["ring_kind"] == 0
+
+    @property
+    def is_saturated(self) -> np.ndarray:
+        return self._data["ring_kind"] == 1
+
+    @property
+    def ring_type_index(self) -> np.ndarray:
+        """RingTypeIndex enum: 0=PHE, 1=TYR, 2=TRPbenzene, ..., 8=ProPyrrolidine."""
+        return self._data["ring_type_index"]
+
+    @property
+    def atom_count(self) -> np.ndarray:
+        return self._data["atom_count"]
+
+    @property
+    def native_axis_index(self) -> np.ndarray:
+        """Index within the aromatic-only or saturated-only axis."""
+        return self._data["native_axis_index"]
+
+    @property
+    def parent_residue_index(self) -> np.ndarray:
+        return self._data["parent_residue_index"]
+
+    @property
+    def parent_residue_number(self) -> np.ndarray:
+        return self._data["parent_residue_number"]
+
+    @property
+    def fused_partner_ring_id(self) -> np.ndarray:
+        """Absolute ring_id of the fused partner. -1 if not fused."""
+        return self._data["fused_partner_ring_id"]
+
+
+class RingMembership:
+    """Per (ring, ring-vertex-atom) record from ``ring_membership.npy``.
+
+    One row per (ring, vertex atom) pair, in canonical ring walk order.
+    Codex's RingMembershipTable contract -- the only acceptable basis
+    for ring-to-atom projection of pucker / aromatic-chi2 / ring-current
+    contributions.
+
+    Dtype: ``ring_id`` ``atom_index`` ``ring_atom_order`` ``is_vertex``
+    ``is_substituent`` (currently always 0 -- reserved for future
+    ring-substituent extraction).
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.dtype.fields is None:
+            raise ValueError(
+                "RingMembership: expected a numpy structured array; got "
+                f"flat dtype {data.dtype}.")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def n_rows(self) -> int:
+        return len(self._data)
+
+    @property
+    def ring_id(self) -> np.ndarray:
+        return self._data["ring_id"]
+
+    @property
+    def atom_index(self) -> np.ndarray:
+        return self._data["atom_index"]
+
+    @property
+    def ring_atom_order(self) -> np.ndarray:
+        return self._data["ring_atom_order"]
+
+    @property
+    def is_vertex(self) -> np.ndarray:
+        return self._data["is_vertex"] != 0
+
+
+class ExtractionManifest:
+    """Parsed ``extraction_manifest.json`` sibling.
+
+    Holds schema version, protein id, generated_at, topology-population
+    flags, axis sizes, and the axis-alignment statements. Use as a
+    self-describing companion to the NPY tree; codex's first-pass
+    validation gates read from here.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, parsed: dict):
+        self._data = parsed
+
+    @property
+    def data(self) -> dict:
+        return self._data
+
+    @property
+    def schema_version(self) -> str:
+        return self._data.get("schema_version", "")
+
+    @property
+    def protein_id(self) -> str:
+        return self._data.get("protein_id", "")
+
+    @property
+    def generated_at_utc(self) -> str:
+        return self._data.get("generated_at_utc", "")
+
+    @property
+    def topology(self) -> dict:
+        return self._data.get("topology", {})
+
+    @property
+    def axis_sizes(self) -> dict:
+        return self._data.get("axis_sizes", {})
+
+    @property
+    def axis_alignment(self) -> dict:
+        return self._data.get("axis_alignment", {})
+
+    def has_atom_semantic(self) -> bool:
+        return bool(self.topology.get("has_atom_semantic", False))
+
+    def axis_size(self, axis: str) -> int:
+        """Return the row count declared for ``axis``. Raises KeyError if absent."""
+        return int(self.axis_sizes[axis])
+
+
+@dataclass(frozen=True)
+class TopologyGroup:
+    """Topology sidecar projections from ``TopologySidecar::WriteFeatures``.
+
+    Holds the three structured-NPY tables (bonds / rings / ring_membership)
+    and the parsed manifest JSON. Available when the extraction emitted
+    the 2026-05-13 sidecar (post-d136fcb commits); ``None`` on older runs.
+    """
+    bonds: Optional[Bonds] = None
+    rings: Optional[Rings] = None
+    ring_membership: Optional[RingMembership] = None
+    manifest: Optional[ExtractionManifest] = None
+
 
 @dataclass(frozen=True)
 class AIMNet2Group:
@@ -570,6 +911,11 @@ class Protein:
     # Per-atom invariant categorical record (CategoryInfoProjection).
     category_info: Optional[CategoryInfo] = None
 
+    # Topology sidecar projections (TopologySidecar, 2026-05-13).
+    # Always present on a successful load -- bonds/rings/ring_membership
+    # NPYs are required and ``extraction_manifest.json`` is required.
+    topology: TopologyGroup = None
+
     # Explicit solvent (trajectory path only)
     water_field: Optional[WaterFieldGroup] = None
     hydration: Optional[HydrationGroup] = None
@@ -737,6 +1083,24 @@ def load(path: str | Path) -> Protein:
     category_info = None
     if "atoms_category_info" in available:
         category_info = CategoryInfo(available["atoms_category_info"])
+
+    # Topology sidecar (TopologySidecar). bonds.npy / rings.npy /
+    # ring_membership.npy are required NPYs (declared in CATALOG);
+    # the missing-required check above already failed if any were
+    # absent. extraction_manifest.json is required separately.
+    manifest_path = path / "extraction_manifest.json"
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"Required topology sidecar extraction_manifest.json missing for {protein_id}")
+    import json
+    with open(manifest_path) as f:
+        manifest_obj = ExtractionManifest(json.load(f))
+    topology_group = TopologyGroup(
+        bonds=Bonds(available["bonds"]),
+        rings=Rings(available["rings"]),
+        ring_membership=RingMembership(available["ring_membership"]),
+        manifest=manifest_obj,
+    )
 
     # AIMNet2 (optional)
     aimnet2 = None
@@ -914,6 +1278,7 @@ def load(path: str | Path) -> Protein:
         gromacs_energy=get("gromacs_energy"),
         eeq=eeq,
         category_info=category_info,
+        topology=topology_group,
         tripeptide=tripeptide,
         larsen_hbond=larsen_hbond,
     )

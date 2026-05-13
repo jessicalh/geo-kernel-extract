@@ -24,6 +24,7 @@
 #include "GromacsFrameHandler.h"
 #include "FramePdbEmitter.h"
 #include "CategoryInfoProjection.h"
+#include "TopologySidecar.h"
 
 #include <highfive/H5File.hpp>
 
@@ -74,6 +75,7 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
 
     fs::create_directories(spec.output_dir);
     CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -118,6 +120,7 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
 
     fs::create_directories(spec.output_dir);
     CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -164,6 +167,7 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
 
     fs::create_directories(spec.output_dir);
     CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
+    TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
     int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
@@ -223,6 +227,7 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
 
     fs::create_directories(spec.output_dir);
     CategoryInfoProjection::WriteFeatures(*wt_build.protein, spec.output_dir);
+    TopologySidecar::WriteFeatures(*wt_build.protein, spec.output_dir);
     int arrays = ConformationResult::WriteAllFeatures(wt_conf, spec.output_dir);
     fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",

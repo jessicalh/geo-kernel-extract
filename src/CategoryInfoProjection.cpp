@@ -307,6 +307,7 @@ void PackString(char* dst, size_t dst_size,
 //
 constexpr size_t kS8 = 8;
 constexpr size_t kS4 = 4;
+constexpr size_t kS2 = 2;
 constexpr size_t kS1 = 1;
 
 constexpr size_t kRecordSize =
@@ -340,7 +341,15 @@ constexpr size_t kRecordSize =
     /* formal_charge          */ 1 +
     /* is_exchangeable        */ 1 +
     /* iupac_naming_provenance*/ 1 +
-    /* bmrb_naming_provenance */ 1;
+    /* bmrb_naming_provenance */ 1 +
+    // Topology-sidecar extension (2026-05-13): biological residue
+    // identity + per-atom topology pointers from typed substrate.
+    /* chain_id               */ kS2 +
+    /* residue_number         */ 4 +
+    /* insertion_code         */ kS1 +
+    /* parent_atom_index      */ 4 +
+    /* ff_atom_type_string    */ kS4 +
+    /* equivalence_class      */ 1;
 
 constexpr const char* kStructuredDtypeDescr =
     "[('atom_index', '<i4'),"
@@ -373,7 +382,13 @@ constexpr const char* kStructuredDtypeDescr =
     " ('formal_charge', 'i1'),"
     " ('is_exchangeable', 'i1'),"
     " ('iupac_naming_provenance', 'i1'),"
-    " ('bmrb_naming_provenance', 'i1')]";
+    " ('bmrb_naming_provenance', 'i1'),"
+    " ('chain_id', '|S2'),"
+    " ('residue_number', '<i4'),"
+    " ('insertion_code', '|S1'),"
+    " ('parent_atom_index', '<i4'),"
+    " ('ff_atom_type_string', '|S4'),"
+    " ('equivalence_class', 'i1')]";
 
 // ── Record builder ──────────────────────────────────────────
 //
@@ -494,6 +509,57 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         // ── Provenance ──
         row[off++] = static_cast<int8_t>(iupac_prov);
         row[off++] = static_cast<int8_t>(bmrb_prov);
+
+        // ── Topology-sidecar extension (biological residue identity
+        //     + per-atom topology pointers) ──
+        //
+        // Per the 2026-05-13 topology sidecar landing. All six fields
+        // are projected from existing typed substrate (Residue.h:39-41
+        // for chain_id / sequence_number / insertion_code; Atom.h:29
+        // for parent_atom_index; LegacyAmberTopology.h:158 for
+        // AtomtypeString; AtomSemanticTable.h:877 for equivalence_class).
+
+        PackString(reinterpret_cast<char*>(row + off), kS2, res.chain_id,
+                   "chain_id", ai);
+        off += kS2;
+
+        const int32_t res_number = static_cast<int32_t>(res.sequence_number);
+        std::memcpy(row + off, &res_number, 4); off += 4;
+
+        PackString(reinterpret_cast<char*>(row + off), kS1, res.insertion_code,
+                   "insertion_code", ai);
+        off += kS1;
+
+        // parent_atom_index: Atom::parent_atom_index uses SIZE_MAX as the
+        // sentinel for non-hydrogen atoms (Atom.h:29). Project that to
+        // -1 in the int32 NPY column so consumers can mask via
+        // ``data["parent_atom_index"] >= 0``.
+        const int32_t parent_idx = (atom.parent_atom_index == SIZE_MAX)
+            ? -1
+            : static_cast<int32_t>(atom.parent_atom_index);
+        std::memcpy(row + off, &parent_idx, 4); off += 4;
+
+        // ff_atom_type_string: only populated when the load path supplied
+        // FF data (PRMTOP / GROMACS-readback). PDB-only loads leave this
+        // empty per LegacyAmberInvariants's empty-vector convention.
+        std::string ff_type;
+        const auto& ff_type_vec = protein.LegacyAmber().AtomtypeString();
+        if (ai < ff_type_vec.size()) ff_type = ff_type_vec[ai];
+        PackString(reinterpret_cast<char*>(row + off), kS4, ff_type,
+                   "ff_atom_type_string", ai);
+        off += kS4;
+
+        // equivalence_class: RDKit canonical-rank class from the
+        // generated substrate table (tools/topology/build_semantic_tables.cpp
+        // line 1934). Zero means "not assigned" — either substrate empty
+        // or a chemically-unique atom whose canonical_rank degenerated
+        // to 0 in the table generator.
+        if (has_substrate) {
+            const AtomSemanticTable& sem = protein.LegacyAmber().SemanticAt(ai);
+            row[off++] = static_cast<int8_t>(sem.equivalence_class);
+        } else {
+            row[off++] = 0;
+        }
 
         // Sanity: we should have written exactly kRecordSize bytes.
         if (off != kRecordSize) {

@@ -21,6 +21,8 @@ from nmr_extract import (
     load,
 )
 
+from _topology_fixture import write_minimal_topology_sidecar
+
 
 # Synthetic atom count — small enough to inspect by hand if a test fails,
 # large enough that the (N, 9) and (N, 3) shapes are unambiguous.
@@ -164,6 +166,7 @@ class TestTripeptideLoad:
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
         _tripeptide_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         return tmp_path
 
     def test_tripeptide_group_attached(self, fake_extraction):
@@ -224,6 +227,7 @@ class TestTripeptideAbsent:
     def fake_extraction_no_tripeptide(self, tmp_path):
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         # Intentionally do NOT write any tripeptide_* NPYs.
         return tmp_path
 

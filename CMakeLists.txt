@@ -247,6 +247,7 @@ add_library(nmr_shielding
     src/MolecularGraphResult.cpp
     src/RuntimeEnvironment.cpp
     src/CategoryInfoProjection.cpp
+    src/TopologySidecar.cpp
     src/OperationLog.cpp
     src/OperationRunner.cpp
     src/ConformationResult.cpp
@@ -588,6 +589,34 @@ target_link_libraries(category_info_projection_tests PRIVATE
     GTest::gtest
 )
 gtest_discover_tests(category_info_projection_tests
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+# ============================================================================
+# TopologySidecar tests
+#
+# Verifies that bonds.npy, rings.npy, ring_membership.npy, and
+# extraction_manifest.json land alongside atoms_category_info.npy with
+# axis sizes matching the protein's typed topology surface, bond
+# endpoints within the atom axis, and idempotent byte-identical
+# re-emission of the topology files. See src/TopologySidecar.{h,cpp}.
+# ============================================================================
+
+add_executable(topology_sidecar_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_topology_sidecar.cpp
+)
+target_compile_definitions(topology_sidecar_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(topology_sidecar_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests
+)
+target_link_libraries(topology_sidecar_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+)
+gtest_discover_tests(topology_sidecar_tests
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 # fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp

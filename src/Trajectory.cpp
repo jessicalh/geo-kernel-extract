@@ -5,6 +5,7 @@
 #include "Session.h"
 #include "AIMNet2Result.h"          // AIMNet2Model (forward use)
 #include "CategoryInfoProjection.h"
+#include "TopologySidecar.h"
 #include "FramePdbEmitter.h"
 #include "GromacsFrameHandler.h"
 #include "ProteinConformation.h"
@@ -188,6 +189,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     if (!output_dir_.empty()) {
         CategoryInfoProjection::WriteFeatures(tp.ProteinRef(),
                                                output_dir_.string());
+        TopologySidecar::WriteFeatures(tp.ProteinRef(),
+                                        output_dir_.string());
     }
 
     // =========================================================
