@@ -483,6 +483,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # RingTopology. Emitted alongside atoms_category_info.npy whenever
     # the protein has a populated typed substrate.
     # ────────────────────────────────────────────────────────────────
+    ArraySpec("residues",         "topology", np.ndarray, None, True,  "Per-residue record: residue_index, chain_id, residue_number, insertion_code, residue_type, amber/iupac/one-letter names, protonation_variant_index, terminal_state, prev/next links, atom_count, is_proline/aromatic/titratable, has_amide_h",
+              native_axis="residue", is_feature=False, mechanism="topology"),
     ArraySpec("bonds",            "topology", np.ndarray, None, True,  "Per-bond record: bond_index, atom_index_a/b, bond_order, bond_category, is_rotatable, is_aromatic, is_peptide, is_backbone",
               native_axis="bond", is_feature=False, mechanism="topology"),
     ArraySpec("rings",            "topology", np.ndarray, None, True,  "Per-ring record: ring_id, ring_kind (aromatic|saturated), ring_type_index, atom_count, native_axis_index, parent_residue_index, parent_residue_number, fused_partner_ring_id",

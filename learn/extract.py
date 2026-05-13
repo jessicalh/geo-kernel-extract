@@ -58,6 +58,35 @@ KNOWN_RUNS = [
     "AzimuthalExtraction",
     "FinalExtraction",     # full feature set: APBS + MOPAC + AIMNet2
     "Stage1Results",       # thesis stage 1: full feature set, 2026-04-13
+    "Stage1BMRB",          # stage 1 identity pass: category_info + DFT components
+    "Stage1BMRB_20260509", # current-code rerun: topology + planar geometry
+]
+
+STAGE1_AUDIT_OUTPUTS = [
+    "atoms_category_info.npy",
+    "delta_shielding_diamagnetic.npy",
+    "delta_shielding_paramagnetic.npy",
+    "wt_shielding_diamagnetic.npy",
+    "wt_shielding_paramagnetic.npy",
+    "mut_shielding_diamagnetic.npy",
+    "mut_shielding_paramagnetic.npy",
+    "aimnet2_polarisability.npy",
+    "aimnet2_polarisability_scalar.npy",
+    "pyramidalization.npy",
+    "omega_actual.npy",
+    "omega_deviation.npy",
+    "omega_is_xpro.npy",
+    "aromatic_chi2.npy",
+    "pucker_Q.npy",
+    "pucker_theta.npy",
+    # Topology sidecar (TopologySidecar.cpp, 2026-05-13). Required by the
+    # strict SDK loader. A run missing any of these is structurally
+    # incomplete and must not silently continue.
+    "residues.npy",
+    "bonds.npy",
+    "rings.npy",
+    "ring_membership.npy",
+    "extraction_manifest.json",
 ]
 
 
@@ -70,7 +99,8 @@ def flush_vcache():
         pass
 
 
-def is_complete_pair(protein_dir: Path, protein_id: str) -> tuple[bool, str]:
+def is_complete_pair(protein_dir: Path, protein_id: str,
+                     require_nmr_out: bool = False) -> tuple[bool, str]:
     """Check that a calibration protein has the required extraction files."""
     for variant in ("WT", "ALA"):
         root = protein_dir / f"{protein_id}_{variant}"
@@ -78,11 +108,26 @@ def is_complete_pair(protein_dir: Path, protein_id: str) -> tuple[bool, str]:
             path = Path(str(root) + ext)
             if not path.exists():
                 return False, f"missing {path.name}"
+        if require_nmr_out:
+            nmr_path = Path(str(root) + "_nmr.out")
+            if not nmr_path.exists():
+                return False, f"missing {nmr_path.name}"
+    return True, ""
+
+
+def validate_stage1_audit_outputs(output_dir: Path) -> tuple[bool, str]:
+    """Require the arrays consumed by the BMRB-level Stage 1 analysis."""
+    missing = [name for name in STAGE1_AUDIT_OUTPUTS
+               if not (output_dir / name).exists()]
+    if missing:
+        return False, "missing stage1 outputs: " + ", ".join(missing)
     return True, ""
 
 
 def extract_one(protein_id: str, config_path: str | None,
-                dry_run: bool = False) -> dict:
+                dry_run: bool = False,
+                require_nmr_out: bool = False,
+                require_stage1_audit: bool = False) -> dict:
     """Extract features for one WT+ALA protein pair using --mutant mode.
 
     Returns dict with keys: protein_id, ok, error, elapsed, n_arrays.
@@ -91,7 +136,8 @@ def extract_one(protein_id: str, config_path: str | None,
               "ok": False, "error": "", "elapsed": 0.0, "n_arrays": 0}
 
     protein_dir = CALIBRATION / protein_id
-    ok, reason = is_complete_pair(protein_dir, protein_id)
+    ok, reason = is_complete_pair(protein_dir, protein_id,
+                                  require_nmr_out=require_nmr_out)
     if not ok:
         result["error"] = reason
         return result
@@ -125,6 +171,13 @@ def extract_one(protein_id: str, config_path: str | None,
 
         npy_files = list(output_dir.glob("*.npy"))
         result["n_arrays"] = len(npy_files)
+
+        if require_stage1_audit:
+            ok, reason = validate_stage1_audit_outputs(output_dir)
+            if not ok:
+                result["error"] = reason
+                return result
+
         result["ok"] = True
 
         for line in (proc.stderr or "").splitlines():
@@ -140,10 +193,15 @@ def extract_one(protein_id: str, config_path: str | None,
     return result
 
 
-def is_extracted(protein_id: str) -> bool:
+def is_extracted(protein_id: str, require_stage1_audit: bool = False) -> bool:
     """Check if features already exist for this protein."""
     d = FEATURES_BASE / _current_run / protein_id
-    return (d / "pos.npy").exists()
+    if not (d / "pos.npy").exists():
+        return False
+    if require_stage1_audit:
+        ok, _ = validate_stage1_audit_outputs(d)
+        return ok
+    return True
 
 # Set by main() from --run argument
 _current_run = ""
@@ -164,6 +222,12 @@ def main():
     parser.add_argument("--config", type=str, default=DEFAULT_CONFIG,
                         help="TOML config file for calculator parameter overrides "
                              "(default: data/calculator_params.toml)")
+    parser.add_argument("--require-nmr-out", action="store_true",
+                        help="require WT and ALA ORCA *_nmr.out inputs before "
+                             "starting each job")
+    parser.add_argument("--stage1-audit", action="store_true",
+                        help="Stage 1 BMRB identity run: require ORCA NMR inputs "
+                             "and verify category_info plus dia/para delta outputs")
     args = parser.parse_args()
 
     global _current_run
@@ -180,17 +244,21 @@ def main():
         print(f"ERROR: {CALIBRATION} not found.", file=sys.stderr)
         sys.exit(1)
 
+    require_nmr_out = args.require_nmr_out or args.stage1_audit
+
     # Build job list from calibration directory
     if args.protein:
         proteins = [args.protein]
     else:
         proteins = sorted(d.name for d in CALIBRATION.iterdir()
-                          if d.is_dir() and not d.name.startswith("."))
+                          if d.is_dir()
+                          and not d.name.startswith(".")
+                          and d.name != "features")
 
     jobs = []
     skipped = 0
     for pid in proteins:
-        if args.resume and is_extracted(pid):
+        if args.resume and is_extracted(pid, args.stage1_audit):
             skipped += 1
             continue
         jobs.append(pid)
@@ -212,7 +280,9 @@ def main():
     if args.workers <= 1 or args.dry_run:
         for i, pid in enumerate(jobs):
             flush_vcache()
-            r = extract_one(pid, args.config, dry_run=args.dry_run)
+            r = extract_one(pid, args.config, dry_run=args.dry_run,
+                            require_nmr_out=require_nmr_out,
+                            require_stage1_audit=args.stage1_audit)
             status = "OK" if r["ok"] else "FAIL"
             print(f"[{i+1}/{len(jobs)}] {pid}: {status}  "
                   f"{r['elapsed']:.1f}s  {r['n_arrays']} arrays"
@@ -226,7 +296,9 @@ def main():
                     f.write(json.dumps(r) + "\n")
     else:
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
-            futures = {pool.submit(extract_one, pid, args.config): pid
+            futures = {pool.submit(extract_one, pid, args.config,
+                                   False, require_nmr_out,
+                                   args.stage1_audit): pid
                        for pid in jobs}
             for i, future in enumerate(as_completed(futures)):
                 pid = futures[future]

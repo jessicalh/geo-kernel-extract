@@ -1,8 +1,9 @@
 #pragma once
 //
 // TopologySidecar -- output-side per-protein topology projection.
-// Emits four sibling files alongside the existing NPY output:
+// Emits five sibling files alongside the existing NPY output:
 //
+//   residues.npy              structured NPY, one row per Residue
 //   bonds.npy                 structured NPY, one row per Bond
 //   rings.npy                 structured NPY, one row per Ring
 //                             (aromatic rings first, then saturated)

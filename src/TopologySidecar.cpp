@@ -1,5 +1,6 @@
 #include "TopologySidecar.h"
 
+#include "AminoAcidType.h"
 #include "Atom.h"
 #include "Bond.h"
 #include "CovalentTopology.h"
@@ -89,6 +90,145 @@ bool WriteStructuredNpy(const fs::path& path,
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
     return out.good();
+}
+
+// ── Residues emission ─────────────────────────────────────────────
+//
+// One row per Residue. Codex contract item: "Residue Table Minimum"
+// plus prev/next links and Markley-style 1-letter / 3-letter
+// renderings.
+//
+// Chain boundary detection: row i is at chain start if i == 0 OR
+// chain_id changes from i-1 to i. Same for chain end with i+1.
+//
+constexpr const char* kResiduesDtypeDescr =
+    "[('residue_index', '<i4'),"
+    " ('chain_id', '|S2'),"
+    " ('residue_number', '<i4'),"
+    " ('insertion_code', '|S1'),"
+    " ('residue_type', 'i1'),"
+    " ('amber_residue_3letter', '|S4'),"
+    " ('iupac_residue_3letter', '|S4'),"
+    " ('one_letter', '|S1'),"
+    " ('protonation_variant_index', 'i1'),"
+    " ('terminal_state', 'i1'),"
+    " ('prev_residue_index', '<i4'),"
+    " ('next_residue_index', '<i4'),"
+    " ('prev_residue_type', 'i1'),"
+    " ('next_residue_type', 'i1'),"
+    " ('atom_count', '<i4'),"
+    " ('is_proline', 'i1'),"
+    " ('is_aromatic', 'i1'),"
+    " ('is_titratable', 'i1'),"
+    " ('has_amide_h', 'i1')]";
+
+constexpr size_t kResidueRecordSize =
+    4 + 2 + 4 + 1 + 1 + 4 + 4 + 1 + 1 + 1 + 4 + 4 + 1 + 1 + 4 + 1 + 1 + 1 + 1;
+
+void PackFixedString(unsigned char* dst, size_t dst_size,
+                       const std::string& src,
+                       const char* field_name, size_t row_index) {
+    if (src.size() > dst_size) {
+        std::fprintf(stderr,
+            "FATAL: TopologySidecar -- field \"%s\" length %zu exceeds "
+            "column width %zu at row %zu (value=\"%s\").\n",
+            field_name, src.size(), dst_size, row_index, src.c_str());
+        std::abort();
+    }
+    std::memset(dst, 0, dst_size);
+    std::memcpy(dst, src.data(), src.size());
+}
+
+bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
+    const size_t N = protein.ResidueCount();
+    std::vector<unsigned char> buf(N * kResidueRecordSize, 0);
+
+    for (size_t ri = 0; ri < N; ++ri) {
+        const Residue& r = protein.ResidueAt(ri);
+        unsigned char* row = buf.data() + ri * kResidueRecordSize;
+        size_t off = 0;
+
+        const int32_t r_idx = static_cast<int32_t>(ri);
+        std::memcpy(row + off, &r_idx, 4); off += 4;
+
+        PackFixedString(row + off, 2, r.chain_id, "chain_id", ri);
+        off += 2;
+
+        const int32_t seq_num = static_cast<int32_t>(r.sequence_number);
+        std::memcpy(row + off, &seq_num, 4); off += 4;
+
+        PackFixedString(row + off, 1, r.insertion_code, "insertion_code", ri);
+        off += 1;
+
+        row[off++] = static_cast<int8_t>(r.type);
+
+        const AminoAcidType& aat = (r.type == AminoAcid::Unknown)
+            ? GetAminoAcidType(AminoAcid::ALA)  // dummy to satisfy reference
+            : GetAminoAcidType(r.type);
+
+        std::string amber_3 = (r.type == AminoAcid::Unknown) ? "UNK"
+            : (r.protonation_variant_index >= 0
+                  && static_cast<size_t>(r.protonation_variant_index) < aat.variants.size()
+                  ? std::string(aat.variants[r.protonation_variant_index].name)
+                  : std::string(aat.three_letter_code));
+        std::string iupac_3 = (r.type == AminoAcid::Unknown) ? "UNK"
+            : std::string(aat.three_letter_code);
+        std::string one_letter(1,
+            r.type == AminoAcid::Unknown ? 'X' : aat.one_letter_code);
+
+        PackFixedString(row + off, 4, amber_3, "amber_residue_3letter", ri);
+        off += 4;
+        PackFixedString(row + off, 4, iupac_3, "iupac_residue_3letter", ri);
+        off += 4;
+        PackFixedString(row + off, 1, one_letter, "one_letter", ri);
+        off += 1;
+
+        row[off++] = static_cast<int8_t>(r.protonation_variant_index);
+        row[off++] = static_cast<int8_t>(r.terminal_state);
+
+        // Chain-aware prev/next links. -1 at chain boundaries.
+        int32_t prev_idx = -1;
+        int8_t  prev_type = static_cast<int8_t>(AminoAcid::Unknown);
+        if (ri > 0) {
+            const Residue& prev = protein.ResidueAt(ri - 1);
+            if (prev.chain_id == r.chain_id) {
+                prev_idx = static_cast<int32_t>(ri - 1);
+                prev_type = static_cast<int8_t>(prev.type);
+            }
+        }
+        std::memcpy(row + off, &prev_idx, 4); off += 4;
+
+        int32_t next_idx = -1;
+        int8_t  next_type = static_cast<int8_t>(AminoAcid::Unknown);
+        if (ri + 1 < N) {
+            const Residue& next = protein.ResidueAt(ri + 1);
+            if (next.chain_id == r.chain_id) {
+                next_idx = static_cast<int32_t>(ri + 1);
+                next_type = static_cast<int8_t>(next.type);
+            }
+        }
+        std::memcpy(row + off, &next_idx, 4); off += 4;
+        row[off++] = prev_type;
+        row[off++] = next_type;
+
+        const int32_t atom_count = static_cast<int32_t>(r.atom_indices.size());
+        std::memcpy(row + off, &atom_count, 4); off += 4;
+
+        row[off++] = (r.type == AminoAcid::PRO) ? 1 : 0;
+        row[off++] = (r.type != AminoAcid::Unknown && r.IsAromatic()) ? 1 : 0;
+        row[off++] = (r.type != AminoAcid::Unknown && r.IsTitratable()) ? 1 : 0;
+        row[off++] = (r.type != AminoAcid::Unknown && r.HasAmideH()) ? 1 : 0;
+
+        if (off != kResidueRecordSize) {
+            std::fprintf(stderr,
+                "FATAL: TopologySidecar::WriteResidues record-size mismatch "
+                "at row %zu: wrote %zu, expected %zu.\n",
+                ri, off, kResidueRecordSize);
+            std::abort();
+        }
+    }
+    return WriteStructuredNpy(out_dir / "residues.npy", kResiduesDtypeDescr,
+                                N, kResidueRecordSize, buf);
 }
 
 // ── Bonds emission ────────────────────────────────────────────────
@@ -351,8 +491,10 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
       <<                "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
       <<                "mc_shielding, coulomb_shielding, hbond_shielding, "
       <<                "larsen_hbond_*, tripeptide_*, etc.) follow the same convention.\",\n";
-    j << "    \"residue\": \"residue_type.npy is residue-axis. "
-      <<                  "atoms_category_info.residue_index references this axis.\",\n";
+    j << "    \"residue\": \"residues.npy is the canonical residue axis. "
+      <<                  "residue_type.npy / residue_index.npy in the identity block are atom-axis "
+      <<                  "(N atom rows, each carrying that atom's residue's type / index). "
+      <<                  "atoms_category_info.residue_index references the residue axis.\",\n";
     j << "    \"bond\": \"bonds.npy is the canonical bond axis. "
       <<               "bonds.bond_index is the row index.\",\n";
     j << "    \"ring\": \"rings.npy lists aromatic rings first (rows 0..aromatic_ring-1) "
@@ -406,6 +548,7 @@ int TopologySidecar::WriteFeatures(const Protein& protein,
     }
 
     int written = 0;
+    if (WriteResidues(protein, out_dir)) ++written;
     if (WriteBonds(protein, out_dir)) ++written;
     size_t membership_rows = 0;
     if (WriteRings(protein, out_dir, &membership_rows)) ++written;

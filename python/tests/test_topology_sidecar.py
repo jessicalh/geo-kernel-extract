@@ -17,6 +17,7 @@ import pytest
 
 from nmr_extract import (
     CATALOG,
+    Residues,
     Bonds,
     Rings,
     RingMembership,
@@ -26,6 +27,7 @@ from nmr_extract import (
 )
 from _topology_fixture import (
     write_minimal_topology_sidecar,
+    _RESIDUES_DTYPE,
     _BONDS_DTYPE,
     _RINGS_DTYPE,
     _RING_MEMBERSHIP_DTYPE,
@@ -58,7 +60,7 @@ class TestCatalogMetadata:
         assert not bad, f"Entries with invalid tensor_rank: {bad}"
 
     def test_topology_sidecar_entries_registered(self):
-        for stem in ("bonds", "rings", "ring_membership"):
+        for stem in ("residues", "bonds", "rings", "ring_membership"):
             assert stem in CATALOG, f"CATALOG missing topology entry {stem!r}"
             assert CATALOG[stem].required, (
                 f"topology sidecar entry {stem!r} must be required")
@@ -140,8 +142,18 @@ class TestTopologyLoad:
     def fake_extraction(self, tmp_path):
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
-        # Two synthetic bonds, one aromatic ring with 6 members, one
-        # saturated ring with 5 members. Exercises every wrapper.
+        # 4 residues, 4 atoms each. Two synthetic bonds, one aromatic
+        # ring with 6 members, one saturated ring with 5 members.
+        n_residues = N_ATOMS // 4
+        residues = np.zeros(n_residues, dtype=_RESIDUES_DTYPE)
+        for i in range(n_residues):
+            residues[i]["residue_index"] = i
+            residues[i]["residue_number"] = i + 1
+            residues[i]["atom_count"] = 4
+            residues[i]["prev_residue_index"] = i - 1 if i > 0 else -1
+            residues[i]["next_residue_index"] = i + 1 if i + 1 < n_residues else -1
+        np.save(tmp_path / "residues.npy", residues)
+
         bonds = np.zeros(2, dtype=_BONDS_DTYPE)
         bonds[0] = (0, 0, 1, 0, 0, 0, 0, 0, 1)   # bond_index, a, b, order=Single, cat=PeptideCO, rotate, arom, peptide, backbone
         bonds[1] = (1, 1, 2, 4, 1, 0, 0, 1, 1)   # peptide bond
@@ -168,7 +180,7 @@ class TestTopologyLoad:
                          "has_ff_atom_types": False,
                          "has_ff_mass": False},
             "axis_sizes": {
-                "atom": N_ATOMS, "residue": N_ATOMS // 4, "bond": 2,
+                "atom": N_ATOMS, "residue": n_residues, "bond": 2,
                 "aromatic_ring": 1, "saturated_ring": 1, "ring": 2,
                 "ring_membership": 11,
             },
@@ -176,6 +188,18 @@ class TestTopologyLoad:
         }
         (tmp_path / "extraction_manifest.json").write_text(json.dumps(manifest))
         return tmp_path
+
+    def test_residues_wrapper(self, fake_extraction):
+        p = load(fake_extraction)
+        r = p.topology.residues
+        assert isinstance(r, Residues)
+        assert r.n_residues == 4
+        # Total atom_count must sum to atom axis size (validation invariant).
+        assert int(r.atom_count.sum()) == N_ATOMS
+        # First residue has prev = -1 (chain start).
+        assert r.prev_residue_index[0] == -1
+        # Last residue has next = -1 (chain end).
+        assert r.next_residue_index[-1] == -1
 
     def test_protein_topology_is_a_topology_group(self, fake_extraction):
         p = load(fake_extraction)
@@ -237,17 +261,74 @@ class TestStrictLoad:
     def test_missing_bonds_npy_fails(self, tmp_path):
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
-        # No bonds.npy / rings.npy / ring_membership.npy / manifest.
+        # No residues / bonds / rings / ring_membership / manifest.
         with pytest.raises(FileNotFoundError):
             load(tmp_path)
 
     def test_missing_manifest_fails(self, tmp_path):
         _required_identity_npys(tmp_path, N_ATOMS)
         _required_calculator_npys(tmp_path, N_ATOMS)
-        # bonds/rings/ring_membership present; manifest absent.
+        # residues/bonds/rings/ring_membership present; manifest absent.
         write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
         (tmp_path / "extraction_manifest.json").unlink()
         with pytest.raises(FileNotFoundError, match="extraction_manifest"):
+            load(tmp_path)
+
+
+class TestValidationInvariants:
+    """SDK enforces the codex first-pass validation gates at load time."""
+
+    def test_axis_size_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        # Write a topology sidecar with a manifest that lies about axis sizes.
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        # Re-emit a corrupted manifest claiming a different atom count.
+        manifest_path = tmp_path / "extraction_manifest.json"
+        man = json.loads(manifest_path.read_text())
+        man["axis_sizes"]["atom"] = N_ATOMS + 7   # lie
+        manifest_path.write_text(json.dumps(man))
+        with pytest.raises(ValueError, match="atom axis"):
+            load(tmp_path)
+
+    def test_bond_endpoint_out_of_range_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS, n_bonds=2)
+        # Corrupt bonds.npy with an out-of-range endpoint.
+        bonds = np.load(tmp_path / "bonds.npy")
+        bonds[0]["atom_index_a"] = N_ATOMS + 100  # invalid
+        np.save(tmp_path / "bonds.npy", bonds)
+        with pytest.raises(ValueError, match="bonds.npy"):
+            load(tmp_path)
+
+    def test_ring_membership_out_of_range_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(
+            tmp_path, n_atoms=N_ATOMS, n_aromatic_rings=1)
+        # Membership rows are empty by default; need to add a corrupt one.
+        memb = np.zeros(1, dtype=_RING_MEMBERSHIP_DTYPE)
+        memb[0]["ring_id"] = 99  # invalid (only 1 ring exists)
+        memb[0]["atom_index"] = 0
+        memb[0]["is_vertex"] = 1
+        np.save(tmp_path / "ring_membership.npy", memb)
+        man_path = tmp_path / "extraction_manifest.json"
+        man = json.loads(man_path.read_text())
+        man["axis_sizes"]["ring_membership"] = 1
+        man_path.write_text(json.dumps(man))
+        with pytest.raises(ValueError, match="ring_id"):
+            load(tmp_path)
+
+    def test_residue_atom_count_sum_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        # Corrupt residues.npy so atom_count sum != N_ATOMS.
+        residues = np.load(tmp_path / "residues.npy")
+        residues[0]["atom_count"] = 999
+        np.save(tmp_path / "residues.npy", residues)
+        with pytest.raises(ValueError, match="atom_count sums"):
             load(tmp_path)
 
 

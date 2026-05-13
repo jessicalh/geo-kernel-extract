@@ -19,6 +19,28 @@ import numpy as np
 
 
 # Byte-for-byte mirrors of the C++ structured dtypes in TopologySidecar.cpp.
+_RESIDUES_DTYPE = np.dtype([
+    ("residue_index", "<i4"),
+    ("chain_id", "|S2"),
+    ("residue_number", "<i4"),
+    ("insertion_code", "|S1"),
+    ("residue_type", "i1"),
+    ("amber_residue_3letter", "|S4"),
+    ("iupac_residue_3letter", "|S4"),
+    ("one_letter", "|S1"),
+    ("protonation_variant_index", "i1"),
+    ("terminal_state", "i1"),
+    ("prev_residue_index", "<i4"),
+    ("next_residue_index", "<i4"),
+    ("prev_residue_type", "i1"),
+    ("next_residue_type", "i1"),
+    ("atom_count", "<i4"),
+    ("is_proline", "i1"),
+    ("is_aromatic", "i1"),
+    ("is_titratable", "i1"),
+    ("has_amide_h", "i1"),
+])
+
 _BONDS_DTYPE = np.dtype([
     ("bond_index", "<i4"),
     ("atom_index_a", "<i4"),
@@ -56,7 +78,7 @@ _RING_MEMBERSHIP_DTYPE = np.dtype([
 def write_minimal_topology_sidecar(
     out_dir: Path,
     n_atoms: int,
-    n_residues: int = 1,
+    n_residues: int = None,
     n_bonds: int = 0,
     n_aromatic_rings: int = 0,
     n_saturated_rings: int = 0,
@@ -71,6 +93,27 @@ def write_minimal_topology_sidecar(
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Default residue count: one residue per 4 atoms (matches the
+    # fake-extraction convention in existing test_*_group.py fixtures).
+    if n_residues is None:
+        n_residues = max(1, (n_atoms + 3) // 4)
+
+    # Distribute n_atoms across n_residues -- ceil division so the last
+    # residue absorbs the remainder. The manifest's residue axis size and
+    # residues.npy atom_count must sum to n_atoms.
+    residues = np.zeros(n_residues, dtype=_RESIDUES_DTYPE)
+    if n_residues > 0:
+        base = n_atoms // n_residues
+        rem = n_atoms - base * n_residues
+        for i in range(n_residues):
+            residues[i]["residue_index"] = i
+            residues[i]["residue_number"] = i + 1
+            residues[i]["residue_type"] = 0  # AminoAcid enum 0 = ALA in fixtures
+            residues[i]["atom_count"] = base + (1 if i < rem else 0)
+            residues[i]["prev_residue_index"] = i - 1 if i > 0 else -1
+            residues[i]["next_residue_index"] = i + 1 if i + 1 < n_residues else -1
+    np.save(out_dir / "residues.npy", residues)
 
     np.save(out_dir / "bonds.npy", np.zeros(n_bonds, dtype=_BONDS_DTYPE))
 

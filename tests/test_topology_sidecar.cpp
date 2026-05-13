@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -89,7 +90,7 @@ protected:
 
         const int written = TopologySidecar::WriteFeatures(
             *protein_, dir_.string(), "1UBQ");
-        ASSERT_EQ(4, written);
+        ASSERT_EQ(5, written);
     }
     void TearDown() override {
         // NOTE: cannot call fs::remove_all here -- libtorch ships a
@@ -113,7 +114,8 @@ protected:
 // File emission
 // ============================================================================
 
-TEST_F(TopologySidecarTest, EmitsAllFourFiles) {
+TEST_F(TopologySidecarTest, EmitsAllFiveFiles) {
+    EXPECT_TRUE(fs::exists(dir_ / "residues.npy"));
     EXPECT_TRUE(fs::exists(dir_ / "bonds.npy"));
     EXPECT_TRUE(fs::exists(dir_ / "rings.npy"));
     EXPECT_TRUE(fs::exists(dir_ / "ring_membership.npy"));
@@ -239,10 +241,93 @@ TEST_F(TopologySidecarTest, IdempotentRewrite) {
     // identical.
     const int written = TopologySidecar::WriteFeatures(
         *protein_, dir_.string(), "1UBQ");
-    EXPECT_EQ(4, written);
+    EXPECT_EQ(5, written);
 
     const auto bytes_after = ReadFileBytes(dir_ / "bonds.npy");
     EXPECT_EQ(bytes_before, bytes_after);
+}
+
+// ============================================================================
+// Manifest content — value-bearing assertions
+//
+// The previous round of tests checked only key presence; that caught
+// missing fields but missed the bad axis_alignment claim (residue_type.npy
+// was wrongly called residue-axis). Pull integer values out by hand for
+// axis_sizes and assert against the protein's actual surface; assert
+// alignment claims by their specific anchoring fact.
+// ============================================================================
+
+// Hand-rolled "value-after-key" extractor for the flat axis_sizes block.
+// Codex's JSON manifest is project-controlled; full JSON parsing is
+// overkill for a self-emitted format.
+int ExtractAxisSize(const std::string& j, const std::string& axis) {
+    const std::string needle = "\"" + axis + "\":";
+    auto pos = j.find(needle);
+    if (pos == std::string::npos) return -1;
+    pos += needle.size();
+    while (pos < j.size() && std::isspace(static_cast<unsigned char>(j[pos]))) ++pos;
+    int value = 0;
+    bool any = false;
+    while (pos < j.size() && std::isdigit(static_cast<unsigned char>(j[pos]))) {
+        value = value * 10 + (j[pos] - '0');
+        ++pos;
+        any = true;
+    }
+    return any ? value : -1;
+}
+
+TEST_F(TopologySidecarTest, ManifestAxisSizesExactlyMatchProtein) {
+    const std::string j = ReadFileText(dir_ / "extraction_manifest.json");
+    ASSERT_FALSE(j.empty());
+
+    EXPECT_EQ(static_cast<int>(protein_->AtomCount()),
+              ExtractAxisSize(j, "atom"));
+    EXPECT_EQ(static_cast<int>(protein_->ResidueCount()),
+              ExtractAxisSize(j, "residue"));
+    EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().BondCount()),
+              ExtractAxisSize(j, "bond"));
+    EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().AromaticRingCount()),
+              ExtractAxisSize(j, "aromatic_ring"));
+    EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().SaturatedRingCount()),
+              ExtractAxisSize(j, "saturated_ring"));
+    EXPECT_EQ(static_cast<int>(protein_->LegacyAmber().AromaticRingCount() +
+                                  protein_->LegacyAmber().SaturatedRingCount()),
+              ExtractAxisSize(j, "ring"));
+}
+
+TEST_F(TopologySidecarTest, ManifestAxisAlignmentClaimsAreCorrect) {
+    const std::string j = ReadFileText(dir_ / "extraction_manifest.json");
+    ASSERT_FALSE(j.empty());
+
+    // residue alignment: residues.npy is the canonical residue axis;
+    // residue_type.npy in the identity block is atom-axis. The previous
+    // wording said "residue_type.npy is residue-axis" which is wrong;
+    // catch any regression.
+    EXPECT_NE(j.find("residues.npy is the canonical residue axis"),
+              std::string::npos);
+    EXPECT_NE(j.find("residue_type.npy / residue_index.npy in the identity block are atom-axis"),
+              std::string::npos);
+
+    // bond alignment: bonds.npy is the canonical bond axis.
+    EXPECT_NE(j.find("bonds.npy is the canonical bond axis"),
+              std::string::npos);
+
+    // ring alignment: aromatic first then saturated, ring_id absolute.
+    EXPECT_NE(j.find("aromatic rings first"),
+              std::string::npos);
+    EXPECT_NE(j.find("ring_id is the absolute row index"),
+              std::string::npos);
+
+    // aromatic_ring alignment: ring_geometry.npy ↔ rings.npy aromatic prefix.
+    EXPECT_NE(j.find("ring_geometry.npy is aromatic-only"),
+              std::string::npos);
+}
+
+// Residues axis count
+TEST_F(TopologySidecarTest, ResiduesAxisCountMatchesTopology) {
+    const auto bytes = ReadFileBytes(dir_ / "residues.npy");
+    const std::size_t rows = ReadNpyRowCount(bytes);
+    EXPECT_EQ(protein_->ResidueCount(), rows);
 }
 
 }  // namespace

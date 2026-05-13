@@ -379,6 +379,119 @@ class CategoryInfo:
 # with convenience accessors; no model is built.
 #
 
+class Residues:
+    """Per-residue record from ``residues.npy``.
+
+    One row per residue. Codex's RequiredTable contract item, plus
+    prev/next chain-aware links (-1 at chain boundaries) and the
+    Markley-style 1-letter / 3-letter renderings.
+
+    Dtype: ``residue_index`` ``chain_id`` (S2) ``residue_number``
+    ``insertion_code`` (S1) ``residue_type`` (AminoAcid enum)
+    ``amber_residue_3letter`` ``iupac_residue_3letter`` ``one_letter``
+    ``protonation_variant_index`` ``terminal_state``
+    ``prev_residue_index`` ``next_residue_index`` ``prev_residue_type``
+    ``next_residue_type`` ``atom_count`` ``is_proline`` ``is_aromatic``
+    ``is_titratable`` ``has_amide_h``.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: np.ndarray):
+        if data.dtype.fields is None:
+            raise ValueError(
+                "Residues: expected a numpy structured array; got "
+                f"flat dtype {data.dtype}.")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        return self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def n_residues(self) -> int:
+        return len(self._data)
+
+    @property
+    def residue_index(self) -> np.ndarray:
+        return self._data["residue_index"]
+
+    @property
+    def chain_id(self) -> np.ndarray:
+        return self._data["chain_id"]
+
+    @property
+    def residue_number(self) -> np.ndarray:
+        return self._data["residue_number"]
+
+    @property
+    def insertion_code(self) -> np.ndarray:
+        return self._data["insertion_code"]
+
+    @property
+    def residue_type(self) -> np.ndarray:
+        return self._data["residue_type"]
+
+    @property
+    def amber_residue_3letter(self) -> np.ndarray:
+        return self._data["amber_residue_3letter"]
+
+    @property
+    def iupac_residue_3letter(self) -> np.ndarray:
+        return self._data["iupac_residue_3letter"]
+
+    @property
+    def one_letter(self) -> np.ndarray:
+        return self._data["one_letter"]
+
+    @property
+    def protonation_variant_index(self) -> np.ndarray:
+        return self._data["protonation_variant_index"]
+
+    @property
+    def terminal_state(self) -> np.ndarray:
+        return self._data["terminal_state"]
+
+    @property
+    def prev_residue_index(self) -> np.ndarray:
+        return self._data["prev_residue_index"]
+
+    @property
+    def next_residue_index(self) -> np.ndarray:
+        return self._data["next_residue_index"]
+
+    @property
+    def prev_residue_type(self) -> np.ndarray:
+        return self._data["prev_residue_type"]
+
+    @property
+    def next_residue_type(self) -> np.ndarray:
+        return self._data["next_residue_type"]
+
+    @property
+    def atom_count(self) -> np.ndarray:
+        return self._data["atom_count"]
+
+    @property
+    def is_proline(self) -> np.ndarray:
+        return self._data["is_proline"] != 0
+
+    @property
+    def is_aromatic(self) -> np.ndarray:
+        return self._data["is_aromatic"] != 0
+
+    @property
+    def is_titratable(self) -> np.ndarray:
+        return self._data["is_titratable"] != 0
+
+    @property
+    def has_amide_h(self) -> np.ndarray:
+        return self._data["has_amide_h"] != 0
+
+
 class Bonds:
     """Per-bond record from ``bonds.npy``.
 
@@ -635,10 +748,11 @@ class ExtractionManifest:
 class TopologyGroup:
     """Topology sidecar projections from ``TopologySidecar::WriteFeatures``.
 
-    Holds the three structured-NPY tables (bonds / rings / ring_membership)
-    and the parsed manifest JSON. Available when the extraction emitted
-    the 2026-05-13 sidecar (post-d136fcb commits); ``None`` on older runs.
+    Holds the four structured-NPY tables (residues / bonds / rings /
+    ring_membership) and the parsed manifest JSON. Always present on a
+    successful ``load()`` -- every field is populated by the loader.
     """
+    residues: Optional[Residues] = None
     bonds: Optional[Bonds] = None
     rings: Optional[Rings] = None
     ring_membership: Optional[RingMembership] = None
@@ -941,6 +1055,86 @@ def _wrap(spec, data: np.ndarray):
     return spec.wrapper(data)
 
 
+def _validate_topology_invariants(tg: TopologyGroup, n_atoms: int,
+                                    protein_id: str) -> None:
+    """Cross-check declared axis sizes + reference integrity.
+
+    Codex contract first-pass validation gates: the manifest declares
+    axis sizes; the structured-NPY tables must agree, and every
+    cross-reference (bond endpoint -> atom, ring membership -> atom +
+    ring) must be in-bounds. Raises ``ValueError`` on any violation.
+
+    This is the SDK's role in "force python to use the model": a
+    malformed export fails loud at load() before the consumer sees any
+    derived analysis.
+    """
+    man = tg.manifest
+    if man is None:
+        raise ValueError(
+            f"{protein_id}: topology sidecar has no manifest; "
+            "cannot validate invariants")
+
+    def check_axis(axis: str, actual: int) -> None:
+        declared = int(man.axis_sizes.get(axis, -1))
+        if declared != actual:
+            raise ValueError(
+                f"{protein_id}: manifest declares {axis} axis size "
+                f"{declared} but on-disk row count is {actual}")
+
+    check_axis("atom", n_atoms)
+    check_axis("residue", tg.residues.n_residues)
+    check_axis("bond", tg.bonds.n_bonds)
+    check_axis("aromatic_ring",
+                 int((tg.rings.ring_kind == 0).sum()))
+    check_axis("saturated_ring",
+                 int((tg.rings.ring_kind == 1).sum()))
+    check_axis("ring", tg.rings.n_rings)
+    check_axis("ring_membership", tg.ring_membership.n_rows)
+
+    # Bond endpoints reference the atom axis.
+    bonds = tg.bonds
+    if bonds.n_bonds > 0:
+        bad_a = ((bonds.atom_index_a < 0) | (bonds.atom_index_a >= n_atoms))
+        bad_b = ((bonds.atom_index_b < 0) | (bonds.atom_index_b >= n_atoms))
+        if bad_a.any() or bad_b.any():
+            raise ValueError(
+                f"{protein_id}: bonds.npy carries endpoints outside the "
+                f"atom axis [0, {n_atoms})")
+
+    # Ring membership references the atom + ring axes.
+    rm = tg.ring_membership
+    if rm.n_rows > 0:
+        bad_atom = ((rm.atom_index < 0) | (rm.atom_index >= n_atoms))
+        bad_ring = ((rm.ring_id < 0) | (rm.ring_id >= tg.rings.n_rings))
+        if bad_atom.any():
+            raise ValueError(
+                f"{protein_id}: ring_membership.npy carries atom_index outside "
+                f"the atom axis [0, {n_atoms})")
+        if bad_ring.any():
+            raise ValueError(
+                f"{protein_id}: ring_membership.npy carries ring_id outside "
+                f"the ring axis [0, {tg.rings.n_rings})")
+
+    # Residue's atom_count sums to total atom count (each atom belongs
+    # to exactly one residue in our model).
+    if tg.residues.n_residues > 0:
+        total_atoms_from_residues = int(tg.residues.atom_count.sum())
+        if total_atoms_from_residues != n_atoms:
+            raise ValueError(
+                f"{protein_id}: residues.npy atom_count sums to "
+                f"{total_atoms_from_residues}; atom axis size is {n_atoms}")
+
+    # Fused-ring partner index must reference a valid ring (-1 = none).
+    rings = tg.rings
+    if rings.n_rings > 0:
+        fp = rings.fused_partner_ring_id
+        bad_fp = ((fp != -1) & ((fp < 0) | (fp >= rings.n_rings)))
+        if bad_fp.any():
+            raise ValueError(
+                f"{protein_id}: rings.npy has fused_partner_ring_id outside "
+                f"[-1, {rings.n_rings})")
+
+
 def load(path: str | Path) -> Protein:
     """Load an extraction directory into a fully typed Protein.
 
@@ -1096,11 +1290,13 @@ def load(path: str | Path) -> Protein:
     with open(manifest_path) as f:
         manifest_obj = ExtractionManifest(json.load(f))
     topology_group = TopologyGroup(
+        residues=Residues(available["residues"]),
         bonds=Bonds(available["bonds"]),
         rings=Rings(available["rings"]),
         ring_membership=RingMembership(available["ring_membership"]),
         manifest=manifest_obj,
     )
+    _validate_topology_invariants(topology_group, n_atoms, protein_id)
 
     # AIMNet2 (optional)
     aimnet2 = None

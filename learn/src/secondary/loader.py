@@ -103,10 +103,18 @@ def iter_proteins(cfg: Config, require_mopac: bool = False,
     if max_proteins > 0:
         proteins = proteins[:max_proteins]
 
+    skipped_pids: list[tuple[str, str]] = []
     for pid in proteins:
         try:
             p = load(features_dir / pid)
-        except (FileNotFoundError, ValueError):
+        except (FileNotFoundError, ValueError) as e:
+            # Loud per-protein skip log. The strict SDK fails loud on
+            # missing or malformed topology sidecars; we surface the
+            # exact reason here so a fleet run can be audited without
+            # disappearing rows.
+            print(f"[loader] SKIP {pid}: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            skipped_pids.append((pid, f"{type(e).__name__}: {e}"))
             continue
 
         if p.delta is None:
