@@ -1665,6 +1665,7 @@ Attach, so factories see a finalized Protein).
 |------|-------|--------------|-----------|--------|
 | `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | per-atom | `TripeptideNeighborShieldingResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_neighbor_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `BsAnomalousAtomMarkerTrajectoryResult` | per-atom | `BsWelfordTrajectoryResult`, `BiotSavartResult` | AV | per-atom events bag with kinds `BsAnomalyHighT0`, `BsAnomalyLowT0` |
 | `BsT0AutocorrelationTrajectoryResult` | per-atom × lag | `BiotSavartResult` | FO | `DenseBuffer<double>` + `/trajectory/bs_t0_autocorrelation/` (N, N_LAGS=120) with estimator / mean_convention attrs |
 | `BondLengthStatsTrajectoryResult` | per-bond | (none) | AV | internal `vector<PerBondWelford>` + `/trajectory/bond_length_stats/` |

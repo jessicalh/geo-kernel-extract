@@ -27,12 +27,13 @@
 #include "GromacsEnergyResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
+#include "TripeptideNeighborShieldingResult.h"
 
 // Concrete TrajectoryResults populating the canonical configurations.
 #include "BsWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
-#include "TripeptideBackboneShieldingResult.h"
+#include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
@@ -128,6 +129,13 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GromacsFramePullResult));
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
+    // Note: TripeptideBackbone/NeighborShieldingResult are NOT required
+    // here. They are conditionally attached by OperationRunner when the
+    // tensorcs15 DSN is configured (project precondition). The
+    // corresponding TimeSeries TRs capture whatever is in the source
+    // ConformationAtom field — zero SphericalTensor if the calc didn't
+    // run. Dep checks for always-present-when-DSN-configured deps would
+    // be cruft that breaks fleet runs that legitimately lack DSN.
 
     // Attach order is dispatch order. BsWelford runs first so
     // downstream TRs that cross-read its fields
@@ -143,6 +151,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

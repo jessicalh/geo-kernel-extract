@@ -214,6 +214,7 @@ add_library(nmr_shielding
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
+    src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -672,15 +673,9 @@ gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_
 # ============================================================================
 # TripeptideBackboneShieldingTimeSeries tests
 #
-# Discipline + integration tests for the FO-pattern dense-buffer TR
-# that captures the per-frame tripeptide-backbone DFT shielding tensor
-# (Larsen 2015 σ_BB^i) into a /trajectory/tripeptide_bb_shielding_
-# time_series/ H5 group. Mirrors gromacs_streaming_tests's
-# BondLengthStats discipline trio (Frame0Semantics, FinalizeIdempotency,
-# H5RoundTrip) against the 1P9J_5801 fleet_amber fixture, plus a
-# 4-frame synthetic unit test that drives Compute/Finalize directly
-# on hand-set tripeptide_bb_shielding_spherical values, and an
-# integration fingerprint test guarded on the tensorcs15 DSN.
+# Discipline trio + synthetic unit + integration sanity for the FO-pattern
+# dense-buffer TR that captures Larsen 2015 σ_BB^i into the
+# /trajectory/tripeptide_bb_shielding_time_series/ H5 group.
 # ============================================================================
 
 add_executable(tripeptide_bb_shielding_time_series_tests
@@ -691,9 +686,6 @@ add_executable(tripeptide_bb_shielding_time_series_tests
 target_compile_definitions(tripeptide_bb_shielding_time_series_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
 )
-# Same HDF5 1.10 header / 1.10 .so hazard as gromacs_streaming_tests
-# above — the per-TR H5 round-trip read goes through HighFive in this
-# TU.
 target_include_directories(tripeptide_bb_shielding_time_series_tests
     BEFORE PRIVATE
     /usr/include/hdf5/serial
@@ -703,16 +695,48 @@ target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
     GTest::gtest
     highfive
 )
-# Defer discovery to ctest run time so NMR_TEST_ENVIRONMENT is applied
-# before the binary is executed. Build-time POST_BUILD discovery (the
-# default) runs the binary without our test ENVIRONMENT, which on this
-# host produces libcrypto/libssl OpenSSL-symbol mismatches between the
-# micromamba env's libssl and the system's libcrypto. gromacs_streaming_tests
-# has the same issue currently un-worked-around; switching that target to
-# PRE_TEST is queued, separate scope.
-gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+# gtest_discover_tests deliberately OMITTED for both new TR test targets
+# below. On this host, both POST_BUILD discovery (the default — runs at
+# build time) and PRE_TEST discovery (runs at ctest enumeration time)
+# fail on a libssl/libcrypto OpenSSL-symbol mismatch between the
+# micromamba env's libssl (wants OPENSSL_3.3-3.6) and the system's
+# libcrypto (3.0). PRE_TEST blocks ALL ctest invocations because
+# enumeration fails before any test runs. Until the env issue is fixed
+# (separate scope), these targets are buildable but not ctest-enumerated.
+# Run manually via `scripts/run_with_cuda_env.sh build/<binary>` or wait
+# on the env fix. gromacs_streaming_tests has the same issue
+# un-worked-around.
+add_test(NAME tripeptide_bb_shielding_time_series_tests
+    COMMAND tripeptide_bb_shielding_time_series_tests)
+
+
+# ============================================================================
+# TripeptideNeighborShieldingTimeSeries tests
+#
+# Same shape as the BB TR target above, against the Δσ_BB^{i±1} time
+# series.
+# ============================================================================
+
+add_executable(tripeptide_neighbor_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_neighbor_shielding_time_series.cpp
+)
+target_compile_definitions(tripeptide_neighbor_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(tripeptide_neighbor_shielding_time_series_tests BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(tripeptide_neighbor_shielding_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+# Same env-issue caveat as the BB target above; gtest_discover_tests
+# OMITTED, manual add_test instead.
+add_test(NAME tripeptide_neighbor_shielding_time_series_tests
+    COMMAND tripeptide_neighbor_shielding_time_series_tests)
 
 # water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
 # (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).
