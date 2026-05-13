@@ -128,7 +128,6 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(GromacsFramePullResult));
     c.RequireConformationResult(typeid(GromacsEnergyResult));
     c.RequireConformationResult(typeid(BondedEnergyResult));
-    c.RequireConformationResult(typeid(TripeptideBackboneShieldingResult));
 
     // Attach order is dispatch order. BsWelford runs first so
     // downstream TRs that cross-read its fields

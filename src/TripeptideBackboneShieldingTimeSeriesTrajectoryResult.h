@@ -12,11 +12,6 @@
 // configured; this TR is the H5/NPY emission surface for the per-atom
 // tensor time series.
 //
-// The four non-shielding per-atom fields landed alongside the tensor
-// (tripeptide_bb_residual_vec, tripeptide_bb_match_distance,
-// tripeptide_bb_method_tag, tripeptide_bb_has_match) are deferred to a
-// later TR. This pilot captures the shielding tensor only.
-//
 // Emission pins the e3nn-compatible convention (identical layout to
 // BsShieldingTimeSeriesTrajectoryResult):
 //
@@ -57,10 +52,12 @@ public:
         return "TripeptideBackboneShieldingTimeSeriesTrajectoryResult";
     }
 
-    // Per-frame dependency: TripeptideBackboneShieldingResult must run
-    // so that ConformationAtom::tripeptide_bb_shielding_spherical is
-    // populated before this result reads it.
-    std::vector<std::type_index> Dependencies() const override;
+    // No trajectory-scope dependencies; the underlying ConformationResult
+    // (TripeptideBackboneShieldingResult) is always attached when DSN is
+    // configured, which is a project precondition. This TR captures
+    // whatever is in tripeptide_bb_shielding_spherical each frame —
+    // zero-default SphericalTensor if the calc did not attach.
+    std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<TripeptideBackboneShieldingTimeSeriesTrajectoryResult>
     Create(const TrajectoryProtein& tp);

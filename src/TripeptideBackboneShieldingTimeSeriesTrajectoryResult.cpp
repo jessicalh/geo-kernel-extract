@@ -15,12 +15,6 @@
 namespace nmr {
 
 
-std::vector<std::type_index>
-TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Dependencies() const {
-    return { std::type_index(typeid(TripeptideBackboneShieldingResult)) };
-}
-
-
 std::unique_ptr<TripeptideBackboneShieldingTimeSeriesTrajectoryResult>
 TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(
         const TrajectoryProtein& tp) {

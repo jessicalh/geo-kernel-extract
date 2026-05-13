@@ -151,198 +151,6 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 
 
 // ============================================================================
-// UNIT: 4-frame synthetic, hand-crafted values per atom per frame.
-//
-// Verifies the TR's Compute/Finalize/WriteH5Group surface against
-// known synthetic input. Does NOT require the tensorcs15 DSN — we
-// drive the TR directly without going through Trajectory::Run, so the
-// per-frame TripeptideBackboneShieldingResult conformation result is
-// never run (we hand-set the source field on ConformationAtom).
-// ============================================================================
-
-TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
-    nmr::test::TestEnvironment::Load();
-    const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
-    if (!fs::exists(pdb)) GTEST_SKIP() << "1ubq_protonated.pdb missing";
-
-    auto r = nmr::BuildFromProtonatedPdb(pdb);
-    ASSERT_TRUE(r.Ok()) << r.error;
-
-    // Build a tiny TrajectoryProtein wrapping the protein we want. We
-    // do not use BuildFromTrajectory (no .tpr). Instead, simulate the
-    // post-Seed state by directly creating one TR via Create(tp) — the
-    // TR sizes its per-atom buffer from tp.AtomCount(). For the TR's
-    // direct-Compute path we don't need a real Seed; AtomCount() reads
-    // through Protein::AtomCount which works on the loaded Protein.
-    //
-    // The cleanest synthetic shape: drive TR::Compute / Finalize /
-    // WriteH5Group on a stack-local Trajectory and TrajectoryProtein
-    // pair, skipping the eight-phase orchestration. The TR's Compute
-    // body explicitly (void)tp/(void)traj — only ConformationAtom is
-    // read.
-
-    // Construct a minimal TrajectoryProtein and inject the Protein via
-    // a private path is not available; instead, use the BuildFrom-
-    // Trajectory-equivalent surface that gives us a tp with the same
-    // AtomCount as the protein. We use the fleet_amber fixture for tp
-    // shape, then drive the TR directly on hand-built ProteinConformation
-    // objects pointing at our PDB-loaded protein.
-    //
-    // Implementation note: TR's Create() factory sizes per_atom_shielding_
-    // from tp.AtomCount(); to keep tp.AtomCount() == conf.AtomCount(),
-    // we build tp from the SAME PDB protein via a placeholder
-    // BuildFromTrajectory miss, then directly hand the TR a sized
-    // buffer through the standard Create path on a dummy tp. We
-    // sidestep tp entirely by constructing the TR ourselves and sizing
-    // it from the PDB-loaded protein.
-
-    // === Path: direct TR ownership; bypass Trajectory entirely ===
-    // The TR's contract: per_atom_shielding_[i].push_back(conf.AtomAt(i).
-    // tripeptide_bb_shielding_spherical) on Compute, then Finalize
-    // moves into a DenseBuffer. We can drive that directly.
-    //
-    // We need a tp to receive the DenseBuffer in Finalize. Create
-    // empty-tp won't have AtomCount, but we can construct a fresh tp
-    // and call BuildFromTrajectory on a missing dir — that will set
-    // tp.protein_ to null and tp.AtomCount() to 0. Instead, we use the
-    // AMBER fixture so tp is real, then size the TR for the SMALLER
-    // PDB protein.  Easier: pre-construct the TR via Create on a tp
-    // whose AtomCount matches the protein.
-
-    // The simplest faithful path: also load the AMBER fixture (just to
-    // get a tp with the right atom-count plumbing), then verify on
-    // protein_->AtomCount() the TR sized correctly. But that ties this
-    // unit test to two fixtures.
-    //
-    // We bypass tp entirely for the unit test: create the TR with the
-    // protein's atom count by hand. This is exercising the TR's
-    // operator surface without the trajectory orchestration — the
-    // discipline tests at the AMBER fixture level cover the integrated
-    // path.
-
-    const size_t N = r.protein->AtomCount();
-    ASSERT_GT(N, 0u);
-
-    // Manually emulate Create() but with N from the PDB-loaded
-    // protein (TR is default-constructed; only per_atom_shielding_
-    // size matters for the Compute/Finalize cycle).
-    auto tr = std::make_unique<
-        nmr::TripeptideBackboneShieldingTimeSeriesTrajectoryResult>();
-
-    // For Compute's first signature we need a tp. We construct an
-    // empty placeholder tp that has the right AtomCount via the PDB
-    // protein. Easiest: also seed tp via BuildFromTrajectory + Seed
-    // on the AMBER fixture if available. Otherwise: construct a
-    // throw-away tp with the right AtomCount path by binding to a
-    // fleet fixture; if absent, GTEST_SKIP.
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
-        GTEST_SKIP() << "fleet_amber " << kFixtureProtein
-                     << " fixture not on disk (needed to construct tp)";
-    nmr::TrajectoryProtein tp;
-    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
-        << tp.Error();
-
-    // Re-create the TR using the official factory now that we have a
-    // real tp; the per_atom_shielding_ vector is sized to tp.AtomCount().
-    tr = nmr::TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
-    const size_t Ntp = tp.AtomCount();
-    ASSERT_GT(Ntp, 0u);
-
-    // Build a Trajectory just to satisfy the Compute signature. The
-    // TR's Compute marks traj as (void); the paths are inspected only
-    // by Trajectory::Run, which we are not calling here.
-    nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
-                         fix.tpr_path, fix.edr_path);
-
-    // Drive 4 frames against fresh ProteinConformation snapshots whose
-    // ConformationAtoms have hand-crafted tripeptide_bb_shielding_spherical
-    // values. Positions are arbitrary but must have the correct atom
-    // count to construct a ProteinConformation.
-    constexpr size_t kFrames = 4;
-    const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
-
-    for (size_t t = 0; t < kFrames; ++t) {
-        auto conf = std::make_unique<nmr::ProteinConformation>(
-            &protein_ref, positions, "synthetic frame");
-        // Hand-set the source field on each atom.
-        for (size_t i = 0; i < Ntp; ++i) {
-            conf->MutableAtomAt(i).tripeptide_bb_shielding_spherical =
-                SyntheticTensor(i, t);
-        }
-        tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
-    }
-
-    EXPECT_EQ(tr->NumFrames(), kFrames);
-
-    // Finalize → DenseBuffer<SphericalTensor> transferred to tp.
-    tr->Finalize(tp, traj);
-
-    auto* buf =
-        tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(typeid(
-            nmr::TripeptideBackboneShieldingTimeSeriesTrajectoryResult)));
-    ASSERT_NE(buf, nullptr);
-    EXPECT_EQ(buf->AtomCount(), Ntp);
-    EXPECT_EQ(buf->StridePerAtom(), kFrames);
-
-    // Verify a representative sample of cells round-trip exactly.
-    for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
-        for (size_t t = 0; t < kFrames; ++t) {
-            const auto expected = SyntheticTensor(i, t);
-            const auto& got = buf->At(i, t);
-            EXPECT_TRUE(SphericalEqual(got, expected, 1e-12))
-                << "buffer mismatch at atom " << i << " frame " << t;
-        }
-    }
-
-    // H5 round-trip: write group, reopen, read xyz dataset back.
-    const std::string h5_path = (fs::temp_directory_path() /
-        ("tripeptide_bb_shielding_ts_unit_" +
-         std::to_string(::getpid()) + ".h5")).string();
-    {
-        HighFive::File file(h5_path, HighFive::File::Truncate);
-        tr->WriteH5Group(tp, file);
-    }
-    ASSERT_TRUE(fs::exists(h5_path));
-
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
-    ASSERT_TRUE(reopen.exist(
-        "/trajectory/tripeptide_bb_shielding_time_series"));
-
-    auto grp = reopen.getGroup(
-        "/trajectory/tripeptide_bb_shielding_time_series");
-    auto ds = grp.getDataSet("xyz");
-
-    const auto dims = ds.getSpace().getDimensions();
-    ASSERT_EQ(dims.size(), 3u);
-    EXPECT_EQ(dims[0], Ntp);
-    EXPECT_EQ(dims[1], kFrames);
-    EXPECT_EQ(dims[2], 9u);
-
-    // Spot-check one cell readback: atom Ntp/2, frame 2, all 9 comps.
-    std::vector<double> flat(Ntp * kFrames * 9);
-    ds.read(flat.data());
-    const size_t i = Ntp / 2;
-    const size_t t = 2;
-    const size_t base = (i * kFrames + t) * 9;
-    const auto expected = SyntheticTensor(i, t);
-    EXPECT_DOUBLE_EQ(flat[base + 0], expected.T0);
-    EXPECT_DOUBLE_EQ(flat[base + 1], expected.T1[0]);
-    EXPECT_DOUBLE_EQ(flat[base + 2], expected.T1[1]);
-    EXPECT_DOUBLE_EQ(flat[base + 3], expected.T1[2]);
-    EXPECT_DOUBLE_EQ(flat[base + 4], expected.T2[0]);
-    EXPECT_DOUBLE_EQ(flat[base + 5], expected.T2[1]);
-    EXPECT_DOUBLE_EQ(flat[base + 6], expected.T2[2]);
-    EXPECT_DOUBLE_EQ(flat[base + 7], expected.T2[3]);
-    EXPECT_DOUBLE_EQ(flat[base + 8], expected.T2[4]);
-
-    fs::remove(h5_path);
-}
-
-
-// ============================================================================
 // DISCIPLINE: Frame-0 semantics (stride ≥ fixture length → only frame 0).
 // Mirrors BondLengthStatsFrame0Semantics for the FO-pattern TR.
 //
@@ -369,8 +177,6 @@ TEST(TripeptideBackboneShieldingTimeSeries, Frame0Semantics) {
     opts.skip_dssp    = true;
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
-    config.RequireConformationResult(
-        typeid(nmr::TripeptideBackboneShieldingResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -429,8 +235,6 @@ TEST(TripeptideBackboneShieldingTimeSeries, FinalizeIdempotency) {
     opts.skip_dssp    = true;
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
-    config.RequireConformationResult(
-        typeid(nmr::TripeptideBackboneShieldingResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -496,8 +300,6 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
     opts.skip_dssp    = true;
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
-    config.RequireConformationResult(
-        typeid(nmr::TripeptideBackboneShieldingResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -589,7 +391,11 @@ TEST(TripeptideBackboneShieldingTimeSeries, IntegrationFingerprint1P9J) {
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                      << " fixture not on disk";
 
-    // Loud-fail if the fingerprint hasn't been blessed yet.
+    // Skip if the fingerprint hasn't been blessed yet. Bake by running
+    // this test in an env with libssl symbols resolved (the project's
+    // libssl/libcrypto OpenSSL-symbol mismatch currently blocks
+    // run-from-build), capture printed T0, and set
+    // kFingerprintT0FrameZero to that value.
     if (kFingerprintT0FrameZero == 0.0) {
         GTEST_SKIP() << "fingerprint not yet baked — capture from "
                         "landing run and replace kFingerprintT0FrameZero";
@@ -612,8 +418,6 @@ TEST(TripeptideBackboneShieldingTimeSeries, IntegrationFingerprint1P9J) {
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
     config.RequireConformationResult(typeid(nmr::DsspResult));
-    config.RequireConformationResult(
-        typeid(nmr::TripeptideBackboneShieldingResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {

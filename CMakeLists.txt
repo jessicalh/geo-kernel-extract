@@ -703,9 +703,13 @@ target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
     GTest::gtest
     highfive
 )
-# PRE_TEST discovery so the test binary isn't executed at build time
-# (the build-host LD_LIBRARY_PATH does not match the test ENVIRONMENT —
-# OpenSSL/libcrypto resolution diverges between build and test).
+# Defer discovery to ctest run time so NMR_TEST_ENVIRONMENT is applied
+# before the binary is executed. Build-time POST_BUILD discovery (the
+# default) runs the binary without our test ENVIRONMENT, which on this
+# host produces libcrypto/libssl OpenSSL-symbol mismatches between the
+# micromamba env's libssl and the system's libcrypto. gromacs_streaming_tests
+# has the same issue currently un-worked-around; switching that target to
+# PRE_TEST is queued, separate scope.
 gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
