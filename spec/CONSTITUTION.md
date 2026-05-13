@@ -260,6 +260,77 @@ normal axis has sigma > 0.
 
 ---
 
+## Convention Locks (planned-calculator pre-flight, 2026-05-13)
+
+The following picks are locked once HERE so the planned-calculator
+assembly line (PLANNED_CALCULATORS_2026-04-22.md) does not have to
+re-decide them per slice. Each pick names the source literature and
+the calculator(s) that consume it.
+
+### CSA principal-axis convention (consumer: `CSAPrincipalAxisResult`)
+
+**Haeberlen convention.** Sort the eigenvalues σ₁₁, σ₂₂, σ₃₃ by
+**deviation from isotropic**: |σ₃₃ − σ_iso| ≥ |σ₁₁ − σ_iso| ≥
+|σ₂₂ − σ_iso| with σ_iso = (σ₁₁ + σ₂₂ + σ₃₃) / 3. (Haeberlen
+1976, *High Resolution NMR in Solids: Selective Averaging*.)
+
+Eigenvector sign-fix rule for near-degenerate components: pick the
+eigenvector whose largest-magnitude element is positive. When two
+eigenvalues are within 1e-9 ppm of each other, the corresponding
+two columns are reorthogonalised via Gram–Schmidt against the
+third, with the first vector's largest-magnitude element forced
+positive.
+
+### Amide local-frame axes (consumer: `AmideTensorGeometryResult`)
+
+**Brender–Taylor–Ramamoorthy 2001 convention** (J. Am. Chem. Soc.
+123:914). For the (i−1, i) peptide-amide group:
+
+- **x** along the N(i) → H(i) bond (the N-H unit vector).
+- **z** normal to the amide plane (cross product of N-H with N → C(i−1));
+  sign chosen so z·(N → Cα(i)) is positive (z points toward the
+  α-carbon side rather than away).
+- **y** = z × x (right-handed completion).
+
+The rotation Mat3 R is `[x | y | z]` (columns), and the local-frame
+σ tensor is `R.T * σ_lab * R`.
+
+### CCR rate sign convention (consumer: `CCRRateResult`)
+
+**Ferrage 2008** (J. Chem. Phys. 128:144516). DD/DD auto-rate
+positive; DD/CSA cross-rate positive when the dipolar-CSA cross-
+correlation reduces the apparent transverse relaxation
+(differential-line-broadening sign convention). Larmor-frequency
+choice for J(ω) inputs follows Ferrage Eq. 6: J(0), J(ω_X), J(ω_H)
+for each X-H pair.
+
+### Larmor frequency list source (consumers: `GreenKuboSpectralDensityResult`,
+`CCRRateResult`)
+
+TOML key `[nmr.larmor_freqs_MHz]` in the runtime config. Default
+list: `[600, 800, 950]`. Read once at Session startup, plumbed
+through RunOptions to per-frame calculators that need it.
+
+### Bulk-χ accumulation rule (consumer: `BulkSusceptibilityAccumulator`)
+
+**Babaei et al. 2017** (J. Phys. Chem. B 121:7585) hierarchical-
+subunit approach. Per-atom contribution to χ tensor:
+
+- McConnell local anisotropy: full per-atom contribution (sign and
+  scale from McConnellResult).
+- Ring susceptibility: full per-ring contribution scaled by ring
+  intensity I, projected onto each ring-vertex atom via the
+  RingMembership table (sum equal to the ring's total contribution).
+- H-bond susceptibility: full per-H-bond contribution at the
+  donor-H atom (do not double-count at the acceptor side).
+
+No cross-kernel double-counting correction. The accumulation rule
+is methodologically novel; the residual against bulk-Δχ
+experimental benches (Pauling 1979 / Li 2017) is a thesis result,
+not a tuning knob.
+
+---
+
 ## ConformationResult: Named Singletons with Dependency Graph
 
 Computed results are NOT fields on a mega-struct. They are separate
