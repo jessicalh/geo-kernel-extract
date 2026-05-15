@@ -258,6 +258,7 @@ add_library(nmr_shielding
     src/TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp
+    src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -923,6 +924,35 @@ target_link_libraries(larsen_hbond_water_term_time_series_tests PRIVATE
     highfive
 )
 gtest_discover_tests(larsen_hbond_water_term_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# LarsenHBondCountTimeSeries tests
+#
+# int-buffer (N, T) flat TR; captures larsen_hbond_n_pairs (per-atom
+# H-bond pair count summed across 4 Larsen classes).
+# ============================================================================
+
+add_executable(larsen_hbond_count_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_larsen_hbond_count_time_series.cpp
+)
+target_compile_definitions(larsen_hbond_count_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(larsen_hbond_count_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(larsen_hbond_count_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+gtest_discover_tests(larsen_hbond_count_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
