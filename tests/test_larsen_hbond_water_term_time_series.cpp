@@ -107,6 +107,11 @@ TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
     ASSERT_GT(Ntp, 0u);
 
     auto tr = nmr::LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(tp);
+    // Synthetic path bypasses OperationRunner so the real source calc
+    // never attaches. Force-mark source present so the WriteH5Group
+    // skip-on-absent gate doesn't fire.
+    tr->ForceSourcePresentForTesting();
+
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
 
@@ -265,6 +270,14 @@ TEST(LarsenHBondWaterTermTimeSeries, FinalizeIdempotency) {
 
 TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
     LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured — source calc "
+                        "won't attach so the TR correctly skips H5 emission, "
+                        "and round-trip cannot be verified";
+    }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -274,9 +287,10 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
     opts.skip_mopac   = true;
     opts.skip_coulomb = true;
     opts.skip_apbs    = true;
-    opts.skip_dssp    = true;
+    opts.skip_dssp    = false;  // backbone phi/psi needed for the larsen H-bond calc to actually run
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::DsspResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -290,7 +304,6 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<
@@ -346,10 +359,16 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
 TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
     LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured in "
+                        "~/.nmr_tools.toml — Larsen calc cannot run, "
+                        "integration assertion would be vacuous";
+    }
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::RunConfiguration config;
     config.SetName("LarsenHBondWaterTermTimeSeriesIntegration");
@@ -406,6 +425,29 @@ TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
     EXPECT_EQ(other_count, 0u)
         << "found " << other_count << " water_term cells outside "
         << "{0, " << kLarsenWaterTermPpm << "} (max=" << max_other << ")";
+
+    // Real-data coverage floor: the grid is loaded, source calc must
+    // have evaluated something. zero_count + larsen_count covers all
+    // {0.0, 2.07} cells (other_count is asserted == 0 just above). With
+    // N atoms × T frames cells, the calc should have written into at
+    // least N×T/10 of them — anything less suggests the source calc
+    // returned all-zero (grid loaded but never queried), which is the
+    // exact regression the source-attached gate was added to catch.
+    const std::size_t covered = zero_count + larsen_count;
+    const std::size_t coverage_floor = (N * T) / 10;
+    EXPECT_GT(covered, coverage_floor)
+        << "Larsen water term covered only " << covered << " of " << (N * T)
+        << " cells (floor=" << coverage_floor << ") — calc likely never ran "
+        << "despite grid being loaded; possible source-attached regression";
+
+    // 2.07-population floor: 1P9J has ~76 amide H atoms; in any given
+    // frame some fraction lack H-bond pairs and pick up Δσ_w. Across T
+    // frames we expect at least a handful. This catches the
+    // "grid loaded but every cell stayed at default 0.0" regression
+    // (vs. "calc ran and legitimately produced 0.0 for paired HN").
+    EXPECT_GT(larsen_count, 0u)
+        << "no Larsen Δσ_w (2.07 ppm) cells across " << T
+        << " frames — calc likely returned all zeros";
 
     std::cout << "LarsenHBondWaterTerm distribution: "
               << "frames=" << T

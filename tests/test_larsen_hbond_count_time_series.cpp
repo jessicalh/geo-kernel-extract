@@ -103,6 +103,11 @@ TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
     ASSERT_GT(Ntp, 0u);
 
     auto tr = nmr::LarsenHBondCountTimeSeriesTrajectoryResult::Create(tp);
+    // Synthetic path bypasses OperationRunner so the real source calc
+    // never attaches. Force-mark source present so the WriteH5Group
+    // skip-on-absent gate doesn't fire.
+    tr->ForceSourcePresentForTesting();
+
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
 
@@ -248,6 +253,14 @@ TEST(LarsenHBondCountTimeSeries, FinalizeIdempotency) {
 
 TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
     LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured — source calc "
+                        "won't attach so the TR correctly skips H5 emission, "
+                        "and round-trip cannot be verified";
+    }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -255,9 +268,10 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
     config.SetName("LarsenHBondCountTimeSeriesH5RoundTrip");
     auto& opts = config.MutablePerFrameRunOptions();
     opts.skip_mopac = true; opts.skip_coulomb = true;
-    opts.skip_apbs = true;  opts.skip_dssp = true;
+    opts.skip_apbs = true;  opts.skip_dssp = false;  // backbone phi/psi needed for the larsen H-bond calc to actually run
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::DsspResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -271,7 +285,6 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<
@@ -308,10 +321,16 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
 TEST(LarsenHBondCountTimeSeries, IntegrationDistribution1P9J) {
     LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured in "
+                        "~/.nmr_tools.toml — Larsen calc cannot run, "
+                        "integration assertion would be vacuous";
+    }
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::RunConfiguration config;
     config.SetName("LarsenHBondCountTimeSeriesIntegration");
@@ -362,6 +381,15 @@ TEST(LarsenHBondCountTimeSeries, IntegrationDistribution1P9J) {
     EXPECT_EQ(negative_count, 0u)
         << "found " << negative_count << " cells with negative count "
         << "(min=" << min_count << ")";
+
+    // Real-data coverage floor: 1P9J has many H-bond donors and over
+    // T frames at least some H-bond pairs are formed. max_count==0
+    // means the calc didn't run (or ran and produced all zeros), which
+    // is the exact regression the source-attached gate was added to
+    // catch.
+    EXPECT_GT(max_count, 0)
+        << "no H-bonds found across " << T << " frames on 1P9J — "
+        << "calc likely never ran despite grid being loaded";
 
     if (overage_count > 0) {
         std::cout << "[warn] LarsenHBondCount: " << overage_count

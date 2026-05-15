@@ -379,17 +379,38 @@ TEST(TripeptideNeighborShieldingTimeSeries, IntegrationFingerprint1P9J) {
                   st.T2[2]*st.T2[2] + st.T2[3]*st.T2[3] +
                   st.T2[4]*st.T2[4]) << "\n";
 
-    // Physical sanity: T0 finite, within Larsen 2015 cap-side magnitude
-    // band, and the tensor symmetric (T1 antisymmetric components near
-    // zero). No 3-sig-fig fingerprint — the pipeline has genuine noise
-    // (TRR float32 compression, chi-grid bin boundaries, AAA reference
-    // subtraction sensitivity, calibration drift) that would trip a
-    // tight equality assertion without indicating real regression.
-    // Per-direction Δσ_BB^{i±1} contributions are in [0.1, 5] ppm; the
-    // SUM at central CA is bounded by ~10 ppm.
-    EXPECT_TRUE(std::isfinite(st.T0)) << "T0 not finite";
+    // Physical sanity: all 9 components finite + T0 within Larsen 2015
+    // cap-side magnitude band. No 3-sig-fig fingerprint — the pipeline
+    // has genuine noise (TRR float32 compression, chi-grid bin boundaries,
+    // AAA reference subtraction sensitivity, calibration drift) that
+    // would trip a tight equality assertion without indicating real
+    // regression. Per-direction Δσ_BB^{i±1} contributions are in
+    // [0.1, 5] ppm; the SUM at central CA is bounded by ~10 ppm.
+    EXPECT_TRUE(std::isfinite(st.T0)
+             && std::isfinite(st.T1[0]) && std::isfinite(st.T1[1])
+             && std::isfinite(st.T1[2])
+             && std::isfinite(st.T2[0]) && std::isfinite(st.T2[1])
+             && std::isfinite(st.T2[2]) && std::isfinite(st.T2[3])
+             && std::isfinite(st.T2[4]))
+        << "non-finite component at fingerprint atom " << ca_idx;
     EXPECT_LT(std::abs(st.T0), 10.0)
         << "T0=" << st.T0 << " ppm outside Larsen 2015 cap-side band";
-    // T1 antisymmetric components NOT asserted: DFT shielding tensors
-    // have real T1 in non-symmetric environments.
+    // T1 antisymmetric components NOT asserted to be zero: DFT shielding
+    // tensors have real T1 in non-symmetric environments. The isfinite
+    // check above is the uniform 9-component coverage discipline.
+
+    // Full-buffer 9-component isfinite sweep — covers every emitted
+    // cell, not just the fingerprint.
+    for (std::size_t i = 0; i < buffer->AtomCount(); ++i) {
+        for (std::size_t t_idx = 0; t_idx < buffer->StridePerAtom(); ++t_idx) {
+            const nmr::SphericalTensor& cell = buffer->At(i, t_idx);
+            EXPECT_TRUE(std::isfinite(cell.T0)
+                     && std::isfinite(cell.T1[0]) && std::isfinite(cell.T1[1])
+                     && std::isfinite(cell.T1[2])
+                     && std::isfinite(cell.T2[0]) && std::isfinite(cell.T2[1])
+                     && std::isfinite(cell.T2[2]) && std::isfinite(cell.T2[3])
+                     && std::isfinite(cell.T2[4]))
+                << "non-finite component at atom " << i << " frame " << t_idx;
+        }
+    }
 }

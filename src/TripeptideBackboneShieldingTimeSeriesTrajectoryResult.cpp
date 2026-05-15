@@ -10,6 +10,7 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
 
+#include <limits>
 #include <typeinfo>
 
 namespace nmr {
@@ -39,6 +40,16 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Compute(
         std::size_t frame_idx,
         double time_ps) {
     (void)tp; (void)traj;
+    // "Absent, not faked" provenance: record whether the source
+    // calculator (TripeptideBackboneShieldingResult) attached this
+    // frame. When absent, the in-memory field is zero-default — we
+    // capture that here but NaN-fill at WriteH5Group time so
+    // downstream readers can distinguish "no measurement" from "real
+    // measurement = 0."
+    const bool source_attached = force_source_present_for_testing_
+        || conf.HasResult<TripeptideBackboneShieldingResult>();
+    source_present_per_frame_.push_back(source_attached ? 1u : 0u);
+
     const std::size_t N = conf.AtomCount();
     for (std::size_t i = 0; i < N; ++i) {
         per_atom_shielding_[i].push_back(
@@ -132,6 +143,23 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
+    // "Absent, not faked" — if the source ConformationResult was not
+    // attached in any frame, skip emission. Group existence ⇒ source
+    // ran in ≥1 frame. Downstream readers MUST tolerate group absence
+    // for conditionally-attached-source TRs.
+    std::size_t source_present_count = 0;
+    for (auto v : source_present_per_frame_)
+        if (v) ++source_present_count;
+    if (source_present_count == 0) {
+        OperationLog::Warn(
+            "TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group",
+            "TripeptideBackboneShieldingResult was not attached in any of "
+            + std::to_string(source_present_per_frame_.size()) +
+            " frames; skipping /trajectory/tripeptide_bb_shielding_time_series/ "
+            "emission per 'absent, not faked' discipline.");
+        return;
+    }
+
     const std::size_t N = buffer->AtomCount();
     const std::size_t T = buffer->StridePerAtom();
 
@@ -151,14 +179,22 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("parity",        std::string("0e+1o+2e"));
     grp.createAttribute("units",         std::string("ppm"));
 
-    // Flat (N, T, 9) via explicit component access. No reinterpret,
-    // no struct-packing assumption. Atom-major: [atom_0_frame_0_T0,
-    // ..._T1_-1, ..., ..._T2_+2, atom_0_frame_1_T0, ...].
+    // Flat (N, T, 9) via explicit component access. NaN-fill rows
+    // where source wasn't attached — readers use isfinite/isnan to
+    // distinguish "no measurement" from "measurement was zero." Atom-
+    // major: [atom_0_frame_0_T0, ..._T1_-1, ..., ..._T2_+2,
+    // atom_0_frame_1_T0, ...].
+    constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
-            const SphericalTensor& st = buffer->At(i, t);
             const std::size_t base = (i * T + t) * 9;
+            if (t >= source_present_per_frame_.size()
+                || source_present_per_frame_[t] == 0) {
+                for (std::size_t k = 0; k < 9; ++k) flat[base + k] = kNaN;
+                continue;
+            }
+            const SphericalTensor& st = buffer->At(i, t);
             flat[base + 0] = st.T0;
             flat[base + 1] = st.T1[0];
             flat[base + 2] = st.T1[1];
@@ -178,6 +214,9 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);
+
+    // Provenance mask: per-frame source-attached flags.
+    grp.createDataSet("source_attached_per_frame", source_present_per_frame_);
 }
 
 }  // namespace nmr

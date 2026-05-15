@@ -2847,14 +2847,89 @@ duplication over chaining.
 | `BsT0AutocorrelationTrajectoryResult`           | FO             | `BiotSavartResult`                                       | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/{rho, lag_frames, lag_times_ps}` |
 | `BondLengthStatsTrajectoryResult`               | AV             | none (reads `Bond` indices + positions)                  | Internal per-bond Welford → `/trajectory/bond_length_stats/`         |
 | `PositionsTimeSeriesTrajectoryResult`           | FO             | none (reads positions)                                   | `DenseBuffer<Vec3>` → `/trajectory/positions/{xyz, frame_indices, frame_times}` |
+| `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | FO (conditional-source) | none in `Dependencies()`; reads `TripeptideBackboneShieldingResult`'s per-frame field. Source calc is Session-DSN-gated, so per-frame `conf.HasResult<...>()` provenance — see "Conditional-attach TR discipline" below. | `DenseBuffer<SphericalTensor>` → `/trajectory/tripeptide_bb_shielding_time_series/{xyz, frame_indices, frame_times, source_attached_per_frame}` |
+| `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads `tripeptide_bb_residual_vec` | `DenseBuffer<Vec3>` → `/trajectory/tripeptide_bb_residual_vec_time_series/` (NaN-filled in source-absent frames, x/y/z layout) |
+| `TripeptideBackboneMethodTagTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads `tripeptide_bb_method_tag` (uint8) | `DenseBuffer<uint8>` → `/trajectory/tripeptide_bb_method_tag_time_series/` (raw int — 0 is the existing absent sentinel; provenance via `source_attached_per_frame`) |
+| `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads `tripeptide_neighbor_shielding_spherical` | `DenseBuffer<SphericalTensor>` → `/trajectory/tripeptide_neighbor_shielding_time_series/` |
+| `TripeptideNeighborResidualVecPrev/NextTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads per-direction residual vec | `DenseBuffer<Vec3>` → `/trajectory/tripeptide_neighbor_residual_vec_{prev,next}_time_series/` (NaN-tolerant; calc itself NaN-inits direction-absent atoms per frame) |
+| `LarsenHBondWaterTermTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads `larsen_hbond_water_term` (double, ppm) | `DenseBuffer<double>` → `/trajectory/larsen_hbond_water_term_time_series/` (L0 scalar; NaN-filled in source-absent frames) |
+| `LarsenHBondCountTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads `larsen_hbond_n_pairs` (int) | `DenseBuffer<int>` → `/trajectory/larsen_hbond_count_time_series/` (raw int; provenance via `source_attached_per_frame`) |
+| `LarsenHBond{1pHB,2pHB,1pHaB,2pHaB}ShieldingTimeSeriesTrajectoryResult` | FO (conditional-source) | none; reads per-class spherical | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_{1pHB,2pHB,1pHaB,2pHaB}_shielding_time_series/` (NaN-filled in source-absent frames) |
 
 Current `RunConfiguration` attach status:
 
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six in the table above                                                                     |
+| `PerFrameExtractionSet` | All six BS-family TRs above PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
+
+### Conditional-attach TR discipline (2026-05-15)
+
+Twelve of the TRs in `PerFrameExtractionSet` read fields written by
+ConformationResults that are **conditionally attached** by
+`OperationRunner` — `TripeptideBackboneShieldingResult` and
+`TripeptideNeighborShieldingResult` attach only when the Session has
+loaded `[databases].tensorcs15`; `LarsenHBondShieldingResult` attaches
+only when the Session has loaded `[paths].larsen_hbond_grids`. The TRs
+themselves declare no `Dependencies()` so they always attach — but the
+field values they capture are zero-defaulted (or NaN-initialised by
+the calc, for per-direction Neighbor residual vecs) when the source
+calc didn't run that frame.
+
+To keep the H5 output honest under "absent, not faked," each of these
+TRs:
+
+1. **Tracks per-frame source presence.** In `Compute`, the TR records
+   `conf.HasResult<SourceCalcClass>()` into a `source_present_per_frame_`
+   bitmask. Test-only override: `ForceSourcePresentForTesting()` —
+   used only by synthetic unit tests that bypass `OperationRunner`.
+
+2. **Skips H5 group emission if the source calc never attached.** When
+   `source_present_count == 0` for all frames, `WriteH5Group` logs a
+   warning and returns without creating the group. **Reader contract:
+   the group's absence is meaningful — it means the calc didn't run
+   in any frame, not that the trajectory was empty.**
+
+3. **Emits a `source_attached_per_frame` `(T,) uint8` dataset
+   alongside the data.** 1 = source ran this frame; 0 = didn't.
+   Always present when the group exists.
+
+4. **For float-typed data (Vec3, double, SphericalTensor):
+   NaN-fills the cells of frames where source wasn't attached.**
+   Matches the existing per-frame NPY convention (e.g.
+   `TripeptideBackboneShieldingResult.cpp:340-353` NaN-fills
+   per-atom for unmatched atoms; this generalises to per-frame for
+   the absent-calc case). Reader contract: `isfinite(value)` is the
+   right test — finite = real measurement (including legitimate 0.0),
+   `isnan(value)` = no measurement.
+
+5. **For int-typed data (uint8 method_tag, int n_pairs):
+   data is emitted raw, no NaN-fill.** Reader contract: consult
+   `source_attached_per_frame` to distinguish "no measurement" from
+   "real measurement of 0." (For `method_tag`, 0 already means
+   "no DFT match" by the field's legend, which coincides with
+   "no measurement.")
+
+**Reader checklist when writing SDK code or analysis scripts:**
+
+- **Always tolerate group absence.** `h5['/trajectory/<name>_time_series/']`
+  may KeyError. That's not corruption — it's "the source calc didn't run
+  in any frame of this trajectory." Catch and treat as "feature absent for
+  this trajectory."
+- **Apply the `source_attached_per_frame` mask before downstream stats.**
+  If you compute frame-averages or autocorrelations, multiplying by the
+  mask gives the correct denominator. For ML feature engineering,
+  the mask is also a feature (indicates DSN/grid availability per frame).
+- **For float TRs: rely on `isfinite()`** to distinguish measurement from
+  absence. Don't compare to 0.0 as an absent sentinel — 0.0 is a
+  legitimate measured value (e.g. atoms with truly zero H-bond
+  contribution).
+- **For int TRs: rely on the mask** for absence; values themselves are raw.
+- **Per-atom absence** (`has_match=false` for one atom in a frame where the
+  calc ran) is signalled separately via companion TRs — read
+  `tripeptide_bb_method_tag_time_series` to mask per-atom-per-frame for
+  the Tripeptide TR family.
 
 ---
 

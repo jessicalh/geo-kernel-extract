@@ -105,6 +105,11 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, SyntheticFourFrames) {
 
     auto tr =
         nmr::TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult::Create(tp);
+    // Synthetic path bypasses OperationRunner so the real source calc
+    // never attaches. Force-mark source present so the WriteH5Group
+    // skip-on-absent gate doesn't fire.
+    tr->ForceSourcePresentForTesting();
+
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
 
@@ -270,8 +275,19 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, FinalizeIdempotency) {
 
 TEST(TripeptideNeighborResidualVecNextTimeSeries, H5RoundTrip) {
     LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
+        GTEST_SKIP() << "tensorcs15 DSN not configured — source calc "
+                        "won't attach so the TR correctly skips H5 emission, "
+                        "and round-trip cannot be verified";
+    }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::Session session;
+    ASSERT_EQ(session.LoadTripeptideDftTable(), nmr::kOk)
+        << session.LastError();
+    ASSERT_TRUE(session.HasTripeptideDftTable());
 
     nmr::RunConfiguration config;
     config.SetName("TripeptideNeighborResidualVecNextTimeSeriesH5RoundTrip");
@@ -279,9 +295,10 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, H5RoundTrip) {
     opts.skip_mopac   = true;
     opts.skip_coulomb = true;
     opts.skip_apbs    = true;
-    opts.skip_dssp    = true;
+    opts.skip_dssp    = false;  // backbone phi/psi needed for the tripeptide calc to actually run
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::DsspResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -295,7 +312,6 @@ TEST(TripeptideNeighborResidualVecNextTimeSeries, H5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<

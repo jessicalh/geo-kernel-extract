@@ -175,6 +175,10 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
     ASSERT_GT(Ntp, 0u);
 
     auto tr = nmr::TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
+    // Synthetic path bypasses OperationRunner so the real source calc
+    // never attaches. Force-mark source present so the WriteH5Group
+    // skip-on-absent gate doesn't fire.
+    tr->ForceSourcePresentForTesting();
 
     // Trajectory exists only to satisfy the Compute signature; TR::Compute
     // marks traj as (void) and reads only ConformationAtom.
@@ -395,8 +399,19 @@ TEST(TripeptideBackboneShieldingTimeSeries, FinalizeIdempotency) {
 
 TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
     LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
+        GTEST_SKIP() << "tensorcs15 DSN not configured — source calc "
+                        "won't attach so the TR correctly skips H5 emission, "
+                        "and round-trip cannot be verified";
+    }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::Session session;
+    ASSERT_EQ(session.LoadTripeptideDftTable(), nmr::kOk)
+        << session.LastError();
+    ASSERT_TRUE(session.HasTripeptideDftTable());
 
     nmr::RunConfiguration config;
     config.SetName("TripeptideBackboneShieldingTimeSeriesH5RoundTrip");
@@ -404,9 +419,10 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
     opts.skip_mopac   = true;
     opts.skip_coulomb = true;
     opts.skip_apbs    = true;
-    opts.skip_dssp    = true;
+    opts.skip_dssp    = false;  // backbone phi/psi needed for the tripeptide calc to actually run
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::DsspResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -420,7 +436,6 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<
@@ -558,27 +573,45 @@ TEST(TripeptideBackboneShieldingTimeSeries, IntegrationFingerprint1P9J) {
 
     const nmr::SphericalTensor& cell = buf->At(fingerprint_atom, 0);
 
-    // Physical sanity: T0 finite + within backbone Larsen 2015 magnitude
-    // band. No 3-sig-fig fingerprint — the pipeline has genuine noise
-    // (TRR float32 compression, chi-grid bin boundaries, AAA reference
-    // subtraction sensitivity, calibration drift) that would trip a
-    // tight equality assertion without indicating regression.
-    EXPECT_TRUE(std::isfinite(cell.T0))
-        << "T0 non-finite at atom " << fingerprint_atom;
+    // Physical sanity: all 9 components finite + T0 within backbone
+    // Larsen 2015 magnitude band. No 3-sig-fig fingerprint — the pipeline
+    // has genuine noise (TRR float32 compression, chi-grid bin boundaries,
+    // AAA reference subtraction sensitivity, calibration drift) that
+    // would trip a tight equality assertion without indicating regression.
+    EXPECT_TRUE(std::isfinite(cell.T0)
+             && std::isfinite(cell.T1[0]) && std::isfinite(cell.T1[1])
+             && std::isfinite(cell.T1[2])
+             && std::isfinite(cell.T2[0]) && std::isfinite(cell.T2[1])
+             && std::isfinite(cell.T2[2]) && std::isfinite(cell.T2[3])
+             && std::isfinite(cell.T2[4]))
+        << "non-finite component at fingerprint atom " << fingerprint_atom;
     EXPECT_LT(std::abs(cell.T0), kT0SanityBoundPpm)
         << "T0 outside backbone sanity band: " << cell.T0 << " ppm at atom "
         << fingerprint_atom;
 
-    // (T1 antisymmetric components NOT asserted here. The DFT shielding
-    // tensor has real T1 in non-symmetric environments — symmetry is
-    // not a constraint of the physics.)
+    // (T1 antisymmetric components NOT asserted to be zero here. The
+    // DFT shielding tensor has real T1 in non-symmetric environments —
+    // symmetry is not a constraint of the physics. The isfinite check
+    // above is the uniform 9-component coverage discipline.)
 
     // Population sanity: BB perception should hit a non-trivial fraction
     // of atoms on a real protein (98% on 1UBQ post-LarsenResidue per
     // project_larsen_residue_model). 30% is a very loose floor that
     // catches "the calculator silently emitted zeros for everything".
+    // While we're walking, do the full-buffer 9-component isfinite
+    // sweep too — covers every emitted cell, not just the fingerprint.
     size_t populated = 0;
     for (size_t i = 0; i < buf->AtomCount(); ++i) {
+        for (size_t t = 0; t < buf->StridePerAtom(); ++t) {
+            const nmr::SphericalTensor& st = buf->At(i, t);
+            EXPECT_TRUE(std::isfinite(st.T0)
+                     && std::isfinite(st.T1[0]) && std::isfinite(st.T1[1])
+                     && std::isfinite(st.T1[2])
+                     && std::isfinite(st.T2[0]) && std::isfinite(st.T2[1])
+                     && std::isfinite(st.T2[2]) && std::isfinite(st.T2[3])
+                     && std::isfinite(st.T2[4]))
+                << "non-finite component at atom " << i << " frame " << t;
+        }
         if (std::abs(buf->At(i, 0).T0) > 1e-12) ++populated;
     }
     EXPECT_GT(populated, buf->AtomCount() / 3)

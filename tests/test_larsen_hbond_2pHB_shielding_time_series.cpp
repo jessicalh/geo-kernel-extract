@@ -108,6 +108,11 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, SyntheticFourFrames) {
     ASSERT_GT(Ntp, 0u);
 
     auto tr = nmr::LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult::Create(tp);
+    // Synthetic path bypasses OperationRunner so the real source calc
+    // never attaches. Force-mark source present so the WriteH5Group
+    // skip-on-absent gate doesn't fire.
+    tr->ForceSourcePresentForTesting();
+
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
 
@@ -248,6 +253,14 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, FinalizeIdempotency) {
 
 TEST(LarsenHBond2pHBShieldingTimeSeries, H5RoundTrip) {
     LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured — source calc "
+                        "won't attach so the TR correctly skips H5 emission, "
+                        "and round-trip cannot be verified";
+    }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -255,9 +268,10 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, H5RoundTrip) {
     config.SetName("LarsenHBond2pHBShieldingTimeSeriesH5RoundTrip");
     auto& opts = config.MutablePerFrameRunOptions();
     opts.skip_mopac = true; opts.skip_coulomb = true;
-    opts.skip_apbs = true;  opts.skip_dssp = true;
+    opts.skip_apbs = true;  opts.skip_dssp = false;  // backbone phi/psi needed for the larsen H-bond calc to actually run
     config.RequireConformationResult(typeid(nmr::GeometryResult));
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::DsspResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in)
             -> std::unique_ptr<nmr::TrajectoryResult> {
@@ -271,7 +285,6 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, H5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<
@@ -310,10 +323,16 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, H5RoundTrip) {
 TEST(LarsenHBond2pHBShieldingTimeSeries, IntegrationLogOverages1P9J) {
     LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
-    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::Session session;
+    if (session.LoadLarsenHBondGrid() != nmr::kOk
+        || !session.HasLarsenHBondGrid()) {
+        GTEST_SKIP() << "larsen_hbond_grids not configured in "
+                        "~/.nmr_tools.toml — Larsen calc cannot run, "
+                        "integration assertion would be vacuous";
+    }
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
     nmr::RunConfiguration config;
     config.SetName("LarsenHBond2pHBShieldingTimeSeriesIntegration");
@@ -345,15 +364,33 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, IntegrationLogOverages1P9J) {
 
     std::size_t overage_count = 0;
     double max_t0 = 0.0;
+    std::size_t nonzero_at_frame0 = 0;
     for (std::size_t i = 0; i < buf->AtomCount(); ++i) {
         for (std::size_t t = 0; t < buf->StridePerAtom(); ++t) {
             const nmr::SphericalTensor& st = buf->At(i, t);
-            EXPECT_TRUE(std::isfinite(st.T0));
+            EXPECT_TRUE(std::isfinite(st.T0)
+                     && std::isfinite(st.T1[0]) && std::isfinite(st.T1[1])
+                     && std::isfinite(st.T1[2])
+                     && std::isfinite(st.T2[0]) && std::isfinite(st.T2[1])
+                     && std::isfinite(st.T2[2]) && std::isfinite(st.T2[3])
+                     && std::isfinite(st.T2[4]))
+                << "non-finite component at atom " << i << " frame " << t;
             const double abs_t0 = std::abs(st.T0);
             if (abs_t0 > max_t0) max_t0 = abs_t0;
             if (abs_t0 > kPerClassT0SanityPpm) ++overage_count;
+            if (t == 0 && abs_t0 > 1e-12) ++nonzero_at_frame0;
         }
     }
+
+    // Real-data coverage floor at frame 0: with the grid loaded, the
+    // per-class calc should produce nonzero T0 on at least a small
+    // fraction of atoms. Catches "every cell stayed at default 0.0"
+    // regression that the source-attached gate guards against.
+    const std::size_t coverage_floor = buf->AtomCount() / 100;
+    EXPECT_GT(nonzero_at_frame0, coverage_floor)
+        << "Larsen 2pHB produced nonzero T0 on only " << nonzero_at_frame0
+        << " of " << buf->AtomCount() << " atoms at frame 0 (floor="
+        << coverage_floor << ") — calc likely never ran despite grid loaded";
 
     if (overage_count > 0) {
         std::cout << "[warn] LarsenHBond2pHB: " << overage_count
@@ -361,5 +398,6 @@ TEST(LarsenHBond2pHBShieldingTimeSeries, IntegrationLogOverages1P9J) {
                   << "(max=" << max_t0 << ")\n";
     }
     std::cout << "LarsenHBond2pHB diagnostic: max_T0=" << max_t0
+              << " nonzero_frame0=" << nonzero_at_frame0
               << " overages=" << overage_count << "\n";
 }
