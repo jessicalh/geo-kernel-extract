@@ -1,0 +1,56 @@
+#pragma once
+//
+// LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult: per-atom per-frame
+// time series of the Larsen 2°HB shielding contribution
+// (ConformationAtom::larsen_hbond_2pHB_spherical, SphericalTensor in
+// ppm, protein lab frame). One of four per-class Larsen TRs cloned
+// from TripeptideBackboneShieldingTimeSeriesTrajectoryResult — see
+// LarsenContribDispatch in LarsenHBondShieldingResult.h.
+//
+
+#include "DenseBuffer.h"
+#include "TrajectoryResult.h"
+#include "Types.h"
+
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <typeindex>
+#include <vector>
+
+namespace nmr {
+
+class LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult
+    : public TrajectoryResult {
+public:
+    std::string Name() const override {
+        return "LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult";
+    }
+
+    std::vector<std::type_index> Dependencies() const override { return {}; }
+
+    static std::unique_ptr<LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult>
+    Create(const TrajectoryProtein& tp);
+
+    void Compute(const ProteinConformation& conf,
+                 TrajectoryProtein& tp,
+                 Trajectory& traj,
+                 std::size_t frame_idx,
+                 double time_ps) override;
+
+    void Finalize(TrajectoryProtein& tp, Trajectory& traj) override;
+
+    void WriteH5Group(const TrajectoryProtein& tp,
+                      HighFive::File& file) const override;
+
+    std::size_t NumFrames() const { return n_frames_; }
+
+private:
+    std::vector<std::vector<SphericalTensor>> per_atom_shielding_;
+    std::vector<std::size_t> frame_indices_;
+    std::vector<double> frame_times_;
+    std::size_t n_frames_ = 0;
+    bool finalized_ = false;
+};
+
+}  // namespace nmr

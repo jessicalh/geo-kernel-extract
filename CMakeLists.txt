@@ -259,6 +259,10 @@ add_library(nmr_shielding
     src/TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp
     src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp
+    src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp
+    src/LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult.cpp
+    src/LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult.cpp
+    src/LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -955,6 +959,38 @@ target_link_libraries(larsen_hbond_count_time_series_tests PRIVATE
 gtest_discover_tests(larsen_hbond_count_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# Larsen per-class H-bond shielding TimeSeries tests (4 TRs)
+#
+# Four SphericalTensor TRs cloned from the BB shielding pattern, each
+# against one of the four Larsen contribution classes
+# (1°HB, 2°HB, 1°HαB, 2°HαB). Same (N, T, 9) flat-double emission.
+# ============================================================================
+
+foreach(_larsen_class IN ITEMS 1pHB 2pHB 1pHaB 2pHaB)
+    set(_target larsen_hbond_${_larsen_class}_shielding_time_series_tests)
+    add_executable(${_target}
+        tests/test_main.cpp
+        tests/TestEnvironment.cpp
+        tests/test_larsen_hbond_${_larsen_class}_shielding_time_series.cpp
+    )
+    target_compile_definitions(${_target} PRIVATE
+        NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+    )
+    target_include_directories(${_target} BEFORE PRIVATE
+        /usr/include/hdf5/serial
+    )
+    target_link_libraries(${_target} PRIVATE
+        nmr_shielding
+        GTest::gtest
+        highfive
+    )
+    gtest_discover_tests(${_target}
+        DISCOVERY_MODE PRE_TEST
+        PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+endforeach()
 
 # water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
 # (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).

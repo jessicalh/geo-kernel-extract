@@ -40,6 +40,10 @@
 #include "TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondWaterTermTimeSeriesTrajectoryResult.h"
 #include "LarsenHBondCountTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult.h"
+#include "LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
@@ -185,6 +189,22 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return LarsenHBondCountTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
