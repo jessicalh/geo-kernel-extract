@@ -1665,7 +1665,18 @@ Attach, so factories see a finalized Protein).
 |------|-------|--------------|-----------|--------|
 | `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_bb_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_bb_residual_vec_time_series/` (N, T, 3) with cartesian/1o/angstrom attrs |
+| `TripeptideBackboneMethodTagTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<uint8>` + `/trajectory/tripeptide_bb_method_tag_time_series/` (N, T) with legend attr (0=no_match, 1=opbe, 2=pbe_ser) |
 | `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | per-atom | `TripeptideNeighborShieldingResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_neighbor_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/` (N, T, 3) — NaN-tolerant (no-i-1 contribution = NaN cells) |
+| `TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_neighbor_residual_vec_next_time_series/` (N, T, 3) — NaN-tolerant |
+| `LarsenHBondWaterTermTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<double>` + `/trajectory/larsen_hbond_water_term_time_series/` (N, T) with irrep_layout=T0, parity=0e, units=ppm |
+| `LarsenHBondCountTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<int>` + `/trajectory/larsen_hbond_count_time_series/` (N, T) with dtype=int32, units=pairs |
+| `LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/larsen_hbond_1pHB_shielding_time_series/` (N, T, 9) Larsen Table 2 per-class |
+| `LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/larsen_hbond_2pHB_shielding_time_series/` (N, T, 9) |
+| `LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/larsen_hbond_1pHaB_shielding_time_series/` (N, T, 9) |
+| `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` (N, T, 9) |
 | `BsAnomalousAtomMarkerTrajectoryResult` | per-atom | `BsWelfordTrajectoryResult`, `BiotSavartResult` | AV | per-atom events bag with kinds `BsAnomalyHighT0`, `BsAnomalyLowT0` |
 | `BsT0AutocorrelationTrajectoryResult` | per-atom × lag | `BiotSavartResult` | FO | `DenseBuffer<double>` + `/trajectory/bs_t0_autocorrelation/` (N, N_LAGS=120) with estimator / mean_convention attrs |
 | `BondLengthStatsTrajectoryResult` | per-bond | (none) | AV | internal `vector<PerBondWelford>` + `/trajectory/bond_length_stats/` |
@@ -2516,6 +2527,18 @@ for the pending rows is
 | ✓ | `BsAnomalousAtomMarkerTrajectoryResult` | BsWelford + BiotSavart | AV | per-atom events bag |
 | ✓ | `BsT0AutocorrelationTrajectoryResult` | BiotSavart | FO | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/` |
 | ✓ | `BondLengthStatsTrajectoryResult` | (positions) | AV | internal per-bond Welford → `/trajectory/bond_length_stats/` |
+| ✓ | `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | TripeptideBackboneShielding (DSN-gated, always-attached) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/tripeptide_bb_shielding_time_series/` |
+| ✓ | `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | (none — capture-as-is) | FO | `DenseBuffer<Vec3>` → `/trajectory/tripeptide_bb_residual_vec_time_series/` (cartesian/1o/angstrom) |
+| ✓ | `TripeptideBackboneMethodTagTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<uint8>` → `/trajectory/tripeptide_bb_method_tag_time_series/` (categorical: 0=no_match, 1=opbe, 2=pbe_ser) |
+| ✓ | `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | TripeptideNeighborShielding | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/tripeptide_neighbor_shielding_time_series/` |
+| ✓ | `TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult` | (none — NaN-tolerant capture) | FO | `DenseBuffer<Vec3>` → `/trajectory/tripeptide_neighbor_residual_vec_prev_time_series/` |
+| ✓ | `TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult` | (none — NaN-tolerant capture) | FO | `DenseBuffer<Vec3>` → `/trajectory/tripeptide_neighbor_residual_vec_next_time_series/` |
+| ✓ | `LarsenHBondWaterTermTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<double>` → `/trajectory/larsen_hbond_water_term_time_series/` (L0 scalar, ppm, 2.07/0.0 quantum) |
+| ✓ | `LarsenHBondCountTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<int>` → `/trajectory/larsen_hbond_count_time_series/` (per-atom pair count) |
+| ✓ | `LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult` | (none — Larsen per-class) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_1pHB_shielding_time_series/` |
+| ✓ | `LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHB_shielding_time_series/` |
+| ✓ | `LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_1pHaB_shielding_time_series/` |
+| ✓ | `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` |
 | ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
 | ⏳ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` |
 | ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |

@@ -283,17 +283,25 @@ Entry conventions:
   touched. No test currently exercises double-Finalize on Bs, so the
   bug is latent.
 
-### OI-045 — 10 more trajectory-scope TRs queued for the Tripeptide / Larsen bundle
+### OI-045 — Tripeptide / Larsen TR bundle (RESOLVED 2026-05-15)
 
-- **Status:** queued for next session per the
-  `project_tripeptide_tr_pilot_landed` memory entry.
-- **Inventory:** BB residual_vec (Vec3), BB method_tag (int), Neighbor
-  residual_vec_prev/next (Vec3 ×2), Larsen 1pHB/2pHB/1pHaB/2pHaB
-  shielding (SphericalTensor ×4), Larsen water_term (scalar),
-  Larsen count (int).
-- **Discipline:** sequential foreground (per user 2026-05-13). Begin
-  with `TripeptideBackboneResidualVecTimeSeries` to establish the
-  Vec3-buffer + 3-component H5 emission pattern.
+- **Status:** **RESOLVED.** All 10 queued TRs landed across 6 commits
+  on 2026-05-15:
+  - `5c7488e` BB residual_vec (Vec3, establishes pattern)
+  - `0279a97` Neighbor residual_vec prev + next (Vec3 ×2; NaN-tolerant)
+  - `ccfd60b` BB method_tag (uint8, establishes int-buffer pattern)
+  - `32a96aa` Larsen water_term (double, establishes scalar pattern)
+  - `3b27497` Larsen count (int)
+  - `48d5788` Larsen 1pHB/2pHB/1pHaB/2pHaB shielding (4 SphericalTensor TRs)
+- **Tests:** 50 new tests across 7 test targets (5 tests per TR ×
+  10 TRs), all green on 1P9J fleet_amber. Pattern 15 discipline trio
+  (synthetic + frame-0 + idempotency + H5 round-trip) + integration
+  with log-overages per `feedback_log_overages_dont_assert`.
+- **Docs:** OBJECT_MODEL.md catalog updated (both `Known types` table
+  at line 1666 and `PerFrameExtractionSet` table at line 2524).
+  Memory entry `project_tripeptide_tr_pilot_landed` updated.
+- **Remaining:** Adversarial codex + opus review on the bundle
+  (task #133).
 
 ### OI-043 — `tests/data/fleet_amber/_backup_round{1,2}_*` disk hygiene
 
