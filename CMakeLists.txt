@@ -252,6 +252,7 @@ add_library(nmr_shielding
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
+    src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
@@ -747,6 +748,37 @@ target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
     highfive
 )
 gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# TripeptideBackboneResidualVecTimeSeries tests
+#
+# Vec3-buffer TR; captures tripeptide_bb_residual_vec (post-Kabsch
+# positional residual, polar 3-vector in protein lab frame) into
+# /trajectory/tripeptide_bb_residual_vec_time_series/. Discipline trio
+# + synthetic + log-overages integration.
+# ============================================================================
+
+add_executable(tripeptide_bb_residual_vec_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_bb_residual_vec_time_series.cpp
+)
+target_compile_definitions(tripeptide_bb_residual_vec_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(tripeptide_bb_residual_vec_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(tripeptide_bb_residual_vec_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+gtest_discover_tests(tripeptide_bb_residual_vec_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

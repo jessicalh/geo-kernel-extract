@@ -33,6 +33,7 @@
 #include "BsWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
+#include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
@@ -151,6 +152,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
