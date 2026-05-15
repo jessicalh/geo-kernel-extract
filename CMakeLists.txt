@@ -254,6 +254,8 @@ add_library(nmr_shielding
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
+    src/TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.cpp
+    src/TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
@@ -807,6 +809,58 @@ target_link_libraries(tripeptide_neighbor_shielding_time_series_tests PRIVATE
     highfive
 )
 gtest_discover_tests(tripeptide_neighbor_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# TripeptideNeighborResidualVecPrev / Next TimeSeries tests
+#
+# Vec3-buffer TRs against the per-direction (i-1, i+1) neighbor residual
+# fields. Source field is NaN-initialised per frame by the calculator;
+# integration tests are NaN-tolerant and log magnitude overages.
+# ============================================================================
+
+add_executable(tripeptide_neighbor_residual_vec_prev_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp
+)
+target_compile_definitions(tripeptide_neighbor_residual_vec_prev_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(tripeptide_neighbor_residual_vec_prev_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(tripeptide_neighbor_residual_vec_prev_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+gtest_discover_tests(tripeptide_neighbor_residual_vec_prev_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+add_executable(tripeptide_neighbor_residual_vec_next_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp
+)
+target_compile_definitions(tripeptide_neighbor_residual_vec_next_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(tripeptide_neighbor_residual_vec_next_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(tripeptide_neighbor_residual_vec_next_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+gtest_discover_tests(tripeptide_neighbor_residual_vec_next_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
