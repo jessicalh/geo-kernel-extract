@@ -38,6 +38,7 @@
 #include "TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.h"
+#include "LarsenHBondWaterTermTimeSeriesTrajectoryResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
@@ -175,6 +176,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
