@@ -15,7 +15,7 @@ against the tree. Human-oriented project description lives in
 
 ## Current state — read this BEFORE the rest of CLAUDE.md
 
-### Landed (master at HEAD `d1ad904`)
+### Landed (master at HEAD `b342f5e`)
 
 The 2026-04-29 → 2026-05-08 work landed across `master`:
 
@@ -231,13 +231,35 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   (no code landed from the old design). Adversarial review provenance
   in `project_larsen_residue_model` memory entry.
 
-  **Known queued (not blocking):** trajectory mode wires the per-frame
-  calculators but has no `TimeSeriesTrajectoryResult` emission surface
-  yet — per-frame tensors compute correctly and land on each frame's
-  `ConformationAtom` fields, but the H5/NPY surface that surfaces
-  them for downstream is queued as
-  `TripeptideShieldingTimeSeriesTrajectoryResult` (mirror of
-  `BsShieldingTimeSeriesTrajectoryResult`).
+- **AIMNet2PolarisabilityResult** (2026-05-09, commits `d665b5f` +
+  `b7511c8`). Per-atom charge-polarisation gradient via PyTorch
+  autograd; promoted to always-on for the non-trajectory pipeline
+  with SDK wrapper. See PLANNED_CALCULATORS amendment.
+
+- **PlanarGeometryResult** (2026-05-09, commits `ae47faf` + `2f8f8db`).
+  Per-frame ω, sp2 pyramidalization, χ₂, Cremer-Pople pucker — the
+  conformation-side companion to the substrate's `PlanarGroupKind` /
+  `RingPosition` fields. Adversarial review caught + corrected the
+  Cremer-Pople θ inversion at landing (`feedback_adversarial_review_physics`).
+
+- **LarsenHBondShieldingResult** (2026-05-13, commit `a0e21bc`).
+  Single calculator covering all four Larsen H-bond contribution
+  terms (Δσ_1°HB + Δσ_2°HB + Δσ_1°HαB + Δσ_2°HαB) plus Δσ_w water
+  term, via direct grid lookup against the 6-archive Larsen DFT
+  scans at `/mnt/expansion/larsen_archive/`. Codex F1-F5 +
+  ML-eligibility audit landed at the same SHA. Methods-accumulate
+  with the pre-existing `HBondResult` (kernel-form, amide-H only).
+  See `project_larsen_hbond_calculator`.
+
+- **Tripeptide / Larsen TR bundle** (2026-05-13 → 2026-05-16, commits
+  `5c7488e` → `b342f5e`). 12 trajectory-scope `TimeSeriesTrajectoryResult`
+  classes for the Tripeptide BB / Neighbor / Larsen H-bond calculator
+  family, with the source-attached gate discipline ("absent, not faked":
+  skip H5 group when source calc never attached this run, NaN-fill float
+  data on per-frame absent rows, emit `source_attached_per_frame` mask
+  for explicit provenance). 84/84 tests green on 1P9J fleet_amber.
+  See `project_tripeptide_tr_pilot_landed` and OBJECT_MODEL.md
+  "Conditional-attach TR discipline" subsection.
 
 ### Pending forward work
 
@@ -249,13 +271,10 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
   string-discrimination inside calculator code.
 - **Planned calculators** — captured in
   `spec/PLANNED_CALCULATORS_2026-04-22.md` (with 2026-05-08 amendment
-  for `PlanarGeometryResult`),
+  for `PlanarGeometryResult` — calculator side now LANDED, see above),
   `spec/PLANNED_CALCULATORS_TIME_SERIES_2026-04-24.md`, and
-  `spec/NMR_EXTRACT_DESIDERATA_2026-04-22.md`.
-- **`PlanarGeometryResult`** specifically — per-frame conformation
-  companion to the substrate's `PlanarGroupKind` / `RingPosition`
-  fields. Substrate side LANDED; calculator side PENDING. See the
-  Amendment 2026-05-08 in `spec/PLANNED_CALCULATORS_2026-04-22.md`.
+  `spec/NMR_EXTRACT_DESIDERATA_2026-04-22.md`. Idea-stage; need a
+  fresh-look against current pipeline before any become real work.
 
 ### Planning artefacts
 

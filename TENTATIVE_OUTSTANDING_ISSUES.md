@@ -156,15 +156,16 @@ Entry conventions:
   the 2026-05 Larsen tripeptide work).
 - **Action:** Add as Layer-1 fan-out when trajectory-scope work resumes.
 
-### OI-031 — `TripeptideShieldingTimeSeriesTrajectoryResult` queued
+### OI-031 — Tripeptide TimeSeries TRs (RESOLVED 2026-05-13 → 2026-05-16)
 
-- **Verified:** `src/Trajectory.cpp:170` comment notes
-  `TripeptideShieldingTimeSeriesTrajectoryResult` is queued but not
-  implemented; per-frame tensors land on `ConformationAtom` only,
-  no H5/NPY surface mirroring `BsShieldingTimeSeriesTrajectoryResult`.
-- **Source:** `spec/plan/bones/session_2026-05-10_part2_tripeptide_calculators.md:208-214`.
-- **Action:** Mirror the `Bs*TimeSeries...` shape for tripeptide BB +
-  Neighbor tensors when trajectory-scope tripeptide output is needed.
+- **Status:** **RESOLVED.** The 12-TR Tripeptide / Larsen bundle landed
+  across commits `5c7488e` → `b342f5e`. Both pilot TRs
+  (`TripeptideBackboneShieldingTimeSeriesTrajectoryResult` and
+  `TripeptideNeighborShieldingTimeSeriesTrajectoryResult`) mirror the
+  Bs shape; 10 additional bundle TRs cover residual_vec / method_tag /
+  Larsen water/count/per-class. See `project_tripeptide_tr_pilot_landed`
+  and OI-045 for the full bundle record. The stale `src/Trajectory.cpp`
+  comment was removed during the bundle pilot cleanup.
 
 ### OI-032 — `AmideTensorGeometry` calculator (A.2) blocked on Loth 2005 PDF
 
