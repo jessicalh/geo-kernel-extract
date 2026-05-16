@@ -1671,6 +1671,9 @@ Attach, so factories see a finalized Protein).
 | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/ringchi_shielding_time_series/` (N, T, 9); reads `ringchi_shielding_contribution` (units = Å⁻³) |
 | `DispersionShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/disp_shielding_time_series/` (N, T, 9); reads `disp_shielding_contribution` (units = Å⁻⁶, **pure-T2** — T0 ≡ 0 structurally) |
 | `HBondShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hbond_shielding_time_series/` (N, T, 9); reads `hbond_shielding_contribution` (units = Å⁻³, kernel-form; coexists with grid-form `LarsenHBond*ShieldingTimeSeries` family per `feedback_methods_accumulate`) |
+| `SasaTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<double>` + `/trajectory/sasa_time_series/` (N, T); reads `atom_sasa` (units = Å², SasaResult source) |
+| `AIMNet2ChargeTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<double>` + `/trajectory/aimnet2_charge_time_series/` (N, T); reads `aimnet2_charge` (units = elementary_charge, AIMNet2Result source) |
+| `ApbsEfieldTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<Vec3>` + `/trajectory/apbs_efield_time_series/` (N, T, 3); reads `apbs_efield` (units = V/Å, ApbsFieldResult source; parity 1o polar vector) |
 | `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_bb_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_bb_residual_vec_time_series/` (N, T, 3) with cartesian/1o/angstrom attrs |
 | `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_neighbor_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
@@ -2578,6 +2581,9 @@ for the pending rows is
 | ✓ | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | RingSusceptibility | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/ringchi_shielding_time_series/` (Å⁻³) |
 | ✓ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/disp_shielding_time_series/` (Å⁻⁶, pure-T2) |
 | ✓ | `HBondShieldingTimeSeriesTrajectoryResult` | HBond (kernel-form) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hbond_shielding_time_series/` (Å⁻³) |
+| ✓ | `SasaTimeSeriesTrajectoryResult` | Sasa | FO | `DenseBuffer<double>` → `/trajectory/sasa_time_series/` (Å²) |
+| ✓ | `AIMNet2ChargeTimeSeriesTrajectoryResult` | AIMNet2 | FO | `DenseBuffer<double>` → `/trajectory/aimnet2_charge_time_series/` (e) |
+| ✓ | `ApbsEfieldTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<Vec3>` → `/trajectory/apbs_efield_time_series/` (V/Å, 1o) |
 | ✓ | `BsAnomalousAtomMarkerTrajectoryResult` | BsWelford + BiotSavart | AV | per-atom events bag |
 | ✓ | `BsT0AutocorrelationTrajectoryResult` | BiotSavart | FO | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/` |
 | ✓ | `BondLengthStatsTrajectoryResult` | (positions) | AV | internal per-bond Welford → `/trajectory/bond_length_stats/` |
@@ -2596,14 +2602,12 @@ for the pending rows is
 | ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
 | ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |
 | ⏳ | `CoulombFieldTimeSeriesTrajectoryResult` | Coulomb | FO | E-field Vec3 + EFG Mat3 dense |
-| ⏳ | `ApbsFieldTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<Vec3>` + `DenseBuffer<Mat3>` |
+| ⏳ | `ApbsEfgTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<SphericalTensor>` (EFG) — pairs with the landed `ApbsEfieldTimeSeriesTrajectoryResult` (Vec3) |
 | ⏳ | `WaterEnvironmentTimeSeriesTrajectoryResult` | WaterField | FO | multiple dense buffers |
 | ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | |
 | ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | |
-| ⏳ | `AIMNet2ChargeTimeSeriesTrajectoryResult` | AIMNet2 | FO | per-atom charges over time |
 | ⏳ | `AIMNet2EmbeddingTimeSeriesTrajectoryResult` | AIMNet2 | FO | 256-dim per atom per frame — optional, large |
 | ⏳ | `EeqChargeWelfordTrajectoryResult` | Eeq | AV | |
-| ⏳ | `SasaTimeSeriesTrajectoryResult` | Sasa | FO | |
 | ⏳ | `SasaWelfordTrajectoryResult` | Sasa | AV | |
 | ⏳ | `HBondCountWelfordTrajectoryResult` | HBond | AV | |
 | ⏳ | `DihedralTimeSeriesTrajectoryResult` | Dssp | FO | per-residue dihedrals |
@@ -2910,7 +2914,7 @@ Current `RunConfiguration` attach status:
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six BS-family TRs above PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
+| `PerFrameExtractionSet` | All six BS-family TRs above PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)

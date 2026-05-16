@@ -257,6 +257,9 @@ add_library(nmr_shielding
     src/RingSusceptibilityShieldingTimeSeriesTrajectoryResult.cpp
     src/DispersionShieldingTimeSeriesTrajectoryResult.cpp
     src/HBondShieldingTimeSeriesTrajectoryResult.cpp
+    src/SasaTimeSeriesTrajectoryResult.cpp
+    src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp
+    src/ApbsEfieldTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -858,6 +861,63 @@ target_compile_definitions(hbond_shielding_time_series_tests PRIVATE
 target_include_directories(hbond_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(hbond_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(hbond_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# SasaTimeSeries tests
+# ============================================================================
+
+add_executable(sasa_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_sasa_time_series.cpp
+)
+target_compile_definitions(sasa_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(sasa_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(sasa_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(sasa_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# AIMNet2ChargeTimeSeries tests
+# ============================================================================
+
+add_executable(aimnet2_charge_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_aimnet2_charge_time_series.cpp
+)
+target_compile_definitions(aimnet2_charge_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(aimnet2_charge_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(aimnet2_charge_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(aimnet2_charge_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# ApbsEfieldTimeSeries tests
+# ============================================================================
+
+add_executable(apbs_efield_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_apbs_efield_time_series.cpp
+)
+target_compile_definitions(apbs_efield_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(apbs_efield_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(apbs_efield_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(apbs_efield_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
