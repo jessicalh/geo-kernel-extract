@@ -2,13 +2,15 @@
 //
 // PiQuadrupoleShieldingTimeSeriesTrajectoryResult: per-atom per-frame
 // time series of the pi-electron quadrupole geometric kernel as a
-// SphericalTensor (Angstrom^-4). FO dense-buffer pattern, clones
+// SphericalTensor (Angstrom^-5). FO dense-buffer pattern, clones
 // BsShieldingTimeSeriesTrajectoryResult against
 // ConformationAtom::piquad_shielding_contribution. Note: despite the
 // field name, the source calc (PiQuadrupoleResult) stores the
 // decomposed GEOMETRIC KERNEL, not the parameterised ppm shielding.
 // Pre-existing naming drift across most classical calcs — see
 // OBJECT_MODEL.md "Calculator Shielding Contribution Contract drift".
+// Units: G tensor is Å⁻⁵ per PiQuadrupoleResult.cpp:43 (the related
+// Buckingham scalar A-term is Å⁻⁴; do not confuse).
 //
 // **T0 is structurally zero.** The EFG kernel is analytically traceless
 // by Laplace's equation (Stone, *Theory of Intermolecular Forces*,
@@ -31,7 +33,7 @@
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization  = "isometric_real_sph"
 //       parity         = "0e+1o+2e"
-//       units          = "Angstrom^-4"
+//       units          = "Angstrom^-5"
 //
 
 #include "DenseBuffer.h"

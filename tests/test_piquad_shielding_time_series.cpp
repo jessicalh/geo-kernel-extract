@@ -219,7 +219,7 @@ TEST(PiQuadrupoleShieldingTimeSeries, H5RoundTrip) {
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     EXPECT_EQ(parity, "0e+1o+2e");
-    EXPECT_EQ(units, "Angstrom^-4");
+    EXPECT_EQ(units, "Angstrom^-5");
     fs::remove(h5_path);
 }
 
@@ -291,7 +291,7 @@ TEST(PiQuadrupoleShieldingTimeSeries, Integration1P9J) {
     // Assert kernel fires somewhere above noise on T2 channels.
     EXPECT_GT(max_abs_t2, 1e-6) << "PiQuad T2 channels at noise floor — kernel may be broken";
     std::cout << "PiQuadrupoleShieldingTimeSeries CA-anchor T0=" << cell.T0
-              << " A^-4 (structural zero), max|T2|=" << max_abs_t2 << " A^-4, populated_t2="
+              << " A^-5 (structural zero), max|T2|=" << max_abs_t2 << " A^-5, populated_t2="
               << populated_t2 << "/" << buf->AtomCount()
-              << " (pure-T2 traceless EFG; 1/r^4 falloff)\n";
+              << " (pure-T2 traceless EFG; 1/r^4 leading + higher-order)\n";
 }

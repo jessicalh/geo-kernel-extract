@@ -56,11 +56,12 @@ constexpr const char* kFixtureProtein = "1P9J_5801";
 constexpr int kFingerprintResidueNumber = 28;
 const std::string kFingerprintChainId = "A";
 
-// HM shielding magnitude band: literature ring-current shielding at
-// backbone amide H near aromatic rings runs ±5-10 ppm. 50 ppm is a
-// generous bound that catches a runaway calculation without tripping
-// on legitimate ring-proximity values.
-constexpr double kT0SanityBoundPpm = 50.0;
+// HM geometric kernel magnitude band: G = -n⊗V in Å⁻¹, with V the
+// surface-integral effective B-field. At physical ring-proximity
+// distances (2-5 Å) the kernel falls between ~1e-3 and ~10 Å⁻¹.
+// 50 Å⁻¹ is a generous sanity bound that catches runaway numerics
+// without tripping on legitimate ring-proximity values.
+constexpr double kT0SanityBoundKernel = 50.0;
 
 
 std::string TrrPathFor(const std::string& tpr_path) {
@@ -378,7 +379,7 @@ TEST(HmShieldingTimeSeries, H5RoundTrip) {
     grp.getAttribute("irrep_layout").read(layout);
     EXPECT_EQ(parity, "0e+1o+2e");
     EXPECT_EQ(normalization, "isometric_real_sph");
-    EXPECT_EQ(units, "ppm");
+    EXPECT_EQ(units, "Angstrom^-1");
     EXPECT_EQ(layout,
         "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
 
@@ -455,8 +456,8 @@ TEST(HmShieldingTimeSeries, Integration1P9J) {
              && std::isfinite(cell.T2[2]) && std::isfinite(cell.T2[3])
              && std::isfinite(cell.T2[4]))
         << "non-finite component at fingerprint atom " << fingerprint_atom;
-    EXPECT_LT(std::abs(cell.T0), kT0SanityBoundPpm)
-        << "T0 outside HM sanity band: " << cell.T0 << " ppm at atom "
+    EXPECT_LT(std::abs(cell.T0), kT0SanityBoundKernel)
+        << "T0 outside HM sanity band: " << cell.T0 << " A^-1 at atom "
         << fingerprint_atom;
 
     // Full-buffer 9-component isfinite sweep + population floor. HM is
@@ -487,6 +488,6 @@ TEST(HmShieldingTimeSeries, Integration1P9J) {
               << "chain=" << kFingerprintChainId
               << " residue=" << kFingerprintResidueNumber
               << " atom_idx=" << fingerprint_atom
-              << " frame 0 T0=" << cell.T0 << " ppm, populated="
+              << " frame 0 T0=" << cell.T0 << " A^-1, populated="
               << populated << "/" << buf->AtomCount() << "\n";
 }

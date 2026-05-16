@@ -1954,13 +1954,14 @@ Per-calc actual unit + irrep structure (corrected):
 
 | Field | Actual units | T0 physical? | Notes |
 |-------|--------------|-------------|-------|
-| `bs_shielding_contribution` | dimensionless (PPM_FACTOR baked into G) | yes | rank-1 outer product `G = -n⊗B`, T0 nonzero |
-| `hm_shielding_contribution` | dimensionless | yes | full shielding kernel `G = -n⊗V`, same shape as BS |
+| `bs_shielding_contribution` | ppm·T/nA (PPM_FACTOR baked into G, but I_type not yet applied) | yes | rank-1 outer product `G = -n⊗B`, T0 nonzero |
+| `hm_shielding_contribution` | Å⁻¹ | yes | full shielding kernel `G = -n⊗V`, V is surface integral in Å⁻¹; same RANK-1 form as BS but no PPM_FACTOR multiplier |
 | `mc_shielding_contribution` | Å⁻³ | yes | full McConnell tensor (asymmetric, non-traceless); T0 = (3cos²θ-1)/r³ — see PATTERNS.md Lesson 19 |
-| `ringchi_shielding_contribution` | Å⁻³ | yes | rank-1 in form |
-| `hbond_shielding_contribution` | Å⁻³ | yes | rank-1 in form |
-| `piquad_shielding_contribution` | Å⁻⁴ | **NO** | **pure-T2 by Laplace** — analytically traceless EFG; T0 ≡ 0 by physics, only round-off dust appears; see `PiQuadrupoleResult.cpp:40-44` |
-| `disp_shielding_contribution` | Å⁻⁶ | **NO** | **pure-T2** — `Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0`; see `DispersionResult.h:17-19` |
+| `ringchi_shielding_contribution` | Å⁻³ | yes | **full McConnell-form** with b̂ → ring normal n̂ (same three-term asymmetric non-traceless tensor as McConnell, NOT rank-1); PATTERNS.md Lesson 19 line 826-828; `RingSusceptibilityResult.cpp:83-93` |
+| `hbond_shielding_contribution` | Å⁻³ | yes | **full McConnell-form** with b̂ → D→A direction ĥ (same three-term tensor as McConnell, NOT rank-1); PATTERNS.md Lesson 19 line 827; `HBondResult.cpp:91-97` |
+| `piquad_shielding_contribution` | Å⁻⁵ | **NO** | **pure-T2 by Laplace** — analytically traceless EFG; T0 ≡ 0 by physics, only round-off dust appears; see `PiQuadrupoleResult.cpp:40-44` (G in Å⁻⁵; the Buckingham scalar A-term `quad_scalar` is the separate Å⁻⁴ companion) |
+| `disp_shielding_contribution` | Å⁻⁶ | **NO** | **pure-T2** — `Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0`; see `DispersionResult.h:17` |
+| `coulomb_shielding_contribution` | (no field) | N/A | CoulombResult writes `coulomb_EFG_total_spherical` (V/Å²) on ConformationAtom rather than a `_shielding_contribution`; not part of the drift surface |
 
 **Implication for downstream consumers:** statistics or magnitude
 checks on PiQuad / Dispersion must operate on T2 channels, not T0.

@@ -149,6 +149,56 @@ TEST(AIMNet2ChargeTimeSeries, H5RoundTripAttrs) {
 }
 
 
+TEST(AIMNet2ChargeTimeSeries, FinalizeIdempotency) {
+    // Synthetic-driven idempotency check. Doesn't need the AIMNet2
+    // model loaded — the bounds-check pattern in Finalize is the
+    // contract being tested.
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    const size_t N = tp.AtomCount();
+    auto tr = nmr::AIMNet2ChargeTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    constexpr size_t kFrames = 3;
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    for (size_t t = 0; t < kFrames; ++t) {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic frame");
+        for (size_t i = 0; i < N; ++i) {
+            conf->MutableAtomAt(i).aimnet2_charge = 0.01 * static_cast<double>(i + t);
+        }
+        tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
+    }
+    tr->Finalize(tp, traj);
+
+    auto* buf_first = tp.GetDenseBuffer<double>(std::type_index(typeid(
+        nmr::AIMNet2ChargeTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buf_first, nullptr);
+    const std::size_t N_first = buf_first->AtomCount();
+    const std::size_t T_first = buf_first->StridePerAtom();
+    EXPECT_EQ(T_first, kFrames);
+
+    // Bounds-check idempotency: second Finalize should NOT mutate the
+    // adopted buffer's shape (per_atom_charge_[i].size() == 0 after
+    // the swap-clear at first-Finalize → all atoms skip the copy-loop
+    // bounds-check → atoms_written == 0 → AdoptDenseBuffer is not
+    // called → first buffer remains intact).
+    tr->Finalize(tp, traj);
+    auto* buf_second = tp.GetDenseBuffer<double>(std::type_index(typeid(
+        nmr::AIMNet2ChargeTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buf_second, nullptr);
+    EXPECT_EQ(buf_second->AtomCount(), N_first);
+    EXPECT_EQ(buf_second->StridePerAtom(), T_first);
+    // Spot-check: first-Finalize values still present after second call.
+    EXPECT_DOUBLE_EQ(buf_second->At(N / 2, 1), 0.01 * static_cast<double>(N / 2 + 1));
+}
+
+
 TEST(AIMNet2ChargeTimeSeries, Integration1P9J) {
     LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();

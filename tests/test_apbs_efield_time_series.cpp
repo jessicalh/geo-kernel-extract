@@ -151,6 +151,47 @@ TEST(ApbsEfieldTimeSeries, Frame0Semantics) {
 }
 
 
+TEST(ApbsEfieldTimeSeries, FinalizeIdempotency) {
+    LoadCalculatorConfig();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::RunConfiguration config;
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = false;
+    opts.skip_dssp = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.RequireConformationResult(typeid(nmr::ChargeAssignmentResult));
+    config.RequireConformationResult(typeid(nmr::ApbsFieldResult));
+    config.AddTrajectoryResultFactory([](const nmr::TrajectoryProtein& tp_in)
+        -> std::unique_ptr<nmr::TrajectoryResult> {
+        return nmr::ApbsEfieldTimeSeriesTrajectoryResult::Create(tp_in);
+    });
+    config.SetStride(99999);  // single-frame keeps the test cheap
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Session session;
+    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
+
+    auto* buf_first = tp.GetDenseBuffer<nmr::Vec3>(std::type_index(typeid(
+        nmr::ApbsEfieldTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buf_first, nullptr);
+    const std::size_t N_first = buf_first->AtomCount();
+    const std::size_t T_first = buf_first->StridePerAtom();
+
+    auto& tr = tp.Result<nmr::ApbsEfieldTimeSeriesTrajectoryResult>();
+    tr.Finalize(tp, traj);
+    auto* buf_second = tp.GetDenseBuffer<nmr::Vec3>(std::type_index(typeid(
+        nmr::ApbsEfieldTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buf_second, nullptr);
+    EXPECT_EQ(buf_second->AtomCount(), N_first);
+    EXPECT_EQ(buf_second->StridePerAtom(), T_first);
+}
+
+
 TEST(ApbsEfieldTimeSeries, Integration1P9J) {
     LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
