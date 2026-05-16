@@ -1666,6 +1666,11 @@ Attach, so factories see a finalized Protein).
 | `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `HmShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hm_shielding_time_series/` (N, T, 9); reads `ConformationAtom::hm_shielding_contribution` (HaighMallionResult source, unconditional in PerFrameExtractionSet) |
+| `McConnellShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/mc_shielding_time_series/` (N, T, 9); reads `mc_shielding_contribution` (units = Å⁻³, full asymmetric McConnell tensor; T0 ≠ 0) |
+| `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/piquad_shielding_time_series/` (N, T, 9); reads `piquad_shielding_contribution` (units = Å⁻⁴, **pure-T2** by Laplace — T0 ≡ 0 structurally) |
+| `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/ringchi_shielding_time_series/` (N, T, 9); reads `ringchi_shielding_contribution` (units = Å⁻³) |
+| `DispersionShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/disp_shielding_time_series/` (N, T, 9); reads `disp_shielding_contribution` (units = Å⁻⁶, **pure-T2** — T0 ≡ 0 structurally) |
+| `HBondShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hbond_shielding_time_series/` (N, T, 9); reads `hbond_shielding_contribution` (units = Å⁻³, kernel-form; coexists with grid-form `LarsenHBond*ShieldingTimeSeries` family per `feedback_methods_accumulate`) |
 | `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_bb_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_bb_residual_vec_time_series/` (N, T, 3) with cartesian/1o/angstrom attrs |
 | `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_neighbor_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
@@ -1923,6 +1928,48 @@ which reads both sets of NPY arrays.
 | RingSusceptibility | Dchi_ring * chi_T0/T1/T2 | Ring type defaults or TOML-calibrated values |
 | Dispersion | alpha_elem * disp_T0/T1/T2 | Element defaults or TOML-calibrated values |
 | HBond | eta_elem * hbond_T0/T1/T2 | Element defaults or TOML-calibrated values |
+
+### Contract drift (2026-05-16 finding)
+
+The contract above describes the intended `*_shielding_contribution`
+semantics: parameter × geometric kernel, in ppm. The **code does not
+match the contract**. Every classical calculator stores the
+DECOMPOSED GEOMETRIC KERNEL (no parameter multiplication) into
+`*_shielding_contribution`. Documented by the calc:
+`bs/hm/mc/piquad/ringchi/disp/hbond_shielding_contribution =
+SphericalTensor::Decompose(*_total)` with no `param * ` factor at
+the assignment site.
+
+Surfaced 2026-05-16 while building trajectory-scope TRs that capture
+these fields. The TR layer is correct — it faithfully captures what
+the calc writes. The calibration pipeline downstream multiplies by
+the appropriate parameter when comparing against DFT, so the
+end-to-end calibration math is correct. The drift is between this
+doc and the code, not between the code and the science.
+
+Per-calc actual unit + irrep structure (corrected):
+
+| Field | Actual units | T0 physical? | Notes |
+|-------|--------------|-------------|-------|
+| `bs_shielding_contribution` | dimensionless (PPM_FACTOR baked into G) | yes | rank-1 outer product `G = -n⊗B`, T0 nonzero |
+| `hm_shielding_contribution` | dimensionless | yes | full shielding kernel `G = -n⊗V`, same shape as BS |
+| `mc_shielding_contribution` | Å⁻³ | yes | full McConnell tensor (asymmetric, non-traceless); T0 = (3cos²θ-1)/r³ — see PATTERNS.md Lesson 19 |
+| `ringchi_shielding_contribution` | Å⁻³ | yes | rank-1 in form |
+| `hbond_shielding_contribution` | Å⁻³ | yes | rank-1 in form |
+| `piquad_shielding_contribution` | Å⁻⁴ | **NO** | **pure-T2 by Laplace** — analytically traceless EFG; T0 ≡ 0 by physics, only round-off dust appears; see `PiQuadrupoleResult.cpp:40-44` |
+| `disp_shielding_contribution` | Å⁻⁶ | **NO** | **pure-T2** — `Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0`; see `DispersionResult.h:17-19` |
+
+**Implication for downstream consumers:** statistics or magnitude
+checks on PiQuad / Dispersion must operate on T2 channels, not T0.
+The asserted-correct test
+`tests/test_pi_quadrupole_result.cpp:475-476` explicitly enforces
+`EXPECT_LT(max_t0, 1e-10)` for PiQuad — T0 ≈ 0 is the contract.
+
+A separate doc-vs-code reconciliation pass should rename
+`*_shielding_contribution` → `*_kernel_total` (or similar) for the
+seven classical calcs, since "shielding contribution in ppm" is not
+what they store. The Tripeptide and Larsen H-bond shielding TRs
+DO emit ppm (DFT-derived or grid-derived) and are correctly named.
 
 ---
 
@@ -2526,6 +2573,11 @@ for the pending rows is
 | ✓ | `BsWelfordTrajectoryResult` | BiotSavart | AV | TrajectoryAtom Welford fields + `/trajectory/bs_welford/` |
 | ✓ | `BsShieldingTimeSeriesTrajectoryResult` | BiotSavart | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/` |
 | ✓ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/` |
+| ✓ | `McConnellShieldingTimeSeriesTrajectoryResult` | McConnell | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/mc_shielding_time_series/` (Å⁻³) |
+| ✓ | `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | PiQuadrupole | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/piquad_shielding_time_series/` (Å⁻⁴, pure-T2) |
+| ✓ | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | RingSusceptibility | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/ringchi_shielding_time_series/` (Å⁻³) |
+| ✓ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/disp_shielding_time_series/` (Å⁻⁶, pure-T2) |
+| ✓ | `HBondShieldingTimeSeriesTrajectoryResult` | HBond (kernel-form) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hbond_shielding_time_series/` (Å⁻³) |
 | ✓ | `BsAnomalousAtomMarkerTrajectoryResult` | BsWelford + BiotSavart | AV | per-atom events bag |
 | ✓ | `BsT0AutocorrelationTrajectoryResult` | BiotSavart | FO | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/` |
 | ✓ | `BondLengthStatsTrajectoryResult` | (positions) | AV | internal per-bond Welford → `/trajectory/bond_length_stats/` |
@@ -2543,7 +2595,6 @@ for the pending rows is
 | ✓ | `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` |
 | ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
 | ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |
-| ⏳ | `McConnellShieldingTimeSeriesTrajectoryResult` | McConnell | FO | `DenseBuffer<SphericalTensor>` |
 | ⏳ | `CoulombFieldTimeSeriesTrajectoryResult` | Coulomb | FO | E-field Vec3 + EFG Mat3 dense |
 | ⏳ | `ApbsFieldTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<Vec3>` + `DenseBuffer<Mat3>` |
 | ⏳ | `WaterEnvironmentTimeSeriesTrajectoryResult` | WaterField | FO | multiple dense buffers |
@@ -2554,7 +2605,6 @@ for the pending rows is
 | ⏳ | `EeqChargeWelfordTrajectoryResult` | Eeq | AV | |
 | ⏳ | `SasaTimeSeriesTrajectoryResult` | Sasa | FO | |
 | ⏳ | `SasaWelfordTrajectoryResult` | Sasa | AV | |
-| ⏳ | `HBondTimeSeriesTrajectoryResult` | HBond | FO | |
 | ⏳ | `HBondCountWelfordTrajectoryResult` | HBond | AV | |
 | ⏳ | `DihedralTimeSeriesTrajectoryResult` | Dssp | FO | per-residue dihedrals |
 | ⏳ | `DihedralBinTransitionTrajectoryResult` | Dssp | AV | per-residue transition counters |
@@ -2562,9 +2612,6 @@ for the pending rows is
 | ⏳ | `Dssp8TransitionTrajectoryResult` | Dssp | AV | per-residue SS transitions |
 | ⏳ | `BondedEnergyTimeSeriesTrajectoryResult` | BondedEnergy | FO | per-atom energy decomposition |
 | ⏳ | `GromacsEnergyTimeSeriesTrajectoryResult` | GromacsEnergy | FO | per-frame aggregate (no atom axis) |
-| ⏳ | `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | PiQuadrupole | FO | |
-| ⏳ | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | RingSusceptibility | FO | |
-| ⏳ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | |
 | ⏳ | `RingNeighbourhoodTrajectoryStats` | multiple ring calculators | FO | rich per-atom-per-ring struct vectors (Pattern A) |
 
 **`ScanForDftPointSet` (scan mode, for DFT pose selection):** *Slated
@@ -2863,7 +2910,7 @@ Current `RunConfiguration` attach status:
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six BS-family TRs above PLUS `HmShieldingTimeSeriesTrajectoryResult` PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
+| `PerFrameExtractionSet` | All six BS-family TRs above PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)

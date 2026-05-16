@@ -33,6 +33,11 @@
 #include "BsWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
 #include "HmShieldingTimeSeriesTrajectoryResult.h"
+#include "McConnellShieldingTimeSeriesTrajectoryResult.h"
+#include "PiQuadrupoleShieldingTimeSeriesTrajectoryResult.h"
+#include "RingSusceptibilityShieldingTimeSeriesTrajectoryResult.h"
+#include "DispersionShieldingTimeSeriesTrajectoryResult.h"
+#include "HBondShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
@@ -162,6 +167,26 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return HmShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return McConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return PiQuadrupoleShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return RingSusceptibilityShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return DispersionShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return HBondShieldingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

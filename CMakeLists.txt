@@ -252,6 +252,11 @@ add_library(nmr_shielding
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/HmShieldingTimeSeriesTrajectoryResult.cpp
+    src/McConnellShieldingTimeSeriesTrajectoryResult.cpp
+    src/PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp
+    src/RingSusceptibilityShieldingTimeSeriesTrajectoryResult.cpp
+    src/DispersionShieldingTimeSeriesTrajectoryResult.cpp
+    src/HBondShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -758,6 +763,101 @@ target_link_libraries(hm_shielding_time_series_tests PRIVATE
     highfive
 )
 gtest_discover_tests(hm_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# McConnellShieldingTimeSeries tests
+# ============================================================================
+
+add_executable(mc_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mc_shielding_time_series.cpp
+)
+target_compile_definitions(mc_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mc_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mc_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mc_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# PiQuadrupoleShieldingTimeSeries tests
+# ============================================================================
+
+add_executable(piquad_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_piquad_shielding_time_series.cpp
+)
+target_compile_definitions(piquad_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(piquad_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(piquad_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(piquad_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# RingSusceptibilityShieldingTimeSeries tests
+# ============================================================================
+
+add_executable(ringchi_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_ringchi_shielding_time_series.cpp
+)
+target_compile_definitions(ringchi_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(ringchi_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(ringchi_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(ringchi_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# DispersionShieldingTimeSeries tests
+# ============================================================================
+
+add_executable(disp_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_disp_shielding_time_series.cpp
+)
+target_compile_definitions(disp_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(disp_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(disp_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(disp_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# HBondShieldingTimeSeries tests
+# ============================================================================
+
+add_executable(hbond_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_hbond_shielding_time_series.cpp
+)
+target_compile_definitions(hbond_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(hbond_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(hbond_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(hbond_shielding_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
