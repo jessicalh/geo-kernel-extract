@@ -1665,6 +1665,7 @@ Attach, so factories see a finalized Protein).
 |------|-------|--------------|-----------|--------|
 | `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
+| `HmShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hm_shielding_time_series/` (N, T, 9); reads `ConformationAtom::hm_shielding_contribution` (HaighMallionResult source, unconditional in PerFrameExtractionSet) |
 | `TripeptideBackboneShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_bb_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `TripeptideBackboneResidualVecTimeSeriesTrajectoryResult` | per-atom | (none) | FO | `DenseBuffer<Vec3>` + `/trajectory/tripeptide_bb_residual_vec_time_series/` (N, T, 3) with cartesian/1o/angstrom attrs |
 | `TripeptideNeighborShieldingTimeSeriesTrajectoryResult` | per-atom | (none — always-attached project precondition) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/tripeptide_neighbor_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
@@ -2524,6 +2525,7 @@ for the pending rows is
 | ✓ | `PositionsTimeSeriesTrajectoryResult` | (positions) | FO | `DenseBuffer<Vec3>` → `/trajectory/positions/` |
 | ✓ | `BsWelfordTrajectoryResult` | BiotSavart | AV | TrajectoryAtom Welford fields + `/trajectory/bs_welford/` |
 | ✓ | `BsShieldingTimeSeriesTrajectoryResult` | BiotSavart | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/` |
+| ✓ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/` |
 | ✓ | `BsAnomalousAtomMarkerTrajectoryResult` | BsWelford + BiotSavart | AV | per-atom events bag |
 | ✓ | `BsT0AutocorrelationTrajectoryResult` | BiotSavart | FO | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/` |
 | ✓ | `BondLengthStatsTrajectoryResult` | (positions) | AV | internal per-bond Welford → `/trajectory/bond_length_stats/` |
@@ -2540,7 +2542,6 @@ for the pending rows is
 | ✓ | `LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_1pHaB_shielding_time_series/` |
 | ✓ | `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` |
 | ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
-| ⏳ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` |
 | ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |
 | ⏳ | `McConnellShieldingTimeSeriesTrajectoryResult` | McConnell | FO | `DenseBuffer<SphericalTensor>` |
 | ⏳ | `CoulombFieldTimeSeriesTrajectoryResult` | Coulomb | FO | E-field Vec3 + EFG Mat3 dense |
@@ -2843,6 +2844,7 @@ duplication over chaining.
 |-------------------------------------------------|----------------|----------------------------------------------------------|----------------------------------------------------------------------|
 | `BsWelfordTrajectoryResult`                     | AV             | `BiotSavartResult`                                       | `TrajectoryAtom` rollup fields + `/trajectory/bs_welford/`           |
 | `BsShieldingTimeSeriesTrajectoryResult`         | FO             | `BiotSavartResult`                                       | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/{xyz, frame_indices, frame_times}` |
+| `HmShieldingTimeSeriesTrajectoryResult`         | FO             | none declared (HaighMallionResult source unconditional in PerFrameExtractionSet) | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/{xyz, frame_indices, frame_times}` |
 | `BsAnomalousAtomMarkerTrajectoryResult`         | AV (emitter)   | `BsWelfordTrajectoryResult`, `BiotSavartResult`          | Per-atom events pushed to `ta.events`, kinds `BsAnomalyHighT0` / `BsAnomalyLowT0`. No H5 group of its own (events bag not H5-emitted yet). |
 | `BsT0AutocorrelationTrajectoryResult`           | FO             | `BiotSavartResult`                                       | `DenseBuffer<double>` → `/trajectory/bs_t0_autocorrelation/{rho, lag_frames, lag_times_ps}` |
 | `BondLengthStatsTrajectoryResult`               | AV             | none (reads `Bond` indices + positions)                  | Internal per-bond Welford → `/trajectory/bond_length_stats/`         |
@@ -2861,7 +2863,7 @@ Current `RunConfiguration` attach status:
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six BS-family TRs above PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
+| `PerFrameExtractionSet` | All six BS-family TRs above PLUS `HmShieldingTimeSeriesTrajectoryResult` PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)

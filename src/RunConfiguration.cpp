@@ -32,6 +32,7 @@
 // Concrete TrajectoryResults populating the canonical configurations.
 #include "BsWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
+#include "HmShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
@@ -157,6 +158,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BsShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return HmShieldingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

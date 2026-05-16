@@ -263,18 +263,40 @@ The 2026-04-29 → 2026-05-08 work landed across `master`:
 
 ### Pending forward work
 
-- **Calculator walkthrough** — bring existing classical calculators
-  (`BiotSavartResult`, `McConnellResult`, `CoulombResult`,
-  `HaighMallionResult`, etc.) onto the typed substrate. Each calculator
-  gets a before / after audit pass with codex 5.5 xhigh as reviewer.
-  The substrate's typed identity fields (`SemanticAt(ai)`) replace
-  string-discrimination inside calculator code.
+- **Trajectory-scope calculator queue** — ~25 pending `*TrajectoryResult`
+  types catalogued in OBJECT_MODEL.md's "Extended: Trajectory-scope
+  detail" section (Hm / McConnell / Coulomb / Apbs / Water / Hydration /
+  AIMNet2 / Eeq / Sasa / HBond / Dihedral / Dssp8 / BondedEnergy /
+  PiQuad / RingSusc / Dispersion shielding time-series and Welford
+  variants). Each clones the BS Shielding TR template battle-tested in
+  the 2026-05-15 Tripeptide / Larsen bundle. This is the active forward
+  work on the C++ side.
 - **Planned calculators** — captured in
   `spec/PLANNED_CALCULATORS_2026-04-22.md` (with 2026-05-08 amendment
   for `PlanarGeometryResult` — calculator side now LANDED, see above),
   `spec/PLANNED_CALCULATORS_TIME_SERIES_2026-04-24.md`, and
   `spec/NMR_EXTRACT_DESIDERATA_2026-04-22.md`. Idea-stage; need a
   fresh-look against current pipeline before any become real work.
+- **Deferred and useful, after trajectory calcs done — NOT Next Task.**
+  Caught 2026-05-16 after a directive-source trace showed the earlier
+  "Calculator walkthrough — bring existing classical calculators onto
+  the typed substrate" framing was a misread of
+  `spec/plan/planned-calculator-substrate-audit-2026-05-06.md`. That
+  source doc is explicit (line 32): *"Existing-calculator state is not
+  re-audited here."* It is forward-looking research about which
+  *planned* calculators are substrate-blocked, NOT a retrofit
+  directive. Zero string-identity anti-patterns exist in any of the
+  8 classical calcs (audited 2026-05-16). What IS useful, on a deferred
+  timeline:
+  - **Substrate-driven sub-discrimination as NEW calculators** leaving
+    existing classical calcs intact. Example: McConnell sidechain-CO
+    split by `PlanarGroupKind` (amide vs carboxylate vs ester) as a
+    new calc, parallel to the existing one. Trigger on a specific
+    calibration finding, not blanket.
+  - **PATTERNS.md compliance + numerical-stability hygiene pass** per
+    classical calc (sign convention, near-field guards, T2
+    completeness, tracelessness after accumulation). Independent of
+    substrate. Periodic; not bound to trajectory-queue cadence.
 
 ### Planning artefacts
 

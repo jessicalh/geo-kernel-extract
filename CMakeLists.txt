@@ -251,6 +251,7 @@ add_library(nmr_shielding
     src/Session.cpp
     src/BsWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
+    src/HmShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -730,6 +731,36 @@ target_link_libraries(gromacs_streaming_tests PRIVATE
     highfive
 )
 gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+# ============================================================================
+# HmShieldingTimeSeries tests
+#
+# Discipline trio + synthetic unit + integration for the FO-pattern
+# dense-buffer TR that captures HaighMallionResult::hm_shielding_contribution
+# into the /trajectory/hm_shielding_time_series/ H5 group.
+# ============================================================================
+
+add_executable(hm_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_hm_shielding_time_series.cpp
+)
+target_compile_definitions(hm_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(hm_shielding_time_series_tests
+    BEFORE PRIVATE
+    /usr/include/hdf5/serial
+)
+target_link_libraries(hm_shielding_time_series_tests PRIVATE
+    nmr_shielding
+    GTest::gtest
+    highfive
+)
+gtest_discover_tests(hm_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
 
 # ============================================================================
 # TripeptideBackboneShieldingTimeSeries tests
