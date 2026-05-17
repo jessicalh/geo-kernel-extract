@@ -3,7 +3,26 @@
 **Status:** Framework recorded 2026-05-17 after Codex review of the
 Welford-TR batch landed today (commits `bdeedf9`, `609a59b`, `a068818`)
 surfaced data-shape issues that the science-focused adversarial prompt
-was meant to catch and that Codex caught manually instead.
+was meant to catch and that Codex caught manually instead. **LANDED
+through Phase 2a + 2b + 3 + Commit A+B + Commit C** by end of session:
+all six Welfords now carry the expanded shape (per-component T1/T2,
+three Δ variants + dxdt cadence-normalized rate, NaN sentinels,
+per-dataset units honesty, frame_index_range provenance). McConnell
+T1 was wrongly omitted in initial Phase 3 work under a misreading of
+PATTERNS Lesson 19 — caught by the science-focused adversarial review
+on the same day and corrected in Commit A+B.
+
+**Stride / cadence note (added 2026-05-17 PM with Commit C):** Test
+integration runs use `stride=300` for code-path verification, giving
+5 captured frames at 3000-ps spacing (mean_dt_ps = 3000). The test
+`rms_delta` and `dxdt` numbers reflect drift over 3-ns intervals —
+NOT picosecond dynamics. Production `PerFrameExtractionSet` uses
+`stride=2` (20-ps spacing on a 10-ps/frame trajectory), captures
+fast kernel dynamics, gives 750 samples per atom on the 1P9J fixture.
+The `mean_dt_ps` group attribute on each Welford makes the timescale
+explicit so downstream can interpret rms_delta / dxdt against the
+right physics-band. Test numbers are sanity diagnostics; fleet
+production is the source for science-grade Welford output.
 
 **Decision recorded:** the bet from
 `spec/plan/test-suite-realignment-deferred-2026-05-17.md` revises. Test

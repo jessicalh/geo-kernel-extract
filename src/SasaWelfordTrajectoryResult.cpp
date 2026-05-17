@@ -33,6 +33,7 @@ SasaWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     auto result = std::make_unique<SasaWelfordTrajectoryResult>();
     const size_t N = tp.AtomCount();
     result->prev_value_.assign(N, 0.0);
+    result->prev_time_.assign(N, 0.0);
     result->prev_valid_.assign(N, false);
     return result;
 }
@@ -52,8 +53,12 @@ void SasaWelfordTrajectoryResult::Compute(
         Trajectory& traj,
         std::size_t frame_idx,
         double time_ps) {
-    (void)traj; (void)time_ps;
+    (void)traj;
     const size_t N = tp.AtomCount();
+
+    // Guard against zero dt (frame duplication or stride misconfig);
+    // MIN_DT_PS prevents division blowup.
+    constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
         const double s = conf.AtomAt(i).atom_sasa;
@@ -75,9 +80,20 @@ void SasaWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.sasa_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.sasa_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.sasa_delta_squared, delta_sq,  dn_new, frame_idx);
+
+            // Cadence-normalized rate (codex HIGH finding 2026-05-17):
+            // signed Δ alone is sample-rate dependent. dxdt is physically
+            // meaningful across runs of different stride.
+            const double dt   = time_ps - prev_time_[i];
+            const double dxdt = (std::abs(dt) > MIN_DT_PS)
+                              ? (delta_x / dt)
+                              : 0.0;
+            WelfordUpdate(w.sasa_dxdt, dxdt, dn_new, frame_idx);
+
             w.delta_n = dn_new;
         }
         prev_value_[i] = s;
+        prev_time_[i]  = time_ps;
         prev_valid_[i] = true;
     }
 
@@ -99,6 +115,7 @@ void SasaWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.sasa_delta,         w.delta_n);
         WelfordFinalize(w.sasa_abs_delta,     w.delta_n);
         WelfordFinalize(w.sasa_delta_squared, w.delta_n);
+        WelfordFinalize(w.sasa_dxdt,          w.delta_n);
 
         // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
         // atom is truly static. Downstream isfinite() distinguishes.
@@ -113,6 +130,12 @@ void SasaWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (times.size() >= 2) {
         mean_dt_ps_ = (times.back() - times.front())
                     / static_cast<double>(times.size() - 1);
+    }
+
+    // Frame-index span this rollup covered. Emitted as H5 group attribute.
+    const auto& fidx = traj.FrameIndices();
+    if (!fidx.empty()) {
+        frame_index_range_ = {fidx.front(), fidx.back()};
     }
 
     finalized_ = true;
@@ -154,26 +177,34 @@ int SasaWelfordTrajectoryResult::WriteFeatures(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// /trajectory/sasa_welford/ — expanded schema (Phase 2b). Datasets:
+// /trajectory/sasa_welford/ — expanded schema (Phase 2b + Commit C).
 //
-//   Scalar channel (1D shape (N,)):
-//     mean, std, min, max         — legacy (kept for backward compat)
-//     m2, min_frame, max_frame    — provenance
+// Codex review (2026-05-17) surfaced four MEDIUM findings closed
+// here:
 //
-//   Frame-to-frame delta variants (1D):
-//     delta_mean, delta_std       — legacy signed Δ (kept)
-//     abs_delta_{mean,std,min,max}      — |Δ| (fluctuation amplitude)
-//     delta_squared_{mean,std,min,max}  — Δ² (Finalize → rms_delta)
-//     rms_delta                          — Finalize-derived sqrt(<Δ²>)
+//   (1) Per-dataset `units` attributes — squared-units (`*_m2` = Å⁴)
+//       and rate (`sasa_dxdt_*` = Å²/ps) get honest unit strings;
+//       group-level `units` kept for backward-compat.
 //
-//   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
+//   (2) `frame_index_range` group attribute added.
 //
-//   H5 group attributes:
-//     result_name, n_frames, finalized
-//     ddof = 1                          (unbiased std convention)
-//     mean_dt_ps                        (cadence)
-//     units = "Angstrom^2"
+//   (3) Legacy signed-delta channel previously emitted ONLY
+//       `delta_mean` + `delta_std`. Now routed via `emit_1d` (full
+//       7-stat block as `sasa_delta_*`) for shape consistency.
+//
+//   (4) `sasa_dxdt_*` channel added — codex HIGH finding: signed Δ
+//       is sample-rate dependent.
+//
+// Canonical channels (prefixed):
+//   sasa_*, sasa_delta_*, sasa_abs_delta_*, sasa_delta_squared_*,
+//   sasa_dxdt_*
+//
+// Legacy datasets (unprefixed): mean, std, min, max, delta_mean,
+// delta_std — kept for pre-Phase-2b SDK ArraySpec readback, each
+// with `units` + `deprecated_use` attributes pointing to canonical.
+//
+// Group attributes: result_name, n_frames, finalized, ddof,
+// mean_dt_ps, frame_index_range, units (group-level "Angstrom^2").
 
 void SasaWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -182,15 +213,17 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
     auto grp = file.createGroup("/trajectory/sasa_welford");
 
     // ── Group attributes ────────────────────────────────────────
-    grp.createAttribute("result_name", Name());
-    grp.createAttribute("n_frames",    n_frames_);
-    grp.createAttribute("finalized",   finalized_);
-    grp.createAttribute("ddof",        static_cast<int>(1));
-    grp.createAttribute("mean_dt_ps",  mean_dt_ps_);
-    grp.createAttribute("units",       std::string("Angstrom^2"));
+    grp.createAttribute("result_name",       Name());
+    grp.createAttribute("n_frames",          n_frames_);
+    grp.createAttribute("finalized",         finalized_);
+    grp.createAttribute("ddof",              static_cast<int>(1));
+    grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
+    grp.createAttribute("frame_index_range", frame_index_range_);
+    grp.createAttribute("units",             std::string("Angstrom^2"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
     auto emit_1d = [&](const std::string& prefix,
+                       const std::string& base_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -204,62 +237,75 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
             min_frame[i] = w.min_frame;
             max_frame[i] = w.max_frame;
         }
-        grp.createDataSet(prefix + "_mean",      mean);
-        grp.createDataSet(prefix + "_m2",        m2);
-        grp.createDataSet(prefix + "_std",       std_);
-        grp.createDataSet(prefix + "_min",       min_);
-        grp.createDataSet(prefix + "_max",       max_);
-        grp.createDataSet(prefix + "_min_frame", min_frame);
-        grp.createDataSet(prefix + "_max_frame", max_frame);
+        auto with_units = [&](HighFive::DataSet ds, const std::string& u) {
+            ds.createAttribute("units", u);
+        };
+        with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
+        with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min_frame", min_frame), std::string("frame_index"));
+        with_units(grp.createDataSet(prefix + "_max_frame", max_frame), std::string("frame_index"));
     };
 
-    // ── Legacy datasets (unchanged from pre-Phase-2b) ───────────
-    std::vector<double> mean(N), std_(N), min_(N), max_(N);
-    std::vector<double> delta_mean(N), delta_std(N);
+    // ── Canonical prefixed channels ──────────────────────────────
+    // For sasa: base_units = "Angstrom^2", so squared/rate are
+    // "Angstrom^4" (already encoded as base+"^2" gives "Angstrom^2^2"
+    // — see Sasa-specific squared-units override below).
+    emit_1d("sasa",          "Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa; });
+    emit_1d("sasa_delta",    "Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta; });
+    emit_1d("sasa_abs_delta","Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_abs_delta; });
+    // Squared channel: source samples are Δ² in Å⁴; emit_1d's "^2"
+    // suffix would produce "Angstrom^4^2" for the m2 dataset. Pass
+    // pre-squared base unit so squared-of-squared comes out right.
+    emit_1d("sasa_delta_squared", "Angstrom^4", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta_squared; });
+    emit_1d("sasa_dxdt",     "Angstrom^2_per_ps", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_dxdt; });
+
+    // ── Single scalars and provenance ────────────────────────────
+    std::vector<double> rms_delta(N);
     std::vector<size_t> n_frames(N), delta_n(N);
     for (size_t i = 0; i < N; ++i) {
         const SasaWelfordState& w = tp.AtomAt(i).sasa_welford;
-        mean[i]       = w.sasa.mean;
-        std_[i]       = w.sasa.std;
-        min_[i]       = w.sasa.min;
-        max_[i]       = w.sasa.max;
-        delta_mean[i] = w.sasa_delta.mean;
-        delta_std[i]  = w.sasa_delta.std;
-        n_frames[i]   = w.n_frames;
-        delta_n[i]    = w.delta_n;
+        rms_delta[i] = w.sasa_rms_delta;
+        n_frames[i]  = w.n_frames;
+        delta_n[i]   = w.delta_n;
     }
-    grp.createDataSet("mean",              mean);
-    grp.createDataSet("std",               std_);
-    grp.createDataSet("min",               min_);
-    grp.createDataSet("max",               max_);
-    grp.createDataSet("delta_mean",        delta_mean);
-    grp.createDataSet("delta_std",         delta_std);
-    grp.createDataSet("n_frames_per_atom", n_frames);
-    grp.createDataSet("delta_n_per_atom",  delta_n);
+    auto rms_ds = grp.createDataSet("rms_delta", rms_delta);
+    rms_ds.createAttribute("units", std::string("Angstrom^2"));
 
-    // ── New canonical channels via emit_1d helper ────────────────
-    emit_1d("abs_delta",     [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_abs_delta; });
-    emit_1d("delta_squared", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta_squared; });
+    auto nf_ds = grp.createDataSet("n_frames_per_atom", n_frames);
+    nf_ds.createAttribute("units", std::string("frame_count"));
 
-    // Provenance for the primary sasa channel (m2 + min/max frame indices).
-    std::vector<double> sasa_m2(N);
-    std::vector<size_t> sasa_min_frame(N), sasa_max_frame(N);
+    auto dn_ds = grp.createDataSet("delta_n_per_atom", delta_n);
+    dn_ds.createAttribute("units", std::string("frame_count"));
+
+    // ── Legacy unprefixed dataset aliases ────────────────────────
+    std::vector<double> legacy_mean(N), legacy_std(N), legacy_min(N), legacy_max(N);
+    std::vector<double> legacy_delta_mean(N), legacy_delta_std(N);
     for (size_t i = 0; i < N; ++i) {
-        const WelfordMoments& w = tp.AtomAt(i).sasa_welford.sasa;
-        sasa_m2[i]        = w.m2;
-        sasa_min_frame[i] = w.min_frame;
-        sasa_max_frame[i] = w.max_frame;
+        const SasaWelfordState& w = tp.AtomAt(i).sasa_welford;
+        legacy_mean[i]       = w.sasa.mean;
+        legacy_std[i]        = w.sasa.std;
+        legacy_min[i]        = w.sasa.min;
+        legacy_max[i]        = w.sasa.max;
+        legacy_delta_mean[i] = w.sasa_delta.mean;
+        legacy_delta_std[i]  = w.sasa_delta.std;
     }
-    grp.createDataSet("m2",        sasa_m2);
-    grp.createDataSet("min_frame", sasa_min_frame);
-    grp.createDataSet("max_frame", sasa_max_frame);
-
-    // RMS-Δ per atom (Finalize-derived).
-    std::vector<double> rms_delta(N);
-    for (size_t i = 0; i < N; ++i) {
-        rms_delta[i] = tp.AtomAt(i).sasa_welford.sasa_rms_delta;
-    }
-    grp.createDataSet("rms_delta", rms_delta);
+    auto attach_legacy = [&](HighFive::DataSet ds,
+                             const std::string& u,
+                             const std::string& canonical) {
+        ds.createAttribute("units", u);
+        ds.createAttribute("deprecated_use",
+            std::string("canonical name is ") + canonical +
+            "; this is a pre-Phase-2b alias");
+    };
+    attach_legacy(grp.createDataSet("mean",       legacy_mean),       std::string("Angstrom^2"), "sasa_mean");
+    attach_legacy(grp.createDataSet("std",        legacy_std),        std::string("Angstrom^2"), "sasa_std");
+    attach_legacy(grp.createDataSet("min",        legacy_min),        std::string("Angstrom^2"), "sasa_min");
+    attach_legacy(grp.createDataSet("max",        legacy_max),        std::string("Angstrom^2"), "sasa_max");
+    attach_legacy(grp.createDataSet("delta_mean", legacy_delta_mean), std::string("Angstrom^2"), "sasa_delta_mean");
+    attach_legacy(grp.createDataSet("delta_std",  legacy_delta_std),  std::string("Angstrom^2"), "sasa_delta_std");
 }
 
 }  // namespace nmr

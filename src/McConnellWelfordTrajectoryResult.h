@@ -26,6 +26,8 @@
 
 #include "TrajectoryResult.h"
 
+#include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -63,6 +65,12 @@ public:
 private:
     std::vector<double> prev_t0_;
     std::vector<bool> prev_valid_;
+
+    // Per-atom previous-frame time (ps), used to compute cadence-
+    // normalized dxdt = (x_now - x_prev) / (time_now - time_prev).
+    // Valid for atom i only when prev_valid_[i] is true.
+    std::vector<double> prev_time_;
+
     size_t n_frames_ = 0;
     bool finalized_ = false;
 
@@ -71,6 +79,12 @@ private:
     // downstream can convert delta-per-stride to dx/dt in physical
     // units. 0.0 before Finalize.
     double mean_dt_ps_ = 0.0;
+
+    // Frame-index span this rollup covered: [first, last] from
+    // traj.FrameIndices(). Lets downstream verify cadence and time
+    // alignment against the trajectory. Captured at Finalize, emitted
+    // as H5 group attribute. {0, 0} before Finalize.
+    std::array<std::size_t, 2> frame_index_range_ = {0, 0};
 };
 
 }  // namespace nmr

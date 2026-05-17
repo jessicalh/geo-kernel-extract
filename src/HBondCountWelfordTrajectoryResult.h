@@ -21,6 +21,8 @@
 
 #include "TrajectoryResult.h"
 
+#include <array>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -58,6 +60,12 @@ public:
 private:
     std::vector<double> prev_value_;
     std::vector<bool> prev_valid_;
+
+    // Per-atom previous-frame time (ps), used to compute cadence-
+    // normalized dxdt = (x_now - x_prev) / (time_now - time_prev).
+    // Valid for atom i only when prev_valid_[i] is true.
+    std::vector<double> prev_time_;
+
     size_t n_frames_ = 0;
     bool finalized_ = false;
 
@@ -66,6 +74,10 @@ private:
     // downstream can convert delta-per-stride to dx/dt in physical
     // units. 0.0 before Finalize. See PATTERNS Lesson 25.
     double mean_dt_ps_ = 0.0;
+
+    // Frame-index span this rollup covered. [first, last] from
+    // traj.FrameIndices() at Finalize. Emitted as H5 group attribute.
+    std::array<std::size_t, 2> frame_index_range_ = {0, 0};
 };
 
 }  // namespace nmr

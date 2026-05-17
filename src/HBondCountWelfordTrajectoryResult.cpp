@@ -33,6 +33,7 @@ HBondCountWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     auto result = std::make_unique<HBondCountWelfordTrajectoryResult>();
     const size_t N = tp.AtomCount();
     result->prev_value_.assign(N, 0.0);
+    result->prev_time_.assign(N, 0.0);
     result->prev_valid_.assign(N, false);
     return result;
 }
@@ -56,8 +57,12 @@ void HBondCountWelfordTrajectoryResult::Compute(
         Trajectory& traj,
         std::size_t frame_idx,
         double time_ps) {
-    (void)traj; (void)time_ps;
+    (void)traj;
     const size_t N = tp.AtomCount();
+
+    // Guard against zero dt (frame duplication or stride misconfig);
+    // MIN_DT_PS prevents division blowup.
+    constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
         const double c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
@@ -85,9 +90,20 @@ void HBondCountWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.count_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.count_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.count_delta_squared, delta_sq,  dn_new, frame_idx);
+
+            // Cadence-normalized rate (codex HIGH finding 2026-05-17):
+            // signed Δ alone is sample-rate dependent. dxdt is physically
+            // meaningful across runs of different stride.
+            const double dt   = time_ps - prev_time_[i];
+            const double dxdt = (std::abs(dt) > MIN_DT_PS)
+                              ? (delta_x / dt)
+                              : 0.0;
+            WelfordUpdate(w.count_dxdt, dxdt, dn_new, frame_idx);
+
             w.delta_n = dn_new;
         }
         prev_value_[i] = c;
+        prev_time_[i]  = time_ps;
         prev_valid_[i] = true;
     }
 
@@ -111,6 +127,7 @@ void HBondCountWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.count_delta,         w.delta_n);
         WelfordFinalize(w.count_abs_delta,     w.delta_n);
         WelfordFinalize(w.count_delta_squared, w.delta_n);
+        WelfordFinalize(w.count_dxdt,          w.delta_n);
 
         // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
         // atom is truly static. Downstream isfinite() distinguishes.
@@ -124,6 +141,12 @@ void HBondCountWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (times.size() >= 2) {
         mean_dt_ps_ = (times.back() - times.front())
                     / static_cast<double>(times.size() - 1);
+    }
+
+    // Frame-index span this rollup covered. Emitted as H5 group attribute.
+    const auto& fidx = traj.FrameIndices();
+    if (!fidx.empty()) {
+        frame_index_range_ = {fidx.front(), fidx.back()};
     }
 
     finalized_ = true;
@@ -164,30 +187,39 @@ int HBondCountWelfordTrajectoryResult::WriteFeatures(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// /trajectory/hbond_count_welford/ — expanded schema (Phase 2b).
+// /trajectory/hbond_count_welford/ — expanded schema (Phase 2b + Commit C).
 //
-//   Primary count channel (1D shape (N,)):
-//     mean, std, min, max         — legacy (kept for backward compat)
-//     m2, min_frame, max_frame    — provenance
+// Codex review (2026-05-17) surfaced four MEDIUM findings closed
+// here:
 //
-//   Occupancy indicator companion channel (1D, mean ∈ [0, 1]):
-//     occupancy_fraction_{mean,m2,std,min,max,min_frame,max_frame}
+//   (1) Per-dataset `units` attributes — occupancy_fraction_* is
+//       "dimensionless" (NOT "pairs"); squared (`*_m2` = pairs²) and
+//       rate (`count_dxdt_*` = pairs/ps) get honest unit strings.
+//       Group-level `units = "pairs"` kept for backward-compat.
 //
-//   Frame-to-frame count delta variants (1D):
-//     delta_mean, delta_std       — legacy signed Δ (kept)
-//     abs_delta_{mean,std,min,max}      — |Δ| (fluctuation amplitude)
-//     delta_squared_{mean,std,min,max}  — Δ² (Finalize → rms_delta)
-//     rms_delta                          — Finalize-derived sqrt(<Δ²>)
+//   (2) `frame_index_range` group attribute added.
 //
-//   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
+//   (3) Legacy signed-delta channel previously emitted ONLY
+//       `delta_mean` + `delta_std`. Now routed via `emit_1d` (full
+//       7-stat block as `count_delta_*`) for shape consistency.
 //
-//   H5 group attributes:
-//     result_name, n_frames, finalized
-//     ddof = 1                          (unbiased std convention)
-//     mean_dt_ps                        (cadence)
-//     units = "pairs"
-//     source_radius_A = 3.5
+//   (4) `count_dxdt_*` channel added — codex HIGH finding: signed Δ
+//       is sample-rate dependent.
+//
+//   (5) Verified .h docstring says "expected count ⟨N⟩" — was fixed
+//       in commit 3463f5f; no further change needed.
+//
+// Canonical channels (prefixed):
+//   count_*, count_delta_*, count_abs_delta_*, count_delta_squared_*,
+//   count_dxdt_*, occupancy_fraction_*
+//
+// Legacy datasets (unprefixed): mean, std, min, max, delta_mean,
+// delta_std — kept for pre-Phase-2b SDK ArraySpec readback, each
+// with `units` + `deprecated_use` attributes.
+//
+// Group attributes: result_name, n_frames, finalized, ddof,
+// mean_dt_ps, frame_index_range, units (group-level "pairs"),
+// source_radius_A = 3.5.
 
 void HBondCountWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -196,16 +228,21 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     auto grp = file.createGroup("/trajectory/hbond_count_welford");
 
     // ── Group attributes ────────────────────────────────────────
-    grp.createAttribute("result_name",     Name());
-    grp.createAttribute("n_frames",        n_frames_);
-    grp.createAttribute("finalized",       finalized_);
-    grp.createAttribute("ddof",            static_cast<int>(1));
-    grp.createAttribute("mean_dt_ps",      mean_dt_ps_);
-    grp.createAttribute("units",           std::string("pairs"));
-    grp.createAttribute("source_radius_A", 3.5);
+    grp.createAttribute("result_name",       Name());
+    grp.createAttribute("n_frames",          n_frames_);
+    grp.createAttribute("finalized",         finalized_);
+    grp.createAttribute("ddof",              static_cast<int>(1));
+    grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
+    grp.createAttribute("frame_index_range", frame_index_range_);
+    // Group-level `units = "pairs"` reflects the primary count
+    // channel. Per-dataset `units` below are authoritative — the
+    // occupancy_fraction channel is dimensionless, not "pairs".
+    grp.createAttribute("units",             std::string("pairs"));
+    grp.createAttribute("source_radius_A",   3.5);
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
     auto emit_1d = [&](const std::string& prefix,
+                       const std::string& base_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -219,63 +256,76 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
             min_frame[i] = w.min_frame;
             max_frame[i] = w.max_frame;
         }
-        grp.createDataSet(prefix + "_mean",      mean);
-        grp.createDataSet(prefix + "_m2",        m2);
-        grp.createDataSet(prefix + "_std",       std_);
-        grp.createDataSet(prefix + "_min",       min_);
-        grp.createDataSet(prefix + "_max",       max_);
-        grp.createDataSet(prefix + "_min_frame", min_frame);
-        grp.createDataSet(prefix + "_max_frame", max_frame);
+        auto with_units = [&](HighFive::DataSet ds, const std::string& u) {
+            ds.createAttribute("units", u);
+        };
+        with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
+        with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min_frame", min_frame), std::string("frame_index"));
+        with_units(grp.createDataSet(prefix + "_max_frame", max_frame), std::string("frame_index"));
     };
 
-    // ── Legacy datasets (unchanged from pre-Phase-2b) ───────────
-    std::vector<double> mean(N), std_(N), min_(N), max_(N);
-    std::vector<double> delta_mean(N), delta_std(N);
+    // ── Canonical prefixed channels ──────────────────────────────
+    emit_1d("count",               "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count; });
+    emit_1d("count_delta",         "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta; });
+    emit_1d("count_abs_delta",     "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_abs_delta; });
+    // Squared channel: source samples are Δ² in pairs²; pre-square
+    // the base unit so squared-of-squared comes out right.
+    emit_1d("count_delta_squared", "pairs^2",                [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta_squared; });
+    emit_1d("count_dxdt",          "pairs_per_ps",           [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_dxdt; });
+    // Occupancy indicator: count > 0 ? 1.0 : 0.0; mean ∈ [0, 1].
+    // Codex MEDIUM finding (2026-05-17): this is "dimensionless", NOT
+    // "pairs" — the group-level `units = "pairs"` attribute does not
+    // describe this channel.
+    emit_1d("occupancy_fraction",  "dimensionless",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.occupancy_fraction; });
+
+    // ── Single scalars and provenance ────────────────────────────
+    std::vector<double> rms_delta(N);
     std::vector<size_t> n_frames(N), delta_n(N);
     for (size_t i = 0; i < N; ++i) {
         const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
-        mean[i]       = w.count.mean;
-        std_[i]       = w.count.std;
-        min_[i]       = w.count.min;
-        max_[i]       = w.count.max;
-        delta_mean[i] = w.count_delta.mean;
-        delta_std[i]  = w.count_delta.std;
-        n_frames[i]   = w.n_frames;
-        delta_n[i]    = w.delta_n;
+        rms_delta[i] = w.count_rms_delta;
+        n_frames[i]  = w.n_frames;
+        delta_n[i]   = w.delta_n;
     }
-    grp.createDataSet("mean",              mean);
-    grp.createDataSet("std",               std_);
-    grp.createDataSet("min",               min_);
-    grp.createDataSet("max",               max_);
-    grp.createDataSet("delta_mean",        delta_mean);
-    grp.createDataSet("delta_std",         delta_std);
-    grp.createDataSet("n_frames_per_atom", n_frames);
-    grp.createDataSet("delta_n_per_atom",  delta_n);
+    auto rms_ds = grp.createDataSet("rms_delta", rms_delta);
+    rms_ds.createAttribute("units", std::string("pairs"));
 
-    // ── New canonical channels via emit_1d helper ────────────────
-    emit_1d("occupancy_fraction", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.occupancy_fraction; });
-    emit_1d("abs_delta",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_abs_delta; });
-    emit_1d("delta_squared",      [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta_squared; });
+    auto nf_ds = grp.createDataSet("n_frames_per_atom", n_frames);
+    nf_ds.createAttribute("units", std::string("frame_count"));
 
-    // Provenance for the primary count channel (m2 + min/max frame indices).
-    std::vector<double> count_m2(N);
-    std::vector<size_t> count_min_frame(N), count_max_frame(N);
+    auto dn_ds = grp.createDataSet("delta_n_per_atom", delta_n);
+    dn_ds.createAttribute("units", std::string("frame_count"));
+
+    // ── Legacy unprefixed dataset aliases ────────────────────────
+    std::vector<double> legacy_mean(N), legacy_std(N), legacy_min(N), legacy_max(N);
+    std::vector<double> legacy_delta_mean(N), legacy_delta_std(N);
     for (size_t i = 0; i < N; ++i) {
-        const WelfordMoments& w = tp.AtomAt(i).hbond_count_welford.count;
-        count_m2[i]        = w.m2;
-        count_min_frame[i] = w.min_frame;
-        count_max_frame[i] = w.max_frame;
+        const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
+        legacy_mean[i]       = w.count.mean;
+        legacy_std[i]        = w.count.std;
+        legacy_min[i]        = w.count.min;
+        legacy_max[i]        = w.count.max;
+        legacy_delta_mean[i] = w.count_delta.mean;
+        legacy_delta_std[i]  = w.count_delta.std;
     }
-    grp.createDataSet("m2",        count_m2);
-    grp.createDataSet("min_frame", count_min_frame);
-    grp.createDataSet("max_frame", count_max_frame);
-
-    // RMS-Δ per atom (Finalize-derived).
-    std::vector<double> rms_delta(N);
-    for (size_t i = 0; i < N; ++i) {
-        rms_delta[i] = tp.AtomAt(i).hbond_count_welford.count_rms_delta;
-    }
-    grp.createDataSet("rms_delta", rms_delta);
+    auto attach_legacy = [&](HighFive::DataSet ds,
+                             const std::string& u,
+                             const std::string& canonical) {
+        ds.createAttribute("units", u);
+        ds.createAttribute("deprecated_use",
+            std::string("canonical name is ") + canonical +
+            "; this is a pre-Phase-2b alias");
+    };
+    attach_legacy(grp.createDataSet("mean",       legacy_mean),       std::string("pairs"), "count_mean");
+    attach_legacy(grp.createDataSet("std",        legacy_std),        std::string("pairs"), "count_std");
+    attach_legacy(grp.createDataSet("min",        legacy_min),        std::string("pairs"), "count_min");
+    attach_legacy(grp.createDataSet("max",        legacy_max),        std::string("pairs"), "count_max");
+    attach_legacy(grp.createDataSet("delta_mean", legacy_delta_mean), std::string("pairs"), "count_delta_mean");
+    attach_legacy(grp.createDataSet("delta_std",  legacy_delta_std),  std::string("pairs"), "count_delta_std");
 }
 
 }  // namespace nmr

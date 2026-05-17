@@ -33,6 +33,7 @@ EeqWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     auto result = std::make_unique<EeqWelfordTrajectoryResult>();
     const size_t N = tp.AtomCount();
     result->prev_value_.assign(N, 0.0);
+    result->prev_time_.assign(N, 0.0);
     result->prev_valid_.assign(N, false);
     return result;
 }
@@ -52,8 +53,14 @@ void EeqWelfordTrajectoryResult::Compute(
         Trajectory& traj,
         std::size_t frame_idx,
         double time_ps) {
-    (void)traj; (void)time_ps;
+    (void)traj;
     const size_t N = tp.AtomCount();
+
+    // Guard against zero dt (frame duplication or stride misconfig);
+    // MIN_DT_PS prevents division blowup. dxdt is set to 0.0 in that
+    // pathological case (and the WelfordUpdate still accumulates one
+    // sample of 0.0; downstream isfinite() distinguishes from real).
+    constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
         const double q = conf.AtomAt(i).eeq_charge;
@@ -75,9 +82,20 @@ void EeqWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.charge_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.charge_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.charge_delta_squared, delta_sq,  dn_new, frame_idx);
+
+            // Cadence-normalized rate (codex HIGH finding 2026-05-17):
+            // signed Δ alone is sample-rate dependent. dxdt is physically
+            // meaningful across runs of different stride.
+            const double dt   = time_ps - prev_time_[i];
+            const double dxdt = (std::abs(dt) > MIN_DT_PS)
+                              ? (delta_x / dt)
+                              : 0.0;
+            WelfordUpdate(w.charge_dxdt, dxdt, dn_new, frame_idx);
+
             w.delta_n = dn_new;
         }
         prev_value_[i] = q;
+        prev_time_[i]  = time_ps;
         prev_valid_[i] = true;
     }
 
@@ -99,6 +117,7 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.charge_delta,         w.delta_n);
         WelfordFinalize(w.charge_abs_delta,     w.delta_n);
         WelfordFinalize(w.charge_delta_squared, w.delta_n);
+        WelfordFinalize(w.charge_dxdt,          w.delta_n);
 
         // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
         // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
@@ -115,6 +134,12 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (times.size() >= 2) {
         mean_dt_ps_ = (times.back() - times.front())
                     / static_cast<double>(times.size() - 1);
+    }
+
+    // Frame-index span this rollup covered. Emitted as H5 group attribute.
+    const auto& fidx = traj.FrameIndices();
+    if (!fidx.empty()) {
+        frame_index_range_ = {fidx.front(), fidx.back()};
     }
 
     finalized_ = true;
@@ -157,29 +182,43 @@ int EeqWelfordTrajectoryResult::WriteFeatures(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// /trajectory/eeq_welford/ — expanded schema (Phase 2b). Datasets:
+// /trajectory/eeq_welford/ — expanded schema (Phase 2b + Commit C).
 //
-//   Scalar channel (1D shape (N,)):
-//     mean, std, min, max         — legacy (kept for backward compat)
-//     m2, min_frame, max_frame    — provenance
+// Codex review (2026-05-17) surfaced four MEDIUM findings closed
+// here:
 //
-//   Frame-to-frame delta variants (1D):
-//     delta_mean, delta_std       — legacy signed Δ (kept)
-//     abs_delta_{mean,std,min,max}      — |Δ| (fluctuation amplitude)
-//     delta_squared_{mean,std,min,max}  — Δ² (Finalize → rms_delta)
-//     rms_delta                          — Finalize-derived sqrt(<Δ²>)
+//   (1) Per-dataset `units` attributes are authoritative — the group-
+//       level `units` attribute is kept for backward-compat but is
+//       wrong for squared-units (`charge_delta_squared_*` = e²) and
+//       rate (`charge_dxdt_*` = e/ps). Per-dataset is honest.
 //
-//   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
+//   (2) `frame_index_range` group attribute added (span of trajectory
+//       covered).
 //
-//   H5 group attributes:
-//     result_name, n_frames, finalized
-//     ddof = 1                          (unbiased std convention)
-//     mean_dt_ps                        (cadence)
-//     units = "elementary_charge"
+//   (3) The legacy signed-delta channel previously emitted ONLY
+//       `delta_mean` + `delta_std`, while `abs_delta` and
+//       `delta_squared` emit via `emit_1d` (full 7-stat block).
+//       Now routed uniformly via `emit_1d` for shape consistency.
 //
-// Old dataset names (mean, std, min, max, delta_mean, delta_std,
-// n_frames_per_atom) stay emitted for backward compatibility.
+//   (4) `charge_dxdt_*` channel added — codex HIGH finding: signed Δ
+//       is sample-rate dependent (stride=2 vs stride=300 → 150× change
+//       on identical physics); dxdt = Δx/Δt is physically meaningful.
+//
+// Canonical channels (prefixed):
+//   charge_*, charge_delta_*, charge_abs_delta_*,
+//   charge_delta_squared_*, charge_dxdt_*
+// Each block emits {mean, m2, std, min, max, min_frame, max_frame}
+// (7 datasets) with a per-dataset `units` attribute.
+//
+// Legacy datasets (unprefixed):
+//   mean, std, min, max, delta_mean, delta_std, n_frames_per_atom
+// Still emitted for pre-Phase-2b SDK ArraySpec readback. Each carries
+// a `units` attribute and a `deprecated_use` attribute pointing to
+// the canonical prefixed name.
+//
+// Group attributes:
+//   result_name, n_frames, finalized, ddof, mean_dt_ps,
+//   frame_index_range, units (group-level, "elementary_charge").
 
 void EeqWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -188,15 +227,23 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
     auto grp = file.createGroup("/trajectory/eeq_welford");
 
     // ── Group attributes ────────────────────────────────────────
-    grp.createAttribute("result_name", Name());
-    grp.createAttribute("n_frames",    n_frames_);
-    grp.createAttribute("finalized",   finalized_);
-    grp.createAttribute("ddof",        static_cast<int>(1));
-    grp.createAttribute("mean_dt_ps",  mean_dt_ps_);
-    grp.createAttribute("units",       std::string("elementary_charge"));
+    grp.createAttribute("result_name",       Name());
+    grp.createAttribute("n_frames",          n_frames_);
+    grp.createAttribute("finalized",         finalized_);
+    grp.createAttribute("ddof",              static_cast<int>(1));
+    grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
+    grp.createAttribute("frame_index_range", frame_index_range_);
+    // Group-level `units` kept for backward-compat with consumers
+    // reading the group attribute. Per-dataset `units` attributes
+    // below are authoritative (they distinguish e vs e² vs e/ps).
+    grp.createAttribute("units",             std::string("elementary_charge"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
+    // base_units is the unit of the underlying samples; the squared
+    // (`_m2`) and rate (`_dxdt`) variants take "<base>^2" or
+    // "<base>_per_ps" respectively. Frame-index provenance is unitless.
     auto emit_1d = [&](const std::string& prefix,
+                       const std::string& base_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -210,70 +257,74 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
             min_frame[i] = w.min_frame;
             max_frame[i] = w.max_frame;
         }
-        grp.createDataSet(prefix + "_mean",      mean);
-        grp.createDataSet(prefix + "_m2",        m2);
-        grp.createDataSet(prefix + "_std",       std_);
-        grp.createDataSet(prefix + "_min",       min_);
-        grp.createDataSet(prefix + "_max",       max_);
-        grp.createDataSet(prefix + "_min_frame", min_frame);
-        grp.createDataSet(prefix + "_max_frame", max_frame);
+        auto with_units = [&](HighFive::DataSet ds, const std::string& u) {
+            ds.createAttribute("units", u);
+        };
+        with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
+        with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
+        with_units(grp.createDataSet(prefix + "_min_frame", min_frame), std::string("frame_index"));
+        with_units(grp.createDataSet(prefix + "_max_frame", max_frame), std::string("frame_index"));
     };
 
-    // ── Legacy datasets (unchanged from pre-Phase-2b) ───────────
-    // These read straight off the charge channel; emit them by name
-    // for backward compatibility before the canonical "charge_*" block.
-    std::vector<double> mean(N), std_(N), min_(N), max_(N);
-    std::vector<double> delta_mean(N), delta_std(N);
+    // ── Canonical prefixed channels ──────────────────────────────
+    // Primary value + three delta semantics + cadence-normalized rate.
+    // Each block is 7 datasets, all with `units` attributes.
+    emit_1d("charge",               "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge; });
+    emit_1d("charge_delta",         "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta; });
+    emit_1d("charge_abs_delta",     "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_abs_delta; });
+    emit_1d("charge_delta_squared", "elementary_charge^2",      [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta_squared; });
+    emit_1d("charge_dxdt",          "elementary_charge_per_ps", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_dxdt; });
+
+    // ── Single scalars and provenance ────────────────────────────
+    std::vector<double> rms_delta(N);
     std::vector<size_t> n_frames(N), delta_n(N);
     for (size_t i = 0; i < N; ++i) {
         const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
-        mean[i]       = w.charge.mean;
-        std_[i]       = w.charge.std;
-        min_[i]       = w.charge.min;
-        max_[i]       = w.charge.max;
-        delta_mean[i] = w.charge_delta.mean;
-        delta_std[i]  = w.charge_delta.std;
-        n_frames[i]   = w.n_frames;
-        delta_n[i]    = w.delta_n;
+        rms_delta[i] = w.charge_rms_delta;
+        n_frames[i]  = w.n_frames;
+        delta_n[i]   = w.delta_n;
     }
-    grp.createDataSet("mean",              mean);
-    grp.createDataSet("std",               std_);
-    grp.createDataSet("min",               min_);
-    grp.createDataSet("max",               max_);
-    grp.createDataSet("delta_mean",        delta_mean);
-    grp.createDataSet("delta_std",         delta_std);
-    grp.createDataSet("n_frames_per_atom", n_frames);
-    grp.createDataSet("delta_n_per_atom",  delta_n);
+    auto rms_ds = grp.createDataSet("rms_delta", rms_delta);
+    rms_ds.createAttribute("units", std::string("elementary_charge"));
 
-    // ── New canonical channels via emit_1d helper ────────────────
-    // Note we don't re-emit "charge_*" prefixed datasets to avoid
-    // doubling storage on the primary channel (legacy names above
-    // already cover charge mean/std/min/max). What's new and exposed:
-    // - provenance m2/min_frame/max_frame on charge
-    // - |Δ| and Δ² channels with full 7-stat blocks
-    // - rms_delta scalar
-    emit_1d("abs_delta",     [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_abs_delta; });
-    emit_1d("delta_squared", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta_squared; });
+    auto nf_ds = grp.createDataSet("n_frames_per_atom", n_frames);
+    nf_ds.createAttribute("units", std::string("frame_count"));
 
-    // Provenance for the primary charge channel (m2 + min/max frame indices).
-    std::vector<double> charge_m2(N);
-    std::vector<size_t> charge_min_frame(N), charge_max_frame(N);
+    auto dn_ds = grp.createDataSet("delta_n_per_atom", delta_n);
+    dn_ds.createAttribute("units", std::string("frame_count"));
+
+    // ── Legacy unprefixed dataset aliases ────────────────────────
+    // Pre-Phase-2b SDK ArraySpec entries may already read these.
+    // Each one duplicates the canonical prefixed dataset above and
+    // carries `units` + `deprecated_use` pointer to its replacement.
+    std::vector<double> legacy_mean(N), legacy_std(N), legacy_min(N), legacy_max(N);
+    std::vector<double> legacy_delta_mean(N), legacy_delta_std(N);
     for (size_t i = 0; i < N; ++i) {
-        const WelfordMoments& w = tp.AtomAt(i).eeq_welford.charge;
-        charge_m2[i]        = w.m2;
-        charge_min_frame[i] = w.min_frame;
-        charge_max_frame[i] = w.max_frame;
+        const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
+        legacy_mean[i]       = w.charge.mean;
+        legacy_std[i]        = w.charge.std;
+        legacy_min[i]        = w.charge.min;
+        legacy_max[i]        = w.charge.max;
+        legacy_delta_mean[i] = w.charge_delta.mean;
+        legacy_delta_std[i]  = w.charge_delta.std;
     }
-    grp.createDataSet("m2",        charge_m2);
-    grp.createDataSet("min_frame", charge_min_frame);
-    grp.createDataSet("max_frame", charge_max_frame);
-
-    // RMS-Δ per atom (Finalize-derived).
-    std::vector<double> rms_delta(N);
-    for (size_t i = 0; i < N; ++i) {
-        rms_delta[i] = tp.AtomAt(i).eeq_welford.charge_rms_delta;
-    }
-    grp.createDataSet("rms_delta", rms_delta);
+    auto attach_legacy = [&](HighFive::DataSet ds,
+                             const std::string& u,
+                             const std::string& canonical) {
+        ds.createAttribute("units", u);
+        ds.createAttribute("deprecated_use",
+            std::string("canonical name is ") + canonical +
+            "; this is a pre-Phase-2b alias");
+    };
+    attach_legacy(grp.createDataSet("mean",       legacy_mean),       std::string("elementary_charge"), "charge_mean");
+    attach_legacy(grp.createDataSet("std",        legacy_std),        std::string("elementary_charge"), "charge_std");
+    attach_legacy(grp.createDataSet("min",        legacy_min),        std::string("elementary_charge"), "charge_min");
+    attach_legacy(grp.createDataSet("max",        legacy_max),        std::string("elementary_charge"), "charge_max");
+    attach_legacy(grp.createDataSet("delta_mean", legacy_delta_mean), std::string("elementary_charge"), "charge_delta_mean");
+    attach_legacy(grp.createDataSet("delta_std",  legacy_delta_std),  std::string("elementary_charge"), "charge_delta_std");
 }
 
 }  // namespace nmr

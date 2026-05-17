@@ -1646,6 +1646,27 @@ they need. The substruct shape replaced ~136 loose fields of the
 pre-2026-05-17 pattern; visual surface compressed ~9× without changing
 memory layout.
 
+**Cadence / stride interpretation (added 2026-05-17 PM with Commit C):**
+Each Welford H5 group emits a `mean_dt_ps` attribute and a
+`frame_index_range = [first_frame_idx, last_frame_idx]` attribute that
+together give downstream the temporal context of the rollup. The new
+`*_dxdt` Welford channel (cadence-normalized rate = Δx/Δt in
+units-per-ps) is physically meaningful across runs of different stride;
+the signed Δ channel (`*_delta_*`) is sample-rate dependent and best
+read as drift, not dynamics. Test integration runs use `stride=300`
+on the 1P9J 1501-frame 10-ps/frame fixture (mean_dt_ps = 3000 ps),
+which captures drift over 3-ns intervals — NOT picosecond dynamics.
+Production `PerFrameExtractionSet` uses `stride=2` (mean_dt_ps =
+20 ps), which IS in the picosecond band for kernel dynamics (ring
+reorientation, bond geometry fluctuation). Consumers using `rms_delta`
+or `dxdt` channels should read `mean_dt_ps` first to interpret the
+timescale captured. Test diagnostic numbers verify code-path shape;
+fleet production extraction is the source for science-grade Welford
+output. Per-dataset `units` attributes on each emitted dataset make
+the unit honest (`*_m2` is units², `*_dxdt` is units/ps, occupancy_fraction
+is dimensionless, etc.) — the group-level `units` attribute is retained
+for backward compat but per-dataset attrs are authoritative.
+
 **Typed struct vectors for known-shape per-source data.** Aspirational;
 no current fields. Parallel to `ConformationAtom::ring_neighbours` but
 holding trajectory-averaged stats (e.g. future
