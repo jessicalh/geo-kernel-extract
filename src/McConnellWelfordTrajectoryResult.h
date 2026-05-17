@@ -10,13 +10,17 @@
 // is unconditionally attached in `PerFrameExtractionSet`, so the dep
 // is enforced via `Dependencies()`.
 //
-// Phase 2b expansion (2026-05-17): clones BS shape with one critical
-// exception — McConnell-form has T1 ≡ 0 by construction (PATTERNS
-// Lesson 19), so T1 channels are intentionally absent (no t1 array
-// in McConnellWelfordState, no per-component T1 in Compute/Finalize,
-// no t1_* H5 datasets, no irrep_layout_t1 attribute). T0 / T2[5] /
-// |T2| / delta variants follow BS exactly. Per PATTERNS Lesson 25
-// (Export Everything Upstream). See
+// Phase 2b expansion (2026-05-17): IDENTICAL channel shape to BS.
+// CORRECTED 2026-05-17 PM: McConnell-form T1 is NOT zero — PATTERNS
+// Lesson 19 explicitly says the McConnell tensor is asymmetric
+// (T1 ≠ 0); the antisymmetric part of M_ab/r³ is
+// (9 cosθ / 2)(d̂_a b̂_b - b̂_a d̂_b)/r³, generically nonzero. The
+// sibling McConnellShieldingTimeSeriesTrajectoryResult emits T1
+// from the same source field; this Welford rolls up the same channels.
+// The earlier "T1 ≡ 0 by construction" claim was a design error
+// caught by the two-agent science-focused adversarial review.
+// T0 / T1[3] / T2[5] / |T2| / delta variants follow BS exactly.
+// Per PATTERNS Lesson 25 (Export Everything Upstream). See
 // spec/plan/welford-data-shape-design-2026-05-17.md.
 //
 
