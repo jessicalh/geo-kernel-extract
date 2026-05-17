@@ -44,27 +44,20 @@ void HBondCountWelfordTrajectoryResult::Compute(
     const size_t N = tp.AtomCount();
 
     for (size_t i = 0; i < N; ++i) {
-        // int source promoted to double; running mean is fractional
-        // (atom-level H-bond occupancy frequency).
         const double c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        const size_t n_new = ta.hbond_count_n_frames + 1;
+        HBondCountWelfordState& w = ta.hbond_count_welford;
+        const size_t n_new = w.n_frames + 1;
 
-        MomentsUpdate(ta.hbond_count_mean, ta.hbond_count_m2, c, n_new);
-        MinMaxUpdate(ta.hbond_count_min, ta.hbond_count_max,
-                     ta.hbond_count_min_frame, ta.hbond_count_max_frame,
-                     c, frame_idx);
-
-        ta.hbond_count_n_frames = n_new;
+        WelfordUpdate(w.count, c, n_new, frame_idx);
+        w.n_frames = n_new;
 
         if (prev_valid_[i]) {
             const double delta_x = c - prev_value_[i];
-            const size_t dn_new  = ta.hbond_count_delta_n + 1;
-            MomentsUpdate(ta.hbond_count_delta_mean, ta.hbond_count_delta_m2,
-                          delta_x, dn_new);
-            MinMaxUpdate(ta.hbond_count_delta_min, ta.hbond_count_delta_max, delta_x);
-            ta.hbond_count_delta_n = dn_new;
+            const size_t dn_new  = w.delta_n + 1;
+            WelfordUpdate(w.count_delta, delta_x, dn_new, frame_idx);
+            w.delta_n = dn_new;
         }
         prev_value_[i] = c;
         prev_valid_[i] = true;
@@ -79,9 +72,9 @@ void HBondCountWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     (void)traj;
     const size_t N = tp.AtomCount();
     for (size_t i = 0; i < N; ++i) {
-        TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        ta.hbond_count_std       = MomentsStd(ta.hbond_count_m2,       ta.hbond_count_n_frames);
-        ta.hbond_count_delta_std = MomentsStd(ta.hbond_count_delta_m2, ta.hbond_count_delta_n);
+        HBondCountWelfordState& w = tp.MutableAtomAt(i).hbond_count_welford;
+        WelfordFinalize(w.count,       w.n_frames);
+        WelfordFinalize(w.count_delta, w.delta_n);
     }
 
     finalized_ = true;
@@ -100,14 +93,14 @@ int HBondCountWelfordTrajectoryResult::WriteFeatures(
 
     std::vector<double> data(N * K);
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        data[i * K + 0] = ta.hbond_count_mean;
-        data[i * K + 1] = ta.hbond_count_std;
-        data[i * K + 2] = ta.hbond_count_min;
-        data[i * K + 3] = ta.hbond_count_max;
-        data[i * K + 4] = ta.hbond_count_delta_mean;
-        data[i * K + 5] = ta.hbond_count_delta_std;
-        data[i * K + 6] = static_cast<double>(ta.hbond_count_n_frames);
+        const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
+        data[i * K + 0] = w.count.mean;
+        data[i * K + 1] = w.count.std;
+        data[i * K + 2] = w.count.min;
+        data[i * K + 3] = w.count.max;
+        data[i * K + 4] = w.count_delta.mean;
+        data[i * K + 5] = w.count_delta.std;
+        data[i * K + 6] = static_cast<double>(w.n_frames);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/hbond_count_welford.npy",
@@ -126,18 +119,17 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     std::vector<size_t> n_frames(N);
 
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        mean[i]       = ta.hbond_count_mean;
-        std_[i]       = ta.hbond_count_std;
-        min_[i]       = ta.hbond_count_min;
-        max_[i]       = ta.hbond_count_max;
-        delta_mean[i] = ta.hbond_count_delta_mean;
-        delta_std[i]  = ta.hbond_count_delta_std;
-        n_frames[i]   = ta.hbond_count_n_frames;
+        const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
+        mean[i]       = w.count.mean;
+        std_[i]       = w.count.std;
+        min_[i]       = w.count.min;
+        max_[i]       = w.count.max;
+        delta_mean[i] = w.count_delta.mean;
+        delta_std[i]  = w.count_delta.std;
+        n_frames[i]   = w.n_frames;
     }
 
     auto grp = file.createGroup("/trajectory/hbond_count_welford");
-
     grp.createAttribute("result_name", Name());
     grp.createAttribute("n_frames",    n_frames_);
     grp.createAttribute("finalized",   finalized_);

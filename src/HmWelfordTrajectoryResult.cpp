@@ -49,27 +49,18 @@ void HmWelfordTrajectoryResult::Compute(
         const double t2mag = ca.hm_shielding_contribution.T2Magnitude();
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        const size_t n_new = ta.hm_n_frames + 1;
+        HmWelfordState& w  = ta.hm_welford;
+        const size_t n_new = w.n_frames + 1;
 
-        MomentsUpdate(ta.hm_t0_mean, ta.hm_t0_m2, t0, n_new);
-        MinMaxUpdate(ta.hm_t0_min, ta.hm_t0_max,
-                     ta.hm_t0_min_frame, ta.hm_t0_max_frame,
-                     t0, frame_idx);
-
-        MomentsUpdate(ta.hm_t2mag_mean, ta.hm_t2mag_m2, t2mag, n_new);
-        MinMaxUpdate(ta.hm_t2mag_min, ta.hm_t2mag_max,
-                     ta.hm_t2mag_min_frame, ta.hm_t2mag_max_frame,
-                     t2mag, frame_idx);
-
-        ta.hm_n_frames = n_new;
+        WelfordUpdate(w.t0,          t0,    n_new, frame_idx);
+        WelfordUpdate(w.t2magnitude, t2mag, n_new, frame_idx);
+        w.n_frames = n_new;
 
         if (prev_valid_[i]) {
             const double delta_x = t0 - prev_t0_[i];
-            const size_t dn_new  = ta.hm_t0_delta_n + 1;
-            MomentsUpdate(ta.hm_t0_delta_mean, ta.hm_t0_delta_m2,
-                          delta_x, dn_new);
-            MinMaxUpdate(ta.hm_t0_delta_min, ta.hm_t0_delta_max, delta_x);
-            ta.hm_t0_delta_n = dn_new;
+            const size_t dn_new  = w.delta_n + 1;
+            WelfordUpdate(w.t0_delta, delta_x, dn_new, frame_idx);
+            w.delta_n = dn_new;
         }
         prev_t0_[i] = t0;
         prev_valid_[i] = true;
@@ -84,10 +75,10 @@ void HmWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     (void)traj;
     const size_t N = tp.AtomCount();
     for (size_t i = 0; i < N; ++i) {
-        TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        ta.hm_t0_std       = MomentsStd(ta.hm_t0_m2,       ta.hm_n_frames);
-        ta.hm_t2mag_std    = MomentsStd(ta.hm_t2mag_m2,    ta.hm_n_frames);
-        ta.hm_t0_delta_std = MomentsStd(ta.hm_t0_delta_m2, ta.hm_t0_delta_n);
+        HmWelfordState& w = tp.MutableAtomAt(i).hm_welford;
+        WelfordFinalize(w.t0,          w.n_frames);
+        WelfordFinalize(w.t2magnitude, w.n_frames);
+        WelfordFinalize(w.t0_delta,    w.delta_n);
     }
 
     finalized_ = true;
@@ -106,18 +97,18 @@ int HmWelfordTrajectoryResult::WriteFeatures(
 
     std::vector<double> data(N * K);
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        data[i * K + 0]  = ta.hm_t0_mean;
-        data[i * K + 1]  = ta.hm_t0_std;
-        data[i * K + 2]  = ta.hm_t0_min;
-        data[i * K + 3]  = ta.hm_t0_max;
-        data[i * K + 4]  = ta.hm_t2mag_mean;
-        data[i * K + 5]  = ta.hm_t2mag_std;
-        data[i * K + 6]  = ta.hm_t2mag_min;
-        data[i * K + 7]  = ta.hm_t2mag_max;
-        data[i * K + 8]  = ta.hm_t0_delta_mean;
-        data[i * K + 9]  = ta.hm_t0_delta_std;
-        data[i * K + 10] = static_cast<double>(ta.hm_n_frames);
+        const HmWelfordState& w = tp.AtomAt(i).hm_welford;
+        data[i * K + 0]  = w.t0.mean;
+        data[i * K + 1]  = w.t0.std;
+        data[i * K + 2]  = w.t0.min;
+        data[i * K + 3]  = w.t0.max;
+        data[i * K + 4]  = w.t2magnitude.mean;
+        data[i * K + 5]  = w.t2magnitude.std;
+        data[i * K + 6]  = w.t2magnitude.min;
+        data[i * K + 7]  = w.t2magnitude.max;
+        data[i * K + 8]  = w.t0_delta.mean;
+        data[i * K + 9]  = w.t0_delta.std;
+        data[i * K + 10] = static_cast<double>(w.n_frames);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/hm_welford.npy",
@@ -137,22 +128,21 @@ void HmWelfordTrajectoryResult::WriteH5Group(
     std::vector<size_t> n_frames(N);
 
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        t0_mean[i]       = ta.hm_t0_mean;
-        t0_std[i]        = ta.hm_t0_std;
-        t0_min[i]        = ta.hm_t0_min;
-        t0_max[i]        = ta.hm_t0_max;
-        t2mag_mean[i]    = ta.hm_t2mag_mean;
-        t2mag_std[i]     = ta.hm_t2mag_std;
-        t2mag_min[i]     = ta.hm_t2mag_min;
-        t2mag_max[i]     = ta.hm_t2mag_max;
-        t0_delta_mean[i] = ta.hm_t0_delta_mean;
-        t0_delta_std[i]  = ta.hm_t0_delta_std;
-        n_frames[i]      = ta.hm_n_frames;
+        const HmWelfordState& w = tp.AtomAt(i).hm_welford;
+        t0_mean[i]       = w.t0.mean;
+        t0_std[i]        = w.t0.std;
+        t0_min[i]        = w.t0.min;
+        t0_max[i]        = w.t0.max;
+        t2mag_mean[i]    = w.t2magnitude.mean;
+        t2mag_std[i]     = w.t2magnitude.std;
+        t2mag_min[i]     = w.t2magnitude.min;
+        t2mag_max[i]     = w.t2magnitude.max;
+        t0_delta_mean[i] = w.t0_delta.mean;
+        t0_delta_std[i]  = w.t0_delta.std;
+        n_frames[i]      = w.n_frames;
     }
 
     auto grp = file.createGroup("/trajectory/hm_welford");
-
     grp.createAttribute("result_name", Name());
     grp.createAttribute("n_frames",    n_frames_);
     grp.createAttribute("finalized",   finalized_);

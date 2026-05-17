@@ -323,6 +323,69 @@ deferred-cleanup territory per the existing bet.
 
 ## Execution plan
 
+### Phase 2a — WelfordMoments substruct refactor (added 2026-05-17 PM)
+
+Decision recorded after the user named the underlying anti-pattern
+("excessive complexity and pages of undifferentiated stuff attaching
+at one level"). Before adding ~208 new loose fields to TrajectoryAtom,
+the existing ~136 fields get refactored into named `WelfordMoments`
+substructs so the expansion lands into structured surface, not flat
+surface. Behavior-identical no-op semantically; pure layout change.
+
+Shape:
+
+```cpp
+struct WelfordMoments {
+    double mean = 0.0;
+    double m2 = 0.0;
+    double std = 0.0;
+    double min = +INF;
+    double max = -INF;
+    size_t min_frame = 0;
+    size_t max_frame = 0;
+};
+```
+
+Per-Welford state struct collects channels:
+
+```cpp
+struct BsWelfordState {
+    WelfordMoments t0;
+    std::array<WelfordMoments, 3> t1;          // m=-1, 0, +1
+    std::array<WelfordMoments, 5> t2;          // m=-2..+2
+    WelfordMoments t2magnitude;
+    WelfordMoments t0_drift;                    // signed delta Welford
+    WelfordMoments t0_abs_delta;                // |delta| Welford
+    WelfordMoments t0_delta_squared;            // delta^2 Welford
+    double          rms_delta = 0.0;            // sqrt(mean delta^2), Finalize-derived
+    size_t          delta_n   = 0;              // count of delta samples
+    size_t          n_frames  = 0;              // primary denominator
+};
+```
+
+TrajectoryAtom then carries `bs_welford`, `hm_welford`, `mc_welford`,
+`eeq_welford`, `sasa_welford`, `hbond_count_welford` — six named
+substructs total. Old loose-field names (e.g. `bs_t0_mean`) become
+substruct paths (`bs_welford.t0.mean`). Visual surface of
+TrajectoryAtom drops ~9× even though memory layout is unchanged.
+
+Access-site updates required:
+- `BsWelfordTrajectoryResult.cpp` (writer)
+- `HmWelfordTrajectoryResult.cpp` (writer)
+- `McConnellWelfordTrajectoryResult.cpp` (writer)
+- `EeqWelfordTrajectoryResult.cpp` (writer)
+- `SasaWelfordTrajectoryResult.cpp` (writer)
+- `HBondCountWelfordTrajectoryResult.cpp` (writer)
+- `BsAnomalousAtomMarkerTrajectoryResult.cpp` (cross-result reader)
+- `WriteFeatures` + `WriteH5Group` per Welford TR
+
+H5 dataset names stay unchanged. SDK catalog stays unchanged.
+Behavior identical.
+
+Commit pair: Phase 2a is "WelfordMoments substruct refactor (no
+behavior change)"; Phase 2b is "BS Welford data-shape expansion as
+exemplar" landing into the substruct surface.
+
 ### Phase 1 — framework establishment (this session)
 
 1. ✓ Write this design doc.

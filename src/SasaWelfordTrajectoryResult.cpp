@@ -47,22 +47,17 @@ void SasaWelfordTrajectoryResult::Compute(
         const double s = conf.AtomAt(i).atom_sasa;
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        const size_t n_new = ta.sasa_n_frames + 1;
+        SasaWelfordState& w = ta.sasa_welford;
+        const size_t n_new = w.n_frames + 1;
 
-        MomentsUpdate(ta.sasa_mean, ta.sasa_m2, s, n_new);
-        MinMaxUpdate(ta.sasa_min, ta.sasa_max,
-                     ta.sasa_min_frame, ta.sasa_max_frame,
-                     s, frame_idx);
-
-        ta.sasa_n_frames = n_new;
+        WelfordUpdate(w.sasa, s, n_new, frame_idx);
+        w.n_frames = n_new;
 
         if (prev_valid_[i]) {
             const double delta_x = s - prev_value_[i];
-            const size_t dn_new  = ta.sasa_delta_n + 1;
-            MomentsUpdate(ta.sasa_delta_mean, ta.sasa_delta_m2,
-                          delta_x, dn_new);
-            MinMaxUpdate(ta.sasa_delta_min, ta.sasa_delta_max, delta_x);
-            ta.sasa_delta_n = dn_new;
+            const size_t dn_new  = w.delta_n + 1;
+            WelfordUpdate(w.sasa_delta, delta_x, dn_new, frame_idx);
+            w.delta_n = dn_new;
         }
         prev_value_[i] = s;
         prev_valid_[i] = true;
@@ -77,9 +72,9 @@ void SasaWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     (void)traj;
     const size_t N = tp.AtomCount();
     for (size_t i = 0; i < N; ++i) {
-        TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        ta.sasa_std       = MomentsStd(ta.sasa_m2,       ta.sasa_n_frames);
-        ta.sasa_delta_std = MomentsStd(ta.sasa_delta_m2, ta.sasa_delta_n);
+        SasaWelfordState& w = tp.MutableAtomAt(i).sasa_welford;
+        WelfordFinalize(w.sasa,       w.n_frames);
+        WelfordFinalize(w.sasa_delta, w.delta_n);
     }
 
     finalized_ = true;
@@ -98,14 +93,14 @@ int SasaWelfordTrajectoryResult::WriteFeatures(
 
     std::vector<double> data(N * K);
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        data[i * K + 0] = ta.sasa_mean;
-        data[i * K + 1] = ta.sasa_std;
-        data[i * K + 2] = ta.sasa_min;
-        data[i * K + 3] = ta.sasa_max;
-        data[i * K + 4] = ta.sasa_delta_mean;
-        data[i * K + 5] = ta.sasa_delta_std;
-        data[i * K + 6] = static_cast<double>(ta.sasa_n_frames);
+        const SasaWelfordState& w = tp.AtomAt(i).sasa_welford;
+        data[i * K + 0] = w.sasa.mean;
+        data[i * K + 1] = w.sasa.std;
+        data[i * K + 2] = w.sasa.min;
+        data[i * K + 3] = w.sasa.max;
+        data[i * K + 4] = w.sasa_delta.mean;
+        data[i * K + 5] = w.sasa_delta.std;
+        data[i * K + 6] = static_cast<double>(w.n_frames);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/sasa_welford.npy",
@@ -124,18 +119,17 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
     std::vector<size_t> n_frames(N);
 
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        mean[i]       = ta.sasa_mean;
-        std_[i]       = ta.sasa_std;
-        min_[i]       = ta.sasa_min;
-        max_[i]       = ta.sasa_max;
-        delta_mean[i] = ta.sasa_delta_mean;
-        delta_std[i]  = ta.sasa_delta_std;
-        n_frames[i]   = ta.sasa_n_frames;
+        const SasaWelfordState& w = tp.AtomAt(i).sasa_welford;
+        mean[i]       = w.sasa.mean;
+        std_[i]       = w.sasa.std;
+        min_[i]       = w.sasa.min;
+        max_[i]       = w.sasa.max;
+        delta_mean[i] = w.sasa_delta.mean;
+        delta_std[i]  = w.sasa_delta.std;
+        n_frames[i]   = w.n_frames;
     }
 
     auto grp = file.createGroup("/trajectory/sasa_welford");
-
     grp.createAttribute("result_name", Name());
     grp.createAttribute("n_frames",    n_frames_);
     grp.createAttribute("finalized",   finalized_);

@@ -13,9 +13,10 @@
 // Not a helper class — the project's PATTERNS.md rules out Adapter /
 // Wrapper / Proxy / Helper / Bridge naming. These are three one-line
 // functions that operate on references into caller-owned
-// TrajectoryAtom fields. The accumulator state lives where it did
-// before: on TrajectoryAtom (finalised doubles only, never Welford
-// structs).
+// TrajectoryAtom fields. The Welford state lives on TrajectoryAtom
+// in named `WelfordMoments` substructs (one per channel) per
+// PATTERNS.md Lesson 25 corollary — see
+// spec/plan/welford-data-shape-design-2026-05-17.md.
 //
 // Numerical notes: the scalar Welford formula is from Welford 1962
 // (Technometrics 4(3):419), unchanged since. We compute unbiased
@@ -24,8 +25,64 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace nmr {
+
+// WelfordMoments: per-channel running statistics. One instance per
+// scalar channel of a Welford-pattern TR rollup. Used by named
+// substruct on TrajectoryAtom (e.g. `bs_welford.t0`, `bs_welford.t1[k]`)
+// per the differentiated-structure principle in PATTERNS.md Lesson 25.
+//
+// Layout: 5 doubles + 2 size_t = 56 bytes per channel. Storage is
+// per-atom × per-channel, so 6 Welford TRs × ~10 channels each ×
+// 56 bytes × 1500 atoms = ~5 MB per protein for the rollup state.
+//
+// Field discipline:
+//   - mean, m2: running Welford accumulators, updated every frame
+//   - std: Finalize-only — derived from m2 / (n-1) where n is the
+//     enclosing Welford state's frame count
+//   - min/max: running extrema; min_frame/max_frame are the frame
+//     indices where the extrema occurred (lets a downstream reader
+//     go back to the trajectory)
+//
+// The shared frame-count denominator lives on the enclosing per-Welford
+// state struct (e.g. `bs_welford.n_frames`), not inside the
+// WelfordMoments — channels within one Welford share one n.
+struct WelfordMoments {
+    double mean = 0.0;
+    double m2   = 0.0;
+    double std  = 0.0;
+    double min  =  std::numeric_limits<double>::infinity();
+    double max  = -std::numeric_limits<double>::infinity();
+    std::size_t min_frame = 0;
+    std::size_t max_frame = 0;
+};
+
+// Online update of one WelfordMoments channel. Reads x and updates
+// mean / m2 (Welford 1962) plus min / max with frame-index
+// provenance. Caller provides the frame count after this sample
+// (old_n + 1) so the formula is consistent across channels sharing
+// one n.
+inline void WelfordUpdate(WelfordMoments& w,
+                          double x,
+                          std::size_t n_new,
+                          std::size_t frame_idx) {
+    const double delta    = x - w.mean;
+    const double new_mean = w.mean + delta / static_cast<double>(n_new);
+    w.m2  += delta * (x - new_mean);
+    w.mean = new_mean;
+    if (x < w.min) { w.min = x; w.min_frame = frame_idx; }
+    if (x > w.max) { w.max = x; w.max_frame = frame_idx; }
+}
+
+// Finalize a WelfordMoments channel: derive std from m2 / (n-1).
+// Idempotent — calling Finalize twice produces the same result
+// because std is computed from m2 each time, not accumulated.
+inline void WelfordFinalize(WelfordMoments& w, std::size_t n) {
+    w.std = (n <= 1) ? 0.0 : std::sqrt(w.m2 / static_cast<double>(n - 1));
+}
+
 
 // Online scalar Welford update. n_new is the frame count AFTER this
 // sample (caller must compute it as old_n + 1). Writes to mean/m2

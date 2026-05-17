@@ -103,9 +103,9 @@ TEST(HmWelford, Frame0Semantics) {
     // delta_n == 0 (no prior frame).
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_EQ(ta.hm_n_frames, 1u);
-        EXPECT_DOUBLE_EQ(ta.hm_t0_std, 0.0);
-        EXPECT_EQ(ta.hm_t0_delta_n, 0u);
+        EXPECT_EQ(ta.hm_welford.n_frames, 1u);
+        EXPECT_DOUBLE_EQ(ta.hm_welford.t0.std, 0.0);
+        EXPECT_EQ(ta.hm_welford.delta_n, 0u);
     }
 }
 
@@ -135,13 +135,13 @@ TEST(HmWelford, FinalizeIdempotency) {
 
     auto& tr = tp.Result<nmr::HmWelfordTrajectoryResult>();
     const size_t probe = tp.AtomCount() / 2;
-    const double mean_first = tp.AtomAt(probe).hm_t0_mean;
-    const double std_first  = tp.AtomAt(probe).hm_t0_std;
+    const double mean_first = tp.AtomAt(probe).hm_welford.t0.mean;
+    const double std_first  = tp.AtomAt(probe).hm_welford.t0.std;
 
     tr.Finalize(tp, traj);
 
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hm_t0_mean, mean_first);
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hm_t0_std,  std_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hm_welford.t0.mean, mean_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hm_welford.t0.std,  std_first);
 }
 
 
@@ -223,12 +223,12 @@ TEST(HmWelford, Integration1P9J) {
     double max_abs_t0 = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_TRUE(std::isfinite(ta.hm_t0_mean));
-        EXPECT_TRUE(std::isfinite(ta.hm_t0_std));
-        EXPECT_TRUE(std::isfinite(ta.hm_t2mag_mean));
-        EXPECT_EQ(ta.hm_n_frames, traj.FrameCount());
-        if (std::abs(ta.hm_t0_mean) > 1e-12) ++populated;
-        max_abs_t0 = std::max(max_abs_t0, std::abs(ta.hm_t0_mean));
+        EXPECT_TRUE(std::isfinite(ta.hm_welford.t0.mean));
+        EXPECT_TRUE(std::isfinite(ta.hm_welford.t0.std));
+        EXPECT_TRUE(std::isfinite(ta.hm_welford.t2magnitude.mean));
+        EXPECT_EQ(ta.hm_welford.n_frames, traj.FrameCount());
+        if (std::abs(ta.hm_welford.t0.mean) > 1e-12) ++populated;
+        max_abs_t0 = std::max(max_abs_t0, std::abs(ta.hm_welford.t0.mean));
     }
     EXPECT_GT(populated, 0u)
         << "HM Welford all-zero — calculator regression or attach miss";

@@ -1030,6 +1030,28 @@ rollup feeds BsAnomalousAtomMarker) and propagating the
 minimum-viable shape to other physics whose unknown consumers
 might need more. Per `feedback_export_everything_upstream`.
 
+**Corollary — differentiated structure at every level.** Export
+Everything Upstream grows struct surface area. Ungrouped growth
+("loose doubles for every channel × every statistic, named by
+convention") creates pages of undifferentiated stuff that compound
+in cognitive cost with each addition. Pre-empt by grouping into
+named substructs at the level where structure exists.
+
+For Welford rollups specifically: each Welford TR's state lives in
+a per-Welford struct on TrajectoryAtom (`bs_welford`, `hm_welford`,
+...) containing typed `WelfordMoments` substructs for each channel
+(`t0`, per-component T1 array, per-component T2 array, |T2|, drift
+variants). Adding a channel = adding one named field, not seven
+loose doubles. Visual surface scales with channels not with stat-
+operators × channels.
+
+The principle generalises beyond Welford: `RunConfiguration`'s
+`skip_*` flags want a structured profile, `ConformationAtom`'s
+H-bond field cluster wants an `HBondData` substruct, test files
+with bespoke per-test configs want named profiles. Same root —
+undifferentiated stuff at one level. Same fix — internal structure
+where structure exists.
+
 See `spec/plan/welford-data-shape-design-2026-05-17.md` for the
 landed Welford expansion specification.
 

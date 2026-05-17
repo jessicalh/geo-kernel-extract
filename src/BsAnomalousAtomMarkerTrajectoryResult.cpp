@@ -38,10 +38,10 @@ BsAnomalousAtomMarkerTrajectoryResult::Create(const TrajectoryProtein& tp) {
 //   READS:
 //     conf.AtomAt(i).bs_shielding_contribution.T0      (this frame,
 //                                                       via BiotSavartResult)
-//     tp.AtomAt(i).bs_t0_mean                          (running,
+//     tp.AtomAt(i).bs_welford.t0.mean                  (running,
 //                                                       via BsWelfordTrajectoryResult)
-//     tp.AtomAt(i).bs_t0_m2
-//     tp.AtomAt(i).bs_n_frames
+//     tp.AtomAt(i).bs_welford.t0.m2
+//     tp.AtomAt(i).bs_welford.n_frames
 //
 //   WRITES (on detected anomaly):
 //     tp.MutableAtomAt(i).events.Push(...)             (this Result
@@ -52,10 +52,10 @@ BsAnomalousAtomMarkerTrajectoryResult::Create(const TrajectoryProtein& tp) {
 //                                                       emitters can push
 //                                                       their own kinds)
 //
-// The three fields we read from tp.AtomAt(i) are owned (singleton-
-// per-type + one-writer-per-field) by BsWelfordTrajectoryResult. We
-// read them, we don't modify them — reading another Result's stashed
-// state is what the "open buffer" discipline supports.
+// The three fields we read from tp.AtomAt(i).bs_welford are owned
+// (singleton-per-type + one-writer-per-field) by BsWelfordTrajectoryResult.
+// We read them, we don't modify them. WelfordMoments substruct layout
+// per PATTERNS Lesson 25.
 
 void BsAnomalousAtomMarkerTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -69,20 +69,20 @@ void BsAnomalousAtomMarkerTrajectoryResult::Compute(
     for (std::size_t i = 0; i < N; ++i) {
         const TrajectoryAtom& ta_const = tp.AtomAt(i);
 
-        // CROSS-RESULT READ: bs_n_frames, bs_t0_m2, bs_t0_mean are
-        // owned by BsWelfordTrajectoryResult. Attach order places
-        // BsWelford first, so these reflect this frame's update.
-        // See this class's header for the rationale; rename-changes
-        // require BsWelford's writer-side marker to stay in sync.
-        const std::size_t n = ta_const.bs_n_frames;
+        // CROSS-RESULT READ: bs_welford.{t0.mean, t0.m2, n_frames} are
+        // owned by BsWelfordTrajectoryResult (substruct layout per
+        // PATTERNS Lesson 25). Attach order places BsWelford first, so
+        // these reflect this frame's update. Rename-changes require
+        // BsWelford's writer-side marker to stay in sync.
+        const std::size_t n = ta_const.bs_welford.n_frames;
         if (n < MIN_BURN_IN_FRAMES) continue;
 
-        const double m2 = ta_const.bs_t0_m2;
+        const double m2 = ta_const.bs_welford.t0.m2;
         const double std_est = std::sqrt(m2 / static_cast<double>(n - 1));
         if (std_est < 1e-10) continue;  // constant signal — no meaningful z
 
         const double current = conf.AtomAt(i).bs_shielding_contribution.T0;
-        const double mean    = ta_const.bs_t0_mean;   // CROSS-RESULT READ (BsWelford)
+        const double mean    = ta_const.bs_welford.t0.mean;   // CROSS-RESULT READ (BsWelford)
         const double z       = (current - mean) / std_est;
 
         if (std::fabs(z) <= Z_THRESHOLD) continue;

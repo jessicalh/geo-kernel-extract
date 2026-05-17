@@ -47,22 +47,17 @@ void EeqWelfordTrajectoryResult::Compute(
         const double q = conf.AtomAt(i).eeq_charge;
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        const size_t n_new = ta.eeq_charge_n_frames + 1;
+        EeqWelfordState& w = ta.eeq_welford;
+        const size_t n_new = w.n_frames + 1;
 
-        MomentsUpdate(ta.eeq_charge_mean, ta.eeq_charge_m2, q, n_new);
-        MinMaxUpdate(ta.eeq_charge_min, ta.eeq_charge_max,
-                     ta.eeq_charge_min_frame, ta.eeq_charge_max_frame,
-                     q, frame_idx);
-
-        ta.eeq_charge_n_frames = n_new;
+        WelfordUpdate(w.charge, q, n_new, frame_idx);
+        w.n_frames = n_new;
 
         if (prev_valid_[i]) {
             const double delta_x = q - prev_value_[i];
-            const size_t dn_new  = ta.eeq_charge_delta_n + 1;
-            MomentsUpdate(ta.eeq_charge_delta_mean, ta.eeq_charge_delta_m2,
-                          delta_x, dn_new);
-            MinMaxUpdate(ta.eeq_charge_delta_min, ta.eeq_charge_delta_max, delta_x);
-            ta.eeq_charge_delta_n = dn_new;
+            const size_t dn_new  = w.delta_n + 1;
+            WelfordUpdate(w.charge_delta, delta_x, dn_new, frame_idx);
+            w.delta_n = dn_new;
         }
         prev_value_[i] = q;
         prev_valid_[i] = true;
@@ -77,9 +72,9 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     (void)traj;
     const size_t N = tp.AtomCount();
     for (size_t i = 0; i < N; ++i) {
-        TrajectoryAtom& ta = tp.MutableAtomAt(i);
-        ta.eeq_charge_std       = MomentsStd(ta.eeq_charge_m2,       ta.eeq_charge_n_frames);
-        ta.eeq_charge_delta_std = MomentsStd(ta.eeq_charge_delta_m2, ta.eeq_charge_delta_n);
+        EeqWelfordState& w = tp.MutableAtomAt(i).eeq_welford;
+        WelfordFinalize(w.charge,       w.n_frames);
+        WelfordFinalize(w.charge_delta, w.delta_n);
     }
 
     finalized_ = true;
@@ -98,14 +93,14 @@ int EeqWelfordTrajectoryResult::WriteFeatures(
 
     std::vector<double> data(N * K);
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        data[i * K + 0] = ta.eeq_charge_mean;
-        data[i * K + 1] = ta.eeq_charge_std;
-        data[i * K + 2] = ta.eeq_charge_min;
-        data[i * K + 3] = ta.eeq_charge_max;
-        data[i * K + 4] = ta.eeq_charge_delta_mean;
-        data[i * K + 5] = ta.eeq_charge_delta_std;
-        data[i * K + 6] = static_cast<double>(ta.eeq_charge_n_frames);
+        const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
+        data[i * K + 0] = w.charge.mean;
+        data[i * K + 1] = w.charge.std;
+        data[i * K + 2] = w.charge.min;
+        data[i * K + 3] = w.charge.max;
+        data[i * K + 4] = w.charge_delta.mean;
+        data[i * K + 5] = w.charge_delta.std;
+        data[i * K + 6] = static_cast<double>(w.n_frames);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/eeq_welford.npy",
@@ -124,18 +119,17 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
     std::vector<size_t> n_frames(N);
 
     for (size_t i = 0; i < N; ++i) {
-        const auto& ta = tp.AtomAt(i);
-        mean[i]       = ta.eeq_charge_mean;
-        std_[i]       = ta.eeq_charge_std;
-        min_[i]       = ta.eeq_charge_min;
-        max_[i]       = ta.eeq_charge_max;
-        delta_mean[i] = ta.eeq_charge_delta_mean;
-        delta_std[i]  = ta.eeq_charge_delta_std;
-        n_frames[i]   = ta.eeq_charge_n_frames;
+        const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
+        mean[i]       = w.charge.mean;
+        std_[i]       = w.charge.std;
+        min_[i]       = w.charge.min;
+        max_[i]       = w.charge.max;
+        delta_mean[i] = w.charge_delta.mean;
+        delta_std[i]  = w.charge_delta.std;
+        n_frames[i]   = w.n_frames;
     }
 
     auto grp = file.createGroup("/trajectory/eeq_welford");
-
     grp.createAttribute("result_name", Name());
     grp.createAttribute("n_frames",    n_frames_);
     grp.createAttribute("finalized",   finalized_);

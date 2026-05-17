@@ -85,9 +85,9 @@ TEST(SasaWelford, Frame0Semantics) {
 
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_EQ(ta.sasa_n_frames, 1u);
-        EXPECT_DOUBLE_EQ(ta.sasa_std, 0.0);
-        EXPECT_EQ(ta.sasa_delta_n, 0u);
+        EXPECT_EQ(ta.sasa_welford.n_frames, 1u);
+        EXPECT_DOUBLE_EQ(ta.sasa_welford.sasa.std, 0.0);
+        EXPECT_EQ(ta.sasa_welford.delta_n, 0u);
     }
 }
 
@@ -108,13 +108,13 @@ TEST(SasaWelford, FinalizeIdempotency) {
 
     auto& tr = tp.Result<nmr::SasaWelfordTrajectoryResult>();
     const size_t probe = tp.AtomCount() / 2;
-    const double mean_first = tp.AtomAt(probe).sasa_mean;
-    const double std_first  = tp.AtomAt(probe).sasa_std;
+    const double mean_first = tp.AtomAt(probe).sasa_welford.sasa.mean;
+    const double std_first  = tp.AtomAt(probe).sasa_welford.sasa.std;
 
     tr.Finalize(tp, traj);
 
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).sasa_mean, mean_first);
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).sasa_std,  std_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).sasa_welford.sasa.mean, mean_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).sasa_welford.sasa.std,  std_first);
 }
 
 
@@ -178,12 +178,12 @@ TEST(SasaWelford, Integration1P9J) {
     double max_mean = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_TRUE(std::isfinite(ta.sasa_mean));
-        EXPECT_TRUE(std::isfinite(ta.sasa_std));
-        EXPECT_GE(ta.sasa_mean, 0.0);  // SASA is non-negative
-        EXPECT_EQ(ta.sasa_n_frames, traj.FrameCount());
-        if (ta.sasa_mean > 1e-12) ++populated;
-        max_mean = std::max(max_mean, ta.sasa_mean);
+        EXPECT_TRUE(std::isfinite(ta.sasa_welford.sasa.mean));
+        EXPECT_TRUE(std::isfinite(ta.sasa_welford.sasa.std));
+        EXPECT_GE(ta.sasa_welford.sasa.mean, 0.0);  // SASA is non-negative
+        EXPECT_EQ(ta.sasa_welford.n_frames, traj.FrameCount());
+        if (ta.sasa_welford.sasa.mean > 1e-12) ++populated;
+        max_mean = std::max(max_mean, ta.sasa_welford.sasa.mean);
     }
     EXPECT_GT(populated, 0u);
     std::cout << "SasaWelford integration: populated=" << populated

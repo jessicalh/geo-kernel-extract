@@ -1,193 +1,117 @@
 #pragma once
 //
 // TrajectoryAtom: per-atom trajectory-scope data store. See
-// OBJECT_MODEL.md (trajectory-scope) and PATTERNS.md §13. Private
-// constructor; only TrajectoryProtein constructs via friend.
+// OBJECT_MODEL.md (trajectory-scope) and PATTERNS.md §13 + Lesson 25.
+// Private constructor; only TrajectoryProtein constructs via friend.
 //
-// Invariant worth stating: accumulator implementation state
-// (Welford, DeltaTracker, TransitionCounter, rolling window) lives
-// inside the owning TR, not on this struct. This struct holds
-// finalized output fields with one writer per field, plus the
-// per-atom event bag.
+// Per-Welford state lives in named substructs (one per writer TR)
+// each holding WelfordMoments instances per channel. See
+// spec/plan/welford-data-shape-design-2026-05-17.md for the design
+// rationale. The substruct shape replaced ~136 loose fields of the
+// original pattern; differentiated structure compresses visual
+// surface ~9x without changing memory layout.
+//
+// Phase 2a (2026-05-17): refactor only — existing channels in
+// substructs, behavior unchanged. Phase 2b lands the per-component
+// T1 / T2, drift / abs / rms delta variants, and schema provenance
+// per the design doc.
 //
 
 #include "AtomEvent.h"
 #include "RecordBag.h"
+#include "TrajectoryMoments.h"  // WelfordMoments
 
 #include <cstddef>
-#include <limits>
 
 namespace nmr {
+
+// Per-Welford state struct definitions. Each one bundles the channels
+// owned by a single Welford TR:
+//   - one WelfordMoments per channel
+//   - n_frames + delta_n at struct level (shared across channels)
+//   - Welford state is read by the owning TR's Compute / Finalize /
+//     WriteH5Group and (for BS) by BsAnomalousAtomMarker cross-result
+//     read at PATTERNS §17 marker discipline.
+
+// Written by BsWelfordTrajectoryResult.
+// Source: ConformationAtom::bs_shielding_contribution (SphericalTensor,
+// units = ppm·T/nA per OBJECT_MODEL drift table).
+struct BsWelfordState {
+    WelfordMoments t0;             // BiotSavart isotropic shielding scalar
+    WelfordMoments t2magnitude;    // |T2| Frobenius amplitude
+    WelfordMoments t0_delta;       // frame-to-frame T0 difference (signed)
+    std::size_t    n_frames = 0;   // primary denominator (T0 + |T2|)
+    std::size_t    delta_n  = 0;   // delta-sample count (= n_frames - 1)
+};
+
+// Written by HmWelfordTrajectoryResult.
+// Source: hm_shielding_contribution (Å⁻¹, rank-1 same as BS but no
+// PPM_FACTOR multiplier per OBJECT_MODEL drift table).
+struct HmWelfordState {
+    WelfordMoments t0;
+    WelfordMoments t2magnitude;
+    WelfordMoments t0_delta;
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+};
+
+// Written by McConnellWelfordTrajectoryResult.
+// Source: mc_shielding_contribution (Å⁻³, full asymmetric non-traceless
+// three-term McConnell form per PATTERNS Lesson 19).
+struct McConnellWelfordState {
+    WelfordMoments t0;
+    WelfordMoments t2magnitude;
+    WelfordMoments t0_delta;
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+};
+
+// Written by EeqWelfordTrajectoryResult.
+// Source: eeq_charge (double, elementary_charge).
+struct EeqWelfordState {
+    WelfordMoments charge;
+    WelfordMoments charge_delta;
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+};
+
+// Written by SasaWelfordTrajectoryResult.
+// Source: atom_sasa (double, Å²).
+struct SasaWelfordState {
+    WelfordMoments sasa;
+    WelfordMoments sasa_delta;
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+};
+
+// Written by HBondCountWelfordTrajectoryResult.
+// Source: hbond_count_within_3_5A (int, promoted to double).
+struct HBondCountWelfordState {
+    WelfordMoments count;
+    WelfordMoments count_delta;
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+};
+
 
 class TrajectoryProtein;
 
 class TrajectoryAtom {
     friend class TrajectoryProtein;
 public:
-    // =================================================================
-    // Written by BsWelfordTrajectoryResult.
-    // Always-valid mid-stream: Compute() updates these in-place each
-    // frame. bs_t0_std is Finalize-only — undefined before Finalize.
-    // =================================================================
+    // Per-Welford state substructs (one writer per substruct).
+    BsWelfordState         bs_welford;
+    HmWelfordState         hm_welford;
+    McConnellWelfordState  mc_welford;
+    EeqWelfordState        eeq_welford;
+    SasaWelfordState       sasa_welford;
+    HBondCountWelfordState hbond_count_welford;
 
-    // BiotSavart isotropic shielding contribution (ppm).
-    double bs_t0_mean = 0.0;
-    double bs_t0_m2 = 0.0;     // Welford sum-of-squared-deviations
-    double bs_t0_std = 0.0;    // Finalize-only: sqrt(m2 / (n-1))
-    double bs_t0_min = std::numeric_limits<double>::infinity();
-    double bs_t0_max = -std::numeric_limits<double>::infinity();
-    size_t bs_t0_min_frame = 0;
-    size_t bs_t0_max_frame = 0;
-    size_t bs_n_frames = 0;
-
-    // BiotSavart |T2| magnitude (ppm).
-    double bs_t2mag_mean = 0.0;
-    double bs_t2mag_m2 = 0.0;
-    double bs_t2mag_std = 0.0;
-    double bs_t2mag_min = std::numeric_limits<double>::infinity();
-    double bs_t2mag_max = -std::numeric_limits<double>::infinity();
-    size_t bs_t2mag_min_frame = 0;
-    size_t bs_t2mag_max_frame = 0;
-
-    // Frame-to-frame BiotSavart T0 delta (ppm/frame).
-    double bs_t0_delta_mean = 0.0;
-    double bs_t0_delta_m2 = 0.0;
-    double bs_t0_delta_std = 0.0;
-    double bs_t0_delta_min = std::numeric_limits<double>::infinity();
-    double bs_t0_delta_max = -std::numeric_limits<double>::infinity();
-    size_t bs_t0_delta_n = 0;  // count of delta samples (= n_frames - 1)
-
-    // =================================================================
-    // Written by HmWelfordTrajectoryResult.
-    // HaighMallion shielding kernel (Å⁻¹, rank-1 same as BS but no
-    // PPM_FACTOR multiplier — see OBJECT_MODEL contract drift table).
-    // =================================================================
-
-    double hm_t0_mean = 0.0;
-    double hm_t0_m2 = 0.0;
-    double hm_t0_std = 0.0;
-    double hm_t0_min = std::numeric_limits<double>::infinity();
-    double hm_t0_max = -std::numeric_limits<double>::infinity();
-    size_t hm_t0_min_frame = 0;
-    size_t hm_t0_max_frame = 0;
-    size_t hm_n_frames = 0;
-
-    double hm_t2mag_mean = 0.0;
-    double hm_t2mag_m2 = 0.0;
-    double hm_t2mag_std = 0.0;
-    double hm_t2mag_min = std::numeric_limits<double>::infinity();
-    double hm_t2mag_max = -std::numeric_limits<double>::infinity();
-    size_t hm_t2mag_min_frame = 0;
-    size_t hm_t2mag_max_frame = 0;
-
-    double hm_t0_delta_mean = 0.0;
-    double hm_t0_delta_m2 = 0.0;
-    double hm_t0_delta_std = 0.0;
-    double hm_t0_delta_min = std::numeric_limits<double>::infinity();
-    double hm_t0_delta_max = -std::numeric_limits<double>::infinity();
-    size_t hm_t0_delta_n = 0;
-
-    // =================================================================
-    // Written by McConnellWelfordTrajectoryResult.
-    // McConnell shielding tensor (Å⁻³, full asymmetric non-traceless
-    // three-term form — see PATTERNS.md Lesson 19). T0 = (3cos²θ-1)/r³.
-    // =================================================================
-
-    double mc_t0_mean = 0.0;
-    double mc_t0_m2 = 0.0;
-    double mc_t0_std = 0.0;
-    double mc_t0_min = std::numeric_limits<double>::infinity();
-    double mc_t0_max = -std::numeric_limits<double>::infinity();
-    size_t mc_t0_min_frame = 0;
-    size_t mc_t0_max_frame = 0;
-    size_t mc_n_frames = 0;
-
-    double mc_t2mag_mean = 0.0;
-    double mc_t2mag_m2 = 0.0;
-    double mc_t2mag_std = 0.0;
-    double mc_t2mag_min = std::numeric_limits<double>::infinity();
-    double mc_t2mag_max = -std::numeric_limits<double>::infinity();
-    size_t mc_t2mag_min_frame = 0;
-    size_t mc_t2mag_max_frame = 0;
-
-    double mc_t0_delta_mean = 0.0;
-    double mc_t0_delta_m2 = 0.0;
-    double mc_t0_delta_std = 0.0;
-    double mc_t0_delta_min = std::numeric_limits<double>::infinity();
-    double mc_t0_delta_max = -std::numeric_limits<double>::infinity();
-    size_t mc_t0_delta_n = 0;
-
-    // =================================================================
-    // Written by EeqWelfordTrajectoryResult.
-    // Eeq geometry-dependent atomic partial charge (elementary charges).
-    // Single-channel scalar source — no T0/T2 distinction.
-    // =================================================================
-
-    double eeq_charge_mean = 0.0;
-    double eeq_charge_m2 = 0.0;
-    double eeq_charge_std = 0.0;
-    double eeq_charge_min = std::numeric_limits<double>::infinity();
-    double eeq_charge_max = -std::numeric_limits<double>::infinity();
-    size_t eeq_charge_min_frame = 0;
-    size_t eeq_charge_max_frame = 0;
-    size_t eeq_charge_n_frames = 0;
-
-    double eeq_charge_delta_mean = 0.0;
-    double eeq_charge_delta_m2 = 0.0;
-    double eeq_charge_delta_std = 0.0;
-    double eeq_charge_delta_min = std::numeric_limits<double>::infinity();
-    double eeq_charge_delta_max = -std::numeric_limits<double>::infinity();
-    size_t eeq_charge_delta_n = 0;
-
-    // =================================================================
-    // Written by SasaWelfordTrajectoryResult.
-    // Shrake-Rupley solvent-accessible surface area per atom (Å²).
-    // =================================================================
-
-    double sasa_mean = 0.0;
-    double sasa_m2 = 0.0;
-    double sasa_std = 0.0;
-    double sasa_min = std::numeric_limits<double>::infinity();
-    double sasa_max = -std::numeric_limits<double>::infinity();
-    size_t sasa_min_frame = 0;
-    size_t sasa_max_frame = 0;
-    size_t sasa_n_frames = 0;
-
-    double sasa_delta_mean = 0.0;
-    double sasa_delta_m2 = 0.0;
-    double sasa_delta_std = 0.0;
-    double sasa_delta_min = std::numeric_limits<double>::infinity();
-    double sasa_delta_max = -std::numeric_limits<double>::infinity();
-    size_t sasa_delta_n = 0;
-
-    // =================================================================
-    // Written by HBondCountWelfordTrajectoryResult.
-    // Per-atom H-bond pair count within 3.5 Å (integer source, but mean
-    // is fractional — atom-level occupancy frequency over the trajectory).
-    // =================================================================
-
-    double hbond_count_mean = 0.0;
-    double hbond_count_m2 = 0.0;
-    double hbond_count_std = 0.0;
-    double hbond_count_min = std::numeric_limits<double>::infinity();
-    double hbond_count_max = -std::numeric_limits<double>::infinity();
-    size_t hbond_count_min_frame = 0;
-    size_t hbond_count_max_frame = 0;
-    size_t hbond_count_n_frames = 0;
-
-    double hbond_count_delta_mean = 0.0;
-    double hbond_count_delta_m2 = 0.0;
-    double hbond_count_delta_std = 0.0;
-    double hbond_count_delta_min = std::numeric_limits<double>::infinity();
-    double hbond_count_delta_max = -std::numeric_limits<double>::infinity();
-    size_t hbond_count_delta_n = 0;
-
-    // =================================================================
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from
     // any TrajectoryResult::Compute or ::Finalize that emits per-atom
     // events at this atom. Queries are the standard RecordBag verbs.
-    // =================================================================
+    // Used by BsAnomalousAtomMarker (BsAnomalyHighT0 / BsAnomalyLowT0).
     RecordBag<AtomEvent> events;
 
 private:

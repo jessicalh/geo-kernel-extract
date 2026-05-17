@@ -87,9 +87,9 @@ TEST(EeqWelford, Frame0Semantics) {
 
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_EQ(ta.eeq_charge_n_frames, 1u);
-        EXPECT_DOUBLE_EQ(ta.eeq_charge_std, 0.0);
-        EXPECT_EQ(ta.eeq_charge_delta_n, 0u);
+        EXPECT_EQ(ta.eeq_welford.n_frames, 1u);
+        EXPECT_DOUBLE_EQ(ta.eeq_welford.charge.std, 0.0);
+        EXPECT_EQ(ta.eeq_welford.delta_n, 0u);
     }
 }
 
@@ -110,13 +110,13 @@ TEST(EeqWelford, FinalizeIdempotency) {
 
     auto& tr = tp.Result<nmr::EeqWelfordTrajectoryResult>();
     const size_t probe = tp.AtomCount() / 2;
-    const double mean_first = tp.AtomAt(probe).eeq_charge_mean;
-    const double std_first  = tp.AtomAt(probe).eeq_charge_std;
+    const double mean_first = tp.AtomAt(probe).eeq_welford.charge.mean;
+    const double std_first  = tp.AtomAt(probe).eeq_welford.charge.std;
 
     tr.Finalize(tp, traj);
 
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).eeq_charge_mean, mean_first);
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).eeq_charge_std,  std_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).eeq_welford.charge.mean, mean_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).eeq_welford.charge.std,  std_first);
 }
 
 
@@ -180,11 +180,11 @@ TEST(EeqWelford, Integration1P9J) {
     double max_abs = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_TRUE(std::isfinite(ta.eeq_charge_mean));
-        EXPECT_TRUE(std::isfinite(ta.eeq_charge_std));
-        EXPECT_EQ(ta.eeq_charge_n_frames, traj.FrameCount());
-        if (std::abs(ta.eeq_charge_mean) > 1e-12) ++populated;
-        max_abs = std::max(max_abs, std::abs(ta.eeq_charge_mean));
+        EXPECT_TRUE(std::isfinite(ta.eeq_welford.charge.mean));
+        EXPECT_TRUE(std::isfinite(ta.eeq_welford.charge.std));
+        EXPECT_EQ(ta.eeq_welford.n_frames, traj.FrameCount());
+        if (std::abs(ta.eeq_welford.charge.mean) > 1e-12) ++populated;
+        max_abs = std::max(max_abs, std::abs(ta.eeq_welford.charge.mean));
     }
     EXPECT_GT(populated, 0u);
     std::cout << "EeqWelford integration: populated=" << populated

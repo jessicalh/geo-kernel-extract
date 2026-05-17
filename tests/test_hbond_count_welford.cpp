@@ -87,9 +87,9 @@ TEST(HBondCountWelford, Frame0Semantics) {
 
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_EQ(ta.hbond_count_n_frames, 1u);
-        EXPECT_DOUBLE_EQ(ta.hbond_count_std, 0.0);
-        EXPECT_EQ(ta.hbond_count_delta_n, 0u);
+        EXPECT_EQ(ta.hbond_count_welford.n_frames, 1u);
+        EXPECT_DOUBLE_EQ(ta.hbond_count_welford.count.std, 0.0);
+        EXPECT_EQ(ta.hbond_count_welford.delta_n, 0u);
     }
 }
 
@@ -110,13 +110,13 @@ TEST(HBondCountWelford, FinalizeIdempotency) {
 
     auto& tr = tp.Result<nmr::HBondCountWelfordTrajectoryResult>();
     const size_t probe = tp.AtomCount() / 2;
-    const double mean_first = tp.AtomAt(probe).hbond_count_mean;
-    const double std_first  = tp.AtomAt(probe).hbond_count_std;
+    const double mean_first = tp.AtomAt(probe).hbond_count_welford.count.mean;
+    const double std_first  = tp.AtomAt(probe).hbond_count_welford.count.std;
 
     tr.Finalize(tp, traj);
 
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hbond_count_mean, mean_first);
-    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hbond_count_std,  std_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hbond_count_welford.count.mean, mean_first);
+    EXPECT_DOUBLE_EQ(tp.AtomAt(probe).hbond_count_welford.count.std,  std_first);
 }
 
 
@@ -184,12 +184,12 @@ TEST(HBondCountWelford, Integration1P9J) {
     double max_mean = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
-        EXPECT_TRUE(std::isfinite(ta.hbond_count_mean));
-        EXPECT_TRUE(std::isfinite(ta.hbond_count_std));
-        EXPECT_GE(ta.hbond_count_mean, 0.0);  // count is non-negative
-        EXPECT_EQ(ta.hbond_count_n_frames, traj.FrameCount());
-        if (ta.hbond_count_mean > 1e-12) ++populated;
-        max_mean = std::max(max_mean, ta.hbond_count_mean);
+        EXPECT_TRUE(std::isfinite(ta.hbond_count_welford.count.mean));
+        EXPECT_TRUE(std::isfinite(ta.hbond_count_welford.count.std));
+        EXPECT_GE(ta.hbond_count_welford.count.mean, 0.0);  // count is non-negative
+        EXPECT_EQ(ta.hbond_count_welford.n_frames, traj.FrameCount());
+        if (ta.hbond_count_welford.count.mean > 1e-12) ++populated;
+        max_mean = std::max(max_mean, ta.hbond_count_welford.count.mean);
     }
     // Catches silent-zero wiring bugs (e.g. DSSP starved → HBondResult
     // ran with empty hbond set → every atom got 0 counts every frame).
