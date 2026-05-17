@@ -1623,9 +1623,21 @@ moments + frame-to-frame T0 delta:
 | `hbond_count_*` + `hbond_count_delta_*` (single-channel scalar, int source) | `double` / `size_t` | HBondCountWelford | Scalar Welford; source = `hbond_count_within_3_5A` (int); running mean is fractional H-bond occupancy frequency |
 
 Additional Welford field blocks land as more `*Welford`-style
-TrajectoryResults attach (Eeq, Sasa, HBondCount, GromacsEnergy in the
-forward queue). One writer per field is invariant; each new block clones
-the BS shape with its physics prefix.
+TrajectoryResults attach (only GromacsEnergy remaining in the forward
+queue after today's batch). One writer per field is invariant; each new
+block clones the BS shape with its physics prefix.
+
+**Pending expansion (2026-05-17):** All six landed Welford rollups
+(BS, HM, McConnell, Eeq, Sasa, HBondCount) gain per-channel T1/T2
+component rollups (where source is tensor-shaped), drift +
+mean_abs_delta + rms_delta variants with `mean_dt_ps` cadence
+metadata, schema provenance emission (`min_frame`, `max_frame`, `m2`,
+`ddof=1` attribute), higher moments (skew, kurtosis), and an
+occupancy-fraction companion for HBondCount. See
+`spec/plan/welford-data-shape-design-2026-05-17.md` for the
+comprehensive spec. The field tables in this section will be updated
+as the per-Welford expansion lands. The principle driving it is
+PATTERNS.md Lesson 25 (Export Everything Upstream).
 
 **Typed struct vectors for known-shape per-source data.** Aspirational;
 no current fields. Parallel to `ConformationAtom::ring_neighbours` but

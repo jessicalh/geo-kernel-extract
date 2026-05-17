@@ -109,6 +109,14 @@ breaks the discipline pair.
 >    conventions and check that the TR's reported output (from the
 >    commit message diagnostic line) sits in the expected range.
 >
+> 8. **The SDK catalog at `python/nmr_extract/_catalog.py`.** The
+>    Python `ArraySpec` entries are the consumer-facing unit
+>    declarations. If a TR emits H5 with units "Å⁻¹" but the SDK
+>    `ArraySpec` labels the same dataset "ppm", contract drift
+>    silently propagates wrong scaling into every Python downstream
+>    consumer. Cross-reference the SDK entry against the H5 emission
+>    unit declaration. Flag mismatches as consumer-interface drift.
+>
 > 8. **Memory entries (if surfaced in your environment) relevant to
 >    physics**: `feedback_t2_sacred`, `feedback_kernel_not_shielding`,
 >    `feedback_no_simplification`,
@@ -146,21 +154,34 @@ breaks the discipline pair.
 > The check: read the TR's `Compute` body, confirm the field name
 > matches the source calculator the TR claims to summarise.
 >
-> ### 2. Tensor channel selection
+> ### 2. Tensor channel selection AND orientation preservation
 >
-> If the source field is a `SphericalTensor`, which channel does the
+> If the source field is a `SphericalTensor`, which channels does the
 > TR capture?
 > - T0 is the isotropic scalar (trace / 3).
-> - T1 is a rank-1 vector (3 components).
-> - T2 is rank-2 symmetric traceless (5 components).
+> - T1 is a rank-1 vector (3 components: m−1, m0, m+1).
+> - T2 is rank-2 symmetric traceless (5 components: m−2, m−1, m0, m+1, m+2).
+> - |T2| is the Frobenius L2 norm of the 5-component T2 vector — a
+>   scalar amplitude, NOT a tensor statistic. Reducing T2 to |T2|
+>   discards orientation and sign information.
 >
-> Per PATTERNS.md "T2 Completeness," T2 is the primary analytical
-> result. A TR that captures only T0 is **incomplete** by Constitution
-> contract — flag it. But also flag the inverse: a TR that captures
-> T2 magnitude when the source is structurally pure-T2 by Laplace
-> (PiQuad, Dispersion — see drift table) and tries to also track T0
-> is tracking floating-point dust around zero. The variance on dust
-> is meaningless.
+> Per PATTERNS.md "T2 Completeness" + Lesson 25 (Export Everything
+> Upstream), a tensor-source Welford rollup that emits only T0 + |T2|
+> has discarded T1 (where present) and discarded the angular
+> fingerprint of T2. The correct emission for tensor sources is:
+> T0 + per-component T1 (where present; rank-1 sources only) +
+> per-component T2 (always present for tensor sources) + |T2|
+> amplitude (for AnomalyMarker-shaped consumers).
+>
+> A TR that captures only T0 is **incomplete by Constitution
+> contract**. A TR that captures T0 + |T2| but skips per-component
+> T2 is **collapsing tensor information to scalar at the rollup
+> boundary** — flag as a data-shape bug, not stylistic concern.
+>
+> The inverse also gets flagged: a TR that captures T0 when the
+> source is structurally pure-T2 by Laplace (PiQuad, Dispersion —
+> see drift table) is accumulating floating-point dust. The variance
+> on dust is meaningless. Don't emit the dust as if it carried physics.
 >
 > ### 3. Sign convention
 >

@@ -3,8 +3,19 @@
 **Status:** Decision recorded 2026-05-17 after a long conversation triggered by
 an adversarial review of two TR-queue commits that came back focused on test-
 framework cruft instead of physics. The short fix is landing the same day;
-the deep cleanup is deferred until after the TR queue completes (estimated
-tomorrow night at the current pace).
+the deep cleanup is deferred until after the TR queue completes.
+
+**REVISION (later same day, 2026-05-17):** After short fix landed at commit
+`a068818`, Codex review (manual, science-focused) caught five data-shape
+issues in the Welford TR family. The bet as originally offered assumed the
+TR data shape was correct and only the test framework needed deferring; that
+assumption was wrong. **Data-shape cleanup is NOT deferred** — see
+`spec/plan/welford-data-shape-design-2026-05-17.md`. The TR queue is paused
+~12-18 hours while the Welford expansion lands. Test cleanup remains
+deferred per the original bet here. The "tomorrow night" TR-queue
+completion estimate slides accordingly; user explicitly endorsed the extra
+time with the framing "we are lucky to have caught this and squared away
+on goals."
 
 **Rollback point:** git tag `pre-test-config-consolidation-2026-05-17` on
 remote `origin` at commit `609a59b`. If the deferred-cleanup bet turns sour

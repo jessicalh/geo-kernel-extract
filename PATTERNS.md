@@ -979,6 +979,60 @@ All three are stored as independent per-type features. The model
 sees the component decomposition (TRP5+TRP6) and the whole-system
 representation (TRP9).
 
+### 25. Export Everything Upstream (additive emission at the extractor)
+
+The C++ trajectory extractor is the upstream-of-everything position
+in the project. Downstream consumers — calibration in `learn/`, ML
+feature engineering, the SDK that the viewer reads from, future GNN
+ingestion, thesis-figure scripts, manual R / Python / notebook
+analysis — are open-ended and partly unknown. The extractor does
+not know which consumer will need which channel, at which scope,
+in which derived form.
+
+Three rules follow:
+
+- **Format moves forward, not backward.** Adding a column,
+  dataset, or attribute to H5 / NPY is non-breaking. Old readers
+  ignore new fields; new readers see old missing fields and
+  default. Removing or renaming an emitted field is forever and
+  breaks every consumer that touched it. Schema evolves
+  additively.
+
+- **Consumer is implicit.** Decisions like "drop this rollup
+  because no current consumer reads it" or "skip this channel
+  because only one downstream uses it" silently constrain future
+  consumers. The minimum-viable instinct that argues for dropping
+  is the wrong instinct upstream — what gets dropped at the
+  extractor cannot be recovered without re-running every fleet
+  extraction.
+
+- **Removals are forever; additions are free.** Storage is cheap
+  at thesis scale (≪10 GB on a 685-protein fleet for plausible
+  Welford expansion). Compute is cheap (online statistics are O(1)
+  per channel per frame per atom). The cost is line count on
+  the producing struct and on the H5 emission boundary, paid once.
+  Downstream signal-gain is paid forever.
+
+Specifically for trajectory-scope Welford rollups (PATTERNS §13
+typed-rollup-fields shape): emit per-component T1 and T2 channels
+alongside the |T2| scalar amplitude when the source is a tensor;
+emit drift + mean_abs_delta + rms_delta + dt-cadence variants
+alongside the running mean; emit min_frame / max_frame / m2 /
+delta_n / ddof-attribute alongside the values; emit higher
+moments (skew, kurtosis) where cheap; emit occupancy or distribution-
+shape companions where the physics admits a separate question.
+Each addition is a candidate ML feature that calibration will
+weight or ignore on the merits.
+
+Anti-pattern: cloning a Welford pattern from an exemplar that
+happens to satisfy one known consumer (e.g., BS Welford's `|T2|`
+rollup feeds BsAnomalousAtomMarker) and propagating the
+minimum-viable shape to other physics whose unknown consumers
+might need more. Per `feedback_export_everything_upstream`.
+
+See `spec/plan/welford-data-shape-design-2026-05-17.md` for the
+landed Welford expansion specification.
+
 ---
 
 ## Numerical Stability
