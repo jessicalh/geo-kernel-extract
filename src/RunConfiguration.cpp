@@ -33,6 +33,9 @@
 #include "BsWelfordTrajectoryResult.h"
 #include "HmWelfordTrajectoryResult.h"
 #include "McConnellWelfordTrajectoryResult.h"
+#include "EeqWelfordTrajectoryResult.h"
+#include "SasaWelfordTrajectoryResult.h"
+#include "HBondCountWelfordTrajectoryResult.h"
 #include "BsShieldingTimeSeriesTrajectoryResult.h"
 #include "HmShieldingTimeSeriesTrajectoryResult.h"
 #include "McConnellShieldingTimeSeriesTrajectoryResult.h"
@@ -172,6 +175,18 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return McConnellWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return EeqWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return SasaWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return HBondCountWelfordTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

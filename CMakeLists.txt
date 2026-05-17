@@ -252,6 +252,9 @@ add_library(nmr_shielding
     src/BsWelfordTrajectoryResult.cpp
     src/HmWelfordTrajectoryResult.cpp
     src/McConnellWelfordTrajectoryResult.cpp
+    src/EeqWelfordTrajectoryResult.cpp
+    src/SasaWelfordTrajectoryResult.cpp
+    src/HBondCountWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/HmShieldingTimeSeriesTrajectoryResult.cpp
     src/McConnellShieldingTimeSeriesTrajectoryResult.cpp
@@ -806,6 +809,63 @@ target_compile_definitions(mc_welford_tests PRIVATE
 target_include_directories(mc_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(mc_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(mc_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# EeqWelford tests — AV-pattern scalar Welford on Eeq atomic charge
+# ============================================================================
+
+add_executable(eeq_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_eeq_welford.cpp
+)
+target_compile_definitions(eeq_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(eeq_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(eeq_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(eeq_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# SasaWelford tests — AV-pattern scalar Welford on SASA
+# ============================================================================
+
+add_executable(sasa_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_sasa_welford.cpp
+)
+target_compile_definitions(sasa_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(sasa_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(sasa_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(sasa_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# HBondCountWelford tests — AV-pattern scalar Welford on H-bond pair count
+# ============================================================================
+
+add_executable(hbond_count_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_hbond_count_welford.cpp
+)
+target_compile_definitions(hbond_count_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(hbond_count_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(hbond_count_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(hbond_count_welford_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

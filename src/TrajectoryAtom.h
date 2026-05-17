@@ -118,6 +118,71 @@ public:
     size_t mc_t0_delta_n = 0;
 
     // =================================================================
+    // Written by EeqWelfordTrajectoryResult.
+    // Eeq geometry-dependent atomic partial charge (elementary charges).
+    // Single-channel scalar source — no T0/T2 distinction.
+    // =================================================================
+
+    double eeq_charge_mean = 0.0;
+    double eeq_charge_m2 = 0.0;
+    double eeq_charge_std = 0.0;
+    double eeq_charge_min = std::numeric_limits<double>::infinity();
+    double eeq_charge_max = -std::numeric_limits<double>::infinity();
+    size_t eeq_charge_min_frame = 0;
+    size_t eeq_charge_max_frame = 0;
+    size_t eeq_charge_n_frames = 0;
+
+    double eeq_charge_delta_mean = 0.0;
+    double eeq_charge_delta_m2 = 0.0;
+    double eeq_charge_delta_std = 0.0;
+    double eeq_charge_delta_min = std::numeric_limits<double>::infinity();
+    double eeq_charge_delta_max = -std::numeric_limits<double>::infinity();
+    size_t eeq_charge_delta_n = 0;
+
+    // =================================================================
+    // Written by SasaWelfordTrajectoryResult.
+    // Shrake-Rupley solvent-accessible surface area per atom (Å²).
+    // =================================================================
+
+    double sasa_mean = 0.0;
+    double sasa_m2 = 0.0;
+    double sasa_std = 0.0;
+    double sasa_min = std::numeric_limits<double>::infinity();
+    double sasa_max = -std::numeric_limits<double>::infinity();
+    size_t sasa_min_frame = 0;
+    size_t sasa_max_frame = 0;
+    size_t sasa_n_frames = 0;
+
+    double sasa_delta_mean = 0.0;
+    double sasa_delta_m2 = 0.0;
+    double sasa_delta_std = 0.0;
+    double sasa_delta_min = std::numeric_limits<double>::infinity();
+    double sasa_delta_max = -std::numeric_limits<double>::infinity();
+    size_t sasa_delta_n = 0;
+
+    // =================================================================
+    // Written by HBondCountWelfordTrajectoryResult.
+    // Per-atom H-bond pair count within 3.5 Å (integer source, but mean
+    // is fractional — atom-level occupancy frequency over the trajectory).
+    // =================================================================
+
+    double hbond_count_mean = 0.0;
+    double hbond_count_m2 = 0.0;
+    double hbond_count_std = 0.0;
+    double hbond_count_min = std::numeric_limits<double>::infinity();
+    double hbond_count_max = -std::numeric_limits<double>::infinity();
+    size_t hbond_count_min_frame = 0;
+    size_t hbond_count_max_frame = 0;
+    size_t hbond_count_n_frames = 0;
+
+    double hbond_count_delta_mean = 0.0;
+    double hbond_count_delta_m2 = 0.0;
+    double hbond_count_delta_std = 0.0;
+    double hbond_count_delta_min = std::numeric_limits<double>::infinity();
+    double hbond_count_delta_max = -std::numeric_limits<double>::infinity();
+    size_t hbond_count_delta_n = 0;
+
+    // =================================================================
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from
     // any TrajectoryResult::Compute or ::Finalize that emits per-atom
