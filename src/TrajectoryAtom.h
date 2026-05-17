@@ -73,10 +73,16 @@ struct BsWelfordState {
 // Written by HmWelfordTrajectoryResult.
 // Source: hm_shielding_contribution (Å⁻¹, rank-1 same as BS but no
 // PPM_FACTOR multiplier per OBJECT_MODEL drift table).
+// Phase 2b expansion: identical shape to BsWelfordState.
 struct HmWelfordState {
     WelfordMoments t0;
+    std::array<WelfordMoments, 3> t1;          // m = -1, 0, +1
+    std::array<WelfordMoments, 5> t2;          // m = -2..+2
     WelfordMoments t2magnitude;
-    WelfordMoments t0_delta;
+    WelfordMoments t0_delta;                   // signed Δ
+    WelfordMoments t0_abs_delta;               // |Δ|
+    WelfordMoments t0_delta_squared;           // Δ²
+    double         t0_rms_delta = 0.0;         // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
 };
@@ -84,19 +90,29 @@ struct HmWelfordState {
 // Written by McConnellWelfordTrajectoryResult.
 // Source: mc_shielding_contribution (Å⁻³, full asymmetric non-traceless
 // three-term McConnell form per PATTERNS Lesson 19).
+// Phase 2b expansion: T1 SKIPPED — McConnell-form has T1 = 0 by construction.
 struct McConnellWelfordState {
     WelfordMoments t0;
+    // NO t1 — McConnell-form has T1 ≡ 0 (PATTERNS Lesson 19)
+    std::array<WelfordMoments, 5> t2;          // m = -2..+2
     WelfordMoments t2magnitude;
     WelfordMoments t0_delta;
+    WelfordMoments t0_abs_delta;
+    WelfordMoments t0_delta_squared;
+    double         t0_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
 };
 
 // Written by EeqWelfordTrajectoryResult.
 // Source: eeq_charge (double, elementary_charge).
+// Phase 2b expansion: scalar source — no T1/T2 channels.
 struct EeqWelfordState {
     WelfordMoments charge;
-    WelfordMoments charge_delta;
+    WelfordMoments charge_delta;               // signed Δ
+    WelfordMoments charge_abs_delta;           // |Δ|
+    WelfordMoments charge_delta_squared;       // Δ²
+    double         charge_rms_delta = 0.0;     // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
 };
@@ -106,15 +122,25 @@ struct EeqWelfordState {
 struct SasaWelfordState {
     WelfordMoments sasa;
     WelfordMoments sasa_delta;
+    WelfordMoments sasa_abs_delta;
+    WelfordMoments sasa_delta_squared;
+    double         sasa_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
 };
 
 // Written by HBondCountWelfordTrajectoryResult.
 // Source: hbond_count_within_3_5A (int, promoted to double).
+// Phase 2b expansion: scalar source + occupancy_fraction companion
+// (Welford on indicator: count > 0 ? 1.0 : 0.0) captures binary
+// participation as a separate physics question from ⟨N⟩ expected count.
 struct HBondCountWelfordState {
     WelfordMoments count;
     WelfordMoments count_delta;
+    WelfordMoments count_abs_delta;
+    WelfordMoments count_delta_squared;
+    double         count_rms_delta = 0.0;
+    WelfordMoments occupancy_fraction;         // Welford on (count > 0 ? 1.0 : 0.0)
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
 };
