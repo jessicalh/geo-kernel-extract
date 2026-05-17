@@ -21,6 +21,7 @@
 #include "RecordBag.h"
 #include "TrajectoryMoments.h"  // WelfordMoments
 
+#include <array>
 #include <cstddef>
 
 namespace nmr {
@@ -36,12 +37,37 @@ namespace nmr {
 // Written by BsWelfordTrajectoryResult.
 // Source: ConformationAtom::bs_shielding_contribution (SphericalTensor,
 // units = ppm·T/nA per OBJECT_MODEL drift table).
+//
+// Phase 2b expansion (2026-05-17): per-component T1[3] + T2[5] preserve
+// tensor orientation that |T2| amplitude rollup discards; per-channel
+// frame-to-frame delta variants (signed = drift, |Δ| = abs-fluctuation,
+// Δ² → sqrt = RMS fluctuation) distinguish drift from dynamics that
+// the existing t0_delta telescope hides. Per PATTERNS Lesson 25.
 struct BsWelfordState {
-    WelfordMoments t0;             // BiotSavart isotropic shielding scalar
-    WelfordMoments t2magnitude;    // |T2| Frobenius amplitude
-    WelfordMoments t0_delta;       // frame-to-frame T0 difference (signed)
-    std::size_t    n_frames = 0;   // primary denominator (T0 + |T2|)
-    std::size_t    delta_n  = 0;   // delta-sample count (= n_frames - 1)
+    // T0 isotropic scalar
+    WelfordMoments t0;
+
+    // T1 antisymmetric, rank-1 (G = -n⊗B has T1 = ½(n×B)); m = -1, 0, +1
+    std::array<WelfordMoments, 3> t1;
+
+    // T2 symmetric traceless; m = -2, -1, 0, +1, +2
+    std::array<WelfordMoments, 5> t2;
+
+    // |T2| Frobenius L2 amplitude (scalar summary; pairs with per-component t2)
+    WelfordMoments t2magnitude;
+
+    // Frame-to-frame T0 delta variants — three signals distinguished:
+    // - t0_delta: signed Δ. mean = (x_N - x_0)/(N-1) telescopes — drift.
+    // - t0_abs_delta: |Δ|. mean captures total per-frame path length.
+    // - t0_delta_squared: Δ². mean → sqrt at Finalize = RMS fluctuation.
+    WelfordMoments t0_delta;
+    WelfordMoments t0_abs_delta;
+    WelfordMoments t0_delta_squared;
+    double         t0_rms_delta = 0.0;   // sqrt(t0_delta_squared.mean), Finalize-derived
+
+    // Shared denominators
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
 };
 
 // Written by HmWelfordTrajectoryResult.

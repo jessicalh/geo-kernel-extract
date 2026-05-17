@@ -9,26 +9,31 @@
 // classes during their own Compute. Renames or semantics changes to
 // the fields below require the reader side to update in lockstep.
 //
-//   bs_t0_mean, bs_t0_m2, bs_n_frames
+//   bs_welford.t0.mean, bs_welford.t0.m2, bs_welford.n_frames
 //       read by BsAnomalousAtomMarkerTrajectoryResult during Compute
 //       (anomaly z-score against the running distribution).
 //
-// AV-pattern exemplar (see PATTERNS.md §14): Compute() updates
-// TrajectoryAtom fields in place each frame; mean/m2/min/max are
-// valid after any Compute; std is finalised at end-of-stream
+// AV-pattern exemplar (see PATTERNS.md §14 + Lesson 25): Compute()
+// updates TrajectoryAtom fields in place each frame; mean/m2/min/max
+// are valid after any Compute; std is finalised at end-of-stream
 // (division by n-1 for unbiased variance).
 //
 // Source: each frame, after BiotSavartResult::Compute has run on the
-// frame's ProteinConformation, this result reads:
-//   conf.AtomAt(i).bs_shielding_contribution.T0       (ppm, isotropic)
-//   conf.AtomAt(i).bs_shielding_contribution.T2Magnitude()  (|T2|)
-// and updates three Welford accumulators on TrajectoryAtom:
-//   bs_t0_*         — isotropic ppm
-//   bs_t2mag_*      — |T2| ppm
-//   bs_t0_delta_*   — frame-to-frame T0 change
+// frame's ProteinConformation, this result reads the full
+// SphericalTensor at:
+//   conf.AtomAt(i).bs_shielding_contribution
+// and updates the following Welford channels on
+// TrajectoryAtom::bs_welford:
+//   t0                 — isotropic scalar
+//   t1[3]              — antisymmetric rank-1 (m = -1, 0, +1)
+//   t2[5]              — symmetric traceless (m = -2..+2)
+//   t2magnitude        — |T2| Frobenius amplitude
+//   t0_delta           — signed Δ (telescopes → drift)
+//   t0_abs_delta       — |Δ| (fluctuation amplitude)
+//   t0_delta_squared   — Δ² (sqrt(mean) → RMS fluctuation, Finalize)
 //
 // Internal state: per-atom previous-frame T0 cache for the delta
-// tracker. Small (one double per atom), stays on the result.
+// trackers. Small (one double per atom), stays on the result.
 //
 
 #include "TrajectoryResult.h"
@@ -90,6 +95,12 @@ private:
 
     size_t n_frames_ = 0;
     bool finalized_ = false;
+
+    // Cadence metadata — mean Δt between captured frames (ps). Derived
+    // at Finalize from traj.FrameTimes(). Emitted as H5 attribute so
+    // downstream can convert delta-per-stride to dx/dt in physical
+    // units. 0.0 before Finalize.
+    double mean_dt_ps_ = 0.0;
 };
 
 }  // namespace nmr
