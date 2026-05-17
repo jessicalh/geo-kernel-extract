@@ -34,6 +34,7 @@ HmWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     const size_t N = tp.AtomCount();
     result->prev_t0_.assign(N, 0.0);
     result->prev_valid_.assign(N, false);
+    result->prev_time_.assign(N, 0.0);
     return result;
 }
 
@@ -54,7 +55,7 @@ void HmWelfordTrajectoryResult::Compute(
         Trajectory& traj,
         std::size_t frame_idx,
         double time_ps) {
-    (void)traj; (void)time_ps;
+    (void)traj;
     const size_t N = tp.AtomCount();
 
     for (size_t i = 0; i < N; ++i) {
@@ -90,9 +91,20 @@ void HmWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.t0_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.t0_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.t0_delta_squared, delta_sq,  dn_new, frame_idx);
+
+            // Cadence-normalized rate. Guard against zero dt (frame
+            // duplication or stride misconfig); MIN_DT prevents division
+            // blowup but preserves the Welford accumulator on legitimate
+            // data. 1e-12 ps is well below any physical sampling rate.
+            constexpr double MIN_DT_PS = 1e-12;
+            const double dt = time_ps - prev_time_[i];
+            const double dxdt = (std::abs(dt) > MIN_DT_PS) ? (delta_x / dt) : 0.0;
+            WelfordUpdate(w.t0_dxdt, dxdt, dn_new, frame_idx);
+
             w.delta_n = dn_new;
         }
         prev_t0_[i] = t0;
+        prev_time_[i] = time_ps;
         prev_valid_[i] = true;
     }
 
@@ -118,6 +130,7 @@ void HmWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.t0_delta,         w.delta_n);
         WelfordFinalize(w.t0_abs_delta,     w.delta_n);
         WelfordFinalize(w.t0_delta_squared, w.delta_n);
+        WelfordFinalize(w.t0_dxdt,          w.delta_n);
 
         // RMS fluctuation. NaN when uncomputable (no delta samples);
         // sqrt(0) = 0 when atom is truly static.
@@ -132,6 +145,14 @@ void HmWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (times.size() >= 2) {
         mean_dt_ps_ = (times.back() - times.front())
                     / static_cast<double>(times.size() - 1);
+    }
+
+    // Frame-index span: [first, last] from traj.FrameIndices().
+    // Lets downstream verify cadence and time alignment against
+    // the trajectory.
+    const auto& fidx = traj.FrameIndices();
+    if (!fidx.empty()) {
+        frame_index_range_ = {fidx.front(), fidx.back()};
     }
 
     finalized_ = true;
@@ -178,32 +199,15 @@ int HmWelfordTrajectoryResult::WriteFeatures(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// /trajectory/hm_welford/ — expanded schema (Phase 2b), identical
-// structure to BS. Datasets:
-//
-//   Scalar channels (1D shape (N,)):
-//     t0_{mean,m2,std,min,max,min_frame,max_frame}
-//     t2magnitude_{mean,m2,std,min,max,min_frame,max_frame}
-//
-//   Per-component channels (2D shape (N, K) where K=3 for T1, K=5 for T2):
-//     t1_{mean,m2,std,min,max,min_frame,max_frame}    — irrep layout m = -1, 0, +1
-//     t2_{mean,m2,std,min,max,min_frame,max_frame}    — irrep layout m = -2, -1, 0, +1, +2
-//
-//   Frame-to-frame delta variants (1D, on T0):
-//     t0_delta_{mean,m2,std,min,max}      — signed Δ (telescopes → drift)
-//     t0_abs_delta_{mean,m2,std,min,max}  — |Δ| (fluctuation amplitude)
-//     t0_delta_squared_{mean,m2,std,min,max}  — Δ² (Finalize → rms_delta)
-//     t0_rms_delta                         — Finalize-derived sqrt(<Δ²>)
-//
-//   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
-//
-//   H5 group attributes:
-//     result_name, n_frames, finalized
-//     ddof = 1                                    (unbiased std convention)
-//     mean_dt_ps                                  (cadence)
-//     irrep_layout_t1, irrep_layout_t2            (component ordering)
-//     units = "Angstrom^-1"                        (HM kernel unit)
+// /trajectory/hm_welford/ — expanded schema (Phase 2b/C), identical
+// structure to BS. See BS exemplar for the full dataset list. Per-TR
+// differences:
+//   - Group `units` = "Angstrom^-1" (HM kernel unit)
+//   - Per-dataset `units` attributes: value channels in Angstrom^-1,
+//     squared channels (*_m2, *_delta_squared_*) in Angstrom^-2 (or
+//     Angstrom^-4 for the _m2 of squared channels), rate channels
+//     (*_dxdt_*) in Angstrom^-1_per_ps.
+//   - `frame_index_range` group attribute records the trajectory span.
 //
 // Old dataset names (t0_mean, t2mag_mean, t0_delta_mean, t0_delta_std,
 // n_frames_per_atom) stay emitted for backward compatibility — old
@@ -221,13 +225,25 @@ void HmWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",       finalized_);
     grp.createAttribute("ddof",            static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",      mean_dt_ps_);
+    grp.createAttribute("frame_index_range", frame_index_range_);
     // T1 stored as Cartesian Levi-Civita dual; see BS exemplar comment.
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
+    // Group-level `units` describes the primary value channel. Per-
+    // dataset `units` attributes are authoritative for each individual
+    // dataset (e.g. *_m2 is squared, *_delta_squared_* is squared,
+    // *_dxdt_* has /ps appended, *_min_frame and *_max_frame carry
+    // "frame_index"). Both coexist for backward compatibility.
     grp.createAttribute("units",           std::string("Angstrom^-1"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
+    // Per-dataset units attributes: value-shaped channels (mean / std /
+    // min / max) carry base_units; *_m2 carries m2_units (squared by
+    // construction of Welford M2). *_min_frame / *_max_frame carry
+    // "frame_index".
     auto emit_1d = [&](const std::string& prefix,
+                       const std::string& base_units,
+                       const std::string& m2_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -241,17 +257,28 @@ void HmWelfordTrajectoryResult::WriteH5Group(
             min_frame[i] = w.min_frame;
             max_frame[i] = w.max_frame;
         }
-        grp.createDataSet(prefix + "_mean",      mean);
-        grp.createDataSet(prefix + "_m2",        m2);
-        grp.createDataSet(prefix + "_std",       std_);
-        grp.createDataSet(prefix + "_min",       min_);
-        grp.createDataSet(prefix + "_max",       max_);
-        grp.createDataSet(prefix + "_min_frame", min_frame);
-        grp.createDataSet(prefix + "_max_frame", max_frame);
+        auto ds_mean = grp.createDataSet(prefix + "_mean", mean);
+        ds_mean.createAttribute("units", base_units);
+        auto ds_m2 = grp.createDataSet(prefix + "_m2", m2);
+        ds_m2.createAttribute("units", m2_units);
+        auto ds_std = grp.createDataSet(prefix + "_std", std_);
+        ds_std.createAttribute("units", base_units);
+        auto ds_min = grp.createDataSet(prefix + "_min", min_);
+        ds_min.createAttribute("units", base_units);
+        auto ds_max = grp.createDataSet(prefix + "_max", max_);
+        ds_max.createAttribute("units", base_units);
+        auto ds_minf = grp.createDataSet(prefix + "_min_frame", min_frame);
+        ds_minf.createAttribute("units", std::string("frame_index"));
+        auto ds_maxf = grp.createDataSet(prefix + "_max_frame", max_frame);
+        ds_maxf.createAttribute("units", std::string("frame_index"));
     };
 
     // ── Helper: emit one per-component channel as 7 2D datasets ──
+    // write_raw returns void in HighFive, so we store the dataset
+    // handle then attach the attribute.
     auto emit_2d = [&](const std::string& prefix, size_t K,
+                       const std::string& base_units,
+                       const std::string& m2_units,
                        std::function<const WelfordMoments&(size_t, size_t)> get) {
         std::vector<double> mean(N * K), m2(N * K), std_(N * K), min_(N * K), max_(N * K);
         std::vector<size_t> min_frame(N * K), max_frame(N * K);
@@ -268,27 +295,62 @@ void HmWelfordTrajectoryResult::WriteH5Group(
             }
         }
         HighFive::DataSpace space({N, K});
-        grp.createDataSet<double>(prefix + "_mean",       space).write_raw(mean.data());
-        grp.createDataSet<double>(prefix + "_m2",         space).write_raw(m2.data());
-        grp.createDataSet<double>(prefix + "_std",        space).write_raw(std_.data());
-        grp.createDataSet<double>(prefix + "_min",        space).write_raw(min_.data());
-        grp.createDataSet<double>(prefix + "_max",        space).write_raw(max_.data());
-        grp.createDataSet<size_t>(prefix + "_min_frame",  space).write_raw(min_frame.data());
-        grp.createDataSet<size_t>(prefix + "_max_frame",  space).write_raw(max_frame.data());
+        auto ds_mean = grp.createDataSet<double>(prefix + "_mean", space);
+        ds_mean.write_raw(mean.data());
+        ds_mean.createAttribute("units", base_units);
+        auto ds_m2 = grp.createDataSet<double>(prefix + "_m2", space);
+        ds_m2.write_raw(m2.data());
+        ds_m2.createAttribute("units", m2_units);
+        auto ds_std = grp.createDataSet<double>(prefix + "_std", space);
+        ds_std.write_raw(std_.data());
+        ds_std.createAttribute("units", base_units);
+        auto ds_min = grp.createDataSet<double>(prefix + "_min", space);
+        ds_min.write_raw(min_.data());
+        ds_min.createAttribute("units", base_units);
+        auto ds_max = grp.createDataSet<double>(prefix + "_max", space);
+        ds_max.write_raw(max_.data());
+        ds_max.createAttribute("units", base_units);
+        auto ds_minf = grp.createDataSet<size_t>(prefix + "_min_frame", space);
+        ds_minf.write_raw(min_frame.data());
+        ds_minf.createAttribute("units", std::string("frame_index"));
+        auto ds_maxf = grp.createDataSet<size_t>(prefix + "_max_frame", space);
+        ds_maxf.write_raw(max_frame.data());
+        ds_maxf.createAttribute("units", std::string("frame_index"));
     };
 
+    // Per-TR unit strings. HM kernel is Angstrom^-1; Δ² has Angstrom^-2;
+    // dx/dt has /ps appended.
+    const std::string kBaseUnits      = "Angstrom^-1";
+    const std::string kSquaredUnits   = "Angstrom^-2";
+    const std::string kRateUnits      = "Angstrom^-1_per_ps";
+    const std::string kRateUnitsSq    = "Angstrom^-2_per_ps^2";
+
     // ── Scalar channels (T0, |T2|) ──────────────────────────────
-    emit_1d("t0",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0; });
-    emit_1d("t2magnitude", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t2magnitude; });
+    emit_1d("t0",          kBaseUnits, kSquaredUnits,
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0; });
+    emit_1d("t2magnitude", kBaseUnits, kSquaredUnits,
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t2magnitude; });
 
     // ── Per-component channels (T1, T2) ─────────────────────────
-    emit_2d("t1", 3, [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t1[k]; });
-    emit_2d("t2", 5, [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t2[k]; });
+    emit_2d("t1", 3, kBaseUnits, kSquaredUnits,
+            [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t1[k]; });
+    emit_2d("t2", 5, kBaseUnits, kSquaredUnits,
+            [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t2[k]; });
 
     // ── Delta variants (T0) ──────────────────────────────────────
-    emit_1d("t0_delta",         [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_delta; });
-    emit_1d("t0_abs_delta",     [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_abs_delta; });
-    emit_1d("t0_delta_squared", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_delta_squared; });
+    // t0_delta_squared *values* are in base^2 (Welford was accumulated
+    // over Δ²); its _m2 dataset is therefore in base^4.
+    emit_1d("t0_delta",         kBaseUnits, kSquaredUnits,
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_delta; });
+    emit_1d("t0_abs_delta",     kBaseUnits, kSquaredUnits,
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_abs_delta; });
+    emit_1d("t0_delta_squared", kSquaredUnits, std::string("Angstrom^-4"),
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_delta_squared; });
+    // Cadence-normalized rate dxdt = Δx / Δt — physically meaningful
+    // across runs of different stride (unlike signed Δ, which is
+    // sample-rate-dependent).
+    emit_1d("t0_dxdt",          kRateUnits, kRateUnitsSq,
+            [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hm_welford.t0_dxdt; });
 
     // ── Single scalar: RMS-Δ per atom (Finalize-derived) ─────────
     std::vector<double> t0_rms_delta(N);
