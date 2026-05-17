@@ -102,9 +102,11 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
         // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
         // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
-        w.charge_rms_delta = (w.charge_delta_squared.mean > 0.0)
-                           ? std::sqrt(w.charge_delta_squared.mean)
-                           : 0.0;
+        // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
+        // atom is truly static. Downstream isfinite() distinguishes.
+        w.charge_rms_delta = (w.delta_n == 0)
+                           ? std::nan("")
+                           : std::sqrt(w.charge_delta_squared.mean);
     }
 
     // Cadence metadata: mean Δt across captured frames. Lets downstream

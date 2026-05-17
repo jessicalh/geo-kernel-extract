@@ -43,14 +43,23 @@ namespace nmr {
 // frame-to-frame delta variants (signed = drift, |Δ| = abs-fluctuation,
 // Δ² → sqrt = RMS fluctuation) distinguish drift from dynamics that
 // the existing t0_delta telescope hides. Per PATTERNS Lesson 25.
+//
+// T1 storage note: SphericalTensor.T1 is stored as the Cartesian
+// Levi-Civita dual of the rank-1 part, NOT in real-spherical-harmonic
+// m-basis. T1[0]=v_x, T1[1]=v_y, T1[2]=v_z. WriteH5Group emits the
+// `irrep_layout_t1 = "v_x,v_y,v_z"` attribute to surface this. A
+// downstream consumer that wants spherical-harmonic m-components
+// must rotate using Cartesian matrices, not real-Y_1m. T2 IS in real-
+// spherical-tesseral m-basis (`irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"`).
 struct BsWelfordState {
     // T0 isotropic scalar
     WelfordMoments t0;
 
-    // T1 antisymmetric, rank-1 (G = -n⊗B has T1 = ½(n×B)); m = -1, 0, +1
+    // T1 rank-1 (G = -n⊗B has T1 = ½(n×B)). Stored as Cartesian LC
+    // dual (T1[0]=v_x, T1[1]=v_y, T1[2]=v_z) — NOT real-spherical-Ym.
     std::array<WelfordMoments, 3> t1;
 
-    // T2 symmetric traceless; m = -2, -1, 0, +1, +2
+    // T2 symmetric traceless; m = -2, -1, 0, +1, +2 (real-spherical-tesseral)
     std::array<WelfordMoments, 5> t2;
 
     // |T2| Frobenius L2 amplitude (scalar summary; pairs with per-component t2)
@@ -73,11 +82,12 @@ struct BsWelfordState {
 // Written by HmWelfordTrajectoryResult.
 // Source: hm_shielding_contribution (Å⁻¹, rank-1 same as BS but no
 // PPM_FACTOR multiplier per OBJECT_MODEL drift table).
-// Phase 2b expansion: identical shape to BsWelfordState.
+// Phase 2b expansion: identical shape to BsWelfordState. T1 storage
+// is Cartesian LC dual (see BsWelfordState comment).
 struct HmWelfordState {
     WelfordMoments t0;
-    std::array<WelfordMoments, 3> t1;          // m = -1, 0, +1
-    std::array<WelfordMoments, 5> t2;          // m = -2..+2
+    std::array<WelfordMoments, 3> t1;          // Cartesian LC dual; see BsWelfordState
+    std::array<WelfordMoments, 5> t2;          // m = -2..+2 real-spherical-tesseral
     WelfordMoments t2magnitude;
     WelfordMoments t0_delta;                   // signed Δ
     WelfordMoments t0_abs_delta;               // |Δ|
@@ -90,10 +100,16 @@ struct HmWelfordState {
 // Written by McConnellWelfordTrajectoryResult.
 // Source: mc_shielding_contribution (Å⁻³, full asymmetric non-traceless
 // three-term McConnell form per PATTERNS Lesson 19).
-// Phase 2b expansion: T1 SKIPPED — McConnell-form has T1 = 0 by construction.
+// CORRECTED 2026-05-17 PM: T1 IS nonzero for McConnell-form per
+// Lesson 19 — the antisymmetric part of M_ab/r³ is
+// (9 cosθ / 2)(d̂_a b̂_b - b̂_a d̂_b) / r³, which is generically nonzero.
+// The earlier "T1=0 by construction" claim in this comment was wrong.
+// Sibling McConnellShieldingTimeSeriesTrajectoryResult emits T1[0..2]
+// from the same source field; the Welford must roll up the same channels.
+// Identical shape to BsWelfordState.
 struct McConnellWelfordState {
     WelfordMoments t0;
-    // NO t1 — McConnell-form has T1 ≡ 0 (PATTERNS Lesson 19)
+    std::array<WelfordMoments, 3> t1;          // m = -1, 0, +1 (storage = Cartesian LC dual; see WriteH5Group)
     std::array<WelfordMoments, 5> t2;          // m = -2..+2
     WelfordMoments t2magnitude;
     WelfordMoments t0_delta;

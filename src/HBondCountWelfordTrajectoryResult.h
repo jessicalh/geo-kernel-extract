@@ -4,9 +4,17 @@
 // of per-atom H-bond count (`hbond_count_within_3_5A`, integer source,
 // pairs within 3.5 Å), accumulated across all frames.
 //
-// The running mean is fractional — it represents the trajectory-averaged
-// H-bond occupancy frequency at each atom (e.g., 1.20 means this atom
-// averages 1.2 H-bonds across the frames). AV-pattern scalar Welford.
+// The count channel's running mean is fractional and represents the
+// trajectory-averaged **expected count** ⟨N⟩ of H-bond pairs at each
+// atom (e.g., 1.20 means this atom averages 1.2 H-bonds across the
+// frames). This is NOT an "occupancy frequency" in [0, 1] — that's
+// the separate occupancy_fraction channel (Welford on indicator
+// count > 0 ? 1.0 : 0.0; mean is in [0, 1]; captures "fraction of
+// frames atom is in any H-bond"). Both signals are emitted; they
+// measure different physics and downstream picks per use case.
+//
+// AV-pattern scalar Welford. Per PATTERNS Lesson 25 (Export Everything
+// Upstream): emit both — distinct ML feature signals.
 //
 // HBondResult is unconditionally attached in `PerFrameExtractionSet`.
 //

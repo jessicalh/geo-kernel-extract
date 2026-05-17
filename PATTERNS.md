@@ -202,9 +202,12 @@ double d = ring.JBLobeOffset();    // 0.64 for PHE, 0.50 for HIS
 Per-atom trajectory-scope data lives in three coexisting shapes on
 `TrajectoryAtom`:
 
-- **Typed accumulator fields** with one writer each (e.g.
-  `bs_t0_mean`, `bs_t0_std`). Current bulk of the struct. Same
-  "one writer per field" discipline as ConformationAtom.
+- **Typed accumulator fields** with one writer each, grouped into
+  per-Welford state substructs (e.g. `ta.bs_welford.t0.mean`,
+  `ta.hm_welford.t2[k].std`). Each Welford TR owns one substruct on
+  TrajectoryAtom. Same "one writer per field" discipline as
+  ConformationAtom; PATTERNS Lesson 25 corollary on differentiated
+  structure motivates the substruct shape.
 - **Typed struct vectors for known-shape per-source data**, parallel
   to `ConformationAtom::ring_neighbours`. Aspirational; no current
   fields but the shape is reserved (e.g. future
@@ -1251,12 +1254,14 @@ Per-atom trajectory data lives in two shapes:
   What an emitter puts in the bag is its own choice; later TRs query
   by kind. `BsAnomalousAtomMarkerTrajectoryResult` pushes to the bag
   with two kinds, `BsAnomalyHighT0` and `BsAnomalyLowT0`.
-- **Finalized rollup fields** — typed fields with one writer per
-  field, for rolled-up statistics where keeping a record per frame
-  would be wasteful and the finalized rollup is what consumers read.
-  The BS Welford set (`bs_t0_mean`, `bs_t0_std`, `bs_n_frames`,
-  and the `bs_t2mag_*` / `bs_t0_delta_*` kin) is written by
-  `BsWelfordTrajectoryResult`.
+- **Finalized rollup fields** — typed fields grouped into per-Welford
+  state substructs, one writer per substruct, for rolled-up statistics
+  where keeping a record per frame would be wasteful and the finalized
+  rollup is what consumers read. Each tensor-source Welford (BS, HM,
+  McConnell) carries `WelfordMoments` channels for T0 / T1[3] / T2[5]
+  / |T2| plus three delta variants on T0; scalar-source Welfords (Eeq,
+  Sasa, HBondCount) carry the same minus the tensor channels.
+  TrajectoryAtom holds one `*WelfordState` substruct per Welford TR.
 
 Accumulator implementation objects (`Welford`, rolling windows,
 full-history buffers) live inside the owning TR, not on
@@ -1416,12 +1421,13 @@ and attach order is dispatch order (pattern 15), so by the time the
 reader runs on each frame the writer has updated its fields.
 
 The landed case is `BsAnomalousAtomMarkerTrajectoryResult`
-cross-reading `BsWelfordTrajectoryResult`'s `bs_t0_mean`,
-`bs_t0_m2`, `bs_n_frames` — the anomaly marker's purpose is to flag
-outliers against that specific running distribution, so computing a
-parallel Welford rollup locally would genuinely duplicate the
-writer's entire state. The three markers are in
-`BsWelfordTrajectoryResult.h`,
+cross-reading `BsWelfordTrajectoryResult`'s
+`ta.bs_welford.t0.mean`, `ta.bs_welford.t0.m2`,
+`ta.bs_welford.n_frames` (substruct paths post-Phase-2a) — the
+anomaly marker's purpose is to flag outliers against that specific
+running distribution, so computing a parallel Welford rollup locally
+would genuinely duplicate the writer's entire state. The three
+markers are in `BsWelfordTrajectoryResult.h`,
 `BsAnomalousAtomMarkerTrajectoryResult.h`, and
 `BsAnomalousAtomMarkerTrajectoryResult.cpp`.
 

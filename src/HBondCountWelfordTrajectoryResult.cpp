@@ -112,10 +112,11 @@ void HBondCountWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.count_abs_delta,     w.delta_n);
         WelfordFinalize(w.count_delta_squared, w.delta_n);
 
-        // RMS fluctuation = sqrt(<Δ²>).
-        w.count_rms_delta = (w.count_delta_squared.mean > 0.0)
-                          ? std::sqrt(w.count_delta_squared.mean)
-                          : 0.0;
+        // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
+        // atom is truly static. Downstream isfinite() distinguishes.
+        w.count_rms_delta = (w.delta_n == 0)
+                          ? std::nan("")
+                          : std::sqrt(w.count_delta_squared.mean);
     }
 
     // Cadence metadata.

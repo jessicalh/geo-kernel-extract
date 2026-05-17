@@ -6,8 +6,11 @@
 //   (A) typed struct vectors for known-shape per-source data
 //       (e.g. ring_neighbours on ConformationAtom — trajectory-scope
 //        parallel to land as RingNeighbourhoodTrajectoryStats);
-//   (B) typed accumulator fields with one writer each
-//       (e.g. bs_t0_mean, bs_t0_std — what's on TrajectoryAtom today);
+//   (B) typed accumulator fields with one writer each, grouped into
+//       per-Welford state substructs (e.g. ta.bs_welford.t0.mean,
+//       ta.hm_welford.t2[k].std — see TrajectoryAtom.h for the
+//       per-Welford state struct definitions, PATTERNS Lesson 25 for
+//       the differentiated-structure principle);
 //   (C) the per-atom event bag (this record's home) — open-shape
 //       events emitted by scan-mode detectors and lifetime/transition
 //       accumulators.

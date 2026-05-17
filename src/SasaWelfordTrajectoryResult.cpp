@@ -100,11 +100,11 @@ void SasaWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.sasa_abs_delta,     w.delta_n);
         WelfordFinalize(w.sasa_delta_squared, w.delta_n);
 
-        // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
-        // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
-        w.sasa_rms_delta = (w.sasa_delta_squared.mean > 0.0)
-                         ? std::sqrt(w.sasa_delta_squared.mean)
-                         : 0.0;
+        // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
+        // atom is truly static. Downstream isfinite() distinguishes.
+        w.sasa_rms_delta = (w.delta_n == 0)
+                         ? std::nan("")
+                         : std::sqrt(w.sasa_delta_squared.mean);
     }
 
     // Cadence metadata: mean Δt across captured frames. Lets downstream

@@ -169,9 +169,11 @@ breaks the discipline pair.
 > Upstream), a tensor-source Welford rollup that emits only T0 + |T2|
 > has discarded T1 (where present) and discarded the angular
 > fingerprint of T2. The correct emission for tensor sources is:
-> T0 + per-component T1 (where present; rank-1 sources only) +
-> per-component T2 (always present for tensor sources) + |T2|
-> amplitude (for AnomalyMarker-shaped consumers).
+> T0 + per-component T1 (where the decomposed SphericalTensor.T1 is
+> nonzero — includes BS / HM rank-1 outer products AND the McConnell
+> three-term form per PATTERNS Lesson 19; lesson explicitly says
+> "asymmetric (T1 ≠ 0)") + per-component T2 + |T2| amplitude (for
+> AnomalyMarker-shaped consumers).
 >
 > A TR that captures only T0 is **incomplete by Constitution
 > contract**. A TR that captures T0 + |T2| but skips per-component

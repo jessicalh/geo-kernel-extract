@@ -40,12 +40,13 @@ McConnellWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 
 // ── Compute ──────────────────────────────────────────────────────
 //
-// Phase 2b expansion (2026-05-17): clones the BS pattern WITHOUT T1.
-// McConnell-form has T1 ≡ 0 by construction (PATTERNS Lesson 19);
-// the three-term asymmetric form lacks the antisymmetric rank-1
-// channel that BS / HM rank-1 outer products carry. T0 + per-component
-// T2[5] + |T2| amplitude + three delta variants on T0 follow BS
-// exactly.
+// Phase 2b expansion (2026-05-17). CORRECTED 2026-05-17 PM: prior
+// version dropped T1 under a misreading of PATTERNS Lesson 19. The
+// McConnell three-term tensor IS asymmetric (T1 ≠ 0); the antisymmetric
+// part of M_ab/r³ is (9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³, generically
+// nonzero. Sibling McConnellShieldingTimeSeriesTrajectoryResult emits
+// T1 from the same source field — this Welford must roll up the same
+// channels for the calibration pipeline to see the antisymmetric signal.
 
 void McConnellWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -69,7 +70,9 @@ void McConnellWelfordTrajectoryResult::Compute(
         WelfordUpdate(w.t0,          t0,    n_new, frame_idx);
         WelfordUpdate(w.t2magnitude, t2mag, n_new, frame_idx);
 
-        // NO per-component T1 — McConnell-form has T1 ≡ 0 (PATTERNS Lesson 19).
+        // Per-component T1 (3 components — Cartesian LC dual storage)
+        for (size_t k = 0; k < 3; ++k)
+            WelfordUpdate(w.t1[k], st.T1[k], n_new, frame_idx);
 
         // Per-component T2 (5 components)
         for (size_t k = 0; k < 5; ++k)
@@ -98,9 +101,11 @@ void McConnellWelfordTrajectoryResult::Compute(
 
 
 // ── Finalize ─────────────────────────────────────────────────────
-// Welford m2 → unbiased std for every channel. Derive t0_rms_delta
-// from t0_delta_squared.mean. Derive mean_dt_ps from frame_times.
-// No T1 finalize — McConnell-form has no T1 channel.
+// Welford m2 → unbiased std for every channel (T0, T1[3], T2[5],
+// |T2|, delta variants). Derive t0_rms_delta from t0_delta_squared.mean.
+// Derive mean_dt_ps from frame_times. rms_delta NaN-filled when
+// delta_n==0 (uncomputable) so downstream isfinite() distinguishes
+// uncomputable from real-zero static atom.
 
 void McConnellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
                                                 Trajectory& traj) {
@@ -110,17 +115,19 @@ void McConnellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
         WelfordFinalize(w.t0,          w.n_frames);
         WelfordFinalize(w.t2magnitude, w.n_frames);
+        for (size_t k = 0; k < 3; ++k) WelfordFinalize(w.t1[k], w.n_frames);
         for (size_t k = 0; k < 5; ++k) WelfordFinalize(w.t2[k], w.n_frames);
 
         WelfordFinalize(w.t0_delta,         w.delta_n);
         WelfordFinalize(w.t0_abs_delta,     w.delta_n);
         WelfordFinalize(w.t0_delta_squared, w.delta_n);
 
-        // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
-        // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
-        w.t0_rms_delta = (w.t0_delta_squared.mean > 0.0)
-                       ? std::sqrt(w.t0_delta_squared.mean)
-                       : 0.0;
+        // RMS fluctuation. NaN when uncomputable (no delta samples);
+        // sqrt(0) = 0 when atom is truly static (Δ ≡ 0 across captured
+        // frames). Downstream isfinite() distinguishes.
+        w.t0_rms_delta = (w.delta_n == 0)
+                       ? std::nan("")
+                       : std::sqrt(w.t0_delta_squared.mean);
     }
 
     // Cadence metadata: mean Δt across captured frames. Lets
@@ -175,36 +182,15 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// /trajectory/mc_welford/ — expanded schema (Phase 2b). Same shape
-// as BS minus T1 (McConnell-form has T1 ≡ 0 by construction; PATTERNS
-// Lesson 19). Datasets:
+// /trajectory/mc_welford/ — expanded schema (Phase 2b). Identical
+// shape to BS — McConnell three-term tensor IS asymmetric (T1 ≠ 0)
+// per PATTERNS Lesson 19; the prior "no T1 for McConnell" claim
+// was wrong and is now corrected.
 //
-//   Scalar channels (1D shape (N,)):
-//     t0_{mean,m2,std,min,max,min_frame,max_frame}
-//     t2magnitude_{mean,m2,std,min,max,min_frame,max_frame}
-//
-//   Per-component channel (2D shape (N, 5)):
-//     t2_{mean,m2,std,min,max,min_frame,max_frame}    — irrep layout m = -2, -1, 0, +1, +2
-//
-//   Frame-to-frame delta variants (1D, on T0):
-//     t0_delta_{mean,m2,std,min,max}      — signed Δ (telescopes → drift)
-//     t0_abs_delta_{mean,m2,std,min,max}  — |Δ| (fluctuation amplitude)
-//     t0_delta_squared_{mean,m2,std,min,max}  — Δ² (Finalize → rms_delta)
-//     t0_rms_delta                         — Finalize-derived sqrt(<Δ²>)
-//
-//   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
-//
-//   H5 group attributes:
-//     result_name, n_frames, finalized
-//     ddof = 1                                    (unbiased std convention)
-//     mean_dt_ps                                  (cadence)
-//     irrep_layout_t2                             (component ordering; no t1)
-//     units = "Angstrom^-3"                        (McConnell kernel unit)
-//
-// Old dataset names (t0_mean, t2mag_mean, t0_delta_mean, t0_delta_std,
-// n_frames_per_atom) stay emitted for backward compatibility — old
-// consumers continue to work; new consumers use the canonical names.
+// T1 storage: SphericalTensor.T1 is the Cartesian Levi-Civita dual
+// of the rank-1 part (T1[0]=v_x, T1[1]=v_y, T1[2]=v_z), NOT real-
+// spherical-harmonic m-basis. The irrep_layout_t1 attribute surfaces
+// this honestly so downstream rotations use Cartesian, not real-Y_1m.
 
 void McConnellWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -213,12 +199,12 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     auto grp = file.createGroup("/trajectory/mc_welford");
 
     // ── Group attributes ────────────────────────────────────────
-    // No irrep_layout_t1 — McConnell-form has no T1 channel.
     grp.createAttribute("result_name",     Name());
     grp.createAttribute("n_frames",        n_frames_);
     grp.createAttribute("finalized",       finalized_);
     grp.createAttribute("ddof",            static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",      mean_dt_ps_);
+    grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     grp.createAttribute("units",           std::string("Angstrom^-3"));
 
@@ -277,7 +263,8 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     emit_1d("t0",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).mc_welford.t0; });
     emit_1d("t2magnitude", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).mc_welford.t2magnitude; });
 
-    // ── Per-component channel (T2 only; no T1 for McConnell) ────
+    // ── Per-component channels (T1 + T2) ────────────────────────
+    emit_2d("t1", 3, [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).mc_welford.t1[k]; });
     emit_2d("t2", 5, [&](size_t i, size_t k) -> const WelfordMoments& { return tp.AtomAt(i).mc_welford.t2[k]; });
 
     // ── Delta variants (T0) ──────────────────────────────────────

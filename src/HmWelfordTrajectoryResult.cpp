@@ -119,11 +119,11 @@ void HmWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.t0_abs_delta,     w.delta_n);
         WelfordFinalize(w.t0_delta_squared, w.delta_n);
 
-        // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
-        // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
-        w.t0_rms_delta = (w.t0_delta_squared.mean > 0.0)
-                       ? std::sqrt(w.t0_delta_squared.mean)
-                       : 0.0;
+        // RMS fluctuation. NaN when uncomputable (no delta samples);
+        // sqrt(0) = 0 when atom is truly static.
+        w.t0_rms_delta = (w.delta_n == 0)
+                       ? std::nan("")
+                       : std::sqrt(w.t0_delta_squared.mean);
     }
 
     // Cadence metadata: mean Δt across captured frames. Lets
@@ -221,7 +221,8 @@ void HmWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",       finalized_);
     grp.createAttribute("ddof",            static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",      mean_dt_ps_);
-    grp.createAttribute("irrep_layout_t1", std::string("m-1,m0,m+1"));
+    // T1 stored as Cartesian Levi-Civita dual; see BS exemplar comment.
+    grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     grp.createAttribute("units",           std::string("Angstrom^-1"));
 

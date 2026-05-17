@@ -77,10 +77,27 @@ inline void WelfordUpdate(WelfordMoments& w,
 }
 
 // Finalize a WelfordMoments channel: derive std from m2 / (n-1).
-// Idempotent — calling Finalize twice produces the same result
-// because std is computed from m2 each time, not accumulated.
+// Idempotent in n > 0 — calling Finalize twice produces the same
+// result because std is computed from m2 each time, not accumulated.
+//
+// Uncomputable case (n == 0): NaN-fill mean / m2 / std so downstream
+// `isfinite()` distinguishes uncomputable from real measurement. The
+// min / max fields are already self-describing via ±infinity sentinels
+// (set at default construction) and are not touched here. This matches
+// the NaN-fill discipline used elsewhere in trajectory-scope output
+// (Tripeptide / Larsen Vec3 emitters NaN-fill source-absent atoms).
+//
+// Single-sample case (n == 1): std is conventionally 0 (no variance
+// from one sample). Mean / m2 are honest values from the one update.
 inline void WelfordFinalize(WelfordMoments& w, std::size_t n) {
-    w.std = (n <= 1) ? 0.0 : std::sqrt(w.m2 / static_cast<double>(n - 1));
+    if (n == 0) {
+        const double nan_val = std::nan("");
+        w.mean = nan_val;
+        w.m2   = nan_val;
+        w.std  = nan_val;
+        return;
+    }
+    w.std = (n == 1) ? 0.0 : std::sqrt(w.m2 / static_cast<double>(n - 1));
 }
 
 

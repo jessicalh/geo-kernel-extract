@@ -109,17 +109,27 @@ Under the export-everything principle, we emit BOTH:
 - **`*_t2magnitude_*` |T2| Frobenius amplitude rollup**: the
   existing scalar, kept for downstream consumers (BS
   AnomalyMarker) that read it.
-- **`*_t1_m{−1,0,+1}_*` per-component T1 Welfords**: for rank-1
-  sources only (BS, HM where `G = -n⊗{B,V}` has T1 ≠ 0). McConnell
-  / RingChi / HBond use the three-term McConnell form per
-  PATTERNS Lesson 19 with T1 = 0 by construction — these skip
-  the T1 block.
+- **`*_t1_*` per-component T1 Welfords** (CORRECTED 2026-05-17 PM):
+  emit T1 channels for **every tensor source where the decomposed
+  SphericalTensor.T1 is nonzero**, which includes BS / HM rank-1
+  outer products AND the McConnell three-term form. PATTERNS
+  Lesson 19 explicitly states McConnell tensor is asymmetric
+  (T1 ≠ 0): the antisymmetric part of M_ab/r³ is
+  (9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³, generically nonzero. The
+  prior version of this section claimed "T1 = 0 by construction"
+  for McConnell — that was wrong and led to a wrong-physics commit
+  caught by the science-focused adversarial review on 2026-05-17.
+  All tensor-source Welfords (BS, HM, McConnell, future RingChi
+  / HBond if they become Welford TRs) emit per-component T1.
 - **`*_t0_*`**: existing T0 rollup unchanged.
 
-Layout ordering follows the SphericalTensor real-spherical-harmonic
-convention documented elsewhere: T1 = [m−1, m0, m+1], T2 = [m−2,
-m−1, m0, m+1, m+2]. This is the same ordering used by the
-time-series TR's H5 `xyz` dataset packing.
+Layout ordering: SphericalTensor stores T1 as the Cartesian
+Levi-Civita dual of the rank-1 part (T1[0]=v_x, T1[1]=v_y,
+T1[2]=v_z), NOT real-spherical-harmonic m-basis. WriteH5Group
+emits `irrep_layout_t1 = "v_x,v_y,v_z"` to surface this honestly
+so downstream rotations on t1_* datasets use Cartesian matrices,
+not real-Y_1m. T2 IS in real-spherical-tesseral m-basis (T2 = [m−2,
+m−1, m0, m+1, m+2]) and `irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"`.
 
 ### Axis 3: schema provenance
 
@@ -200,7 +210,14 @@ Same shape as BS. ~122 fields per atom.
 Source: `mc_shielding_contribution` (SphericalTensor, units = Å⁻³,
 asymmetric non-traceless three-term form per Lesson 19).
 
-Channels: T0 + T2 (5) + |T2|. **T1 = 0 by construction; skipped.**
+Channels: identical to BS — T0 + T1 (3) + T2 (5) + |T2|. **T1 IS
+nonzero for McConnell-form** per PATTERNS Lesson 19; the prior
+"T1 = 0 by construction" claim in this section was wrong and is
+corrected (2026-05-17 PM after science-focused adversarial review
+caught the error). The antisymmetric part of M_ab/r³ is
+(9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³, generically nonzero. Sibling
+McConnellShieldingTimeSeriesTrajectoryResult already emits T1 from
+the same source field; the Welford TR rolls up the same channels.
 
 7 channels × 10 fields = 70 fields + delta+higher-moment on T0 = 22.
 Total ~92 fields per atom.
@@ -414,8 +431,10 @@ exemplar" landing into the substruct surface.
 Once the framework is committed and BS is the validated exemplar:
 
 - **Worktree A (one agent, mechanical)**: expand HmWelford +
-  McConnellWelford (the two tensor-source siblings to BS). Same
-  shape minus McConnell's T1 channels.
+  McConnellWelford (the two tensor-source siblings to BS). Identical
+  channel shape to BS (CORRECTED 2026-05-17 PM — McConnell's T1
+  channels are NOT skipped; see "Axis 2: tensor channel preservation"
+  above for the science correction).
 - **Worktree B (one agent, mechanical)**: expand EeqWelford +
   SasaWelford + HBondCountWelford (the three scalar-source
   siblings). HBondCount additionally gets the occupancy

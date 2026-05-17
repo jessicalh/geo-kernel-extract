@@ -28,9 +28,11 @@
 //
 // This Result reads TrajectoryAtom fields owned by another Result:
 //
-//   tp.AtomAt(i).bs_t0_mean      (owned by BsWelfordTrajectoryResult)
-//   tp.AtomAt(i).bs_t0_m2
-//   tp.AtomAt(i).bs_n_frames
+//   tp.AtomAt(i).bs_welford.t0.mean   (owned by BsWelfordTrajectoryResult)
+//   tp.AtomAt(i).bs_welford.t0.m2
+//   tp.AtomAt(i).bs_welford.n_frames
+//
+// Substruct paths per PATTERNS Lesson 25 (Phase 2a refactor 2026-05-17).
 //
 // Cross-Result reads are allowed by the open-buffer discipline but
 // are not the default shape: every cross-read is a human-maintained

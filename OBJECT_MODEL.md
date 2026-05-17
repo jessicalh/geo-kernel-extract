@@ -1606,38 +1606,45 @@ never resized.
 
 Three coexisting field shapes (see PATTERNS.md §13):
 
-**Typed accumulator fields.** One writer per field. Current fields are
-Welford state for the three landed AV-pattern kernel rollups (BS / HM /
-McConnell), each carrying T0 mean/m2/std/min/max + |T2| magnitude
-moments + frame-to-frame T0 delta:
+**Typed accumulator fields.** One writer per substruct. Per-Welford
+state lives in named substructs on `TrajectoryAtom` (`bs_welford`,
+`hm_welford`, `mc_welford`, `eeq_welford`, `sasa_welford`,
+`hbond_count_welford`), each holding `WelfordMoments` instances per
+channel. Post-Phase-2b expansion shape (2026-05-17):
 
-| Field | Type | Writer | Description |
-|-------|------|--------|-------------|
-| `bs_t0_{mean,m2,std,min,max,min_frame,max_frame}` + `bs_n_frames` | `double` / `size_t` | BsWelford | Welford state for BS T0 shielding; std is Finalize-only |
-| `bs_t2mag_{mean,m2,std,min,max,min_frame,max_frame}` | `double` / `size_t` | BsWelford | Same for \|T2\| magnitude |
-| `bs_t0_delta_{mean,m2,std,min,max,n}` | `double` / `size_t` | BsWelford | Frame-to-frame T0 delta |
-| `hm_t0_*` + `hm_n_frames` + `hm_t2mag_*` + `hm_t0_delta_*` | `double` / `size_t` | HmWelford | Same field block, HaighMallion kernel (Å⁻¹) |
-| `mc_t0_*` + `mc_n_frames` + `mc_t2mag_*` + `mc_t0_delta_*` | `double` / `size_t` | McConnellWelford | Same field block, McConnell kernel (Å⁻³) |
-| `eeq_charge_*` + `eeq_charge_delta_*` (single-channel scalar) | `double` / `size_t` | EeqWelford | Scalar Welford — no T2mag channel; source = `eeq_charge` (e) |
-| `sasa_*` + `sasa_delta_*` (single-channel scalar) | `double` / `size_t` | SasaWelford | Scalar Welford; source = `atom_sasa` (Å²) |
-| `hbond_count_*` + `hbond_count_delta_*` (single-channel scalar, int source) | `double` / `size_t` | HBondCountWelford | Scalar Welford; source = `hbond_count_within_3_5A` (int); running mean is fractional H-bond occupancy frequency |
+| Substruct (writer) | Tensor channels | Scalar/delta channels | Source / units |
+|--------------------|-----------------|----------------------|----------------|
+| `bs_welford` (BsWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | `t0_delta`, `t0_abs_delta`, `t0_delta_squared`, `t0_rms_delta`, `n_frames`, `delta_n` | `bs_shielding_contribution` (ppm·T/nA) |
+| `hm_welford` (HmWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants | `hm_shielding_contribution` (Å⁻¹) |
+| `mc_welford` (McConnellWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants | `mc_shielding_contribution` (Å⁻³). T1 IS nonzero per PATTERNS Lesson 19 — the prior "T1 = 0 by construction" claim was a 2026-05-17 AM design error caught by the science adversarial review |
+| `eeq_welford` (EeqWelford) | (scalar source — no tensor channels) | `charge`, `charge_delta`, `charge_abs_delta`, `charge_delta_squared`, `charge_rms_delta`, `n_frames`, `delta_n` | `eeq_charge` (elementary_charge) |
+| `sasa_welford` (SasaWelford) | (scalar) | parallel block on `sasa` channel | `atom_sasa` (Å²) |
+| `hbond_count_welford` (HBondCountWelford) | (scalar) | parallel block on `count` channel + `occupancy_fraction` Welford companion (indicator: count > 0 ? 1.0 : 0.0) | `hbond_count_within_3_5A` (pairs, source_radius_A = 3.5) |
 
-Additional Welford field blocks land as more `*Welford`-style
-TrajectoryResults attach (only GromacsEnergy remaining in the forward
-queue after today's batch). One writer per field is invariant; each new
-block clones the BS shape with its physics prefix.
+Each `WelfordMoments` substruct carries `{mean, m2, std, min, max,
+min_frame, max_frame}` (5 doubles + 2 size_t = 56 bytes). Per-component
+T1 stored as `std::array<WelfordMoments, 3>`; T2 as
+`std::array<WelfordMoments, 5>`. Helpers `WelfordUpdate` /
+`WelfordFinalize` in `src/TrajectoryMoments.h` centralise the online
+algorithm. `WelfordFinalize` NaN-fills mean/m2/std when `n==0`
+(uncomputable case); existing `±inf` sentinels on min/max are honest
+without modification.
 
-**Pending expansion (2026-05-17):** All six landed Welford rollups
-(BS, HM, McConnell, Eeq, Sasa, HBondCount) gain per-channel T1/T2
-component rollups (where source is tensor-shaped), drift +
-mean_abs_delta + rms_delta variants with `mean_dt_ps` cadence
-metadata, schema provenance emission (`min_frame`, `max_frame`, `m2`,
-`ddof=1` attribute), higher moments (skew, kurtosis), and an
-occupancy-fraction companion for HBondCount. See
-`spec/plan/welford-data-shape-design-2026-05-17.md` for the
-comprehensive spec. The field tables in this section will be updated
-as the per-Welford expansion lands. The principle driving it is
-PATTERNS.md Lesson 25 (Export Everything Upstream).
+**T1 storage convention.** `SphericalTensor.T1` is stored as the
+Cartesian Levi-Civita dual of the rank-1 part (`T1[0]=v_x, T1[1]=v_y,
+T1[2]=v_z`), NOT real-spherical-harmonic m-basis. H5 emission surfaces
+this with `irrep_layout_t1 = "v_x,v_y,v_z"` attribute. T2 IS in
+real-spherical-tesseral m-basis (`irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"`).
+Downstream rotations on `t1_*` datasets must use Cartesian matrices.
+
+**Forward queue** (additive growth as `*Welford`-style TrajectoryResults
+attach): GromacsEnergyWelford (per-frame aggregate, not per-atom).
+Additional Welfords clone the substruct + WelfordMoments shape.
+Principle: PATTERNS Lesson 25 (Export Everything Upstream) — emit
+permissively at the upstream extractor, downstream consumers pick what
+they need. The substruct shape replaced ~136 loose fields of the
+pre-2026-05-17 pattern; visual surface compressed ~9× without changing
+memory layout.
 
 **Typed struct vectors for known-shape per-source data.** Aspirational;
 no current fields. Parallel to `ConformationAtom::ring_neighbours` but
@@ -1681,12 +1688,12 @@ Attach, so factories see a finalized Protein).
 
 | Type | Scope | Dependencies | Lifecycle | Output |
 |------|-------|--------------|-----------|--------|
-| `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
-| `HmWelfordTrajectoryResult` | per-atom | `HaighMallionResult` | AV | TrajectoryAtom fields (hm_t0_\*, hm_t2mag_\*, hm_t0_delta_\*) + `/trajectory/hm_welford/` (units = Å⁻¹) |
-| `McConnellWelfordTrajectoryResult` | per-atom | `McConnellResult` | AV | TrajectoryAtom fields (mc_t0_\*, mc_t2mag_\*, mc_t0_delta_\*) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
-| `EeqWelfordTrajectoryResult` | per-atom | `EeqResult` | AV | TrajectoryAtom fields (eeq_charge_*) + `/trajectory/eeq_welford/` (units = elementary_charge, single-channel scalar) |
-| `SasaWelfordTrajectoryResult` | per-atom | `SasaResult` | AV | TrajectoryAtom fields (sasa_*) + `/trajectory/sasa_welford/` (units = Å²); pairs with FO `SasaTimeSeriesTrajectoryResult` |
-| `HBondCountWelfordTrajectoryResult` | per-atom | `HBondResult` | AV | TrajectoryAtom fields (hbond_count_*) + `/trajectory/hbond_count_welford/` (units = pairs, source_radius_A = 3.5) |
+| `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | `ta.bs_welford` substruct (t0 / t1[3] / t2[5] / t2magnitude WelfordMoments + delta variants) + `/trajectory/bs_welford/` (units = ppm·T/nA) |
+| `HmWelfordTrajectoryResult` | per-atom | `HaighMallionResult` | AV | `ta.hm_welford` substruct (identical shape to BS) + `/trajectory/hm_welford/` (units = Å⁻¹) |
+| `McConnellWelfordTrajectoryResult` | per-atom | `McConnellResult` | AV | `ta.mc_welford` substruct (identical shape to BS — T1 IS nonzero per Lesson 19, not skipped) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
+| `EeqWelfordTrajectoryResult` | per-atom | `EeqResult` | AV | `ta.eeq_welford` substruct (scalar source — no T1/T2 channels; charge + delta variants) + `/trajectory/eeq_welford/` (units = elementary_charge) |
+| `SasaWelfordTrajectoryResult` | per-atom | `SasaResult` | AV | `ta.sasa_welford` substruct (scalar) + `/trajectory/sasa_welford/` (units = Å²); pairs with FO `SasaTimeSeriesTrajectoryResult` |
+| `HBondCountWelfordTrajectoryResult` | per-atom | `HBondResult` | AV | `ta.hbond_count_welford` substruct (count + occupancy_fraction + delta variants) + `/trajectory/hbond_count_welford/` (units = pairs, source_radius_A = 3.5) |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `HmShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hm_shielding_time_series/` (N, T, 9); reads `ConformationAtom::hm_shielding_contribution` (HaighMallionResult source, unconditional in PerFrameExtractionSet) |
 | `McConnellShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/mc_shielding_time_series/` (N, T, 9); reads `mc_shielding_contribution` (units = Å⁻³, full asymmetric McConnell tensor; T0 ≠ 0) |
@@ -2836,34 +2843,42 @@ emitter's choice; later TRs consume by kind. The per-atom events bag
 is not currently H5-emitted — events are accessible in-process for
 cross-TR reads and test assertions.
 
-**Finalized rollup fields** — typed fields written by one TR each,
-for rolled-up statistics where a record per frame would be wasteful.
-Three AV-pattern Welford blocks landed (BS / HM / McConnell), each
-following the same shape:
+**Finalized rollup fields** — `WelfordMoments` substructs grouped into
+per-Welford state substructs on `TrajectoryAtom`, one writer (TR) per
+substruct. Post-Phase-2b expansion shape (see
+`spec/plan/welford-data-shape-design-2026-05-17.md` and PATTERNS Lesson
+25 for the design rationale):
 
-| Field                                              | Type       | Writer                              |
-|----------------------------------------------------|------------|-------------------------------------|
-| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`              | `double`   | `BsWelfordTrajectoryResult`         |
-| `bs_t0_min`, `bs_t0_max`                           | `double`   | `BsWelfordTrajectoryResult`         |
-| `bs_t0_min_frame`, `bs_t0_max_frame`               | `size_t`   | `BsWelfordTrajectoryResult`         |
-| `bs_n_frames`                                      | `size_t`   | `BsWelfordTrajectoryResult`         |
-| `bs_t2mag_{mean, m2, std, min, max, min_frame, max_frame}` | `double`/`size_t` | `BsWelfordTrajectoryResult` |
-| `bs_t0_delta_{mean, m2, std, min, max, n}`         | `double`/`size_t` | `BsWelfordTrajectoryResult`  |
-| `hm_*` (full block mirroring `bs_*` above)         | `double`/`size_t` | `HmWelfordTrajectoryResult` (Å⁻¹) |
-| `mc_*` (full block mirroring `bs_*` above)         | `double`/`size_t` | `McConnellWelfordTrajectoryResult` (Å⁻³) |
-| `eeq_charge_*` (scalar; no T2mag channel)          | `double`/`size_t` | `EeqWelfordTrajectoryResult` (e)  |
-| `sasa_*` (scalar; no T2mag channel)                | `double`/`size_t` | `SasaWelfordTrajectoryResult` (Å²) |
-| `hbond_count_*` (scalar; int source, fractional mean) | `double`/`size_t` | `HBondCountWelfordTrajectoryResult` (pairs) |
+| Substruct field | Channels | Writer                           |
+|-----------------|----------|----------------------------------|
+| `ta.bs_welford` | t0, t1[3], t2[5], t2magnitude, t0_delta, t0_abs_delta, t0_delta_squared, t0_rms_delta, n_frames, delta_n | `BsWelfordTrajectoryResult` (units = ppm·T/nA) |
+| `ta.hm_welford` | identical shape to bs_welford | `HmWelfordTrajectoryResult` (units = Å⁻¹) |
+| `ta.mc_welford` | identical shape to bs_welford (T1 IS nonzero per Lesson 19) | `McConnellWelfordTrajectoryResult` (units = Å⁻³) |
+| `ta.eeq_welford` | charge + delta variants (charge_delta, charge_abs_delta, charge_delta_squared, charge_rms_delta) + n_frames + delta_n | `EeqWelfordTrajectoryResult` (units = elementary_charge) |
+| `ta.sasa_welford` | parallel scalar block on `sasa` channel | `SasaWelfordTrajectoryResult` (units = Å²) |
+| `ta.hbond_count_welford` | scalar block on `count` channel + `occupancy_fraction` Welford companion | `HBondCountWelfordTrajectoryResult` (units = pairs) |
+
+Each `WelfordMoments` substruct carries `{mean, m2, std, min, max,
+min_frame, max_frame}` — 5 doubles + 2 size_t = 56 bytes. Per-component
+T1 stored as `std::array<WelfordMoments, 3>`; T2 as
+`std::array<WelfordMoments, 5>`.
 
 `_m2` fields carry the running Welford sum-of-squared-deviations;
 `_std` is populated at `Finalize` from `m2 / (n - 1)`. `_std` is
-undefined mid-stream.
+undefined mid-stream. `WelfordFinalize` NaN-fills mean/m2/std when
+`n==0` (uncomputable); min/max are already self-describing via
+±infinity sentinels. `*_rms_delta = sqrt(*_delta_squared.mean)` if
+`delta_n > 0` else NaN.
 
-Accumulator implementation objects (`Welford` structs, rolling
-windows, full-history buffers) live inside the owning TR, not on
-`TrajectoryAtom`. Identity (element, residue, bonds, ring
-membership) is not duplicated here — reach through
-`tp.ProteinRef().AtomAt(i)`.
+T1 storage convention: Cartesian Levi-Civita dual
+(T1[0]=v_x, T1[1]=v_y, T1[2]=v_z). H5 attribute
+`irrep_layout_t1 = "v_x,v_y,v_z"`. T2 IS real-spherical-tesseral
+(`irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"`).
+
+Accumulator implementation objects (rolling windows, full-history
+buffers) live inside the owning TR, not on `TrajectoryAtom`. Identity
+(element, residue, bonds, ring membership) is not duplicated here —
+reach through `tp.ProteinRef().AtomAt(i)`.
 
 ---
 
@@ -2923,9 +2938,12 @@ duplication over chaining.
 
 | Class                                           | Lifecycle      | `Dependencies()`                                         | Output                                                               |
 |-------------------------------------------------|----------------|----------------------------------------------------------|----------------------------------------------------------------------|
-| `BsWelfordTrajectoryResult`                     | AV             | `BiotSavartResult`                                       | `TrajectoryAtom` rollup fields + `/trajectory/bs_welford/`           |
-| `HmWelfordTrajectoryResult`                     | AV             | `HaighMallionResult`                                     | `TrajectoryAtom` rollup fields (hm_*) + `/trajectory/hm_welford/` (units = Å⁻¹) |
-| `McConnellWelfordTrajectoryResult`              | AV             | `McConnellResult`                                        | `TrajectoryAtom` rollup fields (mc_*) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
+| `BsWelfordTrajectoryResult`                     | AV             | `BiotSavartResult`                                       | `ta.bs_welford` substruct (t0 + t1[3] + t2[5] + t2magnitude + delta variants + cadence) + `/trajectory/bs_welford/` (units = ppm·T/nA) |
+| `HmWelfordTrajectoryResult`                     | AV             | `HaighMallionResult`                                     | `ta.hm_welford` substruct (identical shape to BS) + `/trajectory/hm_welford/` (units = Å⁻¹) |
+| `McConnellWelfordTrajectoryResult`              | AV             | `McConnellResult`                                        | `ta.mc_welford` substruct (identical shape to BS — T1 IS nonzero per Lesson 19, not skipped) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
+| `EeqWelfordTrajectoryResult`                    | AV             | `EeqResult`                                              | `ta.eeq_welford` substruct (scalar source — charge + delta variants) + `/trajectory/eeq_welford/` (units = elementary_charge) |
+| `SasaWelfordTrajectoryResult`                   | AV             | `SasaResult`                                             | `ta.sasa_welford` substruct (scalar) + `/trajectory/sasa_welford/` (units = Å²); pairs with FO `SasaTimeSeriesTrajectoryResult` |
+| `HBondCountWelfordTrajectoryResult`             | AV             | `HBondResult`                                            | `ta.hbond_count_welford` substruct (count + occupancy_fraction + delta variants) + `/trajectory/hbond_count_welford/` (units = pairs) |
 | `BsShieldingTimeSeriesTrajectoryResult`         | FO             | `BiotSavartResult`                                       | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/{xyz, frame_indices, frame_times}` |
 | `HmShieldingTimeSeriesTrajectoryResult`         | FO             | none declared (HaighMallionResult source unconditional in PerFrameExtractionSet) | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/{xyz, frame_indices, frame_times}` |
 | `BsAnomalousAtomMarkerTrajectoryResult`         | AV (emitter)   | `BsWelfordTrajectoryResult`, `BiotSavartResult`          | Per-atom events pushed to `ta.events`, kinds `BsAnomalyHighT0` / `BsAnomalyLowT0`. No H5 group of its own (events bag not H5-emitted yet). |
@@ -2946,7 +2964,7 @@ Current `RunConfiguration` attach status:
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six BS-family TRs above PLUS five new AV-pattern Welford rollups (HmWelford + McConnellWelford 2026-05-17 AM, EeqWelford + SasaWelford + HBondCountWelford 2026-05-17 PM) PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
+| `PerFrameExtractionSet` | Six AV-pattern Welford rollups (BS / HM / McConnell / Eeq / Sasa / HBondCount — all with Phase 2b/3 substruct shape: per-channel T1[3] + T2[5] where source is tensor-shaped, three delta variants + cadence + schema provenance) PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) PLUS BS anomaly marker + BS T0 autocorrelation + bond length stats + positions time series |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)
