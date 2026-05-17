@@ -782,6 +782,7 @@ gtest_discover_tests(hm_shielding_time_series_tests
 add_executable(hm_welford_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
     tests/test_hm_welford.cpp
 )
 target_compile_definitions(hm_welford_tests PRIVATE
@@ -801,6 +802,7 @@ gtest_discover_tests(hm_welford_tests
 add_executable(mc_welford_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
     tests/test_mc_welford.cpp
 )
 target_compile_definitions(mc_welford_tests PRIVATE
@@ -820,6 +822,7 @@ gtest_discover_tests(mc_welford_tests
 add_executable(eeq_welford_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
     tests/test_eeq_welford.cpp
 )
 target_compile_definitions(eeq_welford_tests PRIVATE
@@ -839,6 +842,7 @@ gtest_discover_tests(eeq_welford_tests
 add_executable(sasa_welford_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
     tests/test_sasa_welford.cpp
 )
 target_compile_definitions(sasa_welford_tests PRIVATE
@@ -858,6 +862,7 @@ gtest_discover_tests(sasa_welford_tests
 add_executable(hbond_count_welford_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
     tests/test_hbond_count_welford.cpp
 )
 target_compile_definitions(hbond_count_welford_tests PRIVATE

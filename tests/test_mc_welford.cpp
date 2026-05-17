@@ -5,14 +5,12 @@
 // is exercised by every AV TR. Discipline trio + Integration1P9J.
 //
 
-#include "GeometryResult.h"
-#include "SpatialIndexResult.h"
-#include "BiotSavartResult.h"
 #include "McConnellResult.h"
 
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "McConnellWelfordTrajectoryResult.h"
+#include "TestConfig.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -81,18 +79,13 @@ TEST(McConnellWelford, Frame0Semantics) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("McConnellWelfordFrame0Semantics");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "McConnellWelfordFrame0Semantics", 99999);
     config.RequireConformationResult(typeid(nmr::McConnellResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::McConnellWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -123,18 +116,13 @@ TEST(McConnellWelford, FinalizeIdempotency) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("McConnellWelfordFinalizeIdempotency");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "McConnellWelfordFinalizeIdempotency", 99999);
     config.RequireConformationResult(typeid(nmr::McConnellResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::McConnellWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -164,18 +152,13 @@ TEST(McConnellWelford, H5RoundTrip) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("McConnellWelfordH5RoundTrip");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "McConnellWelfordH5RoundTrip", 99999);
     config.RequireConformationResult(typeid(nmr::McConnellResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::McConnellWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -218,18 +201,13 @@ TEST(McConnellWelford, Integration1P9J) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("McConnellWelfordIntegration");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "McConnellWelfordIntegration", 300);
     config.RequireConformationResult(typeid(nmr::McConnellResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::McConnellWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(300);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();

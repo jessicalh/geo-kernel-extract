@@ -6,9 +6,6 @@
 // per TR is redundant). Discipline trio + Integration1P9J only.
 //
 
-#include "GeometryResult.h"
-#include "SpatialIndexResult.h"
-#include "BiotSavartResult.h"
 #include "HaighMallionResult.h"
 
 #include "CalculatorConfig.h"
@@ -20,6 +17,7 @@
 #include "Residue.h"
 #include "RunConfiguration.h"
 #include "Session.h"
+#include "TestConfig.h"
 #include "TestEnvironment.h"
 #include "Trajectory.h"
 #include "TrajectoryAtom.h"
@@ -82,18 +80,13 @@ TEST(HmWelford, Frame0Semantics) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("HmWelfordFrame0Semantics");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "HmWelfordFrame0Semantics", 99999);
     config.RequireConformationResult(typeid(nmr::HaighMallionResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::HmWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -126,18 +119,13 @@ TEST(HmWelford, FinalizeIdempotency) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("HmWelfordFinalizeIdempotency");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "HmWelfordFinalizeIdempotency", 99999);
     config.RequireConformationResult(typeid(nmr::HaighMallionResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::HmWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -167,18 +155,13 @@ TEST(HmWelford, H5RoundTrip) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("HmWelfordH5RoundTrip");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "HmWelfordH5RoundTrip", 99999);
     config.RequireConformationResult(typeid(nmr::HaighMallionResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::HmWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(99999);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -221,18 +204,13 @@ TEST(HmWelford, Integration1P9J) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    nmr::RunConfiguration config;
-    config.SetName("HmWelfordIntegration");
-    auto& opts = config.MutablePerFrameRunOptions();
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = true;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    auto config = nmr::test::BuildTestConfig(
+        nmr::test::TestProfile::KernelOnly, "HmWelfordIntegration", 300);
     config.RequireConformationResult(typeid(nmr::HaighMallionResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::HmWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(300);
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();

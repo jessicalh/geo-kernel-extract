@@ -4,13 +4,12 @@
 // per-atom H-bond pair count.
 //
 
-#include "GeometryResult.h"
-#include "SpatialIndexResult.h"
 #include "HBondResult.h"
 
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"
 #include "HBondCountWelfordTrajectoryResult.h"
+#include "TestConfig.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -56,19 +55,16 @@ void LoadCalculatorConfig() {
     nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
 }
 
+// Per-file bridge to the shared TestConfig profile system. HBondResult
+// requires DsspResult; KernelWithDssp profile is the right pick. See
+// spec/plan/test-suite-realignment-deferred-2026-05-17.md.
 void BuildBaseConfig(nmr::RunConfiguration& config, const std::string& name, std::size_t stride) {
-    config.SetName(name);
-    auto& opts = config.MutablePerFrameRunOptions();
-    // HBondResult requires DsspResult — must keep DSSP enabled.
-    opts.skip_mopac = true; opts.skip_coulomb = true; opts.skip_apbs = true; opts.skip_dssp = false;
-    config.RequireConformationResult(typeid(nmr::GeometryResult));
-    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config = nmr::test::BuildTestConfig(nmr::test::TestProfile::KernelWithDssp, name, stride);
     config.RequireConformationResult(typeid(nmr::HBondResult));
     config.AddTrajectoryResultFactory(
         [](const nmr::TrajectoryProtein& tp_in) -> std::unique_ptr<nmr::TrajectoryResult> {
             return nmr::HBondCountWelfordTrajectoryResult::Create(tp_in);
         });
-    config.SetStride(stride);
 }
 
 }  // namespace
