@@ -65,13 +65,19 @@ struct BsWelfordState {
     // |T2| Frobenius L2 amplitude (scalar summary; pairs with per-component t2)
     WelfordMoments t2magnitude;
 
-    // Frame-to-frame T0 delta variants — three signals distinguished:
+    // Frame-to-frame T0 delta variants — four signals distinguished:
     // - t0_delta: signed Δ. mean = (x_N - x_0)/(N-1) telescopes — drift.
     // - t0_abs_delta: |Δ|. mean captures total per-frame path length.
     // - t0_delta_squared: Δ². mean → sqrt at Finalize = RMS fluctuation.
+    // - t0_dxdt: cadence-normalized rate (Δx / Δt in (kernel units)/ps).
+    //   Δ is sample-rate-dependent (stride=2 vs stride=300 gives 150×
+    //   different Δ on identical physics); dxdt is physically meaningful
+    //   across runs of different stride. Use dxdt for dynamics analysis,
+    //   t0_delta for sample-rate-aware drift.
     WelfordMoments t0_delta;
     WelfordMoments t0_abs_delta;
     WelfordMoments t0_delta_squared;
+    WelfordMoments t0_dxdt;
     double         t0_rms_delta = 0.0;   // sqrt(t0_delta_squared.mean), Finalize-derived
 
     // Shared denominators
@@ -92,6 +98,7 @@ struct HmWelfordState {
     WelfordMoments t0_delta;                   // signed Δ
     WelfordMoments t0_abs_delta;               // |Δ|
     WelfordMoments t0_delta_squared;           // Δ²
+    WelfordMoments t0_dxdt;                    // cadence-normalized rate
     double         t0_rms_delta = 0.0;         // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
@@ -115,6 +122,7 @@ struct McConnellWelfordState {
     WelfordMoments t0_delta;
     WelfordMoments t0_abs_delta;
     WelfordMoments t0_delta_squared;
+    WelfordMoments t0_dxdt;                    // cadence-normalized rate
     double         t0_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
@@ -128,6 +136,7 @@ struct EeqWelfordState {
     WelfordMoments charge_delta;               // signed Δ
     WelfordMoments charge_abs_delta;           // |Δ|
     WelfordMoments charge_delta_squared;       // Δ²
+    WelfordMoments charge_dxdt;                // cadence-normalized Δ/Δt
     double         charge_rms_delta = 0.0;     // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
@@ -140,6 +149,7 @@ struct SasaWelfordState {
     WelfordMoments sasa_delta;
     WelfordMoments sasa_abs_delta;
     WelfordMoments sasa_delta_squared;
+    WelfordMoments sasa_dxdt;                  // cadence-normalized Δ/Δt
     double         sasa_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
@@ -155,6 +165,7 @@ struct HBondCountWelfordState {
     WelfordMoments count_delta;
     WelfordMoments count_abs_delta;
     WelfordMoments count_delta_squared;
+    WelfordMoments count_dxdt;                 // cadence-normalized Δ/Δt
     double         count_rms_delta = 0.0;
     WelfordMoments occupancy_fraction;         // Welford on (count > 0 ? 1.0 : 0.0)
     std::size_t    n_frames = 0;
