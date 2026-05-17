@@ -250,6 +250,8 @@ add_library(nmr_shielding
     src/RunConfiguration.cpp
     src/Session.cpp
     src/BsWelfordTrajectoryResult.cpp
+    src/HmWelfordTrajectoryResult.cpp
+    src/McConnellWelfordTrajectoryResult.cpp
     src/BsShieldingTimeSeriesTrajectoryResult.cpp
     src/HmShieldingTimeSeriesTrajectoryResult.cpp
     src/McConnellShieldingTimeSeriesTrajectoryResult.cpp
@@ -766,6 +768,44 @@ target_link_libraries(hm_shielding_time_series_tests PRIVATE
     highfive
 )
 gtest_discover_tests(hm_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# HmWelford tests — AV-pattern Welford rollup on HaighMallion kernel
+# ============================================================================
+
+add_executable(hm_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_hm_welford.cpp
+)
+target_compile_definitions(hm_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(hm_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(hm_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(hm_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# McConnellWelford tests — AV-pattern Welford rollup on McConnell kernel
+# ============================================================================
+
+add_executable(mc_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mc_welford.cpp
+)
+target_compile_definitions(mc_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mc_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mc_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mc_welford_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

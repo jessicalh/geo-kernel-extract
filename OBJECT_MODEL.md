@@ -1606,20 +1606,23 @@ never resized.
 
 Three coexisting field shapes (see PATTERNS.md §13):
 
-**Typed accumulator fields.** One writer per field. Current fields
-are BS shielding Welford state written by
-`BsWelfordTrajectoryResult`:
+**Typed accumulator fields.** One writer per field. Current fields are
+Welford state for the three landed AV-pattern kernel rollups (BS / HM /
+McConnell), each carrying T0 mean/m2/std/min/max + |T2| magnitude
+moments + frame-to-frame T0 delta:
 
 | Field | Type | Writer | Description |
 |-------|------|--------|-------------|
-| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`, `bs_t0_min`, `bs_t0_max` | `double` | BsWelford | Welford state for BS T0 shielding; std is Finalize-only |
-| `bs_t0_min_frame`, `bs_t0_max_frame` | `size_t` | BsWelford | Frame indices of extrema |
-| `bs_n_frames` | `size_t` | BsWelford | Samples accumulated; used as denominator |
+| `bs_t0_{mean,m2,std,min,max,min_frame,max_frame}` + `bs_n_frames` | `double` / `size_t` | BsWelford | Welford state for BS T0 shielding; std is Finalize-only |
 | `bs_t2mag_{mean,m2,std,min,max,min_frame,max_frame}` | `double` / `size_t` | BsWelford | Same for \|T2\| magnitude |
 | `bs_t0_delta_{mean,m2,std,min,max,n}` | `double` / `size_t` | BsWelford | Frame-to-frame T0 delta |
+| `hm_t0_*` + `hm_n_frames` + `hm_t2mag_*` + `hm_t0_delta_*` | `double` / `size_t` | HmWelford | Same field block, HaighMallion kernel (Å⁻¹) |
+| `mc_t0_*` + `mc_n_frames` + `mc_t2mag_*` + `mc_t0_delta_*` | `double` / `size_t` | McConnellWelford | Same field block, McConnell kernel (Å⁻³) |
 
-Additional fields are added as `*Welford`-style TrajectoryResults
-land.
+Additional Welford field blocks land as more `*Welford`-style
+TrajectoryResults attach (Eeq, Sasa, HBondCount, GromacsEnergy in the
+forward queue). One writer per field is invariant; each new block clones
+the BS shape with its physics prefix.
 
 **Typed struct vectors for known-shape per-source data.** Aspirational;
 no current fields. Parallel to `ConformationAtom::ring_neighbours` but
@@ -1664,6 +1667,8 @@ Attach, so factories see a finalized Protein).
 | Type | Scope | Dependencies | Lifecycle | Output |
 |------|-------|--------------|-----------|--------|
 | `BsWelfordTrajectoryResult` | per-atom | `BiotSavartResult` | AV | TrajectoryAtom fields (bs_t0_\*, bs_t2mag_\*, bs_t0_delta_\*) + `/trajectory/bs_welford/` |
+| `HmWelfordTrajectoryResult` | per-atom | `HaighMallionResult` | AV | TrajectoryAtom fields (hm_t0_\*, hm_t2mag_\*, hm_t0_delta_\*) + `/trajectory/hm_welford/` (units = Å⁻¹) |
+| `McConnellWelfordTrajectoryResult` | per-atom | `McConnellResult` | AV | TrajectoryAtom fields (mc_t0_\*, mc_t2mag_\*, mc_t0_delta_\*) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `HmShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hm_shielding_time_series/` (N, T, 9); reads `ConformationAtom::hm_shielding_contribution` (HaighMallionResult source, unconditional in PerFrameExtractionSet) |
 | `McConnellShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/mc_shielding_time_series/` (N, T, 9); reads `mc_shielding_contribution` (units = Å⁻³, full asymmetric McConnell tensor; T0 ≠ 0) |
@@ -2600,10 +2605,10 @@ for the pending rows is
 | ✓ | `LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHB_shielding_time_series/` |
 | ✓ | `LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_1pHaB_shielding_time_series/` |
 | ✓ | `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` |
-| ⏳ | `HmWelfordTrajectoryResult` | HaighMallion | AV | Welford fields + group |
-| ⏳ | `McConnellWelfordTrajectoryResult` | McConnell | AV | Welford fields + per-category sums |
-| ⏳ | `CoulombFieldTimeSeriesTrajectoryResult` | Coulomb | FO | E-field Vec3 + EFG Mat3 dense |
+| ✓ | `HmWelfordTrajectoryResult` | HaighMallion | AV | TrajectoryAtom `hm_*` Welford fields + `/trajectory/hm_welford/` |
+| ✓ | `McConnellWelfordTrajectoryResult` | McConnell | AV | TrajectoryAtom `mc_*` Welford fields + `/trajectory/mc_welford/` |
 | ⏳ | `ApbsEfgTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<SphericalTensor>` (EFG) — pairs with the landed `ApbsEfieldTimeSeriesTrajectoryResult` (Vec3) |
+| — | ~~`CoulombFieldTimeSeriesTrajectoryResult`~~ | ~~Coulomb~~ | — | **Struck 2026-05-17**: `PerFrameExtractionSet` sets `skip_coulomb=true` (APBS supersedes; memory `project_apbs_canonical`). Source calc never runs, so the TR would emit only zeros. |
 | ⏳ | `WaterEnvironmentTimeSeriesTrajectoryResult` | WaterField | FO | multiple dense buffers |
 | ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | |
 | ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | |
@@ -2815,16 +2820,19 @@ cross-TR reads and test assertions.
 
 **Finalized rollup fields** — typed fields written by one TR each,
 for rolled-up statistics where a record per frame would be wasteful.
-The BS Welford set written by `BsWelfordTrajectoryResult`:
+Three AV-pattern Welford blocks landed (BS / HM / McConnell), each
+following the same shape:
 
-| Field                                              | Type       | Writer                        |
-|----------------------------------------------------|------------|-------------------------------|
-| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`              | `double`   | `BsWelfordTrajectoryResult`   |
-| `bs_t0_min`, `bs_t0_max`                           | `double`   | `BsWelfordTrajectoryResult`   |
-| `bs_t0_min_frame`, `bs_t0_max_frame`               | `size_t`   | `BsWelfordTrajectoryResult`   |
-| `bs_n_frames`                                      | `size_t`   | `BsWelfordTrajectoryResult`   |
+| Field                                              | Type       | Writer                              |
+|----------------------------------------------------|------------|-------------------------------------|
+| `bs_t0_mean`, `bs_t0_m2`, `bs_t0_std`              | `double`   | `BsWelfordTrajectoryResult`         |
+| `bs_t0_min`, `bs_t0_max`                           | `double`   | `BsWelfordTrajectoryResult`         |
+| `bs_t0_min_frame`, `bs_t0_max_frame`               | `size_t`   | `BsWelfordTrajectoryResult`         |
+| `bs_n_frames`                                      | `size_t`   | `BsWelfordTrajectoryResult`         |
 | `bs_t2mag_{mean, m2, std, min, max, min_frame, max_frame}` | `double`/`size_t` | `BsWelfordTrajectoryResult` |
-| `bs_t0_delta_{mean, m2, std, min, max, n}`         | `double`/`size_t` | `BsWelfordTrajectoryResult` |
+| `bs_t0_delta_{mean, m2, std, min, max, n}`         | `double`/`size_t` | `BsWelfordTrajectoryResult`  |
+| `hm_*` (full block mirroring `bs_*` above)         | `double`/`size_t` | `HmWelfordTrajectoryResult` (Å⁻¹) |
+| `mc_*` (full block mirroring `bs_*` above)         | `double`/`size_t` | `McConnellWelfordTrajectoryResult` (Å⁻³) |
 
 `_m2` fields carry the running Welford sum-of-squared-deviations;
 `_std` is populated at `Finalize` from `m2 / (n - 1)`. `_std` is
@@ -2895,6 +2903,8 @@ duplication over chaining.
 | Class                                           | Lifecycle      | `Dependencies()`                                         | Output                                                               |
 |-------------------------------------------------|----------------|----------------------------------------------------------|----------------------------------------------------------------------|
 | `BsWelfordTrajectoryResult`                     | AV             | `BiotSavartResult`                                       | `TrajectoryAtom` rollup fields + `/trajectory/bs_welford/`           |
+| `HmWelfordTrajectoryResult`                     | AV             | `HaighMallionResult`                                     | `TrajectoryAtom` rollup fields (hm_*) + `/trajectory/hm_welford/` (units = Å⁻¹) |
+| `McConnellWelfordTrajectoryResult`              | AV             | `McConnellResult`                                        | `TrajectoryAtom` rollup fields (mc_*) + `/trajectory/mc_welford/` (units = Å⁻³, full asymmetric McConnell tensor) |
 | `BsShieldingTimeSeriesTrajectoryResult`         | FO             | `BiotSavartResult`                                       | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/{xyz, frame_indices, frame_times}` |
 | `HmShieldingTimeSeriesTrajectoryResult`         | FO             | none declared (HaighMallionResult source unconditional in PerFrameExtractionSet) | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/{xyz, frame_indices, frame_times}` |
 | `BsAnomalousAtomMarkerTrajectoryResult`         | AV (emitter)   | `BsWelfordTrajectoryResult`, `BiotSavartResult`          | Per-atom events pushed to `ta.events`, kinds `BsAnomalyHighT0` / `BsAnomalyLowT0`. No H5 group of its own (events bag not H5-emitted yet). |
@@ -2915,7 +2925,7 @@ Current `RunConfiguration` attach status:
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
-| `PerFrameExtractionSet` | All six BS-family TRs above PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
+| `PerFrameExtractionSet` | All six BS-family TRs above PLUS two new AV-pattern Welford rollups (HmWelford + McConnellWelford, 2026-05-17) PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)

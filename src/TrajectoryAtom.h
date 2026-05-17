@@ -58,6 +58,66 @@ public:
     size_t bs_t0_delta_n = 0;  // count of delta samples (= n_frames - 1)
 
     // =================================================================
+    // Written by HmWelfordTrajectoryResult.
+    // HaighMallion shielding kernel (Å⁻¹, rank-1 same as BS but no
+    // PPM_FACTOR multiplier — see OBJECT_MODEL contract drift table).
+    // =================================================================
+
+    double hm_t0_mean = 0.0;
+    double hm_t0_m2 = 0.0;
+    double hm_t0_std = 0.0;
+    double hm_t0_min = std::numeric_limits<double>::infinity();
+    double hm_t0_max = -std::numeric_limits<double>::infinity();
+    size_t hm_t0_min_frame = 0;
+    size_t hm_t0_max_frame = 0;
+    size_t hm_n_frames = 0;
+
+    double hm_t2mag_mean = 0.0;
+    double hm_t2mag_m2 = 0.0;
+    double hm_t2mag_std = 0.0;
+    double hm_t2mag_min = std::numeric_limits<double>::infinity();
+    double hm_t2mag_max = -std::numeric_limits<double>::infinity();
+    size_t hm_t2mag_min_frame = 0;
+    size_t hm_t2mag_max_frame = 0;
+
+    double hm_t0_delta_mean = 0.0;
+    double hm_t0_delta_m2 = 0.0;
+    double hm_t0_delta_std = 0.0;
+    double hm_t0_delta_min = std::numeric_limits<double>::infinity();
+    double hm_t0_delta_max = -std::numeric_limits<double>::infinity();
+    size_t hm_t0_delta_n = 0;
+
+    // =================================================================
+    // Written by McConnellWelfordTrajectoryResult.
+    // McConnell shielding tensor (Å⁻³, full asymmetric non-traceless
+    // three-term form — see PATTERNS.md Lesson 19). T0 = (3cos²θ-1)/r³.
+    // =================================================================
+
+    double mc_t0_mean = 0.0;
+    double mc_t0_m2 = 0.0;
+    double mc_t0_std = 0.0;
+    double mc_t0_min = std::numeric_limits<double>::infinity();
+    double mc_t0_max = -std::numeric_limits<double>::infinity();
+    size_t mc_t0_min_frame = 0;
+    size_t mc_t0_max_frame = 0;
+    size_t mc_n_frames = 0;
+
+    double mc_t2mag_mean = 0.0;
+    double mc_t2mag_m2 = 0.0;
+    double mc_t2mag_std = 0.0;
+    double mc_t2mag_min = std::numeric_limits<double>::infinity();
+    double mc_t2mag_max = -std::numeric_limits<double>::infinity();
+    size_t mc_t2mag_min_frame = 0;
+    size_t mc_t2mag_max_frame = 0;
+
+    double mc_t0_delta_mean = 0.0;
+    double mc_t0_delta_m2 = 0.0;
+    double mc_t0_delta_std = 0.0;
+    double mc_t0_delta_min = std::numeric_limits<double>::infinity();
+    double mc_t0_delta_max = -std::numeric_limits<double>::infinity();
+    size_t mc_t0_delta_n = 0;
+
+    // =================================================================
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from
     // any TrajectoryResult::Compute or ::Finalize that emits per-atom
