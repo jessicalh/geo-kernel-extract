@@ -12,6 +12,13 @@
 // attached in `PerFrameExtractionSet`, so the dep is enforced via
 // `Dependencies()`.
 //
+// Phase 2b expansion (2026-05-17): identical channel shape to BS —
+// per-component T1[3] + T2[5] preserve tensor orientation that |T2|
+// amplitude rollup discards; three frame-to-frame delta variants on
+// T0 distinguish drift / |Δ| / Δ² → RMS fluctuation. Per PATTERNS
+// Lesson 25 (Export Everything Upstream). See
+// spec/plan/welford-data-shape-design-2026-05-17.md.
+//
 
 #include "TrajectoryResult.h"
 
@@ -54,6 +61,12 @@ private:
     std::vector<bool> prev_valid_;
     size_t n_frames_ = 0;
     bool finalized_ = false;
+
+    // Cadence metadata — mean Δt between captured frames (ps). Derived
+    // at Finalize from traj.FrameTimes(). Emitted as H5 attribute so
+    // downstream can convert delta-per-stride to dx/dt in physical
+    // units. 0.0 before Finalize.
+    double mean_dt_ps_ = 0.0;
 };
 
 }  // namespace nmr

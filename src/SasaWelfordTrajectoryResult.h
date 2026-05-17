@@ -52,6 +52,12 @@ private:
     std::vector<bool> prev_valid_;
     size_t n_frames_ = 0;
     bool finalized_ = false;
+
+    // Cadence metadata — mean Δt between captured frames (ps). Derived
+    // at Finalize from traj.FrameTimes(). Emitted as H5 attribute so
+    // downstream can convert delta-per-stride to dx/dt in physical
+    // units. 0.0 before Finalize. See PATTERNS Lesson 25.
+    double mean_dt_ps_ = 0.0;
 };
 
 }  // namespace nmr

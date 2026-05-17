@@ -10,6 +10,15 @@
 // is unconditionally attached in `PerFrameExtractionSet`, so the dep
 // is enforced via `Dependencies()`.
 //
+// Phase 2b expansion (2026-05-17): clones BS shape with one critical
+// exception — McConnell-form has T1 ≡ 0 by construction (PATTERNS
+// Lesson 19), so T1 channels are intentionally absent (no t1 array
+// in McConnellWelfordState, no per-component T1 in Compute/Finalize,
+// no t1_* H5 datasets, no irrep_layout_t1 attribute). T0 / T2[5] /
+// |T2| / delta variants follow BS exactly. Per PATTERNS Lesson 25
+// (Export Everything Upstream). See
+// spec/plan/welford-data-shape-design-2026-05-17.md.
+//
 
 #include "TrajectoryResult.h"
 
@@ -52,6 +61,12 @@ private:
     std::vector<bool> prev_valid_;
     size_t n_frames_ = 0;
     bool finalized_ = false;
+
+    // Cadence metadata — mean Δt between captured frames (ps). Derived
+    // at Finalize from traj.FrameTimes(). Emitted as H5 attribute so
+    // downstream can convert delta-per-stride to dx/dt in physical
+    // units. 0.0 before Finalize.
+    double mean_dt_ps_ = 0.0;
 };
 
 }  // namespace nmr
