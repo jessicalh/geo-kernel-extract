@@ -177,6 +177,169 @@ struct SasaWelfordState {
     std::size_t    dxdt_n  = 0;
 };
 
+// Written by WaterFieldWelfordTrajectoryResult.
+// Source: explicit-water E-field + EFG kernel per
+// `ConformationAtom::water_efield` / `water_efg_spherical` plus the
+// first-shell-only variants. Per-component on Vec3 / tensor channels,
+// scalar Welford + delta variants on the primary rotationally-invariant
+// scalars (E-field magnitude, shell occupancy counts). Two physically-
+// different scales co-exist: total field across the cutoff sphere vs.
+// first-shell-only (< 3.5 Å) — emitting both keeps coupling-distance
+// information for downstream calibration without re-running the fleet.
+//
+// EFG T0 channel intentionally absent: `WaterFieldResult.cpp:147-150`
+// makes V_total traceless before `SphericalTensor::Decompose` is called,
+// so T0 = (1/3) trace(V) = 0 by construction. Emitting an all-zero
+// channel would only be "kernel pollution" — confuses downstream
+// consumers about whether T0 carries information. T1 and T2 carry the
+// full EFG signal (rank-1 + rank-2 traceless-symmetric).
+struct WaterFieldWelfordState {
+    // E-field (Vec3, V/Å) per-component + magnitude
+    std::array<WelfordMoments, 3> efield;            // x, y, z
+    WelfordMoments                efield_magnitude;
+    std::array<WelfordMoments, 3> efield_first;      // first-shell-only
+    WelfordMoments                efield_first_magnitude;
+
+    // EFG (SphericalTensor, V/Å²) — T1[3] (Cartesian LC dual) + T2[5]
+    // (real-spherical m=-2..+2) + |T2| Frobenius magnitude. T0 omitted
+    // (structurally zero — see class-level comment above).
+    std::array<WelfordMoments, 3> efg_t1;
+    std::array<WelfordMoments, 5> efg_t2;
+    WelfordMoments                efg_t2magnitude;
+    std::array<WelfordMoments, 3> efg_first_t1;
+    std::array<WelfordMoments, 5> efg_first_t2;
+    WelfordMoments                efg_first_t2magnitude;
+
+    // Shell-occupancy counts (int, dimensionless)
+    WelfordMoments                n_first;           // count in 0..3.5 Å
+    WelfordMoments                n_second;          // count in 3.5..5.5 Å
+
+    // Delta variants on the primary scalar channels.
+    // efield_magnitude is the rotationally-invariant E-field summary
+    // dynamics question; n_first/n_second deltas are residence-time
+    // proxies. No delta variants on efg_t0 (channel removed) or per-
+    // component E-field/T1/T2 (the magnitude / Frobenius summary
+    // captures dynamics; per-component dynamics is a separate analysis
+    // future-batches can add if calibration shows demand).
+    WelfordMoments efield_magnitude_delta;
+    WelfordMoments efield_magnitude_abs_delta;
+    WelfordMoments efield_magnitude_delta_squared;
+    WelfordMoments efield_magnitude_dxdt;
+    double         efield_magnitude_rms_delta = 0.0;
+
+    WelfordMoments n_first_delta;
+    WelfordMoments n_first_abs_delta;
+    WelfordMoments n_first_delta_squared;
+    WelfordMoments n_first_dxdt;
+    double         n_first_rms_delta = 0.0;
+
+    WelfordMoments n_second_delta;
+    WelfordMoments n_second_abs_delta;
+    WelfordMoments n_second_delta_squared;
+    WelfordMoments n_second_dxdt;
+    double         n_second_rms_delta = 0.0;
+
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+    // dxdt-only counter — codex 2026-05-18; skips zero-dt frames.
+    std::size_t    dxdt_n   = 0;
+};
+
+// Forward declarations of the next-pair state structs. Not yet wired
+// into TrajectoryAtom storage — the corresponding TR classes land in
+// subsequent commits (Hydration pair, then HydrationShell pair).
+// Declared here to stage the type names; storage adds when each pair
+// commits to keep TrajectoryAtom from growing speculative memory.
+
+// Written by HydrationGeometryWelfordTrajectoryResult.
+// Source: per-atom water polarisation features from HydrationGeometryResult:
+// net dipole vector, surface normal, half-shell asymmetry, dipole alignment,
+// dipole coherence, first-shell count. The alignment/coherence/asymmetry
+// trio IS the polarisation signal — calibration weight on these channels
+// is what we want to learn. Per-component Welford on Vec3 channels;
+// scalar Welford with delta variants on the polarisation scalars.
+struct HydrationGeometryWelfordState {
+    std::array<WelfordMoments, 3> dipole_vector;     // net first-shell water dipole
+    WelfordMoments                dipole_magnitude;  // |Σ dᵢ|
+    std::array<WelfordMoments, 3> surface_normal;    // SASA normal (from sasa_normal)
+
+    WelfordMoments                half_shell_asymmetry;
+    WelfordMoments                dipole_alignment;  // cos(dipole, normal)
+    WelfordMoments                dipole_coherence;  // |Σdᵢ| / n
+    WelfordMoments                shell_count;       // first-shell water O count
+
+    // Delta variants on the polarisation scalars only — Vec3 components
+    // pick up frame-to-frame change implicitly via the Welford std.
+    WelfordMoments dipole_alignment_delta;
+    WelfordMoments dipole_alignment_abs_delta;
+    WelfordMoments dipole_alignment_delta_squared;
+    WelfordMoments dipole_alignment_dxdt;
+    double         dipole_alignment_rms_delta = 0.0;
+
+    WelfordMoments dipole_coherence_delta;
+    WelfordMoments dipole_coherence_abs_delta;
+    WelfordMoments dipole_coherence_delta_squared;
+    WelfordMoments dipole_coherence_dxdt;
+    double         dipole_coherence_rms_delta = 0.0;
+
+    WelfordMoments half_shell_asymmetry_delta;
+    WelfordMoments half_shell_asymmetry_abs_delta;
+    WelfordMoments half_shell_asymmetry_delta_squared;
+    WelfordMoments half_shell_asymmetry_dxdt;
+    double         half_shell_asymmetry_rms_delta = 0.0;
+
+    WelfordMoments shell_count_delta;
+    WelfordMoments shell_count_abs_delta;
+    WelfordMoments shell_count_delta_squared;
+    WelfordMoments shell_count_dxdt;
+    double         shell_count_rms_delta = 0.0;
+
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+    std::size_t    dxdt_n   = 0;
+};
+
+// Written by HydrationShellWelfordTrajectoryResult.
+// Source: COM-based older sibling of HydrationGeometry — half_shell_asymmetry
+// (COM reference frame instead of SASA normal), mean_water_dipole_cos,
+// nearest_ion_distance, nearest_ion_charge. All scalar; full delta variants
+// on each since shell-shape / ion-pair dynamics is per-channel-distinct
+// physics.
+struct HydrationShellWelfordState {
+    WelfordMoments half_shell_asymmetry;
+    WelfordMoments mean_water_dipole_cos;
+    WelfordMoments nearest_ion_distance;
+    WelfordMoments nearest_ion_charge;
+
+    WelfordMoments half_shell_asymmetry_delta;
+    WelfordMoments half_shell_asymmetry_abs_delta;
+    WelfordMoments half_shell_asymmetry_delta_squared;
+    WelfordMoments half_shell_asymmetry_dxdt;
+    double         half_shell_asymmetry_rms_delta = 0.0;
+
+    WelfordMoments mean_water_dipole_cos_delta;
+    WelfordMoments mean_water_dipole_cos_abs_delta;
+    WelfordMoments mean_water_dipole_cos_delta_squared;
+    WelfordMoments mean_water_dipole_cos_dxdt;
+    double         mean_water_dipole_cos_rms_delta = 0.0;
+
+    WelfordMoments nearest_ion_distance_delta;
+    WelfordMoments nearest_ion_distance_abs_delta;
+    WelfordMoments nearest_ion_distance_delta_squared;
+    WelfordMoments nearest_ion_distance_dxdt;
+    double         nearest_ion_distance_rms_delta = 0.0;
+
+    WelfordMoments nearest_ion_charge_delta;
+    WelfordMoments nearest_ion_charge_abs_delta;
+    WelfordMoments nearest_ion_charge_delta_squared;
+    WelfordMoments nearest_ion_charge_dxdt;
+    double         nearest_ion_charge_rms_delta = 0.0;
+
+    std::size_t    n_frames = 0;
+    std::size_t    delta_n  = 0;
+    std::size_t    dxdt_n   = 0;
+};
+
 // Written by HBondCountWelfordTrajectoryResult.
 // Source: hbond_count_within_3_5A (int, promoted to double).
 // Phase 2b expansion: scalar source + occupancy_fraction companion
@@ -204,12 +367,15 @@ class TrajectoryAtom {
     friend class TrajectoryProtein;
 public:
     // Per-Welford state substructs (one writer per substruct).
-    BsWelfordState         bs_welford;
-    HmWelfordState         hm_welford;
-    McConnellWelfordState  mc_welford;
-    EeqWelfordState        eeq_welford;
-    SasaWelfordState       sasa_welford;
-    HBondCountWelfordState hbond_count_welford;
+    BsWelfordState                bs_welford;
+    HmWelfordState                hm_welford;
+    McConnellWelfordState         mc_welford;
+    EeqWelfordState               eeq_welford;
+    SasaWelfordState              sasa_welford;
+    HBondCountWelfordState        hbond_count_welford;
+    WaterFieldWelfordState        water_field_welford;
+    HydrationGeometryWelfordState hydration_geometry_welford;
+    HydrationShellWelfordState    hydration_shell_welford;
 
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from

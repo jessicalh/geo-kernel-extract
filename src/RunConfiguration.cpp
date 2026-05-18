@@ -27,6 +27,8 @@
 #include "GromacsEnergyResult.h"
 #include "GromacsEnergyTimeSeriesTrajectoryResult.h"
 #include "BondedEnergyTimeSeriesTrajectoryResult.h"
+#include "WaterFieldTimeSeriesTrajectoryResult.h"
+#include "WaterFieldWelfordTrajectoryResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "TripeptideNeighborShieldingResult.h"
@@ -301,6 +303,14 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return BondedEnergyTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return WaterFieldTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return WaterFieldWelfordTrajectoryResult::Create(tp);
         });
 
     return c;
