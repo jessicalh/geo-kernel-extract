@@ -2669,8 +2669,8 @@ for the pending rows is
 | ✓ | `WaterFieldWelfordTrajectoryResult` | WaterField | AV | per-atom Welford rollup; per-component Vec3 + EFG T2[5]/\|T2\|; delta variants on 3 primary scalars (efield_magnitude / n_first / n_second). efg_t0 + efg_t1 channels omitted (structural zeros). Source-attached gate skips Welford updates on absent frames; mean_dt_ps from attached-subset only. Commits 0007415 + d3209a0 |
 | ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | next-batch landing |
 | ⏳ | `HydrationShellWelfordTrajectoryResult` | HydrationShell | AV | next-batch landing |
-| ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | next-batch landing |
-| ⏳ | `HydrationGeometryWelfordTrajectoryResult` | HydrationGeometry | AV | next-batch landing |
+| ✓ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | per-atom (N, T, 3)/(N, T) — Vec3 dipole_vector + Vec3 surface_normal + uint32 first_shell_count + 3 polarisation scalars (alignment / coherence / asymmetry). polarisation_signal_channels attr names the trio. Source-attached gate on `HasResult<HydrationGeometryResult>()`. |
+| ✓ | `HydrationGeometryWelfordTrajectoryResult` | HydrationGeometry | AV | per-atom Welford rollup; per-component Vec3 + 4 scalar Welford channels; delta variants on the 4 polarisation scalars. Source-attached gate skips Welford updates + invalidates prev_* on absent frames; mean_dt_ps + frame_index_range from attached-subset. |
 | ⏳ | `AIMNet2EmbeddingTimeSeriesTrajectoryResult` | AIMNet2 | FO | 256-dim per atom per frame — optional, large |
 | ✓ | `EeqWelfordTrajectoryResult` | Eeq | AV | TrajectoryAtom `eeq_charge_*` Welford fields + `/trajectory/eeq_welford/` (units = elementary_charge) |
 | ✓ | `SasaWelfordTrajectoryResult` | Sasa | AV | TrajectoryAtom `sasa_*` Welford fields + `/trajectory/sasa_welford/` (units = Å²); pairs with the landed FO `SasaTimeSeriesTrajectoryResult` |

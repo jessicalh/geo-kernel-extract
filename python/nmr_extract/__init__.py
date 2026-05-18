@@ -31,6 +31,9 @@ from ._trajectory import (
     WaterFieldAccess,
     WaterFieldTimeSeriesGroup,
     WaterFieldWelfordGroup,
+    HydrationGeometryAccess,
+    HydrationGeometryTimeSeriesGroup,
+    HydrationGeometryWelfordGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -119,4 +122,7 @@ __all__ = [
     "WaterFieldAccess",
     "WaterFieldTimeSeriesGroup",
     "WaterFieldWelfordGroup",
+    "HydrationGeometryAccess",
+    "HydrationGeometryTimeSeriesGroup",
+    "HydrationGeometryWelfordGroup",
 ]

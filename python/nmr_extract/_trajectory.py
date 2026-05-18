@@ -871,6 +871,196 @@ def _load_water_field_welford(f) -> Optional[WaterFieldWelfordGroup]:
 
 
 @dataclass(frozen=True)
+class HydrationGeometryTimeSeriesGroup:
+    """Per-atom SASA-normal water polarisation timeline from
+    /trajectory/hydration_geometry_time_series/.
+
+    Six channels: net water dipole vector + SASA outward normal + first-
+    shell water count + the polarisation-signal trio (alignment,
+    coherence, half_shell_asymmetry). The trio IS the polarisation
+    signal — calibration weight on these channels is what we want to
+    learn.
+
+    Shape:
+      dipole_vector, surface_normal  (N, T, 3)  float64
+      first_shell_count               (N, T)    uint32 (sentinel
+                                                 `0xFFFFFFFF` on
+                                                 source-absent frames)
+      half_shell_asymmetry, dipole_alignment, dipole_coherence
+                                      (N, T)    float64 (NaN on absent)
+
+    "Absent, not faked" provenance: `source_attached_per_frame` is a
+    per-frame uint8 mask. When zero frames had the source attached, the
+    H5 group is absent and `load_trajectory(...).hydration_geometry.
+    time_series` is `None`.
+    """
+    dipole_vector: np.ndarray         # (N, T, 3)
+    surface_normal: np.ndarray        # (N, T, 3)
+    first_shell_count: np.ndarray     # (N, T) uint32 — sentinel on absent
+    half_shell_asymmetry: np.ndarray  # (N, T)
+    dipole_alignment: np.ndarray      # (N, T)  cos angle
+    dipole_coherence: np.ndarray      # (N, T)  order parameter
+    count_absent_sentinel: int        # 0xFFFFFFFF
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    dipole_vector_layout: str
+    dipole_vector_parity: str
+    surface_normal_layout: str
+    surface_normal_parity: str
+    polarisation_signal_channels: str
+
+    @property
+    def first_shell_count_float(self) -> np.ndarray:
+        """`first_shell_count` promoted to float64 with NaN on sentinel."""
+        out = self.first_shell_count.astype(np.float64)
+        out[self.first_shell_count == self.count_absent_sentinel] = np.nan
+        return out
+
+
+def _load_hydration_geometry_time_series(f) -> Optional[HydrationGeometryTimeSeriesGroup]:
+    path = "/trajectory/hydration_geometry_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    sentinel = int(g["first_shell_count"].attrs.get(
+        "absent_sentinel", 0xFFFFFFFF))
+    return HydrationGeometryTimeSeriesGroup(
+        dipole_vector=g["dipole_vector"][:],
+        surface_normal=g["surface_normal"][:],
+        first_shell_count=g["first_shell_count"][:],
+        half_shell_asymmetry=g["half_shell_asymmetry"][:],
+        dipole_alignment=g["dipole_alignment"][:],
+        dipole_coherence=g["dipole_coherence"][:],
+        count_absent_sentinel=sentinel,
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        dipole_vector_layout=str(_decode_attr(
+            g.attrs.get("dipole_vector_layout", ""))),
+        dipole_vector_parity=str(_decode_attr(
+            g.attrs.get("dipole_vector_parity", ""))),
+        surface_normal_layout=str(_decode_attr(
+            g.attrs.get("surface_normal_layout", ""))),
+        surface_normal_parity=str(_decode_attr(
+            g.attrs.get("surface_normal_parity", ""))),
+        polarisation_signal_channels=str(_decode_attr(
+            g.attrs.get("polarisation_signal_channels", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class HydrationGeometryWelfordGroup:
+    """Per-atom Welford rollup of SASA-normal water polarisation features.
+
+    Per-component Vec3 Welford on dipole_vector + surface_normal. Scalar
+    Welford on the 4 polarisation scalars (asymmetry, alignment, coherence,
+    shell_count) with signed/abs/sq/dxdt delta variants on each.
+    """
+    # Per-component Vec3
+    dipole_vector_x: WelfordMoments
+    dipole_vector_y: WelfordMoments
+    dipole_vector_z: WelfordMoments
+    dipole_magnitude: WelfordMoments
+    surface_normal_x: WelfordMoments
+    surface_normal_y: WelfordMoments
+    surface_normal_z: WelfordMoments
+    # Polarisation scalars
+    half_shell_asymmetry: WelfordMoments
+    dipole_alignment: WelfordMoments
+    dipole_coherence: WelfordMoments
+    shell_count: WelfordMoments
+    # Delta variants on the 4 primary scalars
+    half_shell_asymmetry_delta: WelfordMoments
+    half_shell_asymmetry_abs_delta: WelfordMoments
+    half_shell_asymmetry_delta_squared: WelfordMoments
+    half_shell_asymmetry_dxdt: WelfordMoments
+    half_shell_asymmetry_rms_delta: np.ndarray
+    dipole_alignment_delta: WelfordMoments
+    dipole_alignment_abs_delta: WelfordMoments
+    dipole_alignment_delta_squared: WelfordMoments
+    dipole_alignment_dxdt: WelfordMoments
+    dipole_alignment_rms_delta: np.ndarray
+    dipole_coherence_delta: WelfordMoments
+    dipole_coherence_abs_delta: WelfordMoments
+    dipole_coherence_delta_squared: WelfordMoments
+    dipole_coherence_dxdt: WelfordMoments
+    dipole_coherence_rms_delta: np.ndarray
+    shell_count_delta: WelfordMoments
+    shell_count_abs_delta: WelfordMoments
+    shell_count_delta_squared: WelfordMoments
+    shell_count_dxdt: WelfordMoments
+    shell_count_rms_delta: np.ndarray
+    # Provenance
+    n_frames_per_atom: np.ndarray
+    delta_n_per_atom: np.ndarray
+    dxdt_n_per_atom: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    mean_dt_ps: float
+    frame_index_range: tuple[int, int]
+
+
+def _load_hydration_geometry_welford(f) -> Optional[HydrationGeometryWelfordGroup]:
+    path = "/trajectory/hydration_geometry_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    return HydrationGeometryWelfordGroup(
+        dipole_vector_x=_read_moments(g, "dipole_vector_x"),
+        dipole_vector_y=_read_moments(g, "dipole_vector_y"),
+        dipole_vector_z=_read_moments(g, "dipole_vector_z"),
+        dipole_magnitude=_read_moments(g, "dipole_magnitude"),
+        surface_normal_x=_read_moments(g, "surface_normal_x"),
+        surface_normal_y=_read_moments(g, "surface_normal_y"),
+        surface_normal_z=_read_moments(g, "surface_normal_z"),
+        half_shell_asymmetry=_read_moments(g, "half_shell_asymmetry"),
+        dipole_alignment=_read_moments(g, "dipole_alignment"),
+        dipole_coherence=_read_moments(g, "dipole_coherence"),
+        shell_count=_read_moments(g, "shell_count"),
+        half_shell_asymmetry_delta=_read_moments(g, "half_shell_asymmetry_delta"),
+        half_shell_asymmetry_abs_delta=_read_moments(g, "half_shell_asymmetry_abs_delta"),
+        half_shell_asymmetry_delta_squared=_read_moments(g, "half_shell_asymmetry_delta_squared"),
+        half_shell_asymmetry_dxdt=_read_moments(g, "half_shell_asymmetry_dxdt"),
+        half_shell_asymmetry_rms_delta=g["half_shell_asymmetry_rms_delta"][:],
+        dipole_alignment_delta=_read_moments(g, "dipole_alignment_delta"),
+        dipole_alignment_abs_delta=_read_moments(g, "dipole_alignment_abs_delta"),
+        dipole_alignment_delta_squared=_read_moments(g, "dipole_alignment_delta_squared"),
+        dipole_alignment_dxdt=_read_moments(g, "dipole_alignment_dxdt"),
+        dipole_alignment_rms_delta=g["dipole_alignment_rms_delta"][:],
+        dipole_coherence_delta=_read_moments(g, "dipole_coherence_delta"),
+        dipole_coherence_abs_delta=_read_moments(g, "dipole_coherence_abs_delta"),
+        dipole_coherence_delta_squared=_read_moments(g, "dipole_coherence_delta_squared"),
+        dipole_coherence_dxdt=_read_moments(g, "dipole_coherence_dxdt"),
+        dipole_coherence_rms_delta=g["dipole_coherence_rms_delta"][:],
+        shell_count_delta=_read_moments(g, "shell_count_delta"),
+        shell_count_abs_delta=_read_moments(g, "shell_count_abs_delta"),
+        shell_count_delta_squared=_read_moments(g, "shell_count_delta_squared"),
+        shell_count_dxdt=_read_moments(g, "shell_count_dxdt"),
+        shell_count_rms_delta=g["shell_count_rms_delta"][:],
+        n_frames_per_atom=g["n_frames_per_atom"][:],
+        delta_n_per_atom=g["delta_n_per_atom"][:],
+        dxdt_n_per_atom=g["dxdt_n_per_atom"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        mean_dt_ps=_group_mean_dt_ps(g),
+        frame_index_range=_group_frame_index_range(g),
+    )
+
+
+@dataclass(frozen=True)
+class HydrationGeometryAccess:
+    """Hydration geometry TR family — TimeSeries + Welford rollup pair.
+    Either slot is None when the corresponding C++ TR was not attached
+    OR attached but had source_attached_count == 0 (no-solvent extraction).
+    """
+    time_series: Optional[HydrationGeometryTimeSeriesGroup] = None
+    welford: Optional[HydrationGeometryWelfordGroup] = None
+
+
+@dataclass(frozen=True)
 class WaterFieldAccess:
     """Water-field TR family — TimeSeries + Welford rollup pair.
 
@@ -971,6 +1161,10 @@ class TrajectoryData:
 
     # Water field TR pair (TimeSeries + Welford rollup).
     water_field: WaterFieldAccess = field(default_factory=WaterFieldAccess)
+
+    # Hydration geometry TR pair (SASA-normal water polarisation).
+    hydration_geometry: HydrationGeometryAccess = field(
+        default_factory=HydrationGeometryAccess)
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -1093,6 +1287,12 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             welford=_load_water_field_welford(f),
         )
 
+        # Hydration geometry TR pair
+        hydration_geometry = HydrationGeometryAccess(
+            time_series=_load_hydration_geometry_time_series(f),
+            welford=_load_hydration_geometry_welford(f),
+        )
+
     return TrajectoryData(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -1104,4 +1304,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         welford=welford,
         energy=energy,
         water_field=water_field,
+        hydration_geometry=hydration_geometry,
     )
