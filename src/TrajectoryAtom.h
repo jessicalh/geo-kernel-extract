@@ -200,13 +200,16 @@ struct WaterFieldWelfordState {
     std::array<WelfordMoments, 3> efield_first;      // first-shell-only
     WelfordMoments                efield_first_magnitude;
 
-    // EFG (SphericalTensor, V/Å²) — T1[3] (Cartesian LC dual) + T2[5]
-    // (real-spherical m=-2..+2) + |T2| Frobenius magnitude. T0 omitted
-    // (structurally zero — see class-level comment above).
-    std::array<WelfordMoments, 3> efg_t1;
+    // EFG (SphericalTensor, V/Å²) — T2[5] (real-spherical m=-2..+2) +
+    // |T2| Frobenius magnitude. T0 and T1 are both omitted: T0 is
+    // structurally zero from the explicit traceless projection at
+    // WaterFieldResult.cpp:147-150; T1 is structurally zero because
+    // water EFG is built from symmetric r⊗r outer products
+    // (WaterFieldResult.cpp:130) and T1 is the antisymmetric pseudovector
+    // component of a rank-2 tensor (Types.cpp:28). Only T2 — the
+    // symmetric-traceless part — carries signal.
     std::array<WelfordMoments, 5> efg_t2;
     WelfordMoments                efg_t2magnitude;
-    std::array<WelfordMoments, 3> efg_first_t1;
     std::array<WelfordMoments, 5> efg_first_t2;
     WelfordMoments                efg_first_t2magnitude;
 

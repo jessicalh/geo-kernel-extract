@@ -144,19 +144,23 @@ TEST(WaterFieldWelford, H5RoundTrip) {
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/water_field_welford");
 
-    std::string units, t1, t2;
+    std::string units, ef, et2;
     grp.getAttribute("units").read(units);
-    grp.getAttribute("irrep_layout_t1").read(t1);
-    grp.getAttribute("irrep_layout_t2").read(t2);
+    grp.getAttribute("irrep_layout_efield").read(ef);
+    grp.getAttribute("irrep_layout_efg_t2").read(et2);
     EXPECT_EQ(units, "V/Angstrom");
-    EXPECT_EQ(t1, "v_x,v_y,v_z");
-    EXPECT_EQ(t2, "m-2,m-1,m0,m+1,m+2");
+    EXPECT_EQ(ef, "v_x,v_y,v_z");
+    EXPECT_EQ(et2, "m-2,m-1,m0,m+1,m+2");
 
-    // T1[3] / T2[5] per-component shapes
-    const auto t1_dims = grp.getDataSet("efg_t1_mean").getSpace().getDimensions();
-    ASSERT_EQ(t1_dims.size(), 2u); EXPECT_EQ(t1_dims[1], 3u);
+    // efg_t1_* datasets must NOT be emitted (structurally zero).
+    EXPECT_FALSE(grp.exist("efg_t1_mean"));
+    EXPECT_FALSE(grp.exist("efg_first_t1_mean"));
+    // efg_t2 per-component shape is (N, 5).
     const auto t2_dims = grp.getDataSet("efg_t2_mean").getSpace().getDimensions();
     ASSERT_EQ(t2_dims.size(), 2u); EXPECT_EQ(t2_dims[1], 5u);
+    bool t1_zero = false;
+    grp.getAttribute("efg_t1_structural_zero").read(t1_zero);
+    EXPECT_TRUE(t1_zero);
 
     // Delta variants on the 3 primary scalars (efg_t0 deltas absent —
     // T0 structurally zero, channel removed per 2026-05-18 review).

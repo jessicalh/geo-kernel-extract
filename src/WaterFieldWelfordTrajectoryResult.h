@@ -37,14 +37,23 @@
 //     attrs: result_name, n_frames, finalized, ddof, mean_dt_ps,
 //            frame_index_range, irrep_layout_t1, irrep_layout_t2
 //
-// Dependencies: WaterFieldResult (unconditionally attached in
-// PerFrameExtractionSet — no source-attached gate).
+// Dependencies: WaterFieldResult — REQUIRED by PerFrameExtractionSet but
+// conditionally attached by OperationRunner: if `opts.solvent` is null
+// or `opts.solvent->Empty()` (no solvent environment loaded), the source
+// ConformationResult is silently skipped. Follows "absent, not faked":
+//   - Per-frame `conf.HasResult<WaterFieldResult>()` check in Compute
+//   - Source-absent frames SKIP Welford updates entirely (no biased zero
+//     accumulation) and SKIP prev_* cache updates (next-frame delta is
+//     not computed across a gap)
+//   - `source_attached_per_frame` mask emitted as H5 provenance
+//   - WriteH5Group skips group emission when source attached zero times
 //
 
 #include "TrajectoryResult.h"
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -76,6 +85,11 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
+    // Test-only bypass for the source-attached gate.
+    void ForceSourcePresentForTesting() {
+        force_source_present_for_testing_ = true;
+    }
+
 private:
     // Per-atom previous-frame caches for the delta trackers. No
     // prev_efg_t0_ cache — `efg_t0` channel removed per 2026-05-18
@@ -86,6 +100,9 @@ private:
     std::vector<double>      prev_n_second_;
     std::vector<bool>        prev_valid_;
     std::vector<double>      prev_time_;
+
+    std::vector<std::uint8_t>  source_attached_per_frame_;
+    bool                       force_source_present_for_testing_ = false;
 
     std::size_t              n_frames_  = 0;
     bool                     finalized_ = false;

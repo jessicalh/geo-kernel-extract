@@ -44,14 +44,22 @@
 //     attrs: result_name, n_frames, finalized, units = "kJ/mol"
 //            tensor_layout = "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"
 //
-// Dependencies: GromacsEnergyResult (conformation-scope, unconditionally
-// attached in PerFrameExtractionSet — no source-attached gate needed).
+// Dependencies: GromacsEnergyResult — REQUIRED by PerFrameExtractionSet
+// but conditionally attached by OperationRunner: if the .edr energy file
+// is missing or `Trajectory::EnergyAtTime` returns null for a frame,
+// the source ConformationResult is silently skipped. Follows the
+// "absent, not faked" discipline (Larsen TR bundle, 2026-05-15):
+//   - Per-frame `conf.HasResult<GromacsEnergyResult>()` check in Compute
+//   - `source_attached_per_frame` mask emitted as H5 provenance
+//   - NaN-fill scalar values for source-absent frames
+//   - WriteH5Group skips entire group emission when source attached zero times
 //
 
 #include "TrajectoryResult.h"
 #include "GromacsEnergyResult.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -83,15 +91,30 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
+    // Test-only: bypass the per-frame `conf.HasResult<GromacsEnergyResult>()`
+    // check. For synthetic unit tests that don't run through OperationRunner.
+    void ForceSourcePresentForTesting() {
+        force_source_present_for_testing_ = true;
+    }
+
 private:
     // Per-frame GromacsEnergy snapshots, appended in Compute. Each entry
     // is a copy of the frame's GromacsEnergyResult::Energy() — system
-    // scalars, NOT per-atom data.
-    std::vector<GromacsEnergy> per_frame_energy_;
-    std::vector<std::size_t>   frame_indices_;
-    std::vector<double>        frame_times_;
-    std::size_t                n_frames_ = 0;
-    bool                       finalized_ = false;
+    // scalars, NOT per-atom data. Frames where source is absent get a
+    // default-constructed GromacsEnergy here (all zeros) and are NaN-
+    // filled at WriteH5Group time so downstream readers can distinguish
+    // "source not attached" from "measurement was zero."
+    std::vector<GromacsEnergy>  per_frame_energy_;
+    std::vector<std::size_t>    frame_indices_;
+    std::vector<double>         frame_times_;
+    // Per-frame source-attached mask. 1 if GromacsEnergyResult was on
+    // the conformation this frame; 0 if not. Emitted as the
+    // `source_attached_per_frame` provenance dataset. All-zero ⇒ skip
+    // group emission entirely.
+    std::vector<std::uint8_t>   source_attached_per_frame_;
+    bool                        force_source_present_for_testing_ = false;
+    std::size_t                 n_frames_ = 0;
+    bool                        finalized_ = false;
 };
 
 }  // namespace nmr

@@ -50,6 +50,22 @@ void WaterFieldWelfordTrajectoryResult::Compute(
         double time_ps) {
     (void)traj;
     const std::size_t N = tp.AtomCount();
+
+    // "Absent, not faked" — source-absent frames don't update Welford
+    // state. Otherwise we'd accumulate biased zeros and the mean would
+    // collapse toward zero. Also skip prev_* updates so the next attached
+    // frame's delta isn't computed across an unmeasured gap.
+    const bool source_attached = force_source_present_for_testing_
+        || conf.HasResult<WaterFieldResult>();
+    source_attached_per_frame_.push_back(source_attached ? 1u : 0u);
+    if (!source_attached) {
+        // Invalidate prev_ caches so the next attached frame restarts
+        // its delta computation cleanly.
+        for (std::size_t i = 0; i < N; ++i) prev_valid_[i] = false;
+        ++n_frames_;
+        return;
+    }
+
     for (std::size_t i = 0; i < N; ++i) {
         const auto& a = conf.AtomAt(i);
         WaterFieldWelfordState& w = tp.MutableAtomAt(i).water_field_welford;
@@ -69,19 +85,16 @@ void WaterFieldWelfordTrajectoryResult::Compute(
         WelfordUpdate(w.efield_first[2], Efirst.z(), n_new, frame_idx);
         WelfordUpdate(w.efield_first_magnitude, Efirstmag, n_new, frame_idx);
 
-        // EFG SphericalTensor (total + first-shell). T0 channel intentionally
-        // absent — WaterFieldResult traceless-projects V before Decompose,
-        // so T0 = 0 by construction. T1[3] + T2[5] + |T2| carry the signal.
+        // EFG SphericalTensor (total + first-shell). T0 and T1 channels
+        // intentionally absent — water EFG is symmetric-traceless by
+        // construction (r⊗r outer products + explicit trace removal in
+        // WaterFieldResult.cpp:130,147). T2[5] + |T2| carry the signal.
         const SphericalTensor& efg  = a.water_efg_spherical;
         const SphericalTensor& efgf = a.water_efg_first_spherical;
         WelfordUpdate(w.efg_t2magnitude,        efg.T2Magnitude(), n_new, frame_idx);
-        for (std::size_t k = 0; k < 3; ++k)
-            WelfordUpdate(w.efg_t1[k],          efg.T1[k],        n_new, frame_idx);
         for (std::size_t k = 0; k < 5; ++k)
             WelfordUpdate(w.efg_t2[k],          efg.T2[k],        n_new, frame_idx);
         WelfordUpdate(w.efg_first_t2magnitude,  efgf.T2Magnitude(),n_new, frame_idx);
-        for (std::size_t k = 0; k < 3; ++k)
-            WelfordUpdate(w.efg_first_t1[k],    efgf.T1[k],       n_new, frame_idx);
         for (std::size_t k = 0; k < 5; ++k)
             WelfordUpdate(w.efg_first_t2[k],    efgf.T2[k],       n_new, frame_idx);
 
@@ -147,10 +160,8 @@ void WaterFieldWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         for (std::size_t k = 0; k < 3; ++k) WelfordFinalize(w.efield_first[k], w.n_frames);
         WelfordFinalize(w.efield_first_magnitude, w.n_frames);
 
-        for (std::size_t k = 0; k < 3; ++k) WelfordFinalize(w.efg_t1[k], w.n_frames);
         for (std::size_t k = 0; k < 5; ++k) WelfordFinalize(w.efg_t2[k], w.n_frames);
         WelfordFinalize(w.efg_t2magnitude,  w.n_frames);
-        for (std::size_t k = 0; k < 3; ++k) WelfordFinalize(w.efg_first_t1[k], w.n_frames);
         for (std::size_t k = 0; k < 5; ++k) WelfordFinalize(w.efg_first_t2[k], w.n_frames);
         WelfordFinalize(w.efg_first_t2magnitude,  w.n_frames);
 
@@ -199,23 +210,39 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t N = tp.AtomCount();
+
+    // "Absent, not faked" — skip group emission when source never attached.
+    std::size_t source_attached_count = 0;
+    for (auto v : source_attached_per_frame_) if (v) ++source_attached_count;
+    if (source_attached_count == 0) {
+        OperationLog::Warn(
+            "WaterFieldWelfordTrajectoryResult::WriteH5Group",
+            "WaterFieldResult attached in 0/" +
+            std::to_string(source_attached_per_frame_.size()) +
+            " frames; skipping /trajectory/water_field_welford/ emission.");
+        return;
+    }
+
     auto grp = file.createGroup("/trajectory/water_field_welford");
 
     grp.createAttribute("result_name",        Name());
     grp.createAttribute("n_frames",           n_frames_);
+    grp.createAttribute("source_attached_count", source_attached_count);
     grp.createAttribute("finalized",          finalized_);
     grp.createAttribute("ddof",               static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",         mean_dt_ps_);
     grp.createAttribute("frame_index_range",  frame_index_range_);
-    grp.createAttribute("irrep_layout_t1",    std::string("v_x,v_y,v_z"));
-    grp.createAttribute("irrep_layout_t2",    std::string("m-2,m-1,m0,m+1,m+2"));
+    // Per-component E-field uses Cartesian (x,y,z); EFG T2 uses real-
+    // spherical-tesseral m=-2..+2. Water EFG T0 (trace) and T1 (antisym
+    // pseudovector) are both structural zeros — not emitted at all.
+    grp.createAttribute("irrep_layout_efield", std::string("v_x,v_y,v_z"));
+    grp.createAttribute("irrep_layout_efg_t2", std::string("m-2,m-1,m0,m+1,m+2"));
     // Group-level `units` describes the primary value channel (E-field).
     // Per-dataset `units` attributes are authoritative — the group holds
     // V/Å (E-field), V/Å² (EFG), and dimensionless (counts) datasets.
     grp.createAttribute("units",              std::string("V/Angstrom"));
-    // EFG T0 emission absent — structurally zero (WaterFieldResult
-    // traceless-projects V before Decompose). Same flag as TimeSeries TR.
     grp.createAttribute("efg_t0_structural_zero", true);
+    grp.createAttribute("efg_t1_structural_zero", true);
 
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
@@ -320,13 +347,11 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     // EFG: T0 scalar + per-component T1[3] / T2[5] + |T2|, both total and first-shell
     // EFG T0 emission intentionally absent — structurally zero
     // (see WaterFieldWelfordState class comment).
+    // T1 not emitted — structurally zero (see TrajectoryAtom.h
+    // WaterFieldWelfordState comment).
     emit_1d("efg_t2magnitude", kEFG, kEFGsq,
             [get_w](std::size_t i) -> const WelfordMoments& {
                 return get_w(i).efg_t2magnitude;
-            });
-    emit_2d("efg_t1", 3, kEFG, kEFGsq,
-            [get_w](std::size_t i, std::size_t k) -> const WelfordMoments& {
-                return get_w(i).efg_t1[k];
             });
     emit_2d("efg_t2", 5, kEFG, kEFGsq,
             [get_w](std::size_t i, std::size_t k) -> const WelfordMoments& {
@@ -335,10 +360,6 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     emit_1d("efg_first_t2magnitude", kEFG, kEFGsq,
             [get_w](std::size_t i) -> const WelfordMoments& {
                 return get_w(i).efg_first_t2magnitude;
-            });
-    emit_2d("efg_first_t1", 3, kEFG, kEFGsq,
-            [get_w](std::size_t i, std::size_t k) -> const WelfordMoments& {
-                return get_w(i).efg_first_t1[k];
             });
     emit_2d("efg_first_t2", 5, kEFG, kEFGsq,
             [get_w](std::size_t i, std::size_t k) -> const WelfordMoments& {
@@ -437,6 +458,14 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     dn_ds.createAttribute("units", std::string("frame_count"));
     auto dxdtn_ds = grp.createDataSet("dxdt_n_per_atom", dxdt_n);
     dxdtn_ds.createAttribute("units", std::string("frame_count"));
+
+    // Provenance mask: per-frame source-attached. Lets downstream verify
+    // how many of the trajectory's frames actually fed the rollup. Per-
+    // atom `n_frames_per_atom` should equal `source_attached_count` on a
+    // clean run; divergence flags partial-attach (unexpected).
+    auto sa_ds = grp.createDataSet("source_attached_per_frame",
+                                   source_attached_per_frame_);
+    sa_ds.createAttribute("units", std::string("dimensionless"));
 }
 
 }  // namespace nmr

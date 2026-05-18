@@ -136,13 +136,24 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/water_field_time_series"));
     auto grp = reopen.getGroup("/trajectory/water_field_time_series");
 
-    std::string efield_units, efg_layout, count_units;
+    std::string efield_units, efg_layout, count_units, efg_parity;
     grp.getAttribute("efield_units").read(efield_units);
     grp.getAttribute("efg_irrep_layout").read(efg_layout);
+    grp.getAttribute("efg_parity").read(efg_parity);
     grp.getAttribute("count_units").read(count_units);
     EXPECT_EQ(efield_units, "V/Angstrom");
-    EXPECT_EQ(efg_layout, "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    // Water EFG: T0 (trace) and T1 (antisym pseudovector) are both
+    // structural zeros — only T2 (symmetric-traceless, 5 components)
+    // is emitted. Parity "2e" reflects T2 only.
+    EXPECT_EQ(efg_layout, "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
+    EXPECT_EQ(efg_parity, "2e");
     EXPECT_EQ(count_units, "dimensionless");
+
+    bool t0_zero = false, t1_zero = false;
+    grp.getAttribute("efg_t0_structural_zero").read(t0_zero);
+    grp.getAttribute("efg_t1_structural_zero").read(t1_zero);
+    EXPECT_TRUE(t0_zero);
+    EXPECT_TRUE(t1_zero);
 
     // Shapes
     const std::size_t N = tp.AtomCount();
@@ -152,7 +163,7 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     EXPECT_EQ(efield_dims[0], N); EXPECT_EQ(efield_dims[1], T); EXPECT_EQ(efield_dims[2], 3u);
     const auto efg_dims = grp.getDataSet("efg").getSpace().getDimensions();
     ASSERT_EQ(efg_dims.size(), 3u);
-    EXPECT_EQ(efg_dims[0], N); EXPECT_EQ(efg_dims[1], T); EXPECT_EQ(efg_dims[2], 9u);
+    EXPECT_EQ(efg_dims[0], N); EXPECT_EQ(efg_dims[1], T); EXPECT_EQ(efg_dims[2], 5u);
     const auto n_first_dims = grp.getDataSet("n_first").getSpace().getDimensions();
     ASSERT_EQ(n_first_dims.size(), 2u);
     EXPECT_EQ(n_first_dims[0], N); EXPECT_EQ(n_first_dims[1], T);

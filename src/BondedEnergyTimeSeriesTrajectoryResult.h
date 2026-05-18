@@ -41,13 +41,20 @@
 // touches: even share = energy / n_atoms_in_interaction. Downstream that
 // wants whole-system totals can sum bond[:, t] across atoms.
 //
-// Dependencies: BondedEnergyResult (conformation-scope, unconditionally
-// attached in PerFrameExtractionSet — no source-attached gate needed).
+// Dependencies: BondedEnergyResult — REQUIRED by PerFrameExtractionSet
+// but conditionally attached by OperationRunner: if `tp.HasBondedParams()`
+// is false (no .tpr-derived bonded parameters available), the source
+// ConformationResult is silently skipped. Follows "absent, not faked":
+//   - Per-frame `conf.HasResult<BondedEnergyResult>()` check in Compute
+//   - `source_attached_per_frame` mask emitted as H5 provenance
+//   - NaN-fill rows for source-absent frames
+//   - WriteH5Group skips entire group emission when source attached zero times
 //
 
 #include "TrajectoryResult.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -79,6 +86,13 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
+    // Test-only bypass for the source-attached gate. Production code
+    // never calls this — only synthetic tests that don't run through
+    // OperationRunner.
+    void ForceSourcePresentForTesting() {
+        force_source_present_for_testing_ = true;
+    }
+
 private:
     // Per-atom growing buffers, one per channel. After Finalize each
     // bond_[i] / angle_[i] / ... has size n_frames_.
@@ -91,6 +105,10 @@ private:
     std::vector<std::vector<double>> total_;
     std::vector<std::size_t>         frame_indices_;
     std::vector<double>              frame_times_;
+    // Per-frame source-attached mask. 1 if BondedEnergyResult was on the
+    // conformation this frame; 0 if not. Emitted as provenance dataset.
+    std::vector<std::uint8_t>        source_attached_per_frame_;
+    bool                             force_source_present_for_testing_ = false;
     std::size_t                      n_frames_ = 0;
     bool                             finalized_ = false;
 };
