@@ -16,9 +16,24 @@
 // "+infinity sentinel" on nearest_ion_distance is meaningful — distinct from
 // "0 distance" and from "missing measurement." Buried atoms with no ion
 // within cutoff carry +inf forever; consumers should `np.isfinite()` filter
-// the channel before naive aggregation. The Welford rollup propagates inf
-// → NaN once a second inf sample arrives (IEEE 754 inf-inf = NaN), which
-// is the right signal for "this atom's distribution isn't well-defined."
+// the channel before naive aggregation.
+//
+// Welford inf-arithmetic, precise sequence (corrected R5 codex 2026-05-18):
+//   Frame 1 sample = +inf, mean = 0 → delta = +inf, new_mean = +inf,
+//                  m2 += inf · (inf - inf) = inf · NaN = NaN.
+//   So `m2` is NaN starting at n=1; `mean` is `+inf` at n=1.
+//   Frame 2 sample = +inf → delta = inf - inf = NaN, new_mean = NaN,
+//                  m2 += NaN · ... = NaN.
+//   `mean` poisons to NaN starting at n=2; `m2` stays NaN.
+// Downstream filter: `np.isfinite(welford.mean)` catches buried atoms
+// from n=2 onward. For n=1 (single attached frame), `mean=+inf` survives
+// — combine with `np.isfinite()` on mean if you want both branches caught.
+//
+// `nearest_ion_charge == 0.0` is similarly ambiguous: "no ion in cutoff"
+// AND "nearest ion is neutral" both emit 0. Disambiguate by joining with
+// `nearest_ion_distance == +inf`. The group attribute
+// `nearest_ion_charge_zero_means_no_ion_in_cutoff` flags this for
+// downstream readers.
 //
 // Dependencies: HydrationShellResult — REQUIRED by PerFrameExtractionSet
 // but conditionally attached by OperationRunner: if `opts.solvent` is

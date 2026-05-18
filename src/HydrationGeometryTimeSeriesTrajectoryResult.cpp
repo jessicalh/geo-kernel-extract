@@ -116,9 +116,23 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",                  finalized_);
     grp.createAttribute("dipole_vector_layout",       std::string("x,y,z"));
     grp.createAttribute("dipole_vector_parity",       std::string("1o"));
-    grp.createAttribute("dipole_vector_units",        std::string("Debye_unnormalised"));
+    // Units: Water::Dipole() (src/SolventEnvironment.h:32-38) returns
+    // H_charge·(H_pos − O_pos) summed over both H atoms; charges in e,
+    // positions in Å → result is e·Å. Convert to Debye via the standard
+    // factor 1 e·Å = 4.80320 D if needed downstream. Per R5 codex
+    // 2026-05-18: previous "Debye_unnormalised" label was wrong by that
+    // factor; the values are in e·Å, raw sum (no normalisation to
+    // unit dipole, no conversion to Debye).
+    grp.createAttribute("dipole_vector_units",        std::string("e_Angstrom"));
     grp.createAttribute("surface_normal_layout",      std::string("x,y,z"));
     grp.createAttribute("surface_normal_parity",      std::string("1o"));
+    // Reference-frame disambiguation: HydrationGeometry uses the SASA
+    // outward surface normal as the reference vector for cos-alignment
+    // and half-shell asymmetry; the sibling HydrationShell TR uses COM.
+    // Same dataset name (`half_shell_asymmetry`) under different group
+    // paths means the same physical question in different reference
+    // frames — never aggregate cross-frame without checking this attr.
+    grp.createAttribute("reference_frame",            std::string("SASA_normal"));
     grp.createAttribute("polarisation_signal_channels",
         std::string("dipole_alignment,dipole_coherence,half_shell_asymmetry"));
 
@@ -142,7 +156,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
     };
-    emit_vec3("dipole_vector",  dipole_vector_,  "Debye_unnormalised");
+    emit_vec3("dipole_vector",  dipole_vector_,  "e_Angstrom");
     emit_vec3("surface_normal", surface_normal_, "unit_vector");
 
     auto emit_scalar = [&](const std::string& name,

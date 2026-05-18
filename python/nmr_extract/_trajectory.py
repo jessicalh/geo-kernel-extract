@@ -1228,12 +1228,19 @@ class EnergyAccess:
 
 @dataclass(frozen=True)
 class WelfordAccess:
-    """Optional Welford H5 groups attached to TrajectoryData.
+    """Kernel-class Welford H5 groups (BS / HM / McConnell / Eeq / Sasa /
+    HBondCount). These were the first Welford rollup TRs landed (Phase 2b,
+    2026-05-17) — kernel-level statistics with a uniform shape.
 
     Each field is None when the corresponding *WelfordTrajectoryResult
     was not attached during the C++ extraction run that produced this
-    trajectory.h5. Field set is fixed; new Welford TRs require an SDK
-    update (Export Everything Upstream — no implicit consumer).
+    trajectory.h5. NEW Welford TRs that pair with a TimeSeries sibling
+    route through their source-family Access container instead (e.g.
+    `traj.water_field.welford`, `traj.hydration_geometry.welford`,
+    `traj.hydration_shell.welford`) — those are domain-namespaced rather
+    than added to this kernel-Welford grab-bag. Pattern picked up
+    2026-05-18 with the F7 water SDK landing; the kernel-Welford set in
+    this dataclass is fixed and historical.
     """
     bs: Optional[BsWelfordGroup] = None
     hm: Optional[HmWelfordGroup] = None

@@ -3,6 +3,18 @@
 // HydrationGeometryWelfordTrajectoryResult. Per-atom Welford rollup of the
 // SASA-normal water polarisation features.
 //
+// COVERAGE GAP (per c55c825 docstring on test_water_field_welford.cpp): the
+// synthetic source-absent test that the sibling TimeSeries TR carries is
+// NOT replicated here. Reason: the Welford TR's Compute writes to
+// `tp.MutableAtomAt(i).hydration_geometry_welford`, which requires
+// TrajectoryAtoms allocated via `tp.Seed()`. The synthetic Seed path with
+// all-zero positions FATALs at the protein canonicalisation step
+// (substrate gap on missing-after-canonical atom names). Production code
+// goes through `Trajectory::Run` which seeds with real frame-0 positions;
+// the synthetic-positions path can't reach that state. Source-attached
+// gate discipline IS exercised on the TimeSeries side; the Welford-side
+// prev_valid_ invalidation across a gap remains a documented coverage gap.
+//
 
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"

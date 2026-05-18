@@ -240,6 +240,13 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("frame_index_range",      frame_index_range_);
     grp.createAttribute("irrep_layout_dipole",    std::string("v_x,v_y,v_z"));
     grp.createAttribute("irrep_layout_normal",    std::string("v_x,v_y,v_z"));
+    grp.createAttribute("reference_frame",        std::string("SASA_normal"));
+    grp.createAttribute("dipole_alignment_zero_sentinel",
+        std::string("0.0 when |dipole_sum| < NEAR_ZERO_NORM "
+                    "(HydrationGeometryResult.cpp:106-108) — bimodal: "
+                    "real zero alignment vs zero-magnitude denominator"));
+    grp.createAttribute("polarisation_signal_channels",
+        std::string("dipole_alignment,dipole_coherence,half_shell_asymmetry"));
     grp.createAttribute("units",                  std::string("mixed_see_per_dataset"));
 
     auto get_w = [&tp](std::size_t i) -> const HydrationGeometryWelfordState& {
@@ -275,8 +282,11 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
 
     // Vec3 channels: per-component
     static const std::array<const char*, 3> kXyz = {"x", "y", "z"};
-    const std::string kDipole = "Debye_unnormalised";
-    const std::string kDipoleSq = "Debye_unnormalised^2";
+    // Dipole units: e·Å (raw H_charge·displacement sum from Water::Dipole(),
+    // SolventEnvironment.h:32-38). Convert to Debye via 1 e·Å = 4.80320 D
+    // if needed downstream. R5 codex 2026-05-18.
+    const std::string kDipole = "e_Angstrom";
+    const std::string kDipoleSq = "e^2_Angstrom^2";
     const std::string kUnit = "dimensionless";
     for (std::size_t k = 0; k < 3; ++k) {
         emit_1d(std::string("dipole_vector_") + kXyz[k], kDipole, kDipoleSq,

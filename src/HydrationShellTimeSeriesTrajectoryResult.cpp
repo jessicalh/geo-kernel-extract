@@ -110,6 +110,15 @@ void HydrationShellTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("COM"));  // COM, not SASA — distinguishes from HydrationGeometry
     grp.createAttribute("nearest_ion_distance_sentinel",
         std::string("+infinity when no ion within ion_cutoff (default 20 A)"));
+    // Physically-zero vs no-ion ambiguity on nearest_ion_charge: source
+    // emits 0.0 for both "no ion in cutoff" AND "nearest ion happens to
+    // be neutral" (latter impossible for Na+/Cl- but data type permits).
+    // Downstream that sees nearest_ion_charge == 0.0 MUST cross-check
+    // nearest_ion_distance == +inf to distinguish the two cases.
+    grp.createAttribute("nearest_ion_charge_zero_means_no_ion_in_cutoff",
+        std::string("0.0 on nearest_ion_charge AND +inf on "
+                    "nearest_ion_distance jointly indicate 'no ion in "
+                    "ion_cutoff' — neither alone is unambiguous."));
 
     auto emit_scalar = [&](const std::string& name,
                            const std::vector<std::vector<double>>& src,

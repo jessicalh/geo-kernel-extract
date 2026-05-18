@@ -272,8 +272,14 @@ struct HydrationGeometryWelfordState {
     WelfordMoments                dipole_coherence;  // |Σdᵢ| / n
     WelfordMoments                shell_count;       // first-shell water O count
 
-    // Delta variants on the polarisation scalars only — Vec3 components
-    // pick up frame-to-frame change implicitly via the Welford std.
+    // Delta variants on all four rotationally-invariant scalar channels
+    // (asymmetry, alignment, coherence, shell_count). The Vec3 components
+    // pick up frame-to-frame change implicitly via their per-component
+    // Welford std — no explicit Vec3-component delta tracker needed.
+    // R5 codex 2026-05-18: the previous "polarisation scalars only"
+    // phrasing was wrong — shell_count IS tracked with delta variants
+    // (it's a count, not a polarisation scalar, but the dynamics matter
+    // because shell-occupancy fluctuation is the residence-time proxy).
     WelfordMoments dipole_alignment_delta;
     WelfordMoments dipole_alignment_abs_delta;
     WelfordMoments dipole_alignment_delta_squared;

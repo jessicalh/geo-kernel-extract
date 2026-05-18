@@ -3,6 +3,14 @@
 // HydrationShellWelfordTrajectoryResult. Per-atom Welford rollup of
 // the COM-based hydration shell features (4 scalar channels).
 //
+// COVERAGE GAP (per c55c825 + test_hydration_geometry_welford.cpp): the
+// synthetic source-absent test that the sibling TimeSeries TR carries is
+// NOT replicated here — same Seed-with-real-positions limitation as the
+// other Welford TRs. Source-attached gate discipline IS exercised on the
+// TimeSeries side; the Welford prev_valid_ invalidation across a gap
+// is a documented coverage gap that requires production-path
+// `Trajectory::Run` infrastructure beyond the synthetic test framework.
+//
 
 #include "CalculatorConfig.h"
 #include "ConformationAtom.h"

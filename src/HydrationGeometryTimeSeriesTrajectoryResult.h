@@ -39,9 +39,13 @@
 //       result_name, n_atoms, n_frames, source_attached_count, finalized
 //       dipole_vector_layout       = "x,y,z"
 //       dipole_vector_parity       = "1o"   (polar vector)
+//       dipole_vector_units        = "e_Angstrom" (raw H_charge·Δr sum;
+//                                                 ×4.80320 → Debye)
 //       surface_normal_layout      = "x,y,z"
 //       surface_normal_parity      = "1o"
-//       polarisation_signal_channels = "alignment,coherence,asymmetry"
+//       reference_frame            = "SASA_normal"
+//       polarisation_signal_channels =
+//           "dipole_alignment,dipole_coherence,half_shell_asymmetry"
 //
 
 #include "TrajectoryResult.h"
