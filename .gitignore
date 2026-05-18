@@ -13,7 +13,27 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
+CTestTestfile.cmake
 *.npy
+
+# Quarantined stray-root CMake tree — see bones-make/README.md.
+# Slated for deletion ~2026-05-26 once nothing freaks out.
+bones-make/
+
+# Stray-root build artefacts. The four sanctioned build trees are
+# build/, build-ui/, build-check/, build-forensic/ — never the repo
+# root. If these files appear at root, something configured CMake in
+# the wrong place; ignore so git status doesn't notice.
+/*_tests
+/*_tests[1]_include.cmake
+/*_tests[1]_tests.cmake
+/nmr_extract
+/nmr-viewer
+/nmr_pass0_demo
+/nmr-viewer_autogen/
+/detect_cuda_compute_capabilities.cu
+/detect_cuda_version.cc
+/leap.log
 
 # Python
 __pycache__/

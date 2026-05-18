@@ -636,7 +636,7 @@ memory):
   (authoritative staging with per-job PDB + XYZ + .out + meta.json, worker logs,
   collection manifest) and replicated as orthogonal `dft_output/` siblings into
   all three calibration copies (`fleet_calibration-{working,stats,backup}/`).
-  Fleet state (as of 2026-04-30): the 685-protein fleet run was
+  Fleet state (as of 2026-05-18): the 685-protein fleet run was
   STOPPED after evaluation showed extractions were bad (chain-
   extraction issue in structure preparation). 200 proteins had
   completed Use Case B `PerFrameExtractionSet` extractions before
@@ -645,15 +645,22 @@ memory):
   should not be treated as authoritative. The other 485 were
   CANCELLED before completion.
 
-  Recovery path: OF3 (OpenFold3) is generating fresh structures
-  directly from sequence for the same 685 proteins, replacing the
-  PDB-extraction step that produced the bad chains. Once OF3
-  structures land, the 685-fleet re-runs MD on the new structures.
+  Recovery path: OF3 (OpenFold3) generated fresh structures directly
+  from sequence to replace the PDB-extraction step that produced the
+  bad chains. After OF3 results came back, 9 proteins were dropped
+  because the OF3 predictions placed cysteine pairs too far apart
+  to form physical disulfide bonds — those structures could not be
+  used as MD starting points without artificial restraints that
+  would distort the ensemble. **Effective fleet count is 676**, not
+  685. The MD re-run targets 676; downstream extraction / DFT /
+  calibration likewise.
+
   These OF3 outputs have not been extracted yet because they are
   *direct* OF3 predictions — no extraction step has run on them.
 
-  DFTs on the 485 have not been scheduled and are deferred until
-  the structure-quality issue is resolved.
+  DFTs on the residual fleet (676 minus the 10-protein calibration
+  set) have not been scheduled and are deferred until the
+  structure-quality issue is fully resolved.
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results. Not
   yet active.
 
