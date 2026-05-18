@@ -104,8 +104,19 @@ void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
     grp.createAttribute("units",       std::string("kJ/mol"));
+    // The `evenly_among_participating_atoms` convention is one of
+    // several valid attributions for bonded energies. Alternatives:
+    // virial-style (force·r), put 100% on the central atom (angle apex,
+    // dihedral i+j), or atomic-energy-density methods. The choice is
+    // calibration-absorbable for kernel-style models — calibration
+    // weights the per-atom features; physical "true attribution" is
+    // not unique. Downstream consumers that want a whole-system sum
+    // can sum along atom axis: bond[:, t].sum() reproduces the .edr
+    // BondEnergy term up to PBC/cutoff differences.
     grp.createAttribute("split_convention",
         std::string("evenly_among_participating_atoms"));
+    grp.createAttribute("split_convention_note",
+        std::string("one of several valid attributions; calibration-absorbable"));
 
     auto emit_channel = [&](const std::string& name,
                             const std::vector<std::vector<double>>& src) {
@@ -126,7 +137,7 @@ void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     emit_channel("urey_bradley",  urey_bradley_);
     emit_channel("proper_dih",    proper_dih_);
     emit_channel("improper_dih",  improper_dih_);
-    emit_channel("cmap",          cmap_);
+    emit_channel("cmap_dih",      cmap_);
     emit_channel("total",         total_);
 
     auto fi_ds = grp.createDataSet("frame_indices", frame_indices_);

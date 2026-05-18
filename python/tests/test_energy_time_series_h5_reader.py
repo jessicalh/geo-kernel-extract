@@ -137,11 +137,11 @@ def _write_bonded_energy_ts(f: h5py.File, n_atoms: int, n_frames: int) -> dict:
 
     rng = np.random.default_rng(7)
     channels = ("bond", "angle", "urey_bradley", "proper_dih",
-                "improper_dih", "cmap", "total")
+                "improper_dih", "cmap_dih", "total")
     fields = {}
     for ch in channels:
         arr = rng.normal(0, 5, (n_atoms, n_frames)).astype(np.float64)
-        if ch in ("urey_bradley", "improper_dih", "cmap"):
+        if ch in ("urey_bradley", "improper_dih", "cmap_dih"):
             arr.fill(0.0)
         fields[ch] = arr
         ds = grp.create_dataset(ch, data=arr)
@@ -246,7 +246,7 @@ class TestBondedEnergyTimeSeriesGroup:
         be = load_trajectory(h5).energy.bonded
         assert isinstance(be, BondedEnergyTimeSeriesGroup)
         for ch in ("bond", "angle", "urey_bradley", "proper_dih",
-                   "improper_dih", "cmap", "total"):
+                   "improper_dih", "cmap_dih", "total"):
             assert getattr(be, ch).shape == (N_ATOMS, N_FRAMES)
         np.testing.assert_array_equal(be.bond,  bonded_truth["bond"])
         np.testing.assert_array_equal(be.total, bonded_truth["total"])
@@ -263,7 +263,7 @@ class TestBondedEnergyTimeSeriesGroup:
         are still emitted with zero values, not omitted."""
         h5, _, _ = h5_with_both_energy
         be = load_trajectory(h5).energy.bonded
-        for ch in ("urey_bradley", "improper_dih", "cmap"):
+        for ch in ("urey_bradley", "improper_dih", "cmap_dih"):
             arr = getattr(be, ch)
             assert arr.shape == (N_ATOMS, N_FRAMES)
             assert np.all(arr == 0.0)

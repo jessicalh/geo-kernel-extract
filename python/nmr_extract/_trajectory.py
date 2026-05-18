@@ -590,7 +590,7 @@ class BondedEnergyTimeSeriesGroup:
     urey_bradley: np.ndarray
     proper_dih: np.ndarray
     improper_dih: np.ndarray
-    cmap: np.ndarray
+    cmap_dih: np.ndarray         # name matches GromacsEnergy.cmap_dih
     total: np.ndarray
     frame_indices: np.ndarray    # (T,) uint64
     frame_times: np.ndarray      # (T,) ps
@@ -609,7 +609,7 @@ def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
         urey_bradley=g["urey_bradley"][:],
         proper_dih=g["proper_dih"][:],
         improper_dih=g["improper_dih"][:],
-        cmap=g["cmap"][:],
+        cmap_dih=g["cmap_dih"][:],
         total=g["total"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],

@@ -2665,9 +2665,12 @@ for the pending rows is
 | ✓ | `McConnellWelfordTrajectoryResult` | McConnell | AV | TrajectoryAtom `mc_*` Welford fields + `/trajectory/mc_welford/` |
 | ⏳ | `ApbsEfgTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<SphericalTensor>` (EFG) — pairs with the landed `ApbsEfieldTimeSeriesTrajectoryResult` (Vec3) |
 | — | ~~`CoulombFieldTimeSeriesTrajectoryResult`~~ | ~~Coulomb~~ | — | **Struck 2026-05-17**: `PerFrameExtractionSet` sets `skip_coulomb=true` (APBS supersedes; memory `project_apbs_canonical`). Source calc never runs, so the TR would emit only zeros. |
-| ⏳ | `WaterEnvironmentTimeSeriesTrajectoryResult` | WaterField | FO | multiple dense buffers |
-| ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | |
-| ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | |
+| ✓ | `WaterFieldTimeSeriesTrajectoryResult` | WaterField | FO | per-atom (N, T, 3)/(N, T, 9)/(N, T) — Vec3 efield/efield_first + SphericalTensor efg/efg_first + uint32 shell counts. `efg_t0_structural_zero=true` (traceless projection in source). Commit 0007415, 2026-05-18 |
+| ✓ | `WaterFieldWelfordTrajectoryResult` | WaterField | AV | per-atom Welford rollup; per-component Vec3 + SphericalTensor T1[3]/T2[5]/\|T2\|; delta variants on 3 primary scalars (efield_magnitude / n_first / n_second). efg_t0 channel omitted. Commit 0007415, 2026-05-18 |
+| ⏳ | `HydrationShellTimeSeriesTrajectoryResult` | HydrationShell | FO | next-batch landing |
+| ⏳ | `HydrationShellWelfordTrajectoryResult` | HydrationShell | AV | next-batch landing |
+| ⏳ | `HydrationGeometryTimeSeriesTrajectoryResult` | HydrationGeometry | FO | next-batch landing |
+| ⏳ | `HydrationGeometryWelfordTrajectoryResult` | HydrationGeometry | AV | next-batch landing |
 | ⏳ | `AIMNet2EmbeddingTimeSeriesTrajectoryResult` | AIMNet2 | FO | 256-dim per atom per frame — optional, large |
 | ✓ | `EeqWelfordTrajectoryResult` | Eeq | AV | TrajectoryAtom `eeq_charge_*` Welford fields + `/trajectory/eeq_welford/` (units = elementary_charge) |
 | ✓ | `SasaWelfordTrajectoryResult` | Sasa | AV | TrajectoryAtom `sasa_*` Welford fields + `/trajectory/sasa_welford/` (units = Å²); pairs with the landed FO `SasaTimeSeriesTrajectoryResult` |
@@ -2676,8 +2679,8 @@ for the pending rows is
 | ⏳ | `DihedralBinTransitionTrajectoryResult` | Dssp | AV | per-residue transition counters |
 | ⏳ | `Dssp8TimeSeriesTrajectoryResult` | Dssp | FO | per-residue SS code + H-bond energies |
 | ⏳ | `Dssp8TransitionTrajectoryResult` | Dssp | AV | per-residue SS transitions |
-| ⏳ | `BondedEnergyTimeSeriesTrajectoryResult` | BondedEnergy | FO | per-atom energy decomposition |
-| ⏳ | `GromacsEnergyTimeSeriesTrajectoryResult` | GromacsEnergy | FO | per-frame aggregate (no atom axis) |
+| ✓ | `BondedEnergyTimeSeriesTrajectoryResult` | BondedEnergy | FO | per-atom (N, T) — 7-channel CHARMM36m decomposition: bond/angle/urey_bradley/proper_dih/improper_dih/cmap_dih/total. split_convention="evenly_among_participating_atoms" (one of several valid attributions; calibration-absorbable). Commit 322d465, 2026-05-18 |
+| ✓ | `GromacsEnergyTimeSeriesTrajectoryResult` | GromacsEnergy | FO | per-frame system-scalar timeline (T,) — all ~25 .edr columns + virial/pressure tensors (T, 9) row-major XX,XY,XZ,YX,...,ZZ. Breaks per-atom DenseBuffer pattern. Gate for low-energy-state ML model framings. Commit 322d465, 2026-05-18 |
 | ⏳ | `RingNeighbourhoodTrajectoryStats` | multiple ring calculators | FO | rich per-atom-per-ring struct vectors (Pattern A) |
 
 **`ScanForDftPointSet` (scan mode, for DFT pose selection):** *Slated

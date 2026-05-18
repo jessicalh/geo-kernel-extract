@@ -83,6 +83,12 @@ void GromacsEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("result_name",   Name());
     grp.createAttribute("n_frames",      T);
     grp.createAttribute("finalized",     finalized_);
+    // Group-level `units = "kJ/mol"` describes the primary energy
+    // channels. Per-dataset `units` attributes are authoritative —
+    // the group also holds K (temperature), bar (pressure), nm^3
+    // (volume), kg/m^3 (density), nm (box edges). Both coexist for
+    // backward compatibility with consumers that read the group attr
+    // as a hint.
     grp.createAttribute("units",         std::string("kJ/mol"));
     grp.createAttribute("tensor_layout",
         std::string("XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"));

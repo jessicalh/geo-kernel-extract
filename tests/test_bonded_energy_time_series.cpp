@@ -169,7 +169,7 @@ TEST(BondedEnergyTimeSeries, H5RoundTrip) {
 
     for (const std::string& ch :
          {"bond", "angle", "urey_bradley", "proper_dih",
-          "improper_dih", "cmap", "total"}) {
+          "improper_dih", "cmap_dih", "total"}) {
         ASSERT_TRUE(grp.exist(ch)) << "missing channel: " << ch;
         const auto dims = grp.getDataSet(ch).getSpace().getDimensions();
         ASSERT_EQ(dims.size(), 2u);

@@ -28,7 +28,7 @@
 //     urey_bradley   (N, T)  float64  kJ/mol
 //     proper_dih     (N, T)  float64  kJ/mol
 //     improper_dih   (N, T)  float64  kJ/mol
-//     cmap           (N, T)  float64  kJ/mol
+//     cmap_dih       (N, T)  float64  kJ/mol     (matches GromacsEnergy.cmap_dih)
 //     total          (N, T)  float64  kJ/mol
 //     frame_indices  (T,)    uint64
 //     frame_times    (T,)    float64  ps
