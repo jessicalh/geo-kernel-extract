@@ -134,18 +134,18 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)",
               native_axis="atom", mechanism="topology"),
     ArraySpec("ring_contributions","identity",  RingContributions, 59,   True,  "Per-(atom,ring) pair contributions",
-              native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="ppm",
+              native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
     ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference",
               native_axis="aromatic_ring", units="Å", mechanism="topology"),
 
     # ── Biot-Savart (BiotSavartResult.cpp) ───────────────────────
     ArraySpec("bs_shielding",     "biot_savart", ShieldingTensor,  9,    True,  "BS ring current shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+              irreps=_SHIELD_IRREPS, units="ppm_T_per_nA", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
     ArraySpec("bs_per_type_T0",   "biot_savart", PerRingTypeT0,    8,    True,  "BS isotropic per ring type",
-              irreps="0e", units="ppm", mechanism="ring_current"),
+              irreps="0e", units="ppm_T_per_nA", mechanism="ring_current"),
     ArraySpec("bs_per_type_T2",   "biot_savart", PerRingTypeT2,    40,   True,  "BS T2 per ring type",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="ring_current"),
+              irreps="2e", units="ppm_T_per_nA", tensor_rank=2, mechanism="ring_current"),
     ArraySpec("bs_total_B",       "biot_savart", VectorField,      3,    True,  "BS total B-field vector",
               irreps="1e", units="T", tensor_rank=1, parity="odd", mechanism="ring_current"),
     ArraySpec("bs_ring_counts",   "biot_savart", RingCounts,       4,    True,  "Ring proximity counts (3/5/8/12 A)",
@@ -153,43 +153,43 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── Haigh-Mallion (HaighMallionResult.cpp) ───────────────────
     ArraySpec("hm_shielding",     "haigh_mallion", ShieldingTensor, 9,   True,  "HM ring current shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-1", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
     ArraySpec("hm_per_type_T0",   "haigh_mallion", PerRingTypeT0,   8,   True,  "HM isotropic per ring type",
-              irreps="0e", units="ppm", mechanism="ring_current"),
+              irreps="0e", units="Angstrom^-1", mechanism="ring_current"),
     ArraySpec("hm_per_type_T2",   "haigh_mallion", PerRingTypeT2,   40,  True,  "HM T2 per ring type",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="ring_current"),
+              irreps="2e", units="Angstrom^-1", tensor_rank=2, mechanism="ring_current"),
 
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
     ArraySpec("pq_shielding",     "pi_quadrupole", ShieldingTensor, 9,   True,  "PQ EFG shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_efg"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-5", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_efg"),
     ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ isotropic per ring type",
-              irreps="0e", units="ppm", mechanism="ring_efg"),
+              irreps="0e", units="Angstrom^-5", mechanism="ring_efg"),
     ArraySpec("pq_per_type_T2",   "pi_quadrupole", PerRingTypeT2,   40,  True,  "PQ T2 per ring type",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="ring_efg"),
+              irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg"),
 
     # ── Dispersion (DispersionResult.cpp) ────────────────────────
     ArraySpec("disp_shielding",   "dispersion", ShieldingTensor,   9,    True,  "Dispersion shielding (1/r^6)",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_dispersion"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-6", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_dispersion"),
     ArraySpec("disp_per_type_T0", "dispersion", PerRingTypeT0,     8,    True,  "Dispersion scalar per ring type",
-              irreps="0e", units="ppm", mechanism="ring_dispersion"),
+              irreps="0e", units="Angstrom^-6", mechanism="ring_dispersion"),
     ArraySpec("disp_per_type_T2", "dispersion", PerRingTypeT2,     40,   True,  "Dispersion T2 per ring type",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="ring_dispersion"),
+              irreps="2e", units="Angstrom^-6", tensor_rank=2, mechanism="ring_dispersion"),
 
     # ── Ring Susceptibility (RingSusceptibilityResult.cpp) ───────
     ArraySpec("ringchi_shielding","ring_susceptibility", ShieldingTensor, 9, True, "Ring susceptibility shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
 
     # ── McConnell (McConnellResult.cpp) ──────────────────────────
     ArraySpec("mc_shielding",     "mcconnell", ShieldingTensor,    9,    True,  "McConnell bond anisotropy shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_category_T2",   "mcconnell", PerBondCategoryT2,  25,   True,  "McConnell T2 per bond category",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="bond_anisotropy"),
+              irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mc_scalars",       "mcconnell", McConnellScalars,   6,    True,  "McConnell scalar sums + distances",
               mechanism="bond_anisotropy"),
 
     # ── Coulomb (CoulombResult.cpp) — optional via --no-coulomb ──
     ArraySpec("coulomb_shielding",      "coulomb", ShieldingTensor, 9,   False, "Coulomb E-field shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
+              irreps=_SHIELD_IRREPS, units="V/A^2", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       9,   False, "Coulomb EFG backbone",
@@ -201,7 +201,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_shielding",  "hbond", ShieldingTensor,        9,    True,  "H-bond shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_kernel"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_kernel"),
     ArraySpec("hbond_scalars",    "hbond", HBondScalars,           3,    True,  "H-bond scalars",
               mechanism="hbond_kernel"),
 
@@ -260,14 +260,14 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="e", mechanism="charges"),
     ArraySpec("mopac_scalars",    "mopac_core", MopacScalars,      4,    False, "MOPAC per-atom scalars",
               mechanism="charges"),
-    ArraySpec("mopac_bond_orders","mopac_core", BondOrders,        3,    False, "MOPAC Wiberg bond orders",
-              mechanism="charges"),
+    ArraySpec("mopac_bond_orders","mopac_core", BondOrders,        3,    False, "MOPAC Wiberg bond orders: sparse rows [atom_i, atom_j, order]",
+              native_axis="bond", mechanism="charges"),
     ArraySpec("mopac_global",     "mopac_core", MopacGlobal,       4,    False, "MOPAC graph-level scalars",
               native_axis="protein", mechanism="charges"),
 
     # ── MOPAC Coulomb (MopacCoulombResult.cpp) ───────────────────
     ArraySpec("mopac_coulomb_shielding",     "mopac_coulomb", ShieldingTensor, 9,  False, "MOPAC Coulomb shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
+              irreps=_SHIELD_IRREPS, units="V/A^2", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_E",             "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       9,  False, "MOPAC Coulomb EFG backbone",
@@ -279,9 +279,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
 
     # ── MOPAC McConnell (MopacMcConnellResult.cpp) ───────────────
     ArraySpec("mopac_mc_shielding",    "mopac_mcconnell", ShieldingTensor,   9,  False, "MOPAC McConnell shielding",
-              irreps=_SHIELD_IRREPS, units="ppm", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
+              irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mopac_mc_category_T2",  "mopac_mcconnell", PerBondCategoryT2, 25, False, "MOPAC McConnell T2 per category",
-              irreps="2e", units="ppm", tensor_rank=2, mechanism="bond_anisotropy"),
+              irreps="2e", units="Angstrom^-3", tensor_rank=2, mechanism="bond_anisotropy"),
     ArraySpec("mopac_mc_scalars",      "mopac_mcconnell", McConnellScalars,  6,  False, "MOPAC McConnell scalars",
               mechanism="bond_anisotropy"),
 

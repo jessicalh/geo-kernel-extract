@@ -93,7 +93,16 @@ class SphericalTensor:
 
 
 class ShieldingTensor(SphericalTensor):
-    """Shielding contribution in ppm.  Same structure as :class:`SphericalTensor`."""
+    """Shielding contribution tensor.  Same structure as :class:`SphericalTensor`.
+
+    Per-instance units are declared by the corresponding catalog entry
+    (``ArraySpec.units``). DFT-derived shielding (orca_*, tripeptide_*,
+    larsen_hbond_*_shielding) is in ppm. Classical-kernel-derived
+    shielding (bs_*, hm_*, mc_*, pq_*, disp_*, hbond_*, ringchi_*,
+    coulomb_shielding) is in the kernel's native unit (ppm·T/nA, Å⁻¹,
+    Å⁻³, Å⁻⁵, Å⁻⁶, V/Å²) — calibration multiplies by the relevant
+    parameter to map to ppm. See OBJECT_MODEL.md drift-table section.
+    """
     pass
 
 
@@ -724,10 +733,10 @@ class AIMNet2Polarisability:
     """
 
     __slots__ = ("_data",)
-    IRREPS = "1x1o"  # vector under SO(3); odd parity
+    IRREPS = Irreps("1x1o")  # vector under SO(3); odd parity
 
     def __init__(self, data: np.ndarray):
-        if data.ndim == 2 and data.shape[-1] != 3:
+        if data.shape[-1] != 3:
             raise ValueError(
                 f"AIMNet2Polarisability: expected last dim 3, got {data.shape}")
         self._data = data
@@ -735,6 +744,10 @@ class AIMNet2Polarisability:
     @property
     def data(self) -> np.ndarray:
         return self._data
+
+    @property
+    def irreps(self) -> Irreps:
+        return self.IRREPS
 
     @property
     def vectors(self) -> np.ndarray:
@@ -750,5 +763,4 @@ class AIMNet2Polarisability:
 
     def __repr__(self) -> str:
         return f"AIMNet2Polarisability(shape={self._data.shape})"
-
 
