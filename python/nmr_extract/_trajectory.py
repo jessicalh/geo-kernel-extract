@@ -477,6 +477,161 @@ def _load_hbond_count_welford(f) -> Optional[HBondCountWelfordGroup]:
     )
 
 
+# ─── Energy time-series groups (system-scalar + per-atom) ──────────
+
+
+@dataclass(frozen=True)
+class GromacsEnergyTimeSeriesGroup:
+    """Per-frame system-scalar timeline from /trajectory/gromacs_energy_time_series/.
+
+    Shape: per-frame system scalars (T,). The two tensor channels (virial,
+    pressure_tensor) carry their 3×3 layout as the second axis, (T, 9),
+    with layout order XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ matching the source
+    GromacsEnergy struct.
+
+    Primary low-energy-state-filtering channel: `total_energy`. Selection
+    of bottom-N% lowest-energy frames is a numpy one-liner downstream:
+
+        e = traj.energy.gromacs.total_energy
+        low_idx = np.argsort(e)[:int(0.1 * len(e))]
+    """
+    # Electrostatic (kJ/mol)
+    coulomb_sr: np.ndarray       # (T,)
+    coulomb_recip: np.ndarray
+    coulomb_14: np.ndarray
+    # Bonded (kJ/mol)
+    bond: np.ndarray
+    angle: np.ndarray
+    urey_bradley: np.ndarray
+    proper_dih: np.ndarray
+    improper_dih: np.ndarray
+    cmap_dih: np.ndarray
+    # Van der Waals (kJ/mol)
+    lj_sr: np.ndarray
+    lj_14: np.ndarray
+    disper_corr: np.ndarray
+    # Thermodynamic state
+    potential: np.ndarray        # kJ/mol
+    kinetic: np.ndarray
+    total_energy: np.ndarray
+    enthalpy: np.ndarray
+    temperature: np.ndarray      # K
+    pressure: np.ndarray         # bar
+    volume: np.ndarray           # nm^3
+    density: np.ndarray          # kg/m^3
+    # Box dimensions (nm)
+    box_x: np.ndarray
+    box_y: np.ndarray
+    box_z: np.ndarray
+    # Per-group temperatures (K)
+    T_protein: np.ndarray
+    T_non_protein: np.ndarray
+    # 3×3 tensors as (T, 9)
+    virial: np.ndarray           # (T, 9) kJ/mol
+    pressure_tensor: np.ndarray  # (T, 9) bar
+    # Frame indexing
+    frame_indices: np.ndarray    # (T,) uint64
+    frame_times: np.ndarray      # (T,) ps
+    units: str                   # primary energy unit string
+
+
+def _load_gromacs_energy_time_series(f) -> Optional[GromacsEnergyTimeSeriesGroup]:
+    path = "/trajectory/gromacs_energy_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    return GromacsEnergyTimeSeriesGroup(
+        coulomb_sr=g["coulomb_sr"][:],
+        coulomb_recip=g["coulomb_recip"][:],
+        coulomb_14=g["coulomb_14"][:],
+        bond=g["bond"][:],
+        angle=g["angle"][:],
+        urey_bradley=g["urey_bradley"][:],
+        proper_dih=g["proper_dih"][:],
+        improper_dih=g["improper_dih"][:],
+        cmap_dih=g["cmap_dih"][:],
+        lj_sr=g["lj_sr"][:],
+        lj_14=g["lj_14"][:],
+        disper_corr=g["disper_corr"][:],
+        potential=g["potential"][:],
+        kinetic=g["kinetic"][:],
+        total_energy=g["total_energy"][:],
+        enthalpy=g["enthalpy"][:],
+        temperature=g["temperature"][:],
+        pressure=g["pressure"][:],
+        volume=g["volume"][:],
+        density=g["density"][:],
+        box_x=g["box_x"][:],
+        box_y=g["box_y"][:],
+        box_z=g["box_z"][:],
+        T_protein=g["T_protein"][:],
+        T_non_protein=g["T_non_protein"][:],
+        virial=g["virial"][:],
+        pressure_tensor=g["pressure_tensor"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        units=_group_units(g),
+    )
+
+
+@dataclass(frozen=True)
+class BondedEnergyTimeSeriesGroup:
+    """Per-atom 7-channel bonded-energy breakdown from /trajectory/bonded_energy_time_series/.
+
+    Shape: each channel is (N, T) float64 in kJ/mol. The `total` channel
+    is the running sum of the six interaction-type channels per atom per
+    frame; emitted alongside per Export-Everything-Upstream.
+
+    Split convention: GROMACS CHARMM36m interaction energies are split
+    evenly among the 2..5 atoms participating in each interaction.
+    """
+    bond: np.ndarray             # (N, T) kJ/mol
+    angle: np.ndarray
+    urey_bradley: np.ndarray
+    proper_dih: np.ndarray
+    improper_dih: np.ndarray
+    cmap: np.ndarray
+    total: np.ndarray
+    frame_indices: np.ndarray    # (T,) uint64
+    frame_times: np.ndarray      # (T,) ps
+    units: str
+    split_convention: str
+
+
+def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
+    path = "/trajectory/bonded_energy_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    return BondedEnergyTimeSeriesGroup(
+        bond=g["bond"][:],
+        angle=g["angle"][:],
+        urey_bradley=g["urey_bradley"][:],
+        proper_dih=g["proper_dih"][:],
+        improper_dih=g["improper_dih"][:],
+        cmap=g["cmap"][:],
+        total=g["total"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        units=_group_units(g),
+        split_convention=str(_decode_attr(
+            g.attrs.get("split_convention", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class EnergyAccess:
+    """Energy time-series groups attached to TrajectoryData.
+
+    Either slot is None when the corresponding C++ TR didn't run for
+    the extraction that produced this trajectory.h5. The `gromacs` slot
+    is the gate for low-energy-state ML model framings; the `bonded`
+    slot adds per-atom strain features for the same frames.
+    """
+    gromacs: Optional[GromacsEnergyTimeSeriesGroup] = None
+    bonded: Optional[BondedEnergyTimeSeriesGroup] = None
+
+
 # ─── Container for all six Welford groups ───────────────────────────
 
 
@@ -543,6 +698,13 @@ class TrajectoryData:
     # Welford H5 groups (Phase 2b/C, 2026-05-17/18). Always present;
     # individual fields are None when the corresponding TR didn't run.
     welford: WelfordAccess = field(default_factory=WelfordAccess)
+
+    # Per-frame timeline groups (2026-05-18 batch onward). Always present
+    # as a container; individual fields are None when the corresponding
+    # TR didn't run. Unblocks the (a) all-frames and (b) low-energy-state
+    # ML model framings on the 676-trajectory fleet — see
+    # `project_fleet_676_2026-05-18`.
+    energy: EnergyAccess = field(default_factory=EnergyAccess)
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -653,6 +815,12 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             hbond_count=_load_hbond_count_welford(f),
         )
 
+        # Per-frame time-series groups (each Optional)
+        energy = EnergyAccess(
+            gromacs=_load_gromacs_energy_time_series(f),
+            bonded=_load_bonded_energy_time_series(f),
+        )
+
     return TrajectoryData(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -662,4 +830,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         rollup=rollup,
         bonds=bonds,
         welford=welford,
+        energy=energy,
     )

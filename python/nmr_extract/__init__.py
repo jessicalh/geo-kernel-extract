@@ -25,6 +25,9 @@ from ._trajectory import (
     EeqWelfordGroup,
     SasaWelfordGroup,
     HBondCountWelfordGroup,
+    EnergyAccess,
+    GromacsEnergyTimeSeriesGroup,
+    BondedEnergyTimeSeriesGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -107,4 +110,7 @@ __all__ = [
     "EeqWelfordGroup",
     "SasaWelfordGroup",
     "HBondCountWelfordGroup",
+    "EnergyAccess",
+    "GromacsEnergyTimeSeriesGroup",
+    "BondedEnergyTimeSeriesGroup",
 ]
