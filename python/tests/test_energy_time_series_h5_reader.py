@@ -252,18 +252,57 @@ class TestGromacsEnergyTimeSeriesGroup:
         np.testing.assert_array_equal(ge.frame_indices, gromacs_truth["frame_indices"])
         np.testing.assert_allclose(ge.frame_times,      traj.frame_times)
 
-    def test_low_energy_selection_one_liner(self, h5_with_both_energy):
-        """The use case the user named on 2026-05-18: bottom-N% selection."""
+    def test_low_energy_selection_safe_pattern(self, h5_with_both_energy):
+        """The user's 2026-05-18 use case + R3 codex F1 NaN-safety.
+
+        With all frames finite (fixture writes real values), the safe
+        pattern selects bottom-N% by total_energy. The pattern itself
+        is documented on GromacsEnergyTimeSeriesGroup — this test
+        exercises it to prevent the unsafe `np.argsort(e)[:N]` form from
+        creeping back into downstream code.
+        """
         h5, _, _ = h5_with_both_energy
         ge = load_trajectory(h5).energy.gromacs
-        # Bottom 50% of frames by total energy:
-        order = np.argsort(ge.total_energy)
-        bottom = order[:N_FRAMES // 2]
-        assert bottom.shape == (N_FRAMES // 2,)
-        # Sanity: selected frames have ≤ median total energy.
-        median = np.median(ge.total_energy)
-        for f in bottom:
-            assert ge.total_energy[f] <= median
+        e = ge.total_energy
+        valid = np.isfinite(e)
+        assert valid.all(), "fixture should have all-finite total_energy"
+        n_select = int(0.5 * valid.sum())
+        rank_in_valid = np.argsort(e[valid])[:n_select]
+        selected = np.where(valid)[0][rank_in_valid]
+        assert selected.shape == (n_select,)
+        # Sanity: every selected frame is finite + ≤ median total energy.
+        for f in selected:
+            assert np.isfinite(e[f])
+            assert e[f] <= np.median(e)
+
+    def test_low_energy_selection_handles_nan(self, tmp_path):
+        """If some frames have NaN total_energy (e.g. .edr column missing
+        in those rows), the safe pattern silently excludes them while
+        the naive `np.argsort(e)[:N]` would silently include them."""
+        h5 = tmp_path / "traj_with_nans.h5"
+        with h5py.File(h5, "w") as f:
+            _write_required_traj_root(f, N_ATOMS, N_FRAMES)
+            gromacs_truth = _write_gromacs_energy_ts(f, N_FRAMES)
+            _write_bonded_energy_ts(f, N_ATOMS, N_FRAMES)
+            # Inject NaN on half the frames' total_energy.
+            ds = f["/trajectory/gromacs_energy_time_series/total_energy"]
+            data = ds[:]
+            data[::2] = np.nan  # every other frame NaN
+            ds[:] = data
+
+        ge = load_trajectory(h5).energy.gromacs
+        e = ge.total_energy
+        valid = np.isfinite(e)
+        n_valid = int(valid.sum())
+        assert n_valid == N_FRAMES // 2, "half the frames should still be valid"
+
+        # Safe pattern: only valid frames selected.
+        n_select = max(1, int(0.5 * n_valid))
+        rank_in_valid = np.argsort(e[valid])[:n_select]
+        selected = np.where(valid)[0][rank_in_valid]
+        for f in selected:
+            assert np.isfinite(e[f]), \
+                f"safe pattern selected NaN frame {f} — gating broken"
 
     def test_source_attached_provenance(self, h5_with_both_energy):
         """R2 review: source_attached_per_frame mask + count round-trip."""

@@ -78,6 +78,43 @@ nmr::RunConfiguration BuildWaterFieldConfig(unsigned stride) {
 }  // namespace
 
 
+// ============================================================================
+// SYNTHETIC: source-absent path — verifies all-absent → group skipped.
+// R3 codex F5 2026-05-18.
+// ============================================================================
+
+TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    auto tr = nmr::WaterFieldTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    for (std::size_t t = 0; t < 3; ++t) {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic frame");
+        // No WaterFieldResult attached — source absent every frame.
+        tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
+    }
+    tr->Finalize(tp, traj);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("water_ts_allabsent_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    EXPECT_FALSE(reopen.exist("/trajectory/water_field_time_series"))
+        << "All-absent run should skip group emission entirely.";
+
+    fs::remove(h5_path);
+}
+
+
 TEST(WaterFieldTimeSeries, Frame0Semantics) {
     LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);

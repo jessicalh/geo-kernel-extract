@@ -302,6 +302,42 @@ class TestWaterFieldTimeSeriesGroup:
             ts.source_attached_per_frame,
             np.ones(N_FRAMES, dtype=np.uint8))
 
+    def test_count_absent_sentinel_round_trips(self, h5_with_water):
+        """R3 codex F3 2026-05-18: SDK exposes the uint32 absent_sentinel
+        constant so consumers can mask or use the float accessors below."""
+        h5, _, _ = h5_with_water
+        ts = load_trajectory(h5).water_field.time_series
+        assert ts.count_absent_sentinel == 0xFFFFFFFF
+
+    def test_n_first_float_masks_sentinel(self, tmp_path):
+        """R3 codex F3 2026-05-18: `n_first_float` promotes uint32 to
+        float64 with NaN on sentinel-marked absent frames so naive
+        `np.mean(...)` doesn't see 4.29e9 waters."""
+        h5 = tmp_path / "traj.h5"
+        with h5py.File(h5, "w") as f:
+            _write_required_traj_root(f, N_ATOMS, N_FRAMES)
+            _write_water_field_time_series(f, N_ATOMS, N_FRAMES)
+            _write_water_field_welford(f, N_ATOMS, N_FRAMES)
+            # Inject the sentinel on half the n_first frames.
+            ds = f["/trajectory/water_field_time_series/n_first"]
+            data = ds[:]
+            data[:, ::2] = 0xFFFFFFFF
+            ds[:] = data
+
+        ts = load_trajectory(h5).water_field.time_series
+        # Raw uint32 still carries the sentinel.
+        assert (ts.n_first[:, ::2] == 0xFFFFFFFF).all()
+        # Promoted float64 has NaN where sentinel was.
+        n_first_f = ts.n_first_float
+        assert np.isnan(n_first_f[:, ::2]).all()
+        assert np.isfinite(n_first_f[:, 1::2]).all()
+        # Naive mean over float-promoted is safe (NaNs propagate, but
+        # nanmean gives the right answer).
+        mean_per_atom = np.nanmean(n_first_f, axis=1)
+        assert np.isfinite(mean_per_atom).all()
+        assert (mean_per_atom < 1e6).all(), \
+            "nanmean returned sentinel — promotion broken"
+
 
 class TestWaterFieldWelfordGroup:
     def test_efg_t2_per_component_shape(self, h5_with_water):

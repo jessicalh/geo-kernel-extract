@@ -490,10 +490,18 @@ class GromacsEnergyTimeSeriesGroup:
     GromacsEnergy struct.
 
     Primary low-energy-state-filtering channel: `total_energy`. Selection
-    of bottom-N% lowest-energy frames is a numpy one-liner downstream:
+    of bottom-N% lowest-energy frames MUST mask NaN entries first — both
+    source-absent frames and missing .edr columns populate NaN, and a
+    naive `np.argsort(e)[:N]` is unsafe when the bottom-N% slice runs
+    into the NaN region (numpy sorts NaN to the end, so the failure is
+    silent: you get fewer-than-N valid frames or all-NaN selections).
+    Safe pattern (R3 codex F1 2026-05-18):
 
         e = traj.energy.gromacs.total_energy
-        low_idx = np.argsort(e)[:int(0.1 * len(e))]
+        valid = np.isfinite(e)
+        n_select = int(0.1 * valid.sum())
+        rank_in_valid = np.argsort(e[valid])[:n_select]
+        selected = np.where(valid)[0][rank_in_valid]
 
     Provenance fields exposed (added 2026-05-18 R2 review): source-attached
     mask + count for the GromacsEnergyResult source-attached gate;
@@ -681,8 +689,15 @@ class WaterFieldTimeSeriesGroup:
     efield_first: np.ndarray        # (N, T, 3)
     efg: np.ndarray                 # (N, T, 5) V/Angstrom² (T2 only)
     efg_first: np.ndarray           # (N, T, 5)
+    # Shell-occupancy counts as RAW uint32 — absent-source frames carry
+    # the sentinel `count_absent_sentinel` (0xFFFFFFFF). A naive
+    # `np.mean(n_first)` over the raw array will see 4.29e9; downstream
+    # code MUST mask first via `count_absent_sentinel` or call the
+    # `n_first_float` / `n_second_float` accessors below which return
+    # float arrays with NaN on absent frames.
     n_first: np.ndarray             # (N, T) uint32 — shell-occupancy
     n_second: np.ndarray            # (N, T) uint32
+    count_absent_sentinel: int      # 0xFFFFFFFF — uint32 doesn't carry NaN
     frame_indices: np.ndarray       # (T,)  uint64
     frame_times: np.ndarray         # (T,)  ps
     source_attached_per_frame: np.ndarray  # (T,) uint8 — 1=attached, 0=absent
@@ -696,12 +711,38 @@ class WaterFieldTimeSeriesGroup:
     n_first_cutoff_A: float         # 3.5
     n_second_cutoff_A: float        # 5.5
 
+    @property
+    def n_first_float(self) -> np.ndarray:
+        """`n_first` promoted to float64 with NaN on source-absent frames.
+
+        Use this instead of the raw uint32 `n_first` when computing means
+        or feeding to a model — the uint32 sentinel `0xFFFFFFFF` would
+        otherwise poison aggregations (4.29e9 waters per atom per absent
+        frame). R3 codex F3 2026-05-18.
+        """
+        out = self.n_first.astype(np.float64)
+        out[self.n_first == self.count_absent_sentinel] = np.nan
+        return out
+
+    @property
+    def n_second_float(self) -> np.ndarray:
+        """`n_second` promoted to float64 with NaN on source-absent frames."""
+        out = self.n_second.astype(np.float64)
+        out[self.n_second == self.count_absent_sentinel] = np.nan
+        return out
+
 
 def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
     path = "/trajectory/water_field_time_series"
     if path not in f:
         return None
     g = f[path]
+    # absent_sentinel comes from the n_first dataset attr (set by C++);
+    # fall back to the documented 0xFFFFFFFF if attr missing on older H5.
+    if "absent_sentinel" in g["n_first"].attrs:
+        sentinel = int(g["n_first"].attrs["absent_sentinel"])
+    else:
+        sentinel = 0xFFFFFFFF
     return WaterFieldTimeSeriesGroup(
         efield=g["efield"][:],
         efield_first=g["efield_first"][:],
@@ -709,6 +750,7 @@ def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
         efg_first=g["efg_first"][:],
         n_first=g["n_first"][:],
         n_second=g["n_second"][:],
+        count_absent_sentinel=sentinel,
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
         source_attached_per_frame=g["source_attached_per_frame"][:],

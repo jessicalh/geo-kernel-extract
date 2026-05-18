@@ -206,8 +206,20 @@ void WaterFieldWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         mean_dt_ps_ = (attached_times.back() - attached_times.front()) /
                       static_cast<double>(attached_times.size() - 1);
     }
+
+    // frame_index_range from source-attached subset only — partial-attach
+    // runs shouldn't advertise a range covering absent frames that never
+    // fed the Welford. Per R3 codex F4 2026-05-18.
     const auto& fidx = traj.FrameIndices();
-    if (!fidx.empty()) frame_index_range_ = {fidx.front(), fidx.back()};
+    std::vector<std::size_t> attached_fidx;
+    attached_fidx.reserve(source_attached_per_frame_.size());
+    for (std::size_t f = 0;
+         f < source_attached_per_frame_.size() && f < fidx.size(); ++f) {
+        if (source_attached_per_frame_[f]) attached_fidx.push_back(fidx[f]);
+    }
+    if (!attached_fidx.empty()) {
+        frame_index_range_ = {attached_fidx.front(), attached_fidx.back()};
+    }
 
     finalized_ = true;
     OperationLog::Info(LogCalcOther,

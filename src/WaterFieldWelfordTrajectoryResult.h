@@ -2,21 +2,32 @@
 //
 // WaterFieldWelfordTrajectoryResult: per-atom Welford rollup of the
 // explicit-water E-field + EFG kernel from WaterFieldResult. Clones the
-// BS Welford 5-part shape: per-component Welford on vector / tensor
-// channels, plus signed/abs/squared/dxdt delta variants on the primary
-// scalar channels (E-field magnitude, EFG T0, shell-occupancy counts).
+// BS Welford 5-part shape: per-component Welford on vector channels,
+// T2-only on the EFG (T0 and T1 are structural zeros — see schema note
+// below), plus signed/abs/squared/dxdt delta variants on the primary
+// rotationally-invariant scalar channels (E-field magnitude, shell-
+// occupancy counts).
 //
 // Channels (mirroring WaterFieldTimeSeries source fields):
 //
 //   efield                Vec3 V/Å              per-component[3] + magnitude
 //   efield_first          Vec3 V/Å              per-component[3] + magnitude
-//   efg                   SphericalTensor V/Å²  T0 + T1[3] + T2[5] + |T2|
-//   efg_first             SphericalTensor V/Å²  T0 + T1[3] + T2[5] + |T2|
+//   efg                   T2-only V/Å²          T2[5] + |T2|  (5+1 channels)
+//   efg_first             T2-only V/Å²          T2[5] + |T2|  (5+1 channels)
 //   n_first               int (dimensionless)   full scalar Welford
 //   n_second              int (dimensionless)   full scalar Welford
 //
-// Delta variants on: efield_magnitude, efg_t0, n_first, n_second.
-// These four scalars carry the per-channel-distinct dynamics question.
+// Delta variants on: efield_magnitude, n_first, n_second. Three primary
+// rotationally-invariant scalars carry the per-channel-distinct dynamics
+// question. efg_t0 deltas are NOT emitted — T0 is structurally zero.
+//
+// EFG T0+T1 schema rev (2026-05-18 codex F4): water EFG is built from
+// symmetric r⊗r outer products (WaterFieldResult.cpp:130) and explicitly
+// traceless-projected (WaterFieldResult.cpp:147-150). After projection
+// T0 = trace = 0; T1 = antisymmetric pseudovector = 0 because the
+// decomposition reads `0.5*(s_ij - s_ji)` (Types.cpp:31) which is bit-
+// exact zero on symmetric input. Only T2 (symmetric-traceless,
+// 5 real-spherical-tesseral components m=-2..+2) carries signal.
 //
 // Emission:
 //
@@ -25,17 +36,19 @@
 //     efield_magnitude_{mean,...}                                  (N,)
 //     efield_first_{x,y,z}_{...}                                   (N,)
 //     efield_first_magnitude_{...}                                 (N,)
-//     efg_t0_{...}                                                 (N,)
-//     efg_t1_{...}                                                 (N, 3)
-//     efg_t2_{...}                                                 (N, 5)
+//     efg_t2_{...}                                                 (N, 5)  m=-2..+2
 //     efg_t2magnitude_{...}                                        (N,)
-//     efg_first_{t0,t1,t2,t2magnitude}_{...}                       same shapes
+//     efg_first_t2_{...}                                           (N, 5)
+//     efg_first_t2magnitude_{...}                                  (N,)
 //     n_first_{...}, n_second_{...}                                (N,)
 //     <scalar>_delta_{...}, <scalar>_abs_delta_{...},
-//     <scalar>_delta_squared_{...}, <scalar>_dxdt_{...}           (N,) for the 4 scalars
+//     <scalar>_delta_squared_{...}, <scalar>_dxdt_{...}           (N,) for the 3 primary scalars
 //     n_frames_per_atom, delta_n_per_atom, dxdt_n_per_atom        (N,)
-//     attrs: result_name, n_frames, finalized, ddof, mean_dt_ps,
-//            frame_index_range, irrep_layout_t1, irrep_layout_t2
+//     source_attached_per_frame                                    (T,) uint8 provenance
+//     attrs: result_name, n_frames, source_attached_count, finalized,
+//            ddof, mean_dt_ps (attached-subset), frame_index_range
+//            (attached-subset), irrep_layout_efield, irrep_layout_efg_t2,
+//            efg_t0_structural_zero=true, efg_t1_structural_zero=true
 //
 // Dependencies: WaterFieldResult — REQUIRED by PerFrameExtractionSet but
 // conditionally attached by OperationRunner: if `opts.solvent` is null
