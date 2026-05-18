@@ -259,6 +259,18 @@ TEST(McConnellWelford, Integration1P9J) {
            "nonzero antisymmetric part)";
     EXPECT_GT(t2_populated, 0u)
         << "McConnell Welford T2 per-component all-zero — T2 Completeness regression";
+
+    // Codex 2026-05-18: dxdt_n must equal delta_n on a well-formed
+    // trajectory (no duplicated-timestamp frames). Regression guard
+    // for the separate-counter fix that skips zero-dt frames rather
+    // than zero-filling the rate accumulator.
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        const auto& w = tp.AtomAt(i).mc_welford;
+        EXPECT_EQ(w.dxdt_n, w.delta_n)
+            << "dxdt_n != delta_n on atom " << i
+            << " — investigate timestamp duplication in fixture";
+    }
+
     std::cout << "McConnellWelford integration: populated=" << populated
               << "/" << tp.AtomCount()
               << " max|t0|=" << max_abs_t0

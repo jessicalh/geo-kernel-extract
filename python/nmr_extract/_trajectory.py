@@ -1,29 +1,45 @@
-"""Trajectory data reader — loads the H5 master file from a GROMACS scan.
+"""Trajectory data reader — loads either H5 schema produced by the C++ extractor.
 
     from nmr_extract import load_trajectory
     traj = load_trajectory("output/trajectory.h5")
 
-    traj.positions          # (T, N, 3) float64 — per-frame xyz
+    traj.positions          # (T, N, 3) float64 — normalized regardless of source schema
     traj.frame_times        # (T,) float64 — time in ps
     traj.n_atoms            # int
     traj.n_frames           # int
 
-    # Rollup: legacy GromacsProtein per-atom Welford columns
-    traj.rollup.bs_T0.mean  # (N,) ring current isotropic mean
-    traj.rollup.bs_T0.std   # (N,) ring current isotropic std
-    traj.rollup.names       # list of column names
+Schema tolerance: the reader auto-detects which schema the H5 file uses
+and adapts. Codex 2026-05-18 caught the production-output incompatibility:
 
-    # Bonds: per-bond length statistics
-    traj.bonds.atom_a       # (B,) atom indices
-    traj.bonds.atom_b       # (B,) atom indices
-    traj.bonds.length_mean  # (B,) mean bond length (A)
-    traj.bonds.length_std   # (B,) bond length std
+  - **Analysis schema (current `TrajectoryProtein::WriteH5`)**: root
+    attrs `{protein_id, n_atoms, finalized}` only. Frame metadata at
+    `/trajectory/frames/{time_ps, original_index}` (+ `n_frames` group
+    attr). Positions atom-major at `/trajectory/positions/xyz`. No
+    `/rollup` group — analysis mode replaces the legacy rollup with the
+    six Welford H5 groups below. `traj.rollup is None`.
+  - **Legacy ensemble (`GromacsProtein::WriteH5`)**: root attrs include
+    `n_frames`, `positions_shape_T/N`. Positions frame-major at
+    `/positions`. Frame times at `/frame_times`. Rollup at `/rollup/`.
+    `traj.rollup` is a `TrajectoryRollup`.
+
+Both schemas: positions are returned as `(T, N, 3)` after the reader
+normalizes the on-disk layout.
+
+    # Legacy rollup (Optional — only present in ensemble H5 files)
+    if traj.rollup is not None:
+        traj.rollup.bs_T0.mean  # (N,) ring current isotropic mean
+
+    # Bonds: per-bond length statistics (legacy ensemble path only)
+    if traj.bonds is not None:
+        traj.bonds.length_mean
 
     # Welford H5 groups — written by *WelfordTrajectoryResult subclasses
     # (BS / HM / McConnell / Eeq / Sasa / HBondCount), 2026-05-17/18.
     # Each group is Optional — None when the corresponding C++ TR was
     # not attached for the run that produced this trajectory.h5.
     traj.welford.bs.t0.mean                  # (N,) ppm_T_per_nA
+    traj.welford.bs.t0.units                 # "ppm_T_per_nA" (sample-channel)
+    traj.welford.bs.t0.m2_units              # "ppm_T^2_per_nA^2" (Welford M2 accumulator)
     traj.welford.bs.t1.mean                  # (N, 3) Cartesian Levi-Civita dual
     traj.welford.bs.t2.mean                  # (N, 5) real-spherical-tesseral m-basis
     traj.welford.bs.t0_dxdt.mean             # (N,) cadence-normalized rate
@@ -131,8 +147,21 @@ class WelfordMoments:
     """7-stat block for one Welford channel.
 
     Mirrors the H5 datasets `<prefix>_{mean,m2,std,min,max,min_frame,
-    max_frame}` plus the per-dataset `units` attribute. Per-component
+    max_frame}` plus their per-dataset `units` attributes. Per-component
     channels (T1, T2) carry (N, K) arrays; scalar channels carry (N,).
+
+    Units carry two distinct strings:
+    - `units`: base unit of the sample (mean/std/min/max). For `t0` this
+      is e.g. `"ppm_T_per_nA"`; for `charge` it's `"elementary_charge"`.
+    - `m2_units`: unit of the Welford M2 accumulator (sum of (sample-mean)²),
+      which has squared dimension. For `t0_m2` it's `"ppm_T^2_per_nA^2"`;
+      for `charge_delta_squared_m2` it's `"elementary_charge^4"` (the
+      sample is already squared, so M2 is base⁴). The C++ writer goes to
+      explicit effort to emit honest per-dataset units; the SDK preserves
+      both so downstream calibration math doesn't have to guess.
+
+    Per-dataset units for `min_frame` / `max_frame` are always
+    `"frame_index"` and not stored separately.
     """
     mean: np.ndarray
     m2: np.ndarray
@@ -141,30 +170,40 @@ class WelfordMoments:
     max: np.ndarray
     min_frame: np.ndarray   # uint frame index
     max_frame: np.ndarray   # uint frame index
-    units: str              # base unit string from per-dataset H5 attr
+    units: str              # base unit string from <prefix>_mean.attrs
+    m2_units: str           # squared-units string from <prefix>_m2.attrs
 
 
 def _read_moments(grp, prefix: str) -> WelfordMoments:
     """Read a 7-stat Welford block from an HDF5 group.
 
-    Reads `<prefix>_{mean, m2, std, min, max, min_frame, max_frame}`
-    and the `units` attribute from `<prefix>_mean` (authoritative
-    per-dataset). Works for both 1D scalar channels and 2D
-    per-component channels — numpy carries the shape through.
+    Reads `<prefix>_{mean, m2, std, min, max, min_frame, max_frame}` and
+    propagates the per-dataset `units` attribute from BOTH `<prefix>_mean`
+    (→ `WelfordMoments.units`) and `<prefix>_m2` (→
+    `WelfordMoments.m2_units`). C++ writes distinct unit strings for
+    the squared accumulator vs the value channels (codex MEDIUM finding
+    2026-05-18); collapsing to one would lose honesty. Works for both
+    1D scalar channels and 2D per-component channels — numpy carries
+    the shape through.
     """
     ds_mean = grp[f"{prefix}_mean"]
+    ds_m2 = grp[f"{prefix}_m2"]
     units = ds_mean.attrs.get("units", "")
+    m2_units = ds_m2.attrs.get("units", "")
     if isinstance(units, bytes):
         units = units.decode()
+    if isinstance(m2_units, bytes):
+        m2_units = m2_units.decode()
     return WelfordMoments(
         mean=ds_mean[:],
-        m2=grp[f"{prefix}_m2"][:],
+        m2=ds_m2[:],
         std=grp[f"{prefix}_std"][:],
         min=grp[f"{prefix}_min"][:],
         max=grp[f"{prefix}_max"][:],
         min_frame=grp[f"{prefix}_min_frame"][:],
         max_frame=grp[f"{prefix}_max_frame"][:],
         units=str(units),
+        m2_units=str(m2_units),
     )
 
 
@@ -210,8 +249,14 @@ class _TensorWelfordGroup:
     t0_dxdt: WelfordMoments
     # Provenance
     t0_rms_delta: np.ndarray         # (N,) finalize-derived sqrt(<Δ²>)
-    n_frames_per_atom: np.ndarray
-    delta_n_per_atom: np.ndarray
+    n_frames_per_atom: np.ndarray    # (N,) count of t0 samples
+    delta_n_per_atom: np.ndarray     # (N,) count of t0_delta/abs/sq samples
+    # Count of VALID-dt t0_dxdt samples (only frames with dt > MIN_DT_PS
+    # contribute). Per codex 2026-05-18: distinct from delta_n because
+    # zero-dt frames are skipped in the rate accumulator rather than
+    # zero-filled. A well-formed trajectory has dxdt_n == delta_n on every
+    # atom; mismatch flags frame-duplication or stride misconfiguration.
+    dxdt_n_per_atom: np.ndarray      # (N,) count of t0_dxdt samples
     # Group-level attributes
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
@@ -252,6 +297,7 @@ def _load_tensor_welford(f, h5_path: str):
         t0_rms_delta=grp["t0_rms_delta"][:],
         n_frames_per_atom=grp["n_frames_per_atom"][:],
         delta_n_per_atom=grp["delta_n_per_atom"][:],
+        dxdt_n_per_atom=_read_dxdt_n_or_fallback(grp),
         mean_dt_ps=_group_mean_dt_ps(grp),
         frame_index_range=_group_frame_index_range(grp),
         irrep_layout_t1=str(_decode_attr(
@@ -260,6 +306,22 @@ def _load_tensor_welford(f, h5_path: str):
             grp.attrs.get("irrep_layout_t2", ""))),
         units=_group_units(grp),
     )
+
+
+def _read_dxdt_n_or_fallback(grp) -> np.ndarray:
+    """Read `dxdt_n_per_atom` if present, else fall back to `delta_n_per_atom`.
+
+    The `dxdt_n_per_atom` dataset is new (codex 2026-05-18 fix: zero-dt
+    frames are skipped in the rate accumulator, so dxdt has its own
+    counter). Older H5 files from before the fix don't have it; for those,
+    return `delta_n_per_atom` so downstream consumers don't crash. The
+    fallback IS the wrong number for files that had zero-dt frames, but
+    those files also have the zero-fill bias the fix addresses — using
+    delta_n_per_atom as a proxy is the least-broken default.
+    """
+    if "dxdt_n_per_atom" in grp:
+        return grp["dxdt_n_per_atom"][:]
+    return grp["delta_n_per_atom"][:]
 
 
 def _load_bs_welford(f) -> Optional[BsWelfordGroup]:
@@ -306,6 +368,10 @@ class EeqWelfordGroup:
     rms_delta: np.ndarray
     n_frames_per_atom: np.ndarray
     delta_n_per_atom: np.ndarray
+    # Count of VALID-dt *_dxdt samples (codex 2026-05-18). Distinct from
+    # delta_n_per_atom because zero-dt frames are skipped in the rate
+    # accumulator rather than zero-filled.
+    dxdt_n_per_atom: np.ndarray
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
     units: str
@@ -320,6 +386,7 @@ def _load_eeq_welford(f) -> Optional[EeqWelfordGroup]:
         rms_delta=grp["rms_delta"][:],
         n_frames_per_atom=grp["n_frames_per_atom"][:],
         delta_n_per_atom=grp["delta_n_per_atom"][:],
+        dxdt_n_per_atom=_read_dxdt_n_or_fallback(grp),
         mean_dt_ps=_group_mean_dt_ps(grp),
         frame_index_range=_group_frame_index_range(grp),
         units=_group_units(grp),
@@ -338,6 +405,10 @@ class SasaWelfordGroup:
     rms_delta: np.ndarray
     n_frames_per_atom: np.ndarray
     delta_n_per_atom: np.ndarray
+    # Count of VALID-dt *_dxdt samples (codex 2026-05-18). Distinct from
+    # delta_n_per_atom because zero-dt frames are skipped in the rate
+    # accumulator rather than zero-filled.
+    dxdt_n_per_atom: np.ndarray
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
     units: str
@@ -352,6 +423,7 @@ def _load_sasa_welford(f) -> Optional[SasaWelfordGroup]:
         rms_delta=grp["rms_delta"][:],
         n_frames_per_atom=grp["n_frames_per_atom"][:],
         delta_n_per_atom=grp["delta_n_per_atom"][:],
+        dxdt_n_per_atom=_read_dxdt_n_or_fallback(grp),
         mean_dt_ps=_group_mean_dt_ps(grp),
         frame_index_range=_group_frame_index_range(grp),
         units=_group_units(grp),
@@ -376,6 +448,10 @@ class HBondCountWelfordGroup:
     rms_delta: np.ndarray
     n_frames_per_atom: np.ndarray
     delta_n_per_atom: np.ndarray
+    # Count of VALID-dt *_dxdt samples (codex 2026-05-18). Distinct from
+    # delta_n_per_atom because zero-dt frames are skipped in the rate
+    # accumulator rather than zero-filled.
+    dxdt_n_per_atom: np.ndarray
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
     units: str
@@ -392,6 +468,7 @@ def _load_hbond_count_welford(f) -> Optional[HBondCountWelfordGroup]:
         rms_delta=grp["rms_delta"][:],
         n_frames_per_atom=grp["n_frames_per_atom"][:],
         delta_n_per_atom=grp["delta_n_per_atom"][:],
+        dxdt_n_per_atom=_read_dxdt_n_or_fallback(grp),
         mean_dt_ps=_group_mean_dt_ps(grp),
         frame_index_range=_group_frame_index_range(grp),
         units=_group_units(grp),
@@ -429,6 +506,23 @@ class TrajectoryData:
 
     This is the training data for the waveform model, the analysis
     data for the ridge, and the movie data for VTK.
+
+    Two H5 schemas exist:
+    - **Analysis (current)** written by `TrajectoryProtein::WriteH5` +
+      per-TR `WriteH5Group(file)`. Root attrs `{protein_id, n_atoms,
+      finalized}`. Frame metadata under `/trajectory/frames/`. Positions
+      under `/trajectory/positions/xyz` (atom-major). Each attached TR
+      writes its own `/trajectory/<group>/`. No `/rollup` group.
+    - **Legacy ensemble** written by `GromacsProtein::WriteH5` (old
+      ensemble accumulation path). Root attrs include `n_frames` /
+      `positions_shape_{T,N}`. Positions at `/positions` (frame-major).
+      Frame times at `/frame_times`. Legacy rollup at `/rollup/`.
+
+    `load_trajectory` detects which schema is present and adapts; the
+    fields below normalize on the analysis schema's representation
+    (positions in `(T, N, 3)` regardless of source). Fields absent in
+    a given schema are `None` or empty arrays — check `traj.rollup is
+    not None` before using the legacy rollup.
     """
     protein_id: str
     n_atoms: int
@@ -438,23 +532,93 @@ class TrajectoryData:
     positions: np.ndarray       # (T, N, 3) float64
     frame_times: np.ndarray     # (T,) float64
 
-    # Per-atom rollup statistics (legacy GromacsProtein columns)
-    rollup: TrajectoryRollup
+    # Per-atom rollup statistics (legacy GromacsProtein columns). None
+    # for analysis-schema H5 files — those replace the rollup notion
+    # with the Welford H5 groups below.
+    rollup: Optional[TrajectoryRollup] = None
 
-    # Per-bond rollup statistics
-    bonds: Optional[BondRollup]
+    # Per-bond rollup statistics (legacy ensemble path only).
+    bonds: Optional[BondRollup] = None
 
     # Welford H5 groups (Phase 2b/C, 2026-05-17/18). Always present;
     # individual fields are None when the corresponding TR didn't run.
     welford: WelfordAccess = field(default_factory=WelfordAccess)
 
 
+def _read_frame_metadata(f, n_atoms_hint: int):
+    """Return (n_frames, frame_times) from either H5 schema.
+
+    Analysis schema (current C++ TrajectoryProtein): `/trajectory/frames/`
+    group with `n_frames` group-attr + `time_ps` dataset.
+    Legacy schema (GromacsProtein ensemble): root attr `n_frames` +
+    `/frame_times` dataset.
+    Returns `(0, empty array)` when neither is present (e.g., bare H5
+    fixture used for testing one specific group in isolation).
+    """
+    if "trajectory" in f and "frames" in f["trajectory"]:
+        frames_grp = f["/trajectory/frames"]
+        n_frames = int(frames_grp.attrs.get("n_frames", 0))
+        if "time_ps" in frames_grp:
+            return n_frames, frames_grp["time_ps"][:]
+        return n_frames, np.array([], dtype=np.float64)
+    if "n_frames" in f.attrs and "frame_times" in f:
+        return int(f.attrs["n_frames"]), f["frame_times"][:]
+    return 0, np.array([], dtype=np.float64)
+
+
+def _read_positions(f, n_atoms_hint: int, n_frames_hint: int) -> np.ndarray:
+    """Return (T, N, 3) positions from either H5 schema.
+
+    Analysis schema: `/trajectory/positions/xyz` written atom-major as
+    `(N*T, 3)` by `PositionsTimeSeriesTrajectoryResult::WriteH5Group`.
+    Legacy schema: `/positions` written frame-major as `(T*N, 3)` by
+    `GromacsProtein::WriteH5`. Both normalized to `(T, N, 3)` here.
+    """
+    if "trajectory" in f and "positions" in f["trajectory"] \
+            and "xyz" in f["/trajectory/positions"]:
+        pos_grp = f["/trajectory/positions"]
+        N = int(pos_grp.attrs.get("n_atoms", n_atoms_hint))
+        T = int(pos_grp.attrs.get("n_frames", n_frames_hint))
+        pos_raw = pos_grp["xyz"][:]
+        # Atom-major (N*T, 3) → (N, T, 3) → (T, N, 3)
+        return pos_raw.reshape(N, T, 3).transpose(1, 0, 2)
+    if "positions" in f:
+        pos_raw = f["positions"][:]
+        T = int(f.attrs.get("positions_shape_T", n_frames_hint))
+        N = int(f.attrs.get("positions_shape_N", n_atoms_hint))
+        return pos_raw.reshape(T, N, 3)
+    return np.empty((0, n_atoms_hint, 3), dtype=np.float64)
+
+
+def _read_legacy_rollup(f) -> Optional[TrajectoryRollup]:
+    """Return legacy `/rollup/` TrajectoryRollup or None.
+
+    Only present in GromacsProtein ensemble H5 files. Analysis H5 files
+    written by the current TrajectoryProtein writer replace this notion
+    with the per-TR Welford groups; for those, return None and let the
+    caller use `traj.welford.<kind>` instead.
+    """
+    if "rollup" not in f or "mean" not in f["rollup"]:
+        return None
+    means = f["rollup/mean"][:]
+    stds = f["rollup/std"][:]
+    names_raw = f["rollup/names"][:]
+    names = [_decode_attr(n) for n in names_raw]
+    return TrajectoryRollup(names, means, stds)
+
+
 def load_trajectory(path: str | Path) -> TrajectoryData:
     """Load a trajectory H5 master file.
 
-    The file is written by GromacsProtein::WriteH5 after a trajectory scan,
-    optionally with /trajectory/<kind>_welford/ groups attached by the six
-    *WelfordTrajectoryResult subclasses (2026-05-17/18).
+    Supports both H5 schemas (see `TrajectoryData` docstring):
+    - Analysis (current `TrajectoryProtein` + per-TR `WriteH5Group`)
+    - Legacy ensemble (`GromacsProtein::WriteH5`)
+
+    Schema detection is automatic; fields absent in one schema are
+    `None` or empty in the returned `TrajectoryData`. The six Welford
+    H5 groups are loaded independently of which schema's frame
+    metadata is present — they live at `/trajectory/<kind>_welford/`
+    in both.
     """
     import h5py
 
@@ -463,25 +627,13 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         raise FileNotFoundError(f"Trajectory H5 not found: {path}")
 
     with h5py.File(path, "r") as f:
-        protein_id = f.attrs.get("protein_id", path.stem)
+        protein_id = _decode_attr(f.attrs.get("protein_id", path.stem))
         n_atoms = int(f.attrs["n_atoms"])
-        n_frames = int(f.attrs["n_frames"])
 
-        # Positions: stored as (T*N, 3), reshape to (T, N, 3)
-        pos_raw = f["positions"][:]          # (T*N, 3)
-        T_stored = int(f.attrs.get("positions_shape_T", n_frames))
-        N_stored = int(f.attrs.get("positions_shape_N", n_atoms))
-        positions = pos_raw.reshape(T_stored, N_stored, 3)
+        n_frames, frame_times = _read_frame_metadata(f, n_atoms)
+        positions = _read_positions(f, n_atoms, n_frames)
+        rollup = _read_legacy_rollup(f)
 
-        frame_times = f["frame_times"][:]    # (T,)
-
-        # Legacy GromacsProtein rollup
-        means = f["rollup/mean"][:]          # (N, K)
-        stds = f["rollup/std"][:]            # (N, K)
-        names_raw = f["rollup/names"][:]
-        names = [n.decode() if isinstance(n, bytes) else n for n in names_raw]
-
-        # Bonds (optional)
         bonds = None
         if "bonds" in f:
             bonds = BondRollup(
@@ -502,12 +654,12 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         )
 
     return TrajectoryData(
-        protein_id=protein_id if isinstance(protein_id, str) else protein_id.decode(),
+        protein_id=protein_id,
         n_atoms=n_atoms,
         n_frames=n_frames,
         positions=positions,
         frame_times=frame_times,
-        rollup=TrajectoryRollup(names, means, stds),
+        rollup=rollup,
         bonds=bonds,
         welford=welford,
     )

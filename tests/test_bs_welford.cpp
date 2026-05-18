@@ -279,6 +279,20 @@ TEST(BsWelford, Integration1P9J) {
         << "BS Welford T1 all-zero — per-component regression";
     EXPECT_GT(t2_populated, 0u)
         << "BS Welford T2 per-component all-zero — T2 Completeness regression";
+
+    // Codex 2026-05-18: dxdt_n must equal delta_n on a well-formed
+    // trajectory (no duplicated-timestamp frames). Catches regression
+    // of the separate-counter fix that prevents zero-dt frames from
+    // zero-filling the rate Welford. 1P9J fleet_amber is well-formed;
+    // any future drift toward silently accumulating zero-dt samples
+    // would trip this.
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        const auto& w = tp.AtomAt(i).bs_welford;
+        EXPECT_EQ(w.dxdt_n, w.delta_n)
+            << "dxdt_n != delta_n on atom " << i
+            << " — investigate timestamp duplication in fixture";
+    }
+
     std::cout << "BsWelford integration: populated=" << populated
               << "/" << tp.AtomCount()
               << " max|t0|=" << max_abs_t0

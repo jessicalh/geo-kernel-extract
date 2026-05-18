@@ -56,8 +56,10 @@ void SasaWelfordTrajectoryResult::Compute(
     (void)traj;
     const size_t N = tp.AtomCount();
 
-    // Guard against zero dt (frame duplication or stride misconfig);
-    // MIN_DT_PS prevents division blowup.
+    // dxdt uses its OWN counter (sasa_welford.dxdt_n) to skip zero-dt
+    // frames rather than zero-fill them — codex 2026-05-18: zero-fill
+    // biases the rate mean toward zero and inflates variance.
+    // 1e-12 ps is well below any physical sampling rate.
     constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
@@ -80,17 +82,19 @@ void SasaWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.sasa_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.sasa_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.sasa_delta_squared, delta_sq,  dn_new, frame_idx);
+            w.delta_n = dn_new;
 
             // Cadence-normalized rate (codex HIGH finding 2026-05-17):
             // signed Δ alone is sample-rate dependent. dxdt is physically
-            // meaningful across runs of different stride.
-            const double dt   = time_ps - prev_time_[i];
-            const double dxdt = (std::abs(dt) > MIN_DT_PS)
-                              ? (delta_x / dt)
-                              : 0.0;
-            WelfordUpdate(w.sasa_dxdt, dxdt, dn_new, frame_idx);
-
-            w.delta_n = dn_new;
+            // meaningful across runs of different stride. Uses its own
+            // dxdt_n counter — zero-dt frames are SKIPPED, not zero-filled
+            // (codex 2026-05-18: zero-fill biases mean and inflates variance).
+            const double dt = time_ps - prev_time_[i];
+            if (std::abs(dt) > MIN_DT_PS) {
+                const size_t dxdt_n_new = w.dxdt_n + 1;
+                WelfordUpdate(w.sasa_dxdt, delta_x / dt, dxdt_n_new, frame_idx);
+                w.dxdt_n = dxdt_n_new;
+            }
         }
         prev_value_[i] = s;
         prev_time_[i]  = time_ps;
@@ -115,7 +119,10 @@ void SasaWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.sasa_delta,         w.delta_n);
         WelfordFinalize(w.sasa_abs_delta,     w.delta_n);
         WelfordFinalize(w.sasa_delta_squared, w.delta_n);
-        WelfordFinalize(w.sasa_dxdt,          w.delta_n);
+        // sasa_dxdt is finalised against its OWN counter — only frames
+        // with dt > MIN_DT_PS contributed (codex 2026-05-18). NaN-fills
+        // mean/m2/std when n==0, surfacing the all-zero-dt edge case.
+        WelfordFinalize(w.sasa_dxdt,          w.dxdt_n);
 
         // NaN when uncomputable (no delta samples); sqrt(0) = 0 when
         // atom is truly static. Downstream isfinite() distinguishes.
@@ -270,12 +277,13 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);
-    std::vector<size_t> n_frames(N), delta_n(N);
+    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const SasaWelfordState& w = tp.AtomAt(i).sasa_welford;
         rms_delta[i] = w.sasa_rms_delta;
         n_frames[i]  = w.n_frames;
         delta_n[i]   = w.delta_n;
+        dxdt_n[i]    = w.dxdt_n;
     }
     auto rms_ds = grp.createDataSet("rms_delta", rms_delta);
     rms_ds.createAttribute("units", std::string("Angstrom^2"));
@@ -285,6 +293,12 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
 
     auto dn_ds = grp.createDataSet("delta_n_per_atom", delta_n);
     dn_ds.createAttribute("units", std::string("frame_count"));
+
+    // dxdt_n_per_atom: per-atom count of VALID-dt sasa_dxdt samples.
+    // Codex 2026-05-18 — equals delta_n on well-formed trajectories,
+    // diverges when zero-dt rows sneak in. Provenance for rate stats.
+    auto dxdtn_ds = grp.createDataSet("dxdt_n_per_atom", dxdt_n);
+    dxdtn_ds.createAttribute("units", std::string("frame_count"));
 
     // ── Legacy unprefixed dataset aliases ────────────────────────
     std::vector<double> legacy_mean(N), legacy_std(N), legacy_min(N), legacy_max(N);

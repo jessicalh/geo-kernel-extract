@@ -56,10 +56,10 @@ void EeqWelfordTrajectoryResult::Compute(
     (void)traj;
     const size_t N = tp.AtomCount();
 
-    // Guard against zero dt (frame duplication or stride misconfig);
-    // MIN_DT_PS prevents division blowup. dxdt is set to 0.0 in that
-    // pathological case (and the WelfordUpdate still accumulates one
-    // sample of 0.0; downstream isfinite() distinguishes from real).
+    // dxdt uses its OWN counter (eeq_welford.dxdt_n) to skip zero-dt
+    // frames rather than zero-fill them — codex 2026-05-18: zero-fill
+    // biases the rate mean toward zero and inflates variance.
+    // 1e-12 ps is well below any physical sampling rate.
     constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
@@ -82,17 +82,19 @@ void EeqWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.charge_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.charge_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.charge_delta_squared, delta_sq,  dn_new, frame_idx);
+            w.delta_n = dn_new;
 
             // Cadence-normalized rate (codex HIGH finding 2026-05-17):
             // signed Δ alone is sample-rate dependent. dxdt is physically
-            // meaningful across runs of different stride.
-            const double dt   = time_ps - prev_time_[i];
-            const double dxdt = (std::abs(dt) > MIN_DT_PS)
-                              ? (delta_x / dt)
-                              : 0.0;
-            WelfordUpdate(w.charge_dxdt, dxdt, dn_new, frame_idx);
-
-            w.delta_n = dn_new;
+            // meaningful across runs of different stride. Uses its own
+            // dxdt_n counter — zero-dt frames are SKIPPED, not zero-filled
+            // (codex 2026-05-18: zero-fill biases mean and inflates variance).
+            const double dt = time_ps - prev_time_[i];
+            if (std::abs(dt) > MIN_DT_PS) {
+                const size_t dxdt_n_new = w.dxdt_n + 1;
+                WelfordUpdate(w.charge_dxdt, delta_x / dt, dxdt_n_new, frame_idx);
+                w.dxdt_n = dxdt_n_new;
+            }
         }
         prev_value_[i] = q;
         prev_time_[i]  = time_ps;
@@ -117,7 +119,10 @@ void EeqWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.charge_delta,         w.delta_n);
         WelfordFinalize(w.charge_abs_delta,     w.delta_n);
         WelfordFinalize(w.charge_delta_squared, w.delta_n);
-        WelfordFinalize(w.charge_dxdt,          w.delta_n);
+        // charge_dxdt is finalised against its OWN counter — only frames
+        // with dt > MIN_DT_PS contributed (codex 2026-05-18). NaN-fills
+        // mean/m2/std when n==0, surfacing the all-zero-dt edge case.
+        WelfordFinalize(w.charge_dxdt,          w.dxdt_n);
 
         // RMS fluctuation = sqrt(<Δ²>). The squared-delta accumulator's
         // mean is the per-atom <Δ²>; sqrt at Finalize gives RMS.
@@ -290,12 +295,13 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);
-    std::vector<size_t> n_frames(N), delta_n(N);
+    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const EeqWelfordState& w = tp.AtomAt(i).eeq_welford;
         rms_delta[i] = w.charge_rms_delta;
         n_frames[i]  = w.n_frames;
         delta_n[i]   = w.delta_n;
+        dxdt_n[i]    = w.dxdt_n;
     }
     auto rms_ds = grp.createDataSet("rms_delta", rms_delta);
     rms_ds.createAttribute("units", std::string("elementary_charge"));
@@ -305,6 +311,12 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
 
     auto dn_ds = grp.createDataSet("delta_n_per_atom", delta_n);
     dn_ds.createAttribute("units", std::string("frame_count"));
+
+    // dxdt_n_per_atom: per-atom count of VALID-dt charge_dxdt samples.
+    // Codex 2026-05-18 — equals delta_n on well-formed trajectories,
+    // diverges when zero-dt rows sneak in. Provenance for rate stats.
+    auto dxdtn_ds = grp.createDataSet("dxdt_n_per_atom", dxdt_n);
+    dxdtn_ds.createAttribute("units", std::string("frame_count"));
 
     // ── Legacy unprefixed dataset aliases ────────────────────────
     // Pre-Phase-2b SDK ArraySpec entries may already read these.

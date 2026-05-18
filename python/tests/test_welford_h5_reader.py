@@ -85,17 +85,56 @@ def _write_moments_block(grp, prefix: str, arrays: dict,
 
 
 def _write_required_traj_root(f: h5py.File, n_atoms: int, n_frames: int) -> None:
-    """Emit the required positions / frame_times / rollup so load_trajectory
-    doesn't bail before reaching the welford groups."""
-    f.attrs["n_atoms"] = n_atoms
-    f.attrs["n_frames"] = n_frames
-    f.attrs["positions_shape_T"] = n_frames
-    f.attrs["positions_shape_N"] = n_atoms
+    """Emit the analysis-schema frame metadata so load_trajectory has
+    coherent (T, N, 3) positions + (T,) frame_times before reaching the
+    welford groups.
+
+    Mirrors what the current C++ writer produces:
+      - Root attrs: protein_id, n_atoms, finalized only
+      - /trajectory/frames/{time_ps, original_index} + n_frames group attr
+      - /trajectory/positions/xyz atom-major (N*T, 3) +
+        n_atoms / n_frames / result_name / finalized group attrs
+
+    No `/rollup` group — that's a legacy GromacsProtein artifact, absent
+    in the analysis-mode H5 the SDK is the consumer for. Tests that
+    specifically need to exercise the legacy-rollup load path can use
+    `_write_legacy_rollup_root` instead.
+    """
+    f.attrs["protein_id"] = "synthetic_test"
+    f.attrs["n_atoms"]    = n_atoms
+    f.attrs["finalized"]  = True
+
+    frames_grp = f.create_group("/trajectory/frames")
+    frames_grp.attrs["n_frames"] = np.uint64(n_frames)
+    frames_grp.create_dataset(
+        "time_ps", data=np.linspace(0.0, 1.0, n_frames, dtype=np.float64))
+    frames_grp.create_dataset(
+        "original_index", data=np.arange(n_frames, dtype=np.uint64))
+
+    pos_grp = f.create_group("/trajectory/positions")
+    pos_grp.attrs["result_name"] = "PositionsTimeSeriesTrajectoryResult"
+    pos_grp.attrs["n_atoms"]     = np.uint64(n_atoms)
+    pos_grp.attrs["n_frames"]    = np.uint64(n_frames)
+    pos_grp.attrs["finalized"]   = True
+    # Atom-major (N*T, 3) — matches PositionsTimeSeriesTrajectoryResult.cpp
+    # layout: for atom i, the T frames are contiguous, then the next atom.
+    pos_grp.create_dataset(
+        "xyz", data=np.zeros((n_atoms * n_frames, 3), dtype=np.float64))
+
+
+def _write_legacy_rollup_root(f: h5py.File, n_atoms: int, n_frames: int) -> None:
+    """Emit the legacy GromacsProtein ensemble schema (pre-2026-05-17
+    trajectory pipeline). Kept so the SDK's backward-compat path can be
+    exercised end-to-end — current production output uses the
+    `_write_required_traj_root` schema above."""
+    f.attrs["n_atoms"]               = n_atoms
+    f.attrs["n_frames"]              = n_frames
+    f.attrs["positions_shape_T"]     = n_frames
+    f.attrs["positions_shape_N"]     = n_atoms
     f.create_dataset("positions",
                      data=np.zeros((n_frames * n_atoms, 3), dtype=np.float64))
     f.create_dataset("frame_times",
                      data=np.linspace(0.0, 1.0, n_frames, dtype=np.float64))
-    # Minimal rollup with 1 column
     f.create_dataset("rollup/mean", data=np.zeros((n_atoms, 1), dtype=np.float64))
     f.create_dataset("rollup/std",  data=np.zeros((n_atoms, 1), dtype=np.float64))
     f.create_dataset("rollup/names", data=np.array([b"dummy"], dtype="S16"))
@@ -149,10 +188,14 @@ def _write_bs_welford(f: h5py.File, n_atoms: int) -> dict:
         t0_rms_delta = np.sqrt(t0_delta_squared["mean"]).astype(np.float64)
     nframes = np.full(n_atoms, 750, dtype=np.uint64)
     deltan  = np.full(n_atoms, 749, dtype=np.uint64)
+    # dxdt_n equals delta_n on a well-formed (no zero-dt) trajectory.
+    dxdtn  = np.full(n_atoms, 749, dtype=np.uint64)
     rms_ds = grp.create_dataset("t0_rms_delta",      data=t0_rms_delta)
     rms_ds.attrs["units"] = base
     nf_ds = grp.create_dataset("n_frames_per_atom", data=nframes)
     nf_ds.attrs["units"] = "frame_count"
+    dxn_ds = grp.create_dataset("dxdt_n_per_atom", data=dxdtn)
+    dxn_ds.attrs["units"] = "frame_count"
     dn_ds = grp.create_dataset("delta_n_per_atom",  data=deltan)
     dn_ds.attrs["units"] = "frame_count"
 
@@ -209,6 +252,9 @@ def _write_eeq_welford(f: h5py.File, n_atoms: int) -> dict:
                        data=np.full(n_atoms, 750, dtype=np.uint64)).attrs["units"] = "frame_count"
     grp.create_dataset("delta_n_per_atom",
                        data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
+    # dxdt_n equals delta_n on a well-formed (no zero-dt) trajectory.
+    grp.create_dataset("dxdt_n_per_atom",
+                       data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
     return src
 
 
@@ -255,6 +301,9 @@ def _write_tensor_welford(f: h5py.File, group_path: str,
                        data=np.full(n_atoms, 750, dtype=np.uint64)).attrs["units"] = "frame_count"
     grp.create_dataset("delta_n_per_atom",
                        data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
+    # dxdt_n equals delta_n on a well-formed (no zero-dt) trajectory.
+    grp.create_dataset("dxdt_n_per_atom",
+                       data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
     return {
         "t0": t0, "t2magnitude": t2magnitude, "t1": t1, "t2": t2,
         "t0_delta": t0_delta, "t0_abs_delta": t0_abs_delta,
@@ -288,6 +337,9 @@ def _write_sasa_welford(f: h5py.File, n_atoms: int) -> dict:
     grp.create_dataset("n_frames_per_atom",
                        data=np.full(n_atoms, 750, dtype=np.uint64)).attrs["units"] = "frame_count"
     grp.create_dataset("delta_n_per_atom",
+                       data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
+    # dxdt_n equals delta_n on a well-formed (no zero-dt) trajectory.
+    grp.create_dataset("dxdt_n_per_atom",
                        data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
     return src
 
@@ -326,6 +378,9 @@ def _write_hbond_count_welford(f: h5py.File, n_atoms: int) -> dict:
     grp.create_dataset("n_frames_per_atom",
                        data=np.full(n_atoms, 750, dtype=np.uint64)).attrs["units"] = "frame_count"
     grp.create_dataset("delta_n_per_atom",
+                       data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
+    # dxdt_n equals delta_n on a well-formed (no zero-dt) trajectory.
+    grp.create_dataset("dxdt_n_per_atom",
                        data=np.full(n_atoms, 749, dtype=np.uint64)).attrs["units"] = "frame_count"
     return src
 
@@ -604,6 +659,172 @@ class TestTrajectoryWithoutWelfordGroups:
             _write_required_traj_root(f, N_ATOMS, n_frames=4)
         traj = load_trajectory(path)
         assert isinstance(traj.welford, WelfordAccess)
+        assert traj.welford.bs is None
+        assert traj.welford.hm is None
+        assert traj.welford.mc is None
+        assert traj.welford.eeq is None
+        assert traj.welford.sasa is None
+        assert traj.welford.hbond_count is None
+
+
+# ─── M2 units honesty (codex MEDIUM finding 2026-05-18) ─────────────
+
+
+class TestPerDatasetM2Units:
+    """C++ writes distinct unit strings for `<prefix>_m2` (squared
+    accumulator) vs `<prefix>_mean` (sample). The SDK preserves both
+    via `WelfordMoments.units` + `WelfordMoments.m2_units`."""
+
+    def test_bs_t0_m2_units_squared(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        assert bs.t0.units == "ppm_T_per_nA"
+        assert bs.t0.m2_units == "ppm_T^2_per_nA^2"
+
+    def test_bs_t1_m2_units_squared(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        assert bs.t1.units == "ppm_T_per_nA"
+        assert bs.t1.m2_units == "ppm_T^2_per_nA^2"
+
+    def test_bs_t0_delta_squared_units_pre_squared(self, h5_with_bs_welford):
+        """The *_delta_squared channel stores Δ² samples in base² units
+        (e.g. ppm_T^2_per_nA^2). Its m2 accumulator is THEN squared
+        again — base⁴ — because Welford M2 = sum (sample-mean)²."""
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        assert bs.t0_delta_squared.units == "ppm_T^2_per_nA^2"
+        assert bs.t0_delta_squared.m2_units == "ppm_T^4_per_nA^4"
+
+    def test_bs_t0_dxdt_rate_units(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        assert bs.t0_dxdt.units == "ppm_T_per_nA_per_ps"
+        assert bs.t0_dxdt.m2_units == "ppm_T^2_per_nA^2_per_ps^2"
+
+    def test_hbond_occupancy_fraction_dimensionless(self, h5_with_bs_eeq_hbond):
+        """occupancy_fraction's mean and m2 are BOTH dimensionless —
+        the indicator is unitless so its square is too."""
+        path, _ = h5_with_bs_eeq_hbond
+        traj = load_trajectory(path)
+        hb = traj.welford.hbond_count
+        assert hb.occupancy_fraction.units == "dimensionless"
+        assert hb.occupancy_fraction.m2_units == "dimensionless"
+
+
+# ─── Production-schema (analysis H5) round-trip ─────────────────────
+
+
+class TestProductionSchema:
+    """Verify the new schema written by current C++ TrajectoryProtein
+    loads: /trajectory/frames/time_ps + /trajectory/positions/xyz +
+    root attrs of just protein_id/n_atoms/finalized, with NO /rollup."""
+
+    def test_protein_id_and_n_atoms_from_root_attrs(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        assert traj.protein_id == "synthetic_test"
+        assert traj.n_atoms == N_ATOMS
+
+    def test_n_frames_from_trajectory_frames_group(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        assert traj.n_frames == 4  # set by _write_required_traj_root
+        assert traj.frame_times.shape == (4,)
+        # Monotone non-decreasing — sanity, not physics
+        assert np.all(np.diff(traj.frame_times) >= 0.0)
+
+    def test_positions_shape_T_N_3(self, h5_with_bs_welford):
+        """Production schema: atom-major (N*T, 3) on disk → (T, N, 3)
+        in-memory after the reader's transpose."""
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        assert traj.positions.shape == (4, N_ATOMS, 3)
+
+    def test_no_rollup_in_production_schema(self, h5_with_bs_welford):
+        """Production trajectory.h5 has no /rollup — analysis mode
+        replaces it with the Welford H5 groups."""
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        assert traj.rollup is None
+
+
+# ─── Legacy GromacsProtein schema backward-compat ──────────────────
+
+
+class TestDxdtNPerAtom:
+    """`dxdt_n_per_atom` is a new H5 dataset (codex 2026-05-18 fix). It
+    tracks the count of VALID-dt samples that contributed to the dxdt
+    accumulator — distinct from `delta_n_per_atom` because zero-dt
+    frames are skipped rather than zero-filled.
+
+    On a well-formed fixture trajectory, dxdt_n == delta_n at every
+    atom (no duplicated timestamps). For older H5 files that predate
+    the fix, the SDK falls back to `delta_n_per_atom` so reads don't
+    crash."""
+
+    def test_bs_dxdt_n_present_and_equals_delta_n(self, h5_with_bs_welford):
+        path, _ = h5_with_bs_welford
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        assert bs.dxdt_n_per_atom.shape == (N_ATOMS,)
+        np.testing.assert_array_equal(bs.dxdt_n_per_atom, bs.delta_n_per_atom)
+
+    def test_eeq_dxdt_n_present(self, h5_with_bs_eeq_hbond):
+        path, _ = h5_with_bs_eeq_hbond
+        traj = load_trajectory(path)
+        eeq = traj.welford.eeq
+        assert eeq.dxdt_n_per_atom.shape == (N_ATOMS,)
+        np.testing.assert_array_equal(eeq.dxdt_n_per_atom, eeq.delta_n_per_atom)
+
+    def test_hbond_dxdt_n_present(self, h5_with_bs_eeq_hbond):
+        path, _ = h5_with_bs_eeq_hbond
+        traj = load_trajectory(path)
+        hb = traj.welford.hbond_count
+        assert hb.dxdt_n_per_atom.shape == (N_ATOMS,)
+
+    def test_legacy_h5_without_dxdt_n_falls_back_to_delta_n(self, tmp_path):
+        """Older H5 files (pre-codex-fix) don't have dxdt_n_per_atom.
+        Reader falls back to delta_n_per_atom and the dataclass still
+        constructs."""
+        path = tmp_path / "trajectory.h5"
+        with h5py.File(path, "w") as f:
+            _write_required_traj_root(f, N_ATOMS, n_frames=4)
+            _write_bs_welford(f, N_ATOMS)
+            # Drop the new dataset to simulate a pre-fix H5 file.
+            del f["/trajectory/bs_welford/dxdt_n_per_atom"]
+        traj = load_trajectory(path)
+        bs = traj.welford.bs
+        # Fallback: dxdt_n_per_atom is None of delta_n_per_atom (same array).
+        np.testing.assert_array_equal(bs.dxdt_n_per_atom, bs.delta_n_per_atom)
+
+
+class TestLegacyRollupSchema:
+    """Verify the legacy GromacsProtein ensemble schema still loads.
+    `/positions` + `/frame_times` + `/rollup/{mean,std,names}` at root,
+    root attrs include n_frames + positions_shape_T/N."""
+
+    def test_legacy_rollup_populated(self, tmp_path):
+        path = tmp_path / "legacy.h5"
+        with h5py.File(path, "w") as f:
+            _write_legacy_rollup_root(f, N_ATOMS, n_frames=4)
+        traj = load_trajectory(path)
+        assert traj.rollup is not None
+        assert traj.rollup.n_columns == 1
+        assert traj.n_atoms == N_ATOMS
+        assert traj.n_frames == 4
+        assert traj.frame_times.shape == (4,)
+        assert traj.positions.shape == (4, N_ATOMS, 3)
+
+    def test_legacy_schema_no_welford_groups(self, tmp_path):
+        path = tmp_path / "legacy.h5"
+        with h5py.File(path, "w") as f:
+            _write_legacy_rollup_root(f, N_ATOMS, n_frames=4)
+        traj = load_trajectory(path)
         assert traj.welford.bs is None
         assert traj.welford.hm is None
         assert traj.welford.mc is None

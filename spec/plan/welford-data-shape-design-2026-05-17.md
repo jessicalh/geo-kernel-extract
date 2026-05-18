@@ -164,6 +164,15 @@ emission boundary discards:
   n−1) if their math requires it.
 - **`delta_n`** per channel: the count of delta samples (= n_frames
   − 1 for AV-pattern Welfords). Needed for unbiased delta std.
+- **`dxdt_n`** per Welford state: the count of VALID-dt rate samples
+  (codex 2026-05-18). Equals `delta_n` on a well-formed trajectory.
+  Diverges when zero-dt rows (frame duplication / identical
+  timestamps / stride misconfig) are present — the rate Welford
+  SKIPS those rows rather than zero-filling, because a bogus 0.0
+  sample biases the running mean toward zero and inflates the
+  variance accumulator. Emitted as `dxdt_n_per_atom` H5 dataset
+  alongside `delta_n_per_atom` so downstream can detect
+  high-duplication trajectories.
 - **H5 group attributes**:
   - `ddof=1` — bias-convention disclosure for the std datasets
   - `mean_dt_ps` — cadence metadata (Axis 1)
@@ -304,7 +313,10 @@ attributes. Naming convention:
     t0_delta_*, t0_abs_delta_*, t0_delta_squared_*    # signed Δ, |Δ|, Δ² Welford blocks
     t0_dxdt_*                                          # cadence-normalized Δ/Δt
     t0_rms_delta                                       # Finalize-derived sqrt(<Δ²>)
-    n_frames_per_atom, delta_n_per_atom
+    n_frames_per_atom, delta_n_per_atom, dxdt_n_per_atom
+    # dxdt_n_per_atom (codex 2026-05-18) — count of VALID-dt rate samples.
+    # On a well-formed trajectory dxdt_n == delta_n per atom; divergence
+    # surfaces frame-duplication / identical-timestamp anomalies.
     Each dataset carries a per-dataset `units` H5 attribute (authoritative); the
     group-level `units` describes the primary value channel.
 ```
@@ -394,9 +406,11 @@ struct BsWelfordState {
     WelfordMoments t0_drift;                    // signed delta Welford
     WelfordMoments t0_abs_delta;                // |delta| Welford
     WelfordMoments t0_delta_squared;            // delta^2 Welford
+    WelfordMoments t0_dxdt;                     // cadence-normalized rate Welford
     double          rms_delta = 0.0;            // sqrt(mean delta^2), Finalize-derived
-    size_t          delta_n   = 0;              // count of delta samples
     size_t          n_frames  = 0;              // primary denominator
+    size_t          delta_n   = 0;              // count of delta samples
+    size_t          dxdt_n    = 0;              // count of VALID-dt rate samples (codex 2026-05-18)
 };
 ```
 

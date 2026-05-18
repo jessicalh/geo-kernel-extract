@@ -1614,12 +1614,22 @@ channel. Post-Phase-2b expansion shape (2026-05-17):
 
 | Substruct (writer) | Tensor channels | Scalar/delta channels | Source / units |
 |--------------------|-----------------|----------------------|----------------|
-| `bs_welford` (BsWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | `t0_delta`, `t0_abs_delta`, `t0_delta_squared`, `t0_dxdt`, `t0_rms_delta`, `n_frames`, `delta_n` | `bs_shielding_contribution` (ppm·T/nA) |
-| `hm_welford` (HmWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants incl. `t0_dxdt` | `hm_shielding_contribution` (Å⁻¹) |
-| `mc_welford` (McConnellWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants incl. `t0_dxdt` | `mc_shielding_contribution` (Å⁻³). T1 IS nonzero per PATTERNS Lesson 19 — the prior "T1 = 0 by construction" claim was a 2026-05-17 AM design error caught by the science adversarial review |
-| `eeq_welford` (EeqWelford) | (scalar source — no tensor channels) | `charge`, `charge_delta`, `charge_abs_delta`, `charge_delta_squared`, `charge_dxdt`, `charge_rms_delta`, `n_frames`, `delta_n` | `eeq_charge` (elementary_charge) |
-| `sasa_welford` (SasaWelford) | (scalar) | parallel block on `sasa` channel incl. `sasa_dxdt` | `atom_sasa` (Å²) |
-| `hbond_count_welford` (HBondCountWelford) | (scalar) | parallel block on `count` channel incl. `count_dxdt` + `occupancy_fraction` Welford companion (indicator: count > 0 ? 1.0 : 0.0) | `hbond_count_within_3_5A` (pairs, source_radius_A = 3.5) |
+| `bs_welford` (BsWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | `t0_delta`, `t0_abs_delta`, `t0_delta_squared`, `t0_dxdt`, `t0_rms_delta`, `n_frames`, `delta_n`, `dxdt_n` | `bs_shielding_contribution` (ppm·T/nA) |
+| `hm_welford` (HmWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants incl. `t0_dxdt`; `n_frames` / `delta_n` / `dxdt_n` counters | `hm_shielding_contribution` (Å⁻¹) |
+| `mc_welford` (McConnellWelford) | `t0`, `t1[3]`, `t2[5]`, `t2magnitude` | same delta variants incl. `t0_dxdt`; `n_frames` / `delta_n` / `dxdt_n` counters | `mc_shielding_contribution` (Å⁻³). T1 IS nonzero per PATTERNS Lesson 19 — the prior "T1 = 0 by construction" claim was a 2026-05-17 AM design error caught by the science adversarial review |
+| `eeq_welford` (EeqWelford) | (scalar source — no tensor channels) | `charge`, `charge_delta`, `charge_abs_delta`, `charge_delta_squared`, `charge_dxdt`, `charge_rms_delta`, `n_frames`, `delta_n`, `dxdt_n` | `eeq_charge` (elementary_charge) |
+| `sasa_welford` (SasaWelford) | (scalar) | parallel block on `sasa` channel incl. `sasa_dxdt`; `n_frames` / `delta_n` / `dxdt_n` counters | `atom_sasa` (Å²) |
+| `hbond_count_welford` (HBondCountWelford) | (scalar) | parallel block on `count` channel incl. `count_dxdt` + `occupancy_fraction` Welford companion (indicator: count > 0 ? 1.0 : 0.0); `n_frames` / `delta_n` / `dxdt_n` counters | `hbond_count_within_3_5A` (pairs, source_radius_A = 3.5) |
+
+**`dxdt_n` separate from `delta_n` (codex 2026-05-18).** The rate
+channel (`*_dxdt`) uses its own counter so zero-dt frames (frame
+duplication / identical timestamps / stride misconfig) are SKIPPED
+rather than zero-filled into the Welford accumulator. Zero-filling
+would bias the running mean toward zero and inflate the variance.
+On well-formed trajectories `dxdt_n == delta_n` per atom; each
+Welford TR emits a `dxdt_n_per_atom` H5 dataset alongside
+`delta_n_per_atom` so downstream can verify dxdt-sample population
+separately and detect trajectories with high frame-duplication.
 
 Each `WelfordMoments` substruct carries `{mean, m2, std, min, max,
 min_frame, max_frame}` (5 doubles + 2 size_t = 56 bytes). Per-component

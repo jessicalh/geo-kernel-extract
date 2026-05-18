@@ -91,17 +91,22 @@ void McConnellWelfordTrajectoryResult::Compute(
             WelfordUpdate(w.t0_delta,         delta_x,   dn_new, frame_idx);
             WelfordUpdate(w.t0_abs_delta,     abs_delta, dn_new, frame_idx);
             WelfordUpdate(w.t0_delta_squared, delta_sq,  dn_new, frame_idx);
+            w.delta_n = dn_new;
 
-            // Cadence-normalized rate. Guard against zero dt (frame
-            // duplication or stride misconfig); MIN_DT prevents division
-            // blowup but preserves the Welford accumulator on legitimate
-            // data. 1e-12 ps is well below any physical sampling rate.
+            // Cadence-normalized rate uses its OWN counter — only
+            // meaningful samples accumulate. dt ≤ MIN_DT_PS (frame
+            // duplication / identical timestamps / stride misconfig)
+            // is SKIPPED, NOT zero-filled. Per codex 2026-05-18:
+            // zero-filling biases the running mean toward zero and
+            // inflates the variance accumulator. 1e-12 ps is well
+            // below any physical sampling rate.
             constexpr double MIN_DT_PS = 1e-12;
             const double dt = time_ps - prev_time_[i];
-            const double dxdt = (std::abs(dt) > MIN_DT_PS) ? (delta_x / dt) : 0.0;
-            WelfordUpdate(w.t0_dxdt, dxdt, dn_new, frame_idx);
-
-            w.delta_n = dn_new;
+            if (std::abs(dt) > MIN_DT_PS) {
+                const size_t dxdt_n_new = w.dxdt_n + 1;
+                WelfordUpdate(w.t0_dxdt, delta_x / dt, dxdt_n_new, frame_idx);
+                w.dxdt_n = dxdt_n_new;
+            }
         }
         prev_t0_[i] = t0;
         prev_time_[i] = time_ps;
@@ -133,7 +138,11 @@ void McConnellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
         WelfordFinalize(w.t0_delta,         w.delta_n);
         WelfordFinalize(w.t0_abs_delta,     w.delta_n);
         WelfordFinalize(w.t0_delta_squared, w.delta_n);
-        WelfordFinalize(w.t0_dxdt,          w.delta_n);
+        // dxdt is finalised against its OWN counter — only frames with
+        // dt > MIN_DT_PS contributed (codex 2026-05-18). WelfordFinalize
+        // NaN-fills mean/m2/std when n==0, so the all-zero-dt edge case
+        // surfaces as NaN downstream rather than a misleading mean=0.
+        WelfordFinalize(w.t0_dxdt,          w.dxdt_n);
 
         // RMS fluctuation. NaN when uncomputable (no delta samples);
         // sqrt(0) = 0 when atom is truly static (Δ ≡ 0 across captured
@@ -361,12 +370,13 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
 
     // ── Single scalar: RMS-Δ per atom (Finalize-derived) ─────────
     std::vector<double> t0_rms_delta(N);
-    std::vector<size_t> n_frames(N), delta_n(N);
+    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const McConnellWelfordState& w = tp.AtomAt(i).mc_welford;
         t0_rms_delta[i] = w.t0_rms_delta;
         n_frames[i]     = w.n_frames;
         delta_n[i]      = w.delta_n;
+        dxdt_n[i]       = w.dxdt_n;
     }
     auto rms_ds = grp.createDataSet("t0_rms_delta",      t0_rms_delta);
     rms_ds.createAttribute("units", kBaseUnits);
@@ -374,6 +384,11 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(
     nf_ds.createAttribute("units", std::string("frame_count"));
     auto dn_ds = grp.createDataSet("delta_n_per_atom",  delta_n);
     dn_ds.createAttribute("units", std::string("frame_count"));
+    // dxdt_n_per_atom: per-atom count of VALID-dt dxdt samples. Codex
+    // 2026-05-18 — equals delta_n on well-formed trajectories, diverges
+    // when zero-dt rows sneak in. Provenance for downstream rate stats.
+    auto dxdtn_ds = grp.createDataSet("dxdt_n_per_atom", dxdt_n);
+    dxdtn_ds.createAttribute("units", std::string("frame_count"));
 
     // ── Backward-compatibility aliases ───────────────────────────
     // Pre-Phase-2b consumers read t2mag_*; emit those as aliases to

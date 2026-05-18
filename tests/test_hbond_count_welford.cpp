@@ -195,6 +195,18 @@ TEST(HBondCountWelford, Integration1P9J) {
     // ran with empty hbond set → every atom got 0 counts every frame).
     EXPECT_GT(populated, 0u)
         << "HBondCount all-zero — HBondResult or DsspResult not firing";
+
+    // Codex 2026-05-18: dxdt_n must equal delta_n on a well-formed
+    // trajectory (no duplicated-timestamp frames). Regression guard
+    // for the separate-counter fix that skips zero-dt frames rather
+    // than zero-filling the rate accumulator.
+    for (size_t i = 0; i < tp.AtomCount(); ++i) {
+        const auto& w = tp.AtomAt(i).hbond_count_welford;
+        EXPECT_EQ(w.dxdt_n, w.delta_n)
+            << "dxdt_n != delta_n on atom " << i
+            << " — investigate timestamp duplication in fixture";
+    }
+
     std::cout << "HBondCountWelford integration: populated=" << populated
               << "/" << tp.AtomCount()
               << " max mean=" << max_mean << " pairs\n";

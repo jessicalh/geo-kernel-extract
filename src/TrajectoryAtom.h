@@ -83,6 +83,15 @@ struct BsWelfordState {
     // Shared denominators
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // Separate count for the t0_dxdt channel — only frames with
+    // dt > MIN_DT_PS contribute a sample. Zero-dt rows (frame
+    // duplication / identical timestamps / stride misconfig) MUST
+    // NOT be zero-filled into the rate accumulator: a bogus 0.0
+    // sample biases the running mean toward zero and inflates the
+    // variance accumulator. Per codex finding 2026-05-18 — must be
+    // tracked separately from the signed/abs/sq delta accumulators
+    // (which legitimately consume every prev_valid_ frame).
+    std::size_t    dxdt_n  = 0;
 };
 
 // Written by HmWelfordTrajectoryResult.
@@ -102,6 +111,9 @@ struct HmWelfordState {
     double         t0_rms_delta = 0.0;         // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // dxdt-only counter — see BsWelfordState comment. Skips zero-dt
+    // frames rather than zero-filling. Per codex 2026-05-18.
+    std::size_t    dxdt_n  = 0;
 };
 
 // Written by McConnellWelfordTrajectoryResult.
@@ -127,6 +139,9 @@ struct McConnellWelfordState {
     double         t0_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // dxdt-only counter — see BsWelfordState comment. Skips zero-dt
+    // frames rather than zero-filling. Per codex 2026-05-18.
+    std::size_t    dxdt_n  = 0;
 };
 
 // Written by EeqWelfordTrajectoryResult.
@@ -141,6 +156,9 @@ struct EeqWelfordState {
     double         charge_rms_delta = 0.0;     // sqrt(<Δ²>), Finalize-derived
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // dxdt-only counter — see BsWelfordState comment. Skips zero-dt
+    // frames rather than zero-filling. Per codex 2026-05-18.
+    std::size_t    dxdt_n  = 0;
 };
 
 // Written by SasaWelfordTrajectoryResult.
@@ -154,6 +172,9 @@ struct SasaWelfordState {
     double         sasa_rms_delta = 0.0;
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // dxdt-only counter — see BsWelfordState comment. Skips zero-dt
+    // frames rather than zero-filling. Per codex 2026-05-18.
+    std::size_t    dxdt_n  = 0;
 };
 
 // Written by HBondCountWelfordTrajectoryResult.
@@ -171,6 +192,9 @@ struct HBondCountWelfordState {
     WelfordMoments occupancy_fraction;         // Welford on (count > 0 ? 1.0 : 0.0)
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
+    // dxdt-only counter — see BsWelfordState comment. Skips zero-dt
+    // frames rather than zero-filling. Per codex 2026-05-18.
+    std::size_t    dxdt_n  = 0;
 };
 
 
