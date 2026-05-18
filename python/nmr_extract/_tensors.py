@@ -132,6 +132,18 @@ class EFGTensor:
 
     def __init__(self, data: np.ndarray):
         if data.shape[-1] != 5:
+            if data.shape[-1] == 9:
+                raise ValueError(
+                    f"{type(self).__name__}: last dim must be 5 (T2-only, "
+                    f"post-2026-05-18 schema). Got {data.shape} — this "
+                    f"looks like the pre-2026-05-18 9-component "
+                    f"(T0+T1+T2) packing. Schema rev intentionally drops "
+                    f"the structurally-zero T0 (trace) and T1 (antisymmetric "
+                    f"pseudovector) channels for all EFG calculators. To "
+                    f"migrate older NPYs in place: `T2 = old[..., 4:9]` "
+                    f"and load that. To re-extract: run with current build "
+                    f"of WaterFieldResult / CoulombResult / MopacCoulombResult "
+                    f"/ ApbsFieldResult / AIMNet2Result.")
             raise ValueError(
                 f"{type(self).__name__}: last dim must be 5 (T2-only), "
                 f"got {data.shape}")

@@ -90,6 +90,20 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
             EFG(i, j) = (Eplus(i) - Eminus(i)) / (2.0 * grid.spacing(j));
     }
 
+    // Symmetrize before any further processing. The Hessian of φ
+    // is analytically symmetric (Schwarz's theorem) but the finite-
+    // difference construction above uses trilinear interpolation
+    // across grid boundaries — `∂E_i/∂r_j` and `∂E_j/∂r_i` are computed
+    // independently and can leave a tiny antisymmetric residue (pure
+    // numerical noise from the interpolation, not physics). After the
+    // 2026-05-18 EFG schema rev that emits only T2 (T0+T1 declared
+    // structural zeros), `SphericalTensor::Decompose` would silently
+    // discard this residue as the "T1 component," masquerading
+    // grid-discretization noise as a physical pseudovector. Explicit
+    // symmetrization here pins T1 = 0 by construction in the emitted
+    // tensor, not just by approximation. Per R4 codex review 2026-05-18.
+    EFG = 0.5 * (EFG + EFG.transpose());
+
     // Traceless projection: remove the self-potential Laplacian.
     //
     // The APBS potential includes each atom's own Coulomb field, whose
@@ -311,14 +325,10 @@ SphericalTensor ApbsFieldResult::FieldGradientSphericalAt(size_t atom_index) con
 
 
 // ============================================================================
-// WriteFeatures: apbs_E (N,3), apbs_efg (N,9)
+// WriteFeatures: apbs_E (N,3), apbs_efg (N,5) — T2 only, post-2026-05-18.
+// Old 9-component packer PackST removed with the schema rev; T2 components
+// are emitted inline in WriteFeatures.
 // ============================================================================
-
-static void PackST(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
 
 int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {

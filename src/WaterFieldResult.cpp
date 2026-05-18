@@ -11,11 +11,9 @@
 
 namespace nmr {
 
-static void PackST(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
+// PackST (9-component packer) removed 2026-05-18 with the EFG schema rev.
+// Water EFG is T2-only (5 components) post-rev; T2 components are emitted
+// inline in WriteFeatures.
 
 
 std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
