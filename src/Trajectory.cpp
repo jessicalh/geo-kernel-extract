@@ -426,8 +426,55 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         idx("Pres-ZX"), idx("Pres-ZY"), idx("Pres-ZZ") };
     int i_T_prot = idx("T-Protein"), i_T_nonprot = idx("T-non-Protein");
 
+    // Log missing columns once at load time so downstream can audit
+    // schema drift across GROMACS versions / force fields. Distinct
+    // from "source attached but no frame match" (handled at TR level
+    // via source_attached_per_frame mask). Per codex 2026-05-18: a
+    // missing-column row should NOT silently become 0.0 — 0.0 is a
+    // legitimate energy value (e.g. urey_bradley=0 on AMBER without
+    // U-B terms); the column-missing case must emit NaN so downstream
+    // can distinguish "GROMACS reported 0" from "we couldn't find
+    // this column at all."
+    struct ColumnRef { const char* name; int idx; };
+    const std::vector<ColumnRef> all_cols = {
+        {"Coulomb (SR)",  i_coul_sr},  {"Coul. recip.",  i_coul_recip},
+        {"Coulomb-14",    i_coul_14},  {"Bond",          i_bond},
+        {"Angle",         i_angle},    {"U-B",           i_ub},
+        {"Proper Dih.",   i_proper},   {"Improper Dih.", i_improper},
+        {"CMAP Dih.",     i_cmap},     {"LJ (SR)",       i_lj_sr},
+        {"LJ-14",         i_lj_14},    {"Disper. corr.", i_dispcorr},
+        {"Potential",     i_potential},{"Kinetic En.",   i_kinetic},
+        {"Total Energy",  i_total},    {"Enthalpy",      i_enthalpy},
+        {"Temperature",   i_temperature}, {"Pressure",   i_pressure},
+        {"Volume",        i_volume},   {"Density",       i_density},
+        {"Box-X", i_box_x}, {"Box-Y", i_box_y}, {"Box-Z", i_box_z},
+        {"Vir-XX", i_vir[0]}, {"Vir-XY", i_vir[1]}, {"Vir-XZ", i_vir[2]},
+        {"Vir-YX", i_vir[3]}, {"Vir-YY", i_vir[4]}, {"Vir-YZ", i_vir[5]},
+        {"Vir-ZX", i_vir[6]}, {"Vir-ZY", i_vir[7]}, {"Vir-ZZ", i_vir[8]},
+        {"Pres-XX", i_pres[0]}, {"Pres-XY", i_pres[1]}, {"Pres-XZ", i_pres[2]},
+        {"Pres-YX", i_pres[3]}, {"Pres-YY", i_pres[4]}, {"Pres-YZ", i_pres[5]},
+        {"Pres-ZX", i_pres[6]}, {"Pres-ZY", i_pres[7]}, {"Pres-ZZ", i_pres[8]},
+        {"T-Protein", i_T_prot}, {"T-non-Protein", i_T_nonprot},
+    };
+    std::vector<std::string> missing_cols;
+    for (const auto& c : all_cols)
+        if (c.idx < 0) missing_cols.emplace_back(c.name);
+    if (!missing_cols.empty()) {
+        std::string joined;
+        for (std::size_t i = 0; i < missing_cols.size(); ++i) {
+            joined += missing_cols[i];
+            if (i + 1 < missing_cols.size()) joined += ", ";
+        }
+        OperationLog::Warn("Trajectory::LoadEdr",
+            "EDR file " + edr_path.string() + " is missing " +
+            std::to_string(missing_cols.size()) + " expected column(s): " +
+            joined + ". Those channels will be NaN-filled in the "
+            "trajectory-scope H5 output (NOT zero-filled — downstream "
+            "must use isfinite() to distinguish absent from zero).");
+    }
+
     auto e = [](const t_enxframe& fr, int i) -> double {
-        return (i >= 0) ? fr.ener[i].e : 0.0;
+        return (i >= 0) ? fr.ener[i].e : std::nan("");
     };
 
     t_enxframe fr;
