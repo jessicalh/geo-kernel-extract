@@ -61,13 +61,19 @@ def _write_required_traj_root(f: h5py.File, n_atoms: int, n_frames: int) -> None
 
 
 def _write_gromacs_energy_ts(f: h5py.File, n_frames: int) -> dict:
-    """Emit /trajectory/gromacs_energy_time_series with a recognisable pattern."""
+    """Emit /trajectory/gromacs_energy_time_series with a recognisable pattern.
+
+    Includes the R2-review provenance fields (source_attached_per_frame,
+    source_attached_count, energy_frame_times_ps) so the fixture matches
+    production H5 schema.
+    """
     grp = f.create_group("/trajectory/gromacs_energy_time_series")
-    grp.attrs["result_name"]   = "GromacsEnergyTimeSeriesTrajectoryResult"
-    grp.attrs["n_frames"]      = n_frames
-    grp.attrs["finalized"]     = True
-    grp.attrs["units"]         = "kJ/mol"
-    grp.attrs["tensor_layout"] = "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"
+    grp.attrs["result_name"]            = "GromacsEnergyTimeSeriesTrajectoryResult"
+    grp.attrs["n_frames"]               = n_frames
+    grp.attrs["source_attached_count"]  = n_frames
+    grp.attrs["finalized"]              = True
+    grp.attrs["units"]                  = "kJ/mol"
+    grp.attrs["tensor_layout"]          = "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"
 
     rng = np.random.default_rng(42)
     fields = {
@@ -118,22 +124,38 @@ def _write_gromacs_energy_ts(f: h5py.File, n_frames: int) -> dict:
 
     fi = np.arange(n_frames, dtype=np.uint64)
     ft = np.arange(n_frames, dtype=np.float64) * 0.1
+    # energy_frame_times_ps: snap-distance audit. Simulate a small snap
+    # offset (0.0005 ps from the trajectory frame time) for the test.
+    energy_t = ft + 0.0005
+    mask = np.ones(n_frames, dtype=np.uint8)
     grp.create_dataset("frame_indices", data=fi).attrs["units"] = "frame_index"
     grp.create_dataset("frame_times",   data=ft).attrs["units"] = "ps"
+    ds_et = grp.create_dataset("energy_frame_times_ps", data=energy_t)
+    ds_et.attrs["units"] = "ps"
+    ds_et.attrs["description"] = ("Matched .edr row time per frame. "
+                                  "Snap distance from frame_times reveals "
+                                  "EnergyAtTime() drift.")
+    grp.create_dataset("source_attached_per_frame", data=mask) \
+       .attrs["units"] = "dimensionless"
 
     return {**fields, "virial": vir, "pressure_tensor": pres,
-            "frame_indices": fi, "frame_times": ft}
+            "frame_indices": fi, "frame_times": ft,
+            "energy_frame_times_ps": energy_t,
+            "source_attached_per_frame": mask}
 
 
 def _write_bonded_energy_ts(f: h5py.File, n_atoms: int, n_frames: int) -> dict:
     """Emit /trajectory/bonded_energy_time_series with a recognisable pattern."""
     grp = f.create_group("/trajectory/bonded_energy_time_series")
-    grp.attrs["result_name"]      = "BondedEnergyTimeSeriesTrajectoryResult"
-    grp.attrs["n_atoms"]          = n_atoms
-    grp.attrs["n_frames"]         = n_frames
-    grp.attrs["finalized"]        = True
-    grp.attrs["units"]            = "kJ/mol"
-    grp.attrs["split_convention"] = "evenly_among_participating_atoms"
+    grp.attrs["result_name"]           = "BondedEnergyTimeSeriesTrajectoryResult"
+    grp.attrs["n_atoms"]               = n_atoms
+    grp.attrs["n_frames"]              = n_frames
+    grp.attrs["source_attached_count"] = n_frames
+    grp.attrs["finalized"]             = True
+    grp.attrs["units"]                 = "kJ/mol"
+    grp.attrs["split_convention"]      = "evenly_among_participating_atoms"
+    grp.attrs["split_convention_note"] = "one of several valid attributions; calibration-absorbable"
+    grp.attrs["system_scope"]          = "protein_slice_only; sum != .edr whole-system term"
 
     rng = np.random.default_rng(7)
     channels = ("bond", "angle", "urey_bradley", "proper_dih",
@@ -149,10 +171,14 @@ def _write_bonded_energy_ts(f: h5py.File, n_atoms: int, n_frames: int) -> dict:
 
     fi = np.arange(n_frames, dtype=np.uint64)
     ft = np.arange(n_frames, dtype=np.float64) * 0.1
+    mask = np.ones(n_frames, dtype=np.uint8)
     grp.create_dataset("frame_indices", data=fi).attrs["units"] = "frame_index"
     grp.create_dataset("frame_times",   data=ft).attrs["units"] = "ps"
+    grp.create_dataset("source_attached_per_frame", data=mask) \
+       .attrs["units"] = "dimensionless"
 
-    return {**fields, "frame_indices": fi, "frame_times": ft}
+    return {**fields, "frame_indices": fi, "frame_times": ft,
+            "source_attached_per_frame": mask}
 
 
 # ─── Fixtures ───────────────────────────────────────────────────────
@@ -239,6 +265,29 @@ class TestGromacsEnergyTimeSeriesGroup:
         for f in bottom:
             assert ge.total_energy[f] <= median
 
+    def test_source_attached_provenance(self, h5_with_both_energy):
+        """R2 review: source_attached_per_frame mask + count round-trip."""
+        h5, _, _ = h5_with_both_energy
+        ge = load_trajectory(h5).energy.gromacs
+        assert ge.source_attached_count == N_FRAMES
+        np.testing.assert_array_equal(
+            ge.source_attached_per_frame,
+            np.ones(N_FRAMES, dtype=np.uint8))
+
+    def test_energy_frame_times_snap_distance(self, h5_with_both_energy):
+        """R2 review L7: energy_frame_times_ps surfaces snap distance.
+
+        The fixture writes energy_frame_times_ps = frame_times + 0.0005 ps,
+        simulating a small .edr-stride / trajectory-stride mismatch. The
+        difference is the snap distance.
+        """
+        h5, _, _ = h5_with_both_energy
+        traj = load_trajectory(h5)
+        ge = traj.energy.gromacs
+        assert ge.energy_frame_times_ps.shape == (N_FRAMES,)
+        snap = ge.energy_frame_times_ps - traj.frame_times
+        np.testing.assert_allclose(snap, np.full(N_FRAMES, 0.0005))
+
 
 class TestBondedEnergyTimeSeriesGroup:
     def test_per_atom_shape(self, h5_with_both_energy):
@@ -256,6 +305,17 @@ class TestBondedEnergyTimeSeriesGroup:
         be = load_trajectory(h5).energy.bonded
         assert be.units            == "kJ/mol"
         assert be.split_convention == "evenly_among_participating_atoms"
+        # R2 review: caveat + scope notes surface as fields too.
+        assert "calibration-absorbable" in be.split_convention_note
+        assert "protein_slice_only"     in be.system_scope
+
+    def test_source_attached_provenance(self, h5_with_both_energy):
+        h5, _, _ = h5_with_both_energy
+        be = load_trajectory(h5).energy.bonded
+        assert be.source_attached_count == N_FRAMES
+        np.testing.assert_array_equal(
+            be.source_attached_per_frame,
+            np.ones(N_FRAMES, dtype=np.uint8))
 
     def test_zero_channels_legal_on_charmm36m(self, h5_with_both_energy):
         """UB / improper / CMAP are zero on the 1P9J CHARMM36m fixture

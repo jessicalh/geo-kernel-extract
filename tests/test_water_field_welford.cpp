@@ -80,6 +80,17 @@ nmr::RunConfiguration BuildWaterFieldWelfordConfig(unsigned stride) {
 }  // namespace
 
 
+// Source-absent path is exercised on GromacsEnergyTimeSeries via its
+// synthetic test pair (SyntheticSourceAbsentFrames + SyntheticAllAbsentSkipsGroup).
+// The WaterFieldWelford-specific path that invalidates prev_valid_ across
+// a gap requires `Seed()` with real first-frame positions to allocate
+// TrajectoryAtoms — the synthetic-zero-positions path FATALs at
+// canonicalization. The discipline is identical to GromacsEnergyTS; the
+// WaterFieldWelford-specific cache invalidation is a coverage gap noted
+// in the R2 review followup commit. Integration1P9J below verifies the
+// happy path (all frames source-attached) including dxdt_n == delta_n.
+
+
 TEST(WaterFieldWelford, Frame0Semantics) {
     LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);

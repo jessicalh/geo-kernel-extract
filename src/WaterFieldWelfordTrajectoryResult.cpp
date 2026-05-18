@@ -189,10 +189,23 @@ void WaterFieldWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
                    w.n_second_rms_delta);
     }
 
+    // mean_dt_ps from source-attached frames only — partial-attach
+    // scenarios shouldn't poison the cadence reading. Per R2 review
+    // 2026-05-18: the dxdt accumulators only sample consecutive
+    // attached frames; mean over all frames (including absent) would
+    // mismatch the effective dt that fed the rate Welford. On a uniform
+    // attach (production case) this matches the previous behavior.
     const auto& times = traj.FrameTimes();
-    if (times.size() >= 2)
-        mean_dt_ps_ = (times.back() - times.front()) /
-                      static_cast<double>(times.size() - 1);
+    std::vector<double> attached_times;
+    attached_times.reserve(source_attached_per_frame_.size());
+    for (std::size_t f = 0;
+         f < source_attached_per_frame_.size() && f < times.size(); ++f) {
+        if (source_attached_per_frame_[f]) attached_times.push_back(times[f]);
+    }
+    if (attached_times.size() >= 2) {
+        mean_dt_ps_ = (attached_times.back() - attached_times.front()) /
+                      static_cast<double>(attached_times.size() - 1);
+    }
     const auto& fidx = traj.FrameIndices();
     if (!fidx.empty()) frame_index_range_ = {fidx.front(), fidx.back()};
 

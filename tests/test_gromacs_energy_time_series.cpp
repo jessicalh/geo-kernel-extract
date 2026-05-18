@@ -138,6 +138,119 @@ TEST(GromacsEnergyTimeSeries, SyntheticThreeFrames) {
 
 
 // ============================================================================
+// SYNTHETIC: source-absent path. Mix 2 attached + 2 absent frames, verify
+// the source-attached gate behavior — H5 group lists source_attached_count=2
+// and absent frames carry NaN on the energy datasets. R2 review 2026-05-18:
+// the gate logic was uncovered until this test landed.
+// ============================================================================
+
+TEST(GromacsEnergyTimeSeries, SyntheticSourceAbsentFrames) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    auto tr = nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    constexpr std::size_t kFrames = 4;
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    for (std::size_t t = 0; t < kFrames; ++t) {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic frame");
+        // Attach GromacsEnergyResult only on EVEN frames (0, 2). Odd
+        // frames (1, 3) are source-absent.
+        if (t % 2 == 0) {
+            nmr::GromacsEnergy ge;
+            ge.time_ps     = static_cast<double>(t);
+            ge.potential   = -1000.0 - 10.0 * t;
+            ge.temperature = 300.0;
+            conf->AttachResult(nmr::GromacsEnergyResult::Compute(*conf, ge));
+        }
+        tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
+    }
+    tr->Finalize(tp, traj);
+
+    // H5 round-trip + verify NaN on absent frames.
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("gromacs_energy_ts_absent_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    auto grp = reopen.getGroup("/trajectory/gromacs_energy_time_series");
+
+    std::size_t source_attached_count = 0;
+    grp.getAttribute("source_attached_count").read(source_attached_count);
+    EXPECT_EQ(source_attached_count, 2u)
+        << "Expected 2/4 frames source-attached (even frames only)";
+
+    std::vector<std::uint8_t> mask;
+    grp.getDataSet("source_attached_per_frame").read(mask);
+    ASSERT_EQ(mask.size(), kFrames);
+    EXPECT_EQ(mask[0], 1u); EXPECT_EQ(mask[1], 0u);
+    EXPECT_EQ(mask[2], 1u); EXPECT_EQ(mask[3], 0u);
+
+    std::vector<double> potential;
+    grp.getDataSet("potential").read(potential);
+    ASSERT_EQ(potential.size(), kFrames);
+    // Frame 0, 2: finite values (attached). Frame 1, 3: NaN.
+    EXPECT_TRUE(std::isfinite(potential[0]));
+    EXPECT_TRUE(std::isnan(potential[1]));
+    EXPECT_TRUE(std::isfinite(potential[2]));
+    EXPECT_TRUE(std::isnan(potential[3]));
+    EXPECT_DOUBLE_EQ(potential[0], -1000.0);
+    EXPECT_DOUBLE_EQ(potential[2], -1020.0);
+
+    // energy_frame_times_ps NaN-filled too.
+    std::vector<double> et;
+    grp.getDataSet("energy_frame_times_ps").read(et);
+    EXPECT_TRUE(std::isfinite(et[0]));
+    EXPECT_TRUE(std::isnan(et[1]));
+
+    fs::remove(h5_path);
+}
+
+
+// ============================================================================
+// SYNTHETIC: ALL frames source-absent → WriteH5Group skips emission entirely.
+// ============================================================================
+
+TEST(GromacsEnergyTimeSeries, SyntheticAllAbsentSkipsGroup) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
+    const std::size_t N = tp.AtomCount();
+    auto tr = nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    for (std::size_t t = 0; t < 3; ++t) {
+        auto conf = std::make_unique<nmr::ProteinConformation>(
+            &tp.ProteinRef(), positions, "synthetic frame");
+        // No AttachResult — source is absent for every frame.
+        tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
+    }
+    tr->Finalize(tp, traj);
+    EXPECT_EQ(tr->NumFrames(), 3u);
+
+    const std::string h5_path = (fs::temp_directory_path() /
+        ("gromacs_energy_ts_allabsent_" + std::to_string(::getpid()) + ".h5")).string();
+    { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    EXPECT_FALSE(reopen.exist("/trajectory/gromacs_energy_time_series"))
+        << "All-absent run should skip group emission entirely.";
+
+    fs::remove(h5_path);
+}
+
+
+// ============================================================================
 // DISCIPLINE: Frame-0 semantics — single-frame fixture exercises Compute once.
 // ============================================================================
 

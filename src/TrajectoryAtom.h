@@ -187,12 +187,13 @@ struct SasaWelfordState {
 // first-shell-only (< 3.5 Å) — emitting both keeps coupling-distance
 // information for downstream calibration without re-running the fleet.
 //
-// EFG T0 channel intentionally absent: `WaterFieldResult.cpp:147-150`
-// makes V_total traceless before `SphericalTensor::Decompose` is called,
-// so T0 = (1/3) trace(V) = 0 by construction. Emitting an all-zero
-// channel would only be "kernel pollution" — confuses downstream
-// consumers about whether T0 carries information. T1 and T2 carry the
-// full EFG signal (rank-1 + rank-2 traceless-symmetric).
+// EFG T0 and T1 channels both intentionally absent — structural zeros
+// for water EFG: T0 = (1/3) trace(V) = 0 because WaterFieldResult.cpp
+// :147-150 traceless-projects V_total before SphericalTensor::Decompose;
+// T1 = antisymmetric pseudovector = 0 because water EFG is built from
+// symmetric r⊗r outer products (WaterFieldResult.cpp:130) and Types.cpp
+// :31 reads `0.5*(s_ij - s_ji)` which is bit-exact zero on symmetric input.
+// Only T2 (symmetric-traceless, 5 components m=-2..+2) carries signal.
 struct WaterFieldWelfordState {
     // E-field (Vec3, V/Å) per-component + magnitude
     std::array<WelfordMoments, 3> efield;            // x, y, z

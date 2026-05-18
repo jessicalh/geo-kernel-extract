@@ -494,6 +494,13 @@ class GromacsEnergyTimeSeriesGroup:
 
         e = traj.energy.gromacs.total_energy
         low_idx = np.argsort(e)[:int(0.1 * len(e))]
+
+    Provenance fields exposed (added 2026-05-18 R2 review): source-attached
+    mask + count for the GromacsEnergyResult source-attached gate;
+    `energy_frame_times_ps` carries the .edr time-stamp matched by
+    EnergyAtTime() per frame — `energy_frame_times_ps - frame_times`
+    is the snap distance (zero on exact match, nonzero when the .edr
+    stride differs from the trajectory stride).
     """
     # Electrostatic (kJ/mol)
     coulomb_sr: np.ndarray       # (T,)
@@ -532,6 +539,11 @@ class GromacsEnergyTimeSeriesGroup:
     # Frame indexing
     frame_indices: np.ndarray    # (T,) uint64
     frame_times: np.ndarray      # (T,) ps
+    energy_frame_times_ps: np.ndarray  # (T,) ps — matched .edr row time
+                                       # (NaN on source-absent frames)
+    # Source-attached gate provenance (R2 review 2026-05-18)
+    source_attached_per_frame: np.ndarray  # (T,) uint8 — 1=attached, 0=absent
+    source_attached_count: int
     units: str                   # primary energy unit string
 
 
@@ -570,6 +582,14 @@ def _load_gromacs_energy_time_series(f) -> Optional[GromacsEnergyTimeSeriesGroup
         pressure_tensor=g["pressure_tensor"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
+        energy_frame_times_ps=g["energy_frame_times_ps"][:]
+            if "energy_frame_times_ps" in g else np.full(
+                g["frame_times"].shape, np.nan, dtype=np.float64),
+        source_attached_per_frame=g["source_attached_per_frame"][:]
+            if "source_attached_per_frame" in g else np.ones(
+                g["frame_times"].shape, dtype=np.uint8),
+        source_attached_count=int(g.attrs.get(
+            "source_attached_count", len(g["frame_times"]))),
         units=_group_units(g),
     )
 
@@ -594,8 +614,13 @@ class BondedEnergyTimeSeriesGroup:
     total: np.ndarray
     frame_indices: np.ndarray    # (T,) uint64
     frame_times: np.ndarray      # (T,) ps
+    # Source-attached gate provenance (R2 review 2026-05-18)
+    source_attached_per_frame: np.ndarray  # (T,) uint8
+    source_attached_count: int
     units: str
     split_convention: str
+    split_convention_note: str   # "one of several valid attributions; ..."
+    system_scope: str            # "protein_slice_only; sum != .edr whole-system term"
 
 
 def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
@@ -613,9 +638,18 @@ def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
         total=g["total"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:]
+            if "source_attached_per_frame" in g else np.ones(
+                g["frame_times"].shape, dtype=np.uint8),
+        source_attached_count=int(g.attrs.get(
+            "source_attached_count", len(g["frame_times"]))),
         units=_group_units(g),
         split_convention=str(_decode_attr(
             g.attrs.get("split_convention", ""))),
+        split_convention_note=str(_decode_attr(
+            g.attrs.get("split_convention_note", ""))),
+        system_scope=str(_decode_attr(
+            g.attrs.get("system_scope", ""))),
     )
 
 
