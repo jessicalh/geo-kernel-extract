@@ -1061,6 +1061,144 @@ class HydrationGeometryAccess:
 
 
 @dataclass(frozen=True)
+class HydrationShellTimeSeriesGroup:
+    """Per-atom COM-based hydration shell timeline from
+    /trajectory/hydration_shell_time_series/.
+
+    Four scalar channels (N, T):
+      half_shell_asymmetry   COM-reference frame, fraction ∈ [0, 1]
+      mean_water_dipole_cos  water orientation order parameter
+      nearest_ion_distance   Angstrom; +inf sentinel when no ion within
+                             ion_cutoff (default 20 Å). Use np.isfinite()
+                             to filter buried atoms before aggregation.
+      nearest_ion_charge     elementary charge; 0 when no ion in cutoff
+
+    Sibling of HydrationGeometryTimeSeries (SASA-normal frame). Both
+    methods accumulate per `feedback_methods_accumulate` — calibration
+    weights them separately.
+    """
+    half_shell_asymmetry: np.ndarray   # (N, T)
+    mean_water_dipole_cos: np.ndarray  # (N, T)
+    nearest_ion_distance: np.ndarray   # (N, T) Å; +inf on no-ion-in-cutoff
+    nearest_ion_charge: np.ndarray     # (N, T) e
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    reference_frame: str               # "COM"
+    nearest_ion_distance_sentinel: str  # description string
+
+
+def _load_hydration_shell_time_series(f) -> Optional[HydrationShellTimeSeriesGroup]:
+    path = "/trajectory/hydration_shell_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    return HydrationShellTimeSeriesGroup(
+        half_shell_asymmetry=g["half_shell_asymmetry"][:],
+        mean_water_dipole_cos=g["mean_water_dipole_cos"][:],
+        nearest_ion_distance=g["nearest_ion_distance"][:],
+        nearest_ion_charge=g["nearest_ion_charge"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
+        nearest_ion_distance_sentinel=str(_decode_attr(
+            g.attrs.get("nearest_ion_distance_sentinel", ""))),
+    )
+
+
+@dataclass(frozen=True)
+class HydrationShellWelfordGroup:
+    """Per-atom Welford rollup of COM-based hydration shell features.
+
+    Four scalar channels with full delta variants on each. Note: the
+    `nearest_ion_distance` Welford degrades to NaN once any frame has
+    the +inf sentinel (IEEE 754: inf - inf = NaN), which is the right
+    signal for "atom has no ion in cutoff (sometimes or always)" — use
+    `np.isfinite(welford.nearest_ion_distance.mean)` to filter.
+    """
+    half_shell_asymmetry: WelfordMoments
+    mean_water_dipole_cos: WelfordMoments
+    nearest_ion_distance: WelfordMoments
+    nearest_ion_charge: WelfordMoments
+    # Delta variants on all 4 scalars
+    half_shell_asymmetry_delta: WelfordMoments
+    half_shell_asymmetry_abs_delta: WelfordMoments
+    half_shell_asymmetry_delta_squared: WelfordMoments
+    half_shell_asymmetry_dxdt: WelfordMoments
+    half_shell_asymmetry_rms_delta: np.ndarray
+    mean_water_dipole_cos_delta: WelfordMoments
+    mean_water_dipole_cos_abs_delta: WelfordMoments
+    mean_water_dipole_cos_delta_squared: WelfordMoments
+    mean_water_dipole_cos_dxdt: WelfordMoments
+    mean_water_dipole_cos_rms_delta: np.ndarray
+    nearest_ion_distance_delta: WelfordMoments
+    nearest_ion_distance_abs_delta: WelfordMoments
+    nearest_ion_distance_delta_squared: WelfordMoments
+    nearest_ion_distance_dxdt: WelfordMoments
+    nearest_ion_distance_rms_delta: np.ndarray
+    nearest_ion_charge_delta: WelfordMoments
+    nearest_ion_charge_abs_delta: WelfordMoments
+    nearest_ion_charge_delta_squared: WelfordMoments
+    nearest_ion_charge_dxdt: WelfordMoments
+    nearest_ion_charge_rms_delta: np.ndarray
+    # Provenance
+    n_frames_per_atom: np.ndarray
+    delta_n_per_atom: np.ndarray
+    dxdt_n_per_atom: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    mean_dt_ps: float
+    frame_index_range: tuple[int, int]
+    reference_frame: str               # "COM"
+
+
+def _load_hydration_shell_welford(f) -> Optional[HydrationShellWelfordGroup]:
+    path = "/trajectory/hydration_shell_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    bases = ("half_shell_asymmetry", "mean_water_dipole_cos",
+             "nearest_ion_distance", "nearest_ion_charge")
+
+    def read_chs(base: str) -> dict:
+        return {
+            base: _read_moments(g, base),
+            f"{base}_delta": _read_moments(g, f"{base}_delta"),
+            f"{base}_abs_delta": _read_moments(g, f"{base}_abs_delta"),
+            f"{base}_delta_squared": _read_moments(g, f"{base}_delta_squared"),
+            f"{base}_dxdt": _read_moments(g, f"{base}_dxdt"),
+            f"{base}_rms_delta": g[f"{base}_rms_delta"][:],
+        }
+
+    chs = {}
+    for base in bases:
+        chs.update(read_chs(base))
+
+    return HydrationShellWelfordGroup(
+        n_frames_per_atom=g["n_frames_per_atom"][:],
+        delta_n_per_atom=g["delta_n_per_atom"][:],
+        dxdt_n_per_atom=g["dxdt_n_per_atom"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        mean_dt_ps=_group_mean_dt_ps(g),
+        frame_index_range=_group_frame_index_range(g),
+        reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
+        **chs,
+    )
+
+
+@dataclass(frozen=True)
+class HydrationShellAccess:
+    """COM-based hydration shell TR family. Either slot is None when
+    the C++ TR didn't run or had source_attached_count == 0."""
+    time_series: Optional[HydrationShellTimeSeriesGroup] = None
+    welford: Optional[HydrationShellWelfordGroup] = None
+
+
+@dataclass(frozen=True)
 class WaterFieldAccess:
     """Water-field TR family — TimeSeries + Welford rollup pair.
 
@@ -1165,6 +1303,10 @@ class TrajectoryData:
     # Hydration geometry TR pair (SASA-normal water polarisation).
     hydration_geometry: HydrationGeometryAccess = field(
         default_factory=HydrationGeometryAccess)
+
+    # Hydration shell TR pair (COM-based water shell features).
+    hydration_shell: HydrationShellAccess = field(
+        default_factory=HydrationShellAccess)
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -1293,6 +1435,12 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             welford=_load_hydration_geometry_welford(f),
         )
 
+        # Hydration shell TR pair (COM-based)
+        hydration_shell = HydrationShellAccess(
+            time_series=_load_hydration_shell_time_series(f),
+            welford=_load_hydration_shell_welford(f),
+        )
+
     return TrajectoryData(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -1305,4 +1453,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         energy=energy,
         water_field=water_field,
         hydration_geometry=hydration_geometry,
+        hydration_shell=hydration_shell,
     )
