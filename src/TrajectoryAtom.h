@@ -116,8 +116,9 @@ struct HmWelfordState {
 // Identical shape to BsWelfordState.
 struct McConnellWelfordState {
     WelfordMoments t0;
-    std::array<WelfordMoments, 3> t1;          // m = -1, 0, +1 (storage = Cartesian LC dual; see WriteH5Group)
-    std::array<WelfordMoments, 5> t2;          // m = -2..+2
+    // Cartesian LC dual; T1[0]=v_x, T1[1]=v_y, T1[2]=v_z (NOT real-Y_1m).
+    std::array<WelfordMoments, 3> t1;
+    std::array<WelfordMoments, 5> t2;          // m = -2..+2 real-spherical-tesseral
     WelfordMoments t2magnitude;
     WelfordMoments t0_delta;
     WelfordMoments t0_abs_delta;

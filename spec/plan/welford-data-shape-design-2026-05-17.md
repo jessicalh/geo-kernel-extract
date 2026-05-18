@@ -294,18 +294,19 @@ attributes. Naming convention:
     units_t1 = "ppm_T_per_nA"
     units_t2 = "ppm_T_per_nA"
     units_t2magnitude = "ppm_T_per_nA"
-    irrep_layout_t1 = "m-1, m0, m+1"
-    irrep_layout_t2 = "m-2, m-1, m0, m+1, m+2"
-  datasets (per atom, shape (N_atoms,)):
-    t0_mean, t0_m2, t0_std, t0_min, t0_max, t0_min_frame, t0_max_frame, t0_n_frames
-    t0_skew, t0_kurtosis  (Finalize-derived)
-    t1_m-1_mean, ..., t1_m-1_max_frame  (8 per channel)
-    t1_m0_*, t1_m+1_*  (same)
-    t2_m-2_*, t2_m-1_*, t2_m0_*, t2_m+1_*, t2_m+2_*  (same)
-    t2magnitude_*  (same 8)
-    t0_drift_mean, t0_drift_m2, t0_drift_std, t0_drift_min, t0_drift_max, t0_drift_n
-    t0_mean_abs_delta_mean, ..., t0_mean_abs_delta_n
-    t0_rms_delta_mean, ..., t0_rms_delta_n
+    irrep_layout_t1 = "v_x,v_y,v_z"          # Cartesian Levi-Civita dual (NOT real-Y_1m)
+    irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"   # real-spherical-tesseral
+  datasets (per atom, shape (N_atoms,) unless noted):
+    t0_mean, t0_m2, t0_std, t0_min, t0_max, t0_min_frame, t0_max_frame
+    t1_mean, t1_m2, t1_std, t1_min, t1_max, t1_min_frame, t1_max_frame    # 2D shape (N, 3) — Cartesian LC dual
+    t2_mean, t2_m2, t2_std, t2_min, t2_max, t2_min_frame, t2_max_frame    # 2D shape (N, 5) — real-tesseral
+    t2magnitude_*  (same 7-stat block on the |T2| scalar)
+    t0_delta_*, t0_abs_delta_*, t0_delta_squared_*    # signed Δ, |Δ|, Δ² Welford blocks
+    t0_dxdt_*                                          # cadence-normalized Δ/Δt
+    t0_rms_delta                                       # Finalize-derived sqrt(<Δ²>)
+    n_frames_per_atom, delta_n_per_atom
+    Each dataset carries a per-dataset `units` H5 attribute (authoritative); the
+    group-level `units` describes the primary value channel.
 ```
 
 For McConnell: drop the `t1_*` datasets. For Eeq / Sasa: drop

@@ -228,8 +228,13 @@ TEST(HmWelford, Integration1P9J) {
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 
-    size_t populated = 0;
-    double max_abs_t0 = 0.0;
+    // T0 / T1 / T2 channel coverage — protects against silent regression
+    // of the per-component T1 / T2 channels (T2 Completeness, PATTERNS).
+    // A future refactor that quiets all three per-component T1 channels
+    // would not trip the t0 assertion alone.
+    size_t populated  = 0;
+    size_t t1_populated = 0, t2_populated = 0;
+    double max_abs_t0 = 0.0, max_abs_t1 = 0.0, max_abs_t2 = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
         EXPECT_TRUE(std::isfinite(ta.hm_welford.t0.mean));
@@ -238,10 +243,35 @@ TEST(HmWelford, Integration1P9J) {
         EXPECT_EQ(ta.hm_welford.n_frames, traj.FrameCount());
         if (std::abs(ta.hm_welford.t0.mean) > 1e-12) ++populated;
         max_abs_t0 = std::max(max_abs_t0, std::abs(ta.hm_welford.t0.mean));
+
+        bool atom_t1 = false;
+        for (size_t k = 0; k < 3; ++k) {
+            EXPECT_TRUE(std::isfinite(ta.hm_welford.t1[k].mean));
+            const double v = std::abs(ta.hm_welford.t1[k].mean);
+            max_abs_t1 = std::max(max_abs_t1, v);
+            if (v > 1e-12) atom_t1 = true;
+        }
+        if (atom_t1) ++t1_populated;
+
+        bool atom_t2 = false;
+        for (size_t k = 0; k < 5; ++k) {
+            EXPECT_TRUE(std::isfinite(ta.hm_welford.t2[k].mean));
+            const double v = std::abs(ta.hm_welford.t2[k].mean);
+            max_abs_t2 = std::max(max_abs_t2, v);
+            if (v > 1e-12) atom_t2 = true;
+        }
+        if (atom_t2) ++t2_populated;
     }
     EXPECT_GT(populated, 0u)
-        << "HM Welford all-zero — calculator regression or attach miss";
+        << "HM Welford T0 all-zero — calculator regression or attach miss";
+    EXPECT_GT(t1_populated, 0u)
+        << "HM Welford T1 all-zero — per-component regression";
+    EXPECT_GT(t2_populated, 0u)
+        << "HM Welford T2 per-component all-zero — T2 Completeness regression";
     std::cout << "HmWelford integration: populated=" << populated
               << "/" << tp.AtomCount()
-              << " max|t0_mean|=" << max_abs_t0 << " A^-1\n";
+              << " max|t0|=" << max_abs_t0
+              << " t1_pop=" << t1_populated << " max|t1|=" << max_abs_t1
+              << " t2_pop=" << t2_populated << " max|t2|=" << max_abs_t2
+              << " (A^-1)\n";
 }

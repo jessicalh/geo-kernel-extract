@@ -222,8 +222,14 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",             std::string("Angstrom^2"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
+    // base_units is the unit of the underlying samples; m2_units is the unit
+    // of the Welford M2 accumulator (sum of (sample-mean)²). Caller passes both
+    // explicitly because m2's exponent must distribute over every token of a
+    // compound unit (e.g. base "Angstrom^2_per_ps" → m2 "Angstrom^4_per_ps^2").
+    // Per codex MEDIUM finding 2026-05-17.
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
+                       const std::string& m2_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -241,7 +247,7 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
             ds.createAttribute("units", u);
         };
         with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
-        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        m2_units);
         with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
         with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
         with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
@@ -250,17 +256,17 @@ void SasaWelfordTrajectoryResult::WriteH5Group(
     };
 
     // ── Canonical prefixed channels ──────────────────────────────
-    // For sasa: base_units = "Angstrom^2", so squared/rate are
-    // "Angstrom^4" (already encoded as base+"^2" gives "Angstrom^2^2"
-    // — see Sasa-specific squared-units override below).
-    emit_1d("sasa",          "Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa; });
-    emit_1d("sasa_delta",    "Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta; });
-    emit_1d("sasa_abs_delta","Angstrom^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_abs_delta; });
-    // Squared channel: source samples are Δ² in Å⁴; emit_1d's "^2"
-    // suffix would produce "Angstrom^4^2" for the m2 dataset. Pass
-    // pre-squared base unit so squared-of-squared comes out right.
-    emit_1d("sasa_delta_squared", "Angstrom^4", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta_squared; });
-    emit_1d("sasa_dxdt",     "Angstrom^2_per_ps", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_dxdt; });
+    // SASA sample is in Å²; rate sample in Å²/ps; squared-Δ sample in Å⁴.
+    //   sasa_*:                Å²,     Å⁴
+    //   sasa_delta_*:          Å²,     Å⁴
+    //   sasa_abs_delta_*:      Å²,     Å⁴
+    //   sasa_delta_squared_*:  Å⁴,     Å⁸    (Welford on Δ²; m2 = (Δ²)² = Å⁸)
+    //   sasa_dxdt_*:           Å²/ps,  Å⁴/ps²
+    emit_1d("sasa",               "Angstrom^2",         "Angstrom^4",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa; });
+    emit_1d("sasa_delta",         "Angstrom^2",         "Angstrom^4",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta; });
+    emit_1d("sasa_abs_delta",     "Angstrom^2",         "Angstrom^4",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_abs_delta; });
+    emit_1d("sasa_delta_squared", "Angstrom^4",         "Angstrom^8",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_delta_squared; });
+    emit_1d("sasa_dxdt",          "Angstrom^2_per_ps",  "Angstrom^4_per_ps^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).sasa_welford.sasa_dxdt; });
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);

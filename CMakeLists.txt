@@ -796,6 +796,48 @@ gtest_discover_tests(hm_welford_tests
 
 
 # ============================================================================
+# BsWelford tests — AV-pattern Welford rollup on Biot-Savart kernel.
+# BsWelford is the Phase 2b exemplar; per-component T1/T2 + delta variants.
+# ============================================================================
+
+add_executable(bs_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
+    tests/test_bs_welford.cpp
+)
+target_compile_definitions(bs_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(bs_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(bs_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(bs_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# BsAnomalousAtomMarker tests — cross-result read discipline + event bag.
+# Reads bs_welford.{t0.mean, t0.m2, n_frames}; writes to ta.events.
+# ============================================================================
+
+add_executable(bs_anomalous_atom_marker_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/TestConfig.cpp
+    tests/test_bs_anomalous_atom_marker.cpp
+)
+target_compile_definitions(bs_anomalous_atom_marker_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(bs_anomalous_atom_marker_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(bs_anomalous_atom_marker_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(bs_anomalous_atom_marker_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
 # McConnellWelford tests — AV-pattern Welford rollup on McConnell kernel
 # ============================================================================
 

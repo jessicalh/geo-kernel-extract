@@ -239,11 +239,17 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",             std::string("elementary_charge"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
-    // base_units is the unit of the underlying samples; the squared
-    // (`_m2`) and rate (`_dxdt`) variants take "<base>^2" or
-    // "<base>_per_ps" respectively. Frame-index provenance is unitless.
+    // base_units is the unit of the underlying samples (mean / std / min / max);
+    // m2_units is the unit of the Welford M2 accumulator (sum of (sample-mean)²).
+    // Caller passes both explicitly because `base² ≠ "base^2"` when base already
+    // carries an exponent (e.g. for the *_delta_squared channel the sample is
+    // already squared so m2 needs base^4) or when base is a compound rate unit
+    // (e.g. "elementary_charge_per_ps" → m2 must be "elementary_charge^2_per_ps^2"
+    // with the ^2 distributed over each token). Per codex MEDIUM finding
+    // 2026-05-17.
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
+                       const std::string& m2_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -261,7 +267,7 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
             ds.createAttribute("units", u);
         };
         with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
-        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        m2_units);
         with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
         with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
         with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
@@ -270,13 +276,17 @@ void EeqWelfordTrajectoryResult::WriteH5Group(
     };
 
     // ── Canonical prefixed channels ──────────────────────────────
-    // Primary value + three delta semantics + cadence-normalized rate.
-    // Each block is 7 datasets, all with `units` attributes.
-    emit_1d("charge",               "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge; });
-    emit_1d("charge_delta",         "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta; });
-    emit_1d("charge_abs_delta",     "elementary_charge",        [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_abs_delta; });
-    emit_1d("charge_delta_squared", "elementary_charge^2",      [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta_squared; });
-    emit_1d("charge_dxdt",          "elementary_charge_per_ps", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_dxdt; });
+    // Each block: 7 datasets with explicit (base, m2) units.
+    //   charge_*:         e,      e²
+    //   charge_delta_*:   e,      e²       (signed Δ; same dimension as charge)
+    //   charge_abs_delta: e,      e²
+    //   charge_delta_squared: e², e⁴      (Welford on Δ² → m2 has e⁴)
+    //   charge_dxdt:      e/ps,   e²/ps²  (per-token exponents — unambiguous)
+    emit_1d("charge",               "elementary_charge",          "elementary_charge^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge; });
+    emit_1d("charge_delta",         "elementary_charge",          "elementary_charge^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta; });
+    emit_1d("charge_abs_delta",     "elementary_charge",          "elementary_charge^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_abs_delta; });
+    emit_1d("charge_delta_squared", "elementary_charge^2",        "elementary_charge^4",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_delta_squared; });
+    emit_1d("charge_dxdt",          "elementary_charge_per_ps",   "elementary_charge^2_per_ps^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).eeq_welford.charge_dxdt; });
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);

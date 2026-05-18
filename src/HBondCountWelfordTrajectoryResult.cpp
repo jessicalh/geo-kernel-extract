@@ -241,8 +241,14 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("source_radius_A",   3.5);
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
+    // base_units is the unit of the underlying samples; m2_units is the unit
+    // of the Welford M2 accumulator (sum of (sample-mean)²). Caller passes both
+    // explicitly because m2's exponent must distribute over every token of a
+    // compound unit (e.g. base "pairs_per_ps" → m2 "pairs^2_per_ps^2"). Per
+    // codex MEDIUM finding 2026-05-17.
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
+                       const std::string& m2_units,
                        std::function<const WelfordMoments&(size_t)> get) {
         std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
         std::vector<size_t> min_frame(N), max_frame(N);
@@ -260,7 +266,7 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
             ds.createAttribute("units", u);
         };
         with_units(grp.createDataSet(prefix + "_mean",      mean),      base_units);
-        with_units(grp.createDataSet(prefix + "_m2",        m2),        base_units + "^2");
+        with_units(grp.createDataSet(prefix + "_m2",        m2),        m2_units);
         with_units(grp.createDataSet(prefix + "_std",       std_),      base_units);
         with_units(grp.createDataSet(prefix + "_min",       min_),      base_units);
         with_units(grp.createDataSet(prefix + "_max",       max_),      base_units);
@@ -269,18 +275,22 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     };
 
     // ── Canonical prefixed channels ──────────────────────────────
-    emit_1d("count",               "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count; });
-    emit_1d("count_delta",         "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta; });
-    emit_1d("count_abs_delta",     "pairs",                  [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_abs_delta; });
-    // Squared channel: source samples are Δ² in pairs²; pre-square
-    // the base unit so squared-of-squared comes out right.
-    emit_1d("count_delta_squared", "pairs^2",                [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta_squared; });
-    emit_1d("count_dxdt",          "pairs_per_ps",           [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_dxdt; });
-    // Occupancy indicator: count > 0 ? 1.0 : 0.0; mean ∈ [0, 1].
-    // Codex MEDIUM finding (2026-05-17): this is "dimensionless", NOT
-    // "pairs" — the group-level `units = "pairs"` attribute does not
-    // describe this channel.
-    emit_1d("occupancy_fraction",  "dimensionless",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.occupancy_fraction; });
+    // HBondCount source is integer pairs (promoted to double).
+    //   count_*:                pairs,      pairs²
+    //   count_delta_*:          pairs,      pairs²
+    //   count_abs_delta_*:      pairs,      pairs²
+    //   count_delta_squared_*:  pairs²,     pairs⁴   (Welford on Δ²)
+    //   count_dxdt_*:           pairs/ps,   pairs²/ps²
+    //   occupancy_fraction_*:   dimensionless (indicator in {0, 1})
+    // The group-level `units = "pairs"` attribute describes count_*; the
+    // per-dataset `units` attributes are authoritative everywhere else
+    // (especially occupancy_fraction, which is dimensionless not pairs).
+    emit_1d("count",               "pairs",          "pairs^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count; });
+    emit_1d("count_delta",         "pairs",          "pairs^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta; });
+    emit_1d("count_abs_delta",     "pairs",          "pairs^2",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_abs_delta; });
+    emit_1d("count_delta_squared", "pairs^2",        "pairs^4",          [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_delta_squared; });
+    emit_1d("count_dxdt",          "pairs_per_ps",   "pairs^2_per_ps^2", [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.count_dxdt; });
+    emit_1d("occupancy_fraction",  "dimensionless",  "dimensionless",    [&](size_t i) -> const WelfordMoments& { return tp.AtomAt(i).hbond_count_welford.occupancy_fraction; });
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);

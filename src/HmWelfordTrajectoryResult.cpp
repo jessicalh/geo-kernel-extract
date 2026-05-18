@@ -318,8 +318,9 @@ void HmWelfordTrajectoryResult::WriteH5Group(
         ds_maxf.createAttribute("units", std::string("frame_index"));
     };
 
-    // Per-TR unit strings. HM kernel is Angstrom^-1; Δ² has Angstrom^-2;
-    // dx/dt has /ps appended.
+    // Per-TR unit strings. HM kernel sample is in Angstrom^-1. Welford M2 is
+    // (sample - mean)² so squared units carry an explicit exponent on each token
+    // (each unit token followed by its own exponent; no ambiguous grouping).
     const std::string kBaseUnits      = "Angstrom^-1";
     const std::string kSquaredUnits   = "Angstrom^-2";
     const std::string kRateUnits      = "Angstrom^-1_per_ps";
@@ -361,13 +362,18 @@ void HmWelfordTrajectoryResult::WriteH5Group(
         n_frames[i]     = w.n_frames;
         delta_n[i]      = w.delta_n;
     }
-    grp.createDataSet("t0_rms_delta",      t0_rms_delta);
-    grp.createDataSet("n_frames_per_atom", n_frames);
-    grp.createDataSet("delta_n_per_atom",  delta_n);
+    auto rms_ds = grp.createDataSet("t0_rms_delta",      t0_rms_delta);
+    rms_ds.createAttribute("units", kBaseUnits);
+    auto nf_ds = grp.createDataSet("n_frames_per_atom", n_frames);
+    nf_ds.createAttribute("units", std::string("frame_count"));
+    auto dn_ds = grp.createDataSet("delta_n_per_atom",  delta_n);
+    dn_ds.createAttribute("units", std::string("frame_count"));
 
     // ── Backward-compatibility aliases ───────────────────────────
     // Pre-Phase-2b consumers read t2mag_*; emit those as aliases to
-    // t2magnitude_* (same data, deprecated naming).
+    // t2magnitude_* (same data, deprecated naming). Each alias carries
+    // both `units` (the HM base unit, Angstrom^-1) and a
+    // `deprecated_use` attribute pointing at the canonical name.
     std::vector<double> t2mag_mean(N), t2mag_std(N), t2mag_min(N), t2mag_max(N);
     for (size_t i = 0; i < N; ++i) {
         const WelfordMoments& w = tp.AtomAt(i).hm_welford.t2magnitude;
@@ -376,10 +382,18 @@ void HmWelfordTrajectoryResult::WriteH5Group(
         t2mag_min[i]  = w.min;
         t2mag_max[i]  = w.max;
     }
-    grp.createDataSet("t2mag_mean", t2mag_mean);
-    grp.createDataSet("t2mag_std",  t2mag_std);
-    grp.createDataSet("t2mag_min",  t2mag_min);
-    grp.createDataSet("t2mag_max",  t2mag_max);
+    auto attach_legacy = [&](HighFive::DataSet ds,
+                             const std::string& u,
+                             const std::string& canonical) {
+        ds.createAttribute("units", u);
+        ds.createAttribute("deprecated_use",
+            std::string("canonical name is ") + canonical +
+            "; this is a pre-Phase-2b alias");
+    };
+    attach_legacy(grp.createDataSet("t2mag_mean", t2mag_mean), kBaseUnits, "t2magnitude_mean");
+    attach_legacy(grp.createDataSet("t2mag_std",  t2mag_std),  kBaseUnits, "t2magnitude_std");
+    attach_legacy(grp.createDataSet("t2mag_min",  t2mag_min),  kBaseUnits, "t2magnitude_min");
+    attach_legacy(grp.createDataSet("t2mag_max",  t2mag_max),  kBaseUnits, "t2magnitude_max");
 }
 
 }  // namespace nmr
