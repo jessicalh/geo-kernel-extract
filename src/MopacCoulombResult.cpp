@@ -305,8 +305,10 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
 
     std::vector<double> shielding(N * 9);
     std::vector<double> efield(N * 3);
-    std::vector<double> efg_bb(N * 9);
-    std::vector<double> efg_aro(N * 9);
+    // EFG schema rev 2026-05-18: T2 only (5 components). Same symmetric
+    // outer-product physics as Coulomb → T0+T1 structural zeros.
+    std::vector<double> efg_bb(N * 5);
+    std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
 
     for (size_t i = 0; i < N; ++i) {
@@ -317,8 +319,10 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
         efield[i*3+1] = ca.mopac_coulomb_E_total.y();
         efield[i*3+2] = ca.mopac_coulomb_E_total.z();
 
-        PackST_MCC(ca.mopac_coulomb_EFG_backbone_spherical, &efg_bb[i*9]);
-        PackST_MCC(ca.mopac_coulomb_EFG_aromatic_spherical, &efg_aro[i*9]);
+        for (size_t k = 0; k < 5; ++k) {
+            efg_bb[i*5+k]  = ca.mopac_coulomb_EFG_backbone_spherical.T2[k];
+            efg_aro[i*5+k] = ca.mopac_coulomb_EFG_aromatic_spherical.T2[k];
+        }
 
         scalars[i*4+0] = ca.mopac_coulomb_E_magnitude;
         scalars[i*4+1] = ca.mopac_coulomb_E_bond_proj;
@@ -331,9 +335,9 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_E.npy",
                             efield.data(), N, 3);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_backbone.npy",
-                            efg_bb.data(), N, 9);
+                            efg_bb.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_efg_aromatic.npy",
-                            efg_aro.data(), N, 9);
+                            efg_aro.data(), N, 5);
     NpyWriter::WriteFloat64(output_dir + "/mopac_coulomb_scalars.npy",
                             scalars.data(), N, 4);
     return 5;

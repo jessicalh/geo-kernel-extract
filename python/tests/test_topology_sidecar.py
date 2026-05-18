@@ -128,12 +128,13 @@ def _required_calculator_npys(out_dir, n_atoms):
             np.zeros(n_atoms, dtype=np.float64))
     np.save(out_dir / "aimnet2_aim.npy",
             np.zeros((n_atoms, 256), dtype=np.float32))
+    # EFG schema rev 2026-05-18: T2 only (5 components).
     np.save(out_dir / "aimnet2_efg.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
     np.save(out_dir / "aimnet2_efg_aromatic.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
     np.save(out_dir / "aimnet2_efg_backbone.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
 
 
 class TestTopologyLoad:
@@ -160,8 +161,8 @@ class TestTopologyLoad:
         np.save(tmp_path / "bonds.npy", bonds)
 
         rings = np.zeros(2, dtype=_RINGS_DTYPE)
-        rings[0] = (0, 0, 0, 6, 0, 0, 5, 100, -1)  # aromatic PheBenzene
-        rings[1] = (1, 1, 8, 5, 0, 0, 7, 200, -1)  # saturated Pro
+        rings[0] = (0, 0, 0, 6, 0, 0, 1, 100, -1)  # aromatic PheBenzene
+        rings[1] = (1, 1, 8, 5, 0, 0, 2, 200, -1)  # saturated Pro
         np.save(tmp_path / "rings.npy", rings)
 
         memb = np.zeros(11, dtype=_RING_MEMBERSHIP_DTYPE)
@@ -329,6 +330,103 @@ class TestValidationInvariants:
         residues[0]["atom_count"] = 999
         np.save(tmp_path / "residues.npy", residues)
         with pytest.raises(ValueError, match="atom_count sums"):
+            load(tmp_path)
+
+    def test_residue_row_identity_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        residues = np.load(tmp_path / "residues.npy")
+        residues[1]["residue_index"] = 99
+        np.save(tmp_path / "residues.npy", residues)
+        with pytest.raises(ValueError, match="residue_index"):
+            load(tmp_path)
+
+    def test_bond_row_identity_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS, n_bonds=2)
+        bonds = np.load(tmp_path / "bonds.npy")
+        bonds[1]["bond_index"] = 99
+        np.save(tmp_path / "bonds.npy", bonds)
+        with pytest.raises(ValueError, match="bond_index"):
+            load(tmp_path)
+
+    def test_ring_row_identity_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(
+            tmp_path, n_atoms=N_ATOMS, n_aromatic_rings=2)
+        rings = np.load(tmp_path / "rings.npy")
+        rings[1]["ring_id"] = 99
+        np.save(tmp_path / "rings.npy", rings)
+        with pytest.raises(ValueError, match="ring_id"):
+            load(tmp_path)
+
+    def test_atom_residue_counts_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        # Keep all residue references in range but redistribute one atom
+        # onto residue 0; residues.npy atom_count no longer matches.
+        residue_index = np.load(tmp_path / "residue_index.npy")
+        residue_index[-1] = 0
+        np.save(tmp_path / "residue_index.npy", residue_index)
+        with pytest.raises(ValueError, match="residue_index.npy counts"):
+            load(tmp_path)
+
+    def test_atom_residue_out_of_range_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(tmp_path, n_atoms=N_ATOMS)
+        residue_index = np.load(tmp_path / "residue_index.npy")
+        residue_index[0] = 99
+        np.save(tmp_path / "residue_index.npy", residue_index)
+        with pytest.raises(ValueError, match="residue_index.npy references"):
+            load(tmp_path)
+
+    def test_ring_parent_residue_out_of_range_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(
+            tmp_path, n_atoms=N_ATOMS, n_aromatic_rings=1)
+        rings = np.load(tmp_path / "rings.npy")
+        rings[0]["parent_residue_index"] = 99
+        np.save(tmp_path / "rings.npy", rings)
+        with pytest.raises(ValueError, match="parent_residue_index"):
+            load(tmp_path)
+
+    def test_ring_native_axis_noncontiguous_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(
+            tmp_path, n_atoms=N_ATOMS, n_aromatic_rings=2)
+        rings = np.load(tmp_path / "rings.npy")
+        rings[1]["native_axis_index"] = 3
+        np.save(tmp_path / "rings.npy", rings)
+        with pytest.raises(ValueError, match="native_axis_index"):
+            load(tmp_path)
+
+    def test_ring_atom_count_membership_mismatch_raises(self, tmp_path):
+        _required_identity_npys(tmp_path, N_ATOMS)
+        _required_calculator_npys(tmp_path, N_ATOMS)
+        write_minimal_topology_sidecar(
+            tmp_path, n_atoms=N_ATOMS, n_aromatic_rings=1)
+        rings = np.load(tmp_path / "rings.npy")
+        rings[0]["atom_count"] = 2
+        np.save(tmp_path / "rings.npy", rings)
+
+        memb = np.zeros(1, dtype=_RING_MEMBERSHIP_DTYPE)
+        memb[0]["ring_id"] = 0
+        memb[0]["atom_index"] = 0
+        memb[0]["is_vertex"] = 1
+        np.save(tmp_path / "ring_membership.npy", memb)
+        man_path = tmp_path / "extraction_manifest.json"
+        man = json.loads(man_path.read_text())
+        man["axis_sizes"]["ring_membership"] = 1
+        man_path.write_text(json.dumps(man))
+
+        with pytest.raises(ValueError, match="atom_count does not match"):
             load(tmp_path)
 
 

@@ -71,12 +71,13 @@ def _required_calculator_npys(out_dir, n_atoms):
             np.zeros(n_atoms, dtype=np.float64))
     np.save(out_dir / "aimnet2_aim.npy",
             np.zeros((n_atoms, 256), dtype=np.float32))
+    # EFG schema rev 2026-05-18: T2 only (5 components).
     np.save(out_dir / "aimnet2_efg.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
     np.save(out_dir / "aimnet2_efg_aromatic.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
     np.save(out_dir / "aimnet2_efg_backbone.npy",
-            np.zeros((n_atoms, 9), dtype=np.float64))
+            np.zeros((n_atoms, 5), dtype=np.float64))
 
 
 def _larsen_hbond_npys(out_dir, n_atoms):

@@ -334,12 +334,17 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/apbs_E.npy", data.data(), N, 3);
     }
 
-    // apbs_efg: (N, 9) — solvated EFG as SphericalTensor [T0,T1[3],T2[5]]
+    // apbs_efg: (N, 5) — T2 only. APBS EFG = Hessian of φ (Poisson
+    // solution) is mathematically symmetric (Schwarz's theorem) and
+    // explicitly traceless-projected at line 102 → T0+T1 structural zeros.
+    // Schema rev 2026-05-18.
     {
-        std::vector<double> data(N * 9);
-        for (size_t i = 0; i < N; ++i)
-            PackST(conf.AtomAt(i).apbs_efg_spherical, &data[i*9]);
-        NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy", data.data(), N, 9);
+        std::vector<double> data(N * 5);
+        for (size_t i = 0; i < N; ++i) {
+            const auto& st = conf.AtomAt(i).apbs_efg_spherical;
+            for (size_t k = 0; k < 5; ++k) data[i*5+k] = st.T2[k];
+        }
+        NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy", data.data(), N, 5);
     }
 
     return 2;

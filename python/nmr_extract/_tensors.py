@@ -106,9 +106,67 @@ class ShieldingTensor(SphericalTensor):
     pass
 
 
-class EFGTensor(SphericalTensor):
-    """Electric field gradient in V/A^2.  Same structure as :class:`SphericalTensor`."""
-    pass
+class EFGTensor:
+    """Electric field gradient in V/A^2 — symmetric-traceless T2 only.
+
+    Shape ``(*, 5)``. All EFGs in this codebase are constructed from
+    symmetric outer-product physics — q·(3r⊗r/r⁵ − I/r³) for the
+    Coulomb-family EFGs (water, Coulomb, MOPAC Coulomb, AIMNet2) and
+    the Hessian of φ for APBS. After the explicit traceless projection
+    each calculator performs, both T0 (trace) and T1 (antisymmetric
+    pseudovector) are structural zeros. Only the symmetric-traceless
+    T2 (5 real-spherical-tesseral components m=-2..+2) carries signal.
+
+    Re-typed from a 9-component SphericalTensor subclass to a standalone
+    5-component class on 2026-05-18 (codex review R2 M1 expansion). The
+    old shape emitted 4 always-zero channels per atom; the new shape
+    saves storage AND signals the physics correctly to e3nn / MACE /
+    NequIP downstream consumers via the ``1x2e`` Irreps declaration.
+
+    Args:
+        data: numpy array with last dimension 5.
+    """
+
+    __slots__ = ("_data",)
+    IRREPS = Irreps("1x2e")
+
+    def __init__(self, data: np.ndarray):
+        if data.shape[-1] != 5:
+            raise ValueError(
+                f"{type(self).__name__}: last dim must be 5 (T2-only), "
+                f"got {data.shape}")
+        self._data = data
+
+    @property
+    def data(self) -> np.ndarray:
+        """Raw numpy array ``(*, 5)``. Components m=-2,-1,0,+1,+2."""
+        return self._data
+
+    @property
+    def irreps(self) -> Irreps:
+        """``Irreps("1x2e")`` — symmetric-traceless rank-2, parity-even."""
+        return self.IRREPS
+
+    def torch(self) -> torch.Tensor:
+        """Zero-copy conversion to ``torch.Tensor``."""
+        return torch.from_numpy(self._data)
+
+    @property
+    def T2(self) -> np.ndarray:
+        """The 5-component T2 array ``(*, 5)``. Equivalent to ``.data``."""
+        return self._data
+
+    @property
+    def T2_magnitude(self) -> np.ndarray:
+        """L2 norm of T2 components ``(*,)``. Rotationally invariant."""
+        return np.linalg.norm(self._data, axis=-1)
+
+    @property
+    def n_atoms(self) -> int:
+        return self._data.shape[0]
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(shape={self._data.shape}, irreps='{self.IRREPS}')"
 
 
 class VectorField:
@@ -618,7 +676,17 @@ class DeltaScalars:
 
 
 class DeltaAPBS:
-    """(*, 12) APBS delta: delta_E(3) + delta_EFG(9)."""
+    """(*, 12) APBS delta: delta_E(3) + delta_EFG_full_sphericaltensor(9).
+
+    The 9-component delta_EFG slice is the full T0+T1+T2 SphericalTensor
+    packing produced by MutationDeltaResult — T0 and T1 are structurally
+    zero (the difference of two symmetric-traceless matrices is itself
+    symmetric-traceless), but the emitted shape stays 9 for backward
+    compatibility with the mutation-delta consumer. The `.delta_efg`
+    accessor returns a SphericalTensor (not EFGTensor) because the new
+    EFGTensor class is T2-only 5-component. Downstream that wants just
+    T2 should use ``apbs.delta_efg.T2`` to get the 5-component view.
+    """
 
     __slots__ = ("_data",)
 
@@ -636,8 +704,12 @@ class DeltaAPBS:
         return VectorField(self._data[..., :3])
 
     @property
-    def delta_efg(self) -> EFGTensor:
-        return EFGTensor(self._data[..., 3:])
+    def delta_efg(self) -> "SphericalTensor":
+        """Returns the full 9-component packed SphericalTensor. T0 and T1
+        slots are structurally zero but emitted for the mutation-delta
+        path's backward-compat schema. Use `.T2` for the 5 nonzero
+        components."""
+        return SphericalTensor(self._data[..., 3:])
 
     def __repr__(self) -> str:
         return f"DeltaAPBS(shape={self._data.shape})"

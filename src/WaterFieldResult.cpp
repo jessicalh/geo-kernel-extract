@@ -214,25 +214,27 @@ int WaterFieldResult::WriteFeatures(
         ++n_files;
     }
 
-    // water_efg: (N, 9) SphericalTensor
+    // water_efg: (N, 5) — T2 only. Water EFG built from symmetric r⊗r
+    // outer products + traceless projection → T0=0, T1=0 by construction.
+    // Emitting only T2 (m=-2..+2) per the 2026-05-18 EFG schema rev.
     {
-        std::vector<double> data(N * 9);
+        std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
             const auto& st = conf.AtomAt(i).water_efg_spherical;
-            PackST(st, &data[i * 9]);
+            for (size_t k = 0; k < 5; ++k) data[i * 5 + k] = st.T2[k];
         }
-        NpyWriter::WriteFloat64(output_dir + "/water_efg.npy", data.data(), N, 9);
+        NpyWriter::WriteFloat64(output_dir + "/water_efg.npy", data.data(), N, 5);
         ++n_files;
     }
 
-    // water_efg_first: (N, 9) SphericalTensor (first shell only)
+    // water_efg_first: (N, 5) — T2 only (first shell EFG, same physics).
     {
-        std::vector<double> data(N * 9);
+        std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
             const auto& st = conf.AtomAt(i).water_efg_first_spherical;
-            PackST(st, &data[i * 9]);
+            for (size_t k = 0; k < 5; ++k) data[i * 5 + k] = st.T2[k];
         }
-        NpyWriter::WriteFloat64(output_dir + "/water_efg_first.npy", data.data(), N, 9);
+        NpyWriter::WriteFloat64(output_dir + "/water_efg_first.npy", data.data(), N, 5);
         ++n_files;
     }
 

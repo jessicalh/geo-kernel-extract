@@ -121,7 +121,12 @@ class ArraySpec:
 # Common metadata strings — name once, use across entries of the same physics.
 _SHIELD_IRREPS = "0e + 1e + 2e"
 _SHIELD_SIGN   = "σ_ab = -dB_a^sec/dB_{0,b}"
-_EFG_IRREPS    = "0e + 2e"   # symmetric traceless
+_EFG_IRREPS    = "1x2e"      # T2 only — water/Coulomb/MOPAC/APBS/AIMNet2 EFG
+                              # all built from symmetric outer-product physics
+                              # (q·(3r⊗r/r⁵−I/r³) or ∇²φ). After explicit
+                              # traceless projection, T0 = trace = 0 AND
+                              # T1 = antisymmetric pseudovector = 0 are
+                              # both structural zeros. Schema rev 2026-05-18.
 
 CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Identity (ConformationResult.cpp) ────────────────────────
@@ -192,9 +197,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="V/A^2", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       9,   False, "Coulomb EFG backbone",
+    ArraySpec("coulomb_efg_backbone",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG backbone (T2 only, symmetric-traceless)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       9,   False, "Coulomb EFG aromatic",
+    ArraySpec("coulomb_efg_aromatic",   "coulomb", EFGTensor,       5,   False, "Coulomb EFG aromatic (T2 only, symmetric-traceless)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_scalars",        "coulomb", CoulombScalars,  4,   False, "Coulomb E-field scalars",
               mechanism="electrostatic_efg"),
@@ -226,9 +231,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="solvation"),
     ArraySpec("water_efield_first", "water_field", VectorField,    3,    False, "Water E-field first shell <3.5A (V/A)",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="solvation"),
-    ArraySpec("water_efg",          "water_field", EFGTensor,      9,    False, "Water EFG total (SphericalTensor)",
+    ArraySpec("water_efg",          "water_field", EFGTensor,      5,    False, "Water EFG total (T2 only, symmetric-traceless)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="solvation"),
-    ArraySpec("water_efg_first",    "water_field", EFGTensor,      9,    False, "Water EFG first shell (SphericalTensor)",
+    ArraySpec("water_efg_first",    "water_field", EFGTensor,      5,    False, "Water EFG first shell (T2 only, symmetric-traceless)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="solvation"),
     ArraySpec("water_shell_counts", "water_field", np.ndarray,     2,    False, "Water shell counts [n_first, n_second]",
               mechanism="solvation"),
@@ -270,9 +275,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_SHIELD_IRREPS, units="V/A^2", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_E",             "mopac_coulomb", VectorField,     3,  False, "MOPAC Coulomb E-field",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       9,  False, "MOPAC Coulomb EFG backbone",
+    ArraySpec("mopac_coulomb_efg_backbone",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG backbone (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("mopac_coulomb_efg_aromatic",  "mopac_coulomb", EFGTensor,       9,  False, "MOPAC Coulomb EFG aromatic",
+    ArraySpec("mopac_coulomb_efg_aromatic",  "mopac_coulomb", EFGTensor,       5,  False, "MOPAC Coulomb EFG aromatic (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("mopac_coulomb_scalars",       "mopac_coulomb", CoulombScalars,  4,  False, "MOPAC Coulomb scalars",
               mechanism="electrostatic_efg"),
@@ -288,7 +293,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── APBS (ApbsFieldResult.cpp) ───────────────────────────────
     ArraySpec("apbs_E",           "apbs", VectorField,             3,    False, "APBS solvated E-field",
               irreps="1e", units="V/A", tensor_rank=1, parity="odd", mechanism="electrostatic_efg"),
-    ArraySpec("apbs_efg",         "apbs", EFGTensor,               9,    False, "APBS solvated EFG",
+    ArraySpec("apbs_efg",         "apbs", EFGTensor,               5,    False, "APBS solvated EFG (T2 only, symmetric-traceless)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── Orca DFT (OrcaShieldingResult.cpp) ───────────────────────
@@ -351,11 +356,11 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               units="e", mechanism="charges"),
     ArraySpec("aimnet2_aim",                 "aimnet2", AIMNet2AimEmbedding,       256,  True,  "AIMNet2 256-dim electronic embedding",
               mechanism="charges"),
-    ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG total",
+    ArraySpec("aimnet2_efg",                 "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG total (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG aromatic",
+    ArraySpec("aimnet2_efg_aromatic",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG aromatic (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
-    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 9,    True,  "AIMNet2 Coulomb EFG backbone",
+    ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG backbone (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── AIMNet2 polarisability (AIMNet2PolarisabilityResult.cpp) ─────

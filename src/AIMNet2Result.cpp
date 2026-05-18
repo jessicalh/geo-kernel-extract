@@ -22,12 +22,11 @@ namespace nmr {
 // [T0, T1x, T1y, T1z, T2_0, T2_1, T2_2, T2_3, T2_4]
 // ============================================================================
 
-static void PackST_AN2(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    out[1] = st.T1[0]; out[2] = st.T1[1]; out[3] = st.T1[2];
-    out[4] = st.T2[0]; out[5] = st.T2[1]; out[6] = st.T2[2];
-    out[7] = st.T2[3]; out[8] = st.T2[4];
-}
+// PackST_AN2 (9-component SphericalTensor → flat double[9]) removed
+// 2026-05-18 with the EFG schema rev: AIMNet2 EFG is T2-only 5-component
+// post-schema-rev. WriteFeatures now packs T2[5] directly inline via
+// the write_efg_t2 lambda. Removing the helper avoids unused-function
+// warnings and signals the architectural change at the boundary.
 
 
 // ============================================================================
@@ -496,35 +495,25 @@ int AIMNet2Result::WriteFeatures(
         files_written++;
     }
 
-    // aimnet2_efg.npy — (N, 9) float64, full SphericalTensor
-    {
-        std::vector<double> data(N * 9);
-        for (size_t i = 0; i < N; ++i)
-            PackST_AN2(conf.AtomAt(i).aimnet2_EFG_total_spherical, &data[i * 9]);
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_efg.npy",
-                                data.data(), N, 9);
-        files_written++;
-    }
-
-    // aimnet2_efg_aromatic.npy — (N, 9) float64
-    {
-        std::vector<double> data(N * 9);
-        for (size_t i = 0; i < N; ++i)
-            PackST_AN2(conf.AtomAt(i).aimnet2_EFG_aromatic_spherical, &data[i * 9]);
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_efg_aromatic.npy",
-                                data.data(), N, 9);
-        files_written++;
-    }
-
-    // aimnet2_efg_backbone.npy — (N, 9) float64
-    {
-        std::vector<double> data(N * 9);
-        for (size_t i = 0; i < N; ++i)
-            PackST_AN2(conf.AtomAt(i).aimnet2_EFG_backbone_spherical, &data[i * 9]);
-        NpyWriter::WriteFloat64(output_dir + "/aimnet2_efg_backbone.npy",
-                                data.data(), N, 9);
-        files_written++;
-    }
+    // aimnet2_efg.npy — (N, 5) float64, T2 only. AIMNet2 EFG from same
+    // Coulomb-style outer-product physics as CoulombResult → T0+T1
+    // structural zeros after the explicit traceless projection at
+    // line 421-428. Schema rev 2026-05-18.
+    auto write_efg_t2 = [&](const std::string& name,
+                             SphericalTensor ConformationAtom::* member) {
+        std::vector<double> data(N * 5);
+        for (size_t i = 0; i < N; ++i) {
+            const auto& st = conf.AtomAt(i).*member;
+            for (size_t k = 0; k < 5; ++k) data[i*5+k] = st.T2[k];
+        }
+        NpyWriter::WriteFloat64(output_dir + "/" + name, data.data(), N, 5);
+    };
+    write_efg_t2("aimnet2_efg.npy",          &ConformationAtom::aimnet2_EFG_total_spherical);
+    ++files_written;
+    write_efg_t2("aimnet2_efg_aromatic.npy", &ConformationAtom::aimnet2_EFG_aromatic_spherical);
+    ++files_written;
+    write_efg_t2("aimnet2_efg_backbone.npy", &ConformationAtom::aimnet2_EFG_backbone_spherical);
+    ++files_written;
 
     // aimnet2_charge_sensitivity.npy is NOT written here.
     // Charge sensitivity = per-atom charge variance across the ensemble,
