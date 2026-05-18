@@ -620,6 +620,193 @@ def _load_bonded_energy_time_series(f) -> Optional[BondedEnergyTimeSeriesGroup]:
 
 
 @dataclass(frozen=True)
+class WaterFieldTimeSeriesGroup:
+    """Per-atom water E-field + EFG timeline from /trajectory/water_field_time_series/.
+
+    Shape: each channel is (N, T, ...) where the trailing axis carries
+    the per-channel layout:
+
+      efield, efield_first    (N, T, 3)  float64  V/Angstrom
+      efg, efg_first          (N, T, 5)  float64  V/Angstrom²
+                                         (real-spherical-tesseral T2 only)
+      n_first, n_second       (N, T)     uint32   shell-occupancy count
+
+    Water EFG carries no T0 (trace-zero by construction) and no T1
+    (antisymmetric pseudovector vanishes for symmetric r⊗r contributions).
+    Only T2 is emitted; consumers must NOT reshape to 9 components.
+
+    "Absent, not faked" provenance: `source_attached_per_frame` is a
+    per-frame bool mask. Frames where WaterFieldResult was not attached
+    (no-solvent extraction) are NaN-filled on the float channels and
+    carry `absent_sentinel = 0xFFFFFFFFu` on the uint32 shell-count
+    datasets. When zero frames had the source attached, the entire H5
+    group is absent — `load_trajectory(...).water_field.time_series` is
+    `None` in that case.
+    """
+    efield: np.ndarray              # (N, T, 3) V/Angstrom
+    efield_first: np.ndarray        # (N, T, 3)
+    efg: np.ndarray                 # (N, T, 5) V/Angstrom² (T2 only)
+    efg_first: np.ndarray           # (N, T, 5)
+    n_first: np.ndarray             # (N, T) uint32 — shell-occupancy
+    n_second: np.ndarray            # (N, T) uint32
+    frame_indices: np.ndarray       # (T,)  uint64
+    frame_times: np.ndarray         # (T,)  ps
+    source_attached_per_frame: np.ndarray  # (T,) uint8 — 1=attached, 0=absent
+    source_attached_count: int
+    # Layout strings (from H5 attrs)
+    efield_layout: str              # "x,y,z"
+    efield_parity: str              # "1o"
+    efg_irrep_layout: str           # "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    efg_parity: str                 # "2e"
+    efield_cutoff_A: float          # 15.0
+    n_first_cutoff_A: float         # 3.5
+    n_second_cutoff_A: float        # 5.5
+
+
+def _load_water_field_time_series(f) -> Optional[WaterFieldTimeSeriesGroup]:
+    path = "/trajectory/water_field_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    return WaterFieldTimeSeriesGroup(
+        efield=g["efield"][:],
+        efield_first=g["efield_first"][:],
+        efg=g["efg"][:],
+        efg_first=g["efg_first"][:],
+        n_first=g["n_first"][:],
+        n_second=g["n_second"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        efield_layout=str(_decode_attr(g.attrs.get("efield_layout", ""))),
+        efield_parity=str(_decode_attr(g.attrs.get("efield_parity", ""))),
+        efg_irrep_layout=str(_decode_attr(g.attrs.get("efg_irrep_layout", ""))),
+        efg_parity=str(_decode_attr(g.attrs.get("efg_parity", ""))),
+        efield_cutoff_A=float(g.attrs.get("efield_cutoff_A", float("nan"))),
+        n_first_cutoff_A=float(g.attrs.get("n_first_cutoff_A", float("nan"))),
+        n_second_cutoff_A=float(g.attrs.get("n_second_cutoff_A", float("nan"))),
+    )
+
+
+@dataclass(frozen=True)
+class WaterFieldWelfordGroup:
+    """Per-atom Welford rollup of water E-field + EFG from /trajectory/water_field_welford/.
+
+    Channels:
+      efield_{x,y,z}, efield_magnitude              (N,)
+      efield_first_{x,y,z}, efield_first_magnitude  (N,)
+      efg_t2[5], efg_t2magnitude                    (N, 5) and (N,)
+      efg_first_t2[5], efg_first_t2magnitude        (N, 5) and (N,)
+      n_first, n_second                             (N,)
+      Delta variants on 3 primary scalars: efield_magnitude, n_first, n_second
+        (signed / abs / squared / dxdt / rms_delta)
+
+    Like the TimeSeries TR, EFG has T0+T1 structural zeros — only T2.
+    `source_attached_per_frame` mask is emitted alongside; Welford updates
+    skip source-absent frames so the mean isn't biased toward zero.
+    """
+    # Per-component E-field
+    efield_x: WelfordMoments
+    efield_y: WelfordMoments
+    efield_z: WelfordMoments
+    efield_magnitude: WelfordMoments
+    efield_first_x: WelfordMoments
+    efield_first_y: WelfordMoments
+    efield_first_z: WelfordMoments
+    efield_first_magnitude: WelfordMoments
+    # EFG T2 per-component + |T2|
+    efg_t2: WelfordMoments          # (N, 5) per-component
+    efg_t2magnitude: WelfordMoments
+    efg_first_t2: WelfordMoments
+    efg_first_t2magnitude: WelfordMoments
+    # Shell occupancy counts
+    n_first: WelfordMoments
+    n_second: WelfordMoments
+    # Delta variants on the 3 primary scalars
+    efield_magnitude_delta: WelfordMoments
+    efield_magnitude_abs_delta: WelfordMoments
+    efield_magnitude_delta_squared: WelfordMoments
+    efield_magnitude_dxdt: WelfordMoments
+    efield_magnitude_rms_delta: np.ndarray   # (N,)
+    n_first_delta: WelfordMoments
+    n_first_abs_delta: WelfordMoments
+    n_first_delta_squared: WelfordMoments
+    n_first_dxdt: WelfordMoments
+    n_first_rms_delta: np.ndarray
+    n_second_delta: WelfordMoments
+    n_second_abs_delta: WelfordMoments
+    n_second_delta_squared: WelfordMoments
+    n_second_dxdt: WelfordMoments
+    n_second_rms_delta: np.ndarray
+    # Provenance
+    n_frames_per_atom: np.ndarray   # (N,)
+    delta_n_per_atom: np.ndarray
+    dxdt_n_per_atom: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    mean_dt_ps: float
+    frame_index_range: tuple[int, int]
+
+
+def _load_water_field_welford(f) -> Optional[WaterFieldWelfordGroup]:
+    path = "/trajectory/water_field_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    return WaterFieldWelfordGroup(
+        efield_x=_read_moments(g, "efield_x"),
+        efield_y=_read_moments(g, "efield_y"),
+        efield_z=_read_moments(g, "efield_z"),
+        efield_magnitude=_read_moments(g, "efield_magnitude"),
+        efield_first_x=_read_moments(g, "efield_first_x"),
+        efield_first_y=_read_moments(g, "efield_first_y"),
+        efield_first_z=_read_moments(g, "efield_first_z"),
+        efield_first_magnitude=_read_moments(g, "efield_first_magnitude"),
+        efg_t2=_read_moments(g, "efg_t2"),
+        efg_t2magnitude=_read_moments(g, "efg_t2magnitude"),
+        efg_first_t2=_read_moments(g, "efg_first_t2"),
+        efg_first_t2magnitude=_read_moments(g, "efg_first_t2magnitude"),
+        n_first=_read_moments(g, "n_first"),
+        n_second=_read_moments(g, "n_second"),
+        efield_magnitude_delta=_read_moments(g, "efield_magnitude_delta"),
+        efield_magnitude_abs_delta=_read_moments(g, "efield_magnitude_abs_delta"),
+        efield_magnitude_delta_squared=_read_moments(g, "efield_magnitude_delta_squared"),
+        efield_magnitude_dxdt=_read_moments(g, "efield_magnitude_dxdt"),
+        efield_magnitude_rms_delta=g["efield_magnitude_rms_delta"][:],
+        n_first_delta=_read_moments(g, "n_first_delta"),
+        n_first_abs_delta=_read_moments(g, "n_first_abs_delta"),
+        n_first_delta_squared=_read_moments(g, "n_first_delta_squared"),
+        n_first_dxdt=_read_moments(g, "n_first_dxdt"),
+        n_first_rms_delta=g["n_first_rms_delta"][:],
+        n_second_delta=_read_moments(g, "n_second_delta"),
+        n_second_abs_delta=_read_moments(g, "n_second_abs_delta"),
+        n_second_delta_squared=_read_moments(g, "n_second_delta_squared"),
+        n_second_dxdt=_read_moments(g, "n_second_dxdt"),
+        n_second_rms_delta=g["n_second_rms_delta"][:],
+        n_frames_per_atom=g["n_frames_per_atom"][:],
+        delta_n_per_atom=g["delta_n_per_atom"][:],
+        dxdt_n_per_atom=g["dxdt_n_per_atom"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        mean_dt_ps=_group_mean_dt_ps(g),
+        frame_index_range=_group_frame_index_range(g),
+    )
+
+
+@dataclass(frozen=True)
+class WaterFieldAccess:
+    """Water-field TR family — TimeSeries + Welford rollup pair.
+
+    Either slot is None when the corresponding C++ TR was not attached
+    (or attached but source-absent in 0/T frames). Mirrors the energy
+    pair's EnergyAccess shape.
+    """
+    time_series: Optional[WaterFieldTimeSeriesGroup] = None
+    welford: Optional[WaterFieldWelfordGroup] = None
+
+
+@dataclass(frozen=True)
 class EnergyAccess:
     """Energy time-series groups attached to TrajectoryData.
 
@@ -705,6 +892,9 @@ class TrajectoryData:
     # ML model framings on the 676-trajectory fleet — see
     # `project_fleet_676_2026-05-18`.
     energy: EnergyAccess = field(default_factory=EnergyAccess)
+
+    # Water field TR pair (TimeSeries + Welford rollup).
+    water_field: WaterFieldAccess = field(default_factory=WaterFieldAccess)
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -821,6 +1011,12 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             bonded=_load_bonded_energy_time_series(f),
         )
 
+        # Water field TR pair (TimeSeries + Welford)
+        water_field = WaterFieldAccess(
+            time_series=_load_water_field_time_series(f),
+            welford=_load_water_field_welford(f),
+        )
+
     return TrajectoryData(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -831,4 +1027,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         bonds=bonds,
         welford=welford,
         energy=energy,
+        water_field=water_field,
     )
