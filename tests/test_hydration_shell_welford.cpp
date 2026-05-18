@@ -160,6 +160,22 @@ TEST(HydrationShellWelford, H5RoundTrip) {
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
     EXPECT_TRUE(grp.exist("dxdt_n_per_atom"));
 
+    // R6: ion_present_fraction channel + conditional Welford metadata.
+    // The "no deltas" discipline on this channel is intentional —
+    // it's an indicator-Welford on the binary in-cutoff event.
+    EXPECT_TRUE(grp.exist("ion_present_fraction_mean"));
+    EXPECT_TRUE(grp.exist("ion_present_fraction_std"));
+    EXPECT_TRUE(grp.exist("ion_present_fraction_min"));
+    EXPECT_TRUE(grp.exist("ion_present_fraction_max"));
+    EXPECT_FALSE(grp.exist("ion_present_fraction_delta_mean"));
+    EXPECT_FALSE(grp.exist("ion_present_fraction_dxdt_mean"));
+    EXPECT_TRUE(grp.exist("n_ion_present_per_atom"));
+    EXPECT_TRUE(grp.exist("n_ion_delta_per_atom"));
+    EXPECT_TRUE(grp.exist("n_ion_dxdt_per_atom"));
+    std::string policy;
+    grp.getAttribute("nearest_ion_distance_welford_policy").read(policy);
+    EXPECT_NE(policy.find("finite_only"), std::string::npos);
+
     fs::remove(h5_path);
 }
 
@@ -178,20 +194,33 @@ TEST(HydrationShellWelford, Integration1P9J) {
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 
-    // half_shell_asymmetry and mean_water_dipole_cos are always finite (no
-    // inf sentinel). nearest_ion_* may be inf/NaN on atoms without an ion
-    // in cutoff — log but don't assert.
+    // half_shell_asymmetry, mean_water_dipole_cos, ion_present_fraction
+    // are always finite. nearest_ion_distance under the R6 conditional
+    // Welford finalizes to NaN when n_ion_present == 0; finite otherwise.
     std::size_t populated_asymmetry = 0, populated_ion = 0;
+    std::size_t n_ever_present = 0;
     for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& w = tp.AtomAt(i).hydration_shell_welford;
         EXPECT_TRUE(std::isfinite(w.half_shell_asymmetry.mean));
         EXPECT_TRUE(std::isfinite(w.mean_water_dipole_cos.mean));
+        EXPECT_TRUE(std::isfinite(w.ion_present_fraction.mean));
+        EXPECT_GE(w.ion_present_fraction.mean, 0.0);
+        EXPECT_LE(w.ion_present_fraction.mean, 1.0);
         EXPECT_EQ(w.n_frames, traj.FrameCount());
+        EXPECT_LE(w.n_ion_present, w.n_frames);
+        // R6 invariant: nearest_ion_distance finalization is
+        // finite iff n_ion_present >= 1; NaN otherwise. The conditional
+        // Welford guarantees no inf-poisoning.
+        if (w.n_ion_present >= 1) {
+            EXPECT_TRUE(std::isfinite(w.nearest_ion_distance.mean));
+        }
         if (std::abs(w.half_shell_asymmetry.mean) > 1e-12) ++populated_asymmetry;
         if (std::isfinite(w.nearest_ion_distance.mean)) ++populated_ion;
+        if (w.n_ion_present >= 1) ++n_ever_present;
     }
     EXPECT_GT(populated_asymmetry, 0u);
     std::cout << "HydrationShellWelford: asymmetry populated=" << populated_asymmetry
               << "/" << tp.AtomCount()
-              << ", ion_distance finite=" << populated_ion << "/" << tp.AtomCount() << "\n";
+              << ", ion_distance finite=" << populated_ion << "/" << tp.AtomCount()
+              << ", n_ever_present=" << n_ever_present << "/" << tp.AtomCount() << "\n";
 }

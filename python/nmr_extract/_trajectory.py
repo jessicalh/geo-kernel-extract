@@ -894,12 +894,16 @@ class HydrationGeometryTimeSeriesGroup:
     H5 group is absent and `load_trajectory(...).hydration_geometry.
     time_series` is `None`.
     """
-    dipole_vector: np.ndarray         # (N, T, 3)
-    surface_normal: np.ndarray        # (N, T, 3)
+    dipole_vector: np.ndarray         # (N, T, 3) e·Å
+    surface_normal: np.ndarray        # (N, T, 3) unit vector
     first_shell_count: np.ndarray     # (N, T) uint32 — sentinel on absent
     half_shell_asymmetry: np.ndarray  # (N, T)
     dipole_alignment: np.ndarray      # (N, T)  cos angle
-    dipole_coherence: np.ndarray      # (N, T)  order parameter
+    # dipole_coherence: source formula `|Σ d_i| / n_shell` (e·Å in
+    # numerator, dimensionless in denominator) → e·Å, NOT a [0,1]
+    # dimensionless order parameter. The H5 dataset attr `units` is
+    # "e_Angstrom". R6 codex 2026-05-18.
+    dipole_coherence: np.ndarray      # (N, T)  e·Å
     count_absent_sentinel: int        # 0xFFFFFFFF
     frame_indices: np.ndarray
     frame_times: np.ndarray
@@ -909,6 +913,11 @@ class HydrationGeometryTimeSeriesGroup:
     dipole_vector_parity: str
     surface_normal_layout: str
     surface_normal_parity: str
+    # SASA-normal frame disambiguator — sibling HydrationShell TR uses
+    # COM. Same dataset name (half_shell_asymmetry) means the same
+    # physical question in different reference frames; never aggregate
+    # cross-frame without checking this attr.
+    reference_frame: str              # "SASA_normal"
     polarisation_signal_channels: str
 
     @property
@@ -946,6 +955,7 @@ def _load_hydration_geometry_time_series(f) -> Optional[HydrationGeometryTimeSer
             g.attrs.get("surface_normal_layout", ""))),
         surface_normal_parity=str(_decode_attr(
             g.attrs.get("surface_normal_parity", ""))),
+        reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
         polarisation_signal_channels=str(_decode_attr(
             g.attrs.get("polarisation_signal_channels", ""))),
     )
@@ -1001,6 +1011,15 @@ class HydrationGeometryWelfordGroup:
     source_attached_count: int
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
+    # SASA-normal frame disambiguator (sibling HS Welford uses COM).
+    reference_frame: str               # "SASA_normal"
+    # Documents that 0.0 in dipole_alignment is bimodal: either a real
+    # zero-cos-angle alignment or the |dipole_sum|<NEAR_ZERO_NORM
+    # branch in HydrationGeometryResult.cpp where the alignment is
+    # set to 0.0 for lack of a meaningful direction. Consumers reading
+    # alignment_mean ≈ 0 should consult dipole_magnitude before
+    # treating it as a polarisation signal.
+    dipole_alignment_zero_sentinel: str
 
 
 def _load_hydration_geometry_welford(f) -> Optional[HydrationGeometryWelfordGroup]:
@@ -1047,6 +1066,9 @@ def _load_hydration_geometry_welford(f) -> Optional[HydrationGeometryWelfordGrou
         source_attached_count=int(g.attrs["source_attached_count"]),
         mean_dt_ps=_group_mean_dt_ps(g),
         frame_index_range=_group_frame_index_range(g),
+        reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
+        dipole_alignment_zero_sentinel=str(_decode_attr(
+            g.attrs.get("dipole_alignment_zero_sentinel", ""))),
     )
 
 
@@ -1113,16 +1135,30 @@ def _load_hydration_shell_time_series(f) -> Optional[HydrationShellTimeSeriesGro
 class HydrationShellWelfordGroup:
     """Per-atom Welford rollup of COM-based hydration shell features.
 
-    Four scalar channels with full delta variants on each. Note: the
-    `nearest_ion_distance` Welford degrades to NaN once any frame has
-    the +inf sentinel (IEEE 754: inf - inf = NaN), which is the right
-    signal for "atom has no ion in cutoff (sometimes or always)" — use
-    `np.isfinite(welford.nearest_ion_distance.mean)` to filter.
+    `nearest_ion_distance` is on a CONDITIONAL Welford (R6 codex
+    2026-05-18): only frames with a finite ion-in-cutoff distance
+    contribute. Atoms with no ion observed in cutoff across any frame
+    finalize to NaN (n=0). For the "is there an ion here?" question,
+    use `ion_present_fraction.mean ∈ [0, 1]`. For the conditional
+    distance distribution given there IS an ion, use
+    `nearest_ion_distance.{mean, std, min, max}` directly — finite-only
+    accumulation means no inf-poisoning.
+
+    Per-atom provenance counters:
+      n_ion_present_per_atom   divisor for `nearest_ion_distance` base
+                               Welford (frames with finite distance).
+      n_ion_delta_per_atom     divisor for delta variants of
+                               `nearest_ion_distance` (consecutive
+                               attached frames both finite).
+      n_ion_dxdt_per_atom      divisor for `nearest_ion_distance_dxdt`
+                               (n_ion_delta + dt > 0 gate).
+    Other channels use delta_n_per_atom / dxdt_n_per_atom as before.
     """
     half_shell_asymmetry: WelfordMoments
     mean_water_dipole_cos: WelfordMoments
     nearest_ion_distance: WelfordMoments
     nearest_ion_charge: WelfordMoments
+    ion_present_fraction: WelfordMoments
     # Delta variants on all 4 scalars
     half_shell_asymmetry_delta: WelfordMoments
     half_shell_asymmetry_abs_delta: WelfordMoments
@@ -1144,15 +1180,20 @@ class HydrationShellWelfordGroup:
     nearest_ion_charge_delta_squared: WelfordMoments
     nearest_ion_charge_dxdt: WelfordMoments
     nearest_ion_charge_rms_delta: np.ndarray
-    # Provenance
+    # Provenance — generic
     n_frames_per_atom: np.ndarray
     delta_n_per_atom: np.ndarray
     dxdt_n_per_atom: np.ndarray
+    # Provenance — nearest_ion_distance conditional counters
+    n_ion_present_per_atom: np.ndarray
+    n_ion_delta_per_atom: np.ndarray
+    n_ion_dxdt_per_atom: np.ndarray
     source_attached_per_frame: np.ndarray
     source_attached_count: int
     mean_dt_ps: float
     frame_index_range: tuple[int, int]
     reference_frame: str               # "COM"
+    nearest_ion_distance_welford_policy: str
 
 
 def _load_hydration_shell_welford(f) -> Optional[HydrationShellWelfordGroup]:
@@ -1178,14 +1219,20 @@ def _load_hydration_shell_welford(f) -> Optional[HydrationShellWelfordGroup]:
         chs.update(read_chs(base))
 
     return HydrationShellWelfordGroup(
+        ion_present_fraction=_read_moments(g, "ion_present_fraction"),
         n_frames_per_atom=g["n_frames_per_atom"][:],
         delta_n_per_atom=g["delta_n_per_atom"][:],
         dxdt_n_per_atom=g["dxdt_n_per_atom"][:],
+        n_ion_present_per_atom=g["n_ion_present_per_atom"][:],
+        n_ion_delta_per_atom=g["n_ion_delta_per_atom"][:],
+        n_ion_dxdt_per_atom=g["n_ion_dxdt_per_atom"][:],
         source_attached_per_frame=g["source_attached_per_frame"][:],
         source_attached_count=int(g.attrs["source_attached_count"]),
         mean_dt_ps=_group_mean_dt_ps(g),
         frame_index_range=_group_frame_index_range(g),
         reference_frame=str(_decode_attr(g.attrs.get("reference_frame", ""))),
+        nearest_ion_distance_welford_policy=str(_decode_attr(
+            g.attrs.get("nearest_ion_distance_welford_policy", ""))),
         **chs,
     )
 

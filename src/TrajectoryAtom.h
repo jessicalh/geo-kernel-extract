@@ -249,11 +249,12 @@ struct WaterFieldWelfordState {
     std::size_t    dxdt_n   = 0;
 };
 
-// Forward declarations of the next-pair state structs. Not yet wired
-// into TrajectoryAtom storage — the corresponding TR classes land in
-// subsequent commits (Hydration pair, then HydrationShell pair).
-// Declared here to stage the type names; storage adds when each pair
-// commits to keep TrajectoryAtom from growing speculative memory.
+// State structs for the HydrationGeometry + HydrationShell Welford TRs.
+// Wired into TrajectoryAtom storage below. Land of forward-declarations
+// originally — those declarations matured into the active structs you
+// see now (commits 6931528 + f15b33a, finalized by R6 codex 2026-05-18
+// adding `ion_present_fraction` + finite-only `nearest_ion_distance`
+// conditional-Welford counters on HydrationShellWelfordState).
 
 // Written by HydrationGeometryWelfordTrajectoryResult.
 // Source: per-atom water polarisation features from HydrationGeometryResult:
@@ -312,14 +313,32 @@ struct HydrationGeometryWelfordState {
 // Written by HydrationShellWelfordTrajectoryResult.
 // Source: COM-based older sibling of HydrationGeometry — half_shell_asymmetry
 // (COM reference frame instead of SASA normal), mean_water_dipole_cos,
-// nearest_ion_distance, nearest_ion_charge. All scalar; full delta variants
-// on each since shell-shape / ion-pair dynamics is per-channel-distinct
-// physics.
+// nearest_ion_distance, nearest_ion_charge. All scalar.
+//
+// Nearest-ion conditional Welford (R6 codex 2026-05-18): the source
+// emits `nearest_ion_distance = +infinity` and `nearest_ion_charge = 0.0`
+// when no ion is within `ion_cutoff` (default 20 Å). Naïvely accumulating
+// +inf into the distance Welford NaN-poisons the running mean for any
+// atom that's MIXED contact/no-contact across frames — and most protein
+// atoms ARE mixed at the 20 Å cutoff. The R6 fix:
+//   - nearest_ion_distance Welford ONLY updates on finite samples
+//     (per-atom counter `n_ion_present`)
+//   - delta variants on nearest_ion_distance only update when BOTH the
+//     current and previous frames had finite distance (per-atom counter
+//     `n_ion_delta`); dxdt similarly (`n_ion_dxdt`)
+//   - new channel `ion_present_fraction` is a Welford on the 1.0/0.0
+//     indicator — its mean is the probability that the atom has an ion
+//     in cutoff in any given frame. Conditional Welford + presence
+//     indicator give the actually-meaningful summary.
 struct HydrationShellWelfordState {
     WelfordMoments half_shell_asymmetry;
     WelfordMoments mean_water_dipole_cos;
-    WelfordMoments nearest_ion_distance;
+    WelfordMoments nearest_ion_distance;          // conditional on finite
     WelfordMoments nearest_ion_charge;
+    // R6: per-atom presence-of-ion-in-cutoff fraction (Welford on
+    // indicator 1.0 when nearest_ion_distance is finite, 0.0 when +inf).
+    // Mean ∈ [0, 1] interpretable as Pr(ion present this frame).
+    WelfordMoments ion_present_fraction;
 
     WelfordMoments half_shell_asymmetry_delta;
     WelfordMoments half_shell_asymmetry_abs_delta;
@@ -348,6 +367,21 @@ struct HydrationShellWelfordState {
     std::size_t    n_frames = 0;
     std::size_t    delta_n  = 0;
     std::size_t    dxdt_n   = 0;
+
+    // R6: per-channel counters for the conditional ion-distance Welford.
+    //   n_ion_present — count of frames where this atom had a finite
+    //                   nearest_ion_distance. Used as the Welford
+    //                   divisor for `nearest_ion_distance` and its
+    //                   ion_present_fraction is over n_frames.
+    //   n_ion_delta   — count of consecutive-finite pairs (both prev
+    //                   AND curr frames had finite distance). Used for
+    //                   the delta/abs_delta/delta_squared Welfords on
+    //                   nearest_ion_distance.
+    //   n_ion_dxdt    — same as n_ion_delta but additionally gated by
+    //                   MIN_DT_PS (zero-dt frames excluded).
+    std::size_t    n_ion_present = 0;
+    std::size_t    n_ion_delta   = 0;
+    std::size_t    n_ion_dxdt    = 0;
 };
 
 // Written by HBondCountWelfordTrajectoryResult.

@@ -9,12 +9,17 @@
 //
 // Channels (mirroring HydrationGeometryTimeSeries source fields):
 //
-//   dipole_vector         Vec3 (Debye, unnormalised)   per-component[3] + magnitude
+//   dipole_vector         Vec3 (e·Å, raw sum)          per-component[3] + magnitude
 //   surface_normal        Vec3 (unit vector)           per-component[3]
 //   half_shell_asymmetry  scalar (fraction)            full Welford + delta variants
 //   dipole_alignment      scalar (cos angle)           full Welford + delta variants
-//   dipole_coherence      scalar (order parameter)     full Welford + delta variants
+//   dipole_coherence      scalar (e·Å, `|Σd|/n`)       full Welford + delta variants
 //   shell_count           int (dimensionless)          full Welford + delta variants
+//
+// R6 codex 2026-05-18: dipole_coherence is NOT a dimensionless order
+// parameter despite the name — source formula `|Σd_i| / n_shell` has
+// e·Å units. A true coherence (dimensionless [0,1]) would divide by
+// `Σ |d_i|` instead. Consumers can post-process if needed.
 //
 // Delta variants on: half_shell_asymmetry, dipole_alignment, dipole_coherence,
 // shell_count — these four scalars carry the polarisation dynamics question.

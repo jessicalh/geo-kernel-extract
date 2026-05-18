@@ -7,20 +7,33 @@
 // per feedback_methods_accumulate; calibration weights them separately.
 //
 // Channels (mirroring HydrationShellTimeSeries source fields):
-//   half_shell_asymmetry   scalar (fraction)
-//   mean_water_dipole_cos  scalar (cos angle)
-//   nearest_ion_distance   scalar (Å)         +inf sentinel on no-ion-in-cutoff
-//   nearest_ion_charge     scalar (e)
+//   half_shell_asymmetry   scalar (fraction)         full Welford + delta variants
+//   mean_water_dipole_cos  scalar (cos angle)        full Welford + delta variants
+//   nearest_ion_distance   scalar (Å)                conditional Welford (R6)
+//   nearest_ion_charge     scalar (e)                full Welford + delta variants
+//   ion_present_fraction   scalar [0,1] (R6)         Welford only — no deltas
 //
-// All four scalars carry per-channel-distinct dynamics questions; full
-// delta variants on each.
+// half_shell_asymmetry / mean_water_dipole_cos / nearest_ion_charge carry
+// per-channel-distinct dynamics questions; full delta variants on each.
 //
-// Inf-sentinel behavior: when an atom never has an ion within cutoff,
-// every frame's nearest_ion_distance is +inf. The Welford running mean
-// over inf-only data degrades to NaN at the second sample (IEEE 754:
-// inf - inf = NaN); downstream `np.isfinite(welford.mean)` filters these
-// atoms cleanly. Mixed atoms (some frames in cutoff, some out) also
-// produce NaN, signaling "the distribution isn't well-defined."
+// Nearest-ion conditional Welford (R6 codex 2026-05-18): naively
+// accumulating `nearest_ion_distance = +inf` into a Welford NaN-poisoned
+// any atom that was MIXED contact/no-contact across frames — and at
+// the 20 Å cutoff most protein atoms ARE mixed. Schema rev:
+//   - `nearest_ion_distance` Welford accumulates ONLY when the sample
+//     is finite. Per-atom counter `n_ion_present` becomes the
+//     Finalize divisor. Atoms that never see an ion in cutoff finalize
+//     to NaN via WelfordFinalize(_, 0) — consistent with the
+//     "uncomputable" sentinel discipline.
+//   - Delta variants on `nearest_ion_distance` accumulate only when
+//     BOTH the current and previous frames had a finite ion distance
+//     (per-atom counter `n_ion_delta`). dxdt likewise (`n_ion_dxdt`).
+//   - New channel `ion_present_fraction`: Welford on the 1.0/0.0
+//     indicator that nearest_ion_distance is finite. Its mean ∈ [0, 1]
+//     is interpretable as Pr(ion in cutoff this frame).
+// Conditional Welford + presence indicator give the actually-meaningful
+// summary: "P(ion present)" + "E(distance | ion present)" + standard
+// deviation of the conditional distribution.
 //
 // Dependencies: HydrationShellResult — conditionally attached gated on
 // `opts.solvent`. Source-absent frames skip Welford updates entirely.
@@ -72,6 +85,11 @@ private:
     std::vector<double> prev_nearest_ion_distance_;
     std::vector<double> prev_nearest_ion_charge_;
     std::vector<bool>   prev_valid_;
+    // R6: separately track whether the previous attached frame had a
+    // FINITE nearest_ion_distance. Distinct from prev_valid_ which
+    // tracks source-attached gate; this tracks the inf-vs-finite branch
+    // ONLY for the nearest_ion_distance channel's delta computation.
+    std::vector<bool>   prev_ion_finite_;
     std::vector<double> prev_time_;
 
     std::vector<std::uint8_t> source_attached_per_frame_;

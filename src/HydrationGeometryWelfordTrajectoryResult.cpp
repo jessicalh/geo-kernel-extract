@@ -308,8 +308,11 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     const std::string kFracSq = "fraction^2";
     const std::string kCos = "cos_angle";
     const std::string kCosSq = "cos_angle^2";
-    const std::string kOrd = "order_parameter";
-    const std::string kOrdSq = "order_parameter^2";
+    // dipole_coherence: source formula |Σ d_i|/n_shell is e·Å, NOT a
+    // [0,1] dimensionless order parameter. Same fix as the TS sibling,
+    // R6 codex 2026-05-18.
+    const std::string kOrd = "e_Angstrom";
+    const std::string kOrdSq = "e^2_Angstrom^2";
     emit_1d("half_shell_asymmetry", kFrac, kFracSq,
             [get_w](std::size_t i) -> const WelfordMoments& {
                 return get_w(i).half_shell_asymmetry;
@@ -344,13 +347,13 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     };
     const std::string kFrac4   = "fraction^4";
     const std::string kCos4    = "cos_angle^4";
-    const std::string kOrd4    = "order_parameter^4";
+    const std::string kOrd4    = "e^4_Angstrom^4";
     const std::string kFracRate = "fraction/ps";
     const std::string kFracRateSq = "fraction^2/ps^2";
     const std::string kCosRate = "cos_angle/ps";
     const std::string kCosRateSq = "cos_angle^2/ps^2";
-    const std::string kOrdRate = "order_parameter/ps";
-    const std::string kOrdRateSq = "order_parameter^2/ps^2";
+    const std::string kOrdRate = "e_Angstrom/ps";
+    const std::string kOrdRateSq = "e^2_Angstrom^2/ps^2";
     const std::string kCountRate = "count/ps";
     const std::string kCountRateSq = "count^2/ps^2";
     const std::vector<DeltaBundle> bundles = {

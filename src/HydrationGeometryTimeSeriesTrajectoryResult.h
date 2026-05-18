@@ -26,12 +26,14 @@
 // Emission:
 //
 //   /trajectory/hydration_geometry_time_series/
-//     dipole_vector             (N, T, 3)  float64  Debye-like (unnormalised)
+//     dipole_vector             (N, T, 3)  float64  e·Å (raw H_charge·Δr sum)
 //     surface_normal            (N, T, 3)  float64  unit vector
 //     first_shell_count         (N, T)     uint32   shell-occupancy count
 //     half_shell_asymmetry      (N, T)     float64  fraction
 //     dipole_alignment          (N, T)     float64  cos angle
-//     dipole_coherence          (N, T)     float64  order parameter
+//     dipole_coherence          (N, T)     float64  e·Å (|Σd_i|/n_shell —
+//                                                   NOT [0,1] order param,
+//                                                   R6 codex 2026-05-18)
 //     frame_indices             (T,)       uint64
 //     frame_times               (T,)       float64  ps
 //     source_attached_per_frame (T,)       uint8    1=attached, 0=absent

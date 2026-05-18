@@ -35,6 +35,7 @@ HydrationShellWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     r->prev_nearest_ion_distance_.assign(N, 0.0);
     r->prev_nearest_ion_charge_.assign(N, 0.0);
     r->prev_valid_.assign(N, false);
+    r->prev_ion_finite_.assign(N, false);
     r->prev_time_.assign(N, 0.0);
     return r;
 }
@@ -53,7 +54,10 @@ void HydrationShellWelfordTrajectoryResult::Compute(
         || conf.HasResult<HydrationShellResult>();
     source_attached_per_frame_.push_back(source_attached ? 1u : 0u);
     if (!source_attached) {
-        for (std::size_t i = 0; i < N; ++i) prev_valid_[i] = false;
+        for (std::size_t i = 0; i < N; ++i) {
+            prev_valid_[i] = false;
+            prev_ion_finite_[i] = false;
+        }
         ++n_frames_;
         return;
     }
@@ -67,15 +71,28 @@ void HydrationShellWelfordTrajectoryResult::Compute(
         const double dpc = a.mean_water_dipole_cos;
         const double nid = a.nearest_ion_distance;   // may be +inf
         const double nic = a.nearest_ion_charge;
-        WelfordUpdate(w.half_shell_asymmetry,  hsa, n_new, frame_idx);
-        WelfordUpdate(w.mean_water_dipole_cos, dpc, n_new, frame_idx);
-        WelfordUpdate(w.nearest_ion_distance,  nid, n_new, frame_idx);
-        WelfordUpdate(w.nearest_ion_charge,    nic, n_new, frame_idx);
+        const bool   ion_finite = std::isfinite(nid);
+        const double ion_indicator = ion_finite ? 1.0 : 0.0;
+
+        // Unconditional channels (3 + presence indicator)
+        WelfordUpdate(w.half_shell_asymmetry,  hsa,           n_new, frame_idx);
+        WelfordUpdate(w.mean_water_dipole_cos, dpc,           n_new, frame_idx);
+        WelfordUpdate(w.nearest_ion_charge,    nic,           n_new, frame_idx);
+        WelfordUpdate(w.ion_present_fraction,  ion_indicator, n_new, frame_idx);
+
+        // Conditional: nearest_ion_distance only when finite. Per-atom
+        // counter n_ion_present is the Finalize divisor.
+        if (ion_finite) {
+            const std::size_t nip_new = w.n_ion_present + 1;
+            WelfordUpdate(w.nearest_ion_distance, nid, nip_new, frame_idx);
+            w.n_ion_present = nip_new;
+        }
 
         w.n_frames = n_new;
 
         if (prev_valid_[i]) {
             const std::size_t dn_new = w.delta_n + 1;
+            // Unconditional deltas (3 channels)
             auto upd = [&](double curr, double prev,
                            WelfordMoments& d_, WelfordMoments& ad,
                            WelfordMoments& sd) {
@@ -92,15 +109,25 @@ void HydrationShellWelfordTrajectoryResult::Compute(
                 w.mean_water_dipole_cos_delta,
                 w.mean_water_dipole_cos_abs_delta,
                 w.mean_water_dipole_cos_delta_squared);
-            upd(nid, prev_nearest_ion_distance_[i],
-                w.nearest_ion_distance_delta,
-                w.nearest_ion_distance_abs_delta,
-                w.nearest_ion_distance_delta_squared);
             upd(nic, prev_nearest_ion_charge_[i],
                 w.nearest_ion_charge_delta,
                 w.nearest_ion_charge_abs_delta,
                 w.nearest_ion_charge_delta_squared);
             w.delta_n = dn_new;
+
+            // Conditional delta on nearest_ion_distance: BOTH frames must
+            // have finite distance. Per-atom counter n_ion_delta.
+            if (ion_finite && prev_ion_finite_[i]) {
+                const std::size_t nid_new = w.n_ion_delta + 1;
+                const double delta = nid - prev_nearest_ion_distance_[i];
+                WelfordUpdate(w.nearest_ion_distance_delta,
+                              delta, nid_new, frame_idx);
+                WelfordUpdate(w.nearest_ion_distance_abs_delta,
+                              std::abs(delta), nid_new, frame_idx);
+                WelfordUpdate(w.nearest_ion_distance_delta_squared,
+                              delta * delta, nid_new, frame_idx);
+                w.n_ion_delta = nid_new;
+            }
 
             constexpr double MIN_DT_PS = 1e-12;
             const double dt = time_ps - prev_time_[i];
@@ -110,17 +137,30 @@ void HydrationShellWelfordTrajectoryResult::Compute(
                               (hsa - prev_half_shell_asymmetry_[i]) / dt, dxn, frame_idx);
                 WelfordUpdate(w.mean_water_dipole_cos_dxdt,
                               (dpc - prev_mean_water_dipole_cos_[i]) / dt, dxn, frame_idx);
-                WelfordUpdate(w.nearest_ion_distance_dxdt,
-                              (nid - prev_nearest_ion_distance_[i]) / dt, dxn, frame_idx);
                 WelfordUpdate(w.nearest_ion_charge_dxdt,
                               (nic - prev_nearest_ion_charge_[i]) / dt, dxn, frame_idx);
                 w.dxdt_n = dxn;
+
+                // Conditional dxdt on nearest_ion_distance: same finite-pair
+                // gate AND dt gate. Per-atom counter n_ion_dxdt.
+                if (ion_finite && prev_ion_finite_[i]) {
+                    const std::size_t nid_dxn = w.n_ion_dxdt + 1;
+                    WelfordUpdate(w.nearest_ion_distance_dxdt,
+                                  (nid - prev_nearest_ion_distance_[i]) / dt,
+                                  nid_dxn, frame_idx);
+                    w.n_ion_dxdt = nid_dxn;
+                }
             }
         }
         prev_half_shell_asymmetry_[i]  = hsa;
         prev_mean_water_dipole_cos_[i] = dpc;
-        prev_nearest_ion_distance_[i]  = nid;
+        // Only update prev_nearest_ion_distance_ when finite — otherwise
+        // the cached value stays at the last-known-finite, ready for
+        // the next attached+finite pair. prev_ion_finite_ records the
+        // CURRENT frame's finiteness for the next frame's pair test.
+        if (ion_finite) prev_nearest_ion_distance_[i] = nid;
         prev_nearest_ion_charge_[i]    = nic;
+        prev_ion_finite_[i]            = ion_finite;
         prev_time_[i]                  = time_ps;
         prev_valid_[i]                 = true;
     }
@@ -136,30 +176,43 @@ void HydrationShellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
         WelfordFinalize(w.half_shell_asymmetry,  w.n_frames);
         WelfordFinalize(w.mean_water_dipole_cos, w.n_frames);
-        WelfordFinalize(w.nearest_ion_distance,  w.n_frames);
+        // R6: nearest_ion_distance uses its own per-atom counter — the
+        // Welford only accumulated frames with finite ion-in-cutoff. Atoms
+        // where n_ion_present == 0 finalize to NaN, consistent with
+        // "no samples observed" semantics.
+        WelfordFinalize(w.nearest_ion_distance,  w.n_ion_present);
         WelfordFinalize(w.nearest_ion_charge,    w.n_frames);
+        WelfordFinalize(w.ion_present_fraction,  w.n_frames);
 
         auto fin = [&](WelfordMoments& d_, WelfordMoments& ad,
                        WelfordMoments& sd, WelfordMoments& dx,
-                       double& rms) {
-            WelfordFinalize(d_, w.delta_n);
-            WelfordFinalize(ad, w.delta_n);
-            WelfordFinalize(sd, w.delta_n);
-            WelfordFinalize(dx, w.dxdt_n);
-            rms = (w.delta_n == 0) ? std::nan("") : std::sqrt(sd.mean);
+                       double& rms,
+                       std::size_t n_d, std::size_t n_dx) {
+            WelfordFinalize(d_, n_d);
+            WelfordFinalize(ad, n_d);
+            WelfordFinalize(sd, n_d);
+            WelfordFinalize(dx, n_dx);
+            rms = (n_d == 0) ? std::nan("") : std::sqrt(sd.mean);
         };
         fin(w.half_shell_asymmetry_delta, w.half_shell_asymmetry_abs_delta,
             w.half_shell_asymmetry_delta_squared, w.half_shell_asymmetry_dxdt,
-            w.half_shell_asymmetry_rms_delta);
+            w.half_shell_asymmetry_rms_delta,
+            w.delta_n, w.dxdt_n);
         fin(w.mean_water_dipole_cos_delta, w.mean_water_dipole_cos_abs_delta,
             w.mean_water_dipole_cos_delta_squared, w.mean_water_dipole_cos_dxdt,
-            w.mean_water_dipole_cos_rms_delta);
+            w.mean_water_dipole_cos_rms_delta,
+            w.delta_n, w.dxdt_n);
+        // R6: nearest_ion_distance delta variants used their own per-atom
+        // pair counter (BOTH prev and curr finite). dxdt variant gated
+        // additionally on dt > MIN_DT_PS.
         fin(w.nearest_ion_distance_delta, w.nearest_ion_distance_abs_delta,
             w.nearest_ion_distance_delta_squared, w.nearest_ion_distance_dxdt,
-            w.nearest_ion_distance_rms_delta);
+            w.nearest_ion_distance_rms_delta,
+            w.n_ion_delta, w.n_ion_dxdt);
         fin(w.nearest_ion_charge_delta, w.nearest_ion_charge_abs_delta,
             w.nearest_ion_charge_delta_squared, w.nearest_ion_charge_dxdt,
-            w.nearest_ion_charge_rms_delta);
+            w.nearest_ion_charge_rms_delta,
+            w.delta_n, w.dxdt_n);
     }
 
     // mean_dt_ps + frame_index_range from source-attached subset only.
@@ -219,10 +272,18 @@ void HydrationShellWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("mean_dt_ps",            mean_dt_ps_);
     grp.createAttribute("frame_index_range",     frame_index_range_);
     grp.createAttribute("reference_frame",       std::string("COM"));
-    grp.createAttribute("nearest_ion_distance_sentinel",
-        std::string("+infinity → NaN after second sample (IEEE 754); "
-                    "atoms without ions degrade to mean=NaN — filter via "
-                    "np.isfinite() downstream"));
+    // R6 codex 2026-05-18: changed from naive inf-poisoned Welford to
+    // conditional Welford + presence-of-ion indicator. New semantics:
+    grp.createAttribute("nearest_ion_distance_welford_policy",
+        std::string("finite_only: only frames with finite "
+                    "nearest_ion_distance contribute to Welford. "
+                    "Per-atom counter `n_ion_present_per_atom` is the "
+                    "divisor. Atoms that never see an ion in cutoff "
+                    "finalize to NaN (n=0). Delta variants gated on "
+                    "BOTH prev and curr frames being finite "
+                    "(n_ion_delta_per_atom); dxdt likewise plus dt>0 "
+                    "(n_ion_dxdt_per_atom). For probability of any ion "
+                    "in cutoff, use `ion_present_fraction_mean ∈ [0,1]`."));
 
     auto get_w = [&tp](std::size_t i) -> const HydrationShellWelfordState& {
         return tp.AtomAt(i).hydration_shell_welford;
@@ -340,16 +401,45 @@ void HydrationShellWelfordTrajectoryResult::WriteH5Group(
         rms_ds.createAttribute("units", b.base_units);
     }
 
+    // R6: ion_present_fraction — indicator-Welford on whether a finite
+    // nearest_ion_distance is observed this frame. Mean ∈ [0, 1] is
+    // interpretable as Pr(ion in cutoff per attached frame). Emitted
+    // outside the bundle loop because it has no delta variants.
+    {
+        const std::string kProb = "probability";
+        const std::string kProbSq = "probability^2";
+        emit_1d("ion_present_fraction", kProb, kProbSq,
+                [get_w](std::size_t i) -> const WelfordMoments& {
+                    return get_w(i).ion_present_fraction;
+                });
+    }
+
     std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
+    std::vector<std::size_t> n_ion_present(N), n_ion_delta(N), n_ion_dxdt(N);
     for (std::size_t i = 0; i < N; ++i) {
         const HydrationShellWelfordState& w = get_w(i);
-        n_frames[i] = w.n_frames; delta_n[i] = w.delta_n; dxdt_n[i] = w.dxdt_n;
+        n_frames[i]      = w.n_frames;
+        delta_n[i]       = w.delta_n;
+        dxdt_n[i]        = w.dxdt_n;
+        n_ion_present[i] = w.n_ion_present;
+        n_ion_delta[i]   = w.n_ion_delta;
+        n_ion_dxdt[i]    = w.n_ion_dxdt;
     }
     grp.createDataSet("n_frames_per_atom", n_frames)
        .createAttribute("units", std::string("frame_count"));
     grp.createDataSet("delta_n_per_atom",  delta_n)
        .createAttribute("units", std::string("frame_count"));
     grp.createDataSet("dxdt_n_per_atom",   dxdt_n)
+       .createAttribute("units", std::string("frame_count"));
+    // R6: per-atom counters specific to the conditional nearest_ion_distance
+    // Welford. n_ion_present is the base-Welford divisor; n_ion_delta and
+    // n_ion_dxdt are the divisors for the delta and dxdt variants of
+    // nearest_ion_distance ONLY (other channels still use delta_n/dxdt_n).
+    grp.createDataSet("n_ion_present_per_atom", n_ion_present)
+       .createAttribute("units", std::string("frame_count"));
+    grp.createDataSet("n_ion_delta_per_atom",   n_ion_delta)
+       .createAttribute("units", std::string("frame_count"));
+    grp.createDataSet("n_ion_dxdt_per_atom",    n_ion_dxdt)
        .createAttribute("units", std::string("frame_count"));
     grp.createDataSet("source_attached_per_frame", source_attached_per_frame_)
        .createAttribute("units", std::string("dimensionless"));

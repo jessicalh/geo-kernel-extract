@@ -177,7 +177,16 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     };
     emit_scalar("half_shell_asymmetry", half_shell_asymmetry_, "fraction");
     emit_scalar("dipole_alignment",     dipole_alignment_,     "cos_angle");
-    emit_scalar("dipole_coherence",     dipole_coherence_,     "order_parameter");
+    // dipole_coherence: NOT a dimensionless order parameter despite the
+    // name. Source formula at HydrationGeometryResult.cpp:114 is
+    // `|Σ d_i| / n_shell` — numerator in e·Å (vector-sum magnitude of
+    // per-water dipoles in e·Å), denominator dimensionless. Result is
+    // in e·Å. R6 codex 2026-05-18: previous "order_parameter" label
+    // was wrong. To compute a true [0,1] dimensionless coherence,
+    // divide by `Σ |d_i|` instead of `n_shell` — that source-side
+    // formula change is deferred; consumers needing a true coherence
+    // can post-process from the per-water dipole sum + count.
+    emit_scalar("dipole_coherence",     dipole_coherence_,     "e_Angstrom");
 
     // Shell count uint32; absent sentinel like WaterFieldTS.
     {
