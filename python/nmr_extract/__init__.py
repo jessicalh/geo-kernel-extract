@@ -12,7 +12,20 @@
 from e3nn.o3 import Irreps
 
 from ._protein import load, Protein
-from ._trajectory import load_trajectory, TrajectoryData, TrajectoryRollup, BondRollup
+from ._trajectory import (
+    load_trajectory,
+    TrajectoryData,
+    TrajectoryRollup,
+    BondRollup,
+    WelfordMoments,
+    WelfordAccess,
+    BsWelfordGroup,
+    HmWelfordGroup,
+    McConnellWelfordGroup,
+    EeqWelfordGroup,
+    SasaWelfordGroup,
+    HBondCountWelfordGroup,
+)
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
     SphericalTensor,
@@ -86,4 +99,12 @@ __all__ = [
     "TrajectoryData",
     "TrajectoryRollup",
     "BondRollup",
+    "WelfordMoments",
+    "WelfordAccess",
+    "BsWelfordGroup",
+    "HmWelfordGroup",
+    "McConnellWelfordGroup",
+    "EeqWelfordGroup",
+    "SasaWelfordGroup",
+    "HBondCountWelfordGroup",
 ]
