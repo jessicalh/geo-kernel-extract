@@ -177,17 +177,16 @@ TripeptideNeighborShieldingResult::Compute(
 
         auto do_side = [&](int delta_sign,
                             DirOutcome& out) {
-            const long long ni_signed =
-                (long long)ri + (long long)delta_sign;
-            if (ni_signed < 0 || ni_signed >= (long long)N_res) return;
-            const std::size_t ni = (std::size_t)ni_signed;
-            // Direction-aware backbone-connectivity gate: ni is i±1.
-            // Use the canonical Protein::BackboneConnected query
-            // (covalent C-N bond graph) rather than the retired
-            // chain_id-based SameChain helper.
-            const std::size_t r_lo = std::min(ri, ni);
-            const std::size_t r_hi = std::max(ri, ni);
-            if (!protein.BackboneConnected(r_lo, r_hi)) return;
+            // Walk the backbone via the canonical bond-graph predecessor/
+            // successor query. Wrap-correct for cyclic peptides; correct
+            // on ACE/NME caps; correct on antibody insertion-coded
+            // structures. Replaces the retired delta-arithmetic + chain_id
+            // gate (2026-05-19).
+            const auto ni_opt = (delta_sign < 0)
+                ? protein.BackbonePredecessor(ri)
+                : protein.BackboneSuccessor(ri);
+            if (!ni_opt) return;
+            const std::size_t ni = *ni_opt;
 
             const Residue& neigh = protein.ResidueAt(ni);
             const char letter = ResidueOneLetterCode(neigh.type);
@@ -196,12 +195,11 @@ TripeptideNeighborShieldingResult::Compute(
                 neigh.CA == Residue::NONE ||
                 neigh.C  == Residue::NONE) return;
 
-            // Neighbor's actual φ/ψ — also gated on the bond graph.
+            // Neighbor's actual φ/ψ via the bond graph.
             bool has_phi = false, has_psi = false;
             double phi = 0.0, psi = 0.0;
-            if (ni > 0 && protein.BackboneConnected(ni - 1, ni)) {
-                const std::size_t prev_C =
-                    protein.ResidueAt(ni - 1).C;
+            if (auto prev = protein.BackbonePredecessor(ni); prev) {
+                const std::size_t prev_C = protein.ResidueAt(*prev).C;
                 phi = DihedralDegrees(
                     conf.PositionAt(prev_C),
                     conf.PositionAt(neigh.N),
@@ -209,9 +207,8 @@ TripeptideNeighborShieldingResult::Compute(
                     conf.PositionAt(neigh.C));
                 has_phi = true;
             }
-            if (ni + 1 < N_res &&
-                    protein.BackboneConnected(ni, ni + 1)) {
-                const std::size_t next_N = protein.ResidueAt(ni + 1).N;
+            if (auto next = protein.BackboneSuccessor(ni); next) {
+                const std::size_t next_N = protein.ResidueAt(*next).N;
                 psi = DihedralDegrees(
                     conf.PositionAt(neigh.N),
                     conf.PositionAt(neigh.CA),

@@ -2675,7 +2675,7 @@ for the pending rows is
 | ✓ | `EeqWelfordTrajectoryResult` | Eeq | AV | TrajectoryAtom `eeq_charge_*` Welford fields + `/trajectory/eeq_welford/` (units = elementary_charge) |
 | ✓ | `SasaWelfordTrajectoryResult` | Sasa | AV | TrajectoryAtom `sasa_*` Welford fields + `/trajectory/sasa_welford/` (units = Å²); pairs with the landed FO `SasaTimeSeriesTrajectoryResult` |
 | ✓ | `HBondCountWelfordTrajectoryResult` | HBond | AV | TrajectoryAtom `hbond_count_*` Welford fields + `/trajectory/hbond_count_welford/` (units = pairs, source_radius_A = 3.5; DSSP must be enabled — HBondResult requires DsspResult) |
-| ✓ | `DihedralTimeSeriesTrajectoryResult` | (none — positions + AminoAcidType.chi_angles via Residue.chi[k]) | FO | per-residue (R, T) — phi / psi / omega / omega_deviation (radians) + chi (R, T, 4) + rama_region (uint8). Static masks: chi_exists (R, 4), omega_is_xpro / is_glycine / is_proline / is_pre_proline / residue_terminal_state (R,), chain_id_per_residue (R, variable-string), residue_index_per_atom (N,). IUPAC sign convention; NaN at termini + chain breaks (chain_id mismatch or sequence-number gap). Rama bins follow a simple 5-region literature grid (boundaries written into `rama_region_boundaries` attr); proper Lovell-Richardson re-bin left to downstream. chi raw radians — PHE/TYR chi2 + ASP/GLU carboxylate symmetry caveats documented in `chi_symmetry_caveats` attr. No source-attached gate (positions always present); `source_attached_per_frame` trivially all-1 emitted for SDK uniformity. Movie target: viewer reads per-frame + broadcasts via `residue_index_per_atom`. |
+| ✓ | `DihedralTimeSeriesTrajectoryResult` | (none — positions + AminoAcidType.chi_angles via Residue.chi[k]) | FO | per-residue (R, T) — phi / psi / omega / omega_deviation (radians) + chi (R, T, 4) + rama_region (uint8). Static masks: chi_exists (R, 4), omega_is_xpro / is_glycine / is_proline / is_pre_proline / residue_terminal_state (R,), chain_id_per_residue (R, variable-string), residue_index_per_atom (N,). IUPAC sign convention; NaN where the cifpp bond graph (Protein::BackbonePredecessor / BackboneSuccessor) reports no covalent backbone neighbour — covers chain termini, non-bonded gaps, ACE/NME caps' boundaries; wrap-correct for cyclic peptides. Rama bins follow a simple 5-region literature grid (boundaries written into `rama_region_boundaries` attr); proper Lovell-Richardson re-bin left to downstream. chi raw radians — PHE/TYR chi2 + ASP/GLU carboxylate symmetry caveats documented in `chi_symmetry_caveats` attr. No source-attached gate (positions always present); `source_attached_per_frame` trivially all-1 emitted for SDK uniformity. Movie target: viewer reads per-frame + broadcasts via `residue_index_per_atom`. |
 | ⏳ | `DihedralBinTransitionTrajectoryResult` | (none — same axes as DihedralTimeSeries) | AV | per-residue transition counters (Rama region + chi rotamer bins) |
 | ⏳ | `Dssp8TimeSeriesTrajectoryResult` | Dssp | FO | per-residue SS code + H-bond energies |
 | ⏳ | `Dssp8TransitionTrajectoryResult` | Dssp | AV | per-residue SS transitions |
@@ -3082,10 +3082,24 @@ First example: `DihedralTimeSeriesTrajectoryResult` (2026-05-19).
 
 ### Backbone connectivity discipline (2026-05-19)
 
-**Residue-pair adjacency is queried via `Protein::BackboneConnected(ri_a, ri_b)`.**
-The method checks the cifpp-derived bond graph for a covalent
-C(a)-N(b) peptide bond. It is the **only** sanctioned way to ask
-"is residue b the backbone successor of residue a?" anywhere in the
+**Three canonical methods on `Protein` answer all backbone-adjacency
+questions:**
+
+- `Protein::BackbonePredecessor(ri) -> std::optional<size_t>` — the
+  residue whose C is covalently bonded to res(ri).N (or nullopt).
+- `Protein::BackboneSuccessor(ri) -> std::optional<size_t>` — the
+  residue whose N is covalently bonded to res(ri).C.
+- `Protein::BackboneConnected(a, b) -> bool` — convenience that
+  delegates: `Successor(a) == b`.
+
+All three read directly from the cifpp-derived bond graph via
+`LegacyAmber().BondIndicesFor()` and filter on `Bond::IsPeptideBond()`
+(`BondOrder::Peptide` / `BondCategory::PeptideCN`). The loader
+(`CovalentTopology.cpp:155-183`) tags a bond as PeptideCN exactly
+when one endpoint is `res_a.C` and the other is `res_b.N` of a
+different residue, so the typed filter and the atom-slot check are
+mutually-reinforcing. They are the **only** sanctioned way to ask
+"is residue b the backbone neighbour of residue a?" anywhere in the
 calculator surface.
 
 **Banned anti-pattern:** inferring adjacency from `chain_id ==
@@ -3094,28 +3108,65 @@ or `insertion_code` comparison. These are loader-supplied labels that
 happen to align with covalent topology on smooth single-chain proteins
 but silently disagree on:
 
-- residue numbering gaps with intact covalent bonds,
+- residue numbering gaps with intact covalent bonds (the bond IS
+  present; the label-based check says it isn't),
 - antibody-style insertion-coded structures (100 → 100A → 100B → 101),
 - engineered chimeras with non-monotonic numbering,
-- cyclic peptides where the chain wraps,
+- cyclic peptides where the chain wraps (Successor(N−1) = 0),
+- ACE/NME-capped termini (the cap residue's C/N participate in the
+  bond graph, so the predecessor/successor walks resolve them
+  correctly without special-casing),
 - structures the loader left with `terminal_state == Unknown`.
 
-**Substrate-correction sweep (commit 6ab84e8 → 1c19d4a → 85da93d →
-the 2026-05-19 substrate sweep)** retired five ad-hoc-adjacency
-sites: `DihedralTimeSeriesTrajectoryResult` (its own local
-`BackboneConnected` helper), `PlanarGeometryResult` (omega loop —
-previously had no chain check at all), `TripeptideBackboneShieldingResult`
-(its `SameChain` helper), `TripeptideNeighborShieldingResult` (its
-own `SameChain`), and `LarsenHBondShieldingResult` (its
-`has_same_chain_prev` lambda). All five now route through
-`protein.BackboneConnected(ri, rj)`.
+The chain_id / sequence_number / insertion_code / terminal_state
+fields remain valid for **identity reporting and SDK metadata**
+(name resolution, chain labelling, BMRB matching). They are not
+valid as **adjacency proxies**.
+
+**Substrate-correction sweep (commits 6ab84e8 → 1c19d4a → 85da93d →
+the 2026-05-19 substrate sweep, plus the predecessor/successor
+follow-up)** retired ad-hoc-adjacency sites across:
+
+- `DihedralTimeSeriesTrajectoryResult` (local `BackboneConnected`
+  helper + per-call-site arithmetic; now uses Predecessor/Successor),
+- `PlanarGeometryResult` (omega loop previously had no chain check;
+  now uses Successor),
+- `TripeptideBackboneShieldingResult` (local `SameChain`; now
+  Predecessor/Successor),
+- `TripeptideNeighborShieldingResult` (local `SameChain` + delta
+  arithmetic; now Predecessor/Successor at the do_side dispatch),
+- `LarsenHBondShieldingResult` (donor `has_same_chain_prev` lambda +
+  acceptor i+1 chain_id check; both now go through Predecessor /
+  Successor),
+- `TopologySidecar` (residues.npy `prev_residue_index` /
+  `next_residue_index` / `is_xpro_context` columns; were chain_id-
+  based same-row checks, now bond-graph-derived).
+
+**Cyclic-peptide caveat:** the API supports wrap (Predecessor /
+Successor walk the bond graph and return the wrap edge naturally
+for cyclic topologies when the loader tagged the head-to-tail bond
+as PeptideCN); the current test fleet (1P9J, 1Z9B, OF3 fleet) is
+entirely linear, so the cyclic path has not been numerically
+validated against real cyclic-peptide data.
+
+**`Residue.terminal_state` is metadata, not validity.** The field is
+loader-assigned chain-order classification (NTerminus / Internal /
+CTerminus / NAndCTerminus / Unknown). For cyclic peptides the loader
+may report NTerminus on residue 0 and CTerminus on residue N-1 even
+though Predecessor(0) and Successor(N-1) return finite neighbours
+via the wrap. Calc-side code must use the bond-graph queries for
+adjacency decisions, NOT `terminal_state`. SDK consumers reading
+emitted dihedral data must use `isfinite(phi/psi/omega)` for
+validity testing, not `terminal_state == NTerminus`.
 
 New calc-side code that needs residue-pair adjacency MUST use the
-canonical method. Adversarial-review grep targets:
+canonical methods. Adversarial-review grep targets:
 `chain_id == ... .chain_id`, `sequence_number == ... + 1`,
 `terminal_state == ResidueTerminalState::`, `insertion_code ==` —
-all are forbidden as adjacency proxies (the underlying fields are
-fine for identity reporting and SDK metadata, but not for connectivity).
+all are forbidden as adjacency proxies. A "well-informed antipattern
+agent" should distinguish reflexive grep hits (utility-namespace,
+helper-class names) from actual architectural issues by inspecting
+the cited site, not just matching the regex.
 
 ---
 

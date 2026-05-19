@@ -167,14 +167,17 @@ DihedralTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
         r->chain_id_per_residue_[ri] = res.chain_id;
     }
 
-    // is_pre_proline + omega_is_xpro: both set when res[i+1].type == PRO
-    // AND a covalent C(i)-N(i+1) peptide bond exists in the bond graph.
+    // is_pre_proline + omega_is_xpro: both set on residue i if i's
+    // backbone successor (per the canonical Protein::BackboneSuccessor
+    // bond-graph query) is a Pro. Wrap-correct: in a cyclic peptide
+    // where the successor of res(N-1) is res(0), the mask follows.
     // PlanarGeometryResult sets omega_is_xpro_ only on the i row (the
     // row carrying that peptide bond's omega); we follow that convention.
-    for (std::size_t ri = 0; ri + 1 < R; ++ri) {
-        if (!protein.BackboneConnected(ri, ri + 1)) continue;
-        const Residue& res_ip = protein.ResidueAt(ri + 1);
-        if (res_ip.type == AminoAcid::PRO) {
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        auto next_idx = protein.BackboneSuccessor(ri);
+        if (!next_idx) continue;
+        const Residue& res_next = protein.ResidueAt(*next_idx);
+        if (res_next.type == AminoAcid::PRO) {
             r->omega_is_xpro_[ri]  = 1u;
             r->is_pre_proline_[ri] = 1u;
         }
@@ -212,16 +215,22 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
     for (std::size_t ri = 0; ri < R; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
 
+        // Resolve backbone predecessor / successor once per residue
+        // via the canonical bond-graph queries. Wrap-correct for cyclic
+        // peptides; correct on ACE/NME caps; correct on antibody
+        // insertion-coded structures.
+        const auto prev_idx_opt = protein.BackbonePredecessor(ri);
+        const auto next_idx_opt = protein.BackboneSuccessor(ri);
+
         // ── phi: C(i−1)-N(i)-Cα(i)-C(i) ──────────────────────────────
+        // Predecessor query guarantees res.N != NONE and res(prev).C
+        // exists; still need res.CA / res.C non-NONE for the dihedral.
         double phi_val = kNaN;
-        if (ri > 0 &&
-            res.N != Residue::NONE && res.CA != Residue::NONE &&
-            res.C != Residue::NONE &&
-            protein.BackboneConnected(ri - 1, ri)) {
-            // BackboneConnected guarantees res(ri-1).C exists.
-            const Residue& res_im = protein.ResidueAt(ri - 1);
+        if (prev_idx_opt &&
+            res.CA != Residue::NONE && res.C != Residue::NONE) {
+            const Residue& res_prev = protein.ResidueAt(*prev_idx_opt);
             phi_val = Dihedral(
-                conf.PositionAt(res_im.C),
+                conf.PositionAt(res_prev.C),
                 conf.PositionAt(res.N),
                 conf.PositionAt(res.CA),
                 conf.PositionAt(res.C));
@@ -229,34 +238,32 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         phi_[ri].push_back(phi_val);
 
         // ── psi: N(i)-Cα(i)-C(i)-N(i+1) ──────────────────────────────
+        // Successor query guarantees res.C != NONE and res(next).N
+        // exists; still need res.N / res.CA non-NONE.
         double psi_val = kNaN;
-        if (ri + 1 < R &&
-            res.N != Residue::NONE && res.CA != Residue::NONE &&
-            res.C != Residue::NONE &&
-            protein.BackboneConnected(ri, ri + 1)) {
-            // BackboneConnected guarantees res(ri+1).N exists.
-            const Residue& res_ip = protein.ResidueAt(ri + 1);
+        if (next_idx_opt &&
+            res.N != Residue::NONE && res.CA != Residue::NONE) {
+            const Residue& res_next = protein.ResidueAt(*next_idx_opt);
             psi_val = Dihedral(
                 conf.PositionAt(res.N),
                 conf.PositionAt(res.CA),
                 conf.PositionAt(res.C),
-                conf.PositionAt(res_ip.N));
+                conf.PositionAt(res_next.N));
         }
         psi_[ri].push_back(psi_val);
 
         // ── omega: Cα(i)-C(i)-N(i+1)-Cα(i+1) ─────────────────────────
+        // Successor query guarantees res.C != NONE and res(next).N
+        // exists; still need res.CA / res_next.CA non-NONE.
         double omega_val = kNaN;
-        if (ri + 1 < R &&
-            res.CA != Residue::NONE && res.C != Residue::NONE &&
-            protein.BackboneConnected(ri, ri + 1)) {
-            const Residue& res_ip = protein.ResidueAt(ri + 1);
-            // BackboneConnected guarantees res_ip.N exists.
-            if (res_ip.CA != Residue::NONE) {
+        if (next_idx_opt && res.CA != Residue::NONE) {
+            const Residue& res_next = protein.ResidueAt(*next_idx_opt);
+            if (res_next.CA != Residue::NONE) {
                 omega_val = Dihedral(
                     conf.PositionAt(res.CA),
                     conf.PositionAt(res.C),
-                    conf.PositionAt(res_ip.N),
-                    conf.PositionAt(res_ip.CA));
+                    conf.PositionAt(res_next.N),
+                    conf.PositionAt(res_next.CA));
             }
         }
         omega_[ri].push_back(omega_val);
@@ -358,16 +365,21 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "TR must negate one side. Verified by "
         "test_dihedral_time_series.cpp CrossResultConsistency*."));
     grp.createAttribute("chain_break_policy", std::string(
-        "NaN at any dihedral spanning a non-covalent residue boundary. "
-        "Connectivity queried via Protein::BackboneConnected, which "
-        "checks the cifpp-derived bond graph for a covalent C(a)-N(b) "
-        "peptide bond. Geometry-native substrate; correct on antibody "
-        "insertion codes, engineered chimeras with non-monotonic "
-        "numbering, residue numbering gaps with intact covalent bonds, "
-        "and cyclic peptides. All sibling residue-adjacency walks "
-        "(PlanarGeometryResult omega, Tripeptide BB/Neighbor DFT "
-        "lookups, Larsen H-bond donor frames) use the same canonical "
-        "query post the 2026-05-19 substrate-correction commit."));
+        "NaN at any dihedral spanning a non-bonded residue boundary. "
+        "Connectivity queried via Protein::BackbonePredecessor / "
+        "Protein::BackboneSuccessor, which walk the cifpp bond graph "
+        "and filter on Bond::IsPeptideBond() (BondOrder::Peptide / "
+        "BondCategory::PeptideCN, assigned at loader time by "
+        "CovalentTopology.cpp when atoms are res_a.C / res_b.N of "
+        "different residues). Geometry-native substrate; cleanly "
+        "handles ACE/NME-capped termini (cap C/N participate in the "
+        "bond graph and get the PeptideCN tag), antibody insertion-"
+        "coded structures, engineered chimeras with non-monotonic "
+        "numbering, and residue numbering gaps with intact peptide "
+        "bonds. Cyclic peptides: API returns the wrap edge "
+        "(Successor(N-1) = 0) when the loader tagged the head-to-tail "
+        "bond as PeptideCN; cyclic case not numerically validated on "
+        "the current linear-only test fleet -- see Protein.h."));
     grp.createAttribute("omega_deviation_policy", std::string(
         "WrapPi(omega - pi) in [-pi, pi]. Emitted for EVERY well-defined "
         "peptide bond INCLUDING X->Pro bonds (cis/trans isomerism at "
@@ -402,7 +414,14 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "distinct). Rotamer counters that need modular reduction must "
         "apply it residue-by-residue."));
     grp.createAttribute("residue_terminal_state_legend", std::string(
-        "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown"));
+        "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown. "
+        "NOTE: residue_terminal_state is loader-assigned CHAIN-ORDER "
+        "METADATA, not a validity signal for dihedrals. For cyclic "
+        "peptides the loader may still report NTerminus/CTerminus on "
+        "the wrap residues even though phi/psi/omega are finite (the "
+        "bond graph carries the wrap edge). Consumers must use "
+        "isfinite(phi/psi/omega), not terminal_state, to test whether "
+        "a dihedral was actually computed."));
     grp.createAttribute("residue_axis", std::string("protein_residue_index"));
     grp.createAttribute("atom_axis",    std::string("protein_atom_index"));
     grp.createAttribute("source",       std::string(

@@ -276,30 +276,36 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     // sentinel discipline; see feedback_huxley_data_discipline +
     // PATTERNS.md "Diagnostic error messages").
     //
-    // Connectivity comes from `protein.BackboneConnected(ri, ri+1)`
-    // (canonical bond-graph query, 2026-05-19) — guarantees an actual
-    // covalent C(i)-N(i+1) peptide bond before computing omega.
-    // Without that gate this loop emits an omega across non-bonded
-    // residue pairs (chain boundaries, numbering gaps with intact
-    // bonds, antibody insertion-coded structures) — a silent
-    // correctness bug fixed in the 2026-05-19 substrate-correction
-    // sweep across DihedralTimeSeries / PlanarGeometry / Tripeptide
-    // BB+Neighbor / LarsenHBond.
+    // Connectivity comes from `protein.BackboneSuccessor(ri)` (canonical
+    // bond-graph walk, 2026-05-19). The query returns the residue index
+    // whose N is covalently bonded to res(ri).C, or nullopt at chain
+    // ends. This is the geometry-native substrate: the bond graph is
+    // the authoritative answer, label-based heuristics (chain_id,
+    // sequence_number, terminal_state, insertion_code) are banned per
+    // the "Backbone connectivity discipline" in OBJECT_MODEL.md.
     //
-    // NaN at: chain boundary (no covalent C(i)-N(i+1)), C-terminus
-    // (no i+1), residues with missing CA backbone-cache atoms
-    // (incomplete structure).
+    // The query is wrap-correct (cyclic peptide: Successor(N-1) = 0),
+    // bonded across antibody insertion codes (100A -> 100B), correct
+    // on residue numbering gaps with intact bonds (those ARE bonded;
+    // the bond graph says so), and correct on ACE/NME caps (cap C/N
+    // participate). Without this gate the original loop walked raw
+    // ri+1 with no bond check and emitted omega across actually-non-
+    // bonded chain boundaries.
+    //
+    // NaN at: chain boundary (Successor returns nullopt), residues
+    // with missing CA backbone-cache atoms (incomplete structure).
     // ──────────────────────────────────────────────────────────────
     result_ptr->omega_actual_.assign(N_res, kNaN);
     result_ptr->omega_deviation_.assign(N_res, kNaN);
     result_ptr->omega_is_xpro_.assign(N_res, 0);
     int omega_valid = 0;
     int omega_xpro = 0;
-    for (size_t ri = 0; ri + 1 < N_res; ++ri) {
-        if (!protein.BackboneConnected(ri, ri + 1)) continue;
-        // BackboneConnected guarantees res_i.C and res_ip.N exist.
+    for (size_t ri = 0; ri < N_res; ++ri) {
+        auto next_idx = protein.BackboneSuccessor(ri);
+        if (!next_idx) continue;
+        // Successor guarantees res_i.C and res_ip.N exist.
         const Residue& res_i  = protein.ResidueAt(ri);
-        const Residue& res_ip = protein.ResidueAt(ri + 1);
+        const Residue& res_ip = protein.ResidueAt(*next_idx);
         if (res_i.CA  == Residue::NONE) continue;
         if (res_ip.CA == Residue::NONE) continue;
 

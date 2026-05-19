@@ -565,8 +565,13 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
 }
 
 
-// Documented coverage gap: BackboneConnected handles chain-id mismatch,
-// terminal_state, insertion_code, and seq_number gaps. None of those
-// branches are exercised by 1P9J (single-chain, no insertion codes,
-// no engineering gaps). A multi-chain / insertion-coded / chimera
-// fixture would close this — see B's MED 4 in adversarial review.
+// Documented coverage gap: Protein::BackbonePredecessor / BackboneSuccessor
+// walk the cifpp bond graph and return the actual covalent neighbour
+// (handles cyclic-peptide wrap, ACE/NME caps, antibody insertion codes,
+// and engineered chimeras with non-monotonic numbering uniformly --
+// none of those branches require special-case logic at the call site).
+// 1P9J is single-chain linear with monotonic numbering and no caps;
+// the bond walk and the linear ri±1 path return the same answer. A
+// multi-chain / cyclic / insertion-coded fixture would distinguish
+// them numerically — see B's MED 4 in the dual adversarial review and
+// the cyclic-peptide caveat in Protein.h.

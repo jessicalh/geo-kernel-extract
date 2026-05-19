@@ -187,26 +187,28 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         row[off++] = static_cast<int8_t>(r.protonation_variant_index);
         row[off++] = static_cast<int8_t>(r.terminal_state);
 
-        // Chain-aware prev/next links. -1 at chain boundaries.
+        // Bond-graph-derived prev/next residue links (2026-05-19): query
+        // the canonical Protein::BackbonePredecessor / BackboneSuccessor
+        // covalent-C-N walk rather than chain_id same-row inference.
+        // -1 means "no backbone predecessor/successor in the bond graph"
+        // (chain N/C-term, loader gap, or true non-bonded boundary).
+        // Wrap-correct for cyclic peptides; correct on ACE/NME caps;
+        // correct on antibody insertion-coded structures. The chain_id-
+        // based check used until 2026-05-19 missed within-chain bonded
+        // gaps and falsely linked non-bonded chain boundaries.
         int32_t prev_idx = -1;
         int8_t  prev_type = static_cast<int8_t>(AminoAcid::Unknown);
-        if (ri > 0) {
-            const Residue& prev = protein.ResidueAt(ri - 1);
-            if (prev.chain_id == r.chain_id) {
-                prev_idx = static_cast<int32_t>(ri - 1);
-                prev_type = static_cast<int8_t>(prev.type);
-            }
+        if (auto p = protein.BackbonePredecessor(ri); p) {
+            prev_idx  = static_cast<int32_t>(*p);
+            prev_type = static_cast<int8_t>(protein.ResidueAt(*p).type);
         }
         std::memcpy(row + off, &prev_idx, 4); off += 4;
 
         int32_t next_idx = -1;
         int8_t  next_type = static_cast<int8_t>(AminoAcid::Unknown);
-        if (ri + 1 < N) {
-            const Residue& next = protein.ResidueAt(ri + 1);
-            if (next.chain_id == r.chain_id) {
-                next_idx = static_cast<int32_t>(ri + 1);
-                next_type = static_cast<int8_t>(next.type);
-            }
+        if (auto n = protein.BackboneSuccessor(ri); n) {
+            next_idx  = static_cast<int32_t>(*n);
+            next_type = static_cast<int8_t>(protein.ResidueAt(*n).type);
         }
         std::memcpy(row + off, &next_idx, 4); off += 4;
         row[off++] = prev_type;
@@ -219,9 +221,11 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         row[off++] = (r.type != AminoAcid::Unknown && r.IsAromatic()) ? 1 : 0;
         row[off++] = (r.type != AminoAcid::Unknown && r.IsTitratable()) ? 1 : 0;
         row[off++] = (r.type != AminoAcid::Unknown && r.HasAmideH()) ? 1 : 0;
-        // is_xpro_context: this residue's i+1 is PRO. Relevant for the
-        // (i, i+1) peptide-bond omega — X→Pro permits cis isomerism that
-        // standard non-Pro context does not. -1 next means chain end.
+        // is_xpro_context: this residue's backbone successor is PRO.
+        // Relevant for the (i, succ) peptide-bond omega — X→Pro permits
+        // cis isomerism that standard non-Pro context does not. -1 next
+        // means no backbone successor in the bond graph (chain end /
+        // non-bonded boundary / loader gap).
         const bool x_pro =
             (next_idx >= 0 && next_type == static_cast<int8_t>(AminoAcid::PRO));
         row[off++] = x_pro ? 1 : 0;

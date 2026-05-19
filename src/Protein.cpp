@@ -175,29 +175,75 @@ const CovalentTopology& Protein::BondTopology() const {
 // Backbone connectivity (canonical, bond-graph-driven). See Protein.h
 // for the discipline note.
 //
-// Geometry-native query: a and b are backbone-connected iff a covalent
-// C(a)-N(b) peptide bond exists in the cifpp-derived bond graph. This
-// is the substrate that replaces every ad-hoc chain_id / sequence_number
-// / terminal_state / insertion_code adjacency inference across the
-// calculator surface (see PATTERNS.md and OBJECT_MODEL.md "Backbone
-// connectivity discipline (2026-05-19)").
+// Geometry-native query: a and b are backbone-connected iff res(a).C
+// is bonded to res(b).N via a Bond tagged `BondOrder::Peptide` /
+// `BondCategory::PeptideCN` (assigned by CovalentTopology.cpp's
+// loader-time labelling). This is the substrate that replaces every
+// ad-hoc chain_id / sequence_number / terminal_state / insertion_code
+// adjacency inference across the calculator surface (see PATTERNS.md
+// and OBJECT_MODEL.md "Backbone connectivity discipline (2026-05-19)").
 // ─────────────────────────────────────────────────────────────────────
 bool Protein::BackboneConnected(size_t residue_a_idx,
                                  size_t residue_b_idx) const {
-    if (residue_a_idx >= residues_.size() ||
-        residue_b_idx >= residues_.size()) return false;
-    const Residue& a = residues_[residue_a_idx];
-    const Residue& b = residues_[residue_b_idx];
-    if (a.C == Residue::NONE || b.N == Residue::NONE) return false;
+    auto next = BackboneSuccessor(residue_a_idx);
+    return next.has_value() && *next == residue_b_idx;
+}
+
+
+// Walk the bond graph off res(ri).N looking for a PeptideCN-categorised
+// bond that connects to the C of a DIFFERENT residue. The
+// `bond.IsPeptideBond()` filter is the loader's typed answer to "is
+// this the backbone amide?": CovalentTopology.cpp:155-183 tags a bond
+// as BondOrder::Peptide + BondCategory::PeptideCN exactly when one
+// atom is `res_a.C` and the other is `res_b.N` (different residues).
+// So the filter and the atom-slot check are mutually-reinforcing —
+// asking the bond for its category rather than re-deriving it.
+//
+// Cyclic peptides: the loader tags the head-to-tail wrap bond as
+// PeptideCN (criterion is positional, not seq-order-based), so
+// Predecessor(0) returns N-1 correctly. ACE-capped N-termini: the
+// loader tags ACE.C-Res1.N as PeptideCN.
+std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
+    if (residue_idx >= residues_.size()) return std::nullopt;
+    const Residue& r = residues_[residue_idx];
+    if (r.N == Residue::NONE) return std::nullopt;
 
     const LegacyAmberTopology& topo = LegacyAmber();
-    for (size_t bond_idx : topo.BondIndicesFor(a.C)) {
+    for (size_t bond_idx : topo.BondIndicesFor(r.N)) {
         const Bond& bond = topo.BondAt(bond_idx);
-        const size_t other = (bond.atom_index_a == a.C)
+        if (!bond.IsPeptideBond()) continue;
+        const size_t other = (bond.atom_index_a == r.N)
             ? bond.atom_index_b : bond.atom_index_a;
-        if (other == b.N) return true;
+        if (other >= atoms_.size()) continue;
+        const size_t other_res_idx = atoms_[other]->residue_index;
+        if (other_res_idx == residue_idx) continue;
+        if (other_res_idx >= residues_.size()) continue;
+        if (residues_[other_res_idx].C == other) return other_res_idx;
     }
-    return false;
+    return std::nullopt;
+}
+
+
+// Symmetric to BackbonePredecessor. Same loader-tag invariant: any
+// PeptideCN-categorised bond off res.C identifies the successor.
+std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
+    if (residue_idx >= residues_.size()) return std::nullopt;
+    const Residue& r = residues_[residue_idx];
+    if (r.C == Residue::NONE) return std::nullopt;
+
+    const LegacyAmberTopology& topo = LegacyAmber();
+    for (size_t bond_idx : topo.BondIndicesFor(r.C)) {
+        const Bond& bond = topo.BondAt(bond_idx);
+        if (!bond.IsPeptideBond()) continue;
+        const size_t other = (bond.atom_index_a == r.C)
+            ? bond.atom_index_b : bond.atom_index_a;
+        if (other >= atoms_.size()) continue;
+        const size_t other_res_idx = atoms_[other]->residue_index;
+        if (other_res_idx == residue_idx) continue;
+        if (other_res_idx >= residues_.size()) continue;
+        if (residues_[other_res_idx].N == other) return other_res_idx;
+    }
+    return std::nullopt;
 }
 
 // ============================================================================

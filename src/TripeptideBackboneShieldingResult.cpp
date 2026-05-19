@@ -124,13 +124,16 @@ TripeptideBackboneShieldingResult::Compute(
             continue;
         }
 
-        // φ/ψ from backbone-connected neighbours (Protein::BackboneConnected
-        // queries the covalent C-N bond graph, not chain_id).
+        // φ/ψ from backbone-connected neighbours via the canonical
+        // Protein::BackbonePredecessor / BackboneSuccessor bond-graph
+        // walk. Wrap-correct for cyclic peptides; covers ACE/NME caps
+        // and antibody insertion-coded structures by walking the bond
+        // graph rather than chain_id labels.
         bool has_phi = false, has_psi = false;
         double phi = 0.0, psi = 0.0;
-        if (ri > 0 && protein.BackboneConnected(ri - 1, ri)) {
-            // BackboneConnected guarantees prev_C != NONE.
-            const std::size_t prev_C = protein.ResidueAt(ri - 1).C;
+        if (auto prev_idx = protein.BackbonePredecessor(ri); prev_idx) {
+            // Predecessor guarantees prev.C != NONE.
+            const std::size_t prev_C = protein.ResidueAt(*prev_idx).C;
             phi = DihedralDegrees(
                 conf.PositionAt(prev_C),
                 conf.PositionAt(res.N),
@@ -138,9 +141,9 @@ TripeptideBackboneShieldingResult::Compute(
                 conf.PositionAt(res.C));
             has_phi = true;
         }
-        if (ri + 1 < N_res && protein.BackboneConnected(ri, ri + 1)) {
-            // BackboneConnected guarantees next_N != NONE.
-            const std::size_t next_N = protein.ResidueAt(ri + 1).N;
+        if (auto next_idx = protein.BackboneSuccessor(ri); next_idx) {
+            // Successor guarantees next.N != NONE.
+            const std::size_t next_N = protein.ResidueAt(*next_idx).N;
             psi = DihedralDegrees(
                 conf.PositionAt(res.N),
                 conf.PositionAt(res.CA),

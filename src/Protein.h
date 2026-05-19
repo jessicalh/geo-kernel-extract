@@ -12,6 +12,8 @@
 #include "Residue.h"
 #include "Bond.h"
 #include "Ring.h"
+
+#include <optional>
 #include "CovalentTopology.h"
 #include "ProteinTopology.h"
 #include "LegacyAmberTopology.h"
@@ -66,15 +68,22 @@ public:
     // ================================================================
     // Backbone connectivity (canonical, bond-graph-driven)
     //
-    // Returns true iff residues a and b are joined by a covalent
-    // C(a)-N(b) peptide bond in the cifpp-derived bond graph (i.e. a
-    // precedes b along the chain). This is the geometry-native
-    // substrate for "is i+1 the next residue?" — it bypasses every
-    // classification quirk that chain_id / sequence_number /
-    // terminal_state / insertion_code can produce (antibody insertion
-    // codes, engineered chimeras with non-monotonic numbering, residue
-    // numbering gaps with intact covalent bonds, cyclic peptides where
-    // chain_id wraps, loader leaving terminal_state Unknown).
+    // Returns true iff a `BondOrder::Peptide` (alias
+    // `BondCategory::PeptideCN`) bond connects res(a).C to res(b).N
+    // in the cifpp-derived bond graph (i.e. a precedes b along the
+    // chain). The peptide-bond classification is set by
+    // CovalentTopology.cpp's loader-time labelling: a bond IS tagged
+    // PeptideCN exactly when one atom is `res_a.C` and the other is
+    // `res_b.N` of a different residue. The walk and the loader tag
+    // are mutually-reinforcing — we ask the bond for its category
+    // rather than re-deriving it from atom slots.
+    //
+    // Geometry-native substrate: bypasses every classification quirk
+    // that chain_id / sequence_number / terminal_state / insertion_code
+    // can produce (antibody insertion codes, engineered chimeras with
+    // non-monotonic numbering, residue numbering gaps with intact
+    // covalent bonds, cyclic peptides where chain_id wraps, loader
+    // leaving terminal_state Unknown).
     //
     // If C(a) or N(b) is missing from the residue's backbone-cache
     // (incomplete structure) the answer is false. The query is
@@ -82,11 +91,55 @@ public:
     //
     // ALL calc-side residue-adjacency walks (omega, phi, psi, Tripeptide
     // BB/Neighbor DFT lookups, Larsen H-bond donor frames) MUST go
-    // through this method. Chain_id / sequence_number / terminal_state
+    // through these methods. Chain_id / sequence_number / terminal_state
     // / insertion_code-based adjacency is a banned anti-pattern; see
     // PATTERNS.md and OBJECT_MODEL.md "Backbone connectivity discipline
     // (2026-05-19)".
     bool BackboneConnected(size_t residue_a_idx, size_t residue_b_idx) const;
+
+    // Predecessor / successor on the backbone (PeptideCN bond).
+    //
+    // BackbonePredecessor(ri): returns the residue index whose C is
+    //   bonded to res(ri).N via a `BondOrder::Peptide` bond. Returns
+    //   nullopt at chain-N-term, loader gaps, or when N is missing
+    //   from the backbone-cache.
+    // BackboneSuccessor(ri): symmetric -- residue whose N is bonded to
+    //   res(ri).C via a peptide bond.
+    //
+    // Same `Bond::IsPeptideBond()` filter as `BackboneConnected` above;
+    // see that method's docstring for the loader-tag-invariant argument.
+    //
+    // These are the wrap-correct primitives for "walk to the next/prev
+    // residue on the backbone." For cyclic peptides where C(last) is
+    // bonded to N(0), Predecessor(0) returns last and Successor(last)
+    // returns 0 -- the bond graph carries the answer directly. For
+    // antibody insertion-coded structures (100 -> 100A -> 100B -> 101),
+    // the walk follows the actual covalent topology, not the seq_number
+    // labels. For ACE/NME caps, the cap residue's C/N participate in the
+    // bond graph and are returned as the neighbour just as any internal
+    // residue would be.
+    //
+    // **Test coverage status (2026-05-19):** Only linear single-chain
+    // proteins with monotonic numbering and no insertion codes
+    // (1P9J / 1Z9B / current OF3 fleet) are NUMERICALLY exercised by
+    // the per-calc tests. Multi-chain, ACE/NME-capped, insertion-coded,
+    // and cyclic structures are not exercised by any current fixture.
+    // The methods walk the cifpp bond graph and are correct on those
+    // shapes by-substrate-construction (the bond graph is authoritative),
+    // but the numerical paths through them have not been validated
+    // against real data of those classes. A multi-chain / cyclic /
+    // insertion-coded fixture would close this.
+    //
+    // **Cyclic-peptide caveat:** `Residue.terminal_state` is loader-
+    // assigned chain-order metadata, NOT a validity signal. For cyclic
+    // peptides Predecessor(0) / Successor(N-1) return wrap edges and
+    // dihedrals at "termini" are finite; the residue_terminal_state
+    // field may still report NTerminus/CTerminus for the same rows.
+    // Consumers must use isfinite(phi/psi/omega), not terminal_state,
+    // for validity. The DihedralTimeSeries H5 group documents this in
+    // its residue_terminal_state_legend attr.
+    std::optional<size_t> BackbonePredecessor(size_t residue_idx) const;
+    std::optional<size_t> BackboneSuccessor(size_t residue_idx) const;
 
     // ================================================================
     // Ring access (delegated through RingTopology on LegacyAmberTopology)
