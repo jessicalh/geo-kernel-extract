@@ -1406,6 +1406,223 @@ class DihedralBinTransitionGroup:
     source_attached_policy: str
 
 
+@dataclass(frozen=True)
+class Dssp8TimeSeriesGroup:
+    """Per-residue per-frame DSSP 8-state SS + H-bond partners from
+    /trajectory/dssp8_time_series/. Conditional-source TR: DsspResult
+    attaches only when PerFrameRunOptions::skip_dssp is false.
+
+    SS code: 0=H (alpha), 1=G (3_10), 2=I (pi), 3=E (extended),
+             4=B (beta bridge), 5=T (turn), 6=S (bend), 7=C (coil);
+             255 = no observation.
+    H-bond partner: residue index of the partner, or -1 if no partner
+                     at that slot. DSSP records up to 2 acceptors and
+                     2 donors per residue.
+    H-bond energy: kcal/mol; NaN if no partner at that slot.
+
+    DSSP convention quirk: DsspResult.Phi/Psi (NOT in this group; see
+    DihedralTimeSeriesGroup) returns NEGATED IUPAC phi/psi. This group
+    does not mirror phi/psi/SASA from DSSP — those live in
+    DihedralTimeSeriesGroup (IUPAC convention) and a future Sasa TR.
+    """
+    ss8_code: np.ndarray                   # (R, T) uint8
+    hbond_acceptor_partner: np.ndarray     # (R, T, 2) int32
+    hbond_acceptor_energy: np.ndarray      # (R, T, 2) float64
+    hbond_donor_partner: np.ndarray        # (R, T, 2) int32
+    hbond_donor_energy: np.ndarray         # (R, T, 2) float64
+    residue_index_per_atom: np.ndarray     # (N,) int32
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    ss8_legend: str
+    ss8_unassigned_sentinel: int           # 255
+    hbond_partner_sentinel: str
+    hbond_energy_units: str                # "kcal/mol"
+    source: str
+    source_attached_policy: str            # "conditional"
+
+
+def _load_dssp8_time_series(f) -> Optional[Dssp8TimeSeriesGroup]:
+    path = "/trajectory/dssp8_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return Dssp8TimeSeriesGroup(
+        ss8_code=g["ss8_code"][:],
+        hbond_acceptor_partner=g["hbond_acceptor_partner"][:],
+        hbond_acceptor_energy=g["hbond_acceptor_energy"][:],
+        hbond_donor_partner=g["hbond_donor_partner"][:],
+        hbond_donor_energy=g["hbond_donor_energy"][:],
+        residue_index_per_atom=g["residue_index_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        ss8_legend=_attr("ss8_legend"),
+        ss8_unassigned_sentinel=int(g.attrs.get("ss8_unassigned_sentinel", 255)),
+        hbond_partner_sentinel=_attr("hbond_partner_sentinel"),
+        hbond_energy_units=_attr("hbond_energy_units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
+@dataclass(frozen=True)
+class Dssp8TransitionGroup:
+    """Per-residue DSSP 8-state transition statistics from
+    /trajectory/dssp8_transition/. AV companion to Dssp8TimeSeriesGroup.
+
+    Stats per residue:
+      ss8_transition_count   (R,) uint32
+      ss8_dominant           (R,) uint8 (255 if no observation)
+      n_frames_observed      (R,) uint32
+
+    Per-residue per state (R, 8):
+      ss8_occupancy          uint32 frame count per state
+
+    Per-residue transition matrix (R, 8, 8):
+      ss8_transition_matrix  uint32, M[ri, prev, curr] = count of
+        consecutive observed-pair transitions (prev -> curr). Diagonal
+        is identically zero (self-transitions not counted).
+
+    Transition gate: BOTH prev and curr observed for the consecutive
+    pair to count. Source-absent frames break the transition chain.
+    """
+    ss8_transition_count: np.ndarray       # (R,) uint32
+    ss8_dominant: np.ndarray               # (R,) uint8
+    n_frames_observed: np.ndarray          # (R,) uint32
+    ss8_occupancy: np.ndarray              # (R, 8) uint32
+    ss8_transition_matrix: np.ndarray      # (R, 8, 8) uint32
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    ss8_legend: str
+    transition_matrix_layout: str
+    transition_gate: str
+    source: str
+    source_attached_policy: str
+
+
+def _load_dssp8_transition(f) -> Optional[Dssp8TransitionGroup]:
+    path = "/trajectory/dssp8_transition"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return Dssp8TransitionGroup(
+        ss8_transition_count=g["ss8_transition_count"][:],
+        ss8_dominant=g["ss8_dominant"][:],
+        n_frames_observed=g["n_frames_observed"][:],
+        ss8_occupancy=g["ss8_occupancy"][:],
+        ss8_transition_matrix=g["ss8_transition_matrix"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        ss8_legend=_attr("ss8_legend"),
+        transition_matrix_layout=_attr("transition_matrix_layout"),
+        transition_gate=_attr("transition_gate"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
+@dataclass(frozen=True)
+class Dssp8Access:
+    """DSSP 8-state TR family. Either slot is None when the C++ TR
+    didn't run for the extraction (skip_dssp=true) or had
+    source_attached_count == 0."""
+    time_series: Optional[Dssp8TimeSeriesGroup] = None
+    transitions: Optional[Dssp8TransitionGroup] = None
+
+
+@dataclass(frozen=True)
+class RingPuckerTimeSeriesGroup:
+    """Per-ring per-frame Cremer-Pople saturated-ring pucker (Q, θ) +
+    per-aromatic-ring χ₂ from /trajectory/ring_pucker_time_series/.
+
+    Two axes:
+      pucker_Q     (S, T) float64 Å — saturated rings only (Pro
+                                       pyrrolidine + any future saturated)
+      pucker_theta (S, T) float64 degrees [0, 360) — saturated rings
+      aromatic_chi2 (A, T) float64 radians — aromatic rings
+
+    Per-ring static metadata for the SDK / viewer broadcast:
+      saturated_parent_residue_index (S,) int32
+      aromatic_parent_residue_index  (A,) int32
+
+    Source: PlanarGeometryResult (conditionally attached when
+    LegacyAmber substrate is populated). NaN within attached frames
+    indicates per-ring degenerate geometry (incomplete ring or
+    collinear vertices).
+
+    Pucker theta mod 72° gives envelope vs twist endo/exo classification
+    for 5-rings (Cremer-Pople 1975).
+    Aromatic chi2: matches DihedralTimeSeriesGroup.chi[1] of the parent
+    residue (PHE/TYR ring-flip canonical observable per Akke & Weininger
+    2023). Per-frame value is instantaneous — flip kinetics not
+    measurable from one frame.
+
+    Slot fields are None when the ring count on that axis is zero
+    (e.g., a protein with no aromatic residues would have A=0 and no
+    aromatic_chi2 dataset emitted; the field is None here).
+    """
+    pucker_Q: Optional[np.ndarray]              # (S, T) or None
+    pucker_theta: Optional[np.ndarray]          # (S, T) or None
+    aromatic_chi2: Optional[np.ndarray]         # (A, T) or None
+    saturated_parent_residue_index: np.ndarray  # (S,) int32 (may be empty)
+    aromatic_parent_residue_index: np.ndarray   # (A,) int32 (may be empty)
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    source_attached_count: int
+    n_saturated_rings: int
+    n_aromatic_rings: int
+    pucker_convention: str
+    pucker_Q_units: str                         # "Angstrom"
+    pucker_theta_units: str                     # "degrees"
+    aromatic_chi2_units: str                    # "radians"
+    aromatic_chi2_convention: str
+    source: str
+    source_attached_policy: str
+
+
+def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
+    path = "/trajectory/ring_pucker_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    S = int(g.attrs["n_saturated_rings"])
+    A = int(g.attrs["n_aromatic_rings"])
+    return RingPuckerTimeSeriesGroup(
+        pucker_Q=g["pucker_Q"][:] if "pucker_Q" in g else None,
+        pucker_theta=g["pucker_theta"][:] if "pucker_theta" in g else None,
+        aromatic_chi2=g["aromatic_chi2"][:] if "aromatic_chi2" in g else None,
+        saturated_parent_residue_index=g["saturated_parent_residue_index"][:],
+        aromatic_parent_residue_index=g["aromatic_parent_residue_index"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        n_saturated_rings=S,
+        n_aromatic_rings=A,
+        pucker_convention=_attr("pucker_convention"),
+        pucker_Q_units=_attr("pucker_Q_units"),
+        pucker_theta_units=_attr("pucker_theta_units"),
+        aromatic_chi2_units=_attr("aromatic_chi2_units"),
+        aromatic_chi2_convention=_attr("aromatic_chi2_convention"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
     path = "/trajectory/dihedral_bin_transition"
     if path not in f:
@@ -1611,6 +1828,12 @@ class TrajectoryData:
     # companion to dihedrals; 2026-05-19).
     dihedral_bin_transitions: Optional[DihedralBinTransitionGroup] = None
 
+    # DSSP 8-state TR family (TS + transition pair; 2026-05-19).
+    dssp8: Dssp8Access = field(default_factory=Dssp8Access)
+
+    # Per-ring (saturated + aromatic) pucker timeline (2026-05-19).
+    ring_pucker: Optional[RingPuckerTimeSeriesGroup] = None
+
 
 def _read_frame_metadata(f, n_atoms_hint: int):
     """Return (n_frames, frame_times) from either H5 schema.
@@ -1747,6 +1970,11 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19)
         dihedrals = _load_dihedral_time_series(f)
         dihedral_bin_transitions = _load_dihedral_bin_transition(f)
+        dssp8 = Dssp8Access(
+            time_series=_load_dssp8_time_series(f),
+            transitions=_load_dssp8_transition(f),
+        )
+        ring_pucker = _load_ring_pucker_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -1763,4 +1991,6 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         hydration_shell=hydration_shell,
         dihedrals=dihedrals,
         dihedral_bin_transitions=dihedral_bin_transitions,
+        dssp8=dssp8,
+        ring_pucker=ring_pucker,
     )

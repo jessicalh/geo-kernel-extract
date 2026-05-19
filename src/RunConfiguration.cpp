@@ -35,6 +35,9 @@
 #include "HydrationShellWelfordTrajectoryResult.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
 #include "DihedralBinTransitionTrajectoryResult.h"
+#include "Dssp8TimeSeriesTrajectoryResult.h"
+#include "Dssp8TransitionTrajectoryResult.h"
+#include "RingPuckerTimeSeriesTrajectoryResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "TripeptideNeighborShieldingResult.h"
@@ -341,6 +344,18 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return DihedralBinTransitionTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return Dssp8TimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return Dssp8TransitionTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return RingPuckerTimeSeriesTrajectoryResult::Create(tp);
         });
 
     return c;

@@ -301,6 +301,9 @@ add_library(nmr_shielding
     src/HydrationShellWelfordTrajectoryResult.cpp
     src/DihedralTimeSeriesTrajectoryResult.cpp
     src/DihedralBinTransitionTrajectoryResult.cpp
+    src/Dssp8TimeSeriesTrajectoryResult.cpp
+    src/Dssp8TransitionTrajectoryResult.cpp
+    src/RingPuckerTimeSeriesTrajectoryResult.cpp
     src/EeqResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
@@ -1208,6 +1211,63 @@ target_compile_definitions(dihedral_bin_transition_tests PRIVATE
 target_include_directories(dihedral_bin_transition_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(dihedral_bin_transition_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(dihedral_bin_transition_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# Dssp8TimeSeries tests
+# ============================================================================
+
+add_executable(dssp8_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_dssp8_time_series.cpp
+)
+target_compile_definitions(dssp8_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(dssp8_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(dssp8_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(dssp8_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# Dssp8Transition tests
+# ============================================================================
+
+add_executable(dssp8_transition_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_dssp8_transition.cpp
+)
+target_compile_definitions(dssp8_transition_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(dssp8_transition_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(dssp8_transition_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(dssp8_transition_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# RingPuckerTimeSeries tests
+# ============================================================================
+
+add_executable(ring_pucker_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_ring_pucker_time_series.cpp
+)
+target_compile_definitions(ring_pucker_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(ring_pucker_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(ring_pucker_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(ring_pucker_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
