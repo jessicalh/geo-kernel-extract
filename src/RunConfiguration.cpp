@@ -34,6 +34,7 @@
 #include "HydrationShellTimeSeriesTrajectoryResult.h"
 #include "HydrationShellWelfordTrajectoryResult.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
+#include "DihedralBinTransitionTrajectoryResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "TripeptideNeighborShieldingResult.h"
@@ -336,6 +337,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return DihedralTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return DihedralBinTransitionTrajectoryResult::Create(tp);
         });
 
     return c;

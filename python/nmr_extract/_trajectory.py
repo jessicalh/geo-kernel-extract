@@ -1346,6 +1346,94 @@ class DihedralTimeSeriesGroup:
     chunking_policy: str
 
 
+@dataclass(frozen=True)
+class DihedralBinTransitionGroup:
+    """Per-residue rotamer + Rama-region transition statistics from
+    /trajectory/dihedral_bin_transition/. AV companion to
+    DihedralTimeSeriesGroup (which carries per-frame raw angles).
+
+    Bin labels match DihedralTimeSeriesGroup.rama_region verbatim:
+      0=unassigned, 1=αR, 2=β, 3=αL, 4=PPII, 5=other.
+    Chi rotamer bins:
+      0=g+ (0 < chi ≤ 120°), 1=trans (|chi| > 120°), 2=g- (-120° ≤ chi < 0°),
+      255=unassigned (chi not defined for this AA or per-frame geometry
+      degenerate). Three-bin convention matches
+      ChiRotamerSelectionTrajectoryResult.
+
+    Transition gate: BOTH prev and curr frame must have an observed bin
+    (non-unassigned) for a transition to count. Consecutive-frame walk;
+    if intermediate frames are unobserved (NaN bin), the transition
+    chain breaks and re-starts on the next observation.
+
+    Stats per residue:
+      backbone_transition_count   (R,)        uint32
+      backbone_dominant_region    (R,)        uint8
+      n_frames_observed           (R,)        uint32 (phi+psi both finite)
+      backbone_bin_occupancy      (R, 6)      uint32 frame counts
+      chi_transition_count        (R, 4)      uint32
+      chi_dominant_rotamer        (R, 4)      uint8 (255 = no observation)
+      chi_n_frames_observed       (R, 4)      uint32 (chi[k] finite)
+      chi_rotamer_occupancy       (R, 4, 3)   uint32 frame counts
+
+    Per-frame metadata:
+      frame_indices (T,), frame_times (T,) ps,
+      source_attached_per_frame (T,) uint8 (trivially all-1; positions
+      always present so this TR has no conditional source).
+
+    Backbone connectivity uses the canonical Protein::BackbonePredecessor
+    / BackboneSuccessor walk (PeptideCN bond-graph filter) — same as
+    DihedralTimeSeriesGroup. Cyclic / antibody insertion-coded
+    structures get correct phi/psi via the wrap edge; the bin classification
+    follows from the dihedral computation.
+    """
+    backbone_transition_count: np.ndarray  # (R,) uint32
+    backbone_dominant_region: np.ndarray   # (R,) uint8
+    n_frames_observed: np.ndarray          # (R,) uint32
+    backbone_bin_occupancy: np.ndarray     # (R, 6) uint32
+    chi_transition_count: np.ndarray       # (R, 4) uint32
+    chi_dominant_rotamer: np.ndarray       # (R, 4) uint8
+    chi_n_frames_observed: np.ndarray      # (R, 4) uint32
+    chi_rotamer_occupancy: np.ndarray      # (R, 4, 3) uint32
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    # Convention pins
+    backbone_bin_legend: str
+    backbone_bin_boundaries: str
+    chi_rotamer_legend: str
+    transition_gate: str
+    angle_convention: str
+    source_attached_policy: str
+
+
+def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
+    path = "/trajectory/dihedral_bin_transition"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return DihedralBinTransitionGroup(
+        backbone_transition_count=g["backbone_transition_count"][:],
+        backbone_dominant_region=g["backbone_dominant_region"][:],
+        n_frames_observed=g["n_frames_observed"][:],
+        backbone_bin_occupancy=g["backbone_bin_occupancy"][:],
+        chi_transition_count=g["chi_transition_count"][:],
+        chi_dominant_rotamer=g["chi_dominant_rotamer"][:],
+        chi_n_frames_observed=g["chi_n_frames_observed"][:],
+        chi_rotamer_occupancy=g["chi_rotamer_occupancy"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        backbone_bin_legend=_attr("backbone_bin_legend"),
+        backbone_bin_boundaries=_attr("backbone_bin_boundaries"),
+        chi_rotamer_legend=_attr("chi_rotamer_legend"),
+        transition_gate=_attr("transition_gate"),
+        angle_convention=_attr("angle_convention"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_dihedral_time_series(f) -> Optional[DihedralTimeSeriesGroup]:
     path = "/trajectory/dihedral_time_series"
     if path not in f:
@@ -1519,6 +1607,10 @@ class TrajectoryData:
     # via `dihedrals.residue_index_per_atom` at render time.
     dihedrals: Optional[DihedralTimeSeriesGroup] = None
 
+    # Per-residue rotamer + Rama-region transition statistics (AV
+    # companion to dihedrals; 2026-05-19).
+    dihedral_bin_transitions: Optional[DihedralBinTransitionGroup] = None
+
 
 def _read_frame_metadata(f, n_atoms_hint: int):
     """Return (n_frames, frame_times) from either H5 schema.
@@ -1654,6 +1746,7 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
 
         # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19)
         dihedrals = _load_dihedral_time_series(f)
+        dihedral_bin_transitions = _load_dihedral_bin_transition(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -1669,4 +1762,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         hydration_geometry=hydration_geometry,
         hydration_shell=hydration_shell,
         dihedrals=dihedrals,
+        dihedral_bin_transitions=dihedral_bin_transitions,
     )
