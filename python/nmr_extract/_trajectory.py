@@ -1245,6 +1245,157 @@ class HydrationShellAccess:
     welford: Optional[HydrationShellWelfordGroup] = None
 
 
+# ─── Dihedral time-series (per-residue, R rows × T frames) ──────────
+
+
+@dataclass(frozen=True)
+class DihedralTimeSeriesGroup:
+    """Per-residue backbone + sidechain dihedral timelines from
+    /trajectory/dihedral_time_series/. First per-residue (R, T) TR
+    in the SDK (2026-05-19).
+
+    Convention pins (also recorded as group attrs):
+    - All angles in radians.
+    - IUPAC signed dihedral atan2(y, x). Value range [-π, π] with
+      discontinuity at ±π; consumers comparing across frames must
+      use circular differences.
+    - omega_deviation = WrapPi(omega - π), emitted for every well-
+      defined peptide bond INCLUDING X→Pro (cis/trans isomerism at
+      X-Pro is real signal, use `omega_is_xpro` mask to interpret).
+    - rama_region uint8 legend: 0=unassigned, 1=αR, 2=β, 3=αL,
+      4=PPII, 5=other. Resolution order αR → αL → PPII → β → other.
+    - chi raw radians — PHE/TYR chi2 ring-flip + ASP/GLU carboxylate
+      symmetry NOT applied; consumers needing mod-π apply themselves.
+      TRP chi2 and HIS chi2 are NOT symmetric (CD1/CD2/ND1 chemically
+      distinct).
+    - Backbone connectivity is determined from the LegacyAmber bond
+      graph (covalent C(i)-N(i+1) peptide bond), NOT from chain_id /
+      sequence_number / terminal_state / insertion_code. Correct on
+      antibody insertion-coded structures, engineered chimeras with
+      non-monotonic numbering, and cyclic peptides.
+
+    DSSP convention warning: `DsspResult.Phi/Psi` returned by the C++
+    side via libdssp uses the NEGATED IUPAC convention. The values in
+    THIS group use IUPAC directly (matching PlanarGeometryResult).
+    Downstream code comparing this TR to DsspResult must negate one
+    side. See `angle_convention` attr for the full note.
+
+    Per-frame fields (R, T):
+      phi              C(i-1)-N(i)-CA(i)-C(i); NaN at N-terminus and
+                       non-covalent residue boundaries.
+      psi              N(i)-CA(i)-C(i)-N(i+1); NaN at C-terminus and
+                       non-covalent residue boundaries.
+      omega            CA(i)-C(i)-N(i+1)-CA(i+1).
+      omega_deviation  WrapPi(omega - π) ∈ [-π, π].
+      chi              (R, T, 4) — NaN where chi[k] is not defined or
+                       per-frame geometry is degenerate.
+      rama_region      uint8 5-region literature grid (see legend).
+
+    Static per-residue masks:
+      chi_exists (R, 4) uint8 — chi[k] structurally cacheable; does
+                                 NOT guarantee finite chi value at
+                                 runtime, use isfinite(chi).
+      omega_is_xpro / is_glycine / is_proline / is_pre_proline /
+      residue_terminal_state (R,) uint8 — see source notes.
+
+    Per-atom broadcast lookup:
+      residue_index_per_atom (N,) int32 — atom_i → residue_i for
+                                          SDK / viewer atom-axis
+                                          broadcast (option C from
+                                          design discussion).
+
+    Frame metadata:
+      frame_indices (T,) uint, frame_times (T,) float64 ps,
+      source_attached_per_frame (T,) uint8 — trivially always 1
+      (positions always present at tp.Seed); emitted for SDK
+      uniformity with conditionally-attached-source TRs.
+    """
+    # Per-frame channels
+    phi: np.ndarray              # (R, T) float64 radians
+    psi: np.ndarray              # (R, T) float64 radians
+    omega: np.ndarray            # (R, T) float64 radians
+    omega_deviation: np.ndarray  # (R, T) float64 radians
+    chi: np.ndarray              # (R, T, 4) float64 radians
+    rama_region: np.ndarray      # (R, T) uint8
+    # Static per-residue masks
+    chi_exists: np.ndarray              # (R, 4) uint8
+    omega_is_xpro: np.ndarray           # (R,) uint8
+    is_glycine: np.ndarray              # (R,) uint8
+    is_proline: np.ndarray              # (R,) uint8
+    is_pre_proline: np.ndarray          # (R,) uint8
+    residue_terminal_state: np.ndarray  # (R,) uint8
+    chain_id_per_residue: np.ndarray    # (R,) variable-length strings
+    # Per-atom lookup
+    residue_index_per_atom: np.ndarray  # (N,) int32
+    # Per-frame metadata
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    # Group provenance + convention pins
+    angle_units: str            # "radians"
+    periodicity: str            # "2pi"
+    value_range: str            # "[-pi, pi] ..."
+    angle_convention: str       # IUPAC convention + DSSP-divergence note
+    chain_break_policy: str     # bond-graph derivation note
+    omega_deviation_policy: str
+    rama_region_legend: str
+    rama_region_boundaries: str
+    chi_symmetry_caveats: str
+    residue_terminal_state_legend: str
+    source_attached_policy: str  # "always_attached"
+    chunking_policy: str
+
+
+def _load_dihedral_time_series(f) -> Optional[DihedralTimeSeriesGroup]:
+    path = "/trajectory/dihedral_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+
+    # chain_id_per_residue is variable-length strings — h5py returns
+    # bytes; decode to str for ergonomics.
+    raw_chain_ids = g["chain_id_per_residue"][:]
+    chain_ids = np.array(
+        [c.decode("utf-8", errors="replace") if isinstance(c, (bytes, bytearray))
+         else str(c) for c in raw_chain_ids],
+        dtype=object)
+
+    return DihedralTimeSeriesGroup(
+        phi=g["phi"][:],
+        psi=g["psi"][:],
+        omega=g["omega"][:],
+        omega_deviation=g["omega_deviation"][:],
+        chi=g["chi"][:],
+        rama_region=g["rama_region"][:],
+        chi_exists=g["chi_exists"][:],
+        omega_is_xpro=g["omega_is_xpro"][:],
+        is_glycine=g["is_glycine"][:],
+        is_proline=g["is_proline"][:],
+        is_pre_proline=g["is_pre_proline"][:],
+        residue_terminal_state=g["residue_terminal_state"][:],
+        chain_id_per_residue=chain_ids,
+        residue_index_per_atom=g["residue_index_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        angle_units=_attr("angle_units"),
+        periodicity=_attr("periodicity"),
+        value_range=_attr("value_range"),
+        angle_convention=_attr("angle_convention"),
+        chain_break_policy=_attr("chain_break_policy"),
+        omega_deviation_policy=_attr("omega_deviation_policy"),
+        rama_region_legend=_attr("rama_region_legend"),
+        rama_region_boundaries=_attr("rama_region_boundaries"),
+        chi_symmetry_caveats=_attr("chi_symmetry_caveats"),
+        residue_terminal_state_legend=_attr("residue_terminal_state_legend"),
+        source_attached_policy=_attr("source_attached_policy"),
+        chunking_policy=_attr("chunking_policy"),
+    )
+
+
 @dataclass(frozen=True)
 class WaterFieldAccess:
     """Water-field TR family — TimeSeries + Welford rollup pair.
@@ -1361,6 +1512,12 @@ class TrajectoryData:
     # Hydration shell TR pair (COM-based water shell features).
     hydration_shell: HydrationShellAccess = field(
         default_factory=HydrationShellAccess)
+
+    # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19).
+    # None when the C++ TR didn't run for the extraction that produced
+    # this trajectory.h5. Movie-target consumer: broadcasts to atom axis
+    # via `dihedrals.residue_index_per_atom` at render time.
+    dihedrals: Optional[DihedralTimeSeriesGroup] = None
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -1495,6 +1652,9 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             welford=_load_hydration_shell_welford(f),
         )
 
+        # Per-residue dihedral timeline (first (R, T) TR — 2026-05-19)
+        dihedrals = _load_dihedral_time_series(f)
+
     return TrajectoryData(
         protein_id=protein_id,
         n_atoms=n_atoms,
@@ -1508,4 +1668,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         water_field=water_field,
         hydration_geometry=hydration_geometry,
         hydration_shell=hydration_shell,
+        dihedrals=dihedrals,
     )

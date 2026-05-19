@@ -37,6 +37,7 @@ from ._trajectory import (
     HydrationShellAccess,
     HydrationShellTimeSeriesGroup,
     HydrationShellWelfordGroup,
+    DihedralTimeSeriesGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -131,4 +132,5 @@ __all__ = [
     "HydrationShellAccess",
     "HydrationShellTimeSeriesGroup",
     "HydrationShellWelfordGroup",
+    "DihedralTimeSeriesGroup",
 ]

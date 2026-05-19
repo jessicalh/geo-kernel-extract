@@ -1,6 +1,9 @@
 #include "DihedralTimeSeriesTrajectoryResult.h"
 
 #include "AminoAcidType.h"
+#include "Atom.h"
+#include "Bond.h"
+#include "LegacyAmberTopology.h"
 #include "OperationLog.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
@@ -119,55 +122,32 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     return kRamaOther;
 }
 
-// Two residues are backbone-connected when (a) they share a chain, (b)
-// neither is a chain terminus blocking the forward/backward connection,
-// AND (c) their sequence numbering is consistent with adjacency.
+// Two residues are backbone-connected iff a covalent C(a)-N(b) peptide
+// bond exists in the cifpp-derived bond graph. This is the canonical
+// geometry-native substrate -- it bypasses every classification quirk
+// that chain_id / terminal_state / sequence_number / insertion_code
+// brings (antibody insertion codes, engineered chimeras with non-
+// monotonic numbering, loader leaving terminal_state Unknown, residue
+// numbering gaps with intact covalent bonds, cyclic peptides where
+// chain_id wraps).
 //
-// The seq-number check has three branches:
-//   - normal sequential:  b.seq = a.seq + 1, both empty insertion codes
-//   - insertion-coded:    b.seq = a.seq, a.ins_code < b.ins_code lexically
-//                         (e.g. "" < "A" < "B" for antibody numbering
-//                         100 -> 100A -> 100B -> 100C -> 101)
-//   - non-monotonic seq < 0: log a warning and return false (legitimate
-//                            for engineered chimeras with concatenated
-//                            fragments, but worth a signal per
-//                            feedback_log_overages_dont_assert)
+// If C(a) or N(b) is missing from the residue's backbone-cache the
+// answer is false (no peptide bond is structurally definable).
+// Otherwise: walk the bond list off C(a) and return true iff one
+// endpoint is N(b).
 //
-// The terminal_state check is the loader's authoritative signal for
-// chain ends. The seq+ins_code check catches mid-chain numbering gaps
-// that the loader didn't tag as termini.
-bool BackboneConnected(const Residue& a, const Residue& b) {
-    if (a.chain_id != b.chain_id) return false;
-    if (a.terminal_state == ResidueTerminalState::CTerminus ||
-        a.terminal_state == ResidueTerminalState::NAndCTerminus)
-        return false;
-    if (b.terminal_state == ResidueTerminalState::NTerminus ||
-        b.terminal_state == ResidueTerminalState::NAndCTerminus)
-        return false;
-
-    const int seq_diff = b.sequence_number - a.sequence_number;
-    if (seq_diff == 1) {
-        // Normal sequential — accept regardless of insertion_code unless
-        // both are insertion-coded (mid-insertion-block transition is
-        // covered by the seq_diff == 0 branch).
-        return true;
+// Note: this query is O(degree_of_C) = small constant (~3). Called
+// O(R) times per frame at Compute. Negligible cost.
+bool BackboneConnected(const Protein& protein,
+                       const Residue& a, const Residue& b) {
+    if (a.C == Residue::NONE || b.N == Residue::NONE) return false;
+    const LegacyAmberTopology& topo = protein.LegacyAmber();
+    for (std::size_t bond_idx : topo.BondIndicesFor(a.C)) {
+        const Bond& bond = topo.BondAt(bond_idx);
+        const std::size_t other = (bond.atom_index_a == a.C)
+            ? bond.atom_index_b : bond.atom_index_a;
+        if (other == b.N) return true;
     }
-    if (seq_diff == 0) {
-        // Insertion-coded pair at the same seq_number. Adjacency in
-        // chain order is lexical insertion-code progression
-        // (e.g. "" < "A" < "B").
-        return a.insertion_code < b.insertion_code;
-    }
-    if (seq_diff < 0) {
-        OperationLog::Warn(
-            "DihedralTimeSeriesTrajectoryResult::BackboneConnected",
-            "non-monotonic sequence numbering at chain " + a.chain_id +
-            ": " + std::to_string(a.sequence_number) +
-            " -> " + std::to_string(b.sequence_number) +
-            "; treating as not-connected");
-    }
-    // seq_diff > 1: numbering gap (missing residue between).
-    // seq_diff < 0: non-monotonic (engineered chimera / fragment join).
     return false;
 }
 
@@ -212,13 +192,13 @@ DihedralTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     }
 
     // is_pre_proline + omega_is_xpro: both set when res[i+1].type == PRO
-    // AND residue i is backbone-connected to i+1. PlanarGeometryResult
-    // sets omega_is_xpro_ only on the i row (the row carrying that
-    // peptide bond's omega); we follow that convention.
+    // AND a covalent C(i)-N(i+1) peptide bond exists in the bond graph.
+    // PlanarGeometryResult sets omega_is_xpro_ only on the i row (the
+    // row carrying that peptide bond's omega); we follow that convention.
     for (std::size_t ri = 0; ri + 1 < R; ++ri) {
         const Residue& res_i  = protein.ResidueAt(ri);
         const Residue& res_ip = protein.ResidueAt(ri + 1);
-        if (!BackboneConnected(res_i, res_ip)) continue;
+        if (!BackboneConnected(protein, res_i, res_ip)) continue;
         if (res_ip.type == AminoAcid::PRO) {
             r->omega_is_xpro_[ri]  = 1u;
             r->is_pre_proline_[ri] = 1u;
@@ -263,7 +243,7 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
             res.N != Residue::NONE && res.CA != Residue::NONE &&
             res.C != Residue::NONE) {
             const Residue& res_im = protein.ResidueAt(ri - 1);
-            if (BackboneConnected(res_im, res) &&
+            if (BackboneConnected(protein, res_im, res) &&
                 res_im.C != Residue::NONE) {
                 phi_val = Dihedral(
                     conf.PositionAt(res_im.C),
@@ -280,7 +260,7 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
             res.N != Residue::NONE && res.CA != Residue::NONE &&
             res.C != Residue::NONE) {
             const Residue& res_ip = protein.ResidueAt(ri + 1);
-            if (BackboneConnected(res, res_ip) &&
+            if (BackboneConnected(protein, res, res_ip) &&
                 res_ip.N != Residue::NONE) {
                 psi_val = Dihedral(
                     conf.PositionAt(res.N),
@@ -296,7 +276,7 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         if (ri + 1 < R &&
             res.CA != Residue::NONE && res.C != Residue::NONE) {
             const Residue& res_ip = protein.ResidueAt(ri + 1);
-            if (BackboneConnected(res, res_ip) &&
+            if (BackboneConnected(protein, res, res_ip) &&
                 res_ip.N != Residue::NONE &&
                 res_ip.CA != Residue::NONE) {
                 omega_val = Dihedral(
@@ -405,13 +385,18 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "TR must negate one side. Verified by "
         "test_dihedral_time_series.cpp CrossResultConsistency*."));
     grp.createAttribute("chain_break_policy", std::string(
-        "NaN at any dihedral spanning a chain boundary. BackboneConnected "
-        "uses Residue.terminal_state as the primary chain-end signal "
-        "(loader-authoritative) and falls back to seq_number + "
-        "insertion_code adjacency (e.g. 100 -> 100A -> 100B -> 101) for "
-        "mid-chain numbering gaps. NOTE: PlanarGeometryResult.cpp:287-309 "
-        "omits the chain-adjacency check and emits omega across non-bonded "
-        "gaps; this TR's stricter gate is the more correct behaviour. PG "
+        "NaN at any dihedral spanning a non-covalent residue boundary. "
+        "BackboneConnected queries the LegacyAmber bond graph directly: "
+        "residue a and b are backbone-connected iff a covalent C(a)-N(b) "
+        "peptide bond exists in protein.LegacyAmber().Bonds(). This is "
+        "the geometry-native substrate -- it bypasses every classification "
+        "quirk that chain_id / terminal_state / sequence_number / "
+        "insertion_code brings (antibody insertion codes, engineered "
+        "chimeras with non-monotonic numbering, residue numbering gaps "
+        "with intact covalent bonds, cyclic peptides where chain_id "
+        "wraps). NOTE: PlanarGeometryResult.cpp:287-309 omits the "
+        "bond-adjacency check and emits omega across non-bonded gaps; "
+        "this TR's stricter gate is the more correct behaviour. PG "
         "tightening is tracked as a feedback_audit_the_formula_family "
         "follow-up."));
     grp.createAttribute("omega_deviation_policy", std::string(
