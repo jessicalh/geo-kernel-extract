@@ -3069,6 +3069,17 @@ TRs:
   `tripeptide_bb_method_tag_time_series` to mask per-atom-per-frame for
   the Tripeptide TR family.
 
+**TRs with no conditional source (canonical pattern, 2026-05-19):**
+Some TRs read fields that are unconditionally available — positions
+(always present at `tp.Seed` time), `Residue.chi[k]` cached atom indices
+(from `AminoAcidType.chi_angles`, part of typed substrate). These TRs
+have no conditional source ConformationResult; for them,
+`source_attached_per_frame` is **emitted as all-1 for SDK uniformity**
+plus a `source_attached_policy = "always_attached"` group attribute.
+This keeps the SDK reader's `apply_mask(data, source_attached_per_frame)`
+pattern uniform whether the underlying source is conditional or not.
+First example: `DihedralTimeSeriesTrajectoryResult` (2026-05-19).
+
 ---
 
 ## Trajectory

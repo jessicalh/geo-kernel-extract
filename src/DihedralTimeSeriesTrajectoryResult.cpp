@@ -12,6 +12,7 @@
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
+#include <highfive/H5PropertyList.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -32,19 +33,22 @@ constexpr std::uint8_t kRamaPPII       = 4;
 constexpr std::uint8_t kRamaOther      = 5;
 
 // Dihedral from four positions. Returns signed angle in radians in
-// (-π, π]. Mirrors the canonical implementation in
-// PlanarGeometryResult.cpp:35-46 and ChiRotamerSelectionTrajectoryResult
-// .cpp:22-40 — same atan2(y, x) formulation with b2-normalized basis. We
-// copy rather than extract a shared helper because per PATTERNS.md the
-// utility-namespace anti-pattern bites first; equation in comment per
-// PATTERNS Lesson 10 ("Equations in comments, Eigen in code").
+// [-π, π] (closed range — atan2 can return both -π and +π exactly).
+// Same atan2(y, x) formulation as PlanarGeometryResult.cpp:35-46 and
+// ChiRotamerSelectionTrajectoryResult.cpp:22-40, but with strict NaN
+// guards at every degeneracy site — the other two sites differ in
+// degenerate behaviour (PlanarGeometry NaN-propagates implicitly via
+// zero-norm normalize(); ChiRotamer returns 0.0). NaN is the honest
+// signal for "indeterminate angle" and lets consumers distinguish from
+// a real 0 rad measurement. Per PATTERNS.md the utility-namespace
+// anti-pattern blocks extracting a shared helper; equation in comment
+// per PATTERNS Lesson 10 ("Equations in comments, Eigen in code"). The
+// drift between the three sites is tracked as a follow-up audit per
+// feedback_audit_the_formula_family.
 //
 //   D(p1,p2,p3,p4) = atan2( (n1×b̂2)·n2, n1·n2 )
 //     b1 = p2−p1, b2 = p3−p2, b3 = p4−p3
 //     n1 = b1×b2, n2 = b2×b3
-//
-// Degenerate (collinear b2 or |n1|, |n2| ≈ 0) returns NaN, not 0, so
-// downstream consumers can distinguish "indeterminate" from "0 rad."
 double Dihedral(const Vec3& p1, const Vec3& p2,
                 const Vec3& p3, const Vec3& p4) {
     const Vec3 b1 = p2 - p1;
@@ -61,12 +65,12 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
     return std::atan2(y, x);
 }
 
-// Wrap an angle to (-π, π].
+// Wrap an angle to [-π, π]. Uses std::remainder which is single-call,
+// bounded, and correct for arbitrary inputs — vs the historical while-
+// loop pattern which spins forever on pathologically-large inputs.
 double WrapPi(double a) {
     if (!std::isfinite(a)) return a;
-    while (a >   M_PI) a -= 2.0 * M_PI;
-    while (a <= -M_PI) a += 2.0 * M_PI;
-    return a;
+    return std::remainder(a, 2.0 * M_PI);
 }
 
 // Ramachandran-region binning. Boundaries (degrees → radians) follow the
@@ -115,15 +119,56 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     return kRamaOther;
 }
 
-// Two residues share a backbone-connected chain if their chain_id matches
-// AND consecutive sequence numbers are adjacent. (Residue.chain_id is the
-// authoritative chain label; ResidueTerminalState tags the residue end
-// state but doesn't itself encode a missing-residue gap. Chain_id +
-// sequence-adjacency catches both ends of a residue numbering gap.)
+// Two residues are backbone-connected when (a) they share a chain, (b)
+// neither is a chain terminus blocking the forward/backward connection,
+// AND (c) their sequence numbering is consistent with adjacency.
+//
+// The seq-number check has three branches:
+//   - normal sequential:  b.seq = a.seq + 1, both empty insertion codes
+//   - insertion-coded:    b.seq = a.seq, a.ins_code < b.ins_code lexically
+//                         (e.g. "" < "A" < "B" for antibody numbering
+//                         100 -> 100A -> 100B -> 100C -> 101)
+//   - non-monotonic seq < 0: log a warning and return false (legitimate
+//                            for engineered chimeras with concatenated
+//                            fragments, but worth a signal per
+//                            feedback_log_overages_dont_assert)
+//
+// The terminal_state check is the loader's authoritative signal for
+// chain ends. The seq+ins_code check catches mid-chain numbering gaps
+// that the loader didn't tag as termini.
 bool BackboneConnected(const Residue& a, const Residue& b) {
     if (a.chain_id != b.chain_id) return false;
-    if (b.sequence_number - a.sequence_number != 1) return false;
-    return true;
+    if (a.terminal_state == ResidueTerminalState::CTerminus ||
+        a.terminal_state == ResidueTerminalState::NAndCTerminus)
+        return false;
+    if (b.terminal_state == ResidueTerminalState::NTerminus ||
+        b.terminal_state == ResidueTerminalState::NAndCTerminus)
+        return false;
+
+    const int seq_diff = b.sequence_number - a.sequence_number;
+    if (seq_diff == 1) {
+        // Normal sequential — accept regardless of insertion_code unless
+        // both are insertion-coded (mid-insertion-block transition is
+        // covered by the seq_diff == 0 branch).
+        return true;
+    }
+    if (seq_diff == 0) {
+        // Insertion-coded pair at the same seq_number. Adjacency in
+        // chain order is lexical insertion-code progression
+        // (e.g. "" < "A" < "B").
+        return a.insertion_code < b.insertion_code;
+    }
+    if (seq_diff < 0) {
+        OperationLog::Warn(
+            "DihedralTimeSeriesTrajectoryResult::BackboneConnected",
+            "non-monotonic sequence numbering at chain " + a.chain_id +
+            ": " + std::to_string(a.sequence_number) +
+            " -> " + std::to_string(b.sequence_number) +
+            "; treating as not-connected");
+    }
+    // seq_diff > 1: numbering gap (missing residue between).
+    // seq_diff < 0: non-monotonic (engineered chimera / fragment join).
+    return false;
 }
 
 }  // anonymous namespace
@@ -263,13 +308,17 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         }
         omega_[ri].push_back(omega_val);
 
-        // omega_deviation = wrap(omega − π) to (-π, π]. NaN for X→Pro
-        // rows so downstream "deviation from planarity" stays a clean
-        // signal there (PlanarGeometryResult convention).
-        double omega_dev = kNaN;
-        if (std::isfinite(omega_val) && !omega_is_xpro_[ri]) {
-            omega_dev = WrapPi(omega_val - M_PI);
-        }
+        // omega_deviation = WrapPi(omega − π) ∈ [-π, π]. Emitted for
+        // every well-defined peptide bond INCLUDING X→Pro (cis/trans
+        // isomerism is real signal, not a deviation — use the
+        // omega_is_xpro static mask to flag those rows). Matches the
+        // PlanarGeometryResult.cpp:302-303 production impl. The PG
+        // header doc at PlanarGeometryResult.h:18-23 claims NaN-fill
+        // for X→Pro; the PG IMPL emits the actual value. We align with
+        // PG impl; PG header doc is flagged as a follow-up audit per
+        // feedback_audit_the_formula_family.
+        const double omega_dev = std::isfinite(omega_val)
+            ? WrapPi(omega_val - M_PI) : kNaN;
         omega_deviation_[ri].push_back(omega_dev);
 
         // ── chi[k] from Residue.chi[k] pre-cached atom indices ───────
@@ -337,21 +386,43 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
 
     grp.createAttribute("angle_units",  std::string("radians"));
     grp.createAttribute("periodicity",  std::string("2pi"));
+    grp.createAttribute("value_range",  std::string(
+        "[-pi, pi] (atan2 closed-range; both -pi and +pi can occur "
+        "exactly). Only omega_deviation is explicitly wrapped post-hoc. "
+        "Consumers comparing across frames must handle the +-pi "
+        "discontinuity (use circular differences)."));
     grp.createAttribute("angle_convention", std::string(
         "IUPAC signed dihedral atan2(y,x). "
         "phi   = C(i-1)-N(i)-CA(i)-C(i); "
         "psi   = N(i)-CA(i)-C(i)-N(i+1); "
         "omega = CA(i)-C(i)-N(i+1)-CA(i+1); "
         "chi_k from AminoAcidType.chi_angles (Residue.chi[k] pre-cached "
-        "atom indices, IUPAC sidechain order)."));
+        "atom indices, IUPAC sidechain order). "
+        "NOTE: DsspResult.Phi/Psi forward libdssp/libcifpp values which "
+        "use the NEGATED IUPAC sign convention "
+        "(phi_DSSP = -phi_IUPAC). This TR and PlanarGeometryResult use "
+        "IUPAC directly; downstream code comparing DsspResult to this "
+        "TR must negate one side. Verified by "
+        "test_dihedral_time_series.cpp CrossResultConsistency*."));
     grp.createAttribute("chain_break_policy", std::string(
-        "NaN at any dihedral spanning a chain boundary (chain_id mismatch "
-        "or sequence-number gap). Termini follow the same rule via the "
-        "preceding/following residue absence."));
+        "NaN at any dihedral spanning a chain boundary. BackboneConnected "
+        "uses Residue.terminal_state as the primary chain-end signal "
+        "(loader-authoritative) and falls back to seq_number + "
+        "insertion_code adjacency (e.g. 100 -> 100A -> 100B -> 101) for "
+        "mid-chain numbering gaps. NOTE: PlanarGeometryResult.cpp:287-309 "
+        "omits the chain-adjacency check and emits omega across non-bonded "
+        "gaps; this TR's stricter gate is the more correct behaviour. PG "
+        "tightening is tracked as a feedback_audit_the_formula_family "
+        "follow-up."));
     grp.createAttribute("omega_deviation_policy", std::string(
-        "wrap(omega - pi) to (-pi, pi]. NaN at X->Pro bonds where cis/trans "
-        "isomerism is real signal, not a deviation. Use omega_is_xpro mask "
-        "to identify those rows."));
+        "WrapPi(omega - pi) in [-pi, pi]. Emitted for EVERY well-defined "
+        "peptide bond INCLUDING X->Pro bonds (cis/trans isomerism at "
+        "X-Pro is real signal, not a deviation -- use the omega_is_xpro "
+        "static mask to flag those rows for consumer-side interpretation). "
+        "Matches the PlanarGeometryResult.cpp:302-303 production impl. "
+        "PG's own header doc (PlanarGeometryResult.h:18-23) claims NaN-fill "
+        "at X->Pro but the impl emits the actual value; this TR aligns "
+        "with PG impl. PG header doc fix tracked as follow-up audit."));
     grp.createAttribute("rama_region_legend", std::string(
         "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other"));
     grp.createAttribute("rama_region_boundaries", std::string(
@@ -359,11 +430,23 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "beta: phi[-180,-45], psi[90,180]U[-180,-150]; "
         "alphaL: phi[30,100], psi[-30,50]; "
         "PPII: phi[-90,-45], psi[120,180]; "
-        "boundaries in degrees, inclusive."));
+        "boundaries in degrees, inclusive both ends. "
+        "Resolution order: alphaR -> alphaL -> PPII -> beta -> other "
+        "(first match wins). PPII is a strict subset of beta at the "
+        "upper-psi corner; PPII is reported in the overlap. Downstream "
+        "re-binners should respect this resolution order; raw phi+psi "
+        "are also emitted to allow Lovell-Richardson-style re-bin."));
     grp.createAttribute("chi_symmetry_caveats", std::string(
-        "PHE/TYR chi2 has 180-degree ring-flip symmetry (CD1<->CD2 swap); "
-        "ASP chi2 / GLU chi3 have carboxylate symmetry. Raw chi here is the "
-        "IUPAC signed value. Rotamer counters that need mod-pi must apply it."));
+        "chi mod-pi (or near-mod-pi) symmetries that consumers must apply "
+        "themselves -- raw chi here is the IUPAC signed value: "
+        "PHE chi2 (CD1<->CD2 ring flip), TYR chi2 (CD1<->CD2 ring flip), "
+        "ASP chi2 (OD1<->OD2 carboxylate flip), GLU chi3 (OE1<->OE2 "
+        "carboxylate flip). Near-mod-pi at equilibrium: ARG chi-terminal "
+        "(guanidinium NH1<->NH2). Mod-(2pi/3): LYS chi-terminal (NH3+ "
+        "3-fold). NOT SYMMETRIC: TRP chi2 (CD1 / CD2 chemically distinct "
+        "across 5/6 ring junction), HIS chi2 (ND1 / CD2 chemically "
+        "distinct). Rotamer counters that need modular reduction must "
+        "apply it residue-by-residue."));
     grp.createAttribute("residue_terminal_state_legend", std::string(
         "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown"));
     grp.createAttribute("residue_axis", std::string("protein_residue_index"));
@@ -371,6 +454,15 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("source",       std::string(
         "positions + Residue.chi[k] (AminoAcidType.chi_angles) + Protein "
         "chain structure; no source ConformationResult dependency."));
+    grp.createAttribute("chunking_policy", std::string(
+        "Per-residue datasets chunked as {R, min(T, 64)} -- frame slabs "
+        "(`phi[:, t]`) fit in one chunk read for the movie-target viewer."));
+    grp.createAttribute("source_attached_policy", std::string(
+        "always_attached -- positions are always present at tp.Seed time, "
+        "so this TR has no conditional source. source_attached_per_frame "
+        "is emitted as all-1 for SDK uniformity with conditionally-"
+        "attached-source TRs (see OBJECT_MODEL.md 'Conditional-attach TR "
+        "discipline, 2026-05-15')."));
 
     // ── Per-frame (T,) ───────────────────────────────────────────────
     grp.createDataSet("frame_indices", frame_indices_)
@@ -382,8 +474,28 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
     ds_attached.createAttribute("units", std::string("dimensionless"));
     ds_attached.createAttribute("note", std::string(
         "Trivially always 1 for this TR. Positions are always present at "
-        "tp.Seed time; emitted for SDK uniformity with conditionally-"
-        "attached-source TRs."));
+        "tp.Seed time; this TR has no conditional source ConformationResult. "
+        "Dataset emitted to match the Conditional-attach TR discipline "
+        "(OBJECT_MODEL.md 'Conditional-attach TR discipline, 2026-05-15') "
+        "for SDK uniformity -- consumers reading either flavour of TR "
+        "see the same dataset shape."));
+
+    // Movie-target chunking: chunk shape {R, min(T, 64)} so per-frame
+    // slabs (`phi[:, t]`) are at most one chunk read. Larger chunks
+    // amortise the HDF5 chunk-cache overhead — 64 frames × R × 8 bytes
+    // is ~50 KB at R=100, in the recommended 16 KB-1 MB band. Smaller
+    // chunks would page-thrash; larger would over-read for single-frame
+    // movie playback.
+    const std::size_t frame_chunk = std::min<std::size_t>(T, 64);
+
+    auto make_chunk_props_2d = [&]() {
+        HighFive::DataSetCreateProps props;
+        props.add(HighFive::Chunking(std::vector<hsize_t>{
+            static_cast<hsize_t>(R),
+            static_cast<hsize_t>(std::max<std::size_t>(frame_chunk, 1u))
+        }));
+        return props;
+    };
 
     // ── Helpers: emit a residue-major flat 2D dataset (R, T). ────────
     auto emit_2d_f64 = [&](const std::string& name,
@@ -398,7 +510,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         }
         const std::vector<std::size_t> dims = {R, T};
         HighFive::DataSpace space(dims);
-        auto ds = grp.createDataSet<double>(name, space);
+        auto props = make_chunk_props_2d();
+        auto ds = grp.createDataSet<double>(name, space, props);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
     };
@@ -415,7 +528,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         }
         const std::vector<std::size_t> dims = {R, T};
         HighFive::DataSpace space(dims);
-        auto ds = grp.createDataSet<std::uint8_t>(name, space);
+        auto props = make_chunk_props_2d();
+        auto ds = grp.createDataSet<std::uint8_t>(name, space, props);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
     };
@@ -440,7 +554,13 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         }
         const std::vector<std::size_t> dims = {R, T, std::size_t(4)};
         HighFive::DataSpace space(dims);
-        auto ds = grp.createDataSet<double>("chi", space);
+        HighFive::DataSetCreateProps chi_props;
+        chi_props.add(HighFive::Chunking(std::vector<hsize_t>{
+            static_cast<hsize_t>(R),
+            static_cast<hsize_t>(std::max<std::size_t>(frame_chunk, 1u)),
+            hsize_t(4)
+        }));
+        auto ds = grp.createDataSet<double>("chi", space, chi_props);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("radians"));
         ds.createAttribute("axis_3", std::string("chi_index_0_to_3"));
@@ -454,8 +574,13 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         ds.write_raw(chi_exists_.data());
         ds.createAttribute("units", std::string("dimensionless"));
         ds.createAttribute("note", std::string(
-            "1 = chi[k] valid for this residue's AminoAcidType; 0 = not "
-            "defined (e.g. GLY/ALA have no chi)."));
+            "1 = chi[k] is STRUCTURALLY CACHEABLE at this residue (all "
+            "4 atom indices in Residue.chi[k] are non-NONE); 0 = chi[k] "
+            "not defined by the residue's AminoAcidType.chi_angles OR "
+            "the residue is structurally broken (e.g. ARG missing CZ). "
+            "Note: chi_exists==1 does NOT guarantee a finite chi value "
+            "at runtime -- per-frame geometry can be degenerate. Use "
+            "`isfinite(chi[ri, t, k])` for per-frame validity."));
     }
     auto put_u8 = [&](const std::string& name,
                        const std::vector<std::uint8_t>& v,
@@ -465,15 +590,20 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         ds.createAttribute("note", note);
     };
     put_u8("omega_is_xpro", omega_is_xpro_,
-        "1 if residue i+1 is Pro; cis/trans isomerism at X-Pro is real "
-        "signal so omega_deviation is NaN'd in those rows.");
+        "1 if residue i+1 is PRO; cis/trans isomerism at X-Pro is real "
+        "conformational signal (X-Pro cis is the canonical case). Flag "
+        "is set on residue i (whose peptide bond INTO Pro is the one to "
+        "interpret). omega_deviation at this row is still the actual "
+        "WrapPi(omega - pi) value -- consumer must apply the X-Pro "
+        "interpretation themselves.");
     put_u8("is_glycine", is_glycine_,
         "1 if residue is GLY; Rama allowed region is much wider for Gly.");
     put_u8("is_proline", is_proline_,
         "1 if residue is PRO; phi constrained to ~[-90, -30] by the ring.");
     put_u8("is_pre_proline", is_pre_proline_,
-        "1 if residue i+1 is PRO; psi has its own constrained region "
-        "(separate Rama plot).");
+        "1 if residue i+1 is PRO; flag is set on residue i (whose psi is "
+        "constrained by the next-residue Pro side chain). i has its own "
+        "constrained Rama region (separate plot from internal residues).");
     put_u8("residue_terminal_state", residue_terminal_state_,
         "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown");
 

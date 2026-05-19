@@ -15,18 +15,45 @@
 //   phi             N-terminal residue NaN; chain-break-in NaN
 //   psi             C-terminal residue NaN; chain-break-out NaN
 //   omega           C-terminal residue NaN; chain-break-out NaN
-//   omega_deviation omega − π wrapped to (−π, π]; NaN at X→Pro (mask)
-//   chi             (R, T, 4) — NaN where chi[k] not defined
+//   omega_deviation Wrap(omega − π) ∈ [−π, π]; emitted for EVERY
+//                   well-defined peptide bond INCLUDING X→Pro (cis/trans
+//                   isomerism is real signal, not a deviation — use
+//                   the `omega_is_xpro` static mask to flag those rows
+//                   for consumer-side interpretation). Matches the
+//                   PlanarGeometryResult.cpp:302-303 production impl.
+//   chi             (R, T, 4) — NaN where chi[k] not structurally
+//                   cacheable for the residue's AminoAcidType OR
+//                   where per-frame geometry is degenerate (consumers
+//                   should use isfinite(chi) for runtime validity).
 //   rama_region     uint8 R × T (0=unassigned, 1=αR, 2=β, 3=αL,
-//                                4=PPII, 5=other)
+//                                4=PPII, 5=other; resolution order
+//                                αR → αL → PPII → β → other, first match
+//                                wins; see rama_region_boundaries attr)
+//
+// Dihedral value range: [-π, π] with discontinuity at ±π. atan2 returns
+// the closed range; only omega_deviation is explicitly wrapped post-hoc.
+// Consumers comparing dihedrals across frames must handle the ±π
+// discontinuity (use circular differences, not naive subtraction).
 //
 // Per-residue static masks (R rows):
 //
-//   chi_exists                 (R, 4) uint8 — chi[k] valid for this AA
-//   omega_is_xpro              (R,)   uint8 — bond i→(i+1) is X→Pro
+//   chi_exists                 (R, 4) uint8 — chi[k] structurally
+//                                       cacheable (all 4 atom indices
+//                                       non-NONE in Residue.chi[k]).
+//                                       chi_exists==1 does NOT guarantee
+//                                       finite chi value at runtime —
+//                                       geometry can be degenerate. Use
+//                                       isfinite(chi[ri, t, k]) for
+//                                       per-frame validity.
+//   omega_is_xpro              (R,)   uint8 — flag set on residue i if
+//                                       i+1 is PRO (cis/trans real
+//                                       signal there). Flag is on i,
+//                                       NOT on the Pro residue.
 //   is_glycine                 (R,)   uint8 — Rama special: full allowed map
 //   is_proline                 (R,)   uint8 — Rama special: phi constrained
-//   is_pre_proline             (R,)   uint8 — psi constrained because i+1=Pro
+//   is_pre_proline             (R,)   uint8 — flag on residue i if i+1=PRO;
+//                                       i's psi has its own constrained
+//                                       region (separate Rama plot).
 //   residue_terminal_state     (R,)   uint8 — see ResidueTerminalState legend
 //   chain_id_per_residue       (R,)   string — variable-length chain IDs
 //
@@ -63,10 +90,16 @@
 //     re-binning against Lovell-Richardson maps is left to downstream.
 //
 // Chi symmetry caveats (consumer responsibility; group attr documents):
-//   - PHE/TYR χ₂ has 180° ring-flip symmetry (CD1↔CD2 swap). Raw χ₂ here
-//     is the IUPAC-signed value; rotamer counters that need mod-π must
-//     apply it themselves.
-//   - ASP χ₂ / GLU χ₃ have carboxylate-end symmetry; same caveat.
+//   - PHE χ₂ (CD1↔CD2 ring flip) — mod-π
+//   - TYR χ₂ (CD1↔CD2 ring flip) — mod-π
+//   - ASP χ₂ (OD1↔OD2 carboxylate flip) — mod-π
+//   - GLU χ₃ (OE1↔OE2 carboxylate flip) — mod-π
+//   - ARG χ-terminal (guanidinium NH1↔NH2) — quasi-mod-π near equilibrium
+//   - LYS χ-terminal (NH3+ 3-fold) — mod-(2π/3)
+//   - **NOT symmetric**: TRP χ₂ (CD1/CD2 chemically distinct, 5-ring vs
+//     5/6-junction), HIS χ₂ (ND1/CD2 chemically distinct).
+//   Raw χ here is the IUPAC-signed value; rotamer counters that need
+//   mod-π / mod-(2π/3) must apply the modular reduction themselves.
 //
 // Movie/playback note: this TR is the dihedral-state source for the
 // viewer's color-by / glyph rendering. Per-frame resolution; no
