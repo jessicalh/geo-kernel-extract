@@ -87,7 +87,16 @@ void Dssp8TimeSeriesTrajectoryResult::Compute(
         const auto& dssp_residues = dssp.AllResidues();
         const std::size_t dssp_R = dssp_residues.size();
         for (std::size_t ri = 0; ri < R; ++ri) {
-            if (ri < dssp_R) {
+            // Codex review 2026-05-19: index-bounds check is necessary
+            // but NOT sufficient. DsspResult resizes residues_ to
+            // ResidueCount() and leaves unmapped entries at default
+            // (secondary_structure='C', observed=false). Treating
+            // `ri < dssp_R` as observed would silently bias unmapped
+            // residues (caps, insertion-coded mismatches, DSSP skips)
+            // into real coil. Use the observed flag instead.
+            const bool residue_observed =
+                ri < dssp_R && dssp_residues[ri].observed;
+            if (residue_observed) {
                 const auto& dr = dssp_residues[ri];
                 ss8_code_[ri].push_back(Ss8Code(dr.secondary_structure));
                 hbond_acceptor_partner_[ri].push_back({
@@ -103,8 +112,10 @@ void Dssp8TimeSeriesTrajectoryResult::Compute(
                     dr.donors[0].residue_index < R ? dr.donors[0].energy : kNaN,
                     dr.donors[1].residue_index < R ? dr.donors[1].energy : kNaN});
             } else {
-                // DSSP didn't report this residue (size mismatch). Treat
-                // as absent for this residue this frame.
+                // DSSP didn't actually map this residue (size mismatch
+                // OR observed=false). Treat as absent for this residue
+                // this frame so consumers can distinguish "DSSP said
+                // coil" from "DSSP never wrote here."
                 ss8_code_[ri].push_back(kSSUnassigned);
                 hbond_acceptor_partner_[ri].push_back({kNoPartner, kNoPartner});
                 hbond_acceptor_energy_[ri].push_back({kNaN, kNaN});

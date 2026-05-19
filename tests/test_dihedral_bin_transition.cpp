@@ -233,9 +233,11 @@ TEST(DihedralBinTransition, Integration1P9J) {
     // Invariants:
     // (1) Sum of bin occupancy across non-unassigned bins equals
     //     n_frames_observed for each residue.
-    // (2) transition_count <= n_frames_observed (transitions can occur
+    // (2) Sum of ALL bin occupancy (including unassigned bin 0) equals
+    //     T — every frame accounted for (codex-review-2026-05-19 fix).
+    // (3) transition_count <= n_frames_observed (transitions can occur
     //     at most once per consecutive observed-frame pair).
-    // (3) For non-N-term, non-C-term residues on 1P9J (linear single-
+    // (4) For non-N-term, non-C-term residues on 1P9J (linear single-
     //     chain monotonic), n_frames_observed should equal T.
     std::size_t residues_fully_observed = 0;
     std::size_t total_transitions = 0;
@@ -243,7 +245,10 @@ TEST(DihedralBinTransition, Integration1P9J) {
         std::uint32_t sum_non_unassigned = 0;
         for (std::size_t b = 1; b < 6; ++b) sum_non_unassigned += bb_occ[ri][b];
         EXPECT_EQ(sum_non_unassigned, n_obs[ri])
-            << "occupancy sum != n_frames_observed at ri=" << ri;
+            << "non-unassigned occupancy sum != n_frames_observed at ri=" << ri;
+        std::uint32_t sum_all = bb_occ[ri][0] + sum_non_unassigned;
+        EXPECT_EQ(sum_all, T)
+            << "total occupancy sum (including unassigned bin 0) != T at ri=" << ri;
         EXPECT_LE(bb_trans_count[ri], n_obs[ri])
             << "transition_count > n_frames_observed at ri=" << ri;
         if (n_obs[ri] == T) ++residues_fully_observed;

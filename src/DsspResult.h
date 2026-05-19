@@ -32,10 +32,22 @@
 namespace nmr {
 
 struct DsspResidue {
-    char secondary_structure = 'C';  // H/G/I/E/B/T/S/C
-    double phi = 0.0;                // radians
-    double psi = 0.0;                // radians
-    double sasa = 0.0;               // Angstroms^2
+    // observed = true iff a DSSP output row actually mapped to this
+    // residue index. The result vector is resized to ResidueCount() at
+    // Compute time, but only residues whose (chain_id, seq_num) lookup
+    // hits in the cif++/libdssp output get populated. Without this
+    // flag, unmapped residues (caps, unmapped chains, insertion-code
+    // collisions, DSSP skips) would silently look like real coil "C" —
+    // the secondary_structure default, biasing downstream coil
+    // occupancy and helix-dwell statistics. Codex review caught this
+    // 2026-05-19; the failure mode is invisible on linear-single-chain
+    // test fixtures but real on multi-chain / capped / engineered
+    // structures the fleet will see.
+    bool   observed = false;
+    char secondary_structure = 'C';  // H/G/I/E/B/T/S/C (valid only when observed)
+    double phi = 0.0;                // radians (valid only when observed)
+    double psi = 0.0;                // radians (valid only when observed)
+    double sasa = 0.0;               // Angstroms^2 (valid only when observed)
 
     // H-bond partner indices (into protein residue list, SIZE_MAX if none)
     struct HBondPartner {

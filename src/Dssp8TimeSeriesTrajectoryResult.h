@@ -118,6 +118,15 @@ public:
 
     // Test-only: bypass the per-frame `conf.HasResult<DsspResult>()`
     // check. Used by synthetic unit tests that bypass OperationRunner.
+    //
+    // SAFETY (codex review 2026-05-19): When the flag is true, Compute
+    // takes the source-attached branch and calls `conf.Result<DsspResult>()`
+    // — which THROWS if DsspResult was not actually attached. So the
+    // test caller MUST attach DsspResult to every ProteinConformation
+    // it passes to Compute before setting this flag. (TripeptideBB-
+    // and Larsen-family TRs read a per-atom field instead of
+    // .Result<>() and are safe; THIS TR reads the Result object, so
+    // the constraint is real.)
     void ForceSourcePresentForTesting() {
         force_source_present_for_testing_ = true;
     }

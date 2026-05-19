@@ -69,7 +69,12 @@ void Dssp8TransitionTrajectoryResult::Compute(
         const std::size_t dssp_R = dssp_residues.size();
         for (std::size_t ri = 0; ri < R; ++ri) {
             std::uint8_t cur = kSSUnassigned;
-            if (ri < dssp_R) {
+            // Codex review 2026-05-19: only count a residue as observed
+            // when the DSSP row actually mapped (observed=true),
+            // NOT just when ri < dssp_R. Otherwise unmapped residues
+            // (caps, insertion-code mismatches) silently look like coil
+            // and inflate transition counts to/from C.
+            if (ri < dssp_R && dssp_residues[ri].observed) {
                 cur = Dssp8TimeSeriesTrajectoryResult::Ss8Code(
                     dssp_residues[ri].secondary_structure);
             }

@@ -1353,12 +1353,26 @@ class DihedralBinTransitionGroup:
     DihedralTimeSeriesGroup (which carries per-frame raw angles).
 
     Bin labels match DihedralTimeSeriesGroup.rama_region verbatim:
-      0=unassigned, 1=αR, 2=β, 3=αL, 4=PPII, 5=other.
-    Chi rotamer bins:
-      0=g+ (0 < chi ≤ 120°), 1=trans (|chi| > 120°), 2=g- (-120° ≤ chi < 0°),
-      255=unassigned (chi not defined for this AA or per-frame geometry
-      degenerate). Three-bin convention matches
-      ChiRotamerSelectionTrajectoryResult.
+      0=unassigned (phi or psi NaN at termini / non-bonded gaps),
+      1=αR, 2=β, 3=αL, 4=PPII, 5=other. Boundaries follow
+      Lovell-Richardson 2003 favored regions (Berkholz/Adzhubei tight
+      PPII cone) — see DihedralTimeSeriesGroup.rama_region_boundaries
+      attr for inclusive degree-coordinate ranges + resolution order.
+    Chi rotamer bins (Lovell-Richardson 2003 convention, 2026-05-19
+    fix):
+      0=g+ (0 < chi < 120°), 1=trans (|chi| ≥ 120°), 2=g-
+      (-120° < chi ≤ 0°), 255=unassigned (chi not defined for this AA
+      or per-frame geometry degenerate). chi == 0 exactly lands in g-
+      (rare in MD). Note: ChiRotamerSelectionTrajectoryResult (in the
+      slated-for-removal ScanForDftPointSet config) uses a DIFFERENT
+      strict-`>` convention that puts ±120° in gauche; this group
+      uses the Lovell-Richardson trans-inclusive convention. The two
+      are documented-divergent.
+
+    Bin 0 (unassigned) IS populated in `backbone_bin_occupancy[:, 0]`
+    (codex-review-2026-05-19 fix): every frame contributes to exactly
+    one bin, so `sum(backbone_bin_occupancy[ri, :]) == n_frames` for
+    all residues, and `n_frames_observed[ri] == sum(occupancy[ri, 1:])`.
 
     Transition gate: BOTH prev and curr frame must have an observed bin
     (non-unassigned) for a transition to count. Consecutive-frame walk;

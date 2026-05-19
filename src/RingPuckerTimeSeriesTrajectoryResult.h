@@ -97,6 +97,12 @@ public:
 
     std::size_t NumFrames() const { return n_frames_; }
 
+    // Test-only: bypass the per-frame `conf.HasResult<PlanarGeometryResult>()`
+    // check. SAFETY (codex review 2026-05-19): When this flag is true,
+    // Compute calls `conf.Result<PlanarGeometryResult>()` which throws
+    // if the Result is not actually attached. Test caller MUST attach
+    // PlanarGeometryResult to every ProteinConformation before setting
+    // this flag.
     void ForceSourcePresentForTesting() {
         force_source_present_for_testing_ = true;
     }
