@@ -141,8 +141,8 @@ TEST(JCouplingTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(reopen.exist("/trajectory/j_coupling_time_series"));
     auto grp = reopen.getGroup("/trajectory/j_coupling_time_series");
 
-    for (const std::string& name : {"J_HN_Halpha", "J_N_Cgamma",
-                                     "J_Cprime_Cgamma"}) {
+    for (const std::string& name : {"J_HN_Halpha", "J_HN_Cbeta",
+                                     "J_N_Cgamma", "J_Cprime_Cgamma"}) {
         ASSERT_TRUE(grp.exist(name)) << name;
         const auto dims = grp.getDataSet(name).getSpace().getDimensions();
         ASSERT_EQ(dims.size(), 2u);
@@ -151,19 +151,25 @@ TEST(JCouplingTimeSeries, H5RoundTrip) {
     }
 
     EXPECT_TRUE(grp.exist("J_HN_Halpha_exists"));
+    EXPECT_TRUE(grp.exist("J_HN_Cbeta_exists"));
     EXPECT_TRUE(grp.exist("J_chi1_exists"));
     EXPECT_TRUE(grp.exist("residue_index_per_atom"));
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
 
-    // Convention attrs
-    std::string karplus, hn_ha, n_cg, units;
+    // Convention attrs — citation pins are auditable from the H5 itself.
+    std::string karplus, hn_ha, hn_cb, n_cg, units;
     grp.getAttribute("karplus_form").read(karplus);
     grp.getAttribute("J_HN_Halpha_coefficients").read(hn_ha);
+    grp.getAttribute("J_HN_Cbeta_coefficients").read(hn_cb);
     grp.getAttribute("J_N_Cgamma_coefficients").read(n_cg);
     grp.getAttribute("units").read(units);
     EXPECT_NE(karplus.find("cos^2"), std::string::npos);
-    EXPECT_NE(hn_ha.find("Wang"), std::string::npos);
+    EXPECT_NE(hn_ha.find("Vuister"), std::string::npos);
+    EXPECT_NE(hn_ha.find("1993"), std::string::npos);
+    EXPECT_NE(hn_cb.find("Wang"), std::string::npos);
+    EXPECT_NE(hn_cb.find("1996"), std::string::npos);
     EXPECT_NE(n_cg.find("Perez"), std::string::npos);
+    EXPECT_NE(n_cg.find("2001"), std::string::npos);
     EXPECT_EQ(units, "Hz");
 
     fs::remove(h5_path);
@@ -196,30 +202,37 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/j_coupling_time_series");
 
-    std::vector<std::vector<double>> j_hn, j_n_cg, j_cp_cg;
+    std::vector<std::vector<double>> j_hn, j_hn_cb, j_n_cg, j_cp_cg;
     grp.getDataSet("J_HN_Halpha").read(j_hn);
+    grp.getDataSet("J_HN_Cbeta").read(j_hn_cb);
     grp.getDataSet("J_N_Cgamma").read(j_n_cg);
     grp.getDataSet("J_Cprime_Cgamma").read(j_cp_cg);
     ASSERT_EQ(j_hn.size(), R);
+    ASSERT_EQ(j_hn_cb.size(), R);
 
-    std::vector<std::uint8_t> hn_exists, chi1_exists;
+    std::vector<std::uint8_t> hn_exists, hn_cb_exists, chi1_exists;
     grp.getDataSet("J_HN_Halpha_exists").read(hn_exists);
+    grp.getDataSet("J_HN_Cbeta_exists").read(hn_cb_exists);
     grp.getDataSet("J_chi1_exists").read(chi1_exists);
     ASSERT_EQ(hn_exists.size(), R);
+    ASSERT_EQ(hn_cb_exists.size(), R);
     ASSERT_EQ(chi1_exists.size(), R);
 
     // Per-residue invariants:
-    // (1) PRO has no HN, so J_HN_Halpha exists mask == 0 and the
-    //     corresponding row is all-NaN.
-    // (2) GLY/ALA have no chi1, so J_chi1_exists == 0 and both
+    // (1) PRO has no HN, so J_HN_Halpha and J_HN_Cbeta exists masks
+    //     == 0 and the corresponding rows are all-NaN.
+    // (2) GLY has no Cbeta, so J_HN_Cbeta_exists == 0 and that row
+    //     is all-NaN.
+    // (3) GLY/ALA have no chi1, so J_chi1_exists == 0 and both
     //     chi1-dependent J channels are all-NaN.
-    // (3) Karplus arithmetic bounds. 3J(θ) = A·cos²(θ) + B·cos(θ) + C
+    // (4) Karplus arithmetic bounds. 3J(θ) = A·cos²(θ) + B·cos(θ) + C
     //     is a closed-form quadratic in cos(θ); over cos(θ) ∈ [-1, 1]
-    //     and A > 0, B < 0 (for all three published parametrizations)
+    //     and A > 0, B < 0 (for all four published parametrizations)
     //     the global max is f(-1) = A - B + C = A + |B| + C and the
     //     global min is at the vertex u* = -B/(2A) ∈ (0, 1), evaluating
     //     to f(u*) = C - B²/(4A). Numerical values:
-    //       J(HN,Hα)  : [1.48, 9.87] Hz (Wang & Bax 1996)
+    //       J(HN,Hα)  : [1.48, 9.87] Hz (Vuister & Bax 1993)
+    //       J(HN,Cβ)  : [0.005, 4.40] Hz (Wang & Bax 1996, refit row 3)
     //       J(N,Cγ)   : [0.32, 2.15] Hz (Pérez 2001)
     //       J(C',Cγ)  : [0.20, 2.56] Hz (Pérez 2001)
     //     A violation indicates wrong coefficients or wrong dihedral
@@ -227,19 +240,32 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     //     TRR-float32 / chi-fallback path enters here). Bounds below
     //     have small slack for float epsilon and to leave room for
     //     refit Karplus parametrizations.
-    std::size_t pro_count = 0, gly_ala_count = 0;
-    std::size_t hn_finite_obs = 0, n_cg_finite_obs = 0, cp_cg_finite_obs = 0;
+    std::size_t pro_count = 0, gly_count = 0, gly_ala_count = 0;
+    std::size_t hn_finite_obs = 0, hn_cb_finite_obs = 0;
+    std::size_t n_cg_finite_obs = 0, cp_cg_finite_obs = 0;
     for (std::size_t ri = 0; ri < R; ++ri) {
         const auto& res = tp.ProteinRef().ResidueAt(ri);
         const bool is_pro = (res.type == nmr::AminoAcid::PRO);
+        const bool is_gly = (res.type == nmr::AminoAcid::GLY);
         const bool is_gly_ala = (res.type == nmr::AminoAcid::GLY ||
                                    res.type == nmr::AminoAcid::ALA);
         if (is_pro) {
             ++pro_count;
             EXPECT_EQ(hn_exists[ri], 0u);
+            EXPECT_EQ(hn_cb_exists[ri], 0u);
             for (std::size_t t = 0; t < T; ++t) {
                 EXPECT_TRUE(std::isnan(j_hn[ri][t]))
                     << "PRO ri=" << ri << " J_HN_Halpha should be NaN";
+                EXPECT_TRUE(std::isnan(j_hn_cb[ri][t]))
+                    << "PRO ri=" << ri << " J_HN_Cbeta should be NaN";
+            }
+        }
+        if (is_gly) {
+            ++gly_count;
+            EXPECT_EQ(hn_cb_exists[ri], 0u);  // GLY: no Cβ
+            for (std::size_t t = 0; t < T; ++t) {
+                EXPECT_TRUE(std::isnan(j_hn_cb[ri][t]))
+                    << "GLY ri=" << ri << " J_HN_Cbeta should be NaN";
             }
         }
         if (is_gly_ala) {
@@ -256,6 +282,11 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
                 EXPECT_GE(j_hn[ri][t], 1.0)  << "J(HN,Hα) below Karplus min ~1.48";
                 EXPECT_LE(j_hn[ri][t], 10.0) << "J(HN,Hα) above Karplus max ~9.87";
             }
+            if (std::isfinite(j_hn_cb[ri][t])) {
+                ++hn_cb_finite_obs;
+                EXPECT_GE(j_hn_cb[ri][t], 0.0) << "J(HN,Cβ) below Karplus min ~0.005";
+                EXPECT_LE(j_hn_cb[ri][t], 5.0) << "J(HN,Cβ) above Karplus max ~4.40";
+            }
             if (std::isfinite(j_n_cg[ri][t])) {
                 ++n_cg_finite_obs;
                 EXPECT_GE(j_n_cg[ri][t], 0.0) << "J(N,Cγ) below Karplus min ~0.32";
@@ -270,11 +301,14 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     }
     std::cout << "JCouplingTimeSeries: R=" << R << " T=" << T
               << " PRO=" << pro_count
+              << " GLY=" << gly_count
               << " GLY+ALA=" << gly_ala_count
               << " | J(HN,Hα) finite obs=" << hn_finite_obs
+              << " | J(HN,Cβ) finite obs=" << hn_cb_finite_obs
               << " | J(N,Cγ) finite obs=" << n_cg_finite_obs
               << " | J(C',Cγ) finite obs=" << cp_cg_finite_obs << "\n";
     EXPECT_GT(hn_finite_obs, 0u);
+    EXPECT_GT(hn_cb_finite_obs, 0u);
     EXPECT_GT(n_cg_finite_obs, 0u);
     EXPECT_GT(cp_cg_finite_obs, 0u);
 

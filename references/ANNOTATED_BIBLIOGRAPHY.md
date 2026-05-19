@@ -160,6 +160,33 @@ Experimental validation of H-bond geometry effects on NMR
 observables. The cos^2(alpha)/r^3 angular dependence of H-bond
 shielding used in the code is grounded in this work.
 
+### Numerical quadrature (supports HM ring-surface integral)
+
+A16. Stroud, A.H. (1971) *Approximate Calculation of Multiple
+Integrals*. Prentice-Hall, Englewood Cliffs, NJ.
+
+The classical reference for fully-symmetric Gaussian quadrature
+rules on standard simplexes (line, triangle, tetrahedron,
+hyper-cube). The 7-point degree-5 triangular rule labelled
+"T2:5-1" \[one centroid node + six symmetric nodes\] is what the
+fan-triangulated `HaighMallionResult.cpp:285-289` uses for the
+per-triangle integration of the dipolar kernel over the ring
+polygon. Integrates polynomials of total degree \[Le]5 exactly on
+the reference triangle. Stroud's catalogue convention
+(T<dim>:<degree>-<count>) is what shows up verbatim in the kernel
+comments.
+
+A17. Dunavant, D.A. (1985) "High degree efficient symmetrical
+Gaussian quadrature rules for the triangle." *Int. J. Numer.
+Methods Eng.* 21, 1129--1148. DOI: 10.1002/nme.1620210612
+
+FEM-community restatement of Stroud's triangular degree-5 rule
+(the "Dunavant degree-5" rule, Table I row 5). Same 7-point rule,
+same nodes and weights, different surrounding context. Citing this
+alongside Stroud 1971 makes the quadrature locatable for readers
+coming from either the classical-numerical-analysis tradition or
+the finite-element tradition.
+
 ---
 
 ## B. DFT Shielding Calculations
@@ -1589,6 +1616,24 @@ tensors, and the observable is back-calculable from per-frame
 R1/R2/R1ρ row and rollup W3 (`nh_dipolar_csa_ccr_rate`).**
 Paywalled.
 
+### Designed mini-proteins and illustrative substrates
+
+**L13. Neidigh, J.W., Fesinmeyer, R.M. & Andersen, N.H. (2002)**
+"Designing a 20-residue protein." *Nat. Struct. Biol.* 9, 425--430.
+DOI: 10.1038/nsb798
+
+The Trp-cage NMR mini-protein. PDB 1L2Y. Sequence
+NLYIQWLKDGGPSSGRPPPS \[20 residues; the smallest known
+fully-folded protein with a hydrophobic core\]. The fold packs a
+single tryptophan indole against a tyrosine phenol via a short
+α-helix and a polyproline-II turn; the resulting cluster of three
+aromatic rings in a small, NMR-determined geometry makes Trp-cage
+the natural substrate for walking through aromatic-ring shielding
+kernels on real coordinates. **Substrate for §§ 2--13 of
+`doc/mathematica/RingCurrents_BS_HM.nb` and for any future
+illustrative-peptide walkthrough that wants a real fold rather
+than synthetic geometry.**
+
 ---
 
 ## M. Protein Dynamics & NMR Relaxation
@@ -2140,3 +2185,62 @@ emission (planned). The input-side `NamingApplicator`
 does NOT consume this table — input and output sides stay
 architecturally separate; see memory entry
 `feedback_naming_input_output_asymmetry`.
+
+---
+
+### Karplus ³J-coupling parametrizations
+
+Three open-access PDFs + one paywalled-citation that pin the
+Karplus coefficients used by `JCouplingTimeSeriesTrajectoryResult`
+(committed 2026-05-19). Coefficients live in
+`src/PhysicalConstants.h`; PDFs alongside in this directory.
+
+**Vuister & Bax 1993** — *J. Am. Chem. Soc.* 115, 7772–7777.
+"Quantitative J correlation: a new approach for measuring
+homonuclear three-bond J(HNHα) coupling constants in 15N-enriched
+proteins." DOI 10.1021/ja00070a024. Primary reference for the
+³J(HN, Hα) Karplus coefficients A=6.51, B=-1.76, C=1.60.
+
+**Wang & Bax 1996** — *J. Am. Chem. Soc.* 118, 2483–2494.
+"Determination of the backbone dihedral angles φ in human ubiquitin
+from reparametrized empirical Karplus equations." DOI
+10.1021/ja9535524. Open access at the Bax-group repository; saved
+locally as `references/wang-bax-1996-karplus-phi-ubiquitin.pdf`.
+Table 1 (page 2487) is the primary source for the ³J(HN, Cβ)
+Karplus coefficients A=3.39, B=-0.94, C=0.07 (NMR/X-ray refined
+fit, row 3). The paper also publishes a refit ³J(HN, Hα) at
+(6.98, -1.38, 1.72) — Wang-Bax-1996-refit is an alternative to
+the 1993 thesis-default. Byte-verified against the PDF on
+2026-05-19.
+
+**Vuister teaching lecture** — `references/vuister-lecture-j-
+couplings.pdf` from nmrwiki.org/wiki/images/4/42/. Open-access
+teaching slides quoting the 1993 Karplus coefficients verbatim,
+plus historical Bystrov 1976 values. Used as the byte-source for
+the Vuister-Bax 1993 numerical values during the 2026-05-19
+citation audit (the original 1993 paper is at the JACS paywall).
+
+**Li, Lee, Grishaev, Ying & Bax 2015** — *ChemPhysChem* 16,
+572–578. DOI 10.1002/cphc.201402704. Open access at the Bax-group
+repository; saved locally as `references/li-bax-2015-protein-
+j-couplings-side-chain.pdf`. Documents the modern usage convention:
+the Karplus equation is evaluated against the actual atom-by-atom
+3-bond dihedral computed directly from coordinates (not against
+phi + offset), with θ explicitly defined as "the HNCαHα atomic
+dihedral". This is the form
+`JCouplingTimeSeriesTrajectoryResult` implements.
+
+**Pérez, Löhr, Rüterjans & Schmidt 2001** — *J. Am. Chem. Soc.*
+123, 7081–7093. DOI 10.1021/ja003724j. "Self-consistent Karplus
+parametrization of ³J couplings depending on the polypeptide side-
+chain torsion χ1." Citation source for the ³J(N, Cγ) coefficients
+A=1.29, B=-0.49, C=0.37 and ³J(C', Cγ) coefficients A=1.74,
+B=-0.57, C=0.25. PDF behind ACS paywall — not saved locally. The
+2026-05-19 literature audit confirmed the citation and that the
+values appear unchanged in TALOS-N / NMRViewJ / etc. but could NOT
+byte-verify the coefficients against the published Table.
+`PhysicalConstants.h` and the H5 attrs both carry the explicit
+"coefficient byte-verification pending institutional access"
+caveat. To close this loop: institutional access to ACS, or a
+Schmidt-group follow-up paper that quotes the original coefficients
+verbatim.

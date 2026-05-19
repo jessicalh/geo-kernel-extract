@@ -1611,26 +1611,43 @@ class JCouplingTimeSeriesGroup:
     """Per-residue per-frame Karplus ³J observables from
     /trajectory/j_coupling_time_series/.
 
-    Three channels (R, T) float64 in Hz; thin Karplus transform of the
+    Four channels (R, T) float64 in Hz; thin Karplus transform of the
     persisted phi/chi1 timeline. NaN within frames indicates the channel
-    is structurally absent for this residue (PRO has no HN; GLY/ALA have
-    no chi1).
+    is structurally absent for this residue (PRO has no HN; GLY has no
+    Cβ; GLY/ALA have no chi1).
 
       J_HN_Halpha     ³J(HN, Hα) via H-N-CA-HA dihedral; phi observable.
-                      Wang & Bax 1996 JACS 118:2483 parametrization.
+                      Vuister & Bax 1993 JACS 115:7772 (DOI 10.1021/
+                      ja00070a024).
+      J_HN_Cbeta      ³J(HN, Cβ) via H-N-CA-CB dihedral; phi observable
+                      (orthogonal to J(HN,Hα); the pair overdetermines
+                      phi). Wang & Bax 1996 JACS 118:2483 NMR/X-ray
+                      refined fit (DOI 10.1021/ja9535524).
       J_N_Cgamma      ³J(N, Cγ) via N-CA-CB-CG (= chi1); chi1 rotamer.
-                      Pérez et al. 2001 JACS 123:7081.
+                      Pérez et al. 2001 JACS 123:7081 (DOI 10.1021/
+                      ja003724j).
       J_Cprime_Cgamma ³J(C', Cγ) via C-CA-CB-CG (chi1 with C' leading);
-                      120° offset on Cβ-Cα axis. Pérez 2001.
+                      120° offset on Cβ-Cα axis. Pérez 2001 (same DOI).
 
     Karplus form: ³J(θ) = A·cos²(θ) + B·cos(θ) + C, θ in radians via
-    IUPAC signed atan2. Coefficients per channel:
+    IUPAC signed atan2 computed directly from atom positions (never
+    reconstructed from phi + offset). Coefficients per channel:
       J_HN_Halpha     A=6.51, B=-1.76, C=1.60 (range [1.48, 9.87] Hz)
+      J_HN_Cbeta      A=3.39, B=-0.94, C=0.07 (range [0.005, 4.40] Hz)
       J_N_Cgamma      A=1.29, B=-0.49, C=0.37 (range [0.32, 2.15] Hz)
       J_Cprime_Cgamma A=1.74, B=-0.57, C=0.25 (range [0.20, 2.56] Hz)
 
+    Coefficient byte-verification (2026-05-19): Vuister-Bax 1993 ³J(HN,
+    Hα) values verified via the Vuister teaching-lecture quotation;
+    Wang-Bax 1996 ³J(HN, Cβ) values byte-verified from Table 1 row 3
+    of the open Bax-group PDF copy; Pérez 2001 values widely circulated
+    in TALOS-N / NMRViewJ / etc. but original paper paywalled — citation
+    confirmed, coefficient byte-verification pending institutional
+    access. All numerics live in src/PhysicalConstants.h.
+
     Static per-residue masks (R,) uint8:
       J_HN_Halpha_exists  1 if H + N + CA + HA all cached.
+      J_HN_Cbeta_exists   1 if H + N + CA + CB all cached (PRO=0; GLY=0).
       J_chi1_exists       1 if chi1 atoms valid (i.e. not GLY/ALA).
 
     Per-atom lookup (N,) int32:
@@ -1639,19 +1656,23 @@ class JCouplingTimeSeriesGroup:
                               J channels).
 
     GLY caveat: GLY uses Residue.HA which is HA2 by Residue.h convention;
-    HA3 is not separately measured here. Consumers needing pro-R/pro-S
-    resolution on glycine should compute directly from the two Hα atom
-    indices.
+    HA3 is not separately measured here. The Vuister-Bax 1993 fit DID
+    include glycine ³J values, so the published (A, B, C) absorb the
+    pro-R/pro-S averaging error. Consumers needing strict pro-R/pro-S
+    resolution should compute directly from the two Hα atom indices.
 
-    Source: positions + Residue backbone-cache + chi1 atom indices. No
-    source ConformationResult dependency (positions present from
-    tp.Seed; source_attached_per_frame trivially all-1 for SDK uniformity
-    under the OBJECT_MODEL "Conditional-attach TR" canonical statement).
+    Source: positions + Residue backbone-cache (H, N, CA, HA, CB, C) +
+    chi1 atom indices. No source ConformationResult dependency
+    (positions present from tp.Seed; source_attached_per_frame trivially
+    all-1 for SDK uniformity under the OBJECT_MODEL "Conditional-attach
+    TR" canonical statement).
     """
     J_HN_Halpha: np.ndarray                  # (R, T) Hz
+    J_HN_Cbeta: np.ndarray                   # (R, T) Hz
     J_N_Cgamma: np.ndarray                   # (R, T) Hz
     J_Cprime_Cgamma: np.ndarray              # (R, T) Hz
     J_HN_Halpha_exists: np.ndarray           # (R,) uint8
+    J_HN_Cbeta_exists: np.ndarray            # (R,) uint8
     J_chi1_exists: np.ndarray                # (R,) uint8
     residue_index_per_atom: np.ndarray       # (N,) int32
     frame_indices: np.ndarray
@@ -1662,6 +1683,7 @@ class JCouplingTimeSeriesGroup:
     n_frames: int
     karplus_form: str
     J_HN_Halpha_coefficients: str
+    J_HN_Cbeta_coefficients: str
     J_N_Cgamma_coefficients: str
     J_Cprime_Cgamma_coefficients: str
     dihedral_convention: str
@@ -1681,9 +1703,11 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
         return str(_decode_attr(g.attrs.get(name, "")))
     return JCouplingTimeSeriesGroup(
         J_HN_Halpha=g["J_HN_Halpha"][:],
+        J_HN_Cbeta=g["J_HN_Cbeta"][:],
         J_N_Cgamma=g["J_N_Cgamma"][:],
         J_Cprime_Cgamma=g["J_Cprime_Cgamma"][:],
         J_HN_Halpha_exists=g["J_HN_Halpha_exists"][:],
+        J_HN_Cbeta_exists=g["J_HN_Cbeta_exists"][:],
         J_chi1_exists=g["J_chi1_exists"][:],
         residue_index_per_atom=g["residue_index_per_atom"][:],
         frame_indices=g["frame_indices"][:],
@@ -1694,6 +1718,7 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
         n_frames=int(g.attrs["n_frames"]),
         karplus_form=_attr("karplus_form"),
         J_HN_Halpha_coefficients=_attr("J_HN_Halpha_coefficients"),
+        J_HN_Cbeta_coefficients=_attr("J_HN_Cbeta_coefficients"),
         J_N_Cgamma_coefficients=_attr("J_N_Cgamma_coefficients"),
         J_Cprime_Cgamma_coefficients=_attr("J_Cprime_Cgamma_coefficients"),
         dihedral_convention=_attr("dihedral_convention"),

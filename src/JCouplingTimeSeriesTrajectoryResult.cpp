@@ -2,6 +2,7 @@
 
 #include "Atom.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Residue.h"
@@ -24,25 +25,14 @@ namespace {
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-// Karplus coefficients (A, B, C) per channel. Karplus form:
-//   3J(θ) = A·cos²(θ) + B·cos(θ) + C
-// θ in radians via IUPAC signed dihedral atan2. References pinned in
-// the header and the H5 attrs.
-
-// Wang & Bax 1996 JACS 118:2483 — 3J(HN, Hα).
-constexpr double kJHNHAlpha_A =  6.51;
-constexpr double kJHNHAlpha_B = -1.76;
-constexpr double kJHNHAlpha_C =  1.60;
-
-// Pérez et al. 2001 JACS 123:7081 — 3J(N, Cγ).
-constexpr double kJNCgamma_A =  1.29;
-constexpr double kJNCgamma_B = -0.49;
-constexpr double kJNCgamma_C =  0.37;
-
-// Pérez et al. 2001 — 3J(C', Cγ).
-constexpr double kJCprimeCgamma_A =  1.74;
-constexpr double kJCprimeCgamma_B = -0.57;
-constexpr double kJCprimeCgamma_C =  0.25;
+// Karplus coefficients live in PhysicalConstants.h with full literature
+// citations + reference PDFs (cited per-symbol). Karplus form for all
+// four channels:
+//   3J(theta) = A * cos^2(theta) + B * cos(theta) + C   [Hz]
+// theta in radians via IUPAC signed dihedral atan2 directly on atom
+// positions (never reconstructed from phi + offset). See
+// PhysicalConstants.h "Karplus 3J-coupling parameters" block for the
+// geometric identity (phi - 60) ~= H-N-CA-HA, (phi + 60) ~= H-N-CA-CB.
 
 
 // Dihedral helper — same atan2-based formulation as DihedralTimeSeries
@@ -82,17 +72,23 @@ JCouplingTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     const std::size_t N = tp.AtomCount();
 
     r->j_hn_halpha_.assign(R, {});
+    r->j_hn_cbeta_.assign(R, {});
     r->j_n_cgamma_.assign(R, {});
     r->j_cprime_cgamma_.assign(R, {});
 
     // Static masks: which channels can structurally exist per residue.
     r->j_hn_halpha_exists_.assign(R, 0);
+    r->j_hn_cbeta_exists_.assign(R, 0);
     r->j_chi1_exists_.assign(R, 0);
     for (std::size_t ri = 0; ri < R; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.H  != Residue::NONE && res.N  != Residue::NONE &&
             res.CA != Residue::NONE && res.HA != Residue::NONE) {
             r->j_hn_halpha_exists_[ri] = 1u;
+        }
+        if (res.H  != Residue::NONE && res.N  != Residue::NONE &&
+            res.CA != Residue::NONE && res.CB != Residue::NONE) {
+            r->j_hn_cbeta_exists_[ri] = 1u;
         }
         if (res.chi[0].Valid()) {
             r->j_chi1_exists_[ri] = 1u;
@@ -129,7 +125,7 @@ void JCouplingTimeSeriesTrajectoryResult::Compute(
     for (std::size_t ri = 0; ri < R; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
 
-        // ── J(HN, Hα) via H-N-CA-HA ──────────────────────────────────
+        // ── J(HN, Hα) via H-N-CA-HA — Vuister & Bax 1993 ─────────────
         double j_hn = kNaN;
         if (j_hn_halpha_exists_[ri]) {
             const double theta = Dihedral(
@@ -137,11 +133,25 @@ void JCouplingTimeSeriesTrajectoryResult::Compute(
                 conf.PositionAt(res.N),
                 conf.PositionAt(res.CA),
                 conf.PositionAt(res.HA));
-            j_hn = Karplus(kJHNHAlpha_A, kJHNHAlpha_B, kJHNHAlpha_C, theta);
+            j_hn = Karplus(KARPLUS_HN_HA_A, KARPLUS_HN_HA_B,
+                           KARPLUS_HN_HA_C, theta);
         }
         j_hn_halpha_[ri].push_back(j_hn);
 
-        // ── J(N, Cγ) via N-CA-CB-CG = chi1 ───────────────────────────
+        // ── J(HN, Cβ) via H-N-CA-CB — Wang & Bax 1996 ────────────────
+        double j_hn_cb = kNaN;
+        if (j_hn_cbeta_exists_[ri]) {
+            const double theta = Dihedral(
+                conf.PositionAt(res.H),
+                conf.PositionAt(res.N),
+                conf.PositionAt(res.CA),
+                conf.PositionAt(res.CB));
+            j_hn_cb = Karplus(KARPLUS_HN_CB_A, KARPLUS_HN_CB_B,
+                              KARPLUS_HN_CB_C, theta);
+        }
+        j_hn_cbeta_[ri].push_back(j_hn_cb);
+
+        // ── J(N, Cγ) via N-CA-CB-CG = chi1 — Pérez 2001 ──────────────
         // chi[0].a = (N, CA, CB, CG_first); use directly.
         double j_n_cg = kNaN;
         if (j_chi1_exists_[ri]) {
@@ -151,11 +161,12 @@ void JCouplingTimeSeriesTrajectoryResult::Compute(
                 conf.PositionAt(c1.a[1]),
                 conf.PositionAt(c1.a[2]),
                 conf.PositionAt(c1.a[3]));
-            j_n_cg = Karplus(kJNCgamma_A, kJNCgamma_B, kJNCgamma_C, theta);
+            j_n_cg = Karplus(KARPLUS_N_CG_A, KARPLUS_N_CG_B,
+                             KARPLUS_N_CG_C, theta);
         }
         j_n_cgamma_[ri].push_back(j_n_cg);
 
-        // ── J(C', Cγ) via C-CA-CB-CG ──────────────────────────────────
+        // ── J(C', Cγ) via C-CA-CB-CG — Pérez 2001 ────────────────────
         // Replace chi1's first atom (N) with res.C; preserve CB, CG.
         double j_cp_cg = kNaN;
         if (j_chi1_exists_[ri] && res.C != Residue::NONE &&
@@ -166,8 +177,8 @@ void JCouplingTimeSeriesTrajectoryResult::Compute(
                 conf.PositionAt(res.CA),
                 conf.PositionAt(c1.a[2]),
                 conf.PositionAt(c1.a[3]));
-            j_cp_cg = Karplus(kJCprimeCgamma_A, kJCprimeCgamma_B,
-                              kJCprimeCgamma_C, theta);
+            j_cp_cg = Karplus(KARPLUS_CP_CG_A, KARPLUS_CP_CG_B,
+                              KARPLUS_CP_CG_C, theta);
         }
         j_cprime_cgamma_[ri].push_back(j_cp_cg);
     }
@@ -209,32 +220,65 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
 
     grp.createAttribute("karplus_form", std::string(
         "3J(theta) = A * cos^2(theta) + B * cos(theta) + C; "
-        "theta in radians via IUPAC signed dihedral atan2."));
-    grp.createAttribute("J_HN_Halpha_coefficients", std::string(
-        "A=6.51, B=-1.76, C=1.60 (Wang & Bax 1996 JACS 118:2483); "
-        "dihedral H-N-CA-HA."));
-    grp.createAttribute("J_N_Cgamma_coefficients", std::string(
-        "A=1.29, B=-0.49, C=0.37 (Perez et al. 2001 JACS 123:7081); "
-        "dihedral N-CA-CB-CG (= chi1)."));
-    grp.createAttribute("J_Cprime_Cgamma_coefficients", std::string(
-        "A=1.74, B=-0.57, C=0.25 (Perez et al. 2001 JACS 123:7081); "
-        "dihedral C-CA-CB-CG (chi1 with C' as the leading atom; 120 "
-        "degrees offset from chi1 on the same Cbeta-Calpha axis)."));
+        "theta in radians via IUPAC signed dihedral atan2 computed "
+        "directly from atom positions (never reconstructed from phi + "
+        "offset). Coefficients defined in src/PhysicalConstants.h."));
+
+    // Coefficient strings are formatted from the PhysicalConstants.h
+    // values at write time so the H5 attrs stay in lockstep with the
+    // compiled-in numerics. If a value here ever disagrees with what
+    // PhysicalConstants.h declares, the linker is the adversary
+    // (feedback_compiler_check).
+    auto coeff_str = [](double A, double B, double C) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "A=%.4f, B=%.4f, C=%.4f",
+                      A, B, C);
+        return std::string(buf);
+    };
+    grp.createAttribute("J_HN_Halpha_coefficients",
+        coeff_str(KARPLUS_HN_HA_A, KARPLUS_HN_HA_B, KARPLUS_HN_HA_C) +
+        " (Vuister & Bax 1993 JACS 115:7772, DOI 10.1021/ja00070a024); "
+        "dihedral H-N-CA-HA; equivalent to phi - 60 deg under ideal "
+        "L-amino-acid backbone geometry. Reference PDF "
+        "references/vuister-lecture-j-couplings.pdf.");
+    grp.createAttribute("J_HN_Cbeta_coefficients",
+        coeff_str(KARPLUS_HN_CB_A, KARPLUS_HN_CB_B, KARPLUS_HN_CB_C) +
+        " (Wang & Bax 1996 JACS 118:2483, DOI 10.1021/ja9535524, "
+        "Table 1 NMR/X-ray refined fit row 3); dihedral H-N-CA-CB; "
+        "equivalent to phi + 60 deg under ideal geometry. Reference "
+        "PDF references/wang-bax-1996-karplus-phi-ubiquitin.pdf "
+        "(byte-verified 2026-05-19).");
+    grp.createAttribute("J_N_Cgamma_coefficients",
+        coeff_str(KARPLUS_N_CG_A, KARPLUS_N_CG_B, KARPLUS_N_CG_C) +
+        " (Perez, Lohr, Ruterjans & Schmidt 2001 JACS 123:7081, "
+        "DOI 10.1021/ja003724j); dihedral N-CA-CB-CG (= chi1). "
+        "Citation byte-verified; coefficient byte-verification "
+        "pending institutional access to the paywalled paper.");
+    grp.createAttribute("J_Cprime_Cgamma_coefficients",
+        coeff_str(KARPLUS_CP_CG_A, KARPLUS_CP_CG_B, KARPLUS_CP_CG_C) +
+        " (Perez, Lohr, Ruterjans & Schmidt 2001 JACS 123:7081, "
+        "DOI 10.1021/ja003724j); dihedral C-CA-CB-CG (chi1 with C' "
+        "as the leading atom; 120 deg offset from chi1 on the Cbeta-"
+        "Calpha axis). Same byte-verification caveat as J(N,Cgamma).");
     grp.createAttribute("dihedral_convention", std::string(
-        "IUPAC signed dihedral atan2(y,x). H-N-CA-HA for J(HN,Halpha); "
-        "N-CA-CB-CG for J(N,Cgamma); C-CA-CB-CG for J(C',Cgamma)."));
+        "IUPAC signed dihedral atan2(y,x), radians. Channels: "
+        "H-N-CA-HA for J(HN,Halpha); H-N-CA-CB for J(HN,Cbeta); "
+        "N-CA-CB-CG for J(N,Cgamma); C-CA-CB-CG for J(C',Cgamma). "
+        "All dihedrals computed directly from atom positions."));
     grp.createAttribute("GLY_caveat", std::string(
-        "GLY Halpha uses Residue.HA which is HA2 by Residue.h cache "
-        "convention. HA3 is NOT separately measured here; consumers "
-        "needing pro-R/pro-S resolution should compute directly via "
-        "the residue's two Halpha atom indices. The slight averaging "
-        "error vs GLY's two Halpha is documented; calibration absorbs."));
+        "GLY: Halpha uses Residue.HA which is HA2 by Residue.h cache "
+        "convention; HA3 is NOT separately measured. Vuister & Bax "
+        "1993 fit DID include glycine 3J values, so the published "
+        "(A, B, C) absorb the pro-R/pro-S averaging error. Consumers "
+        "needing strict pro-R/pro-S resolution should compute directly "
+        "from the two Halpha atom indices. J_HN_Cbeta is NaN on GLY "
+        "(no Cbeta)."));
     grp.createAttribute("units",       std::string("Hz"));
     grp.createAttribute("absent_sentinel", std::string("NaN"));
     grp.createAttribute("residue_axis", std::string("protein_residue_index"));
     grp.createAttribute("atom_axis",    std::string("protein_atom_index"));
     grp.createAttribute("source", std::string(
-        "positions + Residue backbone-cache (H, N, CA, HA, C) + "
+        "positions + Residue backbone-cache (H, N, CA, HA, CB, C) + "
         "Residue.chi[0] (chi1 atom indices from AminoAcidType.chi_"
         "angles). No source ConformationResult dependency; positions "
         "always present at tp.Seed time."));
@@ -269,11 +313,14 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
     };
 
     emit_2d_f64("J_HN_Halpha",     j_hn_halpha_);
+    emit_2d_f64("J_HN_Cbeta",      j_hn_cbeta_);
     emit_2d_f64("J_N_Cgamma",      j_n_cgamma_);
     emit_2d_f64("J_Cprime_Cgamma", j_cprime_cgamma_);
 
     // ── Static per-residue masks (R,) ────────────────────────────────
     grp.createDataSet("J_HN_Halpha_exists", j_hn_halpha_exists_)
+       .createAttribute("units", std::string("dimensionless"));
+    grp.createDataSet("J_HN_Cbeta_exists", j_hn_cbeta_exists_)
        .createAttribute("units", std::string("dimensionless"));
     grp.createDataSet("J_chi1_exists", j_chi1_exists_)
        .createAttribute("units", std::string("dimensionless"));

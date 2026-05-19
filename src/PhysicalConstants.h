@@ -188,4 +188,101 @@ inline D4EeqParams D4EeqParamsFor(Element e) {
 }
 
 
+// ============================================================================
+// Karplus 3J-coupling parameters
+//
+// Karplus form for all four protein backbone / sidechain 3J couplings
+// emitted by JCouplingTimeSeriesTrajectoryResult:
+//
+//     3J(theta) = A * cos^2(theta) + B * cos(theta) + C   [Hz]
+//
+// where theta is the relevant 3-bond H-X-Y-Z dihedral in RADIANS,
+// measured via IUPAC signed atan2 directly from atom positions.
+//
+// Geometric identity used by the backbone phi observables:
+// for L-amino acids in standard tetrahedral backbone geometry,
+//   H-N-CA-HA  ~=  phi - 60 degrees   (basis for 3J(HN, Halpha))
+//   H-N-CA-CB  ~=  phi + 60 degrees   (basis for 3J(HN, Cbeta))
+// The Karplus parametrizations below were originally published as a
+// function of (phi - 60) or (phi + 60); equivalently they take the
+// actual atomic dihedral as input. We compute the dihedral directly
+// from atom positions (never reconstructed via phi + offset), which
+// is the modern usage explicitly documented by Li, Lee, Grishaev,
+// Ying & Bax, ChemPhysChem 16, 572-578 (2015), DOI: 10.1002/cphc.
+// 201402704.
+// ============================================================================
+
+// --- 3J(HN, Halpha) -- phi observable via H-N-CA-HA dihedral ---
+//
+// Vuister, G. W. & Bax, A. "Quantitative J correlation: a new approach
+// for measuring homonuclear three-bond J(HNHalpha) coupling constants
+// in 15N-enriched proteins." J. Am. Chem. Soc. 115, 7772-7777 (1993).
+// DOI: 10.1021/ja00070a024.
+//
+// Most-cited Karplus parametrization for backbone phi from 3J(HN,Halpha).
+// Note: Wang & Bax 1996 (DOI 10.1021/ja9535524) later reparametrized
+// these to (6.98, -1.38, 1.72) on a refined ubiquitin NMR/X-ray phi
+// set (Table 1 row 1); both are valid, the 1993 values are the
+// thesis-default canonical reference. Reference PDF:
+//   references/vuister-lecture-j-couplings.pdf (the Vuister teaching
+//   lecture quotes A,B,C = 6.51, -1.76, 1.60 verbatim).
+constexpr double KARPLUS_HN_HA_A =  6.51;
+constexpr double KARPLUS_HN_HA_B = -1.76;
+constexpr double KARPLUS_HN_HA_C =  1.60;
+
+// --- 3J(HN, Cbeta) -- phi observable via H-N-CA-CB dihedral ---
+//
+// Wang, A. C. & Bax, A. "Determination of the backbone dihedral angles
+// phi in human ubiquitin from reparametrized empirical Karplus
+// equations." J. Am. Chem. Soc. 118, 2483-2494 (1996).
+// DOI: 10.1021/ja9535524.
+//
+// Table 1 row 3, NMR/X-ray refined fit (page 2487):
+//   theta = +60 degrees, A = 3.39 +- 0.07, B = -0.94 +- 0.07, C = 0.07
+//   +- 0.02. Original published form is J = A * cos^2(phi + 60) + B *
+//   cos(phi + 60) + C, where (phi + 60) ~= H-N-CA-CB dihedral in
+//   standard L-amino-acid geometry; feeding the atomic dihedral
+//   directly is equivalent and is the standard modern usage.
+//
+// Reference PDF: references/wang-bax-1996-karplus-phi-ubiquitin.pdf
+// (Table 1, page 2487; byte-verified 2026-05-19 against the open
+// Bax-group repository copy).
+constexpr double KARPLUS_HN_CB_A =  3.39;
+constexpr double KARPLUS_HN_CB_B = -0.94;
+constexpr double KARPLUS_HN_CB_C =  0.07;
+
+// --- 3J(N, Cgamma) -- chi1 observable via N-CA-CB-CG dihedral (= chi1) ---
+//
+// Perez, C., Lohr, F., Ruterjans, H. & Schmidt, J. M. "Self-consistent
+// Karplus parametrization of 3J couplings depending on the polypeptide
+// side-chain torsion chi1." J. Am. Chem. Soc. 123, 7081-7093 (2001).
+// DOI: 10.1021/ja003724j.
+//
+// Widely-cited self-consistent Karplus fit for chi1 observables. The
+// original paper is paywalled at ACS; the agent-level literature audit
+// on 2026-05-19 confirmed the citation but could NOT byte-verify the
+// coefficients against the published Table -- the values are circulated
+// unchanged in downstream NMR software (TALOS-N, NMRViewJ) that cite
+// Perez 2001. Byte-verification is pending institutional access; if
+// the user obtains a copy and the values differ, update here and the
+// JCouplingTimeSeriesTrajectoryResult attrs in the same commit.
+constexpr double KARPLUS_N_CG_A  =  1.29;
+constexpr double KARPLUS_N_CG_B  = -0.49;
+constexpr double KARPLUS_N_CG_C  =  0.37;
+
+// --- 3J(C', Cgamma) -- chi1 observable via C-CA-CB-CG dihedral ---
+//
+// Same paper: Perez, Lohr, Ruterjans & Schmidt, JACS 123:7081 (2001).
+// DOI: 10.1021/ja003724j. Same paywall caveat as 3J(N, Cgamma).
+//
+// (Strictly: the C'-CA-CB-Cgamma dihedral differs from chi1 by ~120
+// degrees around CA; the Perez self-consistent fit treats chi1 as
+// the input variable with the substituent-position bookkeeping
+// internalized in the per-coupling coefficients, so feeding the
+// C-CA-CB-CG atomic dihedral directly is the correct modern usage.)
+constexpr double KARPLUS_CP_CG_A =  1.74;
+constexpr double KARPLUS_CP_CG_B = -0.57;
+constexpr double KARPLUS_CP_CG_C =  0.25;
+
+
 }  // namespace nmr

@@ -470,15 +470,39 @@ float64 in Hz; static `coupling_legend` attr names the couplings
 and cites the Karplus coefficient source.
 
 Status: LANDED 2026-05-19 as `JCouplingTimeSeriesTrajectoryResult` in
-`src/JCouplingTimeSeriesTrajectoryResult.{h,cpp}`. Per-channel emission
-(three separate (R, T) datasets — J_HN_Halpha, J_N_Cgamma,
-J_Cprime_Cgamma — preferred over a fused (R, T, N_coupling) cube for
-SDK consumer ergonomics: each channel reads natively as a 2D timeline).
-3J(HN, Cbeta) deferred — its Karplus parametrization is less canonical
-and the three landed channels close the phi + chi1 viva story. Wired
-into RunConfiguration::WithProductionDefaults; SDK group exposed via
-`TrajectoryData.j_coupling` and `from nmr_extract import
+`src/JCouplingTimeSeriesTrajectoryResult.{h,cpp}`. All FOUR channels
+implemented:
+- ³J(HN, Hα) -- Vuister & Bax 1993 JACS 115:7772 (DOI 10.1021/
+  ja00070a024). Coefficients A=6.51, B=-1.76, C=1.60.
+- ³J(HN, Cβ) -- Wang & Bax 1996 JACS 118:2483 (DOI 10.1021/ja9535524)
+  Table 1 NMR/X-ray refined fit. Coefficients A=3.39, B=-0.94, C=0.07
+  -- byte-verified from the open Bax-group repository PDF
+  (references/wang-bax-1996-karplus-phi-ubiquitin.pdf).
+- ³J(N, Cγ) -- Pérez et al. 2001 JACS 123:7081 (DOI 10.1021/ja003724j).
+  Coefficients A=1.29, B=-0.49, C=0.37 -- citation verified, coefficient
+  byte-verification pending institutional access to the paywalled paper.
+- ³J(C', Cγ) -- Pérez et al. 2001 (same paper). Coefficients A=1.74,
+  B=-0.57, C=0.25 -- same caveat.
+
+Per-channel emission (four separate (R, T) datasets — J_HN_Halpha,
+J_HN_Cbeta, J_N_Cgamma, J_Cprime_Cgamma — preferred over a fused
+(R, T, N_coupling) cube for SDK consumer ergonomics: each channel
+reads natively as a 2D timeline). All Karplus constants centralized
+in `src/PhysicalConstants.h` with full citations + DOIs + reference
+PDFs alongside in `references/`. The H5 attrs format the numeric
+values from the compiled-in constants at write time, so the attrs
+and the binary cannot disagree.
+
+Citation hygiene: the original commit (6c609c6) attributed (6.51,
+-1.76, 1.60) to Wang & Bax 1996; agent-level literature audit on
+2026-05-19 corrected this to Vuister & Bax 1993 (Wang & Bax 1996's
+own refit gives 6.98/-1.38/1.72; the 6.51 values are the 1993
+parametrization). Fixed in the follow-up commit before review.
+
+Wired into RunConfiguration::WithProductionDefaults; SDK group exposed
+via `TrajectoryData.j_coupling` and `from nmr_extract import
 JCouplingTimeSeriesGroup`. Tests in
 `tests/test_j_coupling_time_series.cpp`: 4/4 green on 1P9J (R=54, T=6,
-PRO=1, GLY+ALA=6; ~888 finite Karplus observations within published
-analytical bounds [1.48-9.87 / 0.32-2.15 / 0.20-2.56 Hz]).
+PRO=1, GLY=4, GLY+ALA=6; finite obs: J(HN,Hα)=312, J(HN,Cβ)=288,
+J(N,Cγ)=288, J(C',Cγ)=288 -- all within published analytical bounds
+[1.48-9.87 / 0.005-4.40 / 0.32-2.15 / 0.20-2.56 Hz]).
