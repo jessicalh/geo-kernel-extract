@@ -1,0 +1,495 @@
+#include "DihedralTimeSeriesTrajectoryResult.h"
+
+#include "AminoAcidType.h"
+#include "OperationLog.h"
+#include "Protein.h"
+#include "ProteinConformation.h"
+#include "Residue.h"
+#include "TrajectoryProtein.h"
+#include "Types.h"
+
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5File.hpp>
+#include <highfive/H5Group.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <string>
+#include <typeinfo>
+
+namespace nmr {
+
+namespace {
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr std::uint8_t kRamaUnassigned = 0;
+constexpr std::uint8_t kRamaAlphaR     = 1;
+constexpr std::uint8_t kRamaBeta       = 2;
+constexpr std::uint8_t kRamaAlphaL     = 3;
+constexpr std::uint8_t kRamaPPII       = 4;
+constexpr std::uint8_t kRamaOther      = 5;
+
+// Dihedral from four positions. Returns signed angle in radians in
+// (-π, π]. Mirrors the canonical implementation in
+// PlanarGeometryResult.cpp:35-46 and ChiRotamerSelectionTrajectoryResult
+// .cpp:22-40 — same atan2(y, x) formulation with b2-normalized basis. We
+// copy rather than extract a shared helper because per PATTERNS.md the
+// utility-namespace anti-pattern bites first; equation in comment per
+// PATTERNS Lesson 10 ("Equations in comments, Eigen in code").
+//
+//   D(p1,p2,p3,p4) = atan2( (n1×b̂2)·n2, n1·n2 )
+//     b1 = p2−p1, b2 = p3−p2, b3 = p4−p3
+//     n1 = b1×b2, n2 = b2×b3
+//
+// Degenerate (collinear b2 or |n1|, |n2| ≈ 0) returns NaN, not 0, so
+// downstream consumers can distinguish "indeterminate" from "0 rad."
+double Dihedral(const Vec3& p1, const Vec3& p2,
+                const Vec3& p3, const Vec3& p4) {
+    const Vec3 b1 = p2 - p1;
+    const Vec3 b2 = p3 - p2;
+    const Vec3 b3 = p4 - p3;
+    const double b2n = b2.norm();
+    if (b2n < 1e-10) return kNaN;
+    const Vec3 n1 = b1.cross(b2);
+    const Vec3 n2 = b2.cross(b3);
+    if (n1.norm() < 1e-10 || n2.norm() < 1e-10) return kNaN;
+    const Vec3 m1 = n1.cross(b2 / b2n);
+    const double x = n1.dot(n2);
+    const double y = m1.dot(n2);
+    return std::atan2(y, x);
+}
+
+// Wrap an angle to (-π, π].
+double WrapPi(double a) {
+    if (!std::isfinite(a)) return a;
+    while (a >   M_PI) a -= 2.0 * M_PI;
+    while (a <= -M_PI) a += 2.0 * M_PI;
+    return a;
+}
+
+// Ramachandran-region binning. Boundaries (degrees → radians) follow the
+// simple literature grid documented in the H5 group attr. Returns the bin
+// code from {kRamaUnassigned, kRamaAlphaR, kRamaBeta, kRamaAlphaL,
+// kRamaPPII, kRamaOther}. Inputs in radians; NaN inputs yield
+// kRamaUnassigned.
+//
+// Boundaries (in degrees):
+//   αR  : phi ∈ [-100, -30],     psi ∈ [-65, -15]
+//   β   : phi ∈ [-180, -45],     psi ∈ [90, 180] ∪ [-180, -150]
+//   αL  : phi ∈ [ 30,  100],     psi ∈ [-30,  50]
+//   PPII: phi ∈ [-90,  -45],     psi ∈ [120, 180]
+// Anything else with finite phi+psi → other.
+//
+// PPII overlaps β at the upper-psi corner. Order: αR → αL → PPII → β →
+// other. PPII is the more specific bin, checked before β.
+//
+// Gly + Pro + pre-Pro have their own static masks (`is_glycine`,
+// `is_proline`, `is_pre_proline`) — downstream re-bins with type-aware
+// Rama maps if needed.
+std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
+    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
+        return kRamaUnassigned;
+
+    const double deg_per_rad = 180.0 / M_PI;
+    const double phi = phi_rad * deg_per_rad;
+    const double psi = psi_rad * deg_per_rad;
+
+    if (phi >= -100.0 && phi <= -30.0 &&
+        psi >=  -65.0 && psi <= -15.0)
+        return kRamaAlphaR;
+
+    if (phi >=  30.0 && phi <= 100.0 &&
+        psi >= -30.0 && psi <=  50.0)
+        return kRamaAlphaL;
+
+    if (phi >= -90.0 && phi <= -45.0 &&
+        psi >= 120.0 && psi <= 180.0)
+        return kRamaPPII;
+
+    if (phi >= -180.0 && phi <= -45.0 &&
+        ((psi >= 90.0 && psi <= 180.0) || (psi >= -180.0 && psi <= -150.0)))
+        return kRamaBeta;
+
+    return kRamaOther;
+}
+
+// Two residues share a backbone-connected chain if their chain_id matches
+// AND consecutive sequence numbers are adjacent. (Residue.chain_id is the
+// authoritative chain label; ResidueTerminalState tags the residue end
+// state but doesn't itself encode a missing-residue gap. Chain_id +
+// sequence-adjacency catches both ends of a residue numbering gap.)
+bool BackboneConnected(const Residue& a, const Residue& b) {
+    if (a.chain_id != b.chain_id) return false;
+    if (b.sequence_number - a.sequence_number != 1) return false;
+    return true;
+}
+
+}  // anonymous namespace
+
+
+std::unique_ptr<DihedralTimeSeriesTrajectoryResult>
+DihedralTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
+    auto r = std::make_unique<DihedralTimeSeriesTrajectoryResult>();
+
+    const Protein& protein = tp.ProteinRef();
+    const std::size_t R = protein.ResidueCount();
+    const std::size_t N = tp.AtomCount();
+
+    r->phi_.assign(R, {});
+    r->psi_.assign(R, {});
+    r->omega_.assign(R, {});
+    r->omega_deviation_.assign(R, {});
+    r->chi_.assign(R, {});
+    r->rama_region_.assign(R, {});
+
+    // ── Static per-residue masks ─────────────────────────────────────
+    r->chi_exists_.assign(R * 4, 0);
+    r->omega_is_xpro_.assign(R, 0);
+    r->is_glycine_.assign(R, 0);
+    r->is_proline_.assign(R, 0);
+    r->is_pre_proline_.assign(R, 0);
+    r->residue_terminal_state_.assign(R, 0);
+    r->chain_id_per_residue_.assign(R, std::string{});
+
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        const Residue& res = protein.ResidueAt(ri);
+        for (int k = 0; k < 4; ++k) {
+            if (res.chi[k].Valid())
+                r->chi_exists_[ri * 4 + k] = 1u;
+        }
+        if (res.type == AminoAcid::GLY) r->is_glycine_[ri] = 1u;
+        if (res.type == AminoAcid::PRO) r->is_proline_[ri] = 1u;
+        r->residue_terminal_state_[ri] =
+            static_cast<std::uint8_t>(res.terminal_state);
+        r->chain_id_per_residue_[ri] = res.chain_id;
+    }
+
+    // is_pre_proline + omega_is_xpro: both set when res[i+1].type == PRO
+    // AND residue i is backbone-connected to i+1. PlanarGeometryResult
+    // sets omega_is_xpro_ only on the i row (the row carrying that
+    // peptide bond's omega); we follow that convention.
+    for (std::size_t ri = 0; ri + 1 < R; ++ri) {
+        const Residue& res_i  = protein.ResidueAt(ri);
+        const Residue& res_ip = protein.ResidueAt(ri + 1);
+        if (!BackboneConnected(res_i, res_ip)) continue;
+        if (res_ip.type == AminoAcid::PRO) {
+            r->omega_is_xpro_[ri]  = 1u;
+            r->is_pre_proline_[ri] = 1u;
+        }
+    }
+
+    // ── Per-atom lookup ──────────────────────────────────────────────
+    r->residue_index_per_atom_.assign(N, -1);
+    for (std::size_t ai = 0; ai < N; ++ai) {
+        r->residue_index_per_atom_[ai] =
+            static_cast<std::int32_t>(protein.AtomAt(ai).residue_index);
+    }
+
+    return r;
+}
+
+
+// ── Compute ──────────────────────────────────────────────────────────
+//
+// Per residue per frame: compute phi, psi, omega, chi[k], rama_region.
+// All in radians, NaN where the dihedral is undefined (terminal residue,
+// chain break, missing backbone-cache atom, or chi[k] not defined for
+// the AA). The per-frame growth buffers are flattened at Finalize.
+
+void DihedralTimeSeriesTrajectoryResult::Compute(
+        const ProteinConformation& conf,
+        TrajectoryProtein& tp,
+        Trajectory& traj,
+        std::size_t frame_idx,
+        double time_ps) {
+    (void)tp; (void)traj;
+
+    const Protein& protein = conf.ProteinRef();
+    const std::size_t R = protein.ResidueCount();
+
+    for (std::size_t ri = 0; ri < R; ++ri) {
+        const Residue& res = protein.ResidueAt(ri);
+
+        // ── phi: C(i−1)-N(i)-Cα(i)-C(i) ──────────────────────────────
+        double phi_val = kNaN;
+        if (ri > 0 &&
+            res.N != Residue::NONE && res.CA != Residue::NONE &&
+            res.C != Residue::NONE) {
+            const Residue& res_im = protein.ResidueAt(ri - 1);
+            if (BackboneConnected(res_im, res) &&
+                res_im.C != Residue::NONE) {
+                phi_val = Dihedral(
+                    conf.PositionAt(res_im.C),
+                    conf.PositionAt(res.N),
+                    conf.PositionAt(res.CA),
+                    conf.PositionAt(res.C));
+            }
+        }
+        phi_[ri].push_back(phi_val);
+
+        // ── psi: N(i)-Cα(i)-C(i)-N(i+1) ──────────────────────────────
+        double psi_val = kNaN;
+        if (ri + 1 < R &&
+            res.N != Residue::NONE && res.CA != Residue::NONE &&
+            res.C != Residue::NONE) {
+            const Residue& res_ip = protein.ResidueAt(ri + 1);
+            if (BackboneConnected(res, res_ip) &&
+                res_ip.N != Residue::NONE) {
+                psi_val = Dihedral(
+                    conf.PositionAt(res.N),
+                    conf.PositionAt(res.CA),
+                    conf.PositionAt(res.C),
+                    conf.PositionAt(res_ip.N));
+            }
+        }
+        psi_[ri].push_back(psi_val);
+
+        // ── omega: Cα(i)-C(i)-N(i+1)-Cα(i+1) ─────────────────────────
+        double omega_val = kNaN;
+        if (ri + 1 < R &&
+            res.CA != Residue::NONE && res.C != Residue::NONE) {
+            const Residue& res_ip = protein.ResidueAt(ri + 1);
+            if (BackboneConnected(res, res_ip) &&
+                res_ip.N != Residue::NONE &&
+                res_ip.CA != Residue::NONE) {
+                omega_val = Dihedral(
+                    conf.PositionAt(res.CA),
+                    conf.PositionAt(res.C),
+                    conf.PositionAt(res_ip.N),
+                    conf.PositionAt(res_ip.CA));
+            }
+        }
+        omega_[ri].push_back(omega_val);
+
+        // omega_deviation = wrap(omega − π) to (-π, π]. NaN for X→Pro
+        // rows so downstream "deviation from planarity" stays a clean
+        // signal there (PlanarGeometryResult convention).
+        double omega_dev = kNaN;
+        if (std::isfinite(omega_val) && !omega_is_xpro_[ri]) {
+            omega_dev = WrapPi(omega_val - M_PI);
+        }
+        omega_deviation_[ri].push_back(omega_dev);
+
+        // ── chi[k] from Residue.chi[k] pre-cached atom indices ───────
+        std::array<double, 4> chi_row{kNaN, kNaN, kNaN, kNaN};
+        for (int k = 0; k < 4; ++k) {
+            if (!res.chi[k].Valid()) continue;
+            chi_row[k] = Dihedral(
+                conf.PositionAt(res.chi[k].a[0]),
+                conf.PositionAt(res.chi[k].a[1]),
+                conf.PositionAt(res.chi[k].a[2]),
+                conf.PositionAt(res.chi[k].a[3]));
+        }
+        chi_[ri].push_back(chi_row);
+
+        rama_region_[ri].push_back(RamachandranBin(phi_val, psi_val));
+    }
+
+    frame_indices_.push_back(frame_idx);
+    frame_times_.push_back(time_ps);
+    source_attached_per_frame_.push_back(1u);  // positions always present
+    ++n_frames_;
+}
+
+
+// ── Finalize ─────────────────────────────────────────────────────────
+//
+// Idempotent. Existing per-residue growth buffers stay populated until
+// WriteH5Group runs; if it has run, the buffers are swapped to empty and
+// a second Finalize is a no-op. (Same data-flow short-circuit pattern as
+// TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp:75-93 per
+// feedback_bounds_check_over_state_flag.)
+
+void DihedralTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
+                                                  Trajectory& traj) {
+    (void)tp; (void)traj;
+    finalized_ = true;
+
+    OperationLog::Info(LogCalcOther,
+        "DihedralTimeSeriesTrajectoryResult::Finalize",
+        "finalized across " + std::to_string(n_frames_) +
+        " frames, " + std::to_string(phi_.size()) + " residues.");
+}
+
+
+// ── WriteH5Group ─────────────────────────────────────────────────────
+//
+// Flat-array emission for each per-residue dataset. Residue-major
+// layout matches the natural reader: res-0-frame-0..T-1, res-1-frame-0..,
+// ..., res-R-1-frame-T-1.
+
+void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
+        const TrajectoryProtein& tp,
+        HighFive::File& file) const {
+    const std::size_t R = phi_.size();
+    const std::size_t T = n_frames_;
+    const std::size_t N = tp.AtomCount();
+
+    auto grp = file.createGroup("/trajectory/dihedral_time_series");
+
+    grp.createAttribute("result_name",  Name());
+    grp.createAttribute("n_residues",   R);
+    grp.createAttribute("n_atoms",      N);
+    grp.createAttribute("n_frames",     T);
+    grp.createAttribute("finalized",    finalized_);
+
+    grp.createAttribute("angle_units",  std::string("radians"));
+    grp.createAttribute("periodicity",  std::string("2pi"));
+    grp.createAttribute("angle_convention", std::string(
+        "IUPAC signed dihedral atan2(y,x). "
+        "phi   = C(i-1)-N(i)-CA(i)-C(i); "
+        "psi   = N(i)-CA(i)-C(i)-N(i+1); "
+        "omega = CA(i)-C(i)-N(i+1)-CA(i+1); "
+        "chi_k from AminoAcidType.chi_angles (Residue.chi[k] pre-cached "
+        "atom indices, IUPAC sidechain order)."));
+    grp.createAttribute("chain_break_policy", std::string(
+        "NaN at any dihedral spanning a chain boundary (chain_id mismatch "
+        "or sequence-number gap). Termini follow the same rule via the "
+        "preceding/following residue absence."));
+    grp.createAttribute("omega_deviation_policy", std::string(
+        "wrap(omega - pi) to (-pi, pi]. NaN at X->Pro bonds where cis/trans "
+        "isomerism is real signal, not a deviation. Use omega_is_xpro mask "
+        "to identify those rows."));
+    grp.createAttribute("rama_region_legend", std::string(
+        "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other"));
+    grp.createAttribute("rama_region_boundaries", std::string(
+        "alphaR: phi[-100,-30], psi[-65,-15]; "
+        "beta: phi[-180,-45], psi[90,180]U[-180,-150]; "
+        "alphaL: phi[30,100], psi[-30,50]; "
+        "PPII: phi[-90,-45], psi[120,180]; "
+        "boundaries in degrees, inclusive."));
+    grp.createAttribute("chi_symmetry_caveats", std::string(
+        "PHE/TYR chi2 has 180-degree ring-flip symmetry (CD1<->CD2 swap); "
+        "ASP chi2 / GLU chi3 have carboxylate symmetry. Raw chi here is the "
+        "IUPAC signed value. Rotamer counters that need mod-pi must apply it."));
+    grp.createAttribute("residue_terminal_state_legend", std::string(
+        "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown"));
+    grp.createAttribute("residue_axis", std::string("protein_residue_index"));
+    grp.createAttribute("atom_axis",    std::string("protein_atom_index"));
+    grp.createAttribute("source",       std::string(
+        "positions + Residue.chi[k] (AminoAcidType.chi_angles) + Protein "
+        "chain structure; no source ConformationResult dependency."));
+
+    // ── Per-frame (T,) ───────────────────────────────────────────────
+    grp.createDataSet("frame_indices", frame_indices_)
+       .createAttribute("units", std::string("frame_index"));
+    grp.createDataSet("frame_times",   frame_times_)
+       .createAttribute("units", std::string("ps"));
+    auto ds_attached = grp.createDataSet(
+        "source_attached_per_frame", source_attached_per_frame_);
+    ds_attached.createAttribute("units", std::string("dimensionless"));
+    ds_attached.createAttribute("note", std::string(
+        "Trivially always 1 for this TR. Positions are always present at "
+        "tp.Seed time; emitted for SDK uniformity with conditionally-"
+        "attached-source TRs."));
+
+    // ── Helpers: emit a residue-major flat 2D dataset (R, T). ────────
+    auto emit_2d_f64 = [&](const std::string& name,
+                            const std::vector<std::vector<double>>& src,
+                            const std::string& units) {
+        std::vector<double> flat(R * T);
+        for (std::size_t ri = 0; ri < R; ++ri) {
+            const auto& row = src[ri];
+            for (std::size_t f = 0; f < T; ++f) {
+                flat[ri * T + f] = (f < row.size()) ? row[f] : kNaN;
+            }
+        }
+        const std::vector<std::size_t> dims = {R, T};
+        HighFive::DataSpace space(dims);
+        auto ds = grp.createDataSet<double>(name, space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", units);
+    };
+
+    auto emit_2d_u8 = [&](const std::string& name,
+                           const std::vector<std::vector<std::uint8_t>>& src,
+                           const std::string& units) {
+        std::vector<std::uint8_t> flat(R * T, 0);
+        for (std::size_t ri = 0; ri < R; ++ri) {
+            const auto& row = src[ri];
+            for (std::size_t f = 0; f < T && f < row.size(); ++f) {
+                flat[ri * T + f] = row[f];
+            }
+        }
+        const std::vector<std::size_t> dims = {R, T};
+        HighFive::DataSpace space(dims);
+        auto ds = grp.createDataSet<std::uint8_t>(name, space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", units);
+    };
+
+    // ── Per-residue per-frame (R, T) ─────────────────────────────────
+    emit_2d_f64("phi",             phi_,             "radians");
+    emit_2d_f64("psi",             psi_,             "radians");
+    emit_2d_f64("omega",           omega_,           "radians");
+    emit_2d_f64("omega_deviation", omega_deviation_, "radians");
+    emit_2d_u8("rama_region",      rama_region_,     "category");
+
+    // ── chi (R, T, 4) ────────────────────────────────────────────────
+    {
+        std::vector<double> flat(R * T * 4, kNaN);
+        for (std::size_t ri = 0; ri < R; ++ri) {
+            const auto& row = chi_[ri];
+            for (std::size_t f = 0; f < T && f < row.size(); ++f) {
+                for (int k = 0; k < 4; ++k) {
+                    flat[(ri * T + f) * 4 + k] = row[f][k];
+                }
+            }
+        }
+        const std::vector<std::size_t> dims = {R, T, std::size_t(4)};
+        HighFive::DataSpace space(dims);
+        auto ds = grp.createDataSet<double>("chi", space);
+        ds.write_raw(flat.data());
+        ds.createAttribute("units", std::string("radians"));
+        ds.createAttribute("axis_3", std::string("chi_index_0_to_3"));
+    }
+
+    // ── Per-residue static (R,) and (R, 4) ───────────────────────────
+    {
+        const std::vector<std::size_t> dims4 = {R, std::size_t(4)};
+        HighFive::DataSpace s4(dims4);
+        auto ds = grp.createDataSet<std::uint8_t>("chi_exists", s4);
+        ds.write_raw(chi_exists_.data());
+        ds.createAttribute("units", std::string("dimensionless"));
+        ds.createAttribute("note", std::string(
+            "1 = chi[k] valid for this residue's AminoAcidType; 0 = not "
+            "defined (e.g. GLY/ALA have no chi)."));
+    }
+    auto put_u8 = [&](const std::string& name,
+                       const std::vector<std::uint8_t>& v,
+                       const std::string& note) {
+        auto ds = grp.createDataSet(name, v);
+        ds.createAttribute("units", std::string("dimensionless"));
+        ds.createAttribute("note", note);
+    };
+    put_u8("omega_is_xpro", omega_is_xpro_,
+        "1 if residue i+1 is Pro; cis/trans isomerism at X-Pro is real "
+        "signal so omega_deviation is NaN'd in those rows.");
+    put_u8("is_glycine", is_glycine_,
+        "1 if residue is GLY; Rama allowed region is much wider for Gly.");
+    put_u8("is_proline", is_proline_,
+        "1 if residue is PRO; phi constrained to ~[-90, -30] by the ring.");
+    put_u8("is_pre_proline", is_pre_proline_,
+        "1 if residue i+1 is PRO; psi has its own constrained region "
+        "(separate Rama plot).");
+    put_u8("residue_terminal_state", residue_terminal_state_,
+        "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown");
+
+    // chain_id_per_residue (R,) variable-length strings
+    grp.createDataSet("chain_id_per_residue", chain_id_per_residue_)
+       .createAttribute("units", std::string("chain_label"));
+
+    // residue_index_per_atom (N,) int32 atom→residue lookup
+    grp.createDataSet("residue_index_per_atom", residue_index_per_atom_)
+       .createAttribute("units", std::string("residue_index"));
+
+    OperationLog::Info(LogCalcOther,
+        "DihedralTimeSeriesTrajectoryResult::WriteH5Group",
+        "wrote /trajectory/dihedral_time_series with " +
+        std::to_string(R) + " residues x " + std::to_string(T) + " frames");
+}
+
+
+}  // namespace nmr
