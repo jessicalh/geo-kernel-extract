@@ -8,6 +8,22 @@
 //
 // Dependencies: none (DSSP needs only positions).
 //
+// CROSS-RESULT READ (writer side, 2026-05-19, PATTERNS §17):
+//   AllResidues() (secondary_structure + acceptors[2] / donors[2] +
+//   their energies) is read per-frame by
+//   Dssp8TimeSeriesTrajectoryResult (emits SS code + H-bond partner/
+//   energy timelines) and Dssp8TransitionTrajectoryResult (emits SS
+//   transition stats). Both reader TRs declare no Dependencies()
+//   because DsspResult attaches conditionally on skip_dssp == false;
+//   per-frame source-attached gate captures absence.
+//
+//   Phi() / Psi() are read by DihedralTimeSeriesTrajectoryResult's
+//   cross-result numerical-consistency test only (NOT in production
+//   emission); DSSP returns the negated-IUPAC convention per libdssp
+//   (well-known quirk), and the test compares the new TR's IUPAC
+//   phi/psi against -DsspResult.Phi/Psi at 1e-2 rad tolerance to
+//   verify the negation invariant.
+//
 
 #include "ConformationResult.h"
 #include "ProteinConformation.h"

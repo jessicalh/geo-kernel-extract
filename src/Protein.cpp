@@ -3,6 +3,7 @@
 #include "LegacyAmberTopology.h"
 #include "ChargeSource.h"
 #include "NamingRegistry.h"
+#include "OperationLog.h"
 #include "generated/LegacyAmberSemanticTables.h"
 #include <algorithm>
 #include <map>
@@ -203,12 +204,19 @@ bool Protein::BackboneConnected(size_t residue_a_idx,
 // PeptideCN (criterion is positional, not seq-order-based), so
 // Predecessor(0) returns N-1 correctly. ACE-capped N-termini: the
 // loader tags ACE.C-Res1.N as PeptideCN.
+//
+// Multi-match Huxley discipline (math-review MED-3, 2026-05-19): if
+// the loader ever tagged two distinct PeptideCN bonds off a single
+// backbone N (pathological: cross-linked isopeptide mistag, branching,
+// or a CovalentTopology bug), we log a warning and return the first
+// match. Silently choosing one would hide a real upstream problem.
 std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
     if (residue_idx >= residues_.size()) return std::nullopt;
     const Residue& r = residues_[residue_idx];
     if (r.N == Residue::NONE) return std::nullopt;
 
     const LegacyAmberTopology& topo = LegacyAmber();
+    std::optional<size_t> first_match;
     for (size_t bond_idx : topo.BondIndicesFor(r.N)) {
         const Bond& bond = topo.BondAt(bond_idx);
         if (!bond.IsPeptideBond()) continue;
@@ -218,20 +226,32 @@ std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
         const size_t other_res_idx = atoms_[other]->residue_index;
         if (other_res_idx == residue_idx) continue;
         if (other_res_idx >= residues_.size()) continue;
-        if (residues_[other_res_idx].C == other) return other_res_idx;
+        if (residues_[other_res_idx].C != other) continue;
+        if (first_match.has_value()) {
+            OperationLog::Warn(
+                "Protein::BackbonePredecessor",
+                "Multiple PeptideCN bonds off residue " +
+                std::to_string(residue_idx) + " backbone N atom; "
+                "first match (residue " + std::to_string(*first_match) +
+                ") returned. Loader may have mistagged a cross-link.");
+            return first_match;
+        }
+        first_match = other_res_idx;
     }
-    return std::nullopt;
+    return first_match;
 }
 
 
 // Symmetric to BackbonePredecessor. Same loader-tag invariant: any
 // PeptideCN-categorised bond off res.C identifies the successor.
+// Same Huxley multi-match warn discipline as Predecessor above.
 std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
     if (residue_idx >= residues_.size()) return std::nullopt;
     const Residue& r = residues_[residue_idx];
     if (r.C == Residue::NONE) return std::nullopt;
 
     const LegacyAmberTopology& topo = LegacyAmber();
+    std::optional<size_t> first_match;
     for (size_t bond_idx : topo.BondIndicesFor(r.C)) {
         const Bond& bond = topo.BondAt(bond_idx);
         if (!bond.IsPeptideBond()) continue;
@@ -241,9 +261,19 @@ std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
         const size_t other_res_idx = atoms_[other]->residue_index;
         if (other_res_idx == residue_idx) continue;
         if (other_res_idx >= residues_.size()) continue;
-        if (residues_[other_res_idx].N == other) return other_res_idx;
+        if (residues_[other_res_idx].N != other) continue;
+        if (first_match.has_value()) {
+            OperationLog::Warn(
+                "Protein::BackboneSuccessor",
+                "Multiple PeptideCN bonds off residue " +
+                std::to_string(residue_idx) + " backbone C atom; "
+                "first match (residue " + std::to_string(*first_match) +
+                ") returned. Loader may have mistagged a cross-link.");
+            return first_match;
+        }
+        first_match = other_res_idx;
     }
-    return std::nullopt;
+    return first_match;
 }
 
 // ============================================================================

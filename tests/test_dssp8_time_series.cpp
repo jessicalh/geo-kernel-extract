@@ -237,8 +237,17 @@ TEST(Dssp8TimeSeries, Integration1P9J) {
             for (double e : frame) {
                 if (std::isfinite(e)) {
                     ++observed_bonds;
-                    EXPECT_LE(e, 0.5)
-                        << "DSSP H-bond energy unexpectedly positive: " << e;
+                    // libdssp writes the two best (lowest-energy)
+                    // partner candidates to the slot regardless of the
+                    // Kabsch-Sander 1983 strict -0.5 kcal/mol threshold
+                    // (which gates SS-classification COUNTING, not
+                    // slot-write). Empirically observed range on 1P9J
+                    // includes E ∈ [-0.5, 0]: real but weak. Test:
+                    // observed slots must be negative (attractive).
+                    // Sign-flipped energy or positive would be a real
+                    // libdssp serialisation bug.
+                    EXPECT_LE(e, 0.0)
+                        << "DSSP H-bond energy not attractive: " << e;
                 }
             }
         }

@@ -76,25 +76,49 @@ double WrapPi(double a) {
     return std::remainder(a, 2.0 * M_PI);
 }
 
-// Ramachandran-region binning. Boundaries (degrees → radians) follow the
-// simple literature grid documented in the H5 group attr. Returns the bin
-// code from {kRamaUnassigned, kRamaAlphaR, kRamaBeta, kRamaAlphaL,
-// kRamaPPII, kRamaOther}. Inputs in radians; NaN inputs yield
-// kRamaUnassigned.
+// Ramachandran-region binning, Lovell-Richardson 2003-aligned grid
+// (science-review HIGH 1-4, 2026-05-19). Returns the bin code from
+// {kRamaUnassigned, kRamaAlphaR, kRamaBeta, kRamaAlphaL, kRamaPPII,
+// kRamaOther}. Inputs in radians; NaN yields kRamaUnassigned.
 //
-// Boundaries (in degrees):
-//   αR  : phi ∈ [-100, -30],     psi ∈ [-65, -15]
-//   β   : phi ∈ [-180, -45],     psi ∈ [90, 180] ∪ [-180, -150]
-//   αL  : phi ∈ [ 30,  100],     psi ∈ [-30,  50]
-//   PPII: phi ∈ [-90,  -45],     psi ∈ [120, 180]
+// Boundaries (degrees, inclusive both ends):
+//   αR  : phi ∈ [-180,  -30], psi ∈ [-90,  30]   widened from earlier
+//                                                 [-100,-30] × [-65,-15]
+//                                                 to catch upper-psi
+//                                                 helix edge per Lovell
+//                                                 2003 favored region.
+//   β   : phi ∈ [-180,  -45], psi ∈ [60, 180]    psi lower edge extended
+//                                ∪ [-180,-150]   from 90 to 60 to catch
+//                                                 the parallel-β / β-
+//                                                 PPII overlap zone.
+//   αL  : phi ∈ [  30,  100], psi ∈ [-10,  80]   upper edge extended
+//                                                 from 50 to 80 per the
+//                                                 Lovell αL favored
+//                                                 region.
+//   PPII: phi ∈ [-75,   -50], psi ∈ [140, 165]   narrowed from earlier
+//                                                 broad box to the
+//                                                 Berkholz/Adzhubei
+//                                                 tight PPII cone, so
+//                                                 antiparallel β residues
+//                                                 at (-60, +145) no
+//                                                 longer get mislabelled
+//                                                 PPII.
 // Anything else with finite phi+psi → other.
 //
-// PPII overlaps β at the upper-psi corner. Order: αR → αL → PPII → β →
-// other. PPII is the more specific bin, checked before β.
+// PPII still resolved before β (and αL before PPII, αR before αL).
+// Boundary points land in the FIRST matching bin.
+//
+// References:
+//   Lovell, S.C., Davis, I.W., et al. (2003). Structure validation by
+//     Calpha geometry: phi, psi and Cbeta deviation. Proteins 50:437.
+//   Berkholz, D.S., et al. (2010). Conformation dependence of backbone
+//     geometry in proteins. Structure 18:1257.
+//   Adzhubei, A.A., et al. (2013). Polyproline-II helix in proteins:
+//     structure and function. J. Mol. Biol. 425:2100.
 //
 // Gly + Pro + pre-Pro have their own static masks (`is_glycine`,
-// `is_proline`, `is_pre_proline`) — downstream re-bins with type-aware
-// Rama maps if needed.
+// `is_proline`, `is_pre_proline`); downstream re-bins with type-aware
+// Rama maps (or Lovell penultimate-rotamer-library variants) as needed.
 std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
         return kRamaUnassigned;
@@ -103,20 +127,20 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     const double phi = phi_rad * deg_per_rad;
     const double psi = psi_rad * deg_per_rad;
 
-    if (phi >= -100.0 && phi <= -30.0 &&
-        psi >=  -65.0 && psi <= -15.0)
+    if (phi >= -180.0 && phi <= -30.0 &&
+        psi >=  -90.0 && psi <=  30.0)
         return kRamaAlphaR;
 
     if (phi >=  30.0 && phi <= 100.0 &&
-        psi >= -30.0 && psi <=  50.0)
+        psi >= -10.0 && psi <=  80.0)
         return kRamaAlphaL;
 
-    if (phi >= -90.0 && phi <= -45.0 &&
-        psi >= 120.0 && psi <= 180.0)
+    if (phi >= -75.0 && phi <= -50.0 &&
+        psi >= 140.0 && psi <= 165.0)
         return kRamaPPII;
 
     if (phi >= -180.0 && phi <= -45.0 &&
-        ((psi >= 90.0 && psi <= 180.0) || (psi >= -180.0 && psi <= -150.0)))
+        ((psi >= 60.0 && psi <= 180.0) || (psi >= -180.0 && psi <= -150.0)))
         return kRamaBeta;
 
     return kRamaOther;
@@ -386,22 +410,31 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "X-Pro is real signal, not a deviation -- use the omega_is_xpro "
         "static mask to flag those rows for consumer-side interpretation). "
         "Matches the PlanarGeometryResult.cpp:302-303 production impl. "
-        "PG's own header doc (PlanarGeometryResult.h:18-23) claims NaN-fill "
-        "at X->Pro but the impl emits the actual value; this TR aligns "
-        "with PG impl. PG header doc fix tracked as follow-up audit."));
+        "PG's own header doc claims NaN-fill at X->Pro but the impl "
+        "emits the actual value; this TR aligns with PG impl. "
+        "Recommended consumer pattern for aggregate stats (X-Pro cis "
+        "lobe is bimodal and would otherwise leak into 'normal' tails): "
+        "  omega_dev_normal = omega_deviation[~omega_is_xpro[:, None]] "
+        "  omega_dev_xpro   = omega_deviation[omega_is_xpro[:, None]] "
+        "  # analyse the X-Pro distribution separately (~5% cis vs trans). "
+        "WrapPi uses std::remainder for bit-identical agreement with "
+        "PlanarGeometryResult.cpp::WrapPi (math-review MED-2 fix, "
+        "2026-05-19)."));
     grp.createAttribute("rama_region_legend", std::string(
         "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other"));
     grp.createAttribute("rama_region_boundaries", std::string(
-        "alphaR: phi[-100,-30], psi[-65,-15]; "
-        "beta: phi[-180,-45], psi[90,180]U[-180,-150]; "
-        "alphaL: phi[30,100], psi[-30,50]; "
-        "PPII: phi[-90,-45], psi[120,180]; "
+        "alphaR: phi[-180,-30], psi[-90,30]; "
+        "beta: phi[-180,-45], psi[60,180]U[-180,-150]; "
+        "alphaL: phi[30,100], psi[-10,80]; "
+        "PPII: phi[-75,-50], psi[140,165] (tight Berkholz/Adzhubei cone); "
         "boundaries in degrees, inclusive both ends. "
         "Resolution order: alphaR -> alphaL -> PPII -> beta -> other "
-        "(first match wins). PPII is a strict subset of beta at the "
-        "upper-psi corner; PPII is reported in the overlap. Downstream "
-        "re-binners should respect this resolution order; raw phi+psi "
-        "are also emitted to allow Lovell-Richardson-style re-bin."));
+        "(first match wins). PPII narrowed (2026-05-19) so antiparallel "
+        "beta residues near (-60,+145) are no longer mislabeled PPII. "
+        "References: Lovell et al. 2003 Proteins 50:437; Berkholz et al. "
+        "2010 Structure 18:1257; Adzhubei et al. 2013 J. Mol. Biol. "
+        "425:2100. Downstream re-binners can use raw phi+psi (also "
+        "emitted) for Lovell penultimate-rotamer-library variants."));
     grp.createAttribute("chi_symmetry_caveats", std::string(
         "chi mod-pi (or near-mod-pi) symmetries that consumers must apply "
         "themselves -- raw chi here is the IUPAC signed value: "
@@ -411,8 +444,11 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "(guanidinium NH1<->NH2). Mod-(2pi/3): LYS chi-terminal (NH3+ "
         "3-fold). NOT SYMMETRIC: TRP chi2 (CD1 / CD2 chemically distinct "
         "across 5/6 ring junction), HIS chi2 (ND1 / CD2 chemically "
-        "distinct). Rotamer counters that need modular reduction must "
-        "apply it residue-by-residue."));
+        "distinct). HIS chi2 atom convention per Markley et al. 1998 "
+        "(IUPAC nomenclature, Pure Appl. Chem. 70:117): CA-CB-CG-ND1; "
+        "older sources sometimes use CA-CB-CG-CD2 which differs by "
+        "~120 degrees (HIS asymmetric). Rotamer counters that need "
+        "modular reduction must apply it residue-by-residue."));
     grp.createAttribute("residue_terminal_state_legend", std::string(
         "0=internal, 1=n_terminus, 2=c_terminus, 3=n_and_c_terminus, 4=unknown. "
         "NOTE: residue_terminal_state is loader-assigned CHAIN-ORDER "

@@ -46,11 +46,14 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
 }
 
 
-// Wrap an angle to (-π, π].
+// Wrap an angle to [-π, π]. std::remainder replaces a historic while-
+// loop pattern (bounded for arbitrary inputs; correct at ±π via IEEE
+// round-half-to-even). Aligns with DihedralTimeSeriesTrajectoryResult
+// .cpp::WrapPi so omega_deviation from PG and DihedralTS agree
+// bit-identically at the wrap boundary (math-review MED-2, 2026-05-19).
 double WrapPi(double a) {
-    while (a > M_PI)  a -= 2.0 * M_PI;
-    while (a <= -M_PI) a += 2.0 * M_PI;
-    return a;
+    if (!std::isfinite(a)) return a;
+    return std::remainder(a, 2.0 * M_PI);
 }
 
 
@@ -147,6 +150,15 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     const double Qcos = scale * cs;
     const double Qsin = scale * sn;
     const double Q = std::sqrt(Qcos * Qcos + Qsin * Qsin);
+    // Sub-amplitude degeneracy guard (math-review MED-1, 2026-05-19):
+    // a perfectly planar pentagon makes z_j ≈ 0 for every vertex, so
+    // Qcos/Qsin become floating-point noise and theta = atan2(noise,
+    // noise) is meaningless. Typical proline pyrrolidine Q ≈ 0.35-0.45
+    // Å (Ho & Cornilescu 2000 JBNMR 18:155); anything below 1e-6 Å is
+    // structural noise at Å-scale coordinates. Return NaN theta so
+    // downstream readers see "degenerate" honestly (the H5 attr
+    // already says NaN means degenerate).
+    if (Q < 1e-6) return {Q, kNaN};
     double theta = std::atan2(Qsin, Qcos) * 180.0 / M_PI;
     if (theta < 0.0) theta += 360.0;
     return {Q, theta};

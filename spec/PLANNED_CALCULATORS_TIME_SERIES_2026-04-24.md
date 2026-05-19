@@ -441,3 +441,33 @@ None of this requires redesign of the object model or buffer
 ownership. The discipline is in the schema attrs, the
 class-per-source rule, and the edge-case handling each clone must
 carry.
+
+
+## Backlog: J-coupling Karplus proxies (added 2026-05-19)
+
+Science review of the dihedral-family TR slice (DihedralTS +
+DihedralBinTransition + Dssp8 pair + RingPucker) flagged a gap an
+NMR advisor will probe at the first viva: **per-residue Karplus
+3J-coupling estimates as a direct experimental observable for
+backbone phi and sidechain rotamer populations.**
+
+Specific couplings to add as a thin ConformationResult + TR pair:
+
+- **3J(HN, Halpha)** — Karplus relation on the H-N-Calpha-Halpha
+  dihedral (depends on phi). Coefficients from Wang & Bax 1996 JACS
+  118:2483 or Vogeli et al. 2007 JACS 129:9377.
+- **3J(N, Cgamma)** — sidechain rotamer disambiguation on chi1.
+  Coefficients from Perez et al. 2001 JACS 123:7081.
+- **3J(C', Cgamma)** — companion to 3J(N, Cgamma); same coefficient
+  source.
+- **3J(HN, Cbeta)** — phi observable; same Vogeli/Wang reference
+  base.
+
+The DihedralTS slice persists all per-frame phi/psi/chi values, so
+the Karplus calculator is a thin downstream transform — no new
+geometric work. Output per residue per frame (R, T, N_coupling)
+float64 in Hz; static `coupling_legend` attr names the couplings
+and cites the Karplus coefficient source.
+
+Status: BACKLOG. Not in current TR slice. Calculator queue entry for
+the first ML-features pass once the existing 5 TRs ship.

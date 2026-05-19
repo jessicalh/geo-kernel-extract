@@ -49,10 +49,20 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
     return std::atan2(m1.dot(n2), n1.dot(n2));
 }
 
-// Ramachandran-region binning. Same 5-region grid + same resolution
-// order (αR → αL → PPII → β → other) as DihedralTimeSeriesTrajectoryResult
-// .cpp:88-115; downstream consumers reading both groups see identical
-// bin labels and boundaries. Returns kBinUnassigned for NaN inputs.
+// Ramachandran-region binning. Lovell-Richardson 2003-aligned grid,
+// kept bit-identical to DihedralTimeSeriesTrajectoryResult.cpp's copy
+// (science-review HIGH 1-4, 2026-05-19). Downstream consumers reading
+// both groups see identical bin labels and boundaries. Returns
+// kBinUnassigned for NaN inputs.
+//
+// Boundaries (degrees, inclusive):
+//   αR  : phi ∈ [-180, -30], psi ∈ [-90,  30]
+//   β   : phi ∈ [-180, -45], psi ∈ [60, 180] ∪ [-180,-150]
+//   αL  : phi ∈ [  30, 100], psi ∈ [-10,  80]
+//   PPII: phi ∈ [-75,  -50], psi ∈ [140, 165]  (Berkholz/Adzhubei cone)
+// Resolution: αR → αL → PPII → β → other (first match wins).
+// References: Lovell 2003 Proteins 50:437; Berkholz 2010 Structure
+// 18:1257; Adzhubei 2013 J. Mol. Biol. 425:2100.
 std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     using R = DihedralBinTransitionTrajectoryResult;
     if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
@@ -62,40 +72,47 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     const double phi = phi_rad * deg_per_rad;
     const double psi = psi_rad * deg_per_rad;
 
-    if (phi >= -100.0 && phi <= -30.0 &&
-        psi >=  -65.0 && psi <= -15.0)
+    if (phi >= -180.0 && phi <= -30.0 &&
+        psi >=  -90.0 && psi <=  30.0)
         return R::kBinAlphaR;
 
     if (phi >=  30.0 && phi <= 100.0 &&
-        psi >= -30.0 && psi <=  50.0)
+        psi >= -10.0 && psi <=  80.0)
         return R::kBinAlphaL;
 
-    if (phi >= -90.0 && phi <= -45.0 &&
-        psi >= 120.0 && psi <= 180.0)
+    if (phi >= -75.0 && phi <= -50.0 &&
+        psi >= 140.0 && psi <= 165.0)
         return R::kBinPPII;
 
     if (phi >= -180.0 && phi <= -45.0 &&
-        ((psi >=  90.0 && psi <= 180.0) ||
+        ((psi >=  60.0 && psi <= 180.0) ||
          (psi >= -180.0 && psi <= -150.0)))
         return R::kBinBeta;
 
     return R::kBinOther;
 }
 
-// Chi rotamer 120° three-bin classification. Matches
-// ChiRotamerSelectionTrajectoryResult.cpp:42-52:
-//   trans = |chi| > 120°   (chi ≈ ±180°)
-//   g+    = 0° < chi ≤ 120°  (chi ≈ +60°)
-//   g-    = -120° ≤ chi < 0° (chi ≈ -60°)
-// Returns kChiBinUnassigned for NaN inputs (chi not defined or
-// degenerate geometry).
+// Chi rotamer 120° three-bin classification, Lovell-Richardson 2003
+// convention (math-review MED-4, 2026-05-19): the boundaries between
+// rotamer wells centered at ±180° and ±60° are at ±120°, and those
+// boundary points themselves are conventionally assigned to trans
+// (not gauche). This differs from ChiRotamerSelectionTrajectoryResult
+// .cpp:42-52 which uses strict `>` boundaries (places ±120° in
+// gauche); ChiRotamerSelection is in the slated-for-removal
+// ScanForDftPointSet config so the convention is documented-divergent
+// rather than aligned.
+//   trans = |chi| ≥ 120°    (chi ≈ ±180°)
+//   g+    = 0° < chi < 120° (chi ≈ +60°)
+//   g-    = -120° < chi ≤ 0° (chi ≈ -60°)
+// chi == 0° exactly lands in g- via the else branch (rare in MD).
+// Returns kChiBinUnassigned for NaN inputs.
 std::uint8_t ChiRotamerBin(double chi_rad) {
     using R = DihedralBinTransitionTrajectoryResult;
     if (!std::isfinite(chi_rad)) return R::kChiBinUnassigned;
     const double third = 2.0 * M_PI / 3.0;  // 120°
-    if (chi_rad >  third) return R::kChiBinTrans;
-    if (chi_rad < -third) return R::kChiBinTrans;
-    if (chi_rad >  0.0)   return R::kChiBinGplus;
+    if (chi_rad >=  third) return R::kChiBinTrans;
+    if (chi_rad <= -third) return R::kChiBinTrans;
+    if (chi_rad >   0.0)   return R::kChiBinGplus;
     return R::kChiBinGminus;
 }
 
@@ -293,18 +310,28 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
         "0=unassigned, 1=alphaR, 2=beta, 3=alphaL, 4=PPII, 5=other. "
         "Identical labelling to DihedralTimeSeries.rama_region."));
     grp.createAttribute("backbone_bin_boundaries", std::string(
-        "alphaR: phi[-100,-30], psi[-65,-15]; "
-        "beta: phi[-180,-45], psi[90,180]U[-180,-150]; "
-        "alphaL: phi[30,100], psi[-30,50]; "
-        "PPII: phi[-90,-45], psi[120,180]; "
+        "alphaR: phi[-180,-30], psi[-90,30]; "
+        "beta: phi[-180,-45], psi[60,180]U[-180,-150]; "
+        "alphaL: phi[30,100], psi[-10,80]; "
+        "PPII: phi[-75,-50], psi[140,165] (tight Berkholz/Adzhubei cone); "
         "boundaries in degrees, inclusive both ends. "
         "Resolution order: alphaR -> alphaL -> PPII -> beta -> other "
-        "(first match wins). Matches DihedralTimeSeries verbatim."));
+        "(first match wins). Matches DihedralTimeSeries verbatim. "
+        "References: Lovell 2003 Proteins 50:437; Berkholz 2010 "
+        "Structure 18:1257; Adzhubei 2013 J. Mol. Biol. 425:2100."));
     grp.createAttribute("chi_rotamer_legend", std::string(
-        "0=gplus (0 < chi <= 120 deg), 1=trans (|chi| > 120 deg), "
-        "2=gminus (-120 <= chi < 0 deg), 255=unassigned (chi not "
+        "0=gplus (0 < chi < 120 deg), 1=trans (|chi| >= 120 deg), "
+        "2=gminus (-120 < chi <= 0 deg), 255=unassigned (chi not "
         "defined for this AA or per-frame geometry degenerate). "
-        "Matches ChiRotamerSelectionTrajectoryResult bin assignment."));
+        "Lovell-Richardson 2003 convention: ±120 deg lands in trans "
+        "(boundary between wells at ±180 and ±60). chi == 0 exactly "
+        "lands in g- via the else branch (rare in MD)."));
+    grp.createAttribute("cadence_caveat", std::string(
+        "Transition counts are stride-sensitive. At <= 100 ps cadence, "
+        "surface-exposed sidechain rotamer transitions are captured; "
+        "buried-residue transitions (dwell ~ns-us) require finer cadence "
+        "to resolve. Production stride=2 (20 ps/frame) captures surface; "
+        "test stride=300 (3 ns/frame) misses most rotamer transitions."));
     grp.createAttribute("transition_gate", std::string(
         "Both prev and curr frame must have an observed bin (non-"
         "unassigned) for a transition to count. Wrap-tolerant via bin "

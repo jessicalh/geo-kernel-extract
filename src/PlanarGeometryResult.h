@@ -3,6 +3,16 @@
 // PlanarGeometryResult: per-frame conformation companion to the
 // LegacyAmber substrate's typed planar-group / ring-position fields.
 //
+// CROSS-RESULT READ (writer side, 2026-05-19, PATTERNS §17):
+//   PuckerQ() / PuckerTheta() / AromaticChi2() / OmegaActual() are
+//   read per-frame by RingPuckerTimeSeriesTrajectoryResult (Q, theta,
+//   aromatic chi2) and DihedralTimeSeriesTrajectoryResult's cross-
+//   result test (omega). Both reader TRs declare no Dependencies()
+//   because PlanarGeometryResult attaches conditionally (LegacyAmber-
+//   substrate-gated by OperationRunner); the per-frame source-attached
+//   gate captures absence. See RingPuckerTS source_attached_policy
+//   attr and DihedralTS chain_break_policy attr.
+//
 // The substrate carries the typed *classification* (PlanarGroupKind,
 // PlanarStereo, RingPosition — landed in the 2026-05-05 → 2026-05-08
 // topology slice). This calculator carries the actual *deviation

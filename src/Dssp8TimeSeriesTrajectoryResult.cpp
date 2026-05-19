@@ -25,9 +25,14 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // Translate DsspResidue::HBondPartner.residue_index (size_t with
 // SIZE_MAX sentinel) to int32 with -1 sentinel. Out-of-range residue
-// indices are also treated as "no partner."
+// indices are also treated as "no partner." Defensive INT32_MAX cap
+// (math-review MED-5, 2026-05-19) — n_res < ~10^4 in practice but the
+// narrowing cast was unguarded.
 std::int32_t PartnerToInt32(std::size_t partner_idx, std::size_t n_res) {
     if (partner_idx >= n_res) return Dssp8TimeSeriesTrajectoryResult::kNoPartner;
+    if (partner_idx > static_cast<std::size_t>(
+            std::numeric_limits<std::int32_t>::max()))
+        return Dssp8TimeSeriesTrajectoryResult::kNoPartner;
     return static_cast<std::int32_t>(partner_idx);
 }
 
@@ -183,12 +188,22 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
         "energy partner."));
     grp.createAttribute("hbond_energy_units",            std::string("kcal/mol"));
     grp.createAttribute("hbond_energy_absent_sentinel",  std::string("NaN"));
+    grp.createAttribute("hbond_threshold", std::string(
+        "Kabsch-Sander 1983 (J. Biomol. Struct. Dyn. 1: 879) defines "
+        "E < -0.5 kcal/mol as the threshold for COUNTING an H-bond "
+        "toward SS classification (helix detection etc.). libdssp "
+        "writes the two best (lowest-energy) acceptor and donor "
+        "partners to the slot REGARDLESS of strict threshold, so "
+        "consumers may see observed slot energies in [-0.5, 0] -- "
+        "real (attractive) but not strict-K-S-counted. For consumers "
+        "wanting strict K-S H-bond stats: filter on `hbond_*_energy "
+        "< -0.5`. For consumers wanting all attractive interactions: "
+        "filter on `hbond_*_energy < 0`."));
     grp.createAttribute("source", std::string(
         "DsspResult (libdssp via Joosten 2011 / Kabsch-Sander 1983). "
-        "Phi/psi/SASA from DsspResult are NOT mirrored here -- they "
-        "live in DihedralTimeSeriesTrajectoryResult (NOTE: that TR "
-        "computes phi/psi via IUPAC convention; DSSP returns negated-"
-        "IUPAC, see DihedralTS angle_convention attr) and "
+        "Phi/Psi/SASA from DsspResult are NOT mirrored here -- phi/psi "
+        "live in DihedralTimeSeriesTrajectoryResult (which negates DSSP's "
+        "libdssp values to recover IUPAC convention), and SASA lives in "
         "SasaResult."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- DsspResult attaches only when "

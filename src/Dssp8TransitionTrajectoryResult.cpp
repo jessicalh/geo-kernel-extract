@@ -152,6 +152,13 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
         "curr) are NOT counted; the diagonal is identically zero. "
         "Sum over the (prev, curr) off-diagonal equals "
         "ss8_transition_count[ri]."));
+    grp.createAttribute("cadence_caveat", std::string(
+        "Transition counts are stride-sensitive. At <= 100 ps cadence, "
+        "fast SS fluctuations are captured; slow secondary-structure "
+        "rearrangements (helix unfolding events ~ns-us) require finer "
+        "or longer-trajectory cadence to resolve. Production stride=2 "
+        "(20 ps/frame) captures fast SS dynamics; test stride=300 "
+        "(3 ns/frame) misses most transitions."));
     grp.createAttribute("transition_gate", std::string(
         "Both prev and curr frame must have an observed SS code "
         "(DsspResult attached AND code != unassigned). Source-absent "

@@ -168,13 +168,16 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("aromatic_chi2_units", std::string("radians"));
     grp.createAttribute("aromatic_chi2_convention", std::string(
         "IUPAC signed dihedral via atan2(y,x). Ca-Cb-Cg-Cd1 for "
-        "PHE/TYR; Ca-Cb-Cg-Nd1 for HIS; Ca-Cb-Cg-Cd1 for TRP. "
-        "Matches DihedralTimeSeries.chi[1] for the parent aromatic "
-        "residue. Per Akke & Weininger 2023 J. Phys. Chem. B 127, "
-        "591: chi2 IS the canonical ring-flip observable, but the "
-        "per-frame value is INSTANTANEOUS -- ring-flip kinetics (slow "
-        "~10^1-10^2 s^-1 via CEST/CPMG; fast averaged) are NOT "
-        "measurable from one frame."));
+        "PHE/TYR; Ca-Cb-Cg-Nd1 for HIS (Markley et al. 1998 IUPAC "
+        "nomenclature, Pure Appl. Chem. 70:117 -- older sources use "
+        "Ca-Cb-Cg-Cd2 which differs by ~120 deg since HIS is "
+        "asymmetric); Ca-Cb-Cg-Cd1 for TRP. Matches "
+        "DihedralTimeSeries.chi[1] for the parent aromatic residue. "
+        "Per Akke & Weininger 2023 J. Phys. Chem. B 127, 591: chi2 "
+        "IS the canonical ring-flip observable, but the per-frame "
+        "value is INSTANTANEOUS -- ring-flip kinetics (slow ~10^1-10^2 "
+        "s^-1 via CEST/CPMG; fast averaged) are NOT measurable from "
+        "one frame."));
     grp.createAttribute("source", std::string("PlanarGeometryResult"));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- PlanarGeometryResult attaches when the "
