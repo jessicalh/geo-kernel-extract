@@ -45,10 +45,11 @@ char ResidueOneLetterCode(AminoAcid type) {
 }
 
 
-bool SameChain(const Protein& protein, std::size_t a, std::size_t b) {
-    return protein.ResidueAt(a).chain_id ==
-           protein.ResidueAt(b).chain_id;
-}
+// Local SameChain helper retired 2026-05-19: replaced by the canonical
+// Protein::BackboneConnected query (covalent C-N bond graph). chain_id
+// matching missed within-chain numbering gaps with intact bonds,
+// antibody insertion-coded structures, and cyclic peptides. See
+// PATTERNS.md + OBJECT_MODEL.md "Backbone connectivity discipline."
 
 
 // One per-direction outcome for the per-residue match record.
@@ -180,7 +181,13 @@ TripeptideNeighborShieldingResult::Compute(
                 (long long)ri + (long long)delta_sign;
             if (ni_signed < 0 || ni_signed >= (long long)N_res) return;
             const std::size_t ni = (std::size_t)ni_signed;
-            if (!SameChain(protein, ri, ni)) return;
+            // Direction-aware backbone-connectivity gate: ni is i±1.
+            // Use the canonical Protein::BackboneConnected query
+            // (covalent C-N bond graph) rather than the retired
+            // chain_id-based SameChain helper.
+            const std::size_t r_lo = std::min(ri, ni);
+            const std::size_t r_hi = std::max(ri, ni);
+            if (!protein.BackboneConnected(r_lo, r_hi)) return;
 
             const Residue& neigh = protein.ResidueAt(ni);
             const char letter = ResidueOneLetterCode(neigh.type);
@@ -189,31 +196,28 @@ TripeptideNeighborShieldingResult::Compute(
                 neigh.CA == Residue::NONE ||
                 neigh.C  == Residue::NONE) return;
 
-            // Neighbor's actual φ/ψ.
+            // Neighbor's actual φ/ψ — also gated on the bond graph.
             bool has_phi = false, has_psi = false;
             double phi = 0.0, psi = 0.0;
-            if (ni > 0 && SameChain(protein, ni - 1, ni)) {
+            if (ni > 0 && protein.BackboneConnected(ni - 1, ni)) {
                 const std::size_t prev_C =
                     protein.ResidueAt(ni - 1).C;
-                if (prev_C != Residue::NONE) {
-                    phi = DihedralDegrees(
-                        conf.PositionAt(prev_C),
-                        conf.PositionAt(neigh.N),
-                        conf.PositionAt(neigh.CA),
-                        conf.PositionAt(neigh.C));
-                    has_phi = true;
-                }
+                phi = DihedralDegrees(
+                    conf.PositionAt(prev_C),
+                    conf.PositionAt(neigh.N),
+                    conf.PositionAt(neigh.CA),
+                    conf.PositionAt(neigh.C));
+                has_phi = true;
             }
-            if (ni + 1 < N_res && SameChain(protein, ni, ni + 1)) {
+            if (ni + 1 < N_res &&
+                    protein.BackboneConnected(ni, ni + 1)) {
                 const std::size_t next_N = protein.ResidueAt(ni + 1).N;
-                if (next_N != Residue::NONE) {
-                    psi = DihedralDegrees(
-                        conf.PositionAt(neigh.N),
-                        conf.PositionAt(neigh.CA),
-                        conf.PositionAt(neigh.C),
-                        conf.PositionAt(next_N));
-                    has_psi = true;
-                }
+                psi = DihedralDegrees(
+                    conf.PositionAt(neigh.N),
+                    conf.PositionAt(neigh.CA),
+                    conf.PositionAt(neigh.C),
+                    conf.PositionAt(next_N));
+                has_psi = true;
             }
             if (!has_phi || !has_psi) return;
 

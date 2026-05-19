@@ -276,8 +276,19 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     // sentinel discipline; see feedback_huxley_data_discipline +
     // PATTERNS.md "Diagnostic error messages").
     //
-    // NaN at: C-terminus (no i+1), residues with missing N/CA/C
-    // backbone-cache atoms (incomplete structure).
+    // Connectivity comes from `protein.BackboneConnected(ri, ri+1)`
+    // (canonical bond-graph query, 2026-05-19) — guarantees an actual
+    // covalent C(i)-N(i+1) peptide bond before computing omega.
+    // Without that gate this loop emits an omega across non-bonded
+    // residue pairs (chain boundaries, numbering gaps with intact
+    // bonds, antibody insertion-coded structures) — a silent
+    // correctness bug fixed in the 2026-05-19 substrate-correction
+    // sweep across DihedralTimeSeries / PlanarGeometry / Tripeptide
+    // BB+Neighbor / LarsenHBond.
+    //
+    // NaN at: chain boundary (no covalent C(i)-N(i+1)), C-terminus
+    // (no i+1), residues with missing CA backbone-cache atoms
+    // (incomplete structure).
     // ──────────────────────────────────────────────────────────────
     result_ptr->omega_actual_.assign(N_res, kNaN);
     result_ptr->omega_deviation_.assign(N_res, kNaN);
@@ -285,12 +296,11 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     int omega_valid = 0;
     int omega_xpro = 0;
     for (size_t ri = 0; ri + 1 < N_res; ++ri) {
+        if (!protein.BackboneConnected(ri, ri + 1)) continue;
+        // BackboneConnected guarantees res_i.C and res_ip.N exist.
         const Residue& res_i  = protein.ResidueAt(ri);
         const Residue& res_ip = protein.ResidueAt(ri + 1);
-
         if (res_i.CA  == Residue::NONE) continue;
-        if (res_i.C   == Residue::NONE) continue;
-        if (res_ip.N  == Residue::NONE) continue;
         if (res_ip.CA == Residue::NONE) continue;
 
         const double omega = Dihedral(

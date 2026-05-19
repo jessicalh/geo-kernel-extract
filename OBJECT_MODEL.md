@@ -3080,6 +3080,43 @@ This keeps the SDK reader's `apply_mask(data, source_attached_per_frame)`
 pattern uniform whether the underlying source is conditional or not.
 First example: `DihedralTimeSeriesTrajectoryResult` (2026-05-19).
 
+### Backbone connectivity discipline (2026-05-19)
+
+**Residue-pair adjacency is queried via `Protein::BackboneConnected(ri_a, ri_b)`.**
+The method checks the cifpp-derived bond graph for a covalent
+C(a)-N(b) peptide bond. It is the **only** sanctioned way to ask
+"is residue b the backbone successor of residue a?" anywhere in the
+calculator surface.
+
+**Banned anti-pattern:** inferring adjacency from `chain_id ==
+chain_id`, `sequence_number` arithmetic, `terminal_state` propagation,
+or `insertion_code` comparison. These are loader-supplied labels that
+happen to align with covalent topology on smooth single-chain proteins
+but silently disagree on:
+
+- residue numbering gaps with intact covalent bonds,
+- antibody-style insertion-coded structures (100 → 100A → 100B → 101),
+- engineered chimeras with non-monotonic numbering,
+- cyclic peptides where the chain wraps,
+- structures the loader left with `terminal_state == Unknown`.
+
+**Substrate-correction sweep (commit 6ab84e8 → 1c19d4a → 85da93d →
+the 2026-05-19 substrate sweep)** retired five ad-hoc-adjacency
+sites: `DihedralTimeSeriesTrajectoryResult` (its own local
+`BackboneConnected` helper), `PlanarGeometryResult` (omega loop —
+previously had no chain check at all), `TripeptideBackboneShieldingResult`
+(its `SameChain` helper), `TripeptideNeighborShieldingResult` (its
+own `SameChain`), and `LarsenHBondShieldingResult` (its
+`has_same_chain_prev` lambda). All five now route through
+`protein.BackboneConnected(ri, rj)`.
+
+New calc-side code that needs residue-pair adjacency MUST use the
+canonical method. Adversarial-review grep targets:
+`chain_id == ... .chain_id`, `sequence_number == ... + 1`,
+`terminal_state == ResidueTerminalState::`, `insertion_code ==` —
+all are forbidden as adjacency proxies (the underlying fields are
+fine for identity reporting and SDK metadata, but not for connectivity).
+
 ---
 
 ## Trajectory

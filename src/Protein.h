@@ -64,6 +64,31 @@ public:
     size_t AddResidue(Residue residue);
 
     // ================================================================
+    // Backbone connectivity (canonical, bond-graph-driven)
+    //
+    // Returns true iff residues a and b are joined by a covalent
+    // C(a)-N(b) peptide bond in the cifpp-derived bond graph (i.e. a
+    // precedes b along the chain). This is the geometry-native
+    // substrate for "is i+1 the next residue?" — it bypasses every
+    // classification quirk that chain_id / sequence_number /
+    // terminal_state / insertion_code can produce (antibody insertion
+    // codes, engineered chimeras with non-monotonic numbering, residue
+    // numbering gaps with intact covalent bonds, cyclic peptides where
+    // chain_id wraps, loader leaving terminal_state Unknown).
+    //
+    // If C(a) or N(b) is missing from the residue's backbone-cache
+    // (incomplete structure) the answer is false. The query is
+    // O(degree_of_C) ≈ small constant.
+    //
+    // ALL calc-side residue-adjacency walks (omega, phi, psi, Tripeptide
+    // BB/Neighbor DFT lookups, Larsen H-bond donor frames) MUST go
+    // through this method. Chain_id / sequence_number / terminal_state
+    // / insertion_code-based adjacency is a banned anti-pattern; see
+    // PATTERNS.md and OBJECT_MODEL.md "Backbone connectivity discipline
+    // (2026-05-19)".
+    bool BackboneConnected(size_t residue_a_idx, size_t residue_b_idx) const;
+
+    // ================================================================
     // Ring access (delegated through RingTopology on LegacyAmberTopology)
     //
     // Bundle C / Slice B (2026-05-07): ring storage moved to

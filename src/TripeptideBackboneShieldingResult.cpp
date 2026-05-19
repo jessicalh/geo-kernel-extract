@@ -39,10 +39,13 @@ char ResidueOneLetterCode(AminoAcid type) {
 }
 
 
-bool SameChain(const Protein& protein, std::size_t a, std::size_t b) {
-    return protein.ResidueAt(a).chain_id ==
-           protein.ResidueAt(b).chain_id;
-}
+// Local SameChain helper retired 2026-05-19: replaced by the canonical
+// Protein::BackboneConnected query (covalent C-N bond graph). chain_id
+// matching was an ad-hoc inference that missed within-chain numbering
+// gaps with intact bonds, antibody insertion-coded structures, and
+// cyclic peptides. See PATTERNS.md + OBJECT_MODEL.md "Backbone
+// connectivity discipline" + commit log for the substrate-correction
+// sweep.
 
 
 // frame_type → method tag enum (0 unknown, 1 OPBE, 2 ORCA-PBE).
@@ -121,30 +124,29 @@ TripeptideBackboneShieldingResult::Compute(
             continue;
         }
 
-        // φ/ψ from same-chain neighbours.
+        // φ/ψ from backbone-connected neighbours (Protein::BackboneConnected
+        // queries the covalent C-N bond graph, not chain_id).
         bool has_phi = false, has_psi = false;
         double phi = 0.0, psi = 0.0;
-        if (ri > 0 && SameChain(protein, ri - 1, ri)) {
+        if (ri > 0 && protein.BackboneConnected(ri - 1, ri)) {
+            // BackboneConnected guarantees prev_C != NONE.
             const std::size_t prev_C = protein.ResidueAt(ri - 1).C;
-            if (prev_C != Residue::NONE) {
-                phi = DihedralDegrees(
-                    conf.PositionAt(prev_C),
-                    conf.PositionAt(res.N),
-                    conf.PositionAt(res.CA),
-                    conf.PositionAt(res.C));
-                has_phi = true;
-            }
+            phi = DihedralDegrees(
+                conf.PositionAt(prev_C),
+                conf.PositionAt(res.N),
+                conf.PositionAt(res.CA),
+                conf.PositionAt(res.C));
+            has_phi = true;
         }
-        if (ri + 1 < N_res && SameChain(protein, ri, ri + 1)) {
+        if (ri + 1 < N_res && protein.BackboneConnected(ri, ri + 1)) {
+            // BackboneConnected guarantees next_N != NONE.
             const std::size_t next_N = protein.ResidueAt(ri + 1).N;
-            if (next_N != Residue::NONE) {
-                psi = DihedralDegrees(
-                    conf.PositionAt(res.N),
-                    conf.PositionAt(res.CA),
-                    conf.PositionAt(res.C),
-                    conf.PositionAt(next_N));
-                has_psi = true;
-            }
+            psi = DihedralDegrees(
+                conf.PositionAt(res.N),
+                conf.PositionAt(res.CA),
+                conf.PositionAt(res.C),
+                conf.PositionAt(next_N));
+            has_psi = true;
         }
         if (!has_phi || !has_psi) continue;
 

@@ -122,34 +122,10 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     return kRamaOther;
 }
 
-// Two residues are backbone-connected iff a covalent C(a)-N(b) peptide
-// bond exists in the cifpp-derived bond graph. This is the canonical
-// geometry-native substrate -- it bypasses every classification quirk
-// that chain_id / terminal_state / sequence_number / insertion_code
-// brings (antibody insertion codes, engineered chimeras with non-
-// monotonic numbering, loader leaving terminal_state Unknown, residue
-// numbering gaps with intact covalent bonds, cyclic peptides where
-// chain_id wraps).
-//
-// If C(a) or N(b) is missing from the residue's backbone-cache the
-// answer is false (no peptide bond is structurally definable).
-// Otherwise: walk the bond list off C(a) and return true iff one
-// endpoint is N(b).
-//
-// Note: this query is O(degree_of_C) = small constant (~3). Called
-// O(R) times per frame at Compute. Negligible cost.
-bool BackboneConnected(const Protein& protein,
-                       const Residue& a, const Residue& b) {
-    if (a.C == Residue::NONE || b.N == Residue::NONE) return false;
-    const LegacyAmberTopology& topo = protein.LegacyAmber();
-    for (std::size_t bond_idx : topo.BondIndicesFor(a.C)) {
-        const Bond& bond = topo.BondAt(bond_idx);
-        const std::size_t other = (bond.atom_index_a == a.C)
-            ? bond.atom_index_b : bond.atom_index_a;
-        if (other == b.N) return true;
-    }
-    return false;
-}
+// Backbone connectivity is delegated to Protein::BackboneConnected
+// (the canonical query, 2026-05-19). All calc-side residue-adjacency
+// walks route through there; see PATTERNS.md and OBJECT_MODEL.md
+// "Backbone connectivity discipline."
 
 }  // anonymous namespace
 
@@ -196,9 +172,8 @@ DihedralTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     // PlanarGeometryResult sets omega_is_xpro_ only on the i row (the
     // row carrying that peptide bond's omega); we follow that convention.
     for (std::size_t ri = 0; ri + 1 < R; ++ri) {
-        const Residue& res_i  = protein.ResidueAt(ri);
+        if (!protein.BackboneConnected(ri, ri + 1)) continue;
         const Residue& res_ip = protein.ResidueAt(ri + 1);
-        if (!BackboneConnected(protein, res_i, res_ip)) continue;
         if (res_ip.type == AminoAcid::PRO) {
             r->omega_is_xpro_[ri]  = 1u;
             r->is_pre_proline_[ri] = 1u;
@@ -241,16 +216,15 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         double phi_val = kNaN;
         if (ri > 0 &&
             res.N != Residue::NONE && res.CA != Residue::NONE &&
-            res.C != Residue::NONE) {
+            res.C != Residue::NONE &&
+            protein.BackboneConnected(ri - 1, ri)) {
+            // BackboneConnected guarantees res(ri-1).C exists.
             const Residue& res_im = protein.ResidueAt(ri - 1);
-            if (BackboneConnected(protein, res_im, res) &&
-                res_im.C != Residue::NONE) {
-                phi_val = Dihedral(
-                    conf.PositionAt(res_im.C),
-                    conf.PositionAt(res.N),
-                    conf.PositionAt(res.CA),
-                    conf.PositionAt(res.C));
-            }
+            phi_val = Dihedral(
+                conf.PositionAt(res_im.C),
+                conf.PositionAt(res.N),
+                conf.PositionAt(res.CA),
+                conf.PositionAt(res.C));
         }
         phi_[ri].push_back(phi_val);
 
@@ -258,27 +232,26 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         double psi_val = kNaN;
         if (ri + 1 < R &&
             res.N != Residue::NONE && res.CA != Residue::NONE &&
-            res.C != Residue::NONE) {
+            res.C != Residue::NONE &&
+            protein.BackboneConnected(ri, ri + 1)) {
+            // BackboneConnected guarantees res(ri+1).N exists.
             const Residue& res_ip = protein.ResidueAt(ri + 1);
-            if (BackboneConnected(protein, res, res_ip) &&
-                res_ip.N != Residue::NONE) {
-                psi_val = Dihedral(
-                    conf.PositionAt(res.N),
-                    conf.PositionAt(res.CA),
-                    conf.PositionAt(res.C),
-                    conf.PositionAt(res_ip.N));
-            }
+            psi_val = Dihedral(
+                conf.PositionAt(res.N),
+                conf.PositionAt(res.CA),
+                conf.PositionAt(res.C),
+                conf.PositionAt(res_ip.N));
         }
         psi_[ri].push_back(psi_val);
 
         // ── omega: Cα(i)-C(i)-N(i+1)-Cα(i+1) ─────────────────────────
         double omega_val = kNaN;
         if (ri + 1 < R &&
-            res.CA != Residue::NONE && res.C != Residue::NONE) {
+            res.CA != Residue::NONE && res.C != Residue::NONE &&
+            protein.BackboneConnected(ri, ri + 1)) {
             const Residue& res_ip = protein.ResidueAt(ri + 1);
-            if (BackboneConnected(protein, res, res_ip) &&
-                res_ip.N != Residue::NONE &&
-                res_ip.CA != Residue::NONE) {
+            // BackboneConnected guarantees res_ip.N exists.
+            if (res_ip.CA != Residue::NONE) {
                 omega_val = Dihedral(
                     conf.PositionAt(res.CA),
                     conf.PositionAt(res.C),
@@ -386,19 +359,15 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         "test_dihedral_time_series.cpp CrossResultConsistency*."));
     grp.createAttribute("chain_break_policy", std::string(
         "NaN at any dihedral spanning a non-covalent residue boundary. "
-        "BackboneConnected queries the LegacyAmber bond graph directly: "
-        "residue a and b are backbone-connected iff a covalent C(a)-N(b) "
-        "peptide bond exists in protein.LegacyAmber().Bonds(). This is "
-        "the geometry-native substrate -- it bypasses every classification "
-        "quirk that chain_id / terminal_state / sequence_number / "
-        "insertion_code brings (antibody insertion codes, engineered "
-        "chimeras with non-monotonic numbering, residue numbering gaps "
-        "with intact covalent bonds, cyclic peptides where chain_id "
-        "wraps). NOTE: PlanarGeometryResult.cpp:287-309 omits the "
-        "bond-adjacency check and emits omega across non-bonded gaps; "
-        "this TR's stricter gate is the more correct behaviour. PG "
-        "tightening is tracked as a feedback_audit_the_formula_family "
-        "follow-up."));
+        "Connectivity queried via Protein::BackboneConnected, which "
+        "checks the cifpp-derived bond graph for a covalent C(a)-N(b) "
+        "peptide bond. Geometry-native substrate; correct on antibody "
+        "insertion codes, engineered chimeras with non-monotonic "
+        "numbering, residue numbering gaps with intact covalent bonds, "
+        "and cyclic peptides. All sibling residue-adjacency walks "
+        "(PlanarGeometryResult omega, Tripeptide BB/Neighbor DFT "
+        "lookups, Larsen H-bond donor frames) use the same canonical "
+        "query post the 2026-05-19 substrate-correction commit."));
     grp.createAttribute("omega_deviation_policy", std::string(
         "WrapPi(omega - pi) in [-pi, pi]. Emitted for EVERY well-defined "
         "peptide bond INCLUDING X->Pro bonds (cis/trans isomerism at "

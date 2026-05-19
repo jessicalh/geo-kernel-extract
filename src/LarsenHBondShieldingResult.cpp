@@ -166,19 +166,19 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
         const Residue& res_j = protein.ResidueAt(o_atom.residue_index);
         if (res_j.C == Residue::NONE) return std::nullopt;
         t.C_idx = res_j.C;
-        // i+1 third: next residue's N, only if same chain.
+        // i+1 third: next residue's N, only if backbone-connected
+        // (covalent C(j)-N(j+1) bond per Protein::BackboneConnected).
+        // Replaces the retired chain_id check (2026-05-19) — see
+        // OBJECT_MODEL.md "Backbone connectivity discipline."
         std::size_t j_plus_1 = o_atom.residue_index + 1;
-        if (j_plus_1 < protein.ResidueCount()) {
+        if (j_plus_1 < protein.ResidueCount() &&
+            protein.BackboneConnected(o_atom.residue_index, j_plus_1)) {
+            // BackboneConnected guarantees next_res.N != NONE.
             const Residue& next_res = protein.ResidueAt(j_plus_1);
-            if (next_res.chain_id == res_j.chain_id &&
-                next_res.N != Residue::NONE) {
-                t.third_idx = next_res.N;
-                t.i_plus_1_residue_idx = j_plus_1;
-            } else {
-                // C-terminus or chain boundary: no i+1, 2° term skipped.
-                t.third_idx = Residue::NONE;
-            }
+            t.third_idx = next_res.N;
+            t.i_plus_1_residue_idx = j_plus_1;
         } else {
+            // C-terminus or chain boundary: no i+1, 2° term skipped.
             t.third_idx = Residue::NONE;
         }
         return t;
@@ -471,11 +471,15 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     //                                          + n_pairs_grid_skipped.
     int n_pairs_grid_skipped = 0;
 
-    auto has_same_chain_prev = [&](std::size_t d_ri) -> bool {
+    // has_backbone_prev: queries the canonical Protein::BackboneConnected
+    // (covalent C(prev)-N(cur) peptide bond) — required for the amide
+    // donor frame's third atom (C of preceding residue). Replaces the
+    // retired chain_id-based has_same_chain_prev (2026-05-19) which
+    // missed within-chain numbering gaps, antibody insertion-coded
+    // structures, and cyclic peptides.
+    auto has_backbone_prev = [&](std::size_t d_ri) -> bool {
         if (d_ri == 0) return false;
-        const Residue& cur  = protein.ResidueAt(d_ri);
-        const Residue& prev = protein.ResidueAt(d_ri - 1);
-        return cur.chain_id == prev.chain_id;
+        return protein.BackboneConnected(d_ri - 1, d_ri);
     };
 
     // PairResult — tri-state disposition for one donor/acceptor candidate.
@@ -741,7 +745,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // amide H and α-hydrogen donors to the spatial enumeration. The
     // donor frame anchors per donor class:
     //   AmideHydrogen: anchor = res.N, third = prev_res.C  (same chain;
-    //                  prev_res guaranteed via has_same_chain_prev).
+    //                  prev_res guaranteed via has_backbone_prev).
     //   AlphaHydrogen: anchor = res.CA, third = res.N (this residue's
     //                  own N — no preceding-residue dependency).
     // ------------------------------------------------------------------
@@ -758,7 +762,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             donor_class = HBondDonorClass::AmideHydrogen;
             donor_anchor_idx = res.N;
             // C'(i-1) — chain-boundary check is essential here.
-            if (!has_same_chain_prev(atom.residue_index)) {
+            if (!has_backbone_prev(atom.residue_index)) {
                 choices.Record(CalculatorId::LarsenHBond, resolution_key++,
                     "amide donor at N-term or chain boundary",
                     [ri = atom.residue_index](GeometryChoice& gc) {

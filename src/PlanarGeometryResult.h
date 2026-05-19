@@ -16,11 +16,17 @@
 //
 //   - **Peptide-bond planarity** — ω dihedral
 //     Cα(i)–C(i)–N(i+1)–Cα(i+1) per residue, with deviation from π.
-//     NaN-fill at the C-terminus and at the bond INTO Pro (the
-//     standard cis/trans isomerism of X–Pro is a real conformational
-//     state, not a deviation; emit NaN to keep ω-deviation a clean
-//     "non-planar amide" signal). Convention: ω in radians, deviation
-//     wrapped to [−π, π].
+//     ω and ω_deviation are emitted for every well-defined peptide
+//     bond (covalent C(i)–N(i+1) per `protein.BackboneConnected`),
+//     INCLUDING X→Pro bonds. cis/trans isomerism at X-Pro is real
+//     conformational signal — use the `omega_is_xpro` mask to flag
+//     those rows for consumer-side interpretation, not NaN-fill.
+//     NaN at: chain-break boundary (no covalent C(i)-N(i+1)),
+//     C-terminus, missing backbone-cache atoms. Convention: ω in
+//     radians, deviation wrapped to [−π, π]. The X-Pro NaN-fill
+//     described in earlier doc versions was a documentation error;
+//     the impl has always emitted the actual value (corrected
+//     2026-05-19 sweep).
 //
 //   - **sp2 pyramidalization** — signed out-of-plane displacement of
 //     each atom whose AtomSemanticTable::planar_group != None from

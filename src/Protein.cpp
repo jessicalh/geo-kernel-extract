@@ -170,6 +170,36 @@ const CovalentTopology& Protein::BondTopology() const {
     return LegacyAmber().Bonds();
 }
 
+
+// ─────────────────────────────────────────────────────────────────────
+// Backbone connectivity (canonical, bond-graph-driven). See Protein.h
+// for the discipline note.
+//
+// Geometry-native query: a and b are backbone-connected iff a covalent
+// C(a)-N(b) peptide bond exists in the cifpp-derived bond graph. This
+// is the substrate that replaces every ad-hoc chain_id / sequence_number
+// / terminal_state / insertion_code adjacency inference across the
+// calculator surface (see PATTERNS.md and OBJECT_MODEL.md "Backbone
+// connectivity discipline (2026-05-19)").
+// ─────────────────────────────────────────────────────────────────────
+bool Protein::BackboneConnected(size_t residue_a_idx,
+                                 size_t residue_b_idx) const {
+    if (residue_a_idx >= residues_.size() ||
+        residue_b_idx >= residues_.size()) return false;
+    const Residue& a = residues_[residue_a_idx];
+    const Residue& b = residues_[residue_b_idx];
+    if (a.C == Residue::NONE || b.N == Residue::NONE) return false;
+
+    const LegacyAmberTopology& topo = LegacyAmber();
+    for (size_t bond_idx : topo.BondIndicesFor(a.C)) {
+        const Bond& bond = topo.BondAt(bond_idx);
+        const size_t other = (bond.atom_index_a == a.C)
+            ? bond.atom_index_b : bond.atom_index_a;
+        if (other == b.N) return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // Ring access — delegated through RingTopology on LegacyAmberTopology.
 // Bundle C / Slice B (2026-05-07): mirrors the bond delegation above.
