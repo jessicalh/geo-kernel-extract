@@ -1606,6 +1606,105 @@ class RingPuckerTimeSeriesGroup:
     source_attached_policy: str
 
 
+@dataclass(frozen=True)
+class JCouplingTimeSeriesGroup:
+    """Per-residue per-frame Karplus ³J observables from
+    /trajectory/j_coupling_time_series/.
+
+    Three channels (R, T) float64 in Hz; thin Karplus transform of the
+    persisted phi/chi1 timeline. NaN within frames indicates the channel
+    is structurally absent for this residue (PRO has no HN; GLY/ALA have
+    no chi1).
+
+      J_HN_Halpha     ³J(HN, Hα) via H-N-CA-HA dihedral; phi observable.
+                      Wang & Bax 1996 JACS 118:2483 parametrization.
+      J_N_Cgamma      ³J(N, Cγ) via N-CA-CB-CG (= chi1); chi1 rotamer.
+                      Pérez et al. 2001 JACS 123:7081.
+      J_Cprime_Cgamma ³J(C', Cγ) via C-CA-CB-CG (chi1 with C' leading);
+                      120° offset on Cβ-Cα axis. Pérez 2001.
+
+    Karplus form: ³J(θ) = A·cos²(θ) + B·cos(θ) + C, θ in radians via
+    IUPAC signed atan2. Coefficients per channel:
+      J_HN_Halpha     A=6.51, B=-1.76, C=1.60 (range [1.48, 9.87] Hz)
+      J_N_Cgamma      A=1.29, B=-0.49, C=0.37 (range [0.32, 2.15] Hz)
+      J_Cprime_Cgamma A=1.74, B=-0.57, C=0.25 (range [0.20, 2.56] Hz)
+
+    Static per-residue masks (R,) uint8:
+      J_HN_Halpha_exists  1 if H + N + CA + HA all cached.
+      J_chi1_exists       1 if chi1 atoms valid (i.e. not GLY/ALA).
+
+    Per-atom lookup (N,) int32:
+      residue_index_per_atom  atom_i → residue_i broadcast for the SDK /
+                              viewer (atom-axis access to the per-residue
+                              J channels).
+
+    GLY caveat: GLY uses Residue.HA which is HA2 by Residue.h convention;
+    HA3 is not separately measured here. Consumers needing pro-R/pro-S
+    resolution on glycine should compute directly from the two Hα atom
+    indices.
+
+    Source: positions + Residue backbone-cache + chi1 atom indices. No
+    source ConformationResult dependency (positions present from
+    tp.Seed; source_attached_per_frame trivially all-1 for SDK uniformity
+    under the OBJECT_MODEL "Conditional-attach TR" canonical statement).
+    """
+    J_HN_Halpha: np.ndarray                  # (R, T) Hz
+    J_N_Cgamma: np.ndarray                   # (R, T) Hz
+    J_Cprime_Cgamma: np.ndarray              # (R, T) Hz
+    J_HN_Halpha_exists: np.ndarray           # (R,) uint8
+    J_chi1_exists: np.ndarray                # (R,) uint8
+    residue_index_per_atom: np.ndarray       # (N,) int32
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_residues: int
+    n_atoms: int
+    n_frames: int
+    karplus_form: str
+    J_HN_Halpha_coefficients: str
+    J_N_Cgamma_coefficients: str
+    J_Cprime_Cgamma_coefficients: str
+    dihedral_convention: str
+    GLY_caveat: str
+    units: str                                # "Hz"
+    absent_sentinel: str                      # "NaN"
+    source: str
+    source_attached_policy: str
+
+
+def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
+    path = "/trajectory/j_coupling_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return JCouplingTimeSeriesGroup(
+        J_HN_Halpha=g["J_HN_Halpha"][:],
+        J_N_Cgamma=g["J_N_Cgamma"][:],
+        J_Cprime_Cgamma=g["J_Cprime_Cgamma"][:],
+        J_HN_Halpha_exists=g["J_HN_Halpha_exists"][:],
+        J_chi1_exists=g["J_chi1_exists"][:],
+        residue_index_per_atom=g["residue_index_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_residues=int(g.attrs["n_residues"]),
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        karplus_form=_attr("karplus_form"),
+        J_HN_Halpha_coefficients=_attr("J_HN_Halpha_coefficients"),
+        J_N_Cgamma_coefficients=_attr("J_N_Cgamma_coefficients"),
+        J_Cprime_Cgamma_coefficients=_attr("J_Cprime_Cgamma_coefficients"),
+        dihedral_convention=_attr("dihedral_convention"),
+        GLY_caveat=_attr("GLY_caveat"),
+        units=_attr("units"),
+        absent_sentinel=_attr("absent_sentinel"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -1848,6 +1947,9 @@ class TrajectoryData:
     # Per-ring (saturated + aromatic) pucker timeline (2026-05-19).
     ring_pucker: Optional[RingPuckerTimeSeriesGroup] = None
 
+    # Per-residue Karplus ³J observables (2026-05-19).
+    j_coupling: Optional[JCouplingTimeSeriesGroup] = None
+
 
 def _read_frame_metadata(f, n_atoms_hint: int):
     """Return (n_frames, frame_times) from either H5 schema.
@@ -1989,6 +2091,7 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
             transitions=_load_dssp8_transition(f),
         )
         ring_pucker = _load_ring_pucker_time_series(f)
+        j_coupling = _load_j_coupling_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2007,4 +2110,5 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         dihedral_bin_transitions=dihedral_bin_transitions,
         dssp8=dssp8,
         ring_pucker=ring_pucker,
+        j_coupling=j_coupling,
     )

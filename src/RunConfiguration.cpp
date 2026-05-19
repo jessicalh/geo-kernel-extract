@@ -38,6 +38,7 @@
 #include "Dssp8TimeSeriesTrajectoryResult.h"
 #include "Dssp8TransitionTrajectoryResult.h"
 #include "RingPuckerTimeSeriesTrajectoryResult.h"
+#include "JCouplingTimeSeriesTrajectoryResult.h"
 #include "GromacsFramePullResult.h"
 #include "BondedEnergyResult.h"
 #include "TripeptideNeighborShieldingResult.h"
@@ -356,6 +357,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return RingPuckerTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return JCouplingTimeSeriesTrajectoryResult::Create(tp);
         });
 
     return c;

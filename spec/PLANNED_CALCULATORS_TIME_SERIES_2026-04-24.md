@@ -443,7 +443,7 @@ class-per-source rule, and the edge-case handling each clone must
 carry.
 
 
-## Backlog: J-coupling Karplus proxies (added 2026-05-19)
+## LANDED 2026-05-19: J-coupling Karplus proxies
 
 Science review of the dihedral-family TR slice (DihedralTS +
 DihedralBinTransition + Dssp8 pair + RingPucker) flagged a gap an
@@ -469,5 +469,16 @@ geometric work. Output per residue per frame (R, T, N_coupling)
 float64 in Hz; static `coupling_legend` attr names the couplings
 and cites the Karplus coefficient source.
 
-Status: BACKLOG. Not in current TR slice. Calculator queue entry for
-the first ML-features pass once the existing 5 TRs ship.
+Status: LANDED 2026-05-19 as `JCouplingTimeSeriesTrajectoryResult` in
+`src/JCouplingTimeSeriesTrajectoryResult.{h,cpp}`. Per-channel emission
+(three separate (R, T) datasets — J_HN_Halpha, J_N_Cgamma,
+J_Cprime_Cgamma — preferred over a fused (R, T, N_coupling) cube for
+SDK consumer ergonomics: each channel reads natively as a 2D timeline).
+3J(HN, Cbeta) deferred — its Karplus parametrization is less canonical
+and the three landed channels close the phi + chi1 viva story. Wired
+into RunConfiguration::WithProductionDefaults; SDK group exposed via
+`TrajectoryData.j_coupling` and `from nmr_extract import
+JCouplingTimeSeriesGroup`. Tests in
+`tests/test_j_coupling_time_series.cpp`: 4/4 green on 1P9J (R=54, T=6,
+PRO=1, GLY+ALA=6; ~888 finite Karplus observations within published
+analytical bounds [1.48-9.87 / 0.32-2.15 / 0.20-2.56 Hz]).

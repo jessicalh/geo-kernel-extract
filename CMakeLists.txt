@@ -304,6 +304,7 @@ add_library(nmr_shielding
     src/Dssp8TimeSeriesTrajectoryResult.cpp
     src/Dssp8TransitionTrajectoryResult.cpp
     src/RingPuckerTimeSeriesTrajectoryResult.cpp
+    src/JCouplingTimeSeriesTrajectoryResult.cpp
     src/EeqResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
@@ -1211,6 +1212,25 @@ target_compile_definitions(dihedral_bin_transition_tests PRIVATE
 target_include_directories(dihedral_bin_transition_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(dihedral_bin_transition_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(dihedral_bin_transition_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# JCouplingTimeSeries tests
+# ============================================================================
+
+add_executable(j_coupling_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_j_coupling_time_series.cpp
+)
+target_compile_definitions(j_coupling_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(j_coupling_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(j_coupling_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(j_coupling_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
