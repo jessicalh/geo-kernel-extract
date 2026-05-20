@@ -1611,44 +1611,126 @@ class JCouplingTimeSeriesGroup:
     """Per-residue per-frame Karplus ³J observables from
     /trajectory/j_coupling_time_series/.
 
-    Four channels (R, T) float64 in Hz; thin Karplus transform of the
-    persisted phi/chi1 timeline. NaN within frames indicates the channel
-    is structurally absent for this residue (PRO has no HN; GLY has no
-    Cβ; GLY/ALA have no chi1).
+    Nine datasets across eight channel families (R, T) float64 in Hz;
+    thin Karplus transform of the persisted phi/chi1 timeline. NaN
+    within frames indicates the channel is structurally absent for this
+    residue (PRO has no HN; GLY has no Cβ; GLY/ALA have no chi1;
+    SER/CYS/THR have non-carbon chi1 terminal so J(N,Cγ) / J(C',Cγ)
+    NaN; N-terminus has no C'(prev) so J(Hα,C') NaN; ALA's methyl Cβ
+    is deliberately excluded from J(Hα,Hβ)).
 
-      J_HN_Halpha     ³J(HN, Hα) via H-N-CA-HA dihedral; phi observable.
-                      Vuister & Bax 1993 JACS 115:7772 (DOI 10.1021/
-                      ja00070a024).
-      J_HN_Cbeta      ³J(HN, Cβ) via H-N-CA-CB dihedral; phi observable
-                      (orthogonal to J(HN,Hα); the pair overdetermines
-                      phi). Wang & Bax 1996 JACS 118:2483 NMR/X-ray
-                      refined fit (DOI 10.1021/ja9535524).
-      J_N_Cgamma      ³J(N, Cγ) via N-CA-CB-CG (= chi1); chi1 rotamer.
-                      Pérez et al. 2001 JACS 123:7081 (DOI 10.1021/
-                      ja003724j).
-      J_Cprime_Cgamma ³J(C', Cγ) via C-CA-CB-CG (chi1 with C' leading);
-                      120° offset on Cβ-Cα axis. Pérez 2001 (same DOI).
+      J_HN_Halpha          ³J(HN, Hα) via H-N-CA-HA dihedral; phi
+                           observable. Vuister & Bax 1993 JACS 115:7772
+                           (DOI 10.1021/ja00070a024).
+      J_HN_Halpha_Vogeli   Same atomic dihedral, alternate Karplus
+                           parametrization. Vögeli, Ying, Grishaev &
+                           Bax 2007 JACS 129:9377 (DOI 10.1021/
+                           ja070324o), Table 1 "rigid" row. Methods-
+                           accumulate alternate (both channels stay).
+      J_HN_Cbeta           ³J(HN, Cβ) via H-N-CA-CB dihedral; orthogonal
+                           phi observable. Wang & Bax 1996 JACS 118:2483
+                           NMR/X-ray refined fit row 3 (DOI 10.1021/
+                           ja9535524).
+      J_HN_Cprime          ³J(HN, C') via H-N-CA-C dihedral; phi
+                           observable. Wang & Bax 1996 Table 1 ROW 4
+                           (θ=0°, NMR/X-ray refined fit, A=4.32,
+                           B=+0.84, C=0.00). B is POSITIVE; J can be
+                           slightly negative (~-0.04 Hz minimum).
+                           Row-mapping fixed 2026-05-20 per codex F1:
+                           prior bundle attributed row 2 values
+                           (3.75, +2.19, 1.28) to this channel.
+      J_Halpha_Cprime      ³J(Hα, C') via HA-CA-N-C'(prev) dihedral;
+                           phi observable. The 3-bond path crosses
+                           the peptide bond at the previous residue's
+                           C'; rotation is around the N-CA axis (phi
+                           axis), per Vuister teaching lecture sect
+                           6.1 + Vogeli 2007 page 9384. Wang & Bax
+                           1996 Table 1 ROW 2 (θ=-60°, A=3.75,
+                           B=+2.19, C=1.28). B is POSITIVE. NaN at
+                           N-terminus (no C'(prev)). Atom path +
+                           row-mapping fixed 2026-05-20 per codex F1
+                           + F2: prior bundle used HA-CA-C-N(next)
+                           (psi axis, NOT phi) with row 4 values.
+      J_N_Cgamma           ³J(N, Cγ) via N-CA-CB-CG (= chi1); chi1
+                           rotamer. Pérez et al. 2001 JACS 123:7081
+                           (DOI 10.1021/ja003724j), Table 2 consensus
+                           row.
+      J_Cprime_Cgamma      ³J(C', Cγ) via C-CA-CB-CG; chi1 rotamer
+                           with C' leading. Pérez 2001 Table 2
+                           consensus row, A=2.31, B=-0.87, C=0.55
+                           (byte-verified 2026-05-19 — earlier circulated
+                           value (1.74, -0.57, 0.25) was wrong).
+      J_Halpha_Hbeta2      ³J(Hα, Hβ2) via HA-CA-CB-HB2; chi1 rotamer.
+                           Pérez 2001 Table 2 consensus row. Methylene
+                           pro-R/pro-S assignment follows IUPAC HB2/HB3
+                           atom-name convention. Ile/Val/Thr methine
+                           Hβ emitted in this slot.
+      J_Halpha_Hbeta3      As J_Halpha_Hbeta2 but for HB3; for the
+                           prochiral methylene pair. Ile/Val/Thr methine
+                           Hβ mirrored in this slot (same value).
+                           Gly/Ala: NaN (no methylene Hβ).
 
-    Karplus form: ³J(θ) = A·cos²(θ) + B·cos(θ) + C, θ in radians via
-    IUPAC signed atan2 computed directly from atom positions (never
-    reconstructed from phi + offset). Coefficients per channel:
-      J_HN_Halpha     A=6.51, B=-1.76, C=1.60 (range [1.48, 9.87] Hz)
-      J_HN_Cbeta      A=3.39, B=-0.94, C=0.07 (range [0.005, 4.40] Hz)
-      J_N_Cgamma      A=1.29, B=-0.49, C=0.37 (range [0.32, 2.15] Hz)
-      J_Cprime_Cgamma A=1.74, B=-0.57, C=0.25 (range [0.20, 2.56] Hz)
+    Karplus form (post-codex-F6 + project-sign repair, 2026-05-20):
+      Backbone channels (HN-Hα, HN-Cβ, HN-C', Hα-C'): J = A·cos²(φ +
+      θ_offset) + B·cos(φ + θ_offset) + C, where φ is canonical
+      Ramachandran C(prev)-N-CA-C (IUPAC signed atan2, radians), and
+      θ_offset is stored in the project phi convention (opposite sign
+      from Wang-Bax / Vögeli printed phi):
+        HN-Hα: θ_offset = +π/3
+        HN-Cβ: θ_offset = -π/3
+        HN-C': θ_offset = 0
+        Hα-C': θ_offset = +π/3
+      Chi1 channels (J(N,Cγ), J(C',Cγ), J(Hα,Hβ{2,3})): J = A·cos²(α)
+      + B·cos(α) + C, where α is the actual 4-atom atomic dihedral
+      computed directly from positions (Pérez 2001 Table 2 footnote c
+      form -- the per-coupling (A, B, C) internalize the Cα-substituent
+      offset).
 
-    Coefficient byte-verification (2026-05-19): Vuister-Bax 1993 ³J(HN,
-    Hα) values verified via the Vuister teaching-lecture quotation;
-    Wang-Bax 1996 ³J(HN, Cβ) values byte-verified from Table 1 row 3
-    of the open Bax-group PDF copy; Pérez 2001 values widely circulated
-    in TALOS-N / NMRViewJ / etc. but original paper paywalled — citation
-    confirmed, coefficient byte-verification pending institutional
-    access. All numerics live in src/PhysicalConstants.h.
+      This is the same sign convention used by DihedralTimeSeries
+      (`phi_DSSP = -phi_IUPAC`). The LiteratureAnchoredProbeOn1UBQ
+      test is the executable guard for the project-sign mapping.
+
+    Coefficients per channel (byte-verified 2026-05-19):
+      J_HN_Halpha          A=6.51,  B=-1.76, C=1.60 (range [1.48, 9.87])
+      J_HN_Halpha_Vogeli   A=7.97,  B=-1.26, C=0.63 (range [0.58, 9.86])
+      J_HN_Cbeta           A=3.39,  B=-0.94, C=0.07 (range [0.005, 4.40])
+      J_HN_Cprime          A=4.32,  B=+0.84, C=0.00 (range [-0.04, 5.16])
+                                    (Wang-Bax row 4; fixed 2026-05-20)
+      J_Halpha_Cprime      A=3.75,  B=+2.19, C=1.28 (range [0.96, 7.22])
+                                    (Wang-Bax row 2; fixed 2026-05-20)
+      J_N_Cgamma           A=1.29,  B=-0.49, C=0.37 (range [0.32, 2.15])
+      J_Cprime_Cgamma      A=2.31,  B=-0.87, C=0.55 (range [0.47, 3.73])
+      J_Halpha_Hbeta{2,3}  A=7.23,  B=-1.37, C=2.22 (range [2.16, 10.82])
+
+    All numerics live in src/PhysicalConstants.h and are byte-verified
+    against the source PDFs in references/.
 
     Static per-residue masks (R,) uint8:
-      J_HN_Halpha_exists  1 if H + N + CA + HA all cached.
-      J_HN_Cbeta_exists   1 if H + N + CA + CB all cached (PRO=0; GLY=0).
-      J_chi1_exists       1 if chi1 atoms valid (i.e. not GLY/ALA).
+      J_HN_Halpha_exists      1 if C(prev) + H + N + CA + C + HA all
+                              cached (gates both J_HN_Halpha and
+                              J_HN_Halpha_Vogeli).
+      J_HN_Cbeta_exists       1 if C(prev) + H + N + CA + C + CB all
+                              cached (PRO=0, GLY=0).
+      J_HN_Cprime_exists      1 if C(prev) + H + N + CA + C all cached
+                              (PRO=0).
+      J_Halpha_Cprime_exists  1 if C(prev) + N + CA + C + HA all
+                              cached. The physical atom path is
+                              HA-CA-N-C'(prev), but the emitted value
+                              is phi-derived and therefore also needs
+                              current-residue C. N-terminus=0; codex
+                              F2/F4 2026-05-20 flipped this from
+                              C-terminus.
+      J_chi1_exists           1 if chi1 atoms valid (residue has chi1
+                              defined; GLY/ALA → 0). Necessary but
+                              NOT sufficient for J_N_Cgamma /
+                              J_Cprime_Cgamma (those further require
+                              Element::C at chi[0].a[3]).
+      J_N_Cgamma_exists       1 if J_chi1_exists AND chi[0].a[3]
+                              element is Carbon (SER/CYS/THR → 0
+                              because chi1 terminal is OG/SG/OG1).
+      J_Cprime_Cgamma_exists  1 if J_N_Cgamma_exists AND C/CA cached.
+      J_Halpha_Hbeta_exists   1 if HA + CA + CB + (HB2 or HB3 or HB
+                              methine) cached (GLY=0, ALA=0).
 
     Per-atom lookup (N,) int32:
       residue_index_per_atom  atom_i → residue_i broadcast for the SDK /
@@ -1658,22 +1740,36 @@ class JCouplingTimeSeriesGroup:
     GLY caveat: GLY uses Residue.HA which is HA2 by Residue.h convention;
     HA3 is not separately measured here. The Vuister-Bax 1993 fit DID
     include glycine ³J values, so the published (A, B, C) absorb the
-    pro-R/pro-S averaging error. Consumers needing strict pro-R/pro-S
-    resolution should compute directly from the two Hα atom indices.
+    pro-R/pro-S averaging error. ALA Hβ channels are NaN by design
+    (methyl ≠ methylene observable). Consumers needing strict pro-R/
+    pro-S resolution should compute directly from the per-atom indices.
 
     Source: positions + Residue backbone-cache (H, N, CA, HA, CB, C) +
-    chi1 atom indices. No source ConformationResult dependency
-    (positions present from tp.Seed; source_attached_per_frame trivially
-    all-1 for SDK uniformity under the OBJECT_MODEL "Conditional-attach
-    TR" canonical statement).
+    chi1 atom indices + per-residue Hβ atoms (looked up by IUPAC name)
+    + C'(prev) (resolved via Protein::BackbonePredecessor bond-graph
+    query, NOT ri-1 / chain_id-equality which is a banned adjacency
+    anti-pattern). No source ConformationResult dependency (positions
+    present from tp.Seed; source_attached_per_frame trivially all-1
+    for SDK uniformity under the OBJECT_MODEL "Conditional-attach TR"
+    canonical statement).
     """
     J_HN_Halpha: np.ndarray                  # (R, T) Hz
+    J_HN_Halpha_Vogeli: np.ndarray           # (R, T) Hz
     J_HN_Cbeta: np.ndarray                   # (R, T) Hz
+    J_HN_Cprime: np.ndarray                  # (R, T) Hz
+    J_Halpha_Cprime: np.ndarray              # (R, T) Hz
     J_N_Cgamma: np.ndarray                   # (R, T) Hz
     J_Cprime_Cgamma: np.ndarray              # (R, T) Hz
+    J_Halpha_Hbeta2: np.ndarray              # (R, T) Hz
+    J_Halpha_Hbeta3: np.ndarray              # (R, T) Hz
     J_HN_Halpha_exists: np.ndarray           # (R,) uint8
     J_HN_Cbeta_exists: np.ndarray            # (R,) uint8
+    J_HN_Cprime_exists: np.ndarray           # (R,) uint8
+    J_Halpha_Cprime_exists: np.ndarray       # (R,) uint8
     J_chi1_exists: np.ndarray                # (R,) uint8
+    J_N_Cgamma_exists: np.ndarray            # (R,) uint8
+    J_Cprime_Cgamma_exists: np.ndarray       # (R,) uint8
+    J_Halpha_Hbeta_exists: np.ndarray        # (R,) uint8
     residue_index_per_atom: np.ndarray       # (N,) int32
     frame_indices: np.ndarray
     frame_times: np.ndarray
@@ -1683,9 +1779,13 @@ class JCouplingTimeSeriesGroup:
     n_frames: int
     karplus_form: str
     J_HN_Halpha_coefficients: str
+    J_HN_Halpha_Vogeli_coefficients: str
     J_HN_Cbeta_coefficients: str
+    J_HN_Cprime_coefficients: str
+    J_Halpha_Cprime_coefficients: str
     J_N_Cgamma_coefficients: str
     J_Cprime_Cgamma_coefficients: str
+    J_Halpha_Hbeta_coefficients: str
     dihedral_convention: str
     GLY_caveat: str
     units: str                                # "Hz"
@@ -1703,12 +1803,22 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
         return str(_decode_attr(g.attrs.get(name, "")))
     return JCouplingTimeSeriesGroup(
         J_HN_Halpha=g["J_HN_Halpha"][:],
+        J_HN_Halpha_Vogeli=g["J_HN_Halpha_Vogeli"][:],
         J_HN_Cbeta=g["J_HN_Cbeta"][:],
+        J_HN_Cprime=g["J_HN_Cprime"][:],
+        J_Halpha_Cprime=g["J_Halpha_Cprime"][:],
         J_N_Cgamma=g["J_N_Cgamma"][:],
         J_Cprime_Cgamma=g["J_Cprime_Cgamma"][:],
+        J_Halpha_Hbeta2=g["J_Halpha_Hbeta2"][:],
+        J_Halpha_Hbeta3=g["J_Halpha_Hbeta3"][:],
         J_HN_Halpha_exists=g["J_HN_Halpha_exists"][:],
         J_HN_Cbeta_exists=g["J_HN_Cbeta_exists"][:],
+        J_HN_Cprime_exists=g["J_HN_Cprime_exists"][:],
+        J_Halpha_Cprime_exists=g["J_Halpha_Cprime_exists"][:],
         J_chi1_exists=g["J_chi1_exists"][:],
+        J_N_Cgamma_exists=g["J_N_Cgamma_exists"][:],
+        J_Cprime_Cgamma_exists=g["J_Cprime_Cgamma_exists"][:],
+        J_Halpha_Hbeta_exists=g["J_Halpha_Hbeta_exists"][:],
         residue_index_per_atom=g["residue_index_per_atom"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
@@ -1718,9 +1828,13 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
         n_frames=int(g.attrs["n_frames"]),
         karplus_form=_attr("karplus_form"),
         J_HN_Halpha_coefficients=_attr("J_HN_Halpha_coefficients"),
+        J_HN_Halpha_Vogeli_coefficients=_attr("J_HN_Halpha_Vogeli_coefficients"),
         J_HN_Cbeta_coefficients=_attr("J_HN_Cbeta_coefficients"),
+        J_HN_Cprime_coefficients=_attr("J_HN_Cprime_coefficients"),
+        J_Halpha_Cprime_coefficients=_attr("J_Halpha_Cprime_coefficients"),
         J_N_Cgamma_coefficients=_attr("J_N_Cgamma_coefficients"),
         J_Cprime_Cgamma_coefficients=_attr("J_Cprime_Cgamma_coefficients"),
+        J_Halpha_Hbeta_coefficients=_attr("J_Halpha_Hbeta_coefficients"),
         dihedral_convention=_attr("dihedral_convention"),
         GLY_caveat=_attr("GLY_caveat"),
         units=_attr("units"),

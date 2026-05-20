@@ -191,28 +191,83 @@ inline D4EeqParams D4EeqParamsFor(Element e) {
 // ============================================================================
 // Karplus 3J-coupling parameters
 //
-// Karplus form for all four protein backbone / sidechain 3J couplings
-// emitted by JCouplingTimeSeriesTrajectoryResult:
+// Karplus form for the eight protein backbone / sidechain 3J coupling
+// families emitted by JCouplingTimeSeriesTrajectoryResult (nine HDF5
+// datasets because J(Halpha,Hbeta) is split into HB2 and HB3):
 //
-//     3J(theta) = A * cos^2(theta) + B * cos(theta) + C   [Hz]
+//     3J(alpha) = A * cos^2(alpha) + B * cos(alpha) + C   [Hz]
 //
-// where theta is the relevant 3-bond H-X-Y-Z dihedral in RADIANS,
-// measured via IUPAC signed atan2 directly from atom positions.
+// where alpha is either (project_phi + project_theta_offset) for
+// backbone phi channels, or the actual atomic 4-atom dihedral for
+// chi1 channels.
 //
-// Geometric identity used by the backbone phi observables:
-// for L-amino acids in standard tetrahedral backbone geometry,
-//   H-N-CA-HA  ~=  phi - 60 degrees   (basis for 3J(HN, Halpha))
-//   H-N-CA-CB  ~=  phi + 60 degrees   (basis for 3J(HN, Cbeta))
-// The Karplus parametrizations below were originally published as a
-// function of (phi - 60) or (phi + 60); equivalently they take the
-// actual atomic dihedral as input. We compute the dihedral directly
-// from atom positions (never reconstructed via phi + offset), which
-// is the modern usage explicitly documented by Li, Lee, Grishaev,
-// Ying & Bax, ChemPhysChem 16, 572-578 (2015), DOI: 10.1002/cphc.
-// 201402704.
+// Convention -- per-channel, NOT a blanket claim:
+//
+// The published backbone Karplus papers express their fit as
+//   J(phi_pub) = A * cos^2(phi_pub + theta_pub) +
+//                B * cos(phi_pub + theta_pub) + C
+// where theta_pub is a per-channel constant tabulated in the source:
+//   - Wang & Bax 1996 JACS 118:2483 Table 1 (page 2487) tabulates
+//     theta_pub for the four backbone channels: -60 deg for
+//     3J(HN, Hα), +60 deg for 3J(HN, Cβ), -60 deg for 3J(Hα, C'),
+//     0 deg for 3J(HN, C'). These correspond to the published
+//     ideal-tetrahedral identity (alpha_atomic = phi + theta_offset).
+//   - Vogeli et al. 2007 JACS 129:9377 eq 5 uses the same form,
+//     restated with eta_ik in radians: -pi/3 for HN-Hα, +pi/3 for
+//     HN-Cβ, pi for HN-C' (page 9383). Note Vogeli's eta = pi gives
+//     B with the OPPOSITE sign to Wang-Bax's theta = 0 deg for the
+//     same observable, because cos(phi + pi) = -cos(phi). Both
+//     forms describe the same curve.
+//   - Perez et al. 2001 JACS 123:7081 Table 2 (page 7086) tabulates
+//     the chi1-related channels with the substituent rotation
+//     book-kept inside the per-coupling (A, B, C); see footnote c
+//     ("theta = chi1 + Delta_chi1, according to Figure 1, and
+//     coefficients C0 already comprise incremental effects"). The
+//     atomic dihedral on the relevant 4-atom path IS theta in
+//     Perez's framework.
+//   - Li, Lee, Grishaev, Ying & Bax 2015 ChemPhysChem 16:572 documents
+//     the modern usage of evaluating the published curves on atomic
+//     dihedrals computed directly from coordinates when coordinates
+//     are available.
+//
+// The project DihedralTimeSeries uses the opposite sign from DSSP and
+// from the Wang-Bax/Vogeli plotting convention (see
+// DihedralTimeSeriesTrajectoryResult.cpp: phi_DSSP = -phi_IUPAC).
+// Therefore the constants below store theta in the PROJECT convention:
+//
+//   phi_project = -phi_pub
+//   cos(phi_pub + theta_pub) = cos(phi_project - theta_pub)
+//
+// so theta_project = -theta_pub. This is why HN-Halpha and
+// Halpha-C' use +pi/3 here even though the Wang-Bax table prints
+// theta=-60 deg, and HN-Cbeta uses -pi/3 even though the table prints
+// theta=+60 deg. The 1UBQ probe confirms the sign convention:
+// atomic H-N-CA-HA is phi_project + ~60.8 deg and atomic H-N-CA-CB is
+// phi_project - ~57.5 deg.
+//
+// **For chi1 channels** (J(N,Cγ), J(C',Cγ), J(Hα,Hβ)) the parametriz-
+// ation in Perez 2001 implicitly carries the rotation around C-alpha
+// inside (A, B, C); feeding the atomic dihedral on the relevant
+// 4-atom path is the Perez-intended usage. Channels referring to
+// 3J(N,Cγ): chi1 terminal must be C; SER/CYS/THR carry O/S/O at
+// chi[0].a[3] and the channel is NaN by element gate (Element::C
+// at chi[0].a[3]).
+//
+// All channel families carry POSITIVE A (cos^2 amplitude). The B sign
+// is channel-dependent. Karplus arithmetic bounds on
+// J(alpha) = A * cos^2(alpha) + B * cos(alpha) + C over cos(alpha) in
+// [-1, 1] (A > 0):
+//   global extrema are at the endpoints f(+1) = A + B + C and f(-1)
+//   = A - B + C, and at the vertex u* = -B/(2A) if u* lies in
+//   (-1, 1), where f(u*) = C - B^2 / (4A). For B < 0 the vertex is
+//   the MIN and f(-1) = A + |B| + C is the MAX. For B > 0 the vertex
+//   is the MIN and f(+1) = A + B + C is the MAX. (Earlier comment
+//   text said "f(-1) > f(+1) is the MAX" for positive-B channels;
+//   that was a typo -- positive B means the linear cos slope is
+//   positive at the endpoints, so f(+1) is the MAX.)
 // ============================================================================
 
-// --- 3J(HN, Halpha) -- phi observable via H-N-CA-HA dihedral ---
+// --- 3J(HN, Halpha) -- phi observable ---
 //
 // Vuister, G. W. & Bax, A. "Quantitative J correlation: a new approach
 // for measuring homonuclear three-bond J(HNHalpha) coupling constants
@@ -226,9 +281,39 @@ inline D4EeqParams D4EeqParamsFor(Element e) {
 // thesis-default canonical reference. Reference PDF:
 //   references/vuister-lecture-j-couplings.pdf (the Vuister teaching
 //   lecture quotes A,B,C = 6.51, -1.76, 1.60 verbatim).
+// Wang-Bax fit form (published convention) has theta_pub=-60 deg.
+// The project phi sign is opposite, so theta_project=+60 deg.
+// Arithmetic range: cos(theta) in [-1, 1], A>0, B<0; max at f(-1) =
+// A - B + C = 9.87 Hz; vertex u* = -B/(2A) = 0.135 in (-1, 1), f(u*)
+// = C - B^2/(4A) = 1.48 Hz (MIN).
 constexpr double KARPLUS_HN_HA_A =  6.51;
 constexpr double KARPLUS_HN_HA_B = -1.76;
 constexpr double KARPLUS_HN_HA_C =  1.60;
+constexpr double KARPLUS_HN_HA_THETA =  PI / 3.0;  // project theta; Wang-Bax theta_pub=-60 deg
+
+// --- 3J(HN, Halpha) Vogeli rigid -- phi observable via H-N-CA-HA dihedral ---
+//
+// Vogeli, B., Ying, J., Grishaev, A. & Bax, A. "Limits on variations
+// in protein backbone dynamics from precise measurements of scalar
+// couplings." J. Am. Chem. Soc. 129, 9377-9385 (2007).
+// DOI: 10.1021/ja070324o.
+//
+// Table 1 (page 9383) "rigid" row: A=7.97, B=-1.26, C=0.63 with rmsd
+// 0.42 Hz. Fit on GB3 RDC-refined structure (PDB 2OED) with hydrogens
+// at idealized positions. Methods-accumulate alternate to Vuister-Bax
+// 1993 (NOT a replacement -- see feedback_methods_accumulate). Same
+// atomic dihedral as J_HN_Halpha (H-N-CA-HA).
+// Reference PDF:
+//   references/vogeli-2007-limits-backbone-dynamics-3j-couplings-gb3.pdf
+//   Table 1 page 9383, byte-verified 2026-05-19.
+// Arithmetic range: A>0, B<0; max at f(-1) = A - B + C = 9.86 Hz;
+// vertex u* = -B/(2A) = 0.079 in (-1, 1), f(u*) = C - B^2/(4A) = 0.58
+// Hz (MIN).
+constexpr double KARPLUS_HN_HA_VOGELI_A =  7.97;
+constexpr double KARPLUS_HN_HA_VOGELI_B = -1.26;
+constexpr double KARPLUS_HN_HA_VOGELI_C =  0.63;
+constexpr double KARPLUS_HN_HA_VOGELI_THETA = PI / 3.0;  // project theta;
+        // Vogeli eq 5 eta_ik=-pi/3 in the published phi convention.
 
 // --- 3J(HN, Cbeta) -- phi observable via H-N-CA-CB dihedral ---
 //
@@ -239,17 +324,74 @@ constexpr double KARPLUS_HN_HA_C =  1.60;
 //
 // Table 1 row 3, NMR/X-ray refined fit (page 2487):
 //   theta = +60 degrees, A = 3.39 +- 0.07, B = -0.94 +- 0.07, C = 0.07
-//   +- 0.02. Original published form is J = A * cos^2(phi + 60) + B *
-//   cos(phi + 60) + C, where (phi + 60) ~= H-N-CA-CB dihedral in
-//   standard L-amino-acid geometry; feeding the atomic dihedral
-//   directly is equivalent and is the standard modern usage.
-//
-// Reference PDF: references/wang-bax-1996-karplus-phi-ubiquitin.pdf
-// (Table 1, page 2487; byte-verified 2026-05-19 against the open
-// Bax-group repository copy).
+//   +- 0.02. Reference PDF:
+//   references/wang-bax-1996-karplus-phi-ubiquitin.pdf (Table 1, page
+//   2487; byte-verified 2026-05-19 against the open Bax-group PDF).
+// Arithmetic range: A>0, B<0; max at f(-1) = A - B + C = 4.40 Hz;
+// vertex u* = -B/(2A) = 0.139 in (-1, 1), f(u*) = C - B^2/(4A) =
+// 0.005 Hz (MIN).
 constexpr double KARPLUS_HN_CB_A =  3.39;
 constexpr double KARPLUS_HN_CB_B = -0.94;
 constexpr double KARPLUS_HN_CB_C =  0.07;
+constexpr double KARPLUS_HN_CB_THETA = -PI / 3.0;  // project theta;
+        // Wang-Bax row 3 / Vogeli eta_ik=+pi/3 in the published convention.
+
+// --- 3J(HN, C') -- phi observable via H-N-CA-C dihedral ---
+//
+// Same paper: Wang & Bax, JACS 118:2483 (1996), DOI 10.1021/ja9535524.
+// Table 1 row 4 (NMR/X-ray refined fit, page 2487):
+//   theta = 0 deg, A = 4.32, B = +0.84, C = 0.00.
+// IMPORTANT: B is POSITIVE for this coupling -- the bound derivation
+// is different from A>0/B<0 channels. Reference PDF:
+//   references/wang-bax-1996-karplus-phi-ubiquitin.pdf Table 1 page
+//   2487, byte-verified 2026-05-19. The four-row mapping in Wang-Bax
+//   Table 1 (page 2487 leftmost column, NMR/X-ray refined fit rows
+//   in italics) is:
+//     row 1 (theta=-60 deg): 3J(HN, Halpha)  -> (6.98, -1.38, 1.72)
+//     row 2 (theta=-60 deg): 3J(Halpha, C')  -> (3.75, +2.19, 1.28)
+//     row 3 (theta=+60 deg): 3J(HN, Cbeta)   -> (3.39, -0.94, 0.07)
+//     row 4 (theta=  0 deg): 3J(HN, C')      -> (4.32, +0.84, 0.00)
+//   The "Measurement of 3J_{HαC'}" text section heading directly
+//   below the table (page 2487 right column) confirms row 2 is the
+//   Halpha-C' channel. Vogeli 2007 page 9383 gives eta_ik = pi for
+//   3J(HN, C') (B sign flips relative to Wang-Bax theta=0 because
+//   cos(phi+pi) = -cos(phi); same curve, different parametrization).
+// Arithmetic range: A>0, B>0; max at f(+1) = A + B + C = 5.16 Hz;
+// vertex u* = -B/(2A) = -0.097 in (-1, 1), f(u*) = C - B^2/(4A) =
+// -0.041 Hz (MIN, slightly negative -- physical, J can be negative).
+constexpr double KARPLUS_HN_CP_A =  4.32;
+constexpr double KARPLUS_HN_CP_B =  0.84;
+constexpr double KARPLUS_HN_CP_C =  0.00;
+constexpr double KARPLUS_HN_CP_THETA = 0.0;  // Wang-Bax row 4 (theta=0 deg).
+        // Vogeli 2007 eq 5 gives eta_ik = pi for the same observable; the
+        // two parametrizations are equivalent (cos(phi + pi) = -cos(phi) so
+        // B flips sign) -- we ship the Wang-Bax theta=0 / B>0 form.
+
+// --- 3J(Halpha, C') -- phi observable via Halpha-CA-N-C'(prev) dihedral ---
+//
+// Same paper: Wang & Bax, JACS 118:2483 (1996), DOI 10.1021/ja9535524.
+// Table 1 row 2 (NMR/X-ray refined fit, page 2487):
+//   theta = -60 deg (Wang-Bax sign convention), A = 3.75, B = +2.19,
+//   C = 1.28.
+// 4-atom path: there is only ONE 3-bond path from Halpha(i) to
+// C'(i-1): Halpha(i) - CA(i) - N(i) - C'(i-1). The rotation is
+// around the N-CA axis (phi axis), so this is a phi observable.
+// (An earlier implementation used HA(i)-CA(i)-C(i)-N(i+1) -- that
+// is rotation around CA-C (psi axis), NOT phi; corrected per
+// Vuister teaching lecture section 6.1 + Vogeli 2007 page 9384
+// which list 3J(C'(i-1), Halpha) among the six phi-related
+// couplings.)
+// IMPORTANT: B is POSITIVE for this coupling -- bound derivation
+// differs from A>0/B<0 channels. Reference PDF:
+//   references/wang-bax-1996-karplus-phi-ubiquitin.pdf Table 1 page
+//   2487, byte-verified 2026-05-19.
+// Arithmetic range: A>0, B>0; max at f(+1) = A + B + C = 7.22 Hz;
+// vertex u* = -B/(2A) = -0.292 in (-1, 1), f(u*) = C - B^2/(4A) =
+// 0.96 Hz (MIN).
+constexpr double KARPLUS_HA_CP_A =  3.75;
+constexpr double KARPLUS_HA_CP_B =  2.19;
+constexpr double KARPLUS_HA_CP_C =  1.28;
+constexpr double KARPLUS_HA_CP_THETA = PI / 3.0;  // project theta; Wang-Bax row 2 theta_pub=-60 deg.
 
 // --- 3J(N, Cgamma) -- chi1 observable via N-CA-CB-CG dihedral (= chi1) ---
 //
@@ -258,31 +400,71 @@ constexpr double KARPLUS_HN_CB_C =  0.07;
 // side-chain torsion chi1." J. Am. Chem. Soc. 123, 7081-7093 (2001).
 // DOI: 10.1021/ja003724j.
 //
-// Widely-cited self-consistent Karplus fit for chi1 observables. The
-// original paper is paywalled at ACS; the agent-level literature audit
-// on 2026-05-19 confirmed the citation but could NOT byte-verify the
-// coefficients against the published Table -- the values are circulated
-// unchanged in downstream NMR software (TALOS-N, NMRViewJ) that cite
-// Perez 2001. Byte-verification is pending institutional access; if
-// the user obtains a copy and the values differ, update here and the
-// JCouplingTimeSeriesTrajectoryResult attrs in the same commit.
+// Table 2 (page 7086) "3J(N',Cgamma)" block, consensus row (cos power
+// coefficients): A = 1.29, B = -0.49, C = 0.37. Byte-verified
+// 2026-05-19 against the page-7086 PDF table. Reference PDF:
+//   references/perez-2001-self-consistent-karplus-3j-chi1.pdf
+// Arithmetic range: A>0, B<0; max at f(-1) = A - B + C = 2.15 Hz;
+// vertex u* = -B/(2A) = 0.190 in (-1, 1), f(u*) = C - B^2/(4A) =
+// 0.32 Hz (MIN).
 constexpr double KARPLUS_N_CG_A  =  1.29;
 constexpr double KARPLUS_N_CG_B  = -0.49;
 constexpr double KARPLUS_N_CG_C  =  0.37;
+constexpr double KARPLUS_N_CG_THETA = 0.0;  // Perez 2001 uses chi1 = N-CA-CB-CG
+        // directly; no phi-style offset.
 
 // --- 3J(C', Cgamma) -- chi1 observable via C-CA-CB-CG dihedral ---
 //
 // Same paper: Perez, Lohr, Ruterjans & Schmidt, JACS 123:7081 (2001).
-// DOI: 10.1021/ja003724j. Same paywall caveat as 3J(N, Cgamma).
+// DOI: 10.1021/ja003724j.
 //
-// (Strictly: the C'-CA-CB-Cgamma dihedral differs from chi1 by ~120
-// degrees around CA; the Perez self-consistent fit treats chi1 as
-// the input variable with the substituent-position bookkeeping
-// internalized in the per-coupling coefficients, so feeding the
-// C-CA-CB-CG atomic dihedral directly is the correct modern usage.)
-constexpr double KARPLUS_CP_CG_A =  1.74;
-constexpr double KARPLUS_CP_CG_B = -0.57;
-constexpr double KARPLUS_CP_CG_C =  0.25;
+// Table 2 (page 7086) "3J(C',Cgamma)" block, consensus row (cos power
+// coefficients): A = 2.31, B = -0.87, C = 0.55. Byte-verified
+// 2026-05-19 against the page-7086 PDF table. (NOTE: prior commit
+// carried (1.74, -0.57, 0.25), which was a circulated-but-uncited
+// value; corrected at 2026-05-19 byte-verification.) The C'-CA-CB-Cgamma
+// dihedral differs from chi1 by ~120 deg around CA; the Perez
+// self-consistent fit internalizes the substituent-position
+// bookkeeping in the per-coupling coefficients, so feeding the
+// C-CA-CB-CG atomic dihedral directly is the correct modern usage.
+// Reference PDF: references/perez-2001-self-consistent-karplus-3j-
+// chi1.pdf Table 2 page 7086.
+// Arithmetic range: A>0, B<0; max at f(-1) = A - B + C = 3.73 Hz;
+// vertex u* = -B/(2A) = 0.188 in (-1, 1), f(u*) = C - B^2/(4A) =
+// 0.468 Hz (MIN).
+constexpr double KARPLUS_CP_CG_A =  2.31;
+constexpr double KARPLUS_CP_CG_B = -0.87;
+constexpr double KARPLUS_CP_CG_C =  0.55;
+constexpr double KARPLUS_CP_CG_THETA = 0.0;  // Perez 2001 internalizes the
+        // C'-on-CA substituent offset (chi1+120 deg) in the per-coupling
+        // (A, B, C); feeding the atomic C-CA-CB-CG dihedral matches the
+        // Table 2 consensus row directly. See Table 2 footnote c.
+
+// --- 3J(Halpha, Hbeta) -- chi1 observable via HA-CA-CB-HB dihedral ---
+//
+// Same paper: Perez, Lohr, Ruterjans & Schmidt, JACS 123:7081 (2001).
+// DOI: 10.1021/ja003724j.
+//
+// Table 2 (page 7086) "3J(Halpha,Hbeta)" block, consensus row (cos
+// power coefficients): A = 7.23, B = -1.37, C = 2.22. Byte-verified
+// 2026-05-19 against the page-7086 PDF table. The Hbeta atoms are
+// typically a prochiral methylene pair (HB2, HB3) on most residues;
+// methine (single Hbeta) on Ile/Val/Thr; methyl (HB1/HB2/HB3) on Ala;
+// absent on Gly. See JCouplingTimeSeriesTrajectoryResult Hbeta lookup
+// for the per-residue policy.
+// Reference PDF: references/perez-2001-self-consistent-karplus-3j-
+// chi1.pdf Table 2 page 7086.
+// Arithmetic range: A>0, B<0; max at f(-1) = A - B + C = 10.82 Hz;
+// vertex u* = -B/(2A) = 0.095 in (-1, 1), f(u*) = C - B^2/(4A) =
+// 2.155 Hz (MIN).
+constexpr double KARPLUS_HA_HB_A =  7.23;
+constexpr double KARPLUS_HA_HB_B = -1.37;
+constexpr double KARPLUS_HA_HB_C =  2.22;
+constexpr double KARPLUS_HA_HB_THETA = 0.0;  // Perez 2001 Table 2 footnote c.
+        // The atomic dihedral HA-CA-CB-HB{2,3} differs from chi1 by the
+        // Halpha and Hbeta substituent offsets (chi1 + Delta_chi1 ~ ±120°),
+        // but the per-coupling (A, B, C) internalize Delta_chi1 -- feeding
+        // the atomic dihedral matches the Table 2 consensus row directly.
 
 
 }  // namespace nmr

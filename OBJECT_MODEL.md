@@ -2683,7 +2683,47 @@ for the pending rows is
 | ✓ | `GromacsEnergyTimeSeriesTrajectoryResult` | GromacsEnergy | FO | per-frame system-scalar timeline (T,) — all ~25 .edr columns + virial/pressure tensors (T, 9) row-major XX,XY,XZ,YX,...,ZZ. Source-attached gate on `.edr` presence; emits `energy_frame_times_ps` for snap-distance audit; LoadEdr NaN-fills missing columns. Commits 322d465 + aa7bb31 + d3209a0 + 87502b8 |
 | ⏳ | `RingNeighbourhoodTrajectoryStats` | multiple ring calculators | FO | rich per-atom-per-ring struct vectors (Pattern A) |
 | ✓ | `RingPuckerTimeSeriesTrajectoryResult` | PlanarGeometryResult (conditional on substrate populated) | FO | two ring axes: per-saturated-ring (S, T) `pucker_Q` (Å) + `pucker_theta` (degrees, [0, 360)) — Cremer-Pople 1975 5-ring formulation; per-aromatic-ring (A, T) `aromatic_chi2` (radians, IUPAC). Static `saturated_parent_residue_index` (S,) + `aromatic_parent_residue_index` (A,) for the SDK broadcast. Zero-extent datasets omitted when S=0 or A=0. Source-attached gate; NaN within attached frames = per-ring degenerate geometry. |
-| ✓ | `JCouplingTimeSeriesTrajectoryResult` | positions + Residue cache (no source ConformationResult) | FO | per-residue (R, T) Karplus ³J observables in Hz: `J_HN_Halpha` (Vuister & Bax 1993 JACS 115:7772, DOI 10.1021/ja00070a024; phi observable via H-N-CA-HA dihedral), `J_HN_Cbeta` (Wang & Bax 1996 JACS 118:2483, DOI 10.1021/ja9535524 Table 1 NMR/X-ray refined fit; phi observable via H-N-CA-CB, orthogonal to J(HN,Hα)), `J_N_Cgamma` (Pérez et al. 2001 JACS 123:7081, DOI 10.1021/ja003724j; chi1 rotamer via N-CA-CB-CG), `J_Cprime_Cgamma` (Pérez 2001; chi1 rotamer via C-CA-CB-CG, 120° offset). All Karplus constants live in `src/PhysicalConstants.h` with full citations + DOI + reference PDFs in `references/`; Pérez 2001 coefficients carry an explicit "citation byte-verified, coefficient byte-verification pending institutional access" caveat in both header and H5 attrs. Static masks `J_HN_Halpha_exists` (R,) — 0 for PRO — `J_HN_Cbeta_exists` (R,) — 0 for PRO or GLY — and `J_chi1_exists` (R,) — 0 for GLY/ALA. NaN where channel is structurally absent. `residue_index_per_atom` (N,) atom-axis broadcast. Always-on source: `source_attached_per_frame` trivially all-1; positions always present at `tp.Seed`. Karplus form `3J = A·cos²θ + B·cosθ + C`, θ via IUPAC signed atan2 computed directly from atom positions (never reconstructed from phi + offset; (φ - 60°) ≈ H-N-CA-HA and (φ + 60°) ≈ H-N-CA-CB under ideal tetrahedral geometry — Li-Bax 2015 ChemPhysChem documents the modern atomic-dihedral usage). GLY uses Residue.HA = HA2 (Vuister-Bax 1993 fit absorbed glycine averaging; consumers needing pro-R/pro-S resolution compute from the two Hα indices directly). |
+| ✓ | `JCouplingTimeSeriesTrajectoryResult` | positions + Residue cache + Protein::BackbonePredecessor (no source ConformationResult) | FO | per-residue (R, T) Karplus 3J observables in Hz. Nine datasets across eight channel families. Constants and citations live in `src/PhysicalConstants.h`; channel/mask/convention details are maintained in the canonical section below. NaN marks structurally absent channels. `residue_index_per_atom` (N,) supports atom-axis broadcast. Always-on source: `source_attached_per_frame` all 1 because positions are present at `tp.Seed`. |
+
+**JCouplingTimeSeriesTrajectoryResult canonical state (2026-05-20):**
+
+Datasets: `J_HN_Halpha`, `J_HN_Halpha_Vogeli`, `J_HN_Cbeta`,
+`J_HN_Cprime`, `J_Halpha_Cprime`, `J_N_Cgamma`,
+`J_Cprime_Cgamma`, `J_Halpha_Hbeta2`, and `J_Halpha_Hbeta3`.
+
+Backbone Karplus channels (`J_HN_Halpha`, `J_HN_Halpha_Vogeli`,
+`J_HN_Cbeta`, `J_HN_Cprime`, `J_Halpha_Cprime`) are evaluated from
+`project_phi + project_theta`, where `project_phi` is the codebase
+Ramachandran dihedral `C(prev)-N-CA-C`. The project phi sign is opposite
+the Wang-Bax/Vogeli published plotting convention, so the compiled
+project-convention theta offsets are: `J_HN_Halpha=+pi/3`,
+`J_HN_Halpha_Vogeli=+pi/3`, `J_HN_Cbeta=-pi/3`,
+`J_HN_Cprime=0`, and `J_Halpha_Cprime=+pi/3`.
+
+Wang-Bax mapping: `J_HN_Cprime` uses row 4 (`A=4.32`, `B=+0.84`,
+`C=0.00`, published theta 0). `J_Halpha_Cprime` uses row 2
+(`A=3.75`, `B=+2.19`, `C=1.28`, published theta -60 deg). The
+physical 3-bond path for `J_Halpha_Cprime` is `HA-CA-N-C'(prev)`, but
+the emitted value is phi-derived, so current-residue `C` is also
+required.
+
+Static masks: `J_HN_Halpha_exists` gates both HN-Halpha datasets and
+requires `H/N/CA/C/C(prev)` plus non-PRO; `J_HN_Cbeta_exists` requires
+the same phi atoms plus `CB` and excludes PRO/GLY; `J_HN_Cprime_exists`
+requires `H/N/CA/C/C(prev)` plus non-PRO; `J_Halpha_Cprime_exists`
+requires `HA/N/CA/C/C(prev)` plus non-PRO. `J_chi1_exists` excludes
+GLY/ALA but is only a broad chi1 gate. `J_N_Cgamma_exists` and
+`J_Cprime_Cgamma_exists` also require a carbon chi1 terminal, so
+SER/CYS/THR are absent. `J_Halpha_Hbeta_exists` excludes GLY and ALA;
+ALA methyl averaging is not implemented.
+
+Chi1 channels (`J_N_Cgamma`, `J_Cprime_Cgamma`, `J_Halpha_Hbeta2`,
+`J_Halpha_Hbeta3`) use direct four-atom atomic dihedrals. Perez 2001
+coefficients internalize the substituent offset. `J_Cprime_Cgamma` uses
+the corrected consensus coefficients `A=2.31`, `B=-0.87`, `C=0.55`.
+Ile/Val/Thr methine Hbeta is mirrored to both Hbeta slots; methylene
+Hbeta2/Hbeta3 remain separated. GLY uses `Residue.HA = HA2` for the
+Vuister-Bax HN-Halpha channel.
 
 **`ScanForDftPointSet` (scan mode, for DFT pose selection):** *Slated
 for removal; a later doc pass will handle the replacement.*

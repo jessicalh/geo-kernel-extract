@@ -2190,9 +2190,10 @@ architecturally separate; see memory entry
 
 ### Karplus ³J-coupling parametrizations
 
-Three open-access PDFs + one paywalled-citation that pin the
-Karplus coefficients used by `JCouplingTimeSeriesTrajectoryResult`
-(committed 2026-05-19). Coefficients live in
+Five PDFs that pin the Karplus coefficients used by
+`JCouplingTimeSeriesTrajectoryResult` (committed 2026-05-19). All
+eight channel coefficient triples byte-verified against the source
+PDFs as of 2026-05-19. Coefficients live in
 `src/PhysicalConstants.h`; PDFs alongside in this directory.
 
 **Vuister & Bax 1993** — *J. Am. Chem. Soc.* 115, 7772–7777.
@@ -2206,12 +2207,26 @@ proteins." DOI 10.1021/ja00070a024. Primary reference for the
 from reparametrized empirical Karplus equations." DOI
 10.1021/ja9535524. Open access at the Bax-group repository; saved
 locally as `references/wang-bax-1996-karplus-phi-ubiquitin.pdf`.
-Table 1 (page 2487) is the primary source for the ³J(HN, Cβ)
-Karplus coefficients A=3.39, B=-0.94, C=0.07 (NMR/X-ray refined
-fit, row 3). The paper also publishes a refit ³J(HN, Hα) at
-(6.98, -1.38, 1.72) — Wang-Bax-1996-refit is an alternative to
-the 1993 thesis-default. Byte-verified against the PDF on
-2026-05-19.
+Table 1 (page 2487) is the primary source for FOUR of the
+backbone Karplus parametrizations. The four rows (NMR/X-ray
+refined fit, italic line under each X-ray fit) map to observables
+as confirmed by the "Measurement of ³J_{HαC'}" text section heading
+immediately following the table:
+  - row 1 ³J(HN, Hα) (6.98, -1.38, 1.72), θ=-60° — alternate to
+    Vuister-Bax 1993 (the thesis carries the 1993 value as default).
+  - row 2 ³J(Hα, C') A=3.75, B=+2.19, C=1.28, θ=-60° — used by
+    `J_Halpha_Cprime` channel (HA-CA-N-C'(prev) atomic dihedral,
+    rotation around N-CA = phi axis); B is POSITIVE.
+  - row 3 ³J(HN, Cβ) A=3.39, B=-0.94, C=0.07, θ=+60° — used by
+    `J_HN_Cbeta` channel.
+  - row 4 ³J(HN, C') A=4.32, B=+0.84, C=0.00, θ=0° — used by
+    `J_HN_Cprime` channel; B is POSITIVE.
+All four rows byte-verified against the PDF Table 1 on
+2026-05-19. **Row mapping for J_HN_Cprime ↔ J_Halpha_Cprime
+corrected 2026-05-20 per codex F1**: prior bundle attributed row 2
+values to J_HN_Cprime and row 4 values to J_Halpha_Cprime; the
+text section "Measurement of ³J_{HαC'}" on page 2487 right column
+confirms row 2 is the HαC' channel.
 
 **Vuister teaching lecture** — `references/vuister-lecture-j-
 couplings.pdf` from nmrwiki.org/wiki/images/4/42/. Open-access
@@ -2219,6 +2234,22 @@ teaching slides quoting the 1993 Karplus coefficients verbatim,
 plus historical Bystrov 1976 values. Used as the byte-source for
 the Vuister-Bax 1993 numerical values during the 2026-05-19
 citation audit (the original 1993 paper is at the JACS paywall).
+
+**Vögeli, Ying, Grishaev & Bax 2007** — *J. Am. Chem. Soc.* 129,
+9377–9385. DOI 10.1021/ja070324o. "Limits on variations in protein
+backbone dynamics from precise measurements of scalar couplings."
+Open access at the Bax-group repository; saved locally as
+`references/vogeli-2007-limits-backbone-dynamics-3j-couplings-
+gb3.pdf`. Table 1 (page 9383) "rigid" row is the primary source
+for the alternate ³J(HN, Hα) parametrization A=7.97, B=-1.26,
+C=0.63, fit on GB3 with hydrogens in idealized positions. Used
+by the `J_HN_Halpha_Vogeli` channel as a methods-accumulate
+alternate to Vuister-Bax 1993 (feedback_methods_accumulate — both
+parametrizations stay in the codebase; the difference is
+reportable). Byte-verified against the PDF Table 1 on 2026-05-19.
+Page 9382 also documents the geometric identity convention used
+across prior parametrizations: θ = φ - 60° for ³J(HN, Hα),
+θ = φ + 180° for ³J(HN, C'), θ = φ + 60° for ³J(HN, Cβ).
 
 **Li, Lee, Grishaev, Ying & Bax 2015** — *ChemPhysChem* 16,
 572–578. DOI 10.1002/cphc.201402704. Open access at the Bax-group
@@ -2233,14 +2264,21 @@ dihedral". This is the form
 **Pérez, Löhr, Rüterjans & Schmidt 2001** — *J. Am. Chem. Soc.*
 123, 7081–7093. DOI 10.1021/ja003724j. "Self-consistent Karplus
 parametrization of ³J couplings depending on the polypeptide side-
-chain torsion χ1." Citation source for the ³J(N, Cγ) coefficients
-A=1.29, B=-0.49, C=0.37 and ³J(C', Cγ) coefficients A=1.74,
-B=-0.57, C=0.25. PDF behind ACS paywall — not saved locally. The
-2026-05-19 literature audit confirmed the citation and that the
-values appear unchanged in TALOS-N / NMRViewJ / etc. but could NOT
-byte-verify the coefficients against the published Table.
-`PhysicalConstants.h` and the H5 attrs both carry the explicit
-"coefficient byte-verification pending institutional access"
-caveat. To close this loop: institutional access to ACS, or a
-Schmidt-group follow-up paper that quotes the original coefficients
-verbatim.
+chain torsion χ1." PDF saved locally as
+`references/perez-2001-self-consistent-karplus-3j-chi1.pdf`. Table 2
+(page 7086) is the primary source for THREE chi1 Karplus
+parametrizations — all three byte-verified against the PDF on
+2026-05-19:
+  - ³J(N, Cγ) consensus row A=1.29, B=-0.49, C=0.37 — used by
+    `J_N_Cgamma` channel.
+  - ³J(C', Cγ) consensus row A=2.31, B=-0.87, C=0.55 — used by
+    `J_Cprime_Cgamma` channel. **CORRECTED 2026-05-19**: prior
+    commit carried (1.74, -0.57, 0.25), which was a circulated-
+    but-mis-cited value. The page-7086 PDF Table 2 consensus row
+    is (2.31, -0.87, 0.55).
+  - ³J(Hα, Hβ) consensus row A=7.23, B=-1.37, C=2.22 — used by
+    both `J_Halpha_Hbeta2` and `J_Halpha_Hbeta3` channels.
+The earlier "byte-verification pending institutional access"
+caveat (carried through 2026-05-19 commit window) is now closed:
+all three Pérez 2001 values byte-verified against Table 2
+(page 7086) consensus row.
