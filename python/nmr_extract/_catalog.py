@@ -374,7 +374,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # because old extraction outputs (pre-2026-05-09) do not include
     # them; new outputs always do when AIMNet2 is loaded.
     ArraySpec("aimnet2_polarisability",        "aimnet2", AIMNet2Polarisability, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))",
-              irreps="1e", units="e^2/Å", tensor_rank=1, parity="odd", mechanism="charges"),
+              irreps="1o", units="e^2/Å", tensor_rank=1, parity="odd", mechanism="charges"),
     ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)",
               units="e^2/Å", mechanism="charges"),
 

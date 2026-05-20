@@ -1,5 +1,6 @@
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
 
+#include "AIMNet2Result.h"
 #include "ConformationAtom.h"
 #include "OperationLog.h"
 #include "ProteinConformation.h"
@@ -32,11 +33,31 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     const std::size_t N = per_atom_embedding_.size();
+    // Source-attached gate. Always-attached policy means the source
+    // should be present every frame in the production config (line 165
+    // of RunConfiguration.cpp RequireConformationResult's AIMNet2Result);
+    // a custom config that omits the require could land a zero-default
+    // aimnet2_aim. Detect that here and capture mask=0 so the H5
+    // records the contract violation rather than silent contamination
+    // (codex review 2026-05-20).
+    const bool source_present = conf.HasResult<AIMNet2Result>();
+    if (!source_present) {
+        OperationLog::Warn(
+            "AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute",
+            "AIMNet2Result not attached at frame " +
+            std::to_string(frame_idx) +
+            " — emitting zero-placeholder + mask=0. Always-attached "
+            "policy requires AIMNet2Result; the run's PerFrameExtractionSet "
+            "must RequireConformationResult(AIMNet2Result).");
+    }
+    const std::array<float, AIMNET2_AIM_DIMS> zero_placeholder{};
     for (std::size_t i = 0; i < N; ++i) {
-        per_atom_embedding_[i].push_back(conf.AtomAt(i).aimnet2_aim);
+        per_atom_embedding_[i].push_back(
+            source_present ? conf.AtomAt(i).aimnet2_aim : zero_placeholder);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
+    source_attached_per_frame_.push_back(source_present ? 1u : 0u);
     ++n_frames_;
 }
 
@@ -93,28 +114,38 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(
     }));
     auto ds = grp.createDataSet<float>("embedding", space, props);
 
-    // Per-atom hyperslab writes. std::vector<std::array<float, D>> is
-    // contiguous (T arrays × D floats), so the per-atom slice can be
-    // passed to write_raw via reinterpret_cast on the array's begin().
+    // Per-atom hyperslab writes via a per-atom scratch buffer. We avoid
+    // a reinterpret_cast over std::vector<std::array<float, D>> because
+    // standard library layout for nested-array vectors is not pinned by
+    // the spec (codex review 2026-05-20). Scratch storage is bounded
+    // T*D*4 bytes = 768 KB at 1P9J (T=750, D=256), allocated once and
+    // reused across atoms.
+    std::vector<float> scratch(T * D);
     for (std::size_t i = 0; i < N; ++i) {
         const auto& atom_frames = per_atom_embedding_[i];
         if (atom_frames.size() != T) continue;
+        for (std::size_t f = 0; f < T; ++f) {
+            const auto& vec = atom_frames[f];
+            for (std::size_t d = 0; d < D; ++d) {
+                scratch[f * D + d] = vec[d];
+            }
+        }
         const std::vector<std::size_t> offset = {i, std::size_t(0), std::size_t(0)};
         const std::vector<std::size_t> count  = {std::size_t(1), T, D};
-        ds.select(offset, count).write_raw(
-            reinterpret_cast<const float*>(atom_frames.data()));
+        ds.select(offset, count).write_raw(scratch.data());
     }
 
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_)
        .createAttribute("units", std::string("ps"));
 
-    // Canonical SDK contract: source_attached_per_frame all-1 mask for
-    // always_attached TRs (OBJECT_MODEL.md "Conditional-attach TR
-    // discipline" subsection). Trivially all-1 since AIMNet2Result is
-    // RequireConformationResult'd at the PerFrameExtractionSet config.
-    std::vector<std::uint8_t> all_attached(T, 1u);
-    grp.createDataSet("source_attached_per_frame", all_attached);
+    // Canonical SDK contract: source_attached_per_frame uint8 per-frame
+    // mask (OBJECT_MODEL.md "Conditional-attach TR discipline"
+    // subsection). Normally all-1 under the always-attached policy;
+    // mask=0 frames captured by Compute's HasResult<AIMNet2Result>()
+    // gate would indicate a custom config that omitted the
+    // RequireConformationResult.
+    grp.createDataSet("source_attached_per_frame", source_attached_per_frame_);
 
     OperationLog::Info(LogCalcOther,
         "AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group",

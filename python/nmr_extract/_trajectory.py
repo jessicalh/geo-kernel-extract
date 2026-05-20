@@ -1919,8 +1919,9 @@ class AIMNet2PolarisabilityTimeSeriesGroup:
     n_frames: int
     units_vector: str                       # "e^2/Angstrom"
     units_scalar: str                       # "e^2/Angstrom"
-    irrep_layout_vector: str                # "1o"
-    parity_vector: str                      # "1o"
+    irrep_layout_vector: str                # "x,y,z" (Cartesian component order)
+    normalization_vector: str               # "cartesian"
+    parity_vector: str                      # "1o" (odd parity vector)
     irrep_layout_scalar: str                # "T0"
     parity_scalar: str                      # "0e"
     source: str
@@ -1946,6 +1947,7 @@ def _load_aimnet2_polarisability_time_series(
         units_vector=_attr("units_vector"),
         units_scalar=_attr("units_scalar"),
         irrep_layout_vector=_attr("irrep_layout_vector"),
+        normalization_vector=_attr("normalization_vector"),
         parity_vector=_attr("parity_vector"),
         irrep_layout_scalar=_attr("irrep_layout_scalar"),
         parity_scalar=_attr("parity_scalar"),
@@ -2268,7 +2270,8 @@ def _read_legacy_rollup(f) -> Optional[TrajectoryRollup]:
     return TrajectoryRollup(names, means, stds)
 
 
-def load_trajectory(path: str | Path) -> TrajectoryData:
+def load_trajectory(path: str | Path,
+                    load_optional_large: bool = False) -> TrajectoryData:
     """Load a trajectory H5 master file.
 
     Supports both H5 schemas (see `TrajectoryData` docstring):
@@ -2280,6 +2283,13 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
     H5 groups are loaded independently of which schema's frame
     metadata is present — they live at `/trajectory/<kind>_welford/`
     in both.
+
+    `load_optional_large=False` (default) skips datasets that declare
+    `optional_large=true` (currently only the AIMNet2 embedding TS at
+    ~3-4 GB per protein). Set True to load them; only do so when you
+    actually need the embedding for analysis. Otherwise the field is
+    `None` on `TrajectoryData` and the rest of the trajectory loads
+    normally.
     """
     import h5py
 
@@ -2347,7 +2357,13 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         )
         ring_pucker = _load_ring_pucker_time_series(f)
         j_coupling = _load_j_coupling_time_series(f)
-        aimnet2_embedding = _load_aimnet2_embedding_time_series(f)
+        # Optional-large gate: the 256-dim AIMNet2 embedding TS is the
+        # only `optional_large=true` dataset currently. Default off so
+        # casual analysis loads stay light (~3-4 GB savings per protein).
+        aimnet2_embedding = (
+            _load_aimnet2_embedding_time_series(f)
+            if load_optional_large else None
+        )
         aimnet2_polarisability = _load_aimnet2_polarisability_time_series(f)
 
     return TrajectoryData(

@@ -37,6 +37,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -71,8 +72,13 @@ public:
 private:
     // (N, T, 256) — outer per-atom, inner per-frame array slot.
     std::vector<std::vector<std::array<float, 256>>> per_atom_embedding_;
-    std::vector<std::size_t> frame_indices_;
-    std::vector<double>      frame_times_;
+    std::vector<std::size_t>  frame_indices_;
+    std::vector<double>       frame_times_;
+    // Per-frame source-attached mask. Always-attached policy means the
+    // mask is normally all-1, but a custom config that wires the TR
+    // without RequireConformationResult'ing AIMNet2Result would land
+    // mask=0 for those frames (codex review 2026-05-20).
+    std::vector<std::uint8_t> source_attached_per_frame_;
     std::size_t n_frames_  = 0;
     bool        finalized_ = false;
 };

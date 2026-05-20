@@ -113,16 +113,16 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], kDim);
 
-    // Spot-check a single (atom, frame, dim) cell round-trips correctly.
+    // Spot-check a single (atom, frame, dim) cell. In synthetic mode the
+    // ConformationResult is NOT attached, so the TR's HasResult gate
+    // correctly emits the zero placeholder (codex review 2026-05-20);
+    // synthetic aimnet2_aim values on the MutableAtom are ignored.
     std::vector<float> buf(N * kFrames * kDim);
     ds.read(buf.data());
     const std::size_t i = N / 2;
     const std::size_t t = 1;
     const std::size_t d = 5;
-    const float expected = static_cast<float>(0.0001 * static_cast<double>(i)
-                                               + 0.01 * static_cast<double>(t)
-                                               + 0.001 * static_cast<double>(d));
-    EXPECT_FLOAT_EQ(buf[(i * kFrames + t) * kDim + d], expected);
+    EXPECT_FLOAT_EQ(buf[(i * kFrames + t) * kDim + d], 0.0f);
 
     // Attr checks
     std::string source, policy, irrep, parity;
@@ -141,11 +141,16 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     EXPECT_EQ(irrep, "feature_vector");
     EXPECT_EQ(parity, "0e");
 
-    // source_attached_per_frame all-1 canonical mask (SDK contract).
+    // source_attached_per_frame canonical mask (SDK contract). In this
+    // synthetic-driven test the conformation has NO ConformationResult
+    // attached, so the TR's HasResult<...>() gate correctly records
+    // mask=0 for every frame. Production runs (where AIMNet2Result /
+    // AIMNet2PolarisabilityResult ARE attached) land mask=1. This
+    // asserts the gate logic works as advertised.
     std::vector<std::uint8_t> mask;
     grp.getDataSet("source_attached_per_frame").read(mask);
     ASSERT_EQ(mask.size(), kFrames);
-    for (auto m : mask) EXPECT_EQ(m, 1u);
+    for (auto m : mask) EXPECT_EQ(m, 0u);
 
     fs::remove(h5_path);
 }
@@ -233,29 +238,29 @@ TEST(AIMNet2PolarisabilityTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     EXPECT_EQ(sdims[0], N);
     EXPECT_EQ(sdims[1], kFrames);
 
-    // Round-trip a single (atom, frame) cell for both vector and scalar.
+    // Synthetic mode: no ConformationResult attached, so gate emits
+    // zero placeholders for both vector and scalar (codex review
+    // 2026-05-20).
     std::vector<double> vbuf(N * kFrames * 3);
     std::vector<double> sbuf(N * kFrames);
     ds_vec.read(vbuf.data());
     ds_scl.read(sbuf.data());
     const std::size_t i = N / 2;
     const std::size_t t = 1;
-    const nmr::Vec3 expected_v(0.01 * static_cast<double>(i),
-                               0.02 * static_cast<double>(t),
-                               0.03 * static_cast<double>(i + t));
-    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 0], expected_v.x());
-    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 1], expected_v.y());
-    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 2], expected_v.z());
-    EXPECT_DOUBLE_EQ(sbuf[i * kFrames + t], expected_v.norm());
+    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 0], 0.0);
+    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 1], 0.0);
+    EXPECT_DOUBLE_EQ(vbuf[(i * kFrames + t) * 3 + 2], 0.0);
+    EXPECT_DOUBLE_EQ(sbuf[i * kFrames + t], 0.0);
 
-    // Attr checks (units corrected post-review: gradient of L = sum_j q_j^2
-    // with respect to coordinates has units e^2/Angstrom, NOT Angstrom).
-    std::string source, policy, uv, us, ilv, plv, ils, pls;
+    // Attr checks. Vec3 metadata follows existing TR convention:
+    // layout + normalization + parity emitted as separate attrs.
+    std::string source, policy, uv, us, ilv, norm_v, plv, ils, pls;
     grp.getAttribute("source").read(source);
     grp.getAttribute("source_attached_policy").read(policy);
     grp.getAttribute("units_vector").read(uv);
     grp.getAttribute("units_scalar").read(us);
     grp.getAttribute("irrep_layout_vector").read(ilv);
+    grp.getAttribute("normalization_vector").read(norm_v);
     grp.getAttribute("parity_vector").read(plv);
     grp.getAttribute("irrep_layout_scalar").read(ils);
     grp.getAttribute("parity_scalar").read(pls);
@@ -263,16 +268,22 @@ TEST(AIMNet2PolarisabilityTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     EXPECT_EQ(policy, "always_attached");
     EXPECT_EQ(uv, "e^2/Angstrom");
     EXPECT_EQ(us, "e^2/Angstrom");
-    EXPECT_EQ(ilv, "1o");
+    EXPECT_EQ(ilv, "x,y,z");
+    EXPECT_EQ(norm_v, "cartesian");
     EXPECT_EQ(plv, "1o");
     EXPECT_EQ(ils, "T0");
     EXPECT_EQ(pls, "0e");
 
-    // source_attached_per_frame all-1 canonical mask (SDK contract).
+    // source_attached_per_frame canonical mask (SDK contract). In this
+    // synthetic-driven test the conformation has NO ConformationResult
+    // attached, so the TR's HasResult<...>() gate correctly records
+    // mask=0 for every frame. Production runs (where AIMNet2Result /
+    // AIMNet2PolarisabilityResult ARE attached) land mask=1. This
+    // asserts the gate logic works as advertised.
     std::vector<std::uint8_t> mask;
     grp.getDataSet("source_attached_per_frame").read(mask);
     ASSERT_EQ(mask.size(), kFrames);
-    for (auto m : mask) EXPECT_EQ(m, 1u);
+    for (auto m : mask) EXPECT_EQ(m, 0u);
 
     fs::remove(h5_path);
 }

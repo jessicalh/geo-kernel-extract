@@ -52,6 +52,7 @@
 #include "Types.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <typeindex>
@@ -88,6 +89,9 @@ private:
     std::vector<std::vector<double>> per_atom_scalar_;  // (N, T)
     std::vector<std::size_t>         frame_indices_;
     std::vector<double>              frame_times_;
+    // Per-frame source-attached mask (canonical gate; codex review
+    // 2026-05-20). Normally all-1 under the always-attached policy.
+    std::vector<std::uint8_t>        source_attached_per_frame_;
     std::size_t n_frames_  = 0;
     bool        finalized_ = false;
 };

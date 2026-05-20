@@ -1,5 +1,6 @@
 #include "AIMNet2PolarisabilityTimeSeriesTrajectoryResult.h"
 
+#include "AIMNet2PolarisabilityResult.h"
 #include "ConformationAtom.h"
 #include "OperationLog.h"
 #include "ProteinConformation.h"
@@ -32,13 +33,33 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     const std::size_t N = per_atom_vector_.size();
+    // Source-attached gate. Always-attached policy means the source
+    // should be present every frame in the production config (line 167
+    // of RunConfiguration.cpp RequireConformationResult's
+    // AIMNet2PolarisabilityResult); a custom config that omits the
+    // require could land zero-default polarisability fields. Detect
+    // here and record mask=0 (codex review 2026-05-20).
+    const bool source_present = conf.HasResult<AIMNet2PolarisabilityResult>();
+    if (!source_present) {
+        OperationLog::Warn(
+            "AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute",
+            "AIMNet2PolarisabilityResult not attached at frame " +
+            std::to_string(frame_idx) +
+            " — emitting zero-placeholder + mask=0. Always-attached "
+            "policy requires AIMNet2PolarisabilityResult; the run's "
+            "PerFrameExtractionSet must "
+            "RequireConformationResult(AIMNet2PolarisabilityResult).");
+    }
     for (std::size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        per_atom_vector_[i].push_back(ca.aimnet2_polarisability_vector);
-        per_atom_scalar_[i].push_back(ca.aimnet2_polarisability_scalar);
+        per_atom_vector_[i].push_back(
+            source_present ? ca.aimnet2_polarisability_vector : Vec3::Zero());
+        per_atom_scalar_[i].push_back(
+            source_present ? ca.aimnet2_polarisability_scalar : 0.0);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
+    source_attached_per_frame_.push_back(source_present ? 1u : 0u);
     ++n_frames_;
 }
 
@@ -65,7 +86,12 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",              finalized_);
     grp.createAttribute("units_vector",           std::string("e^2/Angstrom"));
     grp.createAttribute("units_scalar",           std::string("e^2/Angstrom"));
-    grp.createAttribute("irrep_layout_vector",    std::string("1o"));
+    // Vec3 metadata follows the existing TR convention: layout +
+    // normalization + parity emitted as separate attrs (codex review
+    // 2026-05-20). Polarisability vector is a Cartesian-ordered Vec3
+    // with odd parity (gradient of a scalar w.r.t. polar coordinates).
+    grp.createAttribute("irrep_layout_vector",    std::string("x,y,z"));
+    grp.createAttribute("normalization_vector",   std::string("cartesian"));
     grp.createAttribute("parity_vector",          std::string("1o"));
     grp.createAttribute("irrep_layout_scalar",    std::string("T0"));
     grp.createAttribute("parity_scalar",          std::string("0e"));
@@ -126,12 +152,10 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_times",   frame_times_)
        .createAttribute("units", std::string("ps"));
 
-    // Canonical SDK contract: source_attached_per_frame all-1 mask for
-    // always_attached TRs (OBJECT_MODEL.md "Conditional-attach TR
-    // discipline" subsection). Trivially all-1 since AIMNet2PolarisabilityResult
-    // is RequireConformationResult'd at the PerFrameExtractionSet config.
-    std::vector<std::uint8_t> all_attached(T, 1u);
-    grp.createDataSet("source_attached_per_frame", all_attached);
+    // Canonical SDK contract: source_attached_per_frame uint8 per-frame
+    // mask. Compute's HasResult gate fills the mask correctly; normally
+    // all-1 under always-attached policy.
+    grp.createDataSet("source_attached_per_frame", source_attached_per_frame_);
 
     OperationLog::Info(LogCalcOther,
         "AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group",
