@@ -69,7 +69,29 @@ void AIMNet2PolarisabilityWelfordTrajectoryResult::Compute(
 
 void AIMNet2PolarisabilityWelfordTrajectoryResult::Finalize(
         TrajectoryProtein& tp, Trajectory& traj) {
-    (void)tp; (void)traj;
+    (void)traj;
+    // Per the canonical Welford TR pattern (HydrationGeometryWelford,
+    // BsWelford, HmWelford, etc.): call WelfordFinalize per-atom-
+    // per-channel to derive std and NaN-fill atoms with n_frames == 0
+    // (uncomputable). This populates the std/min/max fields already
+    // tracked by WelfordUpdate so downstream readers don't have to
+    // recompute (math + science review HIGH 2026-05-20).
+    // Only iterate when at least one frame attached the source —
+    // otherwise the TrajectoryProtein's per-atom Welford slots may
+    // not have been touched by Compute (test path) and MutableAtomAt
+    // access is unsafe before the first Compute invocation populates
+    // them. The WriteH5Group skip path also handles this case by
+    // returning early when source_attached_count_ == 0.
+    if (source_attached_count_ > 0) {
+        const std::size_t N = tp.AtomCount();
+        for (std::size_t i = 0; i < N; ++i) {
+            auto& ws = tp.MutableAtomAt(i).aimnet2_polarisability_welford;
+            WelfordFinalize(ws.polarisability_vector[0], ws.n_frames);
+            WelfordFinalize(ws.polarisability_vector[1], ws.n_frames);
+            WelfordFinalize(ws.polarisability_vector[2], ws.n_frames);
+            WelfordFinalize(ws.polarisability_scalar,    ws.n_frames);
+        }
+    }
     finalized_ = true;
     OperationLog::Info(LogCalcOther,
         "AIMNet2PolarisabilityWelfordTrajectoryResult::Finalize",
@@ -108,41 +130,89 @@ void AIMNet2PolarisabilityWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("source", std::string(
         "AIMNet2PolarisabilityResult.{aimnet2_polarisability_vector "
         "(Vec3), aimnet2_polarisability_scalar (double)}. Per-atom "
-        "Welford rollup; minimum-viable v0 emits mean+M2+n only."));
+        "Welford rollup; emits mean + std + m2 + min/max + min_frame/"
+        "max_frame + n_per_atom per channel (canonical "
+        "WelfordFinalize-derived row matching sibling Welford TRs). "
+        "scalar_mean = E[|v|] is NOT |E[v]| (= norm of vector_mean) — "
+        "consumers must distinguish (sci review S10 2026-05-20)."));
     grp.createAttribute("source_attached_policy", std::string(
         "always_attached -- but Compute's HasResult<AIMNet2PolarisabilityResult>() "
         "gate skips Welford update + records mask=0 on absent frames "
         "(canonical \"absent, not faked\" gate)."));
+    grp.createAttribute("physics_description", std::string(
+        "AIMNet2 charge-response gradient: dL/dr_i where L = sum_j q_j^2. "
+        "NOT a Buckingham polarisability tensor (alpha_ab = d(mu_a)/d(E_b) is "
+        "the conventional NMR-relevant alpha). The L = sum q^2 objective is "
+        "a computationally cheap autograd-friendly summary of the per-atom "
+        "charge sensitivity; physical-observable connection to NMR shielding "
+        "is exploratory and calibration-ridge decides if signal carries beyond "
+        "the AIMNet2 charge channel. Class named 'Polarisability' is project "
+        "shorthand inherited from the pre-trajectory AIMNet2PolarisabilityResult "
+        "(2026-05-09 always-on promotion); rename to "
+        "AIMNet2ChargeResponseGradient is on the post-codex backlog."));
+    grp.createAttribute("noise_floor_caveat", std::string(
+        "Per-atom std contains an autograd-noise contribution. AIMNet2 "
+        "backward kernel uses non-deterministic cuBLAS matmul/scatter_add "
+        "by default; gradient values can vary in the 6-10th significant "
+        "figure on repeated runs of the same coords. For atoms in tightly-"
+        "constrained regions the noise floor may match or exceed real "
+        "physical variance. Math review M3 2026-05-20."));
 
-    // (N, 3) Vec3-component channels + (N,) scalar channel. Allocate
-    // flat buffers and copy from TrajectoryAtom Welford state. Sample
-    // count `n` lives on the enclosing AIMNet2PolarisabilityWelfordState
-    // (n_frames), not per-WelfordMoments — the per-channel counts are
-    // identical because all four channels are updated together.
-    std::vector<double>        vec_mean(N * 3), vec_m2(N * 3);
-    std::vector<double>        scl_mean(N), scl_m2(N);
+    // Full canonical Welford row per sibling TR convention
+    // (HydrationGeometryWelford, BsWelford, HmWelford, etc.):
+    // mean + std + m2 + min + max + min_frame + max_frame per channel.
+    // Sample count `n` shared across the 4 channels lives on the
+    // enclosing AIMNet2PolarisabilityWelfordState (n_frames).
+    std::vector<double>        vec_mean(N * 3), vec_std(N * 3),
+                               vec_m2(N * 3),   vec_min(N * 3), vec_max(N * 3);
+    std::vector<std::uint64_t> vec_min_frame(N * 3), vec_max_frame(N * 3);
+    std::vector<double>        scl_mean(N), scl_std(N), scl_m2(N),
+                               scl_min(N),  scl_max(N);
+    std::vector<std::uint64_t> scl_min_frame(N), scl_max_frame(N);
     std::vector<std::uint64_t> n_per_atom(N);
     for (std::size_t i = 0; i < N; ++i) {
         const auto& ws = tp.AtomAt(i).aimnet2_polarisability_welford;
         for (std::size_t c = 0; c < 3; ++c) {
-            vec_mean[i * 3 + c] = ws.polarisability_vector[c].mean;
-            vec_m2[i * 3 + c]   = ws.polarisability_vector[c].m2;
+            const auto& w = ws.polarisability_vector[c];
+            vec_mean[i * 3 + c]      = w.mean;
+            vec_std[i * 3 + c]       = w.std;
+            vec_m2[i * 3 + c]        = w.m2;
+            vec_min[i * 3 + c]       = w.min;
+            vec_max[i * 3 + c]       = w.max;
+            vec_min_frame[i * 3 + c] = static_cast<std::uint64_t>(w.min_frame);
+            vec_max_frame[i * 3 + c] = static_cast<std::uint64_t>(w.max_frame);
         }
-        scl_mean[i]   = ws.polarisability_scalar.mean;
-        scl_m2[i]     = ws.polarisability_scalar.m2;
-        n_per_atom[i] = static_cast<std::uint64_t>(ws.n_frames);
+        const auto& s = ws.polarisability_scalar;
+        scl_mean[i]      = s.mean;
+        scl_std[i]       = s.std;
+        scl_m2[i]        = s.m2;
+        scl_min[i]       = s.min;
+        scl_max[i]       = s.max;
+        scl_min_frame[i] = static_cast<std::uint64_t>(s.min_frame);
+        scl_max_frame[i] = static_cast<std::uint64_t>(s.max_frame);
+        n_per_atom[i]    = static_cast<std::uint64_t>(ws.n_frames);
     }
 
     {
         HighFive::DataSpace space({N, std::size_t(3)});
-        grp.createDataSet<double>("vector_mean", space).write_raw(vec_mean.data());
-        grp.createDataSet<double>("vector_m2",   space).write_raw(vec_m2.data());
+        grp.createDataSet<double>("vector_mean",      space).write_raw(vec_mean.data());
+        grp.createDataSet<double>("vector_std",       space).write_raw(vec_std.data());
+        grp.createDataSet<double>("vector_m2",        space).write_raw(vec_m2.data());
+        grp.createDataSet<double>("vector_min",       space).write_raw(vec_min.data());
+        grp.createDataSet<double>("vector_max",       space).write_raw(vec_max.data());
+        grp.createDataSet<std::uint64_t>("vector_min_frame", space).write_raw(vec_min_frame.data());
+        grp.createDataSet<std::uint64_t>("vector_max_frame", space).write_raw(vec_max_frame.data());
     }
     {
         HighFive::DataSpace space({N});
-        grp.createDataSet<double>("scalar_mean", space).write_raw(scl_mean.data());
-        grp.createDataSet<double>("scalar_m2",   space).write_raw(scl_m2.data());
-        grp.createDataSet<std::uint64_t>("n_per_atom", space).write_raw(n_per_atom.data());
+        grp.createDataSet<double>("scalar_mean",      space).write_raw(scl_mean.data());
+        grp.createDataSet<double>("scalar_std",       space).write_raw(scl_std.data());
+        grp.createDataSet<double>("scalar_m2",        space).write_raw(scl_m2.data());
+        grp.createDataSet<double>("scalar_min",       space).write_raw(scl_min.data());
+        grp.createDataSet<double>("scalar_max",       space).write_raw(scl_max.data());
+        grp.createDataSet<std::uint64_t>("scalar_min_frame", space).write_raw(scl_min_frame.data());
+        grp.createDataSet<std::uint64_t>("scalar_max_frame", space).write_raw(scl_max_frame.data());
+        grp.createDataSet<std::uint64_t>("n_per_atom",       space).write_raw(n_per_atom.data());
     }
 
     grp.createDataSet("frame_indices",            frame_indices_);
