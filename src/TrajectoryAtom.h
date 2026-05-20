@@ -319,9 +319,9 @@ struct HydrationGeometryWelfordState {
 // kept minimum-viable (mean + variance only). If a downstream
 // calibration finding needs dx/dt or rms_delta, add following the
 // HydrationGeometryWelfordState delta-variant pattern.
-struct AIMNet2PolarisabilityWelfordState {
-    std::array<WelfordMoments, 3> polarisability_vector;  // x, y, z
-    WelfordMoments                polarisability_scalar;  // L2 norm
+struct AIMNet2ChargeResponseGradientWelfordState {
+    std::array<WelfordMoments, 3> charge_response_gradient_vector;  // x, y, z
+    WelfordMoments                charge_response_gradient_scalar;  // L2 norm
     std::size_t                   n_frames = 0;
 };
 
@@ -435,7 +435,7 @@ public:
     WaterFieldWelfordState        water_field_welford;
     HydrationGeometryWelfordState hydration_geometry_welford;
     HydrationShellWelfordState    hydration_shell_welford;
-    AIMNet2PolarisabilityWelfordState aimnet2_polarisability_welford;
+    AIMNet2ChargeResponseGradientWelfordState aimnet2_charge_response_gradient_welford;
 
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from

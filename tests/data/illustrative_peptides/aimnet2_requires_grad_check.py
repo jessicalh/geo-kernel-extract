@@ -1,7 +1,7 @@
 """Pre-flight check: does data/models/aimnet2_wb97m_0.jpt support
 requires_grad on the coordinate input tensor?
 
-Gates whether the planned AIMNet2PolarisabilityResult slice (per
+Gates whether the planned AIMNet2ChargeResponseGradientResult slice (per
 spec/PLANNED_CALCULATORS_2026-04-22.md Amendment 2026-05-08(b)) can
 be implemented as a single autograd backward pass through the
 TorchScript model, or whether the model needs re-exporting from the
@@ -24,7 +24,7 @@ predicted charges, and asserts coord.grad propagates.
 
 Outcome decides the calculator slice plan:
 
-  - PASSES → the AIMNet2PolarisabilityResult calculator is ~50 lines
+  - PASSES → the AIMNet2ChargeResponseGradientResult calculator is ~50 lines
     of C++: forward without NoGradGuard, single backward, copy
     gradients off CPU. Tractable next session.
 
@@ -141,7 +141,7 @@ def main() -> int:
         print("FAIL: charges tensor has no grad_fn — the .jpt model "
               "appears to have been exported with grad tracking disabled "
               "(NoGradGuard, .detach(), or torch.no_grad context inside "
-              "the scripted forward). AIMNet2PolarisabilityResult cannot "
+              "the scripted forward). AIMNet2ChargeResponseGradientResult cannot "
               "be implemented from this .jpt; need to re-export the "
               "model from PyTorch with grad tracking enabled.")
         return 1
@@ -167,7 +167,7 @@ def main() -> int:
 
     print("")
     print("PASS: requires_grad propagates through the .jpt model. The "
-          "AIMNet2PolarisabilityResult calculator slice is unblocked.")
+          "AIMNet2ChargeResponseGradientResult calculator slice is unblocked.")
     print("Per-atom polarisability is the gradient of charges with "
           "respect to coordinates, which this run confirmed is "
           "computable in a single backward pass.")

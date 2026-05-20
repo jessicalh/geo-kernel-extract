@@ -24,7 +24,7 @@
 #include "TripeptideBackboneShieldingResult.h"
 #include "LarsenHBondShieldingResult.h"
 #include "TripeptideNeighborShieldingResult.h"
-#include "AIMNet2PolarisabilityResult.h"
+#include "AIMNet2ChargeResponseGradientResult.h"
 #include "PlanarGeometryResult.h"
 #include "SasaResult.h"
 #include "GromacsEnergyResult.h"
@@ -206,8 +206,8 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     if (opts.aimnet2_model) {
         if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
                 return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;
-        if (!TimedAttach(conf, "AIMNet2PolarisabilityResult", out, [&]{
-                return AIMNet2PolarisabilityResult::Compute(
+        if (!TimedAttach(conf, "AIMNet2ChargeResponseGradientResult", out, [&]{
+                return AIMNet2ChargeResponseGradientResult::Compute(
                     conf, *opts.aimnet2_model); })) return out;
     }
 

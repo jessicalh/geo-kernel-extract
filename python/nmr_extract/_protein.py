@@ -35,7 +35,7 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2Polarisability,
+    AIMNet2ChargeResponseGradient,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG
@@ -780,9 +780,9 @@ class AIMNet2Group:
     efg_backbone: EFGTensor
     # Polarisability fields are present only when the extraction was run
     # with AIMNet2 model loaded after the 2026-05-09 always-on promotion
-    # of AIMNet2PolarisabilityResult. Old outputs leave these as None.
-    polarisability: Optional[AIMNet2Polarisability] = None
-    polarisability_scalar: Optional[np.ndarray] = None
+    # of AIMNet2ChargeResponseGradientResult. Old outputs leave these as None.
+    polarisability: Optional[AIMNet2ChargeResponseGradient] = None
+    charge_response_gradient_scalar: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -1412,10 +1412,10 @@ def load(path: str | Path) -> Protein:
             efg=get("aimnet2_efg"),
             efg_aromatic=get("aimnet2_efg_aromatic"),
             efg_backbone=get("aimnet2_efg_backbone"),
-            polarisability=get("aimnet2_polarisability")
-                if "aimnet2_polarisability" in available else None,
-            polarisability_scalar=get("aimnet2_polarisability_scalar")
-                if "aimnet2_polarisability_scalar" in available else None,
+            polarisability=get("aimnet2_charge_response_gradient")
+                if "aimnet2_charge_response_gradient" in available else None,
+            charge_response_gradient_scalar=get("aimnet2_charge_response_gradient_scalar")
+                if "aimnet2_charge_response_gradient_scalar" in available else None,
         )
 
     # Planar geometry (optional in pre-2026-05-09 outputs and in unusual

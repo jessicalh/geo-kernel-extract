@@ -1896,22 +1896,22 @@ def _load_aimnet2_embedding_time_series(
 
 
 @dataclass(frozen=True)
-class AIMNet2PolarisabilityTimeSeriesGroup:
+class AIMNet2ChargeResponseGradientTimeSeriesGroup:
     """Per-atom per-frame charge-polarisation gradient from
-    /trajectory/aimnet2_polarisability_time_series/.
+    /trajectory/aimnet2_charge_response_gradient_time_series/.
 
     Two emissions (both required for downstream analysis per
     `feedback_methods_accumulate`):
-      polarisability_vector  (N, T, 3) float64  — gradient of L = Σ_j q_j²
+      charge_response_gradient_vector  (N, T, 3) float64  — gradient of L = Σ_j q_j²
                                                   with respect to atomic
                                                   coordinates, units e²/Å
-      polarisability_scalar  (N, T)    float64  — L2 norm of vector, e²/Å
+      charge_response_gradient_scalar  (N, T)    float64  — L2 norm of vector, e²/Å
 
-    Source: AIMNet2PolarisabilityResult (torch autograd backward through
+    Source: AIMNet2ChargeResponseGradientResult (torch autograd backward through
     the AIMNet2 charge head); always-attached.
     """
-    polarisability_vector: np.ndarray       # (N, T, 3) float64
-    polarisability_scalar: np.ndarray       # (N, T) float64
+    charge_response_gradient_vector: np.ndarray       # (N, T, 3) float64
+    charge_response_gradient_scalar: np.ndarray       # (N, T) float64
     frame_indices: np.ndarray
     frame_times: np.ndarray
     source_attached_per_frame: np.ndarray
@@ -1928,17 +1928,17 @@ class AIMNet2PolarisabilityTimeSeriesGroup:
     source_attached_policy: str
 
 
-def _load_aimnet2_polarisability_time_series(
-        f) -> Optional[AIMNet2PolarisabilityTimeSeriesGroup]:
-    path = "/trajectory/aimnet2_polarisability_time_series"
+def _load_aimnet2_charge_response_gradient_time_series(
+        f) -> Optional[AIMNet2ChargeResponseGradientTimeSeriesGroup]:
+    path = "/trajectory/aimnet2_charge_response_gradient_time_series"
     if path not in f:
         return None
     g = f[path]
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
-    return AIMNet2PolarisabilityTimeSeriesGroup(
-        polarisability_vector=g["polarisability_vector"][:],
-        polarisability_scalar=g["polarisability_scalar"][:],
+    return AIMNet2ChargeResponseGradientTimeSeriesGroup(
+        charge_response_gradient_vector=g["charge_response_gradient_vector"][:],
+        charge_response_gradient_scalar=g["charge_response_gradient_scalar"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
         source_attached_per_frame=g["source_attached_per_frame"][:],
@@ -1957,10 +1957,10 @@ def _load_aimnet2_polarisability_time_series(
 
 
 @dataclass(frozen=True)
-class AIMNet2PolarisabilityWelfordGroup:
+class AIMNet2ChargeResponseGradientWelfordGroup:
     """Per-atom Welford rollup of the AIMNet2 polarisability gradient.
-    AV companion to AIMNet2PolarisabilityTimeSeriesGroup. Loaded from
-    /trajectory/aimnet2_polarisability_welford/.
+    AV companion to AIMNet2ChargeResponseGradientTimeSeriesGroup. Loaded from
+    /trajectory/aimnet2_charge_response_gradient_welford/.
 
     Minimum-viable v0 emits mean + M2 + per-atom sample count only.
     No delta variants (dx/dt, abs_delta, rms_delta) in this landing;
@@ -1990,15 +1990,15 @@ class AIMNet2PolarisabilityWelfordGroup:
     source_attached_policy: str
 
 
-def _load_aimnet2_polarisability_welford(
-        f) -> Optional[AIMNet2PolarisabilityWelfordGroup]:
-    path = "/trajectory/aimnet2_polarisability_welford"
+def _load_aimnet2_charge_response_gradient_welford(
+        f) -> Optional[AIMNet2ChargeResponseGradientWelfordGroup]:
+    path = "/trajectory/aimnet2_charge_response_gradient_welford"
     if path not in f:
         return None
     g = f[path]
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
-    return AIMNet2PolarisabilityWelfordGroup(
+    return AIMNet2ChargeResponseGradientWelfordGroup(
         vector_mean=g["vector_mean"][:],
         vector_m2=g["vector_m2"][:],
         scalar_mean=g["scalar_mean"][:],
@@ -2270,8 +2270,8 @@ class TrajectoryData:
     # AIMNet2 fleet TR trio (2026-05-20): per-atom embedding (256-dim),
     # polarisability gradient (Vec3 + scalar), polarisability Welford.
     aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
-    aimnet2_polarisability: Optional["AIMNet2PolarisabilityTimeSeriesGroup"] = None
-    aimnet2_polarisability_welford: Optional["AIMNet2PolarisabilityWelfordGroup"] = None
+    aimnet2_charge_response_gradient: Optional["AIMNet2ChargeResponseGradientTimeSeriesGroup"] = None
+    aimnet2_charge_response_gradient_welford: Optional["AIMNet2ChargeResponseGradientWelfordGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2441,8 +2441,8 @@ def load_trajectory(path: str | Path,
             _load_aimnet2_embedding_time_series(f)
             if load_optional_large else None
         )
-        aimnet2_polarisability = _load_aimnet2_polarisability_time_series(f)
-        aimnet2_polarisability_welford = _load_aimnet2_polarisability_welford(f)
+        aimnet2_charge_response_gradient = _load_aimnet2_charge_response_gradient_time_series(f)
+        aimnet2_charge_response_gradient_welford = _load_aimnet2_charge_response_gradient_welford(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2464,6 +2464,6 @@ def load_trajectory(path: str | Path,
         j_coupling=j_coupling,
         aimnet2_embedding=aimnet2_embedding,
         aimnet2_embedding_in_h5=aimnet2_embedding_in_h5,
-        aimnet2_polarisability=aimnet2_polarisability,
-        aimnet2_polarisability_welford=aimnet2_polarisability_welford,
+        aimnet2_charge_response_gradient=aimnet2_charge_response_gradient,
+        aimnet2_charge_response_gradient_welford=aimnet2_charge_response_gradient_welford,
     )

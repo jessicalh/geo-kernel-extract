@@ -79,7 +79,7 @@ public:
     // Build the padded half-neighbour matrix for AIMNet2.
     // Returns (N+1, max_nb) int32 tensor, sentinel = N.
     //
-    // Public so AIMNet2PolarisabilityResult can reuse the convention
+    // Public so AIMNet2ChargeResponseGradientResult can reuse the convention
     // when building its own input dict (chained via Dependencies()
     // for ordering, but does not share state with this Result).
     static torch::Tensor BuildNeighbourMatrix(

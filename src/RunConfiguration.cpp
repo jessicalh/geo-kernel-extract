@@ -60,9 +60,9 @@
 #include "SasaTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeTimeSeriesTrajectoryResult.h"
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
-#include "AIMNet2PolarisabilityResult.h"
-#include "AIMNet2PolarisabilityTimeSeriesTrajectoryResult.h"
-#include "AIMNet2PolarisabilityWelfordTrajectoryResult.h"
+#include "AIMNet2ChargeResponseGradientResult.h"
+#include "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.h"
+#include "AIMNet2ChargeResponseGradientWelfordTrajectoryResult.h"
 #include "ApbsEfieldTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
@@ -165,7 +165,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(SasaResult));
     c.RequireConformationResult(typeid(EeqResult));
     c.RequireConformationResult(typeid(AIMNet2Result));
-    c.RequireConformationResult(typeid(AIMNet2PolarisabilityResult));
+    c.RequireConformationResult(typeid(AIMNet2ChargeResponseGradientResult));
     c.RequireConformationResult(typeid(WaterFieldResult));
     c.RequireConformationResult(typeid(HydrationShellResult));
     c.RequireConformationResult(typeid(HydrationGeometryResult));
@@ -249,11 +249,11 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Create(tp);
+            return AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2PolarisabilityWelfordTrajectoryResult::Create(tp);
+            return AIMNet2ChargeResponseGradientWelfordTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

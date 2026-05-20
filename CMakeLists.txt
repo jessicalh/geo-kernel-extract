@@ -265,7 +265,8 @@ add_library(nmr_shielding
     src/SasaTimeSeriesTrajectoryResult.cpp
     src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp
     src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp
-    src/AIMNet2PolarisabilityTimeSeriesTrajectoryResult.cpp
+    src/AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.cpp
+    src/AIMNet2ChargeResponseGradientWelfordTrajectoryResult.cpp
     src/ApbsEfieldTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
@@ -336,7 +337,7 @@ add_library(nmr_shielding
     src/CalculatorConfig.cpp
     src/JobSpec.cpp
     src/AIMNet2Result.cpp
-    src/AIMNet2PolarisabilityResult.cpp
+    src/AIMNet2ChargeResponseGradientResult.cpp
     src/PlanarGeometryResult.cpp
     src/BondedEnergyResult.cpp
     src/TripeptideDftTable.cpp
@@ -542,7 +543,7 @@ nmr_test_target(structure_tests
     tests/test_apbs_field_result.cpp
     tests/test_apbs_wired.cpp
     tests/test_apbs_ff14sb.cpp
-    tests/test_aimnet2_polarisability.cpp
+    tests/test_aimnet2_charge_response_gradient.cpp
     tests/test_planar_geometry_result.cpp
     tests/test_protonation_pipeline.cpp
     tests/test_mcconnell_result.cpp
@@ -1336,17 +1337,17 @@ gtest_discover_tests(aimnet2_charge_time_series_tests
 # AIMNet2 Embedding + Polarisability TimeSeries tests
 # ============================================================================
 
-add_executable(aimnet2_embedding_polarisability_time_series_tests
+add_executable(aimnet2_embedding_charge_response_gradient_time_series_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
-    tests/test_aimnet2_embedding_polarisability_time_series.cpp
+    tests/test_aimnet2_embedding_charge_response_gradient_time_series.cpp
 )
-target_compile_definitions(aimnet2_embedding_polarisability_time_series_tests PRIVATE
+target_compile_definitions(aimnet2_embedding_charge_response_gradient_time_series_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
 )
-target_include_directories(aimnet2_embedding_polarisability_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(aimnet2_embedding_polarisability_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(aimnet2_embedding_polarisability_time_series_tests
+target_include_directories(aimnet2_embedding_charge_response_gradient_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(aimnet2_embedding_charge_response_gradient_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(aimnet2_embedding_charge_response_gradient_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

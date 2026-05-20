@@ -60,7 +60,7 @@ struct RunOptions {
     // AIMNet2: loaded model for neural network charges + EFG.
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     // When set, OperationRunner::Run also attaches
-    // AIMNet2PolarisabilityResult automatically (single forward+backward
+    // AIMNet2ChargeResponseGradientResult automatically (single forward+backward
     // pass, ~250 ms on a 1200-atom protein).
     AIMNet2Model* aimnet2_model = nullptr;
 

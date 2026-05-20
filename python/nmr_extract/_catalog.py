@@ -35,7 +35,7 @@ from ._tensors import (
     DeltaRingProximity,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2Polarisability,
+    AIMNet2ChargeResponseGradient,
 )
 from ._ring import RingContributions, RingGeometry
 
@@ -363,7 +363,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("aimnet2_efg_backbone",        "aimnet2", EFGTensor,                 5,    True,  "AIMNet2 Coulomb EFG backbone (T2 only)",
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
-    # ── AIMNet2 polarisability (AIMNet2PolarisabilityResult.cpp) ─────
+    # ── AIMNet2 polarisability (AIMNet2ChargeResponseGradientResult.cpp) ─────
     # Always-on after the JobSpec --aimnet2 model is loaded (per the
     # 2026-05-09 promotion of Amendment 2026-05-08(b) from a test flag
     # to standard non-trajectory pipeline; trajectory mode unchanged).
@@ -373,9 +373,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # gradient). Scalar is the L2 norm of the vector. required=False
     # because old extraction outputs (pre-2026-05-09) do not include
     # them; new outputs always do when AIMNet2 is loaded.
-    ArraySpec("aimnet2_polarisability",        "aimnet2", AIMNet2Polarisability, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))",
+    ArraySpec("aimnet2_charge_response_gradient",        "aimnet2", AIMNet2ChargeResponseGradient, 3,    False, "AIMNet2 per-atom polarisability gradient (d(sum q_j^2)/d(r_i))",
               irreps="1o", units="e^2/Å", tensor_rank=1, parity="odd", mechanism="charges"),
-    ArraySpec("aimnet2_polarisability_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)",
+    ArraySpec("aimnet2_charge_response_gradient_scalar", "aimnet2", np.ndarray,            None, False, "AIMNet2 per-atom polarisability scalar (L2 norm of gradient)",
               units="e^2/Å", mechanism="charges"),
 
     # ── Planar geometry (PlanarGeometryResult.cpp) ───────────────────

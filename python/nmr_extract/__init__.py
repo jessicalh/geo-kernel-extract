@@ -45,8 +45,8 @@ from ._trajectory import (
     RingPuckerTimeSeriesGroup,
     JCouplingTimeSeriesGroup,
     AIMNet2EmbeddingTimeSeriesGroup,
-    AIMNet2PolarisabilityTimeSeriesGroup,
-    AIMNet2PolarisabilityWelfordGroup,
+    AIMNet2ChargeResponseGradientTimeSeriesGroup,
+    AIMNet2ChargeResponseGradientWelfordGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -61,7 +61,7 @@ from ._tensors import (
     MopacGlobal,
     AIMNet2Charges,
     AIMNet2AimEmbedding,
-    AIMNet2Polarisability,
+    AIMNet2ChargeResponseGradient,
 )
 from ._ring import RingContributions, RingGeometry
 from ._catalog import CATALOG, ArraySpec, feature_specs
@@ -101,7 +101,7 @@ __all__ = [
     "feature_specs",
     "AIMNet2Charges",
     "AIMNet2AimEmbedding",
-    "AIMNet2Polarisability",
+    "AIMNet2ChargeResponseGradient",
     "MopacScalars",
     "MopacGlobal",
     "AIMNet2Group",
@@ -149,6 +149,6 @@ __all__ = [
     "RingPuckerTimeSeriesGroup",
     "JCouplingTimeSeriesGroup",
     "AIMNet2EmbeddingTimeSeriesGroup",
-    "AIMNet2PolarisabilityTimeSeriesGroup",
-    "AIMNet2PolarisabilityWelfordGroup",
+    "AIMNet2ChargeResponseGradientTimeSeriesGroup",
+    "AIMNet2ChargeResponseGradientWelfordGroup",
 ]
