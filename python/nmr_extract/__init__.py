@@ -46,6 +46,7 @@ from ._trajectory import (
     JCouplingTimeSeriesGroup,
     AIMNet2EmbeddingTimeSeriesGroup,
     AIMNet2PolarisabilityTimeSeriesGroup,
+    AIMNet2PolarisabilityWelfordGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -149,4 +150,5 @@ __all__ = [
     "JCouplingTimeSeriesGroup",
     "AIMNet2EmbeddingTimeSeriesGroup",
     "AIMNet2PolarisabilityTimeSeriesGroup",
+    "AIMNet2PolarisabilityWelfordGroup",
 ]

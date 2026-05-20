@@ -310,6 +310,21 @@ struct HydrationGeometryWelfordState {
     std::size_t    dxdt_n   = 0;
 };
 
+
+// AIMNet2 polarisability gradient: per-atom Welford accumulator for
+// (∂L/∂r_i) where L = Σ_j q_j² (AIMNet2 Hirshfeld charges, e²).
+// Vector emits per-component Welford on a Vec3 (x, y, z, units e²/Å);
+// scalar is the L2 norm of the vector. No delta variants in this
+// initial landing — the AIMNet2 fleet trio's first Welford pair is
+// kept minimum-viable (mean + variance only). If a downstream
+// calibration finding needs dx/dt or rms_delta, add following the
+// HydrationGeometryWelfordState delta-variant pattern.
+struct AIMNet2PolarisabilityWelfordState {
+    std::array<WelfordMoments, 3> polarisability_vector;  // x, y, z
+    WelfordMoments                polarisability_scalar;  // L2 norm
+    std::size_t                   n_frames = 0;
+};
+
 // Written by HydrationShellWelfordTrajectoryResult.
 // Source: COM-based older sibling of HydrationGeometry — half_shell_asymmetry
 // (COM reference frame instead of SASA normal), mean_water_dipole_cos,
@@ -420,6 +435,7 @@ public:
     WaterFieldWelfordState        water_field_welford;
     HydrationGeometryWelfordState hydration_geometry_welford;
     HydrationShellWelfordState    hydration_shell_welford;
+    AIMNet2PolarisabilityWelfordState aimnet2_polarisability_welford;
 
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from

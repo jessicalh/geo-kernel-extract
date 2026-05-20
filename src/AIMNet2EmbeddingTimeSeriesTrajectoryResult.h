@@ -23,7 +23,12 @@
 //       embedding_dim           = 256
 //       units                   = "dimensionless"
 //       source                  = "AIMNet2Result.aimnet2_aim (AIMNET2_AIM_DIMS=256)"
-//       source_attached_policy  = "always_attached"
+//       source_attached_policy  = "always_attached" — but Compute's
+//                                  HasResult<AIMNet2Result>() gate
+//                                  emits NaN-fill + source_attached
+//                                  _per_frame=0 on absent frames
+//                                  (codex review 2026-05-20; "absent,
+//                                  not faked").
 //       optional_large          = true
 //
 // Storage discipline: float32 native (per `feedback_embedding_float32`).

@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <string>
 
 namespace nmr {
@@ -50,10 +51,13 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute(
             "policy requires AIMNet2Result; the run's PerFrameExtractionSet "
             "must RequireConformationResult(AIMNet2Result).");
     }
-    const std::array<float, AIMNET2_AIM_DIMS> zero_placeholder{};
+    // Per `feedback_capture_at_the_boundary` "absent, not faked":
+    // absent frames get NaN-fill, NOT zero. Mask records the absence.
+    std::array<float, AIMNET2_AIM_DIMS> nan_placeholder;
+    nan_placeholder.fill(std::numeric_limits<float>::quiet_NaN());
     for (std::size_t i = 0; i < N; ++i) {
         per_atom_embedding_[i].push_back(
-            source_present ? conf.AtomAt(i).aimnet2_aim : zero_placeholder);
+            source_present ? conf.AtomAt(i).aimnet2_aim : nan_placeholder);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);

@@ -1956,6 +1956,72 @@ def _load_aimnet2_polarisability_time_series(
     )
 
 
+@dataclass(frozen=True)
+class AIMNet2PolarisabilityWelfordGroup:
+    """Per-atom Welford rollup of the AIMNet2 polarisability gradient.
+    AV companion to AIMNet2PolarisabilityTimeSeriesGroup. Loaded from
+    /trajectory/aimnet2_polarisability_welford/.
+
+    Minimum-viable v0 emits mean + M2 + per-atom sample count only.
+    No delta variants (dx/dt, abs_delta, rms_delta) in this landing;
+    pattern from HydrationGeometryWelfordTrajectoryResult is available
+    if calibration finds dynamics worth tracking. Group is skipped
+    entirely when source_attached_count == 0.
+    """
+    vector_mean: np.ndarray              # (N, 3) float64 — e²/Å
+    vector_m2: np.ndarray                # (N, 3) float64 — Welford M2
+    scalar_mean: np.ndarray              # (N,)   float64 — e²/Å (L2 norm)
+    scalar_m2: np.ndarray                # (N,)   float64
+    n_per_atom: np.ndarray               # (N,)   uint64  — sample count
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    units_vector: str                    # "e^2/Angstrom"
+    units_scalar: str                    # "e^2/Angstrom"
+    irrep_layout_vector: str             # "x,y,z"
+    normalization_vector: str            # "cartesian"
+    parity_vector: str                   # "1o"
+    irrep_layout_scalar: str             # "T0"
+    parity_scalar: str                   # "0e"
+    source: str
+    source_attached_policy: str
+
+
+def _load_aimnet2_polarisability_welford(
+        f) -> Optional[AIMNet2PolarisabilityWelfordGroup]:
+    path = "/trajectory/aimnet2_polarisability_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return AIMNet2PolarisabilityWelfordGroup(
+        vector_mean=g["vector_mean"][:],
+        vector_m2=g["vector_m2"][:],
+        scalar_mean=g["scalar_mean"][:],
+        scalar_m2=g["scalar_m2"][:],
+        n_per_atom=g["n_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        units_vector=_attr("units_vector"),
+        units_scalar=_attr("units_scalar"),
+        irrep_layout_vector=_attr("irrep_layout_vector"),
+        normalization_vector=_attr("normalization_vector"),
+        parity_vector=_attr("parity_vector"),
+        irrep_layout_scalar=_attr("irrep_layout_scalar"),
+        parity_scalar=_attr("parity_scalar"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2202,10 +2268,18 @@ class TrajectoryData:
     j_coupling: Optional[JCouplingTimeSeriesGroup] = None
 
     # AIMNet2 fleet TR trio (2026-05-20): per-atom embedding (256-dim),
-    # polarisability gradient (Vec3 + scalar). Welford for polarisability
-    # coming in TR #3.
+    # polarisability gradient (Vec3 + scalar), polarisability Welford.
     aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
     aimnet2_polarisability: Optional["AIMNet2PolarisabilityTimeSeriesGroup"] = None
+    aimnet2_polarisability_welford: Optional["AIMNet2PolarisabilityWelfordGroup"] = None
+    # Presence-vs-skip disambiguation for the optional-large
+    # embedding group: when load_trajectory was called with
+    # load_optional_large=False AND the group exists in the H5,
+    # this is True but `aimnet2_embedding` is None. When the group
+    # is absent from the H5 (run didn't emit it), this is False
+    # and `aimnet2_embedding` is None. So readers can distinguish
+    # "skipped to save memory" from "never extracted".
+    aimnet2_embedding_in_h5: bool = False
 
 
 def _read_frame_metadata(f, n_atoms_hint: int):
@@ -2360,11 +2434,15 @@ def load_trajectory(path: str | Path,
         # Optional-large gate: the 256-dim AIMNet2 embedding TS is the
         # only `optional_large=true` dataset currently. Default off so
         # casual analysis loads stay light (~3-4 GB savings per protein).
+        aimnet2_embedding_in_h5 = (
+            "/trajectory/aimnet2_embedding_time_series" in f
+        )
         aimnet2_embedding = (
             _load_aimnet2_embedding_time_series(f)
             if load_optional_large else None
         )
         aimnet2_polarisability = _load_aimnet2_polarisability_time_series(f)
+        aimnet2_polarisability_welford = _load_aimnet2_polarisability_welford(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2385,5 +2463,7 @@ def load_trajectory(path: str | Path,
         ring_pucker=ring_pucker,
         j_coupling=j_coupling,
         aimnet2_embedding=aimnet2_embedding,
+        aimnet2_embedding_in_h5=aimnet2_embedding_in_h5,
         aimnet2_polarisability=aimnet2_polarisability,
+        aimnet2_polarisability_welford=aimnet2_polarisability_welford,
     )

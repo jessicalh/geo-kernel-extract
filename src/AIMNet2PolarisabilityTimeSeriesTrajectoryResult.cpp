@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <string>
 
 namespace nmr {
@@ -50,12 +51,16 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
             "PerFrameExtractionSet must "
             "RequireConformationResult(AIMNet2PolarisabilityResult).");
     }
+    // Per `feedback_capture_at_the_boundary` "absent, not faked":
+    // NaN-fill on source-absent frames (NOT zero); mask records absence.
+    const double nan_d = std::numeric_limits<double>::quiet_NaN();
+    const Vec3 nan_v(nan_d, nan_d, nan_d);
     for (std::size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
         per_atom_vector_[i].push_back(
-            source_present ? ca.aimnet2_polarisability_vector : Vec3::Zero());
+            source_present ? ca.aimnet2_polarisability_vector : nan_v);
         per_atom_scalar_[i].push_back(
-            source_present ? ca.aimnet2_polarisability_scalar : 0.0);
+            source_present ? ca.aimnet2_polarisability_scalar : nan_d);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);

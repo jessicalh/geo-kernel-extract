@@ -36,12 +36,17 @@
 //       n_atoms, n_frames, finalized
 //       units_vector            = "e^2/Angstrom"
 //       units_scalar            = "e^2/Angstrom"
-//       irrep_layout_vector     = "1o"  (Vec3 odd parity, rank-1)
-//       parity_vector           = "1o"
-//       irrep_layout_scalar     = "T0"  (rank-0 invariant)
+//       irrep_layout_vector     = "x,y,z"      (Cartesian component order)
+//       normalization_vector    = "cartesian"
+//       parity_vector           = "1o"         (odd parity, rank-1)
+//       irrep_layout_scalar     = "T0"         (rank-0 invariant)
 //       parity_scalar           = "0e"
 //       source                  = "AIMNet2PolarisabilityResult.{vector,scalar}"
-//       source_attached_policy  = "always_attached"
+//       source_attached_policy  = "always_attached" — but Compute's
+//                                  HasResult gate emits NaN-fill +
+//                                  source_attached_per_frame=0 on
+//                                  absent frames (codex review
+//                                  2026-05-20; "absent, not faked").
 //
 // Per `feedback_methods_accumulate`, emit both vector AND scalar even
 // though scalar is derivable from vector — both are downstream-useful
