@@ -44,6 +44,8 @@ from ._trajectory import (
     Dssp8TransitionGroup,
     RingPuckerTimeSeriesGroup,
     JCouplingTimeSeriesGroup,
+    AIMNet2EmbeddingTimeSeriesGroup,
+    AIMNet2PolarisabilityTimeSeriesGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -145,4 +147,6 @@ __all__ = [
     "Dssp8TransitionGroup",
     "RingPuckerTimeSeriesGroup",
     "JCouplingTimeSeriesGroup",
+    "AIMNet2EmbeddingTimeSeriesGroup",
+    "AIMNet2PolarisabilityTimeSeriesGroup",
 ]

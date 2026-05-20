@@ -60,6 +60,8 @@
 #include "SasaTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeTimeSeriesTrajectoryResult.h"
 #include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
+#include "AIMNet2PolarisabilityResult.h"
+#include "AIMNet2PolarisabilityTimeSeriesTrajectoryResult.h"
 #include "ApbsEfieldTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
@@ -162,6 +164,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.RequireConformationResult(typeid(SasaResult));
     c.RequireConformationResult(typeid(EeqResult));
     c.RequireConformationResult(typeid(AIMNet2Result));
+    c.RequireConformationResult(typeid(AIMNet2PolarisabilityResult));
     c.RequireConformationResult(typeid(WaterFieldResult));
     c.RequireConformationResult(typeid(HydrationShellResult));
     c.RequireConformationResult(typeid(HydrationGeometryResult));
@@ -242,6 +245,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return AIMNet2EmbeddingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

@@ -1844,6 +1844,116 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
     )
 
 
+@dataclass(frozen=True)
+class AIMNet2EmbeddingTimeSeriesGroup:
+    """Per-atom per-frame 256-dim AIMNet2 'aim' embedding from
+    /trajectory/aimnet2_embedding_time_series/.
+
+    The embedding is a learned feature vector with no spherical-tensor
+    structure (`irrep_layout = "feature_vector"`, `parity = "0e"`).
+    Storage: (N, T, 256) float32. Large at fleet scale (~3.6 GB/protein
+    uncompressed); `optional_large` attr lets consumers skip.
+    Source: AIMNet2Result; always-attached policy.
+    """
+    embedding: np.ndarray                # (N, T, 256) float32
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    embedding_dim: int
+    irrep_layout: str
+    parity: str
+    units: str
+    source: str
+    source_attached_policy: str
+    optional_large: bool
+
+
+def _load_aimnet2_embedding_time_series(
+        f) -> Optional[AIMNet2EmbeddingTimeSeriesGroup]:
+    path = "/trajectory/aimnet2_embedding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return AIMNet2EmbeddingTimeSeriesGroup(
+        embedding=g["embedding"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        embedding_dim=int(g.attrs["embedding_dim"]),
+        irrep_layout=_attr("irrep_layout"),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+        optional_large=bool(g.attrs["optional_large"]),
+    )
+
+
+@dataclass(frozen=True)
+class AIMNet2PolarisabilityTimeSeriesGroup:
+    """Per-atom per-frame charge-polarisation gradient from
+    /trajectory/aimnet2_polarisability_time_series/.
+
+    Two emissions (both required for downstream analysis per
+    `feedback_methods_accumulate`):
+      polarisability_vector  (N, T, 3) float64  — gradient of L = Σ_j q_j²
+                                                  with respect to atomic
+                                                  coordinates, units e²/Å
+      polarisability_scalar  (N, T)    float64  — L2 norm of vector, e²/Å
+
+    Source: AIMNet2PolarisabilityResult (torch autograd backward through
+    the AIMNet2 charge head); always-attached.
+    """
+    polarisability_vector: np.ndarray       # (N, T, 3) float64
+    polarisability_scalar: np.ndarray       # (N, T) float64
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    units_vector: str                       # "e^2/Angstrom"
+    units_scalar: str                       # "e^2/Angstrom"
+    irrep_layout_vector: str                # "1o"
+    parity_vector: str                      # "1o"
+    irrep_layout_scalar: str                # "T0"
+    parity_scalar: str                      # "0e"
+    source: str
+    source_attached_policy: str
+
+
+def _load_aimnet2_polarisability_time_series(
+        f) -> Optional[AIMNet2PolarisabilityTimeSeriesGroup]:
+    path = "/trajectory/aimnet2_polarisability_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return AIMNet2PolarisabilityTimeSeriesGroup(
+        polarisability_vector=g["polarisability_vector"][:],
+        polarisability_scalar=g["polarisability_scalar"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        units_vector=_attr("units_vector"),
+        units_scalar=_attr("units_scalar"),
+        irrep_layout_vector=_attr("irrep_layout_vector"),
+        parity_vector=_attr("parity_vector"),
+        irrep_layout_scalar=_attr("irrep_layout_scalar"),
+        parity_scalar=_attr("parity_scalar"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2089,6 +2199,12 @@ class TrajectoryData:
     # Per-residue Karplus ³J observables (2026-05-19).
     j_coupling: Optional[JCouplingTimeSeriesGroup] = None
 
+    # AIMNet2 fleet TR trio (2026-05-20): per-atom embedding (256-dim),
+    # polarisability gradient (Vec3 + scalar). Welford for polarisability
+    # coming in TR #3.
+    aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
+    aimnet2_polarisability: Optional["AIMNet2PolarisabilityTimeSeriesGroup"] = None
+
 
 def _read_frame_metadata(f, n_atoms_hint: int):
     """Return (n_frames, frame_times) from either H5 schema.
@@ -2231,6 +2347,8 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         )
         ring_pucker = _load_ring_pucker_time_series(f)
         j_coupling = _load_j_coupling_time_series(f)
+        aimnet2_embedding = _load_aimnet2_embedding_time_series(f)
+        aimnet2_polarisability = _load_aimnet2_polarisability_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2250,4 +2368,6 @@ def load_trajectory(path: str | Path) -> TrajectoryData:
         dssp8=dssp8,
         ring_pucker=ring_pucker,
         j_coupling=j_coupling,
+        aimnet2_embedding=aimnet2_embedding,
+        aimnet2_polarisability=aimnet2_polarisability,
     )
