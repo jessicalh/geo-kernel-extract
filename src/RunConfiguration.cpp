@@ -59,6 +59,7 @@
 #include "HBondShieldingTimeSeriesTrajectoryResult.h"
 #include "SasaTimeSeriesTrajectoryResult.h"
 #include "AIMNet2ChargeTimeSeriesTrajectoryResult.h"
+#include "AIMNet2EmbeddingTimeSeriesTrajectoryResult.h"
 #include "ApbsEfieldTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
@@ -237,6 +238,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return AIMNet2ChargeTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return AIMNet2EmbeddingTimeSeriesTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
