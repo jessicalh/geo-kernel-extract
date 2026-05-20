@@ -225,6 +225,7 @@ TEST(TopologySemanticApi, ApplyCapDeltaChangesOnlyDeclaredDeltaFields) {
     const AtomMechanicalIdentity original_identity = IdentityOf(chain);
     const auto original_prochiral = chain.prochiral;
     const auto original_planar_stereo = chain.planar_stereo;
+    const auto original_ring_position = chain.ring_position;
     const bool original_aromatic = chain.aromatic;
     const auto original_equivalence_class = chain.equivalence_class;
 
@@ -239,7 +240,9 @@ TEST(TopologySemanticApi, ApplyCapDeltaChangesOnlyDeclaredDeltaFields) {
     EXPECT_EQ(cap.planar_group, chain.planar_group);
     EXPECT_TRUE(SamePseudoatom(cap.pseudoatom, chain.pseudoatom));
     EXPECT_EQ(cap.polar_h, chain.polar_h);
-    EXPECT_TRUE(SameRingPosition(cap.ring_position, chain.ring_position));
+    EXPECT_TRUE(SameRingPosition(original_ring_position, chain.ring_position))
+        << "Cap deltas must preserve chain ring membership; cap rows carry "
+        << "NotInRing placeholders for overlay atoms.";
     EXPECT_EQ(cap.formal_charge, chain.formal_charge);
     EXPECT_TRUE(chain.is_exchangeable)
         << "ApplyCapDelta recomputes exchangeability from polar_h instead "
