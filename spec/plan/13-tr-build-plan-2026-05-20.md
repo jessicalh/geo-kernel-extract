@@ -76,16 +76,34 @@ Per-atom-per-ring rich struct vectors. **Strawman** (NOT locked):
 
 ## Session sequencing
 
-### Session 1: Pre-flight + AIMNet2 trio (~3-4 hrs)
+### Session 1: Pre-flight + AIMNet2 trio (~3-4 hrs) — **LANDED 2026-05-20**
 
 **Pre-flight** (30 min): write this doc, lock decisions 1-6. ✓ done by reading this.
 
-**TRs**:
-- TR 1: `AIMNet2EmbeddingTimeSeriesTrajectoryResult` (canonical AIMNet2 always-attached TS)
-- TR 2: `AIMNet2PolarisabilityTimeSeriesTrajectoryResult` (canonical Vec3+scalar TS)
-- TR 3: `AIMNet2PolarisabilityWelfordTrajectoryResult` (canonical 4-channel Welford)
+**TRs landed**:
+- TR 1: `AIMNet2EmbeddingTimeSeriesTrajectoryResult` (canonical AIMNet2 always-attached TS — 256-dim float32, optional_large=true, per-atom hyperslab)
+- TR 2: `AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult` (canonical Vec3+scalar TS — renamed from "Polarisability" per science S2)
+- TR 3: `AIMNet2ChargeResponseGradientWelfordTrajectoryResult` (canonical full canonical Welford row — mean/std/m2/min/max/min_frame/max_frame per channel)
 
-**Codex annealing pass** at session close. Bundle commit.
+**Codex annealing pass** complete (R0 + R1 rounds — 7+5 findings landed across two fix bundles).
+
+**Commits** (master, 510681f..02cd4df, 9 commits, all green):
+- `510681f` AIMNet2EmbeddingTimeSeriesTrajectoryResult + 13-TR session plan
+- `3e953ec` AIMNet2PolarisabilityTS + adversarial-review fix bundle
+- `fac1e46` AIMNet2 TR pair: codex R0 followups
+- `4ac6ccd` AIMNet2 fleet trio S1 complete: NaN-fill gate, TR #3 Welford
+- `f339586` science+math review followups (WelfordFinalize, physics disclaimers)
+- `8297535` S7 + S9: charge-conservation pre-flight script + stale docstring fix
+- `58594f5` Rename AIMNet2Polarisability → AIMNet2ChargeResponseGradient
+- `094ddb7` OBJECT_MODEL: fix stale polarisability dataset names
+- `02cd4df` AIMNet2 CRG codex R1: F1+F2+F3+F4+F5+F6+F7 fix bundle
+
+**Verification at close**:
+- 6/6 C++ tests PASS on the trio test binary
+- Integration1P9J test (real AIMNet2 backward through Trajectory::Run): 846/846 atoms populated, max|grad_x| ≈ 0.4 e²/Å
+- 135/135 Python SDK tests PASS
+
+**S2 entry conditions met**: templates for TR4 (T2 EFG TS, canonical Vec3+scalar TS) ready; the Welford-with-full-canonical-row pattern documented in `AIMNet2ChargeResponseGradientWelfordTrajectoryResult`; F1 non-finite guard pattern + ForceAttachResultForTesting helper landed.
 
 ### Session 2: ApbsEfgTS + MOPAC family (~4-5 hrs)
 
