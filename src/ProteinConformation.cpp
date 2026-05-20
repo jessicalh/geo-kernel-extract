@@ -59,6 +59,14 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
 }
 
 
+void ProteinConformation::ForceAttachResultForTesting(
+        std::unique_ptr<ConformationResult> result) {
+    if (!result) return;
+    const std::type_index tid(typeid(*result));
+    results_[tid] = std::move(result);
+}
+
+
 // ============================================================================
 // CrystalConformation
 // ============================================================================

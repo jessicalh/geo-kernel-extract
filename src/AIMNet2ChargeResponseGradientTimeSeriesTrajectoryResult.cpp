@@ -1,6 +1,6 @@
-#include "AIMNet2PolarisabilityTimeSeriesTrajectoryResult.h"
+#include "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.h"
 
-#include "AIMNet2PolarisabilityResult.h"
+#include "AIMNet2ChargeResponseGradientResult.h"
 #include "ConformationAtom.h"
 #include "OperationLog.h"
 #include "ProteinConformation.h"
@@ -18,15 +18,15 @@
 
 namespace nmr {
 
-std::unique_ptr<AIMNet2PolarisabilityTimeSeriesTrajectoryResult>
-AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
-    auto r = std::make_unique<AIMNet2PolarisabilityTimeSeriesTrajectoryResult>();
+std::unique_ptr<AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult>
+AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
+    auto r = std::make_unique<AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult>();
     r->per_atom_vector_.assign(tp.AtomCount(), {});
     r->per_atom_scalar_.assign(tp.AtomCount(), {});
     return r;
 }
 
-void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
+void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Compute(
         const ProteinConformation& conf,
         TrajectoryProtein& tp,
         Trajectory& traj,
@@ -37,19 +37,21 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
     // Source-attached gate. Always-attached policy means the source
     // should be present every frame in the production config (line 167
     // of RunConfiguration.cpp RequireConformationResult's
-    // AIMNet2PolarisabilityResult); a custom config that omits the
-    // require could land zero-default polarisability fields. Detect
-    // here and record mask=0 (codex review 2026-05-20).
-    const bool source_present = conf.HasResult<AIMNet2PolarisabilityResult>();
+    // AIMNet2ChargeResponseGradientResult). A custom config that omits
+    // the Require would land NaN-fill rows here; the F1 non-finite
+    // gradient guard at the source calculator can also trip this gate
+    // by returning nullptr on degenerate-backward frames (codex F1
+    // 2026-05-20).
+    const bool source_present = conf.HasResult<AIMNet2ChargeResponseGradientResult>();
     if (!source_present) {
         OperationLog::Warn(
-            "AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute",
-            "AIMNet2PolarisabilityResult not attached at frame " +
+            "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Compute",
+            "AIMNet2ChargeResponseGradientResult not attached at frame " +
             std::to_string(frame_idx) +
-            " — emitting zero-placeholder + mask=0. Always-attached "
-            "policy requires AIMNet2PolarisabilityResult; the run's "
-            "PerFrameExtractionSet must "
-            "RequireConformationResult(AIMNet2PolarisabilityResult).");
+            " — NaN-fill emitted + mask=0. Always-attached policy "
+            "requires AIMNet2ChargeResponseGradientResult; the run's "
+            "PerFrameExtractionSet must RequireConformationResult"
+            "(AIMNet2ChargeResponseGradientResult).");
     }
     // Per `feedback_capture_at_the_boundary` "absent, not faked":
     // NaN-fill on source-absent frames (NOT zero); mask records absence.
@@ -58,9 +60,9 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
     for (std::size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
         per_atom_vector_[i].push_back(
-            source_present ? ca.aimnet2_polarisability_vector : nan_v);
+            source_present ? ca.aimnet2_charge_response_gradient_vector : nan_v);
         per_atom_scalar_[i].push_back(
-            source_present ? ca.aimnet2_polarisability_scalar : nan_d);
+            source_present ? ca.aimnet2_charge_response_gradient_scalar : nan_d);
     }
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
@@ -68,43 +70,43 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Compute(
     ++n_frames_;
 }
 
-void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Finalize(
+void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Finalize(
         TrajectoryProtein& tp, Trajectory& traj) {
     (void)tp; (void)traj;
     finalized_ = true;
     OperationLog::Info(LogCalcOther,
-        "AIMNet2PolarisabilityTimeSeriesTrajectoryResult::Finalize",
+        "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Finalize",
         "finalized across " + std::to_string(n_frames_) +
         " frames, " + std::to_string(per_atom_vector_.size()) + " atoms");
 }
 
-void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
+void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp, HighFive::File& file) const {
     const std::size_t N = per_atom_vector_.size();
     const std::size_t T = n_frames_;
 
-    auto grp = file.createGroup("/trajectory/aimnet2_polarisability_time_series");
+    auto grp = file.createGroup("/trajectory/aimnet2_charge_response_gradient_time_series");
 
     grp.createAttribute("result_name",            Name());
     grp.createAttribute("n_atoms",                N);
     grp.createAttribute("n_frames",               T);
     grp.createAttribute("finalized",              finalized_);
-    grp.createAttribute("units_vector",           std::string("e^2/Angstrom"));
-    grp.createAttribute("units_scalar",           std::string("e^2/Angstrom"));
+    grp.createAttribute("units_vector",           std::string("e^2/Å"));
+    grp.createAttribute("units_scalar",           std::string("e^2/Å"));
     // Vec3 metadata follows the existing TR convention: layout +
     // normalization + parity emitted as separate attrs (codex review
-    // 2026-05-20). Polarisability vector is a Cartesian-ordered Vec3
-    // with odd parity (gradient of a scalar w.r.t. polar coordinates).
+    // 2026-05-20). Charge-response gradient vector is a Cartesian-ordered
+    // Vec3 with odd parity (gradient of a scalar w.r.t. polar coordinates).
     grp.createAttribute("irrep_layout_vector",    std::string("x,y,z"));
     grp.createAttribute("normalization_vector",   std::string("cartesian"));
     grp.createAttribute("parity_vector",          std::string("1o"));
     grp.createAttribute("irrep_layout_scalar",    std::string("T0"));
     grp.createAttribute("parity_scalar",          std::string("0e"));
     grp.createAttribute("source",                 std::string(
-        "AIMNet2PolarisabilityResult.{aimnet2_polarisability_vector (Vec3), "
-        "aimnet2_polarisability_scalar (double, L2 norm of vector)}. "
+        "AIMNet2ChargeResponseGradientResult.{aimnet2_charge_response_gradient_vector (Vec3), "
+        "aimnet2_charge_response_gradient_scalar (double, L2 norm of vector)}. "
         "Gradient of L = sum_j q_j^2 (AIMNet2 Hirshfeld charges, e^2) "
-        "with respect to atomic coordinates (e^2/Angstrom). Both emitted "
+        "with respect to atomic coordinates (e^2/Å). Both emitted "
         "for downstream convenience per feedback_methods_accumulate."));
     grp.createAttribute("source_attached_policy", std::string("always_attached"));
 
@@ -131,7 +133,7 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
             static_cast<hsize_t>(std::max<std::size_t>(frame_chunk, 1u)),
             static_cast<hsize_t>(3)
         }));
-        auto ds = grp.createDataSet<double>("polarisability_vector", space, props);
+        auto ds = grp.createDataSet<double>("charge_response_gradient_vector", space, props);
         ds.write_raw(flat.data());
     }
 
@@ -149,7 +151,7 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
             static_cast<hsize_t>(N),
             static_cast<hsize_t>(std::max<std::size_t>(frame_chunk, 1u))
         }));
-        auto ds = grp.createDataSet<double>("polarisability_scalar", space, props);
+        auto ds = grp.createDataSet<double>("charge_response_gradient_scalar", space, props);
         ds.write_raw(flat.data());
     }
 
@@ -163,8 +165,8 @@ void AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("source_attached_per_frame", source_attached_per_frame_);
 
     OperationLog::Info(LogCalcOther,
-        "AIMNet2PolarisabilityTimeSeriesTrajectoryResult::WriteH5Group",
-        "wrote /trajectory/aimnet2_polarisability_time_series with " +
+        "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group",
+        "wrote /trajectory/aimnet2_charge_response_gradient_time_series with " +
         std::to_string(N) + " atoms × " + std::to_string(T) + " frames "
         "(Vec3 + scalar, chunk " + std::to_string(frame_chunk) + " frames)");
 }

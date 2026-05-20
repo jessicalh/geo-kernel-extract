@@ -778,10 +778,13 @@ class AIMNet2Group:
     efg: EFGTensor
     efg_aromatic: EFGTensor
     efg_backbone: EFGTensor
-    # Polarisability fields are present only when the extraction was run
-    # with AIMNet2 model loaded after the 2026-05-09 always-on promotion
-    # of AIMNet2ChargeResponseGradientResult. Old outputs leave these as None.
-    polarisability: Optional[AIMNet2ChargeResponseGradient] = None
+    # ChargeResponseGradient fields are present only when the extraction
+    # was run with AIMNet2 model loaded after the 2026-05-09 always-on
+    # promotion of AIMNet2ChargeResponseGradientResult. Old outputs leave
+    # these as None. Field renamed from `polarisability` to
+    # `charge_response_gradient` 2026-05-20 (commit 58594f5) — the
+    # emission is ∂(Σq²)/∂r, NOT a Buckingham α tensor.
+    charge_response_gradient: Optional[AIMNet2ChargeResponseGradient] = None
     charge_response_gradient_scalar: Optional[np.ndarray] = None
 
 
@@ -1412,7 +1415,7 @@ def load(path: str | Path) -> Protein:
             efg=get("aimnet2_efg"),
             efg_aromatic=get("aimnet2_efg_aromatic"),
             efg_backbone=get("aimnet2_efg_backbone"),
-            polarisability=get("aimnet2_charge_response_gradient")
+            charge_response_gradient=get("aimnet2_charge_response_gradient")
                 if "aimnet2_charge_response_gradient" in available else None,
             charge_response_gradient_scalar=get("aimnet2_charge_response_gradient_scalar")
                 if "aimnet2_charge_response_gradient_scalar" in available else None,

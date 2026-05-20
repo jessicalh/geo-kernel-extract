@@ -62,6 +62,13 @@ public:
     // Attach a result. Checks dependencies. Returns true on success.
     bool AttachResult(std::unique_ptr<ConformationResult> result);
 
+    // Test-only: insert a result bypassing dependency validation.
+    // Production code MUST use AttachResult. Use case is synthetic
+    // accumulation-path tests for TrajectoryResults whose source
+    // ConformationResult has a deep dependency tree (e.g. AIMNet2
+    // family). Codex 2026-05-20 F4.
+    void ForceAttachResultForTesting(std::unique_ptr<ConformationResult> result);
+
     // Type-safe access (returns status false if not attached)
     template<typename T>
     T& Result() {

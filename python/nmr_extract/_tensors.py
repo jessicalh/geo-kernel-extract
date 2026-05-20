@@ -786,7 +786,7 @@ class AIMNet2AimEmbedding:
     """(N, 256) learned electronic structure embedding per atom.
 
     Geometry-dependent: changes per frame.  Encodes hybridisation,
-    polarisability, conjugation, charge transfer.
+    charge response, conjugation, charge transfer.
     """
 
     __slots__ = ("_data",)
@@ -810,7 +810,8 @@ class AIMNet2ChargeResponseGradient:
     The vector field is dL/d(r_i) where L = sum_j q_j^2 over
     non-sentinel atoms (the L2-of-charges objective; sum(q) is
     constant under AIMNet2's charge-conservation projection so its
-    gradient is ~0). Charge-weighted per-atom polarisability gradient.
+    gradient is ~0). Sum-of-squared-charges sensitivity to atomic
+    coordinates — NOT a Buckingham polarisability α = ∂μ/∂E.
 
     Companion scalar is the L2 norm of the vector, stored separately
     in `aimnet2_charge_response_gradient_scalar.npy`.
@@ -835,7 +836,7 @@ class AIMNet2ChargeResponseGradient:
 
     @property
     def vectors(self) -> np.ndarray:
-        """Per-atom polarisability gradient vectors ``(N, 3)``."""
+        """Per-atom charge-response gradient vectors ``(N, 3)``."""
         return self._data
 
     @property

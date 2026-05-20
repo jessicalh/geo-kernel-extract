@@ -1,4 +1,4 @@
-#include "AIMNet2PolarisabilityResult.h"
+#include "AIMNet2ChargeResponseGradientResult.h"
 
 #include "AIMNet2Result.h"
 #include "ConformationAtom.h"
@@ -19,7 +19,7 @@
 namespace nmr {
 
 
-std::vector<std::type_index> AIMNet2PolarisabilityResult::Dependencies() const {
+std::vector<std::type_index> AIMNet2ChargeResponseGradientResult::Dependencies() const {
     return {
         std::type_index(typeid(AIMNet2Result)),
         std::type_index(typeid(SpatialIndexResult)),
@@ -28,19 +28,19 @@ std::vector<std::type_index> AIMNet2PolarisabilityResult::Dependencies() const {
 }
 
 
-std::unique_ptr<AIMNet2PolarisabilityResult>
-AIMNet2PolarisabilityResult::Compute(
+std::unique_ptr<AIMNet2ChargeResponseGradientResult>
+AIMNet2ChargeResponseGradientResult::Compute(
         ProteinConformation& conf,
         AIMNet2Model& model) {
 
-    OperationLog::Scope scope("AIMNet2PolarisabilityResult::Compute",
+    OperationLog::Scope scope("AIMNet2ChargeResponseGradientResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
     const size_t N = conf.AtomCount();
 
     if (N == 0) {
-        OperationLog::Error("AIMNet2PolarisabilityResult::Compute",
+        OperationLog::Error("AIMNet2ChargeResponseGradientResult::Compute",
             "Zero atoms — cannot run polarisability backward.");
         return nullptr;
     }
@@ -51,7 +51,7 @@ AIMNet2PolarisabilityResult::Compute(
         Element e = protein.AtomAt(i).element;
         if (e != Element::H && e != Element::C && e != Element::N &&
             e != Element::O && e != Element::S) {
-            OperationLog::Error("AIMNet2PolarisabilityResult::Compute",
+            OperationLog::Error("AIMNet2ChargeResponseGradientResult::Compute",
                 "Atom " + std::to_string(i) + " (" +
                 protein.AtomAt(i).pdb_atom_name + " in residue " +
                 std::to_string(protein.AtomAt(i).residue_index) +
@@ -60,7 +60,7 @@ AIMNet2PolarisabilityResult::Compute(
         }
     }
 
-    auto result_ptr = std::make_unique<AIMNet2PolarisabilityResult>();
+    auto result_ptr = std::make_unique<AIMNet2ChargeResponseGradientResult>();
     result_ptr->conf_ = &conf;
 
     // GeometryChoice: one summary record naming the scalar objective.
@@ -131,7 +131,7 @@ AIMNet2PolarisabilityResult::Compute(
     input_dict.insert("cutoff_lr", cutoff_lr_tensor.to(model.device));
 
     OperationLog::Info(LogCalcOther,
-        "AIMNet2PolarisabilityResult::Compute",
+        "AIMNet2ChargeResponseGradientResult::Compute",
         "forward pass with grad-tracking enabled (no NoGradGuard)");
 
     // Forward pass. Gradient tape records the graph from coord_gpu
@@ -140,7 +140,7 @@ AIMNet2PolarisabilityResult::Compute(
     auto output_dict = output.toGenericDict();
 
     if (!output_dict.contains("charges")) {
-        OperationLog::Error("AIMNet2PolarisabilityResult::Compute",
+        OperationLog::Error("AIMNet2ChargeResponseGradientResult::Compute",
             "Model output missing 'charges' tensor.");
         return nullptr;
     }
@@ -162,7 +162,7 @@ AIMNet2PolarisabilityResult::Compute(
     loss.backward();
 
     if (!coord_gpu.grad().defined()) {
-        OperationLog::Error("AIMNet2PolarisabilityResult::Compute",
+        OperationLog::Error("AIMNet2ChargeResponseGradientResult::Compute",
             "coord.grad undefined after backward — autograd path is "
             "broken in the loaded .jpt model. Re-export with grad-"
             "tracking enabled.");
@@ -172,21 +172,39 @@ AIMNet2PolarisabilityResult::Compute(
     auto grad_cpu = coord_gpu.grad().to(torch::kCPU, torch::kFloat64);
     auto grad_acc = grad_cpu.accessor<double, 2>();
 
+    // Pre-scan: reject the entire frame on any non-finite component.
+    // Defined-but-NaN/Inf gradients from a degenerate AIMNet2 backward
+    // would otherwise attach to the source result, set TS mask=1, and
+    // poison the Welford running statistics (mean/M2/std/min/max).
+    // Codex 2026-05-20 F1.
+    for (size_t i = 0; i < N; ++i) {
+        for (int k = 0; k < 3; ++k) {
+            if (!std::isfinite(grad_acc[i][k])) {
+                OperationLog::Error(
+                    "AIMNet2ChargeResponseGradientResult::Compute",
+                    "non-finite gradient at atom " + std::to_string(i) +
+                    " component " + std::to_string(k) +
+                    "; rejecting frame so TS mask=0 and Welford skips.");
+                return nullptr;
+            }
+        }
+    }
+
     double max_norm = 0.0;
     double sum_norm = 0.0;
     for (size_t i = 0; i < N; ++i) {
         Vec3 v(grad_acc[i][0], grad_acc[i][1], grad_acc[i][2]);
         const double s = v.norm();
         auto& ca = conf.MutableAtomAt(i);
-        ca.aimnet2_polarisability_vector = v;
-        ca.aimnet2_polarisability_scalar = s;
+        ca.aimnet2_charge_response_gradient_vector = v;
+        ca.aimnet2_charge_response_gradient_scalar = s;
         if (s > max_norm) max_norm = s;
         sum_norm += s;
     }
     const double mean_norm = sum_norm / static_cast<double>(N);
 
     OperationLog::Info(LogCalcOther,
-        "AIMNet2PolarisabilityResult::Compute",
+        "AIMNet2ChargeResponseGradientResult::Compute",
         std::to_string(N) + " atoms; |dL/dr| max=" +
         std::to_string(max_norm) + " mean=" + std::to_string(mean_norm));
 
@@ -194,7 +212,7 @@ AIMNet2PolarisabilityResult::Compute(
 }
 
 
-int AIMNet2PolarisabilityResult::WriteFeatures(
+int AIMNet2ChargeResponseGradientResult::WriteFeatures(
         const ProteinConformation& conf,
         const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -204,13 +222,13 @@ int AIMNet2PolarisabilityResult::WriteFeatures(
     {
         std::vector<double> data(N * 3);
         for (size_t i = 0; i < N; ++i) {
-            const Vec3& v = conf.AtomAt(i).aimnet2_polarisability_vector;
+            const Vec3& v = conf.AtomAt(i).aimnet2_charge_response_gradient_vector;
             data[i * 3 + 0] = v.x();
             data[i * 3 + 1] = v.y();
             data[i * 3 + 2] = v.z();
         }
         NpyWriter::WriteFloat64(
-            output_dir + "/aimnet2_polarisability.npy",
+            output_dir + "/aimnet2_charge_response_gradient.npy",
             data.data(), N, 3);
         written++;
     }
@@ -219,10 +237,10 @@ int AIMNet2PolarisabilityResult::WriteFeatures(
     {
         std::vector<double> data(N);
         for (size_t i = 0; i < N; ++i) {
-            data[i] = conf.AtomAt(i).aimnet2_polarisability_scalar;
+            data[i] = conf.AtomAt(i).aimnet2_charge_response_gradient_scalar;
         }
         NpyWriter::WriteFloat64(
-            output_dir + "/aimnet2_polarisability_scalar.npy",
+            output_dir + "/aimnet2_charge_response_gradient_scalar.npy",
             data.data(), N);
         written++;
     }

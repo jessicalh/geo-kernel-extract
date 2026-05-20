@@ -1,16 +1,18 @@
 """Sanity check: AIMNet2 architecturally enforces charge conservation
 (Σ q_j = q_input).
 
-Motivation (science review S7, 2026-05-20): the AIMNet2PolarisabilityResult
+Motivation (science review S7, 2026-05-20): the AIMNet2ChargeResponseGradientResult
 calculator differentiates L = Σ q_j² with respect to atomic coordinates,
-producing the "polarisability" gradient channel. If AIMNet2 enforces
-charge conservation EXACTLY (architectural projection on the charge
-head), then `∂(Σ q_j)/∂r_i ≡ 0` for all i, and the per-atom gradient
-of Σ q² is the centred charge-weighted sum (Σ_j (q_j − q̄)·J_ji,
-where J = ∂q/∂r). If AIMNet2 enforces conservation only APPROXIMATELY
-(soft loss during training), there is a residual all-ones bias term
-in the gradient that should either be projected out at backward time
-or flagged in the docstring.
+producing the charge-response gradient channel. Note d(Σq_j²)/dr_i =
+2 Σ_j q_j · J_ji where J = ∂q/∂r. If AIMNet2 enforces charge
+conservation EXACTLY (architectural projection on the charge head),
+then `∂(Σ q_j)/∂r_i ≡ 0` for all i, and the per-atom gradient of
+Σ q² reduces to the centred charge-weighted sum
+    d(Σq_j²)/dr_i = 2 Σ_j (q_j − q̄)·J_ji  (since Σ_j J_ji = 0).
+If AIMNet2 enforces conservation only APPROXIMATELY (soft loss during
+training), there is a residual all-ones bias term in the gradient
+that should either be projected out at backward time or flagged in
+the docstring.
 
 This script:
   1. Loads `data/models/aimnet2_wb97m_0.jpt`.
@@ -25,7 +27,7 @@ Outcome:
     the polarisability gradient channel has no spurious all-ones bias.
   - FAILS → conservation is approximate. Either (a) the polarisability
     gradient needs explicit projection at backward time, or (b) the
-    AIMNet2PolarisabilityResult docstring needs to flag the residual
+    AIMNet2ChargeResponseGradientResult docstring needs to flag the residual
     bias. Calibration-ridge would absorb the bias, but flagging it
     keeps the audit trail honest.
 """
@@ -111,12 +113,12 @@ def main():
 
     if grad_max < TOL_MAX_ABS_GRAD:
         print("PASS — AIMNet2 architecturally enforces charge conservation.")
-        print("       ∂(Σq²)/∂r in AIMNet2PolarisabilityResult is the centred")
+        print("       ∂(Σq²)/∂r in AIMNet2ChargeResponseGradientResult is the centred")
         print("       charge-weighted Jacobian sum; no spurious all-ones bias.")
         sys.exit(0)
     else:
         print("FAIL — ∂(Σq)/∂r exceeds tolerance; conservation is approximate.")
-        print("       AIMNet2PolarisabilityResult's gradient has a residual")
+        print("       AIMNet2ChargeResponseGradientResult's gradient has a residual")
         print("       all-ones bias of magnitude ~{:.2e}. Calibration-ridge".format(grad_max))
         print("       will absorb it but the polarisability gradient should be")
         print("       projected to remove the bias, OR the docstring should flag")

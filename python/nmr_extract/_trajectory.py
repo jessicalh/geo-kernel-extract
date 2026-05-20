@@ -1958,34 +1958,49 @@ def _load_aimnet2_charge_response_gradient_time_series(
 
 @dataclass(frozen=True)
 class AIMNet2ChargeResponseGradientWelfordGroup:
-    """Per-atom Welford rollup of the AIMNet2 polarisability gradient.
+    """Per-atom Welford rollup of the AIMNet2 charge-response gradient.
     AV companion to AIMNet2ChargeResponseGradientTimeSeriesGroup. Loaded from
     /trajectory/aimnet2_charge_response_gradient_welford/.
 
-    Minimum-viable v0 emits mean + M2 + per-atom sample count only.
-    No delta variants (dx/dt, abs_delta, rms_delta) in this landing;
-    pattern from HydrationGeometryWelfordTrajectoryResult is available
-    if calibration finds dynamics worth tracking. Group is skipped
-    entirely when source_attached_count == 0.
+    Emits the full canonical Welford row per sibling TR convention
+    (HydrationGeometryWelfordGroup, BsWelfordGroup, ...): mean + std +
+    M2 + min + max + min_frame + max_frame per channel for both the
+    (N, 3) vector and the (N,) scalar. No delta variants (dx/dt,
+    abs_delta, rms_delta) in this minimum-viable v0; pattern from
+    HydrationGeometryWelfordTrajectoryResult is available if calibration
+    finds dynamics worth tracking. Group is skipped entirely when
+    source_attached_count == 0.
     """
-    vector_mean: np.ndarray              # (N, 3) float64 — e²/Å
-    vector_m2: np.ndarray                # (N, 3) float64 — Welford M2
-    scalar_mean: np.ndarray              # (N,)   float64 — e²/Å (L2 norm)
-    scalar_m2: np.ndarray                # (N,)   float64
-    n_per_atom: np.ndarray               # (N,)   uint64  — sample count
+    # Vector channel — (N, 3) float64 — e²/Å (frame extrema are frame indices)
+    vector_mean: np.ndarray
+    vector_std: np.ndarray
+    vector_m2: np.ndarray               # squared units: (e²/Å)²
+    vector_min: np.ndarray
+    vector_max: np.ndarray
+    vector_min_frame: np.ndarray        # (N, 3) uint64 — frame_index
+    vector_max_frame: np.ndarray        # (N, 3) uint64 — frame_index
+    # Scalar channel — (N,) float64 — e²/Å (L2 norm of vector)
+    scalar_mean: np.ndarray
+    scalar_std: np.ndarray
+    scalar_m2: np.ndarray               # squared units: (e²/Å)²
+    scalar_min: np.ndarray
+    scalar_max: np.ndarray
+    scalar_min_frame: np.ndarray        # (N,) uint64 — frame_index
+    scalar_max_frame: np.ndarray        # (N,) uint64 — frame_index
+    n_per_atom: np.ndarray              # (N,)  uint64  — sample count (frame_count)
     frame_indices: np.ndarray
     frame_times: np.ndarray
     source_attached_per_frame: np.ndarray
     n_atoms: int
     n_frames: int
     source_attached_count: int
-    units_vector: str                    # "e^2/Angstrom"
-    units_scalar: str                    # "e^2/Angstrom"
-    irrep_layout_vector: str             # "x,y,z"
-    normalization_vector: str            # "cartesian"
-    parity_vector: str                   # "1o"
-    irrep_layout_scalar: str             # "T0"
-    parity_scalar: str                   # "0e"
+    units_vector: str                   # e.g. "e^2/Å"
+    units_scalar: str                   # e.g. "e^2/Å"
+    irrep_layout_vector: str            # "x,y,z"
+    normalization_vector: str           # "cartesian"
+    parity_vector: str                  # "1o"
+    irrep_layout_scalar: str            # "T0"
+    parity_scalar: str                  # "0e"
     source: str
     source_attached_policy: str
 
@@ -2000,9 +2015,19 @@ def _load_aimnet2_charge_response_gradient_welford(
         return str(_decode_attr(g.attrs.get(name, "")))
     return AIMNet2ChargeResponseGradientWelfordGroup(
         vector_mean=g["vector_mean"][:],
+        vector_std=g["vector_std"][:],
         vector_m2=g["vector_m2"][:],
+        vector_min=g["vector_min"][:],
+        vector_max=g["vector_max"][:],
+        vector_min_frame=g["vector_min_frame"][:],
+        vector_max_frame=g["vector_max_frame"][:],
         scalar_mean=g["scalar_mean"][:],
+        scalar_std=g["scalar_std"][:],
         scalar_m2=g["scalar_m2"][:],
+        scalar_min=g["scalar_min"][:],
+        scalar_max=g["scalar_max"][:],
+        scalar_min_frame=g["scalar_min_frame"][:],
+        scalar_max_frame=g["scalar_max_frame"][:],
         n_per_atom=g["n_per_atom"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
@@ -2268,7 +2293,8 @@ class TrajectoryData:
     j_coupling: Optional[JCouplingTimeSeriesGroup] = None
 
     # AIMNet2 fleet TR trio (2026-05-20): per-atom embedding (256-dim),
-    # polarisability gradient (Vec3 + scalar), polarisability Welford.
+    # charge-response gradient (Vec3 + scalar), charge-response gradient
+    # Welford.
     aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
     aimnet2_charge_response_gradient: Optional["AIMNet2ChargeResponseGradientTimeSeriesGroup"] = None
     aimnet2_charge_response_gradient_welford: Optional["AIMNet2ChargeResponseGradientWelfordGroup"] = None
