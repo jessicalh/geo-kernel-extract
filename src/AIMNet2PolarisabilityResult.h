@@ -25,8 +25,11 @@
 // + the .jpt requires_grad pre-flight check that PASSED on
 // 2026-05-09 (tests/data/illustrative_peptides/aimnet2_requires_grad_check.py).
 //
-// Lifecycle: ConformationResult subclass, gated on a JobSpec test
-// flag (--aimnet2-polarisability). Depends on AIMNet2Result for
+// Lifecycle: ConformationResult subclass. PROMOTED FROM TEST FLAG to
+// always-on for the non-trajectory pipeline at 2026-05-09; trajectory
+// pipeline RequireConformationResult'd alongside AIMNet2Result at
+// 2026-05-20 (RunConfiguration.cpp:167). Every trajectory run now
+// triggers autograd backward per frame. Depends on AIMNet2Result for
 // attach ordering, but does NOT share state with it — runs its own
 // forward pass without NoGradGuard, then a single backward.
 //
