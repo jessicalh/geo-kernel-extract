@@ -2370,6 +2370,66 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
     )
 
 
+@dataclass(frozen=True)
+class MopacVsFf14SbReconciliationGroup:
+    """Per-atom per-frame |cos(MOPAC Coulomb T2, FF14SB Coulomb T2)|
+    from /trajectory/mopac_vs_ff14sb_reconciliation/. TR9 of the
+    13-TR plan; new cross-source pattern.
+
+    abs_cos_t2 ∈ [0, 1] measures the orientational agreement between
+    MOPAC PM7+MOZYME-derived and FF14SB-parameterised charge-driven
+    Coulomb shielding tensors in the T2 5-vector subspace, per atom
+    per frame.
+
+      abs_cos_t2 (N, T) float64 — dimensionless
+
+    NaN cells: either source absent that frame, OR per-atom either-side
+    |T2| < `zero_magnitude_threshold` group attr (cosine undefined).
+    SDK readers MUST use isfinite() to gate.
+
+    Cross-source gate: REQUIRES both MopacCoulombResult AND CoulombResult
+    attached per frame. WriteH5Group skips the entire group when no
+    frame had both attached.
+    """
+    abs_cos_t2: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    parity: str                          # "0e"
+    units: str                           # "dimensionless"
+    sources: str
+    source_attached_policy: str
+    zero_magnitude_threshold: float
+    zero_magnitude_units: str
+
+
+def _load_mopac_vs_ff14sb_reconciliation(f) -> Optional[MopacVsFf14SbReconciliationGroup]:
+    path = "/trajectory/mopac_vs_ff14sb_reconciliation"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return MopacVsFf14SbReconciliationGroup(
+        abs_cos_t2=g["abs_cos_t2"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        sources=_attr("sources"),
+        source_attached_policy=_attr("source_attached_policy"),
+        zero_magnitude_threshold=float(g.attrs["zero_magnitude_threshold"]),
+        zero_magnitude_units=_attr("zero_magnitude_units"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2652,6 +2712,14 @@ class TrajectoryData:
     # skipped when MopacMcConnellResult never attached.
     mopac_mc_shielding_time_series: Optional[
         "MopacMcConnellShieldingTimeSeriesGroup"] = None
+
+    # MOPAC vs FF14SB charge-source reconciliation (TR #9; 2026-05-21).
+    # Per-atom-per-frame |cos(MOPAC_T2, FF14SB_T2)| ∈ [0, 1].
+    # Cross-source gate: requires BOTH MopacCoulombResult AND
+    # CoulombResult attached per frame; group skipped if no frame
+    # had both.
+    mopac_vs_ff14sb_reconciliation: Optional[
+        "MopacVsFf14SbReconciliationGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2828,6 +2896,7 @@ def load_trajectory(path: str | Path,
         mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
         mopac_coulomb_shielding_time_series = _load_mopac_coulomb_shielding_time_series(f)
         mopac_mc_shielding_time_series = _load_mopac_mc_shielding_time_series(f)
+        mopac_vs_ff14sb_reconciliation = _load_mopac_vs_ff14sb_reconciliation(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2856,4 +2925,5 @@ def load_trajectory(path: str | Path,
         mopac_bond_order_welford=mopac_bond_order_welford,
         mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
         mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
+        mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
     )

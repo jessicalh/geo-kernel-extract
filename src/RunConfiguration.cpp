@@ -69,6 +69,7 @@
 #include "MopacBondOrderWelfordTrajectoryResult.h"
 #include "MopacCoulombShieldingTimeSeriesTrajectoryResult.h"
 #include "MopacMcConnellShieldingTimeSeriesTrajectoryResult.h"
+#include "MopacVsFf14SbReconciliationTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
@@ -283,6 +284,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacVsFf14SbReconciliationTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {

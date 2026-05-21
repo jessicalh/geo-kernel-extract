@@ -273,6 +273,7 @@ add_library(nmr_shielding
     src/MopacBondOrderWelfordTrajectoryResult.cpp
     src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
     src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp
+    src/MopacVsFf14SbReconciliationTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -1473,6 +1474,26 @@ target_compile_definitions(mopac_mc_shielding_time_series_tests PRIVATE
 target_include_directories(mopac_mc_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(mopac_mc_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(mopac_mc_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# MopacVsFf14SbReconciliation tests (TR9 of the 13-TR plan — cross-source
+# |cos(MOPAC_T2, FF14SB_T2)| scalar; only TR of its shape, own canonical).
+# ============================================================================
+
+add_executable(mopac_vs_ff14sb_reconciliation_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mopac_vs_ff14sb_reconciliation.cpp
+)
+target_compile_definitions(mopac_vs_ff14sb_reconciliation_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mopac_vs_ff14sb_reconciliation_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mopac_vs_ff14sb_reconciliation_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mopac_vs_ff14sb_reconciliation_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
