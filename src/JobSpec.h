@@ -78,8 +78,26 @@ struct JobSpec {
     // surfaces it in the Time Series dock. Validated for existence when set.
     std::string analysis_h5_path;
     bool skip_mopac   = false;   // --no-mopac:   skip PM7+MOZYME (and derived calcs)
+                                  //               (PDB/ORCA/Mutant modes only;
+                                  //               trajectory mode uses the
+                                  //               RunConfiguration choice
+                                  //               below — see enable_mopac.)
     bool skip_apbs    = false;   // --no-apbs:    skip Poisson-Boltzmann
     bool skip_coulomb = false;   // --no-coulomb:  skip vacuum Coulomb EFG (APBS preferred)
+
+    // -- Trajectory mode MOPAC enablement --
+    // --mopac (trajectory mode only): switch from the default
+    // PerFrameExtractionSet (no MOPAC, fleet path) to
+    // FullFatFrameExtraction (MOPAC every frame + the MOPAC-family
+    // TR5-TR9 of the 13-TR plan + vacuum Coulomb for the TR9
+    // cross-source reconciliation). Per the use-case discipline
+    // (project_s2_mopac_bundle_landed + feedback_calculator_inclusion_two_use_cases):
+    //   - 1P9J trajectory deep dive: --mopac ON
+    //   - Mutant evaluation: MOPAC attached separately by the mutant pipeline
+    //   - 676-protein fleet trajectories: --mopac OFF (default)
+    // MOPAC is ~10 min/frame; switching it on for a fleet protein
+    // would be ~10 h/protein, untenable at fleet scale.
+    bool enable_mopac = false;
     std::string aimnet2_model_path;  // --aimnet2 MODEL: path to .jpt file (empty = skip)
 
     // -- Diagnostics --

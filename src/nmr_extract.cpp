@@ -308,8 +308,30 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
     // ── Trajectory: file paths + EDR preload ─────────────────────
     Trajectory traj(spec.traj_xtc, spec.traj_tpr, spec.traj_edr);
 
-    // ── Run shape: PerFrameExtractionSet; aimnet2 comes from session ─
-    RunConfiguration config = RunConfiguration::PerFrameExtractionSet();
+    // ── Run shape ────────────────────────────────────────────────
+    // Default: PerFrameExtractionSet (no MOPAC, fleet path; ~25 ns
+    // × 1250 frames × stride 2 → 625 sampled).
+    // --mopac: FullFatFrameExtraction (MOPAC + TR5-TR9 + vacuum
+    // Coulomb for TR9 cross-source reconciliation). For 1P9J
+    // deep-dive + mutant evaluation; NOT for fleet (MOPAC is
+    // ~10 min/frame → ~10 h/protein at fleet scale, untenable).
+    // See JobSpec.h JobSpec::enable_mopac docstring.
+    RunConfiguration config = spec.enable_mopac
+        ? RunConfiguration::FullFatFrameExtraction()
+        : RunConfiguration::PerFrameExtractionSet();
+
+    // Plumb the protein's net charge into MOPAC. MopacResult::Compute
+    // accepts net_charge (writes `CHARGE=N` to the MOPAC input);
+    // RunOptions defaults to 0, which silently runs neutral MOPAC on
+    // charged systems and contaminates TR5-TR9. Source from
+    // TrajectoryProtein::NetCharge() which is set at Seed from the
+    // TPR/topology total charge.
+    //
+    // Set defensively in BOTH branches: PerFrameExtractionSet skips
+    // MOPAC so net_charge is unused there, but having the field
+    // populated keeps any non-CLI consumer (test fixtures, future
+    // configs) from inheriting the silent-zero default.
+    config.MutablePerFrameRunOptions().net_charge = tp.NetCharge();
 
     // ── Drive ────────────────────────────────────────────────────
     const Status s = traj.Run(tp, config, session, /*extras=*/{},

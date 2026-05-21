@@ -65,7 +65,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
 
     // GeometryChoice: one summary record naming the scalar objective.
     GeometryChoiceBuilder choices(conf);
-    choices.Record(CalculatorId::AIMNet2, 0, "polarisability_backward",
+    choices.Record(CalculatorId::AIMNet2, 0, "charge_response_gradient_backward",
         [&](GeometryChoice& gc) {
             AddNumber(gc, "objective_kind", 1.0, "L2_of_charges");
             AddNumber(gc, "atoms", static_cast<double>(N), "");

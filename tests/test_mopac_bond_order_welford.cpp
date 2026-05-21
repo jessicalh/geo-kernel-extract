@@ -165,22 +165,35 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
     std::vector<double> means(B);
     grp.getDataSet("order_mean").read(means.data());
 
-    // Sanity: at least some bonds should have nonzero Wiberg orders
-    // (covalent bonds). A few may be zero (MOPAC didn't report). All
-    // must be finite.
-    std::size_t n_finite = 0, n_nonzero = 0;
+    // Sentinel-aware Welford semantics:
+    //   - bonds reported by MOPAC in at least one frame → finite mean
+    //   - bonds NEVER reported (e.g., MOZYME-merged interior
+    //     bonds) → NaN mean (n_present == 0, WelfordFinalize NaN-fills)
+    // Per `feedback_conditional_welford_for_sentinels` (R6 codex
+    // 2026-05-18). Both are valid SDK output; downstream uses
+    // isfinite() to gate.
+    std::size_t n_finite = 0, n_nonzero = 0, n_nan = 0;
     double max_order = 0.0;
     for (std::size_t bi = 0; bi < B; ++bi) {
-        EXPECT_TRUE(std::isfinite(means[bi]));
-        if (std::isfinite(means[bi])) ++n_finite;
-        if (std::abs(means[bi]) > 1e-6) ++n_nonzero;
-        max_order = std::max(max_order, std::abs(means[bi]));
+        if (std::isfinite(means[bi])) {
+            ++n_finite;
+            if (std::abs(means[bi]) > 1e-6) ++n_nonzero;
+            max_order = std::max(max_order, std::abs(means[bi]));
+        } else {
+            EXPECT_TRUE(std::isnan(means[bi]))
+                << "non-NaN non-finite mean at bond " << bi
+                << " (must be either finite or NaN; ±inf is a bug)";
+            ++n_nan;
+        }
     }
-    EXPECT_EQ(n_finite, B);
     EXPECT_GT(n_nonzero, B / 2)
         << "expected most bonds to have nonzero Wiberg order; "
            "got " << n_nonzero << "/" << B
+           << " finite=" << n_finite << " NaN=" << n_nan
            << ". MOPAC may have failed to report bond orders.";
+    std::cout << "  bond means: finite=" << n_finite << "/" << B
+              << " (nonzero=" << n_nonzero << ") NaN=" << n_nan
+              << " (NaN = MOPAC never reported this bond)" << std::endl;
     // Wiberg orders are typically 0..3 (single/double/triple), with
     // aromatic ~1.5. Loose sanity bound — log don't assert per
     // feedback_log_overages_dont_assert.

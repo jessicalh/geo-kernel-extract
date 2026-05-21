@@ -1480,7 +1480,7 @@ gtest_discover_tests(mopac_mc_shielding_time_series_tests
 
 # ============================================================================
 # MopacVsFf14SbReconciliation tests (TR9 of the 13-TR plan — cross-source
-# |cos(MOPAC_T2, FF14SB_T2)| scalar; only TR of its shape, own canonical).
+# signed cos(MOPAC_T2, FF14SB_T2) scalar in [-1, 1]; only TR of its shape).
 # ============================================================================
 
 add_executable(mopac_vs_ff14sb_reconciliation_tests

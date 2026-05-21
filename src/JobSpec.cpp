@@ -62,6 +62,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     spec.skip_mopac   = HasFlag(argc, argv, "--no-mopac");
     spec.skip_apbs    = HasFlag(argc, argv, "--no-apbs");
     spec.skip_coulomb = HasFlag(argc, argv, "--no-coulomb");
+    spec.enable_mopac = HasFlag(argc, argv, "--mopac");
     spec.aimnet2_model_path = GetArg(argc, argv, "--aimnet2");
     spec.analysis_h5_path   = GetArg(argc, argv, "--analysis-h5");
 
@@ -426,6 +427,15 @@ void PrintJobSpecUsage(const char* prog) {
         "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
         "  --config FILE    TOML file with calculator parameter overrides\n"
         "  --no-mopac       Skip MOPAC semiempirical (and MopacCoulomb, MopacMcConnell)\n"
+        "                   (PDB/ORCA/Mutant modes only).\n"
+        "  --mopac          (Trajectory mode) Enable MOPAC + the MOPAC-family\n"
+        "                   trajectory results (TR5-TR9: MopacChargeWelford,\n"
+        "                   MopacBondOrderWelford, MopacCoulombShieldingTS,\n"
+        "                   MopacMcConnellShieldingTS, MopacVsFf14SbReconciliation).\n"
+        "                   Switches the run shape from PerFrameExtractionSet\n"
+        "                   (no MOPAC, fleet path) to FullFatFrameExtraction.\n"
+        "                   USE FOR: 1P9J deep-dive trajectory + mutant evaluation.\n"
+        "                   NOT FOR: fleet (MOPAC is ~10 min/frame, ~10 h/protein at fleet scale).\n"
         "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
         "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
         "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"

@@ -59,8 +59,14 @@ void MopacBondOrderWelfordTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
 
-    const bool source_present = conf.HasResult<MopacResult>();
-    if (source_present) {
+    // `did_update` is true ONLY when this frame produced a valid
+    // Welford update (source attached AND bond axis invariant held).
+    // Invariant-failure (size mismatch) is treated as "frame absent"
+    // for accounting — mask=0 + source_attached_count_ unchanged —
+    // so the H5 per-bond divisor stays consistent with the actual
+    // sample count (codex 2026-05-21 finding 3).
+    bool did_update = false;
+    if (conf.HasResult<MopacResult>()) {
         const auto& mopac = conf.Result<MopacResult>();
         const auto& bond_orders = mopac.TopologyBondOrders();
         if (bond_orders.size() != per_bond_.size()) {
@@ -69,8 +75,9 @@ void MopacBondOrderWelfordTrajectoryResult::Compute(
                 "bond axis size mismatch: MopacResult.TopologyBondOrders() "
                 "= " + std::to_string(bond_orders.size()) +
                 " vs TR per_bond_ = " + std::to_string(per_bond_.size()) +
-                " — protein.BondCount() invariant violated; skipping "
-                "Welford update this frame.");
+                " — protein.BondCount() invariant violated; treating "
+                "frame as source-absent (mask=0, count unchanged) so "
+                "per-bond divisor stays consistent.");
         } else {
             const std::size_t B = per_bond_.size();
             const std::size_t n_total_new = source_attached_count_ + 1;
@@ -89,13 +96,14 @@ void MopacBondOrderWelfordTrajectoryResult::Compute(
                 }
             }
             ++source_attached_count_;
+            did_update = true;
         }
     }
     // Sparse cadence is normal — no per-absent-frame logging.
 
     frame_indices_.push_back(frame_idx);
     frame_times_.push_back(time_ps);
-    source_attached_per_frame_.push_back(source_present ? 1u : 0u);
+    source_attached_per_frame_.push_back(did_update ? 1u : 0u);
     ++n_frames_;
 }
 

@@ -2744,15 +2744,19 @@ for removal; a later doc pass will handle the replacement.*
 | ⏳ | `Dssp8TransitionTrajectoryResult` | AV | (shared with PerFrameExtractionSet) |
 | ⏳ | `DftPoseCoordinatorTrajectoryResult` | FO | reads other emitters' SelectionRecords at Finalize, deduplicates, pushes reduced set back under its own kind |
 
-**`FullFatFrameExtraction` (selected-frame MOPAC):**
+**`FullFatFrameExtraction` (1P9J deep-dive + mutant; --mopac CLI flag):**
+
+`PerFrameExtractionSet` + MOPAC every frame + vacuum Coulomb (for
+TR9 cross-source reconciliation). NOT for the 676-protein fleet
+(MOPAC ~10 min/frame → ~10 h/protein at fleet scale).
 
 | ✓/⏳ | Type | Lifecycle | Emission |
 |-----|------|-----------|----------|
-| ⏳ | `MopacChargeWelfordTrajectoryResult` | AV (sparse) | |
-| ⏳ | `MopacBondOrderWelfordTrajectoryResult` | AV (sparse) | internal per-bond (not TrajectoryBond) |
-| ⏳ | `MopacCoulombShieldingTimeSeriesTrajectoryResult` | FO (sparse) | |
-| ⏳ | `MopacMcConnellShieldingTimeSeriesTrajectoryResult` | FO (sparse) | |
-| ⏳ | `MopacVsFf14SbReconciliationTrajectoryResult` | FO | per-atom \|cos\| of MOPAC-Coulomb T2 vs DFT-delta T2 |
+| ✓ | `MopacChargeWelfordTrajectoryResult` | AV | per-atom Welford on `mopac_charge` (e). See landed TR5 row above. |
+| ✓ | `MopacBondOrderWelfordTrajectoryResult` | AV | per-bond Welford on Wiberg orders + `order_present_fraction` indicator-Welford companion (sentinel-aware per R6 codex). See landed TR6 row above. |
+| ✓ | `MopacCoulombShieldingTimeSeriesTrajectoryResult` | FO | per-atom (N, T, 5) T2-only EFG kernel in V/Å². See landed TR7 row above. |
+| ✓ | `MopacMcConnellShieldingTimeSeriesTrajectoryResult` | FO | per-atom (N, T, 9) T0+T1+T2 bond-anisotropy kernel in Å⁻³. See landed TR8 row above. |
+| ✓ | `MopacVsFf14SbReconciliationTrajectoryResult` | FO | per-atom (N, T) **signed** cos(MOPAC_T2, FF14SB_T2) ∈ [-1, 1]; cross-source comparison between MOPAC PM7+MOZYME Mulliken and FF14SB-parameterised Coulomb T2 kernels. See landed TR9 row above. |
 
 ### H5 metadata schema (pending / partial)
 
