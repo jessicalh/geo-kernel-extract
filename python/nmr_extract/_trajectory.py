@@ -1844,6 +1844,93 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
     )
 
 
+# ─── Ring neighbourhood TR10 (per-atom × per-frame × R_max × 4) ────
+
+
+@dataclass(frozen=True)
+class RingNeighbourhoodTrajectoryStatsGroup:
+    """Per-(atom, aromatic-ring) geometric residual across the trajectory
+    from /trajectory/ring_neighbourhood_trajectory_stats/. TR10 of the
+    13-TR plan (2026-05-21).
+
+    Two coupled axes per atom:
+      - Static (atom, ring) snapshot: ``ring_membership_per_atom``
+        (N, R_per_atom_max) int32 records the aromatic-ring indices
+        within ``ring_current_spatial_cutoff`` (15 Å) at FRAME 0. Frozen
+        for the trajectory; -1 sentinel for unfilled slots. The (atom,
+        ring) pair set is stable; a ring drifting past 15 Å mid-run
+        still has its geometry emitted (consumer applies distance-based
+        analysis-time filter).
+      - Per-frame geometry: ``geometry`` (N, T, R_per_atom_max, 4) float64
+        with channel layout ``distance,rho,z,in_plane_angle``. Channels
+        in Å, Å, Å, radians. Aromatic-only (ProPyrrolidine excluded;
+        emit via RingPuckerTimeSeriesGroup for saturated rings).
+
+    Static slot semantics:
+      - Live slots (ring_membership_per_atom[i, r] != -1) carry finite
+        geometry per frame (except in_plane_angle = NaN when rho <
+        1e-12, the singular on-axis case).
+      - Padded slots (ring_membership_per_atom[i, r] == -1) carry NaN
+        in all 4 channels for every frame.
+      - Live slots come first in each atom's row, in ASCENDING ring
+        index order; sentinels trail. The mapping is invariant for the
+        run; only frame-axis content varies.
+
+    No conditional source — TR10 reads positions + GeometryResult +
+    SpatialIndexResult, all present in PerFrameExtractionSet every
+    frame. ``source_attached_per_frame`` emitted as all-1 for SDK
+    uniformity with conditional-source TRs.
+
+    Group is ABSENT when ``r_per_atom_max == 0`` (no aromatic rings in
+    range of any atom in the protein). Reader contract: catch group
+    absence as "no aromatic rings to track" — same semantic as
+    conditional-source group skips elsewhere.
+    """
+    # Static substrate-snapshot membership (frozen at frame 0)
+    ring_membership_per_atom: np.ndarray  # (N, R_per_atom_max) int32, -1 sentinel
+    # Per-frame geometric residual
+    geometry: np.ndarray                  # (N, T, R_per_atom_max, 4) float64
+    # Frame metadata
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray  # (T,) uint8 -- trivially all-1
+    # Group provenance + convention pins
+    n_atoms: int
+    n_frames: int
+    r_per_atom_max: int
+    ring_current_spatial_cutoff_A: float
+    channel_layout: str
+    units: str
+    in_plane_angle_range: str
+    z_sign_convention: str
+    nan_semantics: str
+    aromatic_only: str
+    source_attached_policy: str
+    static_snapshot_origin: str
+
+    def distance(self) -> np.ndarray:
+        """(N, T, R_per_atom_max) atom-to-ring-center distance, in Å."""
+        return self.geometry[..., 0]
+
+    def rho(self) -> np.ndarray:
+        """(N, T, R_per_atom_max) in-plane radial distance, in Å."""
+        return self.geometry[..., 1]
+
+    def z(self) -> np.ndarray:
+        """(N, T, R_per_atom_max) signed out-of-plane projection, in Å."""
+        return self.geometry[..., 2]
+
+    def in_plane_angle(self) -> np.ndarray:
+        """(N, T, R_per_atom_max) azimuth from ring vertex 0, in radians.
+        NaN on the ring axis (rho < 1e-12)."""
+        return self.geometry[..., 3]
+
+    def live_slots_mask(self) -> np.ndarray:
+        """(N, R_per_atom_max) bool — True where ring_membership_per_atom
+        is a real ring index (not the -1 sentinel)."""
+        return self.ring_membership_per_atom != -1
+
+
 @dataclass(frozen=True)
 class AIMNet2EmbeddingTimeSeriesGroup:
     """Per-atom per-frame 256-dim AIMNet2 'aim' embedding from
@@ -2568,6 +2655,38 @@ def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
     )
 
 
+def _load_ring_neighbourhood_trajectory_stats(
+        f) -> Optional[RingNeighbourhoodTrajectoryStatsGroup]:
+    path = "/trajectory/ring_neighbourhood_trajectory_stats"
+    if path not in f:
+        return None
+    g = f[path]
+
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+
+    return RingNeighbourhoodTrajectoryStatsGroup(
+        ring_membership_per_atom=g["ring_membership_per_atom"][:],
+        geometry=g["geometry"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        r_per_atom_max=int(g.attrs["r_per_atom_max"]),
+        ring_current_spatial_cutoff_A=float(
+            g.attrs["ring_current_spatial_cutoff_A"]),
+        channel_layout=_attr("channel_layout"),
+        units=_attr("units"),
+        in_plane_angle_range=_attr("in_plane_angle_range"),
+        z_sign_convention=_attr("z_sign_convention"),
+        nan_semantics=_attr("nan_semantics"),
+        aromatic_only=_attr("aromatic_only"),
+        source_attached_policy=_attr("source_attached_policy"),
+        static_snapshot_origin=_attr("static_snapshot_origin"),
+    )
+
+
 def _load_dihedral_time_series(f) -> Optional[DihedralTimeSeriesGroup]:
     path = "/trajectory/dihedral_time_series"
     if path not in f:
@@ -2799,6 +2918,13 @@ class TrajectoryData:
     # had both.
     mopac_vs_ff14sb_reconciliation: Optional[
         "MopacVsFf14SbReconciliationGroup"] = None
+
+    # Ring neighbourhood geometric residual TR (TR #10; 2026-05-21).
+    # Per-(atom, aromatic-ring) static membership + 4-channel geometric
+    # residual per frame. Group skipped when no aromatic-ring/atom
+    # pairs within 15A cutoff (no aromatic rings in protein).
+    ring_neighbourhood_trajectory_stats: Optional[
+        "RingNeighbourhoodTrajectoryStatsGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2976,6 +3102,8 @@ def load_trajectory(path: str | Path,
         mopac_coulomb_shielding_time_series = _load_mopac_coulomb_shielding_time_series(f)
         mopac_mc_shielding_time_series = _load_mopac_mc_shielding_time_series(f)
         mopac_vs_ff14sb_reconciliation = _load_mopac_vs_ff14sb_reconciliation(f)
+        ring_neighbourhood_trajectory_stats = (
+            _load_ring_neighbourhood_trajectory_stats(f))
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -3005,4 +3133,5 @@ def load_trajectory(path: str | Path,
         mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
         mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
         mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
+        ring_neighbourhood_trajectory_stats=ring_neighbourhood_trajectory_stats,
     )

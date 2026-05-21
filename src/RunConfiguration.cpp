@@ -34,6 +34,7 @@
 #include "HydrationShellTimeSeriesTrajectoryResult.h"
 #include "HydrationShellWelfordTrajectoryResult.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
+#include "RingNeighbourhoodTrajectoryStats.h"
 #include "DihedralBinTransitionTrajectoryResult.h"
 #include "Dssp8TimeSeriesTrajectoryResult.h"
 #include "Dssp8TransitionTrajectoryResult.h"
@@ -396,6 +397,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return JCouplingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return RingNeighbourhoodTrajectoryStats::Create(tp);
         });
 
     return c;
