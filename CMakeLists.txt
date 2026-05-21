@@ -270,6 +270,7 @@ add_library(nmr_shielding
     src/ApbsEfieldTimeSeriesTrajectoryResult.cpp
     src/ApbsEfgTimeSeriesTrajectoryResult.cpp
     src/MopacChargeWelfordTrajectoryResult.cpp
+    src/MopacBondOrderWelfordTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -1409,6 +1410,26 @@ target_compile_definitions(mopac_charge_welford_tests PRIVATE
 target_include_directories(mopac_charge_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(mopac_charge_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(mopac_charge_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# MopacBondOrderWelford tests (TR6 of the 13-TR plan, per-bond axis clone
+# of TR5; Welford state lives inside the TR per BondLengthStats pattern).
+# ============================================================================
+
+add_executable(mopac_bond_order_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mopac_bond_order_welford.cpp
+)
+target_compile_definitions(mopac_bond_order_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mopac_bond_order_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mopac_bond_order_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mopac_bond_order_welford_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

@@ -2182,6 +2182,80 @@ def _load_mopac_charge_welford(f) -> Optional[MopacChargeWelfordGroup]:
     )
 
 
+@dataclass(frozen=True)
+class MopacBondOrderWelfordGroup:
+    """Per-bond Welford rollup of MOPAC Wiberg bond orders from
+    /trajectory/mopac_bond_order_welford/. TR6 of the 13-TR plan;
+    clone of MopacChargeWelford with the bond axis substituted for
+    the atom axis. Bond axis parallel to `bonds.npy` from the
+    TopologySidecar (== protein.Bonds() index order).
+
+    Same sparse-cadence "absent, not faked" gate as TR5: when MOPAC
+    never ran, the H5 group is skipped entirely (KeyError on
+    /trajectory/mopac_bond_order_welford = "MOPAC disabled").
+
+    Minimum-viable v0 — no delta variants. MopacResult.TopologyBondOrders()
+    returns 0 for bonds MOPAC didn't report (NOT NaN), so per-bond
+    n_per_bond equals source_attached_count (no per-bond skip).
+
+      order_mean (B,) float64 — dimensionless (Wiberg)
+      order_std  (B,) float64
+      order_m2   (B,) float64 — dimensionless^2
+      order_min  (B,) float64
+      order_max  (B,) float64
+      order_min_frame (B,) uint64
+      order_max_frame (B,) uint64
+      n_per_bond (B,) uint64
+    """
+    order_mean: np.ndarray
+    order_std: np.ndarray
+    order_m2: np.ndarray
+    order_min: np.ndarray
+    order_max: np.ndarray
+    order_min_frame: np.ndarray
+    order_max_frame: np.ndarray
+    n_per_bond: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_bonds: int
+    n_frames: int
+    source_attached_count: int
+    units: str
+    bond_axis: str                      # "bonds.npy"
+    source: str
+    source_attached_policy: str
+
+
+def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
+    path = "/trajectory/mopac_bond_order_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return MopacBondOrderWelfordGroup(
+        order_mean=g["order_mean"][:],
+        order_std=g["order_std"][:],
+        order_m2=g["order_m2"][:],
+        order_min=g["order_min"][:],
+        order_max=g["order_max"][:],
+        order_min_frame=g["order_min_frame"][:],
+        order_max_frame=g["order_max_frame"][:],
+        n_per_bond=g["n_per_bond"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_bonds=int(g.attrs["n_bonds"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        units=_attr("units"),
+        bond_axis=_attr("bond_axis"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2445,6 +2519,11 @@ class TrajectoryData:
     # tolerate KeyError on /trajectory/mopac_charge_welford as "MOPAC
     # disabled for this run."
     mopac_charge_welford: Optional["MopacChargeWelfordGroup"] = None
+
+    # MOPAC Wiberg bond order per-bond Welford rollup (TR #6; 2026-05-21).
+    # Bond axis == bonds.npy. Same sparse cadence + group-absent
+    # discipline as the charge Welford.
+    mopac_bond_order_welford: Optional["MopacBondOrderWelfordGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2618,6 +2697,7 @@ def load_trajectory(path: str | Path,
         aimnet2_charge_response_gradient_welford = _load_aimnet2_charge_response_gradient_welford(f)
         apbs_efg = _load_apbs_efg_time_series(f)
         mopac_charge_welford = _load_mopac_charge_welford(f)
+        mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2643,4 +2723,5 @@ def load_trajectory(path: str | Path,
         aimnet2_charge_response_gradient_welford=aimnet2_charge_response_gradient_welford,
         apbs_efg=apbs_efg,
         mopac_charge_welford=mopac_charge_welford,
+        mopac_bond_order_welford=mopac_bond_order_welford,
     )

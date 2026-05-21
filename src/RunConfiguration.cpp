@@ -66,6 +66,7 @@
 #include "ApbsEfieldTimeSeriesTrajectoryResult.h"
 #include "ApbsEfgTimeSeriesTrajectoryResult.h"
 #include "MopacChargeWelfordTrajectoryResult.h"
+#include "MopacBondOrderWelfordTrajectoryResult.h"
 #include "TripeptideBackboneShieldingTimeSeriesTrajectoryResult.h"
 #include "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.h"
 #include "TripeptideNeighborShieldingTimeSeriesTrajectoryResult.h"
@@ -268,6 +269,10 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return MopacChargeWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacBondOrderWelfordTrajectoryResult::Create(tp);
         });
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
