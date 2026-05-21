@@ -170,7 +170,9 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(parity, "0e+1o+2e");
     EXPECT_EQ(layout,
         "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2");
-    EXPECT_EQ(units, "ppm");
+    EXPECT_EQ(units, "Angstrom^-3")
+        << "bare McConnell kernel bo·M/r³, no Δχ × γ multiplication "
+           "at extraction; decision 2026-05-21 per science/math review H1.";
 
     const std::size_t N = dims[0];
     std::vector<double> flat(N * T * 9);
@@ -200,4 +202,50 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     EXPECT_GT(max_t2, 0.0);
 
     fs::remove(h5_path);
+}
+
+
+// ── Layer 0b: FinalizeIdempotency ──────────────────────────────
+
+TEST(MopacMcConnellShieldingTimeSeries, FinalizeIdempotency) {
+    LoadCalculatorConfig();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::RunConfiguration config;
+    auto& opts = config.MutablePerFrameRunOptions();
+    opts.skip_mopac = false;
+    opts.skip_coulomb = false;
+    opts.skip_apbs = true;
+    opts.skip_dssp = true;
+    config.RequireConformationResult(typeid(nmr::GeometryResult));
+    config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
+    config.AddTrajectoryResultFactory([](const nmr::TrajectoryProtein& tp_in)
+        -> std::unique_ptr<nmr::TrajectoryResult> {
+        return nmr::MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(tp_in);
+    });
+    config.SetStride(99999);
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Session session;
+    if (traj.Run(tp, config, session) != nmr::kOk) {
+        GTEST_SKIP() << "Trajectory::Run failed; skipping.";
+    }
+
+    auto* buf_first = tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(
+        typeid(nmr::MopacMcConnellShieldingTimeSeriesTrajectoryResult)));
+    if (!buf_first) GTEST_SKIP() << "MopacMcConnell never attached.";
+    const std::size_t N_first = buf_first->AtomCount();
+    const std::size_t T_first = buf_first->StridePerAtom();
+
+    auto& tr = tp.Result<nmr::MopacMcConnellShieldingTimeSeriesTrajectoryResult>();
+    tr.Finalize(tp, traj);  // second call — bounds-check idempotency
+    auto* buf_second = tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(
+        typeid(nmr::MopacMcConnellShieldingTimeSeriesTrajectoryResult)));
+    ASSERT_NE(buf_second, nullptr);
+    EXPECT_EQ(buf_second->AtomCount(), N_first);
+    EXPECT_EQ(buf_second->StridePerAtom(), T_first);
 }

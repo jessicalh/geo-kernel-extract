@@ -19,38 +19,19 @@
 
 namespace nmr {
 
-namespace {
-
-// |cos(T2_a, T2_b)| in the 5-vector T2 subspace. Returns NaN when
-// either |T2| < threshold (cosine undefined).
-double AbsCosT2(const SphericalTensor& a,
-                const SphericalTensor& b,
-                double threshold) {
-    const double mag_a = a.T2Magnitude();
-    const double mag_b = b.T2Magnitude();
-    if (mag_a < threshold || mag_b < threshold) {
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    double dot = 0.0;
-    for (std::size_t k = 0; k < 5; ++k) {
-        dot += a.T2[k] * b.T2[k];
-    }
-    return std::abs(dot / (mag_a * mag_b));
-}
-
-}  // namespace
-
-
 std::unique_ptr<MopacVsFf14SbReconciliationTrajectoryResult>
 MopacVsFf14SbReconciliationTrajectoryResult::Create(
         const TrajectoryProtein& tp) {
     auto r = std::make_unique<
         MopacVsFf14SbReconciliationTrajectoryResult>();
-    r->per_atom_abs_cos_.assign(tp.AtomCount(), std::vector<double>{});
-    // Cache threshold once — same value MopacCoulombResult uses for
-    // its near-zero E-field guard at line 244.
-    r->zero_magnitude_threshold_ =
-        CalculatorConfig::Get("near_zero_vector_norm_threshold");
+    r->per_atom_cos_.assign(tp.AtomCount(), std::vector<double>{});
+    // Cache magnitude floor at Create. EFG-scale threshold (V/Å²) —
+    // calibrated for the signal magnitude, NOT the project-wide
+    // direction-vector floor (1e-10) which would admit FP-noise-
+    // dominated atoms. Decision 2026-05-21 per math adversarial
+    // review H1.
+    r->magnitude_floor_ =
+        CalculatorConfig::Get("coulomb_efg_t2_magnitude_floor");
     return r;
 }
 
@@ -60,8 +41,9 @@ MopacVsFf14SbReconciliationTrajectoryResult::Create(
 // Cross-source gate: BOTH MopacCoulombResult AND CoulombResult must
 // be attached this frame for cosine to be defined. Either-absent →
 // NaN-fill all atoms + source_attached_per_frame=0. When both attached,
-// per-atom |cos|; per-atom NaN where either-side |T2| < threshold
-// (undefined cosine).
+// per-atom signed cosine via SphericalTensor::T2CosineWith;
+// per-atom NaN where either-side |T2| < magnitude_floor (undefined
+// cosine).
 
 void MopacVsFf14SbReconciliationTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -78,15 +60,17 @@ void MopacVsFf14SbReconciliationTrajectoryResult::Compute(
     const std::size_t N = conf.AtomCount();
     if (!both_present) {
         for (std::size_t i = 0; i < N; ++i) {
-            per_atom_abs_cos_[i].push_back(nan_d);
+            per_atom_cos_[i].push_back(nan_d);
         }
     } else {
         for (std::size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
-            per_atom_abs_cos_[i].push_back(
-                AbsCosT2(ca.mopac_coulomb_shielding_contribution,
-                         ca.coulomb_shielding_contribution,
-                         zero_magnitude_threshold_));
+            // Signed cos in [-1, 1] via the canonical SphericalTensor
+            // method (returns NaN when either |T2| < magnitude_floor).
+            per_atom_cos_[i].push_back(
+                ca.mopac_coulomb_shielding_contribution.T2CosineWith(
+                    ca.coulomb_shielding_contribution,
+                    magnitude_floor_));
         }
         ++source_attached_count_;
     }
@@ -99,6 +83,11 @@ void MopacVsFf14SbReconciliationTrajectoryResult::Compute(
 
 
 // ── Finalize ─────────────────────────────────────────────────────
+//
+// Idempotent: no state mutation beyond finalized_ flag and the info
+// log (calling twice is harmless — second call sets the same flag,
+// emits another log line). per_atom_cos_ buffers stay alive for
+// WriteH5Group to read.
 
 void MopacVsFf14SbReconciliationTrajectoryResult::Finalize(
         TrajectoryProtein& tp, Trajectory& traj) {
@@ -115,7 +104,7 @@ void MopacVsFf14SbReconciliationTrajectoryResult::Finalize(
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
 // Skip the group entirely when no frame had both sources attached.
-// Otherwise emit (N, T) double of |cos| values (with NaN where
+// Otherwise emit (N, T) double of signed cos values (with NaN where
 // the cosine was undefined — see source attr).
 
 void MopacVsFf14SbReconciliationTrajectoryResult::WriteH5Group(
@@ -131,10 +120,12 @@ void MopacVsFf14SbReconciliationTrajectoryResult::WriteH5Group(
         return;
     }
 
-    const std::size_t N = per_atom_abs_cos_.size();
+    // N from the authoritative TrajectoryProtein axis. The internal
+    // per_atom_cos_ buffer is sized to tp.AtomCount() at Create and
+    // pushed unconditionally per frame per atom in Compute, so the
+    // sizes match by structural invariant.
+    const std::size_t N = tp.AtomCount();
     const std::size_t T = n_frames_;
-    (void)tp;  // tp.AtomCount() may not match if any atoms were skipped;
-               // we rely on the Compute-time push counts.
 
     auto grp = file.createGroup("/trajectory/mopac_vs_ff14sb_reconciliation");
 
@@ -147,37 +138,47 @@ void MopacVsFf14SbReconciliationTrajectoryResult::WriteH5Group(
     grp.createAttribute("units",                  std::string("dimensionless"));
     grp.createAttribute("sources", std::string(
         "MopacCoulombResult.mopac_coulomb_shielding_contribution + "
-        "CoulombResult.coulomb_shielding_contribution. Per-atom-per-frame "
-        "|cos| in the T2 5-vector subspace (both sources emit T2-only "
-        "shielding contributions; absolute value because T2 has sign "
-        "ambiguity from the eigenvector convention). |cos| ∈ [0, 1] "
-        "where 1 = aligned tensor orientations, 0 = perpendicular."));
+        "CoulombResult.coulomb_shielding_contribution (both bare T2 "
+        "EFG kernels in V/Å², no γ multiplication at extraction). "
+        "Per-atom-per-frame signed cos in the T2 5-vector subspace via "
+        "SphericalTensor::T2CosineWith (Frobenius inner product / "
+        "magnitude product; isometric_real_sph normalization "
+        "preserves the matrix Frobenius product). cos ∈ [-1, 1]: "
+        "+1 = aligned tensor orientations, -1 = opposite-polarisation, "
+        "0 = orthogonal. Calibration ridge MUST see the SIGNED cos "
+        "(not |cos|) to expose chemistry-driven sign disagreement at "
+        "qualitatively distinctive groups (decision 2026-05-21 per "
+        "science adversarial review M1)."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- requires BOTH MopacCoulombResult (TimedAttach at "
         "OperationRunner.cpp:183) AND CoulombResult (TimedAttach at "
         "OperationRunner.cpp:178). Either-absent → all-N NaN cells + "
         "source_attached_per_frame=0. NO frame had both → WriteH5Group "
         "skips the group entirely per 'absent, not faked'."));
-    grp.createAttribute("zero_magnitude_threshold", zero_magnitude_threshold_);
-    grp.createAttribute("zero_magnitude_units",     std::string("ppm-like (matches "
-        "Coulomb shielding contribution units; same threshold as MopacCoulombResult "
-        "near_zero_vector_norm_threshold guard)"));
+    grp.createAttribute("magnitude_floor",        magnitude_floor_);
+    grp.createAttribute("magnitude_floor_units",  std::string("V/Å^2"));
+    grp.createAttribute("magnitude_floor_source", std::string(
+        "CalculatorConfig::Get(\"coulomb_efg_t2_magnitude_floor\") — "
+        "EFG-scale floor on |T2| for cosine well-definedness. Not the "
+        "project-wide near_zero_vector_norm_threshold (1e-10) which is "
+        "calibrated for direction-vector normalization, NOT EFG "
+        "magnitudes; using that would let FP-noise-dominated atoms "
+        "(remote-from-charge with |T2| ~ 1e-8 V/Å²) leak into the "
+        "calibration distribution as spurious |cos|≈1 tails. "
+        "Decision 2026-05-21 per math adversarial review H1."));
 
     // (N, T) flat. SDK readers use isfinite() to distinguish real
-    // measurements from undefined-cosine cells.
+    // signed-cosine measurements from undefined-cosine cells.
     std::vector<double> flat(N * T);
     for (std::size_t i = 0; i < N; ++i) {
-        const auto& atom_frames = per_atom_abs_cos_[i];
-        const std::size_t T_atom = atom_frames.size();
+        const auto& atom_frames = per_atom_cos_[i];
         for (std::size_t t = 0; t < T; ++t) {
-            flat[i * T + t] = (t < T_atom)
-                ? atom_frames[t]
-                : std::numeric_limits<double>::quiet_NaN();
+            flat[i * T + t] = atom_frames[t];
         }
     }
     std::vector<std::size_t> dims = {N, T};
     HighFive::DataSpace space(dims);
-    auto ds = grp.createDataSet<double>("abs_cos_t2", space);
+    auto ds = grp.createDataSet<double>("cos_t2", space);
     ds.write_raw(flat.data());
 
     grp.createDataSet("frame_indices",            frame_indices_);

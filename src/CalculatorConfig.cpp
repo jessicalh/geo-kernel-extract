@@ -103,6 +103,7 @@ void CalculatorConfig::InitDefaults() {
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");
     add("coulomb_charge_noise_floor",          1e-15, "",    "Coulomb charge noise floor");
     add("mopac_bond_order_noise_floor",        1e-6,  "",    "MOPAC bond order noise floor");
+    add("coulomb_efg_t2_magnitude_floor",      1e-3,  "V/A^2", "Floor on |T2(EFG)| for cosine-similarity well-definedness (TR9 MopacVsFf14SbReconciliation). Calibrated to the V/A^2 EFG signal scale, NOT the project-wide direction-vector floor 1e-10 which would let FP-noise-dominated atoms through.");
     add("biot_savart_wire_endpoint_guard",     1e-25, "m",   "Biot-Savart wire endpoint guard (SI)");
     add("biot_savart_wire_axis_guard",         1e-70, "m^2", "Biot-Savart wire on-axis guard (SI)");
     add("haigh_mallion_triangle_area_guard",   1e-20, "",    "Haigh-Mallion triangle area guard");

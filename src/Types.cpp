@@ -1,6 +1,9 @@
 #include "Types.h"
 #include "PhysicalConstants.h"
 
+#include <cmath>
+#include <limits>
+
 namespace nmr {
 
 // ============================================================================
@@ -94,6 +97,28 @@ double SphericalTensor::T2Magnitude() const {
     double sum = 0.0;
     for (double v : T2) sum += v * v;
     return std::sqrt(sum);
+}
+
+
+double SphericalTensor::T2InnerProduct(const SphericalTensor& other) const {
+    // Frobenius inner product of underlying symmetric-traceless 3x3
+    // matrices is preserved under the isometric_real_sph normalization
+    // (see Decompose preamble: sum|T2_m|^2 = sum S_ij^2). So the
+    // 5-vector dot product IS the matrix Frobenius inner product.
+    double dot = 0.0;
+    for (std::size_t k = 0; k < 5; ++k) dot += T2[k] * other.T2[k];
+    return dot;
+}
+
+
+double SphericalTensor::T2CosineWith(const SphericalTensor& other,
+                                     double magnitude_threshold) const {
+    const double mag_a = T2Magnitude();
+    const double mag_b = other.T2Magnitude();
+    if (mag_a < magnitude_threshold || mag_b < magnitude_threshold) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return T2InnerProduct(other) / (mag_a * mag_b);
 }
 
 

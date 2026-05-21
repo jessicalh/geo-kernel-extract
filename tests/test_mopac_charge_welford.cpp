@@ -216,3 +216,34 @@ TEST(MopacChargeWelford, Integration1P9J) {
         << " e; Mulliken charge neutrality sanity (1P9J net charge 0)";
     std::cout << "  Σ ⟨q⟩_i = " << total_mean_q << " e" << std::endl;
 }
+
+
+// ── Layer 0c: FinalizeIdempotency ──────────────────────────────
+//
+// Drives an absent-source path (no MopacResult attached) so the
+// idempotency check exercises the source_attached_count==0 branch
+// in Finalize (the loop is skipped; only finalized_=true flag is
+// set). Calling Finalize twice should be a no-op.
+
+TEST(MopacChargeWelford, FinalizeIdempotency) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    auto tr = nmr::MopacChargeWelfordTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    auto conf = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic (no MOPAC)");
+    tr->Compute(*conf, tp, traj, 0, 0.0);
+    tr->Finalize(tp, traj);
+    const auto attached_first = tr->SourceAttachedCount();
+    tr->Finalize(tp, traj);  // second call
+    EXPECT_EQ(tr->SourceAttachedCount(), attached_first);
+    EXPECT_EQ(tr->NumFrames(), 1u);
+}

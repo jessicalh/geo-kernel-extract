@@ -7,8 +7,10 @@
 // clones this shape against the bond axis).
 //
 // SPARSE CADENCE — "absent, not faked": MopacResult is attached
-// conditionally by OperationRunner (TimedAttach at OperationRunner.cpp:142,
-// NOT RequireConformationResult). MOPAC runs every ~20 ps in
+// conditionally by OperationRunner (Attach at OperationRunner.cpp:142,
+// gated by `!opts.skip_mopac` at line 138 and the non-null Compute
+// return at line 141; NOT RequireConformationResult). MOPAC runs
+// every ~20 ps in
 // production (JobSpec-driven; the TR is cadence-agnostic). On
 // frames where MopacResult is absent, the per-frame `HasResult` gate
 // skips both the Welford update AND increments source_attached_count_;

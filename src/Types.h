@@ -300,6 +300,27 @@ struct SphericalTensor {
 
     // L2 norm of the T2 components.
     double T2Magnitude() const;
+
+    // T2-subspace inner product with another tensor. Equivalent to the
+    // Frobenius inner product of the underlying symmetric-traceless
+    // matrices because the isometric_real_sph normalization preserves
+    // the Frobenius norm (see Decompose preamble in Types.cpp).
+    double T2InnerProduct(const SphericalTensor& other) const;
+
+    // T2-subspace cosine similarity in [-1, 1] (SIGNED). The T2
+    // 5-vector representation is sign-deterministic — a sign-flipped
+    // T2 means a physically different (opposite-polarisation) tensor,
+    // not an eigenvector-convention ambiguity. Use signed cos as the
+    // physically meaningful invariant; downstream consumers wanting
+    // a [0, 1] orientation-only measure can take cos² (preserves
+    // rotational invariance, drops sign).
+    //
+    // Returns NaN if either T2 magnitude is below magnitude_threshold
+    // (cosine numerically undefined / divisor near FP noise floor).
+    // The threshold should be calibrated to the signal scale of the
+    // physical quantity, NOT the project-wide direction-vector floor.
+    double T2CosineWith(const SphericalTensor& other,
+                        double magnitude_threshold) const;
 };
 
 

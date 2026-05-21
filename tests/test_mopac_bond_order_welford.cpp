@@ -187,5 +187,55 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
     std::cout << "  max|order| = " << max_order
               << " (typical max ~3.0 for triple bonds)" << std::endl;
 
+    // Sentinel-aware Welford: order_present_fraction channels must
+    // exist (per feedback_conditional_welford_for_sentinels).
+    EXPECT_TRUE(grp.exist("order_present_fraction_mean"));
+    EXPECT_TRUE(grp.exist("order_present_fraction_std"));
+    EXPECT_TRUE(grp.exist("n_total_per_bond"));
+    std::vector<double> present_mean(B);
+    grp.getDataSet("order_present_fraction_mean").read(present_mean.data());
+    // present_fraction ∈ [0, 1] for finite cells (no observation
+    // possible if source_attached_count==0, which can't happen here).
+    std::size_t n_always_present = 0;
+    for (double v : present_mean) {
+        if (std::isfinite(v)) {
+            EXPECT_GE(v, 0.0);
+            EXPECT_LE(v, 1.0 + 1e-12);
+            if (v > 0.999) ++n_always_present;
+        }
+    }
+    std::cout << "  bonds with always-present MOPAC reporting "
+              << "(fraction == 1.0): " << n_always_present << "/" << B
+              << std::endl;
+
     fs::remove(h5_path);
+}
+
+
+// ── Layer 0b: FinalizeIdempotency ──────────────────────────────
+
+TEST(MopacBondOrderWelford, FinalizeIdempotency) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    auto tr = nmr::MopacBondOrderWelfordTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    // Absent-source path — Finalize skips loop, only flips
+    // finalized_ flag.
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    auto conf = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic (no MOPAC)");
+    tr->Compute(*conf, tp, traj, 0, 0.0);
+    tr->Finalize(tp, traj);
+    const auto attached_first = tr->SourceAttachedCount();
+    tr->Finalize(tp, traj);  // second call
+    EXPECT_EQ(tr->SourceAttachedCount(), attached_first);
+    EXPECT_EQ(tr->NumFrames(), 1u);
+    EXPECT_EQ(tr->BondCount(), tp.ProteinRef().BondCount());
 }

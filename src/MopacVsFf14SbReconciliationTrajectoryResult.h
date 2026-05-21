@@ -1,23 +1,36 @@
 #pragma once
 //
 // MopacVsFf14SbReconciliationTrajectoryResult: per-atom per-frame
-// scalar |cos(MOPAC Coulomb T2, FF14SB Coulomb T2)| — the absolute
-// cosine similarity between the MOPAC-charge-derived Coulomb shielding
-// tensor and the FF14SB-charge-derived Coulomb shielding tensor, in
-// the T2 (symmetric traceless) subspace.
+// scalar cos(MOPAC Coulomb T2, FF14SB Coulomb T2) — the SIGNED cosine
+// similarity between the MOPAC-charge-derived Coulomb T2 EFG kernel
+// and the FF14SB-charge-derived Coulomb T2 EFG kernel, in the T2
+// (symmetric traceless) 5-vector subspace.
 //
 // TR9 of the 13-TR plan. New cross-source pattern; its own canonical
 // (only TR of this shape).
 //
-// PHYSICS RATIONALE: both source calcs produce a T2 shielding
-// contribution from a Coulomb EFG, but with charges derived from
-// different methods — MOPAC PM7+MOZYME Mulliken vs FF14SB
-// parameterised partial charges. |cos(T2_MOPAC, T2_FF14SB)| ∈ [0, 1]
+// SIGNED COSINE in [-1, 1]: the T2 5-vector representation
+// (isometric_real_sph) is sign-deterministic — a sign-flipped T2
+// means a physically different (opposite-polarisation) tensor, NOT
+// an eigenvector-convention ambiguity (the latter applies only when
+// comparing principal axes). cos ≈ +1: methods agree on tensor
+// orientation. cos ≈ -1: methods produce opposite-polarisation
+// tensors (e.g., a charge-sign disagreement at a chemically
+// distinctive group like SER OG or ARG NH2 can flip the EFG sign).
+// cos ≈ 0: methods produce orthogonal tensor orientations. All
+// three signals are diagnostically meaningful and the calibration
+// ridge MUST see the signed value, not |cos|, to expose
+// chemistry-driven disagreement. (Decision 2026-05-21 per science
+// adversarial review M1.)
+//
+// PHYSICS RATIONALE: both source calcs produce a T2 EFG kernel from
+// per-atom Coulomb-summed Hessian-of-φ contributions, with charges
+// derived from different methods — MOPAC PM7+MOZYME Mulliken vs
+// FF14SB parameterised partial charges. cos(T2_MOPAC, T2_FF14SB)
 // measures the orientational agreement between the two methods at
-// each atom each frame. Aligned (≈1): both methods agree on the
-// tensor's principal axes. Perpendicular (≈0): methods disagree.
-// Per-atom-per-frame so calibration can stratify by atom type and
-// observe whether agreement degrades dynamically.
+// each atom each frame. Per-atom-per-frame so calibration can
+// stratify by atom type and observe whether agreement degrades
+// dynamically.
 //
 // CROSS-SOURCE GATE: HasResult<MopacCoulombResult>() AND
 // HasResult<CoulombResult>() must both be true for that frame to
@@ -26,17 +39,17 @@
 // skips the entire /trajectory/mopac_vs_ff14sb_reconciliation/
 // group per canonical "absent, not faked".
 //
-// ZERO-MAGNITUDE HANDLING: cosine is undefined when either
-// |T2_MOPAC| or |T2_FF14SB| is near zero (atom has no Coulomb
-// shielding contribution from one or both methods — typical for
-// remote-from-charged-groups atoms). Per-atom NaN under that
-// condition; threshold from CalculatorConfig::Get("near_zero_vector_norm_threshold").
-// SDK readers MUST use isfinite() to distinguish "real measurement"
-// from "below noise floor / both-absent / either-absent".
+// MAGNITUDE FLOOR: cosine is undefined when either |T2| <
+// `coulomb_efg_t2_magnitude_floor` (CalculatorConfig, V/Å² —
+// calibrated to the EFG signal scale, NOT the project-wide
+// direction-vector floor 1e-10 which would be 7 orders of magnitude
+// below typical EFG signal and let FP-noise-dominated atoms through.
+// Decision 2026-05-21 per math adversarial review H1.) Per-atom NaN
+// under that condition; SDK readers MUST use isfinite() to gate.
 //
 // Emission:
 //   /trajectory/mopac_vs_ff14sb_reconciliation/
-//     abs_cos_t2     (N, T) float64 — |cos(T_MOPAC, T_FF14SB)| ∈ [0, 1]
+//     cos_t2         (N, T) float64 — cos(T_MOPAC, T_FF14SB) ∈ [-1, 1]
 //     frame_indices  (T,)   uint64
 //     frame_times    (T,)   float64 — ps
 //     source_attached_per_frame (T,) uint8 — 1 iff BOTH sources attached
@@ -44,13 +57,14 @@
 //       result_name             = "MopacVsFf14SbReconciliationTrajectoryResult"
 //       n_atoms, n_frames, source_attached_count, finalized
 //       parity                  = "0e"  (rotation-invariant scalar)
-//       units                   = "dimensionless"  ([0, 1] cosine)
+//       units                   = "dimensionless"  ([-1, 1] cosine)
 //       sources                 = "MopacCoulombResult.mopac_coulomb_shielding_contribution
 //                                   + CoulombResult.coulomb_shielding_contribution
-//                                   (both T2 SphericalTensor; |cos|
-//                                   in the T2 5-vector subspace)"
+//                                   (both T2 EFG kernels in V/Å²; signed
+//                                   cos in the T2 5-vector subspace)"
 //       source_attached_policy  = "conditional -- requires BOTH ..."
-//       zero_magnitude_threshold = (value of near_zero_vector_norm_threshold)
+//       magnitude_floor         = (value of coulomb_efg_t2_magnitude_floor)
+//       magnitude_floor_units   = "V/Å^2"
 //
 
 #include "TrajectoryResult.h"
@@ -90,13 +104,13 @@ public:
     std::size_t SourceAttachedCount() const { return source_attached_count_; }
 
 private:
-    // Per-atom growing buffer of |cos|. NaN cells = either-absent
-    // source or either-side zero-magnitude T2.
-    std::vector<std::vector<double>> per_atom_abs_cos_;
+    // Per-atom growing buffer of signed cos. NaN cells = either-absent
+    // source or either-side |T2| below magnitude floor.
+    std::vector<std::vector<double>> per_atom_cos_;
     std::vector<std::size_t>  frame_indices_;
     std::vector<double>       frame_times_;
     std::vector<std::uint8_t> source_attached_per_frame_;
-    double zero_magnitude_threshold_ = 0.0;  // cached at Create from CalculatorConfig
+    double magnitude_floor_ = 0.0;  // cached at Create from CalculatorConfig
     std::size_t n_frames_              = 0;
     std::size_t source_attached_count_ = 0;
     bool        finalized_             = false;

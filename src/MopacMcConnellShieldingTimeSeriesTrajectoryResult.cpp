@@ -144,17 +144,24 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("0e+1o+2e"));
-    grp.createAttribute("units",         std::string("ppm"));
+    grp.createAttribute("units",         std::string("Angstrom^-3"));
     grp.createAttribute("source", std::string(
         "MopacMcConnellResult.mopac_mc_shielding_contribution "
-        "(SphericalTensor; NOT traceless — bond-anisotropy kernel "
-        "M_total has both symmetric-traceless (T2) and antisymmetric "
-        "(T1) + trace (T0) parts in general). All 9 components emitted "
-        "per user direction 2026-05-21 'if not traceless write both' + "
-        "the methods-accumulate principle. Per-category T2 totals "
-        "T2_backbone/T2_sidechain/T2_aromatic ARE explicitly "
-        "symmetrized at MopacMcConnellResult.cpp:252-262 but live on "
-        "separate ConformationAtom fields, not in this TR."));
+        "(SphericalTensor; bond-order-weighted bo·M/r³ kernel, NO "
+        "Δχ × γ multiplication at extraction — bare kernel in Å^-3). "
+        "M_total is NOT traceless: T0 = trace(M)/3 = bond-order-"
+        "weighted sum of McConnell f-scalars (matches sum of "
+        "ca.mopac_mc_co_sum + mopac_mc_cn_sum + mopac_mc_sidechain_sum "
+        "+ mopac_mc_aromatic_sum); T1 = antisymmetric McConnell "
+        "pseudovector from the cross-coupling 9·cos_θ·d̂_a·b̂_b - "
+        "3·b̂_a·b̂_b outer-product terms (a real geometric quantity, "
+        "not numerical noise); T2 = symmetric traceless McConnell "
+        "tensor (canonical bond-anisotropy contribution). All 9 "
+        "components emitted per user direction 2026-05-21 'if not "
+        "traceless write both' + the methods-accumulate principle. "
+        "Per-category T2 totals T2_backbone/T2_sidechain/T2_aromatic "
+        "ARE explicitly symmetrized at MopacMcConnellResult.cpp:252-262 "
+        "but live on separate ConformationAtom fields, not in this TR."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacMcConnellResult attaches sparsely per the "
         "Mopac cadence (OperationRunner.cpp:185, TimedAttach not "

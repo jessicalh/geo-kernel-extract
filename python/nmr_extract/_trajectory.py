@@ -2185,27 +2185,47 @@ def _load_mopac_charge_welford(f) -> Optional[MopacChargeWelfordGroup]:
 @dataclass(frozen=True)
 class MopacBondOrderWelfordGroup:
     """Per-bond Welford rollup of MOPAC Wiberg bond orders from
-    /trajectory/mopac_bond_order_welford/. TR6 of the 13-TR plan;
-    clone of MopacChargeWelford with the bond axis substituted for
-    the atom axis. Bond axis parallel to `bonds.npy` from the
-    TopologySidecar (== protein.Bonds() index order).
+    /trajectory/mopac_bond_order_welford/. TR6 of the 13-TR plan.
+    Bond axis parallel to `bonds.npy` from the TopologySidecar
+    (== protein.Bonds() index order).
 
     Same sparse-cadence "absent, not faked" gate as TR5: when MOPAC
     never ran, the H5 group is skipped entirely (KeyError on
     /trajectory/mopac_bond_order_welford = "MOPAC disabled").
 
-    Minimum-viable v0 — no delta variants. MopacResult.TopologyBondOrders()
-    returns 0 for bonds MOPAC didn't report (NOT NaN), so per-bond
-    n_per_bond equals source_attached_count (no per-bond skip).
+    SENTINEL-AWARE WELFORD (per feedback_conditional_welford_for_sentinels,
+    R6 codex 2026-05-18; landed 2026-05-21 per math/science adversarial
+    review M6/M4): MopacResult sets bond order to exactly 0.0 for
+    bonds it didn't report (NOT NaN). Naive accumulation biases the
+    running mean toward 0 for intermittently-reported bonds. This
+    TR accumulates the order Welford ONLY on frames where the bond
+    was reported (bo != 0.0), and emits a companion
+    order_present_fraction indicator-Welford on the "MOPAC reported
+    this bond" event.
 
-      order_mean (B,) float64 — dimensionless (Wiberg)
+      order_mean (B,) float64 — dimensionless (Wiberg). Mean over
+                                 frames where bond was reported
+                                 (per_bond_n_present samples).
       order_std  (B,) float64
       order_m2   (B,) float64 — dimensionless^2
       order_min  (B,) float64
       order_max  (B,) float64
       order_min_frame (B,) uint64
       order_max_frame (B,) uint64
-      n_per_bond (B,) uint64
+      n_per_bond (B,) uint64  — divisor for order Welford
+                                 = frames where bond was reported
+
+      order_present_fraction_mean (B,) float64 — Pr(MOPAC reports bond)
+                                                  ∈ [0, 1]. Divisor =
+                                                  source_attached_count.
+      order_present_fraction_std  (B,) float64
+      order_present_fraction_m2   (B,) float64
+      order_present_fraction_min  (B,) float64
+      order_present_fraction_max  (B,) float64
+      order_present_fraction_min_frame (B,) uint64
+      order_present_fraction_max_frame (B,) uint64
+      n_total_per_bond (B,) uint64  — divisor for present_fraction Welford
+                                       = source_attached_count
     """
     order_mean: np.ndarray
     order_std: np.ndarray
@@ -2215,6 +2235,15 @@ class MopacBondOrderWelfordGroup:
     order_min_frame: np.ndarray
     order_max_frame: np.ndarray
     n_per_bond: np.ndarray
+    # Sentinel-aware indicator Welford on "MOPAC reported this bond".
+    order_present_fraction_mean: np.ndarray
+    order_present_fraction_std: np.ndarray
+    order_present_fraction_m2: np.ndarray
+    order_present_fraction_min: np.ndarray
+    order_present_fraction_max: np.ndarray
+    order_present_fraction_min_frame: np.ndarray
+    order_present_fraction_max_frame: np.ndarray
+    n_total_per_bond: np.ndarray
     frame_indices: np.ndarray
     frame_times: np.ndarray
     source_attached_per_frame: np.ndarray
@@ -2243,6 +2272,14 @@ def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
         order_min_frame=g["order_min_frame"][:],
         order_max_frame=g["order_max_frame"][:],
         n_per_bond=g["n_per_bond"][:],
+        order_present_fraction_mean=g["order_present_fraction_mean"][:],
+        order_present_fraction_std=g["order_present_fraction_std"][:],
+        order_present_fraction_m2=g["order_present_fraction_m2"][:],
+        order_present_fraction_min=g["order_present_fraction_min"][:],
+        order_present_fraction_max=g["order_present_fraction_max"][:],
+        order_present_fraction_min_frame=g["order_present_fraction_min_frame"][:],
+        order_present_fraction_max_frame=g["order_present_fraction_max_frame"][:],
+        n_total_per_bond=g["n_total_per_bond"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
         source_attached_per_frame=g["source_attached_per_frame"][:],
@@ -2258,14 +2295,18 @@ def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
 
 @dataclass(frozen=True)
 class MopacCoulombShieldingTimeSeriesGroup:
-    """Per-atom per-frame MOPAC Coulomb shielding contribution time
-    series from /trajectory/mopac_coulomb_shielding_time_series/.
-    TR7 of the 13-TR plan. T2-only (N, T, 5) emission — source field
-    is genuinely T2 per the MopacCoulombResult.cpp:251 comment
-    ("Pure T2 (EFG is traceless)").
+    """Per-atom per-frame MOPAC Coulomb T2 EFG kernel time series
+    from /trajectory/mopac_coulomb_shielding_time_series/. TR7 of
+    the 13-TR plan. T2-only (N, T, 5) emission — source field is
+    genuinely T2 per the MopacCoulombResult.cpp:251-254 comment
+    ("Pure T2 (EFG is traceless). gamma converts this to shielding.").
 
-      t2 (N, T, 5) float64 — T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2 (ppm-like;
-            γ-shielding conversion applied at source).
+      t2 (N, T, 5) float64 — T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2
+            in V/Å² (bare EFG kernel, NO γ multiplication at
+            extraction; despite the historical field name
+            "shielding_contribution", the stored quantity is the
+            bare EFG — γ × T2 → ppm-shielding is applied at
+            calibration time).
 
     Source: MopacCoulombResult.mopac_coulomb_shielding_contribution
     (TimedAttach sparse — same "absent, not faked" group-skip
@@ -2326,7 +2367,12 @@ class MopacMcConnellShieldingTimeSeriesGroup:
     separate channels as needed.
 
       xyz (N, T, 9) float64 — T0, T1_m-1, T1_m0, T1_m+1,
-                              T2_m-2, T2_m-1, T2_m0, T2_m+1, T2_m+2 (ppm)
+                              T2_m-2, T2_m-1, T2_m0, T2_m+1, T2_m+2
+            in Å⁻³ (bare bond-order-weighted bo·M/r³ kernel; NO
+            Δχ × γ multiplication at extraction).
+      T0 = trace(M)/3 = bond-order-weighted sum of McConnell f-scalars.
+      T1 = antisymmetric McConnell pseudovector (real geometric quantity).
+      T2 = symmetric traceless McConnell tensor (canonical bond-anisotropy).
 
     Source: MopacMcConnellResult.mopac_mc_shielding_contribution
     (TimedAttach sparse — same group-skip discipline as TR5/TR6/TR7).
@@ -2372,26 +2418,42 @@ def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingT
 
 @dataclass(frozen=True)
 class MopacVsFf14SbReconciliationGroup:
-    """Per-atom per-frame |cos(MOPAC Coulomb T2, FF14SB Coulomb T2)|
+    """Per-atom per-frame SIGNED cos(MOPAC Coulomb T2, FF14SB Coulomb T2)
     from /trajectory/mopac_vs_ff14sb_reconciliation/. TR9 of the
     13-TR plan; new cross-source pattern.
 
-    abs_cos_t2 ∈ [0, 1] measures the orientational agreement between
-    MOPAC PM7+MOZYME-derived and FF14SB-parameterised charge-driven
-    Coulomb shielding tensors in the T2 5-vector subspace, per atom
-    per frame.
+    cos_t2 ∈ [-1, 1] measures the SIGNED orientational agreement
+    between MOPAC PM7+MOZYME-derived and FF14SB-parameterised
+    charge-driven Coulomb T2 EFG kernels, in the T2 5-vector
+    subspace, per atom per frame. cos = +1: aligned. cos = -1:
+    opposite-polarisation (chemistry-distinctive disagreement,
+    e.g. a sign flip at SER OG or ARG NH2 where MOPAC PM7 and
+    FF14SB qualitatively differ on charge). cos = 0: orthogonal.
+    The ridge MUST see the SIGNED cos to expose sign disagreement
+    (decision 2026-05-21 per science adversarial review M1; prior
+    |cos| in [0, 1] silently squashed this signal).
 
-      abs_cos_t2 (N, T) float64 — dimensionless
+      cos_t2 (N, T) float64 — dimensionless, [-1, 1]
 
-    NaN cells: either source absent that frame, OR per-atom either-side
-    |T2| < `zero_magnitude_threshold` group attr (cosine undefined).
+    NaN cells: either source absent that frame, OR per-atom either-
+    side |T2| < `magnitude_floor` group attr (cosine undefined at
+    EFG noise floor). magnitude_floor is from CalculatorConfig's
+    `coulomb_efg_t2_magnitude_floor` — calibrated to the V/Å² EFG
+    signal scale (NOT the project-wide direction-vector floor
+    1e-10 which would let FP-noise-dominated atoms through;
+    decision per math adversarial review H1).
+
     SDK readers MUST use isfinite() to gate.
 
     Cross-source gate: REQUIRES both MopacCoulombResult AND CoulombResult
     attached per frame. WriteH5Group skips the entire group when no
     frame had both attached.
+
+    Convenience: use .per_atom_mean_cos() for an (N,) NaN-tolerant
+    mean across the frame axis (typical first-pass calibration
+    feature).
     """
-    abs_cos_t2: np.ndarray
+    cos_t2: np.ndarray
     frame_indices: np.ndarray
     frame_times: np.ndarray
     source_attached_per_frame: np.ndarray
@@ -2402,8 +2464,24 @@ class MopacVsFf14SbReconciliationGroup:
     units: str                           # "dimensionless"
     sources: str
     source_attached_policy: str
-    zero_magnitude_threshold: float
-    zero_magnitude_units: str
+    magnitude_floor: float
+    magnitude_floor_units: str
+    magnitude_floor_source: str
+
+    def per_atom_mean_cos(self) -> np.ndarray:
+        """NaN-tolerant per-atom mean of cos_t2 across the frame
+        axis. Returns shape (N,). Atoms whose cosine is NaN in every
+        frame (always-below-floor) yield NaN here too.
+        """
+        return np.nanmean(self.cos_t2, axis=1)
+
+    def per_atom_finite_count(self) -> np.ndarray:
+        """Per-atom count of finite cos_t2 frames. Returns shape (N,)
+        uint64. Atoms with low count are diagnostic-quality flags —
+        e.g., remote-from-charge atoms with |T2| persistently below
+        the magnitude_floor.
+        """
+        return np.isfinite(self.cos_t2).sum(axis=1).astype(np.uint64)
 
 
 def _load_mopac_vs_ff14sb_reconciliation(f) -> Optional[MopacVsFf14SbReconciliationGroup]:
@@ -2414,7 +2492,7 @@ def _load_mopac_vs_ff14sb_reconciliation(f) -> Optional[MopacVsFf14SbReconciliat
     def _attr(name: str) -> str:
         return str(_decode_attr(g.attrs.get(name, "")))
     return MopacVsFf14SbReconciliationGroup(
-        abs_cos_t2=g["abs_cos_t2"][:],
+        cos_t2=g["cos_t2"][:],
         frame_indices=g["frame_indices"][:],
         frame_times=g["frame_times"][:],
         source_attached_per_frame=g["source_attached_per_frame"][:],
@@ -2425,8 +2503,9 @@ def _load_mopac_vs_ff14sb_reconciliation(f) -> Optional[MopacVsFf14SbReconciliat
         units=_attr("units"),
         sources=_attr("sources"),
         source_attached_policy=_attr("source_attached_policy"),
-        zero_magnitude_threshold=float(g.attrs["zero_magnitude_threshold"]),
-        zero_magnitude_units=_attr("zero_magnitude_units"),
+        magnitude_floor=float(g.attrs["magnitude_floor"]),
+        magnitude_floor_units=_attr("magnitude_floor_units"),
+        magnitude_floor_source=_attr("magnitude_floor_source"),
     )
 
 

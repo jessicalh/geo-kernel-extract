@@ -196,33 +196,44 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
       tr.WriteH5Group(tp, file); }
     HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/mopac_vs_ff14sb_reconciliation");
-    auto ds = grp.getDataSet("abs_cos_t2");
+    auto ds = grp.getDataSet("cos_t2");  // signed cosine — renamed
+                                          // from abs_cos_t2 per
+                                          // science adversarial M1.
     const auto dims = ds.getSpace().getDimensions();
     ASSERT_EQ(dims.size(), 2u);
     EXPECT_EQ(dims[1], T);
 
-    std::string parity, units;
+    std::string parity, units, mag_units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
+    grp.getAttribute("magnitude_floor_units").read(mag_units);
     EXPECT_EQ(parity, "0e");
     EXPECT_EQ(units, "dimensionless");
+    EXPECT_EQ(mag_units, "V/Å^2")
+        << "EFG-scale floor (V/Å^2) per math adversarial review H1.";
+    double mag_floor = 0.0;
+    grp.getAttribute("magnitude_floor").read(mag_floor);
+    EXPECT_GT(mag_floor, 1e-10)
+        << "magnitude_floor must be calibrated to EFG signal scale, "
+           "NOT direction-vector floor (1e-10).";
 
     const std::size_t N = dims[0];
     std::vector<double> flat(N * T);
     ds.read(flat.data());
 
-    // Sanity: |cos| ∈ [0, 1] for finite cells. Log mean to see
-    // typical agreement (calibration check).
-    std::size_t n_finite = 0, n_nan = 0;
-    double sum_cos = 0.0, max_cos = -1.0, min_cos = 2.0;
+    // Signed cos ∈ [-1, 1] for finite cells. Log mean + range to see
+    // typical agreement vs disagreement.
+    std::size_t n_finite = 0, n_nan = 0, n_negative = 0;
+    double sum_cos = 0.0, max_cos = -2.0, min_cos = 2.0;
     for (double v : flat) {
         if (std::isfinite(v)) {
-            EXPECT_GE(v, 0.0);
-            EXPECT_LE(v, 1.0 + 1e-12);  // tiny float slop
+            EXPECT_GE(v, -1.0 - 1e-12);  // tiny float slop
+            EXPECT_LE(v,  1.0 + 1e-12);
             ++n_finite;
             sum_cos += v;
             max_cos = std::max(max_cos, v);
             min_cos = std::min(min_cos, v);
+            if (v < 0.0) ++n_negative;
         } else {
             EXPECT_TRUE(std::isnan(v));
             ++n_nan;
@@ -231,11 +242,45 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
     const double mean_cos = (n_finite > 0) ? (sum_cos / n_finite) : 0.0;
     std::cout << "  finite=" << n_finite << "/" << (N * T)
               << "  nan=" << n_nan
-              << "  mean|cos|=" << mean_cos
+              << "  mean(cos)=" << mean_cos
               << "  range=[" << min_cos << ", " << max_cos << "]"
+              << "  n_negative=" << n_negative
+              << "  (signed cos exposes sign-disagreement; per "
+                 "science adversarial M1 the prior |cos| collapsed "
+                 "this signal)"
               << std::endl;
     EXPECT_GT(n_finite, 0u) << "no finite cosine values — both sources "
                                "probably produced near-zero T2 everywhere";
 
     fs::remove(h5_path);
+}
+
+
+// ── Layer 0c: FinalizeIdempotency ──────────────────────────────
+
+TEST(MopacVsFf14SbReconciliation, FinalizeIdempotency) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    auto tr = nmr::MopacVsFf14SbReconciliationTrajectoryResult::Create(tp);
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+
+    // Drive a single absent-source frame so Finalize has state to
+    // touch but no buffer adoption.
+    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    auto conf = std::make_unique<nmr::ProteinConformation>(
+        &tp.ProteinRef(), positions, "synthetic frame (neither source)");
+    tr->Compute(*conf, tp, traj, 0, 0.0);
+
+    tr->Finalize(tp, traj);
+    const auto n_after_first = tr->NumFrames();
+    tr->Finalize(tp, traj);  // second call — no state mutation beyond
+                              // re-flagging finalized_ = true + logging.
+    EXPECT_EQ(tr->NumFrames(), n_after_first);
+    EXPECT_EQ(tr->SourceAttachedCount(), 0u);
 }

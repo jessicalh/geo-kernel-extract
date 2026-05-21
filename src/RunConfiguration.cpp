@@ -269,26 +269,14 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return ApbsEfgTimeSeriesTrajectoryResult::Create(tp);
         });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacChargeWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacBondOrderWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacVsFf14SbReconciliationTrajectoryResult::Create(tp);
-        });
+    // MOPAC-family TRs (TR5-TR9 of the 13-TR plan) are NOT registered
+    // here — PerFrameExtractionSet sets skip_mopac=true (line 145) and
+    // skip_coulomb=true (line 147), so MopacResult/MopacCoulombResult/
+    // MopacMcConnellResult/CoulombResult never attach and the TRs would
+    // be dead-code per-frame. They are registered in FullFatFrameExtraction
+    // below, which flips skip_mopac AND skip_coulomb to false.
+    // Decision 2026-05-21 per science adversarial review H3 (TR9
+    // unreachable in production) + math adversarial review H3.
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
@@ -429,7 +417,37 @@ RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     RunConfiguration c = PerFrameExtractionSet();
     c.SetName("FullFatFrameExtraction");
 
-    c.per_frame_opts_.skip_mopac = false;
+    // Both MOPAC AND vacuum Coulomb attach here — required for the
+    // MOPAC-family TRs (TR5-TR9 of the 13-TR plan) and for TR9's
+    // cross-source MopacCoulomb-vs-Coulomb reconciliation. APBS
+    // stays on (inherited from PerFrameExtractionSet) for the
+    // hybrid APBS-Mopac calibration probe.
+    c.per_frame_opts_.skip_mopac   = false;
+    c.per_frame_opts_.skip_coulomb = false;
+
+    // MOPAC-family TR registrations — only meaningful when both
+    // skip_mopac and skip_coulomb are false (above), so they live
+    // here rather than in PerFrameExtractionSet.
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacChargeWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacBondOrderWelfordTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return MopacVsFf14SbReconciliationTrajectoryResult::Create(tp);
+        });
 
     return c;
 }

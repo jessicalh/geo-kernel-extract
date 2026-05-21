@@ -1,10 +1,14 @@
 #pragma once
 //
 // MopacCoulombShieldingTimeSeriesTrajectoryResult: per-atom per-frame
-// time series of the MOPAC Coulomb shielding contribution
+// time series of the MOPAC-Coulomb T2 EFG kernel
 // (ConformationAtom.mopac_coulomb_shielding_contribution, T2
-// SphericalTensor, units ppm — chemical shielding from MOPAC-charge-
-// driven Coulomb EFG).
+// SphericalTensor, units V/Å²). NOTE: despite the historical
+// "shielding_contribution" field name, the stored value is the raw
+// EFG kernel — no γ multiplication is applied at the source. The
+// MopacCoulombResult source comment "gamma converts this to
+// shielding" is forward-looking: shielding is recovered downstream
+// by multiplying by per-element γ at calibration time.
 //
 // TR7 of the 13-TR plan. Combines:
 //   - TR4 pattern: T2-only (N, T, 5) emission via DenseBuffer<SphericalTensor>
@@ -27,7 +31,7 @@
 //
 // Emission:
 //   /trajectory/mopac_coulomb_shielding_time_series/
-//     t2             (N, T, 5)  float64 — T2_m-2..T2_m+2 (ppm)
+//     t2             (N, T, 5)  float64 — T2_m-2..T2_m+2 (V/Å²)
 //     frame_indices  (T,)       uint64
 //     frame_times    (T,)       float64 — ps
 //     source_attached_per_frame (T,) uint8
@@ -37,7 +41,7 @@
 //       irrep_layout            = "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
 //       normalization           = "isometric_real_sph"
 //       parity                  = "2e"
-//       units                   = "ppm"
+//       units                   = "V/Å^2"  (EFG kernel, pre-γ)
 //       source                  = "MopacCoulombResult.mopac_coulomb_shielding_contribution
 //                                  (T2-only per source comment 'Pure T2
 //                                  (EFG is traceless)' at MopacCoulombResult.cpp:251)"

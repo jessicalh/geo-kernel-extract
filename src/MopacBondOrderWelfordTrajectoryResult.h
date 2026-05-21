@@ -13,33 +13,58 @@
 // (factory invocation), so the Protein is finalised.
 //
 // SPARSE CADENCE — same "absent, not faked" gate as TR5: MopacResult
-// is TimedAttach'd (OperationRunner.cpp:142), not Required. Frames
-// without MOPAC skip the Welford update and record mask=0. When
-// source_attached_count == 0 across the whole trajectory,
-// WriteH5Group skips /trajectory/mopac_bond_order_welford/ entirely.
+// is Attach'd at OperationRunner.cpp:142 (gated by !opts.skip_mopac
+// at line 138 + non-null Compute return at line 141; NOT
+// RequireConformationResult). Frames without MOPAC skip the Welford
+// update and record mask=0. When source_attached_count == 0 across
+// the whole trajectory, WriteH5Group skips
+// /trajectory/mopac_bond_order_welford/ entirely.
 //
 // Source: MopacResult.TopologyBondOrders() — std::vector<double>
-// parallel to protein.Bonds(). MopacResult sets bond order to 0
-// for bonds MOPAC didn't report (NOT NaN), so we don't gate per
-// bond — every bond gets the same number of Welford updates as
-// the protein-wide source_attached_count.
+// parallel to protein.Bonds(). MopacResult sets bond order to 0.0
+// (exact) for bonds MOPAC didn't report (NOT NaN). Wiberg bond
+// orders for real covalent bonds are continuous QM observables and
+// structurally non-zero; exact-zero is the canonical "no observation"
+// sentinel.
 //
-// MINIMUM-VIABLE v0 (no delta variants): single channel, full
-// canonical Welford row. Mirrors TR5 + AIMNet2 CRG Welford v0
-// precedent.
+// SENTINEL-AWARE WELFORD (per `feedback_conditional_welford_for_sentinels`,
+// codex R6 2026-05-18): naive accumulation of "no observation"
+// sentinels biases the running mean toward 0. Instead, we accumulate
+// the order Welford ONLY on frames where the bond was reported
+// (`bo != 0.0`) AND emit a companion `order_present_fraction`
+// indicator-Welford on the binary "MOPAC reported this bond" event
+// (1.0 if `bo != 0.0`, else 0.0). Mirrors the HydrationShellWelford
+// `ion_present_fraction` pattern landed for nearest_ion_distance.
+//
+// MINIMUM-VIABLE v0 (no delta variants on order or present_fraction):
+// single channel per Welford, full canonical row.
 //
 // Emission at /trajectory/mopac_bond_order_welford/:
-//   order_mean          (B,) float64 — dimensionless (Wiberg bond order)
-//   order_std           (B,) float64 — dimensionless
-//   order_m2            (B,) float64 — dimensionless (squared)
-//   order_min           (B,) float64
-//   order_max           (B,) float64
-//   order_min_frame     (B,) uint64
-//   order_max_frame     (B,) uint64
-//   n_per_bond          (B,) uint64
-//   frame_indices       (T,) uint64
-//   frame_times         (T,) float64 — ps
-//   source_attached_per_frame (T,) uint8
+//   order_mean                     (B,) float64 — dimensionless (Wiberg bond order)
+//   order_std                      (B,) float64 — dimensionless
+//   order_m2                       (B,) float64 — dimensionless (squared)
+//   order_min                      (B,) float64
+//   order_max                      (B,) float64
+//   order_min_frame                (B,) uint64
+//   order_max_frame                (B,) uint64
+//   n_per_bond                     (B,) uint64  — order Welford divisor
+//                                                 (frames where MOPAC
+//                                                 reported the bond)
+//   order_present_fraction_mean    (B,) float64 — dimensionless in [0, 1]
+//                                                 (Pr(MOPAC reports bond))
+//   order_present_fraction_std     (B,) float64
+//   order_present_fraction_m2      (B,) float64
+//   order_present_fraction_min     (B,) float64
+//   order_present_fraction_max     (B,) float64
+//   order_present_fraction_min_frame (B,) uint64
+//   order_present_fraction_max_frame (B,) uint64
+//   n_total_per_bond               (B,) uint64  — present_fraction
+//                                                 Welford divisor =
+//                                                 source_attached_count
+//                                                 (MOPAC-attached frames)
+//   frame_indices                  (T,) uint64
+//   frame_times                    (T,) float64 — ps
+//   source_attached_per_frame      (T,) uint8
 //
 // Attrs:
 //   result_name             = "MopacBondOrderWelfordTrajectoryResult"
@@ -91,8 +116,18 @@ public:
 private:
     // Per-bond Welford state (axis parallel to protein.Bonds() /
     // bonds.npy). Sized at Create from protein.BondCount().
+    //
+    // per_bond_              : Welford on bo (only updated when bo != 0)
+    // per_bond_n_present_    : count of frames where bo != 0
+    //                          (= divisor for per_bond_ Welford)
+    // per_bond_present_      : indicator Welford on (bo != 0 ? 1.0 : 0.0)
+    //                          (mean ∈ [0, 1] = Pr(MOPAC reports bond))
+    //                          divisor = source_attached_count_ (every
+    //                          MOPAC-attached frame contributes an
+    //                          indicator sample)
     std::vector<WelfordMoments> per_bond_;
-    std::vector<std::size_t>    per_bond_n_;
+    std::vector<std::size_t>    per_bond_n_present_;
+    std::vector<WelfordMoments> per_bond_present_;
     std::vector<std::size_t>  frame_indices_;
     std::vector<double>       frame_times_;
     std::vector<std::uint8_t> source_attached_per_frame_;

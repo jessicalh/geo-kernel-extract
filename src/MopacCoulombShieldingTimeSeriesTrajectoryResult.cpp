@@ -143,14 +143,18 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         std::string("T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("2e"));
-    grp.createAttribute("units",         std::string("ppm"));
+    grp.createAttribute("units",         std::string("V/Å^2"));
     grp.createAttribute("source", std::string(
         "MopacCoulombResult.mopac_coulomb_shielding_contribution "
         "(SphericalTensor; T2-only per source comment 'Pure T2 (EFG "
         "is traceless). gamma converts this to shielding.' at "
-        "MopacCoulombResult.cpp:251). Underlying physics: σ_Coulomb "
-        "= γ × EFG_total from MOPAC Mulliken charges via Poisson "
-        "Hessian + tracelessness projection."));
+        "MopacCoulombResult.cpp:252-254). The stored value is the "
+        "EFG_total kernel in V/Å² (Hessian of φ from MOPAC Mulliken "
+        "charges, traceless-projected at MopacCoulombResult.cpp:175-178). "
+        "NO γ multiplication is applied at extraction — despite the "
+        "historical field name 'shielding_contribution', the stored "
+        "quantity is the bare EFG kernel. Shielding is recovered at "
+        "calibration time by multiplying by per-element γ."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacCoulombResult attaches sparsely per the "
         "Mopac cadence (OperationRunner.cpp:183, TimedAttach not "

@@ -24,7 +24,8 @@ MopacBondOrderWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
     // returns the real value, not zero.
     const std::size_t B = tp.ProteinRef().BondCount();
     r->per_bond_.assign(B, WelfordMoments{});
-    r->per_bond_n_.assign(B, 0);
+    r->per_bond_n_present_.assign(B, 0);
+    r->per_bond_present_.assign(B, WelfordMoments{});
     return r;
 }
 
@@ -32,9 +33,23 @@ MopacBondOrderWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // ── Compute ──────────────────────────────────────────────────────
 //
 // MopacResult.TopologyBondOrders() is parallel to protein.Bonds(),
-// so per_bond_[bi] aligns with protein.BondAt(bi). MopacResult zeros
-// out bonds it didn't report (NOT NaN), so we accumulate every bond
-// with the same n_per_bond as the source_attached_count.
+// so per_bond_[bi] aligns with protein.BondAt(bi). MopacResult sets
+// 0.0 (exact) for bonds it didn't report — the canonical "no
+// observation" sentinel for a continuous QM observable. Sentinel-
+// aware Welford per `feedback_conditional_welford_for_sentinels`:
+//
+//   - per_bond_ accumulates ONLY on frames where bo != 0.0
+//     (per-bond divisor = per_bond_n_present_[bi]).
+//   - per_bond_present_ indicator-Welford accumulates EVERY MOPAC-
+//     attached frame: 1.0 if bo != 0.0, else 0.0
+//     (per-bond divisor = source_attached_count_).
+//
+// Bond axis structural invariant: bond_orders.size() ==
+// per_bond_.size() == protein.BondCount(). MopacResult sizes its
+// topology_bond_orders_ vector from protein.BondCount() at
+// extractor-side Compute (MopacResult.cpp). If they disagree at
+// runtime, the protein's bond axis has changed across the lifecycle
+// — fail loud rather than silently truncate.
 
 void MopacBondOrderWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -48,14 +63,33 @@ void MopacBondOrderWelfordTrajectoryResult::Compute(
     if (source_present) {
         const auto& mopac = conf.Result<MopacResult>();
         const auto& bond_orders = mopac.TopologyBondOrders();
-        const std::size_t B = std::min(bond_orders.size(), per_bond_.size());
-        for (std::size_t bi = 0; bi < B; ++bi) {
-            const double bo = bond_orders[bi];
-            const std::size_t n_new = per_bond_n_[bi] + 1;
-            WelfordUpdate(per_bond_[bi], bo, n_new, frame_idx);
-            per_bond_n_[bi] = n_new;
+        if (bond_orders.size() != per_bond_.size()) {
+            OperationLog::Error(
+                "MopacBondOrderWelfordTrajectoryResult::Compute",
+                "bond axis size mismatch: MopacResult.TopologyBondOrders() "
+                "= " + std::to_string(bond_orders.size()) +
+                " vs TR per_bond_ = " + std::to_string(per_bond_.size()) +
+                " — protein.BondCount() invariant violated; skipping "
+                "Welford update this frame.");
+        } else {
+            const std::size_t B = per_bond_.size();
+            const std::size_t n_total_new = source_attached_count_ + 1;
+            for (std::size_t bi = 0; bi < B; ++bi) {
+                const double bo = bond_orders[bi];
+                // Indicator Welford — every MOPAC-attached frame
+                // contributes a 0 or 1 sample per bond.
+                const double indicator = (bo != 0.0) ? 1.0 : 0.0;
+                WelfordUpdate(per_bond_present_[bi], indicator,
+                              n_total_new, frame_idx);
+                // Order Welford — only when bond was reported (bo != 0).
+                if (bo != 0.0) {
+                    const std::size_t n_pres_new = per_bond_n_present_[bi] + 1;
+                    WelfordUpdate(per_bond_[bi], bo, n_pres_new, frame_idx);
+                    per_bond_n_present_[bi] = n_pres_new;
+                }
+            }
+            ++source_attached_count_;
         }
-        ++source_attached_count_;
     }
     // Sparse cadence is normal — no per-absent-frame logging.
 
@@ -74,7 +108,14 @@ void MopacBondOrderWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
     if (source_attached_count_ > 0) {
         const std::size_t B = per_bond_.size();
         for (std::size_t bi = 0; bi < B; ++bi) {
-            WelfordFinalize(per_bond_[bi], per_bond_n_[bi]);
+            // Order Welford finalized against per-bond present count
+            // (NaN std when n_present == 0, i.e. MOPAC never reported
+            // this bond on any frame).
+            WelfordFinalize(per_bond_[bi], per_bond_n_present_[bi]);
+            // Presence-fraction Welford finalized against protein-wide
+            // attached count (every MOPAC-attached frame contributed an
+            // indicator sample per bond).
+            WelfordFinalize(per_bond_present_[bi], source_attached_count_);
         }
     }
     finalized_ = true;
@@ -116,15 +157,20 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("source", std::string(
         "MopacResult.TopologyBondOrders() (Wiberg bond orders from "
         "PM7+MOZYME, parallel to protein.Bonds() == bonds.npy axis). "
-        "Per-bond Welford rollup; emits canonical row mean + std + "
-        "m2 + min/max + min_frame/max_frame + n_per_bond. "
-        "Minimum-viable v0 — no delta variants. Bonds with order "
-        "near zero (no MOPAC entry) accumulate as 0.0 per frame, NOT "
-        "as NaN — MopacResult.TopologyBondOrders() returns 0.0 for "
-        "missing entries."));
+        "Per-bond Welford rollup with sentinel-aware accumulation: "
+        "the order Welford updates ONLY on frames where the bond was "
+        "reported (bo != 0.0); the order_present_fraction "
+        "indicator-Welford updates EVERY MOPAC-attached frame with a "
+        "1.0/0.0 indicator. Mirrors the HydrationShellWelford "
+        "ion_present_fraction pattern per "
+        "feedback_conditional_welford_for_sentinels (R6 codex "
+        "2026-05-18) — naive accumulation of the 0.0 sentinel "
+        "biases the order mean toward 0 for intermittently-reported "
+        "bonds (typical for MOZYME-merged sidechain interior bonds)."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacResult attaches sparsely per the Mopac "
-        "cadence (OperationRunner.cpp:142, TimedAttach not "
+        "cadence (OperationRunner.cpp:138-148, Attach gated by "
+        "!opts.skip_mopac AND non-null Compute return; NOT "
         "RequireConformationResult). Compute's HasResult<MopacResult>() "
         "gate skips per-bond Welford update + records mask=0 on absent "
         "frames. WriteH5Group skips the entire group when "
@@ -132,6 +178,8 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
 
     std::vector<double>        mean(B), std_(B), m2(B), min_(B), max_(B);
     std::vector<std::uint64_t> min_frame(B), max_frame(B), n_per_bond(B);
+    std::vector<double>        pmean(B), pstd(B), pm2(B), pmin(B), pmax(B);
+    std::vector<std::uint64_t> pmin_frame(B), pmax_frame(B), n_total_per_bond(B);
     for (std::size_t bi = 0; bi < B; ++bi) {
         const auto& w = per_bond_[bi];
         mean[bi]      = w.mean;
@@ -141,7 +189,17 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
         max_[bi]      = w.max;
         min_frame[bi] = static_cast<std::uint64_t>(w.min_frame);
         max_frame[bi] = static_cast<std::uint64_t>(w.max_frame);
-        n_per_bond[bi] = static_cast<std::uint64_t>(per_bond_n_[bi]);
+        n_per_bond[bi] = static_cast<std::uint64_t>(per_bond_n_present_[bi]);
+
+        const auto& p = per_bond_present_[bi];
+        pmean[bi]      = p.mean;
+        pstd[bi]       = p.std;
+        pm2[bi]        = p.m2;
+        pmin[bi]       = p.min;
+        pmax[bi]       = p.max;
+        pmin_frame[bi] = static_cast<std::uint64_t>(p.min_frame);
+        pmax_frame[bi] = static_cast<std::uint64_t>(p.max_frame);
+        n_total_per_bond[bi] = static_cast<std::uint64_t>(source_attached_count_);
     }
 
     auto with_units = [](HighFive::DataSet ds, const std::string& u) {
@@ -159,6 +217,17 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
     with_units(grp.createDataSet("order_min_frame", min_frame), std::string("frame_index"));
     with_units(grp.createDataSet("order_max_frame", max_frame), std::string("frame_index"));
     with_units(grp.createDataSet("n_per_bond",      n_per_bond), std::string("frame_count"));
+
+    // Presence-fraction indicator Welford (mean ∈ [0, 1] = Pr(MOPAC
+    // reports bond)). Per `feedback_conditional_welford_for_sentinels`.
+    with_units(grp.createDataSet("order_present_fraction_mean",      pmean),      std::string("dimensionless"));
+    with_units(grp.createDataSet("order_present_fraction_std",       pstd),       std::string("dimensionless"));
+    with_units(grp.createDataSet("order_present_fraction_m2",        pm2),        std::string("dimensionless"));
+    with_units(grp.createDataSet("order_present_fraction_min",       pmin),       std::string("dimensionless"));
+    with_units(grp.createDataSet("order_present_fraction_max",       pmax),       std::string("dimensionless"));
+    with_units(grp.createDataSet("order_present_fraction_min_frame", pmin_frame), std::string("frame_index"));
+    with_units(grp.createDataSet("order_present_fraction_max_frame", pmax_frame), std::string("frame_index"));
+    with_units(grp.createDataSet("n_total_per_bond",                 n_total_per_bond), std::string("frame_count"));
 
     grp.createDataSet("frame_indices",            frame_indices_);
     grp.createDataSet("frame_times",              frame_times_)

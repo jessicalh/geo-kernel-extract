@@ -129,7 +129,8 @@ void MopacChargeWelfordTrajectoryResult::WriteH5Group(
         "Minimum-viable v0 — no delta variants."));
     grp.createAttribute("source_attached_policy", std::string(
         "conditional -- MopacResult attaches sparsely per the Mopac "
-        "cadence (OperationRunner.cpp:142, TimedAttach not "
+        "cadence (OperationRunner.cpp:138-148, Attach gated by "
+        "!opts.skip_mopac AND non-null Compute return; NOT "
         "RequireConformationResult). Compute's HasResult<MopacResult>() "
         "gate skips Welford update + records mask=0 on absent frames. "
         "WriteH5Group skips the entire group when source_attached_count==0."));
