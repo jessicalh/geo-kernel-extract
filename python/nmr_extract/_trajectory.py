@@ -2047,6 +2047,63 @@ def _load_aimnet2_charge_response_gradient_welford(
     )
 
 
+@dataclass(frozen=True)
+class ApbsEfgTimeSeriesGroup:
+    """Per-atom per-frame APBS electric field gradient time series from
+    /trajectory/apbs_efg_time_series/.
+
+    T2-only emission per the 2026-05-18 EFG schema rev (task #166): APBS
+    EFG = Hessian of the electric potential φ from the linearised
+    Poisson-Boltzmann solve, symmetric-traceless after the source-side
+    tracelessness projection. T0 + T1 are structurally zero; only the
+    five T2 components are emitted.
+
+      t2  (N, T, 5) float64 — T2_m-2, T2_m-1, T2_m0, T2_m+1, T2_m+2
+            in V/Å² (CGS-Hessian convention from ApbsFieldResult).
+
+    Source: ApbsFieldResult.apbs_efg_spherical; RequireConformationResult'd
+    in PerFrameExtractionSet so source_attached_per_frame is all-1 in
+    production. Canonical 'absent, not faked' gate applies — when the
+    source isn't attached, the affected (atom, frame) T2 cells are
+    NaN-filled and the per-frame mask is 0.
+    """
+    t2: np.ndarray                          # (N, T, 5) float64
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray   # (T,) uint8
+    n_atoms: int
+    n_frames: int
+    irrep_layout: str                       # "T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+    normalization: str                      # "isometric_real_sph"
+    parity: str                             # "2e"
+    units: str                              # "V/Å^2"
+    source: str
+    source_attached_policy: str
+
+
+def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
+    path = "/trajectory/apbs_efg_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return ApbsEfgTimeSeriesGroup(
+        t2=g["t2"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        irrep_layout=_attr("irrep_layout"),
+        normalization=_attr("normalization"),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2298,6 +2355,11 @@ class TrajectoryData:
     aimnet2_embedding: Optional["AIMNet2EmbeddingTimeSeriesGroup"] = None
     aimnet2_charge_response_gradient: Optional["AIMNet2ChargeResponseGradientTimeSeriesGroup"] = None
     aimnet2_charge_response_gradient_welford: Optional["AIMNet2ChargeResponseGradientWelfordGroup"] = None
+
+    # APBS solvated EFG TS (TR #4 of the 13-TR plan; 2026-05-21). T2-only
+    # 5-component emission; sibling of apbs_efield TS (Vec3, V/Å) sharing
+    # the same source calc ApbsFieldResult.
+    apbs_efg: Optional["ApbsEfgTimeSeriesGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2469,6 +2531,7 @@ def load_trajectory(path: str | Path,
         )
         aimnet2_charge_response_gradient = _load_aimnet2_charge_response_gradient_time_series(f)
         aimnet2_charge_response_gradient_welford = _load_aimnet2_charge_response_gradient_welford(f)
+        apbs_efg = _load_apbs_efg_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2492,4 +2555,5 @@ def load_trajectory(path: str | Path,
         aimnet2_embedding_in_h5=aimnet2_embedding_in_h5,
         aimnet2_charge_response_gradient=aimnet2_charge_response_gradient,
         aimnet2_charge_response_gradient_welford=aimnet2_charge_response_gradient_welford,
+        apbs_efg=apbs_efg,
     )
