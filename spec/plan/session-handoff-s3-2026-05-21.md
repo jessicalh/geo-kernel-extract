@@ -146,73 +146,47 @@ Per the user's framing: storage isn't the constraint
 ("if scientifically worth it, worth the disk"). The choice is
 architectural — what the right shape is going INTO cleanup phase.
 
-### Codex Pattern A prompt (paste into codex)
+### Open architectural questions for the S3 Pattern A pass
 
-```
-The S3 TR `RingNeighbourhoodTrajectoryStats` will emit per-(atom, ring)
-data as a trajectory time series. The 13-TR plan (spec/plan/13-tr-build-plan-2026-05-20.md
-§ Pattern A strawman) outlines a flat-fixed-R-per-atom-max layout with
-sentinel -1 ring_index for unfilled slots, plus per-frame metadata.
+The S3 design decisions, surfaced as questions (not as a tool-routing
+prompt — user owns the codex / agent routing as active management).
+Layout choice depends on architecture choice; architecture choice
+depends on the user's call between A1/A2/A3 above.
 
-Before locking the layout, decide the architecture.
+**Q1. Architecture (A1 / A2 / A3 per above).** The choice that
+shapes everything else.
 
-CONSUMER-SIDE STATE: five ring-using ConformationResult calculators
-(BiotSavartResult, HaighMallionResult, RingSusceptibilityResult,
-PiQuadrupoleResult, DispersionResult) independently push entries to
-`ConformationAtom::ring_neighbours` (a vector of fat-union
-`RingNeighbourhood` structs at `ConformationAtom.h:31-61`). All five
-use identical `ring_current_spatial_cutoff` so the (atom, ring) pair
-set is identical across calcs; find-or-create-then-write is the
-pattern. The struct carries fields from all five calculators.
+**Q2. Pattern A layout (only if A1 or A2 chosen).**
+- Flat fixed-R-per-atom-max with sentinel `ring_index = -1` for
+  unfilled slots (Pattern A strawman in the 13-TR plan)? Determine
+  `R_per_atom_max` from trajectory's observed max-rings-within-15Å
+  per atom plus a safety margin.
+- Or ragged variable-length per-atom lists (sidecar offset table
+  per Tripeptide-style emission)?
+- Sentinel convention if flat: int32 -1 for `ring_index`,
+  float NaN for unfilled-slot scalar fields.
 
-SUBSTRATE STATE: clean. RingTopology constructed substrate-driven from
-AtomSemanticTable; typed Ring class hierarchy with physics on virtuals.
+**Q3. Ring membership timing.**
+- `ring_membership_per_atom: (N, R_per_atom_max) int32` — static
+  (frame-invariant since ring topology doesn't change post-Seed)
+  or per-frame (preserves capability for ring-perception evolution)?
+- Strawman in the plan recommends static. The pre-flight finding
+  that all 5 ring calcs use the SAME `ring_current_spatial_cutoff`
+  supports static: the (atom, ring) pair set IS time-invariant on
+  the current substrate. Per-frame is forward-defensiveness for a
+  ring-perception change we haven't planned.
 
-QUESTIONS:
-
-1. Architectural choice for TR10:
-   A1) Read ca.ring_neighbours as-is, emit per-(atom, ring) Pattern A
-       with all calc-specific fields (BS G_spherical, HM hm_G_spherical,
-       RingChi chi_spherical, PiQuad quad_spherical, Dispersion
-       disp_spherical). Inherits the fat-union + parallel-write design.
-   A2) Lift to a shared `RingNeighbourhoodResult` ConformationResult.
-       Each ring-using calc READS from it; only its own calc-specific
-       output stays local. TR10 reads from the canonical struct.
-       Substrate cleanup; touches 5 calculators.
-   A3) TR10 captures geometric fields only (distance, rho, z, theta,
-       cos_phi, sin_phi, ring_type, ring_index, ring_membership).
-       Calc-specific T2 contributions live on the already-landed
-       per-calc shielding TS TRs (BsShieldingTS, HmShieldingTS, etc.).
-       Geometric-only TR10; defers the fat-union cleanup to the
-       cleanup phase.
-
-   Which is the right architecture for code complete? Storage is not
-   a constraint (HDF5 + gzip-9; 128GB host).
-
-2. Layout (if A1 or A2 chosen — Pattern A flat-vs-ragged):
-   - Flat fixed-R-per-atom-max with sentinel ring_index = -1 for
-     unfilled slots? Determine `R_per_atom_max` from the trajectory's
-     observed max-rings-within-15Å per atom.
-   - Ragged variable-length per-atom lists?
-   - Sentinel convention if flat (uint32 max? int32 -1? float NaN
-     for unfilled-slot scalar fields?).
-
-3. Ring membership timing:
-   - `ring_membership_per_atom: (N, R_per_atom_max) int32` — static
-     (frame-invariant since ring topology doesn't change post-Seed)
-     or per-frame (allows future ring-perception evolution)?
-   - Static recommended per the plan strawman; confirm.
-
-4. ProPyrrolidine handling:
-   - Saturated rings (Pro pyrrolidine) live on RingTopology.saturated_
-     and emit via RingPuckerTimeSeries already. Should they ALSO
-     appear in TR10's neighborhood emission, or are they categorically
-     excluded (aromatic-only, matching `protein.RingAt(i)`)?
-
-Return: (a) architectural choice (A1/A2/A3) with rationale, (b)
-locked layout decisions, (c) ProPyrrolidine inclusion call. Ideally
-one round; design questions are scoped.
-```
+**Q4. ProPyrrolidine handling.**
+- Saturated rings (Pro pyrrolidine) live on
+  `RingTopology.saturated_` and emit via `RingPuckerTimeSeries`
+  already. Excluded from `protein.RingAt(i)` (aromatic-only API).
+- Should TR10 ALSO exclude them (consistent with aromatic-only
+  ring-current physics)? Or include them as a separate
+  saturated-ring axis in the neighbourhood emission? Likely
+  exclude — Pro pyrrolidine has no ring-current intensity
+  (Joule & Mills 2010 ch. 7) and the ring-current spatial cutoff
+  is a magnetic-physics cutoff. But surface the question; it's
+  binary and easy to lock either way.
 
 ### S3 implementation order (once codex returns)
 
