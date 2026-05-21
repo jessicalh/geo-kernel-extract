@@ -50,6 +50,7 @@ from ._trajectory import (
     ApbsEfgTimeSeriesGroup,
     MopacChargeWelfordGroup,
     MopacBondOrderWelfordGroup,
+    MopacCoulombShieldingTimeSeriesGroup,
 )
 from ._types import RingType, BondCategory, N_RING_TYPES, N_BOND_CATEGORIES
 from ._tensors import (
@@ -157,4 +158,5 @@ __all__ = [
     "ApbsEfgTimeSeriesGroup",
     "MopacChargeWelfordGroup",
     "MopacBondOrderWelfordGroup",
+    "MopacCoulombShieldingTimeSeriesGroup",
 ]

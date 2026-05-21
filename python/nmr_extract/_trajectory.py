@@ -2256,6 +2256,60 @@ def _load_mopac_bond_order_welford(f) -> Optional[MopacBondOrderWelfordGroup]:
     )
 
 
+@dataclass(frozen=True)
+class MopacCoulombShieldingTimeSeriesGroup:
+    """Per-atom per-frame MOPAC Coulomb shielding contribution time
+    series from /trajectory/mopac_coulomb_shielding_time_series/.
+    TR7 of the 13-TR plan. T2-only (N, T, 5) emission — source field
+    is genuinely T2 per the MopacCoulombResult.cpp:251 comment
+    ("Pure T2 (EFG is traceless)").
+
+      t2 (N, T, 5) float64 — T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2 (ppm-like;
+            γ-shielding conversion applied at source).
+
+    Source: MopacCoulombResult.mopac_coulomb_shielding_contribution
+    (TimedAttach sparse — same "absent, not faked" group-skip
+    discipline as Mopac charge/bond-order Welfords).
+    """
+    t2: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    irrep_layout: str
+    normalization: str
+    parity: str
+    units: str
+    source: str
+    source_attached_policy: str
+
+
+def _load_mopac_coulomb_shielding_time_series(f) -> Optional[MopacCoulombShieldingTimeSeriesGroup]:
+    path = "/trajectory/mopac_coulomb_shielding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return MopacCoulombShieldingTimeSeriesGroup(
+        t2=g["t2"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        irrep_layout=_attr("irrep_layout"),
+        normalization=_attr("normalization"),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2524,6 +2578,13 @@ class TrajectoryData:
     # Bond axis == bonds.npy. Same sparse cadence + group-absent
     # discipline as the charge Welford.
     mopac_bond_order_welford: Optional["MopacBondOrderWelfordGroup"] = None
+
+    # MOPAC Coulomb shielding contribution time series (TR #7; 2026-05-21).
+    # T2-only 5-component emission (source is genuinely traceless per the
+    # MopacCoulombResult.cpp:251 comment). Sparse cadence; group skipped
+    # when MopacCoulombResult never attached.
+    mopac_coulomb_shielding_time_series: Optional[
+        "MopacCoulombShieldingTimeSeriesGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2698,6 +2759,7 @@ def load_trajectory(path: str | Path,
         apbs_efg = _load_apbs_efg_time_series(f)
         mopac_charge_welford = _load_mopac_charge_welford(f)
         mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
+        mopac_coulomb_shielding_time_series = _load_mopac_coulomb_shielding_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2724,4 +2786,5 @@ def load_trajectory(path: str | Path,
         apbs_efg=apbs_efg,
         mopac_charge_welford=mopac_charge_welford,
         mopac_bond_order_welford=mopac_bond_order_welford,
+        mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
     )

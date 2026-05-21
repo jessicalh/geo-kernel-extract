@@ -271,6 +271,7 @@ add_library(nmr_shielding
     src/ApbsEfgTimeSeriesTrajectoryResult.cpp
     src/MopacChargeWelfordTrajectoryResult.cpp
     src/MopacBondOrderWelfordTrajectoryResult.cpp
+    src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -1430,6 +1431,26 @@ target_compile_definitions(mopac_bond_order_welford_tests PRIVATE
 target_include_directories(mopac_bond_order_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(mopac_bond_order_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(mopac_bond_order_welford_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# MopacCoulombShieldingTimeSeries tests (TR7 of the 13-TR plan, sparse
+# T2 TS canonical — combines TR4 T2-only emission with TR5 sparse gate).
+# ============================================================================
+
+add_executable(mopac_coulomb_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mopac_coulomb_shielding_time_series.cpp
+)
+target_compile_definitions(mopac_coulomb_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mopac_coulomb_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mopac_coulomb_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mopac_coulomb_shielding_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
