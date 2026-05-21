@@ -97,6 +97,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("runs/block_avg"))
     args = parser.parse_args()
 
+    args.out.mkdir(parents=True, exist_ok=True)
+
     traj = load_trajectory(args.h5_path)
     print(f"Loaded {args.h5_path}: {traj.n_atoms} atoms x {traj.n_frames} frames")
 
@@ -136,7 +138,6 @@ def main() -> int:
             f.write(f"{b}\t{mean_sem}\t{int(valid.sum())}\n")
     print(f"Wrote {csv_path}")
 
-    args.out.mkdir(parents=True, exist_ok=True)
     print(f"Outputs at {args.out}")
     return 0
 

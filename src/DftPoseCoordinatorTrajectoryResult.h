@@ -51,8 +51,11 @@ namespace nmr {
 class DftPoseCoordinatorTrajectoryResult : public TrajectoryResult {
 public:
     // Project-decision parameter (per 13-TR plan, 2026-05-21):
-    //   1 ns dedup bucket at 20 ps stride = 50 frames.
-    static constexpr std::size_t kNsBucketFrames = 50;
+    //   1 ns dedup bucket = 1000 ps absolute trajectory time. Keyed
+    //   on `record.time_ps`, not the raw TRR frame index — the
+    //   previous frame-index form was wrong at any TRR cadence other
+    //   than 20 ps/frame (codex round 2 2026-05-21 HIGH finding).
+    static constexpr double kNsBucketPs = 1000.0;
 
     std::string Name() const override {
         return "DftPoseCoordinatorTrajectoryResult";
@@ -78,6 +81,14 @@ public:
 
 private:
     std::size_t n_reduced_ = 0;
+    // Finalize idempotency guard (codex round 2 2026-05-21 MEDIUM):
+    // unlike most TRs, the data this reducer emits lives in the
+    // SHARED SelectionBag rather than on TR-private state, so the
+    // canonical data-flow short-circuit (have_we_emitted check)
+    // requires inspecting the bag for our kind. A simple state flag
+    // is the right shape here per `feedback_bounds_check_over_state_flag`'s
+    // shared-bag escape hatch — the data flow IS shared-bag-shaped.
+    bool finalized_ = false;
 };
 
 }  // namespace nmr

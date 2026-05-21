@@ -52,10 +52,11 @@ void RmsdSpikeSelectionTrajectoryResult::Compute(
         tp.Result<RmsdTrackingTrajectoryResult>();
     const double rmsd = rmsd_tracker.LatestRmsd();
     if (!std::isfinite(rmsd)) {
-        // TR11's `RmsdAtFrame` API contract returns NaN when the
-        // alignment set has fewer than 3 atoms (Kabsch rotation
-        // underdetermined). Skip the spike check for that frame —
-        // there is no valid RMSD to compare against thresholds.
+        // TR11's `LatestRmsd` / `RmsdAtSampleIndex` return NaN when
+        // the alignment set has fewer than 3 atoms (Kabsch rotation
+        // underdetermined) OR the per-frame rmsd vector is empty
+        // (Compute not yet fired). Skip the spike check for that
+        // frame — there is no valid RMSD to compare against thresholds.
         return;
     }
 

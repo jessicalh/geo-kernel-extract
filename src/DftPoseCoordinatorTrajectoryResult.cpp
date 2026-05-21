@@ -68,6 +68,13 @@ void DftPoseCoordinatorTrajectoryResult::Finalize(
         Trajectory& traj) {
     (void)tp;
 
+    // Idempotency guard: a second Finalize call would recollect the
+    // same upstream records and push duplicates into the SelectionBag
+    // (codex round 2 2026-05-21 MEDIUM). Bag-shaped data flow makes
+    // the data-flow short-circuit shared-bag-aware; a flag is the
+    // right shape here.
+    if (finalized_) return;
+
     // CROSS-RESULT READ: walk both upstream emitter kinds. Iterate in
     // each kind's push order (oldest first); the first record in each
     // (residue_index, ns_bucket) cell wins.
@@ -85,7 +92,13 @@ void DftPoseCoordinatorTrajectoryResult::Finalize(
     auto collect = [&](const SelectionRecord* rec, const char* origin) {
         if (!rec) return;
         const int  ri      = RecordResidueIndex(*rec);
-        const auto bucket  = rec->frame_idx / kNsBucketFrames;
+        // Bucket by ABSOLUTE elapsed time (codex round 2 HIGH): the
+        // earlier `frame_idx / kNsBucketFrames` form was wrong at any
+        // TRR cadence other than the 20 ps/frame default because
+        // `frame_idx` counts both read AND skipped raw TRR frames.
+        // `time_ps` is the authoritative trajectory clock.
+        const auto bucket = static_cast<std::size_t>(
+            rec->time_ps / kNsBucketPs);
         const auto key     = std::make_pair(ri, bucket);
         if (!seen_keys.insert(key).second) return;  // dup
         std::string reason = std::string("dft_pose_candidate_") +
@@ -124,6 +137,7 @@ void DftPoseCoordinatorTrajectoryResult::Finalize(
         "deduped " + std::to_string(n_reduced_) +
         " unique (residue, ns_bucket) candidates from RmsdSpike + "
         "ChiRotamer streams");
+    finalized_ = true;
 }
 
 }  // namespace nmr

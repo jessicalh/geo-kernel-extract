@@ -168,3 +168,95 @@ TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
     if (chi_n > 0)   EXPECT_TRUE(saw_chi_kind);
     if (reduced_n > 0) EXPECT_TRUE(saw_coord_kind);
 }
+
+
+// ── TR12: forcing test for the cross-result-read at stride > 1 ─────
+//
+// Codex round 2 2026-05-21 MEDIUM: the EndToEndOn1P9J test above uses
+// stride=200 which yields ~8 sampled frames, below the 10-frame
+// rolling-window gate, so it would silently pass at stride > 1 even
+// if the critical round-1 bug (`RmsdAtFrame(frame_idx)` reading off
+// the dense vector at non-default stride) regressed. This test runs
+// at stride=10 over 1P9J's 1501-frame fixture (~150 sampled frames
+// covering the full 15 ns trajectory) and ASSERTS at least one
+// RmsdSpike fires. The 1.5 Å absolute threshold reliably trips during
+// SH3 backbone equilibration in this range; if a future refactor
+// silently breaks the cross-result-read again, this test fails.
+
+TEST(RmsdSpikeAndDftCoord, SpikeFiresAtStrideGreaterThanOne1P9J) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    auto config = BuildConfig(10);  // ~150 sampled frames over 15 ns
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Session session;
+    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
+
+    const auto& tr_rmsd = tp.Result<nmr::RmsdTrackingTrajectoryResult>();
+    const auto& tr_spike = tp.Result<nmr::RmsdSpikeSelectionTrajectoryResult>();
+    EXPECT_GE(tr_rmsd.NumFrames(), 100u)
+        << "expected ≥ 100 sampled frames for the rolling window to "
+        << "fully engage at this stride";
+
+    // The forcing assertion: at stride > 1, with the 1P9J SH3 fixture
+    // and the project-decision 1.5 Å absolute threshold, at least one
+    // spike MUST fire. If 0, either the cross-result-read regressed
+    // (TR12 silently NaN-skipping every frame) or the threshold is
+    // mis-tuned for this fixture.
+    EXPECT_GE(tr_spike.SpikeCount(), 1u)
+        << "TR12 produced zero spikes at stride > 1 — codex round 1 "
+        << "CRITICAL bug regression check: TR12 must read TR11 via "
+        << "`LatestRmsd()`, not the removed `RmsdAtFrame(frame_idx)` "
+        << "which silently returned NaN at any stride > 1";
+
+    nmr::OperationLog::Info(
+        "RmsdSpikeAndDftCoordTest::SpikeFiresAtStrideGreaterThanOne1P9J",
+        "stride=10 n_frames=" + std::to_string(tr_rmsd.NumFrames()) +
+        " spikes=" + std::to_string(tr_spike.SpikeCount()));
+}
+
+
+// ── TR13: Finalize idempotency (no duplicate emission on second call) ─
+//
+// Codex round 2 2026-05-21 MEDIUM: TR13's iterator-invalidation fix
+// (round 1 HIGH #2) made the collect-then-push pattern safe but did
+// NOT prevent a second `Finalize()` call from re-collecting the same
+// upstream records and pushing duplicates. This test verifies the
+// `finalized_` guard short-circuits the second call.
+
+TEST(RmsdSpikeAndDftCoord, DftPoseCoordinatorFinalizeIdempotency) {
+    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::Load();
+    auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
+
+    auto config = BuildConfig(10);
+    nmr::TrajectoryProtein tp;
+    ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
+        << tp.Error();
+    nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
+    nmr::Session session;
+    ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
+
+    auto& tr_coord =
+        const_cast<nmr::DftPoseCoordinatorTrajectoryResult&>(
+            tp.Result<nmr::DftPoseCoordinatorTrajectoryResult>());
+    const std::size_t reduced_after_first = tr_coord.ReducedCount();
+    const std::size_t bag_count_first = traj.Selections().CountByKind<
+        nmr::DftPoseCoordinatorTrajectoryResult>();
+
+    // Second Finalize must be a no-op.
+    tr_coord.Finalize(tp, traj);
+    EXPECT_EQ(tr_coord.ReducedCount(), reduced_after_first)
+        << "second Finalize duplicated reduced records; finalized_ "
+        << "guard missing or bypassed";
+    EXPECT_EQ(traj.Selections().CountByKind<
+                  nmr::DftPoseCoordinatorTrajectoryResult>(),
+              bag_count_first)
+        << "second Finalize pushed duplicates into the SelectionBag";
+}
