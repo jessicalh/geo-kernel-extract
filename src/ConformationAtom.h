@@ -55,7 +55,6 @@ struct RingNeighbourhood {
     SphericalTensor disp_spherical;
     double disp_scalar = 0.0;
     int disp_contacts = 0;
-    double gaussian_density = 0.0;
     double cos_phi = 1.0;   // azimuthal: cos of in-plane angle to vertex 0
     double sin_phi = 0.0;   // azimuthal: sin of in-plane angle to vertex 0
 };

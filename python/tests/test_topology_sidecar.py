@@ -97,7 +97,7 @@ def _required_identity_npys(out_dir, n_atoms):
     np.save(out_dir / "residue_type.npy",
             np.zeros(n_atoms, dtype=np.int32))
     np.save(out_dir / "ring_contributions.npy",
-            np.zeros((0, 59), dtype=np.float64))
+            np.zeros((0, 58), dtype=np.float64))
     np.save(out_dir / "ring_geometry.npy",
             np.zeros((0, 10), dtype=np.float64))
 

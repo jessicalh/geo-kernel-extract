@@ -1,6 +1,6 @@
 """Per-ring sparse contributions and ring geometry reference.
 
-ring_contributions.npy — (P, 59) one row per (atom, ring) pair:
+ring_contributions.npy — (P, 58) one row per (atom, ring) pair:
     [0]     atom_index
     [1]     ring_index
     [2]     ring_type           RingTypeIndex 0-7
@@ -17,9 +17,8 @@ ring_contributions.npy — (P, 59) one row per (atom, ring) pair:
     [45:54] chi_G               SphericalTensor
     [54]    disp_scalar
     [55]    disp_contacts
-    [56]    gaussian_density
-    [57]    cos_phi             azimuthal angle cosine (relative to vertex 0)
-    [58]    sin_phi             azimuthal angle sine (relative to vertex 0)
+    [56]    cos_phi             azimuthal angle cosine (relative to vertex 0)
+    [57]    sin_phi             azimuthal angle sine (relative to vertex 0)
 
 ring_geometry.npy — (R, 10) one row per ring:
     [0]     ring_index
@@ -41,18 +40,18 @@ from ._tensors import SphericalTensor
 class RingContributions:
     """Sparse per-(atom, ring) pair contributions.
 
-    Shape ``(P, 59)`` where P = number of evaluated (atom, ring) pairs.
+    Shape ``(P, 58)`` where P = number of evaluated (atom, ring) pairs.
     Each row carries geometry, all ring current kernels as
     :class:`SphericalTensor` views, dispersion scalars, and azimuthal angle.
 
     Use :meth:`for_atom` and :meth:`for_ring_type` to filter rows.
 
     Args:
-        data: numpy array of shape ``(P, 59)``.
+        data: numpy array of shape ``(P, 58)``.
     """
 
     __slots__ = ("_data",)
-    COLS = 59
+    COLS = 58
 
     def __init__(self, data: np.ndarray):
         if data.ndim != 2 or data.shape[1] != self.COLS:
@@ -144,18 +143,14 @@ class RingContributions:
         return self._data[:, 55].astype(np.intp)
 
     @property
-    def gaussian_density(self) -> np.ndarray:
-        return self._data[:, 56]
-
-    @property
     def cos_phi(self) -> np.ndarray:
         """Cosine of azimuthal angle in ring plane (relative to vertex 0)."""
-        return self._data[:, 57]
+        return self._data[:, 56]
 
     @property
     def sin_phi(self) -> np.ndarray:
         """Sine of azimuthal angle in ring plane (relative to vertex 0)."""
-        return self._data[:, 58]
+        return self._data[:, 57]
 
     # ── Filtering ───────────────────────────────────────────────────
 

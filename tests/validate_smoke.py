@@ -119,8 +119,8 @@ def validate_arrays(arrays: dict[str, np.ndarray], label: str) -> int:
         rc = arrays["ring_contributions.npy"]
         print(f"  Ring contributions: {rc.shape[0]} (atom,ring) pairs, "
               f"{rc.shape[1]} columns")
-        if rc.shape[1] != 59:
-            print(f"  FAIL: ring_contributions columns={rc.shape[1]}, expected 59")
+        if rc.shape[1] != 58:
+            print(f"  FAIL: ring_contributions columns={rc.shape[1]}, expected 58")
             errors += 1
 
     # Summary

@@ -2159,7 +2159,6 @@ within range of an atom. Built by ring current ConformationResult objects.
 | disp_spherical | SphericalTensor | Angstrom^-6 | DispersionResult | |
 | disp_scalar | double | Angstrom^-6 | DispersionResult | Sum of 1/r^6 over vertices |
 | disp_contacts | int | - | DispersionResult | Count of vertex contacts in range |
-| gaussian_density | double | dimensionless | BiotSavartResult | Learned per-type spatial envelope |
 
 ---
 
@@ -2459,7 +2458,7 @@ bfs_decay.
 
 ### BiotSavartResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-ring (RingNeighbourhood): G_tensor, G_spherical, B_field,
-B_cylindrical, gaussian_density.
+B_cylindrical.
 Per-atom totals: total_B_field, total_G_tensor, total_G_spherical,
 per_type_G_T0_sum, per_type_G_T2_sum, ring counts, ring distances,
 exp-weighted sums, variance.

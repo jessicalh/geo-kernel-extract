@@ -138,7 +138,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               native_axis="atom", mechanism="topology"),
     ArraySpec("residue_type",     "identity",   np.ndarray,        None, True,  "Residue type enum (int32)",
               native_axis="atom", mechanism="topology"),
-    ArraySpec("ring_contributions","identity",  RingContributions, 59,   True,  "Per-(atom,ring) pair contributions",
+    ArraySpec("ring_contributions","identity",  RingContributions, 58,   True,  "Per-(atom,ring) pair contributions",
               native_axis="ring_contribution_pair", irreps=_SHIELD_IRREPS, units="",
               sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_current"),
     ArraySpec("ring_geometry",    "identity",   RingGeometry,      10,   True,  "Per-ring geometry reference",
