@@ -37,6 +37,12 @@ model-architecture neighbours.
 
 ## 1. `GreenKuboSpectralDensityResult` (new, trajectory-level)
 
+> **RETIRED 2026-05-21:** Spectral view of σ(t) is redundant with
+> `SigmaEssentialDynamics` PCA at our 15 ns timescale. The PCA already
+> exposes the dominant low-frequency modes; explicit J(ω) at named
+> Larmor frequencies doesn't add an independent observable at this
+> trajectory length. Re-open if a longer trajectory (μs scale) lands.
+
 ### What
 Per-atom spectral density `J(ω)` at a named set of Larmor
 frequencies (600 / 800 / 950 MHz typical), computed as the
@@ -84,6 +90,11 @@ trustworthy and what requires the μs-harvester phase.
 ---
 
 ## 2. `PseudocontactShiftResult` (new, conformation-level)
+
+> **RETIRED 2026-05-21:** No paramagnetic substrate in scope. 1P9J +
+> the 676-protein fleet are diamagnetic; no lanthanide-tag or
+> paramagnetic-spin-label data to compare against. Re-open if a
+> paramagnetic case study enters the thesis chapter.
 
 ### What
 Pseudocontact shift (PCS) per atom given an external χ tensor
@@ -146,6 +157,13 @@ tensors.
 
 ## 3. Per-secondary-structure CSA stratification (diagnostic pass)
 
+> **RETIRED 2026-05-21** (as a C++ TR): ships as Python groupby on the
+> existing Dssp8 TS NPYs at chapter-draft time. The DSSP8 transitions
+> + per-residue ss8_dominant data is already emitted by
+> `Dssp8TransitionTrajectoryResult`; the stratification is a one-liner
+> `np.unique(ss8_dom, return_counts=True)` plus per-class σ-mean
+> aggregation. No new C++ calculator warranted.
+
 ### What
 Post-prediction analysis: stratify the predicted σ tensor per-atom
 by DSSP 8-class secondary structure, reporting per-stratum mean
@@ -188,6 +206,13 @@ Thesis-finding impact depends on what the numbers say.
 ---
 
 ## 4. Lie-group GP regression on SE(3) (Stage 3 model neighbour)
+
+> **RETIRED 2026-05-21** (from the calculator queue): this is Stage 3
+> *modeling* work (the calibration / regression problem), not a Stage 2
+> calculator. Lives in `learn/` rather than `src/`. The thesis-stage
+> claim — that geometric kernels + equivariant features describe the
+> σ-residual — survives without this specific regression form being
+> implemented C++-side. Re-evaluate at Stage 3 model design.
 
 ### What
 Alternative to equivariant-GNN for learning the kernel-feature →

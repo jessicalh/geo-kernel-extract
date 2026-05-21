@@ -16,6 +16,14 @@
 
 ## 1. `BlockAveragedConvergenceResult` (new, trajectory-level diagnostic)
 
+> **RETIRED 2026-05-21** (as a C++ TR): ships as a Python analysis
+> script (`learn/stage2/block_avg_convergence.py`). The block-averaged
+> SEM is a diagnostic over already-emitted shielding-TS NPYs;
+> implementing it C++-side would emit ~30 redundant `_base_sem` arrays
+> per protein when one ~100-line Python script over the existing TS
+> NPYs answers the same question. Per `feedback_no_export_pipelines`:
+> diagnostic that consumes the SDK is correctly Python.
+
 ### What
 Per-atom per-tensor-component block-averaged standard error of the mean, as a function of block length. Directly answers the question "is the arithmetic-mean shielding tensor over our 600-frame trajectory converged?"
 
@@ -42,6 +50,13 @@ Ship first. Mechanically trivial; gates every subsequent averaging claim.
 ---
 
 ## 2. `SigmaLipariSzaboResult` (new, trajectory-level)
+
+> **RETIRED 2026-05-21** (as a C++ TR): ships as a Python analysis
+> script (`learn/stage2/sigma_lipari_szabo.py`). σ-S² is `t0.std²` on
+> any per-atom Welford TR (BS / HM / Mc / Eeq / Sasa), already
+> emitted; the BMRB cross-report adds external NH-S² data and is
+> chapter-draft Python, not a C++ calculator. Per
+> `feedback_no_export_pipelines`.
 
 ### What
 Per-atom model-free fit of the shielding-tensor autocorrelation function `C_σ(t)` to the standard Lipari-Szabo form `C(t) = S² + (1 − S²)·exp(−t/τ_e)`, yielding a (S²_σ, τ_e) pair per atom per tensor component (or per irrep component after T0/T1/T2 decomposition).
@@ -71,6 +86,14 @@ Ship second, after idea 1 verifies the autocorrelation substrate is converged en
 
 ## 3. `SigmaEssentialDynamicsResult` (new, trajectory-level)
 
+> **RETIRED 2026-05-21** (as a C++ TR): ships as a Python analysis
+> script (`learn/stage2/sigma_essential_dynamics.py`). SVD over a
+> stacked (T, N*K) matrix is a one-liner against the existing
+> shielding-TS H5 groups; emitting the eigendecomposition C++-side
+> would force an opinionated K-channel-selection at the extractor
+> boundary that downstream consumers might want to revise. Per
+> `feedback_no_export_pipelines`.
+
 ### What
 PCA / essential-dynamics decomposition of the per-atom shielding trajectory. Stack the centered (T, N·9) shielding-tensor matrix, SVD across frames, extract top-k modes and their temporal coefficients. Each mode is a spatial pattern (a tensor at each atom) plus a time-course; modes are ordered by variance explained.
 
@@ -97,6 +120,14 @@ Ship third. Trivial code, instructive output regardless of interpretation outcom
 ---
 
 ## 4. `SigmaTuckerDecompositionResult` (new, trajectory-level, exploratory)
+
+> **RETIRED 2026-05-21** (conditionally; trigger reopens):
+> higher-order Tucker decomposition over the (T, N, K) σ-tensor stack
+> is a stronger structural ansatz than 2D SVD. Defer behind the SVD
+> result from §3. Conditional trigger: re-open if PCA on σ-stack
+> reveals multi-axis structure that 2D SVD cannot unmix (i.e. the
+> top eigenvectors mix atom-axis modes that should factorise into
+> atom × kernel separately).
 
 ### What
 Tucker decomposition (higher-order SVD) of the (T, N, K, 9) shielding-tensor trajectory, where T = frames, N = atoms, K = kernels, 9 = Cartesian tensor components (or equivalent T0/T1/T2 irrep encoding). Produces a core tensor plus mode matrices along each axis, each mode admitting interpretation as a temporal, spatial, kernel-family, or tensor-component pattern.
@@ -127,6 +158,12 @@ Ship after ideas 1–3 if those show the data has structure to decompose. If ide
 
 ## 5. `CrossCorrelatedRelaxationResult` (new, trajectory-level)
 
+> **RETIRED 2026-05-21:** CSA-dipolar cross-correlated relaxation needs
+> ns-to-ms timescale sampling for meaningful rate constants. Our 1P9J
+> 15 ns trajectory is timescale-marginal — captures fast picosecond
+> motion but undersamples the slow modes the rates physically respond
+> to. Re-open behind μs-scale trajectory data if it lands.
+
 ### What
 Per-atom cross-correlation between the shielding-tensor CSA correlation and the backbone NH dipolar correlation, yielding the CSA–dipolar cross-correlated relaxation rate at named Larmor frequencies. Complements idea 1 in the 2026-04-22 doc (`GreenKuboSpectralDensityResult`) by extending to multi-observable correlations.
 
@@ -154,6 +191,12 @@ Ship after idea 2, which produces the autocorrelation substrate CCR reuses.
 ---
 
 ## 6. `SigmaMSMResult` (exploratory, trajectory-level)
+
+> **RETIRED 2026-05-21:** Markov state models need millisecond
+> sampling for meaningful state transitions. Our 1P9J 15 ns
+> trajectory typically captures 3-4 sidechain rotamer flips — well
+> below the ~10² transitions per state needed for a stable MSM
+> reduction. Re-open at μs scale.
 
 ### What
 Markov State Model on the shielding trajectory: discretize per-atom σ(t) into kinetic states via k-means or similar, estimate transition matrix via maximum-likelihood on frame-to-frame state transitions, extract slow-mode eigenvectors and implied timescales.
@@ -183,6 +226,13 @@ Exploratory. After ideas 1–5 and only if they suggest kinetic substates exist.
 
 ## 7. `SigmaMemoryKernelResult` (exploratory, trajectory-level, high risk)
 
+> **RETIRED 2026-05-21:** Mori-Zwanzig memory-kernel formulation
+> requires the trajectory to cover the long-memory regime
+> (≫ correlation time). 15 ns is insufficient: the σ-σ
+> autocorrelation in our test runs already shows ringing artefacts
+> at the trajectory length. Re-open at μs scale, alongside the
+> CrossCorrelatedRelaxation and MSM entries above.
+
 ### What
 Mori-Zwanzig projection decomposition of σ(t) into systematic drift, memory kernel K(t), and noise η(t), satisfying the generalized Langevin equation `dσ/dt = drift − ∫ K(t−t')σ(t') dt' + η(t)`.
 
@@ -209,6 +259,12 @@ Exploratory. Probably aspirational for this MSc; flag for PhD-stage if it contin
 ---
 
 ## 8. Aromatic-H geometry sanity-check extraction (diagnostic, zero new calculator)
+
+> **RETIRED 2026-05-21:** Diagnostic only; an `mdtraj` one-liner against
+> the trajectory frames during chapter write-up. Already coverable
+> via the static `ring_membership_per_atom` + per-frame `geometry`
+> in TR10 `RingNeighbourhoodTrajectoryStats` (filter to aromatic-H
+> indices via the typed Atom enrichment).
 
 ### What
 Python-side diagnostic: compute our BS / HM kernel output at a set of geometrically constrained aromatic-H probe positions reproducing Agarwal 1977 [10]-paracyclophane (or a benzene-methane probe matching Case 1995), compare against the published numerical values.
@@ -469,40 +525,93 @@ geometric work. Output per residue per frame (R, T, N_coupling)
 float64 in Hz; static `coupling_legend` attr names the couplings
 and cites the Karplus coefficient source.
 
-Status: LANDED 2026-05-19 as `JCouplingTimeSeriesTrajectoryResult` in
-`src/JCouplingTimeSeriesTrajectoryResult.{h,cpp}`. All FOUR channels
-implemented:
-- ³J(HN, Hα) -- Vuister & Bax 1993 JACS 115:7772 (DOI 10.1021/
+Status: LANDED 2026-05-19 (initial 4-channel scaffold) → EXPANDED to
+8 channels on the same day after byte-verification of all four source
+PDFs. `JCouplingTimeSeriesTrajectoryResult` in
+`src/JCouplingTimeSeriesTrajectoryResult.{h,cpp}`. NINE per-residue
+(R, T) datasets across eight channel families:
+
+- `J_HN_Halpha` -- Vuister & Bax 1993 JACS 115:7772 (DOI 10.1021/
   ja00070a024). Coefficients A=6.51, B=-1.76, C=1.60.
-- ³J(HN, Cβ) -- Wang & Bax 1996 JACS 118:2483 (DOI 10.1021/ja9535524)
-  Table 1 NMR/X-ray refined fit. Coefficients A=3.39, B=-0.94, C=0.07
-  -- byte-verified from the open Bax-group repository PDF
-  (references/wang-bax-1996-karplus-phi-ubiquitin.pdf).
-- ³J(N, Cγ) -- Pérez et al. 2001 JACS 123:7081 (DOI 10.1021/ja003724j).
-  Coefficients A=1.29, B=-0.49, C=0.37 -- citation verified, coefficient
-  byte-verification pending institutional access to the paywalled paper.
-- ³J(C', Cγ) -- Pérez et al. 2001 (same paper). Coefficients A=1.74,
-  B=-0.57, C=0.25 -- same caveat.
+- `J_HN_Halpha_Vogeli` -- Vögeli, Ying, Grishaev & Bax 2007 JACS
+  129:9377 (DOI 10.1021/ja070324o), Table 1 "rigid" row.
+  Coefficients A=7.97, B=-1.26, C=0.63. Same atomic dihedral as
+  J_HN_Halpha (H-N-CA-HA); methods-accumulate alternate (both
+  channels stay per feedback_methods_accumulate). Byte-verified
+  against the PDF (references/vogeli-2007-limits-backbone-
+  dynamics-3j-couplings-gb3.pdf).
+- `J_HN_Cbeta` -- Wang & Bax 1996 JACS 118:2483 (DOI 10.1021/
+  ja9535524) Table 1 row 3 NMR/X-ray refined fit. Coefficients
+  A=3.39, B=-0.94, C=0.07 -- byte-verified against the open
+  Bax-group repository PDF (references/wang-bax-1996-karplus-
+  phi-ubiquitin.pdf).
+- `J_HN_Cprime` -- Wang & Bax 1996 Table 1 **row 4, θ=0°**.
+  Coefficients A=4.32, B=+0.84, C=0.00. B is POSITIVE; J can be
+  slightly negative at the vertex (~-0.04 Hz, physical). Atomic
+  dihedral H-N-CA-C. (Row-mapping fixed 2026-05-20 per codex F1:
+  prior bundle attributed row 2 values to this channel.)
+- `J_Halpha_Cprime` -- Wang & Bax 1996 Table 1 **row 2, θ=-60°**.
+  Coefficients A=3.75, B=+2.19, C=1.28. B is POSITIVE --
+  arithmetic bounds differ from cos²-dominant channels. Atomic
+  dihedral **Hα-CA-N-C'(prev)** -- 3-bond path crosses the peptide
+  bond at the previous residue's C', rotation around N-CA (phi
+  axis), per Vuister teaching lecture sect 6.1 + Vogeli 2007 page
+  9384 (3J(C'(i-1), Hα) is one of the six phi-related couplings).
+  N-terminus NaN (no C'(prev), resolved via
+  Protein::BackbonePredecessor). (Atom path + row-mapping fixed
+  2026-05-20 per codex F1 + F2: prior bundle used HA-CA-C-N(next)
+  which is rotation around CA-C = psi axis, NOT a phi observable.)
+- `J_N_Cgamma` -- Pérez et al. 2001 JACS 123:7081 (DOI 10.1021/
+  ja003724j) Table 2 consensus row, A=1.29, B=-0.49, C=0.37.
+  Byte-verified against `references/perez-2001-self-consistent-
+  karplus-3j-chi1.pdf` page 7086.
+- `J_Cprime_Cgamma` -- Pérez 2001 Table 2 consensus row, A=2.31,
+  B=-0.87, C=0.55. **BYTE-CORRECTED 2026-05-19** from earlier
+  circulated (1.74, -0.57, 0.25). The page-7086 PDF Table 2
+  consensus row is (2.31, -0.87, 0.55); previous value was a
+  mis-cited circulated number.
+- `J_Halpha_Hbeta2` / `J_Halpha_Hbeta3` -- Pérez 2001 Table 2
+  consensus row, A=7.23, B=-1.37, C=2.22. Emitted as two
+  separate channels for the prochiral methylene Hβ pair (HB2,
+  HB3 in IUPAC naming). Ile/Val/Thr methine Hβ mirrored to
+  BOTH slots (same value). GLY/ALA NaN (no methylene Hβ; ALA's
+  methyl Cβ is deliberately excluded as it is not the same
+  chemical observable).
 
-Per-channel emission (four separate (R, T) datasets — J_HN_Halpha,
-J_HN_Cbeta, J_N_Cgamma, J_Cprime_Cgamma — preferred over a fused
-(R, T, N_coupling) cube for SDK consumer ergonomics: each channel
-reads natively as a 2D timeline). All Karplus constants centralized
-in `src/PhysicalConstants.h` with full citations + DOIs + reference
-PDFs alongside in `references/`. The H5 attrs format the numeric
-values from the compiled-in constants at write time, so the attrs
-and the binary cannot disagree.
+Per-channel emission (nine separate (R, T) datasets) preferred over
+a fused (R, T, N_coupling) cube for SDK consumer ergonomics: each
+channel reads natively as a 2D timeline. All Karplus constants
+centralized in `src/PhysicalConstants.h` with full citations + DOIs
++ reference PDFs alongside in `references/`. The H5 attrs format
+the numeric values from the compiled-in constants at write time,
+so the attrs and the binary cannot disagree.
 
-Citation hygiene: the original commit (6c609c6) attributed (6.51,
--1.76, 1.60) to Wang & Bax 1996; agent-level literature audit on
-2026-05-19 corrected this to Vuister & Bax 1993 (Wang & Bax 1996's
-own refit gives 6.98/-1.38/1.72; the 6.51 values are the 1993
-parametrization). Fixed in the follow-up commit before review.
+Citation hygiene log:
+- Original commit (6c609c6) attributed (6.51, -1.76, 1.60) to Wang
+  & Bax 1996; agent-level literature audit on 2026-05-19 corrected
+  to Vuister & Bax 1993.
+- Initial 4-channel landing carried the Pérez 2001 (C', Cγ) value
+  (1.74, -0.57, 0.25) with a "byte-verification pending" caveat.
+  Byte-verified expansion on the same day against the
+  `perez-2001-self-consistent-karplus-3j-chi1.pdf` page-7086 Table 2
+  showed the correct consensus row is (2.31, -0.87, 0.55); fixed
+  in the 8-channel expansion before review.
+
+Per-residue masks: `J_HN_Halpha_exists` (gates J_HN_Halpha and
+J_HN_Halpha_Vogeli), `J_HN_Cbeta_exists`, `J_HN_Cprime_exists`,
+`J_Halpha_Cprime_exists` (gated on Protein::BackbonePredecessor;
+N-terminus = 0), `J_chi1_exists` (residue has chi1 -- necessary
+but NOT sufficient for J_N_Cgamma / J_Cprime_Cgamma), `J_N_Cgamma_exists`
++ `J_Cprime_Cgamma_exists` (stricter: also require Element::C at
+chi[0].a[3], so SER/CYS/THR = 0 even though chi1 is valid),
+`J_Halpha_Hbeta_exists`.
 
 Wired into RunConfiguration::WithProductionDefaults; SDK group exposed
 via `TrajectoryData.j_coupling` and `from nmr_extract import
 JCouplingTimeSeriesGroup`. Tests in
-`tests/test_j_coupling_time_series.cpp`: 4/4 green on 1P9J (R=54, T=6,
-PRO=1, GLY=4, GLY+ALA=6; finite obs: J(HN,Hα)=312, J(HN,Cβ)=288,
-J(N,Cγ)=288, J(C',Cγ)=288 -- all within published analytical bounds
-[1.48-9.87 / 0.005-4.40 / 0.32-2.15 / 0.20-2.56 Hz]).
+`tests/test_j_coupling_time_series.cpp` validate all nine datasets,
+per-channel arithmetic bounds (including the negative-vertex case
+for J(Hα, C')), the PRO/GLY/ALA/C-terminus NaN gating, and a
+cross-channel phi-consistency Pearson correlation between
+J(HN,Hα) and J(HN,C') (both phi observables via different atomic
+dihedrals).
