@@ -22,10 +22,21 @@
 //
 // Source: MopacResult.TopologyBondOrders() — std::vector<double>
 // parallel to protein.Bonds(). MopacResult sets bond order to 0.0
-// (exact) for bonds MOPAC didn't report (NOT NaN). Wiberg bond
-// orders for real covalent bonds are continuous QM observables and
-// structurally non-zero; exact-zero is the canonical "no observation"
-// sentinel.
+// (exact) for bonds MOPAC didn't report (NOT NaN). NOTE: the
+// MopacResult parser itself filters at `bo > 0.01` (see
+// MopacResult.cpp:197), so any Wiberg order in (0.0, 0.01] is
+// dropped at the parser and arrives here as the 0.0 sentinel —
+// indistinguishable from "MOPAC didn't print this bond at all".
+// For typical MD this fuses two cases:
+//   (1) MOZYME-merged interior bond (MOPAC genuinely didn't report),
+//   (2) Transient bond at extension/breaking with Wiberg order
+//       below the 0.01 parser threshold (MOPAC printed a small
+//       value, the parser dropped it).
+// Both contribute to `bo == 0.0` here. The Welford treats the
+// fused event as "no observation"; for production-stable bonds
+// (case 1 only) this is what the sentinel-aware design wants,
+// and for case 2 the bond is by definition not a meaningful
+// covalent observation for the calibration target.
 //
 // SENTINEL-AWARE WELFORD (per `feedback_conditional_welford_for_sentinels`,
 // codex R6 2026-05-18): naive accumulation of "no observation"
