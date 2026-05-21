@@ -122,106 +122,120 @@ fill in their own slots.
 - **D4**: `gaussian_density` field defined on the struct but not
   populated by any of the 5 calcs I read. Possibly dead.
 
-**The S3 architectural choice** — three paths, codex Pattern A
-prompt asks for the decision:
+### Locked S3 scope (decision 2026-05-21, post-topology-aware agent review)
 
-- **A1**: TR10 reads `ca.ring_neighbours` as-is. Emits per-(atom,
-  ring) Pattern A with all calc-specific fields. Inherits the fat-
-  union + parallel-write mess. Lowest cost in this session;
-  architecturally inherits D1-D3.
-- **A2**: Lift the per-(atom, ring) computation into a shared
-  `RingNeighbourhoodResult` ConformationResult. Each ring-using
-  calc READS from it (sets only its calc-specific fields locally,
-  not on the shared struct). TR10 reads from it. Substrate cleanup
-  pays off the debt. Higher cost — touches 5 calculators.
-- **A3**: TR10 captures GEOMETRIC fields only (distance, rho, z,
-  theta, azimuth, ring_type, ring_index). Calc-specific T2
-  contributions stay on per-atom shielding fields and are emitted
-  by the existing BS/HM/Mc/PiQuad/RingChi/Dispersion shielding TS
-  TRs (already in the bundle). TR10 captures only the geometric
-  neighborhood, not the per-calc physics. Lean; defers D1-D3 to
-  cleanup phase.
+The three-option deliberation (A1 weasel / A2 lift / A3 defer) ran
+through a topology-substrate-aware adversarial review. Agent found
+that A2 violates two codified disciplines that Claude's lean toward
+A2 underweighted:
 
-Per the user's framing: storage isn't the constraint
-("if scientifically worth it, worth the disk"). The choice is
-architectural — what the right shape is going INTO cleanup phase.
+- **`feedback_calculator_inclusion_two_use_cases`** — A2 requires
+  Dependencies() declarations + cross-result-read markers across 5
+  ring calcs. PATTERNS §17 says "Duplication is preferred over
+  chaining" and cross-result-read is warranted only when "duplicating
+  the writer's entire accumulation would be wasteful AND the semantic
+  coupling is explicit". The shared geometric setup (distance, rho,
+  z, theta, azimuth) is a few floats per (atom, ring) pair — NOT
+  wasteful to compute independently. Pattern actively counsels
+  against A2.
+- **`feedback_extractor_untouchable`** — A2 modifies 5 ring
+  calculator hot paths during the trajectory-TR landing window.
+  Same category as banned "library changes in service of feature
+  work" during the 2000-protein extraction window.
 
-### Open architectural questions for the S3 Pattern A pass
+**Locked S3 scope: A3 (geometric-only TR10) + 2 substrate-correctness
+add-ons in the same commit.**
 
-The S3 design decisions, surfaced as questions (not as a tool-routing
-prompt — user owns the codex / agent routing as active management).
-Layout choice depends on architecture choice; architecture choice
-depends on the user's call between A1/A2/A3 above.
+#### A3.0 — Delete `gaussian_density` dead code (mandatory)
 
-**Q1. Architecture (A1 / A2 / A3 per above).** The choice that
-shapes everything else.
+`ConformationAtom.h:58` declares `double gaussian_density = 0.0;` on
+`RingNeighbourhood`. Zero writers in `src/` (verified). NPY emission
+at `ConformationResult.cpp:95` (column 56) is dead — pure rot
+propagated through to the SDK. PATTERNS Anti-Pattern: "Shadow data
+structures... data exists in two places... bugs live."
 
-**Q2. Pattern A layout (only if A1 or A2 chosen).**
-- Flat fixed-R-per-atom-max with sentinel `ring_index = -1` for
-  unfilled slots (Pattern A strawman in the 13-TR plan)? Determine
-  `R_per_atom_max` from trajectory's observed max-rings-within-15Å
-  per atom plus a safety margin.
-- Or ragged variable-length per-atom lists (sidecar offset table
-  per Tripeptide-style emission)?
-- Sentinel convention if flat: int32 -1 for `ring_index`,
-  float NaN for unfilled-slot scalar fields.
+Delete the field + the dead NPY column + any SDK consumer.
 
-**Q3. Ring membership timing.**
-- `ring_membership_per_atom: (N, R_per_atom_max) int32` — static
-  (frame-invariant since ring topology doesn't change post-Seed)
-  or per-frame (preserves capability for ring-perception evolution)?
-- Strawman in the plan recommends static. The pre-flight finding
-  that all 5 ring calcs use the SAME `ring_current_spatial_cutoff`
-  supports static: the (atom, ring) pair set IS time-invariant on
-  the current substrate. Per-frame is forward-defensiveness for a
-  ring-perception change we haven't planned.
+#### A3.1 — `ring_membership_per_atom` via TopologySidecar
 
-**Q4. ProPyrrolidine handling.**
-- Saturated rings (Pro pyrrolidine) live on
-  `RingTopology.saturated_` and emit via `RingPuckerTimeSeries`
-  already. Excluded from `protein.RingAt(i)` (aromatic-only API).
-- Should TR10 ALSO exclude them (consistent with aromatic-only
-  ring-current physics)? Or include them as a separate
-  saturated-ring axis in the neighbourhood emission? Likely
-  exclude — Pro pyrrolidine has no ring-current intensity
-  (Joule & Mills 2010 ch. 7) and the ring-current spatial cutoff
-  is a magnetic-physics cutoff. But surface the question; it's
-  binary and easy to lock either way.
+The (atom, ring) pair set is STATIC on the current substrate (all 5
+ring calcs use the same `ring_current_spatial_cutoff`; ring identity
+is fixed by `RingTopology::Aromatic()`). Emit `ring_membership_per_atom
+(N, R_per_atom_max) int32` as a NEW sidecar dataset parallel to the
+existing `ring_membership.npy` — same axis convention, same
+TopologySidecar emitter (see `project_topology_sidecar_landed`).
 
-### S3 implementation order (once codex returns)
+`R_per_atom_max` determined from the trajectory's observed
+max-rings-within-15Å per atom plus a safety margin (codex pre-pass
+or empirical from 1P9J).
 
-1. If A2 chosen: refactor pass on 5 ring-using calcs to read from
-   shared `RingNeighbourhoodResult`. Likely 1-2 sessions ahead of
-   TR10 implementation. Bundle as a separate commit before S3 TR10
-   work begins.
-2. Implement TR10 RingNeighbourhoodTrajectoryStats:
-   - Header + cpp following the AIMNet2 CRG TS / TripeptideBackbone
-     TS template (FO with DenseBuffer or per-atom growing buffer
-     depending on layout)
-   - `RingNeighbourhoodTrajectoryStats::Compute` per frame: for each
-     atom, read `ca.ring_neighbours` (A1) or shared result (A2) or
-     compute geometry (A3); push to per-atom buffer
-   - `Finalize`: transfer to DenseBuffer or finalize in-place
-   - `WriteH5Group`: emit `/trajectory/ring_neighbourhood/` with
-     locked layout
-3. Register in RunConfiguration: which config? Both PerFrame +
-   FullFat get ring calcs (PerFrame has them), so TR10 registration
-   goes in PerFrameExtractionSet — unlike TR5-TR9 which were
-   FullFat-only.
-4. Python SDK: `RingNeighbourhoodGroup` + loader + TrajectoryData
-   wire-in.
-5. OBJECT_MODEL.md row.
-6. Tests: Layer 0 quartet (Frame0Semantics, FinalizeIdempotency,
-   Integration1P9J).
-7. Literature probe test: 1P9J Phe33 ring → Hα of Cα-stem residue at
-   ~5 Å in X-ray. Per the 13-TR plan.
-8. Codex annealing pass at S3 close.
+Sentinel: `ring_index = -1` (int32) for unfilled slots.
 
-### S3 memory entries to land
+Static membership = substrate truth. Per-frame emission would lie
+about the substrate's nature.
 
-- `project_ring_neighbourhood_debt_2026-05-21` — record the fat-union
-  + parallel-writer pattern as cleanup-phase candidate (whichever
-  path is chosen for S3).
+#### A3.2 — TR10 `RingNeighbourhoodTrajectoryStats` (geometric-only)
+
+Per-frame geometric residual only — 4 channels per (atom, ring) pair:
+
+- `distance` (Å) — atom-to-ring-center
+- `rho` (Å) — in-plane distance
+- `z` (Å) — out-of-plane projection
+- `in_plane_angle` (radians, [0, 2π)) — azimuth from center→vertex0
+
+Layout: flat (N, T, R_per_atom_max, 4) double, with NaN fill on
+unfilled slots (mirrors `ring_membership_per_atom = -1` sentinel).
+
+TR10 computes geometry FRESH per frame from positions + ring
+geometries (via `conf.ring_geometries[ri]`) — does NOT read
+`ca.ring_neighbours` fat-union. Doesn't touch the 5 existing ring
+calcs.
+
+Calc-specific T2 contributions (BS / HM / Mc / PiQuad / RingChi /
+Dispersion shielding tensors) already emit via their existing
+per-calc shielding TS TRs — that's the consumer surface; ring-
+disaggregation is a Python groupby on `ring_membership_per_atom` at
+analysis time. Not a 3× C++ storage cost.
+
+ProPyrrolidine: EXCLUDED. TR10 reads `protein.RingAt(i)` (aromatic
+only). Pro pyrrolidine emits via `RingPuckerTimeSeries` already;
+saturated rings have no ring-current physics.
+
+#### A3.3 — Implementation order
+
+1. Delete `gaussian_density` field + NPY column + SDK field if
+   present. One small commit (or first item in S3 commit).
+2. TopologySidecar extension: emit `ring_membership_per_atom`
+   alongside the existing static topology sidecars. Static; same
+   commit as TopologySidecar's other static emissions.
+3. TR10 `RingNeighbourhoodTrajectoryStats`:
+   - Header + cpp (FO with per-atom growing buffer → flat (N, T,
+     R_per_atom_max, 4) emission)
+   - Compute per frame: for each atom, iterate
+     `spatial.RingsWithinRadius(atom_pos, ring_current_spatial_cutoff)`,
+     compute 4 geometric channels per (atom, ring), push to buffer
+   - Finalize / WriteH5Group canonical
+   - Register in PerFrameExtractionSet (ring calcs are in PerFrame,
+     so TR10 belongs there — NOT FullFat-only like TR5-TR9)
+4. Python SDK: `RingNeighbourhoodTrajectoryStatsGroup` + loader +
+   TrajectoryData wire-in.
+5. OBJECT_MODEL row.
+6. Tests: Layer 0 trio (Frame0Semantics, FinalizeIdempotency,
+   Integration1P9J). Literature-anchored probe (1P9J Phe33 ring →
+   Hα of Cα-stem residue at ~5 Å in X-ray) as part of Integration1P9J.
+7. Memory entry `project_ring_neighbourhood_debt_2026-05-21`
+   recording the fat-union + parallel-writer pattern as cleanup-
+   phase target.
+
+#### Deferred to cleanup phase
+
+The fat-union + parallel-writer `RingNeighbourhood` debt on
+`ConformationAtom` stays as-is — 5 ring calcs continue to push to
+`ca.ring_neighbours` find-or-create. Cleanup-phase audit pass on the
+5 ring calcs will find this debt; it's a refactor for cleanup, not
+for trajectory-TR landing.
+
+Memory entry tracks the debt for cleanup-phase reference.
 
 ---
 
