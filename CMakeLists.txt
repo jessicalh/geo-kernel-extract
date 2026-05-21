@@ -315,6 +315,9 @@ add_library(nmr_shielding
     src/RingPuckerTimeSeriesTrajectoryResult.cpp
     src/JCouplingTimeSeriesTrajectoryResult.cpp
     src/RingNeighbourhoodTrajectoryStats.cpp
+    src/RmsdTrackingTrajectoryResult.cpp
+    src/RmsdSpikeSelectionTrajectoryResult.cpp
+    src/DftPoseCoordinatorTrajectoryResult.cpp
     src/EeqResult.cpp
     src/OrcaShieldingResult.cpp
     src/MutationDeltaResult.cpp
@@ -1222,6 +1225,44 @@ target_compile_definitions(ring_neighbourhood_trajectory_stats_tests PRIVATE
 target_include_directories(ring_neighbourhood_trajectory_stats_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(ring_neighbourhood_trajectory_stats_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(ring_neighbourhood_trajectory_stats_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# RmsdTracking tests
+# ============================================================================
+
+add_executable(rmsd_tracking_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_rmsd_tracking.cpp
+)
+target_compile_definitions(rmsd_tracking_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(rmsd_tracking_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(rmsd_tracking_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(rmsd_tracking_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# RmsdSpike + DftPoseCoordinator tests (TR12 + TR13 end-to-end)
+# ============================================================================
+
+add_executable(rmsd_spike_dft_coord_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_rmsd_spike_dft_coord.cpp
+)
+target_compile_definitions(rmsd_spike_dft_coord_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(rmsd_spike_dft_coord_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(rmsd_spike_dft_coord_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(rmsd_spike_dft_coord_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

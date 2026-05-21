@@ -1,0 +1,110 @@
+#include "DftPoseCoordinatorTrajectoryResult.h"
+
+#include "ChiRotamerSelectionTrajectoryResult.h"
+#include "OperationLog.h"
+#include "RmsdSpikeSelectionTrajectoryResult.h"
+#include "SelectionRecord.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
+
+#include <set>
+#include <typeinfo>
+#include <utility>
+
+namespace nmr {
+
+namespace {
+
+// Resolve residue_index from a record's metadata. Returns -1 if the
+// metadata field is absent (RmsdSpike: whole-protein event, no
+// residue dimension) or unparseable.
+int RecordResidueIndex(const SelectionRecord& rec) {
+    auto it = rec.metadata.find("residue_index");
+    if (it == rec.metadata.end()) return -1;
+    try {
+        return std::stoi(it->second);
+    } catch (...) {
+        return -1;
+    }
+}
+
+}  // namespace
+
+std::vector<std::type_index>
+DftPoseCoordinatorTrajectoryResult::Dependencies() const {
+    return {
+        typeid(RmsdSpikeSelectionTrajectoryResult),
+        typeid(ChiRotamerSelectionTrajectoryResult),
+    };
+}
+
+std::unique_ptr<DftPoseCoordinatorTrajectoryResult>
+DftPoseCoordinatorTrajectoryResult::Create(const TrajectoryProtein& tp) {
+    (void)tp;
+    return std::make_unique<DftPoseCoordinatorTrajectoryResult>();
+}
+
+// Per-frame is a no-op for the reducer — the SelectionBag is filled
+// by upstream emitters during their own Compute. We synthesise the
+// reduced set once at Finalize.
+void DftPoseCoordinatorTrajectoryResult::Compute(
+        const ProteinConformation& conf,
+        TrajectoryProtein& tp,
+        Trajectory& traj,
+        std::size_t frame_idx,
+        double time_ps) {
+    (void)conf; (void)tp; (void)traj;
+    (void)frame_idx; (void)time_ps;
+}
+
+void DftPoseCoordinatorTrajectoryResult::Finalize(
+        TrajectoryProtein& tp,
+        Trajectory& traj) {
+    (void)tp;
+
+    // CROSS-RESULT READ: walk both upstream emitter kinds. Iterate in
+    // each kind's push order (oldest first); the first record in each
+    // (residue_index, ns_bucket) cell wins.
+    std::set<std::pair<int, std::size_t>> seen_keys;
+    std::vector<const SelectionRecord*> reduced;
+
+    auto consume = [&](const SelectionRecord* rec, const char* origin) {
+        if (!rec) return;
+        const int  ri      = RecordResidueIndex(*rec);
+        const auto bucket  = rec->frame_idx / kNsBucketFrames;
+        const auto key     = std::make_pair(ri, bucket);
+        if (!seen_keys.insert(key).second) return;  // dup
+        // Build a NEW record for the reducer's own kind, preserving
+        // provenance via metadata.
+        std::string reason = std::string("dft_pose_candidate_") +
+            origin + "_frame_" + std::to_string(rec->frame_idx);
+
+        SelectionRecord out(
+            std::type_index(typeid(DftPoseCoordinatorTrajectoryResult)),
+            rec->frame_idx, rec->time_ps,
+            std::move(reason),
+            rec->metadata);  // preserve upstream metadata
+        out.metadata["upstream_kind"] = origin;
+        out.metadata["ns_bucket"]     = std::to_string(bucket);
+        traj.MutableSelections().Push(std::move(out));
+        ++n_reduced_;
+    };
+
+    const auto& bag = traj.Selections();
+    for (const SelectionRecord* rec :
+         bag.ByKind<RmsdSpikeSelectionTrajectoryResult>()) {
+        consume(rec, "RmsdSpike");
+    }
+    for (const SelectionRecord* rec :
+         bag.ByKind<ChiRotamerSelectionTrajectoryResult>()) {
+        consume(rec, "ChiRotamer");
+    }
+
+    OperationLog::Info(
+        "DftPoseCoordinatorTrajectoryResult::Finalize",
+        "deduped " + std::to_string(n_reduced_) +
+        " unique (residue, ns_bucket) candidates from RmsdSpike + "
+        "ChiRotamer streams");
+}
+
+}  // namespace nmr

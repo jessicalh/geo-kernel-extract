@@ -1844,6 +1844,44 @@ def _load_j_coupling_time_series(f) -> Optional[JCouplingTimeSeriesGroup]:
     )
 
 
+# ─── TR11 RmsdTracking (scalar AV (T,) double) ─────────────────────
+
+
+@dataclass(frozen=True)
+class RmsdTrackingGroup:
+    """Per-frame Kabsch-aligned backbone-heavy-atom RMSD vs trajectory
+    frame 0 from /trajectory/rmsd_tracking/. TR11 of the 13-TR plan;
+    first scalar (T,) AV TR in the SDK (2026-05-21).
+
+    Atom selection: backbone heavy atoms N, CA, C, O for every residue
+    where each slot is populated (Residue.N/CA/C/O != NONE). ACE caps
+    contribute their C/O when present; NME caps contribute their N/CA
+    when present. No hydrogens — heavy backbone only.
+
+    Reference: frame 0 of the trajectory. Frame 0's RMSD is 0.0 by
+    construction. Kabsch SVD: centroid + cross-covariance + reflection-
+    corrected rotation.
+
+    Pairs with TR12 RmsdSpikeSelectionTrajectoryResult (downstream
+    detector reading rmsd[t] per frame for dual-threshold spike
+    selection). TR12 emits to /trajectory/selections/<kind>/, accessed
+    via TrajectoryData.selections.
+    """
+    rmsd: np.ndarray                    # (T,) float64 Å
+    atom_indices: np.ndarray            # (M,) int32 — alignment set
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int                        # alignment set size
+    n_frames: int
+    alignment_method: str               # "kabsch_svd"
+    atom_selection: str                 # "backbone_heavy_atoms_NCACO"
+    reference_frame_origin: str         # "trajectory_frame_0"
+    units: str                          # "Angstrom"
+    source_attached_policy: str         # "always_attached"
+    rmsd_frame_0_convention: str        # "0.0 exactly"
+
+
 # ─── Ring neighbourhood TR10 (per-atom × per-frame × R_max × 4) ────
 
 
@@ -2655,6 +2693,32 @@ def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
     )
 
 
+def _load_rmsd_tracking(f) -> Optional[RmsdTrackingGroup]:
+    path = "/trajectory/rmsd_tracking"
+    if path not in f:
+        return None
+    g = f[path]
+
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+
+    return RmsdTrackingGroup(
+        rmsd=g["rmsd"][:],
+        atom_indices=g["atom_indices"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        alignment_method=_attr("alignment_method"),
+        atom_selection=_attr("atom_selection"),
+        reference_frame_origin=_attr("reference_frame_origin"),
+        units=_attr("units"),
+        source_attached_policy=_attr("source_attached_policy"),
+        rmsd_frame_0_convention=_attr("rmsd_frame_0_convention"),
+    )
+
+
 def _load_ring_neighbourhood_trajectory_stats(
         f) -> Optional[RingNeighbourhoodTrajectoryStatsGroup]:
     path = "/trajectory/ring_neighbourhood_trajectory_stats"
@@ -2925,6 +2989,12 @@ class TrajectoryData:
     # pairs within 15A cutoff (no aromatic rings in protein).
     ring_neighbourhood_trajectory_stats: Optional[
         "RingNeighbourhoodTrajectoryStatsGroup"] = None
+
+    # Per-frame backbone-RMSD vs frame 0 (TR #11; 2026-05-21).
+    # Kabsch-aligned heavy-atom backbone (N, CA, C, O) RMSD timeline.
+    # TR12 RmsdSpikeSelection reads from this TR's rmsd[t]; TR13
+    # DftPoseCoordinator reads from TR12's SelectionBag at Finalize.
+    rmsd_tracking: Optional["RmsdTrackingGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -3104,6 +3174,7 @@ def load_trajectory(path: str | Path,
         mopac_vs_ff14sb_reconciliation = _load_mopac_vs_ff14sb_reconciliation(f)
         ring_neighbourhood_trajectory_stats = (
             _load_ring_neighbourhood_trajectory_stats(f))
+        rmsd_tracking = _load_rmsd_tracking(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -3134,4 +3205,5 @@ def load_trajectory(path: str | Path,
         mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
         mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
         ring_neighbourhood_trajectory_stats=ring_neighbourhood_trajectory_stats,
+        rmsd_tracking=rmsd_tracking,
     )

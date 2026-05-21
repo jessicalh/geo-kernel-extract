@@ -1,0 +1,106 @@
+#pragma once
+//
+// RmsdSpikeSelectionTrajectoryResult: per-frame RMSD-spike detector.
+// TR12 of the 13-TR plan; near-mechanical clone of
+// ChiRotamerSelectionTrajectoryResult (scan-mode SelectionBag emitter)
+// with the rotamer-bin transition criterion replaced by a dual-
+// threshold RMSD spike criterion.
+//
+// Dual-threshold spike criterion (OR), with cooldown:
+//   - ABSOLUTE: current frame's backbone RMSD vs frame 0 > 2.0 Å.
+//     Filters early-equilibration drift below 2 Å where backbone
+//     settling is normal not interesting.
+//   - LOCAL: |rmsd - rolling_100_frame_mean| > 0.5 Å.
+//     Catches sudden excursions from the local plateau, which is
+//     what "spike" connotes in trajectory analysis.
+//
+// Either trigger fires a SelectionRecord push to
+// `traj.MutableSelections()`. After firing, the detector enters a
+// 100-frame COOLDOWN during which no further spikes are emitted —
+// prevents oversampling a single conformational event.
+//
+// Rolling mean window: 100 frames. The criterion is suppressed until
+// at least 10 frames have been observed (rolling mean unstable
+// otherwise). After 10 frames, criterion engages.
+//
+// Per the 13-TR plan: thresholds + cooldown are PROJECT-DECISION
+// values (not literature constants); they balance pose diversity
+// against trajectory length for DFT pose coordination. The cooldown
+// is roughly the conformational-event lifetime at our stride (at
+// 20 ps stride: 100 frames ≈ 2 ns).
+//
+// CROSS-RESULT READ (reader side):
+//   Reads `RmsdTrackingTrajectoryResult::RmsdAtFrame(frame_idx)` during
+//   each Compute call. RmsdTracking writes its per-frame rmsd_ vector
+//   in-place (AV); reading the current frame's RMSD scalar is the
+//   minimal coupling. Alternative considered: this TR computes its
+//   own RMSD locally — rejected because (a) it would duplicate the
+//   Kabsch SVD per frame, which IS expensive at fleet scale, and
+//   (b) the semantic coupling is explicit (this TR's whole purpose
+//   depends on the same RMSD distribution that TR11 produces). See
+//   PATTERNS.md §17 cross-result-read marker discipline.
+//
+//   Dependencies() returns typeid(RmsdTrackingTrajectoryResult) per
+//   Phase 4 validation; attach order = dispatch order so TR11 runs
+//   first per frame.
+//
+// No ConformationResult dependency at this layer (positions used by
+// TR11 already).
+//
+// Emission: pushes SelectionRecord entries to
+// `traj.MutableSelections()` with kind=typeid(this); the Trajectory's
+// own WriteH5 walks selections_.Kinds() and emits the records under
+// `/trajectory/selections/<kind>/`. No private WriteH5Group on this
+// TR (the SelectionBag is the H5 surface).
+//
+
+#include "TrajectoryResult.h"
+
+#include <cstddef>
+#include <deque>
+#include <memory>
+#include <string>
+#include <typeindex>
+#include <vector>
+
+namespace nmr {
+
+class RmsdSpikeSelectionTrajectoryResult : public TrajectoryResult {
+public:
+    // Project-decision parameters (per 13-TR plan, 2026-05-21).
+    static constexpr double      kAbsoluteThresholdA = 2.0;
+    static constexpr double      kLocalDeltaThresholdA = 0.5;
+    static constexpr std::size_t kRollingWindowFrames = 100;
+    static constexpr std::size_t kCooldownFrames = 100;
+    static constexpr std::size_t kMinFramesForRollingMean = 10;
+
+    std::string Name() const override {
+        return "RmsdSpikeSelectionTrajectoryResult";
+    }
+
+    // CROSS-RESULT READ: requires RmsdTrackingTrajectoryResult.
+    // Phase 4 validates that TR11 is attached before TR12.
+    std::vector<std::type_index> Dependencies() const override;
+
+    static std::unique_ptr<RmsdSpikeSelectionTrajectoryResult> Create(
+        const TrajectoryProtein& tp);
+
+    void Compute(const ProteinConformation& conf,
+                 TrajectoryProtein& tp,
+                 Trajectory& traj,
+                 std::size_t frame_idx,
+                 double time_ps) override;
+
+    // Diagnostic accessor — total spikes pushed across the run.
+    std::size_t SpikeCount() const { return n_spikes_; }
+
+private:
+    // Rolling window of RMSD values. push_back at each Compute;
+    // pop_front when len > kRollingWindowFrames.
+    std::deque<double> rolling_rmsd_;
+
+    std::size_t frames_until_cooldown_clear_ = 0;
+    std::size_t n_spikes_ = 0;
+};
+
+}  // namespace nmr

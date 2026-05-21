@@ -35,6 +35,10 @@
 #include "HydrationShellWelfordTrajectoryResult.h"
 #include "DihedralTimeSeriesTrajectoryResult.h"
 #include "RingNeighbourhoodTrajectoryStats.h"
+#include "RmsdTrackingTrajectoryResult.h"
+#include "RmsdSpikeSelectionTrajectoryResult.h"
+#include "DftPoseCoordinatorTrajectoryResult.h"
+#include "ChiRotamerSelectionTrajectoryResult.h"
 #include "DihedralBinTransitionTrajectoryResult.h"
 #include "Dssp8TimeSeriesTrajectoryResult.h"
 #include "Dssp8TransitionTrajectoryResult.h"
@@ -401,6 +405,26 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.AddTrajectoryResultFactory(
         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
             return RingNeighbourhoodTrajectoryStats::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return RmsdTrackingTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return RmsdSpikeSelectionTrajectoryResult::Create(tp);
+        });
+    // ChiRotamerSelection is a TR12/TR13 dependency (TR13 reads its
+    // SelectionBag entries at Finalize). Attaching here also enables
+    // sidechain-rotamer-based DFT pose candidates as a parallel
+    // emitter to TR12's whole-protein RMSD spikes.
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return ChiRotamerSelectionTrajectoryResult::Create(tp);
+        });
+    c.AddTrajectoryResultFactory(
+        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+            return DftPoseCoordinatorTrajectoryResult::Create(tp);
         });
 
     return c;
