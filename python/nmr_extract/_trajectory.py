@@ -2104,6 +2104,84 @@ def _load_apbs_efg_time_series(f) -> Optional[ApbsEfgTimeSeriesGroup]:
     )
 
 
+@dataclass(frozen=True)
+class MopacChargeWelfordGroup:
+    """Per-atom Welford rollup of MOPAC Mulliken charges from
+    /trajectory/mopac_charge_welford/. TR5 of the 13-TR plan;
+    canonical sparse-Welford-scalar.
+
+    MopacResult attaches sparsely (TimedAttach in OperationRunner,
+    not Require) per the Mopac cadence (~20 ps in production,
+    JobSpec-driven). The TR gates on conf.HasResult<MopacResult>()
+    each frame; absent frames skip the Welford update and record
+    mask=0. When MOPAC never ran (source_attached_count == 0), the
+    H5 group is skipped entirely — readers must tolerate KeyError
+    on /trajectory/mopac_charge_welford and treat it as "MOPAC
+    disabled for this run."
+
+    Minimum-viable v0 — no delta variants. Add delta variants only
+    if a calibration finding asks (precedent: AIMNet2
+    ChargeResponseGradient Welford v0).
+
+      charge_mean (N,) float64 — e (elementary charge)
+      charge_std  (N,) float64 — e (sqrt(m2/(n-1)) for n>=2;
+                                    0 for n=1; NaN for n=0)
+      charge_m2   (N,) float64 — e²
+      charge_min  (N,) float64 — e
+      charge_max  (N,) float64 — e
+      charge_min_frame (N,) uint64 — frame index of min
+      charge_max_frame (N,) uint64 — frame index of max
+      n_per_atom  (N,) uint64 — per-atom sample count
+
+    Source: MopacResult.mopac_charge (Mulliken, PM7+MOZYME).
+    """
+    charge_mean: np.ndarray
+    charge_std: np.ndarray
+    charge_m2: np.ndarray
+    charge_min: np.ndarray
+    charge_max: np.ndarray
+    charge_min_frame: np.ndarray
+    charge_max_frame: np.ndarray
+    n_per_atom: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    units: str
+    source: str
+    source_attached_policy: str
+
+
+def _load_mopac_charge_welford(f) -> Optional[MopacChargeWelfordGroup]:
+    path = "/trajectory/mopac_charge_welford"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return MopacChargeWelfordGroup(
+        charge_mean=g["charge_mean"][:],
+        charge_std=g["charge_std"][:],
+        charge_m2=g["charge_m2"][:],
+        charge_min=g["charge_min"][:],
+        charge_max=g["charge_max"][:],
+        charge_min_frame=g["charge_min_frame"][:],
+        charge_max_frame=g["charge_max_frame"][:],
+        n_per_atom=g["n_per_atom"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2360,6 +2438,13 @@ class TrajectoryData:
     # 5-component emission; sibling of apbs_efield TS (Vec3, V/Å) sharing
     # the same source calc ApbsFieldResult.
     apbs_efg: Optional["ApbsEfgTimeSeriesGroup"] = None
+
+    # MOPAC Mulliken charge per-atom Welford rollup (TR #5; 2026-05-21).
+    # Sparse-cadence source (MopacResult TimedAttach not Require).
+    # Group is skipped entirely when MOPAC never ran — readers must
+    # tolerate KeyError on /trajectory/mopac_charge_welford as "MOPAC
+    # disabled for this run."
+    mopac_charge_welford: Optional["MopacChargeWelfordGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2532,6 +2617,7 @@ def load_trajectory(path: str | Path,
         aimnet2_charge_response_gradient = _load_aimnet2_charge_response_gradient_time_series(f)
         aimnet2_charge_response_gradient_welford = _load_aimnet2_charge_response_gradient_welford(f)
         apbs_efg = _load_apbs_efg_time_series(f)
+        mopac_charge_welford = _load_mopac_charge_welford(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2556,4 +2642,5 @@ def load_trajectory(path: str | Path,
         aimnet2_charge_response_gradient=aimnet2_charge_response_gradient,
         aimnet2_charge_response_gradient_welford=aimnet2_charge_response_gradient_welford,
         apbs_efg=apbs_efg,
+        mopac_charge_welford=mopac_charge_welford,
     )

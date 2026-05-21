@@ -269,6 +269,7 @@ add_library(nmr_shielding
     src/AIMNet2ChargeResponseGradientWelfordTrajectoryResult.cpp
     src/ApbsEfieldTimeSeriesTrajectoryResult.cpp
     src/ApbsEfgTimeSeriesTrajectoryResult.cpp
+    src/MopacChargeWelfordTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -1387,6 +1388,27 @@ target_compile_definitions(apbs_efg_time_series_tests PRIVATE
 target_include_directories(apbs_efg_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(apbs_efg_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(apbs_efg_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# MopacChargeWelford tests (TR5 of the 13-TR plan, sparse scalar Welford
+# canonical — clone template for MopacBondOrderWelford / MopacCoulombShieldingTS
+# / MopacMcConnellShieldingTS).
+# ============================================================================
+
+add_executable(mopac_charge_welford_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mopac_charge_welford.cpp
+)
+target_compile_definitions(mopac_charge_welford_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mopac_charge_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mopac_charge_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mopac_charge_welford_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

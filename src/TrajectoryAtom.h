@@ -325,6 +325,19 @@ struct AIMNet2ChargeResponseGradientWelfordState {
     std::size_t                   n_frames = 0;
 };
 
+// Written by MopacChargeWelfordTrajectoryResult (TR5 of the 13-TR plan).
+// Source: ConformationAtom.mopac_charge (double, Mulliken charge, units e).
+// MopacResult attaches sparsely via TimedAttach in OperationRunner —
+// per-frame HasResult<MopacResult>() gate skips updates on frames
+// where MOPAC didn't run (the "absent, not faked" canonical pattern).
+// Minimum-viable v0: single Welford channel, no delta variants. Add
+// delta variants only if a calibration finding asks for them
+// (mirrors the AIMNet2ChargeResponseGradientWelford v0 precedent).
+struct MopacChargeWelfordState {
+    WelfordMoments charge;     // units e — Mulliken charge
+    std::size_t    n_frames = 0;
+};
+
 // Written by HydrationShellWelfordTrajectoryResult.
 // Source: COM-based older sibling of HydrationGeometry — half_shell_asymmetry
 // (COM reference frame instead of SASA normal), mean_water_dipole_cos,
@@ -436,6 +449,7 @@ public:
     HydrationGeometryWelfordState hydration_geometry_welford;
     HydrationShellWelfordState    hydration_shell_welford;
     AIMNet2ChargeResponseGradientWelfordState aimnet2_charge_response_gradient_welford;
+    MopacChargeWelfordState       mopac_charge_welford;
 
     // Pattern C — per-atom event bag.
     // Push via events.Push({emitter, kind, frame, time, metadata}) from
