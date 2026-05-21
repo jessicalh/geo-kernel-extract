@@ -272,6 +272,7 @@ add_library(nmr_shielding
     src/MopacChargeWelfordTrajectoryResult.cpp
     src/MopacBondOrderWelfordTrajectoryResult.cpp
     src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp
+    src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp
     src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp
     src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp
@@ -1451,6 +1452,27 @@ target_compile_definitions(mopac_coulomb_shielding_time_series_tests PRIVATE
 target_include_directories(mopac_coulomb_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
 target_link_libraries(mopac_coulomb_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
 gtest_discover_tests(mopac_coulomb_shielding_time_series_tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+
+# ============================================================================
+# MopacMcConnellShieldingTimeSeries tests (TR8 of the 13-TR plan — sibling
+# of TR7 but emits all 9 components because the source M_total is NOT
+# traceless; user direction 2026-05-21 "if not traceless write both").
+# ============================================================================
+
+add_executable(mopac_mc_shielding_time_series_tests
+    tests/test_main.cpp
+    tests/TestEnvironment.cpp
+    tests/test_mopac_mc_shielding_time_series.cpp
+)
+target_compile_definitions(mopac_mc_shielding_time_series_tests PRIVATE
+    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
+)
+target_include_directories(mopac_mc_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
+target_link_libraries(mopac_mc_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
+gtest_discover_tests(mopac_mc_shielding_time_series_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 

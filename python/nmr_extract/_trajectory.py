@@ -2310,6 +2310,66 @@ def _load_mopac_coulomb_shielding_time_series(f) -> Optional[MopacCoulombShieldi
     )
 
 
+@dataclass(frozen=True)
+class MopacMcConnellShieldingTimeSeriesGroup:
+    """Per-atom per-frame MOPAC-weighted McConnell bond-anisotropy
+    shielding contribution time series from
+    /trajectory/mopac_mc_shielding_time_series/. TR8 of the 13-TR plan.
+
+    UNLIKE the cousin TR7 (MopacCoulombShieldingTimeSeries), this TR
+    emits ALL 9 components (T0+T1+T2) because the source field
+    mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total)
+    where M_total is NOT symmetric-traceless. The bond-anisotropy
+    kernel has nonzero T0 (trace) and T1 (antisymmetric) parts in
+    practice. Per user direction 2026-05-21 "if not traceless write
+    both" — preserve all 9 components and let downstream readers
+    separate channels as needed.
+
+      xyz (N, T, 9) float64 — T0, T1_m-1, T1_m0, T1_m+1,
+                              T2_m-2, T2_m-1, T2_m0, T2_m+1, T2_m+2 (ppm)
+
+    Source: MopacMcConnellResult.mopac_mc_shielding_contribution
+    (TimedAttach sparse — same group-skip discipline as TR5/TR6/TR7).
+    """
+    xyz: np.ndarray
+    frame_indices: np.ndarray
+    frame_times: np.ndarray
+    source_attached_per_frame: np.ndarray
+    n_atoms: int
+    n_frames: int
+    source_attached_count: int
+    irrep_layout: str
+    normalization: str
+    parity: str
+    units: str
+    source: str
+    source_attached_policy: str
+
+
+def _load_mopac_mc_shielding_time_series(f) -> Optional[MopacMcConnellShieldingTimeSeriesGroup]:
+    path = "/trajectory/mopac_mc_shielding_time_series"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(name: str) -> str:
+        return str(_decode_attr(g.attrs.get(name, "")))
+    return MopacMcConnellShieldingTimeSeriesGroup(
+        xyz=g["xyz"][:],
+        frame_indices=g["frame_indices"][:],
+        frame_times=g["frame_times"][:],
+        source_attached_per_frame=g["source_attached_per_frame"][:],
+        n_atoms=int(g.attrs["n_atoms"]),
+        n_frames=int(g.attrs["n_frames"]),
+        source_attached_count=int(g.attrs["source_attached_count"]),
+        irrep_layout=_attr("irrep_layout"),
+        normalization=_attr("normalization"),
+        parity=_attr("parity"),
+        units=_attr("units"),
+        source=_attr("source"),
+        source_attached_policy=_attr("source_attached_policy"),
+    )
+
+
 def _load_ring_pucker_time_series(f) -> Optional[RingPuckerTimeSeriesGroup]:
     path = "/trajectory/ring_pucker_time_series"
     if path not in f:
@@ -2585,6 +2645,13 @@ class TrajectoryData:
     # when MopacCoulombResult never attached.
     mopac_coulomb_shielding_time_series: Optional[
         "MopacCoulombShieldingTimeSeriesGroup"] = None
+
+    # MOPAC McConnell bond-anisotropy shielding contribution TS
+    # (TR #8; 2026-05-21). UNLIKE TR7 the source is NOT traceless —
+    # emits all 9 components (T0+T1+T2). Sparse cadence; group
+    # skipped when MopacMcConnellResult never attached.
+    mopac_mc_shielding_time_series: Optional[
+        "MopacMcConnellShieldingTimeSeriesGroup"] = None
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -2760,6 +2827,7 @@ def load_trajectory(path: str | Path,
         mopac_charge_welford = _load_mopac_charge_welford(f)
         mopac_bond_order_welford = _load_mopac_bond_order_welford(f)
         mopac_coulomb_shielding_time_series = _load_mopac_coulomb_shielding_time_series(f)
+        mopac_mc_shielding_time_series = _load_mopac_mc_shielding_time_series(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -2787,4 +2855,5 @@ def load_trajectory(path: str | Path,
         mopac_charge_welford=mopac_charge_welford,
         mopac_bond_order_welford=mopac_bond_order_welford,
         mopac_coulomb_shielding_time_series=mopac_coulomb_shielding_time_series,
+        mopac_mc_shielding_time_series=mopac_mc_shielding_time_series,
     )
