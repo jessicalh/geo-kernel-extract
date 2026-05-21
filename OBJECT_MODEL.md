@@ -2662,7 +2662,7 @@ for the pending rows is
 | ✓ | `LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult` | (none) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/larsen_hbond_2pHaB_shielding_time_series/` |
 | ✓ | `HmWelfordTrajectoryResult` | HaighMallion | AV | TrajectoryAtom `hm_*` Welford fields + `/trajectory/hm_welford/` |
 | ✓ | `McConnellWelfordTrajectoryResult` | McConnell | AV | TrajectoryAtom `mc_*` Welford fields + `/trajectory/mc_welford/` |
-| ⏳ | `ApbsEfgTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<SphericalTensor>` (EFG) — pairs with the landed `ApbsEfieldTimeSeriesTrajectoryResult` (Vec3) |
+| ✓ | `ApbsEfgTimeSeriesTrajectoryResult` | ApbsField | FO | `DenseBuffer<SphericalTensor>` T2-only (EFG); landed at S2 (2026-05-21). See canonical row above. |
 | — | ~~`CoulombFieldTimeSeriesTrajectoryResult`~~ | ~~Coulomb~~ | — | **Struck 2026-05-17**: `PerFrameExtractionSet` sets `skip_coulomb=true` (APBS supersedes; memory `project_apbs_canonical`). Source calc never runs, so the TR would emit only zeros. |
 | ✓ | `WaterFieldTimeSeriesTrajectoryResult` | WaterField | FO | per-atom (N, T, 3)/(N, T, 5)/(N, T) — Vec3 efield/efield_first + T2-only EFG efg/efg_first + uint32 shell counts. Both `efg_t0_structural_zero` (traceless projection) and `efg_t1_structural_zero` (water EFG built from symmetric r⊗r outer products → antisymmetric pseudovector vanishes). EFG parity `2e`. Source-attached gate on `HasResult<WaterFieldResult>()`. Commits 0007415 + d3209a0 |
 | ✓ | `WaterFieldWelfordTrajectoryResult` | WaterField | AV | per-atom Welford rollup; per-component Vec3 + EFG T2[5]/\|T2\|; delta variants on 3 primary scalars (efield_magnitude / n_first / n_second). efg_t0 + efg_t1 channels omitted (structural zeros). Source-attached gate skips Welford updates on absent frames; mean_dt_ps from attached-subset only. Commits 0007415 + d3209a0 |
@@ -2741,10 +2741,10 @@ for removal; a later doc pass will handle the replacement.*
 | ✓/⏳ | Type | Lifecycle | Emission |
 |-----|------|-----------|----------|
 | ✓ | `ChiRotamerSelectionTrajectoryResult` | AV | run-scope SelectionBag push per transition |
-| ⏳ | `RmsdTrackingTrajectoryResult` | AV | per-frame RMSD vs reference frame |
-| ⏳ | `RmsdSpikeSelectionTrajectoryResult` | AV | SelectionBag push on threshold crossing |
-| ⏳ | `Dssp8TransitionTrajectoryResult` | AV | (shared with PerFrameExtractionSet) |
-| ⏳ | `DftPoseCoordinatorTrajectoryResult` | FO | reads other emitters' SelectionRecords at Finalize, deduplicates, pushes reduced set back under its own kind |
+| ✓ | `RmsdTrackingTrajectoryResult` | AV | per-frame Kabsch-aligned backbone RMSD vs frame 0; landed at S4 (2026-05-21). See canonical row above. |
+| ✓ | `RmsdSpikeSelectionTrajectoryResult` | AV | dual-OR threshold + cooldown SelectionBag emitter; landed at S4 (2026-05-21). See canonical row above. |
+| ✓ | `Dssp8TransitionTrajectoryResult` | AV | landed; shared with PerFrameExtractionSet. See canonical row in main catalog. |
+| ✓ | `DftPoseCoordinatorTrajectoryResult` | FO | SelectionBag REDUCER over RmsdSpike + ChiRotamer; landed at S4 (2026-05-21). See canonical row above. |
 
 **`FullFatFrameExtraction` (1P9J deep-dive + mutant; --mopac CLI flag):**
 

@@ -17,13 +17,19 @@ namespace {
 
 // Resolve residue_index from a record's metadata. Returns -1 if the
 // metadata field is absent (RmsdSpike: whole-protein event, no
-// residue dimension) or unparseable.
+// residue dimension) or unparseable. Narrow catch list: stoi throws
+// invalid_argument on non-numeric, out_of_range on overflow; only
+// those two cases legitimately map to "treat as whole-protein."
+// Other exception types would be programming errors and should
+// propagate.
 int RecordResidueIndex(const SelectionRecord& rec) {
     auto it = rec.metadata.find("residue_index");
     if (it == rec.metadata.end()) return -1;
     try {
         return std::stoi(it->second);
-    } catch (...) {
+    } catch (const std::invalid_argument&) {
+        return -1;
+    } catch (const std::out_of_range&) {
         return -1;
     }
 }

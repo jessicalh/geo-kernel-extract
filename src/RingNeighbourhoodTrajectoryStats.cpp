@@ -2,6 +2,7 @@
 
 #include "CalculatorConfig.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
 #include "Ring.h"
@@ -26,9 +27,11 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // Singularity threshold for the in-plane azimuth: atoms with rho
 // below this OR with degenerate ring vertex-0 geometry return NaN
-// for in_plane_angle. Matches MIN_DISTANCE-style guards used by the
-// classical calcs at the same kernel cutoffs.
-constexpr double kInPlaneRhoFloor = 1e-12;
+// for in_plane_angle. Matches the project-wide `MIN_DISTANCE` (0.1 Å)
+// 1/r-singularity convention in `src/PhysicalConstants.h:76`; the
+// pre-2026-05-21-review value of 1e-12 was 11 orders too tight and
+// would have admitted geometrically-meaningless angles from near-axis
+// atoms (ρ ≪ 0.1 Å).
 
 }  // namespace
 
@@ -123,12 +126,12 @@ void RingNeighbourhoodTrajectoryStats::Compute(
             // reference; the atom's rho_vec is decomposed onto that
             // basis + the perpendicular `normal x v0_hat`.
             double in_plane_angle = kNaN;
-            if (!geom.vertices.empty() && rho > kInPlaneRhoFloor) {
+            if (!geom.vertices.empty() && rho > MIN_DISTANCE) {
                 const Vec3 v0_to_center = geom.vertices[0] - geom.center;
                 const double v0_axial = v0_to_center.dot(geom.normal);
                 const Vec3 v0_inplane = v0_to_center - v0_axial * geom.normal;
                 const double v0_norm = v0_inplane.norm();
-                if (v0_norm > kInPlaneRhoFloor) {
+                if (v0_norm > MIN_DISTANCE) {
                     const Vec3 v0_hat = v0_inplane / v0_norm;
                     const Vec3 perp_hat = geom.normal.cross(v0_hat);
                     const double cos_phi = rho_vec.dot(v0_hat) / rho;

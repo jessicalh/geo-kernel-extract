@@ -46,8 +46,10 @@ void RmsdSpikeSelectionTrajectoryResult::Compute(
         tp.Result<RmsdTrackingTrajectoryResult>();
     const double rmsd = rmsd_tracker.RmsdAtFrame(frame_idx);
     if (!std::isfinite(rmsd)) {
-        // RmsdTracking returned NaN (e.g. fewer than 3 alignment atoms;
-        // shouldn't happen on real proteins but defensively skip).
+        // TR11's `RmsdAtFrame` API contract returns NaN when the
+        // alignment set has fewer than 3 atoms (Kabsch rotation
+        // underdetermined). Skip the spike check for that frame —
+        // there is no valid RMSD to compare against thresholds.
         return;
     }
 
@@ -66,19 +68,30 @@ void RmsdSpikeSelectionTrajectoryResult::Compute(
         // Cooling down; no spike detection this frame.
         return;
     }
+
+    // Spike-detection criteria. The absolute trigger can fire as soon
+    // as the rolling window has at least kMinFramesForRollingMean
+    // entries (= 10 frames), but the LOCAL-Δ trigger requires a FULL
+    // 100-frame window — during early equilibration the rolling mean
+    // is non-stationary (RMSD typically rises monotonically), and a
+    // 10-30-frame mean would lag the true plateau enough to fire
+    // spurious local-Δ spikes. Per math adversarial review 2026-05-21.
     if (rolling_rmsd_.size() < kMinFramesForRollingMean) {
-        // Rolling mean unstable; wait.
+        // Below the absolute-trigger gate too.
         return;
     }
 
-    // Compute rolling mean.
+    // Compute rolling mean (used by both triggers' logging; local
+    // trigger only consults it when the window is fully populated).
     double sum = 0.0;
     for (double v : rolling_rmsd_) sum += v;
     const double mean = sum / static_cast<double>(rolling_rmsd_.size());
     const double local_delta = std::fabs(rmsd - mean);
 
     const bool abs_trigger   = (rmsd        > kAbsoluteThresholdA);
-    const bool local_trigger = (local_delta > kLocalDeltaThresholdA);
+    const bool local_trigger =
+        (rolling_rmsd_.size() >= kRollingWindowFrames) &&
+        (local_delta > kLocalDeltaThresholdA);
     if (!abs_trigger && !local_trigger) return;
 
     // Spike. Emit SelectionRecord, enter cooldown.

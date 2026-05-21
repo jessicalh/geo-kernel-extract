@@ -1,31 +1,46 @@
 #!/usr/bin/env python3
-"""Per-atom σ-channel variance ("σ-S²") + BMRB-5801 NH-S² cross-report.
+"""Per-atom σ-channel TRAJECTORY VARIANCE + BMRB-5801 NH-S² cross-report.
 
-The shielding tensor σ fluctuates with conformational motion. The
-"order parameter" of σ (analogous to Lipari-Szabo S² for NH bond
-vector relaxation) measures how dynamic the local electronic structure
-is at each atom:
+**Naming pin (post-2026-05-21 science review):** an earlier draft of
+this script labelled the per-atom variance `σ-S²` by analogy to
+Lipari & Szabo's NH order parameter S². That was a category error.
+Lipari-Szabo S² is a *bounded* generalized order parameter (∈ [0, 1])
+from the long-time plateau of the bond-vector autocorrelation
+function C(τ→∞); it is NOT a variance. The quantity emitted here is
+the per-atom σ_T0 trajectory variance, units (ppm)², unbounded above.
 
-    σ-S²(atom) = var(σ_T0(t)) over the trajectory      [(ppm)²]
+What this script computes:
 
-For 1P9J, BMRB 5801 publishes per-residue NH-S² values from relaxation
-data. The cross-report pairs σ-S²(atom=N) and σ-S²(atom=H_amide) for
-each residue against the published NH-S² to ask: does the shielding
-variance follow the relaxation order parameter?
+    σ-var(atom) = var(σ_T0(t)) over the trajectory      [(ppm)²]
+
+The script's role is one of cross-report — it asks whether the
+classical-calculator-predicted σ_T0 fluctuation (large variance ⇔
+high local mobility expected) is spatially co-located with regions
+of high published NH bond mobility (low NH-S² ⇔ high mobility). So
+the comparison is `σ-var` against `(1 - NH-S²)`, not `σ-var` against
+`NH-S²` itself; the two quantities are complementary mobility
+proxies on different observables.
+
+For 1P9J, BMRB 5801 publishes per-residue NH-S² values from
+relaxation data (Wingens et al. 2003). The cross-report pairs each
+residue's `σ-var(N)` and `σ-var(H_amide)` against `(1 - NH-S²)` and
+reports Spearman ρ.
 
 Per the 13-TR plan: classical calibration of σ predictors against
-DFT delta tensors uses static structures. σ-S² is the bridge: classical
-calculators producing the right mean σ AND the right σ variance is
-strictly stronger than getting only the mean right.
+DFT delta tensors uses static structures. σ-var is the bridge:
+classical calculators producing the right mean σ AND the right σ
+variance is strictly stronger than getting only the mean right.
 
 References:
-  Lipari, G. & Szabo, A. (1982). J. Am. Chem. Soc. 104, 4546-4570.
+  Lipari, G. & Szabo, A. (1982). J. Am. Chem. Soc. 104, 4546-4570
+    — provides the framing of (1 - S²) as a mobility proxy, NOT
+    a definition of S² as variance.
   BMRB entry 5801 (Wingens et al., 2003) for 1P9J NH-S² data.
 
 Usage:
-    python sigma_lipari_szabo.py trajectory.h5 \
+    python sigma_variance_vs_nh_s2.py trajectory.h5 \
         --bmrb-csv path/to/bmrb_5801_S2.csv \
-        --out runs/sigma_s2_1p9j
+        --out runs/sigma_var_vs_nh_s2_1p9j
 
 CSV format expected:
     residue_index,residue_number,nh_s2
@@ -68,10 +83,10 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     # σ-variance is read from the per-atom Welford rollup TRs (BS, HM,
-    # McConnell, etc.) -- the `.std` channel squared IS σ-S² for the
-    # T0 channel. Per the canonical TR convention, every Welford TR
-    # carries a `t0.std` per-atom dataset; per-component T1 and T2
-    # versions are also available.
+    # McConnell, etc.) -- the `.std` channel squared IS the σ_T0
+    # trajectory variance for the T0 channel. Per the canonical TR
+    # convention, every Welford TR carries a `t0.std` per-atom
+    # dataset; per-component T1 and T2 versions are also available.
 
     # The exact attribute path depends on which calculator family is
     # the closest analogue to the published NH-S² metric. For 1P9J:
@@ -83,7 +98,7 @@ def main() -> int:
               "not run for this trajectory.")
         return 2
 
-    # BS Welford carries t0 per-atom mean + std. σ-S² = std².
+    # BS Welford carries t0 per-atom mean + std. σ-variance = std².
     # See nmr_extract._trajectory.BsWelfordGroup.t0.std (N,).
     t0_std = bs_welford.t0.std
     sigma_var = t0_std ** 2  # (N,) (ppm)²
@@ -91,7 +106,7 @@ def main() -> int:
           f"[{np.nanmin(sigma_var):.4f}, {np.nanmax(sigma_var):.4f}] (ppm)²")
 
     # Emit per-atom CSV.
-    out_path = args.out / "per_atom_sigma_s2.csv"
+    out_path = args.out / "per_atom_sigma_variance.csv"
     with open(out_path, "w") as f:
         f.write("atom_idx,channel,sigma_var_ppm2\n")
         for i, v in enumerate(sigma_var):

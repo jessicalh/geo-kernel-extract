@@ -68,13 +68,19 @@ double KabschRmsd(const std::vector<Vec3>& current,
     // Cross-covariance H = P * Q^T (3 x 3).
     const Mat3 H = P * Q.transpose();
 
-    // SVD with reflection correction.
+    // SVD with reflection correction. Canonical Kabsch uses
+    // sign(det(V*Uᵀ)) — not the raw determinant — because the
+    // product is theoretically orthogonal with |det| = 1, so the
+    // reflection guard only needs the sign. Passing the raw det
+    // (≈ ±1 + O(ε)) into the diagonal would inject anisotropic
+    // O(ε) scaling and break strict orthogonality of R.
     Eigen::JacobiSVD<Mat3> svd(H,
         Eigen::ComputeFullU | Eigen::ComputeFullV);
     const Mat3& U = svd.matrixU();
     const Mat3& V = svd.matrixV();
     const double det = (V * U.transpose()).determinant();
-    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0, det);
+    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0,
+        (det < 0.0) ? -1.0 : 1.0);
     const Mat3 R = V * D * U.transpose();
 
     // RMSD after alignment.
@@ -94,9 +100,13 @@ RmsdTrackingTrajectoryResult::Create(const TrajectoryProtein& tp) {
     auto r = std::make_unique<RmsdTrackingTrajectoryResult>();
 
     // Build alignment set from typed Residue backbone slots: N, CA, C, O.
-    // Per residue, include each slot independently — ACE caps lack N/CA
-    // but have C/O; NME caps lack C/O but have N. The mix is fine —
-    // RMSD is over heavy backbone atoms wherever they are.
+    // The canonical heavy-atom backbone set per IUPAC + GROMACS
+    // `g_rms -fit backbone`; HA is intentionally excluded since it is
+    // not part of the peptide backbone proper, and any HA motion is
+    // captured implicitly via CA.
+    // Per residue, include each slot independently — ACE caps lack
+    // N/CA but have C/O; NME caps lack C/O but have N. The mix is
+    // fine — RMSD is over heavy backbone atoms wherever they are.
     const Protein& protein = tp.ProteinRef();
     const std::size_t n_res = protein.ResidueCount();
     for (std::size_t ri = 0; ri < n_res; ++ri) {

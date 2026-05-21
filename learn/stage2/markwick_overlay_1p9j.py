@@ -1,26 +1,39 @@
 #!/usr/bin/env python3
-"""1P9J σ-residual ↔ BMRB Rex spatial overlap (Markwick chapter deliverable).
+"""1P9J fast-vs-slow timescale colocation test
+(σ_T0-fluctuation ↔ BMRB Rex; Markwick chapter deliverable).
 
-For each backbone residue of 1P9J:
+**Timescale caveat pinned at the top (post-2026-05-21 science
+review):** σ-fluctuation across a 15-ns MD trajectory captures
+PICOSECOND-NANOSECOND librational + rotameric motion. BMRB Rex from
+CPMG / R1ρ relaxation dispersion probes MICRO-MILLISECOND
+conformational exchange. The two observables sample fundamentally
+different timescale bands. This script does NOT claim σ-fluctuation
+predicts Rex; it asks the spatial colocation question — do residues
+with high published Rex happen to also be the residues where the
+classical σ predictors fluctuate most under fast-timescale MD?
+
+ρ ≈ 0 (no correlation) is the EXPECTED null result given the
+timescale mismatch — and is itself a reportable thesis finding:
+the classical kernels at our trajectory length are not seeing
+slow-mode information. ρ > 0 colocation would be a surprising
+positive result deserving separate explanation (e.g. underlying
+hinge motion that happens to span both bands).
+
+Quantities:
 
     σ-residual(residue) = stdev(σ_T0(atom)) across trajectory frames,
                           atoms in residue's backbone (N, H, CA, C, O,
                           HA), summed over heavy-atom shielding TS
                           channels (BS + HM + Mc + PiQuad + RingChi +
-                          Dispersion + HBond).
+                          Dispersion + HBond). Units: ppm.
 
     Rex(residue) = published BMRB 5801 Rex value (Wingens et al. 2003).
+                   Units: s⁻¹.
 
 Plot: scatter of σ-residual vs Rex per residue, color-coded by
 secondary structure (DSSP from Dssp8TS — H / E / coil tracked at
 residue scope). Spearman ρ on the pair is the chapter-section
-deliverable: do regions with high relaxation exchange (Rex) coincide
-with regions where the classical σ predictor's frame-by-frame variance
-is largest?
-
-If ρ > 0.5 (positive correlation), the variance of the classical
-calculators IS picking up the slow-timescale exchange. If ρ ≈ 0, the
-classical calculators don't see the same timescale separation.
+deliverable.
 
 References:
   Markwick, P. R. L., Showalter, S. A., Bouvignies, G., Bruschweiler,
@@ -44,6 +57,8 @@ Output:
     per_residue.csv      — residue_idx, sigma_residual, rex_per_s, ss8_dominant
     overlay.pdf          — scatter, Spearman ρ in title, per-SS color
     figure.tex            — chapter-section text fragment with ρ + commentary
+                           (frame the result as colocation test, not
+                           predictor claim; ρ ≈ 0 is expected null).
 """
 
 from __future__ import annotations

@@ -7,9 +7,16 @@
 // threshold RMSD spike criterion.
 //
 // Dual-threshold spike criterion (OR), with cooldown:
-//   - ABSOLUTE: current frame's backbone RMSD vs frame 0 > 2.0 Å.
-//     Filters early-equilibration drift below 2 Å where backbone
-//     settling is normal not interesting.
+//   - ABSOLUTE: current frame's backbone RMSD vs frame 0 > 1.5 Å.
+//     The 1.5 Å threshold is calibrated for small (<100-residue)
+//     globular domains at 300 K — SH3 / β-barrel folds typically
+//     equilibrate around 1.0-1.5 Å backbone-RMSD; values above 1.5
+//     reflect a real conformational excursion rather than equilibrium
+//     drift. (Pre-2026-05-21 science review: 2.0 Å was too aggressive
+//     for our 60-residue 1P9J SH3 fixture; equilibrated values
+//     routinely sat in [1.0, 1.5] Å.) For larger proteins consider
+//     gating on per-residue maximum displacement rather than
+//     whole-protein RMSD.
 //   - LOCAL: |rmsd - rolling_100_frame_mean| > 0.5 Å.
 //     Catches sudden excursions from the local plateau, which is
 //     what "spike" connotes in trajectory analysis.
@@ -67,8 +74,10 @@ namespace nmr {
 
 class RmsdSpikeSelectionTrajectoryResult : public TrajectoryResult {
 public:
-    // Project-decision parameters (per 13-TR plan, 2026-05-21).
-    static constexpr double      kAbsoluteThresholdA = 2.0;
+    // Project-decision parameters (per 13-TR plan, 2026-05-21;
+    // absolute threshold revised 2.0 -> 1.5 per science adversarial
+    // review on 2026-05-21).
+    static constexpr double      kAbsoluteThresholdA = 1.5;
     static constexpr double      kLocalDeltaThresholdA = 0.5;
     static constexpr std::size_t kRollingWindowFrames = 100;
     static constexpr std::size_t kCooldownFrames = 100;

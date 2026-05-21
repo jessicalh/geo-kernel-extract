@@ -47,8 +47,12 @@ KabschResult KabschAlign(const Vec3 src[3], const Vec3 dst[3]) {
         Eigen::ComputeFullU | Eigen::ComputeFullV);
     const Mat3& U = svd.matrixU();
     const Mat3& V = svd.matrixV();
+    // Canonical Kabsch: use sign(det(V*Uᵀ)) for the reflection
+    // guard, not the raw determinant. Same correction landed in
+    // RmsdTrackingTrajectoryResult 2026-05-21 per maths review.
     const double det = (V * U.transpose()).determinant();
-    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0, det);
+    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0,
+        (det < 0.0) ? -1.0 : 1.0);
     r.rotation = V * D * U.transpose();
     double sumSq = 0.0;
     for (int i = 0; i < 3; ++i) {
