@@ -22,11 +22,48 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <map>
+#include <string>
 #include <typeindex>
 #include <typeinfo>
 
 namespace nmr {
+
+namespace {
+
+// Minimal JSON-string escape: backslash, quote, common control chars.
+// Used by Trajectory::WriteH5 to encode SelectionRecord metadata maps
+// into one JSON-encoded string per record, surfaced as the
+// `metadata_json` (R,) string dataset per selection group. SDK
+// consumers `json.loads` each row to recover the dict (codex round 1
+// 2026-05-21 HIGH finding: previously metadata was computed by
+// emitters but dropped at the H5 boundary).
+std::string EscapeJsonString(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 2);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\t': out += "\\t"; break;
+            case '\r': out += "\\r"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x",
+                                   static_cast<unsigned char>(c));
+                    out += buf;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    return out;
+}
+
+}  // namespace
 
 
 Trajectory::Trajectory(std::filesystem::path xtc_path,
@@ -356,9 +393,14 @@ void Trajectory::WriteH5(HighFive::File& file) const {
     //
     // The bag holds all pushed records regardless of emitter; here we
     // walk the distinct kinds and emit a group per kind with its
-    // records' frame_idx, time_ps, and reason arrays. Metadata stays
-    // as a free-form adjunct — emitters that care about metadata
-    // schema emit it themselves in their Result's own WriteH5Group.
+    // records' frame_idx, time_ps, reason, AND metadata. Metadata is
+    // encoded as one JSON string per record in a `metadata_json` (R,)
+    // variable-length string dataset (codex round 1 2026-05-21 HIGH
+    // finding: emitters built rich metadata maps but the H5 surface
+    // was dropping them; SDK consumers had no path to read them
+    // back). Schema is intentionally flat-JSON-per-record because
+    // metadata keys vary per emitter and per record — a per-key
+    // columnar form would force a schema-of-union per kind.
     for (const std::type_index& kind : selections_.Kinds()) {
         auto records = selections_.ByKind(kind);
         if (records.empty()) continue;
@@ -373,15 +415,33 @@ void Trajectory::WriteH5(HighFive::File& file) const {
         std::vector<std::size_t> idx(records.size());
         std::vector<double> tps(records.size());
         std::vector<std::string> reason(records.size());
+        std::vector<std::string> meta_json(records.size());
         for (std::size_t i = 0; i < records.size(); ++i) {
             idx[i]    = records[i]->frame_idx;
             tps[i]    = records[i]->time_ps;
             reason[i] = records[i]->reason;
+
+            std::string j = "{";
+            bool first = true;
+            for (const auto& kv : records[i]->metadata) {
+                if (!first) j += ",";
+                first = false;
+                j += "\"";
+                j += EscapeJsonString(kv.first);
+                j += "\":\"";
+                j += EscapeJsonString(kv.second);
+                j += "\"";
+            }
+            j += "}";
+            meta_json[i] = std::move(j);
         }
         grp.createDataSet("frame_idx", idx);
         grp.createDataSet("time_ps", tps);
         grp.createDataSet("reason", reason);
+        grp.createDataSet("metadata_json", meta_json);
         grp.createAttribute("n_records", records.size());
+        grp.createAttribute("metadata_encoding",
+                             std::string("json_per_record_utf8"));
     }
 }
 

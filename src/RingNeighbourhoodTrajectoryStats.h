@@ -14,7 +14,10 @@
 //                             means same side as ring normal vector)
 //   3 in_plane_angle (rad)    azimuth in ring plane from vertex 0
 //                             toward atom, in [0, 2*pi); NaN when the
-//                             atom is on the ring axis (rho < 1e-12).
+//                             atom is on the ring axis (rho <
+//                             MIN_DISTANCE = 0.1 Å -- the project-wide
+//                             singularity-guard threshold from
+//                             PhysicalConstants.h:76).
 //
 // Static (atom, ring) cutoff snapshot frozen at first Compute call
 // (frame 0): for each atom, the list of aromatic-ring indices within
@@ -99,14 +102,15 @@ public:
         return "RingNeighbourhoodTrajectoryStats";
     }
 
-    // No TR dependency. Reads ConformationResult fields populated by
-    // GeometryResult + SpatialIndexResult on the per-frame
-    // ProteinConformation; those are required by
-    // `PerFrameExtractionSet` already (RunConfiguration::
-    // RequireConformationResult), so Phase 4 sees them.
-    std::vector<std::type_index> Dependencies() const override {
-        return {};
-    }
+    // Declares the ConformationResult dependencies explicitly so
+    // Phase 4 validates them against the active RunConfiguration's
+    // `required_conf_result_types_` set. Compute reads
+    // `conf.Result<SpatialIndexResult>()` (init snapshot) +
+    // `conf.ring_geometries[ri]` (populated by GeometryResult).
+    // PerFrameExtractionSet requires both; declaring deps here means
+    // non-canonical configs fail loud at Phase 4 instead of crashing
+    // at the first frame's Compute (codex round 1 2026-05-21 MED).
+    std::vector<std::type_index> Dependencies() const override;
 
     static std::unique_ptr<RingNeighbourhoodTrajectoryStats> Create(
         const TrajectoryProtein& tp);

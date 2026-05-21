@@ -55,7 +55,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+import json
+
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -133,6 +135,33 @@ class BondRollup:
     @property
     def n_bonds(self) -> int:
         return len(self.atom_a)
+
+
+# ─── SelectionBag records (2026-05-21, codex round 1 HIGH #4) ──────
+
+
+@dataclass(frozen=True)
+class SelectionRecordPy:
+    """One run-scope SelectionRecord from /trajectory/selections/<kind>/.
+
+    Mirrors the C++ `SelectionRecord` struct's emitted state. The
+    `metadata` dict is decoded from the H5 `metadata_json` (R,) string
+    dataset (one JSON object per record), giving consumers structured
+    access to per-record state like `rmsd_A`, `rolling_mean_A`,
+    `local_delta_A`, `trigger` (TR12 RmsdSpike), `upstream_kind` /
+    `ns_bucket` (TR13 DftPoseCoordinator), `chi_index` / `bin_before` /
+    `bin_after` (ChiRotamerSelection), etc.
+
+    Pre-2026-05-21 the H5 surface dropped metadata entirely; codex
+    round 1 finding made it visible. The kind name in
+    `TrajectoryData.selections` is the C++ mangled type name (e.g.
+    `27RmsdSpikeSelectionTraj...`) — compiler-dependent but stable
+    within a build.
+    """
+    frame_idx: int
+    time_ps: float
+    reason: str
+    metadata: Dict[str, str]
 
 
 # ─── Welford H5 groups (Phase 2b/C, 2026-05-17/18) ──────────────────
@@ -2693,6 +2722,51 @@ def _load_dihedral_bin_transition(f) -> Optional[DihedralBinTransitionGroup]:
     )
 
 
+def _load_selections(f) -> Dict[str, List[SelectionRecordPy]]:
+    """Walk /trajectory/selections/<kind>/* and return dict
+    kind_name -> [SelectionRecordPy, ...]. Empty dict if no selections
+    were pushed by any TR during the run."""
+    out: Dict[str, List[SelectionRecordPy]] = {}
+    if "/trajectory/selections" not in f:
+        return out
+    sel_grp = f["/trajectory/selections"]
+    for kind_name in sel_grp.keys():
+        g = sel_grp[kind_name]
+        frame_idx_raw = g["frame_idx"][:]
+        time_ps_raw   = g["time_ps"][:]
+        reason_raw    = g["reason"][:]
+        # `metadata_json` landed 2026-05-21 (codex round 1 HIGH).
+        # Older H5 may not have it; tolerate absence by emitting
+        # empty dicts.
+        if "metadata_json" in g:
+            meta_raw = g["metadata_json"][:]
+        else:
+            meta_raw = [b"{}"] * len(frame_idx_raw)
+        records: List[SelectionRecordPy] = []
+        for i in range(len(frame_idx_raw)):
+            reason = reason_raw[i]
+            if isinstance(reason, (bytes, bytearray)):
+                reason = reason.decode("utf-8", errors="replace")
+            meta_j = meta_raw[i]
+            if isinstance(meta_j, (bytes, bytearray)):
+                meta_j = meta_j.decode("utf-8", errors="replace")
+            try:
+                meta = json.loads(meta_j) if meta_j else {}
+            except json.JSONDecodeError:
+                # Unparseable metadata: surface as empty dict so the
+                # record itself stays accessible. Reader can inspect
+                # raw H5 if needed.
+                meta = {}
+            records.append(SelectionRecordPy(
+                frame_idx=int(frame_idx_raw[i]),
+                time_ps=float(time_ps_raw[i]),
+                reason=str(reason),
+                metadata={str(k): str(v) for k, v in meta.items()},
+            ))
+        out[kind_name] = records
+    return out
+
+
 def _load_rmsd_tracking(f) -> Optional[RmsdTrackingGroup]:
     path = "/trajectory/rmsd_tracking"
     if path not in f:
@@ -2976,7 +3050,11 @@ class TrajectoryData:
         "MopacMcConnellShieldingTimeSeriesGroup"] = None
 
     # MOPAC vs FF14SB charge-source reconciliation (TR #9; 2026-05-21).
-    # Per-atom-per-frame |cos(MOPAC_T2, FF14SB_T2)| ∈ [0, 1].
+    # Per-atom-per-frame SIGNED cos(MOPAC_T2, FF14SB_T2) ∈ [-1, 1].
+    # cos = -1 exposes the chemistry-distinctive sign disagreement
+    # (e.g. SER OG or ARG NH2 where MOPAC PM7 and FF14SB qualitatively
+    # differ on charge); the earlier |cos| ∈ [0, 1] form was retired
+    # 2026-05-21 because it silently squashed that signal.
     # Cross-source gate: requires BOTH MopacCoulombResult AND
     # CoulombResult attached per frame; group skipped if no frame
     # had both.
@@ -2995,6 +3073,13 @@ class TrajectoryData:
     # TR12 RmsdSpikeSelection reads from this TR's rmsd[t]; TR13
     # DftPoseCoordinator reads from TR12's SelectionBag at Finalize.
     rmsd_tracking: Optional["RmsdTrackingGroup"] = None
+
+    # Run-scope SelectionBag records, keyed by emitter kind
+    # (C++ mangled type name). Per record: frame_idx, time_ps, reason,
+    # metadata dict (decoded from per-record JSON; codex round 1
+    # 2026-05-21 HIGH #4). Empty dict if no selections were pushed.
+    selections: Dict[str, List[SelectionRecordPy]] = field(
+        default_factory=dict)
     # Presence-vs-skip disambiguation for the optional-large
     # embedding group: when load_trajectory was called with
     # load_optional_large=False AND the group exists in the H5,
@@ -3175,6 +3260,7 @@ def load_trajectory(path: str | Path,
         ring_neighbourhood_trajectory_stats = (
             _load_ring_neighbourhood_trajectory_stats(f))
         rmsd_tracking = _load_rmsd_tracking(f)
+        selections = _load_selections(f)
 
     return TrajectoryData(
         protein_id=protein_id,
@@ -3206,4 +3292,5 @@ def load_trajectory(path: str | Path,
         mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
         ring_neighbourhood_trajectory_stats=ring_neighbourhood_trajectory_stats,
         rmsd_tracking=rmsd_tracking,
+        selections=selections,
     )

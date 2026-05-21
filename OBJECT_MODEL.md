@@ -2735,16 +2735,18 @@ Ile/Val/Thr methine Hbeta is mirrored to both Hbeta slots; methylene
 Hbeta2/Hbeta3 remain separated. GLY uses `Residue.HA = HA2` for the
 Vuister-Bax HN-Halpha channel.
 
-**`ScanForDftPointSet` (scan mode, for DFT pose selection):** *Slated
-for removal; a later doc pass will handle the replacement.*
-
-| ✓/⏳ | Type | Lifecycle | Emission |
-|-----|------|-----------|----------|
-| ✓ | `ChiRotamerSelectionTrajectoryResult` | AV | run-scope SelectionBag push per transition |
-| ✓ | `RmsdTrackingTrajectoryResult` | AV | per-frame Kabsch-aligned backbone RMSD vs frame 0; landed at S4 (2026-05-21). See canonical row above. |
-| ✓ | `RmsdSpikeSelectionTrajectoryResult` | AV | dual-OR threshold + cooldown SelectionBag emitter; landed at S4 (2026-05-21). See canonical row above. |
-| ✓ | `Dssp8TransitionTrajectoryResult` | AV | landed; shared with PerFrameExtractionSet. See canonical row in main catalog. |
-| ✓ | `DftPoseCoordinatorTrajectoryResult` | FO | SelectionBag REDUCER over RmsdSpike + ChiRotamer; landed at S4 (2026-05-21). See canonical row above. |
+**`ScanForDftPointSet` (scan mode):** *Slated for removal; the
+factory currently attaches only `BsWelfordTrajectoryResult` (see
+`RunConfiguration.cpp::ScanForDftPointSet`). The full DFT-pose-
+selection stack — `ChiRotamerSelection`, `RmsdTracking`,
+`RmsdSpikeSelection`, `Dssp8Transition`, `DftPoseCoordinator` — is
+attached under `PerFrameExtractionSet` (production canonical), not
+here. Codex round 1 2026-05-21 flagged the prior version of this
+table as describing aspirational scan-mode contents that the factory
+did not in fact attach. Real per-TR ownership lives in the main
+catalog rows above; this scan-mode factory is awaiting its
+replacement (see `feedback_no_abstractions` — direct named
+configurations preferred over a partially-implemented scan mode).*
 
 **`FullFatFrameExtraction` (1P9J deep-dive + mutant; --mopac CLI flag):**
 

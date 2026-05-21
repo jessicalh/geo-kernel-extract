@@ -167,12 +167,19 @@ void RmsdTrackingTrajectoryResult::Finalize(TrajectoryProtein& tp,
     finalized_ = true;
 }
 
-double RmsdTrackingTrajectoryResult::RmsdAtFrame(
-        std::size_t frame_idx) const {
-    if (frame_idx >= rmsd_.size()) {
+double RmsdTrackingTrajectoryResult::LatestRmsd() const {
+    if (rmsd_.empty()) {
         return std::numeric_limits<double>::quiet_NaN();
     }
-    return rmsd_[frame_idx];
+    return rmsd_.back();
+}
+
+double RmsdTrackingTrajectoryResult::RmsdAtSampleIndex(
+        std::size_t sample_idx) const {
+    if (sample_idx >= rmsd_.size()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return rmsd_[sample_idx];
 }
 
 void RmsdTrackingTrajectoryResult::WriteH5Group(

@@ -96,9 +96,27 @@ public:
     // CROSS-RESULT READ (writer side): read by
     // RmsdSpikeSelectionTrajectoryResult during its own Compute.
     // Returns AV (immediately-valid mid-stream) per-frame RMSD scalar
-    // in Angstroms. Returns NaN if frame_idx >= NumFrames() (frame
-    // not yet computed in the current per-frame dispatch order).
-    double RmsdAtFrame(std::size_t frame_idx) const;
+    // in Angstroms.
+    //
+    // **Trajectory frame index vs sample index** (codex round 1
+    // 2026-05-21 critical finding): TR11 stores RMSDs DENSELY by
+    // sample order, NOT keyed by the original trajectory frame index.
+    // At stride > 1 (PerFrameExtractionSet default stride=2),
+    // `rmsd_[0]` is the RMSD at original frame 0, `rmsd_[1]` at
+    // original frame 2, etc. — they are positional samples, not
+    // indexed by `frame_idx`.
+    //
+    // For TR12's per-frame cross-result-read pattern (TR11.Compute
+    // dispatched before TR12.Compute via Phase 6/7 attach-order =
+    // dispatch-order), the canonical access is `LatestRmsd()` —
+    // the value just written for the current frame.
+    //
+    // For arbitrary historical access by sample position, use
+    // `RmsdAtSampleIndex(k)`. The earlier `RmsdAtFrame(frame_idx)`
+    // API conflated the two indices and silently returned NaN at
+    // stride > 1; removed 2026-05-21.
+    double LatestRmsd() const;
+    double RmsdAtSampleIndex(std::size_t sample_idx) const;
     std::size_t NumFrames() const { return n_frames_; }
     std::size_t NumAlignmentAtoms() const { return atom_indices_.size(); }
     const std::vector<double>& Rmsd() const { return rmsd_; }

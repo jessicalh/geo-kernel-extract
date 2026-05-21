@@ -1,6 +1,7 @@
 #include "RingNeighbourhoodTrajectoryStats.h"
 
 #include "CalculatorConfig.h"
+#include "GeometryResult.h"
 #include "OperationLog.h"
 #include "PhysicalConstants.h"
 #include "Protein.h"
@@ -34,6 +35,14 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 // atoms (ρ ≪ 0.1 Å).
 
 }  // namespace
+
+std::vector<std::type_index>
+RingNeighbourhoodTrajectoryStats::Dependencies() const {
+    return {
+        std::type_index(typeid(SpatialIndexResult)),
+        std::type_index(typeid(GeometryResult)),
+    };
+}
 
 std::unique_ptr<RingNeighbourhoodTrajectoryStats>
 RingNeighbourhoodTrajectoryStats::Create(const TrajectoryProtein& tp) {
@@ -176,6 +185,19 @@ void RingNeighbourhoodTrajectoryStats::Finalize(
         return;
     }
 
+    // **Idempotency** (codex round 1 2026-05-21 HIGH finding,
+    // `feedback_bounds_check_over_state_flag`): the per-atom buffers
+    // are swapped EMPTY at the end of the first Finalize call (we
+    // move them into the DenseBuffer's storage). A second Finalize
+    // call would otherwise allocate a zero-sized DenseBuffer, fail
+    // the size-mismatch check per atom, and STILL adopt the empty
+    // buffer — overwriting the real data already adopted by tp.
+    // Data-flow short-circuit: if any per-atom buffer is empty,
+    // a previous Finalize call already ran. Bail.
+    if (!per_atom_data_.empty() && per_atom_data_[0].empty()) {
+        return;
+    }
+
     const std::size_t stride = n_frames_ * r_per_atom_max_ * kChannelCount;
     auto buffer = std::make_unique<DenseBuffer<double>>(n_atoms_, stride);
 
@@ -251,8 +273,9 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
         std::string("Angstrom,Angstrom,Angstrom,radians"));
     grp.createAttribute("in_plane_angle_range",
         std::string("[0, 2*pi); NaN when atom is on ring axis "
-                    "(rho < 1e-12) OR vertex 0 in-plane direction "
-                    "is degenerate"));
+                    "(rho < MIN_DISTANCE = 0.1 Å, "
+                    "PhysicalConstants.h:76) OR vertex 0 in-plane "
+                    "direction is degenerate"));
     grp.createAttribute("z_sign_convention",
         std::string("z > 0 means atom is on same side as ring "
                     "normal vector"));

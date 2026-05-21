@@ -100,19 +100,41 @@ def main() -> int:
     traj = load_trajectory(args.h5_path)
     print(f"Loaded {args.h5_path}: {traj.n_atoms} atoms x {traj.n_frames} frames")
 
-    # Resolve the TR group from SDK based on the channel key.
-    # Direct attribute access — these are the canonical SDK paths.
-    # If extended later, add the mapping to CHANNELS.
-    if args.channel == "bs_shielding_time_series":
-        ts = traj.welford.bs if hasattr(traj, "welford") else None  # placeholder
-        raise NotImplementedError(
-            "TS access for bs_shielding_time_series — wire to traj.<bs>.time_series "
-            "or directly to /trajectory/bs_shielding_time_series/xyz "
-            "once the SDK group lands. For now use h5py directly.")
+    # Resolve the TR group from H5 directly. The per-calc shielding-TS
+    # SDK groups are not yet wrapped (per-calc time-series wrappers
+    # are a follow-up to the 13-TR landing); for now read the canonical
+    # `/trajectory/<channel>/xyz` hyperslab via h5py and extract T0.
+    import h5py
+    with h5py.File(args.h5_path, "r") as f:
+        path = f"/trajectory/{args.channel}/xyz"
+        if path not in f:
+            print(f"NOTE: {path} not present in {args.h5_path}; "
+                  "this channel's shielding TS was not emitted for this "
+                  "trajectory. Re-run extraction with the corresponding "
+                  "ConformationResult attached.")
+            return 1
+        xyz = f[path][:]
+    # xyz shape: (N, T, 9). Extract T0 (channel 0).
+    t0 = _extract_t0(xyz)  # (N, T)
+    print(f"T0 timeline read: shape={t0.shape}")
 
-    # NB: when the per-calc shielding-TS SDK groups land, replace the
-    # above with `data = ts.xyz` and feed each channel's (N, T, 9)[..., 0]
-    # into base_curve per atom.
+    sems_per_atom = []
+    block_sizes_ref = None
+    for ai in range(t0.shape[0]):
+        bs, sm = base_curve(t0[ai])
+        sems_per_atom.append(sm)
+        if block_sizes_ref is None:
+            block_sizes_ref = bs
+
+    sems_arr = np.array(sems_per_atom)  # (N, B)
+    csv_path = args.out / f"{args.channel}_base_sem.csv"
+    with open(csv_path, "w") as f:
+        f.write("# block_size\tmean_sem\tn_atoms\n")
+        for j, b in enumerate(block_sizes_ref):
+            valid = np.isfinite(sems_arr[:, j])
+            mean_sem = float(np.nanmean(sems_arr[valid, j])) if valid.any() else float("nan")
+            f.write(f"{b}\t{mean_sem}\t{int(valid.sum())}\n")
+    print(f"Wrote {csv_path}")
 
     args.out.mkdir(parents=True, exist_ok=True)
     print(f"Outputs at {args.out}")

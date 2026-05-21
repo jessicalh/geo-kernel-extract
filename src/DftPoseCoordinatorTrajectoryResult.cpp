@@ -71,17 +71,23 @@ void DftPoseCoordinatorTrajectoryResult::Finalize(
     // CROSS-RESULT READ: walk both upstream emitter kinds. Iterate in
     // each kind's push order (oldest first); the first record in each
     // (residue_index, ns_bucket) cell wins.
+    //
+    // **Iterator invalidation guard** (codex round 1 2026-05-21 HIGH
+    // finding): `RecordBag::ByKind<T>()` returns pointers INTO the
+    // bag's internal vector. If we pushed reduced records while
+    // iterating, the vector could reallocate and invalidate the
+    // remaining pointers. Two-phase approach: collect reduced
+    // records into a local vector, THEN push them all after both
+    // iterations complete.
     std::set<std::pair<int, std::size_t>> seen_keys;
-    std::vector<const SelectionRecord*> reduced;
+    std::vector<SelectionRecord> reduced;
 
-    auto consume = [&](const SelectionRecord* rec, const char* origin) {
+    auto collect = [&](const SelectionRecord* rec, const char* origin) {
         if (!rec) return;
         const int  ri      = RecordResidueIndex(*rec);
         const auto bucket  = rec->frame_idx / kNsBucketFrames;
         const auto key     = std::make_pair(ri, bucket);
         if (!seen_keys.insert(key).second) return;  // dup
-        // Build a NEW record for the reducer's own kind, preserving
-        // provenance via metadata.
         std::string reason = std::string("dft_pose_candidate_") +
             origin + "_frame_" + std::to_string(rec->frame_idx);
 
@@ -92,18 +98,25 @@ void DftPoseCoordinatorTrajectoryResult::Finalize(
             rec->metadata);  // preserve upstream metadata
         out.metadata["upstream_kind"] = origin;
         out.metadata["ns_bucket"]     = std::to_string(bucket);
-        traj.MutableSelections().Push(std::move(out));
-        ++n_reduced_;
+        reduced.push_back(std::move(out));
     };
 
-    const auto& bag = traj.Selections();
-    for (const SelectionRecord* rec :
-         bag.ByKind<RmsdSpikeSelectionTrajectoryResult>()) {
-        consume(rec, "RmsdSpike");
-    }
-    for (const SelectionRecord* rec :
-         bag.ByKind<ChiRotamerSelectionTrajectoryResult>()) {
-        consume(rec, "ChiRotamer");
+    {
+        const auto& bag = traj.Selections();
+        for (const SelectionRecord* rec :
+             bag.ByKind<RmsdSpikeSelectionTrajectoryResult>()) {
+            collect(rec, "RmsdSpike");
+        }
+        for (const SelectionRecord* rec :
+             bag.ByKind<ChiRotamerSelectionTrajectoryResult>()) {
+            collect(rec, "ChiRotamer");
+        }
+    }  // bag pointers go out of scope; safe to push now.
+
+    auto& mutable_bag = traj.MutableSelections();
+    for (auto& out : reduced) {
+        mutable_bag.Push(std::move(out));
+        ++n_reduced_;
     }
 
     OperationLog::Info(

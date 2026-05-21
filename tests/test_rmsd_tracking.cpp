@@ -94,7 +94,7 @@ TEST(RmsdTracking, Frame0Semantics) {
     EXPECT_EQ(tr.NumFrames(), 1u);
     EXPECT_GT(tr.NumAlignmentAtoms(), 0u);
     // Frame 0 is its own reference -- RMSD must be exactly 0.
-    EXPECT_DOUBLE_EQ(tr.RmsdAtFrame(0), 0.0);
+    EXPECT_DOUBLE_EQ(tr.RmsdAtSampleIndex(0), 0.0);
 }
 
 
@@ -117,7 +117,7 @@ TEST(RmsdTracking, FinalizeIdempotency) {
     const std::size_t T = tr.NumFrames();
     tr.Finalize(tp, traj);  // double-Finalize must be safe
     EXPECT_EQ(tr.NumFrames(), T);
-    EXPECT_DOUBLE_EQ(tr.RmsdAtFrame(0), 0.0);
+    EXPECT_DOUBLE_EQ(tr.RmsdAtSampleIndex(0), 0.0);
 }
 
 

@@ -42,9 +42,15 @@ void RmsdSpikeSelectionTrajectoryResult::Compute(
     (void)conf;
 
     // CROSS-RESULT READ: per-frame RMSD scalar from TR11.
+    // `LatestRmsd()` returns the value TR11.Compute just pushed for
+    // this same frame (attach order = dispatch order, Phase 6/7).
+    // Earlier code used `RmsdAtFrame(frame_idx)` which silently
+    // returned NaN at any stride > 1 because TR11 stores DENSELY by
+    // sample order while `frame_idx` is the original TRR frame index
+    // (codex round 1 2026-05-21 CRITICAL finding).
     const auto& rmsd_tracker =
         tp.Result<RmsdTrackingTrajectoryResult>();
-    const double rmsd = rmsd_tracker.RmsdAtFrame(frame_idx);
+    const double rmsd = rmsd_tracker.LatestRmsd();
     if (!std::isfinite(rmsd)) {
         // TR11's `RmsdAtFrame` API contract returns NaN when the
         // alignment set has fewer than 3 atoms (Kabsch rotation

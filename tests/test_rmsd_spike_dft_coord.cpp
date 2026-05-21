@@ -121,7 +121,7 @@ TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
     // TR11 produced per-frame RMSD
     const auto& tr_rmsd = tp.Result<nmr::RmsdTrackingTrajectoryResult>();
     EXPECT_GE(tr_rmsd.NumFrames(), 2u);
-    EXPECT_DOUBLE_EQ(tr_rmsd.RmsdAtFrame(0), 0.0);
+    EXPECT_DOUBLE_EQ(tr_rmsd.RmsdAtSampleIndex(0), 0.0);
 
     // TR12 ran, internal counter exists
     const auto& tr_spike = tp.Result<nmr::RmsdSpikeSelectionTrajectoryResult>();
