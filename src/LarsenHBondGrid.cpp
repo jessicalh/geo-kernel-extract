@@ -61,12 +61,12 @@ std::vector<float> ReadFlatTensorOptional(HighFive::File& f,
             std::to_string(expected_Nrho) +
             ", 3, 3))");
     }
-    std::size_t total = dims[0] * dims[1] * dims[2] * 9;
+    std::size_t const total = dims[0] * dims[1] * dims[2] * 9;
     std::vector<float> flat(total);
     ds.read(flat.data());
     // Reject NaN/Inf in stored tensors. Parser/pre-compute should never
     // emit these; the assertion catches drift in the upstream pipeline.
-    for (float v : flat) {
+    for (float const v : flat) {
         if (!std::isfinite(v)) {
             throw std::runtime_error(
                 "LarsenHBondGrid: non-finite value in dataset " + name);
@@ -229,22 +229,22 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
     Mat3 out = Mat3::Zero();
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
-            double c000 = flat[idx(ir,      ith,      irho)      + row * 3 + col];
-            double c001 = flat[idx(ir,      ith,      irho_next) + row * 3 + col];
-            double c010 = flat[idx(ir,      ith_next, irho)      + row * 3 + col];
-            double c011 = flat[idx(ir,      ith_next, irho_next) + row * 3 + col];
-            double c100 = flat[idx(ir_next, ith,      irho)      + row * 3 + col];
-            double c101 = flat[idx(ir_next, ith,      irho_next) + row * 3 + col];
-            double c110 = flat[idx(ir_next, ith_next, irho)      + row * 3 + col];
-            double c111 = flat[idx(ir_next, ith_next, irho_next) + row * 3 + col];
+            double const c000 = flat[idx(ir, ith, irho) + static_cast<std::size_t>(row) * 3 + col];
+            double const c001 = flat[idx(ir, ith, irho_next) + static_cast<std::size_t>(row) * 3 + col];
+            double const c010 = flat[idx(ir, ith_next, irho) + static_cast<std::size_t>(row) * 3 + col];
+            double const c011 = flat[idx(ir, ith_next, irho_next) + static_cast<std::size_t>(row) * 3 + col];
+            double const c100 = flat[idx(ir_next, ith, irho) + static_cast<std::size_t>(row) * 3 + col];
+            double const c101 = flat[idx(ir_next, ith, irho_next) + static_cast<std::size_t>(row) * 3 + col];
+            double const c110 = flat[idx(ir_next, ith_next, irho) + static_cast<std::size_t>(row) * 3 + col];
+            double const c111 = flat[idx(ir_next, ith_next, irho_next) + static_cast<std::size_t>(row) * 3 + col];
 
-            double c00 = c000 * (1.0 - frho) + c001 * frho;
-            double c01 = c010 * (1.0 - frho) + c011 * frho;
-            double c10 = c100 * (1.0 - frho) + c101 * frho;
-            double c11 = c110 * (1.0 - frho) + c111 * frho;
+            double const c00 = c000 * (1.0 - frho) + c001 * frho;
+            double const c01 = c010 * (1.0 - frho) + c011 * frho;
+            double const c10 = c100 * (1.0 - frho) + c101 * frho;
+            double const c11 = c110 * (1.0 - frho) + c111 * frho;
 
-            double c0 = c00 * (1.0 - fth) + c01 * fth;
-            double c1 = c10 * (1.0 - fth) + c11 * fth;
+            double const c0 = c00 * (1.0 - fth) + c01 * fth;
+            double const c1 = c10 * (1.0 - fth) + c11 * fth;
 
             out(row, col) = c0 * (1.0 - fr) + c1 * fr;
         }
@@ -265,14 +265,18 @@ bool AnyCornerImputed(const LarsenHBondDenseGrid& g,
              + static_cast<std::size_t>(i_th) * g.Nrho
              + static_cast<std::size_t>(i_rho);
     };
-    int rs[2] = {ir, ir_next};
-    int ths[2] = {ith, ith_next};
-    int rhos[2] = {irho, irho_next};
-    for (int a = 0; a < 2; ++a)
-        for (int b = 0; b < 2; ++b)
-            for (int c = 0; c < 2; ++c)
-                if (g.validity_mask[idx(rs[a], ths[b], rhos[c])] == 0)
+    int const rs[2] = {ir, ir_next};
+    int const ths[2] = {ith, ith_next};
+    int const rhos[2] = {irho, irho_next};
+    for (int const r : rs) {
+        for (int const th : ths) {
+            for (int const rho : rhos) {
+                if (g.validity_mask[idx(r, th, rho)] == 0) {
                     return true;
+                }
+            }
+        }
+    }
     return false;
 }
 
@@ -290,13 +294,13 @@ struct AxisLookup {
 AxisLookup LookupAxis(const std::vector<double>& axis, double value,
                       bool periodic = false) {
     AxisLookup out;
-    int n = static_cast<int>(axis.size());
+    int const n = static_cast<int>(axis.size());
     if (n < 2) return out;
 
     if (periodic) {
         // Wrap value to [axis[0], axis[0] + period).
-        double step = axis[1] - axis[0];
-        double period = axis.back() - axis[0] + step;  // full periodic period
+        double const step = axis[1] - axis[0];
+        double const period = axis.back() - axis[0] + step;  // full periodic period
         // Sanity check: for the H-bond ρ axis the period must be 360°.
         // If a future grid breaks this invariant the wrap is wrong; bail.
         if (std::abs(period - 360.0) > 1e-6) {
@@ -307,12 +311,12 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         v = axis[0] + std::fmod(v - axis[0], period);
         if (v < axis[0]) v += period;
 
-        double f = (v - axis[0]) / step;
+        double const f = (v - axis[0]) / step;
         int i = static_cast<int>(std::floor(f));
         i = std::min(i, n - 1);
         i = std::max(i, 0);
         int i_next = i + 1;
-        double frac = f - i;
+        double const frac = f - i;
         if (i_next >= n) {
             i_next = 0;        // wrap
         }
@@ -322,14 +326,14 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         return out;
     }
 
-    double step = axis[1] - axis[0];
-    double tol = std::abs(step) * kAxisBoundTolerance;
+    double const step = axis[1] - axis[0];
+    double const tol = std::abs(step) * kAxisBoundTolerance;
     if (value < axis.front() - tol || value > axis.back() + tol) {
         return out;  // out-of-range
     }
     // Clamp tiny FP overshoot to axis bounds.
-    double v = std::clamp(value, axis.front(), axis.back());
-    double f = (v - axis.front()) / step;
+    double const v = std::clamp(value, axis.front(), axis.back());
+    double const f = (v - axis.front()) / step;
     int i = static_cast<int>(std::floor(f));
     i = std::min(i, n - 2);
     i = std::max(i, 0);
@@ -365,26 +369,26 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
     const Vec3& acceptor_third_pos) {
 
     LarsenHBondGeometry geom;
-    Vec3 H_to_O = acceptor_O_pos - donor_H_pos;
+    Vec3 const H_to_O = acceptor_O_pos - donor_H_pos;
     geom.r_angstrom = H_to_O.norm();
 
     // theta at acceptor O: angle between (O→H) and (O→C).
-    Vec3 O_to_H = donor_H_pos - acceptor_O_pos;
-    Vec3 O_to_C = acceptor_C_pos - acceptor_O_pos;
+    Vec3 const O_to_H = donor_H_pos - acceptor_O_pos;
+    Vec3 const O_to_C = acceptor_C_pos - acceptor_O_pos;
     double cos_theta = O_to_H.dot(O_to_C) / (O_to_H.norm() * O_to_C.norm());
     cos_theta = std::clamp(cos_theta, -1.0, 1.0);
     geom.theta_deg = std::acos(cos_theta) * (180.0 / M_PI);
 
     // rho dihedral: H - O - C - third. Standard IUPAC convention via
     // atan2(cross(n1, b2_norm) · n2, n1 · n2).
-    Vec3 b1 = acceptor_O_pos     - donor_H_pos;
-    Vec3 b2 = acceptor_C_pos     - acceptor_O_pos;
-    Vec3 b3 = acceptor_third_pos - acceptor_C_pos;
-    Vec3 n1 = b1.cross(b2);
-    Vec3 n2 = b2.cross(b3);
-    Vec3 m1 = n1.cross(b2.normalized());
-    double x = n1.dot(n2);
-    double y = m1.dot(n2);
+    Vec3 const b1 = acceptor_O_pos - donor_H_pos;
+    Vec3 const b2 = acceptor_C_pos - acceptor_O_pos;
+    Vec3 const b3 = acceptor_third_pos - acceptor_C_pos;
+    Vec3 const n1 = b1.cross(b2);
+    Vec3 const n2 = b2.cross(b3);
+    Vec3 const m1 = n1.cross(b2.normalized());
+    double const x = n1.dot(n2);
+    double const y = m1.dot(n2);
     geom.rho_deg = std::atan2(y, x) * (180.0 / M_PI);
 
     return geom;
@@ -399,31 +403,31 @@ Mat3 ComputeLarsenDonorFrame(
     constexpr double kTinyVec = 1e-9;
 
     // z = normalize(donor_H − donor_anchor). Bail on coincident atoms.
-    Vec3 z_raw = donor_H_pos - donor_anchor_pos;
+    Vec3 const z_raw = donor_H_pos - donor_anchor_pos;
     if (z_raw.norm() < kTinyVec) {
         OperationLog::Warn("ComputeLarsenDonorFrame",
             "donor_H and donor_anchor coincide; returning identity rotation");
         return Mat3::Identity();
     }
-    Vec3 z = z_raw.normalized();
+    Vec3 const z = z_raw.normalized();
 
     // x = component of (donor_H − donor_third) orthogonal to z, normalized.
     // Bail if third is coincident with H or lies on the anchor→H line
     // (the orthogonal component is then zero).
-    Vec3 v3 = donor_H_pos - donor_third_pos;
+    Vec3 const v3 = donor_H_pos - donor_third_pos;
     if (v3.norm() < kTinyVec) {
         OperationLog::Warn("ComputeLarsenDonorFrame",
             "donor_H and donor_third coincide; returning identity rotation");
         return Mat3::Identity();
     }
-    Vec3 x_raw = v3 - (v3.dot(z)) * z;
+    Vec3 const x_raw = v3 - (v3.dot(z)) * z;
     if (x_raw.norm() < kTinyVec) {
         OperationLog::Warn("ComputeLarsenDonorFrame",
             "donor_third on the anchor→H line; returning identity rotation");
         return Mat3::Identity();
     }
-    Vec3 x = x_raw.normalized();
-    Vec3 y = z.cross(x);
+    Vec3 const x = x_raw.normalized();
+    Vec3 const y = z.cross(x);
 
     // Rotation matrix: rows are canonical basis vectors expressed in log frame.
     // R @ v_log = v_canonical, so R has rows [x; y; z].
@@ -450,9 +454,8 @@ int LarsenHBondGrid::ArchiveIndex(HBondDonorClass donor,
                                   HBondAcceptorClass acceptor) {
     // SidechainCarbonyl approximated by BackboneCarbonyl (NMA acceptor
     // grid). Documented limitation per the design doc.
-    bool nma_acceptor =
-        acceptor == HBondAcceptorClass::BackboneCarbonyl ||
-        acceptor == HBondAcceptorClass::SidechainCarbonyl;
+    bool const nma_acceptor = acceptor == HBondAcceptorClass::BackboneCarbonyl
+                              || acceptor == HBondAcceptorClass::SidechainCarbonyl;
 
     if (donor == HBondDonorClass::AmideHydrogen) {
         if (nma_acceptor)                                        return kArchiveNMANMA;
@@ -475,13 +478,13 @@ const char* LarsenHBondGrid::ArchiveStem(int idx) {
 
 LarsenHBondGrid::LarsenHBondGrid(const std::string& data_dir)
     : data_dir_(data_dir) {
-    fs::path dir(data_dir);
+    fs::path const dir(data_dir);
     if (!fs::exists(dir) || !fs::is_directory(dir)) {
         throw std::runtime_error(
             "LarsenHBondGrid: data_dir not found: " + data_dir);
     }
     for (int i = 0; i < 6; ++i) {
-        fs::path h5 = dir / (std::string(kArchiveStems[i]) + "_dense.h5");
+        fs::path const h5 = dir / (std::string(kArchiveStems[i]) + "_dense.h5");
         LoadOne(h5, grids_[i], kArchiveStems[i]);
     }
     loaded_ = true;
@@ -518,7 +521,7 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
         return rec;
     }
 
-    int idx = ArchiveIndex(donor_class, acceptor_class);
+    int const idx = ArchiveIndex(donor_class, acceptor_class);
     if (idx < 0) {
         OperationLog::Warn("LarsenHBondGrid::QueryNearest",
             "no archive maps to this (donor, acceptor) pair");

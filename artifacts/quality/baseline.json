@@ -1,6 +1,6 @@
 {
-  "anchored_at_sha": "76e7068",
-  "anchored_at_utc": "2026-05-22T15:52:03.105985+00:00",
+  "anchored_at_sha": "353aad4",
+  "anchored_at_utc": "2026-05-22T23:24:59.556336+00:00",
   "tools": {
     "clang-tidy": {
       "fileformat/analysis_file.cpp": {
@@ -93,12 +93,6 @@
         },
         "total": 5
       },
-      "src/AminoAcidType.h": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2
-        },
-        "total": 2
-      },
       "src/ApbsEfgTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "cppcoreguidelines-pro-type-const-cast": 1,
@@ -127,29 +121,6 @@
           "readability-inconsistent-declaration-parameter-name": 1
         },
         "total": 1
-      },
-      "src/BiotSavartResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "google-readability-braces-around-statements": 13,
-          "misc-const-correctness": 40,
-          "performance-unnecessary-value-param": 3,
-          "readability-function-size": 1
-        },
-        "total": 58
-      },
-      "src/Bond.h": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
-      },
-      "src/BondedEnergyResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 56
-        },
-        "total": 58
       },
       "src/BondedEnergyTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
@@ -224,24 +195,12 @@
         },
         "total": 3
       },
-      "src/ConformationAtom.h": {
-        "by_check": {
-          "performance-unnecessary-value-param": 1
-        },
-        "total": 1
-      },
       "src/ConformationResult.cpp": {
         "by_check": {
           "google-readability-braces-around-statements": 1,
           "misc-const-correctness": 4
         },
         "total": 5
-      },
-      "src/ConformationResult.h": {
-        "by_check": {
-          "misc-unused-parameters": 2
-        },
-        "total": 2
       },
       "src/CoulombResult.cpp": {
         "by_check": {
@@ -368,12 +327,6 @@
         "total": 29
       },
       "src/GeometryChoice.cpp": {
-        "by_check": {
-          "performance-unnecessary-value-param": 1
-        },
-        "total": 1
-      },
-      "src/GeometryChoice.h": {
         "by_check": {
           "performance-unnecessary-value-param": 1
         },
@@ -542,13 +495,6 @@
         },
         "total": 3
       },
-      "src/KernelEvaluationFilter.h": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 3
-      },
       "src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "cppcoreguidelines-pro-type-const-cast": 1,
@@ -592,15 +538,6 @@
           "misc-const-correctness": 2
         },
         "total": 4
-      },
-      "src/LarsenHBondGrid.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 8,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 49,
-          "modernize-loop-convert": 3
-        },
-        "total": 64
       },
       "src/LarsenHBondShieldingResult.cpp": {
         "by_check": {
@@ -756,28 +693,6 @@
         },
         "total": 14
       },
-      "src/NpyWriter.h": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
-      },
-      "src/OperationLog.cpp": {
-        "by_check": {
-          "bugprone-empty-catch": 2,
-          "concurrency-mt-unsafe": 1,
-          "google-readability-braces-around-statements": 10,
-          "misc-const-correctness": 2,
-          "modernize-raw-string-literal": 4
-        },
-        "total": 19
-      },
-      "src/OperationLog.h": {
-        "by_check": {
-          "google-explicit-constructor": 1
-        },
-        "total": 1
-      },
       "src/OperationRunner.cpp": {
         "by_check": {
           "cppcoreguidelines-missing-std-forward": 1,
@@ -866,18 +781,6 @@
         },
         "total": 38
       },
-      "src/Protein.h": {
-        "by_check": {
-          "cert-err33-c": 1
-        },
-        "total": 1
-      },
-      "src/ProteinBuildContext.h": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2
-        },
-        "total": 2
-      },
       "src/ProteinConformation.cpp": {
         "by_check": {
           "clang-diagnostic-potentially-evaluated-expression": 2,
@@ -886,12 +789,6 @@
           "performance-inefficient-string-concatenation": 1
         },
         "total": 6
-      },
-      "src/ProteinConformation.h": {
-        "by_check": {
-          "cert-err33-c": 2
-        },
-        "total": 2
       },
       "src/ProtonationDetectionResult.cpp": {
         "by_check": {
@@ -1228,12 +1125,6 @@
         },
         "total": 18
       },
-      "tests/TestEnvironment.h": {
-        "by_check": {
-          "modernize-concat-nested-namespaces": 1
-        },
-        "total": 1
-      },
       "tests/pass0_demo.cpp": {
         "by_check": {
           "cert-err33-c": 2
@@ -1360,13 +1251,6 @@
           "misc-unused-using-decls": 1
         },
         "total": 4
-      },
-      "tests/test_batch_biot_savart_haigh_mallion.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 8,
-          "misc-const-correctness": 63
-        },
-        "total": 71
       },
       "tests/test_batch_coulomb_ringchi.cpp": {
         "by_check": {
@@ -1801,13 +1685,6 @@
           "readability-qualified-auto": 1
         },
         "total": 15
-      },
-      "tests/test_pi_quadrupole_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 10,
-          "misc-const-correctness": 79
-        },
-        "total": 89
       },
       "tests/test_pipeline_and_sample.cpp": {
         "by_check": {
@@ -2421,12 +2298,6 @@
         },
         "total": 3
       },
-      "src/OperationLog.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
       "src/OrcaRunLoader.cpp": {
         "by_check": {
           "constVariableReference": 1,
@@ -2841,10 +2712,10 @@
       },
       "src/AIMNet2Result.cpp": {
         "by_check": {
-          "iwyu-add": 55,
-          "iwyu-remove": 70
+          "iwyu-add": 56,
+          "iwyu-remove": 71
         },
-        "total": 125
+        "total": 127
       },
       "src/AIMNet2Result.h": {
         "by_check": {
@@ -2960,10 +2831,10 @@
       },
       "src/BiotSavartResult.cpp": {
         "by_check": {
-          "iwyu-add": 32,
-          "iwyu-remove": 44
+          "iwyu-add": 31,
+          "iwyu-remove": 43
         },
-        "total": 76
+        "total": 74
       },
       "src/BiotSavartResult.h": {
         "by_check": {
@@ -3139,10 +3010,10 @@
       },
       "src/CoulombResult.cpp": {
         "by_check": {
-          "iwyu-add": 41,
-          "iwyu-remove": 54
+          "iwyu-add": 42,
+          "iwyu-remove": 55
         },
-        "total": 95
+        "total": 97
       },
       "src/CoulombResult.h": {
         "by_check": {
@@ -3370,10 +3241,10 @@
       },
       "src/GeometryChoice.h": {
         "by_check": {
-          "iwyu-add": 10,
+          "iwyu-add": 9,
           "iwyu-remove": 19
         },
-        "total": 29
+        "total": 28
       },
       "src/GeometryResult.cpp": {
         "by_check": {
@@ -3902,10 +3773,10 @@
       },
       "src/MopacCoulombResult.cpp": {
         "by_check": {
-          "iwyu-add": 41,
-          "iwyu-remove": 59
+          "iwyu-add": 42,
+          "iwyu-remove": 60
         },
-        "total": 100
+        "total": 102
       },
       "src/MopacCoulombResult.h": {
         "by_check": {
@@ -4014,10 +3885,10 @@
       },
       "src/OperationLog.cpp": {
         "by_check": {
-          "iwyu-add": 1,
-          "iwyu-remove": 17
+          "iwyu-add": 2,
+          "iwyu-remove": 18
         },
-        "total": 18
+        "total": 20
       },
       "src/OperationLog.h": {
         "by_check": {
@@ -4609,10 +4480,10 @@
       },
       "src/WaterFieldResult.cpp": {
         "by_check": {
-          "iwyu-add": 37,
-          "iwyu-remove": 51
+          "iwyu-add": 38,
+          "iwyu-remove": 52
         },
-        "total": 88
+        "total": 90
       },
       "src/WaterFieldResult.h": {
         "by_check": {

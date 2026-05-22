@@ -216,8 +216,9 @@ class SelfSourceFilter : public KernelEvaluationFilter {
 public:
     bool Accept(const KernelEvaluationContext& ctx) const override {
         if (ctx.atom_index == ctx.source_atom_a) return false;
-        if (ctx.source_atom_b != SIZE_MAX && ctx.atom_index == ctx.source_atom_b)
+        if (ctx.source_atom_b != SIZE_MAX && ctx.atom_index == ctx.source_atom_b) {
             return false;
+        }
         return true;
     }
 
@@ -231,8 +232,7 @@ public:
     }
 
     std::string RejectReason(const KernelEvaluationContext& ctx) const override {
-        size_t match = (ctx.atom_index == ctx.source_atom_a)
-            ? ctx.source_atom_a : ctx.source_atom_b;
+        size_t const match = (ctx.atom_index == ctx.source_atom_a) ? ctx.source_atom_a : ctx.source_atom_b;
         return std::string("SelfSourceFilter: atom=")
             + std::to_string(ctx.atom_index)
             + " IS source_atom=" + std::to_string(match);
@@ -407,7 +407,9 @@ public:
     // Total rejections across all filters.
     int TotalRejections() const {
         int total = 0;
-        for (int c : rejection_counts_) total += c;
+        for (int const c : rejection_counts_) {
+            total += c;
+        }
         return total;
     }
 

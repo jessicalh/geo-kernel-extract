@@ -110,7 +110,7 @@ public:
     // Scoped logger: logs BEGIN on construction, END with elapsed time on destruction.
     class Scope {
     public:
-        Scope(const std::string& operation, const std::string& detail = "");
+        explicit Scope(const std::string& operation, const std::string& detail = "");
         ~Scope();
     private:
         std::string operation_;

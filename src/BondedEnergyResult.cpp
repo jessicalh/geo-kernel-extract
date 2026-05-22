@@ -18,46 +18,46 @@ static constexpr double A_TO_NM = 0.1;
 // Harmonic bond: E = ½k(r - r0)²
 static double EvalBond(const Vec3& p0, const Vec3& p1,
                        double r0_nm, double k) {
-    double r_nm = (p1 - p0).norm() * A_TO_NM;
-    double dr = r_nm - r0_nm;
+    double const r_nm = (p1 - p0).norm() * A_TO_NM;
+    double const dr = r_nm - r0_nm;
     return 0.5 * k * dr * dr;
 }
 
 // Harmonic angle: E = ½k(θ - θ0)²
 static double EvalAngle(const Vec3& p0, const Vec3& p1, const Vec3& p2,
                         double theta0, double k) {
-    Vec3 v1 = (p0 - p1).normalized();
-    Vec3 v2 = (p2 - p1).normalized();
-    double cos_theta = std::max(-1.0, std::min(1.0, v1.dot(v2)));
-    double theta = std::acos(cos_theta);
-    double dtheta = theta - theta0;
+    Vec3 const v1 = (p0 - p1).normalized();
+    Vec3 const v2 = (p2 - p1).normalized();
+    double const cos_theta = std::max(-1.0, std::min(1.0, v1.dot(v2)));
+    double const theta = std::acos(cos_theta);
+    double const dtheta = theta - theta0;
     return 0.5 * k * dtheta * dtheta;
 }
 
 // Urey-Bradley: E = ½k_ub(r13 - r13_0)²
 static double EvalUB(const Vec3& p0, const Vec3& p2,
                      double r13_0_nm, double k_ub) {
-    double r13_nm = (p2 - p0).norm() * A_TO_NM;
-    double dr = r13_nm - r13_0_nm;
+    double const r13_nm = (p2 - p0).norm() * A_TO_NM;
+    double const dr = r13_nm - r13_0_nm;
     return 0.5 * k_ub * dr * dr;
 }
 
 // Dihedral angle from four positions (radians).
 static double DihedralAngle(const Vec3& p0, const Vec3& p1,
                             const Vec3& p2, const Vec3& p3) {
-    Vec3 b1 = p1 - p0;
-    Vec3 b2 = p2 - p1;
-    Vec3 b3 = p3 - p2;
+    Vec3 const b1 = p1 - p0;
+    Vec3 const b2 = p2 - p1;
+    Vec3 const b3 = p3 - p2;
     Vec3 n1 = b1.cross(b2);
     Vec3 n2 = b2.cross(b3);
-    double n1n = n1.norm();
-    double n2n = n2.norm();
+    double const n1n = n1.norm();
+    double const n2n = n2.norm();
     if (n1n < 1e-10 || n2n < 1e-10) return 0.0;
     n1 /= n1n;
     n2 /= n2n;
-    double cos_phi = std::max(-1.0, std::min(1.0, n1.dot(n2)));
-    Vec3 m = n1.cross(b2.normalized());
-    double sin_phi = m.dot(n2);
+    double const cos_phi = std::max(-1.0, std::min(1.0, n1.dot(n2)));
+    Vec3 const m = n1.cross(b2.normalized());
+    double const sin_phi = m.dot(n2);
     return std::atan2(sin_phi, cos_phi);
 }
 
@@ -65,7 +65,7 @@ static double DihedralAngle(const Vec3& p0, const Vec3& p1,
 static double EvalProperDih(const Vec3& p0, const Vec3& p1,
                             const Vec3& p2, const Vec3& p3,
                             double phi0, double k, int mult) {
-    double phi = DihedralAngle(p0, p1, p2, p3);
+    double const phi = DihedralAngle(p0, p1, p2, p3);
     return k * (1.0 + std::cos(mult * phi - phi0));
 }
 
@@ -73,7 +73,7 @@ static double EvalProperDih(const Vec3& p0, const Vec3& p1,
 static double EvalImproperDih(const Vec3& p0, const Vec3& p1,
                               const Vec3& p2, const Vec3& p3,
                               double phi0, double k) {
-    double phi = DihedralAngle(p0, p1, p2, p3);
+    double const phi = DihedralAngle(p0, p1, p2, p3);
     // Wrap difference to [-π, π]
     double dphi = phi - phi0;
     while (dphi > M_PI)  dphi -= 2.0 * M_PI;
@@ -88,26 +88,26 @@ static double EvalCMAP(const Vec3& p0, const Vec3& p1,
                        const std::vector<double>& grid, int spacing) {
     if (grid.empty() || spacing < 2) return 0.0;
 
-    double phi = DihedralAngle(p0, p1, p2, p3);
-    double psi = DihedralAngle(p1, p2, p3, p4);
+    double const phi = DihedralAngle(p0, p1, p2, p3);
+    double const psi = DihedralAngle(p1, p2, p3, p4);
 
     // Map angle [-π, π] to grid index [0, spacing-1]
-    double dx = 2.0 * M_PI / spacing;
-    double fi = (phi + M_PI) / dx;
-    double fj = (psi + M_PI) / dx;
+    double const dx = 2.0 * M_PI / spacing;
+    double const fi = (phi + M_PI) / dx;
+    double const fj = (psi + M_PI) / dx;
 
     // Bilinear interpolation (sufficient — CMAP grids are smooth)
-    int i0 = static_cast<int>(fi) % spacing;
-    int j0 = static_cast<int>(fj) % spacing;
-    int i1 = (i0 + 1) % spacing;
-    int j1 = (j0 + 1) % spacing;
-    double wi = fi - std::floor(fi);
-    double wj = fj - std::floor(fj);
+    int const i0 = static_cast<int>(fi) % spacing;
+    int const j0 = static_cast<int>(fj) % spacing;
+    int const i1 = (i0 + 1) % spacing;
+    int const j1 = (j0 + 1) % spacing;
+    double const wi = fi - std::floor(fi);
+    double const wj = fj - std::floor(fj);
 
-    double v00 = grid[i0 * spacing + j0];
-    double v10 = grid[i1 * spacing + j0];
-    double v01 = grid[i0 * spacing + j1];
-    double v11 = grid[i1 * spacing + j1];
+    double const v00 = grid[i0 * spacing + j0];
+    double const v10 = grid[i1 * spacing + j0];
+    double const v01 = grid[i0 * spacing + j1];
+    double const v11 = grid[i1 * spacing + j1];
 
     return (1-wi)*(1-wj)*v00 + wi*(1-wj)*v10
          + (1-wi)*wj*v01     + wi*wj*v11;
@@ -146,35 +146,35 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
 
         switch (ix.type) {
             case BondedInteraction::Bond: {
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p1 = conf.PositionAt(ix.atoms[1]);
                 energy = EvalBond(p0, p1, ix.p[0], ix.p[1]);
                 target = &result->bond_energy_;
                 ++count_bond;
                 break;
             }
             case BondedInteraction::Angle: {
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
-                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 const p2 = conf.PositionAt(ix.atoms[2]);
                 energy = EvalAngle(p0, p1, p2, ix.p[0], ix.p[1]);
                 target = &result->angle_energy_;
                 ++count_angle;
                 break;
             }
             case BondedInteraction::UreyBradley: {
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p2 = conf.PositionAt(ix.atoms[2]);
                 energy = EvalUB(p0, p2, ix.p[0], ix.p[1]);
                 target = &result->ub_energy_;
                 ++count_ub;
                 break;
             }
             case BondedInteraction::ProperDih: {
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
-                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
-                Vec3 p3 = conf.PositionAt(ix.atoms[3]);
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 const p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 const p3 = conf.PositionAt(ix.atoms[3]);
                 energy = EvalProperDih(p0, p1, p2, p3,
                                        ix.p[0], ix.p[1],
                                        static_cast<int>(ix.p[2]));
@@ -183,25 +183,25 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 break;
             }
             case BondedInteraction::ImproperDih: {
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
-                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
-                Vec3 p3 = conf.PositionAt(ix.atoms[3]);
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 const p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 const p3 = conf.PositionAt(ix.atoms[3]);
                 energy = EvalImproperDih(p0, p1, p2, p3, ix.p[0], ix.p[1]);
                 target = &result->improper_energy_;
                 ++count_improper;
                 break;
             }
             case BondedInteraction::CMAP: {
-                int cmap_idx = static_cast<int>(ix.p[0]);
-                if (cmap_idx < 0 ||
-                    cmap_idx >= static_cast<int>(params.cmap_grids.size()))
+                int const cmap_idx = static_cast<int>(ix.p[0]);
+                if (cmap_idx < 0 || cmap_idx >= static_cast<int>(params.cmap_grids.size())) {
                     continue;
-                Vec3 p0 = conf.PositionAt(ix.atoms[0]);
-                Vec3 p1 = conf.PositionAt(ix.atoms[1]);
-                Vec3 p2 = conf.PositionAt(ix.atoms[2]);
-                Vec3 p3 = conf.PositionAt(ix.atoms[3]);
-                Vec3 p4 = conf.PositionAt(ix.atoms[4]);
+                }
+                Vec3 const p0 = conf.PositionAt(ix.atoms[0]);
+                Vec3 const p1 = conf.PositionAt(ix.atoms[1]);
+                Vec3 const p2 = conf.PositionAt(ix.atoms[2]);
+                Vec3 const p3 = conf.PositionAt(ix.atoms[3]);
+                Vec3 const p4 = conf.PositionAt(ix.atoms[4]);
                 energy = EvalCMAP(p0, p1, p2, p3, p4,
                                   params.cmap_grids[cmap_idx],
                                   params.cmap_grid_spacing);
@@ -214,9 +214,10 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
         if (!target) continue;
 
         // Split energy evenly among participating atoms
-        double share = energy / ix.n_atoms;
-        for (int k = 0; k < ix.n_atoms; ++k)
+        double const share = energy / ix.n_atoms;
+        for (int k = 0; k < ix.n_atoms; ++k) {
             (*target)[ix.atoms[k]] += share;
+        }
     }
 
     // Total bonded = sum of all types

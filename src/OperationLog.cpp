@@ -50,17 +50,17 @@ void OperationLog::ConfigureUdp(const std::string& host, int port) {
     const bool is_multicast = first_octet >= 224 && first_octet <= 239;
 
     if (is_multicast) {
-        const unsigned char ttl  = 1;  // local subnet
+        const unsigned char ttl = 1;   // local subnet
         const unsigned char loop = 1;  // also deliver to same-host listeners
-        setsockopt(socket_, IPPROTO_IP, IP_MULTICAST_TTL,  &ttl,  sizeof(ttl));
+        setsockopt(socket_, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));
         setsockopt(socket_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
     }
 
     udpConfigured_ = true;
-    Log(Level::Info, "OperationLog::ConfigureUdp",
-        std::string("UDP logging to ") + (is_multicast ? "multicast " : "unicast ") +
-        host + ":" + std::to_string(port) +
-        (is_multicast ? " (TTL=1, loopback=enabled)" : ""));
+    Log(Level::Info,
+        "OperationLog::ConfigureUdp",
+        std::string("UDP logging to ") + (is_multicast ? "multicast " : "unicast ") + host + ":" + std::to_string(port)
+            + (is_multicast ? " (TTL=1, loopback=enabled)" : ""));
 }
 
 
@@ -96,7 +96,7 @@ static std::string CurrentTimestamp() {
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
 
-    std::tm tm_buf;
+    std::tm tm_buf{};
     localtime_r(&time, &tm_buf);
 
     std::ostringstream oss;
@@ -121,31 +121,37 @@ static std::string BuildJson(OperationLog::Level level,
                               const std::string& operation,
                               const std::string& detail) {
     std::string escaped;
-    for (char c : detail) {
-        if (c == '"') escaped += "\\\"";
-        else if (c == '\\') escaped += "\\\\";
-        else if (c == '\n') escaped += "\\n";
-        else escaped += c;
+    for (char const c : detail) {
+        if (c == '"') {
+            escaped += "\\\"";
+        } else if (c == '\\') {
+            escaped += "\\\\";
+        } else if (c == '\n') {
+            escaped += "\\n";
+        } else {
+            escaped += c;
+        }
     }
 
-    return "{\"ts\":\"" + CurrentTimestamp() +
-           "\",\"level\":\"" + LevelString(level) +
-           "\",\"op\":\"" + operation +
-           "\",\"detail\":\"" + escaped + "\"}";
+    return R"({"ts":")" + CurrentTimestamp() + R"(","level":")" + LevelString(level) + R"(","op":")" + operation
+           + R"(","detail":")" + escaped + "\"}";
 }
 
 
 void OperationLog::Log(Level level, const std::string& operation,
                         const std::string& detail) {
-    std::string json = BuildJson(level, operation, detail);
-    if (fileConfigured_)
+    std::string const json = BuildJson(level, operation, detail);
+    if (fileConfigured_) {
         SendFile(json);
-    if (udpConfigured_)
+    }
+    if (udpConfigured_) {
         SendUdp(json);
+    }
     // Warn/Error always go to stderr — cannot be silently lost if listener is down.
     // Info/Debug go to stderr only as fallback when UDP is not configured.
-    if (!udpConfigured_ || level == Level::Warning || level == Level::Error)
+    if (!udpConfigured_ || level == Level::Warning || level == Level::Error) {
         SendStderr(json);
+    }
 }
 
 void OperationLog::Log(Level level, uint32_t channel,
@@ -164,8 +170,15 @@ uint32_t OperationLog::GetChannelMask() { return channelMask_; }
 void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
     std::string path = tomlPath;
     if (path.empty()) {
+        // getenv("HOME") is safe here because LoadChannelConfig is
+        // called once during startup before any worker threads exist.
+        // Calling secure_getenv() or an explicit /etc/passwd lookup
+        // adds complexity for no benefit in single-process CLI tools.
+        // NOLINTNEXTLINE(concurrency-mt-unsafe)
         const char* home = std::getenv("HOME");
-        if (home) path = std::string(home) + "/.nmr_tools.toml";
+        if (home) {
+            path = std::string(home) + "/.nmr_tools.toml";
+        }
     }
     if (path.empty()) return;
 
@@ -180,8 +193,9 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
     bool inLogging = false;
     while (std::getline(in, line)) {
         if (line.find("[logging]") != std::string::npos) { inLogging = true; continue; }
-        if (line.find('[') != std::string::npos && line.find("[logging]") == std::string::npos)
+        if (line.find('[') != std::string::npos && line.find("[logging]") == std::string::npos) {
             inLogging = false;
+        }
         if (!inLogging) continue;
 
         auto eq = line.find('=');
@@ -194,25 +208,41 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
         while (!val.empty() && val.front() == '"') val = val.substr(1);
 
         if (key == "channels") {
+            // std::stoul throws std::invalid_argument or std::out_of_range
+            // on malformed input. We can't route through OperationLog here
+            // because LoadChannelConfig is still running — write directly
+            // to stderr and keep the prior mask (default LogAll).
             try {
                 channelMask_ = static_cast<uint32_t>(std::stoul(val, nullptr, 0));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                std::cerr << "OperationLog::LoadChannelConfig: malformed channels=\"" << val << "\" (" << e.what()
+                          << "); keeping prior channel mask\n";
+            }
         } else if (key == "udp_host") {
             udp_host = val;
         } else if (key == "udp_port") {
-            try { udp_port = std::stoi(val); } catch (...) {}
+            // Same rationale as channels above. Malformed udp_port keeps
+            // udp_port at 0 → ConfigureUdp is skipped → stderr-only logging.
+            try {
+                udp_port = std::stoi(val);
+            } catch (const std::exception& e) {
+                std::cerr << "OperationLog::LoadChannelConfig: malformed udp_port=\"" << val << "\" (" << e.what()
+                          << "); UDP logging disabled\n";
+            }
         } else if (key == "file") {
             log_file = val;
         }
     }
 
     // Configure UDP if both host and port are specified.
-    if (!udp_host.empty() && udp_port > 0)
+    if (!udp_host.empty() && udp_port > 0) {
         ConfigureUdp(udp_host, udp_port);
+    }
 
     // Configure file logging if path is specified.
-    if (!log_file.empty())
+    if (!log_file.empty()) {
         ConfigureFile(log_file);
+    }
 }
 
 void OperationLog::LogSessionStart() {
