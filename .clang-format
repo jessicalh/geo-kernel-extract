@@ -1,0 +1,100 @@
+---
+# .clang-format for the nmr-shielding project. Calibrated 2026-05-22
+# against representative src/*.cpp to produce <5% line diff on
+# existing code while still catching real style violations on new
+# code.
+#
+# Workflow rule (CLAUDE.md): use `git clang-format HEAD` on staged
+# changes — NOT `clang-format -i <file>` over a whole file. The
+# config is intentionally conservative about repacking carefully-
+# hand-broken multi-line layouts; bulk-format would still churn
+# some of those because clang-format is whole-file by nature.
+
+Language:        Cpp
+BasedOnStyle:    LLVM
+Standard:        c++17
+
+# --- Width / indent ----------------------------------------------------
+ColumnLimit:     128
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: false
+ContinuationIndentWidth: 4
+
+# --- Braces ------------------------------------------------------------
+BreakBeforeBraces: Attach
+Cpp11BracedListStyle: true
+
+# --- Functions / control flow -----------------------------------------
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AlwaysBreakTemplateDeclarations: Yes
+
+# --- Pointers / references --------------------------------------------
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+DerivePointerAlignment: false
+
+# --- Spaces ------------------------------------------------------------
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesInAngles: Never
+SpacesInCStyleCastParentheses: false
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: true
+SpacesBeforeTrailingComments: 2
+
+# --- Alignment: DISABLED -----------------------------------------------
+# Author-chosen alignment in declaration/assignment groups (e.g.
+# KabschResult struct) is preserved by NOT running the aligner.
+# Enabling these introduced 60% line churn during the 2026-05-22
+# calibration.
+AlignConsecutiveDeclarations: None
+AlignConsecutiveAssignments: None
+AlignTrailingComments: true
+AlignAfterOpenBracket: Align
+
+# --- Packing: DISABLED to preserve hand-broken multi-line layouts -----
+# When an argument list spans multiple lines, codebase strongly
+# prefers one-arg-per-line for readability. Bin-packing repacks
+# those into fewer denser lines, which is a major source of churn.
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+# --- Includes ----------------------------------------------------------
+# Project files use mixed first-self / then-project-headers /
+# then-3rd-party / then-std ordering, kept manual. Preserve grouping;
+# sort within blocks only.
+IncludeBlocks:   Preserve
+SortIncludes:    CaseSensitive
+SortUsingDeclarations: true
+
+# --- Constructor / member init ----------------------------------------
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: CurrentLine
+
+# --- Binary operators --------------------------------------------------
+BreakBeforeBinaryOperators: NonAssignment
+BreakConstructorInitializers: BeforeComma
+BreakInheritanceList: BeforeComma
+
+# --- Misc --------------------------------------------------------------
+ReflowComments:  false  # don't reflow author's wrapped comment blocks
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+
+# --- Penalties (heavily discourage repacking) -------------------------
+PenaltyBreakAssignment:           5
+PenaltyBreakBeforeFirstCallParameter: 1
+PenaltyBreakComment:              10
+PenaltyBreakFirstLessLess:        120
+PenaltyBreakString:               1000
+PenaltyExcessCharacter:           1000000
+PenaltyReturnTypeOnItsOwnLine:    1

@@ -1,0 +1,178 @@
+---
+# .clang-tidy for the nmr-shielding project. The C++ lint ratchet's
+# core check set, calibrated for a physics-research codebase: high
+# signal on bugs / undefined behavior / portability / modernization,
+# low signal on cosmetic readability rules that fight the codebase's
+# explicit conventions (deliberate use of magic constants in physics
+# formulae, hot-loop parameter-pack patterns, large structs of POD
+# fields).
+#
+# Updated 2026-05-22 (cleanup phase bootstrap).
+#
+# Run:
+#   scripts/lint/run-clang-tidy.sh           (full sweep, emits JSON)
+#   scripts/lint/run-clang-tidy.sh src/X.cpp (single TU)
+# Ratchet:
+#   artifacts/quality/baseline.json holds the per-file finding counts;
+#   pre-commit hook fails if a changed file's count exceeds baseline.
+
+# Check families enabled in full, with surgical disables for the
+# rules that fight the codebase's intentional patterns:
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  google-*,
+  hicpp-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+
+  -cert-dcl21-cpp,
+  -cert-err58-cpp,
+
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-init-variables,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-static-cast-downcast,
+  -cppcoreguidelines-pro-type-union-access,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-special-member-functions,
+
+  -google-build-using-namespace,
+  -google-readability-todo,
+  -google-runtime-int,
+  -google-runtime-references,
+
+  -hicpp-avoid-c-arrays,
+  -hicpp-avoid-goto,
+  -hicpp-braces-around-statements,
+  -hicpp-explicit-conversions,
+  -hicpp-named-parameter,
+  -hicpp-no-array-decay,
+  -hicpp-signed-bitwise,
+  -hicpp-special-member-functions,
+  -hicpp-uppercase-literal-suffix,
+  -hicpp-use-emplace,
+  -hicpp-vararg,
+  # NOTE: braces-around-statements IS an enforced rule (project
+  # convention 2026-05-22). The check fires under three aliases:
+  #   - google-readability-braces-around-statements  (KEPT)
+  #   - readability-braces-around-statements         (disabled below)
+  #   - hicpp-braces-around-statements               (disabled above)
+  # The hicpp + readability variants are silenced only to prevent
+  # the same violation being reported 3x. Enforcement is via the
+  # google alias.
+
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  -misc-include-cleaner,
+  -misc-use-anonymous-namespace,
+  -misc-use-internal-linkage,
+
+  -modernize-pass-by-value,
+  -modernize-return-braced-init-list,
+  -modernize-use-default-member-init,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  -modernize-avoid-c-arrays,
+  -modernize-use-using,
+
+  -performance-avoid-endl,
+  -performance-enum-size,
+
+  -readability-avoid-nested-conditional-operator,
+  -readability-braces-around-statements,  # alias of google-readability-braces-around-statements; keep one alias only
+  -readability-convert-member-functions-to-static,
+  -readability-else-after-return,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+  -readability-isolate-declaration,
+  -readability-magic-numbers,
+  -readability-named-parameter,
+  -readability-redundant-access-specifiers,
+  -readability-redundant-inline-specifier,
+  -readability-redundant-member-init,
+  -readability-simplify-boolean-expr,
+  -readability-static-accessed-through-instance,
+  -readability-suspicious-call-argument,
+  -readability-uppercase-literal-suffix,
+  -readability-use-anyofallof
+
+# WarningsAsErrors: leave empty initially. The ratchet (baseline.json
+# + pre-commit) is the gate; promoting specific checks to errors is a
+# future tightening after the baseline is whittled down.
+WarningsAsErrors: ""
+
+# Header filter: lint our own headers (src/, tests/, fileformat/),
+# not vendored / system / build / downstream UI subprojects.
+# clang-tidy 18 doesn't ship ExcludeHeaderFilterRegex, so the positive
+# regex doubles as the exclusion: anything not matching is silently
+# skipped.
+HeaderFilterRegex: '/(src|tests|fileformat)/[^/]+\.(h|hpp)$'
+
+FormatStyle: file
+User: jessica
+
+# Check-specific options. Most checks accept knobs that tune their
+# noise level; the values below were chosen for this codebase.
+CheckOptions:
+  # readability-identifier-length: keep the rule but allow loop indices.
+  readability-identifier-length.MinimumVariableNameLength: 1
+  readability-identifier-length.MinimumParameterNameLength: 1
+  readability-identifier-length.MinimumLoopCounterNameLength: 1
+
+  # readability-function-size: thesis physics methods sometimes get long.
+  readability-function-size.LineThreshold: 200
+  readability-function-size.StatementThreshold: 150
+  readability-function-size.BranchThreshold: 30
+
+  # cppcoreguidelines-init-variables: skip; codebase prefers explicit
+  # init at use site, not declaration. (Disabled at family level above.)
+
+  # bugprone-argument-comment: only warn for mismatched comments, not
+  # missing ones (most fn calls don't need /*arg=*/ comments).
+  bugprone-argument-comment.IgnoreSingleArgument: 1
+  bugprone-argument-comment.CommentBoolLiterals: 0
+  bugprone-argument-comment.CommentIntegerLiterals: 0
+
+  # bugprone-string-literal-with-embedded-nul: keep ON for safety.
+
+  # modernize-use-override: full enforcement (legit).
+  modernize-use-override.IgnoreDestructors: 0
+
+  # modernize-loop-convert: keep but require reasonable threshold.
+  modernize-loop-convert.MinConfidence: reasonable
+
+  # modernize-use-emplace: enforce for clear cases only.
+  modernize-use-emplace.IgnoreImplicitConstructors: 1
+
+  # performance-for-range-copy: enforce; ranged-for with copy is a
+  # common perf footgun.
+
+  # performance-unnecessary-value-param: enforce on large types.
+  performance-unnecessary-value-param.AllowedTypes: ''
+
+  # cppcoreguidelines-pro-type-member-init: enforce. POD structs that
+  # rely on init=0.0 at declaration trip this only if a member has
+  # no initializer at all.

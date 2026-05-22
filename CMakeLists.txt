@@ -5,6 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Always emit compile_commands.json so clang-tidy / IWYU / scan-build
+# / clangd can find translation-unit-specific flags. Lives in the
+# build directory; scripts/lint/* + clangd consume it from there.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Default build type: optimised with debug symbols.
 # Override with: cmake -DCMAKE_BUILD_TYPE=Release ..
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

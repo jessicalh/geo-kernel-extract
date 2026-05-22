@@ -3,6 +3,20 @@ build-ui/
 build-check/
 build-forensic/
 build-gen/
+build-asan/
+
+# Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
+# scan-build) regenerate on demand; per-sha snapshots can grow large.
+# baseline.json itself IS committed (it's the ratchet anchor); the
+# per-sha snapshots and HTML/JSON reports under artifacts/quality/
+# are derived state.
+artifacts/quality/*-*.{json,xml,txt,sarif,html}
+artifacts/quality/scan-build-*/
+artifacts/quality/clang-tidy-*.json
+artifacts/quality/cppcheck-*.xml
+artifacts/quality/iwyu-*.txt
+!artifacts/quality/baseline.json
+!artifacts/quality/README.md
 Testing/
 *.o
 *.a
@@ -125,8 +139,10 @@ molprobity_runs/
 # papers these would add ~2 GB. Source-of-truth is the PDFs plus
 # the distilled summaries and keywords in references-meta/ (both
 # committed). See scripts/references/README.md.
-references-text/
-references-images/
+references-text/*
+references-images/*
+!references-text/README.md
+!references-images/README.md
 
 # PDB Chemical Component Dictionary — reference data, freely
 # re-fetchable from wwPDB. ~376 MB uncompressed; see
