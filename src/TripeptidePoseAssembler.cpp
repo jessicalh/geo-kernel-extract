@@ -526,7 +526,12 @@ bool AssembleCentralTyped(
     }
 
     // Residue-level diagnostic: if any perceived atoms failed identity
-    // match, log a single summary (don't spam per-atom).
+    // match, log a single summary (don't spam per-atom). Common cause
+    // on production trajectories: disulfide-bonded CYS (state CYX) —
+    // tensorcs15 CYS rows were computed against reduced free Cys-SH so
+    // the DB row carries an HG hydrogen the disulfide-bonded protein
+    // side correctly does not. The residue gets NaN-filled (consistent
+    // with `feedback_log_overages_dont_assert`) until CYX DB rows land.
     if (out.n_substrate_disagreements > 0) {
         OperationLog::Warn("TripeptidePoseAssembler::AssembleCentralTyped",
             "residue " + std::to_string(res.sequence_number) + " " +
@@ -534,8 +539,9 @@ bool AssembleCentralTyped(
             " calc_id=" + std::to_string(rec.calc_id) +
             ": " + std::to_string(out.n_substrate_disagreements) +
             " perceived atoms had no protein-side identity match — "
-            "likely protonation-variant mismatch or non-standard "
-            "residue chemistry");
+            "likely protonation-variant mismatch (e.g. CYX disulfide "
+            "where DB row carries HG that the bonded protein lacks) "
+            "or non-standard residue chemistry");
     }
 
     return true;
