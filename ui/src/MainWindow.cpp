@@ -11,19 +11,23 @@
 #include "ComputeWorker.h"
 
 // Library headers — the viewer reads the object model directly
-#include "Protein.h"
-#include "ProteinConformation.h"
-#include "ConformationAtom.h"
+#include "AminoAcidType.h"
 #include "Atom.h"
-#include "Residue.h"
-#include "Ring.h"
 #include "Bond.h"
+#include "ConformationAtom.h"
+#include "ConformationResult.h"
 #include "DsspResult.h"
-#include "MopacResult.h"
+#include "GeometryChoice.h"
+#include "LegacyAmberTopology.h"
 #include "MopacCoulombResult.h"
 #include "MopacMcConnellResult.h"
-#include "GeometryChoice.h"
-#include "ConformationResult.h"
+#include "MopacResult.h"
+#include "Protein.h"
+#include "ProteinConformation.h"
+#include "Residue.h"
+#include "Ring.h"
+#include "SemanticEnums.h"
+#include "Session.h"
 
 #include <filesystem>
 
@@ -126,8 +130,173 @@ static const char* NameForBondCategory(BondCategory c) {
     return "?";
 }
 
-MainWindow::MainWindow(const QString& initialDir, QWidget* parent)
+// AMBER substrate enum-to-string helpers. These are display-only —
+// the runtime uses typed enums for every decision. NameFor* live here
+// (not in SemanticEnums.h) because the library is mid-lint and adding
+// to a public header is out of ui/ scope (per ui/CLAUDE.md). Same
+// local pattern as NameForAtomRole / NameForBondCategory above.
+
+static const char* NameForPlanarGroupKind(PlanarGroupKind k) {
+    switch (k) {
+    case PlanarGroupKind::None:
+        return "—";
+    case PlanarGroupKind::PeptideAmide:
+        return "PeptideAmide";
+    case PlanarGroupKind::SidechainAmide:
+        return "SidechainAmide";
+    case PlanarGroupKind::Guanidinium:
+        return "Guanidinium";
+    case PlanarGroupKind::Imidazole:
+        return "Imidazole";
+    case PlanarGroupKind::Aromatic6Ring:
+        return "Aromatic6Ring";
+    case PlanarGroupKind::Aromatic5Ring:
+        return "Aromatic5Ring";
+    case PlanarGroupKind::Carboxylate:
+        return "Carboxylate";
+    case PlanarGroupKind::AromaticHydroxyl:
+        return "AromaticHydroxyl";
+    case PlanarGroupKind::AromaticOxide:
+        return "AromaticOxide";
+    }
+    return "?";
+}
+
+static const char* NameForPolarHKind(PolarHKind k) {
+    switch (k) {
+    case PolarHKind::NotPolar:
+        return "NotPolar";
+    case PolarHKind::BackboneAmide:
+        return "BackboneAmide";
+    case PolarHKind::SidechainPrimaryAmide:
+        return "SidechainPrimaryAmide";
+    case PolarHKind::IndoleNH:
+        return "IndoleNH";
+    case PolarHKind::AmmoniumNH:
+        return "AmmoniumNH";
+    case PolarHKind::GuanidiniumNH:
+        return "GuanidiniumNH";
+    case PolarHKind::ImidazoleNH:
+        return "ImidazoleNH";
+    case PolarHKind::CarboxylOH:
+        return "CarboxylOH";
+    case PolarHKind::HydroxylOH_Aliphatic:
+        return "HydroxylOH (aliphatic)";
+    case PolarHKind::HydroxylOH_Aromatic:
+        return "HydroxylOH (aromatic)";
+    case PolarHKind::ThiolSH:
+        return "ThiolSH";
+    case PolarHKind::AmineNH:
+        return "AmineNH";
+    case PolarHKind::OtherPolarH:
+        return "OtherPolarH";
+    }
+    return "?";
+}
+
+static const char* NameForProchiralStereo(ProchiralStereo s) {
+    switch (s) {
+    case ProchiralStereo::NotProchiral:
+        return "NotProchiral";
+    case ProchiralStereo::ProR:
+        return "ProR";
+    case ProchiralStereo::ProS:
+        return "ProS";
+    case ProchiralStereo::Unassigned:
+        return "Unassigned";
+    }
+    return "?";
+}
+
+static const char* NameForPseudoatomKind(PseudoatomKind k) {
+    switch (k) {
+    case PseudoatomKind::None:
+        return "None";
+    case PseudoatomKind::M:
+        return "M (methyl)";
+    case PseudoatomKind::Q:
+        return "Q (equivalent-H group)";
+    case PseudoatomKind::R:
+        return "R (ring aggregator)";
+    }
+    return "?";
+}
+
+static const char* NameForRingSystemKind(RingSystemKind k) {
+    switch (k) {
+    case RingSystemKind::NotInRing:
+        return "—";
+    case RingSystemKind::Benzene_Phe:
+        return "Phe benzene";
+    case RingSystemKind::Benzene_Tyr:
+        return "Tyr benzene";
+    case RingSystemKind::Imidazole_His:
+        return "His imidazole";
+    case RingSystemKind::Indole_Trp_5:
+        return "Trp pyrrole";
+    case RingSystemKind::Indole_Trp_6:
+        return "Trp benzene";
+    case RingSystemKind::Pyrrolidine_Pro:
+        return "Pro pyrrolidine";
+    case RingSystemKind::Indole_Trp_9:
+        return "Trp indole perimeter";
+    }
+    return "?";
+}
+
+static const char* NameForRingPositionLabel(RingPositionLabel p) {
+    switch (p) {
+    case RingPositionLabel::NotInRing:
+        return "—";
+    case RingPositionLabel::Ipso:
+        return "ipso";
+    case RingPositionLabel::Ortho1:
+        return "ortho1";
+    case RingPositionLabel::Ortho2:
+        return "ortho2";
+    case RingPositionLabel::Meta1:
+        return "meta1";
+    case RingPositionLabel::Meta2:
+        return "meta2";
+    case RingPositionLabel::Para:
+        return "para";
+    case RingPositionLabel::PyrroleAlpha:
+        return "pyrrole α";
+    case RingPositionLabel::PyrroleBeta:
+        return "pyrrole β";
+    case RingPositionLabel::BridgeFusion:
+        return "bridge (fused)";
+    case RingPositionLabel::Heteroatom_NH:
+        return "heteroatom NH";
+    case RingPositionLabel::Heteroatom_NoH:
+        return "heteroatom (no H)";
+    case RingPositionLabel::Heteroatom_OH:
+        return "heteroatom OH";
+    case RingPositionLabel::Saturated:
+        return "saturated";
+    case RingPositionLabel::ProRingNitrogen:
+        return "Pro ring N";
+    case RingPositionLabel::ProRingAlphaCarbon:
+        return "Pro ring Cα";
+    case RingPositionLabel::ProRingBeta:
+        return "Pro ring Cβ";
+    case RingPositionLabel::ProRingPuckerPivot:
+        return "Pro pucker pivot (Cγ)";
+    case RingPositionLabel::ProRingDelta:
+        return "Pro ring Cδ";
+    case RingPositionLabel::PerimeterMember:
+        return "perimeter member";
+    }
+    return "?";
+}
+
+MainWindow::MainWindow(nmr::Session& session,
+                       const QString& udpHost,
+                       quint16 udpPort,
+                       const QString& initialDir,
+                       QWidget* parent)
     : QMainWindow(parent)
+    , session_(session)
     , initialDir_(initialDir)
     , ringOverlay_(nullptr)
     , peptideBondOverlay_(nullptr)
@@ -138,7 +307,8 @@ MainWindow::MainWindow(const QString& initialDir, QWidget* parent)
     , isosurfaceOverlayPass_(nullptr)
     , butterflyOverlay_(nullptr)
     , fieldGridOverlay_(nullptr)
-{
+    , udpHost_(udpHost)
+    , udpPort_(udpPort) {
     udp_log("[lifecycle] MainWindow constructor entered\n");
     setWindowTitle("NMR Shielding Tensor Viewer");
     resize(1400, 900);
@@ -432,26 +602,62 @@ void MainWindow::setupUI() {
     logDock_->setWidget(logText_);
     tabifyDockWidget(atomInfoDock_, logDock_);
 
-    // Bind UDP listener on port 9998 (same port OperationLog sends to).
+    // Bind UDP listener on the configured destination (udpHost_:udpPort_
+    // sourced from [logging] in ~/.nmr_tools.toml by main_viewer.cpp).
     //
-    // DESIGN: udp_listen.py must NOT be running alongside the viewer.
-    // Both bind 9998, and Linux unicast UDP delivers each datagram to
-    // exactly one socket (the last to bind). If udp_listen.py grabbed
-    // 9998 first without SO_REUSEADDR, this bind fails and the tab is
-    // silent. See ui/launch_viewer.sh for the correct usage contract.
+    // Multicast (239.0.0.0/8): bind AnyIPv4 so the kernel hands us
+    // datagrams destined for the group, then join the group via
+    // joinMulticastGroup. This lets udp_listen.py and other subscribers
+    // co-listen on the same port — Linux unicast UDP would otherwise
+    // route each datagram to a single bound socket. ShareAddress +
+    // ReuseAddressHint let stale sockets be reclaimed cleanly.
+    //
+    // Unicast: keep the original host-specific bind (preserves the
+    // "127.0.0.1 to local listener" path for offline use).
     //
     // There is intentionally NO fallback to ports 9999+. A fallback
-    // would silently bind the wrong port (library always sends to 9998),
-    // making the tab appear to work while receiving nothing. Fail visibly
-    // instead so the cause is obvious.
+    // would silently bind the wrong port (library always sends to
+    // udpPort_), making the tab appear to work while receiving nothing.
+    // Fail visibly instead so the cause is obvious.
     logSocket_ = new QUdpSocket(this);
-    if (logSocket_->bind(QHostAddress::LocalHost, 9998, QUdpSocket::ShareAddress)) {
+
+    auto isMulticast = [](const QString& host) {
+        const QStringList parts = host.split('.');
+        if (parts.size() != 4)
+            return false;
+        bool ok = false;
+        const int first = parts[0].toInt(&ok);
+        return ok && first >= 224 && first <= 239;
+    };
+
+    const bool multicast = isMulticast(udpHost_);
+    bool bound = false;
+    if (multicast) {
+        bound = logSocket_->bind(QHostAddress::AnyIPv4, udpPort_, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+        if (bound) {
+            const QHostAddress group(udpHost_);
+            if (!logSocket_->joinMulticastGroup(group)) {
+                logText_->appendPlainText(QStringLiteral("** Log tab: bound %1:%2 but failed to join "
+                                                         "multicast group; tab will be quiet. **")
+                                              .arg(udpHost_)
+                                              .arg(udpPort_));
+            }
+        }
+    } else {
+        bound = logSocket_->bind(QHostAddress(udpHost_), udpPort_, QUdpSocket::ShareAddress);
+    }
+
+    if (bound) {
         connect(logSocket_, &QUdpSocket::readyRead, this, &MainWindow::onLogDatagramReady);
     } else {
-        logText_->appendPlainText(
-            QStringLiteral("** Log tab inactive: failed to bind UDP port 9998. **\n"
-                           "Is udp_listen.py already running? Stop it before launching the viewer.\n"
-                           "See ui/launch_viewer.sh for correct usage."));
+        logText_->appendPlainText(QStringLiteral("** Log tab inactive: failed to bind UDP %1:%2 (%3). **\n"
+                                                 "Multicast: check that the configured group is in 239.0.0.0/8 "
+                                                 "and IGMP isn't blocked locally.\n"
+                                                 "Unicast: is another process already holding the port?\n"
+                                                 "See ui/launch_viewer.sh + [logging] in ~/.nmr_tools.toml.")
+                                      .arg(udpHost_)
+                                      .arg(udpPort_)
+                                      .arg(multicast ? "multicast" : "unicast"));
     }
 
     // Start with the log tab visible — it shows computation progress
@@ -546,12 +752,30 @@ void MainWindow::loadMolecule() {
 void MainWindow::startCompute() {
     udp_log("[lifecycle] startCompute entered\n");
     workerThread_ = new QThread;
-    worker_ = new ComputeWorker;
+    worker_ = new ComputeWorker(session_);
     worker_->moveToThread(workerThread_);
 
     connect(this, &MainWindow::computeRequested, worker_, &ComputeWorker::computeAll);
     connect(worker_, &ComputeWorker::progress, this, &MainWindow::onComputeProgress);
     connect(worker_, &ComputeWorker::finished, this, &MainWindow::onComputeFinished);
+
+    // Worker / thread lifetime via Qt's canonical pattern. When the
+    // worker emits finished:
+    //   1. workerThread quits its event loop (processes pending events
+    //      including the deleteLater below before exiting),
+    //   2. the worker is deleteLater'd on its own thread (event loop
+    //      drains and runs the deferred delete cleanly),
+    //   3. the thread emits QThread::finished after exec() returns,
+    //      triggering its own deleteLater on the main thread (where it
+    //      was created).
+    // cancelCompute and onComputeFinished still call wait() so shutdown
+    // is deterministic; with this wiring they no longer raw-delete the
+    // worker or thread objects. The agent flagged the previous explicit
+    // delete as safe today but fragile against a future ComputeWorker
+    // that grows QObject children (timers, network access manager).
+    connect(worker_, &ComputeWorker::finished, workerThread_, &QThread::quit);
+    connect(worker_, &ComputeWorker::finished, worker_, &QObject::deleteLater);
+    connect(workerThread_, &QThread::finished, workerThread_, &QObject::deleteLater);
 
     progressDialog_ = new QProgressDialog("Computing features...", "Cancel", 0, 100, this);
     progressDialog_->setMinimumDuration(0);
@@ -569,9 +793,11 @@ void MainWindow::cancelCompute() {
         workerThread_->quit();
         workerThread_->wait();
     }
-    delete worker_;
+    // worker_ / workerThread_ auto-delete via the deleteLater wiring in
+    // startCompute. Just drop our references so we don't reuse stale
+    // pointers; Qt processes the deferred deletions on the appropriate
+    // event loops.
     worker_ = nullptr;
-    delete workerThread_;
     workerThread_ = nullptr;
     if (progressDialog_) {
         progressDialog_->close();
@@ -597,14 +823,13 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     butterflyFields_ = std::move(result.butterflyFields);
     analysisBinding_ = std::move(result.analysisBinding);  // Valid() false if no H5
 
-    // Stop worker thread
+    // Stop worker thread. worker_ / workerThread_ auto-delete via the
+    // deleteLater wiring in startCompute (see comment there).
     if (workerThread_ && workerThread_->isRunning()) {
         workerThread_->quit();
         workerThread_->wait();
     }
-    delete worker_;
     worker_ = nullptr;
-    delete workerThread_;
     workerThread_ = nullptr;
     udp_log("[diag] worker cleaned up\n");
 
@@ -772,24 +997,16 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     renderer_->ResetCamera();
     renderWindow_->Render();
 
-    // Status: read tier classification from library (set by PredictionResult)
-    int nReport = 0, nPass = 0, nSilent = 0;
-    for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        switch (conf.AtomAt(i).tier) {
-            case HeuristicTier::REPORT: nReport++; break;
-            case HeuristicTier::PASS:   nPass++;   break;
-            case HeuristicTier::SILENT: nSilent++; break;
-        }
-    }
-
+    // Status line: protein name + atom + bond + ring counts. The old
+    // HeuristicTier counting (REPORT/PASS/SILENT) was removed — that
+    // field is from the pre-kernel-catalogue prediction era (UI_ROADMAP
+    // Known Issues #1) and no current ConformationResult writes it.
     udp_log("[diag] setting status text\n");
-    QString status = QString("Loaded %1: %2 atoms (%3 REPORT, %4 PASS, %5 SILENT), %6 rings")
-        .arg(QString::fromStdString(currentProteinId_))
-        .arg(protein.AtomCount())
-        .arg(nReport)
-        .arg(nPass)
-        .arg(nSilent)
-        .arg(protein.RingCount());
+    QString status = QString("Loaded %1: %2 atoms, %3 bonds, %4 rings")
+                         .arg(QString::fromStdString(currentProteinId_))
+                         .arg(protein.AtomCount())
+                         .arg(protein.BondCount())
+                         .arg(protein.RingCount());
     statusLabel_->setText(status);
 
     udp_log("[diag] calling updateOverlay\n");
@@ -1040,6 +1257,19 @@ void MainWindow::populateAtomInfo(size_t idx) {
         .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
         .arg(res.sequence_number)
         .arg(QString::fromStdString(res.chain_id))}));
+    // Terminal state + protonation variant are typed Residue fields
+    // populated at load time by LegacyAmberTopology / ProtonationDetection.
+    // Variant name comes from AminoAcidType::variants[i].name —
+    // distinguishes HID/HIE/HIP, ASP/ASH, GLU/GLH, LYS/LYN, CYS/CYX/CYM.
+    identity->addChild(new QTreeWidgetItem({"Terminal state", ResidueTerminalStateName(res.terminal_state)}));
+    if (res.protonation_variant_index >= 0) {
+        const AminoAcidType& aaType = GetAminoAcidType(res.type);
+        if (res.protonation_variant_index < static_cast<int>(aaType.variants.size())) {
+            const auto& variant = aaType.variants[res.protonation_variant_index];
+            identity->addChild(
+                new QTreeWidgetItem({"Protonation variant", QString("%1 — %2").arg(variant.name).arg(variant.description)}));
+        }
+    }
     identity->addChild(new QTreeWidgetItem({"Role", QString::fromStdString(NameForAtomRole(ca.role))}));
     identity->addChild(new QTreeWidgetItem({"Backbone", ca.is_backbone ? "yes" : "no"}));
     identity->addChild(new QTreeWidgetItem({"Amide H", ca.is_amide_H ? "yes" : "no"}));
@@ -1052,9 +1282,97 @@ void MainWindow::populateAtomInfo(size_t idx) {
     atomInfoTree_->addTopLevelItem(identity);
     identity->setExpanded(true);
 
+    // ---- AMBER substrate (typed chemistry) ----
+    // LegacyAmberTopology::SemanticAt(i) is the typed atom-chemistry
+    // substrate populated at load time by ComposeAtomSemantic
+    // (CCD + RDKit perception, baked into src/generated/
+    // LegacyAmberSemanticTables.cpp). Every field here is the typed
+    // answer to a chemistry question that used to require a string
+    // match against pdb_atom_name — backbone_role, planar_group,
+    // ring membership, polar-H taxonomy, prochiral CIP assignment,
+    // pseudoatom grouping, formal charge.
+    //
+    // The flags already in Identity (role, is_amide_H, is_methyl, …)
+    // are EnrichmentResult-derived and overlap with the substrate.
+    // This section shows what the substrate adds that EnrichmentResult
+    // does NOT carry: the finer-grained chemistry taxonomy.
+    //
+    // Gate: HasAtomSemantic() — empty for any load path that didn't
+    // compose the substrate. PDB load + AMBER-as-standard path always
+    // populates it.
+    {
+        const auto& topo = protein.LegacyAmber();
+        if (topo.HasAtomSemantic()) {
+            const auto& sem = topo.SemanticAt(idx);
+            auto* asub = new QTreeWidgetItem({"AMBER substrate (typed)", ""});
+
+            asub->addChild(new QTreeWidgetItem({"Planar group", NameForPlanarGroupKind(sem.planar_group)}));
+
+            // Ring position: skip if not in any ring. When present, show
+            // the primary ring system + position label. Secondary /
+            // tertiary slots populated only for fused Trp atoms.
+            if (sem.ring_position.IsInAnyRing()) {
+                auto* ring = new QTreeWidgetItem({"Ring position", ""});
+                const auto& p = sem.ring_position.primary;
+                ring->addChild(new QTreeWidgetItem({"Primary ring", NameForRingSystemKind(p.ring)}));
+                ring->addChild(new QTreeWidgetItem({"Primary position", NameForRingPositionLabel(p.position)}));
+                if (sem.ring_position.HasSecondaryRing()) {
+                    const auto& s = sem.ring_position.secondary;
+                    ring->addChild(new QTreeWidgetItem(
+                        {"Secondary ring",
+                         QString("%1 (%2)").arg(NameForRingSystemKind(s.ring)).arg(NameForRingPositionLabel(s.position))}));
+                }
+                if (sem.ring_position.HasTertiaryRing()) {
+                    const auto& t = sem.ring_position.tertiary;
+                    ring->addChild(new QTreeWidgetItem(
+                        {"Tertiary ring",
+                         QString("%1 (%2)").arg(NameForRingSystemKind(t.ring)).arg(NameForRingPositionLabel(t.position))}));
+                }
+                asub->addChild(ring);
+            }
+
+            // Polar H taxonomy. Only meaningful for H atoms; for non-H
+            // it's always NotPolar (skip to reduce visual noise).
+            if (sem.polar_h != PolarHKind::NotPolar) {
+                asub->addChild(new QTreeWidgetItem({"Polar H kind", NameForPolarHKind(sem.polar_h)}));
+            }
+
+            // Prochiral CIP designation (Markley 1998 §2.1.4). Only
+            // meaningful for prochiral atoms; skip NotProchiral.
+            if (sem.prochiral != ProchiralStereo::NotProchiral) {
+                asub->addChild(new QTreeWidgetItem({"Prochiral", NameForProchiralStereo(sem.prochiral)}));
+            }
+
+            // Pseudoatom membership (Markley 1998 Table 1). Show only
+            // when the atom is in some pseudoatom group.
+            if (sem.pseudoatom.IsMember()) {
+                QString detail = NameForPseudoatomKind(sem.pseudoatom.kind);
+                if (sem.pseudoatom.in_super_group)
+                    detail += " (+ super-group)";
+                asub->addChild(new QTreeWidgetItem({"Pseudoatom", detail}));
+            }
+
+            // Formal charge — show only when non-zero. Most atoms are 0.
+            if (sem.formal_charge != 0) {
+                asub->addChild(new QTreeWidgetItem({"Formal charge", QString::number(static_cast<int>(sem.formal_charge))}));
+            }
+
+            // Exchangeable flag (H/D exchange chemistry). Show only when true.
+            if (sem.is_exchangeable) {
+                asub->addChild(new QTreeWidgetItem({"Exchangeable", "yes"}));
+            }
+
+            atomInfoTree_->addTopLevelItem(asub);
+            asub->setExpanded(true);
+        }
+    }
+
     // ---- Charges & Electronic ----
     auto* charges = new QTreeWidgetItem({"Charges & Electronic", ""});
     charges->addChild(new QTreeWidgetItem({"Partial (ff14SB)", QString::number(ca.partial_charge, 'f', 4)}));
+    charges->addChild(new QTreeWidgetItem({"AIMNet2 (Hirshfeld wB97M)", QString::number(ca.aimnet2_charge, 'f', 4)}));
+    charges->addChild(new QTreeWidgetItem({"EEQ (Caldeweyher 2019)", QString::number(ca.eeq_charge, 'f', 4)}));
+    charges->addChild(new QTreeWidgetItem({"EEQ coord. number", QString::number(ca.eeq_cn, 'f', 3)}));
     charges->addChild(new QTreeWidgetItem({"MOPAC (PM7)", QString::number(ca.mopac_charge, 'f', 4)}));
     charges->addChild(new QTreeWidgetItem({"Delta (PM7-ff14SB)",
         QString::number(ca.mopac_charge - ca.partial_charge, 'f', 4)}));
@@ -1073,14 +1391,18 @@ void MainWindow::populateAtomInfo(size_t idx) {
     shielding->addChild(stItem("Coulomb EFG", ca.coulomb_shielding_contribution));
     shielding->addChild(stItem("Pi-Quadrupole", ca.piquad_shielding_contribution));
     shielding->addChild(stItem("Ring Suscept.", ca.ringchi_shielding_contribution));
-    shielding->addChild(stItem("H-Bond", ca.hbond_shielding_contribution));
+    shielding->addChild(stItem("H-Bond (kernel)", ca.hbond_shielding_contribution));
+    shielding->addChild(stItem("Larsen H-Bond (grid)", ca.larsen_hbond_shielding_spherical));
+    shielding->addChild(stItem("Tripeptide BB (DFT)", ca.tripeptide_bb_shielding_spherical));
+    shielding->addChild(stItem("Tripeptide neighbor", ca.tripeptide_neighbor_shielding_spherical));
+    shielding->addChild(stItem("AIMNet2 EFG", ca.aimnet2_shielding_contribution));
     shielding->addChild(stItem("MOPAC Coulomb", ca.mopac_coulomb_shielding_contribution));
     shielding->addChild(stItem("MOPAC McConnell", ca.mopac_mc_shielding_contribution));
 
-    // Predicted T0 from library (set by PredictionResult)
-    shielding->addChild(new QTreeWidgetItem({"Predicted T0", QString::number(ca.predicted_T0, 'f', 4) + " ppm"}));
-    shielding->addChild(new QTreeWidgetItem({"Tier", ca.tier == HeuristicTier::REPORT ? "REPORT" :
-                                                     ca.tier == HeuristicTier::PASS ? "PASS" : "SILENT"}));
+    // Predicted T0 / Tier were removed: PredictionResult is pre-kernel-
+    // catalogue framing per UI_ROADMAP Known Issues #1; no current
+    // ConformationResult writes those fields. Don't surface what no
+    // calculator populates.
     atomInfoTree_->addTopLevelItem(shielding);
     shielding->setExpanded(true);
 
@@ -1095,7 +1417,90 @@ void MainWindow::populateAtomInfo(size_t idx) {
     fields->addChild(new QTreeWidgetItem({"E bb frac (MOPAC)", QString::number(ca.mopac_coulomb_E_backbone_frac, 'f', 3)}));
     if (ca.apbs_efield.norm() > 1e-10)
         fields->addChild(new QTreeWidgetItem({"E field (APBS)", vec3Str(ca.apbs_efield)}));
+    // APBS EFG tensor (solvated). Same kernel as Coulomb EFG but solvated.
+    if (ca.apbs_efg.norm() > 1e-10)
+        fields->addChild(stItem("EFG (APBS)", ca.apbs_efg_spherical));
+    // AIMNet2 EFG family — same kernel as CoulombResult but with the
+    // wB97M neural Hirshfeld charges. Total + decomposed by source.
+    fields->addChild(stItem("EFG (AIMNet2 total)", ca.aimnet2_EFG_total_spherical));
+    fields->addChild(stItem("EFG (AIMNet2 backbone)", ca.aimnet2_EFG_backbone_spherical));
+    fields->addChild(stItem("EFG (AIMNet2 aromatic)", ca.aimnet2_EFG_aromatic_spherical));
     atomInfoTree_->addTopLevelItem(fields);
+
+    // ---- Local geometry (planar pyramidalization, SASA) ----
+    // pyramidalization is signed out-of-plane displacement (Å) at atoms
+    // whose AtomSemanticTable::planar_group != None (PlanarGeometryResult).
+    // atom_sasa is Shrake-Rupley SASA (Å²); sasa_normal is the outward
+    // surface normal from non-occluded test points (SasaResult). All three
+    // are written for every atom every run, so they always appear (even
+    // when zero, which is itself informative — sp3 / buried interior).
+    {
+        auto* geo = new QTreeWidgetItem({"Local geometry", ""});
+        geo->addChild(new QTreeWidgetItem({"Pyramidalization", QString::number(ca.pyramidalization, 'f', 4) + " A (signed)"}));
+        geo->addChild(new QTreeWidgetItem({"SASA", QString::number(ca.atom_sasa, 'f', 2) + " A^2"}));
+        geo->addChild(new QTreeWidgetItem({"SASA normal", vec3Str(ca.sasa_normal)}));
+        atomInfoTree_->addTopLevelItem(geo);
+    }
+
+    // ---- Graph topology (MolecularGraphResult) ----
+    // Through-bond BFS features: distance (in bonds) to the nearest
+    // ring atom and to the nearest N / O; electronegativity sums over
+    // 1-bond and 2-bond neighbours; pi-bond count within 3 bonds; a
+    // bool flag for chains of alternating single/double bonds; an
+    // exponential decay e^(-d/BFS_DECAY_LENGTH) over the ring distance
+    // (BFS_DECAY_LENGTH = 4.0 from MolecularGraphResult.h).
+    //
+    // Distances default to -1 when the atom is not reachable from the
+    // target class (e.g. an isolated methyl C with no path to any ring
+    // atom). Show "—" instead of "-1" so the inspector reads cleanly.
+    {
+        auto distOrDash = [](int d) { return d < 0 ? QStringLiteral("—") : QString::number(d); };
+        auto* graph = new QTreeWidgetItem({"Graph topology", ""});
+        graph->addChild(new QTreeWidgetItem({"Bonds to nearest ring atom", distOrDash(ca.graph_dist_ring)}));
+        graph->addChild(new QTreeWidgetItem({"Bonds to nearest N", distOrDash(ca.graph_dist_N)}));
+        graph->addChild(new QTreeWidgetItem({"Bonds to nearest O", distOrDash(ca.graph_dist_O)}));
+        graph->addChild(new QTreeWidgetItem({"e^(-d_ring/4) decay", QString::number(ca.bfs_decay, 'f', 4)}));
+        graph->addChild(new QTreeWidgetItem({"Σ electronegativity (1-bond)", QString::number(ca.eneg_sum_1, 'f', 3)}));
+        graph->addChild(new QTreeWidgetItem({"Σ electronegativity (2-bond)", QString::number(ca.eneg_sum_2, 'f', 3)}));
+        graph->addChild(new QTreeWidgetItem({"π bonds within 3 bonds", QString::number(ca.n_pi_bonds_3)}));
+        graph->addChild(new QTreeWidgetItem({"Conjugated", ca.is_conjugated ? "yes" : "no"}));
+        atomInfoTree_->addTopLevelItem(graph);
+    }
+
+    // ---- AIMNet2 polarisability (charge-response gradient) ----
+    // dL/d(r_i) where L = sum_j q_j^2, computed by autograd through the
+    // AIMNet2 forward pass (AIMNet2ChargeResponseGradientResult). The
+    // scalar is the L2 norm of the vector — charge-weighted per-atom
+    // polarisability. Vector direction encodes WHICH way moving the
+    // atom changes the network's charge prediction most.
+    {
+        auto* pol = new QTreeWidgetItem({"AIMNet2 polarisability", ""});
+        pol->addChild(new QTreeWidgetItem({"dL/dr", vec3Str(ca.aimnet2_charge_response_gradient_vector)}));
+        pol->addChild(new QTreeWidgetItem({"|dL/dr|", QString::number(ca.aimnet2_charge_response_gradient_scalar, 'f', 4)}));
+        atomInfoTree_->addTopLevelItem(pol);
+    }
+
+    // ---- AIMNet2 aim embedding (256-dim, geometry-dependent) ----
+    // The learned electronic-structure embedding from the AIMNet2 wB97M
+    // model. 256 dims is too many to show; summarise via L2 norm + the
+    // first four components (mirrors the H5 Time Series tab format).
+    {
+        double n2 = 0.0;
+        for (size_t k = 0; k < nmr::AIMNET2_AIM_DIMS; ++k) {
+            double v = static_cast<double>(ca.aimnet2_aim[k]);
+            n2 += v * v;
+        }
+        auto* aim = new QTreeWidgetItem(
+            {"AIMNet2 embedding", QString("%1 dims (float32)").arg(static_cast<qulonglong>(nmr::AIMNET2_AIM_DIMS))});
+        aim->addChild(new QTreeWidgetItem({"L2 norm^2", QString::number(n2, 'f', 5)}));
+        aim->addChild(new QTreeWidgetItem({"aim[0..3]",
+                                           QString("%1  %2  %3  %4")
+                                               .arg(ca.aimnet2_aim[0], 0, 'f', 4)
+                                               .arg(ca.aimnet2_aim[1], 0, 'f', 4)
+                                               .arg(ca.aimnet2_aim[2], 0, 'f', 4)
+                                               .arg(ca.aimnet2_aim[3], 0, 'f', 4)}));
+        atomInfoTree_->addTopLevelItem(aim);
+    }
 
     // ---- Ring neighbours ----
     if (!ca.ring_neighbours.empty()) {
@@ -1179,9 +1584,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
         atomInfoTree_->addTopLevelItem(bonds);
     }
 
-    // ---- H-bond ----
+    // ---- H-bond (kernel form, HBondResult) ----
     if (ca.hbond_nearest_dist > 0.01) {
-        auto* hbond = new QTreeWidgetItem({"H-bond", ""});
+        auto* hbond = new QTreeWidgetItem({"H-bond (kernel)", ""});
         hbond->addChild(new QTreeWidgetItem({"Nearest dist", QString::number(ca.hbond_nearest_dist, 'f', 3) + " A"}));
         hbond->addChild(new QTreeWidgetItem({"Direction", vec3Str(ca.hbond_nearest_dir)}));
         hbond->addChild(new QTreeWidgetItem({"Count <3.5A", QString::number(ca.hbond_count_within_3_5A)}));
@@ -1189,6 +1594,43 @@ void MainWindow::populateAtomInfo(size_t idx) {
         hbond->addChild(new QTreeWidgetItem({"Is acceptor", ca.hbond_is_acceptor ? "yes" : "no"}));
         hbond->addChild(new QTreeWidgetItem({"Backbone", ca.hbond_is_backbone ? "yes" : "no"}));
         atomInfoTree_->addTopLevelItem(hbond);
+    }
+
+    // ---- Larsen H-bond (grid lookup; LarsenHBondShieldingResult) ----
+    // Four contribution classes from the 6-archive ProCS15 DFT scans
+    // (Δσ_1°HB + Δσ_2°HB + Δσ_1°HαB + Δσ_2°HαB) plus the Δσ_w water term
+    // (2.07 ppm isotropic on amide H atoms with no H-bond pairs).
+    // Methods-accumulate sibling of the kernel-form HBondResult — both
+    // run side-by-side and produce comparable T0 the user can eyeball.
+    // CB diagnostic should be ~0 per Larsen Table 2 (Cβ gets no HB
+    // contribution); nonzero CB indicates a parser/loader/rotation bug.
+    if (ca.larsen_hbond_n_pairs > 0 || std::abs(ca.larsen_hbond_water_term) > 1e-9
+        || std::abs(ca.larsen_hbond_shielding_spherical.T0) > 1e-9) {
+        auto* lhb = new QTreeWidgetItem({"Larsen H-bond (grid)", ""});
+        lhb->addChild(new QTreeWidgetItem({"Pairs contributing", QString::number(ca.larsen_hbond_n_pairs)}));
+        if (std::abs(ca.larsen_hbond_water_term) > 1e-9) {
+            lhb->addChild(new QTreeWidgetItem(
+                {"Water term Δσ_w", QString::number(ca.larsen_hbond_water_term, 'f', 4) + " ppm (isotropic)"}));
+        }
+        lhb->addChild(stItem("Sum (all classes)", ca.larsen_hbond_shielding_spherical));
+        // Per-class breakdowns only when non-trivial; reduces visual noise on
+        // atom types that get only one or two of the four contributions.
+        auto addClassIfPresent = [&](const QString& name, const nmr::SphericalTensor& st) {
+            if (std::abs(st.T0) > 1e-9)
+                lhb->addChild(stItem(name, st));
+        };
+        addClassIfPresent("Δσ_1°HB  (donor primary)", ca.larsen_hbond_1pHB_spherical);
+        addClassIfPresent("Δσ_2°HB  (donor secondary)", ca.larsen_hbond_2pHB_spherical);
+        addClassIfPresent("Δσ_1°HαB (Hα primary)", ca.larsen_hbond_1pHaB_spherical);
+        addClassIfPresent("Δσ_2°HαB (Hα secondary)", ca.larsen_hbond_2pHaB_spherical);
+        // CB diagnostic — should be ~0 per Larsen Table 2; nonzero =
+        // pipeline regression (parser → loader → rotation).
+        if (std::abs(ca.larsen_hbond_diagnostic_CB_spherical.T0) > 1e-6)
+            lhb->addChild(stItem("Cβ diagnostic (expected ~0)", ca.larsen_hbond_diagnostic_CB_spherical));
+        if (ca.larsen_hbond_any_corner_imputed) {
+            lhb->addChild(new QTreeWidgetItem({"Corner imputed", "yes (nearest-neighbour fill in at least one grid lookup)"}));
+        }
+        atomInfoTree_->addTopLevelItem(lhb);
     }
 
     // ---- DSSP ----
@@ -1210,6 +1652,41 @@ void MainWindow::populateAtomInfo(size_t idx) {
         orca->addChild(stItem("Paramagnetic", ca.orca_shielding_paramagnetic_spherical));
         atomInfoTree_->addTopLevelItem(orca);
         orca->setExpanded(true);
+    }
+
+    // ---- Tripeptide DFT shielding (Larsen 2015 σ_BB^i + Δσ_BB^{i±1}) ----
+    // Pulled from the local ProCS15 tensorcs15 replica via libpq (BB,
+    // central atom) and AXA-scan reuse (neighbor i±1 sidechain effect).
+    // Tensor lab-frame: Kabsch backbone alignment + sidechain rotation
+    // around CA-CB. method_tag distinguishes the source DFT method
+    // (1 = Gaussian OPBE/6-31G(d,p) for 19 residues; 2 = ORCA PBE/6-31G(d,p)
+    // for SER) — see project_serine_pbe_discontinuity.
+    if (ca.tripeptide_bb_has_match || ca.tripeptide_neighbor_has_match) {
+        auto* tp = new QTreeWidgetItem({"Tripeptide DFT (ProCS15)", ""});
+
+        if (ca.tripeptide_bb_has_match) {
+            auto* bb = new QTreeWidgetItem({"Backbone (i)", ""});
+            bb->addChild(stItem("σ_BB", ca.tripeptide_bb_shielding_spherical));
+            bb->addChild(
+                new QTreeWidgetItem({"Match distance", QString::number(ca.tripeptide_bb_match_distance, 'f', 3) + " A"}));
+            bb->addChild(new QTreeWidgetItem({"Residual (aligned − protein)", vec3Str(ca.tripeptide_bb_residual_vec)}));
+            const char* tag = ca.tripeptide_bb_method_tag == 1   ? "Gaussian OPBE/6-31G(d,p)"
+                              : ca.tripeptide_bb_method_tag == 2 ? "ORCA PBE/6-31G(d,p) (SER regen)"
+                                                                 : "no match";
+            bb->addChild(new QTreeWidgetItem({"DFT method", tag}));
+            tp->addChild(bb);
+        }
+
+        if (ca.tripeptide_neighbor_has_match) {
+            auto* nb = new QTreeWidgetItem({"Neighbor Δσ_BB^{i±1}", ""});
+            nb->addChild(stItem("σ (sum of i-1 + i+1)", ca.tripeptide_neighbor_shielding_spherical));
+            nb->addChild(new QTreeWidgetItem({"Residual prev (i-1)", vec3Str(ca.tripeptide_neighbor_residual_vec_prev)}));
+            nb->addChild(new QTreeWidgetItem({"Residual next (i+1)", vec3Str(ca.tripeptide_neighbor_residual_vec_next)}));
+            tp->addChild(nb);
+        }
+
+        atomInfoTree_->addTopLevelItem(tp);
+        tp->setExpanded(true);
     }
 
     // ---- McConnell breakdown (unweighted) ----

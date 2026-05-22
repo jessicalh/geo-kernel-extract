@@ -2,16 +2,22 @@
 #include "MainWindow.h"
 
 // Library headers — REST server reads the protein model directly
+#include "AminoAcidType.h"
+#include "Atom.h"
+#include "Bond.h"
+#include "ConformationAtom.h"
+#include "ConformationResult.h"
+#include "DsspResult.h"
+#include "FieldGridOverlay.h"
+#include "JobSpec.h"
+#include "LegacyAmberTopology.h"
+#include "MopacResult.h"
 #include "Protein.h"
 #include "ProteinConformation.h"
-#include "ConformationAtom.h"
-#include "Ring.h"
-#include "Atom.h"
 #include "Residue.h"
+#include "Ring.h"
+#include "SemanticEnums.h"
 #include "Types.h"
-#include "ConformationResult.h"
-#include "JobSpec.h"
-#include "FieldGridOverlay.h"
 
 #include <filesystem>
 
@@ -131,6 +137,10 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
     if (action == "list_rings")       return cmdListRings(cmd);
     if (action == "get_log")          return cmdGetLog(cmd);
     if (action == "export_features")  return cmdExportFeatures(cmd);
+    if (action == "atom_dump")
+        return cmdAtomDump(cmd);
+    if (action == "list_atoms")
+        return cmdListAtoms(cmd);
 
     QJsonObject resp;
     resp["ok"] = false;
@@ -149,35 +159,24 @@ QJsonObject RestServer::cmdStatus() {
     result["computing"] = (mainWindow_->workerThread_ != nullptr &&
                            mainWindow_->workerThread_->isRunning());
 
-    // Read directly from the library protein model
+    // Read directly from the library protein model. HeuristicTier counts
+    // (n_report / n_pass / n_silent) were removed from this payload —
+    // pre-kernel-catalogue prediction framing per UI_ROADMAP Known Issues
+    // #1; no current ConformationResult writes those fields. Removing
+    // before downstream REST clients pin a contract on dead data.
     auto& protein = mainWindow_->protein_;
     if (protein) {
-        const auto& conf = protein->Conformation();
         result["protein"] = QString::fromStdString(mainWindow_->currentProteinId_);
         result["n_atoms"] = (int)protein->AtomCount();
+        result["n_bonds"] = (int)protein->BondCount();
         result["n_rings"] = (int)protein->RingCount();
         result["n_residues"] = (int)protein->ResidueCount();
-
-        // Tier counts: read from library (set by PredictionResult)
-        int nReport = 0, nPass = 0, nSilent = 0;
-        for (size_t i = 0; i < conf.AtomCount(); ++i) {
-            switch (conf.AtomAt(i).tier) {
-                case HeuristicTier::REPORT: nReport++; break;
-                case HeuristicTier::PASS:   nPass++;   break;
-                case HeuristicTier::SILENT: nSilent++; break;
-            }
-        }
-        result["n_report"] = nReport;
-        result["n_pass"] = nPass;
-        result["n_silent"] = nSilent;
     } else {
         result["protein"] = "";
         result["n_atoms"] = 0;
+        result["n_bonds"] = 0;
         result["n_rings"] = 0;
         result["n_residues"] = 0;
-        result["n_report"] = 0;
-        result["n_pass"] = 0;
-        result["n_silent"] = 0;
     }
 
     result["overlay_mode"] = 0;  // overlay modes removed
@@ -588,5 +587,731 @@ QJsonObject RestServer::cmdExportFeatures(const QJsonObject& cmd) {
     QJsonObject result;
     result["path"] = path;
     result["arrays"] = totalArrays;
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+// ============================================================================
+// Introspection endpoints: atom_dump + list_atoms
+//
+// These are general-purpose API surface, not test-specific helpers. Any
+// scripted consumer (test harness, batch dump tool, ad-hoc debugger)
+// uses them; tests are just one client. The shape mirrors what the
+// Atom Inspector tree displays, in machine-readable form.
+// ============================================================================
+
+namespace {
+
+QJsonArray Vec3Json(const Vec3& v) {
+    return QJsonArray{v.x(), v.y(), v.z()};
+}
+
+QJsonObject SphericalTensorJson(const SphericalTensor& s) {
+    QJsonObject obj;
+    obj["T0"] = s.T0;
+    obj["T1"] = QJsonArray{s.T1[0], s.T1[1], s.T1[2]};
+    obj["T2"] = QJsonArray{s.T2[0], s.T2[1], s.T2[2], s.T2[3], s.T2[4]};
+    return obj;
+}
+
+// Local NameFor switches mirror MainWindow.cpp's. Specifically:
+//   - NameForPlanarGroupKindJ, NameForPolarHKindJ, NameForRingSystemKindJ,
+//     NameForRingPositionLabelJ intentionally diverge from MainWindow's
+//     versions: this side emits machine-friendly names (`"PyrroleAlpha"`,
+//     `"Imidazole_His"`, `"NotInRing"`), MainWindow emits display names
+//     (`"pyrrole α"`, `"His imidazole"`, `"—"`). The orthogonality is
+//     the point — JSON consumers parse on stable identifiers, humans
+//     read prose.
+//   - NameForAtomRoleJ and NameForBondCategoryJ (the latter inherited
+//     from MainWindow) are BYTE-IDENTICAL to MainWindow's. Drift risk
+//     lives here. If these ever diverge that's a bug, not a feature.
+// The library-side fix (NameFor* in Types.h next to SymbolForElement)
+// is the clean answer; until that lands, duplication is preferred over
+// a ui/-only shared header per PATTERNS §17.
+
+const char* NameForAtomRoleJ(AtomRole r) {
+    switch (r) {
+    case AtomRole::BackboneN:
+        return "BackboneN";
+    case AtomRole::BackboneCA:
+        return "BackboneCA";
+    case AtomRole::BackboneC:
+        return "BackboneC";
+    case AtomRole::BackboneO:
+        return "BackboneO";
+    case AtomRole::SidechainC:
+        return "SidechainC";
+    case AtomRole::SidechainN:
+        return "SidechainN";
+    case AtomRole::SidechainO:
+        return "SidechainO";
+    case AtomRole::SidechainS:
+        return "SidechainS";
+    case AtomRole::AromaticC:
+        return "AromaticC";
+    case AtomRole::AromaticN:
+        return "AromaticN";
+    case AtomRole::AmideH:
+        return "AmideH";
+    case AtomRole::AlphaH:
+        return "AlphaH";
+    case AtomRole::MethylH:
+        return "MethylH";
+    case AtomRole::AromaticH:
+        return "AromaticH";
+    case AtomRole::HydroxylH:
+        return "HydroxylH";
+    case AtomRole::OtherH:
+        return "OtherH";
+    case AtomRole::Unknown:
+        return "Unknown";
+    }
+    return "?";
+}
+
+const char* NameForBondCategoryJ(BondCategory c) {
+    switch (c) {
+    case BondCategory::PeptideCO:
+        return "PeptideCO";
+    case BondCategory::PeptideCN:
+        return "PeptideCN";
+    case BondCategory::BackboneOther:
+        return "BackboneOther";
+    case BondCategory::SidechainCO:
+        return "SidechainCO";
+    case BondCategory::Aromatic:
+        return "Aromatic";
+    case BondCategory::Disulfide:
+        return "Disulfide";
+    case BondCategory::SidechainOther:
+        return "SidechainOther";
+    case BondCategory::Unknown:
+        return "Unknown";
+    }
+    return "?";
+}
+
+const char* NameForPlanarGroupKindJ(PlanarGroupKind k) {
+    switch (k) {
+    case PlanarGroupKind::None:
+        return "None";
+    case PlanarGroupKind::PeptideAmide:
+        return "PeptideAmide";
+    case PlanarGroupKind::SidechainAmide:
+        return "SidechainAmide";
+    case PlanarGroupKind::Guanidinium:
+        return "Guanidinium";
+    case PlanarGroupKind::Imidazole:
+        return "Imidazole";
+    case PlanarGroupKind::Aromatic6Ring:
+        return "Aromatic6Ring";
+    case PlanarGroupKind::Aromatic5Ring:
+        return "Aromatic5Ring";
+    case PlanarGroupKind::Carboxylate:
+        return "Carboxylate";
+    case PlanarGroupKind::AromaticHydroxyl:
+        return "AromaticHydroxyl";
+    case PlanarGroupKind::AromaticOxide:
+        return "AromaticOxide";
+    }
+    return "?";
+}
+
+const char* NameForPolarHKindJ(PolarHKind k) {
+    switch (k) {
+    case PolarHKind::NotPolar:
+        return "NotPolar";
+    case PolarHKind::BackboneAmide:
+        return "BackboneAmide";
+    case PolarHKind::SidechainPrimaryAmide:
+        return "SidechainPrimaryAmide";
+    case PolarHKind::IndoleNH:
+        return "IndoleNH";
+    case PolarHKind::AmmoniumNH:
+        return "AmmoniumNH";
+    case PolarHKind::GuanidiniumNH:
+        return "GuanidiniumNH";
+    case PolarHKind::ImidazoleNH:
+        return "ImidazoleNH";
+    case PolarHKind::CarboxylOH:
+        return "CarboxylOH";
+    case PolarHKind::HydroxylOH_Aliphatic:
+        return "HydroxylOH_Aliphatic";
+    case PolarHKind::HydroxylOH_Aromatic:
+        return "HydroxylOH_Aromatic";
+    case PolarHKind::ThiolSH:
+        return "ThiolSH";
+    case PolarHKind::AmineNH:
+        return "AmineNH";
+    case PolarHKind::OtherPolarH:
+        return "OtherPolarH";
+    }
+    return "?";
+}
+
+const char* NameForProchiralStereoJ(ProchiralStereo s) {
+    switch (s) {
+    case ProchiralStereo::NotProchiral:
+        return "NotProchiral";
+    case ProchiralStereo::ProR:
+        return "ProR";
+    case ProchiralStereo::ProS:
+        return "ProS";
+    case ProchiralStereo::Unassigned:
+        return "Unassigned";
+    }
+    return "?";
+}
+
+const char* NameForPseudoatomKindJ(PseudoatomKind k) {
+    switch (k) {
+    case PseudoatomKind::None:
+        return "None";
+    case PseudoatomKind::M:
+        return "M";
+    case PseudoatomKind::Q:
+        return "Q";
+    case PseudoatomKind::R:
+        return "R";
+    }
+    return "?";
+}
+
+const char* NameForRingSystemKindJ(RingSystemKind k) {
+    switch (k) {
+    case RingSystemKind::NotInRing:
+        return "NotInRing";
+    case RingSystemKind::Benzene_Phe:
+        return "Benzene_Phe";
+    case RingSystemKind::Benzene_Tyr:
+        return "Benzene_Tyr";
+    case RingSystemKind::Imidazole_His:
+        return "Imidazole_His";
+    case RingSystemKind::Indole_Trp_5:
+        return "Indole_Trp_5";
+    case RingSystemKind::Indole_Trp_6:
+        return "Indole_Trp_6";
+    case RingSystemKind::Pyrrolidine_Pro:
+        return "Pyrrolidine_Pro";
+    case RingSystemKind::Indole_Trp_9:
+        return "Indole_Trp_9";
+    }
+    return "?";
+}
+
+const char* NameForRingPositionLabelJ(RingPositionLabel p) {
+    switch (p) {
+    case RingPositionLabel::NotInRing:
+        return "NotInRing";
+    case RingPositionLabel::Ipso:
+        return "Ipso";
+    case RingPositionLabel::Ortho1:
+        return "Ortho1";
+    case RingPositionLabel::Ortho2:
+        return "Ortho2";
+    case RingPositionLabel::Meta1:
+        return "Meta1";
+    case RingPositionLabel::Meta2:
+        return "Meta2";
+    case RingPositionLabel::Para:
+        return "Para";
+    case RingPositionLabel::PyrroleAlpha:
+        return "PyrroleAlpha";
+    case RingPositionLabel::PyrroleBeta:
+        return "PyrroleBeta";
+    case RingPositionLabel::BridgeFusion:
+        return "BridgeFusion";
+    case RingPositionLabel::Heteroatom_NH:
+        return "Heteroatom_NH";
+    case RingPositionLabel::Heteroatom_NoH:
+        return "Heteroatom_NoH";
+    case RingPositionLabel::Heteroatom_OH:
+        return "Heteroatom_OH";
+    case RingPositionLabel::Saturated:
+        return "Saturated";
+    case RingPositionLabel::ProRingNitrogen:
+        return "ProRingNitrogen";
+    case RingPositionLabel::ProRingAlphaCarbon:
+        return "ProRingAlphaCarbon";
+    case RingPositionLabel::ProRingBeta:
+        return "ProRingBeta";
+    case RingPositionLabel::ProRingPuckerPivot:
+        return "ProRingPuckerPivot";
+    case RingPositionLabel::ProRingDelta:
+        return "ProRingDelta";
+    case RingPositionLabel::PerimeterMember:
+        return "PerimeterMember";
+    }
+    return "?";
+}
+
+QJsonObject RingMembershipJson(const RingMembership& m) {
+    QJsonObject obj;
+    obj["ring_system"] = NameForRingSystemKindJ(m.ring);
+    obj["position"] = NameForRingPositionLabelJ(m.position);
+    obj["ring_size"] = static_cast<int>(m.ring_size);
+    obj["aromatic"] = m.aromatic;
+    obj["planar"] = m.planar;
+    obj["n_heteroatoms"] = static_cast<int>(m.n_heteroatoms);
+    return obj;
+}
+
+}  // namespace
+
+QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    int atomIdx = cmd.value("atom").toInt(-1);
+    if (atomIdx < 0 || atomIdx >= static_cast<int>(protein->AtomCount())) {
+        return QJsonObject{
+            {"ok", false},
+            {"error", QString("atom index out of range: %1 (n_atoms=%2)").arg(atomIdx).arg(protein->AtomCount())}};
+    }
+
+    const auto& conf = protein->Conformation();
+    const auto& id = protein->AtomAt(atomIdx);
+    const auto& ca = conf.AtomAt(atomIdx);
+    const auto& res = protein->ResidueAt(id.residue_index);
+
+    QJsonObject result;
+    result["index"] = atomIdx;
+
+    // Identity
+    {
+        QJsonObject identity;
+        identity["element"] = QString::fromStdString(SymbolForElement(id.element));
+        identity["atomic_number"] = AtomicNumberForElement(id.element);
+        identity["pdb_atom_name"] = QString::fromStdString(id.pdb_atom_name);
+        identity["residue_index"] = static_cast<int>(id.residue_index);
+        identity["residue_type"] = QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type));
+        identity["residue_sequence"] = res.sequence_number;
+        identity["chain_id"] = QString::fromStdString(res.chain_id);
+        identity["terminal_state"] = ResidueTerminalStateName(res.terminal_state);
+        identity["protonation_variant_index"] = res.protonation_variant_index;
+        if (res.protonation_variant_index >= 0) {
+            const auto& aaType = GetAminoAcidType(res.type);
+            if (res.protonation_variant_index < static_cast<int>(aaType.variants.size())) {
+                const auto& v = aaType.variants[res.protonation_variant_index];
+                identity["protonation_variant_name"] = QString::fromUtf8(v.name);
+                identity["protonation_variant_description"] = QString::fromUtf8(v.description);
+            }
+        }
+        identity["role"] = NameForAtomRoleJ(ca.role);
+        identity["is_backbone"] = ca.is_backbone;
+        identity["is_amide_H"] = ca.is_amide_H;
+        identity["is_alpha_H"] = ca.is_alpha_H;
+        identity["is_aromatic_H"] = ca.is_aromatic_H;
+        identity["is_methyl"] = ca.is_methyl;
+        identity["is_on_aromatic_residue"] = ca.is_on_aromatic_residue;
+        identity["is_hbond_donor"] = ca.is_hbond_donor;
+        identity["is_hbond_acceptor"] = ca.is_hbond_acceptor;
+        identity["parent_atom_index"] = (id.parent_atom_index == SIZE_MAX) ? -1 : static_cast<int>(id.parent_atom_index);
+        identity["position"] = Vec3Json(ca.Position());
+        result["identity"] = identity;
+    }
+
+    // AMBER substrate
+    {
+        const auto& topo = protein->LegacyAmber();
+        if (topo.HasAtomSemantic()) {
+            const auto& sem = topo.SemanticAt(atomIdx);
+            QJsonObject sub;
+            sub["planar_group"] = NameForPlanarGroupKindJ(sem.planar_group);
+            sub["polar_h"] = NameForPolarHKindJ(sem.polar_h);
+            sub["prochiral"] = NameForProchiralStereoJ(sem.prochiral);
+            sub["formal_charge"] = sem.formal_charge;
+            sub["is_exchangeable"] = sem.is_exchangeable;
+            sub["aromatic_flag"] = sem.aromatic;
+            sub["equivalence_class"] = sem.equivalence_class;
+
+            QJsonObject rp;
+            rp["in_any_ring"] = sem.ring_position.IsInAnyRing();
+            rp["membership_count"] = sem.ring_position.MembershipCount();
+            if (sem.ring_position.HasPrimaryRing())
+                rp["primary"] = RingMembershipJson(sem.ring_position.primary);
+            if (sem.ring_position.HasSecondaryRing())
+                rp["secondary"] = RingMembershipJson(sem.ring_position.secondary);
+            if (sem.ring_position.HasTertiaryRing())
+                rp["tertiary"] = RingMembershipJson(sem.ring_position.tertiary);
+            sub["ring_position"] = rp;
+
+            QJsonObject ps;
+            ps["kind"] = NameForPseudoatomKindJ(sem.pseudoatom.kind);
+            ps["locant"] = static_cast<int>(sem.pseudoatom.locant);
+            ps["branch"] = static_cast<int>(sem.pseudoatom.branch);
+            ps["in_super_group"] = sem.pseudoatom.in_super_group;
+            sub["pseudoatom"] = ps;
+
+            result["amber_substrate"] = sub;
+        }
+    }
+
+    // Charges
+    {
+        QJsonObject c;
+        c["ff14sb"] = ca.partial_charge;
+        c["aimnet2_hirshfeld"] = ca.aimnet2_charge;
+        c["eeq_charge"] = ca.eeq_charge;
+        c["eeq_cn"] = ca.eeq_cn;
+        c["mopac_pm7"] = ca.mopac_charge;
+        c["mopac_s_pop"] = ca.mopac_s_pop;
+        c["mopac_p_pop"] = ca.mopac_p_pop;
+        c["mopac_valency"] = ca.mopac_valency;
+        c["pb_radius_A"] = ca.pb_radius;
+        result["charges"] = c;
+    }
+
+    // Shielding contributions (all SphericalTensor)
+    {
+        QJsonObject sh;
+        sh["bs"] = SphericalTensorJson(ca.bs_shielding_contribution);
+        sh["hm"] = SphericalTensorJson(ca.hm_shielding_contribution);
+        sh["mc"] = SphericalTensorJson(ca.mc_shielding_contribution);
+        sh["dispersion"] = SphericalTensorJson(ca.disp_shielding_contribution);
+        sh["coulomb"] = SphericalTensorJson(ca.coulomb_shielding_contribution);
+        sh["piquad"] = SphericalTensorJson(ca.piquad_shielding_contribution);
+        sh["ringchi"] = SphericalTensorJson(ca.ringchi_shielding_contribution);
+        sh["hbond_kernel"] = SphericalTensorJson(ca.hbond_shielding_contribution);
+        sh["hbond_larsen"] = SphericalTensorJson(ca.larsen_hbond_shielding_spherical);
+        sh["tripeptide_bb"] = SphericalTensorJson(ca.tripeptide_bb_shielding_spherical);
+        sh["tripeptide_neighbor"] = SphericalTensorJson(ca.tripeptide_neighbor_shielding_spherical);
+        sh["aimnet2_efg"] = SphericalTensorJson(ca.aimnet2_shielding_contribution);
+        sh["mopac_coulomb"] = SphericalTensorJson(ca.mopac_coulomb_shielding_contribution);
+        sh["mopac_mc"] = SphericalTensorJson(ca.mopac_mc_shielding_contribution);
+        result["shielding_contributions"] = sh;
+    }
+
+    // Vector fields + EFG tensors
+    {
+        QJsonObject vf;
+        vf["B_BS"] = Vec3Json(ca.total_B_field);
+        vf["E_ff14sb"] = Vec3Json(ca.coulomb_E_total);
+        vf["E_ff14sb_magnitude"] = ca.coulomb_E_magnitude;
+        vf["E_ff14sb_backbone_frac"] = ca.coulomb_E_backbone_frac;
+        vf["E_mopac"] = Vec3Json(ca.mopac_coulomb_E_total);
+        vf["E_apbs"] = Vec3Json(ca.apbs_efield);
+        vf["EFG_apbs"] = SphericalTensorJson(ca.apbs_efg_spherical);
+        vf["EFG_aimnet2_total"] = SphericalTensorJson(ca.aimnet2_EFG_total_spherical);
+        vf["EFG_aimnet2_backbone"] = SphericalTensorJson(ca.aimnet2_EFG_backbone_spherical);
+        vf["EFG_aimnet2_aromatic"] = SphericalTensorJson(ca.aimnet2_EFG_aromatic_spherical);
+        result["vector_fields"] = vf;
+    }
+
+    // Local geometry
+    {
+        QJsonObject g;
+        g["pyramidalization_A"] = ca.pyramidalization;
+        g["atom_sasa_A2"] = ca.atom_sasa;
+        g["sasa_normal"] = Vec3Json(ca.sasa_normal);
+        result["local_geometry"] = g;
+    }
+
+    // AIMNet2 polarisability (charge-response gradient)
+    {
+        QJsonObject p;
+        p["gradient_vector"] = Vec3Json(ca.aimnet2_charge_response_gradient_vector);
+        p["gradient_magnitude"] = ca.aimnet2_charge_response_gradient_scalar;
+        result["aimnet2_polarisability"] = p;
+    }
+
+    // AIMNet2 embedding L2² + first 4 components (full 256-dim too noisy)
+    {
+        double n2 = 0.0;
+        for (size_t k = 0; k < AIMNET2_AIM_DIMS; ++k) {
+            const double v = static_cast<double>(ca.aimnet2_aim[k]);
+            n2 += v * v;
+        }
+        QJsonObject e;
+        e["dims"] = static_cast<int>(AIMNET2_AIM_DIMS);
+        e["l2_squared"] = n2;
+        QJsonArray first4;
+        for (size_t k = 0; k < 4; ++k)
+            first4.append(static_cast<double>(ca.aimnet2_aim[k]));
+        e["first_4"] = first4;
+        result["aimnet2_embedding"] = e;
+    }
+
+    // Graph topology (MolecularGraphResult)
+    {
+        QJsonObject g;
+        g["graph_dist_ring"] = ca.graph_dist_ring;
+        g["graph_dist_N"] = ca.graph_dist_N;
+        g["graph_dist_O"] = ca.graph_dist_O;
+        g["bfs_decay"] = ca.bfs_decay;
+        g["eneg_sum_1"] = ca.eneg_sum_1;
+        g["eneg_sum_2"] = ca.eneg_sum_2;
+        g["n_pi_bonds_3"] = ca.n_pi_bonds_3;
+        g["is_conjugated"] = ca.is_conjugated;
+        result["graph_topology"] = g;
+    }
+
+    // Tripeptide DFT (BB + Neighbor)
+    {
+        QJsonObject t;
+        QJsonObject bb;
+        bb["has_match"] = ca.tripeptide_bb_has_match;
+        bb["shielding"] = SphericalTensorJson(ca.tripeptide_bb_shielding_spherical);
+        bb["match_distance_A"] = ca.tripeptide_bb_match_distance;
+        bb["residual_vec"] = Vec3Json(ca.tripeptide_bb_residual_vec);
+        bb["method_tag"] = static_cast<int>(ca.tripeptide_bb_method_tag);
+        bb["method_name"] = ca.tripeptide_bb_method_tag == 1   ? "gaussian_standard_orientation"
+                            : ca.tripeptide_bb_method_tag == 2 ? "orca_input_orientation"
+                                                               : "none";
+        t["backbone"] = bb;
+
+        QJsonObject nb;
+        nb["has_match"] = ca.tripeptide_neighbor_has_match;
+        nb["shielding_sum"] = SphericalTensorJson(ca.tripeptide_neighbor_shielding_spherical);
+        nb["residual_vec_prev"] = Vec3Json(ca.tripeptide_neighbor_residual_vec_prev);
+        nb["residual_vec_next"] = Vec3Json(ca.tripeptide_neighbor_residual_vec_next);
+        t["neighbor"] = nb;
+        result["tripeptide_dft"] = t;
+    }
+
+    // Larsen H-bond (4 contribution classes + water term + diagnostic)
+    {
+        QJsonObject lhb;
+        lhb["n_pairs"] = ca.larsen_hbond_n_pairs;
+        lhb["water_term_ppm"] = ca.larsen_hbond_water_term;
+        lhb["any_corner_imputed"] = ca.larsen_hbond_any_corner_imputed;
+        lhb["sum"] = SphericalTensorJson(ca.larsen_hbond_shielding_spherical);
+        lhb["delta_1pHB"] = SphericalTensorJson(ca.larsen_hbond_1pHB_spherical);
+        lhb["delta_2pHB"] = SphericalTensorJson(ca.larsen_hbond_2pHB_spherical);
+        lhb["delta_1pHaB"] = SphericalTensorJson(ca.larsen_hbond_1pHaB_spherical);
+        lhb["delta_2pHaB"] = SphericalTensorJson(ca.larsen_hbond_2pHaB_spherical);
+        lhb["diagnostic_CB"] = SphericalTensorJson(ca.larsen_hbond_diagnostic_CB_spherical);
+        result["larsen_hbond"] = lhb;
+    }
+
+    // HBond kernel info
+    {
+        QJsonObject h;
+        h["nearest_dist_A"] = ca.hbond_nearest_dist;
+        h["nearest_dir"] = Vec3Json(ca.hbond_nearest_dir);
+        h["count_within_3_5A"] = ca.hbond_count_within_3_5A;
+        h["is_donor"] = ca.hbond_is_donor;
+        h["is_acceptor"] = ca.hbond_is_acceptor;
+        h["is_backbone"] = ca.hbond_is_backbone;
+        result["hbond_kernel"] = h;
+    }
+
+    // ORCA DFT (if loaded — only in --orca / mutant modes)
+    if (ca.has_orca_shielding) {
+        QJsonObject o;
+        o["total"] = SphericalTensorJson(ca.orca_shielding_total_spherical);
+        o["diamagnetic"] = SphericalTensorJson(ca.orca_shielding_diamagnetic_spherical);
+        o["paramagnetic"] = SphericalTensorJson(ca.orca_shielding_paramagnetic_spherical);
+        result["orca_dft"] = o;
+    }
+
+    // Ring neighbours (per-atom-per-ring full structured array)
+    {
+        QJsonArray arr;
+        for (const auto& rn : ca.ring_neighbours) {
+            QJsonObject r;
+            r["ring_index"] = static_cast<int>(rn.ring_index);
+            r["ring_type"] = QString::fromUtf8(protein->RingAt(rn.ring_index).TypeName());
+            r["distance_to_center_A"] = rn.distance_to_center;
+            r["direction_to_center"] = Vec3Json(rn.direction_to_center);
+            r["rho_A"] = rn.rho;
+            r["z_A"] = rn.z;
+            r["theta_rad"] = rn.theta;
+            r["G_spherical"] = SphericalTensorJson(rn.G_spherical);
+            r["hm_G_spherical"] = SphericalTensorJson(rn.hm_G_spherical);
+            r["B_field"] = Vec3Json(rn.B_field);
+            r["B_cylindrical"] = Vec3Json(rn.B_cylindrical);
+            r["chi_scalar"] = rn.chi_scalar;
+            r["quad_scalar"] = rn.quad_scalar;
+            r["disp_scalar"] = rn.disp_scalar;
+            r["disp_contacts"] = rn.disp_contacts;
+            arr.append(r);
+        }
+        result["ring_neighbours"] = arr;
+    }
+
+    // Bonds — three parallel arrays mirroring the Atom Inspector's
+    // bond-side panels:
+    //   covalent:  direct covalent topology (from id.bond_indices),
+    //              with category / length / direction / order / midpoint.
+    //   mcconnell: McConnell dipolar bond neighbours within cutoff
+    //              (from ca.bond_neighbours), one per nearby bond.
+    //   mopac:     MOPAC Wiberg bond orders to specific other atoms
+    //              (from ca.mopac_bond_neighbours).
+    // The MopacResult-derived Wiberg bond-order lookup is reused across
+    // covalent + mcconnell when MopacResult is attached (it isn't in
+    // viewer's default skip_mopac=true path; the bond_order field stays
+    // 0.0).
+    {
+        QJsonObject bonds;
+        const bool has_mopac = conf.HasResult<MopacResult>();
+
+        // covalent: every bond this atom participates in
+        {
+            QJsonArray arr;
+            for (size_t bi : id.bond_indices) {
+                if (bi >= protein->BondCount())
+                    continue;  // defensive
+                const Bond& bond = protein->BondAt(bi);
+                const size_t other_idx = (bond.atom_index_a == static_cast<size_t>(atomIdx)) ? bond.atom_index_b
+                                                                                             : bond.atom_index_a;
+                const auto& other = protein->AtomAt(other_idx);
+                QJsonObject b;
+                b["bond_index"] = static_cast<int>(bi);
+                b["other_atom"] = static_cast<int>(other_idx);
+                b["other_element"] = QString::fromStdString(SymbolForElement(other.element));
+                b["other_pdb_name"] = QString::fromStdString(other.pdb_atom_name);
+                b["category"] = NameForBondCategoryJ(bond.category);
+                b["length_A"] = conf.bond_lengths[bi];
+                b["direction"] = Vec3Json(conf.bond_directions[bi]);
+                b["midpoint"] = Vec3Json(conf.bond_midpoints[bi]);
+                b["is_rotatable"] = bond.is_rotatable;
+                if (has_mopac) {
+                    b["wiberg_order"] = conf.Result<MopacResult>().TopologyBondOrder(bi);
+                }
+                arr.append(b);
+            }
+            bonds["covalent"] = arr;
+        }
+
+        // mcconnell: bond_neighbours has every bond contributing
+        // dipolar shielding at this atom (within cutoff)
+        {
+            QJsonArray arr;
+            for (const auto& bn : ca.bond_neighbours) {
+                if (bn.bond_index >= protein->BondCount())
+                    continue;
+                const Bond& bond = protein->BondAt(bn.bond_index);
+                QJsonObject b;
+                b["bond_index"] = static_cast<int>(bn.bond_index);
+                b["category"] = NameForBondCategoryJ(bn.bond_category);
+                b["distance_to_midpoint_A"] = bn.distance_to_midpoint;
+                b["direction_to_midpoint"] = Vec3Json(bn.direction_to_midpoint);
+                b["mcconnell_scalar"] = bn.mcconnell_scalar;
+                b["dipolar_spherical"] = SphericalTensorJson(bn.dipolar_spherical);
+                // Topology-bond category cross-check: bn.bond_category
+                // should equal protein->BondAt(bn.bond_index).category.
+                // Emit topology side too so consumers can verify.
+                b["topology_category"] = NameForBondCategoryJ(bond.category);
+                if (has_mopac) {
+                    b["wiberg_order"] = conf.Result<MopacResult>().TopologyBondOrder(bn.bond_index);
+                }
+                arr.append(b);
+            }
+            bonds["mcconnell"] = arr;
+        }
+
+        // mopac: per-other-atom Wiberg bond orders (sorted descending in
+        // the library). Empty when MOPAC is skipped.
+        {
+            QJsonArray arr;
+            for (const auto& mb : ca.mopac_bond_neighbours) {
+                QJsonObject b;
+                b["other_atom"] = static_cast<int>(mb.other_atom);
+                b["wiberg_order"] = mb.wiberg_order;
+                b["topology_bond_index"] = (mb.topology_bond_index == SIZE_MAX) ? -1 : static_cast<int>(mb.topology_bond_index);
+                if (mb.topology_bond_index != SIZE_MAX && mb.topology_bond_index < protein->BondCount()) {
+                    b["topology_category"] = NameForBondCategoryJ(protein->BondAt(mb.topology_bond_index).category);
+                }
+                arr.append(b);
+            }
+            bonds["mopac"] = arr;
+        }
+
+        result["bonds"] = bonds;
+    }
+
+    // DSSP per-residue snapshot for this atom's residue
+    if (conf.HasResult<DsspResult>()) {
+        const auto& dssp = conf.Result<DsspResult>();
+        QJsonObject d;
+        d["secondary_structure"] = QString(QChar(dssp.SecondaryStructure(id.residue_index)));
+        d["phi_deg"] = dssp.Phi(id.residue_index);
+        d["psi_deg"] = dssp.Psi(id.residue_index);
+        d["sasa_A2"] = dssp.SASA(id.residue_index);
+        result["dssp"] = d;
+    }
+
+    return QJsonObject{{"ok", true}, {"result", result}};
+}
+
+QJsonObject RestServer::cmdListAtoms(const QJsonObject& cmd) {
+    auto& protein = mainWindow_->protein_;
+    if (!protein)
+        return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+
+    const QJsonObject filter = cmd.value("filter").toObject();
+    const QString fRole = filter.value("role").toString();
+    const QString fElement = filter.value("element").toString();
+    const int fResidueIdx = filter.contains("residue_index") ? filter.value("residue_index").toInt() : -1;
+    const QString fResidueType = filter.value("residue_type").toString();
+    const int fResidueSeq = filter.contains("residue_sequence") ? filter.value("residue_sequence").toInt() : -1;
+    const bool hasInRing = filter.contains("in_ring");
+    const bool fInRing = hasInRing ? filter.value("in_ring").toBool() : false;
+    const QString fPlanarGroup = filter.value("planar_group").toString();
+    const QString fPolarH = filter.value("polar_h").toString();
+    const bool hasIsAmideH = filter.contains("is_amide_H");
+    const bool fIsAmideH = hasIsAmideH ? filter.value("is_amide_H").toBool() : false;
+    const bool hasIsMethyl = filter.contains("is_methyl");
+    const bool fIsMethyl = hasIsMethyl ? filter.value("is_methyl").toBool() : false;
+
+    const auto& conf = protein->Conformation();
+    const auto& topo = protein->LegacyAmber();
+    const bool hasSubstrate = topo.HasAtomSemantic();
+
+    QJsonArray arr;
+    for (size_t i = 0; i < protein->AtomCount(); ++i) {
+        const auto& id = protein->AtomAt(i);
+        const auto& ca = conf.AtomAt(i);
+        const auto& res = protein->ResidueAt(id.residue_index);
+
+        if (!fRole.isEmpty() && fRole != NameForAtomRoleJ(ca.role))
+            continue;
+        if (!fElement.isEmpty() && fElement != QString::fromStdString(SymbolForElement(id.element)))
+            continue;
+        if (fResidueIdx >= 0 && static_cast<int>(id.residue_index) != fResidueIdx)
+            continue;
+        if (!fResidueType.isEmpty() && fResidueType != QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
+            continue;
+        if (fResidueSeq >= 0 && res.sequence_number != fResidueSeq)
+            continue;
+        if (hasIsAmideH && fIsAmideH != ca.is_amide_H)
+            continue;
+        if (hasIsMethyl && fIsMethyl != ca.is_methyl)
+            continue;
+
+        if (hasSubstrate) {
+            const auto& sem = topo.SemanticAt(i);
+            if (hasInRing && fInRing != sem.ring_position.IsInAnyRing())
+                continue;
+            if (!fPlanarGroup.isEmpty() && fPlanarGroup != NameForPlanarGroupKindJ(sem.planar_group))
+                continue;
+            if (!fPolarH.isEmpty() && fPolarH != NameForPolarHKindJ(sem.polar_h))
+                continue;
+        } else if (hasInRing || !fPlanarGroup.isEmpty() || !fPolarH.isEmpty()) {
+            // Substrate filter requested but substrate not populated → no match
+            continue;
+        }
+
+        QJsonObject a;
+        a["index"] = static_cast<int>(i);
+        a["element"] = QString::fromStdString(SymbolForElement(id.element));
+        a["pdb_atom_name"] = QString::fromStdString(id.pdb_atom_name);
+        a["residue_index"] = static_cast<int>(id.residue_index);
+        a["residue_type"] = QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type));
+        a["residue_sequence"] = res.sequence_number;
+        a["role"] = NameForAtomRoleJ(ca.role);
+        if (hasSubstrate) {
+            const auto& sem = topo.SemanticAt(i);
+            a["planar_group"] = NameForPlanarGroupKindJ(sem.planar_group);
+            a["polar_h"] = NameForPolarHKindJ(sem.polar_h);
+            a["in_ring"] = sem.ring_position.IsInAnyRing();
+        }
+        arr.append(a);
+    }
+
+    QJsonObject result;
+    result["count"] = arr.size();
+    result["atoms"] = arr;
     return QJsonObject{{"ok", true}, {"result", result}};
 }

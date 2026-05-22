@@ -122,6 +122,15 @@ and continues — calculators that don't need it still run.
 
 ## Fast feedback loop
 
+**Never run `build/nmr-viewer` directly.** The binary dlopens libtorch
+which dlopens libnvrtc which needs the cu13 bundled lib on
+LD_LIBRARY_PATH; env-var assignments from inside the process do NOT
+reach the dynamic loader (the loader caches resolution at process
+start). Always go through `bash ui/launch_viewer.sh ARGS…` or
+`scripts/run_with_cuda_env.sh build/nmr-viewer ARGS…`. Symptom of
+skipping the wrapper: `Session::LoadAimnet2Model` returns null with
+a libnvrtc-builtins.so.13.0 load error — 4 layers from the cause.
+
 ```bash
 bash ui/launch_viewer.sh                    # default: 1ubq
 bash ui/launch_viewer.sh path/to/file.pdb   # specific PDB
@@ -179,6 +188,14 @@ shows full object model: identity, charges, all 8 calculator
 SphericalTensors, ring neighbours with G tensors and cylindrical
 coords, bond neighbours with McConnell, vector fields, DSSP, ORCA
 DFT. Yellow selection sphere highlights the picked atom.
+
+**Inspector / atom_dump / test_inspector are a triple.** When you
+add a section to `MainWindow::populateAtomInfo`, also add the same
+section to `RestServer::cmdAtomDump` (JSON-friendly variant of the
+same typed data) and add a coverage check to
+`ui/tests/test_inspector.py`. The three are not independent
+surfaces — they collectively define what the viewer "knows" about
+each atom, and silent divergence costs debugging time later.
 
 **Load from CLI only.** File menu stripped. Crash on reload was
 happening because shared_ptr cleanup races with VTK actor lifetime.

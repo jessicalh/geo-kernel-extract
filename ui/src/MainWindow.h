@@ -36,6 +36,7 @@ class QUdpSocket;
 namespace nmr {
 class Protein;
 class ProteinConformation;
+class Session;
 }
 
 class RestServer;
@@ -44,7 +45,27 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
     friend class RestServer;  // REST server needs access to UI controls and VTK renderer
 public:
-    explicit MainWindow(const QString& initialDir = QString(), QWidget* parent = nullptr);
+    // session: process-wide resource owner (AIMNet2 model, Tripeptide
+    // DFT table libpq connection, Larsen H-bond grids). Constructed in
+    // main_viewer.cpp; MainWindow holds a reference for the duration
+    // and threads it through to ComputeWorker so OperationRunner::Run
+    // can attach the dependent calculators. The reference outlives
+    // MainWindow (Session is on main's stack; this widget exits before
+    // main returns).
+    //
+    // udpHost / udpPort: the same UDP destination OperationLog is
+    // sending to (sourced from [logging] in ~/.nmr_tools.toml by
+    // main_viewer.cpp). When udpHost is an IPv4 multicast address
+    // (239.0.0.0/8), the Log-dock socket binds AnyIPv4 and joins the
+    // group via joinMulticastGroup, letting udp_listen.py and other
+    // subscribers co-listen on the same port. Unicast hosts get a
+    // direct host-specific bind (preserving the original behaviour
+    // when the TOML is set to 127.0.0.1 for offline use).
+    explicit MainWindow(nmr::Session& session,
+                        const QString& udpHost,
+                        quint16 udpPort,
+                        const QString& initialDir = QString(),
+                        QWidget* parent = nullptr);
     ~MainWindow() override;
 
     // Orderly shutdown while QApplication is still alive.
@@ -74,6 +95,10 @@ private slots:
     void onComputeFinished(ComputeResult result);
 
 private:
+    // Process-wide resource holder. Lifetime owned by main_viewer.cpp;
+    // MainWindow holds a reference for the entire widget lifetime and
+    // hands it to every ComputeWorker constructed via startCompute().
+    nmr::Session& session_;
     QString initialDir_;
     void setupUI();
     void setupMenuBar();
@@ -177,7 +202,14 @@ private:
     // Bond order color overlay (tubes colored by Wiberg order)
     vtkSmartPointer<vtkActor> bondOrderActor_;
 
-    // Operations log panel — shows library log stream via UDP
+    // Operations log panel — shows library log stream via UDP.
+    // udpHost_ / udpPort_ are set from main_viewer.cpp at construction
+    // (sourced from [logging] in ~/.nmr_tools.toml). Multicast hosts
+    // (239.0.0.0/8) trigger an AnyIPv4 bind + joinMulticastGroup so
+    // udp_listen.py and the Log dock co-listen; unicast keeps the
+    // host-specific bind.
+    QString udpHost_;
+    quint16 udpPort_ = 0;
     QDockWidget* logDock_;
     QPlainTextEdit* logText_;
     QUdpSocket* logSocket_;

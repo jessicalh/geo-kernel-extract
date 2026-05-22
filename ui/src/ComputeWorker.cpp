@@ -10,21 +10,24 @@
 
 #include "ComputeWorker.h"
 
-#include "Protein.h"
-#include "ProteinConformation.h"
-#include "ConformationAtom.h"
-#include "PdbFileReader.h"
+#include "Atom.h"
+#include "BiotSavartResult.h"
+#include "Bond.h"
 #include "BuildResult.h"
+#include "CalculatorConfig.h"
+#include "ConformationAtom.h"
+#include "ConformationResult.h"
+#include "MolecularGraphResult.h"
+#include "OperationLog.h"
 #include "OperationRunner.h"
 #include "OrcaRunLoader.h"
-#include "CalculatorConfig.h"
-#include "BiotSavartResult.h"
-#include "ConformationResult.h"
-#include "OperationLog.h"
-#include "Atom.h"
+#include "PdbFileReader.h"
+#include "Protein.h"
+#include "ProteinConformation.h"
 #include "Residue.h"
 #include "Ring.h"
-#include "Bond.h"
+#include "Session.h"
+#include "SpatialIndexResult.h"
 
 #include <QElapsedTimer>
 #include <cmath>
@@ -34,7 +37,7 @@
 namespace fs = std::filesystem;
 using namespace nmr;
 
-ComputeWorker::ComputeWorker(QObject* parent) : QObject(parent) {}
+ComputeWorker::ComputeWorker(nmr::Session& session, QObject* parent) : QObject(parent), session_(session) {}
 
 void ComputeWorker::cancel() {
     cancelled_.store(true, std::memory_order_relaxed);
@@ -129,29 +132,12 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
     // ================================================================
     emit progress(10, 100, QStringLiteral("Computing shielding tensors..."));
 
-    // AIMNet2: priority order: spec path → AIMNET2_MODEL env → TOML config → not loaded.
-    // Loaded on first protein; reused for all subsequent loads in this session.
-    static std::unique_ptr<AIMNet2Model> s_aimnet2_model;
-    static std::string s_aimnet2_path;
-    {
-        std::string want = spec.aimnet2_model_path;
-        if (want.empty()) {
-            const char* env = std::getenv("AIMNET2_MODEL");
-            if (env) want = env;
-        }
-        if (want.empty())
-            want = CalculatorConfig::GetString("aimnet2_model_path");
-        if (!want.empty() && want != s_aimnet2_path) {
-            OperationLog::Info(LogViewer, "ComputeWorker",
-                "Loading AIMNet2 model: " + want);
-            s_aimnet2_model = AIMNet2Model::Load(want);
-            s_aimnet2_path  = want;
-            if (!s_aimnet2_model)
-                OperationLog::Warn("ComputeWorker",
-                    "AIMNet2 model failed to load: " + want);
-        }
-    }
-
+    // Session owns the AIMNet2 model, TripeptideDftTable (libpq), and
+    // LarsenHBondGrid for the entire process. Pre-loaded in
+    // main_viewer.cpp before MainWindow construction. Each per-run
+    // RunOptions just borrows the pointers. Null tripeptide/larsen
+    // pointers (DSN unconfigured, grid dir empty) silently skip those
+    // calculator families — same contract nmr_extract uses.
     RunOptions opts;
     if (buildResult.charges) {
         opts.charge_source = buildResult.charges.get();
@@ -160,7 +146,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
     opts.skip_mopac    = true;                // MOPAC is batch/calibration-only
     opts.skip_coulomb  = true;                // APBS preferred (6x faster, better physics)
     opts.skip_apbs     = spec.skip_apbs;      // APBS runs unless --no-apbs
-    opts.aimnet2_model = s_aimnet2_model.get();
+    opts.aimnet2_model = session_.Aimnet2Model();
+    opts.tripeptide_dft_table = session_.TripeptideDftTablePtr();
+    opts.larsen_hbond_grid = session_.LarsenHBondGridPtr();
 
     if (spec.mode == JobMode::Mutant) {
         // Mutant: run both WT and ALA, compute delta
@@ -177,7 +165,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         ala_opts.skip_mopac    = true;
         ala_opts.skip_coulomb  = true;
         ala_opts.skip_apbs     = spec.skip_apbs;
-        ala_opts.aimnet2_model = s_aimnet2_model.get();
+        ala_opts.aimnet2_model = session_.Aimnet2Model();
+        ala_opts.tripeptide_dft_table = session_.TripeptideDftTablePtr();
+        ala_opts.larsen_hbond_grid = session_.LarsenHBondGridPtr();
         if (!spec.ala_files.nmr_out_path.empty())
             ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
 
@@ -186,6 +176,21 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         OperationLog::Info(LogViewer, "ComputeWorker",
             std::string("RunMutantComparison ok=") + (runResult.Ok() ? "true" : "false") +
             " attached=" + std::to_string(runResult.attached.size()));
+
+        // Attach MolecularGraphResult on both sides so the Inspector
+        // surfaces graph topology for the displayed (WT) conformation
+        // and the ALA companion stays symmetric. Same rationale as the
+        // single-conformation branch below — OperationRunner does not
+        // attach it; the viewer does.
+        auto attachGraph = [](ProteinConformation& c) {
+            if (c.HasResult<SpatialIndexResult>() && !c.HasResult<MolecularGraphResult>()) {
+                auto g = MolecularGraphResult::Compute(c);
+                if (g)
+                    c.AttachResult(std::move(g));
+            }
+        };
+        attachGraph(wt_conf);
+        attachGraph(ala_conf);
 
     } else {
         // Single conformation: PDB, ProtonatedPdb, Orca
@@ -202,6 +207,21 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
             emit progress(15, 100, QString("Run error: %1")
                 .arg(QString::fromStdString(runResult.error)));
             // Continue — partial results are still useful
+        }
+
+        // MolecularGraphResult: BFS through-bond features (graph_dist_*,
+        // eneg_sum_*, n_pi_bonds_3, is_conjugated, bfs_decay). Library's
+        // OperationRunner::Run does not attach this result; only
+        // MutationDeltaResult consumes it. The viewer attaches it here
+        // so the per-atom Inspector "Graph topology" section reads real
+        // values instead of default sentinels. Dependency is just
+        // SpatialIndexResult (already attached by OperationRunner).
+        if (conf.HasResult<SpatialIndexResult>()) {
+            auto graph = MolecularGraphResult::Compute(conf);
+            if (graph) {
+                conf.AttachResult(std::move(graph));
+                OperationLog::Info(LogViewer, "ComputeWorker", "MolecularGraphResult: attached");
+            }
         }
     }
 

@@ -21,13 +21,19 @@
 #include <QMessageBox>
 #include <QVTKOpenGLNativeWidget.h>
 
-#include "MainWindow.h"
-#include "ComputeWorker.h"
-#include "RestServer.h"
-#include "JobSpec.h"
-#include "OperationLog.h"
-#include "RuntimeEnvironment.h"
+#include <filesystem>
+#include <fstream>
+#include <string>
+
 #include "CalculatorConfig.h"
+#include "ComputeWorker.h"
+#include "JobSpec.h"
+#include "MainWindow.h"
+#include "OperationLog.h"
+#include "RestServer.h"
+#include "RuntimeEnvironment.h"
+#include "Session.h"
+#include "errors.h"
 
 // udp_log shim: legacy viewer code calls this. Forwards to OperationLog.
 #include <cstdarg>
@@ -55,6 +61,86 @@ static quint16 ExtractRestPort(int argc, char* argv[]) {
 }
 
 
+// ============================================================================
+// LoggingConfig: parse [logging] from ~/.nmr_tools.toml.
+//
+// Lives in main_viewer.cpp (not in OperationLog) because MainWindow's
+// QUdpSocket bind needs the host string to call joinMulticastGroup() on
+// a multicast destination, and OperationLog has no public getter for
+// its configured host (private static host_). Parsing once in main and
+// handing (host, port) to MainWindow via constructor keeps the TOML as
+// the single source of truth for both sender (OperationLog) and
+// receiver (MainWindow's log dock).
+//
+// Mirrors the OperationLog::LoadChannelConfig parser shape; intentional
+// duplication per PATTERNS §17 (duplicate over chain) — the schema is
+// trivial and the two sites have orthogonal responsibilities.
+// ============================================================================
+
+struct LoggingConfig {
+    std::string udp_host = "127.0.0.1";  // unicast fallback if TOML absent
+    int udp_port = 9998;
+    std::string file_path;
+    uint32_t channel_mask = nmr::LogAll;
+};
+
+static LoggingConfig ReadLoggingConfig() {
+    LoggingConfig cfg;
+    const char* home = std::getenv("HOME");
+    if (!home)
+        return cfg;
+    std::string path = std::string(home) + "/.nmr_tools.toml";
+    std::ifstream in(path);
+    if (!in.is_open())
+        return cfg;
+
+    auto trim = [](std::string& s) {
+        while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '"' || s.back() == '\r'))
+            s.pop_back();
+        while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '"'))
+            s = s.substr(1);
+    };
+
+    std::string line;
+    bool in_logging = false;
+    while (std::getline(in, line)) {
+        if (line.find("[logging]") != std::string::npos) {
+            in_logging = true;
+            continue;
+        }
+        if (line.find('[') != std::string::npos && line.find("[logging]") == std::string::npos)
+            in_logging = false;
+        if (!in_logging)
+            continue;
+
+        auto eq = line.find('=');
+        if (eq == std::string::npos)
+            continue;
+        std::string key = line.substr(0, eq);
+        std::string val = line.substr(eq + 1);
+        trim(key);
+        trim(val);
+
+        if (key == "udp_host")
+            cfg.udp_host = val;
+        else if (key == "udp_port") {
+            try {
+                cfg.udp_port = std::stoi(val);
+            } catch (...) {
+            }
+        } else if (key == "file")
+            cfg.file_path = val;
+        else if (key == "channels") {
+            try {
+                cfg.channel_mask = static_cast<uint32_t>(std::stoul(val, nullptr, 0));
+            } catch (...) {
+            }
+        }
+    }
+    return cfg;
+}
+
+
 int main(int argc, char* argv[]) {
     // 1. QApplication — must be first
     QSurfaceFormat::setDefaultFormat(QVTKOpenGLNativeWidget::defaultFormat());
@@ -62,11 +148,30 @@ int main(int argc, char* argv[]) {
     app.setApplicationName("Protein Tensor Viewer");
     app.setApplicationVersion("2.0");
 
-    // 2. Library environment + logging
-    nmr::RuntimeEnvironment::Load();
-    nmr::OperationLog::ConfigureUdp("127.0.0.1", 9998);
-    nmr::OperationLog::SetChannelMask(nmr::LogAll);
-    nmr::OperationLog::LogSessionStart();
+    // 2. Library environment + logging via Session.
+    //
+    // nmr::Session is the named entity that holds process-wide
+    // resources: RuntimeEnvironment, OperationLog channel config (UDP +
+    // file from [logging] in ~/.nmr_tools.toml), the loaded AIMNet2
+    // model, the libpq TripeptideDftTable connection, and the
+    // LarsenHBondGrid. nmr_extract uses the same Session object; the
+    // viewer adopts it here so the two binaries share the same
+    // resource-management surface.
+    //
+    // LoadFromToml does RuntimeEnvironment::Load + OperationLog
+    // ::LoadChannelConfig (which configures UDP / file / channel mask
+    // from TOML — multicast destinations are auto-detected in the
+    // sender, see OperationLog.cpp:36-63). MainWindow still needs the
+    // UDP host/port directly so its Log-dock socket can
+    // joinMulticastGroup, so we parse the same TOML keys here.
+    nmr::Session session;
+    if (session.LoadFromToml() != nmr::kOk) {
+        fprintf(stderr, "ERROR: Session::LoadFromToml: %s\n", session.LastError().c_str());
+        return 1;
+    }
+    // Session::LoadFromToml already emits LogSessionStart internally
+    // (see src/Session.cpp:35); do not call it a second time here.
+    const LoggingConfig log_cfg = ReadLoggingConfig();
 
     // 3. Parse command line via JobSpec
     //    --output is optional for the viewer (no output = just visualise).
@@ -93,6 +198,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Load CalculatorConfig BEFORE ValidateJobSpec so the validation can
+    // resolve the AIMNet2 TOML default (aimnet2_model_path) when --aimnet2
+    // is not on the CLI. Mirrors the nmr_extract main() pattern; the
+    // AIMNet2 gate in ValidateJobSpec is documented as requiring this
+    // ordering (see JobSpec.cpp:308-337 and
+    // feedback_aimnet2_required_no_weasel).
+    if (!spec.config_path.empty()) {
+        nmr::CalculatorConfig::Load(spec.config_path);
+    } else {
+        std::string default_config = std::string(NMR_DATA_DIR) + "/calculator_params.toml";
+        if (std::filesystem::exists(default_config))
+            nmr::CalculatorConfig::Load(default_config);
+    }
+
     // Validate file existence
     if (!nmr::ValidateJobSpec(spec)) {
         QMessageBox::critical(nullptr, "Validation Error",
@@ -104,16 +223,35 @@ int main(int argc, char* argv[]) {
     for (const auto& w : spec.warnings)
         fprintf(stderr, "WARNING: %s\n", w.c_str());
 
-    // Load calculator config if specified
-    if (!spec.config_path.empty())
-        nmr::CalculatorConfig::Load(spec.config_path);
+    // 4. Load Session-owned process resources. AIMNet2 is mandatory
+    //    (gate already passed in ValidateJobSpec). TripeptideDftTable
+    //    and LarsenHBondGrid are optional: empty DSN / empty grid dir
+    //    means the related calculators are skipped silently. A configured-
+    //    but-failed load is fatal — we'd rather see the error than
+    //    silently drop expected results.
+    if (session.LoadAimnet2Model(spec.aimnet2_model_path) != nmr::kOk) {
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        return 1;
+    }
+    if (session.LoadTripeptideDftTable() != nmr::kOk) {
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        return 1;
+    }
+    if (session.LoadLarsenHBondGrid() != nmr::kOk) {
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        return 1;
+    }
 
-    // 4. Register metatypes for cross-thread signals
+    // 5. Register metatypes for cross-thread signals
     qRegisterMetaType<nmr::JobSpec>("nmr::JobSpec");
     qRegisterMetaType<ComputeResult>("ComputeResult");
 
-    // 5. Create and show window
-    MainWindow window;
+    // 6. Create and show window. Session passes through to ComputeWorker
+    //    so OperationRunner::Run sees the AIMNet2 model, Tripeptide DFT
+    //    table, and Larsen H-bond grid. Host/port come from the TOML so
+    //    the Log dock binds the same UDP destination OperationLog is
+    //    sending to (multicast join in MainWindow::setupUI).
+    MainWindow window(session, QString::fromStdString(log_cfg.udp_host), static_cast<quint16>(log_cfg.udp_port));
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &window, &MainWindow::shutdown);
     window.show();
 

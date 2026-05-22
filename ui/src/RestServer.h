@@ -56,6 +56,20 @@ private:
     QJsonObject cmdGetLog(const QJsonObject& cmd);
     QJsonObject cmdExportFeatures(const QJsonObject& cmd);
 
+    // ─── Programmatic introspection ──────────────────────────────────
+    //
+    // General-purpose endpoints that return per-atom and per-residue
+    // typed data as JSON. Designed for scripting and test clients
+    // (ui/tests/), not for any single test — they expose the same
+    // typed object surface the Atom Inspector shows, in machine-readable
+    // form. No test-specific shortcuts here.
+    //
+    //   atom_dump   {"atom":N}              → full inspector tree
+    //   list_atoms  {filter?: {…}}          → concise per-atom records
+    //
+    QJsonObject cmdAtomDump(const QJsonObject& cmd);
+    QJsonObject cmdListAtoms(const QJsonObject& cmd);
+
     void sendResponse(QTcpSocket* socket, const QJsonObject& response);
 
     QTcpServer* server_;

@@ -24,7 +24,10 @@
 #include "Types.h"
 #include "analysis_file.h"   // standalone H5 reader (read-only)
 
-namespace nmr { class Protein; }
+namespace nmr {
+class Protein;
+class Session;
+}  // namespace nmr
 
 // ---- Viewer-specific grid computations (NOT library data copies) ----
 // These sample the BiotSavartResult at arbitrary 3D points for isosurfaces
@@ -99,7 +102,12 @@ Q_DECLARE_METATYPE(ComputeResult)
 class ComputeWorker : public QObject {
     Q_OBJECT
 public:
-    explicit ComputeWorker(QObject* parent = nullptr);
+    // session owns the process-wide resources OperationRunner::Run
+    // attaches: AIMNet2 model, TripeptideDftTable (libpq), LarsenHBondGrid.
+    // The reference outlives the ComputeWorker — Session is on main()'s
+    // stack; ComputeWorker is created and destroyed inside MainWindow's
+    // startCompute / onComputeFinished lifecycle.
+    explicit ComputeWorker(nmr::Session& session, QObject* parent = nullptr);
 
 public slots:
     void computeAll(nmr::JobSpec spec);
@@ -110,5 +118,6 @@ signals:
     void finished(ComputeResult result);
 
 private:
+    nmr::Session& session_;
     std::atomic<bool> cancelled_{false};
 };

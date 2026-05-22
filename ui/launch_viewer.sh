@@ -9,9 +9,17 @@
 #   ui/launch_viewer.sh --mutant --wt path/to/WT --ala path/to/ALA
 #   ui/launch_viewer.sh --analysis-h5 path/to/{X}_analysis.h5   # ns0 pose auto-derived
 #
-# AIMNet2 (auto-detected from env, no flag needed):
-#   AIMNET2_MODEL=/path/to/aimnet2_wb97m_0.jpt ui/launch_viewer.sh
-#   export AIMNET2_MODEL=data/models/aimnet2_wb97m_0.jpt  # persist in shell
+# AIMNet2 is a stone requirement on every production path
+# (feedback_aimnet2_required_no_weasel). Resolution order is
+# CLI --aimnet2 PATH  >  calculator_params.toml [aimnet2_model_path]  >  error.
+# The project default lives at data/calculator_params.toml and is
+# loaded by main_viewer.cpp between ParseJobSpec and ValidateJobSpec,
+# so no flag is required for the canonical model.
+#
+# CUDA: launches go through scripts/run_with_cuda_env.sh, which
+# prepends PyTorch's bundled nvidia.cu13 lib to LD_LIBRARY_PATH so
+# libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0 succeeds at
+# AIMNet2 JIT time.
 #
 # Viewer always skips MOPAC and Coulomb (batch/calibration paths, not interactive).
 # APBS runs by default. Pass --no-apbs to skip.
@@ -37,7 +45,8 @@ cd "$(dirname "$0")/.."
 
 # Default: protonated 1ubq. Otherwise pass all args through to JobSpec.
 if [ $# -eq 0 ]; then
-    DISPLAY=:1 build-ui/nmr-viewer --protonated-pdb tests/data/1ubq_protonated.pdb 2>&1
+    DISPLAY=:1 scripts/run_with_cuda_env.sh build/nmr-viewer \
+        --protonated-pdb tests/data/1ubq_protonated.pdb 2>&1
 else
-    DISPLAY=:1 build-ui/nmr-viewer "$@" 2>&1
+    DISPLAY=:1 scripts/run_with_cuda_env.sh build/nmr-viewer "$@" 2>&1
 fi
