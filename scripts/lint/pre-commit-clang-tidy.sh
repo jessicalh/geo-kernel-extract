@@ -10,6 +10,11 @@
 # files: regex filter in .pre-commit-config.yaml).
 #
 # Side-effect-free: reads baseline.json, runs clang-tidy, no writes.
+#
+# Counting rule: we count only warnings whose SITE is in the changed
+# file itself. Transitive-header warnings (from src/Foo.h included by
+# src/Bar.cpp) are attributed to Foo.h in baseline.json, not to Bar.cpp,
+# so the per-file ratchet stays apples-to-apples.
 
 set -euo pipefail
 
@@ -32,16 +37,20 @@ if [[ ! -f artifacts/quality/baseline.json ]]; then
     exit 1
 fi
 
-# Run clang-tidy per file, capture warning counts.
+ROOT="$(pwd)"
+
+# Run clang-tidy per file. For each TU, count only warnings whose
+# warning-site file matches the TU path itself (not transitively-
+# included headers — those are attributed to the header in baseline.json).
 declare -A CURRENT
 for tu in "$@"; do
-    # --quiet suppresses progress bars; output goes to stderr but
-    # warnings are still emitted to stdout.
-    n=$(clang-tidy -p build --quiet "$tu" 2>/dev/null | grep -cE "warning:" || true)
+    n=$(clang-tidy -p build --quiet "$tu" 2>/dev/null \
+        | grep -E "^${ROOT}/${tu}:[0-9]+:[0-9]+: warning:" \
+        | wc -l)
     CURRENT["$tu"]="$n"
 done
 
-# Compare to baseline.json. Python because counting + JSON.
+# Compare to baseline.json.
 fail=0
 while IFS=$'\t' read -r tu current_n; do
     base_n=$(python3 -c "

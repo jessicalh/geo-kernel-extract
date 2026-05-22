@@ -27,14 +27,40 @@ void OperationLog::ConfigureUdp(const std::string& host, int port) {
     port_ = port;
     socket_ = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-    if (socket_ >= 0) {
-        udpConfigured_ = true;
-        Log(Level::Info, "OperationLog::ConfigureUdp",
-            "UDP logging to " + host + ":" + std::to_string(port));
-    } else {
+    if (socket_ < 0) {
         Log(Level::Error, "OperationLog::ConfigureUdp",
             "Failed to create UDP socket, falling back to stderr");
+        return;
     }
+
+    // Detect IPv4 multicast destination (224.0.0.0/4 = 224.0.0.0 –
+    // 239.255.255.255). Multicast lets multiple listeners join the
+    // same group at the same port — the reader's dock AND a
+    // standalone udp_listen.py can both receive at once, which Linux
+    // unicast UDP cannot do (only one socket binds the port). For
+    // multicast destinations we set IP_MULTICAST_TTL=1 (local
+    // network only) and IP_MULTICAST_LOOP=1 (deliver to sockets on
+    // the sending host) — both are defaults on Linux but pinned
+    // explicitly so the behavior is portable across BSD/macOS where
+    // LOOP defaults may differ. Unicast destinations leave the
+    // socket option block untouched.
+    in_addr_t dst_be{};
+    inet_pton(AF_INET, host.c_str(), &dst_be);
+    const unsigned first_octet = (ntohl(dst_be) >> 24) & 0xFFU;
+    const bool is_multicast = first_octet >= 224 && first_octet <= 239;
+
+    if (is_multicast) {
+        const unsigned char ttl  = 1;  // local subnet
+        const unsigned char loop = 1;  // also deliver to same-host listeners
+        setsockopt(socket_, IPPROTO_IP, IP_MULTICAST_TTL,  &ttl,  sizeof(ttl));
+        setsockopt(socket_, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+    }
+
+    udpConfigured_ = true;
+    Log(Level::Info, "OperationLog::ConfigureUdp",
+        std::string("UDP logging to ") + (is_multicast ? "multicast " : "unicast ") +
+        host + ":" + std::to_string(port) +
+        (is_multicast ? " (TTL=1, loopback=enabled)" : ""));
 }
 
 

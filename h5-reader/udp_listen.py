@@ -5,19 +5,21 @@ The reader emits structured JSON datagrams via StructuredLogger (see
 src/diagnostics/StructuredLogger.cpp). This script binds the same port
 and prints each datagram one per line.
 
-WARNING: Linux unicast UDP delivers each datagram to exactly one socket.
-If the reader is open, it likely binds 9997 for its Operations Log dock,
-and this listener will receive nothing. Run this script ONLY when the
-reader is not running — it is for batch/CLI debugging, not live viewer
-sessions.
+When the configured host is an IPv4 multicast address (224.0.0.0/4,
+typically 239.x.y.z), multiple listeners can join the group at the
+same port — the reader's Operations Log dock and this script can
+both receive simultaneously, which Linux unicast UDP forbids. For
+unicast destinations the old "one socket per port" rule still
+applies.
 
-SO_REUSEADDR + SO_REUSEPORT are set so neither side errors on "address
-already in use", but reception is still single-socket.
+SO_REUSEADDR + SO_REUSEPORT are set so neither side errors on
+"address already in use".
 
 Usage:
     python3 udp_listen.py                     # foreground, ^C to stop
     python3 udp_listen.py > log.jsonl         # capture to file
     python3 udp_listen.py --pretty            # format JSON human-readably
+    python3 udp_listen.py --host 239.255.0.1  # multicast group
 """
 
 from __future__ import annotations
@@ -25,8 +27,42 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import struct
 import sys
-from datetime import datetime
+
+
+def is_ipv4_multicast(host: str) -> bool:
+    """True iff host is an IPv4 multicast address (224.0.0.0/4)."""
+    try:
+        first = int(host.split(".")[0])
+    except (ValueError, IndexError):
+        return False
+    return 224 <= first <= 239
+
+
+def open_socket(host: str, port: int) -> socket.socket:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    if is_ipv4_multicast(host):
+        # Multicast receive: bind ANY (so the OS hands us datagrams
+        # destined for the group), then join the group on all
+        # interfaces (INADDR_ANY).
+        sock.bind(("", port))
+        mreq = struct.pack(
+            "4sl", socket.inet_aton(host), socket.INADDR_ANY
+        )
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        print(
+            f"Listening on UDP multicast {host}:{port} (joined group on INADDR_ANY) ...",
+            file=sys.stderr,
+        )
+    else:
+        sock.bind((host, port))
+        print(
+            f"Listening on UDP unicast {host}:{port} ...", file=sys.stderr
+        )
+    return sock
 
 
 def main() -> None:
@@ -39,11 +75,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    sock.bind((args.host, args.port))
-    print(f"Listening on UDP {args.host}:{args.port} ...", file=sys.stderr)
+    sock = open_socket(args.host, args.port)
 
     try:
         while True:
