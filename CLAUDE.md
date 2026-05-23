@@ -386,13 +386,15 @@ them before modifying anything in the named directory.
 - **`ui/`** — `nmr-viewer`, the single-conformation Qt6/VTK viewer.
   Links the library directly so the renderer consumes the library's
   typed objects without duplication. Owns `ui/CLAUDE.md` and
-  `ui/UI_ROADMAP.md`. Reads the analysis H5 via `fileformat/` as a
-  read-only companion (`--analysis-h5 PATH`, Session 2026-04-16 in
-  `UI_ROADMAP.md`). Never writes H5; never triggers a new extraction.
+  `ui/UI_ROADMAP.md`. Reads the analysis H5 via `ui/src/TrajectoryH5`
+  as a read-only companion (`--analysis-h5 PATH`, Session 2026-04-16
+  in `UI_ROADMAP.md`). Never writes H5; never triggers a new
+  extraction.
 - **`h5-reader/`** — standalone Qt6/VTK trajectory reader. Does NOT
-  link the library; consumes `fileformat/analysis_file.cpp` via
-  source include only. Owns `h5-reader/CLAUDE.md` plus
-  `notes/SCOPE.md`, `notes/POLISH_BACKLOG.md`,
+  link the library; reads the per-TR-emits-its-own-group trajectory.h5
+  + 5-NPY topology sidecar produced by `nmr_extract --trajectory`
+  via its own `h5-reader/src/io/QtTrajectoryH5` boundary class. Owns
+  `h5-reader/CLAUDE.md` plus `notes/SCOPE.md`, `notes/POLISH_BACKLOG.md`,
   `notes/TIME_SERIES_EXPANSION.md`, `notes/RESIDUAL_RENDER_DROP.md`.
   Target audience: advisers on Linux / macOS / Windows. Parallel
   type hierarchy (`QtProtein`, `QtConformation`, `QtFrame`) mirrors
@@ -442,8 +444,30 @@ them before modifying anything in the named directory.
   THESIS_ARC, COMPUTE_BUDGET, EFG_GEOMETRY_DOMINANCE). Not in the
   build. A space to work through scope decisions before they
   graduate into `h5-reader/`, `learn/`, or `spec/`.
-- **`references/`** — fetched papers (PDF). Save every fetched
-  reference here; see `ANNOTATED_BIBLIOGRAPHY.md`.
+- **`references/`** — fetched papers as PDFs, the human reading
+  surface and citable corpus. Committed. Hand-annotated bibliography
+  at `references/ANNOTATED_BIBLIOGRAPHY.md`. New PDFs land in
+  `references/incoming/` and are processed by
+  `scripts/references/ingest_pdf.sh`, which produces the text /
+  image / metadata layers below.
+- **`references-text/`** — 3-page text chunks of each PDF, the
+  AI-agent reading surface. Filenames mirror the PDF basename:
+  `<basename>-text-N.txt`. Gitignored, regenerable from the PDF.
+  When summarising a paper or snarfing the corpus for a topic,
+  read from here, not from the PDF.
+- **`references-images/`** — per-page renders of each PDF at 150
+  DPI for figure-on-demand. Filenames: `<basename>-page-N.png`.
+  Gitignored, regenerable. Read when the text chunks reference a
+  figure that matters.
+- **`references-meta/`** — distilled per-paper outputs: summaries
+  (`<basename>-summary.txt`), keyword lists (`<basename>-keywords.txt`),
+  the auto-generated cross-reference `INDEX.md`, and the canonical
+  reading-and-writing discipline in `WORKFLOW.md`. Committed; this
+  is the source of truth for what we know about the corpus. The
+  `nmr-scholarship` skill (in `~/.claude/skills/nmr-scholarship/`)
+  documents the same workflow from a session-loaded perspective —
+  invoke it for any reference work, but the durable rules live in
+  `references-meta/WORKFLOW.md`.
 - **`data/`** — `calculator_params.toml` and `ff14sb_params.dat`
   plus the `models/` directory. Library reads from here at runtime.
 - **`tests/`** — library and SDK test suites. `tests/golden/` holds
@@ -612,8 +636,15 @@ These are load-bearing across subprojects. Each subproject's
 
 ### References
 
-- **Save fetched papers to `references/`.** Always persist the PDF
-  alongside a note in `ANNOTATED_BIBLIOGRAPHY.md`, not just the URL.
+- **Save fetched papers to `references/`.** Always persist the PDF,
+  not just the URL. Run `scripts/references/ingest_pdf.sh` to produce
+  the text chunks (`references-text/`), per-page images
+  (`references-images/`), and committed metadata files
+  (`references-meta/<basename>-summary.txt`,
+  `references-meta/<basename>-keywords.txt`). Discipline is in
+  `references-meta/WORKFLOW.md`; high-level prose annotations in
+  `references/ANNOTATED_BIBLIOGRAPHY.md`. The `nmr-scholarship` skill
+  loads the same rules on demand.
 
 ## Current state
 
@@ -661,6 +692,21 @@ memory):
   DFTs on the residual fleet (676 minus the 10-protein calibration
   set) have not been scheduled and are deferred until the
   structure-quality issue is fully resolved.
+
+  **1P9J 15ns DFT campaign (active, single protein).** Separate from
+  the 685/676-protein fleet. ORCA r²SCAN/def2-SVP on every other frame
+  of the 1P9J 15 ns MD (751 frames at 20 ps), dispatched by `orca-fleet`
+  across batcave + scan1 + scan2 + scan3 via PG `dft_fleet_1P9J`. At
+  2026-05-23: 436/751 done (58%). Plausible completion mid-June 2026.
+  The completed-job consolidation (`.pdb`, `.xyz`, `_nmr.out`,
+  `_meta.json` per job, plus worker logs and PG snapshots) is
+  fetched + git-committed into `/shared/2026Thesis/1p9j-orcas/`
+  every 2 h by a systemd-user timer (`fetch-1p9j-orcas.timer`), with
+  an off-NVMe bare-repo backup at
+  `/mnt/expansion/backup/1p9j-orcas.git`. See
+  `/shared/2026Thesis/1p9j-orcas/README.md` for the full layout,
+  archival discipline, and retirement protocol when the campaign
+  completes. Memory: `project_1p9j_orcas_consolidation`.
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results. Not
   yet active.
 
