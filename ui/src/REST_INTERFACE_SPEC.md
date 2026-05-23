@@ -172,3 +172,55 @@ the full log.
 {"cmd": "screenshot", "path": "/abs/path/to/image.png"}
 ```
 Saves current render. Returns: path, width, height.
+
+### Introspection
+
+These endpoints return per-atom and per-residue typed data as JSON,
+suitable for test clients and scripted exploration. They surface the
+same typed object model the Atom Inspector dock shows. No
+test-specific shortcuts — adding a new section to `populateAtomInfo`
+gets the same data into `atom_dump` for parity (the
+Inspector / atom_dump / test_inspector triple is documented in
+`ui/CLAUDE.md`).
+
+#### `atom_dump`
+```json
+{"cmd": "atom_dump", "atom": 42}
+```
+Returns the full typed inspector tree for one atom: identity
+(element, role, residue, terminal state, protonation variant),
+AMBER substrate (planar group, polar H kind, prochiral stereo, ring
+position, pseudoatom kind), charges, per-calculator shielding
+contributions, ring neighbours, bond neighbours (covalent + McConnell
++ MOPAC), DSSP, ORCA DFT slice, and — when `--analysis-h5` was
+supplied and the identity check passed — an `h5` block carrying the
+trajectory companion data for this atom (Welford rollups + frame-0
+slabs per TR group present in the file).
+
+The `h5` block is absent (not null) when no companion H5 is loaded
+or the identity check failed; consumers gate on `.get("h5")`.
+
+#### `list_atoms`
+```json
+{"cmd": "list_atoms"}
+{"cmd": "list_atoms", "filter": {"role": "AmideH", "residue_type": "HIS"}}
+```
+Returns a concise per-atom record (index, element, name, residue
+type/index, role, ring/substrate flags). Optional `filter` narrows
+by `role`, `element`, `residue_type`, `residue_index`, `in_ring`,
+`planar_group`, `polar_h`, `is_amide_H`, `is_methyl`.
+
+### Lifecycle
+
+#### `quit`
+```json
+{"cmd": "quit"}
+```
+Polite shutdown. Returns `{"ok": true, "result": {"message": "shutting down"}}`
+synchronously; the reply ships from the dispatch thread, then
+`socket->disconnectFromHost` drains the write buffer before Qt
+emits `disconnected`, at which point the server posts
+`QCoreApplication::quit` via `QueuedConnection`. The `aboutToQuit`
+signal triggers `MainWindow::shutdown` to stop timers / workers /
+VTK in order. Use in preference to `pkill nmr-viewer` so widget
+destructors and the worker-thread auto-delete chain run cleanly.

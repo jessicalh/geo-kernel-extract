@@ -24,15 +24,16 @@
 # Viewer always skips MOPAC and Coulomb (batch/calibration paths, not interactive).
 # APBS runs by default. Pass --no-apbs to skip.
 #
-# LOG TAB: The viewer binds UDP port 9998 for its own log tab. Do NOT run
-# udp_listen.py alongside the viewer — both would bind 9998 and Linux unicast
-# UDP delivers each datagram to exactly one socket (the last to bind). If
-# udp_listen.py binds first, the viewer log tab will be silent.
+# LOG TAB: the viewer binds UDP port 9998 for its own log tab. With the
+# canonical multicast `udp_host = "239.255.0.1"` in [logging] of
+# ~/.nmr_tools.toml, both the viewer and ui/udp_listen.py can co-listen —
+# each socket joins the multicast group and the kernel delivers every
+# datagram to both. Run udp_listen.py in another terminal during a
+# viewer session for a terminal-side tail of the same stream.
 #
-# udp_listen.py is for batch/CLI sessions without an open viewer. It is a
-# "safe" listener (SO_REUSEADDR + SO_REUSEPORT) and will not block the viewer
-# from binding, but it will not receive viewer-session datagrams if the viewer
-# bound 9998 after it.
+# Unicast hosts (e.g. 127.0.0.1) fall back to the old "last binder wins"
+# behaviour — only one of the viewer's Log dock and udp_listen.py will
+# see datagrams. The canonical TOML is multicast for this reason.
 #
 # REST commands (port 9147):
 #   echo '{"cmd":"status"}' | nc -q1 localhost 9147

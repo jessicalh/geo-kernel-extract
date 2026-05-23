@@ -30,10 +30,22 @@ Viewer consumes the analysis H5 via `--analysis-h5 PATH` with the ns0
 pose derived by convention. Read-only throughout — the viewer never
 writes H5 and never triggers extraction. A new **Time Series (H5)**
 dock tab shows per-atom frame-0 slices. `AnalysisBinding` carries the
-`shared_ptr<const AnalysisFile>` plus a `libToH5` identity map plus
-logged name mismatches; every time-series read routes through
-`H5IndexFor()`, a single translation point ready to grow if a future
-producer emits non-identity ordering.
+companion-H5 pointer plus a `libToH5` identity map plus logged name
+mismatches; every time-series read routes through `H5IndexFor()`, a
+single translation point ready to grow if a future producer emits
+non-identity ordering.
+
+> **2026-05-23 update:** the H5 format the library produces switched to
+> per-TR-emits-its-own-group some time after the topology substrate
+> work landed; the dead `AnalysisFile` reader was replaced by
+> `ui/src/TrajectoryH5.{h,cpp}` (commits `73cc48a` / `b0433ae` /
+> `9b0cb29`). The binding's inner pointer is now
+> `shared_ptr<const TrajectoryH5>`; identity-check shape, sparse-set
+> tolerance, and the H5IndexFor extension point are preserved. The
+> Time Series tab gained Welford rollups (mean ± std) alongside the
+> frame-0 slabs — the live-vs-ensemble diagnostic. Inspector / atom_dump
+> / test_inspector triple is in place; `cmdQuit` REST endpoint added.
+> See the archived plan + brief under `ui/notes/archive/`.
 
 **Scope for this viewer (decided 2026-04-16):** nmr-viewer stays
 bounded to single protein, single conformation, with the library's
@@ -68,8 +80,11 @@ there; the app itself is a new project when the time comes.
 ## Current state (session 7, 2026-04-08)
 
 **Working:**
-- All five JobSpec modes: `--pdb`, `--protonated-pdb`, `--orca`,
-  `--mutant`, `--fleet` — shared parser with nmr_extract CLI
+- Four JobSpec modes: `--pdb`, `--protonated-pdb`, `--orca`,
+  `--mutant` — shared parser with nmr_extract CLI. `--fleet` was
+  removed 2026-04-12; use `nmr_extract --trajectory` for ensemble
+  extraction. Plus `--analysis-h5 PATH` for the trajectory companion
+  (read-only) introduced 2026-04-16.
 - Ball-and-stick rendering with double bonds from topology
 - Atom inspector: double-click → full object model including all 10
   calculator contributions, MOPAC electronic data (charges, orbital
