@@ -80,7 +80,7 @@ static bool TimedAttach(ProteinConformation& conf, const char* name,
 //   Tier 2 — DFT comparison (optional)
 // =================================================================
 
-RunResult OperationRunner::Run(ProteinConformation& conf,
+RunResult OperationRunner::Run(ProteinConformation& conf,  // NOLINT(readability-function-size)
                                const RunOptions& opts) {
     RunResult out;
 

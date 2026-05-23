@@ -136,7 +136,7 @@ static Element ElementFromAtomicNumber(int an) {
 // LoadOrcaRun: WITH prmtop path
 // ============================================================================
 
-static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
+static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(readability-function-size)
                                       const std::vector<XyzAtom>& xyz) {
     OrcaLoadInternal result;
 

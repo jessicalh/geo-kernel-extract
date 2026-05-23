@@ -231,7 +231,8 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     // dssp_ss8.npy — (N, 8) float64, full 8-class one-hot
     // Column order: H(alpha), G(3_10), I(pi), E(strand), B(bridge), T(turn), S(bend), C(coil)
     {
-        static const char SS_CLASSES[] = "HGIEBTS C";
+        // String mnemonic for the column-order comment above was
+        // "HGIEBTS C" (each character maps to its column index).
         // Map: H=0, G=1, I=2, E=3, B=4, T=5, S=6, C=7
         auto ss_col = [](char ss) -> int {
             switch (ss) {
@@ -290,7 +291,7 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
             const auto& res = protein.ResidueAt(ri);
 
             for (int k = 0; k < 4; ++k) {
-                int const base = i * 12 + k * 3;
+                std::size_t const base = i * 12 + static_cast<std::size_t>(k) * 3;
                 if (res.chi[k].Valid()) {
                     Vec3 const p0 = conf.PositionAt(res.chi[k].a[0]);
                     Vec3 const p1 = conf.PositionAt(res.chi[k].a[1]);

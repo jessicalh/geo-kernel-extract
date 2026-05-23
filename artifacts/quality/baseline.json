@@ -1,6 +1,6 @@
 {
-  "anchored_at_sha": "46c414b",
-  "anchored_at_utc": "2026-05-23T12:04:31.300215+00:00",
+  "anchored_at_sha": "d3620fe",
+  "anchored_at_utc": "2026-05-23T13:04:20.775959+00:00",
   "tools": {
     "clang-tidy": {
       "src/AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.cpp": {
@@ -18,12 +18,6 @@
       "src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "misc-unused-parameters": 1
-        },
-        "total": 1
-      },
-      "src/AIMNet2Result.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-variable": 1
         },
         "total": 1
       },
@@ -82,18 +76,6 @@
         },
         "total": 1
       },
-      "src/BsWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/CalculatorConfig.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1
-        },
-        "total": 1
-      },
       "src/CategoryInfoProjection.cpp": {
         "by_check": {
           "bugprone-not-null-terminated-result": 1,
@@ -108,28 +90,9 @@
         },
         "total": 3
       },
-      "src/CoulombResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-variable": 1,
-          "readability-function-size": 1
-        },
-        "total": 2
-      },
       "src/CovalentTopology.cpp": {
         "by_check": {
           "misc-unused-parameters": 1
-        },
-        "total": 1
-      },
-      "src/DihedralTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/DispersionResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1
         },
         "total": 1
       },
@@ -141,32 +104,15 @@
       },
       "src/DsspResult.cpp": {
         "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "clang-diagnostic-unused-variable": 1,
           "misc-const-correctness": 1
         },
-        "total": 3
-      },
-      "src/EeqResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "readability-function-size": 1
-        },
-        "total": 2
+        "total": 1
       },
       "src/EnrichmentResult.cpp": {
         "by_check": {
-          "bugprone-branch-clone": 2,
-          "readability-function-size": 1
+          "bugprone-branch-clone": 2
         },
-        "total": 3
-      },
-      "src/FullSystemReader.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "readability-function-size": 2
-        },
-        "total": 3
+        "total": 2
       },
       "src/GromacsEnergyResult.cpp": {
         "by_check": {
@@ -180,53 +126,15 @@
         },
         "total": 1
       },
-      "src/HBondResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "readability-function-size": 1
-        },
-        "total": 2
-      },
       "src/HBondShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
         },
         "total": 1
       },
-      "src/HaighMallionResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "clang-diagnostic-unused-variable": 1
-        },
-        "total": 2
-      },
       "src/HmShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/HmWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/HydrationGeometryWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/HydrationShellWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/JCouplingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
         },
         "total": 1
       },
@@ -275,12 +183,6 @@
         },
         "total": 1
       },
-      "src/LarsenHBondShieldingResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
       "src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
@@ -289,33 +191,19 @@
       },
       "src/LarsenResidue.cpp": {
         "by_check": {
-          "performance-inefficient-string-concatenation": 2,
-          "readability-function-size": 2
+          "performance-inefficient-string-concatenation": 2
         },
-        "total": 4
+        "total": 2
       },
       "src/LegacyAmberTopology.cpp": {
         "by_check": {
-          "bugprone-argument-comment": 1,
-          "readability-function-size": 1
+          "bugprone-argument-comment": 1
         },
-        "total": 2
+        "total": 1
       },
       "src/McConnellShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/McConnellWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
-      "src/MopacCoulombResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
         },
         "total": 1
       },
@@ -324,13 +212,6 @@
           "readability-qualified-auto": 1
         },
         "total": 1
-      },
-      "src/MopacMcConnellResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "clang-diagnostic-unused-but-set-variable": 1
-        },
-        "total": 2
       },
       "src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
@@ -351,32 +232,23 @@
         },
         "total": 4
       },
-      "src/MutationDeltaResult.cpp": {
+      "src/NamingRegistry.cpp": {
         "by_check": {
-          "readability-function-size": 1
+          "readability-convert-member-functions-to-static": 1
         },
         "total": 1
       },
-      "src/NamingRegistry.cpp": {
-        "by_check": {
-          "readability-convert-member-functions-to-static": 1,
-          "readability-function-size": 1
-        },
-        "total": 2
-      },
       "src/OperationRunner.cpp": {
         "by_check": {
-          "cppcoreguidelines-missing-std-forward": 1,
-          "readability-function-size": 1
+          "cppcoreguidelines-missing-std-forward": 1
         },
-        "total": 2
+        "total": 1
       },
       "src/OrcaRunLoader.cpp": {
         "by_check": {
-          "cert-err34-c": 2,
-          "readability-function-size": 1
+          "cert-err34-c": 2
         },
-        "total": 3
+        "total": 2
       },
       "src/OrcaShieldingResult.cpp": {
         "by_check": {
@@ -387,12 +259,6 @@
       "src/PdbFileReader.cpp": {
         "by_check": {
           "clang-diagnostic-unused-function": 1
-        },
-        "total": 1
-      },
-      "src/PiQuadrupoleResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1
         },
         "total": 1
       },
@@ -454,33 +320,15 @@
         },
         "total": 1
       },
-      "src/RunConfiguration.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
       "src/SasaTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
         },
         "total": 1
       },
-      "src/SolventEnvironment.h": {
-        "by_check": {
-          "clang-diagnostic-unused-variable": 1
-        },
-        "total": 1
-      },
       "src/TopologySidecar.cpp": {
         "by_check": {
           "bugprone-not-null-terminated-result": 1
-        },
-        "total": 1
-      },
-      "src/Trajectory.cpp": {
-        "by_check": {
-          "readability-function-size": 1
         },
         "total": 1
       },
@@ -499,12 +347,6 @@
       "src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideBackboneShieldingResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
         },
         "total": 1
       },
@@ -533,12 +375,6 @@
         },
         "total": 1
       },
-      "src/TripeptideNeighborShieldingResult.cpp": {
-        "by_check": {
-          "readability-function-size": 1
-        },
-        "total": 1
-      },
       "src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "readability-qualified-auto": 1
@@ -557,19 +393,11 @@
         },
         "total": 1
       },
-      "src/WaterFieldResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "clang-diagnostic-unused-variable": 1
-        },
-        "total": 2
-      },
       "src/WaterFieldWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "bugprone-unused-local-non-trivial-variable": 2,
-          "readability-function-size": 1
+          "bugprone-unused-local-non-trivial-variable": 2
         },
-        "total": 3
+        "total": 2
       },
       "src/apbs_bridge.h": {
         "by_check": {

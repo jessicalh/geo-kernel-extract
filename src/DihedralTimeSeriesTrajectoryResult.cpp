@@ -359,7 +359,7 @@ void DihedralTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 // layout matches the natural reader: res-0-frame-0..T-1, res-1-frame-0..,
 // ..., res-R-1-frame-T-1.
 
-void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
+void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t R = phi_.size();

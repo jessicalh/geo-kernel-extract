@@ -106,7 +106,7 @@ static HBondKernelResult ComputeHBondKernel(
 // HBondResult::Compute
 // ============================================================================
 
-std::unique_ptr<HBondResult> HBondResult::Compute(
+std::unique_ptr<HBondResult> HBondResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf) {
 
     OperationLog::Scope const scope("HBondResult::Compute",
@@ -397,6 +397,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
     OperationLog::Info(LogCalcOther, "HBondResult::Compute",
         "atom_hbond_pairs=" + std::to_string(total_pairs) +
+        " filtered_out=" + std::to_string(filtered_out) +
         " rejected={" + filters.ReportRejections() + "}" +
         " hbonds=" + std::to_string(hbonds.size()) +
         " atoms=" + std::to_string(n_atoms));

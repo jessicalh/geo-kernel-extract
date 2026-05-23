@@ -279,7 +279,7 @@ int PiQuadrupoleResult::WriteFeatures(const ProteinConformation& conf,
         for (int t = 0; t < 8; ++t) {
             per_type_T0[i*8 + t] = ca.per_type_pq_scalar_sum[t];
             for (int c = 0; c < 5; ++c) {
-                per_type_T2[i*40 + t*5 + c] = ca.per_type_pq_T2_sum[t][c];
+                per_type_T2[i * 40 + static_cast<std::size_t>(t) * 5 + c] = ca.per_type_pq_T2_sum[t][c];
 }
         }
     }

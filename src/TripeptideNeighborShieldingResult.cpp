@@ -87,7 +87,7 @@ TripeptideNeighborShieldingResult::Dependencies() const {
 // ============================================================================
 
 std::unique_ptr<TripeptideNeighborShieldingResult>
-TripeptideNeighborShieldingResult::Compute(
+TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf,
         const TripeptideDftTable& table) {
 

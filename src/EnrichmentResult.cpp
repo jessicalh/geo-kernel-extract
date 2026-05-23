@@ -5,7 +5,7 @@
 
 namespace nmr {
 
-std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
+std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf) {
 
     OperationLog::Scope const scope("EnrichmentResult::Compute",

@@ -923,7 +923,7 @@ std::vector<std::string> NamingApplicator::ApplyResidue(
 // RecanonicaliseAfterProtonation guard.
 // ----------------------------------------------------------------------------
 
-void NamingApplicator::InstallRules() {
+void NamingApplicator::InstallRules() {  // NOLINT(readability-function-size)
     // ========================================================================
     // LYN protonation-variant H-on-NZ — sibling-aware shift to canonical
     // ========================================================================

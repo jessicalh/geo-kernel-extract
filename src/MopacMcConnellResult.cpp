@@ -281,6 +281,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
     OperationLog::Info(LogCalcMcConnell, "MopacMcConnellResult::Compute",
         "atom_bond_pairs=" + std::to_string(total_pairs) +
+        " filtered_out=" + std::to_string(filtered_out) +
         " zero_bo_skipped=" + std::to_string(zero_bo_skipped) +
         " rejected={" + filters.ReportRejections() + "}" +
         " atoms=" + std::to_string(n_atoms));
@@ -320,7 +321,7 @@ int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
         };
         for (int c = 0; c < 5; ++c) {
             for (int m = 0; m < 5; ++m) {
-                cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
+                cat_T2[i * 25 + static_cast<std::size_t>(c) * 5 + m] = cats[c]->T2[m];
 }
 }
 

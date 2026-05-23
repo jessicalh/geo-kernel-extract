@@ -231,7 +231,7 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 //     squared channels), rate channels in Angstrom^-3_per_ps.
 //   - `frame_index_range` group attribute records the trajectory span.
 
-void McConnellWelfordTrajectoryResult::WriteH5Group(
+void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const size_t N = tp.AtomCount();

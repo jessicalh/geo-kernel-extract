@@ -40,7 +40,7 @@ std::vector<std::type_index> CoulombResult::Dependencies() const {
 //   sidechain: everything else
 // ============================================================================
 
-std::unique_ptr<CoulombResult> CoulombResult::Compute(
+std::unique_ptr<CoulombResult> CoulombResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf) {
 
     OperationLog::Scope const scope("CoulombResult::Compute",
@@ -356,9 +356,10 @@ SphericalTensor CoulombResult::EFGSphericalAt(size_t atom_index) const {
 
 
 Vec3 CoulombResult::SampleEFieldAt(const Vec3& point) const {
-    if (!conf_) return Vec3::Zero();
+    if (!conf_) {
+        return Vec3::Zero();
+    }
 
-    const Protein& protein = conf_->ProteinRef();
     Vec3 E = Vec3::Zero();
 
     for (size_t j = 0; j < conf_->AtomCount(); ++j) {

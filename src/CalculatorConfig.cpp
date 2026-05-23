@@ -133,11 +133,8 @@ void CalculatorConfig::Load(const std::string& path) {
 
     std::ifstream in(path);
     std::string line;
-    int line_num = 0;
 
     while (std::getline(in, line)) {
-        ++line_num;
-
         // Strip comments
         auto pos = line.find('#');
         if (pos != std::string::npos) line = line.substr(0, pos);

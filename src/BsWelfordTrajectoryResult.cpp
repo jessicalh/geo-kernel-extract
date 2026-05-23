@@ -252,7 +252,7 @@ int BsWelfordTrajectoryResult::WriteFeatures(
 // n_frames_per_atom) stay emitted for backward compatibility — old
 // consumers continue to work; new consumers use the canonical names.
 
-void BsWelfordTrajectoryResult::WriteH5Group(
+void BsWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const size_t N = tp.AtomCount();

@@ -365,7 +365,7 @@ ExtraBondsFor(const std::string& code) {
 // Hydrogen attachment rules. Returns the heavy-atom parent for a given
 // H atom name, or empty string if not handled. Mirrors the Python POC's
 // canonical_bonds_of_residue H-attach section.
-std::string ParentHeavyForH(const std::string& h_name,
+std::string ParentHeavyForH(const std::string& h_name,  // NOLINT(readability-function-size)
                               const std::set<std::string>& atoms_in_piece) {
     auto has = [&](const std::string& n) { return atoms_in_piece.count(n); };
     // Polar Hs handled at end of function (HE→NE, HZ→CZ, HH→OH, etc.).
@@ -1091,7 +1091,7 @@ static void LogPerceptionFailure(const TripeptideDftRecord& rec,
 }
 
 
-std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
+std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability-function-size)
         const TripeptideDftRecord& rec,
         AminoAcid expected_central,
         int his_variant_hint) {

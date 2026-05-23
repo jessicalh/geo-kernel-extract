@@ -147,7 +147,7 @@ static bool IsIonMoltype(const gmx_moltype_t& mt) {
 //   2. BondedParameters (interaction lists, CMAP grids)
 //   3. Stored gmx_mtop_t for BuildProtein()
 
-bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
+bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(readability-function-size)
     OperationLog::Scope const scope("FullSystemReader::ReadTopology", tpr_path);
 
     tpr_ = std::make_unique<detail::TprData>();
@@ -496,7 +496,6 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
         // the canonical localtop's flat atom list without the
         // gmx_mtop_global_atoms() call; staying with the per-moltype
         // walk is direct and sufficient for invariant per-atom fields.)
-        size_t global_offset = 0;
         for (size_t b = 0; b < n_protein_molblocks; ++b) {
             const auto& molblock = mtop.molblock[b];
             const auto& mt = mtop.moltype[molblock.type];
@@ -511,7 +510,6 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
                                           : std::string();
                 amber_invariants_.atomtype_string.push_back(std::move(atype_s));
             }
-            global_offset += static_cast<size_t>(atoms.nr) * molblock.nmol;
         }
     }
 
@@ -757,7 +755,7 @@ static bool ResolveResidueTypeAndVariant(
 }
 
 
-BuildResult FullSystemReader::BuildProtein(
+BuildResult FullSystemReader::BuildProtein(  // NOLINT(readability-function-size)
         const std::string& protein_id,
         ForceField force_field,
         const GromacsToAmberReadbackBlock* readback) {

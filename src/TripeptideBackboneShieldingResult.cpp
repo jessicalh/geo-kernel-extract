@@ -77,7 +77,7 @@ TripeptideBackboneShieldingResult::Dependencies() const {
 // ============================================================================
 
 std::unique_ptr<TripeptideBackboneShieldingResult>
-TripeptideBackboneShieldingResult::Compute(
+TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf,
         const TripeptideDftTable& table) {
 

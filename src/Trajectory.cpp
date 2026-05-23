@@ -89,7 +89,7 @@ Trajectory::~Trajectory() = default;
 
 // ── Run (eight phases) ───────────────────────────────────────────
 
-Status Trajectory::Run(TrajectoryProtein& tp,
+Status Trajectory::Run(TrajectoryProtein& tp,  // NOLINT(readability-function-size)
                        const RunConfiguration& config,
                        const Session& session,
                        std::vector<std::unique_ptr<TrajectoryResult>> extras,

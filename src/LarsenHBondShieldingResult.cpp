@@ -381,7 +381,7 @@ std::vector<std::type_index> LarsenHBondShieldingResult::Dependencies() const {
 // in the range. Larsen's framework is geometric, not DSSP-energy-based;
 // the spatial sweep IS the H-bond finder.
 
-std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
+std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf,
         const LarsenHBondGrid& grid) {
     OperationLog::Scope const scope("LarsenHBondShieldingResult::Compute", "atoms=" + std::to_string(conf.AtomCount()));

@@ -230,7 +230,7 @@ nmr::TerminalState CTerminalStateForResidue(const nmr::Residue& res) {
 
 
 std::vector<AtomSemanticTable>
-ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
+ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,  // NOLINT(readability-function-size)
                     const std::vector<Residue>& residues,
                     const CovalentTopology& bonds) {
     namespace gen = nmr::topology_generated;

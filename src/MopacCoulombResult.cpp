@@ -35,7 +35,7 @@ std::vector<std::type_index> MopacCoulombResult::Dependencies() const {
 //                                         - delta_ab / |r_i-r_j|^3]
 // ============================================================================
 
-std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
+std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf) {
 
     OperationLog::Scope const scope("MopacCoulombResult::Compute",

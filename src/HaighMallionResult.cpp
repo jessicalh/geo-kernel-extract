@@ -415,7 +415,6 @@ static void PackST_HM(const SphericalTensor& st, double* out) {
 int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
-    int const written = 0;
 
     std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * 8);
@@ -423,12 +422,12 @@ int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_HM(ca.hm_shielding_contribution, &shielding[i*9]);
+        PackST_HM(ca.hm_shielding_contribution, &shielding[i * 9]);
         for (int t = 0; t < 8; ++t) {
-            per_type_T0[i*8 + t] = ca.per_type_hm_T0_sum[t];
+            per_type_T0[i * 8 + t] = ca.per_type_hm_T0_sum[t];
             for (int c = 0; c < 5; ++c) {
-                per_type_T2[i*40 + t*5 + c] = ca.per_type_hm_T2_sum[t][c];
-}
+                per_type_T2[i * 40 + static_cast<std::size_t>(t) * 5 + c] = ca.per_type_hm_T2_sum[t][c];
+            }
         }
     }
     NpyWriter::WriteFloat64(output_dir + "/hm_shielding.npy", shielding.data(), N, 9);

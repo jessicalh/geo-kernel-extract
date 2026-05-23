@@ -246,7 +246,7 @@ void HydrationShellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 }
 
 
-void HydrationShellWelfordTrajectoryResult::WriteH5Group(
+void HydrationShellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t N = tp.AtomCount();

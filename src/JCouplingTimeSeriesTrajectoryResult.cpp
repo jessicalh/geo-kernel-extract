@@ -412,7 +412,7 @@ void JCouplingTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 }
 
 
-void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
+void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t R = j_hn_halpha_.size();

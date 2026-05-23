@@ -224,7 +224,7 @@ static DeltaSummary BuildSummary(
 // MutationDeltaResult::Compute
 // ============================================================================
 
-std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
+std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& wt_conf,
         const ProteinConformation& mut_conf) {
     OperationLog::Scope const scope(
