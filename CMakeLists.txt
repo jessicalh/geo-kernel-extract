@@ -1869,9 +1869,7 @@ if(Qt6_FOUND AND VTK_FOUND)
         ui/src/RingCurrentOverlay.cpp
         ui/src/PeptideBondOverlay.cpp
         # Typed read boundary for `nmr_extract --trajectory` H5 output.
-        # Replaces the dead AnalysisFile (fileformat/analysis_file.{h,cpp});
-        # fileformat/ remains untouched in this session, but the viewer
-        # no longer depends on it. See ui/src/TrajectoryH5.h.
+        # See ui/src/TrajectoryH5.h.
         ui/src/TrajectoryH5.cpp
     )
     target_include_directories(nmr-viewer PRIVATE

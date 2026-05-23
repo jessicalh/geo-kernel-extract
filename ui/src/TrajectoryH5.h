@@ -3,10 +3,9 @@
 // TrajectoryH5: typed read boundary for the per-TR-emits-its-own-group
 // trajectory.h5 format emitted by `nmr_extract --trajectory`.
 //
-// Replaces the dead `AnalysisFile` (fileformat/analysis_file.h), which
-// targets a format no current pipeline produces. The new format is one
-// HDF5 group per attached TrajectoryResult under `/trajectory/<name>/`,
-// with per-TR schema documented at OBJECT_MODEL.md "H5 file layout".
+// One HDF5 group per attached TrajectoryResult under
+// `/trajectory/<name>/`, with per-TR schema documented at
+// OBJECT_MODEL.md "H5 file layout".
 //
 // Shape: the constructor opens the file, validates the structural
 // minimum (`/atoms`, `/trajectory/frames`, root attrs), eagerly reads
@@ -21,7 +20,7 @@
 //
 // Construction throws `HighFive::Exception` on structural failure;
 // ComputeWorker is responsible for catching and converting to a log
-// line (same boundary pattern as the old `AnalysisFile::ReadH5`).
+// line (the HighFive boundary lives entirely in this class).
 //
 // Note on T1 basis (deferred): per OBJECT_MODEL.md, runtime
 // `SphericalTensor.T1` carries Cartesian (v_x, v_y, v_z) while the

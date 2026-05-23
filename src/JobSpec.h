@@ -74,7 +74,7 @@ struct JobSpec {
     std::string output_dir;    // empty = no feature output (viewer mode)
     std::string config_path;   // TOML calculator parameter overrides
     // --analysis-h5 PATH: read-only companion time-series file (viewer only).
-    // nmr_extract ignores it; nmr-viewer loads it into an AnalysisFile and
+    // nmr_extract ignores it; nmr-viewer loads it via TrajectoryH5 and
     // surfaces it in the Time Series dock. Validated for existence when set.
     std::string analysis_h5_path;
     bool skip_mopac   = false;   // --no-mopac:   skip PM7+MOZYME (and derived calcs)
