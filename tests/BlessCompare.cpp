@@ -53,7 +53,7 @@ struct NpyArray {
 
 // Extract the substring between the first occurrence of needle..close in s.
 // Returns "" on miss. close defaults to "'".
-static std::string ExtractBetween(const std::string& s,
+std::string ExtractBetween(const std::string& s,
                                   const std::string& needle,
                                   char close) {
     auto pos = s.find(needle);
@@ -66,7 +66,7 @@ static std::string ExtractBetween(const std::string& s,
 
 // Parse "shape': (1231, 9, )" into [1231, 9]. Returns empty vector on parse
 // failure — caller treats that as a structural error.
-static std::vector<size_t> ParseShape(const std::string& header) {
+std::vector<size_t> ParseShape(const std::string& header) {
     std::vector<size_t> result;
     auto pos = header.find("'shape':");
     if (pos == std::string::npos) return result;
@@ -95,7 +95,7 @@ static std::vector<size_t> ParseShape(const std::string& header) {
     return result;
 }
 
-static NpyArray ReadNpy(const std::string& path) {
+NpyArray ReadNpy(const std::string& path) {
     NpyArray out;
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) {
@@ -202,7 +202,7 @@ static NpyArray ReadNpy(const std::string& path) {
 // Check whether two files are bit-identical without loading both fully.
 // Mirrors test_smoke.cpp's FilesIdentical so callers can short-circuit
 // the expensive numeric path when nothing has changed at all.
-static bool FilesByteIdentical(const std::string& a, const std::string& b) {
+bool FilesByteIdentical(const std::string& a, const std::string& b) {
     std::ifstream fa(a, std::ios::binary | std::ios::ate);
     std::ifstream fb(b, std::ios::binary | std::ios::ate);
     if (!fa.is_open() || !fb.is_open()) return false;
@@ -361,10 +361,10 @@ struct PolicyTable {
     std::string source_path;
 };
 
-static std::mutex g_policy_mutex;
-static std::unordered_map<std::string, PolicyTable> g_policy_tables;
+std::mutex g_policy_mutex;
+std::unordered_map<std::string, PolicyTable> g_policy_tables;
 
-static void TrimInPlace(std::string& s) {
+void TrimInPlace(std::string& s) {
     while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) {
         s.erase(s.begin());
 }
@@ -374,7 +374,7 @@ static void TrimInPlace(std::string& s) {
 }
 }
 
-static bool ParseDouble(const std::string& v, double& out) {
+bool ParseDouble(const std::string& v, double& out) {
     char* end = nullptr;
     double const d = std::strtod(v.c_str(), &end);
     if (end == v.c_str()) return false;
@@ -382,7 +382,7 @@ static bool ParseDouble(const std::string& v, double& out) {
     return true;
 }
 
-static void ApplyKv(BlessPolicy& p, const std::string& key,
+void ApplyKv(BlessPolicy& p, const std::string& key,
                     const std::string& val) {
     double d;
     if (!ParseDouble(val, d)) return;
@@ -393,7 +393,7 @@ static void ApplyKv(BlessPolicy& p, const std::string& key,
     // unknown keys silently ignored — forward-compatible
 }
 
-static const PolicyTable& LoadTable(const std::string& path) {
+const PolicyTable& LoadTable(const std::string& path) {
     std::lock_guard<std::mutex> const lk(g_policy_mutex);
     auto it = g_policy_tables.find(path);
     if (it != g_policy_tables.end()) return it->second;

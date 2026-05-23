@@ -43,7 +43,6 @@ using nmr::AminoAcid;
 using nmr::Atom;
 using nmr::CategoryInfoProjection;
 using nmr::Protein;
-using nmr::Residue;
 using nmr::RuntimeEnvironment;
 
 // Test fixture: configure the projection from RuntimeEnvironment, reset
@@ -105,14 +104,14 @@ TEST_F(CategoryInfoProjectionTest, ResetDeactivates) {
 // Per-residue 3-letter / 1-letter projections (no atom_nom.tbl needed)
 // ============================================================================
 
-TEST_F(CategoryInfoProjectionTest, AmberResidueThreeLetter_Canonical) {
+TEST_F(CategoryInfoProjectionTest, AmberResidueThreeLetterCanonical) {
     EXPECT_EQ("ALA", CategoryInfoProjection::AmberResidueThreeLetter(AminoAcid::ALA, -1));
     EXPECT_EQ("HIS", CategoryInfoProjection::AmberResidueThreeLetter(AminoAcid::HIS, -1));
     EXPECT_EQ("CYS", CategoryInfoProjection::AmberResidueThreeLetter(AminoAcid::CYS, -1));
     EXPECT_EQ("LYS", CategoryInfoProjection::AmberResidueThreeLetter(AminoAcid::LYS, -1));
 }
 
-TEST_F(CategoryInfoProjectionTest, AmberResidueThreeLetter_Variants) {
+TEST_F(CategoryInfoProjectionTest, AmberResidueThreeLetterVariants) {
     // Indices match AminoAcidType.h's documented variant-index contract:
     // HIS variants 0/1/2 = HID/HIE/HIP, ASP 0 = ASH, GLU 0 = GLH,
     // CYS 0/1 = CYX/CYM, LYS 0 = LYN, ARG 0 = ARN, TYR 0 = TYM.
@@ -128,7 +127,7 @@ TEST_F(CategoryInfoProjectionTest, AmberResidueThreeLetter_Variants) {
     EXPECT_EQ("TYM", CategoryInfoProjection::AmberResidueThreeLetter(AminoAcid::TYR, 0));
 }
 
-TEST_F(CategoryInfoProjectionTest, IupacResidueThreeLetter_AlwaysCanonical) {
+TEST_F(CategoryInfoProjectionTest, IupacResidueThreeLetterAlwaysCanonical) {
     // IUPAC collapses every variant to the canonical 3-letter.
     EXPECT_EQ("HIS", CategoryInfoProjection::IupacResidueThreeLetter(AminoAcid::HIS));
     EXPECT_EQ("CYS", CategoryInfoProjection::IupacResidueThreeLetter(AminoAcid::CYS));
@@ -139,7 +138,7 @@ TEST_F(CategoryInfoProjectionTest, IupacResidueThreeLetter_AlwaysCanonical) {
     EXPECT_EQ("TYR", CategoryInfoProjection::IupacResidueThreeLetter(AminoAcid::TYR));
 }
 
-TEST_F(CategoryInfoProjectionTest, ResidueOneLetter_Standard20) {
+TEST_F(CategoryInfoProjectionTest, ResidueOneLetterStandard20) {
     EXPECT_EQ('A', CategoryInfoProjection::ResidueOneLetter(AminoAcid::ALA));
     EXPECT_EQ('R', CategoryInfoProjection::ResidueOneLetter(AminoAcid::ARG));
     EXPECT_EQ('G', CategoryInfoProjection::ResidueOneLetter(AminoAcid::GLY));
@@ -151,7 +150,7 @@ TEST_F(CategoryInfoProjectionTest, ResidueOneLetter_Standard20) {
 // atom_nom.tbl-driven per-atom queries (require 1UBQ fixture)
 // ============================================================================
 
-TEST_F(CategoryInfoProjectionTest, BmrbAtomName_AlaSidechain) {
+TEST_F(CategoryInfoProjectionTest, BmrbAtomNameAlaSidechain) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) {
         GTEST_SKIP() << "1UBQ PDB not found";
     }
@@ -180,7 +179,7 @@ TEST_F(CategoryInfoProjectionTest, BmrbAtomName_AlaSidechain) {
     EXPECT_EQ("HB3", CategoryInfoProjection::BmrbAtomName(p, hb3));
 }
 
-TEST_F(CategoryInfoProjectionTest, BmrbStereoLabel_GlyHaPair) {
+TEST_F(CategoryInfoProjectionTest, BmrbStereoLabelGlyHaPair) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) {
         GTEST_SKIP() << "1UBQ PDB not found";
     }
@@ -205,7 +204,7 @@ TEST_F(CategoryInfoProjectionTest, BmrbStereoLabel_GlyHaPair) {
     EXPECT_EQ("pro-S", CategoryInfoProjection::BmrbStereoLabel(p, ha3));
 }
 
-TEST_F(CategoryInfoProjectionTest, BmrbStereoLabel_ArgMethyleneIsProR_Or_ProS) {
+TEST_F(CategoryInfoProjectionTest, BmrbStereoLabelArgMethyleneIsProROrProS) {
     if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated())) {
         GTEST_SKIP() << "1UBQ PDB not found";
     }

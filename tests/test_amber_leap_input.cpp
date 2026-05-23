@@ -129,7 +129,7 @@ size_t CountSubstring(const std::string& haystack, const std::string& needle) {
 
 class AmberLeapInputTest : public ::testing::Test {
 protected:
-    AmberSourceConfig MakeCfg() {
+    static AmberSourceConfig MakeCfg() {
         AmberSourceConfig cfg;
         cfg.flat_table_path = nmr::test::TestEnvironment::Ff14sbParams();
         cfg.preparation_policy =
@@ -139,7 +139,7 @@ protected:
         return cfg;
     }
 
-    AmberFlatTableCoverageVerdict MakeUnsupportedVerdict() {
+    static AmberFlatTableCoverageVerdict MakeUnsupportedVerdict() {
         AmberFlatTableCoverageVerdict v;
         v.ok = false;
         AmberFlatTableCoverageFailure f;

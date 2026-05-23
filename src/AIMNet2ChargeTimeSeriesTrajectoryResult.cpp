@@ -73,7 +73,7 @@ void AIMNet2ChargeTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void AIMNet2ChargeTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+    auto* buffer = tp
         .GetDenseBuffer<double>(std::type_index(
             typeid(AIMNet2ChargeTimeSeriesTrajectoryResult)));
     if (!buffer) {

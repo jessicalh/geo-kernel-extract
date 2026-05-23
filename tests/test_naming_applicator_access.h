@@ -16,8 +16,8 @@
 
 #include "NamingRegistry.h"
 
-namespace nmr {
-namespace test {
+
+namespace nmr::test {
 
 class NamingApplicatorTestAccess {
 public:
@@ -31,5 +31,5 @@ public:
     }
 };
 
-}  // namespace test
-}  // namespace nmr
+} // namespace nmr::test
+

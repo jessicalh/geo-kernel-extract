@@ -41,7 +41,7 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     // Add ring atoms for PHE
     const char* ring_names[] = {"CG", "CD1", "CE1", "CZ", "CE2", "CD2"};
     std::vector<size_t> phe_indices;
-    for (auto name : ring_names) {
+    for (const auto *name : ring_names) {
         auto a = Atom::Create(Element::C); a->pdb_atom_name = name; a->residue_index = ri_phe;
         phe_indices.push_back(p.AddAtom(std::move(a)));
     }

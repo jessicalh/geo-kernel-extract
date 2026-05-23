@@ -6,8 +6,8 @@
 
 #include <typeindex>
 
-namespace nmr {
-namespace test {
+
+namespace nmr::test {
 
 nmr::RunConfiguration BuildTestConfig(
         TestProfile profile,
@@ -37,5 +37,5 @@ nmr::RunConfiguration BuildTestConfig(
     return config;
 }
 
-}  // namespace test
-}  // namespace nmr
+} // namespace nmr::test
+

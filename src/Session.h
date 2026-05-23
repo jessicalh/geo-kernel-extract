@@ -53,7 +53,7 @@ public:
     //
     // Returns kOk on success, or an ErrorCode with a matching
     // OperationLog::Error diagnostic emitted at the failure site.
-    Status LoadFromToml();
+    static Status LoadFromToml();
 
     // Optional. If the caller wants AIMNet2 in the pipeline, load the
     // .jpt model once here; Session holds it for the whole process.

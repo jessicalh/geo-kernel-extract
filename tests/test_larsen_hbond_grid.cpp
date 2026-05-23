@@ -39,7 +39,7 @@ protected:
             "NMANMA", "NMACOH", "NMACOO",
             "ALANMA", "ALACOH", "ALACOO",
         };
-        for (auto stem : stems) {
+        for (const auto *stem : stems) {
             fs::path const p = fs::path(dir) / (std::string(stem) + "_dense.h5");
             if (!fs::exists(p)) {
                 GTEST_SKIP() << "missing grid file: " << p.string();

@@ -244,7 +244,7 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
         return;
     }
 
-    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+    auto* buffer = tp
         .GetDenseBuffer<double>(std::type_index(
             typeid(RingNeighbourhoodTrajectoryStats)));
     if (!buffer) {

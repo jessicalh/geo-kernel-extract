@@ -238,7 +238,7 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("result_name",       Name());
     grp.createAttribute("n_frames",          n_frames_);
     grp.createAttribute("finalized",         finalized_);
-    grp.createAttribute("ddof",              static_cast<int>(1));
+    grp.createAttribute("ddof",              1);
     grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
     grp.createAttribute("frame_index_range", frame_index_range_);
     // Group-level `units = "pairs"` reflects the primary count

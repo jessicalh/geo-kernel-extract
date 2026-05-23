@@ -8,8 +8,8 @@
 
 namespace fs = std::filesystem;
 
-namespace nmr {
-namespace test {
+
+namespace nmr::test {
 
 std::string TestEnvironment::ubq_protonated_;
 std::string TestEnvironment::ubq_crystal_;
@@ -145,5 +145,5 @@ AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
     return fix;
 }
 
-}  // namespace test
-}  // namespace nmr
+} // namespace nmr::test
+

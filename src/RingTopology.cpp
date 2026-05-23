@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <memory>
 #include <set>
 #include <utility>
 
@@ -489,7 +490,7 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
         const std::vector<AtomSemanticTable>& atom_semantic,
         const CovalentTopology& bonds) {
 
-    auto topo = std::unique_ptr<RingTopology>(new RingTopology());
+    auto topo = std::make_unique<RingTopology>();
 
     // Stub-fixture path: empty substrate means no PDB names were
     // available (raw element/position calculator-physics fixtures).

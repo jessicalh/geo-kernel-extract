@@ -183,7 +183,7 @@ void EmitAlignedAtom(
 
 // Resolve a LarsenResidue local-atom index to its 0-indexed position in
 // rec.atoms by matching dft_atom_idx. Returns -1 on miss.
-static int LarsenLocalToRecIdx(const LarsenResidue& piece, int local_idx,
+int LarsenLocalToRecIdx(const LarsenResidue& piece, int local_idx,
                                 const TripeptideDftRecord& rec) {
     if (local_idx < 0 ||
         local_idx >= static_cast<int>(piece.atoms.size())) return -1;

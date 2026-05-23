@@ -50,7 +50,7 @@ protected:
         }
     }
 
-    nmr::test::AmberTrajectoryFixture FixtureFor(
+    static nmr::test::AmberTrajectoryFixture FixtureFor(
             const std::string& protein_id) {
         auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(protein_id);
         if (fix.tpr_path.empty()) {
@@ -61,7 +61,7 @@ protected:
 };
 
 
-TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     EXPECT_TRUE(std::filesystem::exists(fix.tpr_path)) << fix.tpr_path;
@@ -69,7 +69,7 @@ TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1P9J) {
     EXPECT_TRUE(std::filesystem::exists(fix.edr_path)) << fix.edr_path;
 }
 
-TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1Z9B) {
+TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1Z9B) {
     auto fix = FixtureFor("1Z9B_6577");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     EXPECT_TRUE(std::filesystem::exists(fix.tpr_path)) << fix.tpr_path;
@@ -82,7 +82,7 @@ TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1Z9B) {
 // TPR end-to-end through FullSystemReader. The TPR format itself is
 // force-field-agnostic; this confirms there's no AMBER-specific quirk
 // in our parsing path.
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr_1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) {
@@ -98,7 +98,7 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr_1P9J) {
 }
 
 
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) GTEST_SKIP();
@@ -141,7 +141,7 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1P9J) {
 }
 
 
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1Z9B) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1Z9B) {
     auto fix = FixtureFor("1Z9B_6577");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) GTEST_SKIP();

@@ -30,7 +30,6 @@
 #include "SemanticEnums.h"
 
 using nmr::AminoAcid;
-using nmr::Atom;
 using nmr::AtomSemanticTable;
 using nmr::Protein;
 using nmr::Residue;

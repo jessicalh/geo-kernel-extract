@@ -593,7 +593,7 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
 // project phi has the opposite sign, so the compiled project offset is
 // +60°. The direct H-N-CA-HA atomic dihedral is a geometry diagnostic,
 // not the value fed to the backbone Karplus implementation.
-TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset_1UBQ) {
+TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
     nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
     const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
     if (!fs::exists(pdb)) GTEST_SKIP() << "1ubq_protonated.pdb absent";

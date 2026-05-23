@@ -421,7 +421,7 @@ bool IsGammaMethyleneResidue(AminoAcid aa) {
 // here.)
 // ----------------------------------------------------------------------------
 
-bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
+bool NamingApplicator::IsCanonical(const NamingContext& ctx) {
     if (ctx.input_name.empty()) return true;  // empty -> idempotent
 
     // ------------------------------------------------------------------
@@ -692,7 +692,7 @@ NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
 NamingApplicator::FailUnresolved(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        std::string_view reason) const {
+        std::string_view reason) {
     std::ostringstream map_str;
     for (const NamingApplication& app : applications) {
         map_str << "\n    " << NamingSourceName(app.rule->source) << "/"
@@ -747,7 +747,7 @@ NamingApplicator::FailUnresolved(
 NamingApplicator::FailValidator(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        const std::string& chosen_output) const {
+        const std::string& chosen_output) {
     std::ostringstream map_str;
     for (const NamingApplication& app : applications) {
         map_str << "\n    " << NamingSourceName(app.rule->source) << "/"

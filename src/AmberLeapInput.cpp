@@ -12,8 +12,8 @@
 #include <set>
 #include <unordered_map>
 
-namespace nmr {
-namespace amber_leap {
+
+namespace nmr::amber_leap {
 
 namespace {
 
@@ -80,7 +80,7 @@ struct CapAtomTemplate {
     Vec3        offset;    // displacement from the connecting backbone atom
 };
 
-static const std::array<CapAtomTemplate, 6> kAceTemplate = {{
+const std::array<CapAtomTemplate, 6> kAceTemplate = {{
     // Negative-x from the original residue's N (i.e. before it in space).
     {"HH31", Element::H, Vec3(-3.5, +1.0, 0.0)},
     {"HH32", Element::H, Vec3(-3.5, -0.5, +0.87)},
@@ -90,7 +90,7 @@ static const std::array<CapAtomTemplate, 6> kAceTemplate = {{
     {"O",    Element::O, Vec3(-1.33, +1.23, 0.0)},
 }};
 
-static const std::array<CapAtomTemplate, 6> kNmeTemplate = {{
+const std::array<CapAtomTemplate, 6> kNmeTemplate = {{
     // Positive-x from the original residue's C (i.e. after it in space).
     {"N",    Element::N, Vec3(+1.33, 0.0, 0.0)},  // ~peptide bond length from C
     {"H",    Element::H, Vec3(+1.33, +1.0, 0.0)},
@@ -362,5 +362,5 @@ void GenerateLeapScript(const LeapScriptInputs& inputs,
     script_out << "quit\n";
 }
 
-}  // namespace amber_leap
-}  // namespace nmr
+} // namespace nmr::amber_leap
+

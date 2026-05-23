@@ -72,7 +72,7 @@ protected:
         }
     }
 
-    AmberSourceConfig MakeCfg() {
+    static AmberSourceConfig MakeCfg() {
         AmberSourceConfig cfg;
         cfg.flat_table_path = nmr::test::TestEnvironment::Ff14sbParams();
         cfg.preparation_policy =

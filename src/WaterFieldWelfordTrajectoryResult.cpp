@@ -256,7 +256,7 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",           n_frames_);
     grp.createAttribute("source_attached_count", source_attached_count);
     grp.createAttribute("finalized",          finalized_);
-    grp.createAttribute("ddof",               static_cast<int>(1));
+    grp.createAttribute("ddof",               1);
     grp.createAttribute("mean_dt_ps",         mean_dt_ps_);
     grp.createAttribute("frame_index_range",  frame_index_range_);
     // Per-component E-field uses Cartesian (x,y,z); EFG T2 uses real-

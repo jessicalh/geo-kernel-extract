@@ -24,6 +24,14 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
 
     if (!protein.HasForceFieldCharges()) {
         std::string error;
+        // Lazy-init pattern: ChargeAssignmentResult::Compute receives a
+        // const conf (calculator base-class contract) and therefore a
+        // const Protein, but Protein lazy-builds its ForceFieldCharge
+        // table on first need. The mutation here is cache-fill, not an
+        // observable state change. Refactoring requires moving FF
+        // charge ownership off Protein (substrate architecture
+        // decision, not a lint fix).
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
         Protein& mutable_protein = const_cast<Protein&>(protein);
         if (!mutable_protein.PrepareForceFieldCharges(source, conf, error)) {
             OperationLog::Error("ChargeAssignmentResult::Compute",

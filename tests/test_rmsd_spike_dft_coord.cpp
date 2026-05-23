@@ -246,6 +246,11 @@ TEST(RmsdSpikeAndDftCoord, DftPoseCoordinatorFinalizeIdempotency) {
     nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
+    // Test verifies Finalize-twice is idempotent (finalized_ guard
+    // short-circuits). To call Finalize again we need a non-const
+    // reference; tp.Result<T>() returns const ref because the public
+    // contract is read-only. Test-only access pattern.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     auto& tr_coord =
         const_cast<nmr::DftPoseCoordinatorTrajectoryResult&>(
             tp.Result<nmr::DftPoseCoordinatorTrajectoryResult>());

@@ -243,7 +243,7 @@ protected:
     }
 
 private:
-    void ValidateLog(const std::string& log_path,
+    static void ValidateLog(const std::string& log_path,
                      const std::vector<std::string>& expected_results) {
         auto entries = ParseLog(log_path);
         ASSERT_GT(entries.size(), 0u) << "Log file is empty";
@@ -293,7 +293,7 @@ private:
         }
     }
 
-    void ValidateNpy(const std::string& dir, size_t min_count) {
+    static void ValidateNpy(const std::string& dir, size_t min_count) {
         auto files = NpyFiles(dir);
         EXPECT_GE(files.size(), min_count)
             << "Expected " << min_count << "+ .npy files, got " << files.size();
@@ -315,7 +315,7 @@ private:
     // in tests/golden/blessed/bless_policy.toml; defaults are permissive
     // enough to absorb platform / LTO / library-rebuild noise but tight
     // enough to flag a calculator regression. See BlessCompare.h.
-    void BinaryCompare(const std::string& run_dir,
+    static void BinaryCompare(const std::string& run_dir,
                        const std::string& blessed_dir) {
         auto run_files = NpyFiles(run_dir);
         auto blessed_files = NpyFiles(blessed_dir);

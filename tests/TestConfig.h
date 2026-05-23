@@ -42,8 +42,8 @@
 #include <cstddef>
 #include <string>
 
-namespace nmr {
-namespace test {
+
+namespace nmr::test {
 
 enum class TestProfile {
     // Minimum substrate for kernel TR tests. Geometry + SpatialIndex +
@@ -68,5 +68,5 @@ nmr::RunConfiguration BuildTestConfig(
     const std::string& name,
     std::size_t stride = 1);
 
-}  // namespace test
-}  // namespace nmr
+} // namespace nmr::test
+
