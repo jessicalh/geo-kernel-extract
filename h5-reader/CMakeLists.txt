@@ -31,11 +31,16 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
-# Platform module + dependency discovery
+# Platform module + dependency discovery + per-build-type flags
 # ============================================================================
 
 include(Platform-${CMAKE_SYSTEM_NAME})
 include(DiscoverDeps)
+
+# BuildType-Debug / BuildType-Release exist; RelWithDebInfo + MinSizeRel
+# use CMake's defaults (no module). OPTIONAL so missing modules don't
+# error — the function-defined check below decides whether to apply.
+include(BuildType-${CMAKE_BUILD_TYPE} OPTIONAL)
 
 # ============================================================================
 # Target
@@ -173,6 +178,13 @@ vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
 # include-order fix on Linux, etc. Defined in
 # cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake.
 h5reader_apply_platform_target_settings(h5reader)
+
+# Build-type tweaks: sanitizers in Debug, LTO in Release, nothing
+# in RelWithDebInfo / MinSizeRel. Function only exists when the
+# matching BuildType-*.cmake module was found.
+if(COMMAND h5reader_apply_build_type_settings)
+    h5reader_apply_build_type_settings(h5reader)
+endif()
 
 target_compile_definitions(h5reader PRIVATE
     H5READER_VERSION="0.5.0-rewrite"

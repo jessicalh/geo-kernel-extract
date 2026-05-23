@@ -77,8 +77,13 @@ cmake --build --preset linux-rwdi -j$(nproc)
 ./build/linux-rwdi/h5reader path/to/trajectory.h5
 ```
 
-Alternative configs: `linux-debug` (sanitizer-friendly), `linux-release`
-(stripped, LTO).
+Alternative configs:
+
+- `linux-debug` — `-O1 -g3` with AddressSanitizer + UndefinedBehaviorSanitizer
+  and `_GLIBCXX_ASSERTIONS=1`. Use when chasing a memory bug. Build is
+  ~2× slower; runtime is ~2× slower.
+- `linux-release` — `-O3` with LTO/IPO when the compiler supports it
+  (verified via CMake's `CheckIPOSupported`). Use for distribution.
 
 ---
 
@@ -115,15 +120,14 @@ Open **x64 Native Tools Command Prompt for VS 2022**, then PowerShell:
 
 ```powershell
 # Qt Pro 6.10.x via official installer → C:\Qt\6.10.x\msvc2022_64
-# VTK from source (built per VTK Build Guide) → e.g. C:\VTK
+# VTK from source (CMake INSTALL prefix) → C:\Projects\VTK (or C:\VTK)
 # vcpkg per https://vcpkg.io/, then:
+$env:VCPKG_ROOT = "C:\vcpkg"   # set this in your PowerShell profile
 vcpkg install hdf5:x64-windows eigen3:x64-windows
 
 cd h5-reader
 cmake --preset win-rwdi `
-      -DH5READER_QT_DIR="C:\Qt\6.10.x\msvc2022_64" `
-      -DH5READER_VTK_DIR="C:\VTK" `
-      -DH5READER_VCPKG_ROOT="C:\vcpkg"
+      -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
 cmake --build --preset win-rwdi
 .\build\win-rwdi\h5reader.exe path\to\trajectory.h5
 ```
@@ -132,12 +136,22 @@ After build, deploy Qt + VTK DLLs alongside the exe:
 
 ```powershell
 windeployqt.exe .\build\win-rwdi\h5reader.exe
-xcopy /Y C:\VTK\bin\*.dll .\build\win-rwdi\
+xcopy /Y C:\Projects\VTK\bin\*.dll .\build\win-rwdi\
 ```
 
-`cmake/Platform-Windows.cmake` is a stub at first sync — populate it
-with your install paths so subsequent configures don't need the `-D`
-flags. See [Troubleshooting → Windows](#windows-troubleshooting).
+`cmake/Platform-Windows.cmake` auto-detects `H5READER_QT_DIR` (looks
+under `C:\Qt\6.10.x\msvc2022_64` for the newest 6.10.x → 6.8 it finds)
+and `H5READER_VTK_DIR` (`C:\Projects\VTK`, `C:\VTK`, or
+`C:\Program Files\VTK`). Override with `-DH5READER_QT_DIR=...` /
+`-DH5READER_VTK_DIR=...` if your install lives elsewhere.
+
+For Debug builds on Windows, MSVC AddressSanitizer is off by default
+(runtime caveats with `/MD` vs `/MDd` and iterator debugging). Opt in
+with `-DH5READER_MSVC_ASAN=ON` and ensure
+`clang_rt.asan_dynamic-x86_64.dll` is on PATH at runtime.
+
+See [Troubleshooting → Windows](#windows-troubleshooting) for the
+common first-sync failures.
 
 ---
 
