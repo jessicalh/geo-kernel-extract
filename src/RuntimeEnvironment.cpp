@@ -57,6 +57,14 @@ static std::string MakeGuid() {
 }
 
 
+// startup-only wrapper for std::getenv; RuntimeEnvironment::Load runs
+// once at program start before any worker thread spawns. The clang-tidy
+// concurrency-mt-unsafe complaint about getenv() is correct in general
+// but not at the call sites in this file, which all sit inside Load.
+// One NOLINT here is preferable to seven copies sprinkled through.
+// NOLINTNEXTLINE(concurrency-mt-unsafe)
+static const char* GetEnvAtStartup(const char* name) { return std::getenv(name); }
+
 // Resolve a binary: check TOML value first, then PATH.
 // Returns empty string if not found anywhere — caller decides severity.
 static std::string ResolveBinary(const std::string& toml_value,
@@ -66,6 +74,11 @@ static std::string ResolveBinary(const std::string& toml_value,
 }
 
     std::string const which_cmd = "which " + bare_name + " 2>/dev/null";
+    // popen used here for a hard-coded "which <bare_name>" lookup at
+    // program start; bare_name comes from this binary's own constants
+    // (mopac/tleap/etc.), never from user input — no shell-injection
+    // surface to worry about.
+    // NOLINTNEXTLINE(cert-env33-c)
     FILE* pipe = popen(which_cmd.c_str(), "r");
     if (pipe) {
         char buf[512];
@@ -88,8 +101,12 @@ static std::string ResolveBinary(const std::string& toml_value,
 
 // ============================================================================
 // Load: read TOML, resolve everything, log the complete state.
+// Single-purpose startup function: the branchiness is the configuration
+// itself (one branch per resolved field), not control-flow complexity
+// that helpers would tame. CLAUDE.md "no helpers for helpers' sake".
 // ============================================================================
 
+// NOLINTNEXTLINE(readability-function-size)
 void RuntimeEnvironment::Load(const std::string& tomlPath) {
     processGuid_ = MakeGuid();
 
@@ -97,7 +114,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
 
     std::string path = tomlPath;
     if (path.empty()) {
-        const char* home = std::getenv("HOME");
+        const char* home = GetEnvAtStartup("HOME");
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
@@ -175,7 +192,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH → conda ---
     tleap_ = toml_tleap;
     if (tleap_.empty() || !fs::exists(tleap_)) {
-        const char* amberhome = std::getenv("AMBERHOME");
+        const char* amberhome = GetEnvAtStartup("AMBERHOME");
         if (amberhome) {
             std::string const ah_tleap = std::string(amberhome) + "/bin/tleap";
             if (fs::exists(ah_tleap)) tleap_ = ah_tleap;
@@ -195,7 +212,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     if (!toml_ff14sb.empty() && fs::exists(toml_ff14sb)) {
         ff14sb_params_ = toml_ff14sb;
     } else {
-        const char* ff_env = std::getenv("NMR_FF14SB_PARAMS");
+        const char* ff_env = GetEnvAtStartup("NMR_FF14SB_PARAMS");
         if (ff_env && fs::exists(ff_env)) {
             ff14sb_params_ = ff_env;
         } else {
@@ -213,7 +230,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     if (!toml_tmpdir.empty()) {
         tmpDir_ = toml_tmpdir;
     } else {
-        const char* tmp_env = std::getenv("NMR_TMPDIR");
+        const char* tmp_env = GetEnvAtStartup("NMR_TMPDIR");
         tmpDir_ = tmp_env ? tmp_env : "/tmp/nmr_shielding";
     }
     fs::create_directories(tmpDir_);
@@ -223,7 +240,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     if (!toml_bmrb_atom_nom.empty() && fs::exists(toml_bmrb_atom_nom)) {
         bmrb_atom_nom_ = toml_bmrb_atom_nom;
     } else {
-        const char* env = std::getenv("NMR_BMRB_ATOM_NOM");
+        const char* env = GetEnvAtStartup("NMR_BMRB_ATOM_NOM");
         if (env && fs::exists(env)) bmrb_atom_nom_ = env;
     }
 
@@ -234,7 +251,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     if (!toml_tensorcs15_dsn.empty()) {
         tensorcs15_dsn_ = toml_tensorcs15_dsn;
     } else {
-        const char* env = std::getenv("NMR_TENSORCS15_DSN");
+        const char* env = GetEnvAtStartup("NMR_TENSORCS15_DSN");
         if (env) tensorcs15_dsn_ = env;
     }
 
@@ -245,7 +262,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         fs::exists(toml_larsen_hbond_grid_dir)) {
         larsen_hbond_grid_dir_ = toml_larsen_hbond_grid_dir;
     } else {
-        const char* env = std::getenv("NMR_LARSEN_HBOND_GRIDS");
+        const char* env = GetEnvAtStartup("NMR_LARSEN_HBOND_GRIDS");
         if (env && fs::exists(env)) larsen_hbond_grid_dir_ = env;
     }
 

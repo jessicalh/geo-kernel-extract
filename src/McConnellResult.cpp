@@ -103,7 +103,10 @@ static BondKernelResult ComputeBondKernel(
 // McConnellResult::Compute
 // ============================================================================
 
-std::unique_ptr<McConnellResult> McConnellResult::Compute(
+// Compute: same rationale as BiotSavartResult::Compute — one
+// accumulator per per-bond/per-category physics step, no helpers per
+// CLAUDE.md "no helpers for helpers' sake".
+std::unique_ptr<McConnellResult> McConnellResult::Compute(  // NOLINT(readability-function-size)
         ProteinConformation& conf) {
 
     OperationLog::Scope const scope("McConnellResult::Compute",
@@ -269,12 +272,15 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             ca.T2_CN_nearest = SphericalTensor::Decompose(best_cn_kernel.K);
         }
 
-        // Category T2 totals (from symmetric dipolar kernel sums)
-        // Apply traceless projection to fix floating-point drift
-        auto project_traceless = [](Mat3& m) {
-            double const trace = m.trace();
-            m -= (trace / 3.0) * Mat3::Identity();
-        };
+        // Category T2 totals (from symmetric dipolar kernel sums).
+        // Note: a `project_traceless` lambda used to live here but was
+        // never invoked (since the original 2024 commit). The McConnell
+        // kernel produces analytically-traceless tensors, so the sums
+        // SHOULD be traceless up to floating-point noise. If small
+        // trace drift turns out to matter for downstream tensor work,
+        // re-introduce the projection at the per-category accumulation
+        // sites below — but do that under a physics review, not a
+        // cleanup pass.
 
         // Extract symmetric part for T2 features
         Mat3 K_backbone = 0.5 * (M_backbone_total + M_backbone_total.transpose());
@@ -303,6 +309,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
     OperationLog::Info(LogCalcMcConnell, "McConnellResult::Compute",
         "atom_bond_pairs=" + std::to_string(total_pairs) +
+        " filtered_out=" + std::to_string(filtered_out) +
         " rejected={" + filters.ReportRejections() + "}" +
         " atoms=" + std::to_string(n_atoms) +
         " bonds=" + std::to_string(n_bonds));
@@ -388,9 +395,9 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
         };
         for (int c = 0; c < 5; ++c) {
             for (int m = 0; m < 5; ++m) {
-                cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
-}
-}
+                cat_T2[i * 25 + static_cast<std::size_t>(c) * 5 + m] = cats[c]->T2[m];
+            }
+        }
 
         scalars[i*6+0] = ca.mcconnell_co_sum;
         scalars[i*6+1] = ca.mcconnell_cn_sum;

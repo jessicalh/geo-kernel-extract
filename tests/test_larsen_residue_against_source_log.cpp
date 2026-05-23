@@ -150,20 +150,21 @@ TEST_F(LarsenResidueAgainstSourceLogTest, AaaLogPerceivesCleanly) {
     ASSERT_TRUE(trip.has_value())
         << "perception failed on raw Gaussian log — see "
            "PerceiveLarsenTripeptide warnings";
+    const auto& t = *trip;
 
     // Same structural invariants as the DB parity test, applied to the
     // raw log. This is the independent-of-DB cross-check.
-    EXPECT_EQ(trip->ace.atoms.size(),     6u);
-    EXPECT_EQ(trip->n_cap.atoms.size(),   10u);
-    EXPECT_EQ(trip->central.atoms.size(), 10u);
-    EXPECT_EQ(trip->c_cap.atoms.size(),   10u);
-    EXPECT_EQ(trip->nme.atoms.size(),     6u);
+    EXPECT_EQ(t.ace.atoms.size(),     6u);
+    EXPECT_EQ(t.n_cap.atoms.size(),   10u);
+    EXPECT_EQ(t.central.atoms.size(), 10u);
+    EXPECT_EQ(t.c_cap.atoms.size(),   10u);
+    EXPECT_EQ(t.nme.atoms.size(),     6u);
 
-    EXPECT_TRUE(trip->ace.HasAllRequiredSlots());
-    EXPECT_TRUE(trip->n_cap.HasAllRequiredSlots());
-    EXPECT_TRUE(trip->central.HasAllRequiredSlots());
-    EXPECT_TRUE(trip->c_cap.HasAllRequiredSlots());
-    EXPECT_TRUE(trip->nme.HasAllRequiredSlots());
+    EXPECT_TRUE(t.ace.HasAllRequiredSlots());
+    EXPECT_TRUE(t.n_cap.HasAllRequiredSlots());
+    EXPECT_TRUE(t.central.HasAllRequiredSlots());
+    EXPECT_TRUE(t.c_cap.HasAllRequiredSlots());
+    EXPECT_TRUE(t.nme.HasAllRequiredSlots());
 
-    EXPECT_EQ(trip->central.residue, AminoAcid::ALA);
+    EXPECT_EQ(t.central.residue, AminoAcid::ALA);
 }
