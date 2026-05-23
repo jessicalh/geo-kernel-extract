@@ -36,8 +36,10 @@ extern "C" {
 #endif
 
 /* Return codes */
-#define APBS_BRIDGE_OK      0
-#define APBS_BRIDGE_ERROR (-1)
+enum {
+    APBS_BRIDGE_OK    =  0,
+    APBS_BRIDGE_ERROR = -1
+};
 
 /* Grid data returned from solve */
 typedef struct {

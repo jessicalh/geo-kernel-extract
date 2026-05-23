@@ -568,7 +568,7 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     // avoid false positives from chance correlation while still
     // detecting a catastrophic decoupling.
     if (n_xy > 10) {
-        const double n_d = static_cast<double>(n_xy);
+        const auto n_d = static_cast<double>(n_xy);
         const double mean_x = sx / n_d;
         const double mean_y = sy / n_d;
         const double var_x = sxx / n_d - mean_x * mean_x;

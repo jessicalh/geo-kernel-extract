@@ -203,7 +203,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     // All atom-level tensors are padded to (N+1) to match nbmat's sentinel row.
     // The model's prepare_data expects coord[nbmat] to be valid, and nbmat's
     // last row indexes position N (the sentinel). Python's pad_input does this.
-    const int64_t N1 = static_cast<int64_t>(N + 1);
+    const auto N1 = static_cast<int64_t>(N + 1);
 
     // coord: (N+1, 3) float32, last row = zeros (sentinel padding)
     auto coord_cpu = torch::zeros({N1, 3}, torch::kFloat32);

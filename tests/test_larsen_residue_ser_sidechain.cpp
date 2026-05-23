@@ -56,8 +56,9 @@ TEST_F(LarsenResidueSerSidechainTest, OgAndBackboneOHaveDistinctIdentities) {
     // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
     // explicit has_value gate just below makes the deref provably safe
     // to the checker. Unreachable in practice.
-    if (!rec.larsen.has_value())
+    if (!rec.larsen.has_value()) {
         FAIL() << "unreachable";
+    }
     const auto& larsen = *rec.larsen;
 
     const LarsenResidue& cen = larsen.central;

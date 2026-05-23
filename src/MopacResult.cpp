@@ -150,7 +150,7 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
                 double dummy;
                 double sp;
                 if (ss >> idx >> elem >> charge >> dummy >> sp) {
-                    size_t const i = static_cast<size_t>(idx - 1);
+                    auto const i = static_cast<size_t>(idx - 1);
                     if (i < natoms) {
                         result.charges[i] = charge;
                         result.s_pop[i] = sp;
@@ -407,8 +407,8 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     // First, collect per atom
     std::vector<std::vector<MopacBondNeighbour>> per_atom(natoms);
     for (const auto& [key, order] : result->bond_order_map_) {
-        size_t const a = static_cast<size_t>(key >> 32);
-        size_t const b = static_cast<size_t>(key & 0xFFFFFFFF);
+        auto const a = static_cast<size_t>(key >> 32);
+        auto const b = static_cast<size_t>(key & 0xFFFFFFFF);
 
         // Look up topology bond index
         size_t topo_idx = SIZE_MAX;
@@ -518,8 +518,8 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<double> data;
         data.reserve(bond_order_map_.size() * 3);
         for (const auto& [key, order] : bond_order_map_) {
-            size_t a = static_cast<size_t>(key >> 32);
-            size_t b = static_cast<size_t>(key & 0xFFFFFFFF);
+            auto a = static_cast<size_t>(key >> 32);
+            auto b = static_cast<size_t>(key & 0xFFFFFFFF);
             data.push_back(static_cast<double>(a));
             data.push_back(static_cast<double>(b));
             data.push_back(order);

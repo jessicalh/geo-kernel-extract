@@ -73,7 +73,7 @@ bool WriteStructuredNpy(const fs::path& path,
             header.size(), path.string().c_str());
         std::abort();
     }
-    const uint16_t header_len = static_cast<uint16_t>(header.size());
+    const auto header_len = static_cast<uint16_t>(header.size());
 
     std::ofstream out(path, std::ios::binary);
     if (!out) {
@@ -150,13 +150,13 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         unsigned char* row = buf.data() + ri * kResidueRecordSize;
         size_t off = 0;
 
-        const int32_t r_idx = static_cast<int32_t>(ri);
+        const auto r_idx = static_cast<int32_t>(ri);
         std::memcpy(row + off, &r_idx, 4); off += 4;
 
         PackFixedString(row + off, 2, r.chain_id, "chain_id", ri);
         off += 2;
 
-        const int32_t seq_num = static_cast<int32_t>(r.sequence_number);
+        const auto seq_num = static_cast<int32_t>(r.sequence_number);
         std::memcpy(row + off, &seq_num, 4); off += 4;
 
         PackFixedString(row + off, 1, r.insertion_code, "insertion_code", ri);
@@ -198,7 +198,7 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         // based check used until 2026-05-19 missed within-chain bonded
         // gaps and falsely linked non-bonded chain boundaries.
         int32_t prev_idx = -1;
-        int8_t  prev_type = static_cast<int8_t>(AminoAcid::Unknown);
+        auto prev_type = static_cast<int8_t>(AminoAcid::Unknown);
         if (auto p = protein.BackbonePredecessor(ri); p) {
             prev_idx  = static_cast<int32_t>(*p);
             prev_type = static_cast<int8_t>(protein.ResidueAt(*p).type);
@@ -206,7 +206,7 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         std::memcpy(row + off, &prev_idx, 4); off += 4;
 
         int32_t next_idx = -1;
-        int8_t  next_type = static_cast<int8_t>(AminoAcid::Unknown);
+        auto next_type = static_cast<int8_t>(AminoAcid::Unknown);
         if (auto n = protein.BackboneSuccessor(ri); n) {
             next_idx  = static_cast<int32_t>(*n);
             next_type = static_cast<int8_t>(protein.ResidueAt(*n).type);
@@ -215,7 +215,7 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         row[off++] = prev_type;
         row[off++] = next_type;
 
-        const int32_t atom_count = static_cast<int32_t>(r.atom_indices.size());
+        const auto atom_count = static_cast<int32_t>(r.atom_indices.size());
         std::memcpy(row + off, &atom_count, 4); off += 4;
 
         row[off++] = (r.type == AminoAcid::PRO) ? 1 : 0;
@@ -271,11 +271,11 @@ bool WriteBonds(const Protein& protein, const fs::path& out_dir) {
         const Bond& b = bonds[bi];
         unsigned char* row = buf.data() + bi * kBondRecordSize;
         size_t off = 0;
-        const int32_t bi32 = static_cast<int32_t>(bi);
+        const auto bi32 = static_cast<int32_t>(bi);
         std::memcpy(row + off, &bi32, 4); off += 4;
-        const int32_t aa = static_cast<int32_t>(b.atom_index_a);
+        const auto aa = static_cast<int32_t>(b.atom_index_a);
         std::memcpy(row + off, &aa, 4); off += 4;
-        const int32_t bb = static_cast<int32_t>(b.atom_index_b);
+        const auto bb = static_cast<int32_t>(b.atom_index_b);
         std::memcpy(row + off, &bb, 4); off += 4;
         row[off++] = static_cast<int8_t>(b.order);
         row[off++] = static_cast<int8_t>(b.category);
@@ -333,17 +333,17 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
         const Ring& r = rt.AromaticAt(ai);
         unsigned char* row = buf.data() + ai * kRingRecordSize;
         size_t off = 0;
-        const int32_t ring_id = static_cast<int32_t>(ai);
+        const auto ring_id = static_cast<int32_t>(ai);
         std::memcpy(row + off, &ring_id, 4); off += 4;
         row[off++] = 0;  // ring_kind: 0 = aromatic
         row[off++] = static_cast<int8_t>(r.type_index);
         row[off++] = static_cast<int8_t>(r.atom_indices.size());
         row[off++] = 0;  // _pad0
-        const int32_t native_idx = static_cast<int32_t>(ai);
+        const auto native_idx = static_cast<int32_t>(ai);
         std::memcpy(row + off, &native_idx, 4); off += 4;
-        const int32_t parent_idx = static_cast<int32_t>(r.parent_residue_index);
+        const auto parent_idx = static_cast<int32_t>(r.parent_residue_index);
         std::memcpy(row + off, &parent_idx, 4); off += 4;
-        const int32_t parent_num = static_cast<int32_t>(r.parent_residue_number);
+        const auto parent_num = static_cast<int32_t>(r.parent_residue_number);
         std::memcpy(row + off, &parent_num, 4); off += 4;
         const int32_t fp = (r.fused_partner_index == SIZE_MAX)
             ? -1
@@ -358,17 +358,17 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
         const size_t absolute_id = n_arom + si;
         unsigned char* row = buf.data() + absolute_id * kRingRecordSize;
         size_t off = 0;
-        const int32_t ring_id = static_cast<int32_t>(absolute_id);
+        const auto ring_id = static_cast<int32_t>(absolute_id);
         std::memcpy(row + off, &ring_id, 4); off += 4;
         row[off++] = 1;  // ring_kind: 1 = saturated
         row[off++] = static_cast<int8_t>(r.type_index);
         row[off++] = static_cast<int8_t>(r.atom_indices.size());
         row[off++] = 0;  // _pad0
-        const int32_t native_idx = static_cast<int32_t>(si);
+        const auto native_idx = static_cast<int32_t>(si);
         std::memcpy(row + off, &native_idx, 4); off += 4;
-        const int32_t parent_idx = static_cast<int32_t>(r.parent_residue_index);
+        const auto parent_idx = static_cast<int32_t>(r.parent_residue_index);
         std::memcpy(row + off, &parent_idx, 4); off += 4;
-        const int32_t parent_num = static_cast<int32_t>(r.parent_residue_number);
+        const auto parent_num = static_cast<int32_t>(r.parent_residue_number);
         std::memcpy(row + off, &parent_num, 4); off += 4;
         // Saturated rings don't carry fused-partner info (Ring.h documents
         // fused_partner_index as aromatic-only; Pro pyrrolidine is never
@@ -413,9 +413,9 @@ bool WriteRingMembership(const Protein& protein, const fs::path& out_dir,
         for (size_t k = 0; k < r.atom_indices.size(); ++k) {
             unsigned char* row = buf.data() + cursor * kRingMembershipRecordSize;
             size_t off = 0;
-            const int32_t rid = static_cast<int32_t>(absolute_ring_id);
+            const auto rid = static_cast<int32_t>(absolute_ring_id);
             std::memcpy(row + off, &rid, 4); off += 4;
-            const int32_t aix = static_cast<int32_t>(r.atom_indices[k]);
+            const auto aix = static_cast<int32_t>(r.atom_indices[k]);
             std::memcpy(row + off, &aix, 4); off += 4;
             row[off++] = static_cast<int8_t>(k);
             row[off++] = 1;  // is_vertex

@@ -1,23 +1,11 @@
 {
-  "anchored_at_sha": "8371b9b",
-  "anchored_at_utc": "2026-05-23T19:58:05.059070+00:00",
+  "anchored_at_sha": "3d14d9e",
+  "anchored_at_utc": "2026-05-23T22:35:15.439150+00:00",
   "tools": {
     "clang-tidy": {
-      "src/AIMNet2ChargeResponseGradientResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
       "src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
           "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
-        },
-        "total": 1
-      },
-      "src/AIMNet2Result.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
@@ -27,66 +15,17 @@
         },
         "total": 1
       },
-      "src/CategoryInfoProjection.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 4
-        },
-        "total": 4
-      },
-      "src/ChargeAssignmentResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
       "src/ConformationAtom.h": {
         "by_check": {
           "clang-analyzer-optin.performance.Padding": 1
         },
         "total": 1
       },
-      "src/GromacsToAmberReadbackBlock.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
-      "src/HBondCountWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
-      "src/HydrationGeometryWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
-      "src/MopacResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 5
-        },
-        "total": 5
-      },
-      "src/NpyWriter.h": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
       "src/OrcaRunLoader.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1,
-          "google-readability-braces-around-statements": 2
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
-        "total": 3
-      },
-      "src/OrcaShieldingResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3
-        },
-        "total": 3
+        "total": 1
       },
       "src/PlanarGeometryResult.cpp": {
         "by_check": {
@@ -120,10 +59,9 @@
       },
       "src/TopologySidecar.cpp": {
         "by_check": {
-          "clang-analyzer-deadcode.DeadStores": 2,
-          "hicpp-use-auto,modernize-use-auto": 19
+          "clang-analyzer-deadcode.DeadStores": 2
         },
-        "total": 21
+        "total": 2
       },
       "src/Trajectory.cpp": {
         "by_check": {
@@ -134,24 +72,6 @@
       "src/TripeptidePoseAssembler.cpp": {
         "by_check": {
           "clang-analyzer-optin.performance.Padding": 1
-        },
-        "total": 1
-      },
-      "src/WaterFieldWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 2
-        },
-        "total": 2
-      },
-      "src/apbs_bridge.h": {
-        "by_check": {
-          "cppcoreguidelines-macro-to-enum,modernize-macro-to-enum": 3
-        },
-        "total": 3
-      },
-      "tests/test_amino_acid.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
@@ -183,36 +103,6 @@
       "tests/test_full_pipeline.cpp": {
         "by_check": {
           "clang-analyzer-deadcode.DeadStores": 2
-        },
-        "total": 2
-      },
-      "tests/test_j_coupling_time_series.cpp": {
-        "by_check": {
-          "hicpp-use-auto,modernize-use-auto": 1
-        },
-        "total": 1
-      },
-      "tests/test_larsen_residue_against_source_log.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1
-        },
-        "total": 1
-      },
-      "tests/test_larsen_residue_perception.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1
-        },
-        "total": 1
-      },
-      "tests/test_larsen_residue_ser_sidechain.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1
-        },
-        "total": 1
-      },
-      "tests/test_larsen_residue_wl_ambiguity.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2
         },
         "total": 2
       },

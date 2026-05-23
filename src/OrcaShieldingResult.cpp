@@ -56,8 +56,9 @@ static bool ReadMatrix(std::ifstream& in, Mat3& m) {
         double a = 0.0;
         double b = 0.0;
         double c = 0.0;
-        if (!(iss >> a >> b >> c))
+        if (!(iss >> a >> b >> c)) {
             return false;
+        }
         m(row, 0) = a;
         m(row, 1) = b;
         m(row, 2) = c;
@@ -102,14 +103,16 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
         {
             std::istringstream iss(line);
             std::string tag;  // "Nucleus"
-            if (!(iss >> tag >> idx >> elem_str_raw))
+            if (!(iss >> tag >> idx >> elem_str_raw)) {
                 continue;
+            }
         }
         char elem[4] = {};
         // Copy at most 3 chars of element token (matches original %3s).
         const std::size_t n_copy = std::min(elem_str_raw.size(), static_cast<std::size_t>(3));
-        for (std::size_t k = 0; k < n_copy; ++k)
+        for (std::size_t k = 0; k < n_copy; ++k) {
             elem[k] = elem_str_raw[k];
+        }
 
         ParsedNucleus nuc;
         nuc.index = idx;

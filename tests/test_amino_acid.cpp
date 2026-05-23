@@ -6,7 +6,7 @@ using namespace nmr;
 
 TEST(AminoAcid, ThreeLetterCodeRoundtrip) {
     for (int i = 0; i < 20; ++i) {
-        AminoAcid const aa = static_cast<AminoAcid>(i);
+        auto const aa = static_cast<AminoAcid>(i);
         std::string const code = ThreeLetterCodeForAminoAcid(aa);
         AminoAcid const back = AminoAcidFromThreeLetterCode(code);
         EXPECT_EQ(aa, back) << "Failed for " << code;

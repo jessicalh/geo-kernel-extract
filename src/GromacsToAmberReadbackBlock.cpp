@@ -98,7 +98,7 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
         // Place at 0-based index. Vector grows as needed; gaps stay
         // default-constructed (Unknown aa, empty strings) so consumers
         // can detect missing entries.
-        const size_t idx = static_cast<size_t>(seqid - 1);
+        const auto idx = static_cast<size_t>(seqid - 1);
         if (block.residues.size() <= idx) {
             block.residues.resize(idx + 1);
         }

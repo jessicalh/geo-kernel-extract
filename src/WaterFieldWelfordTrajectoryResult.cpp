@@ -101,43 +101,40 @@ void WaterFieldWelfordTrajectoryResult::Compute(
 }
 
         // Shell occupancy counts (int → double for Welford)
-        const double n_first_d  = static_cast<double>(a.water_n_first);
-        const double n_second_d = static_cast<double>(a.water_n_second);
-        WelfordUpdate(w.n_first,  n_first_d,  n_new, frame_idx);
-        WelfordUpdate(w.n_second, n_second_d, n_new, frame_idx);
+const auto n_first_d = static_cast<double>(a.water_n_first);
+const auto n_second_d = static_cast<double>(a.water_n_second);
+WelfordUpdate(w.n_first, n_first_d, n_new, frame_idx);
+WelfordUpdate(w.n_second, n_second_d, n_new, frame_idx);
 
-        w.n_frames = n_new;
+w.n_frames = n_new;
 
-        // Delta variants on the 4 primary scalars
-        if (prev_valid_[i]) {
-            const std::size_t dn_new = w.delta_n + 1;
-            auto upd_deltas = [&](double curr, double prev,
-                                  WelfordMoments& d, WelfordMoments& ad,
-                                  WelfordMoments& sd) {
-                const double delta = curr - prev;
-                WelfordUpdate(d,  delta,                dn_new, frame_idx);
-                WelfordUpdate(ad, std::abs(delta),      dn_new, frame_idx);
-                WelfordUpdate(sd, delta * delta,        dn_new, frame_idx);
-            };
-            upd_deltas(Emag,        prev_efield_mag_[i],
-                       w.efield_magnitude_delta,
-                       w.efield_magnitude_abs_delta,
-                       w.efield_magnitude_delta_squared);
-            upd_deltas(n_first_d,   prev_n_first_[i],
-                       w.n_first_delta, w.n_first_abs_delta, w.n_first_delta_squared);
-            upd_deltas(n_second_d,  prev_n_second_[i],
-                       w.n_second_delta, w.n_second_abs_delta, w.n_second_delta_squared);
-            w.delta_n = dn_new;
+// Delta variants on the 4 primary scalars
+if (prev_valid_[i]) {
+    const std::size_t dn_new = w.delta_n + 1;
+    auto upd_deltas = [&](double curr, double prev, WelfordMoments& d, WelfordMoments& ad, WelfordMoments& sd) {
+        const double delta = curr - prev;
+        WelfordUpdate(d, delta, dn_new, frame_idx);
+        WelfordUpdate(ad, std::abs(delta), dn_new, frame_idx);
+        WelfordUpdate(sd, delta * delta, dn_new, frame_idx);
+    };
+    upd_deltas(Emag,
+               prev_efield_mag_[i],
+               w.efield_magnitude_delta,
+               w.efield_magnitude_abs_delta,
+               w.efield_magnitude_delta_squared);
+    upd_deltas(n_first_d, prev_n_first_[i], w.n_first_delta, w.n_first_abs_delta, w.n_first_delta_squared);
+    upd_deltas(n_second_d, prev_n_second_[i], w.n_second_delta, w.n_second_abs_delta, w.n_second_delta_squared);
+    w.delta_n = dn_new;
 
-            constexpr double MIN_DT_PS = 1e-12;
-            const double dt = time_ps - prev_time_[i];
-            if (std::abs(dt) > MIN_DT_PS) {
-                const std::size_t dxn = w.dxdt_n + 1;
-                WelfordUpdate(w.efield_magnitude_dxdt, (Emag       - prev_efield_mag_[i]) / dt, dxn, frame_idx);
-                WelfordUpdate(w.n_first_dxdt,          (n_first_d  - prev_n_first_[i])    / dt, dxn, frame_idx);
-                WelfordUpdate(w.n_second_dxdt,         (n_second_d - prev_n_second_[i])   / dt, dxn, frame_idx);
-                w.dxdt_n = dxn;
-            }
+    constexpr double MIN_DT_PS = 1e-12;
+    const double dt = time_ps - prev_time_[i];
+    if (std::abs(dt) > MIN_DT_PS) {
+        const std::size_t dxn = w.dxdt_n + 1;
+        WelfordUpdate(w.efield_magnitude_dxdt, (Emag - prev_efield_mag_[i]) / dt, dxn, frame_idx);
+        WelfordUpdate(w.n_first_dxdt, (n_first_d - prev_n_first_[i]) / dt, dxn, frame_idx);
+        WelfordUpdate(w.n_second_dxdt, (n_second_d - prev_n_second_[i]) / dt, dxn, frame_idx);
+        w.dxdt_n = dxn;
+    }
         }
         prev_efield_mag_[i] = Emag;
         prev_n_first_[i]    = n_first_d;

@@ -128,10 +128,12 @@ static std::vector<XyzAtom> ReadXyz(const std::string& path) {
         // signals to the caller that the XYZ was truncated/corrupt.
         std::istringstream iss(line);
         std::string elem_tok;
-        if (!(iss >> elem_tok >> a.x >> a.y >> a.z))
+        if (!(iss >> elem_tok >> a.x >> a.y >> a.z)) {
             continue;
-        if (elem_tok.size() > 3)
+        }
+        if (elem_tok.size() > 3) {
             continue;
+        }
         a.element = elem_tok;
         atoms.push_back(a);
     }

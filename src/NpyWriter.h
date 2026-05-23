@@ -83,7 +83,7 @@ private:
         out.write(magic, 6);
         const char version[] = "\x01\x00";
         out.write(version, 2);
-        uint16_t hlen = static_cast<uint16_t>(h.size());
+        auto hlen = static_cast<uint16_t>(h.size());
         out.write(reinterpret_cast<const char*>(&hlen), 2);
         out.write(h.data(), static_cast<std::streamsize>(h.size()));
         out.write(reinterpret_cast<const char*>(data),

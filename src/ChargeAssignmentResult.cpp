@@ -32,7 +32,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         // charge ownership off Protein (substrate architecture
         // decision, not a lint fix).
         // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-        Protein& mutable_protein = const_cast<Protein&>(protein);
+        auto& mutable_protein = const_cast<Protein&>(protein);
         if (!mutable_protein.PrepareForceFieldCharges(source, conf, error)) {
             OperationLog::Error("ChargeAssignmentResult::Compute",
                 "charge table preparation failed: " + error);

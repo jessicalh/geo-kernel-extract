@@ -67,7 +67,7 @@ void HBondCountWelfordTrajectoryResult::Compute(
     constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
-        const double c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
+        const auto c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
         HBondCountWelfordState& w = ta.hbond_count_welford;

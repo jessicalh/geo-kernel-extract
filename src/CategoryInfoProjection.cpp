@@ -410,9 +410,9 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         const Residue& res = protein.ResidueAt(atom.residue_index);
 
         // ── atom_index, residue_index (little-endian int32) ──
-        const int32_t atom_idx_val = static_cast<int32_t>(ai);
+        const auto atom_idx_val = static_cast<int32_t>(ai);
         std::memcpy(row + off, &atom_idx_val, 4); off += 4;
-        const int32_t res_idx_val = static_cast<int32_t>(atom.residue_index);
+        const auto res_idx_val = static_cast<int32_t>(atom.residue_index);
         std::memcpy(row + off, &res_idx_val, 4); off += 4;
 
         // ── element (int8 atomic number) ──
@@ -524,7 +524,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                    "chain_id", ai);
         off += kS2;
 
-        const int32_t res_number = static_cast<int32_t>(res.sequence_number);
+        const auto res_number = static_cast<int32_t>(res.sequence_number);
         std::memcpy(row + off, &res_number, 4); off += 4;
 
         PackString(reinterpret_cast<char*>(row + off), kS1, res.insertion_code,
@@ -617,7 +617,7 @@ bool WriteStructuredNpy(const fs::path& path,
             "v1.0 format (%zu > 65535).\n", header.size());
         std::abort();
     }
-    const uint16_t header_len = static_cast<uint16_t>(header.size());
+    const auto header_len = static_cast<uint16_t>(header.size());
 
     std::ofstream out(path, std::ios::binary);
     if (!out) {

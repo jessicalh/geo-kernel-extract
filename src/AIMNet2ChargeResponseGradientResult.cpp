@@ -77,7 +77,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
     // The neighbour matrices come from AIMNet2Result's shared static
     // helper so the input convention matches exactly.
     // ----------------------------------------------------------------------
-    const int64_t N1 = static_cast<int64_t>(N + 1);
+    const auto N1 = static_cast<int64_t>(N + 1);
 
     auto coord_cpu = torch::zeros({N1, 3}, torch::kFloat32);
     auto coord_acc = coord_cpu.accessor<float, 2>();

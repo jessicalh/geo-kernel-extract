@@ -81,7 +81,7 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
         const double hsa  = a.sasa_half_shell_asymmetry;
         const double dal  = a.sasa_dipole_alignment;
         const double dco  = a.sasa_dipole_coherence;
-        const double sct  = static_cast<double>(a.sasa_first_shell_count);
+        const auto sct = static_cast<double>(a.sasa_first_shell_count);
         WelfordUpdate(w.half_shell_asymmetry, hsa, n_new, frame_idx);
         WelfordUpdate(w.dipole_alignment,     dal, n_new, frame_idx);
         WelfordUpdate(w.dipole_coherence,     dco, n_new, frame_idx);
