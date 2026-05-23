@@ -4,7 +4,8 @@
 #   .\launch_reader.ps1                                     # build + run, no H5
 #   .\launch_reader.ps1 path\to\protein_analysis.h5         # with an H5
 #
-# Override preset via $env:H5READER_PRESET (default: win-msvc).
+# Override preset via $env:H5READER_PRESET (default: win-rwdi).
+# Other choices: win-debug, win-release.
 
 $ErrorActionPreference = 'Stop'
 
@@ -12,7 +13,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location -Path $scriptDir
 
 $preset = $env:H5READER_PRESET
-if (-not $preset) { $preset = 'win-msvc' }
+if (-not $preset) { $preset = 'win-rwdi' }
 
 $buildDir = Join-Path 'build' $preset
 if (-not (Test-Path $buildDir)) {

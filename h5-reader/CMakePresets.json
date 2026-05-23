@@ -4,41 +4,51 @@
 
     "configurePresets": [
         {
-            "name": "linux-gcc",
-            "displayName": "Linux — GCC, RelWithDebInfo",
-            "description": "Default Linux development build with symbols",
+            "name": "base",
+            "hidden": true,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/linux-gcc",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "CMAKE_C_COMPILER": "gcc",
-                "CMAKE_CXX_COMPILER": "g++"
-            },
+            "binaryDir": "${sourceDir}/build/${presetName}"
+        },
+
+        {
+            "name": "linux-base",
+            "hidden": true,
+            "inherits": "base",
+            "displayName": "Linux base (Qt 6.4 apt, VTK 9.5 ~/VTK, HDF5 1.10 apt)",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
                 "rhs": "Linux"
-            }
-        },
-        {
-            "name": "linux-gcc-debug",
-            "displayName": "Linux — GCC, Debug",
-            "description": "Debug build with assertions and sanitizer-friendly flags",
-            "inherits": "linux-gcc",
-            "binaryDir": "${sourceDir}/build/linux-gcc-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
-        },
-        {
-            "name": "mac-clang",
-            "displayName": "macOS — Clang, RelWithDebInfo",
-            "description": "macOS development build. VTK may need -DVTK_DIR=...",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/mac-clang",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
             },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "linux-debug",
+            "displayName": "Linux — GCC, Debug",
+            "inherits": "linux-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "linux-rwdi",
+            "displayName": "Linux — GCC, RelWithDebInfo (default dev)",
+            "inherits": "linux-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+        {
+            "name": "linux-release",
+            "displayName": "Linux — GCC, Release",
+            "inherits": "linux-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+
+        {
+            "name": "mac-base",
+            "hidden": true,
+            "inherits": "base",
+            "displayName": "macOS base (Qt Pro installer, VTK from source, HDF5 1.14 brew)",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
@@ -46,26 +56,64 @@
             }
         },
         {
-            "name": "win-msvc",
-            "displayName": "Windows — MSVC, RelWithDebInfo",
-            "description": "Windows build. Launch from x64 Native Tools cmd prompt.",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/win-msvc",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
-            },
+            "name": "mac-debug",
+            "displayName": "macOS — Clang, Debug",
+            "inherits": "mac-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "mac-rwdi",
+            "displayName": "macOS — Clang, RelWithDebInfo (default dev)",
+            "inherits": "mac-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+        {
+            "name": "mac-release",
+            "displayName": "macOS — Clang, Release",
+            "inherits": "mac-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+
+        {
+            "name": "win-base",
+            "hidden": true,
+            "inherits": "base",
+            "displayName": "Windows base (Qt Pro installer, VTK from source, HDF5 1.14 vcpkg)",
             "condition": {
                 "type": "equals",
                 "lhs": "${hostSystemName}",
                 "rhs": "Windows"
             }
+        },
+        {
+            "name": "win-debug",
+            "displayName": "Windows — MSVC, Debug",
+            "inherits": "win-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "win-rwdi",
+            "displayName": "Windows — MSVC, RelWithDebInfo (default dev)",
+            "inherits": "win-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+        },
+        {
+            "name": "win-release",
+            "displayName": "Windows — MSVC, Release",
+            "inherits": "win-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
         }
     ],
 
     "buildPresets": [
-        { "name": "linux-gcc",       "configurePreset": "linux-gcc" },
-        { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
-        { "name": "mac-clang",       "configurePreset": "mac-clang" },
-        { "name": "win-msvc",        "configurePreset": "win-msvc" }
+        { "name": "linux-debug",   "configurePreset": "linux-debug" },
+        { "name": "linux-rwdi",    "configurePreset": "linux-rwdi" },
+        { "name": "linux-release", "configurePreset": "linux-release" },
+        { "name": "mac-debug",     "configurePreset": "mac-debug" },
+        { "name": "mac-rwdi",      "configurePreset": "mac-rwdi" },
+        { "name": "mac-release",   "configurePreset": "mac-release" },
+        { "name": "win-debug",     "configurePreset": "win-debug" },
+        { "name": "win-rwdi",      "configurePreset": "win-rwdi" },
+        { "name": "win-release",   "configurePreset": "win-release" }
     ]
 }

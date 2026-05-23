@@ -4,13 +4,19 @@
 # Usage:
 #   ./launch_reader.sh                             # build + run, no H5
 #   ./launch_reader.sh path/to/protein_analysis.h5 # build + run with H5
+#
+# Override the default preset via $H5READER_PRESET. On macOS use
+# `H5READER_PRESET=mac-rwdi ./launch_reader.sh ...`. On Windows use
+# `launch_reader.ps1` (PowerShell equivalent).
 
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-PRESET="${H5READER_PRESET:-linux-gcc}"
+# Default preset: Linux RelWithDebInfo. macOS users should set
+# H5READER_PRESET=mac-rwdi (or mac-debug / mac-release).
+PRESET="${H5READER_PRESET:-linux-rwdi}"
 
 # Configure if the build directory doesn't exist yet.
 if [[ ! -d "build/${PRESET}" ]]; then
