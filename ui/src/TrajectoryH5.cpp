@@ -410,9 +410,5 @@ std::optional<TrajectoryH5::Vec3F0> TrajectoryH5::ApbsEfieldFrame0(std::size_t a
 #undef TRAJH5_RETURN_IF_ABSENT_OR_OOB
 
 bool TrajectoryH5::HasGroup(const std::string& name) const {
-    for (const auto& g : groups_present_) {
-        if (g == name)
-            return true;
-    }
-    return false;
+    return std::find(groups_present_.begin(), groups_present_.end(), name) != groups_present_.end();
 }

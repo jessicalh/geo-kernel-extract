@@ -430,7 +430,11 @@ void MainWindow::setupUI() {
         contentLayout->setContentsMargins(6, 4, 6, 4);
         contentLayout->setSpacing(3);
 
-        QObject::connect(header, &QPushButton::clicked, [header, content, title]() {
+        // Context object (3rd arg) = header: when the QPushButton is
+        // destroyed, Qt auto-disconnects this lambda so it can't fire
+        // on dangling header/content captures. clazy -Wclazy-connect-
+        // 3arg-lambda flagged the missing context.
+        QObject::connect(header, &QPushButton::clicked, header, [header, content, title]() {
             bool const show = !content->isVisible();
             content->setVisible(show);
             header->setText(show ? QString("- %1").arg(title)
