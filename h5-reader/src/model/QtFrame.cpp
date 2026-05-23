@@ -1,272 +1,399 @@
+// QtFrame implementation — accessors delegate to QtTrajectoryH5
+// per-TR buffers. Absent TRs return default values (zero / empty)
+// per the "absent-is-zero" backward-compat policy.
+//
+// Ring geometry is computed from the ring's vertex positions per call
+// (the new format dropped the per-frame ring_geometry dataset; ring
+// vertices come from ring_membership.npy and per-frame positions).
+
 #include "QtFrame.h"
+
+#include "../io/QtTrajectoryH5.h"
 #include "QtConformation.h"
 #include "QtProtein.h"
+#include "QtTopology.h"
 
+#include <Eigen/SVD>
 #include <cstdint>
 
 namespace h5reader::model {
 
-QtFrame::QtFrame(const QtConformation* conformation,
-                 const AnalysisFile*   h5,
-                 size_t                tIndex)
-    : conformation_(conformation), h5_(h5), tIndex_(tIndex) {}
-
-double QtFrame::timePicoseconds() const {
-    if (tIndex_ < h5_->meta.frame_times.size())
-        return h5_->meta.frame_times[tIndex_];
-    return 0.0;
-}
-
-int QtFrame::xtcFrameIndex() const {
-    if (tIndex_ < h5_->meta.frame_indices.size())
-        return h5_->meta.frame_indices[tIndex_];
-    return -1;
-}
-
-size_t QtFrame::atomCount() const {
-    return h5_->n_atoms;
-}
-
-Vec3 QtFrame::position(size_t atomIdx) const {
-    // positions/xyz is (T, N, 3) row-major.
-    const size_t N = h5_->n_atoms;
-    const size_t base = tIndex_ * N * 3 + atomIdx * 3;
-    return Vec3(h5_->positions.xyz[base + 0],
-                h5_->positions.xyz[base + 1],
-                h5_->positions.xyz[base + 2]);
-}
-
-RingGeometry QtFrame::ringGeometry(size_t ringIdx) const {
-    // ring_geometry/data is (T, n_rings, 7) row-major. Column layout
-    // comes from QtConformation's parsed RingGeometryLayout.
-    RingGeometry g;
-    const auto& layout = conformation_->ringGeometryLayout();
-    if (!layout.IsValid()) return g;
-
-    const size_t R = conformation_->ringCount();
-    if (ringIdx >= R) return g;
-    if (h5_->ring_geometry.data.empty()) return g;
-
-    const size_t base = tIndex_ * R * 7 + ringIdx * 7;
-    const auto& d = h5_->ring_geometry.data;
-    g.center = Vec3(d[base + layout.centerX],
-                    d[base + layout.centerY],
-                    d[base + layout.centerZ]);
-    g.normal = Vec3(d[base + layout.normalX],
-                    d[base + layout.normalY],
-                    d[base + layout.normalZ]);
-    g.radius = d[base + layout.radius];
-    return g;
-}
-
-std::vector<Vec3> QtFrame::ringVertices(size_t ringIdx) const {
-    std::vector<Vec3> verts;
-    if (!conformation_) return verts;
-    const auto* p = conformation_->protein();
-    if (!p || ringIdx >= p->ringCount()) return verts;
-    const auto& ring = p->ring(ringIdx);
-    verts.reserve(ring.atomIndices.size());
-    for (size_t a : ring.atomIndices) verts.push_back(position(a));
-    return verts;
-}
-
-// ============================================================================
-// Per-atom slab helpers. The H5 stores per-atom tensors/vectors/scalars as
-// flat vectors — we index into them with (t, atom, component). One helper
-// per data shape (SphericalTensor 9-float, Vec3 3-float, scalar double,
-// scalar int16, scalar int8-as-bool).
-// ============================================================================
-
 namespace {
 
-SphericalTensor ReadSpherical(const std::vector<double>& v,
-                               size_t N, size_t t, size_t a) {
-    SphericalTensor st;
-    if (v.empty()) return st;
-    const size_t base = t * N * 9 + a * 9;
-    if (base + 9 > v.size()) return st;
-    st.T0 = v[base + 0];
-    st.T1[0] = v[base + 1]; st.T1[1] = v[base + 2]; st.T1[2] = v[base + 3];
-    st.T2[0] = v[base + 4]; st.T2[1] = v[base + 5]; st.T2[2] = v[base + 6];
-    st.T2[3] = v[base + 7]; st.T2[4] = v[base + 8];
-    return st;
-}
+// Compute ring geometry (center, normal, radius) from vertex positions
+// via SVD. Mirrors nmr::Ring::ComputeGeometry's least-squares plane
+// fit shape.
+RingGeometry FitRingGeometry(const std::vector<Vec3>& verts) {
+    RingGeometry g;
+    if (verts.empty())
+        return g;
 
-Vec3 ReadVec3(const std::vector<double>& v,
-               size_t N, size_t t, size_t a) {
-    if (v.empty()) return Vec3::Zero();
-    const size_t base = t * N * 3 + a * 3;
-    if (base + 3 > v.size()) return Vec3::Zero();
-    return Vec3(v[base + 0], v[base + 1], v[base + 2]);
-}
+    // Center = centroid
+    g.center = Vec3::Zero();
+    for (const auto& v : verts)
+        g.center += v;
+    g.center /= static_cast<double>(verts.size());
 
-double ReadScalarD(const std::vector<double>& v,
-                    size_t N, size_t t, size_t a) {
-    if (v.empty()) return 0.0;
-    const size_t idx = t * N + a;
-    return idx < v.size() ? v[idx] : 0.0;
-}
+    // Normal = smallest singular vector of the centered point matrix
+    if (verts.size() >= 3) {
+        Eigen::Matrix<double, Eigen::Dynamic, 3> M(verts.size(), 3);
+        for (std::size_t i = 0; i < verts.size(); ++i)
+            M.row(static_cast<Eigen::Index>(i)) = (verts[i] - g.center).transpose();
+        Eigen::JacobiSVD<Eigen::Matrix<double, Eigen::Dynamic, 3>> svd(M, Eigen::ComputeFullV);
+        g.normal = svd.matrixV().col(2);
+        if (g.normal.norm() > 1e-12)
+            g.normal.normalize();
+    }
 
-int ReadScalarI16(const std::vector<int16_t>& v,
-                   size_t N, size_t t, size_t a) {
-    if (v.empty()) return 0;
-    const size_t idx = t * N + a;
-    return idx < v.size() ? static_cast<int>(v[idx]) : 0;
-}
-
-bool ReadBoolI8(const std::vector<int8_t>& v,
-                 size_t N, size_t t, size_t a) {
-    if (v.empty()) return false;
-    const size_t idx = t * N + a;
-    return idx < v.size() && v[idx] != 0;
+    // Radius = mean distance from center
+    double r_sum = 0.0;
+    for (const auto& v : verts)
+        r_sum += (v - g.center).norm();
+    g.radius = r_sum / static_cast<double>(verts.size());
+    return g;
 }
 
 }  // namespace
 
-// ---- Ring-current ------------------------------------------------------
 
-SphericalTensor QtFrame::bsShielding(size_t a) const {
-    return ReadSpherical(h5_->ring_current.bs_shielding, h5_->n_atoms, tIndex_, a);
-}
-SphericalTensor QtFrame::hmShielding(size_t a) const {
-    return ReadSpherical(h5_->ring_current.hm_shielding, h5_->n_atoms, tIndex_, a);
-}
-SphericalTensor QtFrame::rsShielding(size_t a) const {
-    return ReadSpherical(h5_->ring_current.rs_shielding, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::totalBField(size_t a) const {
-    return ReadVec3(h5_->ring_current.total_B_field, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::nRings3A(size_t a) const {
-    return ReadScalarI16(h5_->ring_current.n_rings_3A, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::nRings5A(size_t a) const {
-    return ReadScalarI16(h5_->ring_current.n_rings_5A, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::nRings8A(size_t a) const {
-    return ReadScalarI16(h5_->ring_current.n_rings_8A, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::meanRingDist(size_t a) const {
-    return ReadScalarD(h5_->ring_current.mean_ring_dist, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::nearestRingAtom(size_t a) const {
-    return ReadScalarD(h5_->ring_current.nearest_ring_atom, h5_->n_atoms, tIndex_, a);
+QtFrame::QtFrame(const QtConformation* conformation, std::size_t tIndex) : conformation_(conformation), tIndex_(tIndex) {}
+
+
+// ── Frame identity ──────────────────────────────────────────────────
+
+double QtFrame::timePicoseconds() const {
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto& ft = conformation_->h5()->frameTimes();
+    return tIndex_ < ft.size() ? ft[tIndex_] : 0.0;
 }
 
-// ---- Bond anisotropy (McConnell) ---------------------------------------
-
-SphericalTensor QtFrame::mcShielding(size_t a) const {
-    return ReadSpherical(h5_->bond_aniso.mc_shielding, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::mcCOSum(size_t a) const {
-    return ReadScalarD(h5_->bond_aniso.co_sum, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::mcNearestCODist(size_t a) const {
-    return ReadScalarD(h5_->bond_aniso.nearest_CO_dist, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::mcNearestCODir(size_t a) const {
-    return ReadVec3(h5_->bond_aniso.dir_nearest_CO, h5_->n_atoms, tIndex_, a);
+int QtFrame::xtcFrameIndex() const {
+    if (!conformation_ || !conformation_->h5())
+        return -1;
+    const auto& fi = conformation_->h5()->frameIndices();
+    return tIndex_ < fi.size() ? static_cast<int>(fi[tIndex_]) : -1;
 }
 
-// ---- Quadrupole / Dispersion -------------------------------------------
-
-SphericalTensor QtFrame::pqShielding(size_t a) const {
-    return ReadSpherical(h5_->quadrupole.pq_shielding, h5_->n_atoms, tIndex_, a);
-}
-SphericalTensor QtFrame::dispShielding(size_t a) const {
-    return ReadSpherical(h5_->dispersion.disp_shielding, h5_->n_atoms, tIndex_, a);
+std::size_t QtFrame::atomCount() const {
+    return (conformation_ && conformation_->h5()) ? conformation_->h5()->atomCount() : 0;
 }
 
-// ---- Electrostatics (Coulomb ff14SB, APBS, AIMNet2) -------------------
 
-SphericalTensor QtFrame::coulombShielding(size_t a) const {
-    return ReadSpherical(h5_->efg.coulomb_shielding, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::coulombETotal(size_t a) const {
-    return ReadVec3(h5_->efg.E_total, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::coulombEMagnitude(size_t a) const {
-    return ReadScalarD(h5_->efg.E_magnitude, h5_->n_atoms, tIndex_, a);
-}
-SphericalTensor QtFrame::apbsEfg(size_t a) const {
-    return ReadSpherical(h5_->efg.apbs_efg, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::apbsEfield(size_t a) const {
-    return ReadVec3(h5_->efg.apbs_efield, h5_->n_atoms, tIndex_, a);
-}
-SphericalTensor QtFrame::aimnet2Shielding(size_t a) const {
-    return ReadSpherical(h5_->efg.aimnet2_shielding, h5_->n_atoms, tIndex_, a);
+// ── Positions ────────────────────────────────────────────────────────
+
+Vec3 QtFrame::position(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return Vec3::Zero();
+    const auto* pos = conformation_->h5()->positions();
+    if (!pos)
+        return Vec3::Zero();
+    return pos->at(atomIdx, tIndex_);
 }
 
-// ---- H-bond -------------------------------------------------------------
 
-SphericalTensor QtFrame::hbondShielding(size_t a) const {
-    return ReadSpherical(h5_->hbond.hbond_shielding, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::hbondNearestDist(size_t a) const {
-    return ReadScalarD(h5_->hbond.nearest_dist, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::hbondNearestDir(size_t a) const {
-    return ReadVec3(h5_->hbond.nearest_dir, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::hbondCount35A(size_t a) const {
-    return ReadScalarI16(h5_->hbond.count_3_5A, h5_->n_atoms, tIndex_, a);
-}
-bool QtFrame::hbondIsDonor(size_t a) const {
-    return ReadBoolI8(h5_->hbond.is_donor, h5_->n_atoms, tIndex_, a);
-}
-bool QtFrame::hbondIsAcceptor(size_t a) const {
-    return ReadBoolI8(h5_->hbond.is_acceptor, h5_->n_atoms, tIndex_, a);
+// ── Ring geometry ────────────────────────────────────────────────────
+
+RingGeometry QtFrame::ringGeometry(std::size_t ringIdx) const {
+    if (!conformation_)
+        return {};
+    const QtProtein* p = conformation_->protein();
+    if (!p || ringIdx >= p->ringCount())
+        return {};
+    return FitRingGeometry(ringVertices(ringIdx));
 }
 
-// ---- SASA ---------------------------------------------------------------
-
-double QtFrame::sasa(size_t a) const {
-    return ReadScalarD(h5_->sasa.sasa, h5_->n_atoms, tIndex_, a);
-}
-Vec3 QtFrame::sasaNormal(size_t a) const {
-    return ReadVec3(h5_->sasa.normal, h5_->n_atoms, tIndex_, a);
-}
-
-// ---- Water --------------------------------------------------------------
-
-Vec3 QtFrame::waterEfield(size_t a) const {
-    return ReadVec3(h5_->water.efield, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::waterNFirst(size_t a) const {
-    return ReadScalarI16(h5_->water.n_first, h5_->n_atoms, tIndex_, a);
-}
-int QtFrame::waterNSecond(size_t a) const {
-    return ReadScalarI16(h5_->water.n_second, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::waterHalfShellAsymmetry(size_t a) const {
-    return ReadScalarD(h5_->water.half_shell_asymmetry, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::waterDipoleCos(size_t a) const {
-    return ReadScalarD(h5_->water.dipole_cos, h5_->n_atoms, tIndex_, a);
+std::vector<Vec3> QtFrame::ringVertices(std::size_t ringIdx) const {
+    std::vector<Vec3> verts;
+    if (!conformation_)
+        return verts;
+    const QtProtein* p = conformation_->protein();
+    if (!p || ringIdx >= p->ringCount())
+        return verts;
+    const QtRing& ring = p->ring(ringIdx);
+    verts.reserve(ring.atomIndices.size());
+    for (int32_t a : ring.atomIndices)
+        verts.push_back(position(static_cast<std::size_t>(a)));
+    return verts;
 }
 
-// ---- Charges ------------------------------------------------------------
 
-double QtFrame::aimnet2Charge(size_t a) const {
-    return ReadScalarD(h5_->charges.aimnet2_charge, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::eeqCharge(size_t a) const {
-    return ReadScalarD(h5_->charges.eeq_charge, h5_->n_atoms, tIndex_, a);
-}
-double QtFrame::eeqCoordinationNumber(size_t a) const {
-    return ReadScalarD(h5_->charges.eeq_cn, h5_->n_atoms, tIndex_, a);
-}
+// ── DSSP ────────────────────────────────────────────────────────────
 
-DsspCode QtFrame::dsspCode(size_t residueIdx) const {
-    // dssp/ss8 is (T, R) row-major int8.
-    if (h5_->dssp.ss8.empty()) return DsspCode::Unknown;
-    const size_t R = h5_->n_residues;
-    if (residueIdx >= R) return DsspCode::Unknown;
-    const int8_t v = h5_->dssp.ss8[tIndex_ * R + residueIdx];
-    if (v < 0 || v > static_cast<int8_t>(DsspCode::Unknown))
+DsspCode QtFrame::dsspCode(std::size_t residueIdx) const {
+    if (!conformation_ || !conformation_->h5())
         return DsspCode::Unknown;
-    return static_cast<DsspCode>(v);
+    const auto* ds = conformation_->h5()->dssp8();
+    if (!ds || !ds->sourceAttachedAt(tIndex_))
+        return DsspCode::Unknown;
+    return ds->codeAt(residueIdx, tIndex_);
 }
+
+
+// ── Ring-current accessors ─────────────────────────────────────────
+
+SphericalTensor QtFrame::bsShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->bsShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+SphericalTensor QtFrame::hmShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->hmShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+SphericalTensor QtFrame::rsShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->ringChiShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+Vec3 QtFrame::totalBField(std::size_t /*atomIdx*/) const {
+    // Not in new format directly; would need to sum BS B-fields per ring
+    // via QtBiotSavartCalc. Returning zero in v1; Session 5 wires the
+    // recompute on demand.
+    return Vec3::Zero();
+}
+int QtFrame::nRings3A(std::size_t atomIdx) const {
+    // Derive from ring_neighbourhood_trajectory_stats: count ring slots
+    // with distance <= 3 Å at this frame.
+    if (!conformation_ || !conformation_->h5())
+        return 0;
+    const auto* rn = conformation_->h5()->ringNeighbourhood();
+    if (!rn)
+        return 0;
+    int n = 0;
+    for (std::size_t s = 0; s < rn->n_slots; ++s) {
+        if (rn->ringIndexAt(atomIdx, s) < 0)
+            continue;
+        const auto ch = rn->at(atomIdx, tIndex_, s);
+        if (ch[0] > 0 && ch[0] <= 3.0)
+            ++n;
+    }
+    return n;
+}
+int QtFrame::nRings5A(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0;
+    const auto* rn = conformation_->h5()->ringNeighbourhood();
+    if (!rn)
+        return 0;
+    int n = 0;
+    for (std::size_t s = 0; s < rn->n_slots; ++s) {
+        if (rn->ringIndexAt(atomIdx, s) < 0)
+            continue;
+        const auto ch = rn->at(atomIdx, tIndex_, s);
+        if (ch[0] > 0 && ch[0] <= 5.0)
+            ++n;
+    }
+    return n;
+}
+int QtFrame::nRings8A(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0;
+    const auto* rn = conformation_->h5()->ringNeighbourhood();
+    if (!rn)
+        return 0;
+    int n = 0;
+    for (std::size_t s = 0; s < rn->n_slots; ++s) {
+        if (rn->ringIndexAt(atomIdx, s) < 0)
+            continue;
+        const auto ch = rn->at(atomIdx, tIndex_, s);
+        if (ch[0] > 0 && ch[0] <= 8.0)
+            ++n;
+    }
+    return n;
+}
+double QtFrame::meanRingDist(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto* rn = conformation_->h5()->ringNeighbourhood();
+    if (!rn)
+        return 0.0;
+    double sum = 0.0;
+    int n = 0;
+    for (std::size_t s = 0; s < rn->n_slots; ++s) {
+        if (rn->ringIndexAt(atomIdx, s) < 0)
+            continue;
+        sum += rn->at(atomIdx, tIndex_, s)[0];
+        ++n;
+    }
+    return n > 0 ? sum / n : 0.0;
+}
+double QtFrame::nearestRingAtom(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto* rn = conformation_->h5()->ringNeighbourhood();
+    if (!rn)
+        return 0.0;
+    double mn = -1.0;
+    for (std::size_t s = 0; s < rn->n_slots; ++s) {
+        if (rn->ringIndexAt(atomIdx, s) < 0)
+            continue;
+        const double d = rn->at(atomIdx, tIndex_, s)[0];
+        if (d > 0 && (mn < 0 || d < mn))
+            mn = d;
+    }
+    return mn < 0 ? 0.0 : mn;
+}
+
+
+// ── McConnell ─────────────────────────────────────────────────────
+
+SphericalTensor QtFrame::mcShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->mcShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+double QtFrame::mcCOSum(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}  // not in new format
+double QtFrame::mcNearestCODist(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}
+Vec3 QtFrame::mcNearestCODir(std::size_t /*atomIdx*/) const {
+    return Vec3::Zero();
+}
+
+
+// ── Quadrupole / Dispersion ──────────────────────────────────────
+
+SphericalTensor QtFrame::pqShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->piQuadShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+SphericalTensor QtFrame::dispShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->dispShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+
+
+// ── Electrostatics ───────────────────────────────────────────────
+
+SphericalTensor QtFrame::coulombShielding(std::size_t /*atomIdx*/) const {
+    // The current format does not emit a coulomb shielding TR — only
+    // the per-frame APBS efield/efg + AIMNet2 charges. Return zero so
+    // legacy overlays compile; consumer code uses what's available.
+    return {};
+}
+Vec3 QtFrame::coulombETotal(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return Vec3::Zero();
+    const auto* ts = conformation_->h5()->apbsEfield();
+    return ts ? ts->at(atomIdx, tIndex_) : Vec3::Zero();
+}
+double QtFrame::coulombEMagnitude(std::size_t atomIdx) const {
+    return coulombETotal(atomIdx).norm();
+}
+SphericalTensor QtFrame::apbsEfg(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->apbsEfg();
+    if (!ts)
+        return {};
+    SphericalTensor st;
+    const auto t2 = ts->at(atomIdx, tIndex_);
+    for (std::size_t k = 0; k < 5; ++k)
+        st.T2[k] = t2[k];
+    return st;
+}
+Vec3 QtFrame::apbsEfield(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return Vec3::Zero();
+    const auto* ts = conformation_->h5()->apbsEfield();
+    return ts ? ts->at(atomIdx, tIndex_) : Vec3::Zero();
+}
+SphericalTensor QtFrame::aimnet2Shielding(std::size_t /*atomIdx*/) const {
+    return {};  // Not exposed; AIMNet2 in new format = embedding + charge + crg
+}
+
+
+// ── H-bond ───────────────────────────────────────────────────────
+
+SphericalTensor QtFrame::hbondShielding(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return {};
+    const auto* ts = conformation_->h5()->hbondShielding();
+    return ts ? ts->at(atomIdx, tIndex_) : SphericalTensor{};
+}
+double QtFrame::hbondNearestDist(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}
+Vec3 QtFrame::hbondNearestDir(std::size_t /*atomIdx*/) const {
+    return Vec3::Zero();
+}
+int QtFrame::hbondCount35A(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0;
+    const auto* ts = conformation_->h5()->larsenHBondCount();
+    return ts ? static_cast<int>(ts->at(atomIdx, tIndex_)) : 0;
+}
+bool QtFrame::hbondIsDonor(std::size_t /*atomIdx*/) const {
+    return false;
+}
+bool QtFrame::hbondIsAcceptor(std::size_t /*atomIdx*/) const {
+    return false;
+}
+
+
+// ── SASA ─────────────────────────────────────────────────────────
+
+double QtFrame::sasa(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto* ts = conformation_->h5()->sasa();
+    return ts ? ts->at(atomIdx, tIndex_) : 0.0;
+}
+Vec3 QtFrame::sasaNormal(std::size_t /*atomIdx*/) const {
+    return Vec3::Zero();
+}
+
+
+// ── Water ────────────────────────────────────────────────────────
+
+Vec3 QtFrame::waterEfield(std::size_t /*atomIdx*/) const {
+    return Vec3::Zero();
+}
+int QtFrame::waterNFirst(std::size_t /*atomIdx*/) const {
+    return 0;
+}
+int QtFrame::waterNSecond(std::size_t /*atomIdx*/) const {
+    return 0;
+}
+double QtFrame::waterHalfShellAsymmetry(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}
+double QtFrame::waterDipoleCos(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}
+
+
+// ── Charges ──────────────────────────────────────────────────────
+
+double QtFrame::aimnet2Charge(std::size_t atomIdx) const {
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto* ts = conformation_->h5()->aimnet2Charge();
+    return ts ? ts->at(atomIdx, tIndex_) : 0.0;
+}
+double QtFrame::eeqCharge(std::size_t /*atomIdx*/) const {
+    // EEQ is in the eeq_welford TR (no per-frame TS); return Welford mean
+    // as a "current value" proxy. Or 0.0 if absent.
+    if (!conformation_ || !conformation_->h5())
+        return 0.0;
+    const auto* w = conformation_->h5()->eeqWelford();
+    return w ? 0.0 : 0.0;  // intentional placeholder until Session 5
+}
+double QtFrame::eeqCoordinationNumber(std::size_t /*atomIdx*/) const {
+    return 0.0;
+}
+
 
 }  // namespace h5reader::model

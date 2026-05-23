@@ -1,28 +1,41 @@
-// QtProtein — identity and topology of one protein, independent of
-// geometry. Owns the rings as unique_ptr<QtRing> so the polymorphic
-// hierarchy works. Atoms, residues, bonds are value-type vectors.
+// QtProtein — identity + topology of one protein, mirroring
+// `nmr::Protein`. Non-copyable + non-movable (back-pointers from
+// QtConformation must never dangle).
 //
-// Constructed by io::QtProteinLoader at H5 load time. Non-copyable,
-// non-movable — QtFrames and QtConformation hold raw const pointers
-// back at the protein for topology lookups; the pointers must not
-// dangle. Same pattern as nmr::Protein in src/Protein.h.
+// Owns:
+//   - QtAtom[] (substrate-typed identity per atom)
+//   - QtAtomNames[] (parallel projection layer for display names)
+//   - QtResidue[] (substrate-typed identity per residue)
+//   - QtTopology (wraps bonds + rings + ring_membership; provides
+//     reverse-index caches for per-atom / per-ring lookups)
+//
+// Does NOT own:
+//   - QtConformation (the trajectory) — held separately on the
+//     QtLoadResult and accessed via the loader's surface
+//
+// The library's nmr::Protein owns its conformations; the reader keeps
+// them separate so the existing ReaderMainWindow's ownership pattern
+// (loader returns protein + conformation, MainWindow holds both) stays
+// intact through the rewrite without invasive MainWindow changes.
 
 #pragma once
 
 #include "QtAtom.h"
+#include "QtAtomNames.h"
 #include "QtBond.h"
 #include "QtResidue.h"
 #include "QtRing.h"
+#include "QtRingMembership.h"
+#include "QtTopology.h"
 
 #include <QString>
 #include <cstddef>
 #include <memory>
 #include <vector>
 
-// The loader needs access to the protein's private vectors to populate
-// them during H5 decode. Forward-declare here so the friend line below
-// can name the type without pulling the whole header in.
-namespace h5reader::io { class QtProteinLoader; }
+namespace h5reader::io {
+class QtProteinLoader;
+}
 
 namespace h5reader::model {
 
@@ -31,48 +44,53 @@ public:
     QtProtein() = default;
     ~QtProtein() = default;
 
-    QtProtein(const QtProtein&)            = delete;
+    QtProtein(const QtProtein&) = delete;
     QtProtein& operator=(const QtProtein&) = delete;
-    QtProtein(QtProtein&&)                 = delete;
-    QtProtein& operator=(QtProtein&&)      = delete;
+    QtProtein(QtProtein&&) = delete;
+    QtProtein& operator=(QtProtein&&) = delete;
 
     // ----- Identity -----
     const QString& proteinId() const { return proteinId_; }
-    void setProteinId(const QString& id) { proteinId_ = id; }
 
-    // ----- Atoms -----
-    size_t atomCount() const { return atoms_.size(); }
-    const QtAtom& atom(size_t i) const { return atoms_[i]; }
+    // ----- Atoms (substrate-typed identity) -----
+    std::size_t atomCount() const { return atoms_.size(); }
+    const QtAtom& atom(std::size_t i) const { return atoms_[i]; }
     const std::vector<QtAtom>& atoms() const { return atoms_; }
 
-    // ----- Residues -----
-    size_t residueCount() const { return residues_.size(); }
-    const QtResidue& residue(size_t i) const { return residues_[i]; }
+    // ----- Atom names (projection layer; explicit accessor) -----
+    const QtAtomNames& atomNames(std::size_t i) const { return atomNames_[i]; }
+
+    // ----- Residues (substrate-typed) -----
+    std::size_t residueCount() const { return residues_.size(); }
+    const QtResidue& residue(std::size_t i) const { return residues_[i]; }
     const std::vector<QtResidue>& residues() const { return residues_; }
 
-    // ----- Bonds -----
-    size_t bondCount() const { return bonds_.size(); }
-    const QtBond& bond(size_t i) const { return bonds_[i]; }
-    const std::vector<QtBond>& bonds() const { return bonds_; }
+    // ----- Topology (bonds + rings + ring_membership) -----
+    const QtTopology& topology() const { return *topology_; }
+    QtTopology& mutableTopology() { return *topology_; }
 
-    // ----- Rings -----
-    size_t ringCount() const { return rings_.size(); }
-    const QtRing& ring(size_t i) const { return *rings_[i]; }
-    const std::vector<std::unique_ptr<QtRing>>& rings() const { return rings_; }
+    // ----- Bonds (delegated through topology) -----
+    std::size_t bondCount() const { return topology_ ? topology_->bondCount() : 0; }
+    const QtBond& bond(std::size_t i) const { return topology_->bondAt(i); }
 
-    // Ring counts by type — useful for inventory printing.
+    // ----- Rings (delegated through topology) -----
+    std::size_t ringCount() const { return topology_ ? topology_->ringCount() : 0; }
+    const QtRing& ring(std::size_t i) const { return topology_->ringAt(i); }
+
+    // ----- Ring membership (delegated through topology) -----
+    std::size_t ringMembershipCount() const { return topology_ ? topology_->ringMembershipCount() : 0; }
+
+    // ----- Counts by typed enum (cached at load) -----
     int ringCountByType(RingTypeIndex t) const;
 
 private:
-    // QtProteinLoader populates these private vectors at H5 load time.
-    // Everyone else reads via the const accessors above.
     friend class ::h5reader::io::QtProteinLoader;
 
-    QString                               proteinId_;
-    std::vector<QtAtom>                   atoms_;
-    std::vector<QtResidue>                residues_;
-    std::vector<QtBond>                   bonds_;
-    std::vector<std::unique_ptr<QtRing>>  rings_;
+    QString proteinId_;
+    std::vector<QtAtom> atoms_;
+    std::vector<QtAtomNames> atomNames_;
+    std::vector<QtResidue> residues_;
+    std::unique_ptr<QtTopology> topology_;
 };
 
 }  // namespace h5reader::model

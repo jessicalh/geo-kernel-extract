@@ -1,4 +1,4 @@
-# h5-reader
+#h5 - reader
 
 Standalone Qt6/VTK reader for analysis H5 files produced by
 `nmr_extract --trajectory --analysis`.
@@ -26,8 +26,11 @@ extraction pipeline, and never modifies its input.
   reader. If you have a zip of `h5-reader/` alone, clone HighFive:
   `git clone https://github.com/BlueBrain/HighFive extern/HighFive`
   and point `-DHIGHFIVE_INCLUDE_DIR=` at `extern/HighFive/include`.
-- **`../fileformat/analysis_file.{h,cpp}`** — the frozen H5 (de)serialiser,
-  compiled in directly.
+
+The reader is self-contained — its H5 / NPY / manifest reading lives
+in `src/io/QtTrajectoryH5`, `src/io/QtTopologySidecar`, and
+`src/io/QtNpyReader`. No dependency on the parent `nmr_shielding`
+library or any sibling subdirectory.
 
 ## Build
 
@@ -90,21 +93,29 @@ ONLY when the reader is not running.
 
 ## Editor / language-server setup (clangd)
 
-The build emits `build/<preset>/compile_commands.json`. Point your editor's
-language server at that directory — do NOT symlink or copy the file to the
-project root (both are fragile across platforms and presets).
+The build emits `build / <preset>
+        / compile_commands.json`.Point your editor's language server at that directory — do NOT symlink
+    or copy the file to the project root(both are fragile across platforms and presets)
+               .
 
-**VS Code** (with the clangd extension): add to `.vscode/settings.json`,
-```
-"clangd.arguments": ["--compile-commands-dir=build/linux-gcc"]
-```
-replacing `linux-gcc` with your platform preset.
+                   ** VS Code**(with the clangd extension)
+    : add to `.vscode
+           / settings.json`
+,
+``` "clangd.arguments"
+    : ["--compile-commands-dir=build/linux-gcc"]
+``` replacing `linux
+      - gcc` with your platform preset.
 
-**Neovim / Vim** (coc-clangd, nvim-lspconfig, etc.): configure
-`clangd` with `--compile-commands-dir=build/<preset>` in your LSP
-client init.
+            * *Neovim / Vim
+            * *(coc - clangd, nvim - lspconfig, etc.)
+    : configure
+`clangd` with `--compile
+      - commands
+      - dir = build / <preset>` in your LSP client init.
 
-**CLion / Qt Creator**: auto-detect the build directory; no
+                  * *CLion / Qt Creator * * : auto
+              - detect the build directory; no
 configuration needed.
 
 **Command-line clangd**: invoke with
@@ -133,12 +144,11 @@ See `notes/SCOPE.md` for the full scope statement. Short version:
 
 - Single protein per H5. The reader does not load multiple H5s into one
   scene.
-- Trajectory-animated. `QtConformation` is the trajectory; `QtFrame` is
-  one sampled XTC frame.
-- Rendering is honest per-frame: every frame reads its own data, runs
-  any needed closed-form kernel re-evaluation (only BS and HM volumetric
-  grids), and renders the result. No interpolation, no precomputed
-  keyframes, no procedural fakery.
-- Performance: on a fast workstation BS/HM re-evaluation is insignificant
-  at normal ring counts. On slower hardware, enable the volumetric
-  overlays selectively.
+- Trajectory-animated. `QtConformation` is the trajectory;
+`QtFrame` is one sampled XTC frame.- Rendering is honest per - frame : every frame reads its own data
+    , runs any needed closed - form kernel re - evaluation(only BS and HM volumetric grids)
+    , and renders the result.No interpolation
+    , no precomputed keyframes
+    , no procedural fakery.- Performance : on a fast workstation BS / HM re
+          - evaluation is insignificant at normal ring counts.On slower hardware
+    , enable the volumetric overlays selectively.

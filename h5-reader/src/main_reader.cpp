@@ -25,8 +25,8 @@
 #include "diagnostics/CrashHandler.h"
 #include "diagnostics/ErrorBus.h"
 #include "diagnostics/ObjectCensus.h"
-#include "diagnostics/StructuredLogger.h"
 #include "diagnostics/ShutdownSignals.h"
+#include "diagnostics/StructuredLogger.h"
 #include "io/QtProteinLoader.h"
 
 #include <QApplication>
@@ -67,26 +67,22 @@ int main(int argc, char* argv[]) {
     (void)h5reader::diagnostics::ObjectCensus::Instance();
     h5reader::diagnostics::InstallShutdownSignalHandlers();
 
-    qCInfo(cLifecycle).noquote()
-        << "h5reader" << H5READER_VERSION << "starting"
-        << "| Qt" << QT_VERSION_STR
-        << "| thread=" << QThread::currentThread()->objectName();
+    qCInfo(cLifecycle).noquote() << "h5reader" << H5READER_VERSION << "starting" << "| Qt" << QT_VERSION_STR
+                                 << "| thread=" << QThread::currentThread()->objectName();
 
     // 6. Parse CLI.
     QCommandLineParser cli;
-    cli.setApplicationDescription(
-        QStringLiteral("Qt/VTK trajectory reader for nmr-extract analysis H5 files."));
+    cli.setApplicationDescription(QStringLiteral("Qt/VTK trajectory reader for nmr-extract analysis H5 files."));
     cli.addHelpOption();
     cli.addVersionOption();
     cli.addPositionalArgument(QStringLiteral("h5_path"),
-        QStringLiteral("Path to an analysis H5 file."),
-        QStringLiteral("<h5_path>"));
+                              QStringLiteral("Path to an analysis H5 file."),
+                              QStringLiteral("<h5_path>"));
     cli.process(app);
 
     const QStringList args = cli.positionalArguments();
     if (args.isEmpty()) {
-        qCCritical(cLifecycle).noquote()
-            << "No H5 path given. Usage: h5reader <path/to/*_analysis.h5>";
+        qCCritical(cLifecycle).noquote() << "No H5 path given. Usage: h5reader <path/to/*_analysis.h5>";
         return 1;
     }
     const QString h5Path = args.first();
@@ -102,16 +98,14 @@ int main(int argc, char* argv[]) {
         qCCritical(cLifecycle).noquote() << "Load failed:" << loaded.error;
         return 3;
     }
-    if (loaded.decodeErrors > 0) {
-        qCWarning(cLifecycle).noquote()
-            << "Decode completed with" << loaded.decodeErrors << "warnings";
+    if (loaded.decodeWarnings > 0) {
+        qCWarning(cLifecycle).noquote() << "Decode completed with" << loaded.decodeWarnings << "warnings";
     }
 
     // 8. Construct window. aboutToQuit → window->shutdown() runs the
     //    VTK-finalise-before-GL-context-destruction sequence.
     auto* window = new h5reader::app::ReaderMainWindow(std::move(loaded));
-    QObject::connect(&app, &QCoreApplication::aboutToQuit,
-                     window, &h5reader::app::ReaderMainWindow::shutdown);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
 
     // 9. Deferred show — event loop must be running before first render.
     QTimer::singleShot(0, window, [window]() {

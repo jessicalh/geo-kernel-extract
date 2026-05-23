@@ -24,33 +24,117 @@ Q_LOGGING_CATEGORY(cRibbon, "h5reader.overlay.ribbon")
 // (muted, grouped by physicochemical property).
 void ResidueRgb(model::AminoAcid aa, unsigned char rgb[3]) {
     switch (aa) {
-        // Hydrophobic — warm tans/khaki/olive
-        case model::AminoAcid::ALA: rgb[0]=195; rgb[1]=180; rgb[2]=155; break;
-        case model::AminoAcid::VAL: rgb[0]=175; rgb[1]=165; rgb[2]=130; break;
-        case model::AminoAcid::LEU: rgb[0]=185; rgb[1]=170; rgb[2]=135; break;
-        case model::AminoAcid::ILE: rgb[0]=165; rgb[1]=155; rgb[2]=120; break;
-        case model::AminoAcid::MET: rgb[0]=190; rgb[1]=180; rgb[2]=110; break;
-        // Aromatic — dusty mauve
-        case model::AminoAcid::PHE: rgb[0]=155; rgb[1]=120; rgb[2]=155; break;
-        case model::AminoAcid::TRP: rgb[0]=140; rgb[1]=105; rgb[2]=150; break;
-        case model::AminoAcid::TYR: rgb[0]=160; rgb[1]=130; rgb[2]=160; break;
-        case model::AminoAcid::HIS: rgb[0]=150; rgb[1]=140; rgb[2]=180; break;
-        // Polar — soft blue-green
-        case model::AminoAcid::SER: rgb[0]=140; rgb[1]=185; rgb[2]=175; break;
-        case model::AminoAcid::THR: rgb[0]=150; rgb[1]=190; rgb[2]=170; break;
-        case model::AminoAcid::ASN: rgb[0]=130; rgb[1]=175; rgb[2]=185; break;
-        case model::AminoAcid::GLN: rgb[0]=140; rgb[1]=180; rgb[2]=190; break;
-        case model::AminoAcid::CYS: rgb[0]=190; rgb[1]=190; rgb[2]=120; break;
-        // Positive — steel blue
-        case model::AminoAcid::LYS: rgb[0]=110; rgb[1]=140; rgb[2]=195; break;
-        case model::AminoAcid::ARG: rgb[0]=120; rgb[1]=145; rgb[2]=200; break;
-        // Negative — terracotta
-        case model::AminoAcid::ASP: rgb[0]=195; rgb[1]=125; rgb[2]=110; break;
-        case model::AminoAcid::GLU: rgb[0]=200; rgb[1]=135; rgb[2]=115; break;
-        // Special
-        case model::AminoAcid::GLY: rgb[0]=210; rgb[1]=210; rgb[2]=210; break;
-        case model::AminoAcid::PRO: rgb[0]=190; rgb[1]=160; rgb[2]=145; break;
-        default:                     rgb[0]=180; rgb[1]=175; rgb[2]=165; break;
+    // Hydrophobic — warm tans/khaki/olive
+    case model::AminoAcid::ALA:
+        rgb[0] = 195;
+        rgb[1] = 180;
+        rgb[2] = 155;
+        break;
+    case model::AminoAcid::VAL:
+        rgb[0] = 175;
+        rgb[1] = 165;
+        rgb[2] = 130;
+        break;
+    case model::AminoAcid::LEU:
+        rgb[0] = 185;
+        rgb[1] = 170;
+        rgb[2] = 135;
+        break;
+    case model::AminoAcid::ILE:
+        rgb[0] = 165;
+        rgb[1] = 155;
+        rgb[2] = 120;
+        break;
+    case model::AminoAcid::MET:
+        rgb[0] = 190;
+        rgb[1] = 180;
+        rgb[2] = 110;
+        break;
+    // Aromatic — dusty mauve
+    case model::AminoAcid::PHE:
+        rgb[0] = 155;
+        rgb[1] = 120;
+        rgb[2] = 155;
+        break;
+    case model::AminoAcid::TRP:
+        rgb[0] = 140;
+        rgb[1] = 105;
+        rgb[2] = 150;
+        break;
+    case model::AminoAcid::TYR:
+        rgb[0] = 160;
+        rgb[1] = 130;
+        rgb[2] = 160;
+        break;
+    case model::AminoAcid::HIS:
+        rgb[0] = 150;
+        rgb[1] = 140;
+        rgb[2] = 180;
+        break;
+    // Polar — soft blue-green
+    case model::AminoAcid::SER:
+        rgb[0] = 140;
+        rgb[1] = 185;
+        rgb[2] = 175;
+        break;
+    case model::AminoAcid::THR:
+        rgb[0] = 150;
+        rgb[1] = 190;
+        rgb[2] = 170;
+        break;
+    case model::AminoAcid::ASN:
+        rgb[0] = 130;
+        rgb[1] = 175;
+        rgb[2] = 185;
+        break;
+    case model::AminoAcid::GLN:
+        rgb[0] = 140;
+        rgb[1] = 180;
+        rgb[2] = 190;
+        break;
+    case model::AminoAcid::CYS:
+        rgb[0] = 190;
+        rgb[1] = 190;
+        rgb[2] = 120;
+        break;
+    // Positive — steel blue
+    case model::AminoAcid::LYS:
+        rgb[0] = 110;
+        rgb[1] = 140;
+        rgb[2] = 195;
+        break;
+    case model::AminoAcid::ARG:
+        rgb[0] = 120;
+        rgb[1] = 145;
+        rgb[2] = 200;
+        break;
+    // Negative — terracotta
+    case model::AminoAcid::ASP:
+        rgb[0] = 195;
+        rgb[1] = 125;
+        rgb[2] = 110;
+        break;
+    case model::AminoAcid::GLU:
+        rgb[0] = 200;
+        rgb[1] = 135;
+        rgb[2] = 115;
+        break;
+    // Special
+    case model::AminoAcid::GLY:
+        rgb[0] = 210;
+        rgb[1] = 210;
+        rgb[2] = 210;
+        break;
+    case model::AminoAcid::PRO:
+        rgb[0] = 190;
+        rgb[1] = 160;
+        rgb[2] = 145;
+        break;
+    default:
+        rgb[0] = 180;
+        rgb[1] = 175;
+        rgb[2] = 165;
+        break;
     }
 }
 
@@ -58,42 +142,43 @@ void ResidueRgb(model::AminoAcid aa, unsigned char rgb[3]) {
 // 's' (sheet), or 'c' (coil).
 unsigned char SsCharForDssp(model::DsspCode c) {
     switch (c) {
-        case model::DsspCode::AlphaHelix:
-        case model::DsspCode::Helix310:
-        case model::DsspCode::PiHelix:   return 'h';
-        case model::DsspCode::BetaStrand:
-        case model::DsspCode::BetaBridge: return 's';
-        default:                          return 'c';
+    case model::DsspCode::AlphaHelix:
+    case model::DsspCode::Helix310:
+    case model::DsspCode::PiHelix:
+        return 'h';
+    case model::DsspCode::ExtendedStrand:
+    case model::DsspCode::BetaBridge:
+        return 's';
+    default:
+        return 'c';
     }
 }
 
 }  // namespace
 
-QtBackboneRibbonOverlay::QtBackboneRibbonOverlay(
-    vtkSmartPointer<vtkRenderer> renderer, QObject* parent)
-    : QObject(parent), renderer_(std::move(renderer))
-{
+QtBackboneRibbonOverlay::QtBackboneRibbonOverlay(vtkSmartPointer<vtkRenderer> renderer, QObject* parent)
+    : QObject(parent)
+    , renderer_(std::move(renderer)) {
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("QtBackboneRibbonOverlay"));
 }
 
 QtBackboneRibbonOverlay::~QtBackboneRibbonOverlay() {
-    if (actor_) renderer_->RemoveActor(actor_);
+    if (actor_)
+        renderer_->RemoveActor(actor_);
 }
 
-void QtBackboneRibbonOverlay::Build(
-    const model::QtProtein&      protein,
-    const model::QtConformation& conformation)
-{
+void QtBackboneRibbonOverlay::Build(const model::QtProtein& protein, const model::QtConformation& conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && actor_)
         return;
 
-    if (actor_) renderer_->RemoveActor(actor_);
+    if (actor_)
+        renderer_->RemoveActor(actor_);
     actor_ = nullptr;
 
-    protein_      = &protein;
+    protein_ = &protein;
     conformation_ = &conformation;
 
     const vtkIdType nAtoms = static_cast<vtkIdType>(protein.atomCount());
@@ -137,14 +222,12 @@ void QtBackboneRibbonOverlay::Build(
     for (vtkIdType i = 0; i < nAtoms; ++i) {
         const size_t si = static_cast<size_t>(i);
         const auto& atom = protein.atom(si);
-        const auto& res  = protein.residue(atom.residueIndex);
+        const auto& res = protein.residue(atom.residueIndex);
 
-        atomTypes_->SetValue(i, atom.h5AtomName.toStdString());
-        atomType_->SetValue(i,
-            static_cast<vtkIdType>(model::AtomicNumberForElement(atom.element)));
-        residue_->SetValue(i, static_cast<vtkIdType>(res.residueNumber));
-        chain_->SetValue(i,
-            res.chainId.isEmpty() ? 'A' : res.chainId.at(0).toLatin1());
+        atomTypes_->SetValue(i, protein.atomNames(si).amber.toStdString());
+        atomType_->SetValue(i, static_cast<vtkIdType>(model::AtomicNumberForElement(atom.element)));
+        residue_->SetValue(i, static_cast<vtkIdType>(res.address.residueNumber));
+        chain_->SetValue(i, res.address.chainId.isEmpty() ? 'A' : res.address.chainId.at(0).toLatin1());
         ishetatm_->SetValue(i, 0);
     }
 
@@ -182,9 +265,7 @@ void QtBackboneRibbonOverlay::Build(
 
     renderer_->AddActor(actor_);
 
-    qCInfo(cRibbon).noquote()
-        << "Built ribbon pipeline | atoms=" << nAtoms
-        << "| subdivide=" << subdivideFactor_;
+    qCInfo(cRibbon).noquote() << "Built ribbon pipeline | atoms=" << nAtoms << "| subdivide=" << subdivideFactor_;
 
     setFrame(0);
     setVisible(visible_);
@@ -201,10 +282,8 @@ void QtBackboneRibbonOverlay::UpdateInputArrays(int t) {
         points_->SetPoint(i, p.x(), p.y(), p.z());
 
         const auto& atom = protein_->atom(si);
-        const model::DsspCode code =
-            atom.residueIndex >= 0
-                ? frame.dsspCode(static_cast<size_t>(atom.residueIndex))
-                : model::DsspCode::Unknown;
+        const model::DsspCode code = atom.residueIndex >= 0 ? frame.dsspCode(static_cast<size_t>(atom.residueIndex))
+                                                            : model::DsspCode::Unknown;
         ss_->SetValue(i, SsCharForDssp(code));
         ssBegin_->SetValue(i, 0);
         ssEnd_->SetValue(i, 0);
@@ -215,8 +294,10 @@ void QtBackboneRibbonOverlay::UpdateInputArrays(int t) {
     for (vtkIdType i = 0; i < nAtoms; ++i) {
         const unsigned char curSS = ss_->GetValue(i);
         if (curSS != prevSS) {
-            if (curSS != 'c')                ssBegin_->SetValue(i, 1);
-            if (prevSS != 'c' && i > 0)      ssEnd_->SetValue(i - 1, 1);
+            if (curSS != 'c')
+                ssBegin_->SetValue(i, 1);
+            if (prevSS != 'c' && i > 0)
+                ssEnd_->SetValue(i - 1, 1);
         }
         prevSS = curSS;
     }
@@ -232,11 +313,12 @@ void QtBackboneRibbonOverlay::UpdateInputArrays(int t) {
 
 void QtBackboneRibbonOverlay::ApplyResidueColors() {
     vtkPolyData* ribbonOutput = ribbon_->GetOutput();
-    if (!ribbonOutput || ribbonOutput->GetNumberOfPoints() == 0) return;
+    if (!ribbonOutput || ribbonOutput->GetNumberOfPoints() == 0)
+        return;
 
-    auto* rgbArray = vtkArrayDownCast<vtkUnsignedCharArray>(
-        ribbonOutput->GetPointData()->GetScalars("RGB"));
-    if (!rgbArray) return;
+    auto* rgbArray = vtkArrayDownCast<vtkUnsignedCharArray>(ribbonOutput->GetPointData()->GetScalars("RGB"));
+    if (!rgbArray)
+        return;
 
     // Rebuild per-segment residue lists using the same chain-break logic
     // as vtkProteinRibbonFilter::RequestData (CA atoms only, break on
@@ -245,22 +327,24 @@ void QtBackboneRibbonOverlay::ApplyResidueColors() {
     segments_.push_back({});
 
     unsigned char prevChainVal = 0;
-    vtkIdType     prevResiVal  = -999;
-    bool          firstCA      = true;
+    vtkIdType prevResiVal = -999;
+    bool firstCA = true;
 
     const vtkIdType nAtoms = static_cast<vtkIdType>(protein_->atomCount());
     for (vtkIdType i = 0; i < nAtoms; ++i) {
-        if (ishetatm_->GetValue(i)) continue;
+        if (ishetatm_->GetValue(i))
+            continue;
         const std::string atype = atomTypes_->GetValue(i);
         // CA dispatch is by NAME here because vtkProteinRibbonFilter
         // itself walks CAs by name — we must mirror its traversal to
         // align our segment boundaries with its output point layout.
         // This is the ribbon filter's contract; we are staying inside
         // its lines, not dispatching physics on names elsewhere.
-        if (atype != "CA") continue;
+        if (atype != "CA")
+            continue;
 
         const unsigned char ch = chain_->GetValue(i);
-        const vtkIdType     ri = residue_->GetValue(i);
+        const vtkIdType ri = residue_->GetValue(i);
         if (!firstCA && (ch != prevChainVal || ri != prevResiVal + 1)) {
             if (segments_.back().residues.size() >= 2)
                 segments_.push_back({});
@@ -271,24 +355,26 @@ void QtBackboneRibbonOverlay::ApplyResidueColors() {
         const auto& res = protein_->residue(protein_->atom(si).residueIndex);
         segments_.back().residues.push_back(res.aminoAcid);
         prevChainVal = ch;
-        prevResiVal  = ri;
-        firstCA      = false;
+        prevResiVal = ri;
+        firstCA = false;
     }
 
-    vtkIdType rgbIdx     = 0;
+    vtkIdType rgbIdx = 0;
     const vtkIdType total = rgbArray->GetNumberOfTuples();
     for (const auto& seg : segments_) {
         const int nCA = static_cast<int>(seg.residues.size());
-        if (nCA < 2) continue;
+        if (nCA < 2)
+            continue;
         const int len = (nCA - 1) * subdivideFactor_ + 1;
         for (int si = 0; si < len; ++si) {
-            int caIdx = static_cast<int>(
-                std::floor(0.5 + si / static_cast<double>(subdivideFactor_)));
-            if (caIdx >= nCA) caIdx = nCA - 1;
+            int caIdx = static_cast<int>(std::floor(0.5 + si / static_cast<double>(subdivideFactor_)));
+            if (caIdx >= nCA)
+                caIdx = nCA - 1;
             unsigned char rgb[3];
             ResidueRgb(seg.residues[caIdx], rgb);
             for (int k = 0; k < 2; ++k) {
-                if (rgbIdx < total) rgbArray->SetTypedTuple(rgbIdx++, rgb);
+                if (rgbIdx < total)
+                    rgbArray->SetTypedTuple(rgbIdx++, rgb);
             }
         }
     }
@@ -297,8 +383,10 @@ void QtBackboneRibbonOverlay::ApplyResidueColors() {
 
 void QtBackboneRibbonOverlay::setFrame(int t) {
     ASSERT_THREAD(this);
-    if (!protein_ || !conformation_) return;
-    if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount()) return;
+    if (!protein_ || !conformation_)
+        return;
+    if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount())
+        return;
 
     UpdateInputArrays(t);
     ribbon_->Update();
@@ -309,7 +397,8 @@ void QtBackboneRibbonOverlay::setFrame(int t) {
 void QtBackboneRibbonOverlay::setVisible(bool visible) {
     ASSERT_THREAD(this);
     visible_ = visible;
-    if (actor_) actor_->SetVisibility(visible ? 1 : 0);
+    if (actor_)
+        actor_->SetVisibility(visible ? 1 : 0);
 }
 
 }  // namespace h5reader::app

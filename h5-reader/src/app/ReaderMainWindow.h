@@ -16,8 +16,8 @@
 #include <QMainWindow>
 #include <QPointer>
 
-#include <vtkSmartPointer.h>
 #include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkSmartPointer.h>
 
 #include <memory>
 
@@ -41,10 +41,10 @@ class ReaderMainWindow final : public QMainWindow {
 
 public:
     // Takes the loader's result by rvalue — the window assumes ownership
-    // of the protein, conformation, and AnalysisFile. The result must
-    // have ok=true; otherwise the caller should have aborted already.
-    explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
-                              QWidget* parent = nullptr);
+    // of the protein and conformation (which owns the typed H5 reader).
+    // The result must have ok=true; otherwise the caller should have
+    // aborted already.
+    explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded, QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
 
 public slots:
@@ -66,32 +66,32 @@ private:
     std::unique_ptr<h5reader::io::QtLoadResult> loaded_;
 
     // VTK viewport widget.
-    QVTKOpenGLNativeWidget*                       vtkWidget_   = nullptr;
+    QVTKOpenGLNativeWidget* vtkWidget_ = nullptr;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
 
     // Scene + playback.
-    MoleculeScene*        scene_    = nullptr;
+    MoleculeScene* scene_ = nullptr;
     QtPlaybackController* playback_ = nullptr;
 
     // Atom picker + inspector dock. Picker is an event filter on the
     // VTK widget; inspector is a tabified QDockWidget on the right.
-    class QtAtomPicker*          picker_          = nullptr;
-    class QtAtomInspectorDock*   inspectorDock_   = nullptr;
-    class QtAtomTimeSeriesDock*  timeSeriesDock_  = nullptr;
+    class QtAtomPicker* picker_ = nullptr;
+    class QtAtomInspectorDock* inspectorDock_ = nullptr;
+    class QtAtomTimeSeriesDock* timeSeriesDock_ = nullptr;
 
     // Toolbar controls.
-    QPointer<QSlider>  frameSlider_;
+    QPointer<QSlider> frameSlider_;
     QPointer<QSpinBox> fpsSpinner_;
-    QPointer<QAction>  playAction_;
-    QPointer<QAction>  showRibbonAction_;
-    QPointer<QAction>  showRingsAction_;
-    QPointer<QAction>  showButterflyAction_;
-    QPointer<QAction>  showBFieldAction_;
+    QPointer<QAction> playAction_;
+    QPointer<QAction> showRibbonAction_;
+    QPointer<QAction> showRingsAction_;
+    QPointer<QAction> showButterflyAction_;
+    QPointer<QAction> showBFieldAction_;
 
     // Status bar labels.
-    QPointer<QLabel>   proteinLabel_;
-    QPointer<QLabel>   frameLabel_;
-    QPointer<QLabel>   timeLabel_;
+    QPointer<QLabel> proteinLabel_;
+    QPointer<QLabel> frameLabel_;
+    QPointer<QLabel> timeLabel_;
 
     bool shutdownDone_ = false;
 };

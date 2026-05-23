@@ -1,66 +1,102 @@
-// QtAtom — per-atom identity + enrichment, decoded from the H5 /atoms
-// and /topology groups at load time.
+// QtAtom — per-atom typed substrate, mirroring the projected fields of
+// atoms_category_info.npy.
 //
-// Identity: what the atom IS. Never changes frame-to-frame.
-// Position, per-frame tensors, per-frame vectors — NOT stored here.
-// Those live as slab-view accessors on QtFrame.
+// This struct IS the typed identity for an atom. Every chemistry-typed
+// field (Element, Locant, BranchAddress, DiastereotopicIndex,
+// BackboneRole, PlanarGroupKind, PolarHKind, ProchiralStereo,
+// PlanarStereo, ring positions, PseudoatomKind, aromatic,
+// formal_charge, is_exchangeable, equivalence_class) is a typed enum
+// or POD. The atom IS its (Element, Locant, branch, di_index,
+// backbone_role) tuple plus the chemistry substrate around it.
 //
-// All enum fields are typed (Element, AtomRole, Hybridisation). The
-// one string field — h5AtomName — is DISPLAY ONLY. No physics code
-// compares atom names as strings. If you need to know whether this
-// atom is an alpha-carbon, read `role == AtomRole::BackboneCA`, not
-// the string. See notes/SCOPE.md, feedback_oo_modeling.
+// NO NAME STRINGS LIVE HERE. The three atom-name strings (amber,
+// iupac, bmrb) live on `QtAtomNames` (in QtAtomNames.h), accessed via
+// `QtProtein::atomNames(i)` — an explicit projection boundary. Code
+// that asks chemistry questions stays on QtAtom; code that displays a
+// label asks for QtAtomNames. The two surfaces never mix.
+//
+// ff_atom_type uses the typed `QtFfAtomType` enum (per design
+// §11.B), not the raw S4 string. Loader maps the AMBER vocabulary
+// string to the enum at the boundary.
+//
+// See notes/H5_READER_REWRITE_DESIGN_2026-05-23.md §4.2 for the design.
 
 #pragma once
 
+#include "QtSemanticEnums.h"
 #include "Types.h"
 
-#include <QString>
-#include <cstddef>
+#include <cstdint>
 
 namespace h5reader::model {
 
 struct QtAtom {
-    // ---- Identity (decoded from atoms/) ----
-    Element         element        = Element::Unknown;
-    AtomRole        role           = AtomRole::Unknown;
-    Hybridisation  hybridisation   = Hybridisation::Unassigned;
-    int             residueIndex   = -1;    // into QtProtein.residues()
-    int             nBonded        = 0;     // number of covalent neighbours
-    int             graphDistRing  = -1;    // bond-hops to nearest aromatic ring vertex
-    int             graphDistN     = -1;    // bond-hops to nearest N
-    int             graphDistO     = -1;    // bond-hops to nearest O
+    // ----- Identity indices -----
+    int32_t atomIndex = -1;        // row index; equals position in QtProtein.atoms()
+    int32_t residueIndex = -1;     // row into QtProtein.residues()
+    int32_t parentAtomIndex = -1;  // for H atoms, heavy-atom parent; -1 otherwise
 
-    // ---- Enrichment booleans (decoded from atoms/) ----
-    bool            isBackbone          = false;
-    bool            isAmideH            = false;
-    bool            isAlphaH            = false;
-    bool            isMethyl            = false;
-    bool            isAromaticH         = false;
-    bool            isOnAromaticResidue = false;
-    bool            isHBondDonor        = false;
-    bool            isHBondAcceptor     = false;
-    bool            parentIsSp2         = false;
-    bool            isConjugated        = false;
+    // ----- Mechanical-identity tuple (mirrors AtomMechanicalIdentity) -----
+    Element element = Element::Unknown;
+    Locant locant = Locant::None;
+    BranchAddress branch = {};
+    DiastereotopicIndex diIndex = DiastereotopicIndex::None;
+    BackboneRole backboneRole = BackboneRole::None;
 
-    // ---- Derived topology (decoded from topology/) ----
-    int             parentAtomIndex = -1;  // for H atoms, heavy-atom parent
-    double          enegSum1         = 0.0;   // Pauling units, 1-bond sum
-    double          enegSum2         = 0.0;   // 2-bond sum
-    int             nPiBonds3        = 0;     // pi bonds within 3 hops
-    int             bfsToNearestRing = -1;    // BFS hops to nearest ring atom
-    double          bfsDecay         = 0.0;   // exp decay weight
+    // ----- Stereo / planarity -----
+    ProchiralStereo prochiral = ProchiralStereo::NotProchiral;
+    PlanarGroupKind planarGroup = PlanarGroupKind::None;
+    PlanarStereo planarStereo = PlanarStereo::NotApplicable;
+    PolarHKind polarH = PolarHKind::NotPolar;
 
-    // ---- Static charges (decoded from atoms/) ----
-    double          partialCharge    = 0.0;   // ff14SB or CHARMM force field charge
-    double          vdwRadius        = 0.0;   // Angstroms
+    // ----- Ring membership labels -----
+    RingPositionLabel ringPositionPrimary = RingPositionLabel::NotInRing;
+    RingPositionLabel ringPositionSecondary = RingPositionLabel::NotInRing;
 
-    // ---- Display ----
-    // The literal string the extractor wrote. CHARMM-flavoured for
-    // GROMACS trajectories ("HN" for backbone amide, "HSD" variant
-    // atom names for HID, etc.). DISPLAY ONLY. Never dispatch physics
-    // off this value.
-    QString         h5AtomName;
+    // ----- Pseudoatom (Markley 1998 Table 1) -----
+    PseudoatomKind pseudoatomKind = PseudoatomKind::None;
+    bool inSuperGroup = false;
+
+    // ----- Other typed flags -----
+    bool aromatic = false;
+    int8_t formalCharge = 0;
+    bool isExchangeable = false;
+    int8_t equivalenceClass = 0;
+
+    // ----- Force-field surface (typed enum, NOT string) -----
+    QtFfAtomType ffAtomType = QtFfAtomType::Unknown;
+
+    // ----- Element-property convenience (typed; computed) -----
+    double CovalentRadius() const { return CovalentRadiusForElement(element); }
+    double Electronegativity() const { return ElectronegativityForElement(element); }
+    int AtomicNumber() const { return AtomicNumberForElement(element); }
+    bool IsHBondDonorElement() const { return element == Element::N || element == Element::O; }
+    bool IsHBondAcceptorElement() const { return element == Element::N || element == Element::O; }
+
+    // ----- Substrate predicates (mirror AtomSemanticTable's; src/SemanticEnums.h:902) -----
+    constexpr bool IsBackbone() const { return backboneRole != BackboneRole::None; }
+    constexpr bool IsBackboneNitrogen() const { return backboneRole == BackboneRole::Nitrogen; }
+    constexpr bool IsBackboneAlphaCarbon() const { return backboneRole == BackboneRole::AlphaCarbon; }
+    constexpr bool IsBackboneCarbonylCarbon() const { return backboneRole == BackboneRole::CarbonylCarbon; }
+    constexpr bool IsBackboneCarbonylOxygen() const { return backboneRole == BackboneRole::CarbonylOxygen; }
+    constexpr bool IsBackboneAmideHydrogen() const { return backboneRole == BackboneRole::AmideHydrogen; }
+    constexpr bool IsBackboneAlphaHydrogen() const { return backboneRole == BackboneRole::AlphaHydrogen; }
+    constexpr bool IsAnyAlphaHydrogen() const {
+        // Non-GLY HA via BackboneRole::AlphaHydrogen; GLY HA2/HA3 via
+        // Locant::Alpha + BackboneRole::None per Markley.
+        return backboneRole == BackboneRole::AlphaHydrogen
+               || (element == Element::H && locant == Locant::Alpha && backboneRole == BackboneRole::None);
+    }
+    constexpr bool IsSidechainCarboxylateOxygen() const {
+        return element == Element::O && planarGroup == PlanarGroupKind::Carboxylate;
+    }
+    constexpr bool IsSidechainAmideOxygen() const {
+        return element == Element::O && planarGroup == PlanarGroupKind::SidechainAmide;
+    }
+    constexpr bool IsPolarH() const { return polarH != PolarHKind::NotPolar; }
+    constexpr bool IsInAnyRing() const {
+        return ringPositionPrimary != RingPositionLabel::NotInRing || ringPositionSecondary != RingPositionLabel::NotInRing;
+    }
 };
 
 }  // namespace h5reader::model

@@ -1,12 +1,18 @@
-# h5-reader directory — rules
+#h5 - reader directory — rules
 
-**DO NOT modify any files outside of `h5-reader/`.**
+**DO NOT modify any files outside of `h5
+        - reader /`
+                      .**
 
-This is a standalone Qt6/VTK reference implementation. It consumes the
-frozen `fileformat/analysis_file.cpp` as a source include and the frozen
-HighFive headers; otherwise it is independent. It never links the
-`nmr_shielding` library, never writes H5 files, never triggers
-extraction.
+                        This is a standalone Qt6
+              / VTK reference implementation.It reads the per
+        - TR - emits - its - own - group trajectory.h5 + 5
+        - NPY topology sidecar produced by `nmr_extract-- trajectory` via
+            its own typed boundary classes(`src / io / QtTrajectoryH5`, `src / io / QtTopologySidecar`,
+`src / io / QtNpyReader`)
+    and the vendored HighFive headers; otherwise it
+is independent. It never links the `nmr_shielding` library, never
+writes H5 files, never triggers extraction.
 
 ---
 
@@ -25,8 +31,6 @@ extraction.
 - `src/` — the nmr_shielding library. Never read, never link.
 - `ui/` — the single-conformation viewer. Read-only. Copy patterns,
   do not share code or targets.
-- `fileformat/` — the H5 serialiser. Read-only. `analysis_file.cpp`
-  compiled into this target via source include.
 - `extern/HighFive/` — header-only HDF5 wrapper. Read-only.
 - Top-level `CMakeLists.txt` — do not modify. The reader's build is
   self-contained under `h5-reader/`.
@@ -58,8 +62,7 @@ read the relevant `references/` file for the topic at hand.
 ## Scope (see memory: project_h5_north_star)
 
 Single protein, trajectory-animated. `QtConformation` is the trajectory;
-`QtFrame` is one sampled XTC frame. The H5 is the authoritative data
-backing. Rendering reflects per-frame H5 values; re-evaluation happens
+`QtFrame` is one sampled XTC frame.The H5 is the authoritative data backing.Rendering reflects per - frame H5 values; re-evaluation happens
 only for volumetric BS/HM isosurfaces (which the H5 does not carry).
 
 See `notes/SCOPE.md` for the full scope statement.
