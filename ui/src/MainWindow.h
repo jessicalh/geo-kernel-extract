@@ -72,7 +72,10 @@ public:
     // Called from aboutToQuit handler — stops timers, workers, VTK.
     void shutdown();
 
-    // Load from a validated JobSpec (all modes: pdb, orca, mutant, fleet)
+    // Load from a validated JobSpec. Four interactive modes:
+    // pdb / protonated-pdb / orca / mutant. Optional --analysis-h5
+    // attaches a read-only trajectory.h5 companion via TrajectoryH5.
+    // (--fleet was retired 2026-04-12; --trajectory is CLI-only.)
     void loadFromJobSpec(const nmr::JobSpec& spec);
 
 signals:

@@ -32,7 +32,7 @@
 #include <QElapsedTimer>
 #include <cmath>
 #include <filesystem>
-#include <stdexcept>    // for AnalysisFile::ReadH5 boundary (HighFive throws)
+#include <stdexcept>  // TrajectoryH5 ctor throws on structural failure
 
 namespace fs = std::filesystem;
 using namespace nmr;
