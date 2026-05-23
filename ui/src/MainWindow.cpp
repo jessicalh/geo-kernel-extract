@@ -1208,10 +1208,10 @@ void MainWindow::pickAtom(int displayX, int displayY) {
         renderWindow_->Render();
 
         statusLabel_->setText(QString("Atom %1: %2 %3-%4")
-            .arg(atomIndex)
-            .arg(QString::fromStdString(id.pdb_atom_name))
-            .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
-            .arg(res.sequence_number));
+                                  .arg(QString::number(static_cast<qulonglong>(atomIndex)),
+                                       QString::fromStdString(id.pdb_atom_name),
+                                       QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)),
+                                       QString::number(res.sequence_number)));
     }
 }
 
@@ -1247,12 +1247,12 @@ void MainWindow::populateAtomInfo(size_t idx) {
 
     // ---- Header ----
     QString const header = QString("Atom %1: %2 %3 (%4-%5-%6)")
-                               .arg(idx)
-                               .arg(QString::fromStdString(SymbolForElement(id.element)))
-                               .arg(QString::fromStdString(id.pdb_atom_name))
-                               .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
-                               .arg(res.sequence_number)
-                               .arg(QString::fromStdString(res.chain_id));
+                               .arg(QString::number(static_cast<qulonglong>(idx)),
+                                    QString::fromStdString(SymbolForElement(id.element)),
+                                    QString::fromStdString(id.pdb_atom_name),
+                                    QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)),
+                                    QString::number(res.sequence_number),
+                                    QString::fromStdString(res.chain_id));
 
     // ---- Identity ----
     auto* identity = new QTreeWidgetItem({header, ""});
@@ -1272,8 +1272,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
         const AminoAcidType& aaType = GetAminoAcidType(res.type);
         if (res.protonation_variant_index < static_cast<int>(aaType.variants.size())) {
             const auto& variant = aaType.variants[res.protonation_variant_index];
-            identity->addChild(
-                new QTreeWidgetItem({"Protonation variant", QString("%1 — %2").arg(variant.name).arg(variant.description)}));
+            identity->addChild(new QTreeWidgetItem(
+                {"Protonation variant",
+                 QString("%1 — %2").arg(QString::fromUtf8(variant.name), QString::fromUtf8(variant.description))}));
         }
     }
     identity->addChild(new QTreeWidgetItem({"Role", QString::fromStdString(NameForAtomRole(ca.role))}));
@@ -1325,15 +1326,17 @@ void MainWindow::populateAtomInfo(size_t idx) {
                 ring->addChild(new QTreeWidgetItem({"Primary position", NameForRingPositionLabel(p.position)}));
                 if (sem.ring_position.HasSecondaryRing()) {
                     const auto& s = sem.ring_position.secondary;
-                    ring->addChild(new QTreeWidgetItem(
-                        {"Secondary ring",
-                         QString("%1 (%2)").arg(NameForRingSystemKind(s.ring)).arg(NameForRingPositionLabel(s.position))}));
+                    ring->addChild(
+                        new QTreeWidgetItem({"Secondary ring",
+                                             QString("%1 (%2)").arg(QString::fromUtf8(NameForRingSystemKind(s.ring)),
+                                                                    QString::fromUtf8(NameForRingPositionLabel(s.position)))}));
                 }
                 if (sem.ring_position.HasTertiaryRing()) {
                     const auto& t = sem.ring_position.tertiary;
-                    ring->addChild(new QTreeWidgetItem(
-                        {"Tertiary ring",
-                         QString("%1 (%2)").arg(NameForRingSystemKind(t.ring)).arg(NameForRingPositionLabel(t.position))}));
+                    ring->addChild(
+                        new QTreeWidgetItem({"Tertiary ring",
+                                             QString("%1 (%2)").arg(QString::fromUtf8(NameForRingSystemKind(t.ring)),
+                                                                    QString::fromUtf8(NameForRingPositionLabel(t.position)))}));
                 }
                 asub->addChild(ring);
             }
@@ -1555,10 +1558,10 @@ void MainWindow::populateAtomInfo(size_t idx) {
             const auto& otherId = protein.AtomAt(mb.other_atom);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
             QString const label = QString("%1 %2-%3 (BO=%4)")
-                                      .arg(QString::fromStdString(SymbolForElement(otherId.element)))
-                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
-                                      .arg(otherRes.sequence_number)
-                                      .arg(mb.wiberg_order, 0, 'f', 3);
+                                      .arg(QString::fromStdString(SymbolForElement(otherId.element)),
+                                           QString::fromStdString(otherId.pdb_atom_name),
+                                           QString::number(otherRes.sequence_number),
+                                           QString::number(mb.wiberg_order, 'f', 3));
             auto* mbItem = new QTreeWidgetItem({label, ""});
             mbItem->addChild(new QTreeWidgetItem({"Atom index", QString::number(mb.other_atom)}));
             if (mb.topology_bond_index != SIZE_MAX) {
@@ -1761,10 +1764,10 @@ void MainWindow::populateAtomBonds(size_t idx) {
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
 
             QString const label = QString("%1 %2-%3 (%4)")
-                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
-                                      .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
-                                      .arg(otherRes.sequence_number)
-                                      .arg(QString::fromStdString(NameForBondCategory(bond.category)));
+                                      .arg(QString::fromStdString(otherId.pdb_atom_name),
+                                           QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)),
+                                           QString::number(otherRes.sequence_number),
+                                           QString::fromStdString(NameForBondCategory(bond.category)));
 
             auto* bondItem = new QTreeWidgetItem({label,
                 QString::number(conf.bond_lengths[bi], 'f', 3) + " A"});
@@ -1789,10 +1792,10 @@ void MainWindow::populateAtomBonds(size_t idx) {
             const auto& otherId = protein.AtomAt(mb.other_atom);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
             QString const label = QString("%1 %2-%3 (BO=%4)")
-                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
-                                      .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
-                                      .arg(otherRes.sequence_number)
-                                      .arg(mb.wiberg_order, 0, 'f', 3);
+                                      .arg(QString::fromStdString(otherId.pdb_atom_name),
+                                           QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)),
+                                           QString::number(otherRes.sequence_number),
+                                           QString::number(mb.wiberg_order, 'f', 3));
             auto* mbItem = new QTreeWidgetItem({label, ""});
             if (mb.topology_bond_index != SIZE_MAX) {
                 const Bond& bond = protein.BondAt(mb.topology_bond_index);
