@@ -551,7 +551,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         return (i >= 0) ? fr.ener[i].e : std::nan("");
     };
 
-    t_enxframe fr;
+    t_enxframe fr{};
     init_enxframe(&fr);
 
     while (do_enx(ef, &fr)) {

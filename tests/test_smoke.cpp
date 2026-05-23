@@ -54,7 +54,7 @@ using namespace nmr;
 static std::string TimestampDir() {
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm_buf;
+    std::tm tm_buf{};
     localtime_r(&time, &tm_buf);
     std::ostringstream oss;
     oss << std::put_time(&tm_buf, "%Y-%m-%d_%H%M%S");

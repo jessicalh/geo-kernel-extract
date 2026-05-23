@@ -20,9 +20,9 @@ namespace nmr {
 
 struct PkaResult {
     std::string residue_type;   // "ASP", "GLU", "HIS", "CYS", "TYR", "LYS"
-    int residue_number;
+    int residue_number = 0;
     std::string chain_id;
-    double pKa;
+    double pKa = 0.0;
 };
 
 

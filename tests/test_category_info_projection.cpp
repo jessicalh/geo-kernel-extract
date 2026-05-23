@@ -58,7 +58,7 @@ protected:
         CategoryInfoProjection::Reset();
         CategoryInfoProjection::Config cfg;
         cfg.atom_nom_tbl = path;
-        CategoryInfoProjection::Configure(std::move(cfg));
+        CategoryInfoProjection::Configure(cfg);
         ASSERT_TRUE(CategoryInfoProjection::IsActive());
     }
     void TearDown() override {

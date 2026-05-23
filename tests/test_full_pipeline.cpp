@@ -113,7 +113,6 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     // ================================================================
     // Step 4: ChargeAssignmentResult (no dependencies, uses ff14SB file)
     // ================================================================
-    bool charges_ok = false;
     {
         if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
             OperationLog::Warn("FullPipelineTest",
@@ -121,7 +120,6 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
             auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
             if (charges && conf.AttachResult(std::move(charges))) {
                 results_attached++;
-                charges_ok = true;
             } else {
                 results_failed++;
             }
@@ -129,7 +127,6 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
             auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
             if (charges && conf.AttachResult(std::move(charges))) {
                 results_attached++;
-                charges_ok = true;
                 OperationLog::Info("FullPipelineTest",
                     "ChargeAssignmentResult: attached (source=" +
                     conf.Result<ChargeAssignmentResult>().Source() +

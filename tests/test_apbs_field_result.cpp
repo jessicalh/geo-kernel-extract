@@ -147,7 +147,6 @@ TEST_F(ApbsFieldResultTest, FullTensorStored) {
 
         // At least one of these should be nonzero (all atoms have charges)
         bool const efield_ok = ca.apbs_efield.norm() > 1e-15;
-        bool const efg_ok = ca.apbs_efg.norm() > 1e-15;
 
         // With uniform positive charges, E-field should be nonzero
         // for atoms that are not at the center of mass

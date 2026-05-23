@@ -53,7 +53,7 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute(
     }
     // Per `feedback_capture_at_the_boundary` "absent, not faked":
     // absent frames get NaN-fill, NOT zero. Mask records the absence.
-    std::array<float, AIMNET2_AIM_DIMS> nan_placeholder;
+    std::array<float, AIMNET2_AIM_DIMS> nan_placeholder{};
     nan_placeholder.fill(std::numeric_limits<float>::quiet_NaN());
     for (std::size_t i = 0; i < N; ++i) {
         per_atom_embedding_[i].push_back(

@@ -430,8 +430,8 @@ RingTypeIndex HisRingTypeFromVariant(int variant_index) {
     switch (variant_index) {
         case 0: return RingTypeIndex::HidImidazole;
         case 1: return RingTypeIndex::HieImidazole;
-        case 2:
-            return RingTypeIndex::HisImidazole;  // NOLINT(bugprone-branch-clone)
+        // NOLINTNEXTLINE(bugprone-branch-clone): HIP (case 2) intentionally aliases default to HisImidazole; preserving the labeled branch documents intent.
+        case 2: return RingTypeIndex::HisImidazole;
         default: return RingTypeIndex::HisImidazole;
     }
 }

@@ -281,6 +281,7 @@ bool AssembleAlaCap(
     out.backbone_kabsch_rmsd  = K.rmsd;
 
     // Emit each cap-slot atom with the protein-side counterpart.
+    // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): ephemeral local struct in a 6-row static array, reordering for cache density would obscure the slot semantics.
     struct Slot {
         int           dft_idx;
         std::size_t   protein_idx;

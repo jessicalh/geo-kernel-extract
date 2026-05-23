@@ -38,7 +38,7 @@ struct BondedInteraction {
         CMAP            // dihedral energy correction map
     };
 
-    Type type;
+    Type type = Bond;
     // Atom indices (2 for bond, 3 for angle/UB, 4 for dihedral, 5 for CMAP)
     size_t atoms[5] = {};
     int n_atoms = 0;

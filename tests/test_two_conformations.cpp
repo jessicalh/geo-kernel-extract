@@ -28,6 +28,7 @@ TEST_F(TwoConformationsTest, TwoConformationsIndependent) {
 
     // Create a second conformation by jittering positions
     std::vector<Vec3> jittered = conf1.Positions();
+    // NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp): constant seed is intentional for test reproducibility.
     std::mt19937 rng(42);
     std::normal_distribution<double> noise(0.0, 0.1);
     for (auto& p : jittered) {

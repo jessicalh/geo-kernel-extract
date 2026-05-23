@@ -348,6 +348,7 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
         const int32_t fp = (r.fused_partner_index == SIZE_MAX)
             ? -1
             : static_cast<int32_t>(r.fused_partner_index);
+        // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores): trailing off+=4 kept for symmetry with the other write rows above.
         std::memcpy(row + off, &fp, 4); off += 4;
 
         membership_rows += r.atom_indices.size();
@@ -374,6 +375,7 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
         // fused_partner_index as aromatic-only; Pro pyrrolidine is never
         // fused in our chemistry).
         const int32_t fp = -1;
+        // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores): trailing off+=4 kept for symmetry with the aromatic-ring branch above.
         std::memcpy(row + off, &fp, 4); off += 4;
 
         membership_rows += r.atom_indices.size();

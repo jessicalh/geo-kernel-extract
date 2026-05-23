@@ -86,6 +86,7 @@ struct MopacBondNeighbour {
 };
 
 
+// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): fields are grouped by physics domain (scalar/vector/tensor/bool), not packed for cache density — the per-atom record is read once per frame, not in a hot loop.
 class ConformationAtom {
     friend class ProteinConformation;
 public:

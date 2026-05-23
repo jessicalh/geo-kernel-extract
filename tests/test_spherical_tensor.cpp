@@ -316,7 +316,6 @@ TEST(SphericalTensor, T2BasisOrthogonality) {
     // real-spherical-harmonic basis matrices in our isometric
     // normalization — inverting the coefficients in Decompose.
     const double SQRT2   = std::sqrt(2.0);
-    const double SQRT3_2 = std::sqrt(3.0 / 2.0);
     const double INV_SQRT2 = 1.0 / SQRT2;
 
     auto make = [](double Sxx, double Syy, double Szz,
@@ -338,7 +337,7 @@ TEST(SphericalTensor, T2BasisOrthogonality) {
     //                                     = -1/√6 (also gives Sxx-Syy=0).
     //   T2[3] = √2 · Sxz                → Sxz = 1/√2
     //   T2[4] = (Sxx - Syy)/√2          → Sxx = √2/2, Syy = -√2/2, Szz=0.
-    const double SQRT2_3 = std::sqrt(2.0 / 3.0);   // = 1/SQRT3_2
+    const double SQRT2_3 = std::sqrt(2.0 / 3.0);
     const double NEG_INV_SQRT6 = -1.0 / std::sqrt(6.0);  // = -√(2/3)/2
     const std::array<Mat3, 5> basis = {
         make(0, 0, 0,   INV_SQRT2,         0,         0),   // m=-2

@@ -262,7 +262,7 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         const AtomSemanticTable& sem = topo.SemanticAt(ai);
         if (sem.planar_group == PlanarGroupKind::None) continue;
 
-        std::array<size_t, 3> nb;
+        std::array<size_t, 3> nb{};
         if (!ThreeBondedNeighbours(protein, ai, nb)) continue;
 
         const Vec3 A = conf.PositionAt(ai);

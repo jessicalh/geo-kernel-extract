@@ -121,6 +121,7 @@ TEST(ChargeFF14SBTerminalTest, SupportedAmberTerminalRowsAreUsed) {
         GTEST_SKIP() << "ff14sb_params.dat not found";
     }
 
+    // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): test-table struct, reordering for cache density would obscure the row schema.
     struct Case {
         AminoAcid aa;
         int variant_index;

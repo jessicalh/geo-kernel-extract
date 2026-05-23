@@ -95,7 +95,7 @@ static std::vector<int> ReadPrmtopInts(
 // XYZ reader (PDB LOADING BOUNDARY)
 // ============================================================================
 
-struct XyzAtom { std::string element; double x, y, z; };
+struct XyzAtom { std::string element; double x = 0.0, y = 0.0, z = 0.0; };
 
 static std::vector<XyzAtom> ReadXyz(const std::string& path) {
     std::vector<XyzAtom> atoms;

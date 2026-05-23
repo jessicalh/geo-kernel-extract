@@ -161,8 +161,8 @@ constexpr double T2_MIN_FOR_INDEPENDENCE = 1e-4;
 // ============================================================================
 
 struct DistanceBin {
-    double lo, hi;
-    const char* label;
+    double lo = 0.0, hi = 0.0;
+    const char* label = nullptr;
     int count = 0;
     double sum_bs_t0 = 0, sum_hm_t0 = 0;
     double sum_bs_t2 = 0, sum_hm_t2 = 0;
@@ -317,7 +317,6 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
                 double const bs_t0 = std::abs(rn.G_spherical.T0);
                 double const bs_t2 = rn.G_spherical.T2Magnitude();
-                double const hm_t0_raw = std::abs(rn.hm_H_spherical.T0);  // should be ~0
 
                 // Reconstruct HM full kernel G from stored data
                 const RingGeometry& geom = wt_conf.ring_geometries[rn.ring_index];
