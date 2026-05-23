@@ -78,9 +78,8 @@ void McConnellShieldingTimeSeriesTrajectoryResult::Finalize(
 void McConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(
-            typeid(McConnellShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(McConnellShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "McConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group",

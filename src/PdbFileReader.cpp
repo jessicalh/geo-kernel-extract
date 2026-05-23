@@ -217,19 +217,8 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
 }
 
 
-// ============================================================================
-// Generate a unique temp file path (GUID-like to avoid collisions)
-// ============================================================================
-
-static std::string UniqueTempPath(const std::string& stem) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint64_t> dist;
-    char buf[256];
-    (void)std::snprintf(buf, sizeof(buf), "/tmp/nmr_%s_%016lx.pdb",
-                  stem.c_str(), dist(gen));
-    return buf;
-}
+// (UniqueTempPath removed 2026-05-23 — dead since
+// RuntimeEnvironment::TempFilePath took over the unique-temp-path duty.)
 
 
 // ============================================================================

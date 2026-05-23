@@ -133,9 +133,7 @@ void ApbsEfgTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(
-            typeid(ApbsEfgTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(ApbsEfgTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group",

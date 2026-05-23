@@ -106,9 +106,7 @@ void PositionsTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void PositionsTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<Vec3>(std::type_index(
-            typeid(PositionsTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<Vec3>(std::type_index(typeid(PositionsTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "PositionsTimeSeriesTrajectoryResult::WriteH5Group",

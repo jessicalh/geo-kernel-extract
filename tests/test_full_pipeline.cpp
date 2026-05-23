@@ -118,7 +118,7 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
         if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
             OperationLog::Warn("FullPipelineTest",
                 "ff14sb_params.dat not found, using stub charges");
-            auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
+            auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
             if (charges && conf.AttachResult(std::move(charges))) {
                 results_attached++;
                 charges_ok = true;

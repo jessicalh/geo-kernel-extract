@@ -424,10 +424,14 @@ RingTypeIndex AromaticTypeFromKind(RingSystemKind kind) {
 // future slice adding RingTypeIndex::HipImidazole would update
 // both this dispatcher and the calculator-side per-type arrays.
 RingTypeIndex HisRingTypeFromVariant(int variant_index) {
+    // Case 2 (HIP) intentionally aliases default to HisImidazole per
+    // the convention documented above; merging would lose per-variant
+    // intent.
     switch (variant_index) {
         case 0: return RingTypeIndex::HidImidazole;
         case 1: return RingTypeIndex::HieImidazole;
-        case 2: return RingTypeIndex::HisImidazole;
+        case 2:
+            return RingTypeIndex::HisImidazole;  // NOLINT(bugprone-branch-clone)
         default: return RingTypeIndex::HisImidazole;
     }
 }

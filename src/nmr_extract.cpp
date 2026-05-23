@@ -381,7 +381,7 @@ static int RunAnalysis(const JobSpec& spec) {
 // main
 // ============================================================================
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     // ── Session: one named object that holds process-wide resources ─
     // Loads RuntimeEnvironment, OperationLog channel config, emits
     // session-start log line. CalculatorConfig + AIMNet2 model are
@@ -471,4 +471,14 @@ int main(int argc, char* argv[]) {
         case JobMode::None:          return 1;  // unreachable
     }
     return 1;
+} catch (const std::exception& e) {
+    // External tool wrappers (libpq, HighFive/HDF5, libtorch) throw on
+    // hard failure. Catch at main() rather than letting std::terminate
+    // run; a typed error message + non-zero exit is more useful for
+    // fleet operators than a SIGABRT dump.
+    (void)fprintf(stderr, "FATAL: unhandled exception in nmr_extract: %s\n", e.what());
+    return 2;
+} catch (...) {
+    (void)fprintf(stderr, "FATAL: unhandled non-std::exception in nmr_extract\n");
+    return 2;
 }

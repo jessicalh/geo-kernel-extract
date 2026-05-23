@@ -608,9 +608,7 @@ NamingApplicator::Collect(const NamingContext& ctx) const {
 // exercised by a property test.
 // ----------------------------------------------------------------------------
 
-std::string
-NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
-                          const NamingContext& ctx) const {
+std::string NamingApplicator::Resolve(const std::vector<NamingApplication>& applications, const NamingContext& ctx) {
     // Branch 1: zero rules fired.
     //
     // Project decision: if the input is already canonical for this

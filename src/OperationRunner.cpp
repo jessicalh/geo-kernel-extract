@@ -1,6 +1,8 @@
 #include "OperationRunner.h"
 #include "Protein.h"
 
+#include <utility>  // std::forward
+
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
@@ -65,7 +67,7 @@ template<typename F>
 static bool TimedAttach(ProteinConformation& conf, const char* name,
                         RunResult& out, F&& compute) {
     OperationLog::Scope const scope(name);
-    auto result = compute();
+    auto result = std::forward<F>(compute)();
     return Attach(conf, std::move(result), name, out);
 }
 

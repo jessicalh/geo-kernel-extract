@@ -52,12 +52,12 @@ static bool ReadMatrix(std::ifstream& in, Mat3& m) {
     for (int row = 0; row < 3; ++row) {
         std::string line;
         if (!std::getline(in, line)) return false;
-        double a;
-        double b;
-        double c;
-        if (std::sscanf(line.c_str(), " %lf %lf %lf", &a, &b, &c) != 3) {
+        std::istringstream iss(line);
+        double a = 0.0;
+        double b = 0.0;
+        double c = 0.0;
+        if (!(iss >> a >> b >> c))
             return false;
-}
         m(row, 0) = a;
         m(row, 1) = b;
         m(row, 2) = c;
@@ -95,11 +95,21 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
         if (line.find("CHEMICAL SHIFTS") != std::string::npos) break;
         if (line.find("TIMINGS") != std::string::npos) break;
 
+        // Parse " Nucleus NN ElemStr :" via istringstream — sscanf is
+        // cert-err34-c (no errno surface).
         int idx = -1;
+        std::string elem_str_raw;
+        {
+            std::istringstream iss(line);
+            std::string tag;  // "Nucleus"
+            if (!(iss >> tag >> idx >> elem_str_raw))
+                continue;
+        }
         char elem[4] = {};
-        if (std::sscanf(line.c_str(), " Nucleus %d%3s", &idx, elem) < 1) {
-            continue;
-}
+        // Copy at most 3 chars of element token (matches original %3s).
+        const std::size_t n_copy = std::min(elem_str_raw.size(), static_cast<std::size_t>(3));
+        for (std::size_t k = 0; k < n_copy; ++k)
+            elem[k] = elem_str_raw[k];
 
         ParsedNucleus nuc;
         nuc.index = idx;

@@ -409,15 +409,17 @@ static std::string RedactDsnForLog(const std::string& dsn) {
             ? std::string("<redacted>")
             : std::string(o->val);
         if (!out.empty()) out += ' ';
-        out += key + "='" + val + "'";
+        out.append(key);
+        out.append("='");
+        out.append(val);
+        out.append("'");
     }
     PQconninfoFree(opts);
     return out;
 }
 
 
-TripeptideDftTable::TripeptideDftTable(const std::string& conn_str) {
-    conn_ = PQconnectdb(conn_str.c_str());
+TripeptideDftTable::TripeptideDftTable(const std::string& conn_str) : conn_(PQconnectdb(conn_str.c_str())) {
     if (PQstatus(conn_) != CONNECTION_OK) {
         std::string const err = PQerrorMessage(conn_);
         PQfinish(conn_);

@@ -73,11 +73,13 @@ static std::vector<std::pair<size_t, size_t>> DetectBondsViaOpenBabel(
 // is invoked from FinalizeConstruction once rings are produced.
 // ============================================================================
 
-std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
-        const std::vector<std::unique_ptr<Atom>>& atoms,
-        const std::vector<Residue>& residues,
-        const std::vector<Vec3>& positions,
-        double bond_tolerance) {
+// bond_tolerance used only in the non-OpenBabel #else branch
+// (covalent-radius detection); kept in the public signature because
+// both branches share it.
+std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(const std::vector<std::unique_ptr<Atom>>& atoms,
+                                                            const std::vector<Residue>& residues,
+                                                            const std::vector<Vec3>& positions,
+                                                            double bond_tolerance) {  // NOLINT(misc-unused-parameters)
 
     auto topo = std::make_unique<CovalentTopology>();
     const size_t n_atoms = atoms.size();

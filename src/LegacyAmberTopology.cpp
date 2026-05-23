@@ -407,8 +407,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,  // NOLINT(
             const nmr::AtomSemanticTable* base =
                 gen::LookupBy(res.type, variant_idx, ident);
             if (base == nullptr) {
-                FatalSubstrateMiss("LookupBy (chain)", ai, res, atom,
-                                   ident, variant_idx, /*cap_state=*/-1);
+                FatalSubstrateMiss("LookupBy (chain)", ai, res, atom, ident, variant_idx, /*cap_state_int=*/-1);
             }
             result[ai] = *base;
 

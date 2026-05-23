@@ -4,13 +4,14 @@
 #include "RuntimeEnvironment.h"
 #include "OperationLog.h"
 
-#include <fstream>
-#include <unordered_map>
-#include <sstream>
+#include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -304,18 +305,22 @@ static std::vector<double> ReadPrmtopSection(const std::string& path,
             // E16.8 format: 5 values per line, 16 chars each
             for (size_t pos = 0; pos + 15 < line.size(); pos += 16) {
                 std::string const token = line.substr(pos, 16);
-                double val = 0.0;
-                if (std::sscanf(token.c_str(), "%lf", &val) == 1) {
+                char* end = nullptr;
+                errno = 0;
+                const double val = std::strtod(token.c_str(), &end);
+                if (errno == 0 && end != token.c_str()) {
                     values.push_back(val);
                 }
             }
             // Handle lines shorter than a full row
-            if (line.size() > 0 && line.size() % 16 != 0) {
+            if (!line.empty() && line.size() % 16 != 0) {
                 size_t const last_start = (line.size() / 16) * 16;
                 if (last_start < line.size()) {
                     std::string const token = line.substr(last_start);
-                    double val = 0.0;
-                    if (std::sscanf(token.c_str(), "%lf", &val) == 1) {
+                    char* end = nullptr;
+                    errno = 0;
+                    const double val = std::strtod(token.c_str(), &end);
+                    if (errno == 0 && end != token.c_str()) {
                         values.push_back(val);
                     }
                 }

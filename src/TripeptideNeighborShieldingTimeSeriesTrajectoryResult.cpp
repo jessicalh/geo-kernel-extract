@@ -126,9 +126,8 @@ void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Finalize(TrajectoryP
 void TripeptideNeighborShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(
-            typeid(TripeptideNeighborShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(TripeptideNeighborShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "TripeptideNeighborShieldingTimeSeriesTrajectoryResult::WriteH5Group",

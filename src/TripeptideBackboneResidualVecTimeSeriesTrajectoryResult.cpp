@@ -125,9 +125,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Finalize(
 void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<Vec3>(std::type_index(
-            typeid(TripeptideBackboneResidualVecTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<Vec3>(std::type_index(typeid(TripeptideBackboneResidualVecTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group",

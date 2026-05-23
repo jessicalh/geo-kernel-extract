@@ -78,9 +78,8 @@ void PiQuadrupoleShieldingTimeSeriesTrajectoryResult::Finalize(
 void PiQuadrupoleShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(
-            typeid(PiQuadrupoleShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(PiQuadrupoleShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "PiQuadrupoleShieldingTimeSeriesTrajectoryResult::WriteH5Group",

@@ -137,6 +137,7 @@ void PackFixedString(unsigned char* dst, size_t dst_size,
         std::abort();
     }
     std::memset(dst, 0, dst_size);
+    // NOLINTNEXTLINE(bugprone-not-null-terminated-result): fixed-width NPY field, NOT a C-string; memset above zeros the slot, and dst_size > src.size() is asserted at the abort path. Numpy structured dtype reads by width.
     std::memcpy(dst, src.data(), src.size());
 }
 

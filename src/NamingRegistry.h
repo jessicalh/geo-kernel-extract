@@ -339,8 +339,7 @@ private:
     /// Step 2: resolve the per-atom map to a single output. Body is
     /// the explicit per-case decision logic; each branch documented
     /// with a citation to the project decision authorising the choice.
-    std::string Resolve(const std::vector<NamingApplication>& applications,
-                        const NamingContext& ctx) const;
+    static std::string Resolve(const std::vector<NamingApplication>& applications, const NamingContext& ctx);
 
     /// Diagnostic emit for fail-loud paths. Aborts via the project's
     /// fprintf(stderr,"FATAL: ...")+std::abort() pattern.

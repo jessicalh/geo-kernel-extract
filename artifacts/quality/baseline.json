@@ -1,316 +1,102 @@
 {
-  "anchored_at_sha": "d3620fe",
-  "anchored_at_utc": "2026-05-23T13:04:20.775959+00:00",
+  "anchored_at_sha": "8371b9b",
+  "anchored_at_utc": "2026-05-23T19:58:05.059070+00:00",
   "tools": {
     "clang-tidy": {
-      "src/AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.cpp": {
+      "src/AIMNet2ChargeResponseGradientResult.cpp": {
         "by_check": {
-          "misc-unused-parameters": 1
-        },
-        "total": 1
-      },
-      "src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
       "src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "misc-unused-parameters": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 1
       },
-      "src/AmberChargeResolver.cpp": {
+      "src/AIMNet2Result.cpp": {
         "by_check": {
-          "performance-inefficient-string-concatenation": 2
-        },
-        "total": 2
-      },
-      "src/AmberLeapInput.cpp": {
-        "by_check": {
-          "bugprone-branch-clone": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "src/AmberPreparedChargeSource.cpp": {
+      "src/BondedEnergyResult.h": {
         "by_check": {
-          "cert-env33-c": 1,
-          "concurrency-mt-unsafe": 1
-        },
-        "total": 2
-      },
-      "src/AminoAcidType.cpp": {
-        "by_check": {
-          "performance-no-automatic-move": 1
-        },
-        "total": 1
-      },
-      "src/ApbsEfgTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/ApbsEfieldTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/Atom.h": {
-        "by_check": {
-          "readability-inconsistent-declaration-parameter-name": 1
-        },
-        "total": 1
-      },
-      "src/BsShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/BsT0AutocorrelationTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 1
       },
       "src/CategoryInfoProjection.cpp": {
         "by_check": {
-          "bugprone-not-null-terminated-result": 1,
-          "performance-unnecessary-copy-initialization": 1
+          "hicpp-use-auto,modernize-use-auto": 4
         },
-        "total": 2
+        "total": 4
       },
-      "src/ChargeSource.cpp": {
+      "src/ChargeAssignmentResult.cpp": {
         "by_check": {
-          "cert-err34-c": 2,
-          "readability-container-size-empty": 1
-        },
-        "total": 3
-      },
-      "src/CovalentTopology.cpp": {
-        "by_check": {
-          "misc-unused-parameters": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "src/DispersionShieldingTimeSeriesTrajectoryResult.cpp": {
+      "src/ConformationAtom.h": {
         "by_check": {
-          "readability-qualified-auto": 1
+          "clang-analyzer-optin.performance.Padding": 1
         },
         "total": 1
       },
-      "src/DsspResult.cpp": {
+      "src/GromacsToAmberReadbackBlock.cpp": {
         "by_check": {
-          "misc-const-correctness": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "src/EnrichmentResult.cpp": {
+      "src/HBondCountWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "bugprone-branch-clone": 2
-        },
-        "total": 2
-      },
-      "src/GromacsEnergyResult.cpp": {
-        "by_check": {
-          "misc-unused-parameters": 2
-        },
-        "total": 2
-      },
-      "src/GromacsFrameHandler.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-const-variable": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "src/HBondShieldingTimeSeriesTrajectoryResult.cpp": {
+      "src/HydrationGeometryWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/HmShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/JobSpec.cpp": {
-        "by_check": {
-          "cert-err34-c": 3
-        },
-        "total": 3
-      },
-      "src/KamlProtonator.cpp": {
-        "by_check": {
-          "bugprone-branch-clone": 2,
-          "cert-env33-c": 1,
-          "cert-err34-c": 2,
-          "concurrency-mt-unsafe": 1
-        },
-        "total": 6
-      },
-      "src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/LarsenResidue.cpp": {
-        "by_check": {
-          "performance-inefficient-string-concatenation": 2
-        },
-        "total": 2
-      },
-      "src/LegacyAmberTopology.cpp": {
-        "by_check": {
-          "bugprone-argument-comment": 1
-        },
-        "total": 1
-      },
-      "src/McConnellShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
       "src/MopacResult.cpp": {
         "by_check": {
-          "cert-env33-c": 1,
-          "concurrency-mt-unsafe": 3
+          "hicpp-use-auto,modernize-use-auto": 5
         },
-        "total": 4
+        "total": 5
       },
-      "src/MopacResult.h": {
+      "src/NpyWriter.h": {
         "by_check": {
-          "readability-inconsistent-declaration-parameter-name": 4
-        },
-        "total": 4
-      },
-      "src/NamingRegistry.cpp": {
-        "by_check": {
-          "readability-convert-member-functions-to-static": 1
-        },
-        "total": 1
-      },
-      "src/OperationRunner.cpp": {
-        "by_check": {
-          "cppcoreguidelines-missing-std-forward": 1
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
       "src/OrcaRunLoader.cpp": {
         "by_check": {
-          "cert-err34-c": 2
-        },
-        "total": 2
-      },
-      "src/OrcaShieldingResult.cpp": {
-        "by_check": {
-          "cert-err34-c": 2
-        },
-        "total": 2
-      },
-      "src/PdbFileReader.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-function": 1
-        },
-        "total": 1
-      },
-      "src/PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/PositionsTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/PropkaProtonator.cpp": {
-        "by_check": {
-          "bugprone-branch-clone": 2,
-          "cert-env33-c": 1,
-          "concurrency-mt-unsafe": 1
-        },
-        "total": 4
-      },
-      "src/Protein.cpp": {
-        "by_check": {
-          "bugprone-argument-comment": 1,
-          "bugprone-branch-clone": 1
-        },
-        "total": 2
-      },
-      "src/ProteinConformation.cpp": {
-        "by_check": {
-          "clang-diagnostic-potentially-evaluated-expression": 2,
-          "performance-inefficient-string-concatenation": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1,
+          "google-readability-braces-around-statements": 2
         },
         "total": 3
       },
-      "src/ReduceProtonation.cpp": {
+      "src/OrcaShieldingResult.cpp": {
         "by_check": {
-          "concurrency-mt-unsafe": 1
+          "google-readability-braces-around-statements": 3
+        },
+        "total": 3
+      },
+      "src/PlanarGeometryResult.cpp": {
+        "by_check": {
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 1
       },
-      "src/RingNeighbourhoodTrajectoryStats.cpp": {
+      "src/PropkaProtonator.h": {
         "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/RingSusceptibilityShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 1
       },
@@ -320,192 +106,131 @@
         },
         "total": 1
       },
-      "src/SasaTimeSeriesTrajectoryResult.cpp": {
+      "src/Session.cpp": {
         "by_check": {
-          "readability-qualified-auto": 1
+          "hicpp-move-const-arg,performance-move-const-arg": 1
         },
         "total": 1
       },
-      "src/TopologySidecar.cpp": {
+      "src/SolventEnvironment.h": {
         "by_check": {
-          "bugprone-not-null-terminated-result": 1
-        },
-        "total": 1
-      },
-      "src/TrajectoryProtein.cpp": {
-        "by_check": {
-          "clang-diagnostic-potentially-evaluated-expression": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideDftTable.cpp": {
-        "by_check": {
-          "cppcoreguidelines-prefer-member-initializer": 1,
-          "performance-inefficient-string-concatenation": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 2
         },
         "total": 2
       },
-      "src/TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.cpp": {
+      "src/TopologySidecar.cpp": {
         "by_check": {
-          "readability-qualified-auto": 1
+          "clang-analyzer-deadcode.DeadStores": 2,
+          "hicpp-use-auto,modernize-use-auto": 19
         },
-        "total": 1
+        "total": 21
       },
-      "src/TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.cpp": {
+      "src/Trajectory.cpp": {
         "by_check": {
-          "readability-qualified-auto": 1
-        },
-        "total": 1
-      },
-      "src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "readability-qualified-auto": 1
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 1
       },
       "src/TripeptidePoseAssembler.cpp": {
         "by_check": {
-          "misc-unused-parameters": 1
-        },
-        "total": 1
-      },
-      "src/Types.h": {
-        "by_check": {
-          "readability-inconsistent-declaration-parameter-name": 1
+          "clang-analyzer-optin.performance.Padding": 1
         },
         "total": 1
       },
       "src/WaterFieldWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "bugprone-unused-local-non-trivial-variable": 2
+          "hicpp-use-auto,modernize-use-auto": 2
         },
         "total": 2
       },
       "src/apbs_bridge.h": {
         "by_check": {
-          "bugprone-macro-parentheses": 1
+          "cppcoreguidelines-macro-to-enum,modernize-macro-to-enum": 3
+        },
+        "total": 3
+      },
+      "tests/test_amino_acid.cpp": {
+        "by_check": {
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "src/nmr_extract.cpp": {
+      "tests/test_apbs_field_result.cpp": {
         "by_check": {
-          "bugprone-exception-escape": 1
+          "clang-analyzer-deadcode.DeadStores": 1
         },
         "total": 1
       },
-      "tests/TestEnvironment.cpp": {
+      "tests/test_batch_biot_savart_haigh_mallion.cpp": {
         "by_check": {
-          "concurrency-mt-unsafe": 1
-        },
-        "total": 1
-      },
-      "tests/test_aimnet2_charge_time_series.cpp": {
-        "by_check": {
-          "bugprone-integer-division": 1
-        },
-        "total": 1
-      },
-      "tests/test_dispersion_result.cpp": {
-        "by_check": {
-          "cert-flp30-c": 2
+          "clang-analyzer-deadcode.DeadStores": 1,
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
         "total": 2
       },
+      "tests/test_category_info_projection.cpp": {
+        "by_check": {
+          "hicpp-move-const-arg,performance-move-const-arg": 1
+        },
+        "total": 1
+      },
       "tests/test_foundation_results.cpp": {
         "by_check": {
-          "readability-container-size-empty": 1
+          "clang-analyzer-optin.performance.Padding": 1
         },
         "total": 1
       },
       "tests/test_full_pipeline.cpp": {
         "by_check": {
-          "readability-redundant-string-cstr": 1
+          "clang-analyzer-deadcode.DeadStores": 2
+        },
+        "total": 2
+      },
+      "tests/test_j_coupling_time_series.cpp": {
+        "by_check": {
+          "hicpp-use-auto,modernize-use-auto": 1
         },
         "total": 1
       },
-      "tests/test_larsen_hbond_grid.cpp": {
-        "by_check": {
-          "cert-flp30-c": 3
-        },
-        "total": 3
-      },
       "tests/test_larsen_residue_against_source_log.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 1
+          "google-readability-braces-around-statements": 1
         },
         "total": 1
       },
       "tests/test_larsen_residue_perception.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 1
+          "google-readability-braces-around-statements": 1
         },
         "total": 1
       },
       "tests/test_larsen_residue_ser_sidechain.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 1
+          "google-readability-braces-around-statements": 1
         },
         "total": 1
       },
       "tests/test_larsen_residue_wl_ambiguity.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 2
-        },
-        "total": 2
-      },
-      "tests/test_mopac_coulomb_shielding_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
-      },
-      "tests/test_naming_registry.cpp": {
-        "by_check": {
-          "bugprone-argument-comment": 2
+          "google-readability-braces-around-statements": 2
         },
         "total": 2
       },
       "tests/test_smoke.cpp": {
         "by_check": {
-          "performance-inefficient-string-concatenation": 3
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
         },
-        "total": 3
+        "total": 1
       },
       "tests/test_spherical_tensor.cpp": {
         "by_check": {
-          "misc-const-correctness": 3
+          "clang-analyzer-deadcode.DeadStores": 1
         },
-        "total": 3
+        "total": 1
       },
-      "tests/test_string_barrier.cpp": {
+      "tests/test_two_conformations.cpp": {
         "by_check": {
-          "cert-env33-c": 1,
-          "cert-err34-c": 1,
-          "misc-const-correctness": 1
-        },
-        "total": 3
-      },
-      "tests/test_tripeptide_neighbor_shielding_time_series.cpp": {
-        "by_check": {
-          "bugprone-argument-comment": 1
+          "cert-msc32-c,cert-msc51-cpp": 1
         },
         "total": 1
       }

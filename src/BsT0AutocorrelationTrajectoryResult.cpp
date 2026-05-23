@@ -173,9 +173,7 @@ void BsT0AutocorrelationTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void BsT0AutocorrelationTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<double>(std::type_index(
-            typeid(BsT0AutocorrelationTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<double>(std::type_index(typeid(BsT0AutocorrelationTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "BsT0AutocorrelationTrajectoryResult::WriteH5Group",

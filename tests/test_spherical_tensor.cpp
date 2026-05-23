@@ -125,9 +125,9 @@ TEST(SphericalTensor, T1HandCalculation) {
 // ============================================================================
 
 TEST(SphericalTensor, T2DiagonalMatrix) {
-    double a = 10.0;
-    double b = 20.0;
-    double c = 30.0;
+    const double a = 10.0;
+    const double b = 20.0;
+    const double c = 30.0;
     Mat3 sigma = Mat3::Zero();
     sigma(0,0) = a; sigma(1,1) = b; sigma(2,2) = c;
 

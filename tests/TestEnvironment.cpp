@@ -44,6 +44,7 @@ void TestEnvironment::Load() {
 #endif
 
     // Env var override
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): test-suite setup runs once before any thread spawns.
     const char* env = std::getenv("NMR_TESTPATHS_TOML");
     if (env) toml_path = env;
 
@@ -145,5 +146,4 @@ AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
     return fix;
 }
 
-} // namespace nmr::test
-
+}  // namespace nmr::test

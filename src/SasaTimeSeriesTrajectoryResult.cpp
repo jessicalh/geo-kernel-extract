@@ -73,9 +73,7 @@ void SasaTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void SasaTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<double>(std::type_index(
-            typeid(SasaTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<double>(std::type_index(typeid(SasaTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "SasaTimeSeriesTrajectoryResult::WriteH5Group",

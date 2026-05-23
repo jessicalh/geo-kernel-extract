@@ -44,8 +44,12 @@ ROOT="$(pwd)"
 # included headers — those are attributed to the header in baseline.json).
 declare -A CURRENT
 for tu in "$@"; do
-    n=$(clang-tidy -p build --quiet "$tu" 2>/dev/null \
-        | grep -E "^${ROOT}/${tu}:[0-9]+:[0-9]+: warning:" \
+    # `|| true` on the grep: empty match (TU has 0 in-TU warnings — the
+    # happy case after a successful clean-up pass) returns exit 1, which
+    # the `set -o pipefail` above would otherwise propagate and kill the
+    # script before we ever reach the comparison.
+    n=$( { clang-tidy -p build --quiet "$tu" 2>/dev/null \
+            | grep -E "^${ROOT}/${tu}:[0-9]+:[0-9]+: warning:" || true; } \
         | wc -l)
     CURRENT["$tu"]="$n"
 done

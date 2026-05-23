@@ -118,9 +118,8 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(typeid(
-            MopacCoulombShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(MopacCoulombShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group",

@@ -67,6 +67,10 @@ TEST_F(LarsenResidueWlAmbiguityTest, IleCg1AndCg2AreChemistryDistinct) {
         /*n_chi_axes=*/0);
     ASSERT_TRUE(rec.IsHit()) << "no ILE row at phi=-180,psi=-180";
     ASSERT_TRUE(rec.larsen.has_value());
+    // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
+    // explicit has_value gate makes the deref provably safe. Unreachable.
+    if (!rec.larsen.has_value())
+        FAIL() << "unreachable";
 
     const LarsenResidue& cen = rec.larsen->central;
     ASSERT_EQ(cen.residue, AminoAcid::ILE);
@@ -109,6 +113,10 @@ TEST_F(LarsenResidueWlAmbiguityTest, PheCdAndCeAreGraphAutomorphic) {
         /*n_chi_axes=*/0);
     ASSERT_TRUE(rec.IsHit()) << "no PHE row at phi=-180,psi=-180";
     ASSERT_TRUE(rec.larsen.has_value());
+    // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
+    // explicit has_value gate makes the deref provably safe. Unreachable.
+    if (!rec.larsen.has_value())
+        FAIL() << "unreachable";
 
     const LarsenResidue& cen = rec.larsen->central;
     ASSERT_EQ(cen.residue, AminoAcid::PHE);

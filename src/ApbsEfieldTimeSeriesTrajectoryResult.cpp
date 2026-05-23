@@ -73,9 +73,7 @@ void ApbsEfieldTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<Vec3>(std::type_index(
-            typeid(ApbsEfieldTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<Vec3>(std::type_index(typeid(ApbsEfieldTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "ApbsEfieldTimeSeriesTrajectoryResult::WriteH5Group",

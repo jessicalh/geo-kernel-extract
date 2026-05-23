@@ -180,6 +180,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
         //   sp3: all other heavy C/N/O atoms (CA, CB, sidechain CH2, etc.)
         //   Unassigned: H, S, and anything we can't classify
         if (identity.element != Element::H && identity.element != Element::S) {
+            // NOLINTBEGIN(bugprone-branch-clone): each branch tests a chemically-distinct property (aromatic / carbonyl-C / peptide-N); shared sp2 outcome is the chemistry, not duplication.
             if (aromatic_atom_set.count(ai) > 0) {
                 ca.hybridisation = Hybridisation::sp2;
             } else if (ai == res.C) {
@@ -189,6 +190,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
             } else {
                 ca.hybridisation = Hybridisation::sp3;
             }
+            // NOLINTEND(bugprone-branch-clone)
         }
 
         // parent_is_sp2: for H atoms, check parent hybridisation.
@@ -198,6 +200,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
             identity.parent_atom_index != SIZE_MAX) {
             size_t const parent = identity.parent_atom_index;
             bool parent_sp2 = false;
+            // NOLINTBEGIN(bugprone-branch-clone): each branch tests a chemically-distinct property of the parent (aromatic / carbonyl-C / peptide-N); shared sp2 outcome is the chemistry.
             if (aromatic_atom_set.count(parent) > 0) {
                 parent_sp2 = true;
             } else if (parent == res.C) {
@@ -205,7 +208,8 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
             } else if (parent == res.N) {
                 parent_sp2 = true;
 }
-            ca.parent_is_sp2 = parent_sp2;
+// NOLINTEND(bugprone-branch-clone)
+ca.parent_is_sp2 = parent_sp2;
         } else {
             ca.parent_is_sp2 = false;
         }

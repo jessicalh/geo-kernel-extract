@@ -199,7 +199,10 @@ TEST(AIMNet2ChargeTimeSeries, FinalizeIdempotency) {
     EXPECT_EQ(buf_second->AtomCount(), N_first);
     EXPECT_EQ(buf_second->StridePerAtom(), T_first);
     // Spot-check: first-Finalize values still present after second call.
-    EXPECT_DOUBLE_EQ(buf_second->At(N / 2, 1), 0.01 * static_cast<double>(N / 2 + 1));
+    // N/2 is the array index (integer-typed by intent); cast inside the
+    // multiplication keeps the expectation in `double` per the buffer dtype.
+    const std::size_t midpoint = N / 2;  // intentional integer division
+    EXPECT_DOUBLE_EQ(buf_second->At(midpoint, 1), 0.01 * static_cast<double>(midpoint + 1));
 }
 
 

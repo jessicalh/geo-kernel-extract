@@ -89,9 +89,8 @@ void LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::Finalize(
 void LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(typeid(
-            LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::WriteH5Group",

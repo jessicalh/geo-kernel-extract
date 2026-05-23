@@ -275,8 +275,15 @@ AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
             continue;
         }
 
-        const std::string residue_key = terminal_token + " " + ff_resname;
-        const std::string residue_prefix = residue_key + " ";
+        std::string residue_key;
+        residue_key.reserve(terminal_token.size() + 1 + ff_resname.size());
+        residue_key.append(terminal_token);
+        residue_key.append(" ");
+        residue_key.append(ff_resname);
+        std::string residue_prefix;
+        residue_prefix.reserve(residue_key.size() + 1);
+        residue_prefix.append(residue_key);
+        residue_prefix.append(" ");
 
         const bool has_template_for_terminal =
             ks.residue_prefixes.count(residue_prefix) > 0;
@@ -306,8 +313,12 @@ AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
                 AtomNameCandidates(atom.pdb_atom_name, res.terminal_state);
             bool atom_found = false;
             for (const auto& aname : candidates) {
-                if (ks.atom_keys.count(
-                        residue_key + " " + aname) > 0) {
+                std::string key;
+                key.reserve(residue_key.size() + 1 + aname.size());
+                key.append(residue_key);
+                key.append(" ");
+                key.append(aname);
+                if (ks.atom_keys.count(key) > 0) {
                     atom_found = true;
                     break;
                 }

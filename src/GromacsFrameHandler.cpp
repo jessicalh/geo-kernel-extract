@@ -12,10 +12,10 @@
 
 namespace nmr {
 
-// nm → Å conversion (TRR stores positions / velocities in nm; our
-// per-frame buffers are in Å / Å/ps to match every other ConformationAtom
-// position field in the system).
-static constexpr float NM_TO_ANGSTROM = 10.0f;
+// nm → Å conversion is applied where TRR positions/velocities enter the
+// per-frame buffers (search for `* 10.0` against `frame.x[i]` etc.). The
+// named constant was removed 2026-05-23 as unused — every conversion in
+// this file is performed inline with the same literal.
 
 
 GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)

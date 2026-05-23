@@ -95,7 +95,7 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
     struct TempGuard {
         std::string path;
         ~TempGuard() { std::error_code ec; fs::remove(path, ec); }
-    } guard{tmp_path};
+    } const guard{tmp_path};
 
     // TOOL BOUNDARY: cif++ parser + libdssp may throw on unusual geometry.
     try {

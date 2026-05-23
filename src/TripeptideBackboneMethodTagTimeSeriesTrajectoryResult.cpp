@@ -97,9 +97,8 @@ void TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::Finalize(
 void TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<std::uint8_t>(std::type_index(typeid(
-            TripeptideBackboneMethodTagTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<std::uint8_t>(std::type_index(typeid(TripeptideBackboneMethodTagTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::WriteH5Group",

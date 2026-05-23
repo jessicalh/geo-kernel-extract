@@ -74,6 +74,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         spec.mode = JobMode::Pdb;
         spec.pdb_path = GetArg(argc, argv, "--pdb");
         std::string const pH_str = GetArg(argc, argv, "--pH");
+        // NOLINTNEXTLINE(cert-err34-c): CLI numeric; malformed input becomes 0.0 silently — pre-existing behaviour, no caller checks errno here.
         if (!pH_str.empty()) spec.pH = std::atof(pH_str.c_str());
 
         if (spec.pdb_path.empty()) {
@@ -174,7 +175,9 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         std::string const s_from_ps = GetArg(argc, argv, "--pdb-from-ps");
         std::string const s_to_ps   = GetArg(argc, argv, "--pdb-to-ps");
         if (!s_stride.empty())  spec.pdb_stride  = std::strtoull(s_stride.c_str(), nullptr, 10);
+        // NOLINTNEXTLINE(cert-err34-c): CLI numeric; malformed input becomes 0.0 silently — pre-existing behaviour.
         if (!s_from_ps.empty()) spec.pdb_from_ps = std::atof(s_from_ps.c_str());
+        // NOLINTNEXTLINE(cert-err34-c): CLI numeric; malformed input becomes 0.0 silently — pre-existing behaviour.
         if (!s_to_ps.empty())   spec.pdb_to_ps   = std::atof(s_to_ps.c_str());
         if (spec.pdb_stride == 0) spec.pdb_stride = 1;  // 0 is meaningless
 

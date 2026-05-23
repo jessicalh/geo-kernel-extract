@@ -8,10 +8,7 @@ namespace nmr {
 // ── Compute (preloaded) ─────────────────────────────────────────
 // Data already looked up by Trajectory::EnergyAtTime.
 
-std::unique_ptr<GromacsEnergyResult> GromacsEnergyResult::Compute(
-        ProteinConformation& conf,
-        const GromacsEnergy& energy) {
-
+std::unique_ptr<GromacsEnergyResult> GromacsEnergyResult::Compute(ProteinConformation& /*conf*/, const GromacsEnergy& energy) {
     auto result = std::make_unique<GromacsEnergyResult>();
     result->energy_ = energy;
     return result;
@@ -20,10 +17,7 @@ std::unique_ptr<GromacsEnergyResult> GromacsEnergyResult::Compute(
 
 // ── WriteFeatures ──────────────────────────────────────────────
 
-int GromacsEnergyResult::WriteFeatures(
-        const ProteinConformation& conf,
-        const std::string& output_dir) const {
-
+int GromacsEnergyResult::WriteFeatures(const ProteinConformation& /*conf*/, const std::string& output_dir) const {
     // Write as a (1, COLS) array: one row of per-frame scalars.
     // Column order matches the GromacsEnergy struct layout.
     std::vector<double> row = {

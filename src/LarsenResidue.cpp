@@ -1271,20 +1271,30 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability
                 }
                 if (!any_match) {
                     if (hinted) {
-                        LogPerceptionFailure(rec, kind_label +
-                            " HIS hinted variant " + std::string(hinted) +
-                            " does not match perceived piece_n=" +
-                            std::to_string(piece.size()) +
-                            "; declining (hint=" +
-                            std::to_string(his_variant_hint) +
-                            " tried " + tried +
-                            ") — DB row's protonation form differs "
-                            "from protein residue.protonation_variant_index");
+                        std::string msg;
+                        msg.reserve(256);
+                        msg.append(kind_label);
+                        msg.append(" HIS hinted variant ");
+                        msg.append(hinted);
+                        msg.append(" does not match perceived piece_n=");
+                        msg.append(std::to_string(piece.size()));
+                        msg.append("; declining (hint=");
+                        msg.append(std::to_string(his_variant_hint));
+                        msg.append(" tried ");
+                        msg.append(tried);
+                        msg.append(") — DB row's protonation form differs "
+                                   "from protein residue.protonation_variant_index");
+                        LogPerceptionFailure(rec, msg);
                     } else {
-                        LogPerceptionFailure(rec, kind_label +
-                            " no HIS variant matched perceived piece_n=" +
-                            std::to_string(piece.size()) +
-                            " (no hint provided; tried " + tried + ")");
+                        std::string msg;
+                        msg.reserve(128);
+                        msg.append(kind_label);
+                        msg.append(" no HIS variant matched perceived piece_n=");
+                        msg.append(std::to_string(piece.size()));
+                        msg.append(" (no hint provided; tried ");
+                        msg.append(tried);
+                        msg.append(")");
+                        LogPerceptionFailure(rec, msg);
                     }
                     return std::nullopt;
                 }

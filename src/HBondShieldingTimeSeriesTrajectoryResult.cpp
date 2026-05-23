@@ -78,9 +78,7 @@ void HBondShieldingTimeSeriesTrajectoryResult::Finalize(
 void HBondShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(
-            typeid(HBondShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(HBondShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "HBondShieldingTimeSeriesTrajectoryResult::WriteH5Group",

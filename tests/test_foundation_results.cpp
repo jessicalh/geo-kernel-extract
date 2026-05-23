@@ -766,8 +766,7 @@ TEST_F(MolecularGraphTest, EnegSum1NonZero) {
     // Atoms with bonds should have non-zero eneg_sum_1
     int nonzero = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        if (protein->AtomAt(ai).bond_indices.size() > 0 &&
-            conf.AtomAt(ai).eneg_sum_1 > 0.0) {
+        if (!protein->AtomAt(ai).bond_indices.empty() && conf.AtomAt(ai).eneg_sum_1 > 0.0) {
             nonzero++;
         }
     }

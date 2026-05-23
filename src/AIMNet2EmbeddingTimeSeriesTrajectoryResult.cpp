@@ -75,8 +75,7 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Finalize(
         " frames, " + std::to_string(per_atom_embedding_.size()) + " atoms");
 }
 
-void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(
-        const TrajectoryProtein& tp, HighFive::File& file) const {
+void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(const TrajectoryProtein& /*tp*/, HighFive::File& file) const {
     const std::size_t N = per_atom_embedding_.size();
     const std::size_t T = n_frames_;
     constexpr std::size_t D = AIMNET2_AIM_DIMS;

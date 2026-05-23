@@ -97,9 +97,7 @@ void LarsenHBondWaterTermTimeSeriesTrajectoryResult::Finalize(
 void LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    auto* buffer = tp
-        .GetDenseBuffer<double>(std::type_index(typeid(
-            LarsenHBondWaterTermTimeSeriesTrajectoryResult)));
+    const auto* buffer = tp.GetDenseBuffer<double>(std::type_index(typeid(LarsenHBondWaterTermTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group",

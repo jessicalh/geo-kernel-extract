@@ -119,9 +119,8 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    auto* buffer = tp
-        .GetDenseBuffer<SphericalTensor>(std::type_index(typeid(
-            MopacMcConnellShieldingTimeSeriesTrajectoryResult)));
+    const auto* buffer =
+        tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(MopacMcConnellShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group",

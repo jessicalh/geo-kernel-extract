@@ -22,26 +22,26 @@ namespace nmr {
 // sum|T2_m|^2 = sum S_ij^2 (Frobenius norm preserved).
 //
 
-SphericalTensor SphericalTensor::Decompose(const Mat3& s) {
+SphericalTensor SphericalTensor::Decompose(const Mat3& tensor) {
     SphericalTensor st;
 
     // T0: isotropic = trace / 3
-    st.T0 = s.trace() / 3.0;
+    st.T0 = tensor.trace() / 3.0;
 
     // T1: antisymmetric pseudovector via Levi-Civita mapping.
     // For antisymmetric A_ij = (s_ij - s_ji)/2, the dual vector is:
     //   v_x = A_yz, v_y = A_zx, v_z = A_xy
-    st.T1[0] = 0.5 * (s(1,2) - s(2,1));
-    st.T1[1] = 0.5 * (s(2,0) - s(0,2));
-    st.T1[2] = 0.5 * (s(0,1) - s(1,0));
+    st.T1[0] = 0.5 * (tensor(1, 2) - tensor(2, 1));
+    st.T1[1] = 0.5 * (tensor(2, 0) - tensor(0, 2));
+    st.T1[2] = 0.5 * (tensor(0, 1) - tensor(1, 0));
 
     // Traceless symmetric part: S_ij = (s_ij + s_ji)/2 - (trace/3)*delta_ij
-    double const Sxx = s(0,0) - st.T0;
-    double const Syy = s(1,1) - st.T0;
-    double const Szz = s(2,2) - st.T0;
-    double const Sxy = 0.5 * (s(0,1) + s(1,0));
-    double const Sxz = 0.5 * (s(0,2) + s(2,0));
-    double const Syz = 0.5 * (s(1,2) + s(2,1));
+    double const Sxx = tensor(0, 0) - st.T0;
+    double const Syy = tensor(1, 1) - st.T0;
+    double const Szz = tensor(2, 2) - st.T0;
+    double const Sxy = 0.5 * (tensor(0, 1) + tensor(1, 0));
+    double const Sxz = 0.5 * (tensor(0, 2) + tensor(2, 0));
+    double const Syz = 0.5 * (tensor(1, 2) + tensor(2, 1));
 
     // T2: isometric real spherical harmonic basis.
     // Coefficients ensure sum|T2_m|^2 = sum S_ij^2 (Frobenius norm preserved).

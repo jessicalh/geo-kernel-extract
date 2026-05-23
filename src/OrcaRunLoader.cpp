@@ -6,10 +6,13 @@
 #include "ForceFieldChargeTable.h"
 #include "OperationLog.h"
 
+#include <cerrno>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <filesystem>
-#include <cstdio>
 
 namespace fs = std::filesystem;
 
@@ -102,20 +105,35 @@ static std::vector<XyzAtom> ReadXyz(const std::string& path) {
     std::string line;
     if (!std::getline(in, line)) return atoms;
     int n = 0;
-    (void)std::sscanf(line.c_str(), "%d", &n);
-    if (n <= 0) return atoms;
+    {
+        char* end = nullptr;
+        errno = 0;
+        const long parsed = std::strtol(line.c_str(), &end, 10);
+        if (errno != 0 || end == line.c_str() || parsed <= 0 || parsed > INT_MAX) {
+            OperationLog::Warn("OrcaRunLoader::ReadXyz", "malformed atom-count header in " + path);
+            return atoms;
+        }
+        n = static_cast<int>(parsed);
+    }
 
     std::getline(in, line);  // title
 
     atoms.reserve(n);
     while (std::getline(in, line) && static_cast<int>(atoms.size()) < n) {
         XyzAtom a;
-        char elem[4] = {};
-        if (std::sscanf(line.c_str(), " %3s %lf %lf %lf",
-                         elem, &a.x, &a.y, &a.z) == 4) {
-            a.element = elem;
-            atoms.push_back(a);
-        }
+        // istringstream parses "Elem x y z" as 4 fields; the stream's
+        // numeric extraction reports failure via operator>>, satisfying
+        // cert-err34-c (no return-value loss like sscanf). Reject and
+        // continue on parse failure; an under-filled `atoms` vector
+        // signals to the caller that the XYZ was truncated/corrupt.
+        std::istringstream iss(line);
+        std::string elem_tok;
+        if (!(iss >> elem_tok >> a.x >> a.y >> a.z))
+            continue;
+        if (elem_tok.size() > 3)
+            continue;
+        a.element = elem_tok;
+        atoms.push_back(a);
     }
     return atoms;
 }

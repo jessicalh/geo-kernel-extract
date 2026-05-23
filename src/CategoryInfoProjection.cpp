@@ -295,6 +295,7 @@ void PackString(char* dst, size_t dst_size,
         }
     }
     std::memset(dst, 0, dst_size);
+    // NOLINTNEXTLINE(bugprone-not-null-terminated-result): fixed-width NPY field, NOT a C-string; the memset above zeros the full slot, and dst_size > src.size() is asserted at the abort path. Numpy structured dtype reads the field by width, not by NUL.
     std::memcpy(dst, src.data(), src.size());
 }
 
@@ -464,7 +465,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         // ── Residue 3-letters ──
         const std::string amber_3 = AmberThreeLetter(res.type, res.protonation_variant_index);
         const std::string iupac_3 = IupacThreeLetter(res.type);
-        const std::string bmrb_3  = iupac_3;  // == IUPAC for std-20
+        const std::string& bmrb_3 = iupac_3;  // == IUPAC for std-20
 
         PackString(reinterpret_cast<char*>(row + off), kS4, amber_3, "amber_residue_3letter", ai); off += kS4;
         PackString(reinterpret_cast<char*>(row + off), kS4, iupac_3, "iupac_residue_3letter", ai); off += kS4;

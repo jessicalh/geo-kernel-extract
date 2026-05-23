@@ -4,12 +4,14 @@
 #include "OperationLog.h"
 #include "RuntimeEnvironment.h"
 
+#include <cerrno>
+#include <climits>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <filesystem>
-#include <cstdlib>
-#include <cstdio>
-#include <cmath>
 
 namespace fs = std::filesystem;
 
@@ -93,10 +95,29 @@ std::vector<PkaResult> KamlProtonator::ParsePkaCsv(const std::string& path) {
         PkaResult r;
         r.residue_type = residue_part.substr(0, dash);
         r.residue_number = 0;
-        (void)std::sscanf(residue_part.substr(dash + 1).c_str(), "%d", &r.residue_number);
+        {
+            const std::string num_str = residue_part.substr(dash + 1);
+            char* end = nullptr;
+            errno = 0;
+            const long parsed = std::strtol(num_str.c_str(), &end, 10);
+            if (errno != 0 || end == num_str.c_str() || parsed < 0 || parsed > INT_MAX) {
+                OperationLog::Warn("KamlProtonator::ParsePkaCsv", "malformed residue number in line: " + line);
+                continue;
+            }
+            r.residue_number = static_cast<int>(parsed);
+        }
         r.chain_id = "A";
         r.pKa = 0.0;
-        (void)std::sscanf(pka_str.c_str(), "%lf", &r.pKa);
+        {
+            char* end = nullptr;
+            errno = 0;
+            const double parsed = std::strtod(pka_str.c_str(), &end);
+            if (errno != 0 || end == pka_str.c_str()) {
+                OperationLog::Warn("KamlProtonator::ParsePkaCsv", "malformed pKa value in line: " + line);
+                continue;
+            }
+            r.pKa = parsed;
+        }
 
         if (r.residue_number > 0 && !r.residue_type.empty()) {
             results.push_back(r);
@@ -142,6 +163,7 @@ std::vector<PkaResult> KamlProtonator::PredictPka(
     std::string const pdb_stem = fs::path(pdb_path).stem().string();
     std::string const cmd = "cd " + dir + " && python3 " + kaml_path +
                       " " + pdb_path + " 2>/dev/null";
+    // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): hardcoded `python3 KaML-CBtree.py`; pdb_path comes from a tempfile this function just wrote — no user input on the shell line. Library is single-threaded at startup; KaML runs synchronously before any worker thread spawns.
     int const rc = std::system(cmd.c_str());
 
     std::string const pka_path = dir + "/" + pdb_stem + "_pka.csv";
@@ -222,6 +244,7 @@ ProtonationResult KamlProtonator::Protonate(
         decision.amino_acid = res.type;
         decision.pKa = pka.pKa;
 
+        // NOLINTBEGIN(bugprone-branch-clone): each per-residue case documents the chemistry of one amino acid; ASP≡GLU and LYS≡ARG body coincidence is per-residue meaning, not duplication.
         switch (res.type) {
             case AminoAcid::ASP:
                 decision.variant_index = protonated ? 0 : -1;
@@ -254,6 +277,7 @@ ProtonationResult KamlProtonator::Protonate(
             default:
                 continue;
         }
+        // NOLINTEND(bugprone-branch-clone)
 
         state.AddResidue(decision);
     }

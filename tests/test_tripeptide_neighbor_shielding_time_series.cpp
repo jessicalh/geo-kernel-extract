@@ -368,7 +368,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, IntegrationFingerprint1P9J) {
                                                         central_seq);
     ASSERT_NE(ca_idx, SIZE_MAX) << "chain A has no central CA";
 
-    const nmr::SphericalTensor& st = buffer->At(ca_idx, /*frame_idx=*/0);
+    const nmr::SphericalTensor& st = buffer->At(ca_idx, /*offset=*/0);
 
     // Print the diagnostic so it can be re-blessed if the pipeline
     // rolls forward.

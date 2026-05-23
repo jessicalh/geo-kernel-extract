@@ -105,14 +105,18 @@ bool VariantIsCappable(const Residue& res) {
     // rescued by capping. Other unsupported variants (TYM, ARN) lack
     // INTERNAL templates too; capping doesn't help, so we refuse.
     if (res.protonation_variant_index < 0) return false;
+    // Per-residue protonation_variant_index meaning is residue-specific
+    // (0=ASH/GLH/LYN, 1=CYM); coincidental same-int per branch should
+    // NOT collapse cases — each branch documents one amino acid's
+    // chemistry.
     switch (res.type) {
         case AminoAcid::ASP:
             return res.protonation_variant_index == 0;  // ASH
         case AminoAcid::CYS:
             return res.protonation_variant_index == 1;  // CYM
-        case AminoAcid::GLU:
+        case AminoAcid::GLU:                            // NOLINT(bugprone-branch-clone)
             return res.protonation_variant_index == 0;  // GLH
-        case AminoAcid::LYS:
+        case AminoAcid::LYS:                            // NOLINT(bugprone-branch-clone)
             return res.protonation_variant_index == 0;  // LYN
         default:
             return false;
@@ -362,5 +366,4 @@ void GenerateLeapScript(const LeapScriptInputs& inputs,
     script_out << "quit\n";
 }
 
-} // namespace nmr::amber_leap
-
+}  // namespace nmr::amber_leap

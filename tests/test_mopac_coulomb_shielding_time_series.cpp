@@ -179,7 +179,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     std::vector<double> flat(N * T * 5);
     ds.read(flat.data());
     double max_mag = 0.0;
-    for (double cell : flat) {
+    for (const double cell : flat) {
         EXPECT_TRUE(std::isfinite(cell));
         max_mag = std::max(max_mag, std::abs(cell));
     }

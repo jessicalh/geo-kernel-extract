@@ -160,6 +160,7 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
         decision.pKa = pka.pKa;
 
         // Map H-H decision to variant_index using AminoAcidType::variants
+        // NOLINTBEGIN(bugprone-branch-clone): each per-residue case documents the chemistry of one amino acid; ASP≡GLU and LYS≡ARG body coincidence is per-residue meaning, not duplication.
         switch (res.type) {
             case AminoAcid::ASP:
                 // protonated → ASH (variant 0), deprotonated → ASP (default, -1)
@@ -209,6 +210,7 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
             default:
                 continue;  // PROPKA may report N-term/C-term; skip
         }
+        // NOLINTEND(bugprone-branch-clone)
 
         state.AddResidue(decision);
     }
@@ -247,6 +249,7 @@ std::vector<PkaResult> PropkaProtonator::PredictPka(
     // TODO: propka path should be a parameter when reintegrated into BuildFromPdb
     std::string const cmd = "cd " + dir + " && propka3" +
                       " --quiet " + pdb_path + " 2>/dev/null";
+    // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): hardcoded `propka3`; pdb_path is a tempfile this function wrote; synchronous, single-tenant.
     int const rc = std::system(cmd.c_str());
 
     // PROPKA writes <stem>.pka in the working directory

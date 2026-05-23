@@ -359,15 +359,17 @@ AtomMechanicalIdentity ProteinIdentityAt(const Protein& protein,
 }
 
 
-bool AssembleCentralTyped(
-        const Protein& protein,
-        const ProteinConformation& conf,
-        std::size_t residue_idx,
-        const TripeptideDftRecord& rec,
-        double validation_threshold_A,
-        bool substrate_check_strict,
-        AssembledTripeptide& out) {
-
+// substrate_check_strict applies to the cap-side (loose mode for ACE/NME);
+// the typed central path is perception-only by design (no relaxed mode).
+// Kept in the signature so AssembleCentral can forward unconditionally
+// and the cap-side parallel API stays uniform.
+bool AssembleCentralTyped(const Protein& protein,
+                          const ProteinConformation& conf,
+                          std::size_t residue_idx,
+                          const TripeptideDftRecord& rec,
+                          double validation_threshold_A,
+                          bool substrate_check_strict,  // NOLINT(misc-unused-parameters)
+                          AssembledTripeptide& out) {
     const Residue& res = protein.ResidueAt(residue_idx);
     if (res.N == Residue::NONE || res.CA == Residue::NONE ||
         res.C == Residue::NONE) {

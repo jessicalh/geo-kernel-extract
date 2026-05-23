@@ -150,6 +150,11 @@ TEST_F(LarsenResidueAgainstSourceLogTest, AaaLogPerceivesCleanly) {
     ASSERT_TRUE(trip.has_value())
         << "perception failed on raw Gaussian log — see "
            "PerceiveLarsenTripeptide warnings";
+    // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
+    // explicit has_value gate just below makes the deref provably safe
+    // to the checker. The gate is unreachable in practice.
+    if (!trip.has_value())
+        FAIL() << "unreachable: ASSERT_TRUE above";
     const auto& t = *trip;
 
     // Same structural invariants as the DB parity test, applied to the

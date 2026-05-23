@@ -661,6 +661,7 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
             bool const has_HZ2 = name_to_idx.find("HZ2") != name_to_idx.end();
             bool const has_HZ3 = name_to_idx.find("HZ3") != name_to_idx.end();
 
+            // NOLINTBEGIN(bugprone-branch-clone): each branch documents a chemically-distinct LYS variant; same `resolved=true` body is coincidental.
             if (has_HZ1 && has_HZ2 && has_HZ3) {
                 resolved = true;  // charged LYS default
             } else if (has_HZ1 || has_HZ2) {
@@ -669,6 +670,7 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
             } else if (has_any_H) {
                 resolved = true;
             }
+            // NOLINTEND(bugprone-branch-clone)
         }
         else if (res.type == AminoAcid::ARG) {
             resolved = true;  // charged ARG default; ARN is not inferred from names
@@ -858,8 +860,7 @@ void Protein::CacheResidueBackboneIndices_Typed() {
                 if (elem == Element::Unknown) continue;
 
                 const AtomMechanicalIdentity id =
-                    topology_generated::ComputeAtomMechanicalIdentity(
-                        elem, atom_name, /*parent_name=*/"");
+                    topology_generated::ComputeAtomMechanicalIdentity(elem, atom_name, /*parent_atom_name=*/"");
 
                 std::vector<size_t> matches =
                     topo.ResidueAtomsWithIdentity(res_idx, id, residues_);

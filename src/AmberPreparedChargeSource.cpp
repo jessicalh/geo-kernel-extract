@@ -337,6 +337,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
     // 3. Run tleap. Stdout/stderr to log file.
     const std::string cmd = tleap_bin + " -f " + script_path +
                             " > " + log_path + " 2>&1";
+    // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): tleap_bin resolved at startup; script_path/log_path are tempfiles this function wrote; synchronous, single-tenant.
     int const rc = std::system(cmd.c_str());
     if (rc != 0 || !fs::exists(prmtop_path)) {
         error_out = "AmberPreparedChargeSource: tleap failed (rc=" +

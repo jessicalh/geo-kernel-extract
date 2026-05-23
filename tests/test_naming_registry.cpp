@@ -1017,14 +1017,14 @@ TEST(NamingApplicatorApplyResidue, LynPreMarkleyShiftWholeResidue) {
         "CE", "HE2", "HE3", "NZ", "HZ1", "HZ2"};
     std::vector<std::string> const parent_names(input_names.size());
 
-    const auto outs = app.ApplyResidue(
-        input_names, parent_names,
-        AminoAcid::LYS,
-        /*variant_index=*/-1,
-        TerminalState::Internal,
-        NamingSource::CifppPdbInput,
-        /*sequence_number=*/28,
-        "A");
+    const auto outs = app.ApplyResidue(input_names,
+                                       parent_names,
+                                       AminoAcid::LYS,
+                                       /*variant_index=*/-1,
+                                       TerminalState::Internal,
+                                       NamingSource::CifppPdbInput,
+                                       /*residue_sequence_number=*/28,
+                                       "A");
     ASSERT_EQ(outs.size(), input_names.size());
 
     // LYN HZ shift fires (AmberFf14SBCanonical source-agnostic):
@@ -1059,14 +1059,14 @@ TEST(NamingApplicatorApplyResidue, IleSnapshotIsIndependentOfPerAtomOrder) {
         "CD", "HD1", "HD2", "HD3"};
     std::vector<std::string> const parent_names(input_names.size());
 
-    const auto outs = app.ApplyResidue(
-        input_names, parent_names,
-        AminoAcid::ILE,
-        /*variant_index=*/-1,
-        TerminalState::Internal,
-        NamingSource::Pdb2gmxAmberRtpDeviation,
-        /*sequence_number=*/1,
-        "A");
+    const auto outs = app.ApplyResidue(input_names,
+                                       parent_names,
+                                       AminoAcid::ILE,
+                                       /*variant_index=*/-1,
+                                       TerminalState::Internal,
+                                       NamingSource::Pdb2gmxAmberRtpDeviation,
+                                       /*residue_sequence_number=*/1,
+                                       "A");
     ASSERT_EQ(outs.size(), input_names.size());
 
     auto find = [&](const std::string& n) -> std::string {

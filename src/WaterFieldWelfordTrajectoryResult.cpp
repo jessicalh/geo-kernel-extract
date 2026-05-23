@@ -349,8 +349,9 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     const std::string kCountSq = "dimensionless";
     const std::string kErate    = "V/Angstrom/ps";
     const std::string kErateSq  = "V^2/Angstrom^2/ps^2";
-    const std::string kEFGrate   = "V/Angstrom^2/ps";
-    const std::string kEFGrateSq = "V^2/Angstrom^4/ps^2";
+    // (kEFGrate / kEFGrateSq removed 2026-05-23: the rate variants on
+    // the gradient tensor are not emitted in this TR — only the scalar
+    // and per-component E-field rates are; the labels never had a writer.)
     const std::string kCountRate   = "count/ps";
     const std::string kCountRateSq = "count^2/ps^2";
 

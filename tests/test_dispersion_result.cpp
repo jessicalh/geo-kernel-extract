@@ -92,7 +92,9 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
 
     // Monotonic decrease through the taper
     double prev = 1.0;
-    for (double r = 4.3; r <= 5.0; r += 0.01) {
+    constexpr int n_taper = 71;  // r in [4.3, 5.0] step 0.01
+    for (int i = 0; i < n_taper; ++i) {
+        const double r = 4.3 + i * 0.01;
         double const s = S(r);
         EXPECT_LE(s, prev + 1e-12)
             << "S must decrease monotonically at r=" << r;
@@ -101,7 +103,9 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
 
     // Smoothness: S(r)/r^6 should decrease monotonically for all r > MIN_DISTANCE
     double prev_weighted = 1e10;
-    for (double r = 1.6; r < 5.0; r += 0.05) {
+    constexpr int n_smooth = 68;  // r in [1.6, 5.0) step 0.05
+    for (int i = 0; i < n_smooth; ++i) {
+        const double r = 1.6 + i * 0.05;
         double const weighted = S(r) / std::pow(r, 6);
         EXPECT_LE(weighted, prev_weighted + 1e-12)
             << "S/r^6 must decrease monotonically at r=" << r;

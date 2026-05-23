@@ -56,10 +56,22 @@ if ! printf '%s\n' "${PASSTHRU_ARGS[@]}" | grep -qE '^-j'; then
     PASSTHRU_ARGS+=("-j" "${DEFAULT_J}")
 fi
 
-# Build file regex: when single-TU, regex matches exactly that path;
-# when no args, regex matches our in-tree TUs only (src/tests/fileformat).
+# Build file regex: when single-TU, regex matches anything ending in
+# the given path (compile_commands.json uses absolute paths); when no
+# args, regex matches our in-tree TUs only (src/tests/fileformat).
 if [[ ${#TARGETS[@]} -gt 0 ]]; then
-    FILE_REGEX="^($(IFS=\|; printf '%s' "${TARGETS[*]}"))\$"
+    # Strip ./ prefix if present, then build alternation matching the
+    # absolute path's suffix.
+    ESCAPED=()
+    for t in "${TARGETS[@]}"; do
+        t="${t#./}"
+        ESCAPED+=("$(printf '%s' "$t" | sed 's,/,\\/,g; s,\.,\\.,g')")
+    done
+    FILE_REGEX="(${ESCAPED[0]}$"
+    for ((i=1; i<${#ESCAPED[@]}; i++)); do
+        FILE_REGEX+="|${ESCAPED[i]}$"
+    done
+    FILE_REGEX+=")"
 else
     FILE_REGEX='^.*/(src|tests|fileformat)/[^/]+\.(cpp|cc)$'
 fi
@@ -81,7 +93,7 @@ root = os.getcwd()
 warn_re = re.compile(
     r'^(?P<path>[^:]+):(?P<line>\d+):(?P<col>\d+): '
     r'(?P<level>warning|error): '
-    r'(?P<msg>.*?) \[(?P<check>[a-z]+(?:-[a-z0-9]+)*)\]\s*$'
+    r'(?P<msg>.*?) \[(?P<check>[a-zA-Z0-9_.,-]+)\]\s*$'
 )
 findings = []
 with open("${OUT_RAW}") as f:

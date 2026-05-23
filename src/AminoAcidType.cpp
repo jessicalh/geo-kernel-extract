@@ -278,7 +278,7 @@ std::string BaseFfPortNameFromGromacsRtp(const std::string& rtp) {
 }
 
 std::string CanonicalThreeLetterFromGromacsRtp(const std::string& rtp) {
-    const std::string base = BaseFfPortNameFromGromacsRtp(rtp);
+    std::string base = BaseFfPortNameFromGromacsRtp(rtp);
 
     // Map known FF-port variant names to their canonical 3-letter parent.
     if (base == "HID" || base == "HIE" || base == "HIP" ||

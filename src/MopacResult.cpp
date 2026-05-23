@@ -269,8 +269,10 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     // OMP_NUM_THREADS: belt-and-suspenders with the THREADS keyword.
     // These are process-global but MOPAC is the only OpenMP consumer here
     // and we run one protein at a time (no concurrent mozyme_scf calls).
+    // NOLINTBEGIN(concurrency-mt-unsafe): comment above documents the single-tenant-OpenMP invariant; setenv before the synchronous MOPAC subprocess.
     setenv("OMP_STACKSIZE", "2G", 1);
     setenv("OMP_NUM_THREADS", std::to_string(threads).c_str(), 1);
+    // NOLINTEND(concurrency-mt-unsafe)
 
     OperationLog::Scope const scope("MopacResult::Compute",
         "atoms=" + std::to_string(natoms) +
@@ -313,6 +315,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     std::string const cmd = "OMP_STACKSIZE=2G OMP_NUM_THREADS=" +
         std::to_string(threads) + " " + mopac_bin + " " + mop_path +
         " > /dev/null 2>&1";
+    // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): mopac_bin is a path resolved at RuntimeEnvironment startup (no user input); mop_path is a tempfile this function wrote; synchronous, single-tenant.
     int const rc = std::system(cmd.c_str());
 
     // MOPAC writes .out alongside .mop (same stem, different extension)
@@ -448,20 +451,20 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
 // Query methods
 // ============================================================================
 
-double MopacResult::ChargeAt(size_t i) const {
-    return (i < charges_.size()) ? charges_[i] : 0.0;
+double MopacResult::ChargeAt(size_t atom_index) const {
+    return (atom_index < charges_.size()) ? charges_[atom_index] : 0.0;
 }
 
-double MopacResult::SPopAt(size_t i) const {
-    return (i < s_pop_.size()) ? s_pop_[i] : 0.0;
+double MopacResult::SPopAt(size_t atom_index) const {
+    return (atom_index < s_pop_.size()) ? s_pop_[atom_index] : 0.0;
 }
 
-double MopacResult::PPopAt(size_t i) const {
-    return (i < p_pop_.size()) ? p_pop_[i] : 0.0;
+double MopacResult::PPopAt(size_t atom_index) const {
+    return (atom_index < p_pop_.size()) ? p_pop_[atom_index] : 0.0;
 }
 
-double MopacResult::ValencyAt(size_t i) const {
-    return (i < valencies_.size()) ? valencies_[i] : 0.0;
+double MopacResult::ValencyAt(size_t atom_index) const {
+    return (atom_index < valencies_.size()) ? valencies_[atom_index] : 0.0;
 }
 
 double MopacResult::BondOrder(size_t atom_a, size_t atom_b) const {

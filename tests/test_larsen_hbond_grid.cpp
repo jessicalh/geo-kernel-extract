@@ -240,9 +240,15 @@ TEST_F(LarsenHBondGridTest, InterpolationProducesFiniteOutput) {
 TEST_F(LarsenHBondGridTest, ImputedCornersAreReported) {
     int n_imputed = 0;
     int n_total = 0;
-    for (double r = 1.8; r <= 4.0; r += 0.2) {
-        for (double th = 90.0; th <= 180.0; th += 10.0) {
-            for (double rho = -180.0; rho < 180.0; rho += 30.0) {
+    constexpr int n_r = 12;    // r   in [1.8, 4.0] step 0.2
+    constexpr int n_th = 10;   // th  in [90, 180]  step 10
+    constexpr int n_rho = 12;  // rho in [-180, 180) step 30
+    for (int ir = 0; ir < n_r; ++ir) {
+        const double r = 1.8 + ir * 0.2;
+        for (int ith = 0; ith < n_th; ++ith) {
+            const double th = 90.0 + ith * 10.0;
+            for (int irho = 0; irho < n_rho; ++irho) {
+                const double rho = -180.0 + irho * 30.0;
                 auto rec = grid->QueryNearest(
                     HBondDonorClass::AlphaHydrogen,
                     HBondAcceptorClass::BackboneCarbonyl,
