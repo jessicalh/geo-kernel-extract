@@ -70,8 +70,9 @@ public:
     // Records of one kind in push order.
     std::vector<const Record*> ByKind(std::type_index kind) const {
         std::vector<const Record*> out;
-        for (const auto& r : records_)
+        for (const auto& r : records_) {
             if (r.kind == kind) out.push_back(&r);
+}
         return out;
     }
     template <typename T>
@@ -83,9 +84,11 @@ public:
     std::vector<const Record*> ByKindSinceFrame(
             std::type_index kind, std::size_t from_frame) const {
         std::vector<const Record*> out;
-        for (const auto& r : records_)
-            if (r.kind == kind && r.frame_idx >= from_frame)
+        for (const auto& r : records_) {
+            if (r.kind == kind && r.frame_idx >= from_frame) {
                 out.push_back(&r);
+}
+}
         return out;
     }
     template <typename T>
@@ -97,9 +100,11 @@ public:
     std::vector<const Record*> ByKindSinceTime(
             std::type_index kind, double since_time_ps) const {
         std::vector<const Record*> out;
-        for (const auto& r : records_)
-            if (r.kind == kind && r.time_ps >= since_time_ps)
+        for (const auto& r : records_) {
+            if (r.kind == kind && r.time_ps >= since_time_ps) {
                 out.push_back(&r);
+}
+}
         return out;
     }
     template <typename T>
@@ -109,8 +114,9 @@ public:
 
     // Most recent record of kind by push order; nullptr if none.
     const Record* MostRecent(std::type_index kind) const {
-        for (auto it = records_.rbegin(); it != records_.rend(); ++it)
+        for (auto it = records_.rbegin(); it != records_.rend(); ++it) {
             if (it->kind == kind) return &*it;
+}
         return nullptr;
     }
     template <typename T>

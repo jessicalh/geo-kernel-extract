@@ -71,7 +71,7 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
     res.atom_indices = {0, 1, 2};
     protein->AddResidue(res);
 
-    std::vector<Vec3> positions = {
+    std::vector<Vec3> const positions = {
         Vec3(0.0, 0.0, 0.0),   // atom 0: source, q = +0.5
         Vec3(0.0, 3.0, 0.0),   // atom 1: source, q = -0.3
         Vec3(3.0, 0.0, 0.0)    // atom 2: observer, q = 0
@@ -85,7 +85,7 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
 
     // ChargeAssignmentResult: stub first, then overwrite with known values.
     // Stub assigns uniform 0.1; we overwrite AFTER attachment.
-    conf.AttachResult(ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str()));
+    conf.AttachResult(ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams()));
 
     conf.MutableAtomAt(0).partial_charge = 0.5;
     conf.MutableAtomAt(1).partial_charge = -0.3;
@@ -105,24 +105,24 @@ TEST(CoulombAnalytical, TwoChargesKnownGeometry) {
         << "Observer should see non-zero E-field";
 
     // EFG should be traceless
-    double trace = ca.coulomb_EFG_total.trace();
+    double const trace = ca.coulomb_EFG_total.trace();
     EXPECT_NEAR(trace, 0.0, 1e-10)
         << "EFG must be traceless (Gauss's law)";
 
     // Verify analytically: E at atom 2 from atom 0 only
     // r = (3,0,0), |r| = 3, r^3 = 27
     // E = ke * 0.5 * (3,0,0) / 27 = ke * (1/18, 0, 0)
-    double E_x_from_0 = COULOMB_KE * 0.5 * 3.0 / 27.0;  // ke/18
-    double E_y_from_0 = 0.0;
+    double const E_x_from_0 = COULOMB_KE * 0.5 * 3.0 / 27.0;  // ke/18
+    double const E_y_from_0 = 0.0;
 
     // E from atom 1: r = (3,-3,0), |r| = 3*sqrt(2), r^3 = 54*sqrt(2)
-    double r1 = 3.0 * std::sqrt(2.0);
-    double r1_3 = r1 * r1 * r1;
-    double E_x_from_1 = COULOMB_KE * (-0.3) * 3.0 / r1_3;
-    double E_y_from_1 = COULOMB_KE * (-0.3) * (-3.0) / r1_3;
+    double const r1 = 3.0 * std::sqrt(2.0);
+    double const r1_3 = r1 * r1 * r1;
+    double const E_x_from_1 = COULOMB_KE * (-0.3) * 3.0 / r1_3;
+    double const E_y_from_1 = COULOMB_KE * (-0.3) * (-3.0) / r1_3;
 
-    double E_x_expected = E_x_from_0 + E_x_from_1;
-    double E_y_expected = E_y_from_0 + E_y_from_1;
+    double const E_x_expected = E_x_from_0 + E_x_from_1;
+    double const E_y_expected = E_y_from_0 + E_y_from_1;
 
     EXPECT_NEAR(ca.coulomb_E_total(0), E_x_expected, 1e-8)
         << "E_x should match analytical value";
@@ -188,12 +188,12 @@ TEST_F(CoulombProteinTest, EFieldNonZeroForAllAtoms) {
     int nonzero = 0;
     double sum_mag = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double mag = conf.AtomAt(ai).coulomb_E_magnitude;
+        double const mag = conf.AtomAt(ai).coulomb_E_magnitude;
         if (mag > 1e-10) nonzero++;
         sum_mag += mag;
     }
 
-    double mean = sum_mag / static_cast<double>(conf.AtomCount());
+    double const mean = sum_mag / static_cast<double>(conf.AtomCount());
     EXPECT_EQ(nonzero, static_cast<int>(conf.AtomCount()))
         << "Every atom should have non-zero E-field";
 
@@ -212,7 +212,7 @@ TEST_F(CoulombProteinTest, EFGIsTraceless) {
 
     double max_trace = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double trace = std::abs(conf.AtomAt(ai).coulomb_EFG_total.trace());
+        double const trace = std::abs(conf.AtomAt(ai).coulomb_EFG_total.trace());
         max_trace = std::max(max_trace, trace);
     }
 
@@ -228,20 +228,20 @@ TEST_F(CoulombProteinTest, DecompositionSumsToTotal) {
     conf.AttachResult(CoulombResult::Compute(conf));
 
     double max_E_diff = 0.0;
-    double max_EFG_diff = 0.0;
+    double const max_EFG_diff = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
 
         // E_total = E_backbone + E_sidechain + E_aromatic
-        Vec3 E_sum = ca.coulomb_E_backbone + ca.coulomb_E_sidechain
+        Vec3 const E_sum = ca.coulomb_E_backbone + ca.coulomb_E_sidechain
                    + ca.coulomb_E_aromatic;
-        double E_diff = (ca.coulomb_E_total - E_sum).norm();
+        double const E_diff = (ca.coulomb_E_total - E_sum).norm();
         max_E_diff = std::max(max_E_diff, E_diff);
 
         // EFG_total = EFG_backbone + EFG_sidechain + EFG_aromatic
         // (sidechain EFG not stored separately, but total - backbone - aromatic
         //  should give it)
-        Mat3 EFG_sum = ca.coulomb_EFG_backbone + ca.coulomb_EFG_aromatic;
+        Mat3 const EFG_sum = ca.coulomb_EFG_backbone + ca.coulomb_EFG_aromatic;
         // We don't have EFG_sidechain stored as Mat3, but the total should
         // equal backbone + sidechain + aromatic. Check E decomposition only.
     }
@@ -261,7 +261,7 @@ TEST_F(CoulombProteinTest, BackboneFractionIsReasonable) {
     int count = 0;
     int positive = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double proj = conf.AtomAt(ai).coulomb_E_backbone_frac;
+        double const proj = conf.AtomAt(ai).coulomb_E_backbone_frac;
         // Projection of E_backbone along E_total direction.
         // Positive = backbone aligned with total. Negative = opposed.
         // Bounded by |E_backbone|.
@@ -270,7 +270,7 @@ TEST_F(CoulombProteinTest, BackboneFractionIsReasonable) {
         count++;
     }
 
-    double mean_proj = sum_proj / count;
+    double const mean_proj = sum_proj / count;
     // Most atoms should have positive projection (backbone dominates)
     EXPECT_GT(positive, count / 2)
         << "Majority of atoms should have backbone aligned with total E";
@@ -289,7 +289,7 @@ TEST_F(CoulombProteinTest, T2IsNonZero) {
     int nonzero_t2 = 0;
     double max_t2 = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double t2 = conf.AtomAt(ai).coulomb_EFG_total_spherical.T2Magnitude();
+        double const t2 = conf.AtomAt(ai).coulomb_EFG_total_spherical.T2Magnitude();
         if (t2 > 1e-8) nonzero_t2++;
         max_t2 = std::max(max_t2, t2);
     }
@@ -313,8 +313,9 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -322,7 +323,7 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
     auto& conf = load.protein->Conformation();
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource charge_source(files.prmtop_path);
+    PrmtopChargeSource const charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
     conf.AttachResult(SpatialIndexResult::Compute(conf));
 
@@ -331,12 +332,13 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
     conf.AttachResult(std::move(coulomb));
 
     // Summary
-    double min_E = 1e30, max_E = 0;
+    double min_E = 1e30;
+    double max_E = 0;
     double max_t2 = 0;
     double max_trace = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
-        double E_mag = ca.coulomb_E_magnitude;
+        double const E_mag = ca.coulomb_E_magnitude;
         min_E = std::min(min_E, E_mag);
         max_E = std::max(max_E, E_mag);
         max_t2 = std::max(max_t2, ca.coulomb_EFG_total_spherical.T2Magnitude());
@@ -362,8 +364,9 @@ TEST(CoulombOrcaTest, RunOnProtonatedProtein) {
 // ============================================================================
 
 TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
-    if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated()) || !fs::exists(nmr::test::TestEnvironment::Ff14sbParams()))
+    if (!fs::exists(nmr::test::TestEnvironment::UbqProtonated()) || !fs::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
         GTEST_SKIP() << "Test data not found";
+}
 
     auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
     if (!r.Ok()) GTEST_SKIP() << r.error;
@@ -386,8 +389,8 @@ TEST(CoulombApbsComparison, SolventContributionIsReasonable) {
     int count = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
-        double solv_mag = ca.coulomb_E_solvent.norm();
-        double vac_mag = ca.coulomb_E_magnitude;
+        double const solv_mag = ca.coulomb_E_solvent.norm();
+        double const vac_mag = ca.coulomb_E_magnitude;
         if (solv_mag > 1e-10) has_solvent++;
         if (vac_mag > 1e-6) {
             mean_ratio += solv_mag / vac_mag;

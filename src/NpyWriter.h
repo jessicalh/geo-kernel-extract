@@ -71,8 +71,8 @@ private:
         hdr << "), }";
 
         std::string h = hdr.str();
-        size_t total = 10 + h.size() + 1;
-        size_t pad = (64 - (total % 64)) % 64;
+        size_t const total = 10 + h.size() + 1;
+        size_t const pad = (64 - (total % 64)) % 64;
         h.append(pad, ' ');
         h += '\n';
 

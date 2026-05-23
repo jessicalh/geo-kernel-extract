@@ -67,10 +67,12 @@ void LoadCalculatorConfig() {
 nmr::SphericalTensor SyntheticTensor(size_t i, size_t t) {
     nmr::SphericalTensor s;
     s.T0 = static_cast<double>(i) + static_cast<double>(t) * 100.0;
-    for (size_t k = 0; k < 3; ++k)
+    for (size_t k = 0; k < 3; ++k) {
         s.T1[k] = static_cast<double>(i) + t * 100.0 + (k + 1) * 1e-2;
-    for (size_t k = 0; k < 5; ++k)
+}
+    for (size_t k = 0; k < 5; ++k) {
         s.T2[k] = static_cast<double>(i) + t * 100.0 + (k + 1) * 1e-3;
+}
     return s;
 }
 bool SphericalEqual(const nmr::SphericalTensor& a, const nmr::SphericalTensor& b, double tol) {
@@ -96,12 +98,13 @@ TEST(HBondShieldingTimeSeries, SyntheticFourFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 4;
-    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
-        for (size_t i = 0; i < Ntp; ++i)
+        for (size_t i = 0; i < Ntp; ++i) {
             conf->MutableAtomAt(i).hbond_shielding_contribution = SyntheticTensor(i, t);
+}
         tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
     }
     tr->Finalize(tp, traj);
@@ -110,14 +113,16 @@ TEST(HBondShieldingTimeSeries, SyntheticFourFrames) {
         nmr::HBondShieldingTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
-    for (size_t i : {size_t(0), Ntp / 2, Ntp - 1})
-        for (size_t t = 0; t < kFrames; ++t)
+    for (size_t const i : {static_cast<size_t>(0), Ntp / 2, Ntp - 1}) {
+        for (size_t t = 0; t < kFrames; ++t) {
             EXPECT_TRUE(SphericalEqual(buf->At(i, t), SyntheticTensor(i, t), 1e-12));
+}
+}
 
     const std::string h5_path = (fs::temp_directory_path() /
         ("hbond_shielding_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/hbond_shielding_time_series"));
     fs::remove(h5_path);
 }
@@ -145,7 +150,7 @@ TEST(HBondShieldingTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 }
@@ -172,7 +177,7 @@ TEST(HBondShieldingTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::SphericalTensor>(
@@ -208,16 +213,17 @@ TEST(HBondShieldingTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HBondShieldingTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("hbond_shielding_ts_h5_roundtrip_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/hbond_shielding_time_series");
-    std::string parity, units;
+    std::string parity;
+    std::string units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     EXPECT_EQ(parity, "0e+1o+2e");
@@ -248,7 +254,7 @@ TEST(HBondShieldingTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf = tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(

@@ -16,7 +16,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,
         const ChargeSource& source) {
 
-    OperationLog::Scope scope("ChargeAssignmentResult::Compute",
+    OperationLog::Scope const scope("ChargeAssignmentResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " source=" + source.Describe());
 
@@ -73,7 +73,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,
         const std::string& param_file_path) {
 
-    ParamFileChargeSource source(param_file_path);
+    ParamFileChargeSource const source(param_file_path);
     return Compute(conf, source);
 }
 
@@ -88,7 +88,7 @@ double ChargeAssignmentResult::PbRadiusAt(size_t atom_index) const {
 
 const ForceFieldChargeTable& ChargeAssignmentResult::ChargeTable() const {
     if (!charge_table_) {
-        fprintf(stderr, "FATAL: ChargeAssignmentResult has no charge table.\n");
+        (void)fprintf(stderr, "FATAL: ChargeAssignmentResult has no charge table.\n");
         std::abort();
     }
     return *charge_table_;

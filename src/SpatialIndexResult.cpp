@@ -8,7 +8,7 @@ namespace nmr {
 std::unique_ptr<SpatialIndexResult> SpatialIndexResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("SpatialIndexResult::Compute",
+    OperationLog::Scope const scope("SpatialIndexResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     auto result = std::make_unique<SpatialIndexResult>();
@@ -74,10 +74,10 @@ std::unique_ptr<SpatialIndexResult> SpatialIndexResult::Compute(
         for (const auto& match : matches) {
             if (match.first == ai) continue;  // skip self
 
-            double dist = std::sqrt(match.second);
+            double const dist = std::sqrt(match.second);
             if (dist < 1e-12) continue;  // degenerate
 
-            Vec3 direction = (positions[match.first] - pos) / dist;
+            Vec3 const direction = (positions[match.first] - pos) / dist;
 
             AtomNeighbour nb;
             nb.atom_index = match.first;
@@ -92,7 +92,7 @@ std::unique_ptr<SpatialIndexResult> SpatialIndexResult::Compute(
     size_t min_neighbours = SIZE_MAX;
     size_t max_neighbours = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        size_t n = conf.AtomAt(ai).spatial_neighbours.size();
+        size_t const n = conf.AtomAt(ai).spatial_neighbours.size();
         total_neighbours += n;
         if (n < min_neighbours) min_neighbours = n;
         if (n > max_neighbours) max_neighbours = n;
@@ -126,7 +126,7 @@ std::vector<size_t> SpatialIndexResult::KNearestAtoms(
     double query_pt[3] = { point.x(), point.y(), point.z() };
     std::vector<size_t> indices(k);
     std::vector<double> dists(k);
-    size_t found = atom_tree_->knnSearch(query_pt, k, indices.data(), dists.data());
+    size_t const found = atom_tree_->knnSearch(query_pt, k, indices.data(), dists.data());
     indices.resize(found);
     return indices;
 }

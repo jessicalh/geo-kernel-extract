@@ -126,7 +126,7 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
                 flat[base + 2] = v.z();
             }
         }
-        HighFive::DataSpace space({N, T, std::size_t(3)});
+        HighFive::DataSpace const space({N, T, static_cast<std::size_t>(3)});
         HighFive::DataSetCreateProps props;
         props.add(HighFive::Chunking(std::vector<hsize_t>{
             static_cast<hsize_t>(N),
@@ -145,7 +145,7 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
                 flat[i * T + f] = atom_frames[f];
             }
         }
-        HighFive::DataSpace space({N, T});
+        HighFive::DataSpace const space({N, T});
         HighFive::DataSetCreateProps props;
         props.add(HighFive::Chunking(std::vector<hsize_t>{
             static_cast<hsize_t>(N),

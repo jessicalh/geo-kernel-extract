@@ -32,7 +32,7 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     const size_t N = conf.AtomCount();
     const Protein& protein = conf.ProteinRef();
 
-    OperationLog::Scope scope("EeqResult::Compute",
+    OperationLog::Scope const scope("EeqResult::Compute",
         "atoms=" + std::to_string(N));
 
     // ── Named constants from TOML (no buried literals) ──────────────
@@ -50,10 +50,11 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     std::vector<D4EeqParams> params(N);
     int n_fallback = 0;
     for (size_t i = 0; i < N; ++i) {
-        Element el = protein.AtomAt(i).element;
+        Element const el = protein.AtomAt(i).element;
         params[i] = D4EeqParamsFor(el);
-        if (el == Element::Unknown || el == Element::S)
+        if (el == Element::Unknown || el == Element::S) {
             ++n_fallback;  // S uses real params; Unknown uses fallback
+}
     }
 
     Eigen::MatrixXd pos(N, 3);
@@ -89,17 +90,17 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     for (size_t i = 0; i < N; ++i) {
         for (size_t j = i + 1; j < N; ++j) {
-            double dx = pos(i, 0) - pos(j, 0);
-            double dy = pos(i, 1) - pos(j, 1);
-            double dz = pos(i, 2) - pos(j, 2);
-            double R2 = dx * dx + dy * dy + dz * dz;
+            double const dx = pos(i, 0) - pos(j, 0);
+            double const dy = pos(i, 1) - pos(j, 1);
+            double const dz = pos(i, 2) - pos(j, 2);
+            double const R2 = dx * dx + dy * dy + dz * dz;
             if (R2 > cn_cutoff_bohr_sq) {
                 ++cn_pairs_skipped;
                 continue;
             }
-            double R = std::sqrt(R2);
-            double rcov_sum = params[i].rcov + params[j].rcov;
-            double count = 0.5 * std::erfc(cn_k * (R / rcov_sum - 1.0));
+            double const R = std::sqrt(R2);
+            double const rcov_sum = params[i].rcov + params[j].rcov;
+            double const count = 0.5 * std::erfc(cn_k * (R / rcov_sum - 1.0));
             cn(i) += count;
             cn(j) += count;
             ++cn_pairs_counted;
@@ -111,9 +112,10 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     // χ_eff = χ + κ · √(CN + ε)
 
     Eigen::VectorXd chi_eff(N);
-    for (size_t i = 0; i < N; ++i)
+    for (size_t i = 0; i < N; ++i) {
         chi_eff(i) = params[i].chi
                    + params[i].kappa * std::sqrt(cn(i) + 1e-14);
+}
                                                 // 1e-14: dftd4 guard against sqrt(0)
 
     // ── Step 3: Coulomb matrix A (N×N, symmetric positive definite) ─
@@ -139,12 +141,12 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         // distribution.  Makes the matrix diagonally dominant → SPD.
         A(i, i) = params[i].gam + SQRT_2_OVER_PI / params[i].rad;
         for (size_t j = i + 1; j < N; ++j) {
-            double dx = pos(i, 0) - pos(j, 0);
-            double dy = pos(i, 1) - pos(j, 1);
-            double dz = pos(i, 2) - pos(j, 2);
-            double R2 = dx * dx + dy * dy + dz * dz;
-            double gam_prod_inv = 1.0 / (params[i].gam * params[j].gam);
-            double gamma = 1.0 / std::sqrt(R2 + gam_prod_inv);
+            double const dx = pos(i, 0) - pos(j, 0);
+            double const dy = pos(i, 1) - pos(j, 1);
+            double const dz = pos(i, 2) - pos(j, 2);
+            double const R2 = dx * dx + dy * dy + dz * dz;
+            double const gam_prod_inv = 1.0 / (params[i].gam * params[j].gam);
+            double const gamma = 1.0 / std::sqrt(R2 + gam_prod_inv);
             A(i, j) = gamma;
             A(j, i) = gamma;
         }
@@ -163,7 +165,7 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     // Cholesky (LLT): the matrix is SPD because the diagonal includes
     // both the hardness η and the self-Coulomb √(2/π)/r correction,
     // which together dominate the off-diagonal Ohno-Klopman γ values.
-    Eigen::LLT<Eigen::MatrixXd> chol(A);
+    Eigen::LLT<Eigen::MatrixXd> const chol(A);
     if (chol.info() != Eigen::Success) {
         OperationLog::Error("EeqResult",
             "Cholesky decomposition failed (N=" + std::to_string(N) +
@@ -171,24 +173,24 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         return nullptr;
     }
 
-    Eigen::VectorXd u = chol.solve(chi_eff);
-    Eigen::VectorXd ones = Eigen::VectorXd::Ones(N);
-    Eigen::VectorXd v = chol.solve(ones);
+    Eigen::VectorXd const u = chol.solve(chi_eff);
+    Eigen::VectorXd const ones = Eigen::VectorXd::Ones(N);
+    Eigen::VectorXd const v = chol.solve(ones);
 
-    double denom = ones.dot(v);
+    double const denom = ones.dot(v);
     if (std::abs(denom) < 1e-30) {
         OperationLog::Error("EeqResult", "charge constraint denominator is zero");
         return nullptr;
     }
 
-    double lambda = -(Q_total + ones.dot(u)) / denom;
+    double const lambda = -(Q_total + ones.dot(u)) / denom;
     Eigen::VectorXd q = -(u + lambda * v);
 
     // Enforce exact charge neutrality.  The block elimination is
     // algebraically exact but the Cholesky solve introduces residual
     // proportional to cond(A).  A uniform shift preserves per-atom
     // charge differences.  Standard practice in EEQ implementations.
-    double q_residual = q.sum() - Q_total;
+    double const q_residual = q.sum() - Q_total;
     q.array() -= q_residual / static_cast<double>(N);
 
     // ── Step 5: store charges with clamp guard ──────────────────────
@@ -203,7 +205,7 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
         double qi = q(i);
         if (std::abs(qi) > charge_clamp) {
-            double original = qi;
+            double const original = qi;
             qi = (qi > 0) ? charge_clamp : -charge_clamp;
             ++n_clamped;
 
@@ -222,9 +224,11 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     // ── Charge statistics ───────────────────────────────────────────
 
-    double q_sum = 0.0, q_min = q(0), q_max = q(0);
+    double q_sum = 0.0;
+    double q_min = q(0);
+    double q_max = q(0);
     for (size_t i = 0; i < N; ++i) {
-        double qi = conf.AtomAt(i).eeq_charge;
+        double const qi = conf.AtomAt(i).eeq_charge;
         q_sum += qi;
         if (qi < q_min) q_min = qi;
         if (qi > q_max) q_max = qi;
@@ -265,16 +269,18 @@ int EeqResult::WriteFeatures(
     // eeq_charges: (N,) — partial charges in elementary charges
     {
         std::vector<double> data(N);
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < N; ++i) {
             data[i] = conf.AtomAt(i).eeq_charge;
+}
         NpyWriter::WriteFloat64(output_dir + "/eeq_charges.npy", data.data(), N);
     }
 
     // eeq_cn: (N,) — coordination number (intermediate, for traceability)
     {
         std::vector<double> data(N);
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < N; ++i) {
             data[i] = conf.AtomAt(i).eeq_cn;
+}
         NpyWriter::WriteFloat64(output_dir + "/eeq_cn.npy", data.data(), N);
     }
 

@@ -79,7 +79,7 @@ TEST(SasaWelford, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -103,7 +103,7 @@ TEST(SasaWelford, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::SasaWelfordTrajectoryResult>();
@@ -130,7 +130,7 @@ TEST(SasaWelford, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::SasaWelfordTrajectoryResult>();
@@ -142,7 +142,7 @@ TEST(SasaWelford, H5RoundTrip) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/sasa_welford"));
     auto grp = reopen.getGroup("/trajectory/sasa_welford");
 
@@ -170,7 +170,7 @@ TEST(SasaWelford, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 

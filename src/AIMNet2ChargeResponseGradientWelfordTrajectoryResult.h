@@ -1,21 +1,21 @@
 #pragma once
 //
-// AIMNet2PolarisabilityWelfordTrajectoryResult: AV companion to
-// AIMNet2PolarisabilityTimeSeriesTrajectoryResult (TR #3 of the
+// AIMNet2ChargeResponseGradientWelfordTrajectoryResult: AV companion to
+// AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult (TR #3 of the
 // AIMNet2 fleet trio). Per-atom Welford rollup of the four
 // channels — three Cartesian Vec3 components + one scalar L2 norm
 // of the polarisability gradient ∂L/∂r_i where L = Σ_j q_j².
 //
 // AV (Always-valid) pattern: each Compute updates the per-atom
-// WelfordMoments on TrajectoryAtom::aimnet2_polarisability_welford;
+// WelfordMoments on TrajectoryAtom::aimnet2_charge_response_gradient_welford;
 // Finalize writes the means/variances to H5. Source-attached gate
 // matches the TS pair: Compute checks
-// HasResult<AIMNet2PolarisabilityResult>() and skips the update on
+// HasResult<AIMNet2ChargeResponseGradientResult>() and skips the update on
 // absent frames (records mask=0 for SDK provenance). Production
 // trajectory pipelines RequireConformationResult'd it at line 167
 // of RunConfiguration.cpp so all frames should attach.
 //
-// Emission (/trajectory/aimnet2_polarisability_welford/) — full
+// Emission (/trajectory/aimnet2_charge_response_gradient_welford/) — full
 // canonical Welford row per sibling TR convention (HydrationGeometry /
 // BsWelford / HmWelford); WelfordFinalize derives std + NaN-fills n=0.
 //   vector_mean         (N, 3) float64 — per-component mean (e²/Å)
@@ -43,7 +43,7 @@
 //   frame_times              (T,) float64
 //
 // Attrs:
-//   result_name             = "AIMNet2PolarisabilityWelfordTrajectoryResult"
+//   result_name             = "AIMNet2ChargeResponseGradientWelfordTrajectoryResult"
 //   n_atoms, n_frames, source_attached_count, finalized
 //   units_vector            = "e^2/Angstrom"
 //   units_scalar            = "e^2/Angstrom"
@@ -52,7 +52,7 @@
 //   parity_vector           = "1o"
 //   irrep_layout_scalar     = "T0"
 //   parity_scalar           = "0e"
-//   source                  = "AIMNet2PolarisabilityResult.{vector,scalar}"
+//   source                  = "AIMNet2ChargeResponseGradientResult.{vector,scalar}"
 //   source_attached_policy  = "always_attached" with HasResult gate
 //
 // Minimum-viable design (no delta variants in v0; mean/std/m2/min/max
@@ -61,7 +61,7 @@
 // calibration finding requests dx/dt or rms_delta later.
 //
 // PHYSICS NOTE: "Polarisability" is project shorthand inherited from
-// the pre-trajectory AIMNet2PolarisabilityResult (2026-05-09 always-on
+// the pre-trajectory AIMNet2ChargeResponseGradientResult (2026-05-09 always-on
 // promotion). The emitted quantity is ∂(Σ_j q_j²)/∂r_i (gradient of a
 // sum-of-squared-AIMNet2-charges scalar with respect to atomic
 // coordinates), NOT a Buckingham α tensor (α_ab = ∂μ_a/∂E_b, the
@@ -94,15 +94,15 @@
 
 namespace nmr {
 
-class AIMNet2PolarisabilityWelfordTrajectoryResult : public TrajectoryResult {
+class AIMNet2ChargeResponseGradientWelfordTrajectoryResult : public TrajectoryResult {
 public:
     std::string Name() const override {
-        return "AIMNet2PolarisabilityWelfordTrajectoryResult";
+        return "AIMNet2ChargeResponseGradientWelfordTrajectoryResult";
     }
 
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
-    static std::unique_ptr<AIMNet2PolarisabilityWelfordTrajectoryResult>
+    static std::unique_ptr<AIMNet2ChargeResponseGradientWelfordTrajectoryResult>
     Create(const TrajectoryProtein& tp);
 
     void Compute(const ProteinConformation& conf,

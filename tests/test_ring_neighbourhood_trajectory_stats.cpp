@@ -99,7 +99,7 @@ TEST(RingNeighbourhoodTrajectoryStats, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -125,7 +125,7 @@ TEST(RingNeighbourhoodTrajectoryStats, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::RingNeighbourhoodTrajectoryStats>();
@@ -150,7 +150,7 @@ TEST(RingNeighbourhoodTrajectoryStats, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RingNeighbourhoodTrajectoryStats>();
@@ -163,12 +163,14 @@ TEST(RingNeighbourhoodTrajectoryStats, H5RoundTrip) {
         ("rnts_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/ring_neighbourhood_trajectory_stats"));
     auto grp = reopen.getGroup("/trajectory/ring_neighbourhood_trajectory_stats");
 
     // Convention attrs.
-    std::string channel_layout, units, policy;
+    std::string channel_layout;
+    std::string units;
+    std::string policy;
     grp.getAttribute("channel_layout").read(channel_layout);
     grp.getAttribute("units").read(units);
     grp.getAttribute("source_attached_policy").read(policy);
@@ -261,7 +263,7 @@ TEST(RingNeighbourhoodTrajectoryStats, GeometryRanges1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RingNeighbourhoodTrajectoryStats>();
@@ -274,7 +276,7 @@ TEST(RingNeighbourhoodTrajectoryStats, GeometryRanges1P9J) {
         ("rnts_geom_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/ring_neighbourhood_trajectory_stats");
     std::vector<std::vector<std::vector<std::vector<double>>>> geom4d;
     grp.getDataSet("geometry").read(geom4d);
@@ -286,16 +288,18 @@ TEST(RingNeighbourhoodTrajectoryStats, GeometryRanges1P9J) {
             ASSERT_EQ(geom4d[i][t].size(), R);
             for (std::size_t r = 0; r < R; ++r) {
                 ASSERT_EQ(geom4d[i][t][r].size(), 4u);
-                for (std::size_t ch = 0; ch < 4; ++ch)
+                for (std::size_t ch = 0; ch < 4; ++ch) {
                     geom[((i * T + t) * R + r) * 4 + ch] = geom4d[i][t][r][ch];
+}
             }
         }
     }
     std::vector<std::vector<std::int32_t>> mem2d;
     grp.getDataSet("ring_membership_per_atom").read(mem2d);
     std::vector<std::int32_t> mem(N * R);
-    for (std::size_t i = 0; i < N; ++i)
+    for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t r = 0; r < R; ++r) mem[i * R + r] = mem2d[i][r];
+}
 
     // Per-channel sanity, restricted to live (atom, ring) slots.
     std::size_t n_live = 0;
@@ -378,7 +382,7 @@ TEST(RingNeighbourhoodTrajectoryStats, PheRingMembershipProbe) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RingNeighbourhoodTrajectoryStats>();
@@ -404,7 +408,7 @@ TEST(RingNeighbourhoodTrajectoryStats, PheRingMembershipProbe) {
     // with this ring index in its membership (distance to center is the
     // ring radius < cutoff, by construction).
     const auto& phe_ring = tp.ProteinRef().RingAt(phe_ring_idx);
-    for (std::size_t v : phe_ring.atom_indices) {
+    for (std::size_t const v : phe_ring.atom_indices) {
         const auto& rings = tr.RingListForAtom(v);
         EXPECT_NE(std::find(rings.begin(), rings.end(), phe_ring_idx),
                    rings.end())

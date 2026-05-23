@@ -20,7 +20,7 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
         ProteinConformation& conf,
         const SolventEnvironment& solvent) {
 
-    OperationLog::Scope scope("WaterFieldResult::Compute",
+    OperationLog::Scope const scope("WaterFieldResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " waters=" + std::to_string(solvent.WaterCount()));
 
@@ -87,27 +87,28 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
             const auto& water = solvent.waters[wi];
 
             // Quick distance check on oxygen
-            Vec3 r_O = water.O_pos - pos_i;
-            double d_O_sq = r_O.squaredNorm();
+            Vec3 const r_O = water.O_pos - pos_i;
+            double const d_O_sq = r_O.squaredNorm();
             if (d_O_sq > cutoff_sq) {
                 ++n_beyond_cutoff;
                 continue;
             }
 
-            double d_O = std::sqrt(d_O_sq);
+            double const d_O = std::sqrt(d_O_sq);
             bool in_first = (d_O_sq < first_sq);
 
             // Shell counts (based on O distance)
-            if (in_first)
+            if (in_first) {
                 ++n_first;
-            else if (d_O_sq < second_sq)
+            } else if (d_O_sq < second_sq) {
                 ++n_second;
+}
 
             // Sum contribution from all 3 charge sites
             auto add_charge = [&](const Vec3& q_pos, double q) {
                 Vec3 r = q_pos - pos_i;
-                double r2 = r.squaredNorm();
-                double r_mag = std::sqrt(r2);
+                double const r2 = r.squaredNorm();
+                double const r_mag = std::sqrt(r2);
 
                 // MinDistanceFilter: Coulomb 1/r³ singularity guard
                 KernelEvaluationContext ctx;
@@ -118,15 +119,15 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
                     return;
                 }
 
-                double r3 = r2 * r_mag;
-                double r5 = r3 * r2;
+                double const r3 = r2 * r_mag;
+                double const r5 = r3 * r2;
 
                 // E-field: E += q * r / r³
-                Vec3 E_contrib = (COULOMB_KE * q / r3) * r;
+                Vec3 const E_contrib = (COULOMB_KE * q / r3) * r;
                 E_total += E_contrib;
 
                 // EFG: V += q * (3*r*r^T/r⁵ - I/r³)
-                Mat3 V_contrib = COULOMB_KE * q * (3.0 * r * r.transpose() / r5
+                Mat3 const V_contrib = COULOMB_KE * q * (3.0 * r * r.transpose() / r5
                                            - Mat3::Identity() / r3);
                 V_total += V_contrib;
 
@@ -142,15 +143,15 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
         }
 
         // Make EFG traceless (remove self-potential artifact)
-        double trace_total = V_total.trace() / 3.0;
+        double const trace_total = V_total.trace() / 3.0;
         V_total -= trace_total * Mat3::Identity();
-        double trace_first = V_first.trace() / 3.0;
+        double const trace_first = V_first.trace() / 3.0;
         V_first -= trace_first * Mat3::Identity();
 
         // Clamp extreme E-field magnitudes (same pattern as CoulombResult)
-        double E_mag = E_total.norm();
+        double const E_mag = E_total.norm();
         if (E_mag > clamp_threshold) {
-            double scale = clamp_threshold / E_mag;
+            double const scale = clamp_threshold / E_mag;
 
             choices.Record(CalculatorId::WaterField, ai, "water E-field clamp",
                 [&conf, ai, E_mag, scale](GeometryChoice& gc) {

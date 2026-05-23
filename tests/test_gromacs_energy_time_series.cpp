@@ -79,7 +79,7 @@ TEST(GromacsEnergyTimeSeries, SyntheticThreeFrames) {
     auto tr = nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     constexpr std::size_t kFrames = 3;
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -111,15 +111,16 @@ TEST(GromacsEnergyTimeSeries, SyntheticThreeFrames) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("gromacs_energy_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/gromacs_energy_time_series"));
     auto grp = reopen.getGroup("/trajectory/gromacs_energy_time_series");
 
     std::vector<double> potential;
     grp.getDataSet("potential").read(potential);
     ASSERT_EQ(potential.size(), kFrames);
-    for (std::size_t t = 0; t < kFrames; ++t)
+    for (std::size_t t = 0; t < kFrames; ++t) {
         EXPECT_DOUBLE_EQ(potential[t], -5000.0 - 10.0 * t);
+}
 
     std::vector<std::vector<double>> vir;
     grp.getDataSet("virial").read(vir);
@@ -127,7 +128,8 @@ TEST(GromacsEnergyTimeSeries, SyntheticThreeFrames) {
     ASSERT_EQ(vir[0].size(), 9u);
     EXPECT_DOUBLE_EQ(vir[2][3], 2 * 100 + 3);  // (frame=2, k=3)
 
-    std::string units, tensor_layout;
+    std::string units;
+    std::string tensor_layout;
     grp.getAttribute("units").read(units);
     grp.getAttribute("tensor_layout").read(tensor_layout);
     EXPECT_EQ(units, "kJ/mol");
@@ -157,7 +159,7 @@ TEST(GromacsEnergyTimeSeries, SyntheticSourceAbsentFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr std::size_t kFrames = 4;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -178,7 +180,7 @@ TEST(GromacsEnergyTimeSeries, SyntheticSourceAbsentFrames) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("gromacs_energy_ts_absent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/gromacs_energy_time_series");
 
     std::size_t source_attached_count = 0;
@@ -229,7 +231,7 @@ TEST(GromacsEnergyTimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::GromacsEnergyTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -242,7 +244,7 @@ TEST(GromacsEnergyTimeSeries, SyntheticAllAbsentSkipsGroup) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("gromacs_energy_ts_allabsent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/gromacs_energy_time_series"))
         << "All-absent run should skip group emission entirely.";
 
@@ -273,7 +275,7 @@ TEST(GromacsEnergyTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -305,7 +307,7 @@ TEST(GromacsEnergyTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::GromacsEnergyTimeSeriesTrajectoryResult>();
@@ -339,14 +341,14 @@ TEST(GromacsEnergyTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::GromacsEnergyTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("gromacs_energy_ts_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/gromacs_energy_time_series"));
     auto grp = reopen.getGroup("/trajectory/gromacs_energy_time_series");
 
@@ -393,7 +395,7 @@ TEST(GromacsEnergyTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::GromacsEnergyTimeSeriesTrajectoryResult>();
@@ -404,22 +406,24 @@ TEST(GromacsEnergyTimeSeries, Integration1P9J) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("gromacs_energy_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/gromacs_energy_time_series");
 
-    std::vector<double> total, temperature, pressure;
+    std::vector<double> total;
+    std::vector<double> temperature;
+    std::vector<double> pressure;
     grp.getDataSet("total_energy").read(total);
     grp.getDataSet("temperature").read(temperature);
     grp.getDataSet("pressure").read(pressure);
     ASSERT_EQ(total.size(), tr.NumFrames());
 
-    for (double v : total)       EXPECT_TRUE(std::isfinite(v));
-    for (double T : temperature) EXPECT_TRUE(std::isfinite(T));
-    for (double P : pressure)    EXPECT_TRUE(std::isfinite(P));
+    for (double const v : total)       EXPECT_TRUE(std::isfinite(v));
+    for (double const T : temperature) EXPECT_TRUE(std::isfinite(T));
+    for (double const P : pressure)    EXPECT_TRUE(std::isfinite(P));
 
     // Loose physical-sanity: thermostatted MD around 300 K within ±50 K.
     // Per feedback_log_overages_dont_assert this is logged, not asserted.
-    for (double T : temperature) {
+    for (double const T : temperature) {
         if (T < 250.0 || T > 400.0) {
             std::cerr << "WARN: temperature out of [250,400] K: " << T << "\n";
         }

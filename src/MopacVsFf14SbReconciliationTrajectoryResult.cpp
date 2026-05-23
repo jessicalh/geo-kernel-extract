@@ -176,8 +176,8 @@ void MopacVsFf14SbReconciliationTrajectoryResult::WriteH5Group(
             flat[i * T + t] = atom_frames[t];
         }
     }
-    std::vector<std::size_t> dims = {N, T};
-    HighFive::DataSpace space(dims);
+    std::vector<std::size_t> const dims = {N, T};
+    HighFive::DataSpace const space(dims);
     auto ds = grp.createDataSet<double>("cos_t2", space);
     ds.write_raw(flat.data());
 

@@ -42,7 +42,7 @@ constexpr const char* kAaaLog =
 // scripts/perceive_larsen_tripeptide.py.
 std::vector<TripeptideDftAtom>
 ParseStandardOrientation(const fs::path& log_path) {
-    std::ifstream in(log_path);
+    std::ifstream const in(log_path);
     std::stringstream ss; ss << in.rdbuf();
     const std::string text = ss.str();
 
@@ -50,7 +50,7 @@ ParseStandardOrientation(const fs::path& log_path) {
     std::size_t pos = std::string::npos;
     std::size_t scan = 0;
     while (true) {
-        std::size_t hit = text.find("Standard orientation:", scan);
+        std::size_t const hit = text.find("Standard orientation:", scan);
         if (hit == std::string::npos) break;
         pos = hit;
         scan = hit + 1;
@@ -72,7 +72,7 @@ ParseStandardOrientation(const fs::path& log_path) {
     };
     // Header skip.
     while (cursor < text.size()) {
-        std::string line = eat_line();
+        std::string const line = eat_line();
         // Trim leading whitespace and look for first dashed separator.
         if (line.find("---") != std::string::npos) break;
     }
@@ -83,11 +83,15 @@ ParseStandardOrientation(const fs::path& log_path) {
 
     std::vector<TripeptideDftAtom> atoms;
     while (cursor < text.size()) {
-        std::string line = eat_line();
+        std::string const line = eat_line();
         if (line.find("---") != std::string::npos) break;
         std::istringstream iss(line);
-        int idx, z, atype;
-        double x, y, z_coord;
+        int idx;
+        int z;
+        int atype;
+        double x;
+        double y;
+        double z_coord;
         if (!(iss >> idx >> z >> atype >> x >> y >> z_coord)) break;
         TripeptideDftAtom a;
         a.atom_idx = idx;

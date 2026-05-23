@@ -51,27 +51,29 @@ static MopacBondKernelResult ComputeBondKernel(
 
     MopacBondKernelResult result;
 
-    Vec3 d = atom_pos - bond_midpoint;
-    double r = d.norm();
+    Vec3 const d = atom_pos - bond_midpoint;
+    double const r = d.norm();
 
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
-    double r3 = r * r * r;
+    double const r3 = r * r * r;
     Vec3 d_hat = d / r;
     result.direction = d_hat;
 
-    double cos_theta = d_hat.dot(bond_direction);
+    double const cos_theta = d_hat.dot(bond_direction);
 
     // McConnell scalar: (3 cos^2 theta - 1) / r^3
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
     // Symmetric traceless dipolar kernel K_ab
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
+    for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) {
             result.K(a, b) = (3.0 * d_hat(a) * d_hat(b)
                               - (a == b ? 1.0 : 0.0)) / r3;
+}
+}
 
     // Full McConnell tensor M_ab / r^3
     for (int a = 0; a < 3; ++a) {
@@ -99,7 +101,7 @@ static MopacBondKernelResult ComputeBondKernel(
 std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("MopacMcConnellResult::Compute",
+    OperationLog::Scope const scope("MopacMcConnellResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " bonds=" + std::to_string(conf.ProteinRef().BondCount()));
 
@@ -124,12 +126,15 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 atom_pos = conf.PositionAt(ai);
+        Vec3 const atom_pos = conf.PositionAt(ai);
 
         auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, CalculatorConfig::Get("mopac_mcconnell_bond_anisotropy_cutoff"));
 
         // Per-category accumulators (bond-order-weighted)
-        double co_sum = 0.0, cn_sum = 0.0, sidechain_sum = 0.0, aromatic_sum = 0.0;
+        double co_sum = 0.0;
+        double cn_sum = 0.0;
+        double sidechain_sum = 0.0;
+        double aromatic_sum = 0.0;
         Mat3 M_backbone_total = Mat3::Zero();
         Mat3 M_sidechain_total = Mat3::Zero();
         Mat3 M_aromatic_total = Mat3::Zero();
@@ -145,15 +150,15 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         double best_co_bo = 0.0;
         double best_cn_bo = 0.0;
 
-        for (size_t bi : nearby_bonds) {
+        for (size_t const bi : nearby_bonds) {
             const Bond& bond = protein.BondAt(bi);
 
             // MOPAC Wiberg bond order for this topology bond
-            double bo = mopac.TopologyBondOrder(bi);
+            double const bo = mopac.TopologyBondOrder(bi);
             if (bo < CalculatorConfig::Get("mopac_bond_order_noise_floor")) { zero_bo_skipped++; zero_bo_this_atom++; continue; }
 
-            Vec3 midpoint = conf.bond_midpoints[bi];
-            Vec3 direction = conf.bond_directions[bi];
+            Vec3 const midpoint = conf.bond_midpoints[bi];
+            Vec3 const direction = conf.bond_directions[bi];
 
             MopacBondKernelResult kernel = ComputeBondKernel(atom_pos, midpoint, direction);
 
@@ -177,8 +182,8 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
             }
 
             // Bond-order-weighted accumulation
-            Mat3 weighted_M = bo * kernel.M_over_r3;
-            double weighted_f = bo * kernel.f;
+            Mat3 const weighted_M = bo * kernel.M_over_r3;
+            double const weighted_f = bo * kernel.f;
 
             M_total += weighted_M;
 
@@ -313,9 +318,11 @@ int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
             &ca.mopac_mc_T2_aromatic_total, &ca.mopac_mc_T2_CO_nearest,
             &ca.mopac_mc_T2_CN_nearest
         };
-        for (int c = 0; c < 5; ++c)
-            for (int m = 0; m < 5; ++m)
+        for (int c = 0; c < 5; ++c) {
+            for (int m = 0; m < 5; ++m) {
                 cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
+}
+}
 
         scalars[i*6+0] = ca.mopac_mc_co_sum;
         scalars[i*6+1] = ca.mopac_mc_cn_sum;

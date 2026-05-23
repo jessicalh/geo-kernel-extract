@@ -58,11 +58,11 @@ bool IsHydroxylOxygen(const Protein& protein,
     const auto& o_atom = protein.AtomAt(O_idx);
     if (o_atom.element != Element::O) return false;
     const auto& topo = protein.LegacyAmber();
-    for (std::size_t bi : o_atom.bond_indices) {
+    for (std::size_t const bi : o_atom.bond_indices) {
         const Bond& b = protein.BondAt(bi);
-        std::size_t other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
+        std::size_t const other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
         if (protein.AtomAt(other).element != Element::H) continue;
-        PolarHKind k = topo.SemanticAt(other).polar_h;
+        PolarHKind const k = topo.SemanticAt(other).polar_h;
         if (k == PolarHKind::HydroxylOH_Aliphatic ||
             k == PolarHKind::HydroxylOH_Aromatic) {
             bonded_H_out = other;
@@ -129,10 +129,9 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
         t.class_ = HBondAcceptorClass::CarboxylateOxygen;
         const auto& o_atom = protein.AtomAt(O_idx);
         std::size_t bonded_C = Residue::NONE;
-        for (std::size_t bi : o_atom.bond_indices) {
+        for (std::size_t const bi : o_atom.bond_indices) {
             const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == O_idx) ?
-                                 b.atom_index_b : b.atom_index_a;
+            std::size_t const other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
             if (protein.AtomAt(other).element == Element::C) {
                 bonded_C = other;
                 break;
@@ -141,10 +140,9 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
         if (bonded_C == Residue::NONE) return std::nullopt;
         t.C_idx = bonded_C;
         std::size_t other_O = Residue::NONE;
-        for (std::size_t bi : protein.AtomAt(bonded_C).bond_indices) {
+        for (std::size_t const bi : protein.AtomAt(bonded_C).bond_indices) {
             const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == bonded_C) ?
-                                 b.atom_index_b : b.atom_index_a;
+            std::size_t const other = (b.atom_index_a == bonded_C) ? b.atom_index_b : b.atom_index_a;
             if (other == O_idx) continue;
             const auto& other_sem = protein.LegacyAmber().SemanticAt(other);
             if (other_sem.element == Element::O &&
@@ -188,10 +186,9 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
         t.class_ = HBondAcceptorClass::SidechainCarbonyl;
         const auto& o_atom = protein.AtomAt(O_idx);
         std::size_t bonded_C = Residue::NONE;
-        for (std::size_t bi : o_atom.bond_indices) {
+        for (std::size_t const bi : o_atom.bond_indices) {
             const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == O_idx) ?
-                                 b.atom_index_b : b.atom_index_a;
+            std::size_t const other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
             if (protein.AtomAt(other).element == Element::C) {
                 bonded_C = other;
                 break;
@@ -202,10 +199,9 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
         // third = the sidechain amide N bonded to the carbonyl C
         // (same SidechainAmide planar group).
         std::size_t amide_N = Residue::NONE;
-        for (std::size_t bi : protein.AtomAt(bonded_C).bond_indices) {
+        for (std::size_t const bi : protein.AtomAt(bonded_C).bond_indices) {
             const Bond& b = protein.BondAt(bi);
-            std::size_t other = (b.atom_index_a == bonded_C) ?
-                                 b.atom_index_b : b.atom_index_a;
+            std::size_t const other = (b.atom_index_a == bonded_C) ? b.atom_index_b : b.atom_index_a;
             if (other == O_idx) continue;
             const auto& other_sem = protein.LegacyAmber().SemanticAt(other);
             if (other_sem.element == Element::N &&
@@ -227,10 +223,9 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
             t.class_ = HBondAcceptorClass::HydroxylOxygen;
             const auto& o_atom = protein.AtomAt(O_idx);
             std::size_t bonded_C = Residue::NONE;
-            for (std::size_t bi : o_atom.bond_indices) {
+            for (std::size_t const bi : o_atom.bond_indices) {
                 const Bond& b = protein.BondAt(bi);
-                std::size_t other = (b.atom_index_a == O_idx) ?
-                                     b.atom_index_b : b.atom_index_a;
+                std::size_t const other = (b.atom_index_a == O_idx) ? b.atom_index_b : b.atom_index_a;
                 if (protein.AtomAt(other).element == Element::C) {
                     bonded_C = other;
                     break;
@@ -245,36 +240,6 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
 
     return std::nullopt;
 }
-
-// Map AtomSemanticTable BackboneRole to LarsenContribDispatch::TargetAtom.
-// Returns nullopt for atoms outside the 6 ProCS-relevant target roles.
-struct TargetSlot {
-    LarsenContribDispatch::TargetAtom target;
-    bool valid;
-};
-TargetSlot ResolveTargetSlot(const AtomSemanticTable& sem) {
-    using TA = LarsenContribDispatch::TargetAtom;
-    switch (sem.backbone_role) {
-        case BackboneRole::Nitrogen:        return {TA::N,  true};
-        case BackboneRole::AlphaCarbon:     return {TA::CA, true};
-        case BackboneRole::CarbonylCarbon:  return {TA::C,  true};
-        case BackboneRole::AlphaHydrogen:   return {TA::HA, true};
-        case BackboneRole::AmideHydrogen:   return {TA::HN, true};
-        default:                            break;
-    }
-    // CB: not a backbone role; check Element+Locant.
-    if (sem.element == Element::C && sem.locant == Locant::Beta
-        && sem.backbone_role == BackboneRole::None) {
-        return {TA::CB, true};
-    }
-    // GLY HA2/HA3: Locant::Alpha + BackboneRole::None + Element::H.
-    if (sem.element == Element::H && sem.locant == Locant::Alpha
-        && sem.backbone_role == BackboneRole::None) {
-        return {TA::HA, true};
-    }
-    return {TA::N, false};  // invalid; caller checks .valid
-}
-
 
 // Apply a per-class contribution to a target atom's per-class Mat3 field.
 void AccumulateContribution(
@@ -378,7 +343,7 @@ std::vector<std::size_t> TargetAtomIndices(
         case TA::HN: add_if_set(res.H);  break;
         case TA::HA: {
             const auto& topo = protein.LegacyAmber();
-            for (std::size_t ai : res.atom_indices) {
+            for (std::size_t const ai : res.atom_indices) {
                 const AtomSemanticTable& sem = topo.SemanticAt(ai);
                 if (sem.IsAnyAlphaHydrogen()) out.push_back(ai);
             }
@@ -419,9 +384,7 @@ std::vector<std::type_index> LarsenHBondShieldingResult::Dependencies() const {
 std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         ProteinConformation& conf,
         const LarsenHBondGrid& grid) {
-
-    OperationLog::Scope scope("LarsenHBondShieldingResult::Compute",
-        "atoms=" + std::to_string(conf.AtomCount()));
+    OperationLog::Scope const scope("LarsenHBondShieldingResult::Compute", "atoms=" + std::to_string(conf.AtomCount()));
 
     if (!grid.IsLoaded()) {
         OperationLog::Warn("LarsenHBondShieldingResult::Compute",
@@ -533,15 +496,14 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             return PairResult::MissingFrameAtoms;
         }
 
-        Vec3 donor_H_pos    = conf.PositionAt(donor_H_idx);
-        Vec3 donor_anchor   = conf.PositionAt(donor_anchor_idx);
-        Vec3 donor_third    = conf.PositionAt(donor_third_idx);
-        Vec3 accept_O_pos   = conf.PositionAt(acc.O_idx);
-        Vec3 accept_C_pos   = conf.PositionAt(acc.C_idx);
-        Vec3 accept_thd_pos = conf.PositionAt(acc.third_idx);
+        Vec3 const donor_H_pos = conf.PositionAt(donor_H_idx);
+        Vec3 const donor_anchor = conf.PositionAt(donor_anchor_idx);
+        Vec3 const donor_third = conf.PositionAt(donor_third_idx);
+        Vec3 const accept_O_pos = conf.PositionAt(acc.O_idx);
+        Vec3 const accept_C_pos = conf.PositionAt(acc.C_idx);
+        Vec3 const accept_thd_pos = conf.PositionAt(acc.third_idx);
 
-        LarsenHBondGeometry geom = ComputeLarsenHBondGeometry(
-            donor_H_pos, accept_O_pos, accept_C_pos, accept_thd_pos);
+        LarsenHBondGeometry const geom = ComputeLarsenHBondGeometry(donor_H_pos, accept_O_pos, accept_C_pos, accept_thd_pos);
 
         if (geom.theta_deg < kThetaMinDeg || geom.theta_deg > kThetaMaxDeg) {
             choices.Record(CalculatorId::LarsenHBond, resolution_key++,
@@ -555,8 +517,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             return PairResult::ThetaOutOfRange;
         }
 
-        LarsenHBondRecord rec = grid.QueryNearest(
-            donor_class, acc.class_, geom);
+        LarsenHBondRecord const rec = grid.QueryNearest(donor_class, acc.class_, geom);
         if (!rec.IsHit()) {
             choices.Record(CalculatorId::LarsenHBond, resolution_key++,
                 "grid query miss",
@@ -573,8 +534,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             return PairResult::GridMiss;
         }
 
-        Mat3 R_protein = ComputeLarsenDonorFrame(
-            donor_H_pos, donor_anchor, donor_third);
+        Mat3 const R_protein = ComputeLarsenDonorFrame(donor_H_pos, donor_anchor, donor_third);
 
         // Pick the Table 2 Term names per donor class (primary +
         // secondary). HB terms apply when donor is amide H; HαB terms
@@ -608,9 +568,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
             if (dr_readout.target != TA::CB) continue;
             auto targets = TargetAtomIndices(protein, don_res, TA::CB);
             if (targets.empty())             continue;
-            Mat3 sigma_lab = RotateTensorToProteinLabFrame(
-                dr_readout.canonical_tensor, R_protein);
-            for (std::size_t target_ai : targets) {
+            Mat3 const sigma_lab = RotateTensorToProteinLabFrame(dr_readout.canonical_tensor, R_protein);
+            for (std::size_t const target_ai : targets) {
                 conf.MutableAtomAt(target_ai).larsen_hbond_diagnostic_CB +=
                     sigma_lab;
                 diagnostic_contributors.insert(target_ai);
@@ -624,13 +583,13 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         for (const auto& dr_readout : donor_readouts) {
             if (!dr_readout.present)         continue;
             if (dr_readout.target == TA::CB) continue;  // diagnostic above
-            if (!LarsenContribDispatch::Applies(dr_readout.target, primary_term))
+            if (!LarsenContribDispatch::Applies(dr_readout.target, primary_term)) {
                 continue;
+            }
             auto targets = TargetAtomIndices(protein, don_res, dr_readout.target);
             if (targets.empty())             continue;
-            Mat3 sigma_lab = RotateTensorToProteinLabFrame(
-                dr_readout.canonical_tensor, R_protein);
-            for (std::size_t target_ai : targets) {
+            Mat3 const sigma_lab = RotateTensorToProteinLabFrame(dr_readout.canonical_tensor, R_protein);
+            for (std::size_t const target_ai : targets) {
                 AccumulateContribution(
                     conf.MutableAtomAt(target_ai), primary_term, sigma_lab);
                 table2_contributors.insert(target_ai);
@@ -663,15 +622,15 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                 protein.ResidueAt(acc.i_plus_1_residue_idx);
             for (const auto& ac_readout : acceptor_readouts) {
                 if (!ac_readout.present) continue;
-                if (!LarsenContribDispatch::Applies(ac_readout.target, secondary_term))
+                if (!LarsenContribDispatch::Applies(ac_readout.target, secondary_term)) {
                     continue;
+                }
                 const Residue& target_res =
                     ac_readout.target_is_acceptor_residue ? res_j : res_j_plus_1;
                 auto targets = TargetAtomIndices(protein, target_res, ac_readout.target);
                 if (targets.empty()) continue;
-                Mat3 sigma_lab = RotateTensorToProteinLabFrame(
-                    ac_readout.canonical_tensor, R_protein);
-                for (std::size_t target_ai : targets) {
+                Mat3 const sigma_lab = RotateTensorToProteinLabFrame(ac_readout.canonical_tensor, R_protein);
+                for (std::size_t const target_ai : targets) {
                     AccumulateContribution(
                         conf.MutableAtomAt(target_ai), secondary_term, sigma_lab);
                     table2_contributors.insert(target_ai);
@@ -685,12 +644,12 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         // to every target atom that received any write (Table 2 or
         // diagnostic) so downstream introspection sees the imputation
         // flag wherever a contribution landed.
-        for (std::size_t ai : table2_contributors) {
+        for (std::size_t const ai : table2_contributors) {
             ConformationAtom& a = conf.MutableAtomAt(ai);
             a.larsen_hbond_n_pairs += 1;
             if (rec.any_corner_imputed) a.larsen_hbond_any_corner_imputed = true;
         }
-        for (std::size_t ai : diagnostic_contributors) {
+        for (std::size_t const ai : diagnostic_contributors) {
             if (table2_contributors.count(ai)) continue;
             ConformationAtom& a = conf.MutableAtomAt(ai);
             if (rec.any_corner_imputed) a.larsen_hbond_any_corner_imputed = true;
@@ -788,7 +747,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         if (donor_anchor_idx == Residue::NONE ||
             donor_third_idx  == Residue::NONE) continue;
 
-        Vec3 donor_pos = conf.PositionAt(ai);
+        Vec3 const donor_pos = conf.PositionAt(ai);
         auto candidate_atoms =
             spatial.AtomsWithinRadius(donor_pos, kSpatialCutoff_A);
 
@@ -797,7 +756,7 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         // can't H-bond to them), skip the donor's own anchor and
         // third atom positions. Classify; process.
         bool found_geometric_h_bond = false;  // θ ≥ 90° confirmed
-        for (std::size_t o_idx : candidate_atoms) {
+        for (std::size_t const o_idx : candidate_atoms) {
             if (o_idx == ai) continue;
             if (protein.AtomAt(o_idx).element != Element::O) continue;
             // Same-residue exclusion: a donor H and an O in the SAME
@@ -834,9 +793,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
                 }
             }
 
-            PairResult r = process_pair(
-                donor_class, ai, donor_anchor_idx, donor_third_idx,
-                atom.residue_index, *classified);
+            PairResult const r =
+                process_pair(donor_class, ai, donor_anchor_idx, donor_third_idx, atom.residue_index, *classified);
 
             // Mass-conservation increments + water-term gate. Both
             // Success and GridMiss confirm θ ≥ 90° — only those count
@@ -884,10 +842,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // ------------------------------------------------------------------
     for (std::size_t ai = 0; ai < n_atoms; ++ai) {
         ConformationAtom& a = conf.MutableAtomAt(ai);
-        Mat3 shielding = a.larsen_hbond_1pHB_tensor
-                       + a.larsen_hbond_2pHB_tensor
-                       + a.larsen_hbond_1pHaB_tensor
-                       + a.larsen_hbond_2pHaB_tensor;
+        Mat3 const shielding =
+            a.larsen_hbond_1pHB_tensor + a.larsen_hbond_2pHB_tensor + a.larsen_hbond_1pHaB_tensor + a.larsen_hbond_2pHaB_tensor;
         a.larsen_hbond_shielding_tensor    = shielding;
         a.larsen_hbond_shielding_spherical = SphericalTensor::Decompose(shielding);
         a.larsen_hbond_1pHB_spherical      = SphericalTensor::Decompose(a.larsen_hbond_1pHB_tensor);
@@ -899,10 +855,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
         // Count: non-zero contribution = at least one class's tensor
         // is non-zero. Use a tiny threshold to avoid FP-noise counting.
         const double kThresh = 1e-9;
-        bool has_any = a.larsen_hbond_1pHB_tensor.norm()  > kThresh
-                    || a.larsen_hbond_2pHB_tensor.norm()  > kThresh
-                    || a.larsen_hbond_1pHaB_tensor.norm() > kThresh
-                    || a.larsen_hbond_2pHaB_tensor.norm() > kThresh;
+        bool const has_any = a.larsen_hbond_1pHB_tensor.norm() > kThresh || a.larsen_hbond_2pHB_tensor.norm() > kThresh
+                             || a.larsen_hbond_1pHaB_tensor.norm() > kThresh || a.larsen_hbond_2pHaB_tensor.norm() > kThresh;
         if (has_any) ++result_ptr->atoms_with_contribution_;
     }
 
@@ -962,7 +916,7 @@ int LarsenHBondShieldingResult::WriteFeatures(
         n_pairs[i] = a.larsen_hbond_n_pairs;
     }
 
-    fs::path dir(output_dir);
+    fs::path const dir(output_dir);
     int n_written = 0;
     NpyWriter::WriteFloat64((dir / "larsen_hbond_shielding.npy").string(),
                             shielding.data(), N, 9); ++n_written;

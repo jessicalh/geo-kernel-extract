@@ -15,14 +15,16 @@ namespace nmr {
 // ============================================================================
 
 static bool HasFlag(int argc, char* argv[], const char* name) {
-    for (int i = 1; i < argc; ++i)
+    for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], name) == 0) return true;
+}
     return false;
 }
 
 static std::string GetArg(int argc, char* argv[], const char* name) {
-    for (int i = 1; i < argc - 1; ++i)
+    for (int i = 1; i < argc - 1; ++i) {
         if (std::strcmp(argv[i], name) == 0) return argv[i + 1];
+}
     return "";
 }
 
@@ -71,7 +73,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     if (HasFlag(argc, argv, "--pdb")) {
         spec.mode = JobMode::Pdb;
         spec.pdb_path = GetArg(argc, argv, "--pdb");
-        std::string pH_str = GetArg(argc, argv, "--pH");
+        std::string const pH_str = GetArg(argc, argv, "--pH");
         if (!pH_str.empty()) spec.pH = std::atof(pH_str.c_str());
 
         if (spec.pdb_path.empty()) {
@@ -92,7 +94,7 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
 
     if (HasFlag(argc, argv, "--orca")) {
         spec.mode = JobMode::Orca;
-        std::string root = GetArg(argc, argv, "--root");
+        std::string const root = GetArg(argc, argv, "--root");
 
         if (root.empty()) {
             spec.error = "--orca requires --root NAME\n"
@@ -105,8 +107,8 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
 
     if (HasFlag(argc, argv, "--mutant")) {
         spec.mode = JobMode::Mutant;
-        std::string wt_root  = GetArg(argc, argv, "--wt");
-        std::string ala_root = GetArg(argc, argv, "--ala");
+        std::string const wt_root  = GetArg(argc, argv, "--wt");
+        std::string const ala_root = GetArg(argc, argv, "--ala");
 
         if (wt_root.empty() || ala_root.empty()) {
             spec.error = "--mutant requires --wt NAME --ala NAME\n"
@@ -168,9 +170,9 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         // FramePdbEmitter.h.
         spec.emit_frame_pdbs_dir = GetArg(argc, argv, "--emit-frame-pdbs");
         spec.pdb_decorator       = GetArg(argc, argv, "--pdb-decorator");
-        std::string s_stride  = GetArg(argc, argv, "--pdb-stride");
-        std::string s_from_ps = GetArg(argc, argv, "--pdb-from-ps");
-        std::string s_to_ps   = GetArg(argc, argv, "--pdb-to-ps");
+        std::string const s_stride  = GetArg(argc, argv, "--pdb-stride");
+        std::string const s_from_ps = GetArg(argc, argv, "--pdb-from-ps");
+        std::string const s_to_ps   = GetArg(argc, argv, "--pdb-to-ps");
         if (!s_stride.empty())  spec.pdb_stride  = std::strtoull(s_stride.c_str(), nullptr, 10);
         if (!s_from_ps.empty()) spec.pdb_from_ps = std::atof(s_from_ps.c_str());
         if (!s_to_ps.empty())   spec.pdb_to_ps   = std::atof(s_to_ps.c_str());
@@ -189,9 +191,9 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
     // protonated). No file discovery — one deterministic convention, log
     // the derived path, ValidateJobSpec fails hard if the file is missing.
     if (!spec.analysis_h5_path.empty()) {
-        fs::path h5(spec.analysis_h5_path);
-        std::string stem = h5.stem().string();            // "{pid}_analysis"
-        fs::path ns0_pdb = h5.parent_path() /
+        fs::path const h5(spec.analysis_h5_path);
+        std::string const stem = h5.stem().string();            // "{pid}_analysis"
+        fs::path const ns0_pdb = h5.parent_path() /
                            (stem + "_0ns") /
                            (stem + "_0ns.pdb");
         spec.mode     = JobMode::ProtonatedPdb;
@@ -253,7 +255,7 @@ static void OptionalFile(JobSpec& spec, std::string& path,
                          const char* description) {
     if (path.empty()) return;
     if (!fs::exists(path)) {
-        std::string msg = std::string(description) + ": not found: " + path +
+        std::string const msg = std::string(description) + ": not found: " + path +
                           " — will proceed without it";
         spec.warnings.push_back(msg);
         OperationLog::Warn("JobSpec", msg);
@@ -269,13 +271,13 @@ static bool ValidateOrcaFiles(JobSpec& spec, OrcaRunFiles& files,
                               const char* label) {
     char desc[128];
 
-    std::snprintf(desc, sizeof(desc), "%s XYZ coordinates", label);
+    (void)std::snprintf(desc, sizeof(desc), "%s XYZ coordinates", label);
     if (!RequireFile(spec, files.xyz_path, desc)) return false;
 
-    std::snprintf(desc, sizeof(desc), "%s AMBER prmtop (charge source)", label);
+    (void)std::snprintf(desc, sizeof(desc), "%s AMBER prmtop (charge source)", label);
     if (!RequireFile(spec, files.prmtop_path, desc)) return false;
 
-    std::snprintf(desc, sizeof(desc), "%s ORCA NMR shielding tensors", label);
+    (void)std::snprintf(desc, sizeof(desc), "%s ORCA NMR shielding tensors", label);
     OptionalFile(spec, files.nmr_out_path, desc);
 
     return true;
@@ -390,7 +392,7 @@ bool ValidateJobSpec(JobSpec& spec) {
 // ============================================================================
 
 void PrintJobSpecUsage(const char* prog) {
-    fprintf(stderr,
+    (void)fprintf(stderr,
         "Usage:\n"
         "  %s --pdb FILE [--pH N] [--config FILE] --output DIR\n"
         "      Load a bare PDB, protonate with reduce at the given pH\n"

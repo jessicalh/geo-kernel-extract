@@ -34,7 +34,7 @@ for (i in 1:8) {
 cosine_sim <- matrix(0, 8, 8)
 for (i in 1:8) {
   for (j in 1:8) {
-    cosine_sim[i,j] <- sum(t2_vecs[i,] * t2_vecs[j,]) / 
+    cosine_sim[i,j] <- sum(t2_vecs[i,] * t2_vecs[j,]) /
       (sqrt(sum(t2_vecs[i,]^2)) * sqrt(sum(t2_vecs[j,]^2)) + 1e-30)
   }
 }

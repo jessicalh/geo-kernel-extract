@@ -58,27 +58,29 @@ static BondKernelResult ComputeBondKernel(
 
     BondKernelResult result;
 
-    Vec3 d = atom_pos - bond_midpoint;
-    double r = d.norm();
+    Vec3 const d = atom_pos - bond_midpoint;
+    double const r = d.norm();
 
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
-    double r3 = r * r * r;
+    double const r3 = r * r * r;
     Vec3 d_hat = d / r;
     result.direction = d_hat;
 
-    double cos_theta = d_hat.dot(bond_direction);
+    double const cos_theta = d_hat.dot(bond_direction);
 
     // McConnell scalar: (3 cos^2 theta - 1) / r^3
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
     // Symmetric traceless dipolar kernel K_ab
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
+    for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) {
             result.K(a, b) = (3.0 * d_hat(a) * d_hat(b)
                               - (a == b ? 1.0 : 0.0)) / r3;
+}
+}
 
     // Full McConnell tensor M_ab / r^3
     //   = [9 cos_theta d_hat_a b_hat_b - 3 b_hat_a b_hat_b
@@ -104,7 +106,7 @@ static BondKernelResult ComputeBondKernel(
 std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("McConnellResult::Compute",
+    OperationLog::Scope const scope("McConnellResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " bonds=" + std::to_string(conf.ProteinRef().BondCount()));
 
@@ -133,13 +135,16 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 atom_pos = conf.PositionAt(ai);
+        Vec3 const atom_pos = conf.PositionAt(ai);
 
         // Find nearby bonds via spatial index
         auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff"));
 
         // Per-category accumulators
-        double co_sum = 0.0, cn_sum = 0.0, sidechain_sum = 0.0, aromatic_sum = 0.0;
+        double co_sum = 0.0;
+        double cn_sum = 0.0;
+        double sidechain_sum = 0.0;
+        double aromatic_sum = 0.0;
         Mat3 M_backbone_total = Mat3::Zero();
         Mat3 M_sidechain_total = Mat3::Zero();
         Mat3 M_aromatic_total = Mat3::Zero();
@@ -154,10 +159,10 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         BondKernelResult best_co_kernel;
         BondKernelResult best_cn_kernel;
 
-        for (size_t bi : nearby_bonds) {
+        for (size_t const bi : nearby_bonds) {
             const Bond& bond = protein.BondAt(bi);
-            Vec3 midpoint = conf.bond_midpoints[bi];
-            Vec3 direction = conf.bond_directions[bi];
+            Vec3 const midpoint = conf.bond_midpoints[bi];
+            Vec3 const direction = conf.bond_directions[bi];
 
             BondKernelResult kernel = ComputeBondKernel(atom_pos, midpoint, direction);
 
@@ -255,7 +260,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ca.nearest_CN_dist = best_cn_dist;
 
         if (best_co_dist < NO_DATA_SENTINEL) {
-            double dir_norm = best_co_direction.norm();
+            double const dir_norm = best_co_direction.norm();
             ca.dir_nearest_CO = (dir_norm > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
                 ? Vec3(best_co_direction / dir_norm) : Vec3::Zero();
             ca.T2_CO_nearest = SphericalTensor::Decompose(best_co_kernel.K);
@@ -267,7 +272,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         // Category T2 totals (from symmetric dipolar kernel sums)
         // Apply traceless projection to fix floating-point drift
         auto project_traceless = [](Mat3& m) {
-            double trace = m.trace();
+            double const trace = m.trace();
             m -= (trace / 3.0) * Mat3::Identity();
         };
 
@@ -331,7 +336,7 @@ double McConnellResult::NearestCOContribution(size_t atom_index) const {
 // Sums over all bonds within MCCONNELL_CUTOFF_A. No atom-specific filters.
 // ============================================================================
 
-SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
+SphericalTensor McConnellResult::SampleShieldingAt(const Vec3& point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -344,7 +349,7 @@ SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
         if (kernel.distance > CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff")) continue;
 
         // DipolarNearFieldFilter: skip if inside the bond
-        double bond_len = conf_->bond_lengths[bi];
+        double const bond_len = conf_->bond_lengths[bi];
         if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * bond_len) continue;
 
         M_total += kernel.M_over_r3;
@@ -381,9 +386,11 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
             &ca.T2_backbone_total, &ca.T2_sidechain_total,
             &ca.T2_aromatic_total, &ca.T2_CO_nearest, &ca.T2_CN_nearest
         };
-        for (int c = 0; c < 5; ++c)
-            for (int m = 0; m < 5; ++m)
+        for (int c = 0; c < 5; ++c) {
+            for (int m = 0; m < 5; ++m) {
                 cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
+}
+}
 
         scalars[i*6+0] = ca.mcconnell_co_sum;
         scalars[i*6+1] = ca.mcconnell_cn_sum;

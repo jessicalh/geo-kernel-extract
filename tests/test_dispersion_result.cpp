@@ -30,22 +30,24 @@ using namespace nmr;
 
 TEST(DispAnalytical, SingleVertexTraceless) {
     Vec3 d(3, 0, 0);
-    double r = d.norm();
-    double r2 = r * r;
-    double r6 = r2 * r2 * r2;
-    double r8 = r6 * r2;
+    double const r = d.norm();
+    double const r2 = r * r;
+    double const r6 = r2 * r2 * r2;
+    double const r8 = r6 * r2;
 
     Mat3 K = Mat3::Zero();
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
+    for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) {
             K(a, b) = 3.0 * d(a) * d(b) / r8 - (a == b ? 1.0 : 0.0) / r6;
+}
+}
 
     EXPECT_NEAR(K.trace(), 0.0, 1e-14) << "Dispersion kernel is traceless";
     EXPECT_NEAR(K(0, 0), 2.0 / r6, 1e-14);   // 3*9/r^8 - 1/r^6 = 3/r^6 - 1/r^6 = 2/r^6
     EXPECT_NEAR(K(1, 1), -1.0 / r6, 1e-14);
     EXPECT_NEAR(K(2, 2), -1.0 / r6, 1e-14);
 
-    double scalar = 1.0 / r6;
+    double const scalar = 1.0 / r6;
     EXPECT_NEAR(scalar, 1.0 / 729.0, 1e-14);
 
     std::cout << "  Single vertex at r=3: K_diag = ("
@@ -65,11 +67,11 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
     auto S = [](double r) -> double {
         if (r <= R_SWITCH) return 1.0;
         if (r >= R_CUT) return 0.0;
-        double rc2 = R_CUT * R_CUT;
-        double rs2 = R_SWITCH * R_SWITCH;
-        double r2 = r * r;
-        double num = (rc2 - r2) * (rc2 - r2) * (rc2 + 2.0 * r2 - 3.0 * rs2);
-        double den = (rc2 - rs2) * (rc2 - rs2) * (rc2 - rs2);
+        double const rc2 = R_CUT * R_CUT;
+        double const rs2 = R_SWITCH * R_SWITCH;
+        double const r2 = r * r;
+        double const num = (rc2 - r2) * (rc2 - r2) * (rc2 + 2.0 * r2 - 3.0 * rs2);
+        double const den = (rc2 - rs2) * (rc2 - rs2) * (rc2 - rs2);
         return num / den;
     };
 
@@ -82,16 +84,16 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
 
     // C¹ continuity: S'(R_switch) = 0 and S'(R_cut) = 0
     // Verify numerically via finite differences
-    double h = 1e-7;
-    double dS_at_switch = (S(R_SWITCH + h) - S(R_SWITCH - h)) / (2 * h);
-    double dS_at_cut = (S(R_CUT - h) - S(R_CUT - 2*h)) / h;
+    double const h = 1e-7;
+    double const dS_at_switch = (S(R_SWITCH + h) - S(R_SWITCH - h)) / (2 * h);
+    double const dS_at_cut = (S(R_CUT - h) - S(R_CUT - 2*h)) / h;
     EXPECT_NEAR(dS_at_switch, 0.0, 1e-4) << "S'(R_switch) = 0 (C¹)";
     EXPECT_NEAR(dS_at_cut, 0.0, 1e-4) << "S'(R_cut) = 0 (C¹)";
 
     // Monotonic decrease through the taper
     double prev = 1.0;
     for (double r = 4.3; r <= 5.0; r += 0.01) {
-        double s = S(r);
+        double const s = S(r);
         EXPECT_LE(s, prev + 1e-12)
             << "S must decrease monotonically at r=" << r;
         prev = s;
@@ -100,7 +102,7 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
     // Smoothness: S(r)/r^6 should decrease monotonically for all r > MIN_DISTANCE
     double prev_weighted = 1e10;
     for (double r = 1.6; r < 5.0; r += 0.05) {
-        double weighted = S(r) / std::pow(r, 6);
+        double const weighted = S(r) / std::pow(r, 6);
         EXPECT_LE(weighted, prev_weighted + 1e-12)
             << "S/r^6 must decrease monotonically at r=" << r;
         prev_weighted = weighted;
@@ -158,10 +160,12 @@ TEST_F(DispProteinTest, TracelessAndSymmetric) {
 
             max_trace = std::max(max_trace, std::abs(rn.disp_tensor.trace()));
 
-            for (int a = 0; a < 3; ++a)
-                for (int b = a + 1; b < 3; ++b)
+            for (int a = 0; a < 3; ++a) {
+                for (int b = a + 1; b < 3; ++b) {
                     max_asym = std::max(max_asym,
                         std::abs(rn.disp_tensor(a, b) - rn.disp_tensor(b, a)));
+}
+}
 
             checked++;
         }
@@ -213,7 +217,7 @@ TEST_F(DispProteinTest, ShieldingContributionHasT2) {
     double max_t2 = 0.0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double t2m = conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude();
+        double const t2m = conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude();
         if (t2m > 1e-10) nonzero_t2++;
         max_t2 = std::max(max_t2, t2m);
     }
@@ -235,8 +239,9 @@ TEST(DispOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;

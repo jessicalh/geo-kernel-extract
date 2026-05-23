@@ -92,11 +92,13 @@ void WaterFieldWelfordTrajectoryResult::Compute(
         const SphericalTensor& efg  = a.water_efg_spherical;
         const SphericalTensor& efgf = a.water_efg_first_spherical;
         WelfordUpdate(w.efg_t2magnitude,        efg.T2Magnitude(), n_new, frame_idx);
-        for (std::size_t k = 0; k < 5; ++k)
+        for (std::size_t k = 0; k < 5; ++k) {
             WelfordUpdate(w.efg_t2[k],          efg.T2[k],        n_new, frame_idx);
+}
         WelfordUpdate(w.efg_first_t2magnitude,  efgf.T2Magnitude(),n_new, frame_idx);
-        for (std::size_t k = 0; k < 5; ++k)
+        for (std::size_t k = 0; k < 5; ++k) {
             WelfordUpdate(w.efg_first_t2[k],    efgf.T2[k],       n_new, frame_idx);
+}
 
         // Shell occupancy counts (int → double for Welford)
         const double n_first_d  = static_cast<double>(a.water_n_first);
@@ -272,9 +274,14 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(std::size_t)> get) {
-        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
-        std::vector<std::size_t> minf(N), maxf(N);
+                       const std::function<const WelfordMoments&(std::size_t)>& get) {
+        std::vector<double> mean(N);
+        std::vector<double> m2(N);
+        std::vector<double> std_(N);
+        std::vector<double> min_(N);
+        std::vector<double> max_(N);
+        std::vector<std::size_t> minf(N);
+        std::vector<std::size_t> maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i] = w.mean; m2[i] = w.m2; std_[i] = w.std;
@@ -299,9 +306,14 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     auto emit_2d = [&](const std::string& prefix, std::size_t K,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(std::size_t, std::size_t)> get) {
-        std::vector<double> mean(N * K), m2(N * K), std_(N * K), min_(N * K), max_(N * K);
-        std::vector<std::size_t> minf(N * K), maxf(N * K);
+                       const std::function<const WelfordMoments&(std::size_t, std::size_t)>& get) {
+        std::vector<double> mean(N * K);
+        std::vector<double> m2(N * K);
+        std::vector<double> std_(N * K);
+        std::vector<double> min_(N * K);
+        std::vector<double> max_(N * K);
+        std::vector<std::size_t> minf(N * K);
+        std::vector<std::size_t> maxf(N * K);
         for (std::size_t i = 0; i < N; ++i) {
             for (std::size_t k = 0; k < K; ++k) {
                 const WelfordMoments& w = get(i, k);
@@ -470,7 +482,9 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     }
 
     // Provenance counters
-    std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
+    std::vector<std::size_t> n_frames(N);
+    std::vector<std::size_t> delta_n(N);
+    std::vector<std::size_t> dxdt_n(N);
     for (std::size_t i = 0; i < N; ++i) {
         const WaterFieldWelfordState& w = get_w(i);
         n_frames[i] = w.n_frames;

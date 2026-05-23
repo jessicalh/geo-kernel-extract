@@ -89,7 +89,7 @@ TEST(DihedralBinTransition, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::DihedralBinTransitionTrajectoryResult>();
@@ -107,7 +107,7 @@ TEST(DihedralBinTransition, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::DihedralBinTransitionTrajectoryResult>();
@@ -128,7 +128,7 @@ TEST(DihedralBinTransition, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::DihedralBinTransitionTrajectoryResult>();
@@ -138,7 +138,7 @@ TEST(DihedralBinTransition, H5RoundTrip) {
         ("dihedral_bin_trans_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/dihedral_bin_transition"));
     auto grp = reopen.getGroup("/trajectory/dihedral_bin_transition");
 
@@ -182,7 +182,9 @@ TEST(DihedralBinTransition, H5RoundTrip) {
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
 
     // Convention attrs
-    std::string legend, gate, source_policy;
+    std::string legend;
+    std::string gate;
+    std::string source_policy;
     grp.getAttribute("backbone_bin_legend").read(legend);
     grp.getAttribute("transition_gate").read(gate);
     grp.getAttribute("source_attached_policy").read(source_policy);
@@ -205,7 +207,7 @@ TEST(DihedralBinTransition, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::DihedralBinTransitionTrajectoryResult>();
@@ -217,10 +219,11 @@ TEST(DihedralBinTransition, Integration1P9J) {
         ("dihedral_bin_trans_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/dihedral_bin_transition");
 
-    std::vector<std::uint32_t> bb_trans_count, n_obs;
+    std::vector<std::uint32_t> bb_trans_count;
+    std::vector<std::uint32_t> n_obs;
     grp.getDataSet("backbone_transition_count").read(bb_trans_count);
     grp.getDataSet("n_frames_observed").read(n_obs);
     ASSERT_EQ(bb_trans_count.size(), R);
@@ -246,7 +249,7 @@ TEST(DihedralBinTransition, Integration1P9J) {
         for (std::size_t b = 1; b < 6; ++b) sum_non_unassigned += bb_occ[ri][b];
         EXPECT_EQ(sum_non_unassigned, n_obs[ri])
             << "non-unassigned occupancy sum != n_frames_observed at ri=" << ri;
-        std::uint32_t sum_all = bb_occ[ri][0] + sum_non_unassigned;
+        std::uint32_t const sum_all = bb_occ[ri][0] + sum_non_unassigned;
         EXPECT_EQ(sum_all, T)
             << "total occupancy sum (including unassigned bin 0) != T at ri=" << ri;
         EXPECT_LE(bb_trans_count[ri], n_obs[ri])
@@ -295,8 +298,9 @@ TEST(DihedralBinTransition, Integration1P9J) {
         }
         // Verify argmax: dom_region[ri] is one of the bins with max count.
         std::uint32_t max_count = 0;
-        for (std::size_t b = 0; b < 6; ++b)
+        for (std::size_t b = 0; b < 6; ++b) {
             max_count = std::max(max_count, bb_occ[ri][b]);
+}
         EXPECT_EQ(bb_occ[ri][dom_region[ri]], max_count)
             << "dominant_region not argmax at ri=" << ri;
     }

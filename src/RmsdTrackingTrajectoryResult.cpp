@@ -74,12 +74,12 @@ double KabschRmsd(const std::vector<Vec3>& current,
     // reflection guard only needs the sign. Passing the raw det
     // (≈ ±1 + O(ε)) into the diagonal would inject anisotropic
     // O(ε) scaling and break strict orthogonality of R.
-    Eigen::JacobiSVD<Mat3> svd(H,
+    Eigen::JacobiSVD<Mat3> const svd(H,
         Eigen::ComputeFullU | Eigen::ComputeFullV);
     const Mat3& U = svd.matrixU();
     const Mat3& V = svd.matrixV();
     const double det = (V * U.transpose()).determinant();
-    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0,
+    Eigen::DiagonalMatrix<double, 3> const D(1.0, 1.0,
         (det < 0.0) ? -1.0 : 1.0);
     const Mat3 R = V * D * U.transpose();
 
@@ -139,7 +139,7 @@ void RmsdTrackingTrajectoryResult::Compute(
     // First frame: capture the reference geometry.
     if (!reference_captured_) {
         reference_positions_.reserve(M);
-        for (std::size_t ai : atom_indices_) {
+        for (std::size_t const ai : atom_indices_) {
             reference_positions_.push_back(conf.PositionAt(ai));
         }
         reference_captured_ = true;
@@ -148,7 +148,7 @@ void RmsdTrackingTrajectoryResult::Compute(
     } else {
         std::vector<Vec3> current;
         current.reserve(M);
-        for (std::size_t ai : atom_indices_) {
+        for (std::size_t const ai : atom_indices_) {
             current.push_back(conf.PositionAt(ai));
         }
         rmsd_.push_back(KabschRmsd(current, reference_positions_));

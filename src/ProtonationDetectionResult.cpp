@@ -7,7 +7,7 @@ namespace nmr {
 std::unique_ptr<ProtonationDetectionResult> ProtonationDetectionResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("ProtonationDetectionResult::Compute",
+    OperationLog::Scope const scope("ProtonationDetectionResult::Compute",
         "residues=" + std::to_string(conf.ProteinRef().ResidueCount()));
 
     const Protein& protein = conf.ProteinRef();

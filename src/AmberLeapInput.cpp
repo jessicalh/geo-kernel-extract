@@ -135,7 +135,7 @@ void WriteAtomRecord(std::ostream& out,
         insertion_code.empty() ? ' ' : insertion_code.front();
     const std::string esym = SymbolForElement(element);
 
-    std::snprintf(
+    (void)std::snprintf(
         line, sizeof(line),
         "ATOM  %5d %4s %3s %1c%4d%1c   %8.3f%8.3f%8.3f%6.2f%6.2f          %2s",
         serial,
@@ -278,7 +278,7 @@ void GenerateAmberPdb(const Protein& protein,
         const std::string ambr_name =
             AmberResidueNameFor(res, is_disulfide_cys);
 
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             const Vec3 pos = conf.PositionAt(ai);
             WriteAtomRecord(pdb_out, serial,
@@ -323,7 +323,7 @@ std::vector<std::pair<size_t, size_t>> DetectDisulfides(
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.type != AminoAcid::CYS) continue;
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             if (atom.pdb_atom_name == "SG" && atom.element == Element::S) {
                 cys_sg.emplace_back(ri, ai);

@@ -94,7 +94,7 @@ TEST(Dssp8TimeSeries, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::Dssp8TimeSeriesTrajectoryResult>();
@@ -112,7 +112,7 @@ TEST(Dssp8TimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::Dssp8TimeSeriesTrajectoryResult>();
@@ -133,7 +133,7 @@ TEST(Dssp8TimeSeries, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::Dssp8TimeSeriesTrajectoryResult>();
@@ -143,7 +143,7 @@ TEST(Dssp8TimeSeries, H5RoundTrip) {
         ("dssp8_ts_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/dssp8_time_series"));
     auto grp = reopen.getGroup("/trajectory/dssp8_time_series");
 
@@ -174,7 +174,9 @@ TEST(Dssp8TimeSeries, H5RoundTrip) {
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
 
     // Convention attrs
-    std::string legend, units, policy;
+    std::string legend;
+    std::string units;
+    std::string policy;
     grp.getAttribute("ss8_legend").read(legend);
     grp.getAttribute("hbond_energy_units").read(units);
     grp.getAttribute("source_attached_policy").read(policy);
@@ -197,7 +199,7 @@ TEST(Dssp8TimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::Dssp8TimeSeriesTrajectoryResult>();
@@ -209,7 +211,7 @@ TEST(Dssp8TimeSeries, Integration1P9J) {
         ("dssp8_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/dssp8_time_series");
 
     // Range sanity: ss8_code in {0..7, 255}.
@@ -219,8 +221,9 @@ TEST(Dssp8TimeSeries, Integration1P9J) {
     std::size_t valid_codes = 0;
     for (const auto& row : ss) {
         for (auto c : row) {
-            if (c <= 7) ++valid_codes;
-            else EXPECT_EQ(c, 255u);
+            if (c <= 7) { ++valid_codes;
+            } else { EXPECT_EQ(c, 255u);
+}
         }
     }
     EXPECT_GT(valid_codes, 0u);
@@ -234,7 +237,7 @@ TEST(Dssp8TimeSeries, Integration1P9J) {
     std::size_t observed_bonds = 0;
     for (const auto& row : acc_e) {
         for (const auto& frame : row) {
-            for (double e : frame) {
+            for (double const e : frame) {
                 if (std::isfinite(e)) {
                     ++observed_bonds;
                     // libdssp writes the two best (lowest-energy)
@@ -272,7 +275,7 @@ TEST(Dssp8TimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::Dssp8TimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -284,7 +287,7 @@ TEST(Dssp8TimeSeries, SyntheticAllAbsentSkipsGroup) {
         ("dssp8_ts_absent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/dssp8_time_series"))
         << "All-absent run should skip group emission.";
     fs::remove(h5_path);

@@ -134,8 +134,8 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1P9J) {
     EXPECT_EQ(table.AtomCount(), build.protein->AtomCount());
 
     // Net charge should be near-integer (whole-system MD with neutralised box).
-    double total = table.TotalCharge();
-    double frac = std::abs(total - std::round(total));
+    double const total = table.TotalCharge();
+    double const frac = std::abs(total - std::round(total));
     EXPECT_LT(frac, 0.05) << "Total charge " << total
         << " not near-integer (NetCharge integrity check)";
 }
@@ -166,8 +166,8 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1Z9B) {
     EXPECT_EQ(build.protein->ForceFieldCharges().SourceForceField(),
               ForceField::Amber_ff14SB);
 
-    double total = build.protein->ForceFieldCharges().TotalCharge();
-    double frac = std::abs(total - std::round(total));
+    double const total = build.protein->ForceFieldCharges().TotalCharge();
+    double const frac = std::abs(total - std::round(total));
     EXPECT_LT(frac, 0.05) << "Total charge " << total
         << " not near-integer (NetCharge integrity check)";
 }
@@ -184,11 +184,13 @@ TEST_F(AmberTrajectoryFixtureTest, ProteinsDifferBetweenFixtures) {
         GTEST_SKIP() << "fixtures not on disk";
     }
 
-    FullSystemReader r1, r2;
+    FullSystemReader r1;
+    FullSystemReader r2;
     ASSERT_TRUE(r1.ReadTopology(fix1.tpr_path)) << r1.error();
     ASSERT_TRUE(r2.ReadTopology(fix2.tpr_path)) << r2.error();
 
-    std::string err1, err2;
+    std::string err1;
+    std::string err2;
     auto rb1 = nmr::ParseTopolTopReadback(
         TopolTopPathForFixture(fix1.tpr_path), err1);
     auto rb2 = nmr::ParseTopolTopReadback(

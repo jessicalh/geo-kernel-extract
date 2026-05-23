@@ -63,11 +63,11 @@ static double DispSwitchingFunction(double r) {
     if (r <= CalculatorConfig::Get("dispersion_switching_onset_distance")) return 1.0;
     if (r >= CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) return 0.0;
 
-    double rc2 = CalculatorConfig::Get("dispersion_vertex_distance_cutoff") * CalculatorConfig::Get("dispersion_vertex_distance_cutoff");
-    double rs2 = CalculatorConfig::Get("dispersion_switching_onset_distance") * CalculatorConfig::Get("dispersion_switching_onset_distance");
-    double r2 = r * r;
-    double num = (rc2 - r2) * (rc2 - r2) * (rc2 + 2.0 * r2 - 3.0 * rs2);
-    double den = (rc2 - rs2) * (rc2 - rs2) * (rc2 - rs2);
+    double const rc2 = CalculatorConfig::Get("dispersion_vertex_distance_cutoff") * CalculatorConfig::Get("dispersion_vertex_distance_cutoff");
+    double const rs2 = CalculatorConfig::Get("dispersion_switching_onset_distance") * CalculatorConfig::Get("dispersion_switching_onset_distance");
+    double const r2 = r * r;
+    double const num = (rc2 - r2) * (rc2 - r2) * (rc2 + 2.0 * r2 - 3.0 * rs2);
+    double const den = (rc2 - rs2) * (rc2 - rs2) * (rc2 - rs2);
     return num / den;
 }
 
@@ -107,21 +107,23 @@ static DispVertexResult ComputeDispVertex(
 
     if (r < CalculatorConfig::Get("singularity_guard_distance") || r > CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) return result;
 
-    double S = DispSwitchingFunction(r);
+    double const S = DispSwitchingFunction(r);
     if (S < CalculatorConfig::Get("dispersion_switching_noise_floor")) return result;  // below switching threshold
 
     Vec3 d = atom_pos - vertex_pos;
-    double r2 = r * r;
-    double r6 = r2 * r2 * r2;
-    double r8 = r6 * r2;
+    double const r2 = r * r;
+    double const r6 = r2 * r2 * r2;
+    double const r8 = r6 * r2;
 
     result.scalar = S / r6;
 
     // K_ab = S(r) * (3 d_a d_b / r^8 - delta_ab / r^6)
-    for (int a = 0; a < 3; ++a)
-        for (int b = 0; b < 3; ++b)
+    for (int a = 0; a < 3; ++a) {
+        for (int b = 0; b < 3; ++b) {
             result.K(a, b) = S * (3.0 * d(a) * d(b) / r8
                                 - (a == b ? 1.0 : 0.0) / r6);
+}
+}
 
     result.valid = true;
     return result;
@@ -136,10 +138,10 @@ static DispVertexResult ComputeDispVertex(
 static std::set<size_t> BondedToVertices(
         const Ring& ring, const Protein& protein) {
     std::set<size_t> bonded;
-    for (size_t vi : ring.atom_indices) {
+    for (size_t const vi : ring.atom_indices) {
         bonded.insert(vi);  // the vertex itself
         const auto& atom = protein.AtomAt(vi);
-        for (size_t bi : atom.bond_indices) {
+        for (size_t const bi : atom.bond_indices) {
             const auto& bond = protein.BondAt(bi);
             bonded.insert(bond.atom_index_a);
             bonded.insert(bond.atom_index_b);
@@ -163,7 +165,7 @@ static std::set<size_t> BondedToVertices(
 std::unique_ptr<DispersionResult> DispersionResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("DispersionResult::Compute",
+    OperationLog::Scope const scope("DispersionResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " rings=" + std::to_string(conf.ProteinRef().RingCount()));
 
@@ -200,8 +202,9 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 
     // Pre-build bonded-to-vertex sets for each ring (once, not per atom).
     std::vector<std::set<size_t>> ring_bonded(n_rings);
-    for (size_t ri = 0; ri < n_rings; ++ri)
+    for (size_t ri = 0; ri < n_rings; ++ri) {
         ring_bonded[ri] = BondedToVertices(protein.RingAt(ri), protein);
+}
 
     int total_pairs = 0;
     int total_contacts = 0;
@@ -209,13 +212,13 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 atom_pos = conf.PositionAt(ai);
+        Vec3 const atom_pos = conf.PositionAt(ai);
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 disp_total = Mat3::Zero();
 
-        for (size_t ri : nearby_rings) {
+        for (size_t const ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
@@ -273,10 +276,10 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             int contacts = 0;
 
             for (size_t vi = 0; vi < ring.atom_indices.size(); ++vi) {
-                Vec3 vpos = geom.vertices[vi];
-                double r = (atom_pos - vpos).norm();
+                Vec3 const vpos = geom.vertices[vi];
+                double const r = (atom_pos - vpos).norm();
 
-                DispVertexResult vr = ComputeDispVertex(atom_pos, vpos, r);
+                DispVertexResult const vr = ComputeDispVertex(atom_pos, vpos, r);
                 if (!vr.valid) {
                     // ---- GeometryChoice: switching function noise floor ----
                     // Only fires when r is in the taper range but S < 1e-15
@@ -312,12 +315,13 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
                 new_rn.ring_index = ri;
                 new_rn.ring_type = ring.type_index;
                 new_rn.distance_to_center = dist_to_center;
-                Vec3 d = atom_pos - geom.center;
-                if (d.norm() > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
+                Vec3 const d = atom_pos - geom.center;
+                if (d.norm() > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
                     new_rn.direction_to_center = d.normalized();
+}
 
-                double z = d.dot(geom.normal);
-                Vec3 d_plane = d - z * geom.normal;
+                double const z = d.dot(geom.normal);
+                Vec3 const d_plane = d - z * geom.normal;
                 new_rn.z = z;
                 new_rn.rho = d_plane.norm();
                 new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));
@@ -333,11 +337,12 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
             rn->disp_contacts = contacts;
 
             // Per-type accumulation
-            int ti = ring.TypeIndexAsInt();
+            int const ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_disp_scalar_sum[ti] += s_ring;
-                for (int c = 0; c < 5; ++c)
+                for (int c = 0; c < 5; ++c) {
                     ca.per_type_disp_T2_sum[ti][c] += rn->disp_spherical.T2[c];
+}
             }
 
             disp_total += K_ring;
@@ -360,7 +365,7 @@ std::unique_ptr<DispersionResult> DispersionResult::Compute(
 }
 
 
-SphericalTensor DispersionResult::SampleShieldingAt(Vec3 point) const {
+SphericalTensor DispersionResult::SampleShieldingAt(const Vec3& point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -370,14 +375,14 @@ SphericalTensor DispersionResult::SampleShieldingAt(Vec3 point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
         // Ring-level distance check
-        double ring_dist = (point - geom.center).norm();
+        double const ring_dist = (point - geom.center).norm();
         if (ring_dist < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (ring_dist < geom.radius) continue;
         if (ring_dist > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
         // Sum over ring vertices
         for (const auto& vertex : geom.vertices) {
-            double r = (point - vertex).norm();
+            double const r = (point - vertex).norm();
             if (r < CalculatorConfig::Get("singularity_guard_distance") || r > CalculatorConfig::Get("dispersion_vertex_distance_cutoff")) continue;
 
             auto vr = ComputeDispVertex(point, vertex, r);
@@ -408,8 +413,9 @@ int DispersionResult::WriteFeatures(const ProteinConformation& conf,
         PackST_D(ca.disp_shielding_contribution, &shielding[i*9]);
         for (int t = 0; t < 8; ++t) {
             per_type_T0[i*8 + t] = ca.per_type_disp_scalar_sum[t];
-            for (int c = 0; c < 5; ++c)
+            for (int c = 0; c < 5; ++c) {
                 per_type_T2[i*40 + t*5 + c] = ca.per_type_disp_T2_sum[t][c];
+}
         }
     }
 

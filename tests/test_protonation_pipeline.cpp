@@ -53,7 +53,7 @@ protected:
 
 TEST_F(PropkaTest, PredictsPkaValues) {
     auto& conf = protein->Conformation();
-    PropkaProtonator propka;
+    PropkaProtonator const propka;
 
     std::string error;
     auto pkas = PropkaProtonator::PredictPka(*protein, conf, error);
@@ -91,7 +91,7 @@ TEST_F(PropkaTest, ProtonatesAtPhysiologicalPH) {
     // 4 ASP(-1) + 6 GLU(-1) + 1 MET(N-term, +1) = -9
     // 7 LYS(+1) + 4 ARG(+1) + 1 HIS(~0 at pH 7) = +11 to +12
     // Net: roughly +2 to +3, but without terminal patches
-    int net = state.NetChargeForProtein(residue_types);
+    int const net = state.NetChargeForProtein(residue_types);
     EXPECT_GE(net, -2) << "Net charge " << net << " too negative for pH 7";
     EXPECT_LE(net, 6) << "Net charge " << net << " too positive for pH 7";
 }
@@ -162,8 +162,8 @@ TEST_F(PropkaTest, DecisionsAreTyped) {
 
 
 TEST(PrmtopChargeTest, LoadsFromAmberPrmtop) {
-    std::string prmtop = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
-    std::string amber_pdb = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_amber.pdb";
+    std::string const prmtop = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
+    std::string const amber_pdb = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_amber.pdb";
     if (!std::filesystem::exists(prmtop)) GTEST_SKIP() << "prmtop not found";
     if (!std::filesystem::exists(amber_pdb)) GTEST_SKIP() << "amber PDB not found";
 
@@ -177,7 +177,7 @@ TEST(PrmtopChargeTest, LoadsFromAmberPrmtop) {
     // NOTE: This only works if heavy atoms come first in the prmtop, which
     // they do NOT — tleap interleaves hydrogens with their parent heavy atoms.
     // So this test verifies the atom count mismatch is handled.
-    PrmtopChargeSource source(prmtop);
+    PrmtopChargeSource const source(prmtop);
     std::string error;
     auto charges = source.LoadCharges(*r.protein, conf, error);
 
@@ -193,16 +193,16 @@ TEST(PrmtopChargeTest, LoadsFromAmberPrmtop) {
 TEST(PrmtopChargeTest, TotalChargeIsInteger) {
     // This test uses the XYZ atom count to verify the prmtop directly,
     // without going through the Protein loader (which can't load XYZ yet).
-    std::string prmtop = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
+    std::string const prmtop = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
     if (!std::filesystem::exists(prmtop)) GTEST_SKIP() << "prmtop not found";
 
     // Read charges directly from the prmtop
-    std::string amber_pdb = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_amber.pdb";
+    std::string const amber_pdb = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_amber.pdb";
     if (!std::filesystem::exists(amber_pdb)) GTEST_SKIP();
     auto r = BuildFromProtonatedPdb(amber_pdb);
     if (!r.Ok()) GTEST_SKIP();
 
-    PrmtopChargeSource source(prmtop);
+    PrmtopChargeSource const source(prmtop);
     std::string error;
     auto charges = source.LoadCharges(*r.protein, r.protein->Conformation(), error);
     ASSERT_FALSE(charges.empty()) << error;
@@ -281,7 +281,7 @@ TEST_F(PropkaTest, PropkaAgreesWithStructure) {
         const Residue& res = protein->ResidueAt(ri);
         if (res.type != AminoAcid::HIS) continue;
 
-        int struct_variant = res.protonation_variant_index;
+        int const struct_variant = res.protonation_variant_index;
         const auto* propka_decision = propka_result.state.ForResidue(ri);
 
         if (!propka_decision) continue;
@@ -291,9 +291,9 @@ TEST_F(PropkaTest, PropkaAgreesWithStructure) {
         } else {
             disagreements++;
             // Log the disagreement — this is science, not a test failure
-            std::string struct_name = (struct_variant >= 0)
+            std::string const struct_name = (struct_variant >= 0)
                 ? res.AminoAcidInfo().variants[struct_variant].name : "default";
-            std::string propka_name = (propka_decision->variant_index >= 0)
+            std::string const propka_name = (propka_decision->variant_index >= 0)
                 ? res.AminoAcidInfo().variants[propka_decision->variant_index].name
                 : "default";
             std::cout << "  HIS " << res.sequence_number
@@ -351,15 +351,15 @@ TEST(OrcaRunTest, PrmtopChargesAreCorrect) {
     auto& conf = result.protein->Conformation();
 
     // Assign charges from the prmtop (authoritative ff14SB)
-    PrmtopChargeSource source(files.prmtop_path);
+    PrmtopChargeSource const source(files.prmtop_path);
     auto charges = ChargeAssignmentResult::Compute(conf, source);
     ASSERT_NE(charges, nullptr);
 
     // Total charge must be integer — this is a protonated protein
     // where atom count matches prmtop exactly
-    double total = charges->TotalCharge();
-    double nearest_int = std::round(total);
-    double frac = std::abs(total - nearest_int);
+    double const total = charges->TotalCharge();
+    double const nearest_int = std::round(total);
+    double const frac = std::abs(total - nearest_int);
     EXPECT_LT(frac, 0.01)
         << "Total charge " << total << " not integer (nearest=" << nearest_int << ")";
 
@@ -424,7 +424,7 @@ TEST(OrcaRunTest, ShieldingTensorsLoadedCorrectly) {
     files.pdb_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.pdb";
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
-    std::string nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_nmr.out";
+    std::string const nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_nmr.out";
 
     if (!std::filesystem::exists(files.prmtop_path)) GTEST_SKIP();
     if (!std::filesystem::exists(nmr_path)) GTEST_SKIP();
@@ -459,7 +459,7 @@ TEST(OrcaRunTest, ShieldingTensorsLoadedCorrectly) {
 
             // T0 (isotropic) should be physically reasonable: ~100-400 ppm for heavy,
             // ~20-35 ppm for H
-            double t0 = ca.orca_shielding_total_spherical.T0;
+            double const t0 = ca.orca_shielding_total_spherical.T0;
             EXPECT_FALSE(std::isnan(t0)) << "NaN T0 at atom " << ai;
         }
     }
@@ -469,7 +469,7 @@ TEST(OrcaRunTest, ShieldingTensorsLoadedCorrectly) {
 
     // Spot-check: atom 0 (N of MET 1) should have isotropic shielding
     // in the range ~100-300 ppm for nitrogen
-    double n_iso = conf.AtomAt(0).orca_shielding_total_spherical.T0;
+    double const n_iso = conf.AtomAt(0).orca_shielding_total_spherical.T0;
     EXPECT_GT(n_iso, 50.0) << "N isotropic " << n_iso << " too low";
     EXPECT_LT(n_iso, 400.0) << "N isotropic " << n_iso << " too high";
 
@@ -532,10 +532,11 @@ TEST_F(KamlTest, ProtonatesAtPhysiologicalPH) {
     EXPECT_EQ(result.state.Tool(), ProtonationTool::KaML);
 
     std::vector<AminoAcid> residue_types;
-    for (size_t ri = 0; ri < protein->ResidueCount(); ++ri)
+    for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         residue_types.push_back(protein->ResidueAt(ri).type);
+}
 
-    int net = result.state.NetChargeForProtein(residue_types);
+    int const net = result.state.NetChargeForProtein(residue_types);
     EXPECT_GE(net, -2) << "KaML net charge " << net << " too negative";
     EXPECT_LE(net, 6) << "KaML net charge " << net << " too positive";
 

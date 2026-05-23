@@ -103,7 +103,7 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 4;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -124,15 +124,17 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
         nmr::ApbsEfgTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
-    for (size_t i : {size_t(0), N / 2, N - 1}) {
+    for (size_t const i : {static_cast<size_t>(0), N / 2, N - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             const nmr::SphericalTensor& st = buf->At(i, t);
             const auto expected = MakeSyntheticT2(i, t);
             EXPECT_DOUBLE_EQ(st.T0, expected.T0);
-            for (size_t k = 0; k < 3; ++k)
+            for (size_t k = 0; k < 3; ++k) {
                 EXPECT_DOUBLE_EQ(st.T1[k], expected.T1[k]);
-            for (size_t k = 0; k < 5; ++k)
+}
+            for (size_t k = 0; k < 5; ++k) {
                 EXPECT_DOUBLE_EQ(st.T2[k], expected.T2[k]);
+}
         }
     }
 
@@ -140,7 +142,7 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
         ("apbs_efg_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/apbs_efg_time_series");
     auto ds = grp.getDataSet("t2");
     const auto dims = ds.getSpace().getDimensions();
@@ -149,7 +151,10 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 5u) << "T2-only emission per 2026-05-18 schema rev";
 
-    std::string parity, layout, units, policy;
+    std::string parity;
+    std::string layout;
+    std::string units;
+    std::string policy;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
@@ -166,8 +171,9 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
     for (size_t t = 0; t < kFrames; ++t) {
         const auto expected = MakeSyntheticT2(check_i, t);
         const size_t base = (check_i * kFrames + t) * 5;
-        for (size_t k = 0; k < 5; ++k)
+        for (size_t k = 0; k < 5; ++k) {
             EXPECT_DOUBLE_EQ(flat[base + k], expected.T2[k]);
+}
     }
 
     // source_attached_per_frame should be all-1 (HasResult succeeded
@@ -201,7 +207,7 @@ TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 2;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         // NO ForceAttachResultForTesting → HasResult false → NaN-fill.
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -214,7 +220,7 @@ TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
         nmr::ApbsEfgTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     // T2 components NaN, T0/T1 NaN too (set explicitly in cpp).
-    for (size_t i : {size_t(0), N / 2, N - 1}) {
+    for (size_t const i : {static_cast<size_t>(0), N / 2, N - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             const nmr::SphericalTensor& st = buf->At(i, t);
             EXPECT_TRUE(std::isnan(st.T0));
@@ -227,7 +233,7 @@ TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
         ("apbs_efg_ts_nanfill_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/apbs_efg_time_series");
     auto mask_ds = grp.getDataSet("source_attached_per_frame");
     std::vector<std::uint8_t> mask(kFrames);
@@ -262,7 +268,7 @@ TEST(ApbsEfgTimeSeries, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 }
@@ -293,7 +299,7 @@ TEST(ApbsEfgTimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(
@@ -346,7 +352,7 @@ TEST(ApbsEfgTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf = tp.GetDenseBuffer<nmr::SphericalTensor>(std::type_index(typeid(
@@ -361,9 +367,10 @@ TEST(ApbsEfgTimeSeries, Integration1P9J) {
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
             const nmr::SphericalTensor& st = buf->At(i, t);
-            for (std::size_t k = 0; k < 5; ++k)
+            for (std::size_t k = 0; k < 5; ++k) {
                 EXPECT_TRUE(std::isfinite(st.T2[k]))
                     << "atom " << i << " frame " << t << " T2[" << k << "]";
+}
             const double mag = st.T2Magnitude();
             max_t2_mag = std::max(max_t2_mag, mag);
             if (mag > kEfgSanityLimit) ++n_overages;

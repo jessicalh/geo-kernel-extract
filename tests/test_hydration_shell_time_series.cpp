@@ -85,7 +85,7 @@ TEST(HydrationShellTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
     const auto& tr = tp.Result<nmr::HydrationShellTimeSeriesTrajectoryResult>();
@@ -102,7 +102,7 @@ TEST(HydrationShellTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     auto& tr = tp.Result<nmr::HydrationShellTimeSeriesTrajectoryResult>();
     const std::size_t T = tr.NumFrames();
@@ -121,14 +121,14 @@ TEST(HydrationShellTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HydrationShellTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_shell_ts_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/hydration_shell_time_series"));
     auto grp = reopen.getGroup("/trajectory/hydration_shell_time_series");
 
@@ -160,7 +160,7 @@ TEST(HydrationShellTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HydrationShellTimeSeriesTrajectoryResult>();
@@ -169,14 +169,15 @@ TEST(HydrationShellTimeSeries, Integration1P9J) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_shell_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/hydration_shell_time_series");
 
     std::vector<std::vector<double>> ion_dist;
     grp.getDataSet("nearest_ion_distance").read(ion_dist);
     ASSERT_EQ(ion_dist.size(), tp.AtomCount());
 
-    std::size_t with_ion = 0, without_ion = 0;
+    std::size_t with_ion = 0;
+    std::size_t without_ion = 0;
     for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
         if (std::isfinite(ion_dist[i][0])) ++with_ion; else ++without_ion;
     }
@@ -200,7 +201,7 @@ TEST(HydrationShellTimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::HydrationShellTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -211,7 +212,7 @@ TEST(HydrationShellTimeSeries, SyntheticAllAbsentSkipsGroup) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_shell_ts_absent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/hydration_shell_time_series"))
         << "All-absent run should skip group emission.";
 

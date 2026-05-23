@@ -24,14 +24,14 @@ std::unique_ptr<DemoResult> DemoResult::Compute(ProteinConformation& conf) {
     // Per-atom: distance and direction to nearest ring center
     // ---------------------------------------------------------------
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Vec3 pos = conf.PositionAt(ai);
+        Vec3 const pos = conf.PositionAt(ai);
         double min_dist = std::numeric_limits<double>::max();
         Vec3 min_dir = Vec3::Zero();
 
         for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
             const auto& geo = conf.ring_geometries[ri];
-            Vec3 delta = geo.center - pos;
-            double dist = delta.norm();
+            Vec3 const delta = geo.center - pos;
+            double const dist = delta.norm();
             if (dist < min_dist) {
                 min_dist = dist;
                 min_dir = (dist > 1e-10) ? Vec3(delta / dist) : Vec3::Zero();

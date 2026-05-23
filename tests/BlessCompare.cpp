@@ -75,15 +75,17 @@ static std::vector<size_t> ParseShape(const std::string& header) {
     if (open == std::string::npos || close == std::string::npos
         || close <= open) return result;
 
-    std::string inside = header.substr(open + 1, close - open - 1);
+    std::string const inside = header.substr(open + 1, close - open - 1);
     std::stringstream ss(inside);
     std::string tok;
     while (std::getline(ss, tok, ',')) {
         // trim
-        while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t'))
+        while (!tok.empty() && (tok.front() == ' ' || tok.front() == '\t')) {
             tok.erase(tok.begin());
-        while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t'))
+}
+        while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) {
             tok.pop_back();
+}
         if (tok.empty()) continue;
         char* end = nullptr;
         unsigned long long v = std::strtoull(tok.c_str(), &end, 10);
@@ -109,7 +111,8 @@ static NpyArray ReadNpy(const std::string& path) {
         return out;
     }
 
-    uint8_t major = 0, minor = 0;
+    uint8_t major = 0;
+    uint8_t minor = 0;
     in.read(reinterpret_cast<char*>(&major), 1);
     in.read(reinterpret_cast<char*>(&minor), 1);
 
@@ -144,7 +147,7 @@ static NpyArray ReadNpy(const std::string& path) {
     }
 
     size_t n = 1;
-    for (size_t d : out.shape) n *= d;
+    for (size_t const d : out.shape) n *= d;
     out.element_count = n;
 
     // Decode element type and read all into a double buffer for
@@ -206,7 +209,8 @@ static bool FilesByteIdentical(const std::string& a, const std::string& b) {
     if (fa.tellg() != fb.tellg()) return false;
     fa.seekg(0); fb.seekg(0);
     constexpr size_t BUF = 8192;
-    char ba[BUF], bb[BUF];
+    char ba[BUF];
+    char bb[BUF];
     while (fa && fb) {
         fa.read(ba, BUF);
         fb.read(bb, BUF);
@@ -271,13 +275,13 @@ BlessResult CompareNpy(const std::string& run_path,
     // not a bit-identical-zero pass).
     auto count_nonzero = [](const std::vector<double>& v) {
         size_t c = 0;
-        for (double x : v) if (std::fabs(x) > 0.0) ++c;
+        for (double const x : v) if (std::fabs(x) > 0.0) ++c;
         return c;
     };
-    size_t run_nz     = count_nonzero(run.as_double);
-    size_t blessed_nz = count_nonzero(blessed.as_double);
-    double run_nz_frac     = n > 0 ? static_cast<double>(run_nz)     / n : 0.0;
-    double blessed_nz_frac = n > 0 ? static_cast<double>(blessed_nz) / n : 0.0;
+    size_t const run_nz     = count_nonzero(run.as_double);
+    size_t const blessed_nz = count_nonzero(blessed.as_double);
+    double const run_nz_frac     = n > 0 ? static_cast<double>(run_nz)     / n : 0.0;
+    double const blessed_nz_frac = n > 0 ? static_cast<double>(blessed_nz) / n : 0.0;
 
     // Only flag ZeroOutput if blessed had data (so the array IS supposed
     // to carry signal) but run lost most of it. A blessed-empty array
@@ -286,7 +290,7 @@ BlessResult CompareNpy(const std::string& run_path,
         && run_nz_frac < policy.min_nonzero_fraction) {
         out.verdict = BlessVerdict::ZeroOutput;
         char buf[256];
-        std::snprintf(buf, sizeof(buf),
+        (void)std::snprintf(buf, sizeof(buf),
             "run nonzero %.3f below min %.3f (blessed had %.3f); "
             "run_nz=%zu blessed_nz=%zu of %zu elements",
             run_nz_frac, policy.min_nonzero_fraction, blessed_nz_frac,
@@ -302,22 +306,22 @@ BlessResult CompareNpy(const std::string& run_path,
     double max_rel_diff = 0.0;
     size_t max_idx = 0;
     for (size_t i = 0; i < n; ++i) {
-        double d = std::fabs(run.as_double[i] - blessed.as_double[i]);
-        double thresh = policy.atol + policy.rtol * std::fabs(blessed.as_double[i]);
+        double const d = std::fabs(run.as_double[i] - blessed.as_double[i]);
+        double const thresh = policy.atol + policy.rtol * std::fabs(blessed.as_double[i]);
         if (d > thresh) ++exceeded;
         if (d > max_abs_diff) {
             max_abs_diff = d;
             max_idx = i;
         }
-        double denom = std::fabs(blessed.as_double[i]);
-        double rel = denom > 0.0 ? d / denom : 0.0;
+        double const denom = std::fabs(blessed.as_double[i]);
+        double const rel = denom > 0.0 ? d / denom : 0.0;
         if (rel > max_rel_diff) max_rel_diff = rel;
     }
 
     if (exceeded == 0) {
         out.verdict = BlessVerdict::WithinTolerance;
         char buf[256];
-        std::snprintf(buf, sizeof(buf),
+        (void)std::snprintf(buf, sizeof(buf),
             "max |Δ|=%.3e max |Δ|/|val|=%.3e across %zu elements "
             "(rtol=%.0e atol=%.0e)",
             max_abs_diff, max_rel_diff, n, policy.rtol, policy.atol);
@@ -327,7 +331,7 @@ BlessResult CompareNpy(const std::string& run_path,
 
     out.verdict = BlessVerdict::Drifted;
     char buf[384];
-    std::snprintf(buf, sizeof(buf),
+    (void)std::snprintf(buf, sizeof(buf),
         "%zu of %zu elements exceed tolerance "
         "(rtol=%.0e atol=%.0e); max |Δ|=%.3e at index [%zu]; "
         "max |Δ|/|val|=%.3e; run_nz_frac=%.3f blessed_nz_frac=%.3f",
@@ -361,16 +365,18 @@ static std::mutex g_policy_mutex;
 static std::unordered_map<std::string, PolicyTable> g_policy_tables;
 
 static void TrimInPlace(std::string& s) {
-    while (!s.empty() && (s.front() == ' ' || s.front() == '\t'))
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) {
         s.erase(s.begin());
+}
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t'
-                          || s.back() == '\r'))
+                          || s.back() == '\r')) {
         s.pop_back();
+}
 }
 
 static bool ParseDouble(const std::string& v, double& out) {
     char* end = nullptr;
-    double d = std::strtod(v.c_str(), &end);
+    double const d = std::strtod(v.c_str(), &end);
     if (end == v.c_str()) return false;
     out = d;
     return true;
@@ -380,14 +386,15 @@ static void ApplyKv(BlessPolicy& p, const std::string& key,
                     const std::string& val) {
     double d;
     if (!ParseDouble(val, d)) return;
-    if      (key == "rtol")                 p.rtol = d;
-    else if (key == "atol")                 p.atol = d;
-    else if (key == "min_nonzero_fraction") p.min_nonzero_fraction = d;
+    if      (key == "rtol") {                 p.rtol = d;
+    } else if (key == "atol") {                 p.atol = d;
+    } else if (key == "min_nonzero_fraction") { p.min_nonzero_fraction = d;
+}
     // unknown keys silently ignored — forward-compatible
 }
 
 static const PolicyTable& LoadTable(const std::string& path) {
-    std::lock_guard<std::mutex> lk(g_policy_mutex);
+    std::lock_guard<std::mutex> const lk(g_policy_mutex);
     auto it = g_policy_tables.find(path);
     if (it != g_policy_tables.end()) return it->second;
 

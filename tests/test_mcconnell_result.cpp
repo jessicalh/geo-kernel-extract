@@ -74,7 +74,7 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
     // Positions: C at (-0.5,0,0), O at (0.5,0,0) gives midpoint at origin,
     // but we want bond direction (0,0,1). So:
     // C at (0,0,-0.5), O at (0,0,0.5), midpoint at origin, direction = (0,0,1)
-    std::vector<Vec3> positions = {
+    std::vector<Vec3> const positions = {
         Vec3(0.0, 0.0, -0.5),   // C
         Vec3(0.0, 0.0,  0.5),   // O
         Vec3(3.0, 0.0,  0.0)    // H (field point)
@@ -113,7 +113,7 @@ TEST(McConnellAnalytical, DipolarKernelAtKnownGeometry) {
         << "McConnell scalar f should be -1/27";
 
     // Dipolar kernel K should be traceless
-    double trace_K = bn.dipolar_tensor.trace();
+    double const trace_K = bn.dipolar_tensor.trace();
     EXPECT_NEAR(trace_K, 0.0, 1e-10) << "Dipolar kernel must be traceless";
 
     // K diagonal: (2/27, -1/27, -1/27)
@@ -185,8 +185,9 @@ TEST_F(McConnellProteinTest, EveryAtomHasBondNeighbours) {
 
     int with_neighbours = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        if (!conf.AtomAt(ai).bond_neighbours.empty())
+        if (!conf.AtomAt(ai).bond_neighbours.empty()) {
             with_neighbours++;
+}
     }
 
     // Every atom in a protein should see nearby bonds
@@ -206,7 +207,7 @@ TEST_F(McConnellProteinTest, DipolarKernelsAreTraceless) {
     int checked = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& bn : conf.AtomAt(ai).bond_neighbours) {
-            double trace = bn.dipolar_tensor.trace();
+            double const trace = bn.dipolar_tensor.trace();
             max_trace = std::max(max_trace, std::abs(trace));
             checked++;
         }
@@ -228,7 +229,7 @@ TEST_F(McConnellProteinTest, McConnellScalarNonZero) {
     int with_co = 0;
     double max_co = 0.0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double co = std::abs(conf.AtomAt(ai).mcconnell_co_sum);
+        double const co = std::abs(conf.AtomAt(ai).mcconnell_co_sum);
         if (co > 1e-6) with_co++;
         max_co = std::max(max_co, co);
     }
@@ -246,12 +247,14 @@ TEST_F(McConnellProteinTest, ShieldingContributionHasT0AndT2) {
     auto& conf = protein->Conformation();
     conf.AttachResult(McConnellResult::Compute(conf));
 
-    int nonzero_t0 = 0, nonzero_t2 = 0;
-    double max_t0 = 0, max_t2 = 0;
+    int nonzero_t0 = 0;
+    int nonzero_t2 = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).mc_shielding_contribution;
         if (std::abs(sc.T0) > 1e-8) nonzero_t0++;
-        double t2mag = sc.T2Magnitude();
+        double const t2mag = sc.T2Magnitude();
         if (t2mag > 1e-8) nonzero_t2++;
         max_t0 = std::max(max_t0, std::abs(sc.T0));
         max_t2 = std::max(max_t2, t2mag);
@@ -279,28 +282,30 @@ TEST_F(McConnellProteinTest, T0EqualsScalarFForSingleBond) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& bn : conf.AtomAt(ai).bond_neighbours) {
             // Reconstruct the full M tensor for this bond
-            Vec3 atom_pos = conf.PositionAt(ai);
-            Vec3 midpoint = conf.bond_midpoints[bn.bond_index];
-            Vec3 d = atom_pos - midpoint;
-            double r = d.norm();
+            Vec3 const atom_pos = conf.PositionAt(ai);
+            Vec3 const midpoint = conf.bond_midpoints[bn.bond_index];
+            Vec3 const d = atom_pos - midpoint;
+            double const r = d.norm();
             if (r < MIN_DISTANCE) continue;
 
             Vec3 d_hat = d / r;
             Vec3 b_hat = conf.bond_directions[bn.bond_index];
-            double cos_theta = d_hat.dot(b_hat);
-            double r3 = r * r * r;
+            double const cos_theta = d_hat.dot(b_hat);
+            double const r3 = r * r * r;
 
             // Build M/r^3
             Mat3 M;
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
                     M(a, b) = (9.0 * cos_theta * d_hat(a) * b_hat(b)
                                - 3.0 * b_hat(a) * b_hat(b)
                                - (3.0 * d_hat(a) * d_hat(b) - (a==b ? 1.0 : 0.0)))
                               / r3;
+}
+}
 
-            double t0 = M.trace() / 3.0;
-            double diff = std::abs(t0 - bn.mcconnell_scalar);
+            double const t0 = M.trace() / 3.0;
+            double const diff = std::abs(t0 - bn.mcconnell_scalar);
             max_diff = std::max(max_diff, diff);
             checked++;
         }
@@ -320,7 +325,7 @@ TEST_F(McConnellProteinTest, NearestCOTrackingWorks) {
 
     int has_co = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double d = conf.AtomAt(ai).nearest_CO_dist;
+        double const d = conf.AtomAt(ai).nearest_CO_dist;
         if (d < NO_DATA_SENTINEL) {
             has_co++;
             EXPECT_GT(d, 0.0);
@@ -346,8 +351,9 @@ TEST(McConnellOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -360,13 +366,14 @@ TEST(McConnellOrcaTest, RunOnProtonatedProtein) {
     conf.AttachResult(std::move(mc));
 
     // Summary: bond neighbour counts, T0/T2 ranges
-    double min_t0 = 1e30, max_t0 = -1e30;
+    double min_t0 = 1e30;
+    double max_t0 = -1e30;
     double max_t2 = 0;
     int total_bn = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
         total_bn += static_cast<int>(ca.bond_neighbours.size());
-        double t0 = ca.mc_shielding_contribution.T0;
+        double const t0 = ca.mc_shielding_contribution.T0;
         min_t0 = std::min(min_t0, t0);
         max_t0 = std::max(max_t0, t0);
         max_t2 = std::max(max_t2, ca.mc_shielding_contribution.T2Magnitude());

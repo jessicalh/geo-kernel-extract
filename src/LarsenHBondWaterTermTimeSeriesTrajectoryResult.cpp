@@ -112,8 +112,9 @@ void LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group(
     // ran in ≥1 frame. Downstream readers MUST tolerate group absence
     // for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
-    for (auto v : source_present_per_frame_)
+    for (auto v : source_present_per_frame_) {
         if (v) ++source_present_count;
+}
     if (source_present_count == 0) {
         OperationLog::Warn(
             "LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group",
@@ -163,8 +164,8 @@ void LarsenHBondWaterTermTimeSeriesTrajectoryResult::WriteH5Group(
         }
     }
 
-    std::vector<std::size_t> dims = {N, T};
-    HighFive::DataSpace space(dims);
+    std::vector<std::size_t> const dims = {N, T};
+    HighFive::DataSpace const space(dims);
     auto ds = grp.createDataSet<double>("water_term", space);
     ds.write_raw(flat.data());
 

@@ -130,8 +130,12 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
     result->cmap_energy_.resize(N, 0.0);
     result->total_bonded_.resize(N, 0.0);
 
-    size_t count_bond = 0, count_angle = 0, count_ub = 0;
-    size_t count_proper = 0, count_improper = 0, count_cmap = 0;
+    size_t count_bond = 0;
+    size_t count_angle = 0;
+    size_t count_ub = 0;
+    size_t count_proper = 0;
+    size_t count_improper = 0;
+    size_t count_cmap = 0;
 
     for (const auto& ix : params.interactions) {
         // All atom indices must be in range

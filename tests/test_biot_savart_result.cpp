@@ -87,7 +87,7 @@ TEST_F(BiotSavartProteinTest, GTensorIsRankOne) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.G_tensor.norm() < 1e-15) continue;
-            double det = std::abs(rn.G_tensor.determinant());
+            double const det = std::abs(rn.G_tensor.determinant());
             max_det = std::max(max_det, det);
             checked++;
         }
@@ -120,9 +120,9 @@ TEST_F(BiotSavartProteinTest, BoydSkrynnikovTensorStructure) {
 
             // T0 from trace of G should equal -(n . B) * PPM_FACTOR / 3
             // (minus sign from sigma_ab = -dB_a/dB_0b)
-            double trace_over_3 = rn.G_tensor.trace() / 3.0;
-            double ndotB_ppm = -geom.normal.dot(rn.B_field) * PPM_FACTOR / 3.0;
-            double diff = std::abs(trace_over_3 - ndotB_ppm);
+            double const trace_over_3 = rn.G_tensor.trace() / 3.0;
+            double const ndotB_ppm = -geom.normal.dot(rn.B_field) * PPM_FACTOR / 3.0;
+            double const diff = std::abs(trace_over_3 - ndotB_ppm);
             max_t0_diff = std::max(max_t0_diff, diff);
 
             // Also verify SphericalTensor T0 matches
@@ -146,15 +146,18 @@ TEST_F(BiotSavartProteinTest, ShieldingContributionHasAllIrreps) {
     auto& conf = protein->Conformation();
     conf.AttachResult(BiotSavartResult::Compute(conf));
 
-    int nonzero_t0 = 0, nonzero_t1 = 0, nonzero_t2 = 0;
-    double max_t0 = 0, max_t2 = 0;
+    int nonzero_t0 = 0;
+    int nonzero_t1 = 0;
+    int nonzero_t2 = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).bs_shielding_contribution;
         if (std::abs(sc.T0) > 1e-10) nonzero_t0++;
-        double t1mag = std::sqrt(sc.T1[0]*sc.T1[0] + sc.T1[1]*sc.T1[1]
+        double const t1mag = std::sqrt(sc.T1[0]*sc.T1[0] + sc.T1[1]*sc.T1[1]
                                  + sc.T1[2]*sc.T1[2]);
         if (t1mag > 1e-10) nonzero_t1++;
-        double t2mag = sc.T2Magnitude();
+        double const t2mag = sc.T2Magnitude();
         if (t2mag > 1e-10) nonzero_t2++;
         max_t0 = std::max(max_t0, std::abs(sc.T0));
         max_t2 = std::max(max_t2, t2mag);
@@ -184,13 +187,13 @@ TEST_F(BiotSavartProteinTest, BFieldAboveRingAlongNormal) {
             if (rn.B_field.norm() < 1e-30) continue;
 
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
-            Vec3 d = conf.PositionAt(ai) - geom.center;
-            double cos_angle = std::abs(d.normalized().dot(geom.normal));
+            Vec3 const d = conf.PositionAt(ai) - geom.center;
+            double const cos_angle = std::abs(d.normalized().dot(geom.normal));
 
             if (cos_angle > 0.866) {  // within 30 degrees of normal
                 // B_z component (along normal) should dominate
-                double Bz = std::abs(rn.B_field.dot(geom.normal));
-                double Bmag = rn.B_field.norm();
+                double const Bz = std::abs(rn.B_field.dot(geom.normal));
+                double const Bmag = rn.B_field.norm();
                 if (Bmag > 1e-25) {
                     EXPECT_GT(Bz / Bmag, 0.5)
                         << "B should be mostly along normal above ring";
@@ -215,8 +218,9 @@ TEST(BiotSavartOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -230,7 +234,9 @@ TEST(BiotSavartOrcaTest, RunOnProtonatedProtein) {
     conf.AttachResult(std::move(bs));
 
     // Summary statistics
-    double max_t0 = 0, max_t2 = 0, max_B = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
+    double max_B = 0;
     int with_rings = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).bs_shielding_contribution;

@@ -124,7 +124,7 @@ TEST(BsAnomalousAtomMarker, Frame0SemanticsZeroEvents) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -167,7 +167,8 @@ TEST(BsAnomalousAtomMarker, DependsOnBsWelford) {
     const auto welford_id = std::type_index(typeid(nmr::BsWelfordTrajectoryResult));
     const auto bs_id      = std::type_index(typeid(nmr::BiotSavartResult));
 
-    bool has_welford = false, has_bs = false;
+    bool has_welford = false;
+    bool has_bs = false;
     for (const auto& d : deps) {
         if (d == welford_id) has_welford = true;
         if (d == bs_id)      has_bs = true;
@@ -206,7 +207,7 @@ TEST(BsAnomalousAtomMarker, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     // Need at least MIN_BURN_IN_FRAMES + a few to start emitting.
@@ -248,7 +249,8 @@ TEST(BsAnomalousAtomMarker, Integration1P9J) {
     using HighKind = nmr::BsAnomalousAtomMarkerTrajectoryResult::BsAnomalyHighT0;
     using LowKind  = nmr::BsAnomalousAtomMarkerTrajectoryResult::BsAnomalyLowT0;
 
-    size_t bykind_high = 0, bykind_low = 0;
+    size_t bykind_high = 0;
+    size_t bykind_low = 0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& bag = tp.AtomAt(i).events;
         bykind_high += bag.ByKind(typeid(HighKind)).size();

@@ -15,8 +15,9 @@
 //
 
 #include "Types.h"
-#include <vector>
 #include <array>
+#include <utility>
+#include <vector>
 
 namespace nmr {
 
@@ -450,7 +451,7 @@ public:
     Vec3 demo_nearest_ring_direction = Vec3::Zero();
 
 private:
-    explicit ConformationAtom(Vec3 pos) : position_(pos) {}
+    explicit ConformationAtom(Vec3 pos) : position_(std::move(pos)) {}
     const Vec3 position_;
 };
 

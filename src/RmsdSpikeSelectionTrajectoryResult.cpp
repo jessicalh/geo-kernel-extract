@@ -91,7 +91,7 @@ void RmsdSpikeSelectionTrajectoryResult::Compute(
     // Compute rolling mean (used by both triggers' logging; local
     // trigger only consults it when the window is fully populated).
     double sum = 0.0;
-    for (double v : rolling_rmsd_) sum += v;
+    for (double const v : rolling_rmsd_) sum += v;
     const double mean = sum / static_cast<double>(rolling_rmsd_.size());
     const double local_delta = std::fabs(rmsd - mean);
 

@@ -58,24 +58,24 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         atom_count++;
 
         // Element: typed enum, not string
-        Element elem = atom.element;
+        Element const elem = atom.element;
         element_counts[elem]++;
 
         // Residue index: typed size_t
-        size_t res_idx = atom.residue_index;
+        size_t const res_idx = atom.residue_index;
         EXPECT_LT(res_idx, protein->ResidueCount())
             << "Atom " << ai << " has invalid residue_index";
 
         // Bond count: from typed bond_indices vector
-        size_t bond_count = atom.bond_indices.size();
+        size_t const bond_count = atom.bond_indices.size();
         // Every atom should have at least 1 bond
         // (isolated atoms would indicate a detection problem)
         EXPECT_GT(bond_count, 0u)
             << "Atom " << ai << " (" << atom.pdb_atom_name << ") has no bonds";
 
         // Covalent radius and electronegativity: typed element properties
-        double cr = atom.CovalentRadius();
-        double en = atom.Electronegativity();
+        double const cr = atom.CovalentRadius();
+        double const en = atom.Electronegativity();
         EXPECT_GT(cr, 0.0);
         EXPECT_GT(en, 0.0);
 
@@ -94,7 +94,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         residue_count++;
 
         // Type: AminoAcid enum, not string
-        AminoAcid aa = res.type;
+        AminoAcid const aa = res.type;
         EXPECT_NE(aa, AminoAcid::Unknown)
             << "Residue " << ri << " has unknown amino acid type";
 
@@ -102,7 +102,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         EXPECT_FALSE(res.chain_id.empty());
 
         // IsAromatic: typed query method on the residue
-        bool aromatic = res.IsAromatic();
+        bool const aromatic = res.IsAromatic();
         if (aa == AminoAcid::PHE || aa == AminoAcid::TYR ||
             aa == AminoAcid::TRP || aa == AminoAcid::HIS) {
             EXPECT_TRUE(aromatic) << "Expected aromatic for " << ThreeLetterCodeForAminoAcid(aa);
@@ -118,7 +118,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
             << "Residue " << ri << " (" << ThreeLetterCodeForAminoAcid(aa) << ") missing C";
 
         // Chi angle count: from AminoAcidType table
-        int chi_count = res.ChiAngleCount();
+        int const chi_count = res.ChiAngleCount();
         EXPECT_GE(chi_count, 0);
         EXPECT_LE(chi_count, 4);
 
@@ -135,25 +135,25 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         const Ring& ring = protein->RingAt(ri);
 
         // Type index: typed enum
-        RingTypeIndex type = ring.type_index;
+        RingTypeIndex const type = ring.type_index;
         rings_per_type[type]++;
 
         // Virtual typed properties -- no string comparison
-        double intensity = ring.Intensity();
+        double const intensity = ring.Intensity();
         EXPECT_LT(intensity, 0.0)
             << "Ring " << ri << " has non-negative intensity";
 
-        double lobe_offset = ring.JBLobeOffset();
+        double const lobe_offset = ring.JBLobeOffset();
         EXPECT_GT(lobe_offset, 0.0);
 
-        int n_count = ring.NitrogenCount();
+        int const n_count = ring.NitrogenCount();
         EXPECT_GE(n_count, 0);
         EXPECT_LE(n_count, 2);
 
-        RingAromaticity arom = ring.Aromaticity();
+        RingAromaticity const arom = ring.Aromaticity();
         (void)arom;  // Just verify it's accessible as a typed enum
 
-        int size = ring.RingSizeValue();
+        int const size = ring.RingSizeValue();
         EXPECT_TRUE(size == 5 || size == 6 || size == 9)
             << "Ring " << ri << " has unexpected size " << size;
 
@@ -169,7 +169,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         }
 
         // TypeIndexAsInt: typed integer for array indexing
-        int idx_int = ring.TypeIndexAsInt();
+        int const idx_int = ring.TypeIndexAsInt();
         EXPECT_GE(idx_int, 0);
         EXPECT_LT(idx_int, static_cast<int>(RingTypeIndex::Count));
 
@@ -187,11 +187,11 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         const Bond& bond = protein->BondAt(bi);
 
         // Category: typed enum
-        BondCategory cat = bond.category;
+        BondCategory const cat = bond.category;
         bonds_per_category[cat]++;
 
         // Order: typed enum
-        BondOrder order = bond.order;
+        BondOrder const order = bond.order;
         EXPECT_NE(order, BondOrder::Unknown)
             << "Bond " << bi << " has unknown order";
 
@@ -216,7 +216,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         }
 
         // Bond geometry from GeometryResult
-        double len = conf.bond_lengths[bi];
+        double const len = conf.bond_lengths[bi];
         EXPECT_GT(len, 0.3);
         EXPECT_LT(len, 3.5);
     }
@@ -246,7 +246,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         "Aromatic", "Disulfide", "SidechainOther", "Unknown"
     };
     for (auto& [cat, count] : bonds_per_category) {
-        int idx = static_cast<int>(cat);
+        int const idx = static_cast<int>(cat);
         const char* name = (idx >= 0 && idx < 8) ? category_names[idx] : "?";
         printf("  %s: %zu\n", name, count);
     }
@@ -277,8 +277,8 @@ TEST_F(TraversalDumpTest, PeptideCOBondsMatchBackboneCache) {
         const Bond& bond = protein->BondAt(bi);
         if (bond.category != BondCategory::PeptideCO) continue;
 
-        size_t a = bond.atom_index_a;
-        size_t b = bond.atom_index_b;
+        size_t const a = bond.atom_index_a;
+        size_t const b = bond.atom_index_b;
         const Atom& atom_a = protein->AtomAt(a);
         const Atom& atom_b = protein->AtomAt(b);
 
@@ -289,7 +289,7 @@ TEST_F(TraversalDumpTest, PeptideCOBondsMatchBackboneCache) {
         const Residue& res = protein->ResidueAt(atom_a.residue_index);
 
         // One is res.C, the other is res.O
-        bool match = (a == res.C && b == res.O) || (a == res.O && b == res.C);
+        bool const match = (a == res.C && b == res.O) || (a == res.O && b == res.C);
         EXPECT_TRUE(match)
             << "PeptideCO bond " << bi << " atoms don't match backbone C,O cache";
     }
@@ -302,8 +302,8 @@ TEST_F(TraversalDumpTest, PeptideCNBondsCrossResidues) {
         const Bond& bond = protein->BondAt(bi);
         if (bond.category != BondCategory::PeptideCN) continue;
 
-        size_t a = bond.atom_index_a;
-        size_t b = bond.atom_index_b;
+        size_t const a = bond.atom_index_a;
+        size_t const b = bond.atom_index_b;
         const Atom& atom_a = protein->AtomAt(a);
         const Atom& atom_b = protein->AtomAt(b);
 
@@ -315,7 +315,7 @@ TEST_F(TraversalDumpTest, PeptideCNBondsCrossResidues) {
         const Residue& res_b = protein->ResidueAt(atom_b.residue_index);
 
         // One is res_X.C, the other is res_Y.N
-        bool match = (a == res_a.C && b == res_b.N) || (a == res_a.N && b == res_b.C);
+        bool const match = (a == res_a.C && b == res_b.N) || (a == res_a.N && b == res_b.C);
         EXPECT_TRUE(match)
             << "PeptideCN bond " << bi << " atoms don't match backbone C/N cache";
     }
@@ -328,7 +328,7 @@ TEST_F(TraversalDumpTest, AromaticBondsAreRingMembers) {
     std::set<size_t> aromatic_atoms;
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
         const Ring& ring = protein->RingAt(ri);
-        for (size_t ai : ring.atom_indices) {
+        for (size_t const ai : ring.atom_indices) {
             aromatic_atoms.insert(ai);
         }
     }

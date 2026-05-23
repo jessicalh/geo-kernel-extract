@@ -52,7 +52,7 @@ public:
     double NearestCOContribution(size_t atom_index) const;
 
     // Grid sampling: evaluate McConnell kernel at an arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    SphericalTensor SampleShieldingAt(const Vec3& point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

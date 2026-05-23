@@ -38,7 +38,7 @@ bool RuntimeEnvironment::RequireLoaded() {
     OperationLog::Error("RuntimeEnvironment",
         "FATAL: RuntimeEnvironment::Load() was not called before use. "
         "Call Load() at program startup before any library operations.");
-    fprintf(stderr,
+    (void)fprintf(stderr,
         "FATAL: RuntimeEnvironment::Load() was not called. "
         "Call it at program startup.\n");
     std::abort();
@@ -61,21 +61,25 @@ static std::string MakeGuid() {
 // Returns empty string if not found anywhere — caller decides severity.
 static std::string ResolveBinary(const std::string& toml_value,
                                   const std::string& bare_name) {
-    if (!toml_value.empty() && fs::exists(toml_value))
+    if (!toml_value.empty() && fs::exists(toml_value)) {
         return toml_value;
+}
 
-    std::string which_cmd = "which " + bare_name + " 2>/dev/null";
+    std::string const which_cmd = "which " + bare_name + " 2>/dev/null";
     FILE* pipe = popen(which_cmd.c_str(), "r");
     if (pipe) {
         char buf[512];
         std::string result;
-        while (fgets(buf, sizeof(buf), pipe))
+        while (fgets(buf, sizeof(buf), pipe)) {
             result += buf;
+}
         pclose(pipe);
-        while (!result.empty() && (result.back() == '\n' || result.back() == '\r'))
+        while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) {
             result.pop_back();
-        if (!result.empty() && fs::exists(result))
+}
+        if (!result.empty() && fs::exists(result)) {
             return result;
+}
     }
 
     return {};
@@ -97,9 +101,13 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (home) path = std::string(home) + "/.nmr_tools.toml";
     }
 
-    std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir,
-                toml_bmrb_atom_nom, toml_tensorcs15_dsn,
-                toml_larsen_hbond_grid_dir;
+    std::string toml_mopac;
+    std::string toml_tleap;
+    std::string toml_ff14sb;
+    std::string toml_tmpdir;
+    std::string toml_bmrb_atom_nom;
+    std::string toml_tensorcs15_dsn;
+    std::string toml_larsen_hbond_grid_dir;
 
     if (!path.empty() && fs::exists(path)) {
         std::ifstream in(path);
@@ -107,11 +115,13 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         std::string current_section;   // empty = top-level
         auto trim = [](std::string& s) {
             while (!s.empty() && (s.front() == ' ' || s.front() == '\t' ||
-                                  s.front() == '"'))
+                                  s.front() == '"')) {
                 s.erase(s.begin());
+}
             while (!s.empty() && (s.back() == ' ' || s.back() == '\t' ||
-                                  s.back() == '"'))
+                                  s.back() == '"')) {
                 s.pop_back();
+}
         };
         while (std::getline(in, line)) {
             auto pos = line.find('#');
@@ -136,12 +146,13 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             trim(val);
 
             if (current_section.empty()) {
-                if      (key == "mopac")         toml_mopac = val;
-                else if (key == "tleap")         toml_tleap = val;
-                else if (key == "ff14sb_params") toml_ff14sb = val;
-                else if (key == "tmpdir")        toml_tmpdir = val;
-                else if (key == "bmrb_atom_nom") toml_bmrb_atom_nom = val;
-                else if (key == "larsen_hbond_grids") toml_larsen_hbond_grid_dir = val;
+                if      (key == "mopac") {         toml_mopac = val;
+                } else if (key == "tleap") {         toml_tleap = val;
+                } else if (key == "ff14sb_params") { toml_ff14sb = val;
+                } else if (key == "tmpdir") {        toml_tmpdir = val;
+                } else if (key == "bmrb_atom_nom") { toml_bmrb_atom_nom = val;
+                } else if (key == "larsen_hbond_grids") { toml_larsen_hbond_grid_dir = val;
+}
             } else if (current_section == "databases") {
                 if (key == "tensorcs15") toml_tensorcs15_dsn = val;
             }
@@ -157,7 +168,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     mopac_ = ResolveBinary(toml_mopac, "mopac");
     if (mopac_.empty()) {
         // Try conda default location
-        std::string conda_mopac = "/home/jessica/micromamba/envs/mm/bin/mopac";
+        std::string const conda_mopac = "/home/jessica/micromamba/envs/mm/bin/mopac";
         if (fs::exists(conda_mopac)) mopac_ = conda_mopac;
     }
 
@@ -166,7 +177,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     if (tleap_.empty() || !fs::exists(tleap_)) {
         const char* amberhome = std::getenv("AMBERHOME");
         if (amberhome) {
-            std::string ah_tleap = std::string(amberhome) + "/bin/tleap";
+            std::string const ah_tleap = std::string(amberhome) + "/bin/tleap";
             if (fs::exists(ah_tleap)) tleap_ = ah_tleap;
         }
     }
@@ -174,7 +185,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         tleap_ = ResolveBinary("", "tleap");
     }
     if (tleap_.empty()) {
-        std::string conda_tleap = "/home/jessica/micromamba/envs/mm/bin/tleap";
+        std::string const conda_tleap = "/home/jessica/micromamba/envs/mm/bin/tleap";
         if (fs::exists(conda_tleap)) tleap_ = conda_tleap;
     }
 
@@ -189,9 +200,10 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             ff14sb_params_ = ff_env;
         } else {
 #ifdef NMR_DATA_DIR
-            std::string data_path = std::string(NMR_DATA_DIR) + "/ff14sb_params.dat";
-            if (fs::exists(data_path))
+            std::string const data_path = std::string(NMR_DATA_DIR) + "/ff14sb_params.dat";
+            if (fs::exists(data_path)) {
                 ff14sb_params_ = data_path;
+}
 #endif
         }
     }
@@ -264,8 +276,9 @@ std::vector<std::string> RuntimeEnvironment::Verify() {
     RequireLoaded();
     std::vector<std::string> missing;
     auto check = [&](const std::string& name, const std::string& val) {
-        if (val.empty() || !fs::exists(val))
+        if (val.empty() || !fs::exists(val)) {
             missing.push_back(name + " (" + (val.empty() ? "<not set>" : val) + ")");
+}
     };
     check("mopac", mopac_);
     check("ff14sb_params", ff14sb_params_);

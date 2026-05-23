@@ -81,7 +81,7 @@ TEST(MopacBondOrderWelford, GroupSkippedWhenSourceNeverAttached) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame (no MOPAC)");
@@ -98,7 +98,7 @@ TEST(MopacBondOrderWelford, GroupSkippedWhenSourceNeverAttached) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/mopac_bond_order_welford"))
         << "group must NOT exist when source attached 0/T frames";
 
@@ -132,7 +132,7 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const auto status = traj.Run(tp, config, session);
     if (status != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed (MOPAC env not ready?); "
@@ -160,7 +160,7 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/mopac_bond_order_welford");
     std::vector<double> means(B);
     grp.getDataSet("order_mean").read(means.data());
@@ -172,7 +172,9 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
     // Per `feedback_conditional_welford_for_sentinels` (R6 codex
     // 2026-05-18). Both are valid SDK output; downstream uses
     // isfinite() to gate.
-    std::size_t n_finite = 0, n_nonzero = 0, n_nan = 0;
+    std::size_t n_finite = 0;
+    std::size_t n_nonzero = 0;
+    std::size_t n_nan = 0;
     double max_order = 0.0;
     for (std::size_t bi = 0; bi < B; ++bi) {
         if (std::isfinite(means[bi])) {
@@ -210,7 +212,7 @@ TEST(MopacBondOrderWelford, Integration1P9J) {
     // present_fraction ∈ [0, 1] for finite cells (no observation
     // possible if source_attached_count==0, which can't happen here).
     std::size_t n_always_present = 0;
-    for (double v : present_mean) {
+    for (double const v : present_mean) {
         if (std::isfinite(v)) {
             EXPECT_GE(v, 0.0);
             EXPECT_LE(v, 1.0 + 1e-12);
@@ -241,7 +243,7 @@ TEST(MopacBondOrderWelford, FinalizeIdempotency) {
 
     // Absent-source path — Finalize skips loop, only flips
     // finalized_ flag.
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     auto conf = std::make_unique<nmr::ProteinConformation>(
         &tp.ProteinRef(), positions, "synthetic (no MOPAC)");
     tr->Compute(*conf, tp, traj, 0, 0.0);

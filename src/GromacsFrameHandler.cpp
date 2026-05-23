@@ -41,7 +41,7 @@ GromacsFrameHandler::~GromacsFrameHandler() {
 
 bool GromacsFrameHandler::Open(const std::string& trr_path,
                                const std::string& /*tpr_path*/) {
-    OperationLog::Scope scope("GromacsFrameHandler::Open", trr_path);
+    OperationLog::Scope const scope("GromacsFrameHandler::Open", trr_path);
 
     if (trr_fio_) {
         gmx_trr_close(trr_fio_);

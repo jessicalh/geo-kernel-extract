@@ -194,7 +194,7 @@ void GromacsEnergyTimeSeriesTrajectoryResult::WriteH5Group(
                                 : kNaN;
             }
         }
-        HighFive::DataSpace space({T, std::size_t(9)});
+        HighFive::DataSpace const space({T, static_cast<std::size_t>(9)});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);

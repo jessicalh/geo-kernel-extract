@@ -110,7 +110,7 @@ TEST(StringBarrier, RuntimeLibraryHasZeroRdkitSymbols) {
     const std::string cmd = "nm -A " + archive +
                             " 2>/dev/null | grep -c '_ZN5RDKit' || true";
     const std::string out = ShellCapture(cmd);
-    int count = std::atoi(out.c_str());
+    int const count = std::atoi(out.c_str());
     EXPECT_EQ(0, count) << "RDKit symbols present in libnmr_shielding.a; the "
                           << "string barrier was breached. Inspect with:\n"
                           << "  nm -A " << archive << " | grep _ZN5RDKit";
@@ -233,8 +233,8 @@ TEST(StringBarrier, GeneratedTablesContainOnlyTypedEnumIdentifiers) {
         // Now scan for any "..." string-literal pattern. The generated
         // file should never contain string literals (only enum
         // identifiers, integer literals, true/false, and braces).
-        for (size_t i = 0; i < stripped.size(); ++i) {
-            if (stripped[i] == '"') {
+        for (char i : stripped) {
+            if (i == '"') {
                 ++violations;
                 if (violation_msg.size() < 1000) {
                     violation_msg += "  line " + std::to_string(line_no) + ": " + line + "\n";

@@ -79,7 +79,7 @@ TEST(AIMNet2ChargeTimeSeries, SyntheticFourFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 4;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -94,14 +94,16 @@ TEST(AIMNet2ChargeTimeSeries, SyntheticFourFrames) {
         nmr::AIMNet2ChargeTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
-    for (size_t i : {size_t(0), N / 2, N - 1})
-        for (size_t t = 0; t < kFrames; ++t)
+    for (size_t const i : {static_cast<size_t>(0), N / 2, N - 1}) {
+        for (size_t t = 0; t < kFrames; ++t) {
             EXPECT_DOUBLE_EQ(buf->At(i, t), 0.001 * static_cast<double>(i) - 0.1 * t);
+}
+}
 
     const std::string h5_path = (fs::temp_directory_path() /
         ("aimnet2_charge_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/aimnet2_charge_time_series"));
     auto grp = reopen.getGroup("/trajectory/aimnet2_charge_time_series");
     auto ds = grp.getDataSet("charge");
@@ -127,7 +129,7 @@ TEST(AIMNet2ChargeTimeSeries, H5RoundTripAttrs) {
     auto tr = nmr::AIMNet2ChargeTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     auto conf = std::make_unique<nmr::ProteinConformation>(
         &tp.ProteinRef(), positions, "single frame");
     tr->Compute(*conf, tp, traj, 0, 0.0);
@@ -136,9 +138,11 @@ TEST(AIMNet2ChargeTimeSeries, H5RoundTripAttrs) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("aimnet2_charge_ts_attrs_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/aimnet2_charge_time_series");
-    std::string parity, units, layout;
+    std::string parity;
+    std::string units;
+    std::string layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
@@ -165,7 +169,7 @@ TEST(AIMNet2ChargeTimeSeries, FinalizeIdempotency) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");

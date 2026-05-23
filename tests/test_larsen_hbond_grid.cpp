@@ -40,7 +40,7 @@ protected:
             "ALANMA", "ALACOH", "ALACOO",
         };
         for (auto stem : stems) {
-            fs::path p = fs::path(dir) / (std::string(stem) + "_dense.h5");
+            fs::path const p = fs::path(dir) / (std::string(stem) + "_dense.h5");
             if (!fs::exists(p)) {
                 GTEST_SKIP() << "missing grid file: " << p.string();
             }
@@ -76,7 +76,7 @@ TEST_F(LarsenHBondGridTest, AllArchiveMappingsHit) {
         {HBondDonorClass::AlphaHydrogen, HBondAcceptorClass::HydroxylOxygen,    "ALA→COH"},
         {HBondDonorClass::AlphaHydrogen, HBondAcceptorClass::CarboxylateOxygen, "ALA→COO"},
     };
-    LarsenHBondGeometry geom{2.5, 150.0, 0.0};
+    LarsenHBondGeometry const geom{2.5, 150.0, 0.0};
     for (const auto& c : cases) {
         auto rec = grid->QueryNearest(c.donor, c.acceptor, geom);
         EXPECT_TRUE(rec.IsHit()) << "miss on " << c.label;
@@ -90,7 +90,7 @@ TEST_F(LarsenHBondGridTest, AllArchiveMappingsHit) {
 
 // ALA donor archives have donor_CB; NMA donor archives don't.
 TEST_F(LarsenHBondGridTest, DonorCBPresenceMatchesArchive) {
-    LarsenHBondGeometry geom{2.5, 150.0, 0.0};
+    LarsenHBondGeometry const geom{2.5, 150.0, 0.0};
     auto ala_rec = grid->QueryNearest(
         HBondDonorClass::AlphaHydrogen,
         HBondAcceptorClass::BackboneCarbonyl,
@@ -111,7 +111,7 @@ TEST_F(LarsenHBondGridTest, DonorCBPresenceMatchesArchive) {
 // and acetate acceptor archives do not (Larsen 2015 does not define
 // 2° terms for those acceptors).
 TEST_F(LarsenHBondGridTest, AcceptorReadoutsOnlyForBackboneCarbonyl) {
-    LarsenHBondGeometry geom{2.5, 150.0, 0.0};
+    LarsenHBondGeometry const geom{2.5, 150.0, 0.0};
     auto nma_acceptor_rec = grid->QueryNearest(
         HBondDonorClass::AlphaHydrogen,
         HBondAcceptorClass::BackboneCarbonyl,
@@ -191,7 +191,7 @@ TEST_F(LarsenHBondGridTest, RhoWrapsPeriodically) {
         LarsenHBondGeometry{2.5, 150.0, -175.0});
     ASSERT_TRUE(rec_plus.IsHit());
     ASSERT_TRUE(rec_minus.IsHit());
-    double err = (rec_plus.donor_HA - rec_minus.donor_HA).norm();
+    double const err = (rec_plus.donor_HA - rec_minus.donor_HA).norm();
     EXPECT_LT(err, 1e-4)
         << "ρ=185° should equal ρ=-175° via periodic wrap; got err="
         << err << " on donor_HA";
@@ -284,7 +284,7 @@ TEST_F(LarsenHBondGridTest, TightHBondGeometryGivesNonzeroHα) {
         HBondAcceptorClass::BackboneCarbonyl,
         LarsenHBondGeometry{2.0, 180.0, 0.0});
     ASSERT_TRUE(rec.IsHit());
-    double iso_ha = rec.donor_HA.trace() / 3.0;
+    double const iso_ha = rec.donor_HA.trace() / 3.0;
     EXPECT_GT(std::abs(iso_ha), 0.5)
         << "expected |Δσ_HA isotropic| > 0.5 ppm at tight linear H-bond; "
            "got " << iso_ha << " ppm";
@@ -298,13 +298,13 @@ TEST_F(LarsenHBondGridTest, TightHBondGeometryGivesNonzeroHα) {
 // y-sign-flipped frame would still be orthonormal with det +1, but
 // would silently swap two coords on every transformed tensor).
 TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
-    Vec3 H(1.0, 0.0, 0.0);
-    Vec3 anchor(0.0, 0.0, 0.0);    // → z axis goes anchor→H = +x
-    Vec3 third(0.0, 1.0, 0.0);     // in xy-plane, off z-axis
+    Vec3 const H(1.0, 0.0, 0.0);
+    Vec3 const anchor(0.0, 0.0, 0.0);    // → z axis goes anchor→H = +x
+    Vec3 const third(0.0, 1.0, 0.0);     // in xy-plane, off z-axis
     Mat3 R = ComputeLarsenDonorFrame(H, anchor, third);
 
     // R should be orthonormal: R * R.T = I.
-    Mat3 RRT = R * R.transpose();
+    Mat3 const RRT = R * R.transpose();
     EXPECT_NEAR((RRT - Mat3::Identity()).norm(), 0.0, 1e-10);
 
     // Determinant should be +1 (proper rotation).
@@ -336,19 +336,19 @@ TEST(LarsenHBondGridHelpers, DonorFrameIsOrthonormalAndAxesCorrect) {
 // Degenerate ComputeLarsenDonorFrame inputs return identity (with a
 // logged warning) rather than NaN-poisoning the result.
 TEST(LarsenHBondGridHelpers, DonorFrameDegenerateReturnsIdentity) {
-    Vec3 H(1.0, 0.0, 0.0);
-    Vec3 anchor_same(1.0, 0.0, 0.0);   // coincident with H
-    Vec3 third(0.0, 1.0, 0.0);
-    Mat3 R1 = ComputeLarsenDonorFrame(H, anchor_same, third);
+    Vec3 const H(1.0, 0.0, 0.0);
+    Vec3 const anchor_same(1.0, 0.0, 0.0);   // coincident with H
+    Vec3 const third(0.0, 1.0, 0.0);
+    Mat3 const R1 = ComputeLarsenDonorFrame(H, anchor_same, third);
     EXPECT_NEAR((R1 - Mat3::Identity()).norm(), 0.0, 1e-12);
 
-    Vec3 anchor(0.0, 0.0, 0.0);
-    Vec3 third_same(1.0, 0.0, 0.0);    // coincident with H
-    Mat3 R2 = ComputeLarsenDonorFrame(H, anchor, third_same);
+    Vec3 const anchor(0.0, 0.0, 0.0);
+    Vec3 const third_same(1.0, 0.0, 0.0);    // coincident with H
+    Mat3 const R2 = ComputeLarsenDonorFrame(H, anchor, third_same);
     EXPECT_NEAR((R2 - Mat3::Identity()).norm(), 0.0, 1e-12);
 
-    Vec3 third_collinear(2.0, 0.0, 0.0);  // on the anchor→H line
-    Mat3 R3 = ComputeLarsenDonorFrame(H, anchor, third_collinear);
+    Vec3 const third_collinear(2.0, 0.0, 0.0);  // on the anchor→H line
+    Mat3 const R3 = ComputeLarsenDonorFrame(H, anchor, third_collinear);
     EXPECT_NEAR((R3 - Mat3::Identity()).norm(), 0.0, 1e-12);
 }
 
@@ -359,10 +359,10 @@ TEST(LarsenHBondGridHelpers, GeometryComputesCorrectAngleRange) {
     // Bent geometry: H at origin, O at (1,0,0), C at (1,1,0) → angle
     // at O (between O→H and O→C) is 90°. Third off-plane for a
     // well-defined dihedral.
-    Vec3 H(0.0, 0.0, 0.0);
-    Vec3 O(1.0, 0.0, 0.0);
-    Vec3 C_bent(1.0, 1.0, 0.0);
-    Vec3 third_bent(2.0, 1.0, 1.0);
+    Vec3 const H(0.0, 0.0, 0.0);
+    Vec3 const O(1.0, 0.0, 0.0);
+    Vec3 const C_bent(1.0, 1.0, 0.0);
+    Vec3 const third_bent(2.0, 1.0, 1.0);
     auto g = ComputeLarsenHBondGeometry(H, O, C_bent, third_bent);
     EXPECT_NEAR(g.r_angstrom, 1.0, 1e-10);
     EXPECT_NEAR(g.theta_deg, 90.0, 1e-6);
@@ -383,16 +383,16 @@ TEST(LarsenHBondGridHelpers, DihedralSignIsIupac) {
     //   m1 = n1 × b2̂ = (0,0,1) × (0,1,0) = (-1,0,0)
     //   x = n1·n2 = -1, y = m1·n2 = -1
     //   ρ = atan2(-1, -1) = -135°
-    Vec3 H(0.0, 0.0, 0.0);
-    Vec3 O(1.0, 0.0, 0.0);
-    Vec3 C(1.0, 1.0, 0.0);
-    Vec3 third(2.0, 2.0, 1.0);
+    Vec3 const H(0.0, 0.0, 0.0);
+    Vec3 const O(1.0, 0.0, 0.0);
+    Vec3 const C(1.0, 1.0, 0.0);
+    Vec3 const third(2.0, 2.0, 1.0);
     auto g = ComputeLarsenHBondGeometry(H, O, C, third);
     EXPECT_NEAR(g.rho_deg, -135.0, 1e-6)
         << "IUPAC dihedral convention should give -135° at this geometry";
 
     // Mirror through z-plane: third = (2,2,−1). ρ should flip sign.
-    Vec3 third_mirror(2.0, 2.0, -1.0);
+    Vec3 const third_mirror(2.0, 2.0, -1.0);
     auto g2 = ComputeLarsenHBondGeometry(H, O, C, third_mirror);
     EXPECT_NEAR(g2.rho_deg, +135.0, 1e-6)
         << "z-mirror should flip dihedral sign";
@@ -409,7 +409,7 @@ TEST(LarsenHBondGridHelpers, RotateTensorToProteinLabFrameMath) {
                          0.0,   0.0, 10.0;
 
     // Identity: σ_lab == σ_canonical.
-    Mat3 sigma_lab_id = RotateTensorToProteinLabFrame(sigma_canonical,
+    Mat3 const sigma_lab_id = RotateTensorToProteinLabFrame(sigma_canonical,
                                                       Mat3::Identity());
     EXPECT_NEAR((sigma_lab_id - sigma_canonical).norm(), 0.0, 1e-12);
 
@@ -426,7 +426,7 @@ TEST(LarsenHBondGridHelpers, RotateTensorToProteinLabFrameMath) {
     R_z90 <<  0.0,  1.0, 0.0,
              -1.0,  0.0, 0.0,
               0.0,  0.0, 1.0;
-    Mat3 sigma_lab_z90 = RotateTensorToProteinLabFrame(sigma_canonical, R_z90);
+    Mat3 const sigma_lab_z90 = RotateTensorToProteinLabFrame(sigma_canonical, R_z90);
     Mat3 expected;
     expected <<  50.0,   0.0,  0.0,
                   0.0, 100.0,  0.0,

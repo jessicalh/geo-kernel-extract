@@ -47,7 +47,7 @@ RingPositionLabel LabelForKind(const AtomSemanticTable& sem,
 
 // Scan the protein's bond list for an a-b connection.
 bool AreBonded(size_t a, size_t b, const CovalentTopology& bonds) {
-    for (size_t bi : bonds.BondIndicesFor(a)) {
+    for (size_t const bi : bonds.BondIndicesFor(a)) {
         const Bond& bond = bonds.BondAt(bi);
         if ((bond.atom_index_a == a && bond.atom_index_b == b) ||
             (bond.atom_index_a == b && bond.atom_index_b == a)) {
@@ -63,7 +63,7 @@ size_t FindWithLabel(const std::vector<size_t>& candidates,
                      const std::vector<AtomSemanticTable>& sem,
                      RingSystemKind kind,
                      RingPositionLabel label) {
-    for (size_t ai : candidates) {
+    for (size_t const ai : candidates) {
         if (LabelForKind(sem[ai], kind) == label) return ai;
     }
     return SIZE_MAX;
@@ -72,7 +72,7 @@ size_t FindWithLabel(const std::vector<size_t>& candidates,
 [[noreturn]] void FatalSubstrateGap(const char* what,
                                     RingSystemKind kind,
                                     int residue_seq) {
-    std::fprintf(stderr,
+    (void)std::fprintf(stderr,
         "FATAL: RingTopology::ConstructFromSubstrate: %s for ring "
         "kind=%d at residue seq %d. Substrate is required to provide "
         "complete labelling for ring construction; no string fallback.\n",
@@ -114,7 +114,7 @@ std::vector<size_t> WalkSixRingByLabel(
 
     std::vector<size_t> walk;
     walk.reserve(6);
-    for (RingPositionLabel label : walk_labels) {
+    for (RingPositionLabel const label : walk_labels) {
         const size_t ai = FindWithLabel(candidates, sem, kind, label);
         if (ai == SIZE_MAX) {
             FatalSubstrateGap("six-ring missing canonical label",
@@ -141,7 +141,7 @@ std::vector<size_t> WalkHisImidazole(
     const RingSystemKind kind = RingSystemKind::Imidazole_His;
 
     auto find_heteroatom_with_locant = [&](Locant loc) -> size_t {
-        for (size_t ai : candidates) {
+        for (size_t const ai : candidates) {
             const RingPositionLabel pos = LabelForKind(sem[ai], kind);
             if ((pos == RingPositionLabel::Heteroatom_NH ||
                  pos == RingPositionLabel::Heteroatom_NoH) &&
@@ -202,7 +202,7 @@ std::vector<size_t> WalkIndolePyrrole(
 
     size_t bridge_adj_het = SIZE_MAX;
     size_t bridge_adj_ipso = SIZE_MAX;
-    for (size_t ai : candidates) {
+    for (size_t const ai : candidates) {
         if (LabelForKind(sem[ai], kind) !=
             RingPositionLabel::BridgeFusion) continue;
         const bool to_het  = AreBonded(ai, het,  bonds);
@@ -256,7 +256,7 @@ std::vector<size_t> WalkIndoleBenzene(
 
     size_t bridge_adj_ortho1 = SIZE_MAX;
     size_t bridge_adj_ortho2 = SIZE_MAX;
-    for (size_t ai : candidates) {
+    for (size_t const ai : candidates) {
         if (LabelForKind(sem[ai], kind) !=
             RingPositionLabel::BridgeFusion) continue;
         const bool to_o1 = AreBonded(ai, ortho1, bonds);
@@ -329,7 +329,7 @@ std::vector<size_t> WalkIndolePerimeter(
 
     size_t bridge_adj_het = SIZE_MAX;
     size_t bridge_adj_ipso = SIZE_MAX;
-    for (size_t ai : candidates) {
+    for (size_t const ai : candidates) {
         // Bridge atoms have BridgeFusion in primary (Indole_Trp_5).
         if (LabelForKind(sem[ai], k5) !=
             RingPositionLabel::BridgeFusion) continue;
@@ -378,7 +378,7 @@ std::vector<size_t> WalkProPyrrolidine(
 
     std::vector<size_t> walk;
     walk.reserve(5);
-    for (RingPositionLabel label : walk_labels) {
+    for (RingPositionLabel const label : walk_labels) {
         const size_t ai = FindWithLabel(candidates, sem, kind, label);
         if (ai == SIZE_MAX) {
             FatalSubstrateGap("Pro pyrrolidine walk incomplete",
@@ -406,7 +406,7 @@ RingTypeIndex AromaticTypeFromKind(RingSystemKind kind) {
         case RingSystemKind::NotInRing:
             break;
     }
-    std::fprintf(stderr,
+    (void)std::fprintf(stderr,
         "FATAL: AromaticTypeFromKind: kind %d is not an aromatic "
         "ring system; HIS dispatches via variant_index, Pro via "
         "the saturated path.\n", static_cast<int>(kind));
@@ -473,7 +473,7 @@ std::vector<size_t> RingTopology::CanonicalCyclicWalk(
         case RingSystemKind::NotInRing:
             break;
     }
-    std::fprintf(stderr,
+    (void)std::fprintf(stderr,
         "FATAL: RingTopology::CanonicalCyclicWalk: unhandled "
         "RingSystemKind=%d.\n", static_cast<int>(kind));
     std::abort();
@@ -561,10 +561,10 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
             } else {
                 type = AromaticTypeFromKind(kind);
             }
-            kinds_with_type.push_back({kind, type});
+            kinds_with_type.emplace_back(kind, type);
         };
 
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             if (!is_heavy(ai)) continue;
             const RingPosition& rp = atom_semantic[ai].ring_position;
             note_kind(rp.primary.ring);
@@ -583,7 +583,7 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
         for (const auto& [kind, type] : kinds_with_type) {
             // Heavy atoms in this residue with any slot match.
             std::vector<size_t> heavy;
-            for (size_t ai : res.atom_indices) {
+            for (size_t const ai : res.atom_indices) {
                 if (!is_heavy(ai)) continue;
                 if (LabelForKind(atom_semantic[ai], kind) !=
                     RingPositionLabel::NotInRing) {

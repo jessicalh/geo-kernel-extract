@@ -34,7 +34,7 @@ namespace nmr {
 // ============================================================================
 
 std::unique_ptr<AIMNet2Model> AIMNet2Model::Load(const std::string& jpt_path) {
-    OperationLog::Scope scope("AIMNet2Model::Load", jpt_path);
+    OperationLog::Scope const scope("AIMNet2Model::Load", jpt_path);
 
     // Validate CUDA before attempting anything
     if (!torch::cuda::is_available()) {
@@ -103,12 +103,12 @@ torch::Tensor AIMNet2Result::BuildNeighbourMatrix(
     const auto& spatial = conf.Result<SpatialIndexResult>();
 
     for (size_t i = 0; i < N; ++i) {
-        Vec3 pos_i = conf.PositionAt(i);
+        Vec3 const pos_i = conf.PositionAt(i);
 
         // nanoflann radius search returns atom indices within radius
         auto neighbours = spatial.AtomsWithinRadius(pos_i,
                                                      std::sqrt(cutoff_sq));
-        for (size_t j : neighbours) {
+        for (size_t const j : neighbours) {
             if (j <= i) continue;  // half-list: only j > i
 
             // Add j to row i and i to row j
@@ -145,7 +145,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
         ProteinConformation& conf,
         AIMNet2Model& model) {
 
-    OperationLog::Scope scope("AIMNet2Result::Compute",
+    OperationLog::Scope const scope("AIMNet2Result::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
@@ -160,7 +160,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
 
     // Guard: check all elements are known BEFORE building tensors
     for (size_t i = 0; i < N; ++i) {
-        Element e = protein.AtomAt(i).element;
+        Element const e = protein.AtomAt(i).element;
         if (e != Element::H && e != Element::C && e != Element::N &&
             e != Element::O && e != Element::S) {
             OperationLog::Error("AIMNet2Result::Compute",
@@ -198,7 +198,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     // ------------------------------------------------------------------
     // 2. Build input tensors
     // ------------------------------------------------------------------
-    torch::NoGradGuard no_grad;
+    torch::NoGradGuard const no_grad;
 
     // All atom-level tensors are padded to (N+1) to match nbmat's sentinel row.
     // The model's prepare_data expects coord[nbmat] to be valid, and nbmat's
@@ -237,11 +237,11 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     auto mol_idx_cpu = torch::zeros({N1}, torch::kInt64);
 
     // nbmat: (N+1, max_nb) int32 — short-range half-neighbour list
-    double cutoff_sq = model.cutoff * model.cutoff;
+    double const cutoff_sq = model.cutoff * model.cutoff;
     auto nbmat_cpu = BuildNeighbourMatrix(conf, cutoff_sq, model.max_nb);
 
     // nbmat_lr: (N+1, max_nb_lr) int32 — long-range half-neighbour list
-    double cutoff_lr_sq = model.cutoff_lr * model.cutoff_lr;
+    double const cutoff_lr_sq = model.cutoff_lr * model.cutoff_lr;
     auto nbmat_lr_cpu = BuildNeighbourMatrix(conf, cutoff_lr_sq, model.max_nb_lr);
 
     // cutoff_lr: (1,) float32
@@ -251,9 +251,9 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     // ------------------------------------------------------------------
     // 3. Build input dictionary and forward pass
     // ------------------------------------------------------------------
-    auto to_gpu = [&](torch::Tensor t) { return t.to(model.device); };
+    auto to_gpu = [&](const torch::Tensor& t) { return t.to(model.device); };
 
-    c10::Dict<std::string, torch::Tensor> input_dict;
+    c10::Dict<std::string, torch::Tensor> const input_dict;
     input_dict.insert("coord",     to_gpu(coord_cpu));
     input_dict.insert("numbers",   to_gpu(numbers_cpu));
     input_dict.insert("charge",    to_gpu(charge_cpu));
@@ -301,7 +301,7 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
         auto aim_cpu = aim_gpu.to(torch::kCPU, torch::kFloat32);
         auto aim_acc = aim_cpu.accessor<float, 2>();
 
-        int64_t model_dims = aim_cpu.size(1);
+        int64_t const model_dims = aim_cpu.size(1);
         if (model_dims != static_cast<int64_t>(AIMNET2_AIM_DIMS)) {
             OperationLog::Error("AIMNet2Result::Compute",
                 "aim embedding has " + std::to_string(model_dims) +
@@ -377,35 +377,35 @@ void AIMNet2Result::ComputeCoulombEFG(
         mark(res.H); mark(res.HA); mark(res.CB);
     }
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        for (size_t ai : protein.RingAt(ri).atom_indices) {
+        for (size_t const ai : protein.RingAt(ri).atom_indices) {
             if (ai < N) is_aromatic[ai] = true;
         }
     }
 
     // Coulomb EFG sum with AIMNet2 charges
     for (size_t i = 0; i < N; ++i) {
-        Vec3 pos_i = conf.PositionAt(i);
+        Vec3 const pos_i = conf.PositionAt(i);
 
         Mat3 EFG_total = Mat3::Zero();
         Mat3 EFG_backbone = Mat3::Zero();
         Mat3 EFG_aromatic = Mat3::Zero();
 
         auto neighbours = spatial.AtomsWithinRadius(pos_i, cutoff);
-        for (size_t j : neighbours) {
+        for (size_t const j : neighbours) {
             if (j == i) continue;
 
-            double q_j = conf.AtomAt(j).aimnet2_charge;
+            double const q_j = conf.AtomAt(j).aimnet2_charge;
             if (std::abs(q_j) < charge_floor) continue;
 
             Vec3 r = pos_i - conf.PositionAt(j);
-            double r_mag = r.norm();
+            double const r_mag = r.norm();
             if (r_mag < singularity_guard) continue;
 
-            double r3 = r_mag * r_mag * r_mag;
-            double r5 = r3 * r_mag * r_mag;
+            double const r3 = r_mag * r_mag * r_mag;
+            double const r5 = r3 * r_mag * r_mag;
 
             // V_ab = q_j * (3 r_a r_b / r^5 - delta_ab / r^3)
-            Mat3 V_j = q_j * (3.0 * r * r.transpose() / r5
+            Mat3 const V_j = q_j * (3.0 * r * r.transpose() / r5
                               - Mat3::Identity() / r3);
 
             EFG_total += V_j;
@@ -477,8 +477,9 @@ int AIMNet2Result::WriteFeatures(
     // aimnet2_charges.npy — (N,) float64
     {
         std::vector<double> data(N);
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < N; ++i) {
             data[i] = conf.AtomAt(i).aimnet2_charge;
+}
         NpyWriter::WriteFloat64(output_dir + "/aimnet2_charges.npy",
                                 data.data(), N);
         files_written++;
@@ -487,9 +488,11 @@ int AIMNet2Result::WriteFeatures(
     // aimnet2_aim.npy — (N, AIMNET2_AIM_DIMS) float32 (native torch precision)
     {
         std::vector<float> data(N * AIMNET2_AIM_DIMS);
-        for (size_t i = 0; i < N; ++i)
-            for (size_t d = 0; d < AIMNET2_AIM_DIMS; ++d)
+        for (size_t i = 0; i < N; ++i) {
+            for (size_t d = 0; d < AIMNET2_AIM_DIMS; ++d) {
                 data[i * AIMNET2_AIM_DIMS + d] = conf.AtomAt(i).aimnet2_aim[d];
+}
+}
         NpyWriter::WriteFloat32(output_dir + "/aimnet2_aim.npy",
                                 data.data(), N, AIMNET2_AIM_DIMS);
         files_written++;

@@ -91,7 +91,7 @@ TEST(HmWelford, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -130,7 +130,7 @@ TEST(HmWelford, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::HmWelfordTrajectoryResult>();
@@ -166,7 +166,7 @@ TEST(HmWelford, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HmWelfordTrajectoryResult>();
@@ -178,7 +178,7 @@ TEST(HmWelford, H5RoundTrip) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/hm_welford"));
     auto grp = reopen.getGroup("/trajectory/hm_welford");
 
@@ -224,7 +224,7 @@ TEST(HmWelford, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 
@@ -233,8 +233,11 @@ TEST(HmWelford, Integration1P9J) {
     // A future refactor that quiets all three per-component T1 channels
     // would not trip the t0 assertion alone.
     size_t populated  = 0;
-    size_t t1_populated = 0, t2_populated = 0;
-    double max_abs_t0 = 0.0, max_abs_t1 = 0.0, max_abs_t2 = 0.0;
+    size_t t1_populated = 0;
+    size_t t2_populated = 0;
+    double max_abs_t0 = 0.0;
+    double max_abs_t1 = 0.0;
+    double max_abs_t2 = 0.0;
     for (size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& ta = tp.AtomAt(i);
         EXPECT_TRUE(std::isfinite(ta.hm_welford.t0.mean));

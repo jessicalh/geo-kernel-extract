@@ -87,7 +87,7 @@ TEST(HydrationGeometryTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
     const auto& tr = tp.Result<nmr::HydrationGeometryTimeSeriesTrajectoryResult>();
@@ -104,7 +104,7 @@ TEST(HydrationGeometryTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     auto& tr = tp.Result<nmr::HydrationGeometryTimeSeriesTrajectoryResult>();
     const std::size_t T = tr.NumFrames();
@@ -123,18 +123,19 @@ TEST(HydrationGeometryTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HydrationGeometryTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_geo_ts_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/hydration_geometry_time_series"));
     auto grp = reopen.getGroup("/trajectory/hydration_geometry_time_series");
 
-    std::string layout, polar_chans;
+    std::string layout;
+    std::string polar_chans;
     grp.getAttribute("dipole_vector_layout").read(layout);
     grp.getAttribute("polarisation_signal_channels").read(polar_chans);
     EXPECT_EQ(layout, "x,y,z");
@@ -166,7 +167,7 @@ TEST(HydrationGeometryTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HydrationGeometryTimeSeriesTrajectoryResult>();
@@ -175,7 +176,7 @@ TEST(HydrationGeometryTimeSeries, Integration1P9J) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_geo_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/hydration_geometry_time_series");
 
     const std::size_t N = tp.AtomCount();
@@ -217,7 +218,7 @@ TEST(HydrationGeometryTimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::HydrationGeometryTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -228,7 +229,7 @@ TEST(HydrationGeometryTimeSeries, SyntheticAllAbsentSkipsGroup) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_geo_ts_absent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/hydration_geometry_time_series"))
         << "All-absent run should skip group emission.";
 

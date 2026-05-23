@@ -113,11 +113,11 @@ TEST(RingHierarchy, PolymorphicCall) {
 TEST(RingHierarchy, ComputeGeometryRegularHexagon) {
     auto ring = CreateRing(RingTypeIndex::PheBenzene);
     // Create a regular hexagon in the xy-plane
-    double R = 1.4;  // Benzene C-C distance
+    double const R = 1.4;  // Benzene C-C distance
     ring->atom_indices = {0, 1, 2, 3, 4, 5};
     std::vector<Vec3> positions(6);
     for (int i = 0; i < 6; ++i) {
-        double angle = i * 2.0 * 3.14159265358979 / 6.0;
+        double const angle = i * 2.0 * 3.14159265358979 / 6.0;
         positions[i] = Vec3(R * std::cos(angle), R * std::sin(angle), 0.0);
     }
 
@@ -153,15 +153,15 @@ constexpr RingMembership MakeRing(RingSystemKind kind,
 }  // namespace
 
 TEST(RingPositionPredicates, IsPopulatedDistinguishesDefaultFromPopulated) {
-    RingMembership empty{};
-    RingMembership populated = MakeRing(RingSystemKind::Indole_Trp_5,
+    RingMembership const empty{};
+    RingMembership const populated = MakeRing(RingSystemKind::Indole_Trp_5,
                                         RingPositionLabel::Ipso, 5);
     EXPECT_FALSE(empty.IsPopulated());
     EXPECT_TRUE(populated.IsPopulated());
 }
 
 TEST(RingPositionPredicates, MembershipCountAndSlotPredicatesNoRing) {
-    RingPosition rp{};
+    RingPosition const rp{};
     EXPECT_FALSE(rp.HasPrimaryRing());
     EXPECT_FALSE(rp.HasSecondaryRing());
     EXPECT_FALSE(rp.HasTertiaryRing());

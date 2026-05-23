@@ -128,7 +128,7 @@ TEST_F(FramePdbEmitterTest, NotConfiguredEmitsNothing) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("not_configured");
+    fs::path const outdir = FreshTempDir("not_configured");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -141,7 +141,7 @@ TEST_F(FramePdbEmitterTest, NotConfiguredEmitsNothing) {
     ConfigureMinimalRun(config, "FramePdbEmitterNotConfigured");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     EXPECT_EQ(CountPdbsIn(outdir), 0u)
@@ -157,7 +157,7 @@ TEST_F(FramePdbEmitterTest, ConfiguredEmitsOnePerFrame) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("emit_per_frame");
+    fs::path const outdir = FreshTempDir("emit_per_frame");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -174,7 +174,7 @@ TEST_F(FramePdbEmitterTest, ConfiguredEmitsOnePerFrame) {
     ConfigureMinimalRun(config, "FramePdbEmitterConfiguredEmits");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     EXPECT_GT(traj.FrameCount(), 1u);
@@ -191,7 +191,7 @@ TEST_F(FramePdbEmitterTest, StrideGatesToFrameZero) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("stride_gates");
+    fs::path const outdir = FreshTempDir("stride_gates");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -207,7 +207,7 @@ TEST_F(FramePdbEmitterTest, StrideGatesToFrameZero) {
     ConfigureMinimalRun(config, "FramePdbEmitterStrideGate");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     EXPECT_EQ(CountPdbsIn(outdir), 1u)
@@ -223,7 +223,7 @@ TEST_F(FramePdbEmitterTest, WindowGatesNothing) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("window_gates");
+    fs::path const outdir = FreshTempDir("window_gates");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -240,7 +240,7 @@ TEST_F(FramePdbEmitterTest, WindowGatesNothing) {
     ConfigureMinimalRun(config, "FramePdbEmitterWindowGate");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     EXPECT_EQ(CountPdbsIn(outdir), 0u)
@@ -256,7 +256,7 @@ TEST_F(FramePdbEmitterTest, DecoratorInFilename) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("decorator");
+    fs::path const outdir = FreshTempDir("decorator");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -273,7 +273,7 @@ TEST_F(FramePdbEmitterTest, DecoratorInFilename) {
     ConfigureMinimalRun(config, "FramePdbEmitterDecorator");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     ASSERT_EQ(CountPdbsIn(outdir), 1u);
@@ -298,7 +298,7 @@ TEST_F(FramePdbEmitterTest, ContentSanity) {
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
-    fs::path outdir = FreshTempDir("content_sanity");
+    fs::path const outdir = FreshTempDir("content_sanity");
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -314,7 +314,7 @@ TEST_F(FramePdbEmitterTest, ContentSanity) {
     ConfigureMinimalRun(config, "FramePdbEmitterContentSanity");
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     ASSERT_EQ(CountPdbsIn(outdir), 1u);

@@ -115,16 +115,19 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
     EXPECT_LT(tbb->MeanBackboneRmsd(), 1.0);
 
     // Spot check: every matched atom has finite tensor.
-    int n_finite = 0, n_total = 0;
+    int n_finite = 0;
+    int n_total = 0;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
         const auto& ca = conf.AtomAt(i);
         if (!ca.tripeptide_bb_has_match) continue;
         ++n_total;
         const auto& m = ca.tripeptide_bb_shielding_tensor;
         bool finite = true;
-        for (int r = 0; r < 3 && finite; ++r)
-            for (int c = 0; c < 3 && finite; ++c)
+        for (int r = 0; r < 3 && finite; ++r) {
+            for (int c = 0; c < 3 && finite; ++c) {
                 if (!std::isfinite(m(r, c))) finite = false;
+}
+}
         if (finite) ++n_finite;
     }
     EXPECT_EQ(n_finite, n_total)
@@ -133,7 +136,8 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
     // Spot check: SER residues that hit the DB should carry the
     // orca_input_orientation tag (project SER PBE regen). 1UBQ has
     // 4 SER residues. Not all may hit (e.g. terminal SER skipped).
-    int n_ser_attempted = 0, n_ser_matched_pbe = 0;
+    int n_ser_attempted = 0;
+    int n_ser_matched_pbe = 0;
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         if (protein->ResidueAt(ri).type != AminoAcid::SER) continue;
         ++n_ser_attempted;
@@ -152,7 +156,7 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
     // Test NPY emission.
     const std::string out_dir = "/tmp/tripeptide_bb_smoke_out";
     fs::create_directories(out_dir);
-    int n_npy = tbb->WriteFeatures(conf, out_dir);
+    int const n_npy = tbb->WriteFeatures(conf, out_dir);
     EXPECT_EQ(n_npy, 4);
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_shielding.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_bb_residual_vec.npy"));
@@ -173,7 +177,7 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
     int n_bb_total = 0;
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         const auto& res = protein->ResidueAt(ri);
-        for (size_t slot : {res.N, res.CA, res.C, res.O}) {
+        for (size_t const slot : {res.N, res.CA, res.C, res.O}) {
             if (slot == Residue::NONE) continue;
             const auto& ca = conf.AtomAt(slot);
             if (!ca.tripeptide_bb_has_match) continue;

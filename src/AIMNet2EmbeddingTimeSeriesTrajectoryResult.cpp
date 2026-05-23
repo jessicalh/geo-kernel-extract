@@ -109,7 +109,7 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(
     // (3.76 GB for 1P9J × 750 frames × 256 dims uncompressed; doubling
     // to 7.5 GB at flatten time would OOM larger fleet proteins).
     const std::size_t frame_chunk = std::min<std::size_t>(T, 64);
-    HighFive::DataSpace space({N, T, D});
+    HighFive::DataSpace const space({N, T, D});
     HighFive::DataSetCreateProps props;
     props.add(HighFive::Chunking(std::vector<hsize_t>{
         static_cast<hsize_t>(1),
@@ -134,8 +134,8 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(
                 scratch[f * D + d] = vec[d];
             }
         }
-        const std::vector<std::size_t> offset = {i, std::size_t(0), std::size_t(0)};
-        const std::vector<std::size_t> count  = {std::size_t(1), T, D};
+        const std::vector<std::size_t> offset = {i, static_cast<std::size_t>(0), static_cast<std::size_t>(0)};
+        const std::vector<std::size_t> count  = {static_cast<std::size_t>(1), T, D};
         ds.select(offset, count).write_raw(scratch.data());
     }
 

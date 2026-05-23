@@ -204,7 +204,7 @@ template <typename T>
 T& TrajectoryProtein::Result() {
     auto it = results_.find(std::type_index(typeid(T)));
     if (it == results_.end()) {
-        fprintf(stderr,
+        (void)fprintf(stderr,
                 "FATAL: TrajectoryProtein::Result<%s> not attached\n",
                 typeid(T).name());
         std::abort();
@@ -216,7 +216,7 @@ template <typename T>
 const T& TrajectoryProtein::Result() const {
     auto it = results_.find(std::type_index(typeid(T)));
     if (it == results_.end()) {
-        fprintf(stderr,
+        (void)fprintf(stderr,
                 "FATAL: TrajectoryProtein::Result<%s> not attached\n",
                 typeid(T).name());
         std::abort();

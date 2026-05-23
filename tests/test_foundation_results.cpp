@@ -62,12 +62,12 @@ static std::unique_ptr<Protein> BuildSingleAtomVariantProtein(
     res.protonation_variant_index = variant_index;
     res.protonation_state_resolved = true;
     res.terminal_state = terminal_state;
-    size_t ri = protein->AddResidue(res);
+    size_t const ri = protein->AddResidue(res);
 
     auto atom = Atom::Create(element);
     atom->pdb_atom_name = atom_name;
     atom->residue_index = ri;
-    size_t ai = protein->AddAtom(std::move(atom));
+    size_t const ai = protein->AddAtom(std::move(atom));
     protein->MutableResidueAt(ri).atom_indices.push_back(ai);
     protein->AddConformation({Vec3(0.0, 0.0, 0.0)}, "variant-test");
 
@@ -81,7 +81,7 @@ TEST(ChargeFF14SBVariantTest, CysVariantOneUsesCymRows) {
 
     auto protein = BuildSingleAtomVariantProtein(
         AminoAcid::CYS, 1, "SG", Element::S);
-    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    ParamFileChargeSource const source(nmr::test::TestEnvironment::Ff14sbParams());
 
     std::string error;
     auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
@@ -104,7 +104,7 @@ TEST(ChargeFF14SBVariantTest, MissingVariantDoesNotFallBackToCanonicalResidue) {
         out << "INTERNAL TYR OH -0.5579 1.5000\n";
     }
 
-    ParamFileChargeSource source(path.string());
+    ParamFileChargeSource const source(path.string());
 
     std::string error;
     auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
@@ -146,7 +146,7 @@ TEST(ChargeFF14SBTerminalTest, SupportedAmberTerminalRowsAreUsed) {
             "HE2", Element::H, 0.3913, 1.3},
     };
 
-    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    ParamFileChargeSource const source(nmr::test::TestEnvironment::Ff14sbParams());
     for (const auto& c : cases) {
         auto protein = BuildSingleAtomVariantProtein(
             c.aa, c.variant_index, c.atom_name, c.element, c.terminal_state);
@@ -183,9 +183,9 @@ TEST(ChargeFF14SBTerminalTest, UnsupportedTerminalVariantsFailWithoutFallback) {
         {AminoAcid::TYR, 0, "TYM", "OH", Element::O},
     };
 
-    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    ParamFileChargeSource const source(nmr::test::TestEnvironment::Ff14sbParams());
     for (const auto& c : cases) {
-        for (ResidueTerminalState terminal_state :
+        for (ResidueTerminalState const terminal_state :
                 {ResidueTerminalState::NTerminus,
                  ResidueTerminalState::CTerminus}) {
             auto protein = BuildSingleAtomVariantProtein(
@@ -211,7 +211,7 @@ TEST(ChargeFF14SBTerminalTest, SingleResidueChainFailsExplicitly) {
     auto protein = BuildSingleAtomVariantProtein(
         AminoAcid::ALA, -1, "CA", Element::C,
         ResidueTerminalState::NAndCTerminus);
-    ParamFileChargeSource source(nmr::test::TestEnvironment::Ff14sbParams());
+    ParamFileChargeSource const source(nmr::test::TestEnvironment::Ff14sbParams());
 
     std::string error;
     auto rows = source.LoadCharges(*protein, protein->Conformation(), error);
@@ -243,9 +243,9 @@ TEST_F(ChargeFF14SBTest, TotalChargeNearInteger) {
     // 1UBQ at pH 7: +1 MET, +7 LYS, +4 ARG = +12 positive
     //              -4 GLU, -5 ASP = -9 negative  => net ~+3
     // But without terminal patches, it's approximate. Check integer-closeness.
-    double total = result->TotalCharge();
-    double nearest_int = std::round(total);
-    double frac = std::abs(total - nearest_int);
+    double const total = result->TotalCharge();
+    double const nearest_int = std::round(total);
+    double const frac = std::abs(total - nearest_int);
     EXPECT_LT(frac, 0.5) << "Total charge " << total
         << " not close to integer (nearest=" << nearest_int << ")";
 
@@ -265,7 +265,7 @@ TEST_F(ChargeFF14SBTest, BackboneNChargeRange) {
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         const Residue& res = protein->ResidueAt(ri);
         if (res.N == Residue::NONE) continue;
-        double q = conf.AtomAt(res.N).partial_charge;
+        double const q = conf.AtomAt(res.N).partial_charge;
         if (res.terminal_state == ResidueTerminalState::NTerminus ||
             res.terminal_state == ResidueTerminalState::NAndCTerminus) {
             EXPECT_GT(q, -0.4) << "N-terminal backbone N at res "
@@ -293,7 +293,7 @@ TEST_F(ChargeFF14SBTest, BackboneCChargeRange) {
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
         const Residue& res = protein->ResidueAt(ri);
         if (res.C == Residue::NONE) continue;
-        double q = conf.AtomAt(res.C).partial_charge;
+        double const q = conf.AtomAt(res.C).partial_charge;
         EXPECT_GT(q, 0.3) << "Backbone C at res " << res.sequence_number
             << " has charge " << q << " (expected > 0.3)";
         EXPECT_LT(q, 1.0) << "Backbone C at res " << res.sequence_number
@@ -326,7 +326,7 @@ TEST_F(ChargeFF14SBTest, MostAtomsAssigned) {
     ASSERT_NE(result, nullptr);
 
     // Most atoms should get charges from the parameter file
-    double assigned_ratio = static_cast<double>(result->AssignedCount()) /
+    double const assigned_ratio = static_cast<double>(result->AssignedCount()) /
                             static_cast<double>(conf.AtomCount());
     EXPECT_GT(assigned_ratio, 0.90)
         << "Only " << result->AssignedCount() << " of " << conf.AtomCount()
@@ -393,7 +393,7 @@ TEST_F(SpatialIndexTest, NeighbourDirectionsNormalised) {
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& nb : conf.AtomAt(ai).spatial_neighbours) {
-            double norm = nb.direction.norm();
+            double const norm = nb.direction.norm();
             EXPECT_NEAR(norm, 1.0, 1e-6)
                 << "Direction not normalised at atom " << ai
                 << " -> " << nb.atom_index;
@@ -428,7 +428,7 @@ TEST_F(SpatialIndexTest, KnownAtomPairDistance) {
     if (res0.N == Residue::NONE || res0.CA == Residue::NONE) return;
 
     // Direct Eigen computation
-    double direct_dist = (conf.PositionAt(res0.N) - conf.PositionAt(res0.CA)).norm();
+    double const direct_dist = (conf.PositionAt(res0.N) - conf.PositionAt(res0.CA)).norm();
 
     // Find the same pair in the neighbour list
     bool found = false;
@@ -501,7 +501,7 @@ TEST_F(EnrichmentTest, PheRingCarbonsAreAromaticC) {
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
         const Ring& ring = protein->RingAt(ri);
         if (ring.type_index == RingTypeIndex::PheBenzene) {
-            for (size_t ai : ring.atom_indices) {
+            for (size_t const ai : ring.atom_indices) {
                 if (protein->AtomAt(ai).element == Element::C) {
                     EXPECT_EQ(conf.AtomAt(ai).role, AtomRole::AromaticC)
                         << "PHE ring C atom " << ai << " is not AromaticC";
@@ -591,7 +591,7 @@ TEST_F(UnifiedHisTest, ProtonationDrivesRingType) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.type != AminoAcid::HIS) continue;
 
-        std::string variant = conf.Result<ProtonationDetectionResult>()
+        std::string const variant = conf.Result<ProtonationDetectionResult>()
                                   .VariantNameAt(ri);
 
         for (size_t ring_i = 0; ring_i < protein.RingCount(); ++ring_i) {
@@ -660,7 +660,7 @@ TEST_F(MolecularGraphTest, RingAtomsDistZero) {
 
     // Ring atoms should have graph_dist_ring == 0
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
-        for (size_t ai : protein->RingAt(ri).atom_indices) {
+        for (size_t const ai : protein->RingAt(ri).atom_indices) {
             EXPECT_EQ(conf.AtomAt(ai).graph_dist_ring, 0)
                 << "Ring atom " << ai << " has graph_dist_ring="
                 << conf.AtomAt(ai).graph_dist_ring;
@@ -681,16 +681,16 @@ TEST_F(MolecularGraphTest, BondedToRingDistOne) {
     // and verify it has graph_dist_ring == 1
     std::set<size_t> ring_atoms;
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
-        for (size_t ai : protein->RingAt(ri).atom_indices) {
+        for (size_t const ai : protein->RingAt(ri).atom_indices) {
             ring_atoms.insert(ai);
         }
     }
 
     bool found_check = false;
-    for (size_t ai : ring_atoms) {
-        for (size_t bi : protein->AtomAt(ai).bond_indices) {
+    for (size_t const ai : ring_atoms) {
+        for (size_t const bi : protein->AtomAt(ai).bond_indices) {
             const Bond& bond = protein->BondAt(bi);
-            size_t other = (bond.atom_index_a == ai)
+            size_t const other = (bond.atom_index_a == ai)
                 ? bond.atom_index_b : bond.atom_index_a;
             if (ring_atoms.count(other) == 0) {
                 EXPECT_EQ(conf.AtomAt(other).graph_dist_ring, 1)
@@ -716,7 +716,7 @@ TEST_F(MolecularGraphTest, BfsDecayRingAtomsOne) {
 
     // Ring atoms have bfs_decay == exp(-0) == 1.0
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
-        for (size_t ai : protein->RingAt(ri).atom_indices) {
+        for (size_t const ai : protein->RingAt(ri).atom_indices) {
             EXPECT_NEAR(conf.AtomAt(ai).bfs_decay, 1.0, 1e-9)
                 << "Ring atom " << ai << " bfs_decay="
                 << conf.AtomAt(ai).bfs_decay;

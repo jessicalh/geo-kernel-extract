@@ -64,7 +64,7 @@ static bool Attach(ProteinConformation& conf,
 template<typename F>
 static bool TimedAttach(ProteinConformation& conf, const char* name,
                         RunResult& out, F&& compute) {
-    OperationLog::Scope scope(name);
+    OperationLog::Scope const scope(name);
     auto result = compute();
     return Attach(conf, std::move(result), name, out);
 }
@@ -84,7 +84,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
                                const RunOptions& opts) {
     RunResult out;
 
-    OperationLog::Scope scope("OperationRunner::Run",
+    OperationLog::Scope const scope("OperationRunner::Run",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     // --- Tier 0: foundation ---
@@ -103,7 +103,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
     // legitimately fail under specific input shapes), per the
     // PATTERNS.md "Diagnostic error messages" rule.
     {
-        OperationLog::Scope pgr_scope("PlanarGeometryResult");
+        OperationLog::Scope const pgr_scope("PlanarGeometryResult");
         auto pgr = PlanarGeometryResult::Compute(conf);
         if (pgr) {
             Attach(conf, std::move(pgr), "PlanarGeometryResult", out);
@@ -116,7 +116,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     // DSSP
     if (!opts.skip_dssp) {
-        OperationLog::Scope dssp_scope("DsspResult");
+        OperationLog::Scope const dssp_scope("DsspResult");
         auto dssp = DsspResult::Compute(conf);
         if (dssp) {
             Attach(conf, std::move(dssp), "DsspResult", out);
@@ -136,7 +136,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     if (conf.HasResult<ChargeAssignmentResult>()) {
         if (!opts.skip_mopac) {
-            OperationLog::Scope mopac_scope("MopacResult");
+            OperationLog::Scope const mopac_scope("MopacResult");
             auto mopac = MopacResult::Compute(conf, opts.net_charge);
             if (mopac) {
                 Attach(conf, std::move(mopac), "MopacResult", out);
@@ -148,7 +148,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         }
 
         if (!opts.skip_apbs) {
-            OperationLog::Scope apbs_scope("ApbsFieldResult");
+            OperationLog::Scope const apbs_scope("ApbsFieldResult");
             auto apbs = ApbsFieldResult::Compute(conf);
             if (apbs) {
                 Attach(conf, std::move(apbs), "ApbsFieldResult", out);
@@ -303,7 +303,7 @@ RunResult OperationRunner::RunMutantComparison(
 
     RunResult out;
 
-    OperationLog::Scope scope("OperationRunner::RunMutantComparison",
+    OperationLog::Scope const scope("OperationRunner::RunMutantComparison",
         "wt_atoms=" + std::to_string(wt_conf.AtomCount()) +
         " ala_atoms=" + std::to_string(ala_conf.AtomCount()));
 

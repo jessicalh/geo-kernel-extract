@@ -6,9 +6,9 @@ using namespace nmr;
 
 TEST(AminoAcid, ThreeLetterCodeRoundtrip) {
     for (int i = 0; i < 20; ++i) {
-        AminoAcid aa = static_cast<AminoAcid>(i);
-        std::string code = ThreeLetterCodeForAminoAcid(aa);
-        AminoAcid back = AminoAcidFromThreeLetterCode(code);
+        AminoAcid const aa = static_cast<AminoAcid>(i);
+        std::string const code = ThreeLetterCodeForAminoAcid(aa);
+        AminoAcid const back = AminoAcidFromThreeLetterCode(code);
         EXPECT_EQ(aa, back) << "Failed for " << code;
     }
 }
@@ -27,10 +27,10 @@ TEST(AminoAcid, NonAromaticResidue) {
 }
 
 TEST(AminoAcid, ProtonationVariants) {
-    AminoAcid his = AminoAcidFromThreeLetterCode("HID");
+    AminoAcid const his = AminoAcidFromThreeLetterCode("HID");
     EXPECT_EQ(his, AminoAcid::HIS);
 
-    AminoAcid ash = AminoAcidFromThreeLetterCode("ASH");
+    AminoAcid const ash = AminoAcidFromThreeLetterCode("ASH");
     EXPECT_EQ(ash, AminoAcid::ASP);
 }
 

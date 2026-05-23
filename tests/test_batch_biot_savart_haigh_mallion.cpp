@@ -140,7 +140,9 @@ static BatchProtein LoadFullPipeline(const std::string& dir,
 
 static double T2CosSim(const std::array<double,5>& a,
                        const std::array<double,5>& b) {
-    double dot = 0, na = 0, nb = 0;
+    double dot = 0;
+    double na = 0;
+    double nb = 0;
     for (int m = 0; m < 5; ++m) {
         dot += a[m] * b[m];
         na += a[m] * a[m];
@@ -212,8 +214,15 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         double sum_abs_cos = 0;
         int count = 0;
     };
-    T2PairAccum bs_vs_hm, bs_vs_mc, bs_vs_co, bs_vs_rchi, bs_vs_hb;
-    T2PairAccum hm_vs_mc, hm_vs_co, hm_vs_rchi, hm_vs_hb;
+    T2PairAccum bs_vs_hm;
+    T2PairAccum bs_vs_mc;
+    T2PairAccum bs_vs_co;
+    T2PairAccum bs_vs_rchi;
+    T2PairAccum bs_vs_hb;
+    T2PairAccum hm_vs_mc;
+    T2PairAccum hm_vs_co;
+    T2PairAccum hm_vs_rchi;
+    T2PairAccum hm_vs_hb;
 
     // --- Fused ring analysis (TRP): TRP5+TRP6 vs TRP9 ---
     struct FusedRingAccum {
@@ -222,15 +231,21 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         double sum_t0_perim = 0;     // |T0(TRP9)| per atom
         int atom_count = 0;
     };
-    FusedRingAccum fused_bs, fused_hm;
+    FusedRingAccum fused_bs;
+    FusedRingAccum fused_hm;
 
     // --- DFT proximity ---
-    double sum_bs_near = 0, sum_bs_far = 0;
-    double sum_hm_near = 0, sum_hm_far = 0;
-    int total_near = 0, total_far = 0;
+    double sum_bs_near = 0;
+    double sum_bs_far = 0;
+    double sum_hm_near = 0;
+    double sum_hm_far = 0;
+    int total_near = 0;
+    int total_far = 0;
     int proteins_with_prox = 0;
 
-    int n_processed = 0, n_skipped = 0, n_failed = 0;
+    int n_processed = 0;
+    int n_skipped = 0;
+    int n_failed = 0;
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;

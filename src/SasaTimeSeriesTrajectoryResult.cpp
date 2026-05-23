@@ -104,8 +104,8 @@ void SasaTimeSeriesTrajectoryResult::WriteH5Group(
             flat[i * T + t] = buffer->At(i, t);
         }
     }
-    std::vector<std::size_t> dims = {N, T};
-    HighFive::DataSpace space(dims);
+    std::vector<std::size_t> const dims = {N, T};
+    HighFive::DataSpace const space(dims);
     auto ds = grp.createDataSet<double>("sasa", space);
     ds.write_raw(flat.data());
 

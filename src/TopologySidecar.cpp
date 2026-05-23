@@ -47,7 +47,7 @@ bool WriteStructuredNpy(const fs::path& path,
                           size_t bytes_per_record,
                           const std::vector<unsigned char>& bytes) {
     if (bytes.size() != n_records * bytes_per_record) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: TopologySidecar -- buffer size mismatch for %s: "
             "%zu bytes for %zu records (expected %zu).\n",
             path.string().c_str(), bytes.size(), n_records,
@@ -61,13 +61,13 @@ bool WriteStructuredNpy(const fs::path& path,
     std::string header = hdr.str();
 
     constexpr size_t kPreHeader = 10;
-    size_t total = kPreHeader + header.size() + 1;
-    size_t pad = (64 - (total % 64)) % 64;
+    size_t const total = kPreHeader + header.size() + 1;
+    size_t const pad = (64 - (total % 64)) % 64;
     header.append(pad, ' ');
     header.push_back('\n');
 
     if (header.size() > 0xFFFF) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: TopologySidecar -- NPY header too large for v1.0 "
             "format (%zu > 65535) for %s.\n",
             header.size(), path.string().c_str());
@@ -130,7 +130,7 @@ void PackFixedString(unsigned char* dst, size_t dst_size,
                        const std::string& src,
                        const char* field_name, size_t row_index) {
     if (src.size() > dst_size) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: TopologySidecar -- field \"%s\" length %zu exceeds "
             "column width %zu at row %zu (value=\"%s\").\n",
             field_name, src.size(), dst_size, row_index, src.c_str());
@@ -167,14 +167,14 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
             ? GetAminoAcidType(AminoAcid::ALA)  // dummy to satisfy reference
             : GetAminoAcidType(r.type);
 
-        std::string amber_3 = (r.type == AminoAcid::Unknown) ? "UNK"
+        std::string const amber_3 = (r.type == AminoAcid::Unknown) ? "UNK"
             : (r.protonation_variant_index >= 0
                   && static_cast<size_t>(r.protonation_variant_index) < aat.variants.size()
                   ? std::string(aat.variants[r.protonation_variant_index].name)
                   : std::string(aat.three_letter_code));
-        std::string iupac_3 = (r.type == AminoAcid::Unknown) ? "UNK"
+        std::string const iupac_3 = (r.type == AminoAcid::Unknown) ? "UNK"
             : std::string(aat.three_letter_code);
-        std::string one_letter(1,
+        std::string const one_letter(1,
             r.type == AminoAcid::Unknown ? 'X' : aat.one_letter_code);
 
         PackFixedString(row + off, 4, amber_3, "amber_residue_3letter", ri);
@@ -231,7 +231,7 @@ bool WriteResidues(const Protein& protein, const fs::path& out_dir) {
         row[off++] = x_pro ? 1 : 0;
 
         if (off != kResidueRecordSize) {
-            std::fprintf(stderr,
+            (void)std::fprintf(stderr,
                 "FATAL: TopologySidecar::WriteResidues record-size mismatch "
                 "at row %zu: wrote %zu, expected %zu.\n",
                 ri, off, kResidueRecordSize);
@@ -432,7 +432,7 @@ bool WriteRingMembership(const Protein& protein, const fs::path& out_dir,
     }
 
     if (cursor != total_rows) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: TopologySidecar::WriteRingMembership -- wrote %zu "
             "rows, expected %zu.\n", cursor, total_rows);
         std::abort();
@@ -461,7 +461,7 @@ std::string Iso8601UtcNow() {
     std::tm tm{};
     gmtime_r(&t, &tm);
     char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+    (void)std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
     return std::string(buf);
 }
 
@@ -479,8 +479,8 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     j << "  \"schema_version\": \"1.0\",\n";
     j << "  \"extractor\": \"nmr_extract\",\n";
     j << "  \"extractor_version\": \"0.2.0\",\n";
-    j << "  \"generated_at_utc\": \"" << Iso8601UtcNow() << "\",\n";
-    j << "  \"protein_id\": \"" << protein_id << "\",\n";
+    j << R"(  "generated_at_utc": ")" << Iso8601UtcNow() << "\",\n";
+    j << R"(  "protein_id": ")" << protein_id << "\",\n";
     j << "  \"topology\": {\n";
     j << "    \"source\": \"amber-ff14SB+cifpp\",\n";
     j << "    \"has_atom_semantic\": " << (has_substrate ? "true" : "false") << ",\n";
@@ -494,27 +494,27 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     //   ResidueTerminalState (Residue.h), BondOrder / BondCategory /
     //   RingTypeIndex / AminoAcid (Types.h).
     j << "  \"enum_vocab\": {\n";
-    j << "    \"terminal_state\": {\"0\":\"Internal\",\"1\":\"NTerminus\","
-      <<                          "\"2\":\"CTerminus\",\"3\":\"NAndCTerminus\","
+    j << R"(    "terminal_state": {"0":"Internal","1":"NTerminus",)"
+      <<                          R"("2":"CTerminus","3":"NAndCTerminus",)"
       <<                          "\"4\":\"Unknown\"},\n";
-    j << "    \"bond_order\": {\"0\":\"Single\",\"1\":\"Double\",\"2\":\"Triple\","
+    j << R"(    "bond_order": {"0":"Single","1":"Double","2":"Triple",)"
       <<                       "\"3\":\"Aromatic\",\"4\":\"Peptide\",\"5\":\"Unknown\"},\n";
-    j << "    \"bond_category\": {\"0\":\"PeptideCO\",\"1\":\"PeptideCN\","
-      <<                          "\"2\":\"BackboneOther\",\"3\":\"SidechainCO\","
-      <<                          "\"4\":\"Aromatic\",\"5\":\"Disulfide\","
+    j << R"(    "bond_category": {"0":"PeptideCO","1":"PeptideCN",)"
+      <<                          R"("2":"BackboneOther","3":"SidechainCO",)"
+      <<                          R"("4":"Aromatic","5":"Disulfide",)"
       <<                          "\"6\":\"SidechainOther\",\"7\":\"Unknown\"},\n";
     j << "    \"ring_kind\": {\"0\":\"aromatic\",\"1\":\"saturated\"},\n";
-    j << "    \"ring_type_index\": {\"0\":\"PheBenzene\",\"1\":\"TyrPhenol\","
-      <<                            "\"2\":\"TrpBenzene\",\"3\":\"TrpPyrrole\","
-      <<                            "\"4\":\"TrpPerimeter\",\"5\":\"HisImidazole\","
-      <<                            "\"6\":\"HidImidazole\",\"7\":\"HieImidazole\","
+    j << R"(    "ring_type_index": {"0":"PheBenzene","1":"TyrPhenol",)"
+      <<                            R"("2":"TrpBenzene","3":"TrpPyrrole",)"
+      <<                            R"("4":"TrpPerimeter","5":"HisImidazole",)"
+      <<                            R"("6":"HidImidazole","7":"HieImidazole",)"
       <<                            "\"8\":\"ProPyrrolidine\"},\n";
-    j << "    \"residue_type\": {\"0\":\"ALA\",\"1\":\"ARG\",\"2\":\"ASN\","
-      <<                         "\"3\":\"ASP\",\"4\":\"CYS\",\"5\":\"GLN\","
-      <<                         "\"6\":\"GLU\",\"7\":\"GLY\",\"8\":\"HIS\","
-      <<                         "\"9\":\"ILE\",\"10\":\"LEU\",\"11\":\"LYS\","
-      <<                         "\"12\":\"MET\",\"13\":\"PHE\",\"14\":\"PRO\","
-      <<                         "\"15\":\"SER\",\"16\":\"THR\",\"17\":\"TRP\","
+    j << R"(    "residue_type": {"0":"ALA","1":"ARG","2":"ASN",)"
+      <<                         R"("3":"ASP","4":"CYS","5":"GLN",)"
+      <<                         R"("6":"GLU","7":"GLY","8":"HIS",)"
+      <<                         R"("9":"ILE","10":"LEU","11":"LYS",)"
+      <<                         R"("12":"MET","13":"PHE","14":"PRO",)"
+      <<                         R"("15":"SER","16":"THR","17":"TRP",)"
       <<                         "\"18\":\"TYR\",\"19\":\"VAL\",\"20\":\"Unknown\"}\n";
     j << "  },\n";
     j << "  \"axis_sizes\": {\n";
@@ -527,26 +527,26 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     j << "    \"ring_membership\": " << ring_membership_count << "\n";
     j << "  },\n";
     j << "  \"axis_alignment\": {\n";
-    j << "    \"atom\": \"All atom-axis NPYs share row order: "
+    j << R"(    "atom": "All atom-axis NPYs share row order: )"
       <<                "atoms_category_info.row[i] == pos.row[i] == "
       <<                "element.row[i] == residue_index.row[i] == atom_index i. "
       <<                "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
       <<                "mc_shielding, coulomb_shielding, hbond_shielding, "
       <<                "larsen_hbond_*, tripeptide_*, etc.) follow the same convention.\",\n";
-    j << "    \"residue\": \"residues.npy is the canonical residue axis. "
+    j << R"(    "residue": "residues.npy is the canonical residue axis. )"
       <<                  "residue_type.npy / residue_index.npy in the identity block are atom-axis "
       <<                  "(N atom rows, each carrying that atom's residue's type / index). "
       <<                  "atoms_category_info.residue_index references the residue axis.\",\n";
-    j << "    \"bond\": \"bonds.npy is the canonical bond axis. "
+    j << R"(    "bond": "bonds.npy is the canonical bond axis. )"
       <<               "bonds.bond_index is the row index.\",\n";
-    j << "    \"ring\": \"rings.npy lists aromatic rings first (rows 0..aromatic_ring-1) "
+    j << R"(    "ring": "rings.npy lists aromatic rings first (rows 0..aromatic_ring-1) )"
       <<               "then saturated rings (rows aromatic_ring..ring-1). ring_id is the absolute row index.\",\n";
-    j << "    \"aromatic_ring\": \"ring_geometry.npy is aromatic-only. "
+    j << R"(    "aromatic_ring": "ring_geometry.npy is aromatic-only. )"
       <<                          "Its rows correspond to rings.npy entries where ring_kind == 0 (aromatic), in order. "
       <<                          "rings.native_axis_index gives that aromatic-axis index.\",\n";
-    j << "    \"ring_contribution_pair\": \"ring_contributions.npy is per (atom, aromatic_ring) "
+    j << R"(    "ring_contribution_pair": "ring_contributions.npy is per (atom, aromatic_ring) )"
       <<                                  "pair. The ring_index column references the aromatic-ring axis.\",\n";
-    j << "    \"ring_membership\": \"ring_membership.npy is per (ring, ring-vertex-atom) pair. "
+    j << R"(    "ring_membership": "ring_membership.npy is per (ring, ring-vertex-atom) pair. )"
       <<                            "ring_id references rings.npy; atom_index references the atom axis.\"\n";
     j << "  }\n";
     j << "}\n";
@@ -571,7 +571,7 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
 int TopologySidecar::WriteFeatures(const Protein& protein,
                                      const std::string& output_dir,
                                      const std::string& protein_id) {
-    OperationLog::Scope scope("TopologySidecar::WriteFeatures",
+    OperationLog::Scope const scope("TopologySidecar::WriteFeatures",
         "atoms=" + std::to_string(protein.AtomCount()) +
         " bonds=" + std::to_string(protein.LegacyAmber().BondCount()) +
         " arom_rings=" + std::to_string(protein.LegacyAmber().AromaticRingCount()) +

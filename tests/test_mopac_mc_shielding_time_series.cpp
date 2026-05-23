@@ -83,7 +83,7 @@ TEST(MopacMcConnellShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame (no MopacMcConnell)");
@@ -99,7 +99,7 @@ TEST(MopacMcConnellShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/mopac_mc_shielding_time_series"));
 
     fs::remove(h5_path);
@@ -132,7 +132,7 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const auto status = traj.Run(tp, config, session);
     if (status != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed; skipping per "
@@ -154,7 +154,7 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/mopac_mc_shielding_time_series");
     auto ds = grp.getDataSet("xyz");
     const auto dims = ds.getSpace().getDimensions();
@@ -163,7 +163,9 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(dims[2], 9u)
         << "9-component emission per 'if not traceless write both'";
 
-    std::string parity, layout, units;
+    std::string parity;
+    std::string layout;
+    std::string units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
@@ -177,7 +179,9 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
     const std::size_t N = dims[0];
     std::vector<double> flat(N * T * 9);
     ds.read(flat.data());
-    double max_t0 = 0.0, max_t1 = 0.0, max_t2 = 0.0;
+    double max_t0 = 0.0;
+    double max_t1 = 0.0;
+    double max_t2 = 0.0;
     for (std::size_t i = 0; i < N; ++i) {
         for (std::size_t t = 0; t < T; ++t) {
             const std::size_t base = (i * T + t) * 9;
@@ -185,10 +189,12 @@ TEST(MopacMcConnellShieldingTimeSeries, Integration1P9J) {
                 EXPECT_TRUE(std::isfinite(flat[base + k]));
             }
             max_t0 = std::max(max_t0, std::abs(flat[base + 0]));
-            for (std::size_t k = 1; k <= 3; ++k)
+            for (std::size_t k = 1; k <= 3; ++k) {
                 max_t1 = std::max(max_t1, std::abs(flat[base + k]));
-            for (std::size_t k = 4; k <= 8; ++k)
+}
+            for (std::size_t k = 4; k <= 8; ++k) {
                 max_t2 = std::max(max_t2, std::abs(flat[base + k]));
+}
         }
     }
     std::cout << "  max|T0| = " << max_t0
@@ -230,7 +236,7 @@ TEST(MopacMcConnellShieldingTimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     if (traj.Run(tp, config, session) != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed; skipping.";
     }

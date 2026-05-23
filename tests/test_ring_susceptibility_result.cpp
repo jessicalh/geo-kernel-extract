@@ -70,25 +70,27 @@ TEST(RingChiAnalytical, T0EqualsFOnRealProtein) {
 
             // Reconstruct M/r³ from geometry and verify trace
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
-            Vec3 d = conf.PositionAt(ai) - geom.center;
-            double rm = d.norm();
+            Vec3 const d = conf.PositionAt(ai) - geom.center;
+            double const rm = d.norm();
             if (rm < MIN_DISTANCE) continue;
 
             Vec3 d_hat = d / rm;
-            double cos_theta = d_hat.dot(geom.normal);
-            double r3 = rm * rm * rm;
+            double const cos_theta = d_hat.dot(geom.normal);
+            double const r3 = rm * rm * rm;
 
             Mat3 M;
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
                     M(a, b) = (9.0 * cos_theta * d_hat(a) * geom.normal(b)
                                - 3.0 * geom.normal(a) * geom.normal(b)
                                - (3.0 * d_hat(a) * d_hat(b) - (a==b ? 1.0 : 0.0)))
                               / r3;
+}
+}
 
-            double t0 = M.trace() / 3.0;
-            double f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
-            double diff = std::abs(t0 - f);
+            double const t0 = M.trace() / 3.0;
+            double const f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
+            double const diff = std::abs(t0 - f);
             max_diff = std::max(max_diff, diff);
 
             // Also verify stored values match
@@ -148,7 +150,7 @@ TEST_F(RingChiProteinTest, T0EqualsScalarF) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (std::abs(rn.chi_scalar) < 1e-15) continue;
-            double diff = std::abs(rn.chi_spherical.T0 - rn.chi_scalar);
+            double const diff = std::abs(rn.chi_spherical.T0 - rn.chi_scalar);
             max_diff = std::max(max_diff, diff);
             checked++;
         }
@@ -167,12 +169,14 @@ TEST_F(RingChiProteinTest, ShieldingContributionHasT0AndT2) {
     auto& conf = protein->Conformation();
     conf.AttachResult(RingSusceptibilityResult::Compute(conf));
 
-    int nonzero_t0 = 0, nonzero_t2 = 0;
-    double max_t0 = 0, max_t2 = 0;
+    int nonzero_t0 = 0;
+    int nonzero_t2 = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).ringchi_shielding_contribution;
         if (std::abs(sc.T0) > 1e-8) nonzero_t0++;
-        double t2 = sc.T2Magnitude();
+        double const t2 = sc.T2Magnitude();
         if (t2 > 1e-8) nonzero_t2++;
         max_t0 = std::max(max_t0, std::abs(sc.T0));
         max_t2 = std::max(max_t2, t2);
@@ -196,8 +200,9 @@ TEST(RingChiOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -211,7 +216,8 @@ TEST(RingChiOrcaTest, RunOnProtonatedProtein) {
     conf.AttachResult(std::move(rchi));
 
     // Summary
-    double max_t0 = 0, max_t2 = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
     int with_rings = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).ringchi_shielding_contribution;

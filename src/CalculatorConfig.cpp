@@ -150,10 +150,12 @@ void CalculatorConfig::Load(const std::string& path) {
 
         // Trim whitespace
         auto trim = [](std::string& s) {
-            while (!s.empty() && (s.front() == ' ' || s.front() == '\t'))
+            while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) {
                 s.erase(s.begin());
-            while (!s.empty() && (s.back() == ' ' || s.back() == '\t'))
+}
+            while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) {
                 s.pop_back();
+}
         };
         trim(key);
         trim(val);
@@ -161,12 +163,13 @@ void CalculatorConfig::Load(const std::string& path) {
         if (key.empty() || val.empty()) continue;
 
         char* end = nullptr;
-        double d = std::strtod(val.c_str(), &end);
+        double const d = std::strtod(val.c_str(), &end);
         if (end == val.c_str()) {
             // Not a number — store as string (strip surrounding quotes if present)
             std::string s = val;
-            if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+            if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
                 s = s.substr(1, s.size() - 2);
+}
             string_overrides_[key] = s;
             continue;
         }
@@ -194,7 +197,7 @@ double CalculatorConfig::Get(const std::string& key) {
     if (df != defaults_.end()) return df->second.value;
 
     // Unknown key = programming error
-    fprintf(stderr,
+    (void)fprintf(stderr,
         "FATAL: CalculatorConfig::Get(\"%s\") — unknown parameter key.\n",
         key.c_str());
     std::abort();
@@ -219,10 +222,10 @@ std::vector<std::string> CalculatorConfig::Validate() {
     for (const auto& [key, entry] : defaults_) {
         auto ov = overrides_.find(key);
         const char* source = (ov != overrides_.end()) ? "toml" : "default";
-        double val = (ov != overrides_.end()) ? ov->second : entry.value;
+        double const val = (ov != overrides_.end()) ? ov->second : entry.value;
 
         char buf[512];
-        snprintf(buf, sizeof(buf), "%-50s = %12g  %-8s [%s] %s",
+        (void)snprintf(buf, sizeof(buf), "%-50s = %12g  %-8s [%s] %s",
                  key.c_str(), val, entry.unit, source, entry.description);
         OperationLog::Info("CalculatorConfig", buf);
     }

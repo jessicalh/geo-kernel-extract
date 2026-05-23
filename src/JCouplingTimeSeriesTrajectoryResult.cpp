@@ -165,12 +165,13 @@ JCouplingTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
             std::size_t hb2 = Residue::NONE;
             std::size_t hb3 = Residue::NONE;
             std::size_t ala_methyl_count = 0;
-            for (std::size_t ai : res.atom_indices) {
+            for (std::size_t const ai : res.atom_indices) {
                 const std::string& name = protein.AtomAt(ai).pdb_atom_name;
-                if      (name == "HB")  single_hb = ai;
-                else if (name == "HB2") hb2 = ai;
-                else if (name == "HB3") hb3 = ai;
-                else if (name == "HB1") ++ala_methyl_count;
+                if      (name == "HB") {  single_hb = ai;
+                } else if (name == "HB2") { hb2 = ai;
+                } else if (name == "HB3") { hb3 = ai;
+                } else if (name == "HB1") { ++ala_methyl_count;
+}
             }
             // Ile/Val/Thr methine path: a single "HB" atom and no
             // HB1/HB2/HB3 methylene names. Mirror to both slots so
@@ -454,7 +455,7 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
     // (feedback_compiler_check).
     auto coeff_str = [](double A, double B, double C) {
         char buf[128];
-        std::snprintf(buf, sizeof(buf), "A=%.4f, B=%.4f, C=%.4f",
+        (void)std::snprintf(buf, sizeof(buf), "A=%.4f, B=%.4f, C=%.4f",
                       A, B, C);
         return std::string(buf);
     };
@@ -603,7 +604,7 @@ void JCouplingTimeSeriesTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, T};
-        HighFive::DataSpace space(dims);
+        HighFive::DataSpace const space(dims);
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("Hz"));

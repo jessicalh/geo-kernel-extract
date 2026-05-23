@@ -87,7 +87,7 @@ TEST(Dssp8Transition, H5RoundTripSingleFrame) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::Dssp8TransitionTrajectoryResult>();
@@ -98,7 +98,7 @@ TEST(Dssp8Transition, H5RoundTripSingleFrame) {
         ("dssp8_trans_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/dssp8_transition"));
     auto grp = reopen.getGroup("/trajectory/dssp8_transition");
 
@@ -146,7 +146,7 @@ TEST(Dssp8Transition, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::Dssp8TransitionTrajectoryResult>();
@@ -158,14 +158,15 @@ TEST(Dssp8Transition, Integration1P9J) {
         ("dssp8_trans_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/dssp8_transition");
 
     // Invariants:
     // (1) Sum of ss8_occupancy across all 8 states == n_frames_observed.
     // (2) Transition matrix diagonal is zero (self-transitions excluded).
     // (3) Sum of off-diagonal transition matrix == ss8_transition_count.
-    std::vector<std::uint32_t> trans_count, n_obs;
+    std::vector<std::uint32_t> trans_count;
+    std::vector<std::uint32_t> n_obs;
     grp.getDataSet("ss8_transition_count").read(trans_count);
     grp.getDataSet("n_frames_observed").read(n_obs);
     std::vector<std::vector<std::uint32_t>> occ;
@@ -173,7 +174,8 @@ TEST(Dssp8Transition, Integration1P9J) {
     std::vector<std::vector<std::vector<std::uint32_t>>> mat;
     grp.getDataSet("ss8_transition_matrix").read(mat);
 
-    std::size_t total_trans = 0, total_obs = 0;
+    std::size_t total_trans = 0;
+    std::size_t total_obs = 0;
     for (std::size_t ri = 0; ri < R; ++ri) {
         std::uint32_t occ_sum = 0;
         for (std::size_t s = 0; s < 8; ++s) occ_sum += occ[ri][s];

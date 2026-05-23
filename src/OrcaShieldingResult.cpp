@@ -52,9 +52,12 @@ static bool ReadMatrix(std::ifstream& in, Mat3& m) {
     for (int row = 0; row < 3; ++row) {
         std::string line;
         if (!std::getline(in, line)) return false;
-        double a, b, c;
-        if (std::sscanf(line.c_str(), " %lf %lf %lf", &a, &b, &c) != 3)
+        double a;
+        double b;
+        double c;
+        if (std::sscanf(line.c_str(), " %lf %lf %lf", &a, &b, &c) != 3) {
             return false;
+}
         m(row, 0) = a;
         m(row, 1) = b;
         m(row, 2) = c;
@@ -84,8 +87,9 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
     // Parse nucleus blocks
     while (std::getline(in, line)) {
         // PDB LOADING BOUNDARY: " Nucleus  NNNX :"
-        if (line.find("Nucleus") == std::string::npos || line.find(':') == std::string::npos)
+        if (line.find("Nucleus") == std::string::npos || line.find(':') == std::string::npos) {
             continue;
+}
 
         // Stop at the next major section
         if (line.find("CHEMICAL SHIFTS") != std::string::npos) break;
@@ -93,8 +97,9 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
 
         int idx = -1;
         char elem[4] = {};
-        if (std::sscanf(line.c_str(), " Nucleus %d%3s", &idx, elem) < 1)
+        if (std::sscanf(line.c_str(), " Nucleus %d%3s", &idx, elem) < 1) {
             continue;
+}
 
         ParsedNucleus nuc;
         nuc.index = idx;
@@ -153,7 +158,7 @@ std::unique_ptr<OrcaShieldingResult> OrcaShieldingResult::Compute(
         ProteinConformation& conf,
         const std::string& nmr_out_path) {
 
-    OperationLog::Scope scope("OrcaShieldingResult::Compute",
+    OperationLog::Scope const scope("OrcaShieldingResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " source=" + nmr_out_path);
 
@@ -183,8 +188,8 @@ std::unique_ptr<OrcaShieldingResult> OrcaShieldingResult::Compute(
     const Protein& protein = conf.ProteinRef();
     int mismatches = 0;
     for (size_t ai = 0; ai < nuclei.size(); ++ai) {
-        Element orca_elem = nuclei[ai].element;
-        Element atom_elem = protein.AtomAt(ai).element;
+        Element const orca_elem = nuclei[ai].element;
+        Element const atom_elem = protein.AtomAt(ai).element;
         if (orca_elem != Element::Unknown && orca_elem != atom_elem) {
             if (mismatches < 5) {
                 OperationLog::Error("OrcaShieldingResult::Compute",

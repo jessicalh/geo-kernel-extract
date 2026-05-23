@@ -146,9 +146,10 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
+    if (!FixtureAvailable(fix)) {
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                      << " fixture not on disk";
+}
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -170,7 +171,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
 
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -191,7 +192,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(buf->AtomCount(), Ntp);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
 
-    for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
+    for (size_t const i : {static_cast<size_t>(0), Ntp / 2, Ntp - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             const auto expected = SyntheticVec3(i, t);
             const auto& got = buf->At(i, t);
@@ -210,7 +211,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist(
         "/trajectory/tripeptide_bb_residual_vec_time_series"));
     auto grp = reopen.getGroup(
@@ -244,9 +245,10 @@ TEST(TripeptideBackboneResidualVecTimeSeries, SyntheticFourFrames) {
 TEST(TripeptideBackboneResidualVecTimeSeries, Frame0Semantics) {
     LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
+    if (!FixtureAvailable(fix)) {
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                      << " fixture not on disk";
+}
 
     nmr::RunConfiguration config;
     config.SetName("TripeptideBackboneResidualVecTimeSeriesFrame0Semantics");
@@ -270,7 +272,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, Frame0Semantics) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u)
@@ -322,7 +324,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, FinalizeIdempotency) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::Vec3>(
@@ -404,7 +406,7 @@ TEST(TripeptideBackboneResidualVecTimeSeries, H5RoundTrip) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist(
         "/trajectory/tripeptide_bb_residual_vec_time_series"));
 
@@ -418,7 +420,10 @@ TEST(TripeptideBackboneResidualVecTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[2], 3u);
 
     // Attribute triple: cartesian xyz layout, polar vector (1o), in Å.
-    std::string parity, normalization, units, layout;
+    std::string parity;
+    std::string normalization;
+    std::string units;
+    std::string layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);
@@ -459,9 +464,10 @@ TEST(TripeptideBackboneResidualVecTimeSeries, IntegrationLogOverages1P9J) {
                         "~/.nmr_tools.toml)";
     }
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix))
+    if (!FixtureAvailable(fix)) {
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                      << " fixture not on disk";
+}
 
     nmr::Session session;
     ASSERT_EQ(session.LoadTripeptideDftTable(), nmr::kOk)

@@ -54,10 +54,10 @@ public:
     // Grid sampling: evaluate BS kernel at an arbitrary 3D point.
     // Returns the shielding tensor (sum over all rings within cutoff).
     // Requires Compute() to have run (uses stored ring geometries).
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    SphericalTensor SampleShieldingAt(const Vec3& point) const;
 
     // Grid sampling: evaluate B-field at an arbitrary 3D point.
-    Vec3 SampleBFieldAt(Vec3 point) const;
+    Vec3 SampleBFieldAt(const Vec3& point) const;
 
     // Write BS features: shielding contribution (9), per-type T0 (8),
     // per-type T2 (8x5), ring proximity counts, B-field totals.

@@ -34,12 +34,12 @@ LegacyAmberTopology::LegacyAmberTopology(
     , atom_semantic_(std::move(atom_semantic))
     , rings_(std::move(rings)) {
     if (!bonds_) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology requires a CovalentTopology.\n");
         std::abort();
     }
     if (!atom_semantic_.empty() && atom_semantic_.size() != atom_count_) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology atom_semantic size %zu != atom_count %zu.\n",
             atom_semantic_.size(), atom_count_);
         std::abort();
@@ -57,7 +57,7 @@ LegacyAmberTopology::LegacyAmberTopology(
 const AtomSemanticTable&
 LegacyAmberTopology::SemanticAt(size_t atom_index) const {
     if (atom_semantic_.empty()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology::SemanticAt: atom_semantic not populated. "
             "Caller must gate on HasAtomSemantic() — stub fixtures (atoms with "
             "empty pdb_atom_name) leave the substrate empty. See "
@@ -65,7 +65,7 @@ LegacyAmberTopology::SemanticAt(size_t atom_index) const {
         std::abort();
     }
     if (atom_index >= atom_semantic_.size()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology::SemanticAt: atom_index %zu out of "
             "range (size %zu).\n", atom_index, atom_semantic_.size());
         std::abort();
@@ -80,7 +80,7 @@ LegacyAmberTopology::ResidueAtomsWithIdentity(
         const AtomMechanicalIdentity& identity,
         const std::vector<Residue>& residues) const {
     if (residue_index >= residues.size()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology::ResidueAtomsWithIdentity: "
             "residue_index %zu out of range (size %zu).\n",
             residue_index, residues.size());
@@ -89,10 +89,10 @@ LegacyAmberTopology::ResidueAtomsWithIdentity(
     std::vector<size_t> matches;
     if (atom_semantic_.empty()) return matches;
     const Residue& res = residues[residue_index];
-    for (size_t ai : res.atom_indices) {
+    for (size_t const ai : res.atom_indices) {
         if (ai >= atom_semantic_.size()) continue;
         const AtomSemanticTable& sem = atom_semantic_[ai];
-        AtomMechanicalIdentity sem_id{
+        AtomMechanicalIdentity const sem_id{
             sem.element, sem.locant, sem.branch, sem.di_index,
             sem.backbone_role
         };
@@ -107,14 +107,14 @@ LegacyAmberTopology::AtomWithRole(size_t residue_index,
                                   BackboneRole role,
                                   const std::vector<Residue>& residues) const {
     if (residue_index >= residues.size()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: LegacyAmberTopology::AtomWithRole: residue_index %zu "
             "out of range (size %zu).\n", residue_index, residues.size());
         std::abort();
     }
     if (atom_semantic_.empty()) return Residue::NONE;
     const Residue& res = residues[residue_index];
-    for (size_t ai : res.atom_indices) {
+    for (size_t const ai : res.atom_indices) {
         if (ai >= atom_semantic_.size()) continue;
         if (atom_semantic_[ai].backbone_role == role) return ai;
     }
@@ -198,7 +198,7 @@ nmr::TerminalState CTerminalStateForResidue(const nmr::Residue& res) {
                                      const AtomMechanicalIdentity& ident,
                                      std::uint8_t variant_idx,
                                      int cap_state_int) {
-    std::fprintf(stderr,
+    (void)std::fprintf(stderr,
         "FATAL: ComposeAtomSemantic: %s lookup miss\n"
         "  atom_index = %zu\n"
         "  residue    = %s seq %d chain '%s'\n"
@@ -251,7 +251,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
     // empty, masking a real chemistry error.
     bool has_real_atom_names = false;
     for (const Residue& res : residues) {
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             if (ai < atoms.size() && !atoms[ai]->pdb_atom_name.empty()) {
                 has_real_atom_names = true;
                 break;
@@ -275,7 +275,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
         const Residue& res = residues[ri];
         if (res.type != AminoAcid::Unknown) continue;
         size_t named_atom_count = 0;
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             if (ai < atoms.size() && !atoms[ai]->pdb_atom_name.empty()) {
                 ++named_atom_count;
             }
@@ -284,13 +284,13 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
 
         // First named atom for diagnostic context.
         std::string first_name;
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             if (ai < atoms.size() && !atoms[ai]->pdb_atom_name.empty()) {
                 first_name = atoms[ai]->pdb_atom_name;
                 break;
             }
         }
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: ComposeAtomSemantic: AminoAcid::Unknown residue at "
             "index %zu (sequence %d, chain '%s') carries %zu named atom(s) "
             "(first: '%s'). The standard-20 substrate has no row for "
@@ -325,7 +325,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             ? static_cast<std::uint8_t>(res.protonation_variant_index)
             : gen::kBaseVariantIdx;
 
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             if (ai >= atoms.size()) continue;
             const Atom& atom = *atoms[ai];
             const std::string& name = atom.pdb_atom_name;
@@ -366,7 +366,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
                 atom.parent_atom_index < atoms.size()) {
                 int parent_h_count = 0;
                 const Atom& parent = *atoms[atom.parent_atom_index];
-                for (size_t bi : parent.bond_indices) {
+                for (size_t const bi : parent.bond_indices) {
                     const Bond& bond = bonds.BondAt(bi);
                     const size_t other =
                         (bond.atom_index_a == atom.parent_atom_index)

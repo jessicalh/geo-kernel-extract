@@ -37,15 +37,16 @@ namespace fs = std::filesystem;
 
 // Helper: load a protonated protein with charges from prmtop
 static std::unique_ptr<nmr::Protein> LoadTestProtein(const std::string& protein_id) {
-    std::string dir = std::string(nmr::test::TestEnvironment::Consolidated()) + protein_id + "/";
+    std::string const dir = std::string(nmr::test::TestEnvironment::Consolidated()) + protein_id + "/";
 
     nmr::OrcaRunFiles files;
     files.pdb_path = dir + protein_id + "_WT.pdb";
     files.xyz_path = dir + protein_id + "_WT.xyz";
     files.prmtop_path = dir + protein_id + "_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         return nullptr;
+}
 
     auto load = nmr::BuildFromOrca(files);
     if (!load.Ok()) return nullptr;
@@ -194,7 +195,7 @@ TEST(SampleAtTest, BSMatchesAtomValues) {
 
     for (size_t i = 0; i < conf.AtomCount() && tested < 50; ++i) {
         const auto& atom = conf.AtomAt(i);
-        double atom_t0 = atom.bs_shielding_contribution.T0;
+        double const atom_t0 = atom.bs_shielding_contribution.T0;
         if (std::abs(atom_t0) < 0.001) continue;  // skip negligible
 
         // Skip atoms that are ring vertices or bonded to ring vertices
@@ -202,7 +203,7 @@ TEST(SampleAtTest, BSMatchesAtomValues) {
         bool is_ring_atom = false;
         for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
             const auto& ring = protein->RingAt(ri);
-            for (size_t vi : ring.atom_indices) {
+            for (size_t const vi : ring.atom_indices) {
                 if (vi == i) { is_ring_atom = true; break; }
                 // Check if bonded to vertex
                 for (const auto& bond : protein->Bonds()) {
@@ -218,11 +219,11 @@ TEST(SampleAtTest, BSMatchesAtomValues) {
         }
         if (is_ring_atom) continue;
 
-        nmr::SphericalTensor sampled = bs.SampleShieldingAt(atom.Position());
+        nmr::SphericalTensor const sampled = bs.SampleShieldingAt(atom.Position());
         tested++;
 
         // Relative tolerance: these should match well for non-excluded atoms
-        double rel_diff = std::abs(sampled.T0 - atom_t0)
+        double const rel_diff = std::abs(sampled.T0 - atom_t0)
                         / std::max(std::abs(atom_t0), 1e-6);
         if (rel_diff < 0.05) matched++;  // 5% tolerance
 
@@ -254,15 +255,15 @@ TEST(SampleAtTest, BSGridAboveRing) {
     const auto& geom = conf.ring_geometries[0];
 
     // Sample on the ring normal at 3A above center — should be shielded (T0 > 0)
-    nmr::Vec3 above = geom.center + 3.0 * geom.normal;
+    nmr::Vec3 const above = geom.center + 3.0 * geom.normal;
     auto st_above = bs.SampleShieldingAt(above);
 
     // And in the ring plane at 5A — should be deshielded (T0 < 0)
     // Find a direction perpendicular to normal
-    nmr::Vec3 perp = geom.normal.cross(
+    nmr::Vec3 const perp = geom.normal.cross(
         std::abs(geom.normal.x()) < 0.9 ? nmr::Vec3(1,0,0) : nmr::Vec3(0,1,0)
     ).normalized();
-    nmr::Vec3 inplane = geom.center + 5.0 * perp;
+    nmr::Vec3 const inplane = geom.center + 5.0 * perp;
     auto st_inplane = bs.SampleShieldingAt(inplane);
 
     std::cout << "  Ring 0: T0 at +3A normal = " << st_above.T0
@@ -296,13 +297,13 @@ TEST(SampleAtTest, BSButterflyField) {
     const auto& geom = conf.ring_geometries[0];
 
     // B-field on the ring axis should be parallel to the normal
-    nmr::Vec3 above = geom.center + 3.0 * geom.normal;
-    nmr::Vec3 B = bs.SampleBFieldAt(above);
+    nmr::Vec3 const above = geom.center + 3.0 * geom.normal;
+    nmr::Vec3 const B = bs.SampleBFieldAt(above);
 
     EXPECT_GT(B.norm(), 0.0) << "Zero B-field above ring";
 
     // B should be roughly along the normal direction
-    double cos_angle = B.normalized().dot(geom.normal);
+    double const cos_angle = B.normalized().dot(geom.normal);
     EXPECT_GT(std::abs(cos_angle), 0.8)
         << "B-field not aligned with ring normal at 3A above";
 
@@ -330,14 +331,14 @@ TEST(SampleAtTest, AllCalculatorsSample) {
     if (protein->RingCount() == 0) GTEST_SKIP() << "No rings";
 
     const auto& geom = conf.ring_geometries[0];
-    nmr::Vec3 test_point = geom.center + 3.0 * geom.normal;
+    nmr::Vec3 const test_point = geom.center + 3.0 * geom.normal;
 
     // HM
     auto hm_st = conf.Result<nmr::HaighMallionResult>().SampleShieldingAt(test_point);
     EXPECT_NE(hm_st.T0, 0.0) << "HM SampleAt returned zero";
 
     // McConnell — sample near a bond midpoint
-    nmr::Vec3 bond_test = conf.bond_midpoints[0] + nmr::Vec3(2.0, 0.0, 0.0);
+    nmr::Vec3 const bond_test = conf.bond_midpoints[0] + nmr::Vec3(2.0, 0.0, 0.0);
     auto mc_st = conf.Result<nmr::McConnellResult>().SampleShieldingAt(bond_test);
     // McConnell is pure T2 (T0 ≈ 0), so check T2 magnitude
     EXPECT_GT(mc_st.T2Magnitude(), 0.0) << "MC SampleAt returned zero T2";
@@ -353,7 +354,7 @@ TEST(SampleAtTest, AllCalculatorsSample) {
     // Dispersion — sample near a ring vertex
     const auto& vertices = geom.vertices;
     if (!vertices.empty()) {
-        nmr::Vec3 disp_test = vertices[0] + nmr::Vec3(3.0, 0.0, 0.0);
+        nmr::Vec3 const disp_test = vertices[0] + nmr::Vec3(3.0, 0.0, 0.0);
         auto disp_st = conf.Result<nmr::DispersionResult>().SampleShieldingAt(disp_test);
         // Dispersion may be zero if point is outside 5A cutoff from all vertices
         // Just verify it doesn't crash

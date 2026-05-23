@@ -90,7 +90,7 @@ TEST(RingPuckerTimeSeries, H5RoundTripSingleFrame) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RingPuckerTimeSeriesTrajectoryResult>();
@@ -103,7 +103,7 @@ TEST(RingPuckerTimeSeries, H5RoundTripSingleFrame) {
         ("ring_pucker_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/ring_pucker_time_series"));
     auto grp = reopen.getGroup("/trajectory/ring_pucker_time_series");
 
@@ -131,7 +131,9 @@ TEST(RingPuckerTimeSeries, H5RoundTripSingleFrame) {
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
 
     // Convention attrs
-    std::string conv, Q_units, theta_units;
+    std::string conv;
+    std::string Q_units;
+    std::string theta_units;
     grp.getAttribute("pucker_convention").read(conv);
     grp.getAttribute("pucker_Q_units").read(Q_units);
     grp.getAttribute("pucker_theta_units").read(theta_units);
@@ -157,7 +159,7 @@ TEST(RingPuckerTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RingPuckerTimeSeriesTrajectoryResult>();
@@ -171,7 +173,7 @@ TEST(RingPuckerTimeSeries, Integration1P9J) {
         ("ring_pucker_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/ring_pucker_time_series");
 
     if (A > 0) {

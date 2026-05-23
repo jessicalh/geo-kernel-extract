@@ -44,9 +44,9 @@ void AppendResidueAtomsFromAaType(Protein& protein,
         auto atom = Atom::Create(templ.element);
         atom->pdb_atom_name = templ.name;
         atom->residue_index = residue_index;
-        size_t ai = protein.AddAtom(std::move(atom));
+        size_t const ai = protein.AddAtom(std::move(atom));
         protein.MutableResidueAt(residue_index).atom_indices.push_back(ai);
-        positions_out.push_back(Vec3(0.0, 0.0, 0.0));
+        positions_out.emplace_back(0.0, 0.0, 0.0);
     }
 }
 
@@ -94,7 +94,7 @@ TEST_F(AmberPreparedChargeIntegrationTest, LoadChargesFailsLoudlyOnInvalidPdbInp
     res.sequence_number = 1;
     res.chain_id = "A";
     res.terminal_state = ResidueTerminalState::Internal;
-    size_t ri = protein->AddResidue(res);
+    size_t const ri = protein->AddResidue(res);
 
     std::vector<Vec3> positions;
     AppendResidueAtomsFromAaType(*protein, AminoAcid::ALA, ri, positions);
@@ -103,13 +103,13 @@ TEST_F(AmberPreparedChargeIntegrationTest, LoadChargesFailsLoudlyOnInvalidPdbInp
     auto stray = Atom::Create(Element::C);
     stray->pdb_atom_name = "ZZZZ";
     stray->residue_index = ri;
-    size_t stray_ai = protein->AddAtom(std::move(stray));
+    size_t const stray_ai = protein->AddAtom(std::move(stray));
     protein->MutableResidueAt(ri).atom_indices.push_back(stray_ai);
-    positions.push_back(Vec3(0.0, 0.0, 0.0));
+    positions.emplace_back(0.0, 0.0, 0.0);
 
     protein->AddConformation(std::move(positions), "stray-atom-test");
 
-    AmberPreparedChargeSource src(*protein, MakeCfg().preparation_policy,
+    AmberPreparedChargeSource const src(*protein, MakeCfg().preparation_policy,
                                   FakeUnsupportedVerdict(), MakeCfg());
     std::string err;
     auto rows = src.LoadCharges(*protein, protein->Conformation(), err);
@@ -139,10 +139,10 @@ TEST_F(AmberPreparedChargeIntegrationTest, GeneratedPdbIsByteIdenticalAcrossRuns
     auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
     ASSERT_TRUE(r.Ok()) << r.error;
 
-    AmberPreparedChargeSource src1(
+    AmberPreparedChargeSource const src1(
         *r.protein, MakeCfg().preparation_policy,
         FakeUnsupportedVerdict(), MakeCfg());
-    AmberPreparedChargeSource src2(
+    AmberPreparedChargeSource const src2(
         *r.protein, MakeCfg().preparation_policy,
         FakeUnsupportedVerdict(), MakeCfg());
 
@@ -183,7 +183,7 @@ TEST(AmberPreparedChargeStep5NegativeTest,
     AmberFlatTableCoverageVerdict verdict;
     verdict.ok = false;
 
-    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
                                   verdict, cfg);
     std::string err;
     auto rows = src.LoadCharges(*protein, protein->Conformation(), err);

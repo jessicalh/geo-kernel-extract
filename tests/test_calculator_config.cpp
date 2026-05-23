@@ -75,7 +75,7 @@ TEST(CalculatorConfig, DefaultsMatchNoiseFloors) {
 // --- TOML loading round-trip ---
 
 TEST(CalculatorConfig, TomlRoundTrip) {
-    std::string toml_path = std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml";
+    std::string const toml_path = std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml";
     CalculatorConfig::Load(toml_path);
 
     // After loading TOML with default values, Get() returns the same numbers

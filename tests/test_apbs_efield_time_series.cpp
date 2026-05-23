@@ -77,7 +77,7 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 4;
-    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -95,18 +95,19 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
         nmr::ApbsEfieldTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
-    for (size_t i : {size_t(0), N / 2, N - 1})
+    for (size_t const i : {static_cast<size_t>(0), N / 2, N - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             const nmr::Vec3& v = buf->At(i, t);
             EXPECT_DOUBLE_EQ(v.x(), static_cast<double>(i) + t * 1.0);
             EXPECT_DOUBLE_EQ(v.y(), static_cast<double>(i) + t * 1.0 + 0.1);
             EXPECT_DOUBLE_EQ(v.z(), static_cast<double>(i) + t * 1.0 + 0.2);
         }
+}
 
     const std::string h5_path = (fs::temp_directory_path() /
         ("apbs_efield_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/apbs_efield_time_series");
     auto ds = grp.getDataSet("xyz");
     const auto dims = ds.getSpace().getDimensions();
@@ -114,7 +115,8 @@ TEST(ApbsEfieldTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(dims[0], N);
     EXPECT_EQ(dims[1], kFrames);
     EXPECT_EQ(dims[2], 3u);
-    std::string parity, layout;
+    std::string parity;
+    std::string layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
     EXPECT_EQ(parity, "1o");
@@ -145,7 +147,7 @@ TEST(ApbsEfieldTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 }
@@ -173,7 +175,7 @@ TEST(ApbsEfieldTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::Vec3>(std::type_index(typeid(
@@ -215,7 +217,7 @@ TEST(ApbsEfieldTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf = tp.GetDenseBuffer<nmr::Vec3>(std::type_index(typeid(

@@ -151,7 +151,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
                 flat[base+0] = v.x(); flat[base+1] = v.y(); flat[base+2] = v.z();
             }
         }
-        HighFive::DataSpace space({N, T, std::size_t(3)});
+        HighFive::DataSpace const space({N, T, static_cast<std::size_t>(3)});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
@@ -170,7 +170,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
                             : kNaN;
             }
         }
-        HighFive::DataSpace space({N, T});
+        HighFive::DataSpace const space({N, T});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
@@ -199,7 +199,7 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
                             : kAbsent;
             }
         }
-        HighFive::DataSpace space({N, T});
+        HighFive::DataSpace const space({N, T});
         auto ds = grp.createDataSet<std::uint32_t>("first_shell_count", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("dimensionless"));

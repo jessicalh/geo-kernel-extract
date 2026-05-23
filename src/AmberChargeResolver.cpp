@@ -140,7 +140,7 @@ Ff14sbKeySet LoadKeySet(const std::string& path) {
         if (IsTerminalStateToken(tokens[0])) {
             if (tokens.size() < 5) continue;
             try {
-                double pb_radius = std::stod(tokens[4]);
+                double const pb_radius = std::stod(tokens[4]);
                 if (pb_radius <= 0.0) continue;
             } catch (...) {
                 continue;
@@ -152,7 +152,7 @@ Ff14sbKeySet LoadKeySet(const std::string& path) {
             // Legacy table format: RESNAME ATOMNAME CHARGE LJ_EPSILON RADIUS
             if (tokens.size() < 5) continue;
             try {
-                double pb_radius = std::stod(tokens[4]);
+                double const pb_radius = std::stod(tokens[4]);
                 if (pb_radius <= 0.0) continue;
             } catch (...) {
                 continue;
@@ -240,7 +240,7 @@ AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
 
     AmberFlatTableCoverageVerdict verdict;
 
-    Ff14sbKeySet ks = LoadKeySet(flat_table_path);
+    Ff14sbKeySet const ks = LoadKeySet(flat_table_path);
     if (!ks.loaded) {
         verdict.ok = false;
         AmberFlatTableCoverageFailure f;
@@ -300,7 +300,7 @@ AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
 
         // Template exists for this terminal_state + ff_resname. Check every
         // atom of the residue against (terminal_token, ff_resname, atom_name).
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             const auto candidates =
                 AtomNameCandidates(atom.pdb_atom_name, res.terminal_state);

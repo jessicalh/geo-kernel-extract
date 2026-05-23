@@ -35,8 +35,9 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         GTEST_SKIP() << "ORCA test data not found";
+    }
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -57,8 +58,10 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
     int checked = 0;
     double max_diff = 0.0;
     int has_hbond = 0;
-    double max_t0 = 0, max_t2 = 0;
-    int donors = 0, acceptors = 0;
+    double max_t0 = 0;
+    double max_t2 = 0;
+    int donors = 0;
+    int acceptors = 0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& ca = conf.AtomAt(ai);
@@ -67,11 +70,11 @@ TEST(HBondOrcaTest, RunOnProtonatedProtein) {
             has_hbond++;
 
             // Verify T0 = f for nearest H-bond tensor
-            double t0 = ca.hbond_nearest_spherical.T0;
+            double const t0 = ca.hbond_nearest_spherical.T0;
             // Recompute f from the tensor trace
-            double trace = ca.hbond_nearest_tensor.trace();
-            double f_from_trace = trace / 3.0;
-            double diff = std::abs(t0 - f_from_trace);
+            double const trace = ca.hbond_nearest_tensor.trace();
+            double const f_from_trace = trace / 3.0;
+            double const diff = std::abs(t0 - f_from_trace);
             max_diff = std::max(max_diff, diff);
             checked++;
         }
@@ -110,70 +113,84 @@ static std::string FindNmrOutput(const std::string& dir,
     std::string exact = dir + prefix + "_nmr.out";
     if (fs::exists(exact)) return exact;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string name = entry.path().filename().string();
-        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos)
+        std::string const name = entry.path().filename().string();
+        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos) {
             return entry.path().string();
+        }
     }
     return "";
 }
 
 
 TEST(BatchHBond, AllCleanPairs) {
-    if (!fs::exists(nmr::test::TestEnvironment::Consolidated()))
+    if (!fs::exists(nmr::test::TestEnvironment::Consolidated())) {
         GTEST_SKIP() << "Consolidated directory not found";
+    }
 
-    uint32_t saved_mask = OperationLog::GetChannelMask();
+    uint32_t const saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
     // T2 independence accumulators
     auto t2_cos_sim = [](const std::array<double,5>& a,
                          const std::array<double,5>& b) -> double {
-        double dot = 0, na = 0, nb = 0;
+        double dot = 0;
+        double na = 0;
+        double nb = 0;
         for (int m = 0; m < 5; ++m) {
             dot += a[m] * b[m];
             na += a[m] * a[m];
             nb += b[m] * b[m];
         }
-        double denom = std::sqrt(na * nb);
+        double const denom = std::sqrt(na * nb);
         return (denom < 1e-20) ? 0.0 : dot / denom;
     };
 
     constexpr double TEST_T2_MIN = 1e-4;
 
     struct T2Pair { double sum_abs_cos = 0; int count = 0; };
-    T2Pair hb_vs_mc, hb_vs_co, hb_vs_rc;
+    T2Pair hb_vs_mc;
+    T2Pair hb_vs_co;
+    T2Pair hb_vs_rc;
 
-    int processed = 0, skipped = 0, failed = 0;
-    int total_hbonds = 0;
-    double grand_max_t0 = 0, grand_max_t2 = 0;
-    double grand_sum_t0 = 0, grand_sum_t2 = 0;
+    int processed = 0;
+    int skipped = 0;
+    int failed = 0;
+    int const total_hbonds = 0;
+    double grand_max_t0 = 0;
+    double grand_max_t2 = 0;
+    double grand_sum_t0 = 0;
+    double grand_sum_t2 = 0;
     int grand_t0_count = 0;
 
     // Per-secondary-structure: H-bond count in helix vs sheet vs coil
-    int hb_in_helix = 0, hb_in_sheet = 0, hb_in_coil = 0;
+    int hb_in_helix = 0;
+    int hb_in_sheet = 0;
+    int hb_in_coil = 0;
 
     // DFT proximity: H-bond signal near vs far from mutation sites
-    double sum_hb_near = 0, sum_hb_far = 0;
-    int total_near = 0, total_far = 0;
+    double sum_hb_near = 0;
+    double sum_hb_far = 0;
+    int total_near = 0;
+    int total_far = 0;
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;
-        std::string protein_id = entry.path().filename().string();
-        std::string dir = entry.path().string() + "/";
+        std::string const protein_id = entry.path().filename().string();
+        std::string const dir = entry.path().string() + "/";
 
         // Require complete pair: WT + ALA with prmtop + xyz + nmr
-        std::string wt_prmtop = dir + protein_id + "_WT.prmtop";
-        std::string wt_xyz = dir + protein_id + "_WT.xyz";
-        std::string ala_prmtop = dir + protein_id + "_ALA.prmtop";
-        std::string ala_xyz = dir + protein_id + "_ALA.xyz";
+        std::string const wt_prmtop = dir + protein_id + "_WT.prmtop";
+        std::string const wt_xyz = dir + protein_id + "_WT.xyz";
+        std::string const ala_prmtop = dir + protein_id + "_ALA.prmtop";
+        std::string const ala_xyz = dir + protein_id + "_ALA.xyz";
         if (!fs::exists(wt_prmtop) || !fs::exists(wt_xyz) ||
             !fs::exists(ala_prmtop) || !fs::exists(ala_xyz)) {
             skipped++;
             continue;
         }
 
-        std::string wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
-        std::string ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
+        std::string const wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
+        std::string const ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
         if (wt_nmr.empty() || ala_nmr.empty()) { skipped++; continue; }
 
         OrcaRunFiles files;
@@ -187,7 +204,7 @@ TEST(BatchHBond, AllCleanPairs) {
         auto& conf = load.protein->Conformation();
         conf.AttachResult(GeometryResult::Compute(conf));
 
-        PrmtopChargeSource cs(files.prmtop_path);
+        PrmtopChargeSource const cs(files.prmtop_path);
         conf.AttachResult(ChargeAssignmentResult::Compute(conf, cs));
         conf.AttachResult(SpatialIndexResult::Compute(conf));
 
@@ -213,8 +230,8 @@ TEST(BatchHBond, AllCleanPairs) {
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
             const auto& ca = conf.AtomAt(ai);
 
-            double t0 = std::abs(ca.hbond_shielding_contribution.T0);
-            double t2 = ca.hbond_shielding_contribution.T2Magnitude();
+            double const t0 = std::abs(ca.hbond_shielding_contribution.T0);
+            double const t2 = ca.hbond_shielding_contribution.T2Magnitude();
 
             if (t0 > 1e-10) {
                 grand_sum_t0 += t0;
@@ -226,34 +243,35 @@ TEST(BatchHBond, AllCleanPairs) {
 
             // Per-SS H-bond counting: for atoms that are donors
             if (ca.hbond_is_donor) {
-                size_t ri = load.protein->AtomAt(ai).residue_index;
-                char ss = dssp_data.SecondaryStructure(ri);
-                if (ss == 'H' || ss == 'G' || ss == 'I') hb_in_helix++;
-                else if (ss == 'E' || ss == 'B') hb_in_sheet++;
-                else hb_in_coil++;
+                size_t const ri = load.protein->AtomAt(ai).residue_index;
+                char const ss = dssp_data.SecondaryStructure(ri);
+                if (ss == 'H' || ss == 'G' || ss == 'I') {
+                    hb_in_helix++;
+                } else if (ss == 'E' || ss == 'B') {
+                    hb_in_sheet++;
+                } else {
+                    hb_in_coil++;
+                }
             }
 
             // T2 independence: HBond vs other three calculators
-            double hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
-            double mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
-            double co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
-            double rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
+            double const hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
+            double const mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
+            double const co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
+            double const rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
 
             if (hb_t2_mag > TEST_T2_MIN && mc_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.mc_shielding_contribution.T2);
+                double const c = t2_cos_sim(ca.hbond_shielding_contribution.T2, ca.mc_shielding_contribution.T2);
                 hb_vs_mc.sum_abs_cos += std::abs(c);
                 hb_vs_mc.count++;
             }
             if (hb_t2_mag > TEST_T2_MIN && co_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.coulomb_shielding_contribution.T2);
+                double const c = t2_cos_sim(ca.hbond_shielding_contribution.T2, ca.coulomb_shielding_contribution.T2);
                 hb_vs_co.sum_abs_cos += std::abs(c);
                 hb_vs_co.count++;
             }
             if (hb_t2_mag > TEST_T2_MIN && rc_t2_mag > TEST_T2_MIN) {
-                double c = t2_cos_sim(ca.hbond_shielding_contribution.T2,
-                                      ca.ringchi_shielding_contribution.T2);
+                double const c = t2_cos_sim(ca.hbond_shielding_contribution.T2, ca.ringchi_shielding_contribution.T2);
                 hb_vs_rc.sum_abs_cos += std::abs(c);
                 hb_vs_rc.count++;
             }
@@ -275,7 +293,7 @@ TEST(BatchHBond, AllCleanPairs) {
         if (ala_load.Ok()) {
             auto& ala_conf = ala_load.protein->Conformation();
             ala_conf.AttachResult(GeometryResult::Compute(ala_conf));
-            PrmtopChargeSource ala_cs(ala_files.prmtop_path);
+            PrmtopChargeSource const ala_cs(ala_files.prmtop_path);
             ala_conf.AttachResult(ChargeAssignmentResult::Compute(ala_conf, ala_cs));
             ala_conf.AttachResult(SpatialIndexResult::Compute(ala_conf));
 
@@ -290,21 +308,22 @@ TEST(BatchHBond, AllCleanPairs) {
                     const auto& mut_sites = delta->MutationSites();
                     constexpr double TEST_NEAR_MUTATION_DIST = 8.0;
 
-                    double sum_near = 0, sum_far = 0;
-                    int nc = 0, fc = 0;
+                    double sum_near = 0;
+                    double sum_far = 0;
+                    int nc = 0;
+                    int fc = 0;
 
                     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
                         if (!delta->HasMatch(ai)) continue;
-                        double hb_t0 = std::abs(
-                            conf.AtomAt(ai).hbond_shielding_contribution.T0);
+                        double const hb_t0 = std::abs(conf.AtomAt(ai).hbond_shielding_contribution.T0);
 
                         bool near_mut = false;
-                        Vec3 pos = conf.PositionAt(ai);
+                        Vec3 const pos = conf.PositionAt(ai);
                         for (const auto& ms : mut_sites) {
                             const Residue& mr =
                                 load.protein->ResidueAt(ms.residue_index);
                             if (mr.CA != Residue::NONE) {
-                                double d = (pos - conf.PositionAt(mr.CA)).norm();
+                                double const d = (pos - conf.PositionAt(mr.CA)).norm();
                                 if (d < TEST_NEAR_MUTATION_DIST) {
                                     near_mut = true; break;
                                 }
@@ -333,8 +352,8 @@ TEST(BatchHBond, AllCleanPairs) {
 
     if (processed == 0) GTEST_SKIP() << "No proteins processed";
 
-    double mean_t0 = grand_sum_t0 / std::max(grand_t0_count, 1);
-    double mean_t2 = grand_sum_t2 / std::max(grand_t0_count, 1);
+    double const mean_t0 = grand_sum_t0 / std::max(grand_t0_count, 1);
+    double const mean_t2 = grand_sum_t2 / std::max(grand_t0_count, 1);
 
     std::cout << "  MAGNITUDES:\n"
               << "    Atoms with non-zero HBond T0: " << grand_t0_count << "\n"
@@ -349,12 +368,9 @@ TEST(BatchHBond, AllCleanPairs) {
               << "    Sheet: " << hb_in_sheet << "\n"
               << "    Coil:  " << hb_in_coil << "\n\n";
 
-    double mean_hb_mc = (hb_vs_mc.count > 0)
-        ? hb_vs_mc.sum_abs_cos / hb_vs_mc.count : 0;
-    double mean_hb_co = (hb_vs_co.count > 0)
-        ? hb_vs_co.sum_abs_cos / hb_vs_co.count : 0;
-    double mean_hb_rc = (hb_vs_rc.count > 0)
-        ? hb_vs_rc.sum_abs_cos / hb_vs_rc.count : 0;
+    double const mean_hb_mc = (hb_vs_mc.count > 0) ? hb_vs_mc.sum_abs_cos / hb_vs_mc.count : 0;
+    double const mean_hb_co = (hb_vs_co.count > 0) ? hb_vs_co.sum_abs_cos / hb_vs_co.count : 0;
+    double const mean_hb_rc = (hb_vs_rc.count > 0) ? hb_vs_rc.sum_abs_cos / hb_vs_rc.count : 0;
 
     std::cout << "  T2 INDEPENDENCE (mean |cos| in 5D):\n"
               << "    HBond vs McConnell:     " << mean_hb_mc
@@ -391,10 +407,9 @@ TEST(BatchHBond, AllCleanPairs) {
     // H-bonds are backbone features that persist across aromatic→ALA mutations.
     // The near/far ratio should be close to 1 — H-bond signal is spatially
     // distributed, not concentrated where rings were removed.
-    double grand_hb_near = (total_near > 0) ? sum_hb_near / total_near : 0;
-    double grand_hb_far = (total_far > 0) ? sum_hb_far / total_far : 0;
-    double hb_near_far_ratio = (grand_hb_far > 1e-10)
-        ? grand_hb_near / grand_hb_far : 0;
+    double const grand_hb_near = (total_near > 0) ? sum_hb_near / total_near : 0;
+    double const grand_hb_far = (total_far > 0) ? sum_hb_far / total_far : 0;
+    double const hb_near_far_ratio = (grand_hb_far > 1e-10) ? grand_hb_near / grand_hb_far : 0;
 
     std::cout << "  DFT PROXIMITY (HBond |T0| near vs far from mutation sites):\n"
               << "    Near mutation (<8A): " << grand_hb_near << " A^-3\n"

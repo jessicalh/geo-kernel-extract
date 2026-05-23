@@ -1,6 +1,6 @@
 #pragma once
 //
-// AIMNet2PolarisabilityResult: per-atom charge-polarisation gradient via
+// AIMNet2ChargeResponseGradientResult: per-atom charge-polarisation gradient via
 // autograd through the AIMNet2 TorchScript model.
 //
 // Computes coord.grad in a single backward pass on
@@ -55,9 +55,9 @@ namespace nmr {
 class ProteinConformation;
 struct AIMNet2Model;  // defined in AIMNet2Result.h
 
-class AIMNet2PolarisabilityResult : public ConformationResult {
+class AIMNet2ChargeResponseGradientResult : public ConformationResult {
 public:
-    std::string Name() const override { return "AIMNet2PolarisabilityResult"; }
+    std::string Name() const override { return "AIMNet2ChargeResponseGradientResult"; }
 
     std::vector<std::type_index> Dependencies() const override;
 
@@ -65,7 +65,7 @@ public:
     // Result. The caller attaches it to the conformation. Returns
     // nullptr on any failure (zero atoms, unknown elements, missing
     // 'charges' tensor in model output, undefined coord.grad).
-    static std::unique_ptr<AIMNet2PolarisabilityResult> Compute(
+    static std::unique_ptr<AIMNet2ChargeResponseGradientResult> Compute(
         ProteinConformation& conf,
         AIMNet2Model& model);
 

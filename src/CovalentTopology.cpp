@@ -45,10 +45,11 @@ static std::vector<std::pair<size_t, size_t>> DetectBondsViaOpenBabel(
     std::vector<std::pair<size_t, size_t>> pairs;
     for (auto bond_iter = mol.BeginBonds(); bond_iter != mol.EndBonds(); ++bond_iter) {
         OpenBabel::OBBond* ob_bond = *bond_iter;
-        size_t a = ob_bond->GetBeginAtomIdx() - 1;
-        size_t b = ob_bond->GetEndAtomIdx() - 1;
-        if (a < atoms.size() && b < atoms.size())
-            pairs.push_back({std::min(a, b), std::max(a, b)});
+        size_t const a = ob_bond->GetBeginAtomIdx() - 1;
+        size_t const b = ob_bond->GetEndAtomIdx() - 1;
+        if (a < atoms.size() && b < atoms.size()) {
+            pairs.emplace_back(std::min(a, b), std::max(a, b));
+}
     }
     return pairs;
 }
@@ -108,7 +109,7 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
 
 #ifdef HAS_OPENBABEL
     bond_pairs = DetectBondsViaOpenBabel(atoms, positions);
-    fprintf(stderr, "CovalentTopology::Resolve: OpenBabel detected %zu bonds.\n",
+    (void)fprintf(stderr, "CovalentTopology::Resolve: OpenBabel detected %zu bonds.\n",
             bond_pairs.size());
 #else
     for (size_t i = 0; i < n_atoms; ++i) {
@@ -126,7 +127,7 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     // Step 2: CLASSIFY each bond pair using ONLY typed properties.
     // ---------------------------------------------------------------
     for (const auto& [i, j] : bond_pairs) {
-        double dist = (positions[i] - positions[j]).norm();
+        double const dist = (positions[i] - positions[j]).norm();
 
         Bond bond;
         bond.atom_index_a = i;
@@ -147,8 +148,8 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         // members fall through here to backbone/sidechain treatment
         // and get rewritten by the overlay.
         else {
-            bool a_bb = is_backbone[i];
-            bool b_bb = is_backbone[j];
+            bool const a_bb = is_backbone[i];
+            bool const b_bb = is_backbone[j];
 
             if (a_bb && b_bb) {
                 bool is_peptide_co = false;
@@ -199,7 +200,7 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
             }
         }
 
-        size_t bond_idx = topo->bonds_.size();
+        size_t const bond_idx = topo->bonds_.size();
         topo->bonds_.push_back(bond);
 
         topo->bond_indices_[i].push_back(bond_idx);
@@ -214,11 +215,11 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         if (atoms[i]->element != Element::H) continue;
 
         double min_dist = 1e30;
-        for (size_t bi : topo->bond_indices_[i]) {
+        for (size_t const bi : topo->bond_indices_[i]) {
             const Bond& bnd = topo->bonds_[bi];
-            size_t other = (bnd.atom_index_a == i) ? bnd.atom_index_b : bnd.atom_index_a;
+            size_t const other = (bnd.atom_index_a == i) ? bnd.atom_index_b : bnd.atom_index_a;
             if (atoms[other]->element == Element::H) continue;
-            double d = (positions[i] - positions[other]).norm();
+            double const d = (positions[i] - positions[other]).norm();
             if (d < min_dist) {
                 min_dist = d;
                 topo->h_parent_[i] = other;
@@ -253,7 +254,7 @@ void CovalentTopology::TagAromaticBonds(
     // rings produce Aromatic bond tags.
     std::set<size_t> aromatic_atoms;
     for (const auto& ring : rings) {
-        for (size_t ai : ring->atom_indices) {
+        for (size_t const ai : ring->atom_indices) {
             aromatic_atoms.insert(ai);
         }
     }
@@ -325,7 +326,7 @@ std::string CovalentTopology::OverrideDisulfides(
 
         // Find an existing bond between a and b (if any).
         size_t found_index = SIZE_MAX;
-        for (size_t bi : bond_indices_[a]) {
+        for (size_t const bi : bond_indices_[a]) {
             const Bond& bnd = bonds_[bi];
             if ((bnd.atom_index_a == a && bnd.atom_index_b == b) ||
                 (bnd.atom_index_a == b && bnd.atom_index_b == a)) {

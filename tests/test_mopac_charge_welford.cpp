@@ -102,7 +102,7 @@ TEST(MopacChargeWelford, GroupSkippedWhenSourceNeverAttached) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame (no MOPAC)");
@@ -119,7 +119,7 @@ TEST(MopacChargeWelford, GroupSkippedWhenSourceNeverAttached) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/mopac_charge_welford"))
         << "group must NOT exist when source attached 0/T frames "
            "per canonical 'absent, not faked'";
@@ -169,7 +169,7 @@ TEST(MopacChargeWelford, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const auto status = traj.Run(tp, config, session);
     if (status != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed (MOPAC env not ready?); "
@@ -237,7 +237,7 @@ TEST(MopacChargeWelford, FinalizeIdempotency) {
     auto tr = nmr::MopacChargeWelfordTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     auto conf = std::make_unique<nmr::ProteinConformation>(
         &tp.ProteinRef(), positions, "synthetic (no MOPAC)");
     tr->Compute(*conf, tp, traj, 0, 0.0);

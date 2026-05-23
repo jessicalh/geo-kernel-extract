@@ -171,7 +171,9 @@ TEST_F(TopologySidecarTest, BondEndpointsAreWithinAtomAxis) {
     const std::size_t atom_count = protein_->AtomCount();
     for (std::size_t bi = 0; bi < N; ++bi) {
         const char* row = bytes.data() + data_start + bi * row_size;
-        int32_t bond_index, atom_a, atom_b;
+        int32_t bond_index;
+        int32_t atom_a;
+        int32_t atom_b;
         std::memcpy(&bond_index, row + 0, 4);
         std::memcpy(&atom_a, row + 4, 4);
         std::memcpy(&atom_b, row + 8, 4);

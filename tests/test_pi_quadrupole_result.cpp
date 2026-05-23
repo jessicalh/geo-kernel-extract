@@ -620,7 +620,9 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
     std::vector<Bin> bins = {{2,4}, {4,6}, {6,8}, {8,10}, {10,15}};
 
     auto t2_cos = [](const SphericalTensor& a, const SphericalTensor& b) -> double {
-        double dot = 0, na = 0, nb = 0;
+        double dot = 0;
+        double na = 0;
+        double nb = 0;
         for (int m = 0; m < 5; ++m) {
             dot += a.T2[m] * b.T2[m];
             na += a.T2[m] * a.T2[m];

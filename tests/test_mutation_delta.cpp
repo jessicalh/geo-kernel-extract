@@ -38,8 +38,9 @@ static LoadedProtein LoadAndPrepare(const std::string& prefix) {
     files.xyz_path    = std::string(nmr::test::TestEnvironment::OrcaDir()) + prefix + ".xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + prefix + ".prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
         return {nullptr, false};
+}
 
     auto load = BuildFromOrca(files);
     if (!load.Ok()) return {nullptr, false};
@@ -51,7 +52,7 @@ static LoadedProtein LoadAndPrepare(const std::string& prefix) {
     conf.AttachResult(GeometryResult::Compute(conf));
     conf.AttachResult(EnrichmentResult::Compute(conf));
 
-    PrmtopChargeSource charge_source(files.prmtop_path);
+    PrmtopChargeSource const charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -63,7 +64,7 @@ static LoadedProtein LoadAndPrepare(const std::string& prefix) {
     conf.AttachResult(MolecularGraphResult::Compute(conf));
 
     // ORCA shielding tensors
-    std::string nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + prefix + "_nmr.out";
+    std::string const nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + prefix + "_nmr.out";
     if (fs::exists(nmr_path)) {
         auto orca = OrcaShieldingResult::Compute(conf, nmr_path);
         if (orca) conf.AttachResult(std::move(orca));
@@ -83,15 +84,17 @@ protected:
         wt_ = LoadAndPrepare("A0A7C5FAR6_WT");
         ala_ = LoadAndPrepare("A0A7C5FAR6_ALA");
 
-        if (!wt_.ok || !ala_.ok)
+        if (!wt_.ok || !ala_.ok) {
             GTEST_SKIP() << "ORCA test data not available";
+}
 
         auto& wt_conf = wt_.protein->Conformation();
         auto& ala_conf = ala_.protein->Conformation();
 
         if (!wt_conf.HasResult<OrcaShieldingResult>() ||
-            !ala_conf.HasResult<OrcaShieldingResult>())
+            !ala_conf.HasResult<OrcaShieldingResult>()) {
             GTEST_SKIP() << "ORCA shielding tensors not loaded";
+}
     }
 
     LoadedProtein wt_;
@@ -141,10 +144,11 @@ TEST_F(MutationDeltaTest, FourMutationSitesDetected) {
 
     // TRP should have 3 rings (benzene + pyrrole + perimeter), others 1
     for (const auto& s : sites) {
-        if (s.wt_type == AminoAcid::TRP)
+        if (s.wt_type == AminoAcid::TRP) {
             EXPECT_EQ(s.wt_ring_indices.size(), 3u);
-        else
+        } else {
             EXPECT_EQ(s.wt_ring_indices.size(), 1u);
+}
     }
 
     wt_conf.AttachResult(std::move(delta));
@@ -176,7 +180,7 @@ TEST_F(MutationDeltaTest, BackboneAtomsMatch) {
     ASSERT_NE(delta, nullptr);
 
     const Protein& p = wt_conf.ProteinRef();
-    size_t res0_N = p.ResidueAt(0).N;
+    size_t const res0_N = p.ResidueAt(0).N;
     if (res0_N != Residue::NONE) {
         EXPECT_TRUE(delta->HasMatch(res0_N));
         EXPECT_LT(delta->MatchDistanceAt(res0_N), 0.1);
@@ -194,8 +198,9 @@ TEST_F(MutationDeltaTest, DeltaShieldingFinite) {
         if (!delta->HasMatch(ai)) continue;
         const auto& st = delta->DeltaShieldingSphericalAt(ai);
         EXPECT_FALSE(std::isnan(st.T0)) << "NaN T0 at atom " << ai;
-        for (int i = 0; i < 5; ++i)
+        for (int i = 0; i < 5; ++i) {
             EXPECT_FALSE(std::isnan(st.T2[i])) << "NaN T2[" << i << "] at " << ai;
+}
         checked++;
     }
     EXPECT_GT(checked, 400);
@@ -209,8 +214,9 @@ TEST_F(MutationDeltaTest, RingProximityComputed) {
 
     // Count total removed rings
     size_t total_rings = 0;
-    for (const auto& s : delta->MutationSites())
+    for (const auto& s : delta->MutationSites()) {
         total_rings += s.wt_ring_indices.size();
+}
 
     int has_proximity = 0;
     for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
@@ -227,7 +233,7 @@ TEST_F(MutationDeltaTest, RingProximityComputed) {
             // Cylindrical coords should be consistent
             for (const auto& rp : m.removed_ring_proximity) {
                 EXPECT_GE(rp.distance, 0.0);
-                double r_from_cyl = std::sqrt(rp.z * rp.z + rp.rho * rp.rho);
+                double const r_from_cyl = std::sqrt(rp.z * rp.z + rp.rho * rp.rho);
                 EXPECT_NEAR(r_from_cyl, rp.distance, 0.01)
                     << "Cylindrical coords inconsistent at atom " << ai;
             }
@@ -248,8 +254,8 @@ TEST_F(MutationDeltaTest, DistanceDecayCurve) {
     std::cout << "  Distance decay of |delta T0|:\n";
     for (const auto& bin : summary.by_distance) {
         if (bin.count > 0) {
-            std::cout << "    " << (int)bin.bin_start << "-"
-                      << (int)bin.bin_end << " A: n="
+            std::cout << "    " << static_cast<int>(bin.bin_start) << "-"
+                      << static_cast<int>(bin.bin_end) << " A: n="
                       << bin.count << " mean_|dT0|="
                       << bin.mean_abs_delta_t0
                       << " mean_|T2|=" << bin.mean_t2_magnitude << "\n";
@@ -258,7 +264,8 @@ TEST_F(MutationDeltaTest, DistanceDecayCurve) {
 
     // Signal should be stronger near rings than far away
     // Find the 3-4A bin and the 10-11A bin
-    double near_signal = 0, far_signal = 0;
+    double near_signal = 0;
+    double far_signal = 0;
     for (const auto& bin : summary.by_distance) {
         if (bin.bin_start == 3.0 && bin.count > 0) near_signal = bin.mean_abs_delta_t0;
         if (bin.bin_start == 10.0 && bin.count > 0) far_signal = bin.mean_abs_delta_t0;
@@ -332,7 +339,7 @@ TEST_F(MutationDeltaTest, GraphDeltaAvailable) {
         int large_delta = 0;
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             if (!delta->HasMatch(ai)) continue;
-            int dd = delta->MatchedDataAt(ai).delta_graph_dist_ring;
+            int const dd = delta->MatchedDataAt(ai).delta_graph_dist_ring;
             if (std::abs(dd) > 3) large_delta++;
         }
         std::cout << "  Atoms with |graph delta| > 3: " << large_delta << "\n";

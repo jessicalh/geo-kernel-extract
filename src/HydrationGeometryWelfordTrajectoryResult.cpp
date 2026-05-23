@@ -256,9 +256,14 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(std::size_t)> get) {
-        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
-        std::vector<std::size_t> minf(N), maxf(N);
+                       const std::function<const WelfordMoments&(std::size_t)>& get) {
+        std::vector<double> mean(N);
+        std::vector<double> m2(N);
+        std::vector<double> std_(N);
+        std::vector<double> min_(N);
+        std::vector<double> max_(N);
+        std::vector<std::size_t> minf(N);
+        std::vector<std::size_t> maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i] = w.mean; m2[i] = w.m2; std_[i] = w.std;
@@ -399,7 +404,9 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     }
 
     // Provenance counters
-    std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
+    std::vector<std::size_t> n_frames(N);
+    std::vector<std::size_t> delta_n(N);
+    std::vector<std::size_t> dxdt_n(N);
     for (std::size_t i = 0; i < N; ++i) {
         const HydrationGeometryWelfordState& w = get_w(i);
         n_frames[i] = w.n_frames; delta_n[i] = w.delta_n; dxdt_n[i] = w.dxdt_n;

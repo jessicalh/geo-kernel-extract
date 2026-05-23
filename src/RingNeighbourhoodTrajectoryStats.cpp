@@ -68,7 +68,7 @@ void RingNeighbourhoodTrajectoryStats::InitStaticSnapshot_(
         // saturated rings (parallel to conf.ring_geometries); saturated
         // indices >= n_aromatic. ProPyrrolidine is excluded per
         // ring-current physics (no current, no contribution).
-        for (std::size_t ri : nearby) {
+        for (std::size_t const ri : nearby) {
             if (ri < n_aromatic) {
                 per_atom_ring_list_[ai].push_back(ri);
             }
@@ -308,8 +308,8 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
         const std::size_t base = i * T * R * kChannelCount;
         std::copy(src, src + T * R * kChannelCount, flat.begin() + base);
     }
-    std::vector<std::size_t> dims = {N, T, R, kChannelCount};
-    HighFive::DataSpace space(dims);
+    std::vector<std::size_t> const dims = {N, T, R, kChannelCount};
+    HighFive::DataSpace const space(dims);
     auto ds = grp.createDataSet<double>("geometry", space);
     ds.write_raw(flat.data());
 
@@ -327,8 +327,8 @@ void RingNeighbourhoodTrajectoryStats::WriteH5Group(
             membership[i * R + r] = static_cast<std::int32_t>(rings[r]);
         }
     }
-    std::vector<std::size_t> mem_dims = {N, R};
-    HighFive::DataSpace mem_space(mem_dims);
+    std::vector<std::size_t> const mem_dims = {N, R};
+    HighFive::DataSpace const mem_space(mem_dims);
     auto mem_ds = grp.createDataSet<std::int32_t>(
         "ring_membership_per_atom", mem_space);
     mem_ds.write_raw(membership.data());

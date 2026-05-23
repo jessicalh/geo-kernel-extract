@@ -139,7 +139,8 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     //
     // (j = 0..4, 0-indexed; equivalent to the 1..5 indexing in the
     // 1975 paper modulo phase choice).
-    double cs = 0.0, sn = 0.0;
+    double cs = 0.0;
+    double sn = 0.0;
     for (size_t j = 0; j < 5; ++j) {
         const double z_j = (positions[j] - G).dot(n_hat);
         const double phi = 4.0 * M_PI * static_cast<double>(j) / 5.0;
@@ -209,7 +210,7 @@ std::vector<std::type_index> PlanarGeometryResult::Dependencies() const {
 std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("PlanarGeometryResult::Compute",
+    OperationLog::Scope const scope("PlanarGeometryResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
@@ -380,7 +381,7 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
 
         std::vector<Vec3> ring_pos;
         ring_pos.reserve(5);
-        for (size_t ai : ring.atom_indices) {
+        for (size_t const ai : ring.atom_indices) {
             ring_pos.push_back(conf.PositionAt(ai));
         }
 

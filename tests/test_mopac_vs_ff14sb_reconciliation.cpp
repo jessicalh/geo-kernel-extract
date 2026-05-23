@@ -81,7 +81,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenBothNeverAttached) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame (neither source)");
@@ -97,7 +97,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenBothNeverAttached) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/mopac_vs_ff14sb_reconciliation"));
 
     fs::remove(h5_path);
@@ -119,7 +119,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenOnlyOneSource) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic — only Coulomb");
@@ -138,7 +138,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenOnlyOneSource) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/mopac_vs_ff14sb_reconciliation"));
 
     fs::remove(h5_path);
@@ -172,7 +172,7 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const auto status = traj.Run(tp, config, session);
     if (status != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed; skipping per "
@@ -194,7 +194,7 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/mopac_vs_ff14sb_reconciliation");
     auto ds = grp.getDataSet("cos_t2");  // signed cosine — renamed
                                           // from abs_cos_t2 per
@@ -203,7 +203,9 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
     ASSERT_EQ(dims.size(), 2u);
     EXPECT_EQ(dims[1], T);
 
-    std::string parity, units, mag_units;
+    std::string parity;
+    std::string units;
+    std::string mag_units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     grp.getAttribute("magnitude_floor_units").read(mag_units);
@@ -223,9 +225,13 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
 
     // Signed cos ∈ [-1, 1] for finite cells. Log mean + range to see
     // typical agreement vs disagreement.
-    std::size_t n_finite = 0, n_nan = 0, n_negative = 0;
-    double sum_cos = 0.0, max_cos = -2.0, min_cos = 2.0;
-    for (double v : flat) {
+    std::size_t n_finite = 0;
+    std::size_t n_nan = 0;
+    std::size_t n_negative = 0;
+    double sum_cos = 0.0;
+    double max_cos = -2.0;
+    double min_cos = 2.0;
+    for (double const v : flat) {
         if (std::isfinite(v)) {
             EXPECT_GE(v, -1.0 - 1e-12);  // tiny float slop
             EXPECT_LE(v,  1.0 + 1e-12);
@@ -272,7 +278,7 @@ TEST(MopacVsFf14SbReconciliation, FinalizeIdempotency) {
 
     // Drive a single absent-source frame so Finalize has state to
     // touch but no buffer adoption.
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     auto conf = std::make_unique<nmr::ProteinConformation>(
         &tp.ProteinRef(), positions, "synthetic frame (neither source)");
     tr->Compute(*conf, tp, traj, 0, 0.0);

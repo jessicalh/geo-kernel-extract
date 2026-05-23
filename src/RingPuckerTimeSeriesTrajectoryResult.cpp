@@ -216,7 +216,7 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {S, T};
-        HighFive::DataSpace space(dims);
+        HighFive::DataSpace const space(dims);
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
@@ -238,7 +238,7 @@ void RingPuckerTimeSeriesTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {A, T};
-        HighFive::DataSpace space(dims);
+        HighFive::DataSpace const space(dims);
         auto ds = grp.createDataSet<double>("aromatic_chi2", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("radians"));

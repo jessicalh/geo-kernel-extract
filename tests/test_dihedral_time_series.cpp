@@ -119,7 +119,7 @@ TEST(DihedralTimeSeries, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -140,7 +140,7 @@ TEST(DihedralTimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::DihedralTimeSeriesTrajectoryResult>();
@@ -163,7 +163,7 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::DihedralTimeSeriesTrajectoryResult>();
@@ -174,12 +174,14 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
         ("dihedral_ts_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/dihedral_time_series"));
     auto grp = reopen.getGroup("/trajectory/dihedral_time_series");
 
     // Convention attrs.
-    std::string units, periodicity, convention;
+    std::string units;
+    std::string periodicity;
+    std::string convention;
     grp.getAttribute("angle_units").read(units);
     grp.getAttribute("periodicity").read(periodicity);
     grp.getAttribute("angle_convention").read(convention);
@@ -242,7 +244,9 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
     }
 
     // Convention pin attrs — both new ones added in cleanup pass.
-    std::string value_range, chunking_policy, source_policy;
+    std::string value_range;
+    std::string chunking_policy;
+    std::string source_policy;
     grp.getAttribute("value_range").read(value_range);
     grp.getAttribute("chunking_policy").read(chunking_policy);
     grp.getAttribute("source_attached_policy").read(source_policy);
@@ -267,7 +271,7 @@ TEST(DihedralTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::DihedralTimeSeriesTrajectoryResult>();
@@ -279,12 +283,14 @@ TEST(DihedralTimeSeries, Integration1P9J) {
         ("dihedral_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/dihedral_time_series");
 
     // Boundary-NaN discipline: N-terminus residue must have NaN phi.
     // C-terminus must have NaN psi and omega.
-    std::vector<std::vector<double>> phi_data, psi_data, omega_data;
+    std::vector<std::vector<double>> phi_data;
+    std::vector<std::vector<double>> psi_data;
+    std::vector<std::vector<double>> omega_data;
     grp.getDataSet("phi").read(phi_data);
     grp.getDataSet("psi").read(psi_data);
     grp.getDataSet("omega").read(omega_data);
@@ -295,7 +301,8 @@ TEST(DihedralTimeSeries, Integration1P9J) {
     grp.getDataSet("residue_terminal_state").read(terminal_state);
     ASSERT_EQ(terminal_state.size(), R);
 
-    std::size_t n_term_seen = 0, c_term_seen = 0;
+    std::size_t n_term_seen = 0;
+    std::size_t c_term_seen = 0;
     for (std::size_t ri = 0; ri < R; ++ri) {
         const std::uint8_t ts = terminal_state[ri];
         // 1 = NTerminus, 2 = CTerminus, 3 = NAndCTerminus
@@ -321,7 +328,8 @@ TEST(DihedralTimeSeries, Integration1P9J) {
     std::vector<std::vector<std::uint8_t>> chi_exists_data;
     grp.getDataSet("chi_exists").read(chi_exists_data);
     ASSERT_EQ(chi_exists_data.size(), R);
-    std::size_t gly_count = 0, two_chi_count = 0;
+    std::size_t gly_count = 0;
+    std::size_t two_chi_count = 0;
     for (std::size_t ri = 0; ri < R; ++ri) {
         const auto& row = chi_exists_data[ri];
         ASSERT_EQ(row.size(), 4u);
@@ -347,7 +355,9 @@ TEST(DihedralTimeSeries, Integration1P9J) {
     // assert omega_is_xpro[ri-1] == 1 AND is_pre_proline[ri-1] == 1 AND
     // is_proline[ri] == 1 (verifies the static-mask wiring done in
     // Create() picked up Pro correctly).
-    std::vector<std::uint8_t> omega_xpro, pre_pro, is_pro;
+    std::vector<std::uint8_t> omega_xpro;
+    std::vector<std::uint8_t> pre_pro;
+    std::vector<std::uint8_t> is_pro;
     grp.getDataSet("omega_is_xpro").read(omega_xpro);
     grp.getDataSet("is_pre_proline").read(pre_pro);
     grp.getDataSet("is_proline").read(is_pro);
@@ -443,7 +453,7 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& conf = tp.CanonicalConformation();
@@ -458,10 +468,12 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
         ("dihedral_ts_cross_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       dts.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/dihedral_time_series");
 
-    std::vector<std::vector<double>> phi, psi, omega;
+    std::vector<std::vector<double>> phi;
+    std::vector<std::vector<double>> psi;
+    std::vector<std::vector<double>> omega;
     grp.getDataSet("phi").read(phi);
     grp.getDataSet("psi").read(psi);
     grp.getDataSet("omega").read(omega);
@@ -486,9 +498,15 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
         return std::isfinite(d) && std::abs(d) < kDsspUndefSentinel;
     };
 
-    std::size_t phi_match = 0, phi_skip = 0, phi_mismatch = 0;
-    std::size_t psi_match = 0, psi_skip = 0, psi_mismatch = 0;
-    std::size_t omega_match = 0, omega_skip = 0, omega_mismatch = 0;
+    std::size_t phi_match = 0;
+    std::size_t phi_skip = 0;
+    std::size_t phi_mismatch = 0;
+    std::size_t psi_match = 0;
+    std::size_t psi_skip = 0;
+    std::size_t psi_mismatch = 0;
+    std::size_t omega_match = 0;
+    std::size_t omega_skip = 0;
+    std::size_t omega_mismatch = 0;
 
     for (std::size_t ri = 0; ri < R; ++ri) {
         const double dts_phi   = phi[ri][0];
@@ -502,8 +520,8 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
             const double d = dssp.Phi(ri);
             if (dssp_finite(d) && std::abs(d) > 1e-12) {
                 const double d_neg = -d;
-                if (std::abs(dts_phi - d_neg) < kTolDssp) ++phi_match;
-                else { ++phi_mismatch;
+                if (std::abs(dts_phi - d_neg) < kTolDssp) { ++phi_match;
+                } else { ++phi_mismatch;
                     EXPECT_NEAR(dts_phi, d_neg, kTolDssp)
                         << "phi diverged at ri=" << ri
                         << " (vs -DSSP — convention is negated IUPAC; "
@@ -514,8 +532,8 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
             const double d = dssp.Psi(ri);
             if (dssp_finite(d) && std::abs(d) > 1e-12) {
                 const double d_neg = -d;
-                if (std::abs(dts_psi - d_neg) < kTolDssp) ++psi_match;
-                else { ++psi_mismatch;
+                if (std::abs(dts_psi - d_neg) < kTolDssp) { ++psi_match;
+                } else { ++psi_mismatch;
                     EXPECT_NEAR(dts_psi, d_neg, kTolDssp)
                         << "psi diverged at ri=" << ri
                         << " (vs -DSSP — convention is negated IUPAC; "
@@ -529,8 +547,8 @@ TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
             if (ri < pg_omega.size() && std::isfinite(pg_omega[ri])) {
                 // PG uses the same atan2 formula — bit-identical match
                 // expected.
-                if (std::abs(dts_omega - pg_omega[ri]) < kTolPg) ++omega_match;
-                else { ++omega_mismatch;
+                if (std::abs(dts_omega - pg_omega[ri]) < kTolPg) { ++omega_match;
+                } else { ++omega_mismatch;
                     EXPECT_NEAR(dts_omega, pg_omega[ri], kTolPg)
                         << "omega diverged from PlanarGeometryResult at ri=" << ri; }
             } else { ++omega_skip; }

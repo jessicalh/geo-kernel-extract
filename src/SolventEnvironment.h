@@ -30,7 +30,7 @@ struct WaterMolecule {
 
     // Dipole moment vector (from O toward midpoint of H's, scaled by charges)
     Vec3 Dipole() const {
-        Vec3 mid_H = 0.5 * (H1_pos + H2_pos);
+        Vec3 const mid_H = 0.5 * (H1_pos + H2_pos);
         // μ = Σ q_i * r_i (relative to O)
         return O_charge * Vec3::Zero()
              + H_charge * (H1_pos - O_pos)

@@ -213,9 +213,10 @@ static const std::vector<AminoAcidType> AMINO_ACID_TYPES = {
 #undef BB_GLY
 
 const AminoAcidType& GetAminoAcidType(AminoAcid aa) {
-    int i = static_cast<int>(aa);
-    if (i < 0 || i >= static_cast<int>(AMINO_ACID_TYPES.size()))
+    int const i = static_cast<int>(aa);
+    if (i < 0 || i >= static_cast<int>(AMINO_ACID_TYPES.size())) {
         return AMINO_ACID_TYPES.back();
+}
     return AMINO_ACID_TYPES[static_cast<size_t>(i)];
 }
 
@@ -224,8 +225,9 @@ const std::vector<AminoAcidType>& AllAminoAcidTypes() {
 }
 
 const AminoAcidType& AminoAcidTypeFromCode(const std::string& code) {
-    for (const auto& type : AMINO_ACID_TYPES)
+    for (const auto& type : AMINO_ACID_TYPES) {
         if (code == type.three_letter_code) return type;
+}
     return AMINO_ACID_TYPES.back();
 }
 
@@ -237,7 +239,7 @@ void ValidateVariantIndices() {
         const auto& aat = GetAminoAcidType(aa);
         if (idx >= static_cast<int>(aat.variants.size()) ||
             std::string(aat.variants[idx].name) != expected_name) {
-            std::fprintf(stderr,
+            (void)std::fprintf(stderr,
                 "FATAL: AminoAcidType variant index contract violated: "
                 "%s variants[%d] expected \"%s\", got \"%s\"\n",
                 aat.three_letter_code, idx, expected_name,

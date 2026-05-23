@@ -54,12 +54,13 @@ TEST_F(DsspResultTest, HelixResiduesDetected) {
     // Find the residue indices corresponding to these sequence numbers.
     int helix_count = 0;
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
-        int seq = protein->ResidueAt(ri).sequence_number;
+        int const seq = protein->ResidueAt(ri).sequence_number;
         if (seq >= 23 && seq <= 34) {
-            char ss = d.SecondaryStructure(ri);
+            char const ss = d.SecondaryStructure(ri);
             // H = alpha helix, G = 3-10 helix, I = pi helix
-            if (ss == 'H' || ss == 'G' || ss == 'I')
+            if (ss == 'H' || ss == 'G' || ss == 'I') {
                 helix_count++;
+}
         }
     }
     // At least some residues in this range should be helical
@@ -77,9 +78,10 @@ TEST_F(DsspResultTest, SheetResiduesDetected) {
     // 1UBQ has beta strands. Check for at least some E/B assignments.
     int sheet_count = 0;
     for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
-        char ss = d.SecondaryStructure(ri);
-        if (ss == 'E' || ss == 'B')
+        char const ss = d.SecondaryStructure(ri);
+        if (ss == 'E' || ss == 'B') {
             sheet_count++;
+}
     }
     EXPECT_GT(sheet_count, 5) << "Expected some beta strand residues";
 }
@@ -96,12 +98,13 @@ TEST_F(DsspResultTest, PhiPsiInRange) {
     // Terminal residues may have special values (360 from DSSP = 2*pi).
     int valid_count = 0;
     for (size_t ri = 1; ri < protein->ResidueCount() - 1; ++ri) {
-        double phi = d.Phi(ri);
-        double psi = d.Psi(ri);
+        double const phi = d.Phi(ri);
+        double const psi = d.Psi(ri);
         // Allow some tolerance for DSSP conversion: [-pi-0.1, pi+0.1]
         // DSSP returns 360 for undefined angles, which converts to ~6.28 rad
-        if (std::abs(phi) <= PI + 0.1 && std::abs(psi) <= PI + 0.1)
+        if (std::abs(phi) <= PI + 0.1 && std::abs(psi) <= PI + 0.1) {
             valid_count++;
+}
     }
     // Most internal residues should have valid phi/psi
     EXPECT_GT(valid_count, static_cast<int>(protein->ResidueCount()) / 2);

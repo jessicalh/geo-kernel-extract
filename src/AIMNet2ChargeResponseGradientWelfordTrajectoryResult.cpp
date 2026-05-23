@@ -164,12 +164,20 @@ void AIMNet2ChargeResponseGradientWelfordTrajectoryResult::WriteH5Group(
     // mean + std + m2 + min + max + min_frame + max_frame per channel.
     // Sample count `n` shared across the 4 channels lives on the
     // enclosing AIMNet2ChargeResponseGradientWelfordState (n_frames).
-    std::vector<double>        vec_mean(N * 3), vec_std(N * 3),
-                               vec_m2(N * 3),   vec_min(N * 3), vec_max(N * 3);
-    std::vector<std::uint64_t> vec_min_frame(N * 3), vec_max_frame(N * 3);
-    std::vector<double>        scl_mean(N), scl_std(N), scl_m2(N),
-                               scl_min(N),  scl_max(N);
-    std::vector<std::uint64_t> scl_min_frame(N), scl_max_frame(N);
+    std::vector<double>        vec_mean(N * 3);
+    std::vector<double>        vec_std(N * 3);
+    std::vector<double>        vec_m2(N * 3);
+    std::vector<double>        vec_min(N * 3);
+    std::vector<double>        vec_max(N * 3);
+    std::vector<std::uint64_t> vec_min_frame(N * 3);
+    std::vector<std::uint64_t> vec_max_frame(N * 3);
+    std::vector<double>        scl_mean(N);
+    std::vector<double>        scl_std(N);
+    std::vector<double>        scl_m2(N);
+    std::vector<double>        scl_min(N);
+    std::vector<double>        scl_max(N);
+    std::vector<std::uint64_t> scl_min_frame(N);
+    std::vector<std::uint64_t> scl_max_frame(N);
     std::vector<std::uint64_t> n_per_atom(N);
     for (std::size_t i = 0; i < N; ++i) {
         const auto& ws = tp.AtomAt(i).aimnet2_charge_response_gradient_welford;
@@ -208,7 +216,7 @@ void AIMNet2ChargeResponseGradientWelfordTrajectoryResult::WriteH5Group(
         ds.createAttribute("units", units);
     };
     {
-        HighFive::DataSpace space({N, std::size_t(3)});
+        HighFive::DataSpace const space({N, static_cast<std::size_t>(3)});
         auto d_vmn  = grp.createDataSet<double>("vector_mean",      space); d_vmn.write_raw(vec_mean.data());  write_double_attr(d_vmn, base_v);
         auto d_vsd  = grp.createDataSet<double>("vector_std",       space); d_vsd.write_raw(vec_std.data());   write_double_attr(d_vsd, base_v);
         auto d_vm2  = grp.createDataSet<double>("vector_m2",        space); d_vm2.write_raw(vec_m2.data());    write_double_attr(d_vm2, sqr_v);
@@ -218,7 +226,7 @@ void AIMNet2ChargeResponseGradientWelfordTrajectoryResult::WriteH5Group(
         auto d_vmxf = grp.createDataSet<std::uint64_t>("vector_max_frame", space); d_vmxf.write_raw(vec_max_frame.data()); d_vmxf.createAttribute("units", fi);
     }
     {
-        HighFive::DataSpace space({N});
+        HighFive::DataSpace const space({N});
         auto d_smn  = grp.createDataSet<double>("scalar_mean",      space); d_smn.write_raw(scl_mean.data());  write_double_attr(d_smn, base_s);
         auto d_ssd  = grp.createDataSet<double>("scalar_std",       space); d_ssd.write_raw(scl_std.data());   write_double_attr(d_ssd, base_s);
         auto d_sm2  = grp.createDataSet<double>("scalar_m2",        space); d_sm2.write_raw(scl_m2.data());    write_double_attr(d_sm2, sqr_s);

@@ -84,24 +84,28 @@ void LoadCalculatorConfig() {
 nmr::SphericalTensor SyntheticTensor(size_t atom_i, size_t frame_t) {
     nmr::SphericalTensor s;
     s.T0 = static_cast<double>(atom_i) + static_cast<double>(frame_t) * 100.0;
-    for (size_t k = 0; k < 3; ++k)
+    for (size_t k = 0; k < 3; ++k) {
         s.T1[k] = static_cast<double>(atom_i)
                   + static_cast<double>(frame_t) * 100.0
                   + static_cast<double>(k + 1) * 1e-2;
-    for (size_t k = 0; k < 5; ++k)
+}
+    for (size_t k = 0; k < 5; ++k) {
         s.T2[k] = static_cast<double>(atom_i)
                   + static_cast<double>(frame_t) * 100.0
                   + static_cast<double>(k + 1) * 1e-3;
+}
     return s;
 }
 
 bool SphericalEqual(const nmr::SphericalTensor& a,
                     const nmr::SphericalTensor& b, double tol) {
     if (std::abs(a.T0 - b.T0) > tol) return false;
-    for (size_t k = 0; k < 3; ++k)
+    for (size_t k = 0; k < 3; ++k) {
         if (std::abs(a.T1[k] - b.T1[k]) > tol) return false;
-    for (size_t k = 0; k < 5; ++k)
+}
+    for (size_t k = 0; k < 5; ++k) {
         if (std::abs(a.T2[k] - b.T2[k]) > tol) return false;
+}
     return true;
 }
 
@@ -132,14 +136,15 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, SyntheticFourFrames) {
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
 
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &protein_ref, positions, "synthetic frame");
-        for (size_t i = 0; i < Ntp; ++i)
+        for (size_t i = 0; i < Ntp; ++i) {
             conf->MutableAtomAt(i).larsen_hbond_1pHB_spherical =
                 SyntheticTensor(i, t);
+}
         tr->Compute(*conf, tp, traj, t, static_cast<double>(t));
     }
     EXPECT_EQ(tr->NumFrames(), kFrames);
@@ -152,7 +157,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(buf->AtomCount(), Ntp);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
 
-    for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
+    for (size_t const i : {static_cast<size_t>(0), Ntp / 2, Ntp - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             EXPECT_TRUE(SphericalEqual(buf->At(i, t), SyntheticTensor(i, t),
                                        1e-12));
@@ -166,7 +171,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, SyntheticFourFrames) {
         HighFive::File file(h5_path, HighFive::File::Truncate);
         tr->WriteH5Group(tp, file);
     }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup(
         "/trajectory/larsen_hbond_1pHB_shielding_time_series");
     auto ds = grp.getDataSet("xyz");
@@ -205,7 +210,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, Frame0Semantics) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -242,7 +247,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, FinalizeIdempotency) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::SphericalTensor>(
@@ -313,7 +318,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
         tr.WriteH5Group(tp, file);
     }
 
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup(
         "/trajectory/larsen_hbond_1pHB_shielding_time_series");
     auto ds = grp.getDataSet("xyz");
@@ -323,7 +328,9 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string parity, normalization, units;
+    std::string parity;
+    std::string normalization;
+    std::string units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("units").read(units);

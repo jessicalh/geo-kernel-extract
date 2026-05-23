@@ -34,7 +34,7 @@ TEST_F(MopacResultTest, ComputeOnFullProtein) {
     // Verify charges are non-zero and reasonable
     bool any_nonzero = false;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double q = result->ChargeAt(i);
+        double const q = result->ChargeAt(i);
         EXPECT_FALSE(std::isnan(q)) << "NaN charge at atom " << i;
         EXPECT_GT(q, -3.0) << "Charge too negative at atom " << i;
         EXPECT_LT(q, 3.0) << "Charge too positive at atom " << i;
@@ -75,8 +75,8 @@ TEST_F(MopacResultTest, ChargesStoredOnConformationAtom) {
     ASSERT_NE(result, nullptr);
 
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double ca_charge = conf.AtomAt(i).mopac_charge;
-        double result_charge = result->ChargeAt(i);
+        double const ca_charge = conf.AtomAt(i).mopac_charge;
+        double const result_charge = result->ChargeAt(i);
         EXPECT_DOUBLE_EQ(ca_charge, result_charge)
             << "Charge mismatch at atom " << i;
     }
@@ -110,8 +110,8 @@ TEST_F(MopacResultTest, BondOrderAtomPairLookup) {
     // Pick a covalent bond from the topology and verify its MOPAC bond order
     if (protein->BondCount() > 0) {
         const Bond& bond = protein->BondAt(0);
-        double topo_order = result->TopologyBondOrder(0);
-        double pair_order = result->BondOrder(bond.atom_index_a, bond.atom_index_b);
+        double const topo_order = result->TopologyBondOrder(0);
+        double const pair_order = result->BondOrder(bond.atom_index_a, bond.atom_index_b);
 
         // Both paths should agree
         EXPECT_DOUBLE_EQ(topo_order, pair_order)
@@ -137,7 +137,7 @@ TEST_F(MopacResultTest, ValencyReasonable) {
     ASSERT_NE(result, nullptr);
 
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        double val = result->ValencyAt(i);
+        double const val = result->ValencyAt(i);
         EXPECT_GE(val, 0.0) << "Negative valency at atom " << i;
         // Carbon typically ~4, oxygen ~2, hydrogen ~1, nitrogen ~3
         EXPECT_LT(val, 6.0) << "Valency too high at atom " << i

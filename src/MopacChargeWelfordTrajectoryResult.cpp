@@ -138,8 +138,14 @@ void MopacChargeWelfordTrajectoryResult::WriteH5Group(
     // Per-dataset units attrs: e for mean/std/min/max; e^2 for m2;
     // frame_index for *_frame; frame_count for n_per_atom (codex H3
     // 2026-05-20 convention).
-    std::vector<double>        mean(N), std_(N), m2(N), min_(N), max_(N);
-    std::vector<std::uint64_t> min_frame(N), max_frame(N), n_per_atom(N);
+    std::vector<double>        mean(N);
+    std::vector<double>        std_(N);
+    std::vector<double>        m2(N);
+    std::vector<double>        min_(N);
+    std::vector<double>        max_(N);
+    std::vector<std::uint64_t> min_frame(N);
+    std::vector<std::uint64_t> max_frame(N);
+    std::vector<std::uint64_t> n_per_atom(N);
     for (std::size_t i = 0; i < N; ++i) {
         const auto& w = tp.AtomAt(i).mopac_charge_welford.charge;
         mean[i]      = w.mean;

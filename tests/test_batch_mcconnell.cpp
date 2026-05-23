@@ -36,9 +36,10 @@ static std::string FindNmrOutput(const std::string& dir,
 
     // Try dated pattern: prefix_YYYYMMDD_HHMMSS_nmr.out
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string name = entry.path().filename().string();
-        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos)
+        std::string const name = entry.path().filename().string();
+        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos) {
             return entry.path().string();
+}
     }
     return "";
 }
@@ -59,7 +60,7 @@ static BatchProtein LoadFromConsolidated(
         const std::string& protein_id,
         const std::string& variant) {
 
-    std::string prefix = protein_id + "_" + variant;
+    std::string const prefix = protein_id + "_" + variant;
 
     OrcaRunFiles files;
     files.pdb_path = dir + prefix + ".pdb";
@@ -67,21 +68,24 @@ static BatchProtein LoadFromConsolidated(
     files.prmtop_path = dir + prefix + ".prmtop";
     files.tleap_script_path = dir + prefix + "_tleap.in";
 
-    if (!fs::exists(files.xyz_path))
+    if (!fs::exists(files.xyz_path)) {
         return {nullptr, false, "xyz not found: " + files.xyz_path};
-    if (!fs::exists(files.prmtop_path))
+}
+    if (!fs::exists(files.prmtop_path)) {
         return {nullptr, false, "prmtop not found: " + files.prmtop_path};
+}
 
     auto load = BuildFromOrca(files);
-    if (!load.Ok())
+    if (!load.Ok()) {
         return {nullptr, false, "BuildFromOrca failed: " + load.error};
+}
 
     auto& conf = load.protein->Conformation();
 
     // Attach Layer 0 results needed for McConnell + MutationDelta
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource charge_source(files.prmtop_path);
+    PrmtopChargeSource const charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -92,7 +96,7 @@ static BatchProtein LoadFromConsolidated(
     conf.AttachResult(std::move(mc));
 
     // ORCA shielding
-    std::string nmr_path = FindNmrOutput(dir, prefix);
+    std::string const nmr_path = FindNmrOutput(dir, prefix);
     if (!nmr_path.empty()) {
         auto orca = OrcaShieldingResult::Compute(conf, nmr_path);
         if (orca) conf.AttachResult(std::move(orca));
@@ -113,7 +117,7 @@ TEST(BatchMcConnell, AllCleanPairs) {
     }
 
     // Suppress per-atom logging for batch run
-    uint32_t saved_mask = OperationLog::GetChannelMask();
+    uint32_t const saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
     struct PairResult {
@@ -135,14 +139,14 @@ TEST(BatchMcConnell, AllCleanPairs) {
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;
-        std::string protein_id = entry.path().filename().string();
-        std::string dir = entry.path().string() + "/";
+        std::string const protein_id = entry.path().filename().string();
+        std::string const dir = entry.path().string() + "/";
 
         // Check clean path exists
-        std::string wt_prmtop = dir + protein_id + "_WT.prmtop";
-        std::string wt_xyz = dir + protein_id + "_WT.xyz";
-        std::string ala_prmtop = dir + protein_id + "_ALA.prmtop";
-        std::string ala_xyz = dir + protein_id + "_ALA.xyz";
+        std::string const wt_prmtop = dir + protein_id + "_WT.prmtop";
+        std::string const wt_xyz = dir + protein_id + "_WT.xyz";
+        std::string const ala_prmtop = dir + protein_id + "_ALA.prmtop";
+        std::string const ala_xyz = dir + protein_id + "_ALA.xyz";
 
         if (!fs::exists(wt_prmtop) || !fs::exists(wt_xyz) ||
             !fs::exists(ala_prmtop) || !fs::exists(ala_xyz)) {
@@ -151,8 +155,8 @@ TEST(BatchMcConnell, AllCleanPairs) {
         }
 
         // Check NMR output exists for both
-        std::string wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
-        std::string ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
+        std::string const wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
+        std::string const ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
         if (wt_nmr.empty() || ala_nmr.empty()) {
             skipped++;
             continue;
@@ -194,12 +198,13 @@ TEST(BatchMcConnell, AllCleanPairs) {
         pr.matched = static_cast<int>(delta->MatchedAtomCount());
         pr.mutations = static_cast<int>(delta->MutationSites().size());
 
-        double sum_abs_t0 = 0, sum_t2 = 0;
+        double sum_abs_t0 = 0;
+        double sum_t2 = 0;
         double max_abs = 0;
         int count = 0;
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             if (!delta->HasMatch(ai)) continue;
-            double t0 = std::abs(delta->DeltaT0At(ai));
+            double const t0 = std::abs(delta->DeltaT0At(ai));
             sum_abs_t0 += t0;
             max_abs = std::max(max_abs, t0);
             sum_t2 += delta->DeltaShieldingSphericalAt(ai).T2Magnitude();
@@ -212,7 +217,8 @@ TEST(BatchMcConnell, AllCleanPairs) {
         pr.max_abs_delta_t0 = max_abs;
 
         // McConnell stats on WT
-        double mc_max_t0 = 0, mc_max_t2 = 0;
+        double mc_max_t0 = 0;
+        double mc_max_t2 = 0;
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             const auto& sc = wt_conf.AtomAt(ai).mc_shielding_contribution;
             mc_max_t0 = std::max(mc_max_t0, std::abs(sc.T0));
@@ -237,7 +243,8 @@ TEST(BatchMcConnell, AllCleanPairs) {
     }
 
     // Aggregate statistics
-    double total_mean_t0 = 0, total_mean_t2 = 0;
+    double total_mean_t0 = 0;
+    double total_mean_t2 = 0;
     double global_max_t0 = 0;
     int total_matched = 0;
     for (const auto& pr : results) {
@@ -246,7 +253,7 @@ TEST(BatchMcConnell, AllCleanPairs) {
         global_max_t0 = std::max(global_max_t0, pr.max_abs_delta_t0);
         total_matched += pr.matched;
     }
-    int n = static_cast<int>(results.size());
+    int const n = static_cast<int>(results.size());
 
     std::cout << "  Grand mean |delta T0|: " << total_mean_t0 / n << " ppm\n";
     std::cout << "  Grand mean |T2|: " << total_mean_t2 / n << "\n";
@@ -254,7 +261,8 @@ TEST(BatchMcConnell, AllCleanPairs) {
     std::cout << "  Total matched atoms: " << total_matched << "\n";
 
     // McConnell stats
-    double mc_mean_t0 = 0, mc_mean_t2 = 0;
+    double mc_mean_t0 = 0;
+    double mc_mean_t2 = 0;
     for (const auto& pr : results) {
         mc_mean_t0 += pr.wt_max_mc_t0;
         mc_mean_t2 += pr.wt_max_mc_t2;

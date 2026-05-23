@@ -296,9 +296,9 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     fprintf(stderr, "\n--- Check 3: Charges ---\n");
     if (conf.HasResult<ChargeAssignmentResult>()) {
         auto& ca_result = conf.Result<ChargeAssignmentResult>();
-        double sum_charge = ca_result.TotalCharge();
-        fprintf(stderr, "  Assigned: %zu\n", ca_result.AssignedCount());
-        fprintf(stderr, "  Unassigned: %zu\n", ca_result.UnassignedCount());
+        double const sum_charge = ca_result.TotalCharge();
+        fprintf(stderr, "  Assigned: %d\n", ca_result.AssignedCount());
+        fprintf(stderr, "  Unassigned: %d\n", ca_result.UnassignedCount());
         fprintf(stderr, "  Total charge: %.2f\n", sum_charge);
 
         EXPECT_GT(ca_result.AssignedCount(),
@@ -312,12 +312,11 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
         int no_neighbours = 0;
         double sum_neighbours = 0.0;
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-            size_t nc = conf.AtomAt(ai).spatial_neighbours.size();
+            size_t const nc = conf.AtomAt(ai).spatial_neighbours.size();
             if (nc == 0) no_neighbours++;
             sum_neighbours += static_cast<double>(nc);
         }
-        double mean_neighbours = sum_neighbours /
-            static_cast<double>(conf.AtomCount());
+        double const mean_neighbours = sum_neighbours / static_cast<double>(conf.AtomCount());
         fprintf(stderr, "  Atoms with no neighbours: %d\n", no_neighbours);
         fprintf(stderr, "  Mean neighbour count: %.1f\n", mean_neighbours);
         EXPECT_EQ(no_neighbours, 0)
@@ -330,16 +329,21 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
         const auto& dssp = conf.Result<DsspResult>();
         int n_helix = 0, n_sheet = 0, n_coil = 0, n_other = 0;
         for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
-            char ss = dssp.SecondaryStructure(ri);
-            if (ss == 'H' || ss == 'G' || ss == 'I') n_helix++;
-            else if (ss == 'E' || ss == 'B') n_sheet++;
-            else if (ss == 'C' || ss == ' ') n_coil++;
-            else n_other++;
+            char const ss = dssp.SecondaryStructure(ri);
+            if (ss == 'H' || ss == 'G' || ss == 'I') {
+                n_helix++;
+            } else if (ss == 'E' || ss == 'B') {
+                n_sheet++;
+            } else if (ss == 'C' || ss == ' ') {
+                n_coil++;
+            } else {
+                n_other++;
+            }
         }
-        int total_res = static_cast<int>(protein->ResidueCount());
-        double pct_helix = 100.0 * n_helix / total_res;
-        double pct_sheet = 100.0 * n_sheet / total_res;
-        double pct_coil  = 100.0 * (n_coil + n_other) / total_res;
+        int const total_res = static_cast<int>(protein->ResidueCount());
+        double const pct_helix = 100.0 * n_helix / total_res;
+        double const pct_sheet = 100.0 * n_sheet / total_res;
+        double const pct_coil = 100.0 * (n_coil + n_other) / total_res;
 
         fprintf(stderr, "  Helix:  %d (%.1f%%)\n", n_helix, pct_helix);
         fprintf(stderr, "  Sheet:  %d (%.1f%%)\n", n_sheet, pct_sheet);
@@ -356,11 +360,11 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
         int nonzero_E = 0;
         double sum_E_mag = 0.0;
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-            double E_mag = apbs.ElectricFieldAt(ai).norm();
+            double const E_mag = apbs.ElectricFieldAt(ai).norm();
             if (E_mag > 1e-10) nonzero_E++;
             sum_E_mag += E_mag;
         }
-        double mean_E = sum_E_mag / static_cast<double>(conf.AtomCount());
+        double const mean_E = sum_E_mag / static_cast<double>(conf.AtomCount());
         fprintf(stderr, "  Non-zero E-field: %d / %zu\n",
             nonzero_E, conf.AtomCount());
         fprintf(stderr, "  Mean |E|: %.6e\n", mean_E);

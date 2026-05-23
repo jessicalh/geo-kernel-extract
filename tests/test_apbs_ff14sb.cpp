@@ -46,7 +46,7 @@ TEST_F(ApbsFF14SBTest, RealChargesProduceNonZeroFields) {
     // Attach ChargeAssignmentResult with REAL ff14SB charges
     auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
     ASSERT_NE(charges, nullptr) << "ff14SB charge loading failed";
-    size_t assigned = charges->AssignedCount();
+    size_t const assigned = charges->AssignedCount();
     EXPECT_GT(assigned, 0u) << "No atoms received ff14SB charges";
     EXPECT_GT(assigned, conf.AtomCount() * 9 / 10)
         << "Too many unassigned atoms";
@@ -63,12 +63,14 @@ TEST_F(ApbsFF14SBTest, RealChargesProduceNonZeroFields) {
     // Count non-zero E-field and EFG
     int nonzero_E = 0;
     int nonzero_EFG = 0;
-    double min_E_mag = 1e30, max_E_mag = 0.0, sum_E_mag = 0.0;
+    double min_E_mag = 1e30;
+    double max_E_mag = 0.0;
+    double sum_E_mag = 0.0;
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Vec3 E = result.ElectricFieldAt(ai);
-        Mat3 EFG = result.FieldGradientAt(ai);
-        double E_mag = E.norm();
+        Vec3 const E = result.ElectricFieldAt(ai);
+        Mat3 const EFG = result.FieldGradientAt(ai);
+        double const E_mag = E.norm();
 
         if (E_mag > 1e-10) nonzero_E++;
         if (EFG.norm() > 1e-10) nonzero_EFG++;
@@ -78,10 +80,10 @@ TEST_F(ApbsFF14SBTest, RealChargesProduceNonZeroFields) {
         sum_E_mag += E_mag;
     }
 
-    double mean_E_mag = sum_E_mag / static_cast<double>(conf.AtomCount());
+    double const mean_E_mag = sum_E_mag / static_cast<double>(conf.AtomCount());
 
     // Print summary as requested
-    fprintf(stderr,
+    (void)fprintf(stderr,
         "\n=== APBS ff14SB E-field summary ===\n"
         "  atoms:     %zu\n"
         "  nonzero E: %d / %zu\n"
@@ -120,8 +122,8 @@ TEST_F(ApbsFF14SBTest, EFGIsTraceless) {
     const auto& result = conf.Result<ApbsFieldResult>();
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Mat3 EFG = result.FieldGradientAt(ai);
-        double trace = std::abs(EFG.trace());
+        Mat3 const EFG = result.FieldGradientAt(ai);
+        double const trace = std::abs(EFG.trace());
         EXPECT_LT(trace, 1e-6)
             << "EFG trace at atom " << ai << " is " << trace
             << " (expected < 1e-6)";
@@ -147,11 +149,11 @@ TEST_F(ApbsFF14SBTest, SphericalTensorRoundtripWithRealCharges) {
     const auto& result = conf.Result<ApbsFieldResult>();
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Mat3 EFG = result.FieldGradientAt(ai);
-        SphericalTensor st = result.FieldGradientSphericalAt(ai);
-        Mat3 reconstructed = st.Reconstruct();
+        Mat3 const EFG = result.FieldGradientAt(ai);
+        SphericalTensor const st = result.FieldGradientSphericalAt(ai);
+        Mat3 const reconstructed = st.Reconstruct();
 
-        double diff = (EFG - reconstructed).norm();
+        double const diff = (EFG - reconstructed).norm();
         EXPECT_LT(diff, 1e-10)
             << "SphericalTensor roundtrip failed at atom " << ai
             << " diff=" << diff;
@@ -180,45 +182,45 @@ TEST_F(ApbsFF14SBTest, DiffersFromVacuumCoulomb) {
 
     // Compute vacuum Coulomb manually for comparison.
     // Use a subset of atoms (first 50) to keep this efficient.
-    size_t n_check = std::min(conf.AtomCount(), size_t(50));
+    size_t const n_check = std::min(conf.AtomCount(), static_cast<size_t>(50));
     int differs = 0;
     double sum_apbs_mag = 0.0;
     double sum_coulomb_mag = 0.0;
 
     for (size_t i = 0; i < n_check; ++i) {
-        Vec3 pos_i = conf.PositionAt(i);
+        Vec3 const pos_i = conf.PositionAt(i);
 
         // Vacuum Coulomb E-field at atom i
         // E_i = sum_{j!=i} q_j * (pos_i - pos_j) / |pos_i - pos_j|^3
         Vec3 E_coulomb = Vec3::Zero();
         for (size_t j = 0; j < conf.AtomCount(); ++j) {
             if (i == j) continue;
-            Vec3 r = pos_i - conf.PositionAt(j);
-            double r_mag = r.norm();
+            Vec3 const r = pos_i - conf.PositionAt(j);
+            double const r_mag = r.norm();
             if (r_mag < 0.1) continue;
-            double q_j = conf.AtomAt(j).partial_charge;
+            double const q_j = conf.AtomAt(j).partial_charge;
             E_coulomb += q_j * r / (r_mag * r_mag * r_mag);
         }
 
-        Vec3 E_apbs = result.ElectricFieldAt(i);
-        double apbs_mag = E_apbs.norm();
-        double coulomb_mag = E_coulomb.norm();
+        Vec3 const E_apbs = result.ElectricFieldAt(i);
+        double const apbs_mag = E_apbs.norm();
+        double const coulomb_mag = E_coulomb.norm();
 
         sum_apbs_mag += apbs_mag;
         sum_coulomb_mag += coulomb_mag;
 
         // Fields should differ (solvation screening modifies the field)
         if (apbs_mag > 1e-10 && coulomb_mag > 1e-10) {
-            double ratio = apbs_mag / coulomb_mag;
+            double const ratio = apbs_mag / coulomb_mag;
             // If they differ by more than 5%, count it
             if (std::abs(ratio - 1.0) > 0.05) differs++;
         }
     }
 
-    double mean_apbs = sum_apbs_mag / static_cast<double>(n_check);
-    double mean_coulomb = sum_coulomb_mag / static_cast<double>(n_check);
+    double const mean_apbs = sum_apbs_mag / static_cast<double>(n_check);
+    double const mean_coulomb = sum_coulomb_mag / static_cast<double>(n_check);
 
-    fprintf(stderr,
+    (void)fprintf(stderr,
         "\n=== APBS vs vacuum Coulomb (first %zu atoms) ===\n"
         "  mean |E| APBS:    %.6e\n"
         "  mean |E| Coulomb: %.6e\n"
@@ -232,7 +234,7 @@ TEST_F(ApbsFF14SBTest, DiffersFromVacuumCoulomb) {
     // for surface atoms. Even if fallback occurred, the test passes but
     // prints a diagnostic.
     if (differs == 0) {
-        fprintf(stderr,
+        (void)fprintf(stderr,
             "WARNING: APBS and vacuum Coulomb fields are identical.\n"
             "This may indicate APBS fell back to vacuum Coulomb.\n");
     }

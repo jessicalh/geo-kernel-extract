@@ -32,25 +32,26 @@ std::string KamlProtonator::WriteTempPdb(
     int serial = 1;
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const Residue& res = protein.ResidueAt(ri);
-        for (size_t ai : res.atom_indices) {
+        for (size_t const ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             if (atom.element == Element::H) continue;
 
             Vec3 pos = conf.AtomAt(ai).Position();
 
             char atomField[5];
-            if (atom.pdb_atom_name.size() <= 3)
-                std::snprintf(atomField, sizeof(atomField), " %-3s",
+            if (atom.pdb_atom_name.size() <= 3) {
+                (void)std::snprintf(atomField, sizeof(atomField), " %-3s",
                               atom.pdb_atom_name.c_str());
-            else
-                std::snprintf(atomField, sizeof(atomField), "%-4s",
+            } else {
+                (void)std::snprintf(atomField, sizeof(atomField), "%-4s",
                               atom.pdb_atom_name.c_str());
+}
 
-            std::string resname = ThreeLetterCodeForAminoAcid(res.type);
-            char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
+            std::string const resname = ThreeLetterCodeForAminoAcid(res.type);
+            char const chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
 
             char line[82];
-            std::snprintf(line, sizeof(line),
+            (void)std::snprintf(line, sizeof(line),
                 "ATOM  %5d %4s %3s %c%4d    %8.3f%8.3f%8.3f  1.00  0.00\n",
                 serial++, atomField, resname.c_str(), chain,
                 res.sequence_number, pos.x(), pos.y(), pos.z());
@@ -83,8 +84,8 @@ std::vector<PkaResult> KamlProtonator::ParsePkaCsv(const std::string& path) {
         auto comma = line.find(',');
         if (comma == std::string::npos) continue;
 
-        std::string residue_part = line.substr(0, comma);
-        std::string pka_str = line.substr(comma + 1);
+        std::string const residue_part = line.substr(0, comma);
+        std::string const pka_str = line.substr(comma + 1);
 
         auto dash = residue_part.find('-');
         if (dash == std::string::npos) continue;
@@ -92,10 +93,10 @@ std::vector<PkaResult> KamlProtonator::ParsePkaCsv(const std::string& path) {
         PkaResult r;
         r.residue_type = residue_part.substr(0, dash);
         r.residue_number = 0;
-        std::sscanf(residue_part.substr(dash + 1).c_str(), "%d", &r.residue_number);
+        (void)std::sscanf(residue_part.substr(dash + 1).c_str(), "%d", &r.residue_number);
         r.chain_id = "A";
         r.pKa = 0.0;
-        std::sscanf(pka_str.c_str(), "%lf", &r.pKa);
+        (void)std::sscanf(pka_str.c_str(), "%lf", &r.pKa);
 
         if (r.residue_number > 0 && !r.residue_type.empty()) {
             results.push_back(r);
@@ -114,7 +115,7 @@ std::vector<PkaResult> KamlProtonator::PredictPka(
         const ProteinConformation& conf,
         std::string& error_out) {
 
-    OperationLog::Scope scope("KamlProtonator::PredictPka",
+    OperationLog::Scope const scope("KamlProtonator::PredictPka",
         "residues=" + std::to_string(protein.ResidueCount()));
 
     // TODO: KaML path should be a parameter when reintegrated into BuildFromPdb
@@ -125,11 +126,11 @@ std::vector<PkaResult> KamlProtonator::PredictPka(
     }
 
     // KaML creates intermediate files in CWD — must run from temp dir
-    std::string dir = RuntimeEnvironment::TempFilePath(
+    std::string const dir = RuntimeEnvironment::TempFilePath(
         "kaml", std::to_string(protein.ResidueCount()));
     fs::create_directories(dir);
 
-    std::string pdb_path = WriteTempPdb(protein, conf, dir);
+    std::string const pdb_path = WriteTempPdb(protein, conf, dir);
     if (pdb_path.empty()) {
         error_out = "cannot write temp PDB to " + dir;
         std::error_code ec;
@@ -138,12 +139,12 @@ std::vector<PkaResult> KamlProtonator::PredictPka(
     }
 
     // KaML writes <stem>_pka.csv in CWD
-    std::string pdb_stem = fs::path(pdb_path).stem().string();
-    std::string cmd = "cd " + dir + " && python3 " + kaml_path +
+    std::string const pdb_stem = fs::path(pdb_path).stem().string();
+    std::string const cmd = "cd " + dir + " && python3 " + kaml_path +
                       " " + pdb_path + " 2>/dev/null";
-    int rc = std::system(cmd.c_str());
+    int const rc = std::system(cmd.c_str());
 
-    std::string pka_path = dir + "/" + pdb_stem + "_pka.csv";
+    std::string const pka_path = dir + "/" + pdb_stem + "_pka.csv";
 
     if (!fs::exists(pka_path)) {
         error_out = "KaML produced no output (rc=" + std::to_string(rc) +
@@ -177,7 +178,7 @@ ProtonationResult KamlProtonator::Protonate(
         const ProteinConformation& conf,
         double pH) {
 
-    OperationLog::Scope scope("KamlProtonator::Protonate",
+    OperationLog::Scope const scope("KamlProtonator::Protonate",
         "pH=" + std::to_string(pH));
 
     ProtonationResult result;
@@ -203,7 +204,7 @@ ProtonationResult KamlProtonator::Protonate(
         for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
             const Residue& res = protein.ResidueAt(ri);
             if (res.sequence_number != pka.residue_number) continue;
-            std::string code = ThreeLetterCodeForAminoAcid(res.type);
+            std::string const code = ThreeLetterCodeForAminoAcid(res.type);
             if (code == pka.residue_type) { res_idx = ri; break; }
             if (res.type == AminoAcid::HIS &&
                 (pka.residue_type == "HIS" || pka.residue_type == "HIE" ||
@@ -214,7 +215,7 @@ ProtonationResult KamlProtonator::Protonate(
         if (res_idx == SIZE_MAX) continue;
 
         const Residue& res = protein.ResidueAt(res_idx);
-        bool protonated = pka.pKa > pH;
+        bool const protonated = pka.pKa > pH;
 
         ResidueProtonation decision;
         decision.residue_index = res_idx;

@@ -53,9 +53,9 @@ static std::string WriteMopFile(const Protein& protein,
 
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
         Vec3 pos = conf.PositionAt(i);
-        std::string elem = SymbolForElement(protein.AtomAt(i).element);
+        std::string const elem = SymbolForElement(protein.AtomAt(i).element);
         char line[128];
-        snprintf(line, sizeof(line), "  %-2s  %14.8f 0  %14.8f 0  %14.8f 0\n",
+        (void)snprintf(line, sizeof(line), "  %-2s  %14.8f 0  %14.8f 0  %14.8f 0\n",
                  elem.c_str(), pos.x(), pos.y(), pos.z());
         out << line;
     }
@@ -97,7 +97,7 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
     std::string text;
     {
         std::error_code fec;
-        size_t file_size = fs::file_size(out_path, fec);
+        size_t const file_size = fs::file_size(out_path, fec);
         if (fec || file_size == 0) {
             result.error = "Cannot stat " + out_path;
             return result;
@@ -108,8 +108,8 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
             result.error = "Cannot open " + out_path;
             return result;
         }
-        size_t nread = fread(text.data(), 1, file_size, fp);
-        fclose(fp);
+        size_t const nread = fread(text.data(), 1, file_size, fp);
+        (void)fclose(fp);
         text.resize(nread);
     }
 
@@ -122,7 +122,7 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
 
     // --- Heat of formation ---
     {
-        std::regex hof_re(R"(FINAL HEAT OF FORMATION\s*=\s*([-\d.]+))");
+        std::regex const hof_re(R"(FINAL HEAT OF FORMATION\s*=\s*([-\d.]+))");
         std::smatch m;
         if (std::regex_search(text, m, hof_re)) {
             result.heat_of_formation = std::stod(m[1].str());
@@ -146,9 +146,11 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
                 std::istringstream ss(line);
                 int idx;
                 std::string elem;
-                double charge, dummy, sp;
+                double charge;
+                double dummy;
+                double sp;
                 if (ss >> idx >> elem >> charge >> dummy >> sp) {
-                    size_t i = static_cast<size_t>(idx - 1);
+                    size_t const i = static_cast<size_t>(idx - 1);
                     if (i < natoms) {
                         result.charges[i] = charge;
                         result.s_pop[i] = sp;
@@ -173,8 +175,8 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
             std::getline(section, line);  // "BOND ORDERS" title
             std::getline(section, line);  // blank or header
 
-            std::regex line_re(R"(\s+(\d+)\s+\w+\s+\([\d.]+\)(.*))");
-            std::regex pair_re(R"((\d+)\s+\w+\s+([\d.]+))");
+            std::regex const line_re(R"(\s+(\d+)\s+\w+\s+\([\d.]+\)(.*))");
+            std::regex const pair_re(R"((\d+)\s+\w+\s+([\d.]+))");
 
             while (std::getline(section, line)) {
                 if (line.empty()) continue;
@@ -186,14 +188,14 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
 
                 std::smatch lm;
                 if (std::regex_match(line, lm, line_re)) {
-                    int atom_i = std::stoi(lm[1].str()) - 1;
+                    int const atom_i = std::stoi(lm[1].str()) - 1;
                     std::string rest = lm[2].str();
 
                     auto begin = std::sregex_iterator(rest.begin(), rest.end(), pair_re);
                     auto end = std::sregex_iterator();
                     for (auto it = begin; it != end; ++it) {
-                        int atom_j = std::stoi((*it)[1].str()) - 1;
-                        double bo = std::stod((*it)[2].str());
+                        int const atom_j = std::stoi((*it)[1].str()) - 1;
+                        double const bo = std::stod((*it)[2].str());
                         if (bo > 0.01 &&
                             atom_i >= 0 && static_cast<size_t>(atom_i) < natoms &&
                             atom_j >= 0 && static_cast<size_t>(atom_j) < natoms) {
@@ -225,7 +227,9 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
                 if (line.find("SUM") != std::string::npos) {
                     std::istringstream ss(line);
                     std::string label;
-                    double dx, dy, dz;
+                    double dx;
+                    double dy;
+                    double dz;
                     if (ss >> label >> dx >> dy >> dz) {
                         result.dipole = Vec3(dx, dy, dz);
                     }
@@ -255,7 +259,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     // Resolve thread count: 0 = auto = 3/4 of hardware concurrency.
     // This machine is dedicated to this work — give MOPAC most of the cores.
     if (threads <= 0) {
-        int hw = static_cast<int>(std::thread::hardware_concurrency());
+        int const hw = static_cast<int>(std::thread::hardware_concurrency());
         threads = std::max(4, (hw * 3) / 4);
     }
 
@@ -268,21 +272,22 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     setenv("OMP_STACKSIZE", "2G", 1);
     setenv("OMP_NUM_THREADS", std::to_string(threads).c_str(), 1);
 
-    OperationLog::Scope scope("MopacResult::Compute",
+    OperationLog::Scope const scope("MopacResult::Compute",
         "atoms=" + std::to_string(natoms) +
         " charge=" + std::to_string(net_charge) +
         " threads=" + std::to_string(threads));
 
     // Generate guid-unique temp file paths
     std::string protein_name = protein.BuildContext().pdb_source;
-    if (!protein_name.empty())
+    if (!protein_name.empty()) {
         protein_name = fs::path(protein_name).stem().string();
+}
     if (protein_name.empty()) protein_name = "protein";
 
-    std::string mop_path = RuntimeEnvironment::TempFilePath(protein_name, "mopac.mop");
+    std::string const mop_path = RuntimeEnvironment::TempFilePath(protein_name, "mopac.mop");
 
     // Write .mop input
-    std::string err = WriteMopFile(protein, conf, net_charge, threads, mop_path);
+    std::string const err = WriteMopFile(protein, conf, net_charge, threads, mop_path);
     if (!err.empty()) {
         OperationLog::Error("MopacResult::Compute", err);
         return nullptr;
@@ -305,13 +310,13 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
         "MopacResult::Compute",
         "running PM7+MOZYME 1SCF atoms=" + std::to_string(natoms));
 
-    std::string cmd = "OMP_STACKSIZE=2G OMP_NUM_THREADS=" +
+    std::string const cmd = "OMP_STACKSIZE=2G OMP_NUM_THREADS=" +
         std::to_string(threads) + " " + mopac_bin + " " + mop_path +
         " > /dev/null 2>&1";
-    int rc = std::system(cmd.c_str());
+    int const rc = std::system(cmd.c_str());
 
     // MOPAC writes .out alongside .mop (same stem, different extension)
-    std::string out_path = mop_path.substr(0, mop_path.size() - 4) + ".out";
+    std::string const out_path = mop_path.substr(0, mop_path.size() - 4) + ".out";
 
     std::error_code ec;
 
@@ -335,7 +340,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     }
 
     // Clean up temp files on success
-    std::string stem = mop_path.substr(0, mop_path.size() - 4);
+    std::string const stem = mop_path.substr(0, mop_path.size() - 4);
     fs::remove(mop_path, ec);
     fs::remove(out_path, ec);
     fs::remove(stem + ".arc", ec);
@@ -362,7 +367,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
 
     // Build O(1) bond order lookup map
     for (const auto& bo : result->bond_orders_) {
-        uint64_t key = PairKey(bo.atom_a, bo.atom_b);
+        uint64_t const key = PairKey(bo.atom_a, bo.atom_b);
         // MOPAC lists each pair from both sides; keep the first (or max)
         auto it = result->bond_order_map_.find(key);
         if (it == result->bond_order_map_.end() || bo.wiberg_order > it->second) {
@@ -399,8 +404,8 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     // First, collect per atom
     std::vector<std::vector<MopacBondNeighbour>> per_atom(natoms);
     for (const auto& [key, order] : result->bond_order_map_) {
-        size_t a = static_cast<size_t>(key >> 32);
-        size_t b = static_cast<size_t>(key & 0xFFFFFFFF);
+        size_t const a = static_cast<size_t>(key >> 32);
+        size_t const b = static_cast<size_t>(key & 0xFFFFFFFF);
 
         // Look up topology bond index
         size_t topo_idx = SIZE_MAX;
@@ -486,8 +491,9 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
     // mopac_charges: (N,)
     {
         std::vector<double> data(N);
-        for (size_t i = 0; i < N; ++i)
+        for (size_t i = 0; i < N; ++i) {
             data[i] = conf.AtomAt(i).mopac_charge;
+}
         NpyWriter::WriteFloat64(output_dir + "/mopac_charges.npy", data.data(), N);
     }
 
@@ -515,7 +521,7 @@ int MopacResult::WriteFeatures(const ProteinConformation& conf,
             data.push_back(static_cast<double>(b));
             data.push_back(order);
         }
-        size_t nbonds = bond_order_map_.size();
+        size_t const nbonds = bond_order_map_.size();
         if (nbonds > 0) {
             NpyWriter::WriteFloat64(output_dir + "/mopac_bond_orders.npy",
                                     data.data(), nbonds, 3);

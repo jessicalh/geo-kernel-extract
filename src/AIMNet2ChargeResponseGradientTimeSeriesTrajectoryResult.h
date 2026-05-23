@@ -1,19 +1,19 @@
 #pragma once
 //
-// AIMNet2PolarisabilityTimeSeriesTrajectoryResult: per-atom per-frame
+// AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult: per-atom per-frame
 // time series of the AIMNet2 charge-polarisation gradient. Two
 // emissions per atom per frame:
 //
-//   - vector (Vec3): aimnet2_polarisability_vector, ConformationAtom field.
+//   - vector (Vec3): aimnet2_charge_response_gradient_vector, ConformationAtom field.
 //                    Gradient of L = Σ_j q_j² (AIMNet2 charges, in units
 //                    e²) with respect to atomic coordinates (autograd
 //                    backward through AIMNet2 charge head). Units e²/Å.
-//   - scalar (double): aimnet2_polarisability_scalar, L2 norm of the
+//   - scalar (double): aimnet2_charge_response_gradient_scalar, L2 norm of the
 //                    vector — emit both rather than recompute downstream.
 //                    Units e²/Å.
 //
 // FO dense-buffer pattern; pairs with AIMNet2EmbeddingTS (TR #1 of the
-// AIMNet2 fleet trio). AIMNet2PolarisabilityResult is now registered as
+// AIMNet2 fleet trio). AIMNet2ChargeResponseGradientResult is now registered as
 // a required ConformationResult in the trajectory PerFrameExtractionSet
 // (RunConfiguration.cpp); OperationRunner aborts the run if the model
 // cannot Compute it on any frame — no per-frame conditional gate at the
@@ -21,9 +21,9 @@
 //
 // Emission:
 //
-//   /trajectory/aimnet2_polarisability_time_series/
-//     polarisability_vector       (N, T, 3) float64 — e²/Å
-//     polarisability_scalar       (N, T)    float64 — e²/Å (L2 norm)
+//   /trajectory/aimnet2_charge_response_gradient_time_series/
+//     charge_response_gradient_vector       (N, T, 3) float64 — e²/Å
+//     charge_response_gradient_scalar       (N, T)    float64 — e²/Å (L2 norm)
 //     frame_indices               (T,)      uint64
 //     frame_times                 (T,)      float64 — ps
 //     source_attached_per_frame   (T,)      uint8   — always 1 (canonical
@@ -32,7 +32,7 @@
 //                                                     discipline" subsection
 //                                                     of OBJECT_MODEL.md)
 //     attrs:
-//       result_name             = "AIMNet2PolarisabilityTimeSeriesTrajectoryResult"
+//       result_name             = "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult"
 //       n_atoms, n_frames, finalized
 //       units_vector            = "e^2/Angstrom"
 //       units_scalar            = "e^2/Angstrom"
@@ -41,7 +41,7 @@
 //       parity_vector           = "1o"         (odd parity, rank-1)
 //       irrep_layout_scalar     = "T0"         (rank-0 invariant)
 //       parity_scalar           = "0e"
-//       source                  = "AIMNet2PolarisabilityResult.{vector,scalar}"
+//       source                  = "AIMNet2ChargeResponseGradientResult.{vector,scalar}"
 //       source_attached_policy  = "always_attached" — but Compute's
 //                                  HasResult gate emits NaN-fill +
 //                                  source_attached_per_frame=0 on
@@ -65,15 +65,15 @@
 
 namespace nmr {
 
-class AIMNet2PolarisabilityTimeSeriesTrajectoryResult : public TrajectoryResult {
+class AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult : public TrajectoryResult {
 public:
     std::string Name() const override {
-        return "AIMNet2PolarisabilityTimeSeriesTrajectoryResult";
+        return "AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult";
     }
 
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
-    static std::unique_ptr<AIMNet2PolarisabilityTimeSeriesTrajectoryResult>
+    static std::unique_ptr<AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult>
     Create(const TrajectoryProtein& tp);
 
     void Compute(const ProteinConformation& conf,

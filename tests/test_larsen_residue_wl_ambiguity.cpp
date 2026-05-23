@@ -71,7 +71,8 @@ TEST_F(LarsenResidueWlAmbiguityTest, IleCg1AndCg2AreChemistryDistinct) {
     const LarsenResidue& cen = rec.larsen->central;
     ASSERT_EQ(cen.residue, AminoAcid::ILE);
 
-    int cg1_idx = -1, cg2_idx = -1;
+    int cg1_idx = -1;
+    int cg2_idx = -1;
     for (std::size_t i = 0; i < cen.atoms.size(); ++i) {
         const auto& id = cen.atoms[i].identity;
         if (id.element != Element::C)        continue;
@@ -112,19 +113,27 @@ TEST_F(LarsenResidueWlAmbiguityTest, PheCdAndCeAreGraphAutomorphic) {
     const LarsenResidue& cen = rec.larsen->central;
     ASSERT_EQ(cen.residue, AminoAcid::PHE);
 
-    int cd1_idx = -1, cd2_idx = -1, ce1_idx = -1, ce2_idx = -1, cz_idx = -1;
+    int cd1_idx = -1;
+    int cd2_idx = -1;
+    int ce1_idx = -1;
+    int ce2_idx = -1;
+    int cz_idx = -1;
     for (std::size_t i = 0; i < cen.atoms.size(); ++i) {
         const auto& id = cen.atoms[i].identity;
         if (id.element != Element::C)              continue;
         if (id.backbone_role != BackboneRole::None) continue;
-        if (id.locant == Locant::Delta && id.branch.outer == 1)
+        if (id.locant == Locant::Delta && id.branch.outer == 1) {
             cd1_idx = static_cast<int>(i);
-        if (id.locant == Locant::Delta && id.branch.outer == 2)
+}
+        if (id.locant == Locant::Delta && id.branch.outer == 2) {
             cd2_idx = static_cast<int>(i);
-        if (id.locant == Locant::Epsilon && id.branch.outer == 1)
+}
+        if (id.locant == Locant::Epsilon && id.branch.outer == 1) {
             ce1_idx = static_cast<int>(i);
-        if (id.locant == Locant::Epsilon && id.branch.outer == 2)
+}
+        if (id.locant == Locant::Epsilon && id.branch.outer == 2) {
             ce2_idx = static_cast<int>(i);
+}
         if (id.locant == Locant::Zeta) cz_idx = static_cast<int>(i);
     }
     ASSERT_GE(cd1_idx, 0) << "PHE CD1 not found";
@@ -162,11 +171,11 @@ TEST_F(LarsenResidueWlAmbiguityTest, ChiFallbackIsDeterministic) {
     // tripeptide + phi + psi terms, so every ARA row at that grid
     // point matches; the DB has many (chi1, chi2, chi3, chi4) combos
     // at that phi/psi point.
-    TripeptideDftRecord rec1 = table->QueryNearest(
+    TripeptideDftRecord const rec1 = table->QueryNearest(
         'R', /*phi=*/-180.0, /*psi=*/-180.0,
         /*chi1=*/0.0, /*chi2=*/0.0, /*chi3=*/0.0, /*chi4=*/0.0,
         /*n_chi_axes=*/0);
-    TripeptideDftRecord rec2 = table->QueryNearest(
+    TripeptideDftRecord const rec2 = table->QueryNearest(
         'R', /*phi=*/-180.0, /*psi=*/-180.0,
         /*chi1=*/0.0, /*chi2=*/0.0, /*chi3=*/0.0, /*chi4=*/0.0,
         /*n_chi_axes=*/0);

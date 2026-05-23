@@ -29,8 +29,8 @@ struct Bond {
     }
 
     Vec3 Direction(const std::vector<Vec3>& positions) const {
-        Vec3 d = positions[atom_index_b] - positions[atom_index_a];
-        double len = d.norm();
+        Vec3 const d = positions[atom_index_b] - positions[atom_index_a];
+        double const len = d.norm();
         return (len > 1e-15) ? Vec3(d / len) : Vec3::Zero();
     }
 

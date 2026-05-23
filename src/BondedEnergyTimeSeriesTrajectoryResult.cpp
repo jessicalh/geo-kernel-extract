@@ -170,7 +170,7 @@ void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
                                 : kNaN;
             }
         }
-        HighFive::DataSpace space({N, T});
+        HighFive::DataSpace const space({N, T});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("kJ/mol"));

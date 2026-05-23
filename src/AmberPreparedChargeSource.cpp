@@ -83,7 +83,7 @@ std::string AmberPreparedChargeSource::GeneratedLeapScript(
         const std::string& prmtop_path,
         const std::string& inpcrd_path) const {
     if (!mapping_built_) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: AmberPreparedChargeSource::GeneratedLeapScript called "
             "before GeneratedPdb populated the residue mapping.\n");
         std::abort();
@@ -109,7 +109,7 @@ AmberPreparedChargeSource::DisulfidePairs1Based() const {
     for (size_t prmtop_ri = 0;
          prmtop_ri < residue_mapping_.extractor_index_for_prmtop_residue.size();
          ++prmtop_ri) {
-        size_t ext_ri =
+        size_t const ext_ri =
             residue_mapping_.extractor_index_for_prmtop_residue[prmtop_ri];
         if (ext_ri == amber_leap::ResidueAmberMapping::NONE_FOR_CAP) continue;
         ext_to_prmtop_1based[ext_ri] = prmtop_ri + 1;
@@ -225,15 +225,16 @@ PrmtopFields ReadPrmtopFields(const std::string& prmtop_path) {
     p.charges_amber    = ReadPrmtopDoubles(prmtop_path, "CHARGE");
     p.radii            = ReadPrmtopDoubles(prmtop_path, "RADII");
 
-    if (p.atom_names.empty())       p.error = "missing ATOM_NAME";
-    else if (p.residue_labels.empty())  p.error = "missing RESIDUE_LABEL";
-    else if (p.residue_pointers.empty()) p.error = "missing RESIDUE_POINTER";
-    else if (p.charges_amber.empty()) p.error = "missing CHARGE";
-    else if (p.radii.empty())          p.error = "missing RADII";
-    else if (p.charges_amber.size() != p.atom_names.size())
+    if (p.atom_names.empty()) {       p.error = "missing ATOM_NAME";
+    } else if (p.residue_labels.empty()) {  p.error = "missing RESIDUE_LABEL";
+    } else if (p.residue_pointers.empty()) { p.error = "missing RESIDUE_POINTER";
+    } else if (p.charges_amber.empty()) { p.error = "missing CHARGE";
+    } else if (p.radii.empty()) {          p.error = "missing RADII";
+    } else if (p.charges_amber.size() != p.atom_names.size()) {
         p.error = "CHARGE size mismatch ATOM_NAME";
-    else if (p.radii.size() != p.atom_names.size())
+    } else if (p.radii.size() != p.atom_names.size()) {
         p.error = "RADII size mismatch ATOM_NAME";
+}
     return p;
 }
 
@@ -242,8 +243,8 @@ std::vector<size_t> BuildPrmtopResidueIndexForAtom(
         const PrmtopFields& p) {
     std::vector<size_t> result(p.atom_names.size(), 0);
     for (size_t r = 0; r < p.residue_pointers.size(); ++r) {
-        size_t start = static_cast<size_t>(p.residue_pointers[r]) - 1;  // 1→0
-        size_t stop  = (r + 1 < p.residue_pointers.size())
+        size_t const start = static_cast<size_t>(p.residue_pointers[r]) - 1;  // 1→0
+        size_t const stop  = (r + 1 < p.residue_pointers.size())
             ? static_cast<size_t>(p.residue_pointers[r + 1]) - 1
             : p.atom_names.size();
         for (size_t a = start; a < stop && a < p.atom_names.size(); ++a) {
@@ -260,20 +261,20 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         const Protein& protein,
         const ProteinConformation& conf,
         std::string& error_out) const {
-    OperationLog::Scope scope("AmberPreparedChargeSource::LoadCharges",
+    OperationLog::Scope const scope("AmberPreparedChargeSource::LoadCharges",
         std::string("policy=") + AmberPreparationPolicyName(policy_) +
         " atoms=" + std::to_string(conf.AtomCount()));
 
     // Hard preconditions: re-tleap protection. Violations indicate the
     // resolver dispatch upstream is broken; abort rather than degrade.
     if (protein.HasForceFieldCharges()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: AmberPreparedChargeSource on Protein that already has "
             "ForceFieldCharges (re-tleap protection).\n");
         std::abort();
     }
     if (!protein.BuildContext().prmtop_path.empty()) {
-        std::fprintf(stderr,
+        (void)std::fprintf(stderr,
             "FATAL: AmberPreparedChargeSource when build_context.prmtop_path "
             "is set to %s (re-tleap protection).\n",
             protein.BuildContext().prmtop_path.c_str());
@@ -336,7 +337,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
     // 3. Run tleap. Stdout/stderr to log file.
     const std::string cmd = tleap_bin + " -f " + script_path +
                             " > " + log_path + " 2>&1";
-    int rc = std::system(cmd.c_str());
+    int const rc = std::system(cmd.c_str());
     if (rc != 0 || !fs::exists(prmtop_path)) {
         error_out = "AmberPreparedChargeSource: tleap failed (rc=" +
                     std::to_string(rc) + "); see " + log_path;
@@ -387,8 +388,8 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
     std::vector<bool> seen(n_extractor_atoms, false);
 
     for (size_t prmtop_ai = 0; prmtop_ai < prmtop.atom_names.size(); ++prmtop_ai) {
-        size_t prmtop_ri = prmtop_res_for_atom[prmtop_ai];
-        size_t ext_ri = residue_mapping_
+        size_t const prmtop_ri = prmtop_res_for_atom[prmtop_ai];
+        size_t const ext_ri = residue_mapping_
             .extractor_index_for_prmtop_residue[prmtop_ri];
         if (ext_ri == amber_leap::ResidueAmberMapping::NONE_FOR_CAP) {
             continue;  // ACE/NME/NHE inserted-cap atom — no extractor counterpart.
@@ -404,7 +405,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
                         ") has no counterpart in extractor protein";
             return {};
         }
-        size_t ext_ai = it->second;
+        size_t const ext_ai = it->second;
         if (seen[ext_ai]) {
             error_out = "AmberPreparedChargeSource: PRMTOP atom \"" + aname +
                         "\" mapped twice to extractor atom index " +

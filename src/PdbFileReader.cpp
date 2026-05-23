@@ -40,7 +40,7 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
     bool hasEnd = false;
     while (std::getline(rawStream, rawLine)) {
         if (rawLine.empty()) continue;
-        std::string rec = rawLine.substr(0, std::min(rawLine.size(), size_t(6)));
+        std::string const rec = rawLine.substr(0, std::min(rawLine.size(), static_cast<size_t>(6)));
 
         // Skip records that confuse cif++ strict parser
         if (rec == "TITLE " || rec == "REMARK" || rec == "MODEL " ||
@@ -89,16 +89,16 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
     std::map<ResKey, size_t> res_map;
 
     for (auto& poly : structure.polymers()) {
-        std::string chain_id = poly.get_auth_asym_id();
+        std::string const chain_id = poly.get_auth_asym_id();
 
         for (auto& mono : poly) {
-            std::string comp_id = mono.get_compound_id();
-            std::string seq_id = mono.get_auth_seq_id();
+            std::string const comp_id = mono.get_compound_id();
+            std::string const seq_id = mono.get_auth_seq_id();
 
-            AminoAcid aa_type = AminoAcidFromThreeLetterCode(comp_id);
+            AminoAcid const aa_type = AminoAcidFromThreeLetterCode(comp_id);
             if (aa_type == AminoAcid::Unknown) continue;
 
-            ResKey key{chain_id, seq_id};
+            ResKey const key{chain_id, seq_id};
             size_t res_idx;
 
             auto it = res_map.find(key);
@@ -160,10 +160,10 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
             std::vector<PendingAtom> pending;
             pending.reserve(mono.atoms().size());
             for (auto& atom : mono.atoms()) {
-                std::string alt_id = atom.get_label_alt_id();
+                std::string const alt_id = atom.get_label_alt_id();
                 if (!alt_id.empty() && alt_id != "A") continue;
 
-                Element elem = ElementFromSymbol(
+                Element const elem = ElementFromSymbol(
                     cif::atom_type_traits(atom.get_type()).symbol());
                 if (elem == Element::Unknown) continue;
 
@@ -198,7 +198,7 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 auto new_atom = Atom::Create(pending[k].elem);
                 new_atom->pdb_atom_name = canonical_names[k];
                 new_atom->residue_index = res_idx;
-                size_t atom_idx = protein->AddAtom(std::move(new_atom));
+                size_t const atom_idx = protein->AddAtom(std::move(new_atom));
                 protein->MutableResidueAt(res_idx).atom_indices.push_back(atom_idx);
                 positions.push_back(pending[k].pos);
             }
@@ -226,7 +226,7 @@ static std::string UniqueTempPath(const std::string& stem) {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<uint64_t> dist;
     char buf[256];
-    std::snprintf(buf, sizeof(buf), "/tmp/nmr_%s_%016lx.pdb",
+    (void)std::snprintf(buf, sizeof(buf), "/tmp/nmr_%s_%016lx.pdb",
                   stem.c_str(), dist(gen));
     return buf;
 }
@@ -241,7 +241,7 @@ static std::string UniqueTempPath(const std::string& stem) {
 BuildResult BuildFromPdb(const std::string& path, double pH) {
     BuildResult result;
 
-    OperationLog::Scope scope("BuildFromPdb",
+    OperationLog::Scope const scope("BuildFromPdb",
         path + " pH=" + std::to_string(pH));
 
     // 1. Read original PDB content
@@ -250,12 +250,12 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
         result.error = "Cannot open '" + path + "'";
         return result;
     }
-    std::string pdb_content((std::istreambuf_iterator<char>(f)),
+    std::string const pdb_content((std::istreambuf_iterator<char>(f)),
                              std::istreambuf_iterator<char>());
     f.close();
 
     // 2. Protonate with reduce
-    std::string protonated = ProtonateWithReduce(pdb_content);
+    std::string const protonated = ProtonateWithReduce(pdb_content);
     if (protonated.empty()) {
         result.error = "reduce protonation failed for " + path;
         return result;
@@ -306,7 +306,7 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
         result.error = "charge preparation failed: " + charge_err;
         return result;
     }
-    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
+    double const charge_sum = result.protein->ForceFieldCharges().TotalCharge();
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 
@@ -329,7 +329,7 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
 BuildResult BuildFromProtonatedPdb(const std::string& path) {
     BuildResult result;
 
-    OperationLog::Scope scope("BuildFromProtonatedPdb", path);
+    OperationLog::Scope const scope("BuildFromProtonatedPdb", path);
 
     // Read and parse directly — no reduce step
     std::ifstream f(path);
@@ -337,7 +337,7 @@ BuildResult BuildFromProtonatedPdb(const std::string& path) {
         result.error = "Cannot open '" + path + "'";
         return result;
     }
-    std::string pdb_content((std::istreambuf_iterator<char>(f)),
+    std::string const pdb_content((std::istreambuf_iterator<char>(f)),
                              std::istreambuf_iterator<char>());
     f.close();
 
@@ -382,7 +382,7 @@ BuildResult BuildFromProtonatedPdb(const std::string& path) {
         result.error = "charge preparation failed: " + charge_err;
         return result;
     }
-    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
+    double const charge_sum = result.protein->ForceFieldCharges().TotalCharge();
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 

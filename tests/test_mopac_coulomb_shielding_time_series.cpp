@@ -81,7 +81,7 @@ TEST(MopacCoulombShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 3;
-    std::vector<nmr::Vec3> positions(tp.AtomCount(), nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> const positions(tp.AtomCount(), nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame (no MopacCoulomb)");
@@ -97,7 +97,7 @@ TEST(MopacCoulombShieldingTimeSeries, GroupSkippedWhenSourceNeverAttached) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist(
         "/trajectory/mopac_coulomb_shielding_time_series"))
         << "group must NOT exist when source attached 0/T frames";
@@ -132,7 +132,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     const auto status = traj.Run(tp, config, session);
     if (status != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed; skipping per "
@@ -155,7 +155,7 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/mopac_coulomb_shielding_time_series");
     auto ds = grp.getDataSet("t2");
     const auto dims = ds.getSpace().getDimensions();
@@ -163,7 +163,9 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     EXPECT_EQ(dims[1], T);
     EXPECT_EQ(dims[2], 5u) << "T2-only per plan + source comment";
 
-    std::string parity, layout, units;
+    std::string parity;
+    std::string layout;
+    std::string units;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("irrep_layout").read(layout);
     grp.getAttribute("units").read(units);
@@ -177,9 +179,9 @@ TEST(MopacCoulombShieldingTimeSeries, Integration1P9J) {
     std::vector<double> flat(N * T * 5);
     ds.read(flat.data());
     double max_mag = 0.0;
-    for (std::size_t cell = 0; cell < flat.size(); ++cell) {
-        EXPECT_TRUE(std::isfinite(flat[cell]));
-        max_mag = std::max(max_mag, std::abs(flat[cell]));
+    for (double cell : flat) {
+        EXPECT_TRUE(std::isfinite(cell));
+        max_mag = std::max(max_mag, std::abs(cell));
     }
     EXPECT_GT(max_mag, 0.0)
         << "Mopac Coulomb shielding all zero — calc not firing or "
@@ -216,7 +218,7 @@ TEST(MopacCoulombShieldingTimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session session;
+    nmr::Session const session;
     if (traj.Run(tp, config, session) != nmr::kOk) {
         GTEST_SKIP() << "Trajectory::Run failed; skipping.";
     }

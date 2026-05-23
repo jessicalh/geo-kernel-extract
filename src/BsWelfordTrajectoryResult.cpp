@@ -76,12 +76,14 @@ void BsWelfordTrajectoryResult::Compute(
         WelfordUpdate(w.t2magnitude, t2mag, n_new, frame_idx);
 
         // Per-component T1 (3 components)
-        for (size_t k = 0; k < 3; ++k)
+        for (size_t k = 0; k < 3; ++k) {
             WelfordUpdate(w.t1[k], st.T1[k], n_new, frame_idx);
+}
 
         // Per-component T2 (5 components)
-        for (size_t k = 0; k < 5; ++k)
+        for (size_t k = 0; k < 5; ++k) {
             WelfordUpdate(w.t2[k], st.T2[k], n_new, frame_idx);
+}
 
         w.n_frames = n_new;
 
@@ -285,9 +287,14 @@ void BsWelfordTrajectoryResult::WriteH5Group(
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(size_t)> get) {
-        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
-        std::vector<size_t> min_frame(N), max_frame(N);
+                       const std::function<const WelfordMoments&(size_t)>& get) {
+        std::vector<double> mean(N);
+        std::vector<double> m2(N);
+        std::vector<double> std_(N);
+        std::vector<double> min_(N);
+        std::vector<double> max_(N);
+        std::vector<size_t> min_frame(N);
+        std::vector<size_t> max_frame(N);
         for (size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i]      = w.mean;
@@ -321,9 +328,14 @@ void BsWelfordTrajectoryResult::WriteH5Group(
     auto emit_2d = [&](const std::string& prefix, size_t K,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       std::function<const WelfordMoments&(size_t, size_t)> get) {
-        std::vector<double> mean(N * K), m2(N * K), std_(N * K), min_(N * K), max_(N * K);
-        std::vector<size_t> min_frame(N * K), max_frame(N * K);
+                       const std::function<const WelfordMoments&(size_t, size_t)>& get) {
+        std::vector<double> mean(N * K);
+        std::vector<double> m2(N * K);
+        std::vector<double> std_(N * K);
+        std::vector<double> min_(N * K);
+        std::vector<double> max_(N * K);
+        std::vector<size_t> min_frame(N * K);
+        std::vector<size_t> max_frame(N * K);
         for (size_t i = 0; i < N; ++i) {
             for (size_t k = 0; k < K; ++k) {
                 const WelfordMoments& w = get(i, k);
@@ -336,7 +348,7 @@ void BsWelfordTrajectoryResult::WriteH5Group(
                 max_frame[i * K + k] = w.max_frame;
             }
         }
-        HighFive::DataSpace space({N, K});
+        HighFive::DataSpace const space({N, K});
         auto ds_mean = grp.createDataSet<double>(prefix + "_mean", space);
         ds_mean.write_raw(mean.data());
         ds_mean.createAttribute("units", base_units);
@@ -399,7 +411,9 @@ void BsWelfordTrajectoryResult::WriteH5Group(
 
     // ── Single scalar: RMS-Δ per atom (Finalize-derived) ─────────
     std::vector<double> t0_rms_delta(N);
-    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
+    std::vector<size_t> n_frames(N);
+    std::vector<size_t> delta_n(N);
+    std::vector<size_t> dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const BsWelfordState& w = tp.AtomAt(i).bs_welford;
         t0_rms_delta[i] = w.t0_rms_delta;
@@ -426,7 +440,10 @@ void BsWelfordTrajectoryResult::WriteH5Group(
     // t2magnitude_* (same data, deprecated naming). Each alias carries
     // both `units` (the BS base unit, ppm_T_per_nA) and a
     // `deprecated_use` attribute pointing at the canonical name.
-    std::vector<double> t2mag_mean(N), t2mag_std(N), t2mag_min(N), t2mag_max(N);
+    std::vector<double> t2mag_mean(N);
+    std::vector<double> t2mag_std(N);
+    std::vector<double> t2mag_min(N);
+    std::vector<double> t2mag_max(N);
     for (size_t i = 0; i < N; ++i) {
         const WelfordMoments& w = tp.AtomAt(i).bs_welford.t2magnitude;
         t2mag_mean[i] = w.mean;

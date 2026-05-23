@@ -43,7 +43,7 @@ std::vector<std::type_index> CoulombResult::Dependencies() const {
 std::unique_ptr<CoulombResult> CoulombResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope scope("CoulombResult::Compute",
+    OperationLog::Scope const scope("CoulombResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
@@ -75,7 +75,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     }
 
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        for (size_t ai : protein.RingAt(ri).atom_indices) {
+        for (size_t const ai : protein.RingAt(ri).atom_indices) {
             if (ai < n_atoms) is_aromatic_atom[ai] = true;
         }
     }
@@ -91,15 +91,15 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         const Atom& atom = protein.AtomAt(ai);
         if (atom.element == Element::H && atom.parent_atom_index != SIZE_MAX) {
             // H atom: bond direction from parent to H
-            Vec3 d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
-            double len = d.norm();
+            Vec3 const d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
+            double const len = d.norm();
             if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         } else if (!atom.bond_indices.empty()) {
             // Heavy atom: first bond direction
             const Bond& b = protein.BondAt(atom.bond_indices[0]);
-            size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
-            Vec3 d = conf.PositionAt(other) - conf.PositionAt(ai);
-            double len = d.norm();
+            size_t const other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
+            Vec3 const d = conf.PositionAt(other) - conf.PositionAt(ai);
+            double const len = d.norm();
             if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         }
     }
@@ -120,11 +120,12 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     const double coulomb_cutoff = CalculatorConfig::Get("coulomb_efield_cutoff");
 
     int aromatic_source_count = 0;
-    for (size_t j = 0; j < n_atoms; ++j)
+    for (size_t j = 0; j < n_atoms; ++j) {
         if (is_aromatic_atom[j]) aromatic_source_count++;
+}
 
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 pos_i = conf.PositionAt(i);
+        Vec3 const pos_i = conf.PositionAt(i);
 
         Vec3 E_total = Vec3::Zero();
         Vec3 E_backbone = Vec3::Zero();
@@ -139,10 +140,10 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         int n_sidechain_aromatic_sources = 0;
 
         auto neighbours = spatial.AtomsWithinRadius(pos_i, coulomb_cutoff);
-        int sources_beyond_cutoff = static_cast<int>(n_atoms) - 1
+        int const sources_beyond_cutoff = static_cast<int>(n_atoms) - 1
                                   - static_cast<int>(neighbours.size());
 
-        for (size_t j : neighbours) {
+        for (size_t const j : neighbours) {
             // Self-exclusion via filter framework (not inline check)
             KernelEvaluationContext ctx;
             ctx.atom_index = i;
@@ -150,20 +151,20 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             ctx.distance = (pos_i - conf.PositionAt(j)).norm();
             if (!filters.AcceptAll(ctx)) continue;
 
-            double q_j = conf.AtomAt(j).partial_charge;
+            double const q_j = conf.AtomAt(j).partial_charge;
             if (std::abs(q_j) < CalculatorConfig::Get("coulomb_charge_noise_floor")) continue;
 
             Vec3 r = pos_i - conf.PositionAt(j);
-            double r_mag = r.norm();
+            double const r_mag = r.norm();
 
-            double r3 = r_mag * r_mag * r_mag;
-            double r5 = r3 * r_mag * r_mag;
+            double const r3 = r_mag * r_mag * r_mag;
+            double const r5 = r3 * r_mag * r_mag;
 
             // E_a = q_j * r_a / r^3
-            Vec3 E_j = q_j * r / r3;
+            Vec3 const E_j = q_j * r / r3;
 
             // V_ab = q_j * (3 r_a r_b / r^5 - delta_ab / r^3)
-            Mat3 V_j = q_j * (3.0 * r * r.transpose() / r5
+            Mat3 const V_j = q_j * (3.0 * r * r.transpose() / r5
                               - Mat3::Identity() / r3);
 
             E_total += E_j;
@@ -208,13 +209,16 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         // Sanitise NaN/Inf
         auto sanitise_vec = [](Vec3& v) {
-            for (int d = 0; d < 3; ++d)
+            for (int d = 0; d < 3; ++d) {
                 if (std::isnan(v(d)) || std::isinf(v(d))) { v = Vec3::Zero(); return; }
+}
         };
         auto sanitise_mat = [](Mat3& m) {
-            for (int a = 0; a < 3; ++a)
-                for (int b = 0; b < 3; ++b)
+            for (int a = 0; a < 3; ++a) {
+                for (int b = 0; b < 3; ++b) {
                     if (std::isnan(m(a,b)) || std::isinf(m(a,b))) m(a,b) = 0.0;
+}
+}
         };
         sanitise_vec(E_total);
         sanitise_vec(E_backbone);
@@ -226,9 +230,9 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         sanitise_mat(EFG_aromatic);
 
         // Clamp extreme E-field magnitudes
-        double E_mag = E_total.norm();
+        double const E_mag = E_total.norm();
         if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
-            double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
+            double const scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::Coulomb, i, "E-field clamp",
@@ -246,7 +250,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
         // ---- GeometryChoice: cutoff summary ----
         if (sources_beyond_cutoff > 0) {
-            int sources_within = static_cast<int>(neighbours.size());
+            int const sources_within = static_cast<int>(neighbours.size());
             choices.Record(CalculatorId::Coulomb, i, "coulomb cutoff",
                 [&conf, i, sources_within, sources_beyond_cutoff, coulomb_cutoff](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Included);
@@ -285,7 +289,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         // Positive = backbone field aligned with total; negative = opposed.
         // Bounded by |E_backbone|. Stable near cancellation (unlike |bb|/|total|).
         if (ca.coulomb_E_magnitude > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
-            Vec3 E_hat = E_total / ca.coulomb_E_magnitude;
+            Vec3 const E_hat = E_total / ca.coulomb_E_magnitude;
             ca.coulomb_E_backbone_frac = E_backbone.dot(E_hat);
         } else {
             ca.coulomb_E_backbone_frac = 0.0;
@@ -351,21 +355,21 @@ SphericalTensor CoulombResult::EFGSphericalAt(size_t atom_index) const {
 }
 
 
-Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
+Vec3 CoulombResult::SampleEFieldAt(const Vec3& point) const {
     if (!conf_) return Vec3::Zero();
 
     const Protein& protein = conf_->ProteinRef();
     Vec3 E = Vec3::Zero();
 
     for (size_t j = 0; j < conf_->AtomCount(); ++j) {
-        double q = conf_->AtomAt(j).partial_charge;
+        double const q = conf_->AtomAt(j).partial_charge;
         if (std::abs(q) < CalculatorConfig::Get("coulomb_charge_noise_floor")) continue;
 
-        Vec3 d = point - conf_->PositionAt(j);
-        double r = d.norm();
+        Vec3 const d = point - conf_->PositionAt(j);
+        double const r = d.norm();
         if (r < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
-        double r3 = r * r * r;
+        double const r3 = r * r * r;
         E += q * d / r3;
     }
 

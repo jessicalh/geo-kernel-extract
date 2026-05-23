@@ -118,7 +118,7 @@ void BsT0AutocorrelationTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
         // μ = full-range mean.
         double sum = 0.0;
-        for (double v : x) sum += v;
+        for (double const v : x) sum += v;
         const double mean = sum / static_cast<double>(T);
 
         // C(0) = (1/T) Σ (x_t − μ)². Also caches (x_t − μ) for reuse.
@@ -204,8 +204,8 @@ void BsT0AutocorrelationTrajectoryResult::WriteH5Group(
             flat[i * L + k] = buffer->At(i, k);
         }
     }
-    std::vector<std::size_t> dims = {N, L};
-    HighFive::DataSpace space(dims);
+    std::vector<std::size_t> const dims = {N, L};
+    HighFive::DataSpace const space(dims);
     auto ds = grp.createDataSet<double>("rho", space);
     ds.write_raw(flat.data());
 

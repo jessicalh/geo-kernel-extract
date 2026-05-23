@@ -103,8 +103,9 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
     int n_opbe_dir = 0;
     for (const auto& m : tn->ResidueMatches()) {
         for (const auto& ft : {m.prev_frame_type, m.next_frame_type}) {
-            if (ft == "orca_input_orientation") ++n_pbe_dir;
-            else if (ft == "gaussian_standard_orientation") ++n_opbe_dir;
+            if (ft == "orca_input_orientation") { ++n_pbe_dir;
+            } else if (ft == "gaussian_standard_orientation") { ++n_opbe_dir;
+}
         }
     }
     EXPECT_GT(n_pbe_dir, 0)
@@ -130,9 +131,12 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
     // max/extreme tallies; the test then also asserts non-trivial
     // finite coverage in each direction.
     int n_atoms_with_neighbor = 0;
-    int n_finite_prev = 0, n_finite_next = 0;
-    int n_extreme_prev = 0, n_extreme_next = 0;
-    double max_prev = 0.0, max_next = 0.0;
+    int n_finite_prev = 0;
+    int n_finite_next = 0;
+    int n_extreme_prev = 0;
+    int n_extreme_next = 0;
+    double max_prev = 0.0;
+    double max_next = 0.0;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
         const auto& ca = conf.AtomAt(i);
         if (!ca.tripeptide_neighbor_has_match) continue;
@@ -169,7 +173,7 @@ TEST_F(TripeptideNeighborShieldingTest, RunsOn1UbqPm6) {
     // NPY emission.
     const std::string out_dir = "/tmp/tripeptide_neighbor_smoke_out";
     fs::create_directories(out_dir);
-    int n_npy = tn->WriteFeatures(conf, out_dir);
+    int const n_npy = tn->WriteFeatures(conf, out_dir);
     EXPECT_EQ(n_npy, 3);
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_shielding.npy"));
     EXPECT_TRUE(fs::exists(out_dir + "/tripeptide_neighbor_residual_vec_prev.npy"));

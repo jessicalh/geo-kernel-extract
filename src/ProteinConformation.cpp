@@ -14,16 +14,17 @@ ProteinConformation::ProteinConformation(
 {
     // Build ConformationAtom vector from positions
     atoms_.reserve(positions_.size());
-    for (const auto& pos : positions_)
+    for (const auto& pos : positions_) {
         atoms_.emplace_back(ConformationAtom(pos));
+}
 }
 
 
 bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> result) {
     if (!result) return false;
 
-    std::string name = result->Name();
-    std::type_index tid(typeid(*result));
+    std::string const name = result->Name();
+    std::type_index const tid(typeid(*result));
 
     // Singleton check: already attached?
     if (results_.find(tid) != results_.end()) {

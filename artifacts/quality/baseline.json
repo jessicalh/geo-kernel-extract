@@ -1,342 +1,162 @@
 {
-  "anchored_at_sha": "353aad4",
-  "anchored_at_utc": "2026-05-22T23:24:59.556336+00:00",
+  "anchored_at_sha": "73cc48a",
+  "anchored_at_utc": "2026-05-23T08:38:32.359417+00:00",
   "tools": {
     "clang-tidy": {
-      "fileformat/analysis_file.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 7,
-          "performance-unnecessary-value-param": 5,
-          "readability-function-size": 2
-        },
-        "total": 16
-      },
-      "src/AIMNet2ChargeResponseGradientResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 4
-        },
-        "total": 4
-      },
       "src/AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2,
           "misc-unused-parameters": 1
         },
-        "total": 4
-      },
-      "src/AIMNet2ChargeResponseGradientWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 3
+        "total": 1
       },
       "src/AIMNet2ChargeTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 3
+        "total": 1
       },
       "src/AIMNet2EmbeddingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-casting": 3,
-          "misc-const-correctness": 1,
           "misc-unused-parameters": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/AIMNet2Result.cpp": {
         "by_check": {
-          "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 18,
-          "performance-unnecessary-value-param": 1
+          "clang-diagnostic-unused-variable": 1
         },
-        "total": 23
+        "total": 1
       },
       "src/AmberChargeResolver.cpp": {
         "by_check": {
-          "misc-const-correctness": 4,
           "performance-inefficient-string-concatenation": 2
         },
-        "total": 6
+        "total": 2
       },
       "src/AmberLeapInput.cpp": {
         "by_check": {
           "bugprone-branch-clone": 1,
-          "cert-err33-c": 1,
-          "misc-const-correctness": 2,
           "modernize-concat-nested-namespaces": 1,
           "readability-static-definition-in-anonymous-namespace": 2
         },
-        "total": 7
+        "total": 4
       },
       "src/AmberPreparedChargeSource.cpp": {
         "by_check": {
           "cert-env33-c": 1,
-          "cert-err33-c": 3,
-          "concurrency-mt-unsafe": 1,
-          "google-readability-braces-around-statements": 7,
-          "misc-const-correctness": 8
+          "concurrency-mt-unsafe": 1
         },
-        "total": 20
+        "total": 2
       },
       "src/AminoAcidType.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 1,
           "performance-no-automatic-move": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/ApbsEfgTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/ApbsEfieldTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 4
-      },
-      "src/ApbsFieldResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 6,
-          "misc-const-correctness": 20
-        },
-        "total": 26
-      },
-      "src/Atom.h": {
-        "by_check": {
-          "readability-inconsistent-declaration-parameter-name": 1
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
         "total": 1
-      },
-      "src/BondedEnergyTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
-      },
-      "src/BsShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 4
       },
       "src/BsT0AutocorrelationTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "misc-const-correctness": 3
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/BsWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 1,
-          "performance-unnecessary-value-param": 2,
+          "readability-function-size": 1,
           "readability-redundant-casting": 1
         },
-        "total": 6
+        "total": 2
       },
       "src/CalculatorConfig.cpp": {
         "by_check": {
-          "cert-err33-c": 2,
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 2
+          "clang-diagnostic-unused-but-set-variable": 1
         },
-        "total": 8
+        "total": 1
       },
       "src/CategoryInfoProjection.cpp": {
         "by_check": {
           "bugprone-not-null-terminated-result": 1,
-          "cert-err33-c": 9,
-          "misc-const-correctness": 10,
-          "performance-unnecessary-copy-initialization": 1,
-          "performance-unnecessary-value-param": 1
+          "performance-unnecessary-copy-initialization": 1
         },
-        "total": 22
+        "total": 2
       },
       "src/ChargeAssignmentResult.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/ChargeSource.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
           "cert-err34-c": 2,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 8,
           "readability-container-size-empty": 1
         },
-        "total": 14
-      },
-      "src/ChiRotamerSelectionTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 3
-        },
         "total": 3
-      },
-      "src/ConformationResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 4
-        },
-        "total": 5
-      },
-      "src/CoulombResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 24,
-          "performance-unnecessary-value-param": 1,
-          "readability-function-size": 1
-        },
-        "total": 31
-      },
-      "src/CovalentTopology.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 11,
-          "misc-unused-parameters": 1,
-          "modernize-use-emplace": 1
-        },
-        "total": 15
-      },
-      "src/DemoResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 3
-        },
-        "total": 3
-      },
-      "src/DihedralBinTransitionTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "misc-const-correctness": 3
-        },
-        "total": 8
       },
       "src/DihedralTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 6,
-          "google-readability-casting": 3,
-          "misc-const-correctness": 4,
           "readability-function-size": 1
         },
-        "total": 14
+        "total": 1
       },
       "src/DispersionResult.cpp": {
         "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "google-readability-braces-around-statements": 6,
-          "misc-const-correctness": 23,
-          "performance-unnecessary-value-param": 1
+          "bugprone-implicit-widening-of-multiplication-result": 1
         },
-        "total": 31
+        "total": 1
       },
       "src/DispersionShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
-      },
-      "src/Dssp8TimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 2,
-          "misc-const-correctness": 3
-        },
-        "total": 6
-      },
-      "src/Dssp8TransitionTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
+        "total": 1
       },
       "src/DsspResult.cpp": {
         "by_check": {
           "bugprone-implicit-widening-of-multiplication-result": 1,
-          "cert-err33-c": 5,
           "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 28
+          "misc-const-correctness": 1
         },
-        "total": 39
+        "total": 3
       },
       "src/EeqResult.cpp": {
         "by_check": {
           "clang-diagnostic-unused-but-set-variable": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 24,
           "readability-function-size": 1
         },
-        "total": 30
+        "total": 2
       },
       "src/EeqWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "performance-unnecessary-value-param": 1,
           "readability-redundant-casting": 1
         },
-        "total": 2
+        "total": 1
       },
       "src/EnrichmentResult.cpp": {
         "by_check": {
           "bugprone-branch-clone": 2,
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 9,
           "readability-function-size": 1
         },
-        "total": 15
-      },
-      "src/FramePdbEmitter.cpp": {
-        "by_check": {
-          "cert-err33-c": 10
-        },
-        "total": 10
+        "total": 3
       },
       "src/FullSystemReader.cpp": {
         "by_check": {
           "clang-diagnostic-unused-but-set-variable": 1,
-          "google-readability-braces-around-statements": 16,
-          "misc-const-correctness": 9,
-          "modernize-use-emplace": 1,
           "readability-function-size": 2
         },
-        "total": 29
-      },
-      "src/GeometryChoice.cpp": {
-        "by_check": {
-          "performance-unnecessary-value-param": 1
-        },
-        "total": 1
-      },
-      "src/GeometryResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4
-        },
-        "total": 4
+        "total": 3
       },
       "src/GromacsEnergyResult.cpp": {
         "by_check": {
@@ -344,529 +164,273 @@
         },
         "total": 2
       },
-      "src/GromacsEnergyTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 1
-        },
-        "total": 2
-      },
       "src/GromacsFrameHandler.cpp": {
         "by_check": {
-          "clang-diagnostic-unused-const-variable": 1,
-          "misc-const-correctness": 1
+          "clang-diagnostic-unused-const-variable": 1
         },
-        "total": 2
-      },
-      "src/GromacsToAmberReadbackBlock.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "misc-const-correctness": 1,
-          "modernize-raw-string-literal": 4
-        },
-        "total": 6
+        "total": 1
       },
       "src/HBondCountWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "performance-unnecessary-value-param": 1,
           "readability-redundant-casting": 1
         },
-        "total": 2
+        "total": 1
       },
       "src/HBondResult.cpp": {
         "by_check": {
           "clang-diagnostic-unused-but-set-variable": 1,
-          "misc-const-correctness": 22,
-          "modernize-loop-convert": 2,
-          "performance-unnecessary-value-param": 1,
           "readability-function-size": 1
         },
-        "total": 27
+        "total": 2
       },
       "src/HBondShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/HaighMallionResult.cpp": {
         "by_check": {
           "bugprone-implicit-widening-of-multiplication-result": 1,
-          "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 10,
-          "misc-const-correctness": 23,
-          "performance-unnecessary-value-param": 1
+          "clang-diagnostic-unused-variable": 1
         },
-        "total": 36
+        "total": 2
       },
       "src/HmShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/HmWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 1,
-          "performance-unnecessary-value-param": 2,
-          "readability-redundant-casting": 1
-        },
-        "total": 6
-      },
-      "src/HydrationGeometryResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 11
-        },
-        "total": 15
-      },
-      "src/HydrationGeometryTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 3
-        },
-        "total": 4
-      },
-      "src/HydrationGeometryWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "performance-unnecessary-value-param": 1,
+          "readability-function-size": 1,
           "readability-redundant-casting": 1
         },
         "total": 2
       },
-      "src/HydrationShellResult.cpp": {
+      "src/HydrationGeometryWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 12
+          "readability-function-size": 1,
+          "readability-redundant-casting": 1
         },
-        "total": 15
-      },
-      "src/HydrationShellTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
+        "total": 2
       },
       "src/HydrationShellWelfordTrajectoryResult.cpp": {
         "by_check": {
-          "performance-unnecessary-value-param": 1,
+          "readability-function-size": 1,
           "readability-redundant-casting": 1
         },
         "total": 2
       },
       "src/JCouplingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 2,
           "readability-function-size": 1
         },
-        "total": 8
+        "total": 1
       },
       "src/JobSpec.cpp": {
         "by_check": {
-          "cert-err33-c": 4,
-          "cert-err34-c": 3,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 11
+          "cert-err34-c": 3
         },
-        "total": 20
+        "total": 3
       },
       "src/KamlProtonator.cpp": {
         "by_check": {
           "bugprone-branch-clone": 2,
           "cert-env33-c": 1,
-          "cert-err33-c": 5,
           "cert-err34-c": 2,
-          "concurrency-mt-unsafe": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 15
+          "concurrency-mt-unsafe": 1
         },
-        "total": 28
-      },
-      "src/KernelEvaluationFilter.cpp": {
-        "by_check": {
-          "misc-const-correctness": 3
-        },
-        "total": 3
+        "total": 6
       },
       "src/LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
-      },
-      "src/LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 5
+        "total": 1
       },
       "src/LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/LarsenHBondCountTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/LarsenHBondShieldingResult.cpp": {
         "by_check": {
-          "clang-diagnostic-unused-function": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 38,
           "readability-function-size": 1
         },
-        "total": 42
+        "total": 1
       },
       "src/LarsenHBondWaterTermTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/LarsenResidue.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
-          "google-readability-braces-around-statements": 12,
-          "misc-const-correctness": 25,
           "performance-inefficient-string-concatenation": 2,
           "readability-function-size": 2
         },
-        "total": 42
+        "total": 4
       },
       "src/LegacyAmberTopology.cpp": {
         "by_check": {
           "bugprone-argument-comment": 1,
-          "cert-err33-c": 8,
-          "misc-const-correctness": 8,
           "readability-function-size": 1
         },
-        "total": 18
+        "total": 2
       },
       "src/McConnellResult.cpp": {
         "by_check": {
           "bugprone-implicit-widening-of-multiplication-result": 1,
           "clang-diagnostic-unused-but-set-variable": 1,
           "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 12,
-          "performance-unnecessary-value-param": 1,
           "readability-function-size": 1
         },
-        "total": 21
+        "total": 4
       },
       "src/McConnellShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
-      },
-      "src/McConnellWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 1,
-          "performance-unnecessary-value-param": 2,
-          "readability-redundant-casting": 1
-        },
-        "total": 6
-      },
-      "src/MolecularGraphResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 18
-        },
-        "total": 18
+        "total": 1
       },
       "src/MopacCoulombResult.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 17,
           "readability-function-size": 1
         },
-        "total": 21
+        "total": 1
       },
       "src/MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
-      },
-      "src/MopacMcConnellResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 12
-        },
-        "total": 18
-      },
-      "src/MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 4
+        "total": 1
       },
       "src/MopacResult.cpp": {
         "by_check": {
           "cert-env33-c": 1,
-          "cert-err33-c": 2,
-          "concurrency-mt-unsafe": 3,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 22
+          "concurrency-mt-unsafe": 3
         },
-        "total": 30
+        "total": 4
       },
       "src/MopacResult.h": {
         "by_check": {
-          "misc-const-correctness": 2,
           "readability-inconsistent-declaration-parameter-name": 4
         },
-        "total": 6
-      },
-      "src/MopacVsFf14SbReconciliationTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
-      },
-      "src/MutationDeltaResult.cpp": {
-        "by_check": {
-          "clang-diagnostic-unused-but-set-variable": 1,
-          "google-readability-braces-around-statements": 17,
-          "google-readability-casting": 2,
-          "misc-const-correctness": 25,
-          "modernize-use-emplace": 1,
-          "readability-function-size": 1
-        },
-        "total": 47
-      },
-      "src/MutationDeltaResult.h": {
-        "by_check": {
-          "readability-inconsistent-declaration-parameter-name": 12
-        },
-        "total": 12
+        "total": 4
       },
       "src/NamingRegistry.cpp": {
         "by_check": {
-          "cert-err33-c": 3,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 3,
           "readability-convert-member-functions-to-static": 3,
           "readability-function-size": 1
         },
-        "total": 14
+        "total": 4
       },
       "src/OperationRunner.cpp": {
         "by_check": {
           "cppcoreguidelines-missing-std-forward": 1,
-          "misc-const-correctness": 7,
           "readability-function-size": 1
-        },
-        "total": 9
-      },
-      "src/OrcaRunLoader.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "cert-err34-c": 2,
-          "google-readability-braces-around-statements": 11,
-          "misc-const-correctness": 10,
-          "modernize-use-emplace": 1,
-          "readability-function-size": 1
-        },
-        "total": 26
-      },
-      "src/OrcaShieldingResult.cpp": {
-        "by_check": {
-          "cert-err34-c": 2,
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 3
-        },
-        "total": 8
-      },
-      "src/PdbFileReader.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "clang-diagnostic-unused-function": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 16
-        },
-        "total": 19
-      },
-      "src/PiQuadrupoleResult.cpp": {
-        "by_check": {
-          "bugprone-implicit-widening-of-multiplication-result": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 17,
-          "performance-unnecessary-value-param": 1
-        },
-        "total": 21
-      },
-      "src/PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 4
-      },
-      "src/PlanarGeometryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 2
         },
         "total": 2
       },
+      "src/OrcaRunLoader.cpp": {
+        "by_check": {
+          "cert-err34-c": 2,
+          "readability-function-size": 1
+        },
+        "total": 3
+      },
+      "src/OrcaShieldingResult.cpp": {
+        "by_check": {
+          "cert-err34-c": 2
+        },
+        "total": 2
+      },
+      "src/PdbFileReader.cpp": {
+        "by_check": {
+          "clang-diagnostic-unused-function": 1
+        },
+        "total": 1
+      },
+      "src/PiQuadrupoleResult.cpp": {
+        "by_check": {
+          "bugprone-implicit-widening-of-multiplication-result": 1
+        },
+        "total": 1
+      },
+      "src/PiQuadrupoleShieldingTimeSeriesTrajectoryResult.cpp": {
+        "by_check": {
+          "cppcoreguidelines-pro-type-const-cast": 1
+        },
+        "total": 1
+      },
       "src/PositionsTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/PropkaProtonator.cpp": {
         "by_check": {
           "bugprone-branch-clone": 2,
           "cert-env33-c": 1,
-          "cert-err33-c": 3,
-          "concurrency-mt-unsafe": 1,
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 13
+          "concurrency-mt-unsafe": 1
         },
-        "total": 23
+        "total": 4
       },
       "src/Protein.cpp": {
         "by_check": {
           "bugprone-argument-comment": 1,
-          "bugprone-branch-clone": 1,
-          "cert-err33-c": 9,
-          "google-readability-braces-around-statements": 7,
-          "misc-const-correctness": 20
+          "bugprone-branch-clone": 1
         },
-        "total": 38
+        "total": 2
       },
       "src/ProteinConformation.cpp": {
         "by_check": {
           "clang-diagnostic-potentially-evaluated-expression": 2,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2,
           "performance-inefficient-string-concatenation": 1
         },
-        "total": 6
-      },
-      "src/ProtonationDetectionResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
-      },
-      "src/RecordBag.h": {
-        "by_check": {
-          "google-readability-braces-around-statements": 6
-        },
-        "total": 6
+        "total": 3
       },
       "src/ReduceProtonation.cpp": {
         "by_check": {
-          "concurrency-mt-unsafe": 1,
-          "misc-const-correctness": 3
+          "concurrency-mt-unsafe": 1
         },
-        "total": 4
-      },
-      "src/Ring.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "google-readability-braces-around-statements": 5,
-          "misc-const-correctness": 4
-        },
-        "total": 10
+        "total": 1
       },
       "src/RingNeighbourhoodTrajectoryStats.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "misc-const-correctness": 5
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 6
-      },
-      "src/RingPuckerTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
-      },
-      "src/RingSusceptibilityResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 13,
-          "performance-unnecessary-value-param": 1
-        },
-        "total": 17
+        "total": 1
       },
       "src/RingSusceptibilityShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/RingTopology.cpp": {
         "by_check": {
           "bugprone-branch-clone": 1,
-          "cert-err33-c": 3,
-          "misc-const-correctness": 10,
-          "modernize-make-unique": 1,
-          "modernize-use-emplace": 1
+          "modernize-make-unique": 1
         },
-        "total": 16
-      },
-      "src/RmsdSpikeSelectionTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
-      },
-      "src/RmsdTrackingTrajectoryResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 4
-        },
-        "total": 4
+        "total": 2
       },
       "src/RunConfiguration.cpp": {
         "by_check": {
@@ -877,34 +441,16 @@
       "src/RuntimeEnvironment.cpp": {
         "by_check": {
           "cert-env33-c": 1,
-          "cert-err33-c": 1,
           "concurrency-mt-unsafe": 7,
-          "google-readability-braces-around-statements": 14,
-          "misc-const-correctness": 5,
           "readability-function-size": 1
         },
-        "total": 29
-      },
-      "src/SasaResult.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 14
-        },
-        "total": 18
+        "total": 9
       },
       "src/SasaTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 3
-      },
-      "src/SasaWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "performance-unnecessary-value-param": 1,
-          "readability-redundant-casting": 1
-        },
-        "total": 2
+        "total": 1
       },
       "src/Session.cpp": {
         "by_check": {
@@ -914,139 +460,63 @@
       },
       "src/SolventEnvironment.h": {
         "by_check": {
-          "clang-diagnostic-unused-variable": 1,
-          "misc-const-correctness": 1
-        },
-        "total": 2
-      },
-      "src/SpatialIndexResult.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "src/TopologySidecar.cpp": {
-        "by_check": {
-          "bugprone-not-null-terminated-result": 1,
-          "cert-err33-c": 6,
-          "misc-const-correctness": 6,
-          "modernize-raw-string-literal": 25
-        },
-        "total": 38
-      },
-      "src/Trajectory.cpp": {
-        "by_check": {
-          "cert-err33-c": 2,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 4,
-          "readability-function-size": 1
-        },
-        "total": 9
-      },
-      "src/TrajectoryProtein.cpp": {
-        "by_check": {
-          "clang-diagnostic-potentially-evaluated-expression": 1
+          "clang-diagnostic-unused-variable": 1
         },
         "total": 1
       },
-      "src/TrajectoryProtein.h": {
+      "src/TopologySidecar.cpp": {
         "by_check": {
-          "cert-err33-c": 2
+          "bugprone-not-null-terminated-result": 1
         },
-        "total": 2
+        "total": 1
+      },
+      "src/Trajectory.cpp": {
+        "by_check": {
+          "readability-function-size": 1
+        },
+        "total": 1
       },
       "src/TripeptideBackboneMethodTagTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 4
+        "total": 1
       },
       "src/TripeptideBackboneResidualVecTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/TripeptideBackboneShieldingResult.cpp": {
         "by_check": {
-          "google-readability-casting": 2,
-          "misc-const-correctness": 2,
           "readability-function-size": 1
         },
-        "total": 5
-      },
-      "src/TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 5
-      },
-      "src/TripeptideDftTable.cpp": {
-        "by_check": {
-          "cppcoreguidelines-prefer-member-initializer": 1,
-          "google-readability-braces-around-statements": 8,
-          "misc-const-correctness": 22,
-          "performance-inefficient-string-concatenation": 1
-        },
-        "total": 32
+        "total": 1
       },
       "src/TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
+        "total": 1
       },
       "src/TripeptideNeighborShieldingResult.cpp": {
         "by_check": {
-          "google-readability-casting": 2,
-          "misc-const-correctness": 4,
           "readability-function-size": 1
         },
-        "total": 7
+        "total": 1
       },
       "src/TripeptideNeighborShieldingTimeSeriesTrajectoryResult.cpp": {
         "by_check": {
-          "cppcoreguidelines-pro-type-const-cast": 1,
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 2
+          "cppcoreguidelines-pro-type-const-cast": 1
         },
-        "total": 5
-      },
-      "src/TripeptidePoseAssembler.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 5,
-          "misc-unused-parameters": 1,
-          "readability-static-definition-in-anonymous-namespace": 1
-        },
-        "total": 8
-      },
-      "src/Types.cpp": {
-        "by_check": {
-          "misc-const-correctness": 16
-        },
-        "total": 16
+        "total": 1
       },
       "src/Types.h": {
         "by_check": {
@@ -1057,52 +527,15 @@
       "src/WaterFieldResult.cpp": {
         "by_check": {
           "clang-diagnostic-unused-but-set-variable": 1,
-          "clang-diagnostic-unused-variable": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 14
+          "clang-diagnostic-unused-variable": 1
         },
-        "total": 18
-      },
-      "src/WaterFieldTimeSeriesTrajectoryResult.cpp": {
-        "by_check": {
-          "google-readability-casting": 2,
-          "misc-const-correctness": 3
-        },
-        "total": 5
-      },
-      "src/WaterFieldWelfordTrajectoryResult.cpp": {
-        "by_check": {
-          "bugprone-unused-local-non-trivial-variable": 2,
-          "google-readability-braces-around-statements": 2,
-          "performance-unnecessary-value-param": 2,
-          "readability-function-size": 1,
-          "readability-redundant-casting": 1
-        },
-        "total": 8
-      },
-      "src/apbs_bridge.h": {
-        "by_check": {
-          "bugprone-macro-parentheses": 1
-        },
-        "total": 1
+        "total": 2
       },
       "src/nmr_extract.cpp": {
         "by_check": {
-          "bugprone-exception-escape": 1,
-          "cert-err33-c": 29,
-          "google-readability-braces-around-statements": 6,
-          "misc-const-correctness": 5
+          "bugprone-exception-escape": 1
         },
-        "total": 41
-      },
-      "tests/BlessCompare.cpp": {
-        "by_check": {
-          "cert-err33-c": 3,
-          "google-readability-braces-around-statements": 7,
-          "misc-const-correctness": 13,
-          "readability-static-definition-in-anonymous-namespace": 10
-        },
-        "total": 33
+        "total": 1
       },
       "tests/TestConfig.cpp": {
         "by_check": {
@@ -1118,198 +551,35 @@
       },
       "tests/TestEnvironment.cpp": {
         "by_check": {
-          "cert-err33-c": 1,
           "concurrency-mt-unsafe": 1,
-          "google-readability-braces-around-statements": 15,
           "modernize-concat-nested-namespaces": 1
-        },
-        "total": 18
-      },
-      "tests/pass0_demo.cpp": {
-        "by_check": {
-          "cert-err33-c": 2
-        },
-        "total": 2
-      },
-      "tests/test_aimnet2_charge_response_gradient.cpp": {
-        "by_check": {
-          "cert-err33-c": 1,
-          "misc-const-correctness": 1
         },
         "total": 2
       },
       "tests/test_aimnet2_charge_time_series.cpp": {
         "by_check": {
-          "bugprone-integer-division": 1,
-          "google-readability-braces-around-statements": 2,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
+          "bugprone-integer-division": 1
         },
-        "total": 10
-      },
-      "tests/test_aimnet2_embedding_charge_response_gradient_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_amber_charge_resolver.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 6
-        },
-        "total": 8
+        "total": 1
       },
       "tests/test_amber_leap_input.cpp": {
         "by_check": {
-          "misc-const-correctness": 31,
-          "modernize-use-emplace": 2,
           "readability-convert-member-functions-to-static": 2
         },
-        "total": 35
+        "total": 2
       },
       "tests/test_amber_prepared_charge_source.cpp": {
         "by_check": {
-          "misc-const-correctness": 7,
-          "modernize-use-emplace": 2,
           "readability-convert-member-functions-to-static": 1
         },
-        "total": 10
-      },
-      "tests/test_amber_streaming.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 7
+        "total": 1
       },
       "tests/test_amber_trajectory.cpp": {
         "by_check": {
           "google-readability-avoid-underscore-in-googletest-name": 5,
-          "misc-const-correctness": 4,
           "readability-convert-member-functions-to-static": 1
         },
-        "total": 10
-      },
-      "tests/test_amino_acid.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_apbs_efg_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "google-readability-casting": 2,
-          "misc-const-correctness": 9
-        },
-        "total": 15
-      },
-      "tests/test_apbs_efield_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 8
-      },
-      "tests/test_apbs_ff14sb.cpp": {
-        "by_check": {
-          "cert-err33-c": 3,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 22
-        },
-        "total": 26
-      },
-      "tests/test_apbs_field_result.cpp": {
-        "by_check": {
-          "google-readability-casting": 3,
-          "misc-const-correctness": 12,
-          "readability-redundant-string-cstr": 6
-        },
-        "total": 21
-      },
-      "tests/test_apbs_wired.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6,
-          "readability-redundant-string-cstr": 3
-        },
-        "total": 10
-      },
-      "tests/test_atom_flat.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 1
-        },
-        "total": 2
-      },
-      "tests/test_atom_semantic_predicates.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 1,
-          "misc-unused-using-decls": 1
-        },
-        "total": 4
-      },
-      "tests/test_batch_coulomb_ringchi.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 7,
-          "misc-const-correctness": 42
-        },
-        "total": 49
-      },
-      "tests/test_batch_mcconnell.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 15
-        },
-        "total": 19
-      },
-      "tests/test_batch_piquad_disp.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 7,
-          "misc-const-correctness": 27
-        },
-        "total": 34
-      },
-      "tests/test_biot_savart_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 10
-        },
-        "total": 11
-      },
-      "tests/test_bonded_energy_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_bs_anomalous_atom_marker.cpp": {
-        "by_check": {
-          "misc-const-correctness": 2
-        },
-        "total": 2
-      },
-      "tests/test_bs_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_calculation_runner.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 4
-        },
-        "total": 5
-      },
-      "tests/test_calculator_config.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
-        },
-        "total": 1
+        "total": 6
       },
       "tests/test_category_info_projection.cpp": {
         "by_check": {
@@ -1318,270 +588,36 @@
         },
         "total": 8
       },
-      "tests/test_coulomb_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 24,
-          "readability-redundant-string-cstr": 1
-        },
-        "total": 27
-      },
-      "tests/test_demo_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 4
-        },
-        "total": 6
-      },
-      "tests/test_dihedral_bin_transition.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 7
-        },
-        "total": 8
-      },
-      "tests/test_dihedral_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 8
-        },
-        "total": 11
-      },
-      "tests/test_disp_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 14
-      },
       "tests/test_dispersion_result.cpp": {
         "by_check": {
-          "cert-flp30-c": 2,
-          "google-readability-braces-around-statements": 5,
-          "misc-const-correctness": 16
+          "cert-flp30-c": 2
         },
-        "total": 23
-      },
-      "tests/test_dssp8_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 9
-        },
-        "total": 11
-      },
-      "tests/test_dssp8_transition.cpp": {
-        "by_check": {
-          "misc-const-correctness": 4
-        },
-        "total": 4
-      },
-      "tests/test_dssp_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 5
-        },
-        "total": 8
-      },
-      "tests/test_eeq_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
+        "total": 2
       },
       "tests/test_foundation_results.cpp": {
         "by_check": {
-          "misc-const-correctness": 24,
           "readability-container-size-empty": 1
         },
-        "total": 25
-      },
-      "tests/test_frame_pdb_emitter.cpp": {
-        "by_check": {
-          "misc-const-correctness": 12
-        },
-        "total": 12
+        "total": 1
       },
       "tests/test_full_pipeline.cpp": {
         "by_check": {
           "cert-err33-c": 25,
-          "clang-diagnostic-format": 2,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 10,
           "readability-redundant-string-cstr": 1
         },
-        "total": 42
-      },
-      "tests/test_geometry_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 1
-        },
-        "total": 2
-      },
-      "tests/test_gromacs_energy_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 16
-        },
-        "total": 17
-      },
-      "tests/test_haigh_mallion_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "misc-const-correctness": 9
-        },
-        "total": 14
-      },
-      "tests/test_hbond_count_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_hbond_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 6,
-          "misc-const-correctness": 40
-        },
-        "total": 46
-      },
-      "tests/test_hbond_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 14
-      },
-      "tests/test_hm_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 14
-      },
-      "tests/test_hm_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_hydration_geometry_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_hydration_geometry_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_hydration_shell_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_hydration_shell_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
+        "total": 26
       },
       "tests/test_j_coupling_time_series.cpp": {
         "by_check": {
-          "google-readability-avoid-underscore-in-googletest-name": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 6
+          "google-readability-avoid-underscore-in-googletest-name": 1
         },
-        "total": 9
-      },
-      "tests/test_job_spec.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 14,
-          "readability-redundant-string-cstr": 13
-        },
-        "total": 31
-      },
-      "tests/test_larsen_hbond_1pHB_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 12
-      },
-      "tests/test_larsen_hbond_1pHaB_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 8,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 15
-      },
-      "tests/test_larsen_hbond_2pHB_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 12
-      },
-      "tests/test_larsen_hbond_2pHaB_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 8,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 15
-      },
-      "tests/test_larsen_hbond_count_time_series.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 7
-      },
-      "tests/test_larsen_hbond_grid.cpp": {
-        "by_check": {
-          "cert-flp30-c": 3,
-          "misc-const-correctness": 30,
-          "readability-qualified-auto": 1
-        },
-        "total": 34
-      },
-      "tests/test_larsen_hbond_shielding.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 7
-        },
-        "total": 13
-      },
-      "tests/test_larsen_hbond_water_term_time_series.cpp": {
-        "by_check": {
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 7
+        "total": 1
       },
       "tests/test_larsen_residue_against_source_log.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 11,
-          "misc-const-correctness": 4
+          "bugprone-unchecked-optional-access": 11
         },
-        "total": 15
-      },
-      "tests/test_larsen_residue_perception.cpp": {
-        "by_check": {
-          "bugprone-unchecked-optional-access": 1
-        },
-        "total": 1
+        "total": 11
       },
       "tests/test_larsen_residue_ser_sidechain.cpp": {
         "by_check": {
@@ -1591,78 +627,15 @@
       },
       "tests/test_larsen_residue_wl_ambiguity.cpp": {
         "by_check": {
-          "bugprone-unchecked-optional-access": 2,
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 2
+          "bugprone-unchecked-optional-access": 2
         },
-        "total": 8
-      },
-      "tests/test_mc_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 12
-      },
-      "tests/test_mc_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_mcconnell_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 4,
-          "misc-const-correctness": 15
-        },
-        "total": 19
-      },
-      "tests/test_mopac_bond_order_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 6
-        },
-        "total": 6
-      },
-      "tests/test_mopac_charge_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 4
-        },
-        "total": 4
+        "total": 2
       },
       "tests/test_mopac_coulomb_shielding_time_series.cpp": {
         "by_check": {
-          "misc-const-correctness": 5,
-          "modernize-loop-convert": 1
+          "misc-const-correctness": 1
         },
-        "total": 6
-      },
-      "tests/test_mopac_mc_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 5
-        },
-        "total": 7
-      },
-      "tests/test_mopac_result.cpp": {
-        "by_check": {
-          "misc-const-correctness": 6
-        },
-        "total": 6
-      },
-      "tests/test_mopac_vs_ff14sb_reconciliation.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_mutation_delta.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 7,
-          "google-readability-casting": 2,
-          "misc-const-correctness": 5
-        },
-        "total": 14
+        "total": 1
       },
       "tests/test_naming_applicator_access.h": {
         "by_check": {
@@ -1672,239 +645,35 @@
       },
       "tests/test_naming_registry.cpp": {
         "by_check": {
-          "bugprone-argument-comment": 2,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 23
+          "bugprone-argument-comment": 2
         },
-        "total": 27
+        "total": 2
       },
       "tests/test_object_model.cpp": {
         "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 12,
           "readability-qualified-auto": 1
-        },
-        "total": 15
-      },
-      "tests/test_pipeline_and_sample.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 14
-        },
-        "total": 15
-      },
-      "tests/test_piquad_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 14
-      },
-      "tests/test_planar_geometry_result.cpp": {
-        "by_check": {
-          "cert-err33-c": 2,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 2
-        },
-        "total": 5
-      },
-      "tests/test_protonation_detection.cpp": {
-        "by_check": {
-          "misc-const-correctness": 1
         },
         "total": 1
       },
-      "tests/test_protonation_pipeline.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 19
-        },
-        "total": 20
-      },
-      "tests/test_ring_hierarchy.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_ring_neighbourhood_trajectory_stats.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 8
-        },
-        "total": 10
-      },
-      "tests/test_ring_pucker_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 4
-        },
-        "total": 4
-      },
-      "tests/test_ring_susceptibility_result.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 9
-        },
-        "total": 12
-      },
-      "tests/test_ringchi_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 14
-      },
-      "tests/test_rmsd_spike_dft_coord.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "misc-const-correctness": 3
-        },
-        "total": 6
-      },
-      "tests/test_rmsd_tracking.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_runtime_environment.cpp": {
+      "tests/test_spherical_tensor.cpp": {
         "by_check": {
           "misc-const-correctness": 3
         },
         "total": 3
       },
-      "tests/test_sasa_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 8
-        },
-        "total": 11
-      },
-      "tests/test_sasa_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_smoke.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 11,
-          "performance-inefficient-string-concatenation": 3,
-          "readability-convert-member-functions-to-static": 3
-        },
-        "total": 18
-      },
-      "tests/test_spherical_tensor.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 9,
-          "misc-const-correctness": 13
-        },
-        "total": 22
-      },
       "tests/test_string_barrier.cpp": {
         "by_check": {
           "cert-env33-c": 1,
           "cert-err34-c": 1,
-          "misc-const-correctness": 1,
-          "modernize-loop-convert": 1
-        },
-        "total": 4
-      },
-      "tests/test_traversal_dump.cpp": {
-        "by_check": {
-          "misc-const-correctness": 26
-        },
-        "total": 26
-      },
-      "tests/test_tripeptide_backbone_shielding.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 2
-        },
-        "total": 4
-      },
-      "tests/test_tripeptide_bb_method_tag_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 8
-      },
-      "tests/test_tripeptide_bb_residual_vec_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 10
-      },
-      "tests/test_tripeptide_bb_shielding_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 5,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 12
-      },
-      "tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 8
-      },
-      "tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 3,
-          "google-readability-casting": 1,
-          "misc-const-correctness": 6
-        },
-        "total": 10
-      },
-      "tests/test_tripeptide_neighbor_shielding.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 2,
           "misc-const-correctness": 1
         },
         "total": 3
       },
       "tests/test_tripeptide_neighbor_shielding_time_series.cpp": {
         "by_check": {
-          "bugprone-argument-comment": 1,
-          "google-readability-braces-around-statements": 1,
-          "misc-const-correctness": 1
+          "bugprone-argument-comment": 1
         },
-        "total": 3
-      },
-      "tests/test_two_conformations.cpp": {
-        "by_check": {
-          "misc-const-correctness": 6
-        },
-        "total": 6
-      },
-      "tests/test_water_field_time_series.cpp": {
-        "by_check": {
-          "misc-const-correctness": 8
-        },
-        "total": 8
-      },
-      "tests/test_water_field_welford.cpp": {
-        "by_check": {
-          "misc-const-correctness": 5
-        },
-        "total": 5
-      },
-      "tests/test_write_features.cpp": {
-        "by_check": {
-          "misc-const-correctness": 3
-        },
-        "total": 3
+        "total": 1
       }
     },
     "cppcheck": {

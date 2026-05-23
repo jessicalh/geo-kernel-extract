@@ -96,8 +96,8 @@ private:
 
     // Hash key for atom pair (symmetric)
     static uint64_t PairKey(size_t a, size_t b) {
-        size_t lo = (a < b) ? a : b;
-        size_t hi = (a < b) ? b : a;
+        size_t const lo = (a < b) ? a : b;
+        size_t const hi = (a < b) ? b : a;
         return (static_cast<uint64_t>(lo) << 32) | static_cast<uint64_t>(hi);
     }
 };
