@@ -103,7 +103,7 @@ TEST(DispAnalytical, SwitchingFunctionProperties) {
 
     // Smoothness: S(r)/r^6 should decrease monotonically for all r > MIN_DISTANCE
     double prev_weighted = 1e10;
-    constexpr int n_smooth = 68;  // r in [1.6, 5.0) step 0.05
+    constexpr int n_smooth = 69;  // r in [1.6, 5.0] step 0.05 (matches FP-drifted original)
     for (int i = 0; i < n_smooth; ++i) {
         const double r = 1.6 + i * 0.05;
         double const weighted = S(r) / std::pow(r, 6);

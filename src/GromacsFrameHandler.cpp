@@ -12,10 +12,9 @@
 
 namespace nmr {
 
-// nm → Å conversion is applied where TRR positions/velocities enter the
-// per-frame buffers (search for `* 10.0` against `frame.x[i]` etc.). The
-// named constant was removed 2026-05-23 as unused — every conversion in
-// this file is performed inline with the same literal.
+// nm → Å conversion factor applied at the TRR boundary (positions, box,
+// velocities). GROMACS stores in nm; the rest of the codebase uses Å.
+static constexpr double NM_TO_ANGSTROM = 10.0;
 
 
 GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)
@@ -145,7 +144,7 @@ bool GromacsFrameHandler::ReadNextFrame() {
     // FramePdbEmitter::BoxToCellParameters' contract.
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * 10.0;
+            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * NM_TO_ANGSTROM;
         }
     }
 
@@ -193,9 +192,9 @@ bool GromacsFrameHandler::ReadNextFrame() {
         for (std::size_t a = 0; a < pcount; ++a) {
             const std::size_t base = (pstart + a) * 3;
             protein_velocities_.emplace_back(
-                static_cast<double>(raw_v_[base + 0]) * 10.0,
-                static_cast<double>(raw_v_[base + 1]) * 10.0,
-                static_cast<double>(raw_v_[base + 2]) * 10.0);
+                static_cast<double>(raw_v_[base + 0]) * NM_TO_ANGSTROM,
+                static_cast<double>(raw_v_[base + 1]) * NM_TO_ANGSTROM,
+                static_cast<double>(raw_v_[base + 2]) * NM_TO_ANGSTROM);
         }
     }
 

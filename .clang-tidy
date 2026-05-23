@@ -99,6 +99,7 @@ Checks: >
 
   -performance-avoid-endl,
   -performance-enum-size,
+  -performance-inefficient-string-concatenation,
 
   -readability-avoid-nested-conditional-operator,
   -readability-braces-around-statements,  # alias of google-readability-braces-around-statements; keep one alias only

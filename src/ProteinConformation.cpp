@@ -46,13 +46,8 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
                 if (!attached.empty()) attached += ", ";
                 attached += kv.second->Name();
             }
-            std::string msg;
-            msg.reserve(name.size() + attached.size() + 64);
-            msg.append("rejected ");
-            msg.append(name);
-            msg.append(": missing dependency. Attached: [");
-            msg.append(attached);
-            msg.append("]");
+            const std::string msg = "rejected " + name +
+                                    ": missing dependency. Attached: [" + attached + "]";
             OperationLog::Log(OperationLog::Level::Warning, LogResultAttach, "AttachResult", msg);
             return false;
         }

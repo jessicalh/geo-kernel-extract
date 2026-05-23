@@ -207,9 +207,9 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
                 parent_sp2 = true;
             } else if (parent == res.N) {
                 parent_sp2 = true;
-}
-// NOLINTEND(bugprone-branch-clone)
-ca.parent_is_sp2 = parent_sp2;
+            }
+            // NOLINTEND(bugprone-branch-clone)
+            ca.parent_is_sp2 = parent_sp2;
         } else {
             ca.parent_is_sp2 = false;
         }

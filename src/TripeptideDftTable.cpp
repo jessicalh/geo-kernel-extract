@@ -409,10 +409,7 @@ static std::string RedactDsnForLog(const std::string& dsn) {
             ? std::string("<redacted>")
             : std::string(o->val);
         if (!out.empty()) out += ' ';
-        out.append(key);
-        out.append("='");
-        out.append(val);
-        out.append("'");
+        out += key + "='" + val + "'";
     }
     PQconninfoFree(opts);
     return out;

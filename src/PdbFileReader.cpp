@@ -217,10 +217,6 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
 }
 
 
-// (UniqueTempPath removed 2026-05-23 — dead since
-// RuntimeEnvironment::TempFilePath took over the unique-temp-path duty.)
-
-
 // ============================================================================
 // BuildFromPdb: the public entry point.
 //

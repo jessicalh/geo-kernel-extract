@@ -300,11 +300,7 @@ private:
 
         int valid = 0;
         for (const auto& name : files) {
-            std::string path;
-            path.reserve(dir.size() + 1 + name.size());
-            path.append(dir);
-            path.append("/");
-            path.append(name);
+            const std::string path = dir + "/" + name;
             auto sz = fs::file_size(path);
             EXPECT_GT(sz, 0u) << name << " is empty";
             EXPECT_TRUE(VerifyNpyMagic(path)) << name << " has bad NPY magic";
@@ -350,16 +346,8 @@ private:
 
         for (const auto& f : blessed_files) {
             if (!run_files.count(f)) continue;
-            std::string a;
-            a.reserve(run_dir.size() + 1 + f.size());
-            a.append(run_dir);
-            a.append("/");
-            a.append(f);
-            std::string b;
-            b.reserve(blessed_dir.size() + 1 + f.size());
-            b.append(blessed_dir);
-            b.append("/");
-            b.append(f);
+            const std::string a = run_dir + "/" + f;
+            const std::string b = blessed_dir + "/" + f;
 
             std::string stem = f;
             auto dot = stem.rfind(".npy");
