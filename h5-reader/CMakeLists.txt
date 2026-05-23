@@ -2,16 +2,15 @@
 # trajectory.h5 + 5-NPY sidecar format produced by `nmr_extract --trajectory`
 # post-2026-05-13.
 #
-# Builds independently of the nmr_shielding library.
-#
-# HighFive is header-only and pointed at via HIGHFIVE_INCLUDE_DIR
-# (vendored at ../extern/HighFive/include). HDF5 C library is a system
-# install. Eigen3 + Qt6 are system-found.
-#
-# Runs on Linux, macOS, and Windows. See CMakePresets.json.
+# Builds independently of the nmr_shielding library on Linux, macOS, and
+# Windows. Per-platform dependency paths and target flags live in
+# cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake; find_package() calls in
+# cmake/DiscoverDeps.cmake. See notes/BUILD_LAYOUT_PLAN_2026-05-23.md.
 
 cmake_minimum_required(VERSION 3.21)
 project(h5reader LANGUAGES CXX)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,47 +31,11 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
-# Dependencies
+# Platform module + dependency discovery
 # ============================================================================
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS
-    Widgets
-    OpenGLWidgets
-    Network
-    Charts
-)
-
-find_package(VTK 9 REQUIRED COMPONENTS
-    IOChemistry
-    DomainsChemistry
-    DomainsChemistryOpenGL2
-    FiltersSources
-    FiltersCore
-    FiltersGeneral
-    RenderingOpenGL2
-    RenderingCore
-    RenderingAnnotation
-    GUISupportQt
-    InteractionStyle
-    ImagingHybrid
-    FiltersFlowPaths
-    CommonColor
-)
-
-find_package(HDF5 REQUIRED COMPONENTS C)
-
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
-
-# HighFive — header-only, vendored in the parent tree.
-set(HIGHFIVE_INCLUDE_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../extern/HighFive/include"
-    CACHE PATH "Path to HighFive include directory")
-if(NOT EXISTS "${HIGHFIVE_INCLUDE_DIR}/highfive/H5File.hpp")
-    message(FATAL_ERROR
-        "HighFive headers not found at ${HIGHFIVE_INCLUDE_DIR}. "
-        "Clone https://github.com/BlueBrain/HighFive into extern/HighFive "
-        "or pass -DHIGHFIVE_INCLUDE_DIR=...")
-endif()
+include(Platform-${CMAKE_SYSTEM_NAME})
+include(DiscoverDeps)
 
 # ============================================================================
 # Target
@@ -191,14 +154,6 @@ target_include_directories(h5reader PRIVATE
     ${HIGHFIVE_INCLUDE_DIR}
 )
 
-# Hard-won include-order fix from the existing viewer. HighFive picks
-# H5Dvlen_reclaim vs H5Treclaim from the HDF5 header version it sees;
-# system 1.10 vs micromamba 1.14 mismatch causes link failures. Prepend
-# the system 1.10 include path.
-if(UNIX AND NOT APPLE AND EXISTS /usr/include/hdf5/serial)
-    target_include_directories(h5reader BEFORE PRIVATE /usr/include/hdf5/serial)
-endif()
-
 target_link_libraries(h5reader PRIVATE
     Qt6::Widgets
     Qt6::OpenGLWidgets
@@ -214,22 +169,13 @@ target_link_libraries(h5reader PRIVATE
 # renders nothing." DO NOT REMOVE.
 vtk_module_autoinit(TARGETS h5reader MODULES ${VTK_LIBRARIES})
 
-# Platform-conditional crash-capture linkage.
-target_link_libraries(h5reader PRIVATE ${CMAKE_DL_LIBS})
-if(WIN32)
-    target_link_libraries(h5reader PRIVATE Dbghelp)
-endif()
+# Platform-specific tweaks: warning flags, crash-handler libs, HDF5
+# include-order fix on Linux, etc. Defined in
+# cmake/Platform-${CMAKE_SYSTEM_NAME}.cmake.
+h5reader_apply_platform_target_settings(h5reader)
 
 target_compile_definitions(h5reader PRIVATE
     H5READER_VERSION="0.5.0-rewrite"
 )
-
-# Compiler hygiene
-if(MSVC)
-    target_compile_options(h5reader PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(h5reader PRIVATE
-        -Wall -Wextra -Wpedantic -Wno-unused-parameter)
-endif()
 
 message(STATUS "h5reader: Qt ${Qt6_VERSION}, VTK ${VTK_VERSION}, HDF5 ${HDF5_VERSION}")
