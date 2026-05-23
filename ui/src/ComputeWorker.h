@@ -21,8 +21,8 @@
 #include <string>
 
 #include "JobSpec.h"
+#include "TrajectoryH5.h"  // typed read boundary for trajectory.h5 (read-only)
 #include "Types.h"
-#include "analysis_file.h"   // standalone H5 reader (read-only)
 
 namespace nmr {
 class Protein;
@@ -59,27 +59,28 @@ struct ViewerFieldGrid {
 
 // AnalysisBinding: explicit per-atom correspondence between the library
 // Protein (built from the ns0 PDB, or whatever the mode loaded) and the
-// analysis H5.  For every H5 produced by the frozen extraction pipeline,
-// the atom ordering matches BuildFromProtonatedPdb on the matching ns0
-// snapshot — both derive from the same GROMACS system.  `libToH5` is
-// identity today and is the ONE place that fact is declared.  If a
-// future pipeline emits a non-identity ordering, the mapping is learned
-// here and every read site (`H5IndexFor`) stays correct without change.
+// trajectory H5 read via TrajectoryH5. For every H5 produced by the
+// extraction pipeline the atom ordering matches BuildFromProtonatedPdb
+// on the matching ns0 snapshot — both derive from the same GROMACS
+// system. `libToH5` is identity today and is the ONE place that fact
+// is declared. If a future pipeline emits non-identity ordering, the
+// mapping is learned here and every read site (`H5IndexFor`) stays
+// correct without change.
 //
-// Read-side contract.  The viewer never writes H5 or re-runs extraction.
+// Read-side contract. The viewer never writes H5 or re-runs extraction.
 struct AnalysisBinding {
-    std::shared_ptr<const AnalysisFile> h5;   // null if no H5 loaded
+    std::shared_ptr<const TrajectoryH5> h5;       // null if no H5 loaded
     std::vector<size_t>                 libToH5;  // currently identity [0..N-1]
 
     struct NameMismatch {
         size_t       idx;
-        std::string  lib;   // protein.AtomAt(idx).pdb_atom_name (ff14SB)
-        std::string  h5;    // h5.atoms.atom_name[idx]          (CHARMM)
+        std::string lib;  // protein.AtomAt(idx).pdb_atom_name (viewer side)
+        std::string h5;   // h5->AtomNameAt(idx)               (writer side)
     };
     std::vector<NameMismatch> nameMismatches;  // informational; logged at bind
 
     // libToH5 is populated together with h5 or not at all, so the null
-    // check alone expresses validity.  No defensive two-part test.
+    // check alone expresses validity. No defensive two-part test.
     bool   Valid()              const { return h5 != nullptr; }
     size_t H5IndexFor(size_t i) const { return libToH5[i]; }
 };
@@ -110,7 +111,7 @@ public:
     explicit ComputeWorker(nmr::Session& session, QObject* parent = nullptr);
 
 public slots:
-    void computeAll(nmr::JobSpec spec);
+    void computeAll(const nmr::JobSpec& spec);
     void cancel();
 
 signals:

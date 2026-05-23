@@ -78,11 +78,11 @@ void RestServer::onReadyRead() {
     if (!socket) return;
 
     while (socket->canReadLine()) {
-        QByteArray line = socket->readLine().trimmed();
+        QByteArray const line = socket->readLine().trimmed();
         if (line.isEmpty()) continue;
 
         QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(line, &err);
+        QJsonDocument const doc = QJsonDocument::fromJson(line, &err);
         if (err.error != QJsonParseError::NoError || !doc.isObject()) {
             QJsonObject resp;
             resp["ok"] = false;
@@ -91,8 +91,25 @@ void RestServer::onReadyRead() {
             continue;
         }
 
-        QJsonObject result = dispatch(doc.object());
+        QJsonObject const result = dispatch(doc.object());
         sendResponse(socket, result);
+
+        // cmdQuit sets shutdown_after_reply_. After sendResponse queues
+        // the reply bytes on the socket, kick disconnectFromHost which
+        // Qt documents as "If there is pending data waiting to be
+        // written, QTcpSocket will enter ClosingState and wait until
+        // all data has been written. Eventually, it will enter
+        // UnconnectedState and emit the disconnected() signal."
+        //
+        // The existing onDisconnected() slot (connected at socket
+        // accept) sees the shutdown flag and queues QCoreApplication
+        // ::quit via QueuedConnection — by then the bytes are out, the
+        // socket is closed, and quit can fire cleanly without racing
+        // the write. No new connection needed; no timer; no sync wait.
+        if (shutdown_after_reply_) {
+            socket->disconnectFromHost();
+            return;
+        }
     }
 }
 
@@ -102,17 +119,28 @@ void RestServer::onDisconnected() {
         clients_.removeAll(socket);
         socket->deleteLater();
     }
+    // If cmdQuit set the shutdown flag, the disconnect we just
+    // processed was triggered by RestServer::onReadyRead's
+    // socket->disconnectFromHost() AFTER the reply bytes were queued.
+    // The write buffer has drained (per Qt's ClosingState →
+    // UnconnectedState contract) so the reply is on the wire and quit
+    // can fire cleanly. Queued invocation lets the current slot finish
+    // (including the deleteLater above) before quit walks the event
+    // loop.
+    if (shutdown_after_reply_) {
+        QMetaObject::invokeMethod(qApp, &QCoreApplication::quit, Qt::QueuedConnection);
+    }
 }
 
 void RestServer::sendResponse(QTcpSocket* socket, const QJsonObject& response) {
-    QJsonDocument doc(response);
+    QJsonDocument const doc(response);
     socket->write(doc.toJson(QJsonDocument::Compact));
     socket->write("\n");
     socket->flush();
 }
 
 QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
-    QString action = cmd["cmd"].toString();
+    QString const action = cmd["cmd"].toString();
 
     if (action == "status")           return cmdStatus();
     if (action == "load_pdb")         return cmdLoadPdb(cmd);
@@ -137,10 +165,15 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
     if (action == "list_rings")       return cmdListRings(cmd);
     if (action == "get_log")          return cmdGetLog(cmd);
     if (action == "export_features")  return cmdExportFeatures(cmd);
-    if (action == "atom_dump")
+    if (action == "atom_dump") {
         return cmdAtomDump(cmd);
-    if (action == "list_atoms")
+    }
+    if (action == "list_atoms") {
         return cmdListAtoms(cmd);
+    }
+    if (action == "quit") {
+        return cmdQuit();
+    }
 
     QJsonObject resp;
     resp["ok"] = false;
@@ -149,6 +182,21 @@ QJsonObject RestServer::dispatch(const QJsonObject& cmd) {
 }
 
 // ---- Command implementations ----
+
+// Polite shutdown — flip the flag, return the reply. onReadyRead()
+// observes the flag after sendResponse() has queued the bytes on the
+// socket's write buffer and drives the disconnected → quit signal
+// chain (no timers, no sync waits). main_viewer.cpp's `aboutToQuit`
+// then triggers MainWindow::shutdown to stop timers, workers, VTK.
+QJsonObject RestServer::cmdQuit() {
+    shutdown_after_reply_ = true;
+    QJsonObject resp;
+    resp["ok"] = true;
+    QJsonObject result;
+    result["message"] = "shutting down";
+    resp["result"] = result;
+    return resp;
+}
 
 QJsonObject RestServer::cmdStatus() {
     QJsonObject resp;
@@ -167,10 +215,10 @@ QJsonObject RestServer::cmdStatus() {
     auto& protein = mainWindow_->protein_;
     if (protein) {
         result["protein"] = QString::fromStdString(mainWindow_->currentProteinId_);
-        result["n_atoms"] = (int)protein->AtomCount();
-        result["n_bonds"] = (int)protein->BondCount();
-        result["n_rings"] = (int)protein->RingCount();
-        result["n_residues"] = (int)protein->ResidueCount();
+        result["n_atoms"] = static_cast<int>(protein->AtomCount());
+        result["n_bonds"] = static_cast<int>(protein->BondCount());
+        result["n_rings"] = static_cast<int>(protein->RingCount());
+        result["n_residues"] = static_cast<int>(protein->ResidueCount());
     } else {
         result["protein"] = "";
         result["n_atoms"] = 0;
@@ -180,15 +228,16 @@ QJsonObject RestServer::cmdStatus() {
     }
 
     result["overlay_mode"] = 0;  // overlay modes removed
-    result["n_field_grids"] = (int)mainWindow_->fieldGrids_.size();
-    result["n_butterfly_grids"] = (int)mainWindow_->butterflyFields_.size();
+    result["n_field_grids"] = static_cast<int>(mainWindow_->fieldGrids_.size());
+    result["n_butterfly_grids"] = static_cast<int>(mainWindow_->butterflyFields_.size());
     result["field_grid_overlay"] = (mainWindow_->fieldGridOverlay_ != nullptr);
     result["butterfly_overlay"] = (mainWindow_->butterflyOverlay_ != nullptr);
     if (!mainWindow_->fieldGrids_.empty()) {
-        double gmin = 1e30, gmax = -1e30;
+        double gmin = 1e30;
+        double gmax = -1e30;
         int nz = 0;
         for (const auto& g : mainWindow_->fieldGrids_) {
-            for (double v : g.T0) {
+            for (double const v : g.T0) {
                 if (v < gmin) gmin = v;
                 if (v > gmax) gmax = v;
                 if (std::abs(v) > 1e-10) nz++;
@@ -203,7 +252,7 @@ QJsonObject RestServer::cmdStatus() {
 }
 
 QJsonObject RestServer::cmdLoadPdb(const QJsonObject& cmd) {
-    QString path = cmd["path"].toString();
+    QString const path = cmd["path"].toString();
     if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
@@ -217,7 +266,7 @@ QJsonObject RestServer::cmdLoadPdb(const QJsonObject& cmd) {
 QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
     // Deprecated: use --orca --root or --mutant --wt/--ala instead.
     // For REST backwards compatibility, treat as a PDB load of the first .pdb found.
-    QString path = cmd["path"].toString();
+    QString const path = cmd["path"].toString();
     if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
@@ -230,14 +279,14 @@ QJsonObject RestServer::cmdLoadProteinDir(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdSetOverlay(const QJsonObject& cmd) {
-    QString mode = cmd["mode"].toString();
+    QString const mode = cmd["mode"].toString();
     // Overlay modes removed — per-calculator visualizations replace them
     return QJsonObject{{"ok", true}, {"result", QJsonObject{{"mode", "none"},
         {"note", "overlay modes removed; use per-calculator toggles"}}}};
 }
 
 QJsonObject RestServer::cmdSetRenderMode(const QJsonObject& cmd) {
-    QString mode = cmd["mode"].toString();
+    QString const mode = cmd["mode"].toString();
     static const QMap<QString, int> modes = {
         {"ball_stick", 0}, {"stick", 1}, {"liquorice", 1}
     };
@@ -252,7 +301,7 @@ QJsonObject RestServer::cmdSetRenderMode(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdScreenshot(const QJsonObject& cmd) {
-    QString path = cmd["path"].toString();
+    QString const path = cmd["path"].toString();
     if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
     }
@@ -279,8 +328,8 @@ QJsonObject RestServer::cmdScreenshot(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdOrbit(const QJsonObject& cmd) {
-    double azimuth = cmd.value("azimuth").toDouble(0);
-    double elevation = cmd.value("elevation").toDouble(0);
+    double const azimuth = cmd.value("azimuth").toDouble(0);
+    double const elevation = cmd.value("elevation").toDouble(0);
 
     auto* camera = mainWindow_->renderer_->GetActiveCamera();
     camera->Azimuth(azimuth);
@@ -305,7 +354,7 @@ QJsonObject RestServer::cmdSetCalculators(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdShowRings(const QJsonObject& cmd) {
-    bool visible = cmd["visible"].toBool(true);
+    bool const visible = cmd["visible"].toBool(true);
     mainWindow_->showRingsCheck_->setChecked(visible);
     mainWindow_->onShowRingsToggled(visible);
     mainWindow_->renderWindow_->Render();
@@ -313,7 +362,7 @@ QJsonObject RestServer::cmdShowRings(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdShowBonds(const QJsonObject& cmd) {
-    bool visible = cmd["visible"].toBool(true);
+    bool const visible = cmd["visible"].toBool(true);
     mainWindow_->showPeptideBondsCheck_->setChecked(visible);
     mainWindow_->onShowPeptideBondsToggled(visible);
     mainWindow_->renderWindow_->Render();
@@ -321,7 +370,7 @@ QJsonObject RestServer::cmdShowBonds(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdShowButterfly(const QJsonObject& cmd) {
-    bool visible = cmd["visible"].toBool(true);
+    bool const visible = cmd["visible"].toBool(true);
     mainWindow_->showButterflyCheck_->setChecked(visible);
     mainWindow_->onShowButterflyToggled(visible);
     mainWindow_->renderWindow_->Render();
@@ -329,24 +378,24 @@ QJsonObject RestServer::cmdShowButterfly(const QJsonObject& cmd) {
 }
 
 QJsonObject RestServer::cmdSetGlyphScale(const QJsonObject& cmd) {
-    double scale = cmd["scale"].toDouble(0.5);
-    int sliderVal = static_cast<int>(scale * 100);
+    double const scale = cmd["scale"].toDouble(0.5);
+    int const sliderVal = static_cast<int>(scale * 100);
     mainWindow_->glyphScaleSlider_->setValue(sliderVal);
     mainWindow_->renderWindow_->Render();
     return QJsonObject{{"ok", true}};
 }
 
 QJsonObject RestServer::cmdSetOpacity(const QJsonObject& cmd) {
-    double opacity = cmd["value"].toDouble(0.7);
-    int sliderVal = static_cast<int>(opacity * 100);
+    double const opacity = cmd["value"].toDouble(0.7);
+    int const sliderVal = static_cast<int>(opacity * 100);
     mainWindow_->opacitySlider_->setValue(sliderVal);
     mainWindow_->renderWindow_->Render();
     return QJsonObject{{"ok", true}};
 }
 
 QJsonObject RestServer::cmdSetIsoThreshold(const QJsonObject& cmd) {
-    double threshold = cmd["value"].toDouble(0.1);
-    int sliderVal = static_cast<int>(threshold * 100);
+    double const threshold = cmd["value"].toDouble(0.1);
+    int const sliderVal = static_cast<int>(threshold * 100);
     mainWindow_->isoThresholdSlider_->setValue(sliderVal);
     mainWindow_->onIsoThresholdChanged();
     return QJsonObject{{"ok", true}};
@@ -354,23 +403,26 @@ QJsonObject RestServer::cmdSetIsoThreshold(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdShowFieldGrid(const QJsonObject& cmd) {
     if (cmd.contains("shielded")) {
-        bool vis = cmd["shielded"].toBool(true);
+        bool const vis = cmd["shielded"].toBool(true);
         mainWindow_->showFieldGridCheck_->setChecked(vis);
-        if (mainWindow_->fieldGridOverlay_)
+        if (mainWindow_->fieldGridOverlay_) {
             mainWindow_->fieldGridOverlay_->setShieldedVisible(vis);
+        }
     }
     if (cmd.contains("deshielded")) {
-        bool vis = cmd["deshielded"].toBool(true);
+        bool const vis = cmd["deshielded"].toBool(true);
         mainWindow_->showDeshieldedCheck_->setChecked(vis);
-        if (mainWindow_->fieldGridOverlay_)
+        if (mainWindow_->fieldGridOverlay_) {
             mainWindow_->fieldGridOverlay_->setDeshieldedVisible(vis);
+        }
     }
     if (!cmd.contains("shielded") && !cmd.contains("deshielded")) {
-        bool vis = cmd["visible"].toBool(true);
+        bool const vis = cmd["visible"].toBool(true);
         mainWindow_->showFieldGridCheck_->setChecked(vis);
         mainWindow_->showDeshieldedCheck_->setChecked(vis);
-        if (mainWindow_->fieldGridOverlay_)
+        if (mainWindow_->fieldGridOverlay_) {
             mainWindow_->fieldGridOverlay_->setVisible(vis);
+        }
     }
     mainWindow_->renderWindow_->Render();
     return QJsonObject{{"ok", true}};
@@ -378,7 +430,9 @@ QJsonObject RestServer::cmdShowFieldGrid(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdGetCamera(const QJsonObject&) {
     auto* camera = mainWindow_->renderer_->GetActiveCamera();
-    double pos[3], foc[3], up[3];
+    double pos[3];
+    double foc[3];
+    double up[3];
     camera->GetPosition(pos);
     camera->GetFocalPoint(foc);
     camera->GetViewUp(up);
@@ -414,12 +468,14 @@ QJsonObject RestServer::cmdSetCamera(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdLookAtRing(const QJsonObject& cmd) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
-    int ringIdx = cmd["ring"].toInt(-1);
-    if (ringIdx < 0 || ringIdx >= (int)protein->RingCount())
+    int const ringIdx = cmd["ring"].toInt(-1);
+    if (ringIdx < 0 || ringIdx >= static_cast<int>(protein->RingCount())) {
         return QJsonObject{{"ok", false}, {"error", "invalid ring index"}};
+    }
 
     const auto& conf = protein->Conformation();
     const auto& geo = conf.ring_geometries[ringIdx];
@@ -429,14 +485,14 @@ QJsonObject RestServer::cmdLookAtRing(const QJsonObject& cmd) {
     Vec3 normal = geo.normal.normalized();
 
     // Build orthonormal basis in ring plane
-    Vec3 arbitrary = (std::abs(normal.x()) < 0.9) ? Vec3(1,0,0) : Vec3(0,1,0);
-    Vec3 u = normal.cross(arbitrary).normalized();
-    Vec3 v = normal.cross(u);
+    Vec3 const arbitrary = (std::abs(normal.x()) < 0.9) ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
+    Vec3 const u = normal.cross(arbitrary).normalized();
+    Vec3 const v = normal.cross(u);
 
     // View direction: default "side" (perpendicular to normal, sees butterfly lobes)
     // "top" looks down the normal, "edge" looks along the other in-plane axis
-    QString view = cmd.value("view").toString("side");
-    double distance = cmd.value("distance").toDouble(15.0);
+    QString const view = cmd.value("view").toString("side");
+    double const distance = cmd.value("distance").toDouble(15.0);
 
     Vec3 camDir;
     Vec3 upVec;
@@ -472,20 +528,23 @@ QJsonObject RestServer::cmdLookAtRing(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdLookAtAtom(const QJsonObject& cmd) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
-    int atomIdx = cmd["atom"].toInt(-1);
-    if (atomIdx < 0 || atomIdx >= (int)protein->AtomCount())
+    int const atomIdx = cmd["atom"].toInt(-1);
+    if (atomIdx < 0 || atomIdx >= static_cast<int>(protein->AtomCount())) {
         return QJsonObject{{"ok", false}, {"error", "invalid atom index"}};
+    }
 
     const auto& conf = protein->Conformation();
     Vec3 pos = conf.AtomAt(atomIdx).Position();
-    double distance = cmd.value("distance").toDouble(15.0);
+    double const distance = cmd.value("distance").toDouble(15.0);
 
     // Keep current camera direction, just re-center on this atom
     auto* camera = mainWindow_->renderer_->GetActiveCamera();
-    double camPos[3], foc[3];
+    double camPos[3];
+    double foc[3];
     camera->GetPosition(camPos);
     camera->GetFocalPoint(foc);
     Vec3 dir(camPos[0] - foc[0], camPos[1] - foc[1], camPos[2] - foc[2]);
@@ -512,8 +571,9 @@ QJsonObject RestServer::cmdLookAtAtom(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdListRings(const QJsonObject&) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
     const auto& conf = protein->Conformation();
     QJsonArray rings;
@@ -522,7 +582,7 @@ QJsonObject RestServer::cmdListRings(const QJsonObject&) {
         const auto& geo = conf.ring_geometries[i];
         const auto& res = protein->ResidueAt(ring.parent_residue_index);
         QJsonObject r;
-        r["index"] = (int)i;
+        r["index"] = static_cast<int>(i);
         r["type"] = QString::fromStdString(ring.TypeName());
         r["residue"] = QString("%1-%2").arg(
             QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
@@ -537,16 +597,17 @@ QJsonObject RestServer::cmdListRings(const QJsonObject&) {
 }
 
 QJsonObject RestServer::cmdGetLog(const QJsonObject& cmd) {
-    QString text = mainWindow_->logText_->toPlainText();
+    QString const text = mainWindow_->logText_->toPlainText();
     QStringList all = text.split('\n');
-    int total = all.size();
+    int const total = all.size();
 
     // "lines":N — last N lines (convenience for tail)
     // "first":F, "last":L — specific range [F, L] inclusive, 0-based
     // No args — everything
-    int first = 0, last = total - 1;
+    int first = 0;
+    int last = total - 1;
     if (cmd.contains("lines")) {
-        int n = cmd["lines"].toInt(50);
+        int const n = cmd["lines"].toInt(50);
         first = std::max(0, total - n);
     } else if (cmd.contains("first") || cmd.contains("last")) {
         first = cmd.value("first").toInt(0);
@@ -556,8 +617,9 @@ QJsonObject RestServer::cmdGetLog(const QJsonObject& cmd) {
     last = std::max(first, std::min(last, total - 1));
 
     QJsonArray lines;
-    for (int i = first; i <= last; ++i)
+    for (int i = first; i <= last; ++i) {
         lines.append(all[i]);
+    }
 
     QJsonObject result;
     result["total_lines"] = total;
@@ -570,14 +632,16 @@ QJsonObject RestServer::cmdGetLog(const QJsonObject& cmd) {
 
 QJsonObject RestServer::cmdExportFeatures(const QJsonObject& cmd) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
-    QString path = cmd["path"].toString();
-    if (path.isEmpty())
+    QString const path = cmd["path"].toString();
+    if (path.isEmpty()) {
         return QJsonObject{{"ok", false}, {"error", "missing 'path'"}};
+    }
 
-    std::string outDir = path.toStdString();
+    std::string const outDir = path.toStdString();
     int totalArrays = 0;
 
     std::filesystem::create_directories(outDir);
@@ -859,10 +923,11 @@ QJsonObject RingMembershipJson(const RingMembership& m) {
 
 QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
-    int atomIdx = cmd.value("atom").toInt(-1);
+    int const atomIdx = cmd.value("atom").toInt(-1);
     if (atomIdx < 0 || atomIdx >= static_cast<int>(protein->AtomCount())) {
         return QJsonObject{
             {"ok", false},
@@ -928,12 +993,15 @@ QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
             QJsonObject rp;
             rp["in_any_ring"] = sem.ring_position.IsInAnyRing();
             rp["membership_count"] = sem.ring_position.MembershipCount();
-            if (sem.ring_position.HasPrimaryRing())
+            if (sem.ring_position.HasPrimaryRing()) {
                 rp["primary"] = RingMembershipJson(sem.ring_position.primary);
-            if (sem.ring_position.HasSecondaryRing())
+            }
+            if (sem.ring_position.HasSecondaryRing()) {
                 rp["secondary"] = RingMembershipJson(sem.ring_position.secondary);
-            if (sem.ring_position.HasTertiaryRing())
+            }
+            if (sem.ring_position.HasTertiaryRing()) {
                 rp["tertiary"] = RingMembershipJson(sem.ring_position.tertiary);
+            }
             sub["ring_position"] = rp;
 
             QJsonObject ps;
@@ -1026,8 +1094,9 @@ QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
         e["dims"] = static_cast<int>(AIMNET2_AIM_DIMS);
         e["l2_squared"] = n2;
         QJsonArray first4;
-        for (size_t k = 0; k < 4; ++k)
+        for (size_t k = 0; k < 4; ++k) {
             first4.append(static_cast<double>(ca.aimnet2_aim[k]));
+        }
         e["first_4"] = first4;
         result["aimnet2_embedding"] = e;
     }
@@ -1149,9 +1218,10 @@ QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
         // covalent: every bond this atom participates in
         {
             QJsonArray arr;
-            for (size_t bi : id.bond_indices) {
-                if (bi >= protein->BondCount())
+            for (size_t const bi : id.bond_indices) {
+                if (bi >= protein->BondCount()) {
                     continue;  // defensive
+                }
                 const Bond& bond = protein->BondAt(bi);
                 const size_t other_idx = (bond.atom_index_a == static_cast<size_t>(atomIdx)) ? bond.atom_index_b
                                                                                              : bond.atom_index_a;
@@ -1179,8 +1249,9 @@ QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
         {
             QJsonArray arr;
             for (const auto& bn : ca.bond_neighbours) {
-                if (bn.bond_index >= protein->BondCount())
+                if (bn.bond_index >= protein->BondCount()) {
                     continue;
+                }
                 const Bond& bond = protein->BondAt(bn.bond_index);
                 QJsonObject b;
                 b["bond_index"] = static_cast<int>(bn.bond_index);
@@ -1232,13 +1303,94 @@ QJsonObject RestServer::cmdAtomDump(const QJsonObject& cmd) {
         result["dssp"] = d;
     }
 
+    // Trajectory H5 companion — present iff --analysis-h5 supplied AND
+    // the identity check passed at ComputeWorker Phase 2b. Section
+    // absent (not null) otherwise; consumers gate on .get("h5"). One
+    // sub-key per TR group in the file (sparse-tolerant: absent groups
+    // simply don't appear in the payload).
+    {
+        const auto& binding = mainWindow_->analysisBinding_;
+        if (binding.Valid()) {
+            const auto& h5 = *binding.h5;
+            const size_t h5idx = binding.H5IndexFor(static_cast<size_t>(atomIdx));
+
+            QJsonObject h5j;
+            h5j["protein_id"] = QString::fromStdString(h5.ProteinId());
+            h5j["n_atoms"] = static_cast<int>(h5.AtomCount());
+            h5j["n_frames"] = static_cast<int>(h5.FrameCount());
+            h5j["frame_time_ps_0"] = h5.FrameTimePs(0);
+            h5j["h5_atom_index"] = static_cast<int>(h5idx);
+            h5j["h5_atom_name"] = QString::fromStdString(h5.AtomNameAt(h5idx));
+            h5j["h5_element"] = h5.ElementAt(h5idx);
+
+            QJsonArray groups;
+            for (const auto& g : h5.GroupsPresent()) {
+                groups.append(QString::fromStdString(g));
+            }
+            h5j["groups_present"] = groups;
+
+            auto addShieldingWelford = [&](const QString& key, std::optional<TrajectoryH5::ShieldingWelfordRow> w) {
+                if (!w)
+                    return;
+                QJsonObject s;
+                s["t0_mean"] = w->t0.mean;
+                s["t0_std"] = w->t0.std;
+                s["t2magnitude_mean"] = w->t2magnitude.mean;
+                s["t2magnitude_std"] = w->t2magnitude.std;
+                h5j[key] = s;
+            };
+            auto addShieldingFrame0 = [&](const QString& key, std::optional<TrajectoryH5::ShieldingFrame0Row> f) {
+                if (!f)
+                    return;
+                QJsonObject s;
+                s["T0"] = f->T0;
+                s["T2_magnitude"] = f->T2_magnitude;
+                h5j[key] = s;
+            };
+
+            addShieldingWelford("bs_welford", h5.BsWelford(h5idx));
+            addShieldingWelford("hm_welford", h5.HmWelford(h5idx));
+            addShieldingWelford("mc_welford", h5.McWelford(h5idx));
+
+            addShieldingFrame0("bs_shielding_frame_0", h5.BsShieldingFrame0(h5idx));
+            addShieldingFrame0("hm_shielding_frame_0", h5.HmShieldingFrame0(h5idx));
+            addShieldingFrame0("mc_shielding_frame_0", h5.McShieldingFrame0(h5idx));
+            addShieldingFrame0("piquad_shielding_frame_0", h5.PiQuadShieldingFrame0(h5idx));
+            addShieldingFrame0("ringchi_shielding_frame_0", h5.RingChiShieldingFrame0(h5idx));
+            addShieldingFrame0("disp_shielding_frame_0", h5.DispShieldingFrame0(h5idx));
+            addShieldingFrame0("hbond_shielding_frame_0", h5.HBondShieldingFrame0(h5idx));
+
+            if (auto sw = h5.SasaWelford(h5idx)) {
+                h5j["sasa_welford"] = QJsonObject{{"mean", sw->sasa.mean}, {"std", sw->sasa.std}};
+            }
+            if (auto sf = h5.SasaFrame0(h5idx)) {
+                h5j["sasa_frame_0"] = *sf;
+            }
+            if (auto ew = h5.EeqWelford(h5idx)) {
+                h5j["eeq_welford"] = QJsonObject{{"mean", ew->charge.mean}, {"std", ew->charge.std}};
+            }
+            if (auto ac = h5.Aimnet2ChargeFrame0(h5idx)) {
+                h5j["aimnet2_charge_frame_0"] = *ac;
+            }
+            if (auto hc = h5.HBondCountWelford(h5idx)) {
+                h5j["hbond_count_welford"] = QJsonObject{{"mean", hc->count.mean}, {"std", hc->count.std}};
+            }
+            if (auto ef = h5.ApbsEfieldFrame0(h5idx)) {
+                h5j["apbs_efield_frame_0"] = QJsonObject{{"x", ef->x}, {"y", ef->y}, {"z", ef->z}};
+            }
+
+            result["h5"] = h5j;
+        }
+    }
+
     return QJsonObject{{"ok", true}, {"result", result}};
 }
 
 QJsonObject RestServer::cmdListAtoms(const QJsonObject& cmd) {
     auto& protein = mainWindow_->protein_;
-    if (!protein)
+    if (!protein) {
         return QJsonObject{{"ok", false}, {"error", "no protein loaded"}};
+    }
 
     const QJsonObject filter = cmd.value("filter").toObject();
     const QString fRole = filter.value("role").toString();
@@ -1265,29 +1417,39 @@ QJsonObject RestServer::cmdListAtoms(const QJsonObject& cmd) {
         const auto& ca = conf.AtomAt(i);
         const auto& res = protein->ResidueAt(id.residue_index);
 
-        if (!fRole.isEmpty() && fRole != NameForAtomRoleJ(ca.role))
+        if (!fRole.isEmpty() && fRole != NameForAtomRoleJ(ca.role)) {
             continue;
-        if (!fElement.isEmpty() && fElement != QString::fromStdString(SymbolForElement(id.element)))
+        }
+        if (!fElement.isEmpty() && fElement != QString::fromStdString(SymbolForElement(id.element))) {
             continue;
-        if (fResidueIdx >= 0 && static_cast<int>(id.residue_index) != fResidueIdx)
+        }
+        if (fResidueIdx >= 0 && static_cast<int>(id.residue_index) != fResidueIdx) {
             continue;
-        if (!fResidueType.isEmpty() && fResidueType != QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
+        }
+        if (!fResidueType.isEmpty() && fResidueType != QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type))) {
             continue;
-        if (fResidueSeq >= 0 && res.sequence_number != fResidueSeq)
+        }
+        if (fResidueSeq >= 0 && res.sequence_number != fResidueSeq) {
             continue;
-        if (hasIsAmideH && fIsAmideH != ca.is_amide_H)
+        }
+        if (hasIsAmideH && fIsAmideH != ca.is_amide_H) {
             continue;
-        if (hasIsMethyl && fIsMethyl != ca.is_methyl)
+        }
+        if (hasIsMethyl && fIsMethyl != ca.is_methyl) {
             continue;
+        }
 
         if (hasSubstrate) {
             const auto& sem = topo.SemanticAt(i);
-            if (hasInRing && fInRing != sem.ring_position.IsInAnyRing())
+            if (hasInRing && fInRing != sem.ring_position.IsInAnyRing()) {
                 continue;
-            if (!fPlanarGroup.isEmpty() && fPlanarGroup != NameForPlanarGroupKindJ(sem.planar_group))
+            }
+            if (!fPlanarGroup.isEmpty() && fPlanarGroup != NameForPlanarGroupKindJ(sem.planar_group)) {
                 continue;
-            if (!fPolarH.isEmpty() && fPolarH != NameForPolarHKindJ(sem.polar_h))
+            }
+            if (!fPolarH.isEmpty() && fPolarH != NameForPolarHKindJ(sem.polar_h)) {
                 continue;
+            }
         } else if (hasInRing || !fPlanarGroup.isEmpty() || !fPolarH.isEmpty()) {
             // Substrate filter requested but substrate not populated → no match
             continue;

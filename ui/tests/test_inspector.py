@@ -471,6 +471,143 @@ def check_shielding_signal(r: Reporter, dumps: list[dict]) -> None:
                 r.passes(f"{k}: {n_T0}/{len(dumps)} atoms with non-zero T0")
 
 
+def check_h5_coverage(r: Reporter, dumps: list[dict]) -> None:
+    """Trajectory H5 companion — section is sparse-tolerant.
+
+    The "h5" block on each atom_dump appears IFF the viewer was launched
+    with --analysis-h5 AND the identity check passed at Phase 2b. The
+    function never asserts — per feedback_log_overages_dont_assert it
+    reports + classifies (PASS / NOTE / WARN). Structural invariants
+    only WARN (h5 present on some atoms but not all = bug; missing
+    required keys when h5 present = bug).
+    """
+    section("Trajectory H5 companion")
+    n = len(dumps)
+    n_with_h5 = sum(1 for d in dumps if "h5" in d)
+    if n_with_h5 == 0:
+        r.note("no atom has an `h5` block — viewer was launched without "
+               "--analysis-h5 or the identity check failed")
+        return
+    if n_with_h5 != n:
+        r.warns(f"h5 block present on {n_with_h5}/{n} atoms — should be "
+                f"all or none; partial coverage indicates a binding bug")
+        return
+    r.passes(f"h5 block present on all {n} atoms")
+
+    # Shared structural invariants (read from atom 0; identity-checked).
+    h0 = dumps[0]["h5"]
+    required_meta = ["protein_id", "n_atoms", "n_frames",
+                     "frame_time_ps_0", "h5_atom_index", "h5_atom_name",
+                     "h5_element", "groups_present"]
+    missing = [k for k in required_meta if k not in h0]
+    if missing:
+        r.warns(f"h5 metadata missing on atom 0: {missing}")
+        return
+    r.passes("h5 metadata complete (protein_id, n_atoms, n_frames, "
+             "frame_time_ps_0, h5_atom_index, h5_atom_name, h5_element, "
+             "groups_present)")
+
+    # Atom-count cross-check.
+    if h0["n_atoms"] != n:
+        r.warns(f"h5.n_atoms ({h0['n_atoms']}) != REST list_atoms count ({n})")
+    else:
+        r.passes(f"h5.n_atoms ({n}) matches REST list_atoms count")
+
+    # Groups present is a non-empty list of strings (sparse-tolerant: any
+    # number of groups OK, but the inventory itself must be populated).
+    gp = h0["groups_present"]
+    if not isinstance(gp, list):
+        r.warns(f"groups_present is {type(gp).__name__}, expected list")
+    elif len(gp) == 0:
+        r.warns("groups_present is empty — H5 has no /trajectory/* groups?")
+    else:
+        r.passes(f"groups_present: {len(gp)} groups ({', '.join(gp[:5])}"
+                 f"{'…' if len(gp) > 5 else ''})")
+
+    # Per-key structural invariants: every present sub-key must have the
+    # documented shape. We classify by suffix.
+    welford_keys = {"bs_welford", "hm_welford", "mc_welford",
+                    "sasa_welford", "eeq_welford", "hbond_count_welford"}
+    f0_shielding_keys = {"bs_shielding_frame_0", "hm_shielding_frame_0",
+                         "mc_shielding_frame_0", "piquad_shielding_frame_0",
+                         "ringchi_shielding_frame_0", "disp_shielding_frame_0",
+                         "hbond_shielding_frame_0"}
+    f0_scalar_keys = {"sasa_frame_0", "aimnet2_charge_frame_0"}
+    f0_vec3_keys = {"apbs_efield_frame_0"}
+
+    present_sub = [k for k in h0 if k not in (set(required_meta) | {"groups_present"})]
+    n_welford = sum(1 for k in present_sub if k in welford_keys)
+    n_f0_shielding = sum(1 for k in present_sub if k in f0_shielding_keys)
+    n_f0_scalar = sum(1 for k in present_sub if k in f0_scalar_keys)
+    n_f0_vec3 = sum(1 for k in present_sub if k in f0_vec3_keys)
+    r.note(f"sub-keys on atom 0: {n_welford} welford, {n_f0_shielding} "
+           f"shielding frame-0, {n_f0_scalar} scalar frame-0, "
+           f"{n_f0_vec3} vec3 frame-0")
+
+    # Welford: each must have {t0_mean, t0_std, t2magnitude_mean,
+    # t2magnitude_std} for shielding rollups, or {mean, std} for scalar
+    # rollups (sasa, eeq, hbond_count).
+    for k in present_sub:
+        if k not in welford_keys:
+            continue
+        v = h0[k]
+        if k in ("bs_welford", "hm_welford", "mc_welford"):
+            need = {"t0_mean", "t0_std", "t2magnitude_mean", "t2magnitude_std"}
+        else:
+            need = {"mean", "std"}
+        miss = need - set(v.keys())
+        if miss:
+            r.warns(f"{k}: missing required keys {miss}")
+        else:
+            r.passes(f"{k}: has {sorted(v.keys())}")
+
+    # Shielding frame-0: each must have {T0, T2_magnitude}.
+    for k in present_sub:
+        if k not in f0_shielding_keys:
+            continue
+        v = h0[k]
+        miss = {"T0", "T2_magnitude"} - set(v.keys())
+        if miss:
+            r.warns(f"{k}: missing required keys {miss}")
+        else:
+            r.passes(f"{k}: {{T0={v['T0']:.5g}, "
+                     f"|T2|={v['T2_magnitude']:.5g}}}")
+
+    # Scalar frame-0: each must be a number.
+    for k in present_sub:
+        if k not in f0_scalar_keys:
+            continue
+        v = h0[k]
+        if not isinstance(v, (int, float)):
+            r.warns(f"{k}: expected number, got {type(v).__name__}")
+        else:
+            r.passes(f"{k}: {v:.5g}")
+
+    # Vec3 frame-0: each must have {x, y, z}.
+    for k in present_sub:
+        if k not in f0_vec3_keys:
+            continue
+        v = h0[k]
+        miss = {"x", "y", "z"} - set(v.keys())
+        if miss:
+            r.warns(f"{k}: missing required keys {miss}")
+        else:
+            mag = (v["x"] ** 2 + v["y"] ** 2 + v["z"] ** 2) ** 0.5
+            r.passes(f"{k}: |v|={mag:.5g}")
+
+    # Spot-check finiteness across the whole atom axis for one welford
+    # field (defensive against NaN-poisoning).
+    if "bs_welford" in h0:
+        n_finite = sum(1 for d in dumps
+                       if "bs_welford" in d.get("h5", {})
+                       and d["h5"]["bs_welford"]["t0_mean"] == d["h5"]["bs_welford"]["t0_mean"])
+        if n_finite == n:
+            r.passes(f"bs_welford.t0_mean finite on all {n} atoms")
+        else:
+            r.warns(f"bs_welford.t0_mean finite on {n_finite}/{n} atoms — "
+                    f"NaN spots")
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--host", default="127.0.0.1")
@@ -500,6 +637,7 @@ def main() -> int:
     check_larsen_hbond_coverage(r, dumps)
     check_bonds(r, dumps)
     check_shielding_signal(r, dumps)
+    check_h5_coverage(r, dumps)
     r.summary()
     # Always exit 0 — per feedback_log_overages_dont_assert, this is a
     # report tool, not a strict pass/fail gate. Errors are visible in

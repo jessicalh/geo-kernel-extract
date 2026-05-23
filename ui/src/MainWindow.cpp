@@ -333,15 +333,17 @@ void MainWindow::shutdown() {
 
     // 1. Stop all timers
     const auto timers = findChildren<QTimer*>();
-    for (auto* timer : timers)
+    for (auto* timer : timers) {
         timer->stop();
+    }
 
     // 2. Stop async workers
     cancelCompute();
 
     // 3. Finalize VTK before Qt tears down the GL context
-    if (renderWindow_)
+    if (renderWindow_) {
         renderWindow_->Finalize();
+    }
 
     udp_log("[lifecycle] shutdown() done\n");
 }
@@ -364,11 +366,10 @@ void MainWindow::setupMenuBar() {
 void MainWindow::exportFeatures() {
     if (!protein_) return;
 
-    QString dir = QFileDialog::getExistingDirectory(this, "Export Features",
-        QDir::currentPath());
+    QString const dir = QFileDialog::getExistingDirectory(this, "Export Features", QDir::currentPath());
     if (dir.isEmpty()) return;
 
-    std::string outDir = dir.toStdString();
+    std::string const outDir = dir.toStdString();
     int totalArrays = 0;
 
     std::filesystem::create_directories(outDir);
@@ -397,7 +398,7 @@ void MainWindow::setupUI() {
     renderWindow_->SetAlphaBitPlanes(1);
     renderWindow_->SetMultiSamples(0);  // MSAA off — conflicts with translucency; FXAA handles AA
 
-    vtkNew<vtkInteractorStyleTrackballCamera> style;
+    vtkNew<vtkInteractorStyleTrackballCamera> const style;
     renderWindow_->GetInteractor()->SetInteractorStyle(style);
 
     // Sidebar dock
@@ -430,7 +431,7 @@ void MainWindow::setupUI() {
         contentLayout->setSpacing(3);
 
         QObject::connect(header, &QPushButton::clicked, [header, content, title]() {
-            bool show = !content->isVisible();
+            bool const show = !content->isVisible();
             content->setVisible(show);
             header->setText(show ? QString("- %1").arg(title)
                                  : QString("+ %1").arg(title));
@@ -503,8 +504,8 @@ void MainWindow::setupUI() {
         currentScaleSlider_->setValue(35);      // default 0.35
         connect(currentScaleSlider_, &QSlider::sliderReleased, this, [this]() {
             if (fieldGridOverlay_ && !fieldGrids_.empty()) {
-                double opacity = currentScaleSlider_->value() / 100.0;
-                double threshold = isoThresholdSlider_->value() / 100.0;
+                double const opacity = currentScaleSlider_->value() / 100.0;
+                double const threshold = isoThresholdSlider_->value() / 100.0;
                 fieldGridOverlay_->setData(fieldGrids_, threshold, opacity, 0);
                 renderWindow_->Render();
             }
@@ -623,8 +624,9 @@ void MainWindow::setupUI() {
 
     auto isMulticast = [](const QString& host) {
         const QStringList parts = host.split('.');
-        if (parts.size() != 4)
+        if (parts.size() != 4) {
             return false;
+        }
         bool ok = false;
         const int first = parts[0].toInt(&ok);
         return ok && first >= 224 && first <= 239;
@@ -730,13 +732,13 @@ void MainWindow::loadMolecule() {
     isosurfaceOverlay_ = new IsosurfaceOverlay(renderer_);
     isosurfaceOverlayPass_ = new IsosurfaceOverlay(renderer_);
 
-    udp_log("[diag] VTK setup: %lld ms\n", (long long)timer.elapsed());
+    udp_log("[diag] VTK setup: %lld ms\n", static_cast<long long>(timer.elapsed()));
     timer.restart();
 
     renderer_->ResetCamera();
     udp_log("[diag] ResetCamera done, calling Render()\n");
     renderWindow_->Render();
-    udp_log("[diag] First render: %lld ms\n", (long long)timer.elapsed());
+    udp_log("[diag] First render: %lld ms\n", static_cast<long long>(timer.elapsed()));
 
     statusLabel_->setText(QString("Loaded %1 — computing features...")
         .arg(QString::fromStdString(currentProteinId_)));
@@ -787,8 +789,9 @@ void MainWindow::startCompute() {
 }
 
 void MainWindow::cancelCompute() {
-    if (worker_)
+    if (worker_) {
         worker_->cancel();
+    }
     if (workerThread_ && workerThread_->isRunning()) {
         workerThread_->quit();
         workerThread_->wait();
@@ -806,7 +809,7 @@ void MainWindow::cancelCompute() {
     }
 }
 
-void MainWindow::onComputeProgress(int current, int total, QString phase) {
+void MainWindow::onComputeProgress(int current, int total, const QString& phase) {
     if (!progressDialog_) return;
     progressDialog_->setMaximum(total);
     progressDialog_->setValue(std::min(current, total - 1));
@@ -864,8 +867,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
         molecule_ = vtkSmartPointer<vtkMolecule>::New();
 
         for (size_t i = 0; i < protein.AtomCount(); ++i) {
-            unsigned short anum = static_cast<unsigned short>(
-                AtomicNumberForElement(protein.AtomAt(i).element));
+            unsigned short const anum = static_cast<unsigned short>(AtomicNumberForElement(protein.AtomAt(i).element));
             const Vec3& pos = conf.AtomAt(i).Position();
             molecule_->AppendAtom(anum, pos.x(), pos.y(), pos.z());
         }
@@ -893,7 +895,8 @@ void MainWindow::onComputeFinished(ComputeResult result) {
         renderer_->AddActor(molActor_);
 
         udp_log("[diag] vtkMolecule built: %d atoms, %d bonds\n",
-                (int)molecule_->GetNumberOfAtoms(), (int)molecule_->GetNumberOfBonds());
+                static_cast<int>(molecule_->GetNumberOfAtoms()),
+                static_cast<int>(molecule_->GetNumberOfBonds()));
     }
 
     // Overlays — added AFTER the molecule actor so they render on top.
@@ -921,7 +924,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
         udp_log("[diag] %zu field grids, T0 range shown in status\n", fieldGrids_.size());
         if (fieldGridOverlay_) { delete fieldGridOverlay_; fieldGridOverlay_ = nullptr; }
         fieldGridOverlay_ = new FieldGridOverlay(renderer_);
-        double threshold = isoThresholdSlider_->value() / 100.0;
+        double const threshold = isoThresholdSlider_->value() / 100.0;
         fieldGridOverlay_->setData(fieldGrids_, threshold, 0.35, 0);
         fieldGridOverlay_->setVisible(showFieldGridCheck_->isChecked());
     }
@@ -942,14 +945,14 @@ void MainWindow::onComputeFinished(ComputeResult result) {
         scalars->SetNumberOfComponents(1);
 
         for (size_t i = 0; i < protein.BondCount(); ++i) {
-            double bo = (i < topoOrders.size()) ? topoOrders[i] : 0.0;
+            double const bo = (i < topoOrders.size()) ? topoOrders[i] : 0.0;
             if (bo < 0.01) continue;  // skip electronically insignificant bonds
 
             const Bond& bond = protein.BondAt(i);
             Vec3 posA = conf.AtomAt(bond.atom_index_a).Position();
             Vec3 posB = conf.AtomAt(bond.atom_index_b).Position();
-            vtkIdType id0 = pts->InsertNextPoint(posA.data());
-            vtkIdType id1 = pts->InsertNextPoint(posB.data());
+            vtkIdType const id0 = pts->InsertNextPoint(posA.data());
+            vtkIdType const id1 = pts->InsertNextPoint(posB.data());
             vtkNew<vtkLine> ln;
             ln->GetPointIds()->SetId(0, id0);
             ln->GetPointIds()->SetId(1, id1);
@@ -990,7 +993,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
             renderer_->AddActor(bondOrderActor_);
 
             udp_log("[diag] Bond order overlay: %lld bonds with BO >= 0.01\n",
-                    (long long)lines->GetNumberOfCells());
+                    static_cast<long long>(lines->GetNumberOfCells()));
         }
     }
 
@@ -1002,11 +1005,11 @@ void MainWindow::onComputeFinished(ComputeResult result) {
     // field is from the pre-kernel-catalogue prediction era (UI_ROADMAP
     // Known Issues #1) and no current ConformationResult writes it.
     udp_log("[diag] setting status text\n");
-    QString status = QString("Loaded %1: %2 atoms, %3 bonds, %4 rings")
-                         .arg(QString::fromStdString(currentProteinId_))
-                         .arg(protein.AtomCount())
-                         .arg(protein.BondCount())
-                         .arg(protein.RingCount());
+    QString const status = QString("Loaded %1: %2 atoms, %3 bonds, %4 rings")
+                               .arg(QString::fromStdString(currentProteinId_))
+                               .arg(protein.AtomCount())
+                               .arg(protein.BondCount())
+                               .arg(protein.RingCount());
     statusLabel_->setText(status);
 
     udp_log("[diag] calling updateOverlay\n");
@@ -1017,8 +1020,7 @@ void MainWindow::onComputeFinished(ComputeResult result) {
 // Placeholder — per-calculator visualizations will replace the old overlay system
 
 void MainWindow::saveScreenshot() {
-    QString path = QFileDialog::getSaveFileName(this, "Save Screenshot",
-        "screenshot.png", "PNG Files (*.png)");
+    QString const path = QFileDialog::getSaveFileName(this, "Save Screenshot", "screenshot.png", "PNG Files (*.png)");
     if (path.isEmpty()) return;
 
     vtkNew<vtkWindowToImageFilter> filter;
@@ -1074,21 +1076,23 @@ void MainWindow::onShowPeptideBondsToggled(bool checked) {
 }
 
 void MainWindow::onShowBondOrderToggled(bool checked) {
-    if (bondOrderActor_)
+    if (bondOrderActor_) {
         bondOrderActor_->SetVisibility(checked ? 1 : 0);
+    }
     renderWindow_->Render();
 }
 
 void MainWindow::onShowButterflyToggled(bool checked) {
-    if (butterflyOverlay_)
+    if (butterflyOverlay_) {
         butterflyOverlay_->setVisible(checked);
+    }
     renderWindow_->Render();
 }
 
 void MainWindow::onIsoThresholdChanged() {
     if (fieldGridOverlay_ && !fieldGrids_.empty()) {
-        double threshold = isoThresholdSlider_->value() / 100.0;
-        double opacity = currentScaleSlider_->value() / 100.0;
+        double const threshold = isoThresholdSlider_->value() / 100.0;
+        double const opacity = currentScaleSlider_->value() / 100.0;
         fieldGridOverlay_->setData(fieldGrids_, threshold, opacity, 0);
         renderWindow_->Render();
     }
@@ -1100,8 +1104,8 @@ void MainWindow::onIsoThresholdChanged() {
 
 void MainWindow::onLogDatagramReady() {
     while (logSocket_->hasPendingDatagrams()) {
-        QNetworkDatagram dg = logSocket_->receiveDatagram();
-        QString msg = QString::fromUtf8(dg.data()).trimmed();
+        QNetworkDatagram const dg = logSocket_->receiveDatagram();
+        QString const msg = QString::fromUtf8(dg.data()).trimmed();
         if (msg.isEmpty()) continue;
         logText_->appendPlainText(msg);
     }
@@ -1124,9 +1128,9 @@ void MainWindow::pickAtom(int displayX, int displayY) {
     if (!protein_) return;
 
     // Original session-4 ray casting, with DPR correction and logging.
-    double dpr = vtkWidget_->devicePixelRatioF();
-    int vtkX = static_cast<int>(displayX * dpr);
-    int vtkY = static_cast<int>((vtkWidget_->height() - displayY) * dpr);
+    double const dpr = vtkWidget_->devicePixelRatioF();
+    int const vtkX = static_cast<int>(displayX * dpr);
+    int const vtkY = static_cast<int>((vtkWidget_->height() - displayY) * dpr);
 
     udp_log("[pick] pickAtom qt=(%d,%d) vtk=(%d,%d) dpr=%.1f winSz=(%d,%d)\n",
             displayX, displayY, vtkX, vtkY, dpr,
@@ -1141,9 +1145,7 @@ void MainWindow::pickAtom(int displayX, int displayY) {
     renderer_->DisplayToWorld();
     double worldPt[4];
     renderer_->GetWorldPoint(worldPt);
-    Vec3 clickWorld(worldPt[0] / worldPt[3],
-                    worldPt[1] / worldPt[3],
-                    worldPt[2] / worldPt[3]);
+    Vec3 const clickWorld(worldPt[0] / worldPt[3], worldPt[1] / worldPt[3], worldPt[2] / worldPt[3]);
 
     Vec3 rayDir = (clickWorld - rayOrigin).normalized();
 
@@ -1155,12 +1157,12 @@ void MainWindow::pickAtom(int displayX, int displayY) {
     double bestDist = 1e30;
     int bestAtom = -1;
     for (size_t i = 0; i < conf.AtomCount(); ++i) {
-        Vec3 pos = conf.AtomAt(i).Position();
-        Vec3 toAtom = pos - rayOrigin;
-        double projLen = toAtom.dot(rayDir);
+        Vec3 const pos = conf.AtomAt(i).Position();
+        Vec3 const toAtom = pos - rayOrigin;
+        double const projLen = toAtom.dot(rayDir);
         if (projLen < 0) continue;
-        Vec3 closest = rayOrigin + projLen * rayDir;
-        double dist = (pos - closest).norm();
+        Vec3 const closest = rayOrigin + projLen * rayDir;
+        double const dist = (pos - closest).norm();
         if (dist < bestDist) {
             bestDist = dist;
             bestAtom = static_cast<int>(i);
@@ -1170,7 +1172,7 @@ void MainWindow::pickAtom(int displayX, int displayY) {
     udp_log("[pick] best atom=%d ray-dist=%.3f A\n", bestAtom, bestDist);
 
     if (bestAtom >= 0 && bestDist < 2.0) {
-        size_t atomIndex = static_cast<size_t>(bestAtom);
+        size_t const atomIndex = static_cast<size_t>(bestAtom);
         const auto& id = protein_->AtomAt(atomIndex);
         const auto& res = protein_->ResidueAt(id.residue_index);
         Vec3 pos = conf.AtomAt(atomIndex).Position();
@@ -1240,13 +1242,13 @@ void MainWindow::populateAtomInfo(size_t idx) {
     const auto& res = protein.ResidueAt(id.residue_index);
 
     // ---- Header ----
-    QString header = QString("Atom %1: %2 %3 (%4-%5-%6)")
-        .arg(idx)
-        .arg(QString::fromStdString(SymbolForElement(id.element)))
-        .arg(QString::fromStdString(id.pdb_atom_name))
-        .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
-        .arg(res.sequence_number)
-        .arg(QString::fromStdString(res.chain_id));
+    QString const header = QString("Atom %1: %2 %3 (%4-%5-%6)")
+                               .arg(idx)
+                               .arg(QString::fromStdString(SymbolForElement(id.element)))
+                               .arg(QString::fromStdString(id.pdb_atom_name))
+                               .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(res.type)))
+                               .arg(res.sequence_number)
+                               .arg(QString::fromStdString(res.chain_id));
 
     // ---- Identity ----
     auto* identity = new QTreeWidgetItem({header, ""});
@@ -1277,8 +1279,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
     identity->addChild(new QTreeWidgetItem({"Aromatic H", ca.is_aromatic_H ? "yes" : "no"}));
     identity->addChild(new QTreeWidgetItem({"Methyl", ca.is_methyl ? "yes" : "no"}));
     identity->addChild(new QTreeWidgetItem({"Position", vec3Str(ca.Position())}));
-    if (id.parent_atom_index != SIZE_MAX)
+    if (id.parent_atom_index != SIZE_MAX) {
         identity->addChild(new QTreeWidgetItem({"Parent atom", QString::number(id.parent_atom_index)}));
+    }
     atomInfoTree_->addTopLevelItem(identity);
     identity->setExpanded(true);
 
@@ -1347,8 +1350,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
             // when the atom is in some pseudoatom group.
             if (sem.pseudoatom.IsMember()) {
                 QString detail = NameForPseudoatomKind(sem.pseudoatom.kind);
-                if (sem.pseudoatom.in_super_group)
+                if (sem.pseudoatom.in_super_group) {
                     detail += " (+ super-group)";
+                }
                 asub->addChild(new QTreeWidgetItem({"Pseudoatom", detail}));
             }
 
@@ -1415,11 +1419,13 @@ void MainWindow::populateAtomInfo(size_t idx) {
     fields->addChild(new QTreeWidgetItem({"E field (MOPAC)", vec3Str(ca.mopac_coulomb_E_total)}));
     fields->addChild(new QTreeWidgetItem({"|E| MOPAC", QString::number(ca.mopac_coulomb_E_magnitude, 'f', 3) + " V/A"}));
     fields->addChild(new QTreeWidgetItem({"E bb frac (MOPAC)", QString::number(ca.mopac_coulomb_E_backbone_frac, 'f', 3)}));
-    if (ca.apbs_efield.norm() > 1e-10)
+    if (ca.apbs_efield.norm() > 1e-10) {
         fields->addChild(new QTreeWidgetItem({"E field (APBS)", vec3Str(ca.apbs_efield)}));
+    }
     // APBS EFG tensor (solvated). Same kernel as Coulomb EFG but solvated.
-    if (ca.apbs_efg.norm() > 1e-10)
+    if (ca.apbs_efg.norm() > 1e-10) {
         fields->addChild(stItem("EFG (APBS)", ca.apbs_efg_spherical));
+    }
     // AIMNet2 EFG family — same kernel as CoulombResult but with the
     // wB97M neural Hirshfeld charges. Total + decomposed by source.
     fields->addChild(stItem("EFG (AIMNet2 total)", ca.aimnet2_EFG_total_spherical));
@@ -1487,7 +1493,7 @@ void MainWindow::populateAtomInfo(size_t idx) {
     {
         double n2 = 0.0;
         for (size_t k = 0; k < nmr::AIMNET2_AIM_DIMS; ++k) {
-            double v = static_cast<double>(ca.aimnet2_aim[k]);
+            double const v = static_cast<double>(ca.aimnet2_aim[k]);
             n2 += v * v;
         }
         auto* aim = new QTreeWidgetItem(
@@ -1508,10 +1514,10 @@ void MainWindow::populateAtomInfo(size_t idx) {
             QString::number(ca.ring_neighbours.size())});
         for (const auto& rn : ca.ring_neighbours) {
             const Ring& ring = protein.RingAt(rn.ring_index);
-            QString label = QString("%1 ring %2 (d=%3 A)")
-                .arg(QString::fromStdString(ring.TypeName()))
-                .arg(rn.ring_index)
-                .arg(rn.distance_to_center, 0, 'f', 2);
+            QString const label = QString("%1 ring %2 (d=%3 A)")
+                                      .arg(QString::fromStdString(ring.TypeName()))
+                                      .arg(rn.ring_index)
+                                      .arg(rn.distance_to_center, 0, 'f', 2);
             auto* rnItem = new QTreeWidgetItem({label, ""});
             rnItem->addChild(new QTreeWidgetItem({"rho", QString::number(rn.rho, 'f', 3) + " A"}));
             rnItem->addChild(new QTreeWidgetItem({"z", QString::number(rn.z, 'f', 3) + " A"}));
@@ -1521,10 +1527,12 @@ void MainWindow::populateAtomInfo(size_t idx) {
             rnItem->addChild(stItem("HM shielding (G)", rn.hm_G_spherical));
             rnItem->addChild(new QTreeWidgetItem({"B field", vec3Str(rn.B_field)}));
             rnItem->addChild(new QTreeWidgetItem({"B cylindrical", vec3Str(rn.B_cylindrical)}));
-            if (rn.chi_scalar != 0.0)
+            if (rn.chi_scalar != 0.0) {
                 rnItem->addChild(stItem("Chi (suscept.)", rn.chi_spherical));
-            if (rn.quad_scalar != 0.0)
+            }
+            if (rn.quad_scalar != 0.0) {
                 rnItem->addChild(stItem("Quad (pi-quad)", rn.quad_spherical));
+            }
             if (rn.disp_contacts > 0) {
                 rnItem->addChild(stItem("Dispersion", rn.disp_spherical));
                 rnItem->addChild(new QTreeWidgetItem({"Disp contacts", QString::number(rn.disp_contacts)}));
@@ -1542,11 +1550,11 @@ void MainWindow::populateAtomInfo(size_t idx) {
         for (const auto& mb : ca.mopac_bond_neighbours) {
             const auto& otherId = protein.AtomAt(mb.other_atom);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
-            QString label = QString("%1 %2-%3 (BO=%4)")
-                .arg(QString::fromStdString(SymbolForElement(otherId.element)))
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
-                .arg(otherRes.sequence_number)
-                .arg(mb.wiberg_order, 0, 'f', 3);
+            QString const label = QString("%1 %2-%3 (BO=%4)")
+                                      .arg(QString::fromStdString(SymbolForElement(otherId.element)))
+                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
+                                      .arg(otherRes.sequence_number)
+                                      .arg(mb.wiberg_order, 0, 'f', 3);
             auto* mbItem = new QTreeWidgetItem({label, ""});
             mbItem->addChild(new QTreeWidgetItem({"Atom index", QString::number(mb.other_atom)}));
             if (mb.topology_bond_index != SIZE_MAX) {
@@ -1568,16 +1576,18 @@ void MainWindow::populateAtomInfo(size_t idx) {
             const Bond& bond = protein.BondAt(bn.bond_index);
             // Look up MOPAC bond order for this topology bond
             double mopacBO = 0.0;
-            if (conf.HasResult<MopacResult>())
+            if (conf.HasResult<MopacResult>()) {
                 mopacBO = conf.Result<MopacResult>().TopologyBondOrder(bn.bond_index);
-            QString label = QString("Bond %1 (%2, d=%3 A)")
-                .arg(bn.bond_index)
-                .arg(QString::fromStdString(NameForBondCategory(bond.category)))
-                .arg(bn.distance_to_midpoint, 0, 'f', 2);
+            }
+            QString const label = QString("Bond %1 (%2, d=%3 A)")
+                                      .arg(bn.bond_index)
+                                      .arg(QString::fromStdString(NameForBondCategory(bond.category)))
+                                      .arg(bn.distance_to_midpoint, 0, 'f', 2);
             auto* bnItem = new QTreeWidgetItem({label, ""});
             bnItem->addChild(new QTreeWidgetItem({"McConnell scalar", QString::number(bn.mcconnell_scalar, 'f', 5)}));
-            if (mopacBO > 1e-6)
+            if (mopacBO > 1e-6) {
                 bnItem->addChild(new QTreeWidgetItem({"Wiberg order", QString::number(mopacBO, 'f', 3)}));
+            }
             bnItem->addChild(stItem("Dipolar tensor", bn.dipolar_spherical));
             bonds->addChild(bnItem);
         }
@@ -1616,8 +1626,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
         // Per-class breakdowns only when non-trivial; reduces visual noise on
         // atom types that get only one or two of the four contributions.
         auto addClassIfPresent = [&](const QString& name, const nmr::SphericalTensor& st) {
-            if (std::abs(st.T0) > 1e-9)
+            if (std::abs(st.T0) > 1e-9) {
                 lhb->addChild(stItem(name, st));
+            }
         };
         addClassIfPresent("Δσ_1°HB  (donor primary)", ca.larsen_hbond_1pHB_spherical);
         addClassIfPresent("Δσ_2°HB  (donor secondary)", ca.larsen_hbond_2pHB_spherical);
@@ -1625,8 +1636,9 @@ void MainWindow::populateAtomInfo(size_t idx) {
         addClassIfPresent("Δσ_2°HαB (Hα secondary)", ca.larsen_hbond_2pHaB_spherical);
         // CB diagnostic — should be ~0 per Larsen Table 2; nonzero =
         // pipeline regression (parser → loader → rotation).
-        if (std::abs(ca.larsen_hbond_diagnostic_CB_spherical.T0) > 1e-6)
+        if (std::abs(ca.larsen_hbond_diagnostic_CB_spherical.T0) > 1e-6) {
             lhb->addChild(stItem("Cβ diagnostic (expected ~0)", ca.larsen_hbond_diagnostic_CB_spherical));
+        }
         if (ca.larsen_hbond_any_corner_imputed) {
             lhb->addChild(new QTreeWidgetItem({"Corner imputed", "yes (nearest-neighbour fill in at least one grid lookup)"}));
         }
@@ -1708,10 +1720,12 @@ void MainWindow::populateAtomInfo(size_t idx) {
         mmc->addChild(new QTreeWidgetItem({"Sidechain sum", QString::number(ca.mopac_mc_sidechain_sum, 'f', 5)}));
         mmc->addChild(new QTreeWidgetItem({"Aromatic sum", QString::number(ca.mopac_mc_aromatic_sum, 'f', 5)}));
         mmc->addChild(new QTreeWidgetItem({"Nearest CO (BO-wt)", QString::number(ca.mopac_mc_co_nearest, 'f', 5)}));
-        if (ca.mopac_mc_nearest_CO_dist > 0.01)
+        if (ca.mopac_mc_nearest_CO_dist > 0.01) {
             mmc->addChild(new QTreeWidgetItem({"Nearest CO dist", QString::number(ca.mopac_mc_nearest_CO_dist, 'f', 3) + " A"}));
-        if (ca.mopac_mc_nearest_CN_dist > 0.01)
+        }
+        if (ca.mopac_mc_nearest_CN_dist > 0.01) {
             mmc->addChild(new QTreeWidgetItem({"Nearest CN dist", QString::number(ca.mopac_mc_nearest_CN_dist, 'f', 3) + " A"}));
+        }
         mmc->addChild(stItem("T2 backbone", ca.mopac_mc_T2_backbone_total));
         mmc->addChild(stItem("T2 sidechain", ca.mopac_mc_T2_sidechain_total));
         mmc->addChild(stItem("T2 aromatic", ca.mopac_mc_T2_aromatic_total));
@@ -1736,24 +1750,24 @@ void MainWindow::populateAtomBonds(size_t idx) {
     if (!id.bond_indices.empty()) {
         auto* covalent = new QTreeWidgetItem({"Covalent bonds",
             QString::number(id.bond_indices.size())});
-        for (size_t bi : id.bond_indices) {
+        for (size_t const bi : id.bond_indices) {
             const Bond& bond = protein.BondAt(bi);
-            size_t other = (bond.atom_index_a == idx) ? bond.atom_index_b : bond.atom_index_a;
+            size_t const other = (bond.atom_index_a == idx) ? bond.atom_index_b : bond.atom_index_a;
             const auto& otherId = protein.AtomAt(other);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
 
-            QString label = QString("%1 %2-%3 (%4)")
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
-                .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
-                .arg(otherRes.sequence_number)
-                .arg(QString::fromStdString(NameForBondCategory(bond.category)));
+            QString const label = QString("%1 %2-%3 (%4)")
+                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
+                                      .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
+                                      .arg(otherRes.sequence_number)
+                                      .arg(QString::fromStdString(NameForBondCategory(bond.category)));
 
             auto* bondItem = new QTreeWidgetItem({label,
                 QString::number(conf.bond_lengths[bi], 'f', 3) + " A"});
             bondItem->addChild(new QTreeWidgetItem({"Direction", vec3Str(conf.bond_directions[bi])}));
 
             if (conf.HasResult<MopacResult>()) {
-                double bo = conf.Result<MopacResult>().TopologyBondOrder(bi);
+                double const bo = conf.Result<MopacResult>().TopologyBondOrder(bi);
                 bondItem->addChild(new QTreeWidgetItem({"Wiberg order", QString::number(bo, 'f', 4)}));
             }
 
@@ -1770,11 +1784,11 @@ void MainWindow::populateAtomBonds(size_t idx) {
         for (const auto& mb : ca.mopac_bond_neighbours) {
             const auto& otherId = protein.AtomAt(mb.other_atom);
             const auto& otherRes = protein.ResidueAt(otherId.residue_index);
-            QString label = QString("%1 %2-%3 (BO=%4)")
-                .arg(QString::fromStdString(otherId.pdb_atom_name))
-                .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
-                .arg(otherRes.sequence_number)
-                .arg(mb.wiberg_order, 0, 'f', 3);
+            QString const label = QString("%1 %2-%3 (BO=%4)")
+                                      .arg(QString::fromStdString(otherId.pdb_atom_name))
+                                      .arg(QString::fromStdString(ThreeLetterCodeForAminoAcid(otherRes.type)))
+                                      .arg(otherRes.sequence_number)
+                                      .arg(mb.wiberg_order, 0, 'f', 3);
             auto* mbItem = new QTreeWidgetItem({label, ""});
             if (mb.topology_bond_index != SIZE_MAX) {
                 const Bond& bond = protein.BondAt(mb.topology_bond_index);
@@ -1793,10 +1807,10 @@ void MainWindow::populateAtomBonds(size_t idx) {
             QString::number(ca.bond_neighbours.size())});
         for (const auto& bn : ca.bond_neighbours) {
             const Bond& bond = protein.BondAt(bn.bond_index);
-            QString label = QString("Bond %1 (%2, d=%3 A)")
-                .arg(bn.bond_index)
-                .arg(QString::fromStdString(NameForBondCategory(bond.category)))
-                .arg(bn.distance_to_midpoint, 0, 'f', 2);
+            QString const label = QString("Bond %1 (%2, d=%3 A)")
+                                      .arg(bn.bond_index)
+                                      .arg(QString::fromStdString(NameForBondCategory(bond.category)))
+                                      .arg(bn.distance_to_midpoint, 0, 'f', 2);
             auto* bnItem = new QTreeWidgetItem({label, ""});
             bnItem->addChild(new QTreeWidgetItem({"McConnell scalar",
                 QString::number(bn.mcconnell_scalar, 'f', 5)}));
@@ -1872,14 +1886,20 @@ void MainWindow::populateGeometryChoices(size_t atomIndex) {
 
     for (const auto& [calcId, indices] : byCalc) {
         // Count included vs excluded
-        int nIncluded = 0, nExcluded = 0, nTriggered = 0;
-        for (size_t ci : indices) {
+        int nIncluded = 0;
+        int nExcluded = 0;
+        int nTriggered = 0;
+        for (size_t const ci : indices) {
             const auto& gc = choices[ci];
             for (const auto& ent : gc.Entities()) {
                 if (ent.atom_index != atomIndex) continue;
-                if (ent.outcome == EntityOutcome::Included) ++nIncluded;
-                else if (ent.outcome == EntityOutcome::Excluded) ++nExcluded;
-                else if (ent.outcome == EntityOutcome::Triggered) ++nTriggered;
+                if (ent.outcome == EntityOutcome::Included) {
+                    ++nIncluded;
+                } else if (ent.outcome == EntityOutcome::Excluded) {
+                    ++nExcluded;
+                } else if (ent.outcome == EntityOutcome::Triggered) {
+                    ++nTriggered;
+                }
             }
         }
 
@@ -1889,7 +1909,7 @@ void MainWindow::populateGeometryChoices(size_t atomIndex) {
         auto* calcItem = new QTreeWidgetItem(
             {NameForCalculatorId(calcId), summary});
 
-        for (size_t ci : indices) {
+        for (size_t const ci : indices) {
             const auto& gc = choices[ci];
 
             // Find this atom's outcome
@@ -1898,16 +1918,18 @@ void MainWindow::populateGeometryChoices(size_t atomIndex) {
             for (const auto& ent : gc.Entities()) {
                 if (ent.atom_index == atomIndex) {
                     atomOutcome = ent.outcome;
-                    if (!ent.filter_name.empty())
+                    if (!ent.filter_name.empty()) {
                         filterName = QString::fromStdString(ent.filter_name);
+                    }
                     break;
                 }
             }
 
-            QString label = QString::fromStdString(gc.Label());
+            QString const label = QString::fromStdString(gc.Label());
             QString detail = NameForOutcome(atomOutcome);
-            if (!filterName.isEmpty())
+            if (!filterName.isEmpty()) {
                 detail += " (" + filterName + ")";
+            }
 
             auto* choiceItem = new QTreeWidgetItem({label, detail});
 
@@ -1948,260 +1970,134 @@ void MainWindow::populateGeometryChoices(size_t atomIndex) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-//  Time Series (H5): read-only, frame-0 per-atom slice.
+//  Time Series (H5): read-only per-atom view of the trajectory.h5
+//  companion. Reads the typed TrajectoryH5 cached on AnalysisBinding.
 //
-//  The viewer never writes the H5 or triggers new extractions. Every
-//  dataset here is looked up via flat-vector offsets matching the H5
-//  layout documented in analysis_file.h (row-major C order).
+//  Each section is sparse-tolerant: it appears in the tree only if
+//  the underlying group is present in the file. Welford rollups and
+//  frame-0 slabs are surfaced side-by-side per physics family — the
+//  "live calc at this pose vs. ensemble mean/std" diagnostic.
+//
+//  Adding a new TR family = one TrajectoryH5 accessor pair + one
+//  if-block here. Per-PATTERNS no string dispatch, no generic
+//  Get(name) surface: the file is typed at the H5 ingress and the
+//  inspector reads typed accessors.
 // ────────────────────────────────────────────────────────────────────
 
-// SphericalTensor at (T, N, 9) base offset: layout T0, T1[3], T2[5].
-// Caller must pass a base that is valid for flat.  ReadH5 fills every
-// (T, N, 9) dataset with T*N*9 doubles exactly, so if the caller reached
-// here via a Valid() AnalysisBinding, bounds are guaranteed.
-static QTreeWidgetItem* tsSphItem(const QString& name,
-                                  const std::vector<double>& flat, size_t base) {
-    auto* item = new QTreeWidgetItem({name,
-        QString("T0=%1").arg(flat[base], 0, 'f', 4)});
-    item->addChild(new QTreeWidgetItem({"T0",
-        QString::number(flat[base], 'f', 6)}));
-    item->addChild(new QTreeWidgetItem({"T1",
-        QString("(%1, %2, %3)")
-            .arg(flat[base+1], 0, 'f', 5)
-            .arg(flat[base+2], 0, 'f', 5)
-            .arg(flat[base+3], 0, 'f', 5)}));
-    item->addChild(new QTreeWidgetItem({"T2",
-        QString("(%1, %2, %3, %4, %5)")
-            .arg(flat[base+4], 0, 'f', 5)
-            .arg(flat[base+5], 0, 'f', 5)
-            .arg(flat[base+6], 0, 'f', 5)
-            .arg(flat[base+7], 0, 'f', 5)
-            .arg(flat[base+8], 0, 'f', 5)}));
-    return item;
-}
-
-// Vec3 at (T, N, 3) base offset.  Same contract as tsSphItem.
-static QTreeWidgetItem* tsVec3Item(const QString& name,
-                                   const std::vector<double>& flat, size_t base) {
-    return new QTreeWidgetItem({name,
-        QString("(%1, %2, %3)")
-            .arg(flat[base],   0, 'f', 5)
-            .arg(flat[base+1], 0, 'f', 5)
-            .arg(flat[base+2], 0, 'f', 5)});
-}
-
-// Scalar at (T, N) offset.
-static QTreeWidgetItem* tsScalarItem(const QString& name, double v, int prec = 5) {
-    return new QTreeWidgetItem({name, QString::number(v, 'f', prec)});
-}
-
-// Populate the Time Series tab from the frame-0 slice of the H5 for one
-// picked atom.  Contracts held by the caller chain:
-//
-//   - ReadH5 succeeded → every H5 array is sized per its (T, N, R, ...)
-//     declaration.  No size guards needed on reads inside.
-//   - AnalysisBinding is populated atomically with the H5 and the
-//     identity libToH5 map, so Valid() iff everything is in place.
-//   - Picker gives a library atom index < protein_->AtomCount() ==
-//     libToH5.size() == h5.n_atoms, so H5IndexFor is always in range.
-//   - AtomicNumberForElement identity check passed at bind time, so
-//     h5.atoms.residue_index[i] is a valid residue in [0, R).
 void MainWindow::populateTimeSeries(size_t idx) {
     timeSeriesTree_->clear();
     if (!analysisBinding_.Valid()) {
         timeSeriesTree_->addTopLevelItem(new QTreeWidgetItem(
-            {QStringLiteral("(no analysis H5 loaded)"),
-             QStringLiteral("pass --analysis-h5 PATH on the command line")}));
+            {QStringLiteral("(no trajectory H5 loaded)"), QStringLiteral("pass --analysis-h5 PATH on the command line")}));
         return;
     }
 
     const size_t h5idx = analysisBinding_.H5IndexFor(idx);
-    const AnalysisFile& h5 = *analysisBinding_.h5;
+    const TrajectoryH5& h5 = *analysisBinding_.h5;
 
-    const size_t T = h5.n_frames;
-    const size_t N = h5.n_atoms;
-    const size_t R = h5.n_residues;
-    const size_t t = 0;                            // frame 0 — session 1
-    const size_t tn  = t * N + h5idx;              // (T, N) base  [H5-indexed]
-    const size_t tn9 = tn * 9;                     // (T, N, 9)
-    const size_t tn3 = tn * 3;                     // (T, N, 3)
-
-    // ── H5 meta + per-atom identity ───────────────────────────────
+    // ── H5 meta + per-atom identity ──────────────────────────────
     {
-        auto* g = new QTreeWidgetItem({"H5",
-            QString::fromStdString(h5.meta.protein_id)});
-        g->addChild(new QTreeWidgetItem({"frame",
-            QString("0 of %1").arg(static_cast<qulonglong>(T))}));
-        g->addChild(new QTreeWidgetItem({"frame time (ps)",
-            QString::number(h5.meta.frame_times[t], 'f', 3)}));
-        g->addChild(new QTreeWidgetItem({"stride",
-            QString::number(static_cast<qulonglong>(h5.meta.stride))}));
-        g->addChild(new QTreeWidgetItem({"n_atoms",
-            QString::number(static_cast<qulonglong>(N))}));
-        g->addChild(new QTreeWidgetItem({"n_residues",
-            QString::number(static_cast<qulonglong>(R))}));
+        auto* g = new QTreeWidgetItem({"H5", QString::fromStdString(h5.ProteinId())});
+        g->addChild(new QTreeWidgetItem({"frame", QString("0 of %1").arg(static_cast<qulonglong>(h5.FrameCount()))}));
+        g->addChild(new QTreeWidgetItem({"frame time (ps)", QString::number(h5.FrameTimePs(0), 'f', 3)}));
+        g->addChild(new QTreeWidgetItem({"n_atoms", QString::number(static_cast<qulonglong>(h5.AtomCount()))}));
         g->addChild(new QTreeWidgetItem({"library atom index",
             QString::number(static_cast<qulonglong>(idx))}));
         g->addChild(new QTreeWidgetItem({"H5 atom index (via H5IndexFor)",
             QString::number(static_cast<qulonglong>(h5idx))}));
-        g->addChild(new QTreeWidgetItem({"atom element (Z, from H5)",
-            QString::number(h5.atoms.element[h5idx])}));
-        g->addChild(new QTreeWidgetItem({"atom name (H5)",
-            QString::fromStdString(h5.atoms.atom_name[h5idx])}));
+        g->addChild(new QTreeWidgetItem({"atom element (Z, from H5)", QString::number(h5.ElementAt(h5idx))}));
+        g->addChild(new QTreeWidgetItem({"atom name (H5)", QString::fromStdString(h5.AtomNameAt(h5idx))}));
+        QStringList groups;
+        for (const auto& gn : h5.GroupsPresent()) {
+            groups << QString::fromStdString(gn);
+        }
+        g->addChild(new QTreeWidgetItem({"groups present", groups.isEmpty() ? QStringLiteral("(none)") : groups.join(", ")}));
         g->addChild(new QTreeWidgetItem({"atom-name mismatches (total)",
-            QString::number(
-                static_cast<qulonglong>(analysisBinding_.nameMismatches.size()))}));
+                                         QString::number(static_cast<qulonglong>(analysisBinding_.nameMismatches.size()))}));
         g->setExpanded(true);
         timeSeriesTree_->addTopLevelItem(g);
     }
 
-    // ── Ring Current ─────────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"Ring Current", QString()});
-        g->addChild(tsSphItem("bs_shielding",  h5.ring_current.bs_shielding,  tn9));
-        g->addChild(tsSphItem("hm_shielding",  h5.ring_current.hm_shielding,  tn9));
-        g->addChild(tsSphItem("rs_shielding",  h5.ring_current.rs_shielding,  tn9));
-        g->addChild(tsVec3Item("total_B_field", h5.ring_current.total_B_field, tn3));
-        g->addChild(tsScalarItem("mean_ring_dist (A)",
-            h5.ring_current.mean_ring_dist[tn]));
-        g->addChild(new QTreeWidgetItem({"rings within 3/5/8/12 A",
-            QString("%1 / %2 / %3 / %4")
-                .arg(h5.ring_current.n_rings_3A[tn])
-                .arg(h5.ring_current.n_rings_5A[tn])
-                .arg(h5.ring_current.n_rings_8A[tn])
-                .arg(h5.ring_current.n_rings_12A[tn])}));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── EFG (electrostatics) ─────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"EFG (electrostatic)", QString()});
-        g->addChild(tsSphItem("coulomb_total",     h5.efg.coulomb_total,     tn9));
-        g->addChild(tsSphItem("coulomb_shielding", h5.efg.coulomb_shielding, tn9));
-        g->addChild(tsSphItem("apbs_efg",          h5.efg.apbs_efg,          tn9));
-        g->addChild(tsSphItem("aimnet2_shielding", h5.efg.aimnet2_shielding, tn9));
-        g->addChild(tsVec3Item("E_total (V/A)",    h5.efg.E_total,           tn3));
-        g->addChild(tsVec3Item("E_solvent (V/A)",  h5.efg.E_solvent,         tn3));
-        g->addChild(tsVec3Item("apbs_efield (V/A)",h5.efg.apbs_efield,       tn3));
-        g->addChild(tsScalarItem("E_magnitude (V/A)", h5.efg.E_magnitude[tn]));
-        g->addChild(tsScalarItem("E_bond_proj",       h5.efg.E_bond_proj[tn]));
-        g->addChild(tsScalarItem("E_backbone_frac",   h5.efg.E_backbone_frac[tn]));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── Bond Anisotropy ──────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"Bond Anisotropy", QString()});
-        g->addChild(tsSphItem("mc_shielding", h5.bond_aniso.mc_shielding, tn9));
-        g->addChild(tsSphItem("T2_backbone",  h5.bond_aniso.T2_backbone,  tn9));
-        g->addChild(tsSphItem("T2_sidechain", h5.bond_aniso.T2_sidechain, tn9));
-        g->addChild(tsSphItem("T2_aromatic",  h5.bond_aniso.T2_aromatic,  tn9));
-        g->addChild(tsScalarItem("nearest_CO_dist (A)",
-            h5.bond_aniso.nearest_CO_dist[tn]));
-        g->addChild(tsScalarItem("nearest_CN_dist (A)",
-            h5.bond_aniso.nearest_CN_dist[tn]));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── H-Bond ───────────────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"H-Bond", QString()});
-        g->addChild(tsSphItem("hbond_shielding", h5.hbond.hbond_shielding, tn9));
-        g->addChild(tsScalarItem("nearest_dist (A)", h5.hbond.nearest_dist[tn]));
-        g->addChild(tsScalarItem("inv_d3", h5.hbond.inv_d3[tn]));
-        g->addChild(new QTreeWidgetItem({"count 3.5 A",
-            QString::number(h5.hbond.count_3_5A[tn])}));
-        g->addChild(new QTreeWidgetItem({"is_donor",
-            QString::number(static_cast<int>(h5.hbond.is_donor[tn]))}));
-        g->addChild(new QTreeWidgetItem({"is_acceptor",
-            QString::number(static_cast<int>(h5.hbond.is_acceptor[tn]))}));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── SASA ─────────────────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"SASA", QString()});
-        g->addChild(tsScalarItem("sasa (A^2)", h5.sasa.sasa[tn]));
-        g->addChild(tsVec3Item("normal", h5.sasa.normal, tn3));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── Water environment ────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"Water", QString()});
-        g->addChild(tsVec3Item("efield (V/A)", h5.water.efield, tn3));
-        g->addChild(tsSphItem("efg", h5.water.efg, tn9));
-        g->addChild(new QTreeWidgetItem({"n_first",
-            QString::number(h5.water.n_first[tn])}));
-        g->addChild(new QTreeWidgetItem({"n_second",
-            QString::number(h5.water.n_second[tn])}));
-        g->addChild(tsScalarItem("dipole_cos", h5.water.dipole_cos[tn]));
-        g->addChild(tsScalarItem("nearest_ion_dist (A)",
-            h5.water.nearest_ion_dist[tn]));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── Charges ──────────────────────────────────────────────────
-    {
-        auto* g = new QTreeWidgetItem({"Charges", QString()});
-        g->addChild(tsScalarItem("aimnet2_charge (e)",
-            h5.charges.aimnet2_charge[tn]));
-        g->addChild(tsScalarItem("eeq_charge (e)",
-            h5.charges.eeq_charge[tn]));
-        g->addChild(tsScalarItem("eeq_cn", h5.charges.eeq_cn[tn]));
-        timeSeriesTree_->addTopLevelItem(g);
-    }
-
-    // ── AIMNet2 embedding (256 dims — summary only) ──────────────
-    {
-        const size_t base = tn * AnalysisFile::AIM_DIMS;
-        double n2 = 0.0;
-        for (size_t k = 0; k < AnalysisFile::AIM_DIMS; ++k) {
-            double v = h5.aimnet2_embedding.aim[base + k];
-            n2 += v * v;
+    // Shared renderer for tensor-source shielding sections — same shape
+    // across BS / HM / McConnell / PiQuad / RingChi / Disp / HBond.
+    // Welford rollup may be present, absent, or accompanied by frame 0;
+    // every combination is sparse-tolerant.
+    auto addShieldingSection = [&](const QString& title,
+                                   const QString& units,
+                                   std::optional<TrajectoryH5::ShieldingWelfordRow> w,
+                                   std::optional<TrajectoryH5::ShieldingFrame0Row> f) {
+        if (!w && !f)
+            return;
+        auto* g = new QTreeWidgetItem({title, QString()});
+        if (f) {
+            g->addChild(new QTreeWidgetItem({"T0 frame 0", QString::number(f->T0, 'f', 5) + " " + units}));
+            g->addChild(new QTreeWidgetItem({"|T2| frame 0", QString::number(f->T2_magnitude, 'f', 5) + " " + units}));
         }
-        auto* g = new QTreeWidgetItem({"AIMNet2 embedding",
-            QString("%1 dims (float32)")
-                .arg(static_cast<qulonglong>(AnalysisFile::AIM_DIMS))});
-        g->addChild(new QTreeWidgetItem({"L2 norm^2",
-            QString::number(n2, 'f', 5)}));
-        g->addChild(new QTreeWidgetItem({"aim[0..3]",
-            QString("%1  %2  %3  %4")
-                .arg(h5.aimnet2_embedding.aim[base + 0], 0, 'f', 4)
-                .arg(h5.aimnet2_embedding.aim[base + 1], 0, 'f', 4)
-                .arg(h5.aimnet2_embedding.aim[base + 2], 0, 'f', 4)
-                .arg(h5.aimnet2_embedding.aim[base + 3], 0, 'f', 4)}));
+        if (w) {
+            g->addChild(new QTreeWidgetItem(
+                {"T0 mean ± std", QString("%1 ± %2 %3").arg(w->t0.mean, 0, 'f', 5).arg(w->t0.std, 0, 'f', 5).arg(units)}));
+            g->addChild(new QTreeWidgetItem(
+                {"|T2| mean ± std",
+                 QString("%1 ± %2 %3").arg(w->t2magnitude.mean, 0, 'f', 5).arg(w->t2magnitude.std, 0, 'f', 5).arg(units)}));
+        }
+        timeSeriesTree_->addTopLevelItem(g);
+    };
+
+    addShieldingSection("Ring Current (BS)", "ppm", h5.BsWelford(h5idx), h5.BsShieldingFrame0(h5idx));
+    addShieldingSection("Ring Current (HM)", "Å⁻¹", h5.HmWelford(h5idx), h5.HmShieldingFrame0(h5idx));
+    addShieldingSection("Bond Anisotropy (McConnell)", "Å⁻³", h5.McWelford(h5idx), h5.McShieldingFrame0(h5idx));
+    addShieldingSection("Pi-quadrupole", "Å⁻⁵", std::nullopt, h5.PiQuadShieldingFrame0(h5idx));
+    addShieldingSection("Ring susceptibility", "Å⁻³", std::nullopt, h5.RingChiShieldingFrame0(h5idx));
+    addShieldingSection("Dispersion", "Å⁻⁶", std::nullopt, h5.DispShieldingFrame0(h5idx));
+    addShieldingSection("H-bond (kernel-form)", "Å⁻³", std::nullopt, h5.HBondShieldingFrame0(h5idx));
+
+    // ── SASA — welford rollup + frame 0 ─────────────────────────
+    {
+        auto sw = h5.SasaWelford(h5idx);
+        auto sf = h5.SasaFrame0(h5idx);
+        if (sw || sf) {
+            auto* g = new QTreeWidgetItem({"SASA", QString()});
+            if (sf) {
+                g->addChild(new QTreeWidgetItem({"frame 0", QString::number(*sf, 'f', 3) + " Å²"}));
+            }
+            if (sw) {
+                g->addChild(new QTreeWidgetItem(
+                    {"mean ± std", QString("%1 ± %2 Å²").arg(sw->sasa.mean, 0, 'f', 3).arg(sw->sasa.std, 0, 'f', 3)}));
+            }
+            timeSeriesTree_->addTopLevelItem(g);
+        }
+    }
+
+    // ── EEQ charge — welford rollup ─────────────────────────────
+    if (auto ew = h5.EeqWelford(h5idx)) {
+        auto* g = new QTreeWidgetItem({"EEQ charge", QString()});
+        g->addChild(new QTreeWidgetItem(
+            {"mean ± std", QString("%1 ± %2 e").arg(ew->charge.mean, 0, 'f', 5).arg(ew->charge.std, 0, 'f', 5)}));
         timeSeriesTree_->addTopLevelItem(g);
     }
 
-    // ── Residue-level slice (dihedrals + DSSP) ───────────────────
-    {
-        const size_t r  = static_cast<size_t>(h5.atoms.residue_index[h5idx]);
-        const size_t tr = t * R + r;
-        auto* g = new QTreeWidgetItem({"Residue (from H5)",
-            QString::fromStdString(h5.residues.residue_name[r]) + " " +
-            QString::number(h5.residues.residue_number[r])});
-        g->addChild(tsScalarItem("phi (rad)",   h5.dihedrals.phi[tr]));
-        g->addChild(tsScalarItem("psi (rad)",   h5.dihedrals.psi[tr]));
-        g->addChild(tsScalarItem("omega (rad)", h5.dihedrals.omega[tr]));
-        g->addChild(tsScalarItem("chi1 (rad)",  h5.dihedrals.chi1[tr]));
-        g->addChild(new QTreeWidgetItem({"dssp ss8",
-            QString::number(static_cast<int>(h5.dssp.ss8[tr]))}));
-        g->addChild(tsScalarItem("dssp hbond_energy",
-            h5.dssp.hbond_energy[tr]));
+    // ── AIMNet2 charge — frame 0 ────────────────────────────────
+    if (auto ac = h5.Aimnet2ChargeFrame0(h5idx)) {
+        auto* g = new QTreeWidgetItem({"AIMNet2 charge", QString()});
+        g->addChild(new QTreeWidgetItem({"frame 0", QString::number(*ac, 'f', 5) + " e"}));
         timeSeriesTree_->addTopLevelItem(g);
     }
 
-    // ── Bonded energy (frame 0, per-atom split) ──────────────────
-    {
-        auto* g = new QTreeWidgetItem({"Bonded energy (kJ/mol)", QString()});
-        g->addChild(tsScalarItem("bond",         h5.bonded_energy.bond[tn]));
-        g->addChild(tsScalarItem("angle",        h5.bonded_energy.angle[tn]));
-        g->addChild(tsScalarItem("urey_bradley", h5.bonded_energy.urey_bradley[tn]));
-        g->addChild(tsScalarItem("proper_dih",   h5.bonded_energy.proper_dih[tn]));
-        g->addChild(tsScalarItem("improper_dih", h5.bonded_energy.improper_dih[tn]));
-        g->addChild(tsScalarItem("cmap",         h5.bonded_energy.cmap[tn]));
-        g->addChild(tsScalarItem("total",        h5.bonded_energy.total[tn]));
+    // ── H-bond count — welford rollup ───────────────────────────
+    if (auto hc = h5.HBondCountWelford(h5idx)) {
+        auto* g = new QTreeWidgetItem({"H-bond count (3.5 Å)", QString()});
+        g->addChild(new QTreeWidgetItem(
+            {"mean ± std", QString("%1 ± %2 pairs").arg(hc->count.mean, 0, 'f', 3).arg(hc->count.std, 0, 'f', 3)}));
+        timeSeriesTree_->addTopLevelItem(g);
+    }
+
+    // ── APBS efield — Cartesian Vec3 frame 0 ────────────────────
+    if (auto ef = h5.ApbsEfieldFrame0(h5idx)) {
+        auto* g = new QTreeWidgetItem({"APBS efield", QString()});
+        g->addChild(new QTreeWidgetItem(
+            {"E frame 0 (V/Å)", QString("(%1, %2, %3)").arg(ef->x, 0, 'f', 5).arg(ef->y, 0, 'f', 5).arg(ef->z, 0, 'f', 5)}));
+        const double mag = std::sqrt(ef->x * ef->x + ef->y * ef->y + ef->z * ef->z);
+        g->addChild(new QTreeWidgetItem({"|E| frame 0", QString::number(mag, 'f', 5) + " V/Å"}));
         timeSeriesTree_->addTopLevelItem(g);
     }
 }

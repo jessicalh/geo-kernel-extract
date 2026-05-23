@@ -43,7 +43,7 @@ void ComputeWorker::cancel() {
     cancelled_.store(true, std::memory_order_relaxed);
 }
 
-void ComputeWorker::computeAll(nmr::JobSpec spec) {
+void ComputeWorker::computeAll(const nmr::JobSpec& spec) {
     cancelled_.store(false);
     QElapsedTimer timer;
     timer.start();
@@ -156,8 +156,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         auto& ala_conf = alaBuild.protein->Conformation();
 
         RunOptions wt_opts = opts;
-        if (!spec.wt_files.nmr_out_path.empty())
+        if (!spec.wt_files.nmr_out_path.empty()) {
             wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
+        }
 
         RunOptions ala_opts;
         ala_opts.charge_source = alaBuild.charges.get();
@@ -168,8 +169,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         ala_opts.aimnet2_model = session_.Aimnet2Model();
         ala_opts.tripeptide_dft_table = session_.TripeptideDftTablePtr();
         ala_opts.larsen_hbond_grid = session_.LarsenHBondGridPtr();
-        if (!spec.ala_files.nmr_out_path.empty())
+        if (!spec.ala_files.nmr_out_path.empty()) {
             ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
+        }
 
         auto runResult = OperationRunner::RunMutantComparison(
             wt_conf, wt_opts, ala_conf, ala_opts);
@@ -185,8 +187,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         auto attachGraph = [](ProteinConformation& c) {
             if (c.HasResult<SpatialIndexResult>() && !c.HasResult<MolecularGraphResult>()) {
                 auto g = MolecularGraphResult::Compute(c);
-                if (g)
+                if (g) {
                     c.AttachResult(std::move(g));
+                }
             }
         };
         attachGraph(wt_conf);
@@ -196,8 +199,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         // Single conformation: PDB, ProtonatedPdb, Orca
         auto& conf = protein.Conformation();
 
-        if (spec.mode == JobMode::Orca && !spec.orca_files.nmr_out_path.empty())
+        if (spec.mode == JobMode::Orca && !spec.orca_files.nmr_out_path.empty()) {
             opts.orca_nmr_path = spec.orca_files.nmr_out_path;
+        }
 
         auto runResult = OperationRunner::Run(conf, opts);
         OperationLog::Info(LogViewer, "ComputeWorker",
@@ -239,98 +243,121 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
     if (cancelled_.load()) { emit finished(result); return; }
 
     // ================================================================
-    // Phase 2b: Load companion analysis H5 (read-only).
+    // Phase 2b: Load companion trajectory H5 (read-only).
     //
     // The viewer never writes H5 or triggers new extractions. If the
     // spec carries a path, the file was proven to exist by
-    // ValidateJobSpec. Here we read it, verify atom-count + per-index
-    // element agreement against the library Protein, and publish the
-    // result as shared_ptr<const AnalysisFile>. Identity mismatch =
-    // leave null and log the specific discrepancy; the viewer renders
-    // the protein normally, the Time Series tab is empty.
+    // ValidateJobSpec. Here we construct TrajectoryH5 (which validates
+    // the structural minimum — /atoms, /trajectory/frames, root attrs
+    // — and eagerly loads the bounded slices the inspector consumes),
+    // verify atom-count + per-index element agreement against the
+    // library Protein, then publish the result as
+    // shared_ptr<const TrajectoryH5>. Identity mismatch = leave null
+    // and log the specific discrepancy; the viewer renders the protein
+    // normally, the Time Series tab is empty.
     //
     // HDF5/HighFive is an external library boundary: exceptions are
     // caught here and converted to log lines (same pattern as DSSP,
     // cif++, UDP socket in the library).
     // ================================================================
     if (!spec.analysis_h5_path.empty()) {
-        emit progress(40, 100, QStringLiteral("Loading analysis H5..."));
-        OperationLog::Info(LogViewer, "ComputeWorker",
-            "Phase2b: ReadH5 " + spec.analysis_h5_path);
-        auto af = std::make_shared<AnalysisFile>();
-        bool ok = false;
+        emit progress(40, 100, QStringLiteral("Loading trajectory H5..."));
+        OperationLog::Info(LogViewer, "ComputeWorker", "Phase2b: TrajectoryH5 " + spec.analysis_h5_path);
+        std::shared_ptr<TrajectoryH5> h5;
         try {
-            af->ReadH5(spec.analysis_h5_path);
-            ok = true;
+            h5 = std::make_shared<TrajectoryH5>(spec.analysis_h5_path);
         } catch (const std::exception& e) {
             OperationLog::Error("ComputeWorker",
-                std::string("AnalysisFile::ReadH5 failed for ") +
-                spec.analysis_h5_path + ": " + e.what());
+                                std::string("TrajectoryH5 read failed for ") + spec.analysis_h5_path + ": " + e.what());
         }
 
-        if (ok) {
-            // Identity check: atom count + per-index element.  Writer stores
-            // AtomicNumberForElement (int32) at atoms.element; see
-            // AnalysisWriter.cpp:659.  If this fails, the H5 describes a
-            // different protein than the one we built and every time-series
-            // value would land on the wrong atom.
+        if (h5) {
+            // Identity check: atom count + per-index element. The writer
+            // emits `static_cast<int>(a.element)` (Element enum ordinal)
+            // in /atoms/element; see TrajectoryProtein::WriteH5.
+            // Compare the same way — Element enum ordinal, NOT atomic
+            // number. Mismatch = the H5 describes a different protein
+            // and every time-series value would land on the wrong atom.
             const size_t n_lib = protein.AtomCount();
-            if (af->n_atoms != n_lib) {
+            if (h5->AtomCount() != n_lib) {
+                // A common cause when the library is short by ~3 H atoms:
+                // `--pdb` runs reduce, which re-evaluates HIS/LYS protonation
+                // from H-bond geometry and can drop HIP→HID/HIE H atoms that
+                // the H5 (built via FullSystemReader from a TPR with HIP)
+                // expects to be present. Use `--protonated-pdb` to trust the
+                // PDB's existing protonation and skip reduce.
+                std::string hint;
+                if (h5->AtomCount() > n_lib && (h5->AtomCount() - n_lib) <= 10) {
+                    hint = "  (library is short; if running --pdb on an MD"
+                           " snapshot, try --protonated-pdb to skip reduce"
+                           " and preserve HIP/LYS protonation)";
+                }
                 OperationLog::Error("ComputeWorker",
-                    "analysis H5 atom-count mismatch: h5.n_atoms=" +
-                    std::to_string(af->n_atoms) + " library.AtomCount=" +
-                    std::to_string(n_lib) +
-                    " — time series will not be attached");
+                                    "trajectory H5 atom-count mismatch: h5.n_atoms=" + std::to_string(h5->AtomCount())
+                                        + " library.AtomCount=" + std::to_string(n_lib) + " — time series will not be attached"
+                                        + hint);
             } else {
                 size_t first_bad = SIZE_MAX;
-                int bad_h5 = 0, bad_lib = 0;
+                int bad_h5 = 0;
+                int bad_lib = 0;
                 for (size_t i = 0; i < n_lib; ++i) {
-                    int lib_z = AtomicNumberForElement(protein.AtomAt(i).element);
-                    if (af->atoms.element[i] != lib_z) {
+                    int const lib_e = static_cast<int>(protein.AtomAt(i).element);
+                    if (h5->ElementAt(i) != lib_e) {
                         first_bad = i;
-                        bad_h5 = af->atoms.element[i];
-                        bad_lib = lib_z;
+                        bad_h5 = h5->ElementAt(i);
+                        bad_lib = lib_e;
                         break;
                     }
                 }
                 if (first_bad != SIZE_MAX) {
                     OperationLog::Error("ComputeWorker",
-                        "analysis H5 element mismatch at atom " +
-                        std::to_string(first_bad) +
-                        ": h5=" + std::to_string(bad_h5) +
-                        " library=" + std::to_string(bad_lib) +
-                        " — time series will not be attached");
+                                        "trajectory H5 element mismatch at atom " + std::to_string(first_bad)
+                                            + ": h5=" + std::to_string(bad_h5) + " library=" + std::to_string(bad_lib)
+                                            + " (Element enum ordinals)" + " — time series will not be attached");
                 } else {
-                    OperationLog::Info(LogViewer, "ComputeWorker",
-                        "analysis H5 identity check ok: n_atoms=" +
-                        std::to_string(n_lib) + " n_frames=" +
-                        std::to_string(af->n_frames) + " n_residues=" +
-                        std::to_string(af->n_residues));
+                    // Identity check passed. Log sparse-set diagnostic
+                    // so future readers know which TR groups are
+                    // available in this file.
+                    std::string groups_text;
+                    for (const auto& gn : h5->GroupsPresent()) {
+                        if (!groups_text.empty())
+                            groups_text += ", ";
+                        groups_text += gn;
+                    }
+                    OperationLog::Info(LogViewer,
+                                       "ComputeWorker",
+                                       "trajectory H5 identity check ok: n_atoms=" + std::to_string(n_lib)
+                                           + " n_frames=" + std::to_string(h5->FrameCount()));
+                    OperationLog::Info(LogViewer,
+                                       "ComputeWorker",
+                                       "  groups present (" + std::to_string(h5->GroupsPresent().size())
+                                           + "): " + (groups_text.empty() ? std::string("(none)") : groups_text));
 
-                    // Build the AnalysisBinding: identity map + logged
-                    // name mismatches.  This is the read-side contract
-                    // every UI consumer routes through.
                     AnalysisBinding binding;
-                    binding.h5 = af;
+                    binding.h5 = h5;
                     binding.libToH5.resize(n_lib);
-                    for (size_t i = 0; i < n_lib; ++i)
+                    for (size_t i = 0; i < n_lib; ++i) {
                         binding.libToH5[i] = i;   // identity — documented contract
+                    }
 
-                    // Collect expected CHARMM-vs-ff14SB name deltas.  The
-                    // mapping still holds (elements and order match); the
-                    // names just come from different conventions.  Writer
-                    // contract: atoms.atom_name has n_atoms entries, which
-                    // we already verified equals n_lib, so no guard here.
+                    // Collect atom-name deltas. The H5 atom name comes
+                    // from the wrapped Protein at extraction time
+                    // (TrajectoryProtein::WriteH5 emits a.pdb_atom_name);
+                    // mismatches surface convention drift between
+                    // extraction-time and viewer-time canonicalisation.
+                    // Informational only — element check above already
+                    // proved alignment.
                     for (size_t i = 0; i < n_lib; ++i) {
                         const std::string& libName = protein.AtomAt(i).pdb_atom_name;
-                        const std::string& h5Name  = af->atoms.atom_name[i];
-                        if (libName != h5Name)
+                        const std::string& h5Name = h5->AtomNameAt(i);
+                        if (libName != h5Name) {
                             binding.nameMismatches.push_back({i, libName, h5Name});
+                        }
                     }
-                    OperationLog::Info(LogViewer, "ComputeWorker",
-                        "AnalysisBinding: identity libToH5, " +
-                        std::to_string(binding.nameMismatches.size()) +
-                        " atom-name mismatch(es) (expected: ff14SB vs CHARMM)");
+                    OperationLog::Info(LogViewer,
+                                       "ComputeWorker",
+                                       "AnalysisBinding: identity libToH5, " + std::to_string(binding.nameMismatches.size())
+                                           + " atom-name mismatch(es)");
                     const size_t show = std::min<size_t>(5,
                         binding.nameMismatches.size());
                     for (size_t k = 0; k < show; ++k) {
@@ -358,7 +385,7 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         const auto& bs = conf.Result<BiotSavartResult>();
         const int G = 20;
         const double extent = 7.0;
-        int nRings = static_cast<int>(protein.RingCount());
+        int const nRings = static_cast<int>(protein.RingCount());
 
         OperationLog::Info(LogViewer, "ComputeWorker::Phase3",
             "Computing T0 field grids: " + std::to_string(nRings) +
@@ -381,7 +408,7 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
             grid.spacing[0] = grid.spacing[1] = grid.spacing[2] = 2.0 * extent / (G - 1);
             grid.dims[0] = grid.dims[1] = grid.dims[2] = G;
 
-            int nPoints = G * G * G;
+            int const nPoints = G * G * G;
             grid.T0.resize(nPoints, 0.0);
             grid.bsT0.resize(nPoints, 0.0);
 
@@ -390,19 +417,19 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
                     for (int ix = 0; ix < G; ++ix) {
                         if (cancelled_.load()) break;
 
-                        Vec3 pt(grid.origin[0] + ix * grid.spacing[0],
-                                grid.origin[1] + iy * grid.spacing[1],
-                                grid.origin[2] + iz * grid.spacing[2]);
+                        Vec3 const pt(grid.origin[0] + ix * grid.spacing[0],
+                                      grid.origin[1] + iy * grid.spacing[1],
+                                      grid.origin[2] + iz * grid.spacing[2]);
 
-                        double dist = (pt - geo.center).norm();
+                        double const dist = (pt - geo.center).norm();
                         if (dist > extent * 1.2 || dist < 0.5) continue;
 
                         auto stResult = bs.SampleShieldingAt(pt);
-                        double bsT0val = stResult.T0;
+                        double const bsT0val = stResult.T0;
 
                         if (!std::isfinite(bsT0val)) continue;
 
-                        int idx = ix + iy * G + iz * G * G;
+                        int const idx = ix + iy * G + iz * G * G;
                         grid.bsT0[idx] = bsT0val;
                         grid.T0[idx] = bsT0val;
                     }
@@ -432,9 +459,9 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
             bfd.gridDims[0] = bfd.gridDims[1] = bfd.gridDims[2] = G;
 
             Vec3 n = geo.normal;
-            Vec3 arbitrary = (std::abs(n.x()) < 0.9) ? Vec3(1,0,0) : Vec3(0,1,0);
-            Vec3 u = n.cross(arbitrary).normalized();
-            Vec3 v = n.cross(u);
+            Vec3 const arbitrary = (std::abs(n.x()) < 0.9) ? Vec3(1, 0, 0) : Vec3(0, 1, 0);
+            Vec3 const u = n.cross(arbitrary).normalized();
+            Vec3 const v = n.cross(u);
 
             bfd.positions.reserve(G * G * G);
             bfd.fields.reserve(G * G * G);
@@ -442,11 +469,11 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
             for (int iz = 0; iz < G; ++iz) {
                 for (int iy = 0; iy < G; ++iy) {
                     for (int ix = 0; ix < G; ++ix) {
-                        double fx = -extent + 2.0 * extent * ix / (G - 1);
-                        double fy = -extent + 2.0 * extent * iy / (G - 1);
-                        double fz = -extent + 2.0 * extent * iz / (G - 1);
-                        Vec3 pt = geo.center + fx * u + fy * v + fz * n;
-                        Vec3 B = bs.SampleBFieldAt(pt);
+                        double const fx = -extent + 2.0 * extent * ix / (G - 1);
+                        double const fy = -extent + 2.0 * extent * iy / (G - 1);
+                        double const fz = -extent + 2.0 * extent * iz / (G - 1);
+                        Vec3 const pt = geo.center + fx * u + fy * v + fz * n;
+                        Vec3 const B = bs.SampleBFieldAt(pt);
                         bfd.positions.push_back(pt);
                         bfd.fields.push_back(B);
                     }
@@ -456,7 +483,7 @@ void ComputeWorker::computeAll(nmr::JobSpec spec) {
         }
     }
 
-    int N = static_cast<int>(conf.AtomCount());
+    int const N = static_cast<int>(conf.AtomCount());
     OperationLog::Info(LogViewer, "ComputeWorker",
         "Done: " + std::to_string(N) + " atoms, " +
         std::to_string(protein.RingCount()) + " rings, " +

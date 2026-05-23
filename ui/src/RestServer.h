@@ -70,10 +70,25 @@ private:
     QJsonObject cmdAtomDump(const QJsonObject& cmd);
     QJsonObject cmdListAtoms(const QJsonObject& cmd);
 
+    // Polite shutdown. cmdQuit() flips `shutdown_after_reply_` and
+    // returns the reply JSON; the dispatch caller (onReadyRead) sends
+    // the reply, then drives the socket through `disconnectFromHost`
+    // — Qt drains the write buffer before emitting `disconnected`, and
+    // the same socket's `disconnected` signal is connected to
+    // QCoreApplication::quit (UniqueConnection, so first disconnect
+    // wins). Pure signal/slot chain: no QTimer::singleShot, no sync
+    // waitForBytesWritten, no raw socket flush gymnastics.
+    QJsonObject cmdQuit();
+
     void sendResponse(QTcpSocket* socket, const QJsonObject& response);
 
     QTcpServer* server_;
     MainWindow* mainWindow_;
     QList<QTcpSocket*> clients_;
     quint16 actualPort_ = 0;
+
+    // Set by cmdQuit; observed by onReadyRead after sendResponse so the
+    // graceful shutdown sequence runs only after the reply is queued
+    // on the socket's write buffer.
+    bool shutdown_after_reply_ = false;
 };

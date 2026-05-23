@@ -1868,13 +1868,14 @@ if(Qt6_FOUND AND VTK_FOUND)
         ui/src/IsosurfaceOverlay.cpp
         ui/src/RingCurrentOverlay.cpp
         ui/src/PeptideBondOverlay.cpp
-        # Standalone analysis H5 reader (read-only consumer of the viewer).
-        # Library stays Qt-free; Qt binding happens in ComputeWorker/MainWindow.
-        fileformat/analysis_file.cpp
+        # Typed read boundary for `nmr_extract --trajectory` H5 output.
+        # Replaces the dead AnalysisFile (fileformat/analysis_file.{h,cpp});
+        # fileformat/ remains untouched in this session, but the viewer
+        # no longer depends on it. See ui/src/TrajectoryH5.h.
+        ui/src/TrajectoryH5.cpp
     )
     target_include_directories(nmr-viewer PRIVATE
         ${CMAKE_SOURCE_DIR}/ui/src
-        ${CMAKE_SOURCE_DIR}/fileformat
     )
     # HighFive reads the HDF5 header version and picks between H5Dvlen_reclaim
     # (<1.12) and H5Treclaim (>=1.12).  OpenBabel's transitive micromamba

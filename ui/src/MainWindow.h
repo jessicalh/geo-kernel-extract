@@ -7,7 +7,7 @@
 #include <vtkOpenGLMoleculeMapper.h>
 #include <vtkMolecule.h>
 #include "ComputeWorker.h"
-#include "analysis_file.h"  // read-only time-series companion data
+// AnalysisBinding (incl. its TrajectoryH5 inner pointer) comes via ComputeWorker.h.
 
 class BackboneRibbonOverlay;
 class RingCurrentOverlay;
@@ -91,7 +91,7 @@ private slots:
     void onIsoThresholdChanged();
 
     // Async compute slots
-    void onComputeProgress(int current, int total, QString phase);
+    void onComputeProgress(int current, int total, const QString& phase);
     void onComputeFinished(ComputeResult result);
 
 private:
@@ -118,8 +118,11 @@ private:
     // GeometryChoice tab — shows calculator decisions for picked atom
     void populateGeometryChoices(size_t atomIndex);
 
-    // Time Series tab — per-atom, frame-0 slice of the companion analysis H5.
-    // Populates only when analysisFile_ is set AND atomIndex is in range.
+    // Time Series tab — per-atom view of the trajectory.h5 companion.
+    // Shows Welford rollups (mean ± std) + frame-0 slabs per TR group.
+    // Each section is sparse-tolerant: only appears if the group is in
+    // the file. No-op (with "no H5 loaded" placeholder) when binding
+    // is not Valid().
     void populateTimeSeries(size_t atomIndex);
 
     // VTK rendering

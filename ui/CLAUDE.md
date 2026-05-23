@@ -146,7 +146,15 @@ echo '{"cmd":"set_overlay","mode":"classical"}' | nc -q1 localhost 9147
 echo '{"cmd":"set_calculators","bs":true,"hm":false}' | nc -q1 localhost 9147
 echo '{"cmd":"export_features","path":"/tmp/features"}' | nc -q1 localhost 9147
 echo '{"cmd":"orbit","azimuth":30}' | nc -q1 localhost 9147
+echo '{"cmd":"quit"}' | nc -q1 localhost 9147       # polite shutdown
 ```
+
+Prefer `{"cmd":"quit"}` over `pkill nmr-viewer` — the REST quit
+schedules `QApplication::quit` on the main thread so widget
+destructors, the worker thread auto-delete chain, and VTK release run
+cleanly. The REST reply (`{"ok":true,"result":{"message":"shutting down"}}`)
+ships before the event loop exits, so a calling script sees a clean
+acknowledgement before the socket closes.
 
 Use this loop. It is seconds, not minutes. Do not guess what the
 viewer is doing — ask it.
