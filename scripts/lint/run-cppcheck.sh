@@ -71,7 +71,9 @@ CPPCHECK_BASE=(
     # Style preferences below — not bugs, not dead code.
     --suppress=useStlAlgorithm
     --suppress=noExplicitConstructor
+    --suppress=constVariable
     --suppress=constVariableReference
+    --suppress=constVariablePointer
     --suppress=constParameterReference
     --suppress=constParameterPointer
     --suppress=constParameter

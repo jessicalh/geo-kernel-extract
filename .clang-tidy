@@ -39,7 +39,8 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-narrowing-conversions,
   -bugprone-implicit-widening-of-multiplication-result,
-  -bugprone-suspicious-include
+  -bugprone-suspicious-include,
+  -clang-analyzer-optin.performance.Padding
 
 # WarningsAsErrors: leave empty. The ratchet is the gate.
 WarningsAsErrors: ""

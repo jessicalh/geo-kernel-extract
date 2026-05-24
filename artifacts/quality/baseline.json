@@ -1,6 +1,6 @@
 {
-  "anchored_at_sha": "a57b534",
-  "anchored_at_utc": "2026-05-24T21:48:20.503225+00:00",
+  "anchored_at_sha": "f52e91e",
+  "anchored_at_utc": "2026-05-24T22:31:54.417352+00:00",
   "tools": {
     "clang-tidy": {
       "src/AIMNet2Result.cpp": {
@@ -42,10 +42,9 @@
       },
       "src/ConformationAtom.h": {
         "by_check": {
-          "clang-analyzer-optin.performance.Padding": 1,
           "performance-unnecessary-value-param": 1
         },
-        "total": 2
+        "total": 1
       },
       "src/CoulombResult.cpp": {
         "by_check": {
@@ -214,12 +213,6 @@
         },
         "total": 3
       },
-      "src/TripeptidePoseAssembler.cpp": {
-        "by_check": {
-          "clang-analyzer-optin.performance.Padding": 1
-        },
-        "total": 1
-      },
       "src/WaterFieldResult.cpp": {
         "by_check": {
           "clang-analyzer-deadcode.DeadStores": 1
@@ -282,12 +275,6 @@
         },
         "total": 2
       },
-      "tests/test_foundation_results.cpp": {
-        "by_check": {
-          "clang-analyzer-optin.performance.Padding": 1
-        },
-        "total": 1
-      },
       "tests/test_full_pipeline.cpp": {
         "by_check": {
           "clang-analyzer-deadcode.DeadStores": 2
@@ -329,18 +316,6 @@
           "bugprone-argument-comment": 2
         },
         "total": 2
-      },
-      "tests/test_pipeline_and_sample.cpp": {
-        "by_check": {
-          "clang-diagnostic-error": 17
-        },
-        "total": 17
-      },
-      "tests/test_ring_hierarchy.cpp": {
-        "by_check": {
-          "clang-diagnostic-error": 6
-        },
-        "total": 6
       },
       "tests/test_spherical_tensor.cpp": {
         "by_check": {
@@ -428,12 +403,6 @@
           "unusedFunction": 3
         },
         "total": 3
-      },
-      "src/CovalentTopology.cpp": {
-        "by_check": {
-          "constVariablePointer": 1
-        },
-        "total": 1
       },
       "src/DemoResult.cpp": {
         "by_check": {
@@ -582,10 +551,9 @@
       },
       "src/MopacResult.cpp": {
         "by_check": {
-          "constVariable": 1,
           "unusedFunction": 2
         },
-        "total": 3
+        "total": 2
       },
       "src/MopacResult.h": {
         "by_check": {
