@@ -24,14 +24,16 @@
 #include "BlessCompare.h"
 #include <gtest/gtest.h>
 
-#include "OperationRunner.h"
-#include "ConformationResult.h"
-#include "PdbFileReader.h"
-#include "OrcaRunLoader.h"
+#include "CategoryInfoProjection.h"
 #include "ChargeSource.h"
-#include "RuntimeEnvironment.h"
+#include "ConformationResult.h"
 #include "OperationLog.h"
+#include "OperationRunner.h"
+#include "OrcaRunLoader.h"
+#include "PdbFileReader.h"
+#include "RuntimeEnvironment.h"
 #include "Session.h"
+#include "TopologySidecar.h"
 #include "errors.h"
 
 #include <filesystem>
@@ -215,6 +217,12 @@ protected:
 
         // ---- Phase 2: Write all features ----
         int arrays = ConformationResult::WriteAllFeatures(conf, out_dir);
+        // Mirror nmr_extract::main: the per-protein identity emissions
+        // (atoms_category_info + topology sidecar) land alongside the
+        // per-ConformationResult NPYs. Smoke matches the production
+        // emission set so the SDK can round-trip blessed output.
+        CategoryInfoProjection::WriteFeatures(conf.ProteinRef(), out_dir);
+        TopologySidecar::WriteFeatures(conf.ProteinRef(), out_dir);
         EXPECT_GE(arrays, static_cast<int>(min_npy_files))
             << "Expected " << min_npy_files << "+ NPY arrays";
 

@@ -1,6 +1,6 @@
 {
-  "anchored_at_sha": "a6b22d2",
-  "anchored_at_utc": "2026-05-24T18:13:34.849026+00:00",
+  "anchored_at_sha": "5e79b9f",
+  "anchored_at_utc": "2026-05-24T20:47:57.510142+00:00",
   "tools": {
     "clang-tidy": {
       "src/AminoAcidType.h": {
@@ -14,18 +14,6 @@
           "misc-const-correctness": 2
         },
         "total": 2
-      },
-      "src/BondedEnergyResult.h": {
-        "by_check": {
-          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
-        },
-        "total": 1
-      },
-      "src/Cli/Parse.cpp": {
-        "by_check": {
-          "google-readability-braces-around-statements": 1
-        },
-        "total": 1
       },
       "src/ConformationAtom.h": {
         "by_check": {
@@ -70,43 +58,26 @@
         },
         "total": 2
       },
-      "src/RecordBag.h": {
-        "by_check": {
-          "google-readability-braces-around-statements": 6
-        },
-        "total": 6
-      },
       "src/SolventEnvironment.h": {
         "by_check": {
-          "clang-diagnostic-unused-variable": 1,
           "misc-const-correctness": 1
         },
-        "total": 2
+        "total": 1
       },
-      "src/Trajectory.cpp": {
+      "tests/TestEnvironment.h": {
         "by_check": {
-          "cert-err33-c": 2,
+          "modernize-concat-nested-namespaces": 1
+        },
+        "total": 1
+      },
+      "tests/test_smoke.cpp": {
+        "by_check": {
           "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1,
-          "google-readability-braces-around-statements": 2,
-          "misc-const-correctness": 4,
-          "readability-function-size": 1
+          "google-readability-braces-around-statements": 1,
+          "misc-const-correctness": 11,
+          "readability-convert-member-functions-to-static": 3
         },
-        "total": 10
-      },
-      "src/TrajectoryProtein.h": {
-        "by_check": {
-          "cert-err33-c": 2
-        },
-        "total": 2
-      },
-      "src/nmr_extract.cpp": {
-        "by_check": {
-          "bugprone-exception-escape": 1,
-          "bugprone-unchecked-optional-access": 2,
-          "cert-err33-c": 24,
-          "google-readability-braces-around-statements": 5
-        },
-        "total": 32
+        "total": 16
       }
     },
     "cppcheck": {

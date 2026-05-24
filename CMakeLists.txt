@@ -445,20 +445,26 @@ target_include_directories(nmr_extract BEFORE PRIVATE
 
 
 # ============================================================================
-# Tests — tiered by cost and use case
+# Tests
 #
-#   unit_tests        <5s    No file I/O, pure logic
-#   structure_tests   ~5min  Static PDB path (1UBQ, P84477), no MOPAC
-#   trajectory_tests  ~5min  AMBER trajectory loader (fleet_amber/)
-#   mopac_tests       ~1hr   MOPAC semiempirical (test_mopac, mutation, pipeline)
-#   batch_tests       ~2hr   Multi-protein sweep across consolidated/
+# Seven binaries, organised by scope:
 #
-# Separate executables (unchanged):
-#   smoke_tests, job_spec_tests, gromacs_streaming_tests
+#   unit_tests                 pure logic, no protein loading (<5s)
+#   conformation_scope_tests   per-Conf-Result + per-calc + substrate + cli
+#   trajectory_scope_tests     every TR + trajectory loader + per-TR discipline
+#   mopac_tests                MOPAC ConfResult + MOPAC TR family
+#                              (separate because fixtures are slow / optional)
+#   batch_tests                multi-protein sweeps (~2 hr; separate to keep
+#                              day-to-day ctest fast)
+#   smoke_tests                end-to-end bless-baseline + smoke
+#   string_barrier_tests       discipline grep on the source tree
+#                              (no nmr_shielding link; hand-rolled below)
 #
-# Retired 2026-05-04 (Phase 1 CHARMM-dead-letter cleanup, sources in
-# tests/bones/): fleet_smoke_tests, fes_fleet_smoke_tests, water_field_tests.
-# water_field_tests will be re-derived against fleet_amber/ in Phase 2.
+# One macro `nmr_test()` defines the first six. Discovery in PRE_TEST mode
+# (AIMNet2/torch needs LD_LIBRARY_PATH set at test run time, before binary
+# enumeration). Only `fast` is a sanctioned LABEL; hardware / dependency
+# gating is NOT a test classifier (see memory entry
+# `feedback_aimnet2_required_no_weasel`).
 # ============================================================================
 
 enable_testing()
@@ -497,9 +503,9 @@ message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
 #  1. /usr/lib/x86_64-linux-gnu so the system libpq + libssl + libcrypto
 #     trio resolves consistently. The binary's RUNPATH includes
 #     micromamba lib (for libmopac, libreducelib, etc.), and without
-#     this prepend the loader picks micromamba's libpq → micromamba's
+#     this prepend the loader picks micromamba's libpq -> micromamba's
 #     libssl (OpenSSL 3.2-3.6 symbol requirements) but system libcrypto
-#     (3.0 symbols only) — load fails. We don't USE OpenSSL (DSN is a
+#     (3.0 symbols only) -- load fails. We don't USE OpenSSL (DSN is a
 #     Unix socket) but libpq's NEEDED entries pull libssl/libcrypto at
 #     process startup regardless. Prepending /usr/lib forces both halves
 #     of the SSL pair to the same install.
@@ -513,126 +519,243 @@ set(NMR_TEST_ENVIRONMENT
     "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${NMR_NVRTC_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
 )
 
-# Helper: define a test executable with standard boilerplate. Every
-# test target gets the AIMNet2-compatible environment uniformly. No
-# escape hatch — manual `./build/<binary>` invocation goes through
-# scripts/run_with_cuda_env.sh; ctest invocation uses this property.
-macro(nmr_test_target NAME)
+# ----------------------------------------------------------------------------
+# nmr_test(<NAME>
+#     SOURCES <file.cpp> ...    test sources beyond the universal two
+#     [LABELS fast]             only "fast" is sanctioned (absence = full)
+#     [LINK   <lib> ...]        extras beyond nmr_shielding + GTest::gtest
+# )
+#
+# Every nmr_test binary:
+#   - builds from tests/test_main.cpp + tests/TestEnvironment.cpp + SOURCES;
+#   - gets NMR_TEST_DATA_DIR + tests/ on the include path;
+#   - links nmr_shielding + GTest::gtest + LINK;
+#   - is discovered via gtest_discover_tests in DISCOVERY_MODE PRE_TEST with
+#     ENVIRONMENT = NMR_TEST_ENVIRONMENT (the libssl + cu13 LD_LIBRARY_PATH
+#     that AIMNet2's torch runtime needs at test invocation).
+#
+# When LINK contains "highfive", /usr/include/hdf5/serial is prepended to
+# the include path so HighFive picks up the 1.10 ABI matching the system
+# libhdf5 link (OpenBabel's micromamba contributes 1.14 headers that
+# would emit symbols the link library doesn't have).
+# ----------------------------------------------------------------------------
+macro(nmr_test NAME)
+    set(_multi SOURCES LABELS LINK)
+    cmake_parse_arguments(_NT "" "" "${_multi}" ${ARGN})
+
     add_executable(${NAME}
         tests/test_main.cpp
         tests/TestEnvironment.cpp
-        ${ARGN}
+        ${_NT_SOURCES}
     )
     target_compile_definitions(${NAME} PRIVATE
         NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
     )
-    target_include_directories(${NAME} PRIVATE
-        ${CMAKE_SOURCE_DIR}/tests
+
+    list(FIND _NT_LINK "highfive" _hf_idx)
+    if(NOT _hf_idx EQUAL -1)
+        target_include_directories(${NAME} BEFORE PRIVATE /usr/include/hdf5/serial)
+    endif()
+    target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+
+    target_link_libraries(${NAME} PRIVATE
+        nmr_shielding
+        GTest::gtest
+        ${_NT_LINK}
     )
-    target_link_libraries(${NAME} PRIVATE nmr_shielding GTest::gtest)
-    gtest_discover_tests(${NAME} PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+
+    set(_props ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
+    if(_NT_LABELS)
+        list(APPEND _props LABELS ${_NT_LABELS})
+    endif()
+    gtest_discover_tests(${NAME}
+        DISCOVERY_MODE PRE_TEST
+        PROPERTIES ${_props}
+    )
 endmacro()
 
-# ── Unit tests (<5s) — no protein loading, pure logic ──────────────────
-nmr_test_target(unit_tests
-    tests/test_spherical_tensor.cpp
-    tests/test_amino_acid.cpp
-    tests/test_ring_hierarchy.cpp
-    tests/test_object_model.cpp
-    tests/test_naming_registry.cpp
-    tests/test_runtime_environment.cpp
-    tests/test_calculator_config.cpp
+
+# -- unit_tests -------------------------------------------------------------
+# Pure logic; no protein loading, no torch init. <5s. LABELS fast.
+nmr_test(unit_tests
+    LABELS fast
+    SOURCES
+        tests/test_amino_acid.cpp
+        tests/test_calculator_config.cpp
+        tests/test_naming_registry.cpp
+        tests/test_object_model.cpp
+        tests/test_ring_hierarchy.cpp
+        tests/test_runtime_environment.cpp
+        tests/test_spherical_tensor.cpp
 )
 
-# ── Structure tests (~5 min) — static PDB path, no MOPAC ──────────────
-nmr_test_target(structure_tests
-    tests/test_pdb_loading.cpp
-    tests/test_geometry_result.cpp
-    tests/test_demo_result.cpp
-    tests/test_two_conformations.cpp
-    tests/test_traversal_dump.cpp
-    tests/test_dssp_result.cpp
-    tests/test_protonation_detection.cpp
-    tests/test_atom_flat.cpp
-    tests/test_foundation_results.cpp
-    tests/test_amber_charge_resolver.cpp
-    tests/test_amber_leap_input.cpp
-    tests/test_amber_prepared_charge_source.cpp
-    tests/test_apbs_field_result.cpp
-    tests/test_apbs_wired.cpp
-    tests/test_apbs_ff14sb.cpp
-    tests/test_aimnet2_charge_response_gradient.cpp
-    tests/test_planar_geometry_result.cpp
-    tests/test_protonation_pipeline.cpp
-    tests/test_mcconnell_result.cpp
-    tests/test_coulomb_result.cpp
-    tests/test_ring_susceptibility_result.cpp
-    tests/test_hbond_result.cpp
-    tests/test_biot_savart_result.cpp
-    tests/test_haigh_mallion_result.cpp
-    tests/test_pi_quadrupole_result.cpp
-    tests/test_dispersion_result.cpp
-    tests/test_calculation_runner.cpp
-    tests/test_pipeline_and_sample.cpp
-    tests/test_write_features.cpp
-    tests/test_tripeptide_backbone_shielding.cpp
-    tests/test_tripeptide_neighbor_shielding.cpp
-    tests/test_larsen_residue_perception.cpp
-    tests/test_larsen_residue_against_source_log.cpp
-    tests/test_larsen_residue_ser_sidechain.cpp
-    tests/test_larsen_residue_wl_ambiguity.cpp
-    tests/test_larsen_hbond_grid.cpp
-    tests/test_atom_semantic_predicates.cpp
-    tests/test_larsen_hbond_shielding.cpp
+
+# -- conformation_scope_tests ----------------------------------------------
+# Every per-Conf-Result and per-calculator unit test; substrate / topology /
+# CategoryInfo projection; cli parse. Static PDB path, no MOPAC, no MD
+# trajectory. Loads torch via nmr_shielding (AIMNet2 path).
+nmr_test(conformation_scope_tests
+    SOURCES
+        tests/test_aimnet2_charge_response_gradient.cpp
+        tests/test_amber_charge_resolver.cpp
+        tests/test_amber_leap_input.cpp
+        tests/test_amber_prepared_charge_source.cpp
+        tests/test_apbs_ff14sb.cpp
+        tests/test_apbs_field_result.cpp
+        tests/test_apbs_wired.cpp
+        tests/test_atom_flat.cpp
+        tests/test_atom_semantic_predicates.cpp
+        tests/test_biot_savart_result.cpp
+        tests/test_calculation_runner.cpp
+        tests/test_category_info_projection.cpp
+        tests/test_cli_parse.cpp
+        tests/test_coulomb_result.cpp
+        tests/test_demo_result.cpp
+        tests/test_dispersion_result.cpp
+        tests/test_dssp_result.cpp
+        tests/test_foundation_results.cpp
+        tests/test_geometry_result.cpp
+        tests/test_haigh_mallion_result.cpp
+        tests/test_hbond_result.cpp
+        tests/test_larsen_hbond_grid.cpp
+        tests/test_larsen_hbond_shielding.cpp
+        tests/test_larsen_residue_against_source_log.cpp
+        tests/test_larsen_residue_perception.cpp
+        tests/test_larsen_residue_ser_sidechain.cpp
+        tests/test_larsen_residue_wl_ambiguity.cpp
+        tests/test_mcconnell_result.cpp
+        tests/test_pdb_loading.cpp
+        tests/test_pi_quadrupole_result.cpp
+        tests/test_pipeline_and_sample.cpp
+        tests/test_planar_geometry_result.cpp
+        tests/test_protonation_detection.cpp
+        tests/test_protonation_pipeline.cpp
+        tests/test_ring_susceptibility_result.cpp
+        tests/test_topology_sidecar.cpp
+        tests/test_traversal_dump.cpp
+        tests/test_tripeptide_backbone_shielding.cpp
+        tests/test_tripeptide_neighbor_shielding.cpp
+        tests/test_two_conformations.cpp
+        tests/test_write_features.cpp
+        tests/topology/test_legacy_amber_semantic_integration.cpp
 )
 
-# ── Trajectory tests (~5 min) — AMBER trajectory loader (fleet_amber/) ─
-nmr_test_target(trajectory_tests
-    tests/test_amber_trajectory.cpp
+
+# -- trajectory_scope_tests ------------------------------------------------
+# Every TrajectoryResult test + trajectory loader (AMBER + Gromacs streaming)
+# + FramePdbEmitter. Per-TR discipline trio + synthetic + integration tests
+# all live here. Links highfive for H5RoundTrip checks. MOPAC-dependent TRs
+# live in mopac_tests; batch sweeps live in batch_tests.
+nmr_test(trajectory_scope_tests
+    LINK highfive
+    SOURCES
+        tests/TestConfig.cpp
+        tests/test_aimnet2_charge_time_series.cpp
+        tests/test_aimnet2_embedding_charge_response_gradient_time_series.cpp
+        tests/test_amber_streaming.cpp
+        tests/test_amber_trajectory.cpp
+        tests/test_apbs_efg_time_series.cpp
+        tests/test_apbs_efield_time_series.cpp
+        tests/test_bonded_energy_time_series.cpp
+        tests/test_bs_anomalous_atom_marker.cpp
+        tests/test_bs_welford.cpp
+        tests/test_dihedral_bin_transition.cpp
+        tests/test_dihedral_time_series.cpp
+        tests/test_disp_shielding_time_series.cpp
+        tests/test_dssp8_time_series.cpp
+        tests/test_dssp8_transition.cpp
+        tests/test_eeq_welford.cpp
+        tests/test_frame_pdb_emitter.cpp
+        tests/test_gromacs_energy_time_series.cpp
+        tests/test_hbond_count_welford.cpp
+        tests/test_hbond_shielding_time_series.cpp
+        tests/test_hm_shielding_time_series.cpp
+        tests/test_hm_welford.cpp
+        tests/test_hydration_geometry_time_series.cpp
+        tests/test_hydration_geometry_welford.cpp
+        tests/test_hydration_shell_time_series.cpp
+        tests/test_hydration_shell_welford.cpp
+        tests/test_j_coupling_time_series.cpp
+        tests/test_larsen_hbond_1pHB_shielding_time_series.cpp
+        tests/test_larsen_hbond_1pHaB_shielding_time_series.cpp
+        tests/test_larsen_hbond_2pHB_shielding_time_series.cpp
+        tests/test_larsen_hbond_2pHaB_shielding_time_series.cpp
+        tests/test_larsen_hbond_count_time_series.cpp
+        tests/test_larsen_hbond_water_term_time_series.cpp
+        tests/test_mc_shielding_time_series.cpp
+        tests/test_mc_welford.cpp
+        tests/test_piquad_shielding_time_series.cpp
+        tests/test_ring_neighbourhood_trajectory_stats.cpp
+        tests/test_ring_pucker_time_series.cpp
+        tests/test_ringchi_shielding_time_series.cpp
+        tests/test_rmsd_spike_dft_coord.cpp
+        tests/test_rmsd_tracking.cpp
+        tests/test_sasa_time_series.cpp
+        tests/test_sasa_welford.cpp
+        tests/test_tripeptide_bb_method_tag_time_series.cpp
+        tests/test_tripeptide_bb_residual_vec_time_series.cpp
+        tests/test_tripeptide_bb_shielding_time_series.cpp
+        tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp
+        tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp
+        tests/test_tripeptide_neighbor_shielding_time_series.cpp
+        tests/test_water_field_time_series.cpp
+        tests/test_water_field_welford.cpp
 )
 
-# ── MOPAC tests (~1 hr) — semiempirical charge calculation ────────────
-nmr_test_target(mopac_tests
-    tests/test_mopac_result.cpp
-    tests/test_full_pipeline.cpp
-    tests/test_mutation_delta.cpp
+
+# -- mopac_tests -----------------------------------------------------------
+# MOPAC ConfResult (PM7+MOZYME charges, ~10 min/run) + MOPAC-dependent TRs
+# (charge welford, bond order welford, coulomb / mcconnell shielding TS,
+# ff14SB reconciliation) + full_pipeline + mutation_delta. Kept isolated
+# so MOPAC-not-installed envs can exclude this binary cleanly.
+nmr_test(mopac_tests
+    LINK highfive
+    SOURCES
+        tests/test_full_pipeline.cpp
+        tests/test_mopac_bond_order_welford.cpp
+        tests/test_mopac_charge_welford.cpp
+        tests/test_mopac_coulomb_shielding_time_series.cpp
+        tests/test_mopac_mc_shielding_time_series.cpp
+        tests/test_mopac_result.cpp
+        tests/test_mopac_vs_ff14sb_reconciliation.cpp
+        tests/test_mutation_delta.cpp
 )
 
-# ── Batch tests (~2 hr) — multi-protein sweep across consolidated ─────
-nmr_test_target(batch_tests
-    tests/test_batch_mcconnell.cpp
-    tests/test_batch_coulomb_ringchi.cpp
-    tests/test_batch_biot_savart_haigh_mallion.cpp
-    tests/test_batch_piquad_disp.cpp
+
+# -- batch_tests -----------------------------------------------------------
+# Multi-protein sweeps across consolidated/ (~2 hr wall). Isolated so
+# day-to-day ctest never touches them; run explicitly via
+# `ctest -R batch_tests`.
+nmr_test(batch_tests
+    SOURCES
+        tests/test_batch_biot_savart_haigh_mallion.cpp
+        tests/test_batch_coulomb_ringchi.cpp
+        tests/test_batch_mcconnell.cpp
+        tests/test_batch_piquad_disp.cpp
 )
 
-# ============================================================================
-# Smoke tests — end-to-end pipeline validation (~5 min)
-# ============================================================================
 
-add_executable(smoke_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/BlessCompare.cpp
-    tests/test_smoke.cpp
+# -- smoke_tests -----------------------------------------------------------
+# End-to-end pipeline validation against bless baselines
+# (tests/golden/blessed/). Includes BlessCompare comparator.
+nmr_test(smoke_tests
+    SOURCES
+        tests/BlessCompare.cpp
+        tests/test_smoke.cpp
 )
-target_compile_definitions(smoke_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(smoke_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(smoke_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
 
 
-# ============================================================================
-# String barrier discipline test (lightweight; greps source tree).
-# Asserts that gemmi / RDKit / cifpp use stays bounded per the
-# substrate-side string barrier in
-# spec/plan/topology-substrate-implementation-plan-2026-05-05.md.
-# ============================================================================
-
+# ----------------------------------------------------------------------------
+# string_barrier_tests
+#
+# Standalone discipline test: greps the source tree for cifpp / RDKit /
+# gemmi use outside the substrate-generator boundary. Does NOT link
+# nmr_shielding (linking would force libtorch + every external dep for
+# a grep that runs in <1 s) and uses NMR_SOURCE_DIR instead of
+# NMR_TEST_DATA_DIR (its fixture is the tree itself). Hand-rolled by
+# design -- the nmr_test() macro above is for tests that exercise the
+# library.
+# ----------------------------------------------------------------------------
 add_executable(string_barrier_tests
     tests/test_string_barrier.cpp
 )
@@ -643,1204 +766,19 @@ target_link_libraries(string_barrier_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
 )
-gtest_discover_tests(string_barrier_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# Topology semantic substrate integration tests
-#
-# Loads representative AMBER-prepared protein PDBs (1ubq + fleet_amber 1Z9B,
-# 1P9J), runs Protein::FinalizeConstruction, and audits the per-atom
-# AtomSemanticTable substrate populated on LegacyAmberTopology. Spot-checks
-# NTERM/CTERM cap composition, GLY HA2 prochiral, HIS variant chemistry,
-# Pro res.H == NONE, and the Bundle B post-protonation re-canonicalisation
-# of LYS-labelled-LYN-chemistry residues (1Z9B). Per
-# spec/plan/topology-encoding-dependencies-2026-05-05.md §H.5.
-# ============================================================================
-
-add_executable(topology_semantic_integration_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/topology/test_legacy_amber_semantic_integration.cpp
-)
-target_compile_definitions(topology_semantic_integration_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(topology_semantic_integration_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/tests
-)
-target_link_libraries(topology_semantic_integration_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(topology_semantic_integration_tests
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# CategoryInfoProjection tests
-#
-# Loads 1UBQ via BuildFromProtonatedPdb, configures the projection from
-# RuntimeEnvironment::BmrbAtomNom(), and asserts atom_nom.tbl-driven
-# IUPAC/BMRB queries (Gly Hα inversion, methylene stereo, residue
-# variant 3-letter mapping). NPY file lands with a structured-dtype
-# header naming all expected fields.
-# ============================================================================
-
-add_executable(category_info_projection_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_category_info_projection.cpp
-)
-target_compile_definitions(category_info_projection_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(category_info_projection_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/tests
-)
-target_link_libraries(category_info_projection_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(category_info_projection_tests
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# TopologySidecar tests
-#
-# Verifies that bonds.npy, rings.npy, ring_membership.npy, and
-# extraction_manifest.json land alongside atoms_category_info.npy with
-# axis sizes matching the protein's typed topology surface, bond
-# endpoints within the atom axis, and idempotent byte-identical
-# re-emission of the topology files. See src/TopologySidecar.{h,cpp}.
-# ============================================================================
-
-add_executable(topology_sidecar_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_topology_sidecar.cpp
-)
-target_compile_definitions(topology_sidecar_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(topology_sidecar_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/tests
-)
-target_link_libraries(topology_sidecar_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(topology_sidecar_tests
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fleet.cpp
-# (CHARMM/XTC fleet/1A6J_5789 fixture).
-
-# ============================================================================
-# JobSpec tests — separate exe (~10 min, not the 2.5-hour full suite)
-# ============================================================================
-
-add_executable(job_spec_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_cli_parse.cpp
-)
-target_compile_definitions(job_spec_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_link_libraries(job_spec_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-)
-gtest_discover_tests(job_spec_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# Gromacs streaming test — trajectory streaming proof of concept
-# ============================================================================
-
-add_executable(gromacs_streaming_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_amber_streaming.cpp
-    tests/test_frame_pdb_emitter.cpp
-)
-target_compile_definitions(gromacs_streaming_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-# Match HDF5 1.10 headers to the 1.10 .so — the same hazard documented
-# on nmr-viewer below: OpenBabel's micromamba include path contributes
-# HDF5 1.14 headers which emit H5Treclaim, but the link library is
-# system libhdf5 1.10. The per-TR H5 round-trip test reads via HighFive
-# directly from the test TU so this header ordering matters here.
-target_include_directories(gromacs_streaming_tests BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(gromacs_streaming_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(gromacs_streaming_tests PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-# ============================================================================
-# HmShieldingTimeSeries tests
-#
-# Discipline trio + synthetic unit + integration for the FO-pattern
-# dense-buffer TR that captures HaighMallionResult::hm_shielding_contribution
-# into the /trajectory/hm_shielding_time_series/ H5 group.
-# ============================================================================
-
-add_executable(hm_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hm_shielding_time_series.cpp
-)
-target_compile_definitions(hm_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hm_shielding_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(hm_shielding_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(hm_shielding_time_series_tests
+gtest_discover_tests(string_barrier_tests
     DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HmWelford tests — AV-pattern Welford rollup on HaighMallion kernel
-# ============================================================================
-
-add_executable(hm_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_hm_welford.cpp
-)
-target_compile_definitions(hm_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hm_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hm_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hm_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# BsWelford tests — AV-pattern Welford rollup on Biot-Savart kernel.
-# BsWelford is the Phase 2b exemplar; per-component T1/T2 + delta variants.
-# ============================================================================
-
-add_executable(bs_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_bs_welford.cpp
-)
-target_compile_definitions(bs_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(bs_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(bs_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(bs_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# BsAnomalousAtomMarker tests — cross-result read discipline + event bag.
-# Reads bs_welford.{t0.mean, t0.m2, n_frames}; writes to ta.events.
-# ============================================================================
-
-add_executable(bs_anomalous_atom_marker_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_bs_anomalous_atom_marker.cpp
-)
-target_compile_definitions(bs_anomalous_atom_marker_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(bs_anomalous_atom_marker_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(bs_anomalous_atom_marker_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(bs_anomalous_atom_marker_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# McConnellWelford tests — AV-pattern Welford rollup on McConnell kernel
-# ============================================================================
-
-add_executable(mc_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_mc_welford.cpp
-)
-target_compile_definitions(mc_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mc_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mc_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mc_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# EeqWelford tests — AV-pattern scalar Welford on Eeq atomic charge
-# ============================================================================
-
-add_executable(eeq_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_eeq_welford.cpp
-)
-target_compile_definitions(eeq_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(eeq_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(eeq_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(eeq_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# SasaWelford tests — AV-pattern scalar Welford on SASA
-# ============================================================================
-
-add_executable(sasa_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_sasa_welford.cpp
-)
-target_compile_definitions(sasa_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(sasa_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(sasa_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(sasa_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HBondCountWelford tests — AV-pattern scalar Welford on H-bond pair count
-# ============================================================================
-
-add_executable(hbond_count_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/TestConfig.cpp
-    tests/test_hbond_count_welford.cpp
-)
-target_compile_definitions(hbond_count_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hbond_count_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hbond_count_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hbond_count_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# McConnellShieldingTimeSeries tests
-# ============================================================================
-
-add_executable(mc_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mc_shielding_time_series.cpp
-)
-target_compile_definitions(mc_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mc_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mc_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mc_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# PiQuadrupoleShieldingTimeSeries tests
-# ============================================================================
-
-add_executable(piquad_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_piquad_shielding_time_series.cpp
-)
-target_compile_definitions(piquad_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(piquad_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(piquad_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(piquad_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# RingSusceptibilityShieldingTimeSeries tests
-# ============================================================================
-
-add_executable(ringchi_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_ringchi_shielding_time_series.cpp
-)
-target_compile_definitions(ringchi_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(ringchi_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(ringchi_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(ringchi_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# DispersionShieldingTimeSeries tests
-# ============================================================================
-
-add_executable(disp_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_disp_shielding_time_series.cpp
-)
-target_compile_definitions(disp_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(disp_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(disp_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(disp_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HBondShieldingTimeSeries tests
-# ============================================================================
-
-add_executable(hbond_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hbond_shielding_time_series.cpp
-)
-target_compile_definitions(hbond_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hbond_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hbond_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hbond_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# SasaTimeSeries tests
-# ============================================================================
-
-add_executable(sasa_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_sasa_time_series.cpp
-)
-target_compile_definitions(sasa_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(sasa_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(sasa_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(sasa_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# GromacsEnergyTimeSeries tests
-# ============================================================================
-
-add_executable(gromacs_energy_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_gromacs_energy_time_series.cpp
-)
-target_compile_definitions(gromacs_energy_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(gromacs_energy_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(gromacs_energy_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(gromacs_energy_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# BondedEnergyTimeSeries tests
-# ============================================================================
-
-add_executable(bonded_energy_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_bonded_energy_time_series.cpp
-)
-target_compile_definitions(bonded_energy_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(bonded_energy_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(bonded_energy_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(bonded_energy_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# WaterFieldTimeSeries tests
-# ============================================================================
-
-add_executable(water_field_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_water_field_time_series.cpp
-)
-target_compile_definitions(water_field_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(water_field_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(water_field_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(water_field_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# WaterFieldWelford tests
-# ============================================================================
-
-add_executable(water_field_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_water_field_welford.cpp
-)
-target_compile_definitions(water_field_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(water_field_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(water_field_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(water_field_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HydrationGeometryTimeSeries tests
-# ============================================================================
-
-add_executable(hydration_geometry_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hydration_geometry_time_series.cpp
-)
-target_compile_definitions(hydration_geometry_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hydration_geometry_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hydration_geometry_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hydration_geometry_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HydrationGeometryWelford tests
-# ============================================================================
-
-add_executable(hydration_geometry_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hydration_geometry_welford.cpp
-)
-target_compile_definitions(hydration_geometry_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hydration_geometry_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hydration_geometry_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hydration_geometry_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HydrationShellTimeSeries tests
-# ============================================================================
-
-add_executable(hydration_shell_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hydration_shell_time_series.cpp
-)
-target_compile_definitions(hydration_shell_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hydration_shell_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hydration_shell_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hydration_shell_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# DihedralTimeSeries tests
-# ============================================================================
-
-add_executable(dihedral_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_dihedral_time_series.cpp
-)
-target_compile_definitions(dihedral_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(dihedral_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(dihedral_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(dihedral_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# RingNeighbourhoodTrajectoryStats tests
-# ============================================================================
-
-add_executable(ring_neighbourhood_trajectory_stats_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_ring_neighbourhood_trajectory_stats.cpp
-)
-target_compile_definitions(ring_neighbourhood_trajectory_stats_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(ring_neighbourhood_trajectory_stats_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(ring_neighbourhood_trajectory_stats_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(ring_neighbourhood_trajectory_stats_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# RmsdTracking tests
-# ============================================================================
-
-add_executable(rmsd_tracking_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_rmsd_tracking.cpp
-)
-target_compile_definitions(rmsd_tracking_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(rmsd_tracking_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(rmsd_tracking_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(rmsd_tracking_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# RmsdSpike + DftPoseCoordinator tests (TR12 + TR13 end-to-end)
-# ============================================================================
-
-add_executable(rmsd_spike_dft_coord_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_rmsd_spike_dft_coord.cpp
-)
-target_compile_definitions(rmsd_spike_dft_coord_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(rmsd_spike_dft_coord_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(rmsd_spike_dft_coord_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(rmsd_spike_dft_coord_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# DihedralBinTransition tests
-# ============================================================================
-
-add_executable(dihedral_bin_transition_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_dihedral_bin_transition.cpp
+    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}"
 )
-target_compile_definitions(dihedral_bin_transition_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(dihedral_bin_transition_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(dihedral_bin_transition_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(dihedral_bin_transition_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# JCouplingTimeSeries tests
-# ============================================================================
-
-add_executable(j_coupling_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_j_coupling_time_series.cpp
-)
-target_compile_definitions(j_coupling_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(j_coupling_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(j_coupling_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(j_coupling_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# Dssp8TimeSeries tests
-# ============================================================================
-
-add_executable(dssp8_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_dssp8_time_series.cpp
-)
-target_compile_definitions(dssp8_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(dssp8_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(dssp8_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(dssp8_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# Dssp8Transition tests
-# ============================================================================
-
-add_executable(dssp8_transition_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_dssp8_transition.cpp
-)
-target_compile_definitions(dssp8_transition_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(dssp8_transition_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(dssp8_transition_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(dssp8_transition_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# RingPuckerTimeSeries tests
-# ============================================================================
-
-add_executable(ring_pucker_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_ring_pucker_time_series.cpp
-)
-target_compile_definitions(ring_pucker_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(ring_pucker_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(ring_pucker_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(ring_pucker_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# HydrationShellWelford tests
-# ============================================================================
-
-add_executable(hydration_shell_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_hydration_shell_welford.cpp
-)
-target_compile_definitions(hydration_shell_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(hydration_shell_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(hydration_shell_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(hydration_shell_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# AIMNet2ChargeTimeSeries tests
-# ============================================================================
-
-add_executable(aimnet2_charge_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_aimnet2_charge_time_series.cpp
-)
-target_compile_definitions(aimnet2_charge_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(aimnet2_charge_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(aimnet2_charge_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(aimnet2_charge_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# AIMNet2 Embedding + Polarisability TimeSeries tests
-# ============================================================================
-
-add_executable(aimnet2_embedding_charge_response_gradient_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_aimnet2_embedding_charge_response_gradient_time_series.cpp
-)
-target_compile_definitions(aimnet2_embedding_charge_response_gradient_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(aimnet2_embedding_charge_response_gradient_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(aimnet2_embedding_charge_response_gradient_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(aimnet2_embedding_charge_response_gradient_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# ApbsEfieldTimeSeries tests
-# ============================================================================
-
-add_executable(apbs_efield_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_apbs_efield_time_series.cpp
-)
-target_compile_definitions(apbs_efield_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(apbs_efield_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(apbs_efield_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(apbs_efield_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# ApbsEfgTimeSeries tests (TR4 of the 13-TR plan, T2 EFG TS canonical)
-# ============================================================================
-
-add_executable(apbs_efg_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_apbs_efg_time_series.cpp
-)
-target_compile_definitions(apbs_efg_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(apbs_efg_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(apbs_efg_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(apbs_efg_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# MopacChargeWelford tests (TR5 of the 13-TR plan, sparse scalar Welford
-# canonical — clone template for MopacBondOrderWelford / MopacCoulombShieldingTS
-# / MopacMcConnellShieldingTS).
-# ============================================================================
-
-add_executable(mopac_charge_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mopac_charge_welford.cpp
-)
-target_compile_definitions(mopac_charge_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mopac_charge_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mopac_charge_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mopac_charge_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# MopacBondOrderWelford tests (TR6 of the 13-TR plan, per-bond axis clone
-# of TR5; Welford state lives inside the TR per BondLengthStats pattern).
-# ============================================================================
-
-add_executable(mopac_bond_order_welford_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mopac_bond_order_welford.cpp
-)
-target_compile_definitions(mopac_bond_order_welford_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mopac_bond_order_welford_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mopac_bond_order_welford_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mopac_bond_order_welford_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# MopacCoulombShieldingTimeSeries tests (TR7 of the 13-TR plan, sparse
-# T2 TS canonical — combines TR4 T2-only emission with TR5 sparse gate).
-# ============================================================================
-
-add_executable(mopac_coulomb_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mopac_coulomb_shielding_time_series.cpp
-)
-target_compile_definitions(mopac_coulomb_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mopac_coulomb_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mopac_coulomb_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mopac_coulomb_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# MopacMcConnellShieldingTimeSeries tests (TR8 of the 13-TR plan — sibling
-# of TR7 but emits all 9 components because the source M_total is NOT
-# traceless; user direction 2026-05-21 "if not traceless write both").
-# ============================================================================
-
-add_executable(mopac_mc_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mopac_mc_shielding_time_series.cpp
-)
-target_compile_definitions(mopac_mc_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mopac_mc_shielding_time_series_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mopac_mc_shielding_time_series_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mopac_mc_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# MopacVsFf14SbReconciliation tests (TR9 of the 13-TR plan — cross-source
-# signed cos(MOPAC_T2, FF14SB_T2) scalar in [-1, 1]; only TR of its shape).
-# ============================================================================
-
-add_executable(mopac_vs_ff14sb_reconciliation_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_mopac_vs_ff14sb_reconciliation.cpp
-)
-target_compile_definitions(mopac_vs_ff14sb_reconciliation_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(mopac_vs_ff14sb_reconciliation_tests BEFORE PRIVATE /usr/include/hdf5/serial)
-target_link_libraries(mopac_vs_ff14sb_reconciliation_tests PRIVATE nmr_shielding GTest::gtest highfive)
-gtest_discover_tests(mopac_vs_ff14sb_reconciliation_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# TripeptideBackboneShieldingTimeSeries tests
-#
-# Discipline trio + synthetic unit + integration sanity for the FO-pattern
-# dense-buffer TR that captures Larsen 2015 σ_BB^i into the
-# /trajectory/tripeptide_bb_shielding_time_series/ H5 group.
-# ============================================================================
-
-add_executable(tripeptide_bb_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_bb_shielding_time_series.cpp
-)
-target_compile_definitions(tripeptide_bb_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_bb_shielding_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_bb_shielding_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_bb_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# TripeptideBackboneResidualVecTimeSeries tests
-#
-# Vec3-buffer TR; captures tripeptide_bb_residual_vec (post-Kabsch
-# positional residual, polar 3-vector in protein lab frame) into
-# /trajectory/tripeptide_bb_residual_vec_time_series/. Discipline trio
-# + synthetic + log-overages integration.
-# ============================================================================
-
-add_executable(tripeptide_bb_residual_vec_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_bb_residual_vec_time_series.cpp
-)
-target_compile_definitions(tripeptide_bb_residual_vec_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_bb_residual_vec_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_bb_residual_vec_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_bb_residual_vec_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# TripeptideNeighborShieldingTimeSeries tests
-#
-# Same shape as the BB TR target above, against the Δσ_BB^{i±1} time
-# series.
-# ============================================================================
-
-add_executable(tripeptide_neighbor_shielding_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_neighbor_shielding_time_series.cpp
-)
-target_compile_definitions(tripeptide_neighbor_shielding_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_neighbor_shielding_time_series_tests BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_neighbor_shielding_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_neighbor_shielding_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# TripeptideNeighborResidualVecPrev / Next TimeSeries tests
-#
-# Vec3-buffer TRs against the per-direction (i-1, i+1) neighbor residual
-# fields. Source field is NaN-initialised per frame by the calculator;
-# integration tests are NaN-tolerant and log magnitude overages.
-# ============================================================================
-
-add_executable(tripeptide_neighbor_residual_vec_prev_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_neighbor_residual_vec_prev_time_series.cpp
-)
-target_compile_definitions(tripeptide_neighbor_residual_vec_prev_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_neighbor_residual_vec_prev_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_neighbor_residual_vec_prev_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_neighbor_residual_vec_prev_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-add_executable(tripeptide_neighbor_residual_vec_next_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_neighbor_residual_vec_next_time_series.cpp
-)
-target_compile_definitions(tripeptide_neighbor_residual_vec_next_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_neighbor_residual_vec_next_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_neighbor_residual_vec_next_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_neighbor_residual_vec_next_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# TripeptideBackboneMethodTagTimeSeries tests
-#
-# int-buffer (uint8) (N, T) flat emission TR; captures the categorical
-# tripeptide_bb_method_tag (0=no_match, 1=opbe, 2=pbe_ser). Establishes
-# the int-buffer pattern for the bundle's other discrete-categorical TRs.
-# ============================================================================
-
-add_executable(tripeptide_bb_method_tag_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_tripeptide_bb_method_tag_time_series.cpp
-)
-target_compile_definitions(tripeptide_bb_method_tag_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(tripeptide_bb_method_tag_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(tripeptide_bb_method_tag_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(tripeptide_bb_method_tag_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# LarsenHBondWaterTermTimeSeries tests
-#
-# Scalar-double (N, T) flat TR; captures larsen_hbond_water_term (Larsen
-# Δσ_w 2.07 ppm isotropic on HN atoms with no H-bond pairs).
-# Establishes the scalar-buffer pattern for Larsen scalar/count TRs.
-# ============================================================================
-
-add_executable(larsen_hbond_water_term_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_larsen_hbond_water_term_time_series.cpp
-)
-target_compile_definitions(larsen_hbond_water_term_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(larsen_hbond_water_term_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(larsen_hbond_water_term_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(larsen_hbond_water_term_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# LarsenHBondCountTimeSeries tests
-#
-# int-buffer (N, T) flat TR; captures larsen_hbond_n_pairs (per-atom
-# H-bond pair count summed across 4 Larsen classes).
-# ============================================================================
-
-add_executable(larsen_hbond_count_time_series_tests
-    tests/test_main.cpp
-    tests/TestEnvironment.cpp
-    tests/test_larsen_hbond_count_time_series.cpp
-)
-target_compile_definitions(larsen_hbond_count_time_series_tests PRIVATE
-    NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-)
-target_include_directories(larsen_hbond_count_time_series_tests
-    BEFORE PRIVATE
-    /usr/include/hdf5/serial
-)
-target_link_libraries(larsen_hbond_count_time_series_tests PRIVATE
-    nmr_shielding
-    GTest::gtest
-    highfive
-)
-gtest_discover_tests(larsen_hbond_count_time_series_tests
-    DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-
-
-# ============================================================================
-# Larsen per-class H-bond shielding TimeSeries tests (4 TRs)
-#
-# Four SphericalTensor TRs cloned from the BB shielding pattern, each
-# against one of the four Larsen contribution classes
-# (1°HB, 2°HB, 1°HαB, 2°HαB). Same (N, T, 9) flat-double emission.
-# ============================================================================
-
-foreach(_larsen_class IN ITEMS 1pHB 2pHB 1pHaB 2pHaB)
-    set(_target larsen_hbond_${_larsen_class}_shielding_time_series_tests)
-    add_executable(${_target}
-        tests/test_main.cpp
-        tests/TestEnvironment.cpp
-        tests/test_larsen_hbond_${_larsen_class}_shielding_time_series.cpp
-    )
-    target_compile_definitions(${_target} PRIVATE
-        NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-    )
-    target_include_directories(${_target} BEFORE PRIVATE
-        /usr/include/hdf5/serial
-    )
-    target_link_libraries(${_target} PRIVATE
-        nmr_shielding
-        GTest::gtest
-        highfive
-    )
-    gtest_discover_tests(${_target}
-        DISCOVERY_MODE PRE_TEST
-        PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-endforeach()
-
-# water_field_tests retired 2026-05-04 to tests/bones/test_water_field.cpp
-# (CHARMM/XTC fleet_test_fullsys fixture + xtc_reader.h + GromacsEnsembleLoader).
-# To be re-derived against fleet_amber/ in Phase 2.
 
-# fes_fleet_smoke_tests retired 2026-05-04 to tests/bones/test_smoke_fes_fleet.cpp
-# (fes-sampler retired; fixture in tests/bones/data/fes_fleet/).
 
 # ============================================================================
-# Example driver
+# Example driver -- builds against the library; not a test.
 # ============================================================================
 
 add_executable(nmr_pass0_demo tests/pass0_demo.cpp)
 target_link_libraries(nmr_pass0_demo PRIVATE nmr_shielding)
+
 
 # ============================================================================
 # Qt/VTK viewer (optional — only built if Qt6 and VTK 9 are found)
