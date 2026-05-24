@@ -364,7 +364,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               irreps=_EFG_IRREPS, units="V/A^2", tensor_rank=2, mechanism="electrostatic_efg"),
 
     # ── AIMNet2 charge-response gradient (AIMNet2ChargeResponseGradientResult.cpp)
-    # Always-on after the JobSpec --aimnet2 model is loaded (per the
+    # Always-on after the --aimnet2 model is loaded (per the
     # 2026-05-09 promotion of Amendment 2026-05-08(b) from a test flag
     # to standard non-trajectory pipeline; trajectory mode unchanged).
     # Vector is dL/d(r_i) where L = sum_j q_j^2 over non-sentinel atoms

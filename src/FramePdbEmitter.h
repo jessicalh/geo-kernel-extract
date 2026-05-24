@@ -8,7 +8,7 @@
 //   Configure(protein, config) -- assemble: stash a const-Protein handle
 //                                  + the Config (output dir, stem,
 //                                  decorator, stride, time window).
-//                                  Called once at startup from JobSpec
+//                                  Called once at startup from nmr_extract
 //                                  when --emit-frame-pdbs is present.
 //   OnFrame(conf, frame_idx, time_ps, box_matrix?)
 //                                  -- called per-frame from

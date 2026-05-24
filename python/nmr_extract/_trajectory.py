@@ -2266,7 +2266,7 @@ class MopacChargeWelfordGroup:
 
     MopacResult attaches sparsely (TimedAttach in OperationRunner,
     not Require) per the Mopac cadence (~20 ps in production,
-    JobSpec-driven). The TR gates on conf.HasResult<MopacResult>()
+    CLI-driven). The TR gates on conf.HasResult<MopacResult>()
     each frame; absent frames skip the Welford update and record
     mask=0. When MOPAC never ran (source_attached_count == 0), the
     H5 group is skipped entirely — readers must tolerate KeyError

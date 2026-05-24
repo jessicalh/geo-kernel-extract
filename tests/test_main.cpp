@@ -1,10 +1,8 @@
 //
 // Test main: loads RuntimeEnvironment, TestEnvironment, and
 // CalculatorConfig before any tests. CalculatorConfig is loaded so
-// that JobSpecE2E and any other test exercising ValidateJobSpec can
-// resolve the AIMNet2 TOML default (aimnet2_model_path) — required
-// since the 2026-05-04 contract scope generalisation per
-// feedback_aimnet2_required_no_weasel.
+// any test exercising nmr::cli::Validate can resolve the AIMNet2
+// TOML default (aimnet2_model_path).
 //
 
 #include "RuntimeEnvironment.h"

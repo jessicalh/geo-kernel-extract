@@ -28,7 +28,7 @@ Status Session::LoadFromToml() {
     // RuntimeEnvironment: machine paths from ~/.nmr_tools.toml.
     // OperationLog: channel mask + session-start log line.
     // CalculatorConfig: NOT loaded here — the caller owns the decision
-    // of which params file to use (default in data/ vs JobSpec's
+    // of which params file to use (default in data/ vs CLI's
     // --config override), and CalculatorConfig::Load is idempotent.
     RuntimeEnvironment::Load();
     OperationLog::LoadChannelConfig();

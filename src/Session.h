@@ -57,7 +57,7 @@ public:
 
     // Optional. If the caller wants AIMNet2 in the pipeline, load the
     // .jpt model once here; Session holds it for the whole process.
-    // Pass the resolved path (JobSpec + fallback from TOML).
+    // Pass the resolved path (CLI + fallback from TOML).
     Status LoadAimnet2Model(const std::string& path);
 
     // Optional. Open a libpq connection to the local tensorcs15 replica

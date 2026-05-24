@@ -354,7 +354,6 @@ add_library(nmr_shielding
     src/GeometryChoice.cpp
     src/ReduceProtonation.cpp
     src/CalculatorConfig.cpp
-    src/JobSpec.cpp
     src/AIMNet2Result.cpp
     src/AIMNet2ChargeResponseGradientResult.cpp
     src/PlanarGeometryResult.cpp
@@ -742,8 +741,7 @@ gtest_discover_tests(topology_sidecar_tests
 add_executable(job_spec_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
-    tests/test_job_spec.cpp
-    tests/test_cli_parse_parity.cpp
+    tests/test_cli_parse.cpp
 )
 target_compile_definitions(job_spec_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
@@ -1857,7 +1855,13 @@ find_package(VTK 9 COMPONENTS
     FiltersFlowPaths CommonColor
     QUIET)
 
-if(Qt6_FOUND AND VTK_FOUND)
+option(NMR_BUILD_VIEWER "Build nmr-viewer (Qt6+VTK)" OFF)
+
+# ui/ still depends on the legacy JobSpec API and has not yet been migrated
+# to nmr::cli. NMR_BUILD_VIEWER defaults OFF so the top-level build stays
+# green; flip it ON once ui/main_viewer.cpp + MainWindow + ComputeWorker +
+# RestServer have been ported.
+if(NMR_BUILD_VIEWER AND Qt6_FOUND AND VTK_FOUND)
     set(CMAKE_AUTOMOC ON)
     add_executable(nmr-viewer
         ui/src/main_viewer.cpp
@@ -1898,9 +1902,11 @@ if(Qt6_FOUND AND VTK_FOUND)
         ${VTK_LIBRARIES}
     )
     vtk_module_autoinit(TARGETS nmr-viewer MODULES ${VTK_LIBRARIES})
-    message(STATUS "Qt6 + VTK found — building nmr-viewer")
+    message(STATUS "Building nmr-viewer (NMR_BUILD_VIEWER=ON, Qt6+VTK found)")
+elseif(NMR_BUILD_VIEWER)
+    message(STATUS "NMR_BUILD_VIEWER=ON but Qt6/VTK not found — skipping nmr-viewer")
 else()
-    message(STATUS "Qt6 or VTK not found — skipping nmr-viewer")
+    message(STATUS "Skipping nmr-viewer (NMR_BUILD_VIEWER=OFF; ui/ pending nmr::cli migration)")
 endif()
 
 

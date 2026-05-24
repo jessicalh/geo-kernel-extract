@@ -24,7 +24,7 @@
 // zero, so (N, T, 5) emission is information-preserving.
 //
 // SPARSE CADENCE: MopacCoulombResult attaches via TimedAttach in
-// OperationRunner.cpp:183 (NOT Require). Same JobSpec-driven Mopac
+// OperationRunner.cpp:183 (NOT Require). Same CLI-driven Mopac
 // cadence as TR5/TR6. WriteH5Group skips the entire
 // /trajectory/mopac_coulomb_shielding_time_series/ group when no
 // frame attached the source.

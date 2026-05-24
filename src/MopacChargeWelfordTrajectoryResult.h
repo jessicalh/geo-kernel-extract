@@ -11,7 +11,7 @@
 // gated by `!opts.skip_mopac` at line 138 and the non-null Compute
 // return at line 141; NOT RequireConformationResult). MOPAC runs
 // every ~20 ps in
-// production (JobSpec-driven; the TR is cadence-agnostic). On
+// production (CLI-driven; the TR is cadence-agnostic). On
 // frames where MopacResult is absent, the per-frame `HasResult` gate
 // skips both the Welford update AND increments source_attached_count_;
 // the per-frame mask records 0. When source_attached_count == 0 across

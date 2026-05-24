@@ -33,7 +33,7 @@ bool TrajectoryProtein::BuildFromTrajectory(const std::string& dir_path) {
     //   <production_dir>/production.edr     — EDR energies (read elsewhere)
     //   <production_dir>/../topol.top       — rtp comment lines (this read)
     //
-    // The TRR-via-libgromacs swap (commit 590a754) and JobSpec's
+    // The TRR-via-libgromacs swap (commit 590a754) and the CLI's
     // production-prefix derivation (commit 590a754 also) made
     // production.* the canonical naming. md.* is legacy CHARMM-era
     // and not used by the AMBER fixtures. Older callers that still
