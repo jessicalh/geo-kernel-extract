@@ -195,12 +195,7 @@ bool TrajectoryProtein::AttachResult(
     if (!result) return false;
 
     const std::string name = result->Name();
-    // Extract the referent for typeid: passing `*result` directly into
-    // typeid is potentially-evaluated under C++ rules (clang-diagnostic-
-    // potentially-evaluated-expression); the named reference makes the
-    // polymorphic dispatch explicit and the side-effect-free read clear.
-    const TrajectoryResult& result_ref = *result;
-    const std::type_index tid(typeid(result_ref));
+    const std::type_index tid(typeid(*result));
 
     // Singleton check.
     if (results_.find(tid) != results_.end()) {

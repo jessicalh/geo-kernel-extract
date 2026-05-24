@@ -113,7 +113,7 @@ TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
 
     constexpr std::size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
 
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -134,7 +134,7 @@ TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(buf->AtomCount(), Ntp);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
 
-    for (std::size_t const i : {static_cast<std::size_t>(0), Ntp / 2, Ntp - 1}) {
+    for (std::size_t i : {std::size_t(0), Ntp / 2, Ntp - 1}) {
         for (std::size_t t = 0; t < kFrames; ++t) {
             EXPECT_EQ(buf->At(i, t), SyntheticCount(i, t));
         }
@@ -147,7 +147,7 @@ TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
         HighFive::File file(h5_path, HighFive::File::Truncate);
         tr->WriteH5Group(tp, file);
     }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/larsen_hbond_count_time_series");
     auto ds = grp.getDataSet("count");
     const auto dims = ds.getSpace().getDimensions();
@@ -190,7 +190,7 @@ TEST(LarsenHBondCountTimeSeries, Frame0Semantics) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -227,7 +227,7 @@ TEST(LarsenHBondCountTimeSeries, FinalizeIdempotency) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<int>(
@@ -298,7 +298,7 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
         tr.WriteH5Group(tp, file);
     }
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/larsen_hbond_count_time_series");
     auto ds = grp.getDataSet("count");
     const auto dims = ds.getSpace().getDimensions();
@@ -306,8 +306,7 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[0], tp.AtomCount());
     EXPECT_EQ(dims[1], 1u);
 
-    std::string units;
-    std::string dtype;
+    std::string units, dtype;
     grp.getAttribute("units").read(units);
     grp.getAttribute("dtype").read(dtype);
     EXPECT_EQ(units, "pairs");

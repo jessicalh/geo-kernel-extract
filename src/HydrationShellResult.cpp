@@ -14,7 +14,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         ProteinConformation& conf,
         const SolventEnvironment& solvent) {
 
-    OperationLog::Scope const scope("HydrationShellResult::Compute",
+    OperationLog::Scope scope("HydrationShellResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " waters=" + std::to_string(solvent.WaterCount()) +
         " ions=" + std::to_string(solvent.IonCount()));
@@ -49,17 +49,16 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
 
     // Compute protein center of mass (for half-shell direction)
     Vec3 protein_com = Vec3::Zero();
-    for (size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i)
         protein_com += conf.AtomAt(i).Position();
-}
     protein_com /= static_cast<double>(N);
 
     for (size_t ai = 0; ai < N; ++ai) {
         auto& atom = conf.MutableAtomAt(ai);
-        Vec3 const pos_i = atom.Position();
+        Vec3 pos_i = atom.Position();
 
         // Direction from this atom toward the protein interior
-        Vec3 const to_interior = (protein_com - pos_i).normalized();
+        Vec3 to_interior = (protein_com - pos_i).normalized();
 
         // Half-shell: count first-shell waters on exposed vs buried side
         int n_exposed = 0;
@@ -68,31 +67,30 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         int dipole_count = 0;
 
         for (size_t wi = 0; wi < W; ++wi) {
-            Vec3 const r = solvent.waters[wi].O_pos - pos_i;
-            double const d_sq = r.squaredNorm();
+            Vec3 r = solvent.waters[wi].O_pos - pos_i;
+            double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
 
-            double const d = std::sqrt(d_sq);
-            Vec3 const r_hat = r / d;
+            double d = std::sqrt(d_sq);
+            Vec3 r_hat = r / d;
 
             // Is this water on the interior side or the exposed side?
-            double const cos_interior = r_hat.dot(to_interior);
-            if (cos_interior > 0) {
+            double cos_interior = r_hat.dot(to_interior);
+            if (cos_interior > 0)
                 ++n_buried;
-            } else {
+            else
                 ++n_exposed;
-}
 
             // Water dipole orientation relative to atom→water vector
-            Vec3 const dipole = solvent.waters[wi].Dipole();
-            double const dip_mag = dipole.norm();
+            Vec3 dipole = solvent.waters[wi].Dipole();
+            double dip_mag = dipole.norm();
             if (dip_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
                 dipole_cos_sum += dipole.dot(r_hat) / dip_mag;
                 ++dipole_count;
             }
         }
 
-        int const n_total_shell = n_exposed + n_buried;
+        int n_total_shell = n_exposed + n_buried;
         atom.half_shell_asymmetry =
             (n_total_shell > 0)
             ? static_cast<double>(n_exposed) / static_cast<double>(n_total_shell)
@@ -107,7 +105,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
         double best_ion_dist = std::numeric_limits<double>::max();
         double best_ion_charge = 0.0;
         for (size_t ii = 0; ii < solvent.IonCount(); ++ii) {
-            double const d = (solvent.ions[ii].pos - pos_i).norm();
+            double d = (solvent.ions[ii].pos - pos_i).norm();
             if (d < best_ion_dist) {
                 best_ion_dist = d;
                 best_ion_charge = solvent.ions[ii].charge;

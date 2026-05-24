@@ -36,64 +36,64 @@ using namespace nmr;
 
 // Hand-compute the kernel for verification
 static Mat3 HandComputeG(const Vec3& d, const Vec3& n) {
-    double const r = d.norm();
-    double const r2 = r * r;
-    double const r5 = r2 * r2 * r;
-    double const r7 = r5 * r2;
-    double const r9 = r7 * r2;
-    double const dn = d.dot(n);
-    double const dn2 = dn * dn;
+    double r = d.norm();
+    double r2 = r * r;
+    double r5 = r2 * r2 * r;
+    double r7 = r5 * r2;
+    double r9 = r7 * r2;
+    double dn = d.dot(n);
+    double dn2 = dn * dn;
 
     Mat3 G;
-    double const diag = 3.0 / r5 - 15.0 * dn2 / r7;
-    for (int a = 0; a < 3; ++a) {
-        for (int b = 0; b < 3; ++b) {
-            G(a, b) = 105.0 * dn2 * d(a) * d(b) / r9 - 30.0 * dn * (n(a) * d(b) + n(b) * d(a)) / r7 - 15.0 * d(a) * d(b) / r7
-                      + 6.0 * n(a) * n(b) / r5 + (a == b ? diag : 0.0);
-        }
-    }
+    double diag = 3.0 / r5 - 15.0 * dn2 / r7;
+    for (int a = 0; a < 3; ++a)
+        for (int b = 0; b < 3; ++b)
+            G(a, b) = 105.0 * dn2 * d(a) * d(b) / r9
+                     - 30.0 * dn * (n(a) * d(b) + n(b) * d(a)) / r7
+                     - 15.0 * d(a) * d(b) / r7
+                     + 6.0 * n(a) * n(b) / r5
+                     + (a == b ? diag : 0.0);
     return G;
 }
 
 
 TEST(PiQuadAnalytical, TracelessAtMultiplePositions) {
-    Vec3 const n(0, 0, 1);
+    Vec3 n(0, 0, 1);
 
     // Test positions
-    std::vector<Vec3> const positions = {
-        Vec3(0, 0, 3),  // above ring
-        Vec3(3, 0, 0),  // in plane
-        Vec3(2, 2, 2),  // off-axis
-        Vec3(1, 0, 4),  // near-axial
-        Vec3(5, 3, 1),  // far off-axis
+    std::vector<Vec3> positions = {
+        Vec3(0, 0, 3),     // above ring
+        Vec3(3, 0, 0),     // in plane
+        Vec3(2, 2, 2),     // off-axis
+        Vec3(1, 0, 4),     // near-axial
+        Vec3(5, 3, 1),     // far off-axis
     };
 
     for (const Vec3& d : positions) {
         Mat3 G = HandComputeG(d, n);
 
-        double const trace = G.trace();
+        double trace = G.trace();
         EXPECT_NEAR(trace, 0.0, 1e-12)
             << "Tr(G) must be 0 (Laplace) at d=("
             << d(0) << "," << d(1) << "," << d(2) << ")";
 
         // Symmetry
-        for (int a = 0; a < 3; ++a) {
-            for (int b = a + 1; b < 3; ++b) {
-                EXPECT_NEAR(G(a, b), G(b, a), 1e-14) << "G must be symmetric";
-            }
-        }
+        for (int a = 0; a < 3; ++a)
+            for (int b = a + 1; b < 3; ++b)
+                EXPECT_NEAR(G(a, b), G(b, a), 1e-14)
+                    << "G must be symmetric";
     }
 }
 
 
 TEST(PiQuadAnalytical, ScalarMatchesFormula) {
-    Vec3 const n(0, 0, 1);
-    Vec3 const d(2, 1, 3);
-    double const r = d.norm();
-    double const cos_theta = d.dot(n) / r;
-    double const r4 = r * r * r * r;
+    Vec3 n(0, 0, 1);
+    Vec3 d(2, 1, 3);
+    double r = d.norm();
+    double cos_theta = d.dot(n) / r;
+    double r4 = r * r * r * r;
 
-    double const expected = (3.0 * cos_theta * cos_theta - 1.0) / r4;
+    double expected = (3.0 * cos_theta * cos_theta - 1.0) / r4;
 
     // The scalar should match (3cos^2 theta - 1)/r^4
     // This is the Buckingham A-term source (E-field from quadrupole)
@@ -114,8 +114,8 @@ TEST(PiQuadAnalytical, AboveRingValues) {
     //
     // Let me just verify Tr = 0 and compute numerically.
 
-    Vec3 const n(0, 0, 1);
-    Vec3 const d(0, 0, 3);
+    Vec3 n(0, 0, 1);
+    Vec3 d(0, 0, 3);
     Mat3 G = HandComputeG(d, n);
 
     EXPECT_NEAR(G.trace(), 0.0, 1e-12);
@@ -132,10 +132,10 @@ TEST(PiQuadAnalytical, AboveRingValues) {
     EXPECT_NEAR(G(1, 2), 0.0, 1e-14);
 
     // Scalar: (3*1 - 1)/81 = 2/81
-    double const r = 3.0;
-    double const expected_scalar = 2.0 / (r * r * r * r);
-    double const cos_theta = 1.0;
-    double const actual_scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r * r * r * r);
+    double r = 3.0;
+    double expected_scalar = 2.0 / (r * r * r * r);
+    double cos_theta = 1.0;
+    double actual_scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r * r * r * r);
     EXPECT_NEAR(actual_scalar, expected_scalar, 1e-14);
 
     std::cout << "  G at (0,0,3): diag = ("
@@ -154,21 +154,21 @@ TEST(PiQuadAnalytical, InPlaneValues) {
     // G simplifies: all dn terms vanish.
     // G_ab = -15 d_a d_b / r^7 + 6 n_a n_b / r^5 + delta_ab * 3/r^5
 
-    Vec3 const n(0, 0, 1);
-    Vec3 const d(3, 0, 0);
+    Vec3 n(0, 0, 1);
+    Vec3 d(3, 0, 0);
     Mat3 G = HandComputeG(d, n);
 
     EXPECT_NEAR(G.trace(), 0.0, 1e-12);
 
-    double const r = 3.0;
-    double const r5 = std::pow(r, 5);
-    double const r7 = std::pow(r, 7);
+    double r = 3.0;
+    double r5 = std::pow(r, 5);
+    double r7 = std::pow(r, 7);
 
     // G_xx = -15*9/r^7 + 0 + 3/r^5 = -135/2187 + 3/243
     //      = -0.0617 + 0.01235 = -0.04938
     // Wait, need to be more careful. d = (3, 0, 0).
     // G_xx = 0 - 0 - 15*9/r^7 + 0 + 3/r^5
-    double const expected_xx = -15.0 * 9.0 / r7 + 3.0 / r5;
+    double expected_xx = -15.0 * 9.0 / r7 + 3.0 / r5;
     EXPECT_NEAR(G(0, 0), expected_xx, 1e-12);
 
     // G_yy = 0 - 0 - 0 + 0 + 3/r^5
@@ -208,11 +208,11 @@ TEST(PiQuadAnalytical, InPlaneValues) {
 
 static double QuadPotential(const Vec3& d, const Vec3& n) {
     // Phi = (3 dn^2 - r^2) / (2 r^5)  with unit Theta
-    double const r2 = d.squaredNorm();
-    double const r = std::sqrt(r2);
+    double r2 = d.squaredNorm();
+    double r = std::sqrt(r2);
     if (r < 1e-15) return 0.0;
-    double const dn = d.dot(n);
-    double const r5 = r2 * r2 * r;
+    double dn = d.dot(n);
+    double r5 = r2 * r2 * r;
     return (3.0 * dn * dn - r2) / (2.0 * r5);
 }
 
@@ -223,10 +223,10 @@ static Mat3 NumericalEFG(const Vec3& d, const Vec3& n, double h) {
         for (int b = 0; b < 3; ++b) {
             Vec3 ea = Vec3::Zero(); ea(a) = h;
             Vec3 eb = Vec3::Zero(); eb(b) = h;
-            double const pp = QuadPotential(d + ea + eb, n);
-            double const pm = QuadPotential(d + ea - eb, n);
-            double const mp = QuadPotential(d - ea + eb, n);
-            double const mm = QuadPotential(d - ea - eb, n);
+            double pp = QuadPotential(d + ea + eb, n);
+            double pm = QuadPotential(d + ea - eb, n);
+            double mp = QuadPotential(d - ea + eb, n);
+            double mm = QuadPotential(d - ea - eb, n);
             V(a, b) = -(pp - pm - mp + mm) / (4.0 * h * h);
         }
     }
@@ -242,26 +242,26 @@ TEST(PiQuadAnalytical, FiniteDifferenceVerification) {
     // With unit Theta=1, the numerical 2nd derivatives of Phi should equal
     // -G_ab/2. We verify this at multiple positions with two normals.
 
-    Vec3 const n(0, 0, 1);
+    Vec3 n(0, 0, 1);
     double h = 1e-5;
 
-    std::vector<Vec3> const positions = {
-        Vec3(0, 0, 3),      // above ring
-        Vec3(3, 0, 0),      // in plane
-        Vec3(2, 2, 2),      // off-axis
-        Vec3(1, 0, 4),      // near-axial
-        Vec3(5, 3, 1),      // far off-axis
-        Vec3(0.5, 0.3, 2),  // close, off-axis
-        Vec3(7, 0, 0),      // far in-plane
+    std::vector<Vec3> positions = {
+        Vec3(0, 0, 3),       // above ring
+        Vec3(3, 0, 0),       // in plane
+        Vec3(2, 2, 2),       // off-axis
+        Vec3(1, 0, 4),       // near-axial
+        Vec3(5, 3, 1),       // far off-axis
+        Vec3(0.5, 0.3, 2),   // close, off-axis
+        Vec3(7, 0, 0),       // far in-plane
     };
 
-    Vec3 const n_tilted = Vec3(1, 1, 1).normalized();
+    Vec3 n_tilted = Vec3(1, 1, 1).normalized();
 
     double max_rel_err = 0.0;
     int checked = 0;
 
     auto check = [&](const Vec3& d, const Vec3& normal, const char* label) {
-        Mat3 const G_analytical = HandComputeG(d, normal);
+        Mat3 G_analytical = HandComputeG(d, normal);
         Mat3 V_numerical = NumericalEFG(d, normal, h);
 
         // V_numerical should equal -G/2 (with Theta=1)
@@ -270,18 +270,19 @@ TEST(PiQuadAnalytical, FiniteDifferenceVerification) {
         // Scale tolerance by the largest component in this tensor pair,
         // with an absolute floor for near-zero entries where FD truncation
         // error dominates the relative error.
-        double const max_abs = std::max(expected.cwiseAbs().maxCoeff(), V_numerical.cwiseAbs().maxCoeff());
-        double const abs_tol = std::max(max_abs * 1e-4, 1e-7);
+        double max_abs = std::max(expected.cwiseAbs().maxCoeff(),
+                                   V_numerical.cwiseAbs().maxCoeff());
+        double abs_tol = std::max(max_abs * 1e-4, 1e-7);
 
         for (int a = 0; a < 3; ++a) {
             for (int b = 0; b < 3; ++b) {
-                double const anal = expected(a, b);
-                double const numer = V_numerical(a, b);
-                double const scale = std::max(std::abs(anal), std::abs(numer));
+                double anal = expected(a, b);
+                double numer = V_numerical(a, b);
+                double scale = std::max(std::abs(anal), std::abs(numer));
                 // Only track relative error when both are significantly non-zero
                 // (otherwise FD truncation error dominates the ratio).
                 if (std::abs(anal) > abs_tol && std::abs(numer) > abs_tol) {
-                    double const rel_err = std::abs(anal - numer) / scale;
+                    double rel_err = std::abs(anal - numer) / scale;
                     max_rel_err = std::max(max_rel_err, rel_err);
                 }
 
@@ -336,9 +337,9 @@ TEST(PiQuadAnalytical, MagnitudeAgainstBenzeneQuadrupole) {
     constexpr double KE_SI = 8.9875517923e9;
 
     // Position: 3 Angstroms above ring center = 3e-10 m
-    Vec3 const n(0, 0, 1);
-    Vec3 const d_A(0, 0, 3);       // Angstroms
-    Vec3 const d_m = d_A * 1e-10;  // metres
+    Vec3 n(0, 0, 1);
+    Vec3 d_A(0, 0, 3);      // Angstroms
+    Vec3 d_m = d_A * 1e-10;  // metres
 
     // Our geometric kernel in Angstrom units
     Mat3 G_A = HandComputeG(d_A, n);
@@ -353,7 +354,7 @@ TEST(PiQuadAnalytical, MagnitudeAgainstBenzeneQuadrupole) {
     //  with the delta trace vanishing is Theta/2)
     Mat3 V_SI = -KE_SI * (THETA_ZZ_SI / 2.0) * G_SI;
 
-    double const Vzz_SI = V_SI(2, 2);  // V/m²
+    double Vzz_SI = V_SI(2, 2);  // V/m²
 
     // Report
     std::cout << "  Benzene quadrupole EFG at 3A above ring center:\n"
@@ -378,7 +379,7 @@ TEST(PiQuadAnalytical, MagnitudeAgainstBenzeneQuadrupole) {
 
     // Now compute in our working units (V/A²) for comparison with CoulombResult.
     // V/m² to V/A²: 1 V/m² = 1e-20 V/A²
-    double const Vzz_VA2 = Vzz_SI * 1e-20;
+    double Vzz_VA2 = Vzz_SI * 1e-20;
     std::cout << "    V_zz in V/A² = " << Vzz_VA2 << "\n";
 
     // For context: CoulombResult EFG from partial charges is typically
@@ -429,15 +430,14 @@ TEST_F(PiQuadProteinTest, TracelessOnRealProtein) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.quad_tensor.isZero(1e-20)) continue;
 
-            double const trace = std::abs(rn.quad_tensor.trace());
+            double trace = std::abs(rn.quad_tensor.trace());
             max_trace = std::max(max_trace, trace);
 
             // Symmetry check
-            for (int a = 0; a < 3; ++a) {
-                for (int b = a + 1; b < 3; ++b) {
-                    max_asym = std::max(max_asym, std::abs(rn.quad_tensor(a, b) - rn.quad_tensor(b, a)));
-                }
-            }
+            for (int a = 0; a < 3; ++a)
+                for (int b = a + 1; b < 3; ++b)
+                    max_asym = std::max(max_asym,
+                        std::abs(rn.quad_tensor(a, b) - rn.quad_tensor(b, a)));
 
             checked++;
         }
@@ -467,7 +467,7 @@ TEST_F(PiQuadProteinTest, T0IsZero) {
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).piquad_shielding_contribution;
         max_t0 = std::max(max_t0, std::abs(sc.T0));
-        double const t2m = sc.T2Magnitude();
+        double t2m = sc.T2Magnitude();
         if (t2m > 1e-8) nonzero_t2++;
         max_t2 = std::max(max_t2, t2m);
     }
@@ -496,14 +496,14 @@ TEST_F(PiQuadProteinTest, ScalarStoredCorrectly) {
 
             // Recompute scalar from geometry
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
-            Vec3 const d = conf.PositionAt(ai) - geom.center;
-            double const r = d.norm();
+            Vec3 d = conf.PositionAt(ai) - geom.center;
+            double r = d.norm();
             if (r < MIN_DISTANCE) continue;
-            double const cos_theta = d.dot(geom.normal) / r;
-            double const r4 = r * r * r * r;
-            double const expected = (3.0 * cos_theta * cos_theta - 1.0) / r4;
+            double cos_theta = d.dot(geom.normal) / r;
+            double r4 = r * r * r * r;
+            double expected = (3.0 * cos_theta * cos_theta - 1.0) / r4;
 
-            double const diff = std::abs(rn.quad_scalar - expected);
+            double diff = std::abs(rn.quad_scalar - expected);
             max_diff = std::max(max_diff, diff);
             checked++;
         }
@@ -528,9 +528,8 @@ TEST(PiQuadOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
         GTEST_SKIP() << "ORCA test data not found";
-    }
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -549,7 +548,7 @@ TEST(PiQuadOrcaTest, RunOnProtonatedProtein) {
             if (rn.quad_tensor.isZero(1e-20)) continue;
             max_trace = std::max(max_trace, std::abs(rn.quad_tensor.trace()));
         }
-        double const t2m = conf.AtomAt(ai).piquad_shielding_contribution.T2Magnitude();
+        double t2m = conf.AtomAt(ai).piquad_shielding_contribution.T2Magnitude();
         if (t2m > 1e-8) with_quad++;
         max_t2 = std::max(max_t2, t2m);
     }
@@ -591,9 +590,8 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
         GTEST_SKIP() << "ORCA test data not found";
-    }
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -601,7 +599,7 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
     auto& conf = load.protein->Conformation();
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource const charge_source(files.prmtop_path);
+    PrmtopChargeSource charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -620,54 +618,51 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
     std::vector<Bin> bins = {{2,4}, {4,6}, {6,8}, {8,10}, {10,15}};
 
     auto t2_cos = [](const SphericalTensor& a, const SphericalTensor& b) -> double {
-        double dot = 0;
-        double na = 0;
-        double nb = 0;
+        double dot = 0, na = 0, nb = 0;
         for (int m = 0; m < 5; ++m) {
             dot += a.T2[m] * b.T2[m];
             na += a.T2[m] * a.T2[m];
             nb += b.T2[m] * b.T2[m];
         }
-        double const denom = std::sqrt(na * nb);
+        double denom = std::sqrt(na * nb);
         if (denom < 1e-20) return 0.0;
         return dot / denom;
     };
 
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Vec3 const atom_pos = conf.PositionAt(ai);
+        Vec3 atom_pos = conf.PositionAt(ai);
 
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.quad_tensor.isZero(1e-20)) continue;
 
             const Ring& ring = protein.RingAt(rn.ring_index);
-            double const dist = rn.distance_to_center;
+            double dist = rn.distance_to_center;
 
             // Compute distributed EFG: sum over ring atoms
             Mat3 V_dist = Mat3::Zero();
-            for (size_t const ring_atom_idx : ring.atom_indices) {
-                double const q = conf.AtomAt(ring_atom_idx).partial_charge;
+            for (size_t ring_atom_idx : ring.atom_indices) {
+                double q = conf.AtomAt(ring_atom_idx).partial_charge;
                 Vec3 d = atom_pos - conf.PositionAt(ring_atom_idx);
-                double const r = d.norm();
+                double r = d.norm();
                 if (r < MIN_DISTANCE) continue;
-                double const r3 = r * r * r;
-                double const r5 = r3 * r * r;
+                double r3 = r * r * r;
+                double r5 = r3 * r * r;
 
                 // Dipolar kernel weighted by charge: q * K_ab
-                for (int a = 0; a < 3; ++a) {
-                    for (int b = 0; b < 3; ++b) {
-                        V_dist(a, b) += q * (3.0 * d(a) * d(b) / r5 - (a == b ? 1.0 : 0.0) / r3);
-                    }
-                }
+                for (int a = 0; a < 3; ++a)
+                    for (int b = 0; b < 3; ++b)
+                        V_dist(a, b) += q * (3.0 * d(a) * d(b) / r5
+                                            - (a == b ? 1.0 : 0.0) / r3);
             }
 
-            SphericalTensor const st_point = rn.quad_spherical;
-            SphericalTensor const st_dist = SphericalTensor::Decompose(V_dist);
+            SphericalTensor st_point = rn.quad_spherical;
+            SphericalTensor st_dist = SphericalTensor::Decompose(V_dist);
 
             // Find the distance bin
             for (auto& bin : bins) {
                 if (dist >= bin.lo && dist < bin.hi) {
-                    double const t2_mag_p = st_point.T2Magnitude();
-                    double const t2_mag_d = st_dist.T2Magnitude();
+                    double t2_mag_p = st_point.T2Magnitude();
+                    double t2_mag_d = st_dist.T2Magnitude();
 
                     if (t2_mag_p > 1e-8 && t2_mag_d > 1e-8) {
                         bin.sum_t2_cos += std::abs(t2_cos(st_point, st_dist));
@@ -680,8 +675,8 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
                     // Distributed EFG is also traceless (sum of traceless terms).
                     // So T0 comparison is trivial (both ~0).
                     // Instead compare Frobenius norm ratio.
-                    double const norm_p = rn.quad_tensor.norm();
-                    double const norm_d = V_dist.norm();
+                    double norm_p = rn.quad_tensor.norm();
+                    double norm_d = V_dist.norm();
                     if (norm_d > 1e-10) {
                         bin.sum_t0_ratio += norm_p / norm_d;
                         bin.t0_count++;
@@ -700,8 +695,8 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
               << "\n";
 
     for (const auto& bin : bins) {
-        double const mean_cos = bin.count > 0 ? bin.sum_t2_cos / bin.count : 0;
-        double const mean_ratio = bin.t0_count > 0 ? bin.sum_t0_ratio / bin.t0_count : 0;
+        double mean_cos = bin.count > 0 ? bin.sum_t2_cos / bin.count : 0;
+        double mean_ratio = bin.t0_count > 0 ? bin.sum_t0_ratio / bin.t0_count : 0;
         std::cout << "  " << std::setw(4) << bin.lo << "-" << std::setw(4) << bin.hi << "A"
                   << std::setw(10) << bin.count
                   << std::setw(14) << std::setprecision(4) << mean_cos
@@ -728,7 +723,7 @@ TEST(PiQuadConvergence, PointVsDistributedOnOrcaProtein) {
     // a problem. Values of 0.5-0.7 indicate partial agreement — the
     // quadrupole captures part of the angular structure.
     if (!bins.empty() && bins[0].count > 0) {
-        double const near_cos = bins[0].sum_t2_cos / bins[0].count;
+        double near_cos = bins[0].sum_t2_cos / bins[0].count;
         EXPECT_GT(near_cos, 0.4)
             << "At close range, PQ and charge T2 should share some angular structure";
     }

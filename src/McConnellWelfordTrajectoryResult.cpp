@@ -72,14 +72,12 @@ void McConnellWelfordTrajectoryResult::Compute(
         WelfordUpdate(w.t2magnitude, t2mag, n_new, frame_idx);
 
         // Per-component T1 (3 components — Cartesian LC dual storage)
-        for (size_t k = 0; k < 3; ++k) {
+        for (size_t k = 0; k < 3; ++k)
             WelfordUpdate(w.t1[k], st.T1[k], n_new, frame_idx);
-}
 
         // Per-component T2 (5 components)
-        for (size_t k = 0; k < 5; ++k) {
+        for (size_t k = 0; k < 5; ++k)
             WelfordUpdate(w.t2[k], st.T2[k], n_new, frame_idx);
-}
 
         w.n_frames = n_new;
 
@@ -231,7 +229,7 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 //     squared channels), rate channels in Angstrom^-3_per_ps.
 //   - `frame_index_range` group attribute records the trajectory span.
 
-void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
+void McConnellWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const size_t N = tp.AtomCount();
@@ -241,7 +239,7 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
     grp.createAttribute("result_name",     Name());
     grp.createAttribute("n_frames",        n_frames_);
     grp.createAttribute("finalized",       finalized_);
-    grp.createAttribute("ddof",            1);
+    grp.createAttribute("ddof",            static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",      mean_dt_ps_);
     grp.createAttribute("frame_index_range", frame_index_range_);
     grp.createAttribute("irrep_layout_t1", std::string("v_x,v_y,v_z"));
@@ -261,14 +259,9 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(size_t)>& get) {
-        std::vector<double> mean(N);
-        std::vector<double> m2(N);
-        std::vector<double> std_(N);
-        std::vector<double> min_(N);
-        std::vector<double> max_(N);
-        std::vector<size_t> min_frame(N);
-        std::vector<size_t> max_frame(N);
+                       std::function<const WelfordMoments&(size_t)> get) {
+        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
+        std::vector<size_t> min_frame(N), max_frame(N);
         for (size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i]      = w.mean;
@@ -301,14 +294,9 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
     auto emit_2d = [&](const std::string& prefix, size_t K,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(size_t, size_t)>& get) {
-        std::vector<double> mean(N * K);
-        std::vector<double> m2(N * K);
-        std::vector<double> std_(N * K);
-        std::vector<double> min_(N * K);
-        std::vector<double> max_(N * K);
-        std::vector<size_t> min_frame(N * K);
-        std::vector<size_t> max_frame(N * K);
+                       std::function<const WelfordMoments&(size_t, size_t)> get) {
+        std::vector<double> mean(N * K), m2(N * K), std_(N * K), min_(N * K), max_(N * K);
+        std::vector<size_t> min_frame(N * K), max_frame(N * K);
         for (size_t i = 0; i < N; ++i) {
             for (size_t k = 0; k < K; ++k) {
                 const WelfordMoments& w = get(i, k);
@@ -321,7 +309,7 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
                 max_frame[i * K + k] = w.max_frame;
             }
         }
-        HighFive::DataSpace const space({N, K});
+        HighFive::DataSpace space({N, K});
         auto ds_mean = grp.createDataSet<double>(prefix + "_mean", space);
         ds_mean.write_raw(mean.data());
         ds_mean.createAttribute("units", base_units);
@@ -382,9 +370,7 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
 
     // ── Single scalar: RMS-Δ per atom (Finalize-derived) ─────────
     std::vector<double> t0_rms_delta(N);
-    std::vector<size_t> n_frames(N);
-    std::vector<size_t> delta_n(N);
-    std::vector<size_t> dxdt_n(N);
+    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const McConnellWelfordState& w = tp.AtomAt(i).mc_welford;
         t0_rms_delta[i] = w.t0_rms_delta;
@@ -409,10 +395,7 @@ void McConnellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-func
     // t2magnitude_* (same data, deprecated naming). Each alias carries
     // both `units` (the McConnell base unit, Angstrom^-3) and a
     // `deprecated_use` attribute pointing at the canonical name.
-    std::vector<double> t2mag_mean(N);
-    std::vector<double> t2mag_std(N);
-    std::vector<double> t2mag_min(N);
-    std::vector<double> t2mag_max(N);
+    std::vector<double> t2mag_mean(N), t2mag_std(N), t2mag_min(N), t2mag_max(N);
     for (size_t i = 0; i < N; ++i) {
         const WelfordMoments& w = tp.AtomAt(i).mc_welford.t2magnitude;
         t2mag_mean[i] = w.mean;

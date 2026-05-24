@@ -95,7 +95,7 @@ TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::WaterFieldTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -107,7 +107,7 @@ TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("water_ts_allabsent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/water_field_time_series"))
         << "All-absent run should skip group emission entirely.";
 
@@ -124,7 +124,7 @@ TEST(WaterFieldTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -142,7 +142,7 @@ TEST(WaterFieldTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::WaterFieldTimeSeriesTrajectoryResult>();
@@ -162,21 +162,18 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::WaterFieldTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("water_field_ts_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/water_field_time_series"));
     auto grp = reopen.getGroup("/trajectory/water_field_time_series");
 
-    std::string efield_units;
-    std::string efg_layout;
-    std::string count_units;
-    std::string efg_parity;
+    std::string efield_units, efg_layout, count_units, efg_parity;
     grp.getAttribute("efield_units").read(efield_units);
     grp.getAttribute("efg_irrep_layout").read(efg_layout);
     grp.getAttribute("efg_parity").read(efg_parity);
@@ -189,8 +186,7 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
     EXPECT_EQ(efg_parity, "2e");
     EXPECT_EQ(count_units, "dimensionless");
 
-    bool t0_zero = false;
-    bool t1_zero = false;
+    bool t0_zero = false, t1_zero = false;
     grp.getAttribute("efg_t0_structural_zero").read(t0_zero);
     grp.getAttribute("efg_t1_structural_zero").read(t1_zero);
     EXPECT_TRUE(t0_zero);
@@ -223,7 +219,7 @@ TEST(WaterFieldTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::WaterFieldTimeSeriesTrajectoryResult>();
@@ -232,7 +228,7 @@ TEST(WaterFieldTimeSeries, Integration1P9J) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("water_field_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/water_field_time_series");
 
     const std::size_t N = tp.AtomCount();

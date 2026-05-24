@@ -27,7 +27,7 @@ TEST_F(ApbsFieldResultTest, ComputeSucceeds) {
     auto& conf = protein->Conformation();
 
     // Attach ChargeAssignmentResult (dependency)
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     ASSERT_NE(charges, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(charges)));
 
@@ -40,7 +40,7 @@ TEST_F(ApbsFieldResultTest, ComputeSucceeds) {
 TEST_F(ApbsFieldResultTest, EFieldNonZeroForSomeAtoms) {
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
@@ -49,7 +49,7 @@ TEST_F(ApbsFieldResultTest, EFieldNonZeroForSomeAtoms) {
 
     int nonzero = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Vec3 const E = result.ElectricFieldAt(ai);
+        Vec3 E = result.ElectricFieldAt(ai);
         if (E.norm() > 1e-10) nonzero++;
     }
     // With stub charges (all 0.1e), E-fields should be nonzero for all atoms
@@ -59,7 +59,7 @@ TEST_F(ApbsFieldResultTest, EFieldNonZeroForSomeAtoms) {
 TEST_F(ApbsFieldResultTest, NoNanOrInf) {
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
@@ -89,7 +89,7 @@ TEST_F(ApbsFieldResultTest, NoNanOrInf) {
 TEST_F(ApbsFieldResultTest, EFGDecomposesCorrectly) {
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
@@ -98,15 +98,15 @@ TEST_F(ApbsFieldResultTest, EFGDecomposesCorrectly) {
 
     // SphericalTensor roundtrip: decompose and reconstruct should match
     // Test on a few atoms
-    for (size_t ai = 0; ai < std::min(conf.AtomCount(), static_cast<size_t>(20)); ++ai) {
-        Mat3 const EFG = result.FieldGradientAt(ai);
-        SphericalTensor const st = result.FieldGradientSphericalAt(ai);
+    for (size_t ai = 0; ai < std::min(conf.AtomCount(), size_t(20)); ++ai) {
+        Mat3 EFG = result.FieldGradientAt(ai);
+        SphericalTensor st = result.FieldGradientSphericalAt(ai);
 
         // Reconstruct from spherical
-        Mat3 const reconstructed = st.Reconstruct();
+        Mat3 reconstructed = st.Reconstruct();
 
         // Should match within numerical tolerance
-        double const diff = (EFG - reconstructed).norm();
+        double diff = (EFG - reconstructed).norm();
         EXPECT_LT(diff, 1e-10)
             << "SphericalTensor roundtrip failed at atom " << ai
             << " diff=" << diff;
@@ -116,7 +116,7 @@ TEST_F(ApbsFieldResultTest, EFGDecomposesCorrectly) {
 TEST_F(ApbsFieldResultTest, EFGIsTraceless) {
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
@@ -124,9 +124,9 @@ TEST_F(ApbsFieldResultTest, EFGIsTraceless) {
     const auto& result = conf.Result<ApbsFieldResult>();
 
     // EFG tensor should be traceless (trace projected out)
-    for (size_t ai = 0; ai < std::min(conf.AtomCount(), static_cast<size_t>(50)); ++ai) {
-        Mat3 const EFG = result.FieldGradientAt(ai);
-        double const trace = EFG.trace();
+    for (size_t ai = 0; ai < std::min(conf.AtomCount(), size_t(50)); ++ai) {
+        Mat3 EFG = result.FieldGradientAt(ai);
+        double trace = EFG.trace();
         EXPECT_NEAR(trace, 0.0, 1e-10)
             << "Non-zero trace at atom " << ai << " trace=" << trace;
     }
@@ -136,25 +136,26 @@ TEST_F(ApbsFieldResultTest, FullTensorStored) {
     // Both Mat3 AND SphericalTensor must be stored on ConformationAtom
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
 
     // Check that ConformationAtom fields are populated
-    for (size_t ai = 0; ai < std::min(conf.AtomCount(), static_cast<size_t>(10)); ++ai) {
+    for (size_t ai = 0; ai < std::min(conf.AtomCount(), size_t(10)); ++ai) {
         const auto& ca = conf.AtomAt(ai);
 
         // At least one of these should be nonzero (all atoms have charges)
-        bool const efield_ok = ca.apbs_efield.norm() > 1e-15;
+        bool efield_ok = ca.apbs_efield.norm() > 1e-15;
+        bool efg_ok = ca.apbs_efg.norm() > 1e-15;
 
         // With uniform positive charges, E-field should be nonzero
         // for atoms that are not at the center of mass
         if (efield_ok) {
             // SphericalTensor should also be set
-            SphericalTensor const st = ca.apbs_efg_spherical;
-            Mat3 const roundtrip = st.Reconstruct();
-            double const diff = (ca.apbs_efg - roundtrip).norm();
+            SphericalTensor st = ca.apbs_efg_spherical;
+            Mat3 roundtrip = st.Reconstruct();
+            double diff = (ca.apbs_efg - roundtrip).norm();
             EXPECT_LT(diff, 1e-10);
         }
     }

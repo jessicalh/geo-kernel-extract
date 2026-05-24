@@ -65,34 +65,29 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
 // 18:1257; Adzhubei 2013 J. Mol. Biol. 425:2100.
 std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     using R = DihedralBinTransitionTrajectoryResult;
-    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad)) {
+    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
         return R::kBinUnassigned;
-}
 
     const double deg_per_rad = 180.0 / M_PI;
     const double phi = phi_rad * deg_per_rad;
     const double psi = psi_rad * deg_per_rad;
 
     if (phi >= -180.0 && phi <= -30.0 &&
-        psi >=  -90.0 && psi <=  30.0) {
+        psi >=  -90.0 && psi <=  30.0)
         return R::kBinAlphaR;
-}
 
     if (phi >=  30.0 && phi <= 100.0 &&
-        psi >= -10.0 && psi <=  80.0) {
+        psi >= -10.0 && psi <=  80.0)
         return R::kBinAlphaL;
-}
 
     if (phi >= -75.0 && phi <= -50.0 &&
-        psi >= 140.0 && psi <= 165.0) {
+        psi >= 140.0 && psi <= 165.0)
         return R::kBinPPII;
-}
 
     if (phi >= -180.0 && phi <= -45.0 &&
         ((psi >=  60.0 && psi <= 180.0) ||
-         (psi >= -180.0 && psi <= -150.0))) {
+         (psi >= -180.0 && psi <= -150.0)))
         return R::kBinBeta;
-}
 
     return R::kBinOther;
 }
@@ -391,7 +386,7 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, kBackboneBinCount};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint32_t>(
             "backbone_bin_occupancy", space);
         ds.write_raw(flat.data());
@@ -411,7 +406,7 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, kChiCount};
-        HighFive::DataSpace const s(dims);
+        HighFive::DataSpace s(dims);
         auto dt = grp.createDataSet<std::uint32_t>(
             "chi_transition_count", s);
         dt.write_raw(flat_t.data());
@@ -443,7 +438,7 @@ void DihedralBinTransitionTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, kChiCount, kChiBinCount};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint32_t>(
             "chi_rotamer_occupancy", space);
         ds.write_raw(flat.data());

@@ -15,9 +15,8 @@
 //
 
 #include "Types.h"
-#include <array>
-#include <utility>
 #include <vector>
+#include <array>
 
 namespace nmr {
 
@@ -86,7 +85,6 @@ struct MopacBondNeighbour {
 };
 
 
-// NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): fields are grouped by physics domain (scalar/vector/tensor/bool), not packed for cache density — the per-atom record is read once per frame, not in a hot loop.
 class ConformationAtom {
     friend class ProteinConformation;
 public:
@@ -452,7 +450,7 @@ public:
     Vec3 demo_nearest_ring_direction = Vec3::Zero();
 
 private:
-    explicit ConformationAtom(Vec3 pos) : position_(std::move(pos)) {}
+    explicit ConformationAtom(Vec3 pos) : position_(pos) {}
     const Vec3 position_;
 };
 

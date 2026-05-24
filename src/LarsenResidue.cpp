@@ -47,8 +47,8 @@ using AdjacencySet = std::vector<std::set<int>>;
 
 double BondCutoffAngstrom(Element a, Element b) {
     // Order-insensitive lookup. Cutoffs match the Python POC.
-    Element const lo = (static_cast<int>(a) <= static_cast<int>(b)) ? a : b;
-    Element const hi = (lo == a) ? b : a;
+    Element lo = (static_cast<int>(a) <= static_cast<int>(b)) ? a : b;
+    Element hi = (lo == a) ? b : a;
     if (lo == Element::H || hi == Element::H) {
         if (lo == Element::H && hi == Element::H) return 0.0;
         if (hi == Element::S) return 1.50;
@@ -107,7 +107,7 @@ std::vector<std::pair<int, int>> FindPeptideAmides(
         if (adj[i].size() != 3) continue;  // sp2 carbonyl C has 3 neighbours
 
         bool has_double_o = false;
-        for (int const j : adj[i]) {
+        for (int j : adj[i]) {
             if (atoms[j].element == Element::O &&
                 Distance(atoms[i].position, atoms[j].position) < 1.32) {
                 has_double_o = true; break;
@@ -115,7 +115,7 @@ std::vector<std::pair<int, int>> FindPeptideAmides(
         }
         if (!has_double_o) continue;
 
-        for (int const j : adj[i]) {
+        for (int j : adj[i]) {
             if (atoms[j].element != Element::N) continue;
             const double d = Distance(atoms[i].position, atoms[j].position);
             if (d > 1.20 && d < 1.50) {
@@ -127,7 +127,7 @@ std::vector<std::pair<int, int>> FindPeptideAmides(
     // Filter: peptide amide N has at least one heavy non-carbonyl-C neighbour.
     for (const auto& [c, nj] : candidates) {
         int n_heavy_other = 0;
-        for (int const k : adj[nj]) {
+        for (int k : adj[nj]) {
             if (k == c) continue;
             if (atoms[k].element != Element::H) ++n_heavy_other;
         }
@@ -151,16 +151,11 @@ std::vector<std::vector<int>> ConnectedComponents(const AdjacencySet& adj,
         std::vector<int> comp;
         std::stack<int> stk; stk.push(start);
         while (!stk.empty()) {
-            int const cur = stk.top();
-            stk.pop();
+            int cur = stk.top(); stk.pop();
             if (visited[cur]) continue;
             visited[cur] = true;
             comp.push_back(cur);
-            for (int const nbr : adj[cur]) {
-                if (!visited[nbr]) {
-                    stk.push(nbr);
-}
-}
+            for (int nbr : adj[cur]) if (!visited[nbr]) stk.push(nbr);
         }
         std::sort(comp.begin(), comp.end());
         comps.push_back(std::move(comp));
@@ -178,9 +173,7 @@ std::vector<std::vector<int>> OrderPiecesAlongAmideChain(
     for (const auto& p : pieces) total_atoms += static_cast<int>(p.size());
     std::vector<int> piece_of(total_atoms, -1);
     for (int pi = 0; pi < static_cast<int>(pieces.size()); ++pi) {
-        for (int const ai : pieces[pi]) {
-            piece_of[ai] = pi;
-}
+        for (int ai : pieces[pi]) piece_of[ai] = pi;
     }
     // Directed edges: piece(C) -> piece(N) per amide.
     std::map<int, int> out_edges;
@@ -262,8 +255,7 @@ void AddBond(CanonicalPiece& p, const std::string& a, const std::string& b) {
     auto& A = p.adj_by_name[a];
     auto& B = p.adj_by_name[b];
     // Confirm both atoms are in the piece.
-    bool has_a = false;
-    bool has_b = false;
+    bool has_a = false, has_b = false;
     for (const auto& at : p.atoms) {
         if (at.name == a) has_a = true;
         if (at.name == b) has_b = true;
@@ -365,7 +357,7 @@ ExtraBondsFor(const std::string& code) {
 // Hydrogen attachment rules. Returns the heavy-atom parent for a given
 // H atom name, or empty string if not handled. Mirrors the Python POC's
 // canonical_bonds_of_residue H-attach section.
-std::string ParentHeavyForH(const std::string& h_name,  // NOLINT(readability-function-size)
+std::string ParentHeavyForH(const std::string& h_name,
                               const std::set<std::string>& atoms_in_piece) {
     auto has = [&](const std::string& n) { return atoms_in_piece.count(n); };
     // Polar Hs handled at end of function (HE→NE, HZ→CZ, HH→OH, etc.).
@@ -437,12 +429,10 @@ CanonicalPiece CanonicalHisVariant(const std::string& variant_name) {
     AddBond(p, "CG","ND1"); AddBond(p, "CG","CD2");
     AddBond(p, "CD2","NE2"); AddBond(p, "NE2","CE1"); AddBond(p, "CE1","ND1");
     AddBond(p, "CD2","HD2"); AddBond(p, "CE1","HE1");
-    if (variant_name == "HID" || variant_name == "HIP") {
+    if (variant_name == "HID" || variant_name == "HIP")
         AddBond(p, "HD1", "ND1");
-    }
-    if (variant_name == "HIE" || variant_name == "HIP") {
+    if (variant_name == "HIE" || variant_name == "HIP")
         AddBond(p, "HE2", "NE2");
-    }
 
     // adj_by_idx must exist before chain stamping so the methyl-collapse
     // step can count parent-H neighbours via the canonical bond graph.
@@ -453,13 +443,9 @@ CanonicalPiece CanonicalHisVariant(const std::string& variant_name) {
     // (0=HID, 1=HIE, 2=HIP) — checked against AminoAcidType variant
     // ordering by ValidateVariantIndices() at test startup.
     std::uint8_t variant_idx = topology_generated::kBaseVariantIdx;
-    if (variant_name == "HID") {
-        variant_idx = 0;
-    } else if (variant_name == "HIE") {
-        variant_idx = 1;
-    } else if (variant_name == "HIP") {
-        variant_idx = 2;
-    }
+    if      (variant_name == "HID") variant_idx = 0;
+    else if (variant_name == "HIE") variant_idx = 1;
+    else if (variant_name == "HIP") variant_idx = 2;
     StampChainIdentitiesViaTable(p, AminoAcid::HIS, variant_idx);
     return p;
 }
@@ -581,14 +567,14 @@ std::vector<std::uint64_t> CanonicalWLSignatures(
     const int n = static_cast<int>(p.atoms.size());
     std::vector<std::uint64_t> cur(n);
     for (int i = 0; i < n; ++i) {
-        Signature const seed{p.atoms[i].element, 0, {}};
+        Signature seed{p.atoms[i].element, 0, {}};
         cur[i] = HashSignature(seed);
     }
     for (int r = 0; r < rounds; ++r) {
         std::vector<std::uint64_t> next(n);
         for (int i = 0; i < n; ++i) {
             std::vector<std::pair<Element, int>> nbr_sig;
-            for (int const j : p.adj_by_idx[i]) {
+            for (int j : p.adj_by_idx[i]) {
                 // Neighbour's prior-round signature truncated to 31 bits
                 // and paired with its element gives the WL refinement
                 // discriminator. Order-insensitive (sorted multiset).
@@ -597,7 +583,8 @@ std::vector<std::uint64_t> CanonicalWLSignatures(
                     static_cast<int>(cur[j] & 0x7fffffff));
             }
             std::sort(nbr_sig.begin(), nbr_sig.end());
-            Signature const s{p.atoms[i].element, static_cast<int>(p.adj_by_idx[i].size()), nbr_sig};
+            Signature s{p.atoms[i].element,
+                         static_cast<int>(p.adj_by_idx[i].size()), nbr_sig};
             next[i] = HashSignature(s);
         }
         cur = std::move(next);
@@ -613,21 +600,22 @@ std::map<int, std::uint64_t> PerceivedWLSignatures(
         const std::vector<TripeptideDftAtom>& atoms,
         int rounds = 3) {
     std::map<int, std::uint64_t> cur;
-    for (int const i : piece_atoms) {
-        Signature const seed{atoms[i].element, 0, {}};
+    for (int i : piece_atoms) {
+        Signature seed{atoms[i].element, 0, {}};
         cur[i] = HashSignature(seed);
     }
     for (int r = 0; r < rounds; ++r) {
         std::map<int, std::uint64_t> next;
-        for (int const i : piece_atoms) {
+        for (int i : piece_atoms) {
             std::vector<std::pair<Element, int>> nbr_sig;
-            for (int const j : sub_adj[i]) {
+            for (int j : sub_adj[i]) {
                 const std::uint64_t prior = cur.at(j);
                 nbr_sig.emplace_back(atoms[j].element,
                                       static_cast<int>(prior & 0x7fffffff));
             }
             std::sort(nbr_sig.begin(), nbr_sig.end());
-            Signature const s{atoms[i].element, static_cast<int>(sub_adj[i].size()), nbr_sig};
+            Signature s{atoms[i].element,
+                         static_cast<int>(sub_adj[i].size()), nbr_sig};
             next[i] = HashSignature(s);
         }
         cur = std::move(next);
@@ -667,10 +655,10 @@ PieceMatch MatchPiece(
         const CanonicalPiece& canon) {
 
     // Restrict adjacency to atoms inside the piece (the cut adjacency).
-    std::set<int> const piece_set(piece_atoms.begin(), piece_atoms.end());
+    std::set<int> piece_set(piece_atoms.begin(), piece_atoms.end());
     AdjacencySet sub_adj(full_adj.size());
-    for (int const i : piece_atoms) {
-        for (int const j : full_adj[i]) {
+    for (int i : piece_atoms) {
+        for (int j : full_adj[i]) {
             if (piece_set.count(j)) sub_adj[i].insert(j);
         }
     }
@@ -689,7 +677,7 @@ PieceMatch MatchPiece(
 
     // Group perceived atoms.
     std::map<std::uint64_t, std::vector<int>> perceived_by_sig;
-    for (int const i : piece_atoms) {
+    for (int i : piece_atoms) {
         perceived_by_sig[perc_sigs.at(i)].push_back(i);
     }
 
@@ -852,7 +840,7 @@ void StampChainIdentitiesViaTable(CanonicalPiece& p,
             }
             if (parent_idx >= 0) {
                 int h_children = 0;
-                for (int const nbr : p.adj_by_idx[parent_idx]) {
+                for (int nbr : p.adj_by_idx[parent_idx]) {
                     if (p.atoms[nbr].element == Element::H) ++h_children;
                 }
                 if (h_children >= 3) {
@@ -869,7 +857,7 @@ void StampChainIdentitiesViaTable(CanonicalPiece& p,
         const AtomSemanticTable* row =
             gen::LookupBy(aa, variant_idx, ident);
         if (row == nullptr) {
-            (void)std::fprintf(stderr,
+            std::fprintf(stderr,
                 "FATAL: LarsenResidue StampChainIdentitiesViaTable "
                 "lookup miss: aa=%s variant_idx=%u atom_name='%s' "
                 "identity=(element=%u locant=%u branch={%u,%u} "
@@ -979,9 +967,8 @@ bool EmitPiece(LarsenResidue::Kind kind,
         if (id.backbone_role == BackboneRole::AlphaHydrogen)  out.HA_idx = local_idx;
         if (id.backbone_role == BackboneRole::CarbonylCarbon) out.C_idx  = local_idx;
         if (id.backbone_role == BackboneRole::CarbonylOxygen) out.O_idx  = local_idx;
-        if (id.element == Element::C && id.locant == Locant::Beta) {
+        if (id.element == Element::C && id.locant == Locant::Beta)
             out.CB_idx = local_idx;
-        }
     }
 
     // Emit bond list (heavy-heavy + heavy-H edges within the piece, in
@@ -991,9 +978,9 @@ bool EmitPiece(LarsenResidue::Kind kind,
         dft_to_local[ordered[li]] = li;
     }
     out.bonds.clear();
-    std::set<int> const piece_set(piece_atoms.begin(), piece_atoms.end());
-    for (int const i : piece_atoms) {
-        for (int const j : full_adj[i]) {
+    std::set<int> piece_set(piece_atoms.begin(), piece_atoms.end());
+    for (int i : piece_atoms) {
+        for (int j : full_adj[i]) {
             if (!piece_set.count(j)) continue;
             if (i < j) {
                 LarsenResidue::Bond b;
@@ -1091,7 +1078,7 @@ static void LogPerceptionFailure(const TripeptideDftRecord& rec,
 }
 
 
-std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability-function-size)
+std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
         const TripeptideDftRecord& rec,
         AminoAcid expected_central,
         int his_variant_hint) {
@@ -1100,7 +1087,7 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability
         return std::nullopt;
     }
 
-    AdjacencySet const adj = BuildBondGraph(rec.atoms);
+    AdjacencySet adj = BuildBondGraph(rec.atoms);
     auto amides      = FindPeptideAmides(rec.atoms, adj);
     if (amides.size() != 4) {
         LogPerceptionFailure(rec,
@@ -1231,13 +1218,9 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability
                     "HID", "HIE", "HIP"
                 };
                 const char* hinted = nullptr;
-                if (his_variant_hint == 0) {
-                    hinted = "HID";
-                } else if (his_variant_hint == 1) {
-                    hinted = "HIE";
-                } else if (his_variant_hint == 2) {
-                    hinted = "HIP";
-                }
+                if      (his_variant_hint == 0) hinted = "HID";
+                else if (his_variant_hint == 1) hinted = "HIE";
+                else if (his_variant_hint == 2) hinted = "HIP";
 
                 std::vector<const char*> try_order;
                 if (hinted) {
@@ -1259,31 +1242,28 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(  // NOLINT(readability
                     if (EmitPiece(kind, piece, rec.atoms, adj, canon, tgt)) {
                         any_match = true;
                         // Canonical variant index: 0=HID, 1=HIE, 2=HIP.
-                        if (std::string(v) == "HID") {
-                            matched_variant_idx = 0;
-                        } else if (std::string(v) == "HIE") {
-                            matched_variant_idx = 1;
-                        } else {
-                            matched_variant_idx = 2;
-                        }
+                        if      (std::string(v) == "HID") matched_variant_idx = 0;
+                        else if (std::string(v) == "HIE") matched_variant_idx = 1;
+                        else                              matched_variant_idx = 2;
                         break;
                     }
                 }
                 if (!any_match) {
                     if (hinted) {
-                        const std::string msg = std::string(kind_label) +
-                            " HIS hinted variant " + hinted +
-                            " does not match perceived piece_n=" + std::to_string(piece.size()) +
-                            "; declining (hint=" + std::to_string(his_variant_hint) +
+                        LogPerceptionFailure(rec, kind_label +
+                            " HIS hinted variant " + std::string(hinted) +
+                            " does not match perceived piece_n=" +
+                            std::to_string(piece.size()) +
+                            "; declining (hint=" +
+                            std::to_string(his_variant_hint) +
                             " tried " + tried +
                             ") — DB row's protonation form differs "
-                            "from protein residue.protonation_variant_index";
-                        LogPerceptionFailure(rec, msg);
+                            "from protein residue.protonation_variant_index");
                     } else {
-                        const std::string msg = std::string(kind_label) +
-                            " no HIS variant matched perceived piece_n=" + std::to_string(piece.size()) +
-                            " (no hint provided; tried " + tried + ")";
-                        LogPerceptionFailure(rec, msg);
+                        LogPerceptionFailure(rec, kind_label +
+                            " no HIS variant matched perceived piece_n=" +
+                            std::to_string(piece.size()) +
+                            " (no hint provided; tried " + tried + ")");
                     }
                     return std::nullopt;
                 }

@@ -91,7 +91,9 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::Finalize(
 void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer = tp.GetDenseBuffer<int>(std::type_index(typeid(LarsenHBondCountTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<int>(std::type_index(typeid(
+            LarsenHBondCountTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group",
@@ -104,9 +106,8 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
     // ran in ≥1 frame. Downstream readers MUST tolerate group absence
     // for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
-    for (auto v : source_present_per_frame_) {
+    for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
-}
     if (source_present_count == 0) {
         OperationLog::Warn(
             "LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group",
@@ -142,8 +143,8 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
         }
     }
 
-    std::vector<std::size_t> const dims = {N, T};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<int>("count", space);
     ds.write_raw(flat.data());
 

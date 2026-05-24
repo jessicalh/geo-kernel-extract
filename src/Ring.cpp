@@ -11,15 +11,13 @@ RingGeometry Ring::ComputeGeometry(const std::vector<Vec3>& positions) const {
 
     // Collect vertex positions
     geo.vertices.reserve(atom_indices.size());
-    for (size_t const idx : atom_indices) {
+    for (size_t idx : atom_indices)
         geo.vertices.push_back(positions[idx]);
-}
 
     // Center: centroid of vertex positions
     geo.center = Vec3::Zero();
-    for (const auto& v : geo.vertices) {
+    for (const auto& v : geo.vertices)
         geo.center += v;
-}
     geo.center /= static_cast<double>(geo.vertices.size());
 
     // Normal: best-fit plane via SVD of centered vertex coordinates.
@@ -27,27 +25,24 @@ RingGeometry Ring::ComputeGeometry(const std::vector<Vec3>& positions) const {
     // is the normal to the plane of best fit.
     if (geo.vertices.size() >= 3) {
         Eigen::MatrixXd coords(geo.vertices.size(), 3);
-        for (size_t i = 0; i < geo.vertices.size(); ++i) {
+        for (size_t i = 0; i < geo.vertices.size(); ++i)
             coords.row(i) = (geo.vertices[i] - geo.center).transpose();
-}
 
-        Eigen::JacobiSVD<Eigen::MatrixXd> const svd(coords, Eigen::ComputeFullV);
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(coords, Eigen::ComputeFullV);
         geo.normal = svd.matrixV().col(2);
 
         // Consistent orientation: normal in same direction as cross product
         // of first two edges (right-hand rule).
-        Vec3 const edge01 = geo.vertices[1] - geo.vertices[0];
-        Vec3 const edge02 = geo.vertices[2] - geo.vertices[0];
-        if (geo.normal.dot(edge01.cross(edge02)) < 0) {
+        Vec3 edge01 = geo.vertices[1] - geo.vertices[0];
+        Vec3 edge02 = geo.vertices[2] - geo.vertices[0];
+        if (geo.normal.dot(edge01.cross(edge02)) < 0)
             geo.normal = -geo.normal;
-}
     }
 
     // Radius: mean distance from center to vertices
     geo.radius = 0.0;
-    for (const auto& v : geo.vertices) {
+    for (const auto& v : geo.vertices)
         geo.radius += (v - geo.center).norm();
-}
     geo.radius /= static_cast<double>(geo.vertices.size());
 
     return geo;
@@ -73,7 +68,7 @@ std::unique_ptr<Ring> CreateRing(RingTypeIndex type) {
     // forbids. Reaching here means a caller cast an out-of-range
     // integer to RingTypeIndex; that's a programmer error, not a
     // recoverable runtime condition.
-    (void)std::fprintf(stderr,
+    std::fprintf(stderr,
                  "FATAL: CreateRing called with invalid RingTypeIndex = %d\n",
                  static_cast<int>(type));
     std::abort();

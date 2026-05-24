@@ -49,7 +49,7 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
 
     auto build = BuildFromPdb(spec.pdb_path, spec.pH);
     if (!build) {
-        (void)fprintf(stderr, "ERROR: %s\n", build.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", build.error.c_str());
         OperationLog::Error("nmr_extract", build.error);
         return 1;
     }
@@ -68,7 +68,7 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
-        (void)fprintf(stderr, "ERROR: %s\n", result.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", result.error.c_str());
         OperationLog::Error("nmr_extract", result.error);
         return 1;
     }
@@ -78,14 +78,14 @@ static int RunPdb(const JobSpec& spec, const Session& session) {
         const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
         const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
         if (cat != 1 || topo != 5) {
-            (void)fprintf(stderr, "ERROR: incomplete sidecar emission "
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
                     cat, topo);
             return 1;
         }
     }
-    int const arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
-    (void)fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
+    int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
+    fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
         "wrote " + std::to_string(arrays) + " arrays to " + spec.output_dir);
     return 0;
@@ -102,7 +102,7 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
 
     auto build = BuildFromProtonatedPdb(spec.pdb_path);
     if (!build) {
-        (void)fprintf(stderr, "ERROR: %s\n", build.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", build.error.c_str());
         OperationLog::Error("nmr_extract", build.error);
         return 1;
     }
@@ -121,7 +121,7 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
-        (void)fprintf(stderr, "ERROR: %s\n", result.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", result.error.c_str());
         OperationLog::Error("nmr_extract", result.error);
         return 1;
     }
@@ -131,14 +131,14 @@ static int RunProtonatedPdb(const JobSpec& spec, const Session& session) {
         const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
         const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
         if (cat != 1 || topo != 5) {
-            (void)fprintf(stderr, "ERROR: incomplete sidecar emission "
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
                     cat, topo);
             return 1;
         }
     }
-    int const arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
-    (void)fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
+    int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
+    fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
         "wrote " + std::to_string(arrays) + " arrays to " + spec.output_dir);
     return 0;
@@ -155,7 +155,7 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
 
     auto build = BuildFromOrca(spec.orca_files);
     if (!build) {
-        (void)fprintf(stderr, "ERROR: %s\n", build.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", build.error.c_str());
         OperationLog::Error("nmr_extract", build.error);
         return 1;
     }
@@ -171,13 +171,12 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
     opts.aimnet2_model = session.Aimnet2Model();
     opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
-    if (!spec.orca_files.nmr_out_path.empty()) {
+    if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
-}
 
     auto result = OperationRunner::Run(conf, opts);
     if (!result.Ok()) {
-        (void)fprintf(stderr, "ERROR: %s\n", result.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", result.error.c_str());
         OperationLog::Error("nmr_extract", result.error);
         return 1;
     }
@@ -187,14 +186,14 @@ static int RunOrca(const JobSpec& spec, const Session& session) {
         const int cat = CategoryInfoProjection::WriteFeatures(*build.protein, spec.output_dir);
         const int topo = TopologySidecar::WriteFeatures(*build.protein, spec.output_dir);
         if (cat != 1 || topo != 5) {
-            (void)fprintf(stderr, "ERROR: incomplete sidecar emission "
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
                     cat, topo);
             return 1;
         }
     }
-    int const arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
-    (void)fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
+    int arrays = ConformationResult::WriteAllFeatures(conf, spec.output_dir);
+    fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
         "wrote " + std::to_string(arrays) + " arrays to " + spec.output_dir);
     return 0;
@@ -212,14 +211,8 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
 
     auto wt_build  = BuildFromOrca(spec.wt_files);
     auto ala_build = BuildFromOrca(spec.ala_files);
-    if (!wt_build) {
-        (void)fprintf(stderr, "WT ERROR: %s\n", wt_build.error.c_str());
-        return 1;
-    }
-    if (!ala_build) {
-        (void)fprintf(stderr, "ALA ERROR: %s\n", ala_build.error.c_str());
-        return 1;
-    }
+    if (!wt_build)  { fprintf(stderr, "WT ERROR: %s\n",  wt_build.error.c_str());  return 1; }
+    if (!ala_build) { fprintf(stderr, "ALA ERROR: %s\n", ala_build.error.c_str()); return 1; }
 
     auto& wt_conf  = wt_build.protein->Conformation();
     auto& ala_conf = ala_build.protein->Conformation();
@@ -233,9 +226,8 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     wt_opts.aimnet2_model = session.Aimnet2Model();
     wt_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     wt_opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
-    if (!spec.wt_files.nmr_out_path.empty()) {
+    if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
-}
 
     RunOptions ala_opts;
     ala_opts.charge_source = ala_build.charges.get();
@@ -246,14 +238,13 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
     ala_opts.aimnet2_model = session.Aimnet2Model();
     ala_opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     ala_opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
-    if (!spec.ala_files.nmr_out_path.empty()) {
+    if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
-}
 
     auto result = OperationRunner::RunMutantComparison(
         wt_conf, wt_opts, ala_conf, ala_opts);
     if (!result.Ok()) {
-        (void)fprintf(stderr, "ERROR: %s\n", result.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", result.error.c_str());
         OperationLog::Error("nmr_extract", result.error);
         return 1;
     }
@@ -263,14 +254,14 @@ static int RunMutant(const JobSpec& spec, const Session& session) {
         const int cat = CategoryInfoProjection::WriteFeatures(*wt_build.protein, spec.output_dir);
         const int topo = TopologySidecar::WriteFeatures(*wt_build.protein, spec.output_dir);
         if (cat != 1 || topo != 5) {
-            (void)fprintf(stderr, "ERROR: incomplete sidecar emission "
+            fprintf(stderr, "ERROR: incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
                     cat, topo);
             return 1;
         }
     }
-    int const arrays = ConformationResult::WriteAllFeatures(wt_conf, spec.output_dir);
-    (void)fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
+    int arrays = ConformationResult::WriteAllFeatures(wt_conf, spec.output_dir);
+    fprintf(stderr, "Wrote %d arrays to %s\n", arrays, spec.output_dir.c_str());
     OperationLog::Info(LogFileIO, "nmr_extract",
         "wrote " + std::to_string(arrays) + " arrays to " + spec.output_dir);
     return 0;
@@ -292,7 +283,7 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
     // ── TrajectoryProtein: TPR → topology + protein + charges ────
     TrajectoryProtein tp;
     if (!tp.BuildFromTrajectory(spec.traj_dir)) {
-        (void)fprintf(stderr, "ERROR: %s\n", tp.Error().c_str());
+        fprintf(stderr, "ERROR: %s\n", tp.Error().c_str());
         return 1;
     }
 
@@ -339,7 +330,7 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
     const Status s = traj.Run(tp, config, session, /*extras=*/{},
                               /*output_dir=*/spec.output_dir);
     if (s != kOk) {
-        (void)fprintf(stderr, "ERROR: Trajectory::Run returned status 0x%x\n", s);
+        fprintf(stderr, "ERROR: Trajectory::Run returned status 0x%x\n", s);
         return 1;
     }
 
@@ -351,7 +342,7 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
         traj.WriteH5(file);
         tp.WriteH5(file);
     }
-    (void)fprintf(stderr, "Wrote %s (%zu frames, %zu atoms, %zu selections)\n",
+    fprintf(stderr, "Wrote %s (%zu frames, %zu atoms, %zu selections)\n",
             h5_path.c_str(), traj.FrameCount(),
             tp.AtomCount(), traj.Selections().Count());
 
@@ -369,7 +360,7 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
 
 static int RunAnalysis(const JobSpec& spec) {
     (void)spec;
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "ERROR: --trajectory --analysis is disabled pending the\n"
         "dissolution of AnalysisWriter into per-Result H5 emitters.\n"
         "Use --trajectory (no --analysis) for the Trajectory::Run path.\n");
@@ -381,14 +372,14 @@ static int RunAnalysis(const JobSpec& spec) {
 // main
 // ============================================================================
 
-int main(int argc, char* argv[]) try {
+int main(int argc, char* argv[]) {
     // ── Session: one named object that holds process-wide resources ─
     // Loads RuntimeEnvironment, OperationLog channel config, emits
     // session-start log line. CalculatorConfig + AIMNet2 model are
     // loaded below after CLI parse (each depends on spec fields).
     Session session;
     if (session.LoadFromToml() != kOk) {
-        (void)fprintf(stderr, "ERROR: session load: %s\n",
+        fprintf(stderr, "ERROR: session load: %s\n",
                 session.LastError().c_str());
         return 1;
     }
@@ -396,9 +387,8 @@ int main(int argc, char* argv[]) try {
     auto spec = ParseJobSpec(argc, argv);
 
     if (spec.mode == JobMode::None) {
-        if (!spec.error.empty()) {
-            (void)fprintf(stderr, "ERROR: %s\n\n", spec.error.c_str());
-}
+        if (!spec.error.empty())
+            fprintf(stderr, "ERROR: %s\n\n", spec.error.c_str());
         PrintJobSpecUsage(argv[0]);
         return spec.error.empty() ? 0 : 1;
     }
@@ -411,26 +401,24 @@ int main(int argc, char* argv[]) try {
     if (!spec.config_path.empty()) {
         CalculatorConfig::Load(spec.config_path);
     } else {
-        std::string const default_config =
+        std::string default_config =
             std::string(NMR_DATA_DIR) + "/calculator_params.toml";
-        if (fs::exists(default_config)) {
+        if (fs::exists(default_config))
             CalculatorConfig::Load(default_config);
-}
     }
 
     if (!ValidateJobSpec(spec)) {
-        (void)fprintf(stderr, "ERROR: %s\n", spec.error.c_str());
+        fprintf(stderr, "ERROR: %s\n", spec.error.c_str());
         return 1;
     }
 
     // Print warnings (e.g., missing optional NMR .out)
-    for (const auto& w : spec.warnings) {
-        (void)fprintf(stderr, "WARNING: %s\n", w.c_str());
-}
+    for (const auto& w : spec.warnings)
+        fprintf(stderr, "WARNING: %s\n", w.c_str());
 
     // Require --output for CLI
     if (spec.output_dir.empty()) {
-        (void)fprintf(stderr, "ERROR: --output DIR required\n");
+        fprintf(stderr, "ERROR: --output DIR required\n");
         PrintJobSpecUsage(argv[0]);
         return 1;
     }
@@ -440,7 +428,7 @@ int main(int argc, char* argv[]) try {
     // the file exists. Required for every non-None mode per
     // feedback_aimnet2_required_no_weasel; load failure is fatal.
     if (session.LoadAimnet2Model(spec.aimnet2_model_path) != kOk) {
-        (void)fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
         return 1;
     }
 
@@ -452,11 +440,11 @@ int main(int argc, char* argv[]) try {
     // rather see the error than silently drop tripeptide outputs from
     // a fleet run that the operator expected to include them.
     if (session.LoadTripeptideDftTable() != kOk) {
-        (void)fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
         return 1;
     }
     if (session.LoadLarsenHBondGrid() != kOk) {
-        (void)fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
+        fprintf(stderr, "ERROR: %s\n", session.LastError().c_str());
         return 1;
     }
 
@@ -471,14 +459,4 @@ int main(int argc, char* argv[]) try {
         case JobMode::None:          return 1;  // unreachable
     }
     return 1;
-} catch (const std::exception& e) {
-    // External tool wrappers (libpq, HighFive/HDF5, libtorch) throw on
-    // hard failure. Catch at main() rather than letting std::terminate
-    // run; a typed error message + non-zero exit is more useful for
-    // fleet operators than a SIGABRT dump.
-    (void)fprintf(stderr, "FATAL: unhandled exception in nmr_extract: %s\n", e.what());
-    return 2;
-} catch (...) {
-    (void)fprintf(stderr, "FATAL: unhandled non-std::exception in nmr_extract\n");
-    return 2;
 }

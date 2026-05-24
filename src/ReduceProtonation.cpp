@@ -88,17 +88,16 @@ static void SetReduceBuildMode() {
 
 
 std::string ProtonateWithReduce(const std::string& pdb_content) {
-    OperationLog::Scope const scope("ProtonateWithReduce", "");
+    OperationLog::Scope scope("ProtonateWithReduce", "");
 
     if (pdb_content.empty()) {
         OperationLog::Error("ProtonateWithReduce", "empty PDB content");
         return {};
     }
 
-    // Find het dictionary: env var overrides the CMake-provided default.
-    // NOLINTNEXTLINE(concurrency-mt-unsafe): single-process tool runner; getenv on the parse path, no worker threads spawned by the library yet.
+    // Find het dictionary: env var overrides the CMake-provided default
     const char* env_dict = std::getenv("REDUCE_HET_DICT");
-    std::string const het_dict_path = env_dict ? env_dict : HET_DICTIONARY;
+    std::string het_dict_path = env_dict ? env_dict : HET_DICTIONARY;
     if (!fs::exists(het_dict_path)) {
         OperationLog::Error("ProtonateWithReduce",
             "het dictionary not found: " + het_dict_path +
@@ -147,7 +146,7 @@ std::string ProtonateWithReduce(const std::string& pdb_content) {
     reduceList(hetdatabase, m, xyz, adjNotes);
 
     // Optimize flips and rotations
-    int const ret = optimize(xyz, adjNotes);
+    int ret = optimize(xyz, adjNotes);
     if (OKtoAdjust && xyz.numChanges() > 0) {
         xyz.describeChanges(m, infoPtr, adjNotes);
     }

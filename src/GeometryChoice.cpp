@@ -9,7 +9,7 @@ GeometryChoiceBuilder::GeometryChoiceBuilder(ProteinConformation& conf)
 void GeometryChoiceBuilder::Record(CalculatorId calculator,
                                    size_t group_key,
                                    const char* label,
-                                   const std::function<void(GeometryChoice&)>& populate) {
+                                   std::function<void(GeometryChoice&)> populate) {
     GeometryChoice gc;
     gc.label_ = label;
     gc.calculator_ = calculator;

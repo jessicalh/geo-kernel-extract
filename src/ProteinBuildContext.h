@@ -43,12 +43,10 @@ public:
 
     std::string Describe() const {
         std::string desc = "Source: " + pdb_source;
-        if (!protonation_tool.empty()) {
+        if (!protonation_tool.empty())
             desc += ", protonation: " + protonation_tool;
-        }
-        if (!force_field.empty()) {
+        if (!force_field.empty())
             desc += ", ff: " + force_field;
-        }
         return desc;
     }
 };

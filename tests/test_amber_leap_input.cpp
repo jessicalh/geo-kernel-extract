@@ -34,9 +34,9 @@ void AppendResidueAtomsFromAaType(Protein& protein,
         auto atom = Atom::Create(templ.element);
         atom->pdb_atom_name = templ.name;
         atom->residue_index = residue_index;
-        size_t const ai = protein.AddAtom(std::move(atom));
+        size_t ai = protein.AddAtom(std::move(atom));
         protein.MutableResidueAt(residue_index).atom_indices.push_back(ai);
-        positions_out.emplace_back(0.0, 0.0, 0.0);
+        positions_out.push_back(Vec3(0.0, 0.0, 0.0));
     }
 }
 
@@ -55,7 +55,7 @@ std::unique_ptr<Protein> BuildOneResidueProtein(
     res.protonation_variant_index = variant_index;
     res.protonation_state_resolved = true;
     res.terminal_state = terminal_state;
-    size_t const ri = protein->AddResidue(res);
+    size_t ri = protein->AddResidue(res);
 
     std::vector<Vec3> positions;
     AppendResidueAtomsFromAaType(*protein, aa, ri, positions);
@@ -79,8 +79,8 @@ std::unique_ptr<Protein> BuildTwoCysWithSgDistance(double sg_distance) {
         return protein->AddResidue(res);
     };
 
-    size_t const r0 = add_cys(1, "A");
-    size_t const r1 = add_cys(2, "A");
+    size_t r0 = add_cys(1, "A");
+    size_t r1 = add_cys(2, "A");
 
     // Place atoms with arbitrary coords; the only ones that matter for
     // DetectDisulfides are the two SG atoms.
@@ -92,7 +92,7 @@ std::unique_ptr<Protein> BuildTwoCysWithSgDistance(double sg_distance) {
             auto atom = Atom::Create(templ.element);
             atom->pdb_atom_name = templ.name;
             atom->residue_index = residue_index;
-            size_t const ai = protein->AddAtom(std::move(atom));
+            size_t ai = protein->AddAtom(std::move(atom));
             protein->MutableResidueAt(residue_index).atom_indices.push_back(ai);
             // Position SG atoms specifically; everything else far away
             // so it doesn't accidentally match anything.
@@ -129,7 +129,7 @@ size_t CountSubstring(const std::string& haystack, const std::string& needle) {
 
 class AmberLeapInputTest : public ::testing::Test {
 protected:
-    static AmberSourceConfig MakeCfg() {
+    AmberSourceConfig MakeCfg() {
         AmberSourceConfig cfg;
         cfg.flat_table_path = nmr::test::TestEnvironment::Ff14sbParams();
         cfg.preparation_policy =
@@ -139,7 +139,7 @@ protected:
         return cfg;
     }
 
-    static AmberFlatTableCoverageVerdict MakeUnsupportedVerdict() {
+    AmberFlatTableCoverageVerdict MakeUnsupportedVerdict() {
         AmberFlatTableCoverageVerdict v;
         v.ok = false;
         AmberFlatTableCoverageFailure f;
@@ -161,7 +161,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbHisVariantUsesHidHieHipNames) {
     };
     for (const auto& c : cases) {
         auto protein = BuildOneResidueProtein(AminoAcid::HIS, c.variant_index);
-        AmberPreparedChargeSource const src(
+        AmberPreparedChargeSource src(
             *protein, MakeCfg().preparation_policy,
             MakeUnsupportedVerdict(), MakeCfg());
         const std::string pdb = src.GeneratedPdb(protein->Conformation());
@@ -174,7 +174,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbHisVariantUsesHidHieHipNames) {
 TEST_F(AmberLeapInputTest, GeneratedPdbAshFromAspVariantZero) {
     auto protein = BuildOneResidueProtein(
         AminoAcid::ASP, 0, ResidueTerminalState::Internal);
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
@@ -198,7 +198,7 @@ TEST_F(AmberLeapInputTest, DetectDisulfidesIgnoresPairAtVdwContact) {
 
 TEST_F(AmberLeapInputTest, GeneratedPdbDisulfidesEmitCYX) {
     auto protein = BuildTwoCysWithSgDistance(2.05);
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
@@ -216,7 +216,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbAtomSerialIsSequential) {
     auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
     ASSERT_TRUE(r.Ok()) << r.error;
 
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *r.protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     const std::string pdb = src.GeneratedPdb(r.protein->Conformation());
@@ -224,12 +224,12 @@ TEST_F(AmberLeapInputTest, GeneratedPdbAtomSerialIsSequential) {
     // First ATOM serial must be 1, last must equal AtomCount.
     auto first = pdb.find("ATOM  ");
     ASSERT_NE(first, std::string::npos);
-    int const first_serial = std::stoi(pdb.substr(first + 6, 5));
+    int first_serial = std::stoi(pdb.substr(first + 6, 5));
     EXPECT_EQ(first_serial, 1);
 
     auto last = pdb.rfind("ATOM  ");
     ASSERT_NE(last, std::string::npos);
-    int const last_serial = std::stoi(pdb.substr(last + 6, 5));
+    int last_serial = std::stoi(pdb.substr(last + 6, 5));
     EXPECT_EQ(static_cast<size_t>(last_serial), r.protein->AtomCount());
 }
 
@@ -245,14 +245,14 @@ TEST_F(AmberLeapInputTest, GeneratedPdbTerRecordsBetweenChains) {
         res.terminal_state = ResidueTerminalState::Internal;
         return protein->AddResidue(res);
     };
-    size_t const r0 = add(1, "A");
-    size_t const r1 = add(1, "B");
+    size_t r0 = add(1, "A");
+    size_t r1 = add(1, "B");
     std::vector<Vec3> positions;
     AppendResidueAtomsFromAaType(*protein, AminoAcid::ALA, r0, positions);
     AppendResidueAtomsFromAaType(*protein, AminoAcid::ALA, r1, positions);
     protein->AddConformation(std::move(positions), "two-chain-test");
 
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
@@ -285,7 +285,7 @@ std::unique_ptr<Protein> BuildSingleResidueProteinWithBackbone(
     res.protonation_variant_index = variant_index;
     res.protonation_state_resolved = true;
     res.terminal_state = terminal_state;
-    size_t const ri = protein->AddResidue(res);
+    size_t ri = protein->AddResidue(res);
 
     std::vector<Vec3> positions;
     const AminoAcidType& aa_type = GetAminoAcidType(aa);
@@ -293,13 +293,13 @@ std::unique_ptr<Protein> BuildSingleResidueProteinWithBackbone(
         auto atom = Atom::Create(templ.element);
         atom->pdb_atom_name = templ.name;
         atom->residue_index = ri;
-        size_t const ai = protein->AddAtom(std::move(atom));
+        size_t ai = protein->AddAtom(std::move(atom));
         protein->MutableResidueAt(ri).atom_indices.push_back(ai);
-        positions.emplace_back(0.0, 0.0, 0.0);
+        positions.push_back(Vec3(0.0, 0.0, 0.0));
 
         // Cache backbone slot indices the same way Protein::CacheResidueBackboneIndices
         // does — the cap geometry generator reads res.N and res.C.
-        std::string const aname(templ.name);
+        std::string aname(templ.name);
         if (aname == "N")  protein->MutableResidueAt(ri).N  = ai;
         if (aname == "CA") protein->MutableResidueAt(ri).CA = ai;
         if (aname == "C")  protein->MutableResidueAt(ri).C  = ai;
@@ -366,7 +366,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbNTermAshUnderCappingHasAce) {
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeNTermVerdict("ASH"), cfg);
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
 
@@ -384,7 +384,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbCTermGlhUnderCappingHasNme) {
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeCTermVerdict("GLH"), cfg);
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
 
@@ -401,7 +401,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbNCTermLynUnderCappingHasBoth) {
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeNCTermVerdict("LYN"), cfg);
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
 
@@ -420,7 +420,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbFailPolicyDoesNotCap) {
     cfg.preparation_policy =
         AmberPreparationPolicy::FailOnUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeNTermVerdict("ASH"), cfg);
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
     // No caps under Fail policy. The PDB still emits "ASH" but no ACE.
@@ -441,7 +441,7 @@ TEST_F(AmberLeapInputTest, GeneratedPdbHidNTermDoesNotCapEvenUnderCappingPolicy)
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeNTermVerdict("HID"), cfg);
     const std::string pdb = src.GeneratedPdb(protein->Conformation());
     EXPECT_EQ(pdb.find(" ACE "), std::string::npos) << pdb;
@@ -454,7 +454,7 @@ TEST_F(AmberLeapInputTest, ResidueMappingMarksCapsAsNoneForCap) {
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeNTermVerdict("ASH"), cfg);
     (void)src.GeneratedPdb(protein->Conformation());
 
@@ -472,7 +472,7 @@ TEST_F(AmberLeapInputTest, DescribeRecordsCappingDecisions) {
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   MakeCTermVerdict("GLH"), cfg);
     const std::string desc = src.Describe();
     EXPECT_NE(desc.find("UseCappedFragmentsForUnsupportedTerminalVariants"),
@@ -488,7 +488,7 @@ TEST_F(AmberLeapInputTest, ResidueAmberMappingNoCapsIsIdentity) {
     auto r = BuildFromProtonatedPdb(nmr::test::TestEnvironment::UbqProtonated());
     ASSERT_TRUE(r.Ok()) << r.error;
 
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *r.protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     (void)src.GeneratedPdb(r.protein->Conformation());
@@ -509,7 +509,7 @@ TEST_F(AmberLeapInputTest, ResidueAmberMappingNoCapsIsIdentity) {
 
 TEST_F(AmberLeapInputTest, GeneratedLeapScriptNoDisulfidesHasFiveLines) {
     auto protein = BuildOneResidueProtein(AminoAcid::ALA, -1);
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     (void)src.GeneratedPdb(protein->Conformation());  // populate mapping
@@ -530,7 +530,7 @@ TEST_F(AmberLeapInputTest, GeneratedLeapScriptNoDisulfidesHasFiveLines) {
 
 TEST_F(AmberLeapInputTest, GeneratedLeapScriptWithDisulfideEmitsBondLine) {
     auto protein = BuildTwoCysWithSgDistance(2.05);
-    AmberPreparedChargeSource const src(
+    AmberPreparedChargeSource src(
         *protein, MakeCfg().preparation_policy,
         MakeUnsupportedVerdict(), MakeCfg());
     (void)src.GeneratedPdb(protein->Conformation());
@@ -573,7 +573,7 @@ TEST_F(AmberPreparedChargePreconditionDeathTest,
     f.ff_residue_name = "ASH";
     verdict.failures.push_back(f);
 
-    AmberPreparedChargeSource const src(*r.protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*r.protein, cfg.preparation_policy,
                                   verdict, cfg);
     std::string err;
     EXPECT_DEATH(
@@ -607,7 +607,7 @@ TEST_F(AmberPreparedChargePreconditionDeathTest,
     AmberFlatTableCoverageVerdict verdict;
     verdict.ok = false;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   verdict, cfg);
     std::string err;
     EXPECT_DEATH(
@@ -635,9 +635,9 @@ TEST(AmberPreparedChargeStep5NegativeTest,
     cfg.preparation_policy =
         AmberPreparationPolicy::UseCappedFragmentsForUnsupportedTerminalVariants;
     cfg.tleap_path = "/nonexistent/path/to/tleap_binary_for_test";
-    AmberFlatTableCoverageVerdict const verdict;
+    AmberFlatTableCoverageVerdict verdict;
 
-    AmberPreparedChargeSource const src(*protein, cfg.preparation_policy,
+    AmberPreparedChargeSource src(*protein, cfg.preparation_policy,
                                   verdict, cfg);
     std::string err;
     auto rows = src.LoadCharges(*protein, protein->Conformation(), err);

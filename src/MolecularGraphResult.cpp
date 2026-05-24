@@ -19,19 +19,19 @@ static std::vector<int> BfsFromSet(
     std::vector<int> dist(protein.AtomCount(), -1);
     std::queue<size_t> queue;
 
-    for (size_t const s : sources) {
+    for (size_t s : sources) {
         dist[s] = 0;
         queue.push(s);
     }
 
     while (!queue.empty()) {
-        size_t const current = queue.front();
+        size_t current = queue.front();
         queue.pop();
-        int const d = dist[current];
+        int d = dist[current];
 
-        for (size_t const bi : protein.AtomAt(current).bond_indices) {
+        for (size_t bi : protein.AtomAt(current).bond_indices) {
             const Bond& bond = protein.BondAt(bi);
-            size_t const other = (bond.atom_index_a == current)
+            size_t other = (bond.atom_index_a == current)
                 ? bond.atom_index_b : bond.atom_index_a;
             if (dist[other] < 0) {
                 dist[other] = d + 1;
@@ -46,7 +46,7 @@ static std::vector<int> BfsFromSet(
 std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("MolecularGraphResult::Compute",
+    OperationLog::Scope scope("MolecularGraphResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     auto result = std::make_unique<MolecularGraphResult>();
@@ -61,7 +61,7 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
     // Ring atom set (from typed ring atom_indices)
     std::set<size_t> ring_atoms;
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        for (size_t const ai : protein.RingAt(ri).atom_indices) {
+        for (size_t ai : protein.RingAt(ri).atom_indices) {
             ring_atoms.insert(ai);
         }
     }
@@ -127,9 +127,9 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
         // eneg_sum_1: sum of electronegativity of atoms bonded to this atom
         // (1-bond neighbourhood)
         double eneg1 = 0.0;
-        for (size_t const bi : identity.bond_indices) {
+        for (size_t bi : identity.bond_indices) {
             const Bond& bond = protein.BondAt(bi);
-            size_t const other = (bond.atom_index_a == ai)
+            size_t other = (bond.atom_index_a == ai)
                 ? bond.atom_index_b : bond.atom_index_a;
             eneg1 += protein.AtomAt(other).Electronegativity();
         }
@@ -137,13 +137,13 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
 
         // eneg_sum_2: sum of electronegativity of atoms 2 bonds away
         double eneg2 = 0.0;
-        for (size_t const bi : identity.bond_indices) {
+        for (size_t bi : identity.bond_indices) {
             const Bond& bond = protein.BondAt(bi);
-            size_t const nb1 = (bond.atom_index_a == ai)
+            size_t nb1 = (bond.atom_index_a == ai)
                 ? bond.atom_index_b : bond.atom_index_a;
-            for (size_t const bi2 : protein.AtomAt(nb1).bond_indices) {
+            for (size_t bi2 : protein.AtomAt(nb1).bond_indices) {
                 const Bond& bond2 = protein.BondAt(bi2);
-                size_t const nb2 = (bond2.atom_index_a == nb1)
+                size_t nb2 = (bond2.atom_index_a == nb1)
                     ? bond2.atom_index_b : bond2.atom_index_a;
                 if (nb2 != ai) {  // skip going back to self
                     eneg2 += protein.AtomAt(nb2).Electronegativity();
@@ -161,14 +161,14 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
             local_dist[ai] = 0;
             q.push(ai);
             while (!q.empty()) {
-                size_t const cur = q.front();
+                size_t cur = q.front();
                 q.pop();
-                int const d = local_dist[cur];
+                int d = local_dist[cur];
                 if (d >= 3) continue;
 
-                for (size_t const bi : protein.AtomAt(cur).bond_indices) {
+                for (size_t bi : protein.AtomAt(cur).bond_indices) {
                     const Bond& b = protein.BondAt(bi);
-                    size_t const other = (b.atom_index_a == cur)
+                    size_t other = (b.atom_index_a == cur)
                         ? b.atom_index_b : b.atom_index_a;
                     if (local_dist[other] < 0) {
                         local_dist[other] = d + 1;
@@ -190,7 +190,7 @@ std::unique_ptr<MolecularGraphResult> MolecularGraphResult::Compute(
         // is_conjugated: part of a chain of alternating single/double bonds.
         // Simple heuristic: atom has at least one pi bond and at least 2 bonds total
         bool has_pi = false;
-        for (size_t const bi : identity.bond_indices) {
+        for (size_t bi : identity.bond_indices) {
             if (pi_bond_indices.count(bi) > 0) {
                 has_pi = true;
                 break;

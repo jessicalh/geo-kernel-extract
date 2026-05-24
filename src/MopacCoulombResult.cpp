@@ -35,10 +35,10 @@ std::vector<std::type_index> MopacCoulombResult::Dependencies() const {
 //                                         - delta_ab / |r_i-r_j|^3]
 // ============================================================================
 
-std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(readability-function-size)
+std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("MopacCoulombResult::Compute",
+    OperationLog::Scope scope("MopacCoulombResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
@@ -71,7 +71,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
     }
 
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        for (size_t const ai : protein.RingAt(ri).atom_indices) {
+        for (size_t ai : protein.RingAt(ri).atom_indices) {
             if (ai < n_atoms) is_aromatic_atom[ai] = true;
         }
     }
@@ -84,14 +84,14 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         const Atom& atom = protein.AtomAt(ai);
         if (atom.element == Element::H && atom.parent_atom_index != SIZE_MAX) {
-            Vec3 const d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
-            double const len = d.norm();
+            Vec3 d = conf.PositionAt(ai) - conf.PositionAt(atom.parent_atom_index);
+            double len = d.norm();
             if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         } else if (!atom.bond_indices.empty()) {
             const Bond& b = protein.BondAt(atom.bond_indices[0]);
-            size_t const other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
-            Vec3 const d = conf.PositionAt(other) - conf.PositionAt(ai);
-            double const len = d.norm();
+            size_t other = (b.atom_index_a == ai) ? b.atom_index_b : b.atom_index_a;
+            Vec3 d = conf.PositionAt(other) - conf.PositionAt(ai);
+            double len = d.norm();
             if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         }
     }
@@ -107,7 +107,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
     GeometryChoiceBuilder choices(conf);
 
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 const pos_i = conf.PositionAt(i);
+        Vec3 pos_i = conf.PositionAt(i);
 
         Vec3 E_total = Vec3::Zero();
         Vec3 E_backbone = Vec3::Zero();
@@ -129,20 +129,20 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
             if (!filters.AcceptAll(ctx)) continue;
 
             // MOPAC QM charge instead of ff14SB fixed charge
-            double const q_j = conf.AtomAt(j).mopac_charge;
+            double q_j = conf.AtomAt(j).mopac_charge;
             if (std::abs(q_j) < CalculatorConfig::Get("coulomb_charge_noise_floor")) { charge_floor_skipped++; continue; }
 
             Vec3 r = pos_i - conf.PositionAt(j);
-            double const r_mag = r.norm();
+            double r_mag = r.norm();
 
-            double const r3 = r_mag * r_mag * r_mag;
-            double const r5 = r3 * r_mag * r_mag;
+            double r3 = r_mag * r_mag * r_mag;
+            double r5 = r3 * r_mag * r_mag;
 
             // E_a = q_j * r_a / r^3
-            Vec3 const E_j = q_j * r / r3;
+            Vec3 E_j = q_j * r / r3;
 
             // V_ab = q_j * (3 r_a r_b / r^5 - delta_ab / r^3)
-            Mat3 const V_j = q_j * (3.0 * r * r.transpose() / r5
+            Mat3 V_j = q_j * (3.0 * r * r.transpose() / r5
                               - Mat3::Identity() / r3);
 
             E_total += E_j;
@@ -182,16 +182,13 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
 
         // Sanitise NaN/Inf
         auto sanitise_vec = [](Vec3& v) {
-            for (int d = 0; d < 3; ++d) {
+            for (int d = 0; d < 3; ++d)
                 if (std::isnan(v(d)) || std::isinf(v(d))) { v = Vec3::Zero(); return; }
-}
         };
         auto sanitise_mat = [](Mat3& m) {
-            for (int a = 0; a < 3; ++a) {
-                for (int b = 0; b < 3; ++b) {
+            for (int a = 0; a < 3; ++a)
+                for (int b = 0; b < 3; ++b)
                     if (std::isnan(m(a,b)) || std::isinf(m(a,b))) m(a,b) = 0.0;
-}
-}
         };
         sanitise_vec(E_total);
         sanitise_vec(E_backbone);
@@ -203,9 +200,9 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
         sanitise_mat(EFG_aromatic);
 
         // Clamp extreme E-field magnitudes
-        double const E_mag = E_total.norm();
+        double E_mag = E_total.norm();
         if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
-            double const scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
+            double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
             // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::MopacCoulomb, i, "mopac E-field clamp",
@@ -245,7 +242,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(  // NOLINT(read
         ca.mopac_coulomb_E_bond_proj = E_total.dot(primary_bond_dir[i]);
 
         if (ca.mopac_coulomb_E_magnitude > CalculatorConfig::Get("near_zero_vector_norm_threshold")) {
-            Vec3 const E_hat = E_total / ca.mopac_coulomb_E_magnitude;
+            Vec3 E_hat = E_total / ca.mopac_coulomb_E_magnitude;
             ca.mopac_coulomb_E_backbone_frac = E_backbone.dot(E_hat);
         } else {
             ca.mopac_coulomb_E_backbone_frac = 0.0;

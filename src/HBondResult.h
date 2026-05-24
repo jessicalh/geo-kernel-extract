@@ -43,7 +43,7 @@ public:
         ProteinConformation& conf);
 
     // Grid sampling: evaluate H-bond kernel at arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(const Vec3& point) const;
+    SphericalTensor SampleShieldingAt(Vec3 point) const;
 
     // Resolved H-bond count (for diagnostics)
     size_t HBondCount() const { return hbond_midpoints_.size(); }

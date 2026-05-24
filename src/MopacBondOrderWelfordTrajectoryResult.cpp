@@ -184,22 +184,10 @@ void MopacBondOrderWelfordTrajectoryResult::WriteH5Group(
         "frames. WriteH5Group skips the entire group when "
         "source_attached_count==0."));
 
-    std::vector<double>        mean(B);
-    std::vector<double>        std_(B);
-    std::vector<double>        m2(B);
-    std::vector<double>        min_(B);
-    std::vector<double>        max_(B);
-    std::vector<std::uint64_t> min_frame(B);
-    std::vector<std::uint64_t> max_frame(B);
-    std::vector<std::uint64_t> n_per_bond(B);
-    std::vector<double>        pmean(B);
-    std::vector<double>        pstd(B);
-    std::vector<double>        pm2(B);
-    std::vector<double>        pmin(B);
-    std::vector<double>        pmax(B);
-    std::vector<std::uint64_t> pmin_frame(B);
-    std::vector<std::uint64_t> pmax_frame(B);
-    std::vector<std::uint64_t> n_total_per_bond(B);
+    std::vector<double>        mean(B), std_(B), m2(B), min_(B), max_(B);
+    std::vector<std::uint64_t> min_frame(B), max_frame(B), n_per_bond(B);
+    std::vector<double>        pmean(B), pstd(B), pm2(B), pmin(B), pmax(B);
+    std::vector<std::uint64_t> pmin_frame(B), pmax_frame(B), n_total_per_bond(B);
     for (std::size_t bi = 0; bi < B; ++bi) {
         const auto& w = per_bond_[bi];
         mean[bi]      = w.mean;

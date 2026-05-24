@@ -28,7 +28,6 @@ TEST_F(TwoConformationsTest, TwoConformationsIndependent) {
 
     // Create a second conformation by jittering positions
     std::vector<Vec3> jittered = conf1.Positions();
-    // NOLINTNEXTLINE(cert-msc32-c,cert-msc51-cpp): constant seed is intentional for test reproducibility.
     std::mt19937 rng(42);
     std::normal_distribution<double> noise(0.0, 0.1);
     for (auto& p : jittered) {
@@ -61,22 +60,22 @@ TEST_F(TwoConformationsTest, TwoConformationsIndependent) {
     // At least some atoms should have different nearest ring distances
     int diff_count = 0;
     for (size_t ai = 0; ai < conf1.AtomCount(); ++ai) {
-        double const d1 = demo1.NearestRingDistance(ai);
-        double const d2 = demo2.NearestRingDistance(ai);
+        double d1 = demo1.NearestRingDistance(ai);
+        double d2 = demo2.NearestRingDistance(ai);
         if (std::abs(d1 - d2) > 0.001) diff_count++;
     }
     EXPECT_GT(diff_count, 0) << "Jittered conformation should differ";
 
     // Ring geometry should differ
     if (protein->RingCount() > 0) {
-        Vec3 const c1 = conf1.ring_geometries[0].center;
-        Vec3 const c2 = conf2.ring_geometries[0].center;
+        Vec3 c1 = conf1.ring_geometries[0].center;
+        Vec3 c2 = conf2.ring_geometries[0].center;
         EXPECT_GT((c1 - c2).norm(), 0.001);
     }
 
     // Global geometry should differ
-    double const rg1 = conf1.radius_of_gyration;
-    double const rg2 = conf2.radius_of_gyration;
+    double rg1 = conf1.radius_of_gyration;
+    double rg2 = conf2.radius_of_gyration;
     EXPECT_GT(std::abs(rg1 - rg2), 0.0);
 }
 

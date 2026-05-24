@@ -32,7 +32,7 @@ TEST_F(ApbsWiredTest, ApbsOrFallbackProducesNonZeroFields) {
 
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     ASSERT_NE(charges, nullptr);
     ASSERT_TRUE(conf.AttachResult(std::move(charges)));
 
@@ -45,8 +45,8 @@ TEST_F(ApbsWiredTest, ApbsOrFallbackProducesNonZeroFields) {
     int nonzero_E = 0;
     int nonzero_EFG = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        Vec3 const E = result.ElectricFieldAt(ai);
-        Mat3 const EFG = result.FieldGradientAt(ai);
+        Vec3 E = result.ElectricFieldAt(ai);
+        Mat3 EFG = result.FieldGradientAt(ai);
         if (E.norm() > 1e-10) nonzero_E++;
         if (EFG.norm() > 1e-10) nonzero_EFG++;
     }
@@ -60,19 +60,19 @@ TEST_F(ApbsWiredTest, ApbsOrFallbackProducesNonZeroFields) {
 TEST_F(ApbsWiredTest, SphericalTensorRoundtrip) {
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     conf.AttachResult(std::move(apbs));
 
     const auto& result = conf.Result<ApbsFieldResult>();
 
-    for (size_t ai = 0; ai < std::min(conf.AtomCount(), static_cast<size_t>(30)); ++ai) {
-        Mat3 const EFG = result.FieldGradientAt(ai);
-        SphericalTensor const st = result.FieldGradientSphericalAt(ai);
-        Mat3 const reconstructed = st.Reconstruct();
+    for (size_t ai = 0; ai < std::min(conf.AtomCount(), size_t(30)); ++ai) {
+        Mat3 EFG = result.FieldGradientAt(ai);
+        SphericalTensor st = result.FieldGradientSphericalAt(ai);
+        Mat3 reconstructed = st.Reconstruct();
 
-        double const diff = (EFG - reconstructed).norm();
+        double diff = (EFG - reconstructed).norm();
         EXPECT_LT(diff, 1e-10)
             << "SphericalTensor roundtrip failed at atom " << ai
             << " diff=" << diff;
@@ -85,7 +85,7 @@ TEST_F(ApbsWiredTest, FallbackWarnsOnFailure) {
     // We just verify the computation succeeds either way.
     auto& conf = protein->Conformation();
 
-    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+    auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
     conf.AttachResult(std::move(charges));
     auto apbs = ApbsFieldResult::Compute(conf);
     ASSERT_NE(apbs, nullptr);

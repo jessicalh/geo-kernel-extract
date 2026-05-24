@@ -115,7 +115,7 @@ TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     // TR11 produced per-frame RMSD
@@ -157,15 +157,12 @@ TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
     bool saw_chi_kind        = false;
     bool saw_coord_kind      = false;
     for (const std::type_index& k : kinds) {
-        if (k == typeid(nmr::RmsdSpikeSelectionTrajectoryResult)) {
+        if (k == typeid(nmr::RmsdSpikeSelectionTrajectoryResult))
             saw_rmsd_spike_kind = true;
-}
-        if (k == typeid(nmr::ChiRotamerSelectionTrajectoryResult)) {
+        if (k == typeid(nmr::ChiRotamerSelectionTrajectoryResult))
             saw_chi_kind = true;
-}
-        if (k == typeid(nmr::DftPoseCoordinatorTrajectoryResult)) {
+        if (k == typeid(nmr::DftPoseCoordinatorTrajectoryResult))
             saw_coord_kind = true;
-}
     }
     if (spike_n > 0) EXPECT_TRUE(saw_rmsd_spike_kind);
     if (chi_n > 0)   EXPECT_TRUE(saw_chi_kind);
@@ -197,7 +194,7 @@ TEST(RmsdSpikeAndDftCoord, SpikeFiresAtStrideGreaterThanOne1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr_rmsd = tp.Result<nmr::RmsdTrackingTrajectoryResult>();
@@ -243,14 +240,9 @@ TEST(RmsdSpikeAndDftCoord, DftPoseCoordinatorFinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
-    // Test verifies Finalize-twice is idempotent (finalized_ guard
-    // short-circuits). To call Finalize again we need a non-const
-    // reference; tp.Result<T>() returns const ref because the public
-    // contract is read-only. Test-only access pattern.
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     auto& tr_coord =
         const_cast<nmr::DftPoseCoordinatorTrajectoryResult&>(
             tp.Result<nmr::DftPoseCoordinatorTrajectoryResult>());

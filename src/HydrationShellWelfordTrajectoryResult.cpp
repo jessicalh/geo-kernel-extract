@@ -246,7 +246,7 @@ void HydrationShellWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 }
 
 
-void HydrationShellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
+void HydrationShellWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t N = tp.AtomCount();
@@ -268,7 +268,7 @@ void HydrationShellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability
     grp.createAttribute("n_frames",              n_frames_);
     grp.createAttribute("source_attached_count", source_attached_count);
     grp.createAttribute("finalized",             finalized_);
-    grp.createAttribute("ddof",                  1);
+    grp.createAttribute("ddof",                  static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",            mean_dt_ps_);
     grp.createAttribute("frame_index_range",     frame_index_range_);
     grp.createAttribute("reference_frame",       std::string("COM"));
@@ -292,14 +292,9 @@ void HydrationShellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(std::size_t)>& get) {
-        std::vector<double> mean(N);
-        std::vector<double> m2(N);
-        std::vector<double> std_(N);
-        std::vector<double> min_(N);
-        std::vector<double> max_(N);
-        std::vector<std::size_t> minf(N);
-        std::vector<std::size_t> maxf(N);
+                       std::function<const WelfordMoments&(std::size_t)> get) {
+        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
+        std::vector<std::size_t> minf(N), maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i] = w.mean; m2[i] = w.m2; std_[i] = w.std;
@@ -419,12 +414,8 @@ void HydrationShellWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability
                 });
     }
 
-    std::vector<std::size_t> n_frames(N);
-    std::vector<std::size_t> delta_n(N);
-    std::vector<std::size_t> dxdt_n(N);
-    std::vector<std::size_t> n_ion_present(N);
-    std::vector<std::size_t> n_ion_delta(N);
-    std::vector<std::size_t> n_ion_dxdt(N);
+    std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
+    std::vector<std::size_t> n_ion_present(N), n_ion_delta(N), n_ion_dxdt(N);
     for (std::size_t i = 0; i < N; ++i) {
         const HydrationShellWelfordState& w = get_w(i);
         n_frames[i]      = w.n_frames;

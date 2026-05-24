@@ -13,7 +13,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         ProteinConformation& conf,
         const SolventEnvironment& solvent) {
 
-    OperationLog::Scope const scope("HydrationGeometryResult::Compute",
+    OperationLog::Scope scope("HydrationGeometryResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " waters=" + std::to_string(solvent.WaterCount()));
 
@@ -49,7 +49,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         auto& atom = conf.MutableAtomAt(ai);
 
         // Surface normal from SasaResult (already computed and stored on atom)
-        Vec3 const normal = atom.sasa_normal;
+        Vec3 normal = atom.sasa_normal;
         atom.water_surface_normal = normal;
 
         // Accumulate first-shell water dipoles
@@ -58,11 +58,11 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         int n_buried = 0;
         int n_shell = 0;
 
-        Vec3 const pos_i = atom.Position();
+        Vec3 pos_i = atom.Position();
 
         for (size_t wi = 0; wi < W; ++wi) {
-            Vec3 const r = solvent.waters[wi].O_pos - pos_i;
-            double const d_sq = r.squaredNorm();
+            Vec3 r = solvent.waters[wi].O_pos - pos_i;
+            double d_sq = r.squaredNorm();
             if (d_sq > first_sq) continue;
 
             ++n_shell;
@@ -73,15 +73,14 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
             // Half-shell: is this water on the exposed side (along surface normal)
             // or the buried side (against normal)?
             // For buried atoms (normal == 0), all waters count as exposed.
-            double const d = std::sqrt(d_sq);
-            Vec3 const r_hat = r / d;
+            double d = std::sqrt(d_sq);
+            Vec3 r_hat = r / d;
             if (normal.norm() > near_zero) {
-                double const cos_normal = r_hat.dot(normal);
-                if (cos_normal > 0) {
+                double cos_normal = r_hat.dot(normal);
+                if (cos_normal > 0)
                     ++n_exposed;  // water is on the outward (solvent) side
-                } else {
+                else
                     ++n_buried;   // water is on the interior side
-}
             } else {
                 // Buried atom: no meaningful normal, count all as exposed
                 ++n_exposed;
@@ -91,7 +90,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         atom.sasa_first_shell_count = n_shell;
 
         // Half-shell asymmetry: fraction on exposed side
-        int const n_total = n_exposed + n_buried;
+        int n_total = n_exposed + n_buried;
         atom.sasa_half_shell_asymmetry =
             (n_total > 0)
             ? static_cast<double>(n_exposed) / static_cast<double>(n_total)
@@ -101,13 +100,12 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
         atom.water_dipole_vector = dipole_sum;
 
         // Dipole alignment: cos(net dipole, surface normal)
-        double const dip_mag = dipole_sum.norm();
-        double const norm_mag = normal.norm();
-        if (dip_mag > near_zero && norm_mag > near_zero) {
+        double dip_mag = dipole_sum.norm();
+        double norm_mag = normal.norm();
+        if (dip_mag > near_zero && norm_mag > near_zero)
             atom.sasa_dipole_alignment = dipole_sum.dot(normal) / (dip_mag * norm_mag);
-        } else {
+        else
             atom.sasa_dipole_alignment = 0.0;
-}
 
         // Dipole coherence: |Σ dᵢ| / n
         // Measures how ordered vs random the first-shell water dipoles are.

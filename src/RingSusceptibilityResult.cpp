@@ -58,29 +58,27 @@ static RingChiKernelResult ComputeRingChiKernel(
 
     RingChiKernelResult result;
 
-    Vec3 const d = atom_pos - ring_center;
-    double const r = d.norm();
+    Vec3 d = atom_pos - ring_center;
+    double r = d.norm();
 
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
-    double const r3 = r * r * r;
+    double r3 = r * r * r;
     Vec3 d_hat = d / r;
     result.direction = d_hat;
 
-    double const cos_theta = d_hat.dot(ring_normal);
+    double cos_theta = d_hat.dot(ring_normal);
 
     // Ring susceptibility scalar: (3 cos²θ - 1) / r³
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
     // Symmetric traceless dipolar kernel K_ab
-    for (int a = 0; a < 3; ++a) {
-        for (int b = 0; b < 3; ++b) {
+    for (int a = 0; a < 3; ++a)
+        for (int b = 0; b < 3; ++b)
             result.K(a, b) = (3.0 * d_hat(a) * d_hat(b)
                               - (a == b ? 1.0 : 0.0)) / r3;
-}
-}
 
     // Full tensor M_ab / r³
     //   = [9 cosθ d̂_a n_b - 3 n_a n_b - (3 d̂_a d̂_b - δ_ab)] / r³
@@ -105,7 +103,7 @@ static RingChiKernelResult ComputeRingChiKernel(
 std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("RingSusceptibilityResult::Compute",
+    OperationLog::Scope scope("RingSusceptibilityResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " rings=" + std::to_string(conf.ProteinRef().RingCount()));
 
@@ -142,14 +140,14 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 const atom_pos = conf.PositionAt(ai);
+        Vec3 atom_pos = conf.PositionAt(ai);
 
         // Find nearby rings via spatial index
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 M_total = Mat3::Zero();
 
-        for (size_t const ri : nearby_rings) {
+        for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
@@ -193,11 +191,11 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 new_rn.direction_to_center = kernel.direction;
 
                 // Cylindrical coordinates in ring frame
-                Vec3 const d = atom_pos - geom.center;
-                double const z = d.dot(geom.normal);
-                Vec3 const d_plane = d - z * geom.normal;
-                double const rho = d_plane.norm();
-                double const theta = std::atan2(d_plane.norm(), std::abs(z));
+                Vec3 d = atom_pos - geom.center;
+                double z = d.dot(geom.normal);
+                Vec3 d_plane = d - z * geom.normal;
+                double rho = d_plane.norm();
+                double theta = std::atan2(d_plane.norm(), std::abs(z));
                 new_rn.z = z;
                 new_rn.rho = rho;
                 new_rn.theta = theta;
@@ -230,7 +228,7 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
 }
 
 
-SphericalTensor RingSusceptibilityResult::SampleShieldingAt(const Vec3& point) const {
+SphericalTensor RingSusceptibilityResult::SampleShieldingAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -239,7 +237,7 @@ SphericalTensor RingSusceptibilityResult::SampleShieldingAt(const Vec3& point) c
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
-        double const distance = (point - geom.center).norm();
+        double distance = (point - geom.center).norm();
         if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
         if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
@@ -262,9 +260,8 @@ int RingSusceptibilityResult::WriteFeatures(const ProteinConformation& conf,
                                              const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
     std::vector<double> shielding(N * 9);
-    for (size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i)
         PackST_RS(conf.AtomAt(i).ringchi_shielding_contribution, &shielding[i*9]);
-}
     NpyWriter::WriteFloat64(output_dir + "/ringchi_shielding.npy", shielding.data(), N, 9);
     return 1;
 }

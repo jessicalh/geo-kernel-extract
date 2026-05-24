@@ -82,27 +82,25 @@ static void AccumulateTensor(
         const std::array<TriQuadPoint, 7>& qpts,
         Mat3& H) {
 
-    double const triArea = 0.5 * (v1 - v0).cross(v2 - v0).norm();
+    double triArea = 0.5 * (v1 - v0).cross(v2 - v0).norm();
     if (triArea < CalculatorConfig::Get("haigh_mallion_triangle_area_guard")) return;
 
     for (const auto& qp : qpts) {
         // Surface point in barycentric coordinates
-        Vec3 const rS = qp.lambda[0] * v0 + qp.lambda[1] * v1 + qp.lambda[2] * v2;
+        Vec3 rS = qp.lambda[0] * v0 + qp.lambda[1] * v1 + qp.lambda[2] * v2;
         Vec3 rho = r - rS;
-        double const rhoMag = rho.norm();
+        double rhoMag = rho.norm();
         if (rhoMag < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
-        double const rho3 = rhoMag * rhoMag * rhoMag;
-        double const rho5 = rho3 * rhoMag * rhoMag;
+        double rho3 = rhoMag * rhoMag * rhoMag;
+        double rho5 = rho3 * rhoMag * rhoMag;
 
         // K_ab = 3 rho_a rho_b / rho^5 - delta_ab / rho^3
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
+        for (int a = 0; a < 3; ++a)
+            for (int b = 0; b < 3; ++b)
                 H(a, b) += qp.weight * triArea *
                            (3.0 * rho(a) * rho(b) / rho5
                             - (a == b ? 1.0 : 0.0) / rho3);
-}
-}
     }
 }
 
@@ -131,16 +129,15 @@ static void AccumulateAdaptive(
         Mat3& H, int level) {
 
     bool subdivide = false;
-    if (level == 0) {
+    if (level == 0)
         subdivide = NeedsSubdivision(v0, v1, v2, r, CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l1"));
-    } else if (level == 1) {
+    else if (level == 1)
         subdivide = NeedsSubdivision(v0, v1, v2, r, CalculatorConfig::Get("haigh_mallion_subdivision_threshold_l2"));
-}
 
     if (subdivide && level < 2) {
-        Vec3 const m01 = 0.5 * (v0 + v1);
-        Vec3 const m12 = 0.5 * (v1 + v2);
-        Vec3 const m02 = 0.5 * (v0 + v2);
+        Vec3 m01 = 0.5 * (v0 + v1);
+        Vec3 m12 = 0.5 * (v1 + v2);
+        Vec3 m02 = 0.5 * (v0 + v2);
         AccumulateAdaptive(v0,  m01, m02, r, qpts, H, level + 1);
         AccumulateAdaptive(m01, v1,  m12, r, qpts, H, level + 1);
         AccumulateAdaptive(m02, m12, v2,  r, qpts, H, level + 1);
@@ -163,14 +160,14 @@ static Mat3 SurfaceIntegral(
         const RingGeometry& geom) {
 
     const auto& verts = geom.vertices;
-    int const nv = static_cast<int>(verts.size());
+    int nv = static_cast<int>(verts.size());
     if (nv < 3) return Mat3::Zero();
 
     const auto& qpts = Gauss7();
     Mat3 H = Mat3::Zero();
 
     for (int i = 0; i < nv; ++i) {
-        int const j = (i + 1) % nv;
+        int j = (i + 1) % nv;
         AccumulateAdaptive(geom.center, verts[i], verts[j],
                            point, qpts, H, 0);
     }
@@ -193,7 +190,7 @@ static Mat3 SurfaceIntegral(
 std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("HaighMallionResult::Compute",
+    OperationLog::Scope scope("HaighMallionResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " rings=" + std::to_string(conf.ProteinRef().RingCount()));
 
@@ -228,13 +225,13 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 const atom_pos = conf.PositionAt(ai);
+        Vec3 atom_pos = conf.PositionAt(ai);
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
 
-        for (size_t const ri : nearby_rings) {
+        for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
@@ -282,7 +279,7 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             }
 
             // Step 1: Raw surface integral H_ab (symmetric, traceless, A^-1)
-            Mat3 const H = SurfaceIntegral(atom_pos, geom);
+            Mat3 H = SurfaceIntegral(atom_pos, geom);
 
             // Step 2: Effective B-field V = H . n
             Vec3 V = H * geom.normal;
@@ -292,11 +289,9 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             // Same convention as BiotSavartResult: sigma = I * G gives
             // correct sign with literature I (negative for diamagnetic).
             Mat3 G;
-            for (int a = 0; a < 3; ++a) {
-                for (int b = 0; b < 3; ++b) {
+            for (int a = 0; a < 3; ++a)
+                for (int b = 0; b < 3; ++b)
                     G(a, b) = -geom.normal(b) * V(a);
-}
-}
 
             // Find or create RingNeighbourhood for this ring
             RingNeighbourhood* rn = nullptr;
@@ -312,13 +307,13 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
                 new_rn.ring_type = ring.type_index;
                 new_rn.distance_to_center = distance;
 
-                Vec3 const d = atom_pos - geom.center;
+                Vec3 d = atom_pos - geom.center;
                 new_rn.direction_to_center = d.normalized();
 
-                double const z = d.dot(geom.normal);
-                Vec3 const d_plane = d - z * geom.normal;
-                double const rho = d_plane.norm();
-                double const theta = std::atan2(d_plane.norm(), std::abs(z));
+                double z = d.dot(geom.normal);
+                Vec3 d_plane = d - z * geom.normal;
+                double rho = d_plane.norm();
+                double theta = std::atan2(d_plane.norm(), std::abs(z));
                 new_rn.z = z;
                 new_rn.rho = rho;
                 new_rn.theta = theta;
@@ -338,12 +333,11 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
             G_total += G;
 
             // Per-type T0 and T2 sums (from the stored shielding kernel G)
-            int const ti = ring.TypeIndexAsInt();
+            int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_hm_T0_sum[ti] += rn->hm_G_spherical.T0;
-                for (int c = 0; c < 5; ++c) {
+                for (int c = 0; c < 5; ++c)
                     ca.per_type_hm_T2_sum[ti][c] += rn->hm_G_spherical.T2[c];
-}
             }
 
             total_pairs++;
@@ -368,7 +362,7 @@ std::unique_ptr<HaighMallionResult> HaighMallionResult::Compute(
 // Same physics as Compute(). No atom-specific filters (grid points).
 // ============================================================================
 
-SphericalTensor HaighMallionResult::SampleShieldingAt(const Vec3& point) const {
+SphericalTensor HaighMallionResult::SampleShieldingAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -378,21 +372,19 @@ SphericalTensor HaighMallionResult::SampleShieldingAt(const Vec3& point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        double const distance = (point - geom.center).norm();
+        double distance = (point - geom.center).norm();
         if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
         if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
 
-        Mat3 const H = SurfaceIntegral(point, geom);
+        Mat3 H = SurfaceIntegral(point, geom);
         Vec3 V = H * geom.normal;
 
         // G_ab = -n_b * V_a
         Mat3 G;
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
+        for (int a = 0; a < 3; ++a)
+            for (int b = 0; b < 3; ++b)
                 G(a, b) = -geom.normal(b) * V(a);
-}
-}
 
         G_total += G;
     }
@@ -415,6 +407,7 @@ static void PackST_HM(const SphericalTensor& st, double* out) {
 int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
+    int written = 0;
 
     std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * 8);
@@ -422,12 +415,11 @@ int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_HM(ca.hm_shielding_contribution, &shielding[i * 9]);
+        PackST_HM(ca.hm_shielding_contribution, &shielding[i*9]);
         for (int t = 0; t < 8; ++t) {
-            per_type_T0[i * 8 + t] = ca.per_type_hm_T0_sum[t];
-            for (int c = 0; c < 5; ++c) {
-                per_type_T2[i * 40 + static_cast<std::size_t>(t) * 5 + c] = ca.per_type_hm_T2_sum[t][c];
-            }
+            per_type_T0[i*8 + t] = ca.per_type_hm_T0_sum[t];
+            for (int c = 0; c < 5; ++c)
+                per_type_T2[i*40 + t*5 + c] = ca.per_type_hm_T2_sum[t][c];
         }
     }
     NpyWriter::WriteFloat64(output_dir + "/hm_shielding.npy", shielding.data(), N, 9);

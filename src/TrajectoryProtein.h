@@ -147,25 +147,12 @@ public:
     }
 
     // Returns nullptr if no buffer under the given owner type or if
-    // the stored element type differs. Two overloads — mutating
-    // callers (Finalize attach paths) get the mutable pointer;
-    // const callers (WriteH5Group emitters, read-only inspectors)
-    // get the const pointer and don't need a const_cast workaround.
+    // the stored element type differs.
     template <typename T>
     DenseBuffer<T>* GetDenseBuffer(std::type_index owner) {
         auto it = dense_buffers_.find(owner);
-        if (it == dense_buffers_.end()) {
-            return nullptr;
-        }
+        if (it == dense_buffers_.end()) return nullptr;
         return dynamic_cast<DenseBuffer<T>*>(it->second.get());
-    }
-    template <typename T>
-    const DenseBuffer<T>* GetDenseBuffer(std::type_index owner) const {
-        auto it = dense_buffers_.find(owner);
-        if (it == dense_buffers_.end()) {
-            return nullptr;
-        }
-        return dynamic_cast<const DenseBuffer<T>*>(it->second.get());
     }
 
     // ── Serialisation ────────────────────────────────────────────
@@ -217,7 +204,7 @@ template <typename T>
 T& TrajectoryProtein::Result() {
     auto it = results_.find(std::type_index(typeid(T)));
     if (it == results_.end()) {
-        (void)fprintf(stderr,
+        fprintf(stderr,
                 "FATAL: TrajectoryProtein::Result<%s> not attached\n",
                 typeid(T).name());
         std::abort();
@@ -229,7 +216,7 @@ template <typename T>
 const T& TrajectoryProtein::Result() const {
     auto it = results_.find(std::type_index(typeid(T)));
     if (it == results_.end()) {
-        (void)fprintf(stderr,
+        fprintf(stderr,
                 "FATAL: TrajectoryProtein::Result<%s> not attached\n",
                 typeid(T).name());
         std::abort();

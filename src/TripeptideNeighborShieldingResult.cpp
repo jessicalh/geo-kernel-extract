@@ -87,11 +87,11 @@ TripeptideNeighborShieldingResult::Dependencies() const {
 // ============================================================================
 
 std::unique_ptr<TripeptideNeighborShieldingResult>
-TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size)
+TripeptideNeighborShieldingResult::Compute(
         ProteinConformation& conf,
         const TripeptideDftTable& table) {
 
-    OperationLog::Scope const scope(
+    OperationLog::Scope scope(
         "TripeptideNeighborShieldingResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " residues=" +
@@ -114,7 +114,7 @@ TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size
     TripeptideDftRecord aaa_ref;
     try {
         aaa_ref = table.QueryNearest(
-            'A', static_cast<double>(kPhiStd), static_cast<double>(kPsiStd));
+            'A', (double)kPhiStd, (double)kPsiStd);
     } catch (const std::exception& e) {
         OperationLog::Error(
             "TripeptideNeighborShieldingResult::Compute",
@@ -196,10 +196,8 @@ TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size
                 neigh.C  == Residue::NONE) return;
 
             // Neighbor's actual φ/ψ via the bond graph.
-            bool has_phi = false;
-            bool has_psi = false;
-            double phi = 0.0;
-            double psi = 0.0;
+            bool has_phi = false, has_psi = false;
+            double phi = 0.0, psi = 0.0;
             if (auto prev = protein.BackbonePredecessor(ni); prev) {
                 const std::size_t prev_C = protein.ResidueAt(*prev).C;
                 phi = DihedralDegrees(
@@ -291,9 +289,9 @@ TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size
                 ? TripeptidePoseSide::CTerm
                 : TripeptidePoseSide::NTerm;
 
-            AssembledTripeptide const asm_axa = AssembleTripeptide(
+            AssembledTripeptide asm_axa = AssembleTripeptide(
                 protein, conf, ri, rec_axa, side);
-            AssembledTripeptide const asm_aaa = AssembleTripeptide(
+            AssembledTripeptide asm_aaa = AssembleTripeptide(
                 protein, conf, ri, aaa_ref, side);
             if (!asm_axa.ok || !asm_aaa.ok) return;
 
@@ -329,14 +327,13 @@ TripeptideNeighborShieldingResult::Compute(  // NOLINT(readability-function-size
             if (out.n_atoms_matched > 0) any_neighbor_contribution = true;
         };
 
-        DirOutcome prev_out;
-        DirOutcome next_out;
+        DirOutcome prev_out, next_out;
         do_side(-1, prev_out);
         do_side(+1, next_out);
 
         // Accumulate Δσ_{i-1} + Δσ_{i+1} at each protein atom in res i.
         const Residue& res = protein.ResidueAt(ri);
-        for (std::size_t const ai : res.atom_indices) {
+        for (std::size_t ai : res.atom_indices) {
             const auto pit = prev_out.per_atom_tensor.find(ai);
             const auto nit = next_out.per_atom_tensor.find(ai);
             const bool have_prev = (pit != prev_out.per_atom_tensor.end());

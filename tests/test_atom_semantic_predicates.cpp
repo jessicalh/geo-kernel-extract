@@ -30,6 +30,7 @@
 #include "SemanticEnums.h"
 
 using nmr::AminoAcid;
+using nmr::Atom;
 using nmr::AtomSemanticTable;
 using nmr::Protein;
 using nmr::Residue;
@@ -65,9 +66,8 @@ PredicateCounts ScanProtein(const Protein& protein) {
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.type == AminoAcid::Unknown) continue;
-        if (res.type == AminoAcid::GLY) { ++c.gly_count;
-        } else {                            ++c.non_gly_count;
-}
+        if (res.type == AminoAcid::GLY) ++c.gly_count;
+        else                            ++c.non_gly_count;
         if (res.type == AminoAcid::ASP) ++c.asp_count;
         if (res.type == AminoAcid::GLU) ++c.glu_count;
         if (res.type == AminoAcid::ASN) ++c.asn_count;
@@ -77,7 +77,7 @@ PredicateCounts ScanProtein(const Protein& protein) {
             ++c.c_term_count;
         }
 
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const AtomSemanticTable& row = topology.SemanticAt(ai);
             if (row.IsAnyAlphaHydrogen())            ++c.any_alpha_h;
             if (row.IsSidechainCarboxylateOxygen())  ++c.sidechain_carboxylate_o;

@@ -71,8 +71,8 @@ private:
         hdr << "), }";
 
         std::string h = hdr.str();
-        size_t const total = 10 + h.size() + 1;
-        size_t const pad = (64 - (total % 64)) % 64;
+        size_t total = 10 + h.size() + 1;
+        size_t pad = (64 - (total % 64)) % 64;
         h.append(pad, ' ');
         h += '\n';
 
@@ -83,7 +83,7 @@ private:
         out.write(magic, 6);
         const char version[] = "\x01\x00";
         out.write(version, 2);
-        auto hlen = static_cast<uint16_t>(h.size());
+        uint16_t hlen = static_cast<uint16_t>(h.size());
         out.write(reinterpret_cast<const char*>(&hlen), 2);
         out.write(h.data(), static_cast<std::streamsize>(h.size()));
         out.write(reinterpret_cast<const char*>(data),

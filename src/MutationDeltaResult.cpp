@@ -76,7 +76,7 @@ static RingProximity ComputeRingProximity(
     rp.ring_index = ring_index;
     rp.ring_type = ring_type;
 
-    Vec3 const d = atom_pos - geom.center;
+    Vec3 d = atom_pos - geom.center;
     rp.distance = d.norm();
 
     if (rp.distance < MIN_DISTANCE) {
@@ -86,13 +86,13 @@ static RingProximity ComputeRingProximity(
 
     // Cylindrical decomposition in ring frame
     rp.z = d.dot(geom.normal);
-    Vec3 const in_plane = d - rp.z * geom.normal;
+    Vec3 in_plane = d - rp.z * geom.normal;
     rp.rho = in_plane.norm();
     rp.theta = std::atan2(rp.rho, rp.z);
 
     // McConnell factor: (3cos^2 theta - 1) / r^3
-    double const cos_theta = rp.z / rp.distance;
-    double const r3 = rp.distance * rp.distance * rp.distance;
+    double cos_theta = rp.z / rp.distance;
+    double r3 = rp.distance * rp.distance * rp.distance;
     rp.mcconnell_factor = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
     // Exponential decay with tau = 4A (ring current characteristic length)
@@ -111,11 +111,11 @@ static std::vector<MutationSite> DetectMutationSites(
         const Protein& mut_protein) {
 
     std::vector<MutationSite> sites;
-    size_t const n = std::min(wt_protein.ResidueCount(), mut_protein.ResidueCount());
+    size_t n = std::min(wt_protein.ResidueCount(), mut_protein.ResidueCount());
 
     for (size_t ri = 0; ri < n; ++ri) {
-        AminoAcid const wt_type = wt_protein.ResidueAt(ri).type;
-        AminoAcid const mut_type = mut_protein.ResidueAt(ri).type;
+        AminoAcid wt_type = wt_protein.ResidueAt(ri).type;
+        AminoAcid mut_type = mut_protein.ResidueAt(ri).type;
         if (wt_type != mut_type) {
             MutationSite site;
             site.residue_index = ri;
@@ -146,20 +146,16 @@ static DeltaSummary BuildSummary(
 
     // --- By element ---
     std::map<Element, std::vector<const MatchedAtomData*>> by_elem;
-    for (const auto& m : matched) {
+    for (const auto& m : matched)
         by_elem[m.element].push_back(&m);
-    }
 
     for (auto& [elem, atoms] : by_elem) {
         DeltaSummary::ElementBin bin;
         bin.element = elem;
         bin.count = static_cast<int>(atoms.size());
-        double sum_t0 = 0;
-        double sum_abs_t0 = 0;
-        double max_abs = 0;
-        double sum_t2 = 0;
+        double sum_t0 = 0, sum_abs_t0 = 0, max_abs = 0, sum_t2 = 0;
         for (const auto* a : atoms) {
-            double const t0 = a->delta_shielding_spherical.T0;
+            double t0 = a->delta_shielding_spherical.T0;
             sum_t0 += t0;
             sum_abs_t0 += std::abs(t0);
             max_abs = std::max(max_abs, std::abs(t0));
@@ -177,11 +173,10 @@ static DeltaSummary BuildSummary(
         DeltaSummary::DistanceBin bin;
         bin.bin_start = static_cast<double>(bin_start);
         bin.bin_end = static_cast<double>(bin_start + 1);
-        double sum_abs_t0 = 0;
-        double sum_t2 = 0;
+        double sum_abs_t0 = 0, sum_t2 = 0;
         int count = 0;
         for (const auto& m : matched) {
-            double const d = m.nearest_removed_ring_dist;
+            double d = m.nearest_removed_ring_dist;
             if (d >= bin.bin_start && d < bin.bin_end) {
                 sum_abs_t0 += std::abs(m.delta_shielding_spherical.T0);
                 sum_t2 += m.delta_shielding_spherical.T2Magnitude();
@@ -197,10 +192,9 @@ static DeltaSummary BuildSummary(
     }
 
     // --- Backbone vs sidechain ---
-    double bb_sum = 0;
-    double sc_sum = 0;
+    double bb_sum = 0, sc_sum = 0;
     for (const auto& m : matched) {
-        double const abs_t0 = std::abs(m.delta_shielding_spherical.T0);
+        double abs_t0 = std::abs(m.delta_shielding_spherical.T0);
         if (m.is_backbone) {
             summary.backbone_count++;
             bb_sum += abs_t0;
@@ -209,12 +203,10 @@ static DeltaSummary BuildSummary(
             sc_sum += abs_t0;
         }
     }
-    if (summary.backbone_count > 0) {
+    if (summary.backbone_count > 0)
         summary.backbone_mean_abs_t0 = bb_sum / summary.backbone_count;
-    }
-    if (summary.sidechain_count > 0) {
+    if (summary.sidechain_count > 0)
         summary.sidechain_mean_abs_t0 = sc_sum / summary.sidechain_count;
-    }
 
     return summary;
 }
@@ -224,12 +216,13 @@ static DeltaSummary BuildSummary(
 // MutationDeltaResult::Compute
 // ============================================================================
 
-std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(readability-function-size)
+std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
         ProteinConformation& wt_conf,
         const ProteinConformation& mut_conf) {
-    OperationLog::Scope const scope(
-        "MutationDeltaResult::Compute",
-        "wt_atoms=" + std::to_string(wt_conf.AtomCount()) + " mut_atoms=" + std::to_string(mut_conf.AtomCount()));
+
+    OperationLog::Scope scope("MutationDeltaResult::Compute",
+        "wt_atoms=" + std::to_string(wt_conf.AtomCount()) +
+        " mut_atoms=" + std::to_string(mut_conf.AtomCount()));
 
     const Protein& wt_protein = wt_conf.ProteinRef();
     const Protein& mut_protein = mut_conf.ProteinRef();
@@ -261,9 +254,8 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
     // Collect all removed ring indices
     std::vector<size_t> removed_ring_indices;
     for (const auto& site : mutation_sites) {
-        for (size_t const ri : site.wt_ring_indices) {
+        for (size_t ri : site.wt_ring_indices)
             removed_ring_indices.push_back(ri);
-        }
         OperationLog::Info(LogAtomMapping, "MutationDeltaResult",
             "mutation at residue " + std::to_string(site.residue_index) +
             ": " + ThreeLetterCodeForAminoAcid(site.wt_type) +
@@ -273,11 +265,15 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
 
     // ---- Check optional data sources ----
 
-    bool const has_apbs = wt_conf.HasResult<ApbsFieldResult>() && mut_conf.HasResult<ApbsFieldResult>();
-    bool const has_mopac = wt_conf.HasResult<MopacResult>() && mut_conf.HasResult<MopacResult>();
-    bool const has_dssp = wt_conf.HasResult<DsspResult>() && mut_conf.HasResult<DsspResult>();
-    bool const has_graph = wt_conf.HasResult<MolecularGraphResult>() && mut_conf.HasResult<MolecularGraphResult>();
-    bool const has_geom = wt_conf.HasResult<GeometryResult>();
+    bool has_apbs = wt_conf.HasResult<ApbsFieldResult>() &&
+                    mut_conf.HasResult<ApbsFieldResult>();
+    bool has_mopac = wt_conf.HasResult<MopacResult>() &&
+                     mut_conf.HasResult<MopacResult>();
+    bool has_dssp = wt_conf.HasResult<DsspResult>() &&
+                    mut_conf.HasResult<DsspResult>();
+    bool has_graph = wt_conf.HasResult<MolecularGraphResult>() &&
+                     mut_conf.HasResult<MolecularGraphResult>();
+    bool has_geom = wt_conf.HasResult<GeometryResult>();
 
     // ---- Substrate-required check ----
 
@@ -298,9 +294,8 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
     const size_t mut_count = mut_conf.AtomCount();
 
     std::vector<bool> residue_is_mutation(wt_protein.ResidueCount(), false);
-    for (const auto& site : mutation_sites) {
+    for (const auto& site : mutation_sites)
         residue_is_mutation[site.residue_index] = true;
-    }
 
     // Per non-mutation residue: ordered list of (mut_atom_index, identity).
     // Atoms get consumed in residue-atom-index order as WT atoms claim
@@ -309,13 +304,12 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
         mut_residue_pool;
     for (size_t mi = 0; mi < mut_count; ++mi) {
         const size_t ri = mut_protein.AtomAt(mi).residue_index;
-        if (ri >= residue_is_mutation.size() || residue_is_mutation[ri]) {
+        if (ri >= residue_is_mutation.size() || residue_is_mutation[ri])
             continue;
-        }
         const auto& sem = mut_protein.LegacyAmber().SemanticAt(mi);
-        mut_residue_pool[ri].emplace_back(
-            mi,
-            AtomMechanicalIdentity{sem.element, sem.locant, sem.branch, sem.di_index, sem.backbone_role});
+        mut_residue_pool[ri].push_back({mi,
+            AtomMechanicalIdentity{sem.element, sem.locant, sem.branch,
+                                    sem.di_index, sem.backbone_role}});
     }
 
     // ---- Atom matching: typed identity, residue-local, consume-in-order ----
@@ -367,11 +361,8 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
             }
         }
         if (!bound) {
-            if (variant_diff) {
-                ++variant_unmatched;
-            } else {
-                ++no_id_match;
-            }
+            if (variant_diff) ++variant_unmatched;
+            else              ++no_id_match;
         }
     }
 
@@ -408,8 +399,7 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
             (wt_conf.PositionAt(wi)
              - mut_conf.PositionAt(wt_to_mut[wi])).norm());
     }
-    double drift_med = 0.0;
-    double drift_max = 0.0;
+    double drift_med = 0.0, drift_max = 0.0;
     if (!bound_drifts.empty()) {
         std::vector<double> sorted = bound_drifts;
         std::sort(sorted.begin(), sorted.end());
@@ -417,19 +407,13 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
         drift_max = sorted.back();
     }
 
-    size_t reject_within_0_5 = 0;
-    size_t reject_within_2_0 = 0;
-    size_t reject_far = 0;
+    size_t reject_within_0_5 = 0, reject_within_2_0 = 0, reject_far = 0;
     for (size_t wi = 0; wi < wt_count; ++wi) {
         if (wt_to_mut[wi] != SIZE_MAX) continue;
         const double d = SameElementSpatialNn(wi);
-        if (d < 0.5) {
-            ++reject_within_0_5;
-        } else if (d < 2.0) {
-            ++reject_within_2_0;
-        } else {
-            ++reject_far;
-        }
+        if      (d < 0.5) ++reject_within_0_5;
+        else if (d < 2.0) ++reject_within_2_0;
+        else              ++reject_far;
     }
 
     // ---- DSSP residue-level lookup helpers ----
@@ -452,7 +436,7 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
     size_t unmatched = 0;
 
     for (size_t wi = 0; wi < wt_count; ++wi) {
-        size_t const mi = wt_to_mut[wi];
+        size_t mi = wt_to_mut[wi];
         if (mi == SIZE_MAX) { unmatched++; continue; }
 
         MatchedAtomData data;
@@ -516,8 +500,8 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
 
         // DSSP delta (per residue, projected to atom)
         if (has_dssp) {
-            size_t const wt_ri = data.residue_index;
-            size_t const mut_ri = mut_protein.AtomAt(mi).residue_index;
+            size_t wt_ri = data.residue_index;
+            size_t mut_ri = mut_protein.AtomAt(mi).residue_index;
             data.delta_phi = wt_dssp->Phi(wt_ri) - mut_dssp->Phi(mut_ri);
             data.delta_psi = wt_dssp->Psi(wt_ri) - mut_dssp->Psi(mut_ri);
             data.delta_sasa = wt_dssp->SASA(wt_ri) - mut_dssp->SASA(mut_ri);
@@ -533,14 +517,15 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
 
         // Ring proximity to removed rings
         if (has_geom && !removed_ring_indices.empty()) {
-            Vec3 const atom_pos = wt_conf.PositionAt(wi);
+            Vec3 atom_pos = wt_conf.PositionAt(wi);
             data.nearest_removed_ring_dist = 99.0;
 
-            for (size_t const rri : removed_ring_indices) {
+            for (size_t rri : removed_ring_indices) {
                 const Ring& ring = wt_protein.RingAt(rri);
                 const RingGeometry& geom = wt_conf.ring_geometries[rri];
 
-                RingProximity const rp = ComputeRingProximity(atom_pos, rri, ring.type_index, geom);
+                RingProximity rp = ComputeRingProximity(
+                    atom_pos, rri, ring.type_index, geom);
                 data.removed_ring_proximity.push_back(rp);
 
                 if (rp.distance < data.nearest_removed_ring_dist) {
@@ -563,7 +548,6 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
 
     OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",
         "matched=" + std::to_string(matched) +
-        " unmatched=" + std::to_string(unmatched) +
         " mutation_skipped=" + std::to_string(mutation_skipped) +
         " variant_residues=" + std::to_string(variant_residues_seen.size()) +
         " variant_unmatched=" + std::to_string(variant_unmatched) +
@@ -604,12 +588,12 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
     // Log distance decay (the 1/r^3 diagnostic)
     for (const auto& bin : result->summary_.by_distance) {
         if (bin.count > 0) {
-            OperationLog::Info(LogAtomMapping,
-                               "MutationDeltaResult",
-                               "dist=[" + std::to_string(static_cast<int>(bin.bin_start)) + "-"
-                                   + std::to_string(static_cast<int>(bin.bin_end)) + "A] n=" + std::to_string(bin.count)
-                                   + " mean_|dT0|=" + std::to_string(bin.mean_abs_delta_t0)
-                                   + " mean_|T2|=" + std::to_string(bin.mean_t2_magnitude));
+            OperationLog::Info(LogAtomMapping, "MutationDeltaResult",
+                "dist=[" + std::to_string((int)bin.bin_start) + "-" +
+                std::to_string((int)bin.bin_end) + "A] n=" +
+                std::to_string(bin.count) +
+                " mean_|dT0|=" + std::to_string(bin.mean_abs_delta_t0) +
+                " mean_|T2|=" + std::to_string(bin.mean_t2_magnitude));
         }
     }
 
@@ -623,91 +607,67 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(  // NOLINT(re
 
 size_t MutationDeltaResult::UnmatchedWtAtomCount() const {
     size_t n = 0;
-    for (size_t const idx : wt_to_matched_) {
-        if (idx == SIZE_MAX) {
-            n++;
-}
-}
+    for (size_t idx : wt_to_matched_) if (idx == SIZE_MAX) n++;
     return n;
 }
 
-bool MutationDeltaResult::HasMatch(size_t wt_atom_index) const {
-    return wt_atom_index < wt_to_matched_.size()
-        && wt_to_matched_[wt_atom_index] != SIZE_MAX;
+bool MutationDeltaResult::HasMatch(size_t i) const {
+    return i < wt_to_matched_.size() && wt_to_matched_[i] != SIZE_MAX;
 }
 
-const MatchedAtomData& MutationDeltaResult::MatchedDataAt(size_t wt_atom_index) const {
-    if (wt_atom_index >= wt_to_matched_.size() || wt_to_matched_[wt_atom_index] == SIZE_MAX) {
+const MatchedAtomData& MutationDeltaResult::MatchedDataAt(size_t i) const {
+    if (i >= wt_to_matched_.size() || wt_to_matched_[i] == SIZE_MAX)
         return empty_match_;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]];
+    return matched_atoms_[wt_to_matched_[i]];
 }
 
-const Mat3& MutationDeltaResult::DeltaShieldingAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return zero_mat3_;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_shielding;
+const Mat3& MutationDeltaResult::DeltaShieldingAt(size_t i) const {
+    if (!HasMatch(i)) return zero_mat3_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding;
 }
 
-const SphericalTensor& MutationDeltaResult::DeltaShieldingSphericalAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return zero_spherical_;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_shielding_spherical;
+const SphericalTensor& MutationDeltaResult::DeltaShieldingSphericalAt(size_t i) const {
+    if (!HasMatch(i)) return zero_spherical_;
+    return matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical;
 }
 
-double MutationDeltaResult::DeltaT0At(size_t wt_atom_index) const {
-    return DeltaShieldingSphericalAt(wt_atom_index).T0;
+double MutationDeltaResult::DeltaT0At(size_t i) const {
+    return DeltaShieldingSphericalAt(i).T0;
 }
 
-Vec3 MutationDeltaResult::DeltaEFieldAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return Vec3::Zero();
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_efield;
+Vec3 MutationDeltaResult::DeltaEFieldAt(size_t i) const {
+    if (!HasMatch(i)) return Vec3::Zero();
+    return matched_atoms_[wt_to_matched_[i]].delta_efield;
 }
 
-Mat3 MutationDeltaResult::DeltaEFGAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return Mat3::Zero();
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_efg;
+Mat3 MutationDeltaResult::DeltaEFGAt(size_t i) const {
+    if (!HasMatch(i)) return Mat3::Zero();
+    return matched_atoms_[wt_to_matched_[i]].delta_efg;
 }
 
-double MutationDeltaResult::DeltaPartialChargeAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return 0.0;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_partial_charge;
+double MutationDeltaResult::DeltaPartialChargeAt(size_t i) const {
+    if (!HasMatch(i)) return 0.0;
+    return matched_atoms_[wt_to_matched_[i]].delta_partial_charge;
 }
 
-double MutationDeltaResult::DeltaMopacChargeAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return 0.0;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].delta_mopac_charge;
+double MutationDeltaResult::DeltaMopacChargeAt(size_t i) const {
+    if (!HasMatch(i)) return 0.0;
+    return matched_atoms_[wt_to_matched_[i]].delta_mopac_charge;
 }
 
-double MutationDeltaResult::NearestRemovedRingDistance(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return 99.0;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].nearest_removed_ring_dist;
+double MutationDeltaResult::NearestRemovedRingDistance(size_t i) const {
+    if (!HasMatch(i)) return 99.0;
+    return matched_atoms_[wt_to_matched_[i]].nearest_removed_ring_dist;
 }
 
-size_t MutationDeltaResult::MutantAtomFor(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return SIZE_MAX;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].mut_index;
+size_t MutationDeltaResult::MutantAtomFor(size_t i) const {
+    if (!HasMatch(i)) return SIZE_MAX;
+    return matched_atoms_[wt_to_matched_[i]].mut_index;
 }
 
-double MutationDeltaResult::MatchDistanceAt(size_t wt_atom_index) const {
-    if (!HasMatch(wt_atom_index)) {
-        return 0.0;
-    }
-    return matched_atoms_[wt_to_matched_[wt_atom_index]].match_distance;
+double MutationDeltaResult::MatchDistanceAt(size_t i) const {
+    if (!HasMatch(i)) return 0.0;
+    return matched_atoms_[wt_to_matched_[i]].match_distance;
 }
 
 // ============================================================================
@@ -730,11 +690,9 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     // delta_shielding: (N, 9) — DFT shielding total delta as SphericalTensor.
     {
         std::vector<double> data(N * 9, 0.0);
-        for (size_t i = 0; i < N; ++i) {
-            if (HasMatch(i)) {
-                PackST(matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical, &data[i * 9]);
-            }
-        }
+        for (size_t i = 0; i < N; ++i)
+            if (HasMatch(i))
+                PackST(matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical, &data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/delta_shielding.npy", data.data(), N, 9);
         written++;
     }
@@ -748,11 +706,9 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     auto WriteShieldingComponent = [&](const std::string& filename,
                                         SphericalTensor MatchedAtomData::* field) {
         std::vector<double> data(N * 9, 0.0);
-        for (size_t i = 0; i < N; ++i) {
-            if (HasMatch(i)) {
-                PackST(matched_atoms_[wt_to_matched_[i]].*field, &data[i * 9]);
-            }
-        }
+        for (size_t i = 0; i < N; ++i)
+            if (HasMatch(i))
+                PackST(matched_atoms_[wt_to_matched_[i]].*field, &data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/" + filename, data.data(), N, 9);
     };
 
@@ -808,9 +764,8 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
     // Per removed ring: [distance, z, rho, theta, mcconnell_factor, exp_decay]
     if (!mutation_sites_.empty()) {
         size_t total_removed = 0;
-        for (const auto& site : mutation_sites_) {
+        for (const auto& site : mutation_sites_)
             total_removed += site.wt_ring_indices.size();
-        }
 
         if (total_removed > 0) {
             const size_t cols = total_removed * 6;
@@ -820,7 +775,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
                     const auto& m = matched_atoms_[wt_to_matched_[i]];
                     for (size_t r = 0; r < m.removed_ring_proximity.size() && r < total_removed; ++r) {
                         const auto& rp = m.removed_ring_proximity[r];
-                        size_t const base = i * cols + r * 6;
+                        size_t base = i * cols + r * 6;
                         data[base + 0] = rp.distance;
                         data[base + 1] = rp.z;
                         data[base + 2] = rp.rho;

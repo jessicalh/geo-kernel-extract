@@ -31,9 +31,8 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 std::int32_t PartnerToInt32(std::size_t partner_idx, std::size_t n_res) {
     if (partner_idx >= n_res) return Dssp8TimeSeriesTrajectoryResult::kNoPartner;
     if (partner_idx > static_cast<std::size_t>(
-            std::numeric_limits<std::int32_t>::max())) {
+            std::numeric_limits<std::int32_t>::max()))
         return Dssp8TimeSeriesTrajectoryResult::kNoPartner;
-}
     return static_cast<std::int32_t>(partner_idx);
 }
 
@@ -243,7 +242,7 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, T};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint8_t>("ss8_code", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("category"));
@@ -261,8 +260,8 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
                 flat[(ri * T + f) * 2 + 1] = row[f][1];
             }
         }
-        const std::vector<std::size_t> dims = {R, T, static_cast<std::size_t>(2)};
-        HighFive::DataSpace const space(dims);
+        const std::vector<std::size_t> dims = {R, T, std::size_t(2)};
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::int32_t>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("residue_index"));
@@ -278,8 +277,8 @@ void Dssp8TimeSeriesTrajectoryResult::WriteH5Group(
                 flat[(ri * T + f) * 2 + 1] = row[f][1];
             }
         }
-        const std::vector<std::size_t> dims = {R, T, static_cast<std::size_t>(2)};
-        HighFive::DataSpace const space(dims);
+        const std::vector<std::size_t> dims = {R, T, std::size_t(2)};
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("kcal/mol"));

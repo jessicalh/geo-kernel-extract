@@ -33,7 +33,7 @@ std::string PropkaProtonator::WriteTempPdb(
     int serial = 1;
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const Residue& res = protein.ResidueAt(ri);
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             // Heavy atoms only
             if (atom.element == Element::H) continue;
@@ -42,20 +42,19 @@ std::string PropkaProtonator::WriteTempPdb(
 
             // PDB LOADING BOUNDARY: format atom name for PDB columns 13-16
             char atomField[5];
-            if (atom.pdb_atom_name.size() <= 3) {
-                (void)std::snprintf(atomField, sizeof(atomField), " %-3s",
+            if (atom.pdb_atom_name.size() <= 3)
+                std::snprintf(atomField, sizeof(atomField), " %-3s",
                               atom.pdb_atom_name.c_str());
-            } else {
-                (void)std::snprintf(atomField, sizeof(atomField), "%-4s",
+            else
+                std::snprintf(atomField, sizeof(atomField), "%-4s",
                               atom.pdb_atom_name.c_str());
-}
 
             // PDB LOADING BOUNDARY: residue name from three-letter code
-            std::string const resname = ThreeLetterCodeForAminoAcid(res.type);
-            char const chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
+            std::string resname = ThreeLetterCodeForAminoAcid(res.type);
+            char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
 
             char line[82];
-            (void)std::snprintf(line, sizeof(line),
+            std::snprintf(line, sizeof(line),
                 "ATOM  %5d %4s %3s %c%4d    %8.3f%8.3f%8.3f  1.00  0.00\n",
                 serial++, atomField, resname.c_str(), chain,
                 res.sequence_number, pos.x(), pos.y(), pos.z());
@@ -86,9 +85,8 @@ std::vector<PkaResult> PropkaProtonator::ParsePkaFile(const std::string& path) {
             in_summary = true;
             continue;
         }
-        if (in_summary && line.find("-----") != std::string::npos) {
+        if (in_summary && line.find("-----") != std::string::npos)
             continue;
-}
         if (in_summary && line.empty()) break;
 
         if (in_summary && line.size() > 20) {
@@ -137,7 +135,7 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
             const Residue& res = protein.ResidueAt(ri);
             if (res.sequence_number != pka.residue_number) continue;
 
-            std::string const code = ThreeLetterCodeForAminoAcid(res.type);
+            std::string code = ThreeLetterCodeForAminoAcid(res.type);
             if (code == pka.residue_type) {
                 res_idx = ri;
                 break;
@@ -152,7 +150,7 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
 
         // Now typed: we have the Residue and its AminoAcidType
         const Residue& res = protein.ResidueAt(res_idx);
-        bool const protonated = pka.pKa > pH;
+        bool protonated = pka.pKa > pH;
 
         ResidueProtonation decision;
         decision.residue_index = res_idx;
@@ -160,7 +158,6 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
         decision.pKa = pka.pKa;
 
         // Map H-H decision to variant_index using AminoAcidType::variants
-        // NOLINTBEGIN(bugprone-branch-clone): each per-residue case documents the chemistry of one amino acid; ASP≡GLU and LYS≡ARG body coincidence is per-residue meaning, not duplication.
         switch (res.type) {
             case AminoAcid::ASP:
                 // protonated → ASH (variant 0), deprotonated → ASP (default, -1)
@@ -210,7 +207,6 @@ ProtonationState PropkaProtonator::ApplyHendersonHasselbalch(
             default:
                 continue;  // PROPKA may report N-term/C-term; skip
         }
-        // NOLINTEND(bugprone-branch-clone)
 
         state.AddResidue(decision);
     }
@@ -228,16 +224,16 @@ std::vector<PkaResult> PropkaProtonator::PredictPka(
         const ProteinConformation& conf,
         std::string& error_out) {
 
-    OperationLog::Scope const scope("PropkaProtonator::PredictPka",
+    OperationLog::Scope scope("PropkaProtonator::PredictPka",
         "residues=" + std::to_string(protein.ResidueCount()));
 
     // Create unique temp directory
-    std::string const dir = RuntimeEnvironment::TempFilePath(
+    std::string dir = RuntimeEnvironment::TempFilePath(
         "propka", std::to_string(protein.ResidueCount()));
     fs::create_directories(dir);
 
     // Write heavy-atom PDB
-    std::string const pdb_path = WriteTempPdb(protein, conf, dir);
+    std::string pdb_path = WriteTempPdb(protein, conf, dir);
     if (pdb_path.empty()) {
         error_out = "cannot write temp PDB to " + dir;
         std::error_code ec;
@@ -247,14 +243,13 @@ std::vector<PkaResult> PropkaProtonator::PredictPka(
 
     // Call propka3
     // TODO: propka path should be a parameter when reintegrated into BuildFromPdb
-    std::string const cmd = "cd " + dir + " && propka3" +
+    std::string cmd = "cd " + dir + " && propka3" +
                       " --quiet " + pdb_path + " 2>/dev/null";
-    // NOLINTNEXTLINE(cert-env33-c,concurrency-mt-unsafe): hardcoded `propka3`; pdb_path is a tempfile this function wrote; synchronous, single-tenant.
-    int const rc = std::system(cmd.c_str());
+    int rc = std::system(cmd.c_str());
 
     // PROPKA writes <stem>.pka in the working directory
-    std::string const stem = fs::path(pdb_path).stem().string();
-    std::string const pka_path = dir + "/" + stem + ".pka";
+    std::string stem = fs::path(pdb_path).stem().string();
+    std::string pka_path = dir + "/" + stem + ".pka";
 
     if (!fs::exists(pka_path)) {
         error_out = "propka3 produced no output (rc=" + std::to_string(rc) +
@@ -286,7 +281,7 @@ ProtonationResult PropkaProtonator::Protonate(
         const ProteinConformation& conf,
         double pH) {
 
-    OperationLog::Scope const scope("PropkaProtonator::Protonate",
+    OperationLog::Scope scope("PropkaProtonator::Protonate",
         "pH=" + std::to_string(pH));
 
     ProtonationResult result;

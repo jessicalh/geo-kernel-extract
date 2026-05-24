@@ -22,7 +22,7 @@ static void PackST(const SphericalTensor& st, double* out) {
 
 int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                           const std::string& output_dir) {
-    OperationLog::Scope const scope("ConformationResult::WriteAllFeatures",
+    OperationLog::Scope scope("ConformationResult::WriteAllFeatures",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " results=" + std::to_string(conf.AllResults().size()) +
         " dir=" + output_dir);
@@ -36,9 +36,7 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     // Identity arrays — these belong to no single result.
     {
         std::vector<double> pos(N * 3);
-        std::vector<int32_t> elem(N);
-        std::vector<int32_t> res_idx(N);
-        std::vector<int32_t> res_type(N);
+        std::vector<int32_t> elem(N), res_idx(N), res_type(N);
         for (size_t i = 0; i < N; ++i) {
             Vec3 p = conf.PositionAt(i);
             pos[i*3+0] = p.x(); pos[i*3+1] = p.y(); pos[i*3+2] = p.z();
@@ -61,9 +59,8 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
     //          [54-55] dispersion, [56-57] azimuthal angle.
     {
         size_t P = 0;
-        for (size_t i = 0; i < N; ++i) {
+        for (size_t i = 0; i < N; ++i)
             P += conf.AtomAt(i).ring_neighbours.size();
-}
 
         if (P > 0) {
             const size_t C = 58;
@@ -80,9 +77,9 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                     r[5]  = rn.z;
                     r[6]  = rn.theta;
 
-                    double const cos_th = (rn.distance_to_center > 1e-12)
+                    double cos_th = (rn.distance_to_center > 1e-12)
                         ? rn.z / rn.distance_to_center : 0.0;
-                    double const r3 = rn.distance_to_center * rn.distance_to_center
+                    double r3 = rn.distance_to_center * rn.distance_to_center
                               * rn.distance_to_center;
                     r[7]  = (r3 > 1e-30)
                         ? (3.0 * cos_th * cos_th - 1.0) / r3 : 0.0;
@@ -135,7 +132,7 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
 
     // Walk the conformation's accumulated results. Each one writes its own.
     for (const auto& [tid, result] : conf.AllResults()) {
-        int const n = result->WriteFeatures(conf, output_dir);
+        int n = result->WriteFeatures(conf, output_dir);
         if (n > 0) {
             OperationLog::Info(LogCalcOther, "WriteAllFeatures",
                 result->Name() + " wrote " + std::to_string(n) + " arrays");

@@ -53,15 +53,8 @@ TEST_F(LarsenResidueSerSidechainTest, OgAndBackboneOHaveDistinctIdentities) {
         /*n_chi_axes=*/1);
     ASSERT_TRUE(rec.IsHit()) << "no SER pose at phi=-60,psi=120,chi1=-60";
     ASSERT_TRUE(rec.larsen.has_value());
-    // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
-    // explicit has_value gate just below makes the deref provably safe
-    // to the checker. Unreachable in practice.
-    if (!rec.larsen.has_value()) {
-        FAIL() << "unreachable";
-    }
-    const auto& larsen = *rec.larsen;
 
-    const LarsenResidue& cen = larsen.central;
+    const LarsenResidue& cen = rec.larsen->central;
     ASSERT_EQ(cen.residue, AminoAcid::SER);
     ASSERT_EQ(cen.atoms.size(), 11u);  // BB6 + CB+HB2+HB3+OG+HG = 11
 

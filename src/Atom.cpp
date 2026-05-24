@@ -8,8 +8,8 @@ std::unique_ptr<Atom> Atom::Create(Element elem) {
     return a;
 }
 
-std::unique_ptr<Atom> Atom::Create(const std::string& elementSymbol) {
-    return Create(ElementFromSymbol(elementSymbol));
+std::unique_ptr<Atom> Atom::Create(const std::string& sym) {
+    return Create(ElementFromSymbol(sym));
 }
 
 }  // namespace nmr

@@ -21,9 +21,9 @@ namespace {
 // near-zero).
 double ChiRadians(const Vec3& p0, const Vec3& p1,
                   const Vec3& p2, const Vec3& p3) {
-    Vec3 const b1 = p1 - p0;
-    Vec3 const b2 = p2 - p1;
-    Vec3 const b3 = p3 - p2;
+    Vec3 b1 = p1 - p0;
+    Vec3 b2 = p2 - p1;
+    Vec3 b3 = p3 - p2;
     Vec3 n1 = b1.cross(b2);
     Vec3 n2 = b2.cross(b3);
     const double n1n = n1.norm();

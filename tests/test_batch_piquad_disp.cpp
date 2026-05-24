@@ -34,10 +34,9 @@ static std::string FindNmrOutput(const std::string& dir,
     std::string exact = dir + prefix + "_nmr.out";
     if (fs::exists(exact)) return exact;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string const name = entry.path().filename().string();
-        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos) {
+        std::string name = entry.path().filename().string();
+        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos)
             return entry.path().string();
-}
     }
     return "";
 }
@@ -57,30 +56,27 @@ static BatchProtein LoadAndEnrich(const std::string& dir,
                                    const std::string& protein_id,
                                    const std::string& variant) {
 
-    std::string const prefix = protein_id + "_" + variant;
+    std::string prefix = protein_id + "_" + variant;
 
     OrcaRunFiles files;
     files.pdb_path = dir + prefix + ".pdb";
     files.xyz_path = dir + prefix + ".xyz";
     files.prmtop_path = dir + prefix + ".prmtop";
 
-    if (!fs::exists(files.xyz_path)) {
+    if (!fs::exists(files.xyz_path))
         return {nullptr, false, "xyz not found"};
-}
-    if (!fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.prmtop_path))
         return {nullptr, false, "prmtop not found"};
-}
 
     auto load = BuildFromOrca(files);
-    if (!load.Ok()) {
+    if (!load.Ok())
         return {nullptr, false, "BuildFromOrca: " + load.error};
-}
 
     auto& conf = load.protein->Conformation();
 
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource const charge_source(files.prmtop_path);
+    PrmtopChargeSource charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -101,7 +97,7 @@ static BatchProtein LoadAndEnrich(const std::string& dir,
     conf.AttachResult(std::move(disp));
 
     // ORCA shielding (optional — needed for DFT proximity analysis)
-    std::string const nmr_path = FindNmrOutput(dir, prefix);
+    std::string nmr_path = FindNmrOutput(dir, prefix);
     if (!nmr_path.empty()) {
         auto orca = OrcaShieldingResult::Compute(conf, nmr_path);
         if (orca) conf.AttachResult(std::move(orca));
@@ -116,11 +112,10 @@ static BatchProtein LoadAndEnrich(const std::string& dir,
 // ============================================================================
 
 TEST(BatchPiQuadDisp, AllCleanPairs) {
-    if (!fs::exists(nmr::test::TestEnvironment::Consolidated())) {
+    if (!fs::exists(nmr::test::TestEnvironment::Consolidated()))
         GTEST_SKIP() << "Consolidated directory not found";
-}
 
-    uint32_t const saved_mask = OperationLog::GetChannelMask();
+    uint32_t saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
     // T2 independence: cosine similarity in 5D space
@@ -129,28 +124,19 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
         int count = 0;
     };
     // PQ vs: McConnell, Coulomb, RingChi, BS
-    T2PairAccum pq_vs_mc;
-    T2PairAccum pq_vs_coulomb;
-    T2PairAccum pq_vs_rchi;
-    T2PairAccum pq_vs_bs;
+    T2PairAccum pq_vs_mc, pq_vs_coulomb, pq_vs_rchi, pq_vs_bs;
     // Disp vs: McConnell, Coulomb, RingChi, BS, PQ
-    T2PairAccum disp_vs_mc;
-    T2PairAccum disp_vs_coulomb;
-    T2PairAccum disp_vs_rchi;
-    T2PairAccum disp_vs_bs;
-    T2PairAccum disp_vs_pq;
+    T2PairAccum disp_vs_mc, disp_vs_coulomb, disp_vs_rchi, disp_vs_bs, disp_vs_pq;
 
     auto t2_cos_sim = [](const std::array<double,5>& a,
                          const std::array<double,5>& b) -> double {
-        double dot = 0;
-        double na = 0;
-        double nb = 0;
+        double dot = 0, na = 0, nb = 0;
         for (int m = 0; m < 5; ++m) {
             dot += a[m] * b[m];
             na += a[m] * a[m];
             nb += b[m] * b[m];
         }
-        double const denom = std::sqrt(na * nb);
+        double denom = std::sqrt(na * nb);
         if (denom < 1e-20) return 0.0;
         return dot / denom;
     };
@@ -170,33 +156,25 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
 
     // DFT proximity accumulators
     constexpr double NEAR_MUTATION_DIST = 8.0;  // test threshold (A)
-    double sum_pq_near = 0;
-    double sum_pq_far = 0;
-    double sum_disp_near = 0;
-    double sum_disp_far = 0;
-    int near_count = 0;
-    int far_count = 0;
+    double sum_pq_near = 0, sum_pq_far = 0;
+    double sum_disp_near = 0, sum_disp_far = 0;
+    int near_count = 0, far_count = 0;
     int pairs_with_dft = 0;
 
-    int processed = 0;
-    int skipped = 0;
-    int failed = 0;
-    int total_pq_pairs = 0;
-    int total_disp_pairs = 0;
-    int total_disp_contacts = 0;
+    int processed = 0, skipped = 0, failed = 0;
+    int total_pq_pairs = 0, total_disp_pairs = 0, total_disp_contacts = 0;
     double global_max_pq_trace = 0;
-    double global_max_pq_t2 = 0;
-    double global_max_disp_t2 = 0;
+    double global_max_pq_t2 = 0, global_max_disp_t2 = 0;
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;
-        std::string const protein_id = entry.path().filename().string();
-        std::string const dir = entry.path().string() + "/";
+        std::string protein_id = entry.path().filename().string();
+        std::string dir = entry.path().string() + "/";
 
-        std::string const wt_prmtop = dir + protein_id + "_WT.prmtop";
-        std::string const wt_xyz = dir + protein_id + "_WT.xyz";
-        std::string const ala_prmtop = dir + protein_id + "_ALA.prmtop";
-        std::string const ala_xyz = dir + protein_id + "_ALA.xyz";
+        std::string wt_prmtop = dir + protein_id + "_WT.prmtop";
+        std::string wt_xyz = dir + protein_id + "_WT.xyz";
+        std::string ala_prmtop = dir + protein_id + "_ALA.prmtop";
+        std::string ala_xyz = dir + protein_id + "_ALA.xyz";
         if (!fs::exists(wt_prmtop) || !fs::exists(wt_xyz)) {
             skipped++;
             continue;
@@ -205,9 +183,8 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
         auto wt = LoadAndEnrich(dir, protein_id, "WT");
         if (!wt.ok) {
             failed++;
-            if (failed <= 5) {
+            if (failed <= 5)
                 std::cerr << "  FAIL " << protein_id << ": " << wt.error << "\n";
-}
             continue;
         }
 
@@ -221,10 +198,10 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
             for (const auto& rn : ca.ring_neighbours) {
                 if (rn.quad_tensor.isZero(1e-20)) continue;
 
-                double const trace = std::abs(rn.quad_tensor.trace());
+                double trace = std::abs(rn.quad_tensor.trace());
                 global_max_pq_trace = std::max(global_max_pq_trace, trace);
 
-                int const ti = static_cast<int>(rn.ring_type);
+                int ti = static_cast<int>(rn.ring_type);
                 if (ti >= 0 && ti < 8) {
                     pq_type_stats[ti].pairs++;
                     pq_type_stats[ti].sum_scalar += std::abs(rn.quad_scalar);
@@ -260,12 +237,12 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
             auto rchi_t2 = ca.ringchi_shielding_contribution.T2;
             auto bs_t2 = ca.bs_shielding_contribution.T2;
 
-            double const pq_mag = ca.piquad_shielding_contribution.T2Magnitude();
-            double const disp_mag = ca.disp_shielding_contribution.T2Magnitude();
-            double const mc_mag = ca.mc_shielding_contribution.T2Magnitude();
-            double const coulomb_mag = ca.coulomb_EFG_total_spherical.T2Magnitude();
-            double const rchi_mag = ca.ringchi_shielding_contribution.T2Magnitude();
-            double const bs_mag = ca.bs_shielding_contribution.T2Magnitude();
+            double pq_mag = ca.piquad_shielding_contribution.T2Magnitude();
+            double disp_mag = ca.disp_shielding_contribution.T2Magnitude();
+            double mc_mag = ca.mc_shielding_contribution.T2Magnitude();
+            double coulomb_mag = ca.coulomb_EFG_total_spherical.T2Magnitude();
+            double rchi_mag = ca.ringchi_shielding_contribution.T2Magnitude();
+            double bs_mag = ca.bs_shielding_contribution.T2Magnitude();
 
             if (pq_mag > T2_MIN) {
                 if (mc_mag > T2_MIN)      { pq_vs_mc.sum_abs_cos += std::abs(t2_cos_sim(pq_t2, mc_t2)); pq_vs_mc.count++; }
@@ -301,7 +278,7 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
                         if (!delta->HasMatch(ai)) continue;
 
                         bool near_mut = false;
-                        Vec3 const pos = conf.PositionAt(ai);
+                        Vec3 pos = conf.PositionAt(ai);
                         for (const auto& ms : mut_sites) {
                             const Residue& r = wt.protein->ResidueAt(ms.residue_index);
                             if (r.CA != Residue::NONE) {
@@ -311,8 +288,8 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
                             }
                         }
 
-                        double const pq_t2 = conf.AtomAt(ai).piquad_shielding_contribution.T2Magnitude();
-                        double const disp_t2 = conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude();
+                        double pq_t2 = conf.AtomAt(ai).piquad_shielding_contribution.T2Magnitude();
+                        double disp_t2 = conf.AtomAt(ai).disp_shielding_contribution.T2Magnitude();
 
                         if (near_mut) {
                             sum_pq_near += pq_t2;
@@ -386,12 +363,11 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
 
     // T2 independence
     auto print_t2 = [](const char* name, const T2PairAccum& acc) {
-        if (acc.count > 0) {
+        if (acc.count > 0)
             std::cout << "    " << std::setw(22) << name
                       << ": mean|cos| = " << std::setprecision(3)
                       << acc.sum_abs_cos / acc.count
                       << " (n=" << acc.count << ")\n";
-}
     };
 
     std::cout << "  T2 independence (mean |cos| in 5D, random~0.36):\n";
@@ -407,10 +383,10 @@ TEST(BatchPiQuadDisp, AllCleanPairs) {
 
     // DFT proximity report
     if (near_count > 0 && far_count > 0) {
-        double const mean_pq_near = sum_pq_near / near_count;
-        double const mean_pq_far = sum_pq_far / far_count;
-        double const mean_disp_near = sum_disp_near / near_count;
-        double const mean_disp_far = sum_disp_far / far_count;
+        double mean_pq_near = sum_pq_near / near_count;
+        double mean_pq_far = sum_pq_far / far_count;
+        double mean_disp_near = sum_disp_near / near_count;
+        double mean_disp_far = sum_disp_far / far_count;
 
         std::cout << "\n  DFT proximity analysis (near < " << NEAR_MUTATION_DIST
                   << "A from mutation site CA):\n"

@@ -40,7 +40,7 @@ Status Session::LoadFromToml() {
     // fallback (provenance=MissLogged for every atom).
     CategoryInfoProjection::Config cic_cfg;
     cic_cfg.atom_nom_tbl = RuntimeEnvironment::BmrbAtomNom();
-    CategoryInfoProjection::Configure(cic_cfg);
+    CategoryInfoProjection::Configure(std::move(cic_cfg));
     return kOk;
 }
 

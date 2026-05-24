@@ -51,7 +51,7 @@ public:
         ProteinConformation& conf);
 
     // Grid sampling: evaluate HM shielding kernel at an arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(const Vec3& point) const;
+    SphericalTensor SampleShieldingAt(Vec3 point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

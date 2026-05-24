@@ -86,7 +86,7 @@ TEST(RmsdTracking, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -110,7 +110,7 @@ TEST(RmsdTracking, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::RmsdTrackingTrajectoryResult>();
@@ -134,7 +134,7 @@ TEST(RmsdTracking, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RmsdTrackingTrajectoryResult>();
@@ -145,15 +145,12 @@ TEST(RmsdTracking, H5RoundTrip) {
         ("rmsd_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/rmsd_tracking"));
     auto grp = reopen.getGroup("/trajectory/rmsd_tracking");
 
     // Convention attrs
-    std::string alignment;
-    std::string sel;
-    std::string units;
-    std::string policy;
+    std::string alignment, sel, units, policy;
     grp.getAttribute("alignment_method").read(alignment);
     grp.getAttribute("atom_selection").read(sel);
     grp.getAttribute("units").read(units);
@@ -207,7 +204,7 @@ TEST(RmsdTracking, RmsdRange1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::RmsdTrackingTrajectoryResult>();

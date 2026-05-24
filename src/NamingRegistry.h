@@ -313,7 +313,7 @@ public:
     /// plus per-variant atom-presence rules. Used by Resolve() to
     /// detect idempotent (already-canonical) input. Public so
     /// property tests can exercise it directly.
-    static bool IsCanonical(const NamingContext& ctx) ;
+    bool IsCanonical(const NamingContext& ctx) const;
 
 private:
     // Test-only constructor: build an applicator with custom rules.
@@ -339,14 +339,15 @@ private:
     /// Step 2: resolve the per-atom map to a single output. Body is
     /// the explicit per-case decision logic; each branch documented
     /// with a citation to the project decision authorising the choice.
-    static std::string Resolve(const std::vector<NamingApplication>& applications, const NamingContext& ctx);
+    std::string Resolve(const std::vector<NamingApplication>& applications,
+                        const NamingContext& ctx) const;
 
     /// Diagnostic emit for fail-loud paths. Aborts via the project's
     /// fprintf(stderr,"FATAL: ...")+std::abort() pattern.
-    [[noreturn]] static void FailUnresolved(
+    [[noreturn]] void FailUnresolved(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        std::string_view reason) ;
+        std::string_view reason) const;
 
     /// Post-resolution validator's fail-loud emit. Fires when Resolve()
     /// returned a chosen output that the canonicality oracle rejects
@@ -356,10 +357,10 @@ private:
     /// documented branch). The diagnostic names every rule that fired,
     /// the original input, and the bad output. Codex round-2,
     /// 2026-05-06.
-    [[noreturn]] static void FailValidator(
+    [[noreturn]] void FailValidator(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        const std::string& chosen_output) ;
+        const std::string& chosen_output) const;
 
     void InstallRules();
 

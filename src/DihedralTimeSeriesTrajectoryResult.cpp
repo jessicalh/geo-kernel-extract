@@ -120,33 +120,28 @@ double WrapPi(double a) {
 // `is_proline`, `is_pre_proline`); downstream re-bins with type-aware
 // Rama maps (or Lovell penultimate-rotamer-library variants) as needed.
 std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
-    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad)) {
+    if (!std::isfinite(phi_rad) || !std::isfinite(psi_rad))
         return kRamaUnassigned;
-}
 
     const double deg_per_rad = 180.0 / M_PI;
     const double phi = phi_rad * deg_per_rad;
     const double psi = psi_rad * deg_per_rad;
 
     if (phi >= -180.0 && phi <= -30.0 &&
-        psi >=  -90.0 && psi <=  30.0) {
+        psi >=  -90.0 && psi <=  30.0)
         return kRamaAlphaR;
-}
 
     if (phi >=  30.0 && phi <= 100.0 &&
-        psi >= -10.0 && psi <=  80.0) {
+        psi >= -10.0 && psi <=  80.0)
         return kRamaAlphaL;
-}
 
     if (phi >= -75.0 && phi <= -50.0 &&
-        psi >= 140.0 && psi <= 165.0) {
+        psi >= 140.0 && psi <= 165.0)
         return kRamaPPII;
-}
 
     if (phi >= -180.0 && phi <= -45.0 &&
-        ((psi >= 60.0 && psi <= 180.0) || (psi >= -180.0 && psi <= -150.0))) {
+        ((psi >= 60.0 && psi <= 180.0) || (psi >= -180.0 && psi <= -150.0)))
         return kRamaBeta;
-}
 
     return kRamaOther;
 }
@@ -186,9 +181,8 @@ DihedralTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
     for (std::size_t ri = 0; ri < R; ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         for (int k = 0; k < 4; ++k) {
-            if (res.chi[k].Valid()) {
+            if (res.chi[k].Valid())
                 r->chi_exists_[ri * 4 + k] = 1u;
-}
         }
         if (res.type == AminoAcid::GLY) r->is_glycine_[ri] = 1u;
         if (res.type == AminoAcid::PRO) r->is_proline_[ri] = 1u;
@@ -359,7 +353,7 @@ void DihedralTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 // layout matches the natural reader: res-0-frame-0..T-1, res-1-frame-0..,
 // ..., res-R-1-frame-T-1.
 
-void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
+void DihedralTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t R = phi_.size();
@@ -524,7 +518,7 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-fu
             }
         }
         const std::vector<std::size_t> dims = {R, T};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto props = make_chunk_props_2d();
         auto ds = grp.createDataSet<double>(name, space, props);
         ds.write_raw(flat.data());
@@ -542,7 +536,7 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-fu
             }
         }
         const std::vector<std::size_t> dims = {R, T};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto props = make_chunk_props_2d();
         auto ds = grp.createDataSet<std::uint8_t>(name, space, props);
         ds.write_raw(flat.data());
@@ -567,13 +561,13 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-fu
                 }
             }
         }
-        const std::vector<std::size_t> dims = {R, T, static_cast<std::size_t>(4)};
-        HighFive::DataSpace const space(dims);
+        const std::vector<std::size_t> dims = {R, T, std::size_t(4)};
+        HighFive::DataSpace space(dims);
         HighFive::DataSetCreateProps chi_props;
         chi_props.add(HighFive::Chunking(std::vector<hsize_t>{
             static_cast<hsize_t>(R),
             static_cast<hsize_t>(std::max<std::size_t>(frame_chunk, 1u)),
-            static_cast<hsize_t>(4)
+            hsize_t(4)
         }));
         auto ds = grp.createDataSet<double>("chi", space, chi_props);
         ds.write_raw(flat.data());
@@ -583,8 +577,8 @@ void DihedralTimeSeriesTrajectoryResult::WriteH5Group(  // NOLINT(readability-fu
 
     // ── Per-residue static (R,) and (R, 4) ───────────────────────────
     {
-        const std::vector<std::size_t> dims4 = {R, static_cast<std::size_t>(4)};
-        HighFive::DataSpace const s4(dims4);
+        const std::vector<std::size_t> dims4 = {R, std::size_t(4)};
+        HighFive::DataSpace s4(dims4);
         auto ds = grp.createDataSet<std::uint8_t>("chi_exists", s4);
         ds.write_raw(chi_exists_.data());
         ds.createAttribute("units", std::string("dimensionless"));

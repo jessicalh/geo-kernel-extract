@@ -29,15 +29,15 @@ TEST(RuntimeEnvironment, VerifyFindsNoMissing) {
 }
 
 TEST(RuntimeEnvironment, TempFilePathIncludesGuidAndProtein) {
-    std::string const path = RuntimeEnvironment::TempFilePath("1UBQ", "protonated.pdb");
+    std::string path = RuntimeEnvironment::TempFilePath("1UBQ", "protonated.pdb");
     EXPECT_NE(path.find("1UBQ"), std::string::npos);
     EXPECT_NE(path.find("protonated.pdb"), std::string::npos);
     EXPECT_NE(path.find(RuntimeEnvironment::TmpDir()), std::string::npos);
 }
 
 TEST(RuntimeEnvironment, TempFilePathIsUniquePerProcess) {
-    std::string const p1 = RuntimeEnvironment::TempFilePath("1UBQ", "a.pdb");
-    std::string const p2 = RuntimeEnvironment::TempFilePath("2GB1", "a.pdb");
+    std::string p1 = RuntimeEnvironment::TempFilePath("1UBQ", "a.pdb");
+    std::string p2 = RuntimeEnvironment::TempFilePath("2GB1", "a.pdb");
     EXPECT_NE(p1, p2);
     auto extract_guid = [](const std::string& path) {
         auto pos = path.rfind('/');

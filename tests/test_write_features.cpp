@@ -22,7 +22,7 @@ using namespace nmr;
 
 
 TEST(WriteFeatures, P84477Baseline) {
-    std::string const dir = std::string(nmr::test::TestEnvironment::Consolidated()) + "P84477/";
+    std::string dir = std::string(nmr::test::TestEnvironment::Consolidated()) + "P84477/";
     if (!fs::exists(dir)) GTEST_SKIP() << "P84477 not found";
 
     // Load WT with full pipeline
@@ -41,7 +41,7 @@ TEST(WriteFeatures, P84477Baseline) {
 
     // Find NMR output
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string const name = entry.path().filename().string();
+        std::string name = entry.path().filename().string();
         if (name.find("P84477_WT") == 0 && name.find("_nmr.out") != std::string::npos) {
             opts.orca_nmr_path = entry.path().string();
             break;
@@ -52,7 +52,7 @@ TEST(WriteFeatures, P84477Baseline) {
     ASSERT_TRUE(result.Ok()) << result.error;
 
     // Write all features
-    int const arrays = ConformationResult::WriteAllFeatures(conf, nmr::test::TestEnvironment::BaselineFeatures());
+    int arrays = ConformationResult::WriteAllFeatures(conf, nmr::test::TestEnvironment::BaselineFeatures());
     EXPECT_GT(arrays, 25) << "Expected 25+ arrays from 8 calculators + identity";
 
     std::cout << "\n  WriteFeatures baseline written to " << nmr::test::TestEnvironment::BaselineFeatures() << "\n"

@@ -25,14 +25,13 @@ struct WaterMolecule {
     Vec3   O_pos;
     Vec3   H1_pos;
     Vec3   H2_pos;
-    double O_charge = 0.0;   // typically -0.834e (TIP3P) or similar
-    double H_charge = 0.0;   // typically +0.417e (TIP3P)
+    double O_charge;   // typically -0.834e (TIP3P) or similar
+    double H_charge;   // typically +0.417e (TIP3P)
 
-    // Dipole moment vector: μ = Σ q_i * r_i (relative to O).
-    // The O term contributes 0 because O is at the origin of this
-    // reference frame; written explicitly so the parallel
-    // O/H1/H2 structure is visible at the call site.
+    // Dipole moment vector (from O toward midpoint of H's, scaled by charges)
     Vec3 Dipole() const {
+        Vec3 mid_H = 0.5 * (H1_pos + H2_pos);
+        // μ = Σ q_i * r_i (relative to O)
         return O_charge * Vec3::Zero()
              + H_charge * (H1_pos - O_pos)
              + H_charge * (H2_pos - O_pos);
@@ -42,8 +41,8 @@ struct WaterMolecule {
 // One ion: position + charge + element.
 struct Ion {
     Vec3   pos;
-    double charge = 0.0;     // +1 for Na+, -1 for Cl-, etc.
-    int    atomic_number = 0;  // 11=Na, 17=Cl, 19=K, etc.
+    double charge;     // +1 for Na+, -1 for Cl-, etc.
+    int    atomic_number;  // 11=Na, 17=Cl, 19=K, etc.
 };
 
 // Full solvent environment for one trajectory frame.

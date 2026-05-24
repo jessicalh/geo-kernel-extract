@@ -78,7 +78,7 @@ TEST(BondedEnergyTimeSeries, SyntheticAllAbsentSkipsGroup) {
     auto tr = nmr::BondedEnergyTimeSeriesTrajectoryResult::Create(tp);
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < 3; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -90,7 +90,7 @@ TEST(BondedEnergyTimeSeries, SyntheticAllAbsentSkipsGroup) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("bonded_ts_allabsent_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/bonded_energy_time_series"))
         << "All-absent run should skip group emission entirely.";
 
@@ -121,7 +121,7 @@ TEST(BondedEnergyTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -153,7 +153,7 @@ TEST(BondedEnergyTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::BondedEnergyTimeSeriesTrajectoryResult>();
@@ -187,19 +187,18 @@ TEST(BondedEnergyTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::BondedEnergyTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("bonded_energy_ts_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/bonded_energy_time_series"));
     auto grp = reopen.getGroup("/trajectory/bonded_energy_time_series");
 
-    std::string units;
-    std::string split;
+    std::string units, split;
     grp.getAttribute("units").read(units);
     grp.getAttribute("split_convention").read(split);
     EXPECT_EQ(units, "kJ/mol");
@@ -243,7 +242,7 @@ TEST(BondedEnergyTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::BondedEnergyTimeSeriesTrajectoryResult>();
@@ -252,7 +251,7 @@ TEST(BondedEnergyTimeSeries, Integration1P9J) {
     const std::string h5_path = (fs::temp_directory_path() /
         ("bonded_energy_ts_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/bonded_energy_time_series");
 
     std::vector<std::vector<double>> total;

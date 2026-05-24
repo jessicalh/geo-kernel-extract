@@ -8,8 +8,8 @@
 
 namespace fs = std::filesystem;
 
-
-namespace nmr::test {
+namespace nmr {
+namespace test {
 
 std::string TestEnvironment::ubq_protonated_;
 std::string TestEnvironment::ubq_crystal_;
@@ -27,7 +27,7 @@ bool TestEnvironment::loaded_ = false;
 
 bool TestEnvironment::RequireLoaded() {
     if (loaded_) return true;
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "FATAL: TestEnvironment::Load() was not called. "
         "Call it in test_main.cpp before RUN_ALL_TESTS.\n");
     std::abort();
@@ -44,7 +44,6 @@ void TestEnvironment::Load() {
 #endif
 
     // Env var override
-    // NOLINTNEXTLINE(concurrency-mt-unsafe): test-suite setup runs once before any thread spawns.
     const char* env = std::getenv("NMR_TESTPATHS_TOML");
     if (env) toml_path = env;
 
@@ -61,30 +60,27 @@ void TestEnvironment::Load() {
             std::string val = line.substr(eq + 1);
 
             auto trim = [](std::string& s) {
-                while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '"')) {
+                while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '"'))
                     s.erase(s.begin());
-}
-                while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '"')) {
+                while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '"'))
                     s.pop_back();
-}
             };
             trim(key);
             trim(val);
 
-            if      (key == "ubq_protonated") {  ubq_protonated_ = val;
-            } else if (key == "ubq_crystal") {     ubq_crystal_ = val;
-            } else if (key == "gmx_protonated") {  gmx_protonated_ = val;
-            } else if (key == "orca_dir") {        orca_dir_ = val;
-            } else if (key == "consolidated") {    consolidated_ = val;
-            } else if (key == "ff14sb_params") {   ff14sb_params_ = val;
-            } else if (key == "aimnet2_model") {   aimnet2_model_ = val;
-            } else if (key == "baseline_features") { baseline_features_ = val;
-            } else if (key == "fleet_amber") {     fleet_amber_ = val;
-            } else if (key == "fleet_amber_1p9j_5801_subpath") {
+            if      (key == "ubq_protonated")  ubq_protonated_ = val;
+            else if (key == "ubq_crystal")     ubq_crystal_ = val;
+            else if (key == "gmx_protonated")  gmx_protonated_ = val;
+            else if (key == "orca_dir")        orca_dir_ = val;
+            else if (key == "consolidated")    consolidated_ = val;
+            else if (key == "ff14sb_params")   ff14sb_params_ = val;
+            else if (key == "aimnet2_model")   aimnet2_model_ = val;
+            else if (key == "baseline_features") baseline_features_ = val;
+            else if (key == "fleet_amber")     fleet_amber_ = val;
+            else if (key == "fleet_amber_1p9j_5801_subpath")
                 fleet_amber_1p9j_5801_subpath_ = val;
-            } else if (key == "fleet_amber_1z9b_6577_subpath") {
+            else if (key == "fleet_amber_1z9b_6577_subpath")
                 fleet_amber_1z9b_6577_subpath_ = val;
-}
         }
         OperationLog::Info("TestEnvironment::Load", "read " + toml_path);
     } else {
@@ -134,9 +130,8 @@ AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
     if (fleet_amber_.empty()) return fix;
 
     const std::string* subpath = nullptr;
-    if (protein_id == "1P9J_5801") {      subpath = &fleet_amber_1p9j_5801_subpath_;
-    } else if (protein_id == "1Z9B_6577") { subpath = &fleet_amber_1z9b_6577_subpath_;
-}
+    if (protein_id == "1P9J_5801")      subpath = &fleet_amber_1p9j_5801_subpath_;
+    else if (protein_id == "1Z9B_6577") subpath = &fleet_amber_1z9b_6577_subpath_;
     if (!subpath || subpath->empty()) return fix;
 
     const std::string base = fleet_amber_ + "/" + *subpath;
@@ -146,4 +141,5 @@ AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
     return fix;
 }
 
-}  // namespace nmr::test
+}  // namespace test
+}  // namespace nmr

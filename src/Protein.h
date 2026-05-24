@@ -187,7 +187,8 @@ public:
                       "TopologyAs<T> requires a ProteinTopology subtype");
         const auto* typed = dynamic_cast<const TopologyT*>(protein_topology_.get());
         if (!typed) {
-            (void)fprintf(stderr, "FATAL: requested topology %s is not attached.\n", typeid(TopologyT).name());
+            fprintf(stderr, "FATAL: requested topology %s is not attached.\n",
+                    typeid(TopologyT).name());
             std::abort();
         }
         return *typed;

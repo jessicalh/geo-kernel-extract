@@ -57,18 +57,17 @@ TEST_F(HaighMallionProteinTest, RawIntegralIsSymmetricTraceless) {
     conf.AttachResult(HaighMallionResult::Compute(conf));
 
     int checked = 0;
-    double max_asym = 0;
-    double max_trace = 0;
+    double max_asym = 0, max_trace = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.hm_H_tensor.norm() < 1e-15) continue;
 
             // Symmetry: H_ab = H_ba
-            double const asym = (rn.hm_H_tensor - rn.hm_H_tensor.transpose()).norm();
+            double asym = (rn.hm_H_tensor - rn.hm_H_tensor.transpose()).norm();
             max_asym = std::max(max_asym, asym);
 
             // Tracelessness: Tr(H) = 0
-            double const trace = std::abs(rn.hm_H_tensor.trace());
+            double trace = std::abs(rn.hm_H_tensor.trace());
             max_trace = std::max(max_trace, trace);
 
             checked++;
@@ -105,13 +104,11 @@ TEST_F(HaighMallionProteinTest, FullKernelIsRankOne) {
 
             // Reconstruct G = n (x) V where V = hm_B_field
             Mat3 G;
-            for (int a = 0; a < 3; ++a) {
-                for (int b = 0; b < 3; ++b) {
+            for (int a = 0; a < 3; ++a)
+                for (int b = 0; b < 3; ++b)
                     G(a, b) = geom.normal(b) * rn.hm_B_field(a);
-}
-}
 
-            double const det = std::abs(G.determinant());
+            double det = std::abs(G.determinant());
             max_det = std::max(max_det, det);
             checked++;
         }
@@ -131,18 +128,15 @@ TEST_F(HaighMallionProteinTest, ShieldingContributionHasAllIrreps) {
     auto& conf = protein->Conformation();
     conf.AttachResult(HaighMallionResult::Compute(conf));
 
-    int nonzero_t0 = 0;
-    int nonzero_t1 = 0;
-    int nonzero_t2 = 0;
-    double max_t0 = 0;
-    double max_t2 = 0;
+    int nonzero_t0 = 0, nonzero_t1 = 0, nonzero_t2 = 0;
+    double max_t0 = 0, max_t2 = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).hm_shielding_contribution;
         if (std::abs(sc.T0) > 1e-8) nonzero_t0++;
-        double const t1mag = std::sqrt(sc.T1[0]*sc.T1[0] + sc.T1[1]*sc.T1[1]
+        double t1mag = std::sqrt(sc.T1[0]*sc.T1[0] + sc.T1[1]*sc.T1[1]
                                  + sc.T1[2]*sc.T1[2]);
         if (t1mag > 1e-8) nonzero_t1++;
-        double const t2mag = sc.T2Magnitude();
+        double t2mag = sc.T2Magnitude();
         if (t2mag > 1e-8) nonzero_t2++;
         max_t0 = std::max(max_t0, std::abs(sc.T0));
         max_t2 = std::max(max_t2, t2mag);
@@ -167,8 +161,7 @@ TEST_F(HaighMallionProteinTest, ConvergesToBSAtLargeDistance) {
     conf.AttachResult(BiotSavartResult::Compute(conf));
     conf.AttachResult(HaighMallionResult::Compute(conf));
 
-    int same_sign = 0;
-    int opposite_sign = 0;
+    int same_sign = 0, opposite_sign = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         for (const auto& rn : conf.AtomAt(ai).ring_neighbours) {
             if (rn.distance_to_center < 8.0) continue;  // only far-field
@@ -178,22 +171,21 @@ TEST_F(HaighMallionProteinTest, ConvergesToBSAtLargeDistance) {
             // Full kernel G = -n (x) (H.n), so T0 = -n.(H.n)/3.
             // Same minus sign as BS (from sigma = -dB/dB_0).
             const RingGeometry& geom = conf.ring_geometries[rn.ring_index];
-            Vec3 const V = rn.hm_H_tensor * geom.normal;
-            double const hm_t0 = -geom.normal.dot(V) / 3.0;
+            Vec3 V = rn.hm_H_tensor * geom.normal;
+            double hm_t0 = -geom.normal.dot(V) / 3.0;
 
             if (std::abs(hm_t0) < 1e-10) continue;
 
-            if ((rn.G_spherical.T0 > 0) == (hm_t0 > 0)) {
+            if ((rn.G_spherical.T0 > 0) == (hm_t0 > 0))
                 same_sign++;
-            } else {
+            else
                 opposite_sign++;
-}
         }
     }
 
-    int const total = same_sign + opposite_sign;
+    int total = same_sign + opposite_sign;
     if (total > 0) {
-        double const frac = static_cast<double>(same_sign) / total;
+        double frac = static_cast<double>(same_sign) / total;
         EXPECT_GT(frac, 0.9)
             << "BS and HM T0 should agree in sign at large distance";
         std::cout << "  Far-field T0 sign agreement: " << same_sign << "/"
@@ -214,9 +206,8 @@ TEST(HaighMallionOrcaTest, RunOnProtonatedProtein) {
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
 
-    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.xyz_path) || !fs::exists(files.prmtop_path))
         GTEST_SKIP() << "ORCA test data not found";
-}
 
     auto load = BuildFromOrca(files);
     ASSERT_TRUE(load.Ok()) << load.error;
@@ -229,9 +220,7 @@ TEST(HaighMallionOrcaTest, RunOnProtonatedProtein) {
     ASSERT_NE(hm, nullptr);
     conf.AttachResult(std::move(hm));
 
-    double max_t0 = 0;
-    double max_t2 = 0;
-    double max_trace = 0;
+    double max_t0 = 0, max_t2 = 0, max_trace = 0;
     int with_hm = 0;
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& sc = conf.AtomAt(ai).hm_shielding_contribution;

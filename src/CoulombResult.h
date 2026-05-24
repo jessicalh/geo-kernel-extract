@@ -50,7 +50,7 @@ public:
     SphericalTensor EFGSphericalAt(size_t atom_index) const;
 
     // Grid sampling: evaluate Coulomb E-field at arbitrary 3D point.
-    Vec3 SampleEFieldAt(const Vec3& point) const;
+    Vec3 SampleEFieldAt(Vec3 point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

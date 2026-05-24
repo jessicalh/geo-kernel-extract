@@ -97,16 +97,10 @@ void BondLengthStatsTrajectoryResult::WriteH5Group(
     const Protein& protein = tp.ProteinRef();
     const std::size_t B = per_bond_.size();
 
-    std::vector<double> mean(B);
-    std::vector<double> std_(B);
-    std::vector<double> minv(B);
-    std::vector<double> maxv(B);
-    std::vector<double> dmean(B);
-    std::vector<double> dstd(B);
-    std::vector<std::uint64_t> aa(B);
-    std::vector<std::uint64_t> ab(B);
-    std::vector<std::int8_t>   ord(B);
-    std::vector<std::int8_t>   cat(B);
+    std::vector<double> mean(B), std_(B), minv(B), maxv(B);
+    std::vector<double> dmean(B), dstd(B);
+    std::vector<std::uint64_t> aa(B), ab(B);
+    std::vector<std::int8_t>   ord(B), cat(B);
 
     for (std::size_t i = 0; i < B; ++i) {
         const auto& pb = per_bond_[i];

@@ -53,7 +53,7 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute(
     }
     // Per `feedback_capture_at_the_boundary` "absent, not faked":
     // absent frames get NaN-fill, NOT zero. Mask records the absence.
-    std::array<float, AIMNET2_AIM_DIMS> nan_placeholder{};
+    std::array<float, AIMNET2_AIM_DIMS> nan_placeholder;
     nan_placeholder.fill(std::numeric_limits<float>::quiet_NaN());
     for (std::size_t i = 0; i < N; ++i) {
         per_atom_embedding_[i].push_back(
@@ -75,7 +75,8 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Finalize(
         " frames, " + std::to_string(per_atom_embedding_.size()) + " atoms");
 }
 
-void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(const TrajectoryProtein& /*tp*/, HighFive::File& file) const {
+void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(
+        const TrajectoryProtein& tp, HighFive::File& file) const {
     const std::size_t N = per_atom_embedding_.size();
     const std::size_t T = n_frames_;
     constexpr std::size_t D = AIMNET2_AIM_DIMS;
@@ -108,7 +109,7 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(const TrajectoryPr
     // (3.76 GB for 1P9J × 750 frames × 256 dims uncompressed; doubling
     // to 7.5 GB at flatten time would OOM larger fleet proteins).
     const std::size_t frame_chunk = std::min<std::size_t>(T, 64);
-    HighFive::DataSpace const space({N, T, D});
+    HighFive::DataSpace space({N, T, D});
     HighFive::DataSetCreateProps props;
     props.add(HighFive::Chunking(std::vector<hsize_t>{
         static_cast<hsize_t>(1),
@@ -133,8 +134,8 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::WriteH5Group(const TrajectoryPr
                 scratch[f * D + d] = vec[d];
             }
         }
-        const std::vector<std::size_t> offset = {i, static_cast<std::size_t>(0), static_cast<std::size_t>(0)};
-        const std::vector<std::size_t> count  = {static_cast<std::size_t>(1), T, D};
+        const std::vector<std::size_t> offset = {i, std::size_t(0), std::size_t(0)};
+        const std::vector<std::size_t> count  = {std::size_t(1), T, D};
         ds.select(offset, count).write_raw(scratch.data());
     }
 

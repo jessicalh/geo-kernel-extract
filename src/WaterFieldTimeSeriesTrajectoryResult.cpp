@@ -177,7 +177,7 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
                 flat[base + 2] = v.z();
             }
         }
-        HighFive::DataSpace const space({N, T, static_cast<std::size_t>(3)});
+        HighFive::DataSpace space({N, T, std::size_t(3)});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
@@ -205,7 +205,7 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
                 for (std::size_t k = 0; k < 5; ++k) flat[base + k] = st.T2[k];
             }
         }
-        HighFive::DataSpace const space({N, T, static_cast<std::size_t>(5)});
+        HighFive::DataSpace space({N, T, std::size_t(5)});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);
@@ -227,7 +227,7 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
                                 : kAbsent;
             }
         }
-        HighFive::DataSpace const space({N, T});
+        HighFive::DataSpace space({N, T});
         auto ds = grp.createDataSet<std::uint32_t>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("dimensionless"));

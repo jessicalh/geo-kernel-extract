@@ -42,7 +42,7 @@ namespace {
 std::string EscapeJsonString(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 2);
-    for (char const c : s) {
+    for (char c : s) {
         switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
@@ -52,7 +52,7 @@ std::string EscapeJsonString(const std::string& s) {
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
                     char buf[8];
-                    (void)std::snprintf(buf, sizeof(buf), "\\u%04x",
+                    std::snprintf(buf, sizeof(buf), "\\u%04x",
                                    static_cast<unsigned char>(c));
                     out += buf;
                 } else {
@@ -89,7 +89,7 @@ Trajectory::~Trajectory() = default;
 
 // ── Run (eight phases) ───────────────────────────────────────────
 
-Status Trajectory::Run(TrajectoryProtein& tp,  // NOLINT(readability-function-size)
+Status Trajectory::Run(TrajectoryProtein& tp,
                        const RunConfiguration& config,
                        const Session& session,
                        std::vector<std::unique_ptr<TrajectoryResult>> extras,
@@ -226,7 +226,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,  // NOLINT(readability-function-si
         const int topo = TopologySidecar::WriteFeatures(
             tp.ProteinRef(), output_dir_.string());
         if (cat != 1 || topo != 5) {
-            (void)fprintf(stderr, "ERROR: Trajectory incomplete sidecar emission "
+            fprintf(stderr, "ERROR: Trajectory incomplete sidecar emission "
                     "(atoms_category=%d/1, topology=%d/5) -- disk full or permission?\n",
                     cat, topo);
             // Trajectory::Run cannot return mid-flight without restructuring;
@@ -254,7 +254,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,  // NOLINT(readability-function-si
 
     {
         auto& conf0 = tp.MutableCanonicalConformation_();
-        RunResult const rr = OperationRunner::Run(conf0, frame_opts);
+        RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
                 "frame 0 calculator pipeline failed: " + rr.error);
@@ -301,7 +301,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,  // NOLINT(readability-function-si
         frame_opts.box_matrix   = &env_.box_matrix;
 
         auto conf = tp.TickConformation(handler_->ProteinPositions());
-        RunResult const rr = OperationRunner::Run(*conf, frame_opts);
+        RunResult rr = OperationRunner::Run(*conf, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
                 std::string("frame ") + std::to_string(handler_->Index()) +
@@ -365,9 +365,8 @@ const GromacsEnergy* Trajectory::EnergyAtTime(double time_ps) const {
     if (it == edr_frames_.begin()) return &edr_frames_.front();
 
     auto prev = std::prev(it);
-    if (std::fabs(it->time_ps - time_ps) < std::fabs(prev->time_ps - time_ps)) {
+    if (std::fabs(it->time_ps - time_ps) < std::fabs(prev->time_ps - time_ps))
         return &(*it);
-}
     return &(*prev);
 }
 
@@ -409,7 +408,7 @@ void Trajectory::WriteH5(HighFive::File& file) const {
         // Group path uses the mangled type name (compiler-dependent
         // but stable within a build). Human-readable names can be
         // added via an attribute if consumers need them.
-        std::string const group_path = std::string("/trajectory/selections/") +
+        std::string group_path = std::string("/trajectory/selections/") +
                                  kind.name();
         auto grp = file.createGroup(group_path);
 
@@ -465,29 +464,18 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         return (it != name_to_idx.end()) ? it->second : -1;
     };
 
-    int i_coul_sr = idx("Coulomb (SR)");
-    int i_coul_recip = idx("Coul. recip.");
+    int i_coul_sr = idx("Coulomb (SR)"), i_coul_recip = idx("Coul. recip.");
     int i_coul_14 = idx("Coulomb-14");
-    int i_bond = idx("Bond");
-    int i_angle = idx("Angle");
-    int i_ub = idx("U-B");
-    int i_proper = idx("Proper Dih.");
-    int i_improper = idx("Improper Dih.");
+    int i_bond = idx("Bond"), i_angle = idx("Angle"), i_ub = idx("U-B");
+    int i_proper = idx("Proper Dih."), i_improper = idx("Improper Dih.");
     int i_cmap = idx("CMAP Dih.");
-    int i_lj_sr = idx("LJ (SR)");
-    int i_lj_14 = idx("LJ-14");
+    int i_lj_sr = idx("LJ (SR)"), i_lj_14 = idx("LJ-14");
     int i_dispcorr = idx("Disper. corr.");
-    int i_potential = idx("Potential");
-    int i_kinetic = idx("Kinetic En.");
-    int i_total = idx("Total Energy");
-    int i_enthalpy = idx("Enthalpy");
-    int i_temperature = idx("Temperature");
-    int i_pressure = idx("Pressure");
-    int i_volume = idx("Volume");
-    int i_density = idx("Density");
-    int i_box_x = idx("Box-X");
-    int i_box_y = idx("Box-Y");
-    int i_box_z = idx("Box-Z");
+    int i_potential = idx("Potential"), i_kinetic = idx("Kinetic En.");
+    int i_total = idx("Total Energy"), i_enthalpy = idx("Enthalpy");
+    int i_temperature = idx("Temperature"), i_pressure = idx("Pressure");
+    int i_volume = idx("Volume"), i_density = idx("Density");
+    int i_box_x = idx("Box-X"), i_box_y = idx("Box-Y"), i_box_z = idx("Box-Z");
     int i_vir[9] = {
         idx("Vir-XX"), idx("Vir-XY"), idx("Vir-XZ"),
         idx("Vir-YX"), idx("Vir-YY"), idx("Vir-YZ"),
@@ -496,8 +484,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         idx("Pres-XX"), idx("Pres-XY"), idx("Pres-XZ"),
         idx("Pres-YX"), idx("Pres-YY"), idx("Pres-YZ"),
         idx("Pres-ZX"), idx("Pres-ZY"), idx("Pres-ZZ") };
-    int i_T_prot = idx("T-Protein");
-    int i_T_nonprot = idx("T-non-Protein");
+    int i_T_prot = idx("T-Protein"), i_T_nonprot = idx("T-non-Protein");
 
     // Log missing columns once at load time so downstream can audit
     // schema drift across GROMACS versions / force fields. Distinct
@@ -530,9 +517,8 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         {"T-Protein", i_T_prot}, {"T-non-Protein", i_T_nonprot},
     };
     std::vector<std::string> missing_cols;
-    for (const auto& c : all_cols) {
+    for (const auto& c : all_cols)
         if (c.idx < 0) missing_cols.emplace_back(c.name);
-}
     if (!missing_cols.empty()) {
         std::string joined;
         for (std::size_t i = 0; i < missing_cols.size(); ++i) {
@@ -551,7 +537,7 @@ bool Trajectory::LoadEdr(const std::filesystem::path& edr_path) {
         return (i >= 0) ? fr.ener[i].e : std::nan("");
     };
 
-    t_enxframe fr{};
+    t_enxframe fr;
     init_enxframe(&fr);
 
     while (do_enx(ef, &fr)) {

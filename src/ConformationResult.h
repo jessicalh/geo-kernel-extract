@@ -32,9 +32,9 @@ public:
 
     // Write this result's features to .npy files in output_dir.
     // Each result knows its own fields on ConformationAtom.
-    // Returns number of arrays written. Default impl ignores both
-    // arguments (subclasses that emit nothing); overrides use both.
-    virtual int WriteFeatures(const ProteinConformation& /*conf*/, const std::string& /*output_dir*/) const { return 0; }
+    // Returns number of arrays written.
+    virtual int WriteFeatures(const ProteinConformation& conf,
+                              const std::string& output_dir) const { return 0; }
 
     // Traverse all attached results on the conformation and call each
     // one's WriteFeatures. The conformation holds the accumulated

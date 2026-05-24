@@ -87,7 +87,7 @@ State& Get() {
 void ParseAtomNomTable(const fs::path& path, State& s) {
     std::ifstream in(path);
     if (!in) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection::Configure -- could not open "
             "atom_nom.tbl at \"%s\".\n",
             path.string().c_str());
@@ -101,7 +101,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
         if (!line.empty() && line[0] == '#') continue;
         // Skip blank lines.
         bool blank = true;
-        for (char const c : line) {
+        for (char c : line) {
             if (!std::isspace(static_cast<unsigned char>(c))) { blank = false; break; }
         }
         if (blank) continue;
@@ -111,7 +111,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
         std::vector<std::string> cols;
         std::string cur;
         bool in_token = false;
-        for (char const c : line) {
+        for (char c : line) {
             if (c == '\t') {
                 cols.push_back(cur);
                 cur.clear();
@@ -143,7 +143,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
         // SC may be blank in the source file — strip.
         if (sc.size() == 1 && std::isspace(static_cast<unsigned char>(sc[0]))) sc.clear();
 
-        AtomNomRow const row{bmrb_name, sc};
+        AtomNomRow row{bmrb_name, sc};
 
         if (res_code.size() == 1 && res_code[0] == 'X') {
             s.cap_atoms[bmrb_name] = row;
@@ -170,7 +170,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
     constexpr size_t kMinPerResidue = 280;   // generous floor; real value ~329
     constexpr size_t kMinCapAtoms   = 4;     // H1, H2, H3, OXT minimally
     if (s.per_residue.size() < kMinPerResidue) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection::Configure -- atom_nom.tbl "
             "produced only %zu per-residue rows (expected >= %zu). "
             "File may be truncated or parser regression.\n",
@@ -178,7 +178,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
         std::abort();
     }
     if (s.cap_atoms.size() < kMinCapAtoms) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection::Configure -- atom_nom.tbl "
             "produced only %zu cap-atom rows (expected >= %zu).\n",
             s.cap_atoms.size(), kMinCapAtoms);
@@ -191,7 +191,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
         "ARNDCQEGHILKMFPSTWYV";
     for (const char* p = kStandard20; *p; ++p) {
         if (s.per_residue.find({*p, "N"}) == s.per_residue.end()) {
-            (void)std::fprintf(stderr,
+            std::fprintf(stderr,
                 "FATAL: CategoryInfoProjection::Configure -- atom_nom.tbl "
                 "missing backbone N row for residue '%c'. File integrity "
                 "check failed.\n", *p);
@@ -287,7 +287,7 @@ void PackString(char* dst, size_t dst_size,
         // possibly null-padded). We require src.size() <= dst_size; if
         // src.size() == dst_size we still pack (no terminator needed).
         if (src.size() > dst_size) {
-            (void)std::fprintf(stderr,
+            std::fprintf(stderr,
                 "FATAL: CategoryInfoProjection -- field \"%s\" length %zu "
                 "exceeds NPY column width %zu at row %zu (value=\"%s\").\n",
                 field_name, src.size(), dst_size, row_index, src.c_str());
@@ -295,7 +295,6 @@ void PackString(char* dst, size_t dst_size,
         }
     }
     std::memset(dst, 0, dst_size);
-    // NOLINTNEXTLINE(bugprone-not-null-terminated-result): fixed-width NPY field, NOT a C-string; the memset above zeros the full slot, and dst_size > src.size() is asserted at the abort path. Numpy structured dtype reads the field by width, not by NUL.
     std::memcpy(dst, src.data(), src.size());
 }
 
@@ -410,9 +409,9 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         const Residue& res = protein.ResidueAt(atom.residue_index);
 
         // ── atom_index, residue_index (little-endian int32) ──
-        const auto atom_idx_val = static_cast<int32_t>(ai);
+        const int32_t atom_idx_val = static_cast<int32_t>(ai);
         std::memcpy(row + off, &atom_idx_val, 4); off += 4;
-        const auto res_idx_val = static_cast<int32_t>(atom.residue_index);
+        const int32_t res_idx_val = static_cast<int32_t>(atom.residue_index);
         std::memcpy(row + off, &res_idx_val, 4); off += 4;
 
         // ── element (int8 atomic number) ──
@@ -445,7 +444,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                 bmrb_prov  = NamingProvenance::Match;
             } else {
                 // Log once per (residue 3-letter, atom name).
-                std::string const key = std::string(IupacThreeLetter(res.type)) + ":" + amber_name;
+                std::string key = std::string(IupacThreeLetter(res.type)) + ":" + amber_name;
                 ++s.miss_log[key];
                 // Fallback: emit AMBER name as IUPAC/BMRB so consumers
                 // still get a usable string (logged-fallback discipline).
@@ -465,14 +464,14 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         // ── Residue 3-letters ──
         const std::string amber_3 = AmberThreeLetter(res.type, res.protonation_variant_index);
         const std::string iupac_3 = IupacThreeLetter(res.type);
-        const std::string& bmrb_3 = iupac_3;  // == IUPAC for std-20
+        const std::string bmrb_3  = iupac_3;  // == IUPAC for std-20
 
         PackString(reinterpret_cast<char*>(row + off), kS4, amber_3, "amber_residue_3letter", ai); off += kS4;
         PackString(reinterpret_cast<char*>(row + off), kS4, iupac_3, "iupac_residue_3letter", ai); off += kS4;
         PackString(reinterpret_cast<char*>(row + off), kS4, bmrb_3,  "bmrb_residue_3letter",  ai); off += kS4;
 
         // ── Residue 1-letter ──
-        char const one = OneLetter(res.type);
+        char one = OneLetter(res.type);
         PackString(reinterpret_cast<char*>(row + off), kS1, std::string(1, one),
                    "residue_1letter", ai);
         off += kS1;
@@ -524,7 +523,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                    "chain_id", ai);
         off += kS2;
 
-        const auto res_number = static_cast<int32_t>(res.sequence_number);
+        const int32_t res_number = static_cast<int32_t>(res.sequence_number);
         std::memcpy(row + off, &res_number, 4); off += 4;
 
         PackString(reinterpret_cast<char*>(row + off), kS1, res.insertion_code,
@@ -564,7 +563,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
 
         // Sanity: we should have written exactly kRecordSize bytes.
         if (off != kRecordSize) {
-            (void)std::fprintf(stderr,
+            std::fprintf(stderr,
                 "FATAL: CategoryInfoProjection record size mismatch at "
                 "atom %zu: wrote %zu bytes, expected %zu.\n",
                 ai, off, kRecordSize);
@@ -591,7 +590,7 @@ bool WriteStructuredNpy(const fs::path& path,
                           size_t n_records,
                           const std::vector<unsigned char>& bytes) {
     if (bytes.size() != n_records * kRecordSize) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection -- buffer size mismatch: "
             "%zu bytes for %zu records (expected %zu).\n",
             bytes.size(), n_records, n_records * kRecordSize);
@@ -606,18 +605,18 @@ bool WriteStructuredNpy(const fs::path& path,
     // Pre-header bytes: 6 magic + 2 version + 2 header_len = 10.
     constexpr size_t kPreHeader = 10;
     // Pad header so total file offset to data is a multiple of 64.
-    size_t const total = kPreHeader + header.size() + 1;  // +1 for trailing '\n'
-    size_t const pad = (64 - (total % 64)) % 64;
+    size_t total = kPreHeader + header.size() + 1;  // +1 for trailing '\n'
+    size_t pad = (64 - (total % 64)) % 64;
     header.append(pad, ' ');
     header.push_back('\n');
 
     if (header.size() > 0xFFFF) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection -- NPY header too large for "
             "v1.0 format (%zu > 65535).\n", header.size());
         std::abort();
     }
-    const auto header_len = static_cast<uint16_t>(header.size());
+    const uint16_t header_len = static_cast<uint16_t>(header.size());
 
     std::ofstream out(path, std::ios::binary);
     if (!out) {
@@ -642,7 +641,7 @@ bool WriteStructuredNpy(const fs::path& path,
 // Public API
 // ============================================================================
 
-void CategoryInfoProjection::Configure(const Config& config) {
+void CategoryInfoProjection::Configure(Config config) {
     State& s = Get();
     s.configured = false;
     s.per_residue.clear();
@@ -655,7 +654,7 @@ void CategoryInfoProjection::Configure(const Config& config) {
         return;
     }
     if (!fs::exists(config.atom_nom_tbl)) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: CategoryInfoProjection::Configure -- atom_nom_tbl "
             "path \"%s\" does not exist.\n",
             config.atom_nom_tbl.string().c_str());
@@ -680,15 +679,15 @@ bool CategoryInfoProjection::IsActive() {
 
 int CategoryInfoProjection::WriteFeatures(const Protein& protein,
                                             const std::string& output_dir) {
-    OperationLog::Scope const scope("CategoryInfoProjection::WriteFeatures",
+    OperationLog::Scope scope("CategoryInfoProjection::WriteFeatures",
         "atoms=" + std::to_string(protein.AtomCount()) +
         " dir=" + output_dir);
 
     fs::create_directories(output_dir);
     State& s = Get();
-    std::vector<unsigned char> const records = BuildRecords(protein, s);
+    std::vector<unsigned char> records = BuildRecords(protein, s);
 
-    fs::path const out_path = fs::path(output_dir) / "atoms_category_info.npy";
+    fs::path out_path = fs::path(output_dir) / "atoms_category_info.npy";
     if (!WriteStructuredNpy(out_path, protein.AtomCount(), records)) {
         OperationLog::Error("CategoryInfoProjection::WriteFeatures",
             "write failed: " + out_path.string());

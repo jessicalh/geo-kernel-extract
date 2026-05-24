@@ -33,24 +33,22 @@ struct GridCache {
         if (!valid) return 0.0;
 
         Vec3 frac;
-        for (int d = 0; d < 3; ++d) {
+        for (int d = 0; d < 3; ++d)
             frac(d) = (point(d) - origin(d)) / spacing(d);
-}
 
         // floor() not static_cast<int>(): truncation toward zero gives wrong
         // grid cell for negative fractional coordinates.
-        int const ix = static_cast<int>(std::floor(frac(0)));
-        int const iy = static_cast<int>(std::floor(frac(1)));
-        int const iz = static_cast<int>(std::floor(frac(2)));
+        int ix = static_cast<int>(std::floor(frac(0)));
+        int iy = static_cast<int>(std::floor(frac(1)));
+        int iz = static_cast<int>(std::floor(frac(2)));
 
         if (ix < 0 || ix >= dims[0]-1 || iy < 0 || iy >= dims[1]-1 ||
-            iz < 0 || iz >= dims[2]-1) {
+            iz < 0 || iz >= dims[2]-1)
             return 0.0;
-}
 
-        double const fx = frac(0) - ix;
-        double const fy = frac(1) - iy;
-        double const fz = frac(2) - iz;
+        double fx = frac(0) - ix;
+        double fy = frac(1) - iy;
+        double fz = frac(2) - iz;
 
         auto idx = [&](int x, int y, int z) -> int {
             return x + y * dims[0] + z * dims[0] * dims[1];
@@ -70,8 +68,7 @@ struct GridCache {
 static Vec3 ElectricFieldFromGrid(const GridCache& grid, const Vec3& point) {
     Vec3 E;
     for (int d = 0; d < 3; ++d) {
-        Vec3 plus = point;
-        Vec3 minus = point;
+        Vec3 plus = point, minus = point;
         plus(d)  += grid.spacing(d);
         minus(d) -= grid.spacing(d);
         // E = -grad(phi)
@@ -84,15 +81,13 @@ static Vec3 ElectricFieldFromGrid(const GridCache& grid, const Vec3& point) {
 static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
     Mat3 EFG;
     for (int j = 0; j < 3; ++j) {
-        Vec3 plus = point;
-        Vec3 minus = point;
+        Vec3 plus = point, minus = point;
         plus(j)  += grid.spacing(j);
         minus(j) -= grid.spacing(j);
         Vec3 Eplus  = ElectricFieldFromGrid(grid, plus);
         Vec3 Eminus = ElectricFieldFromGrid(grid, minus);
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 3; ++i)
             EFG(i, j) = (Eplus(i) - Eminus(i)) / (2.0 * grid.spacing(j));
-}
     }
 
     // Symmetrize before any further processing. The Hessian of φ
@@ -117,7 +112,7 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
     // sources (other atoms + solvent reaction field) satisfies Laplace's
     // equation and IS traceless. Subtracting trace/3 from the diagonal
     // removes exactly the self-interaction artifact.
-    double const trace = EFG.trace();
+    double trace = EFG.trace();
     EFG -= (trace / 3.0) * Mat3::Identity();
 
     return EFG;
@@ -142,11 +137,8 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     }
 
     // Separate x, y, z arrays for the C bridge
-    std::vector<double> xArr(n_atoms);
-    std::vector<double> yArr(n_atoms);
-    std::vector<double> zArr(n_atoms);
-    std::vector<double> charges(n_atoms);
-    std::vector<double> radii(n_atoms);
+    std::vector<double> xArr(n_atoms), yArr(n_atoms), zArr(n_atoms);
+    std::vector<double> charges(n_atoms), radii(n_atoms);
 
     for (size_t i = 0; i < n_atoms; ++i) {
         Vec3 pos = conf.PositionAt(i);
@@ -155,7 +147,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         zArr[i] = pos.z();
         charges[i] = conf.AtomAt(i).partial_charge;
 
-        double const r = conf.AtomAt(i).pb_radius;
+        double r = conf.AtomAt(i).pb_radius;
         if (r <= 0.0) {
             OperationLog::Error("ApbsFieldResult::Compute",
                 "missing PB radius for atom " + std::to_string(i) +
@@ -172,26 +164,25 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     Vec3 lo(xArr[0], yArr[0], zArr[0]);
     Vec3 hi = lo;
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 const p(xArr[i], yArr[i], zArr[i]);
+        Vec3 p(xArr[i], yArr[i], zArr[i]);
         lo = lo.cwiseMin(p);
         hi = hi.cwiseMax(p);
     }
     Vec3 extent = hi - lo;
 
-    double fine_dims[3];
-    double coarse_dims[3];
+    double fine_dims[3], coarse_dims[3];
     for (int d = 0; d < 3; ++d) {
         fine_dims[d]   = std::max(extent(d) + 40.0, 40.0);
         coarse_dims[d] = fine_dims[d] + 30.0;
     }
 
-    int const grid_dim = 161;
+    int grid_dim = 161;
 
     // Standard PB parameters
-    double const pdie = 4.0;              // protein interior dielectric
-    double const sdie = 78.54;            // solvent dielectric (water, 25C)
-    double const temperature = 298.15;    // Kelvin
-    double const ionic_strength = 0.15;   // molar (physiological)
+    double pdie = 4.0;              // protein interior dielectric
+    double sdie = 78.54;            // solvent dielectric (water, 25C)
+    double temperature = 298.15;    // Kelvin
+    double ionic_strength = 0.15;   // molar (physiological)
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult",
@@ -204,7 +195,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
 
     // Call the C bridge
     ApbsGridResult gridResult;
-    int const rc = apbs_solve(
+    int rc = apbs_solve(
         static_cast<int>(n_atoms),
         xArr.data(), yArr.data(), zArr.data(),
         charges.data(), radii.data(),
@@ -218,7 +209,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     );
 
     if (rc != APBS_BRIDGE_OK) {
-        std::string const msg = "APBS solve failed: " + std::string(gridResult.error_msg);
+        std::string msg = "APBS solve failed: " + std::string(gridResult.error_msg);
         OperationLog::Warn("ApbsFieldResult::Compute", msg);
         apbs_free_grid(&gridResult);
         return false;
@@ -243,7 +234,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
 
     // Extract per-atom E-field and EFG from the potential grid
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 const pos = conf.PositionAt(i);
+        Vec3 pos = conf.PositionAt(i);
 
         Vec3 E = ElectricFieldFromGrid(grid, pos);
         Mat3 EFG = FieldGradientFromGrid(grid, pos);
@@ -257,19 +248,16 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
             E = Vec3::Zero();
             EFG = Mat3::Zero();
         } else {
-            double const E_mag = E.norm();
+            double E_mag = E.norm();
             if (E_mag > APBS_SANITY_LIMIT) {
                 E *= APBS_SANITY_LIMIT / E_mag;
             }
         }
 
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
-                if (std::isnan(EFG(a,b)) || std::isinf(EFG(a,b))) {
+        for (int a = 0; a < 3; ++a)
+            for (int b = 0; b < 3; ++b)
+                if (std::isnan(EFG(a,b)) || std::isinf(EFG(a,b)))
                     EFG(a,b) = 0.0;
-}
-}
-}
 
         // Convert from APBS native units kT/(e*A) to V/A for E-field,
         // kT/(e*A^2) to V/A^2 for EFG. This makes APBS fields directly
@@ -304,14 +292,14 @@ std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
         return std::make_unique<ApbsFieldResult>();
     }
 
-    OperationLog::Scope const scope("ApbsFieldResult::Compute",
+    OperationLog::Scope scope("ApbsFieldResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     auto result = std::make_unique<ApbsFieldResult>();
     result->conf_ = &conf;
 
     // Try APBS Poisson-Boltzmann solve first
-    bool const apbs_ok = ComputeViaApbs(conf);
+    bool apbs_ok = ComputeViaApbs(conf);
 
     if (!apbs_ok) {
         OperationLog::Error("ApbsFieldResult::Compute",

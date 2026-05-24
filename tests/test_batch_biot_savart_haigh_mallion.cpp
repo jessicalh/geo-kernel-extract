@@ -41,10 +41,9 @@ static std::string FindNmrOutput(const std::string& dir,
     std::string exact = dir + prefix + "_nmr.out";
     if (fs::exists(exact)) return exact;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string const name = entry.path().filename().string();
-        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos) {
+        std::string name = entry.path().filename().string();
+        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos)
             return entry.path().string();
-        }
     }
     return "";
 }
@@ -65,31 +64,29 @@ struct BatchProtein {
 static BatchProtein LoadFullPipeline(const std::string& dir,
                                       const std::string& protein_id,
                                       const std::string& variant) {
-    std::string const prefix = protein_id + "_" + variant;
+
+    std::string prefix = protein_id + "_" + variant;
 
     OrcaRunFiles files;
     files.pdb_path = dir + prefix + ".pdb";
     files.xyz_path = dir + prefix + ".xyz";
     files.prmtop_path = dir + prefix + ".prmtop";
 
-    if (!fs::exists(files.xyz_path)) {
+    if (!fs::exists(files.xyz_path))
         return {nullptr, false, "xyz not found"};
-    }
-    if (!fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.prmtop_path))
         return {nullptr, false, "prmtop not found"};
-    }
 
     auto load = BuildFromOrca(files);
-    if (!load.Ok()) {
+    if (!load.Ok())
         return {nullptr, false, "BuildFromOrca: " + load.error};
-    }
 
     auto& conf = load.protein->Conformation();
 
     // --- Foundation results ---
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource const charge_source(files.prmtop_path);
+    PrmtopChargeSource charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -124,7 +121,7 @@ static BatchProtein LoadFullPipeline(const std::string& dir,
     conf.AttachResult(std::move(hm));
 
     // --- ORCA shielding ---
-    std::string const nmr_path = FindNmrOutput(dir, prefix);
+    std::string nmr_path = FindNmrOutput(dir, prefix);
     if (!nmr_path.empty()) {
         auto orca = OrcaShieldingResult::Compute(conf, nmr_path);
         if (orca) conf.AttachResult(std::move(orca));
@@ -140,15 +137,13 @@ static BatchProtein LoadFullPipeline(const std::string& dir,
 
 static double T2CosSim(const std::array<double,5>& a,
                        const std::array<double,5>& b) {
-    double dot = 0;
-    double na = 0;
-    double nb = 0;
+    double dot = 0, na = 0, nb = 0;
     for (int m = 0; m < 5; ++m) {
         dot += a[m] * b[m];
         na += a[m] * a[m];
         nb += b[m] * b[m];
     }
-    double const denom = std::sqrt(na * nb);
+    double denom = std::sqrt(na * nb);
     if (denom < 1e-20) return 0.0;
     return dot / denom;
 }
@@ -161,8 +156,8 @@ constexpr double T2_MIN_FOR_INDEPENDENCE = 1e-4;
 // ============================================================================
 
 struct DistanceBin {
-    double lo = 0.0, hi = 0.0;
-    const char* label = nullptr;
+    double lo, hi;
+    const char* label;
     int count = 0;
     double sum_bs_t0 = 0, sum_hm_t0 = 0;
     double sum_bs_t2 = 0, sum_hm_t2 = 0;
@@ -183,7 +178,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         GTEST_SKIP() << "Consolidated directory not found";
     }
 
-    uint32_t const saved_mask = OperationLog::GetChannelMask();
+    uint32_t saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
     // --- Per-ring-type stats for BS and HM ---
@@ -214,15 +209,8 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         double sum_abs_cos = 0;
         int count = 0;
     };
-    T2PairAccum bs_vs_hm;
-    T2PairAccum bs_vs_mc;
-    T2PairAccum bs_vs_co;
-    T2PairAccum bs_vs_rchi;
-    T2PairAccum bs_vs_hb;
-    T2PairAccum hm_vs_mc;
-    T2PairAccum hm_vs_co;
-    T2PairAccum hm_vs_rchi;
-    T2PairAccum hm_vs_hb;
+    T2PairAccum bs_vs_hm, bs_vs_mc, bs_vs_co, bs_vs_rchi, bs_vs_hb;
+    T2PairAccum hm_vs_mc, hm_vs_co, hm_vs_rchi, hm_vs_hb;
 
     // --- Fused ring analysis (TRP): TRP5+TRP6 vs TRP9 ---
     struct FusedRingAccum {
@@ -231,32 +219,26 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         double sum_t0_perim = 0;     // |T0(TRP9)| per atom
         int atom_count = 0;
     };
-    FusedRingAccum fused_bs;
-    FusedRingAccum fused_hm;
+    FusedRingAccum fused_bs, fused_hm;
 
     // --- DFT proximity ---
-    double sum_bs_near = 0;
-    double sum_bs_far = 0;
-    double sum_hm_near = 0;
-    double sum_hm_far = 0;
-    int total_near = 0;
-    int total_far = 0;
+    double sum_bs_near = 0, sum_bs_far = 0;
+    double sum_hm_near = 0, sum_hm_far = 0;
+    int total_near = 0, total_far = 0;
     int proteins_with_prox = 0;
 
-    int n_processed = 0;
-    int n_skipped = 0;
-    int n_failed = 0;
+    int n_processed = 0, n_skipped = 0, n_failed = 0;
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;
-        std::string const protein_id = entry.path().filename().string();
-        std::string const dir = entry.path().string() + "/";
+        std::string protein_id = entry.path().filename().string();
+        std::string dir = entry.path().string() + "/";
 
         // Check all required files exist
-        std::string const wt_xyz = dir + protein_id + "_WT.xyz";
-        std::string const wt_prmtop = dir + protein_id + "_WT.prmtop";
-        std::string const ala_xyz = dir + protein_id + "_ALA.xyz";
-        std::string const ala_prmtop = dir + protein_id + "_ALA.prmtop";
+        std::string wt_xyz = dir + protein_id + "_WT.xyz";
+        std::string wt_prmtop = dir + protein_id + "_WT.prmtop";
+        std::string ala_xyz = dir + protein_id + "_ALA.xyz";
+        std::string ala_prmtop = dir + protein_id + "_ALA.prmtop";
 
         if (!fs::exists(wt_xyz) || !fs::exists(wt_prmtop) ||
             !fs::exists(ala_xyz) || !fs::exists(ala_prmtop)) {
@@ -264,8 +246,8 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
             continue;
         }
 
-        std::string const wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
-        std::string const ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
+        std::string wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
+        std::string ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
         if (wt_nmr.empty() || ala_nmr.empty()) {
             n_skipped++;
             continue;
@@ -276,10 +258,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
         if (!wt.ok || !ala.ok) {
             n_failed++;
-            if (n_failed <= 5) {
-                std::cerr << "  FAIL " << protein_id << ": " << (wt.ok ? "" : "WT: " + wt.error + " ")
+            if (n_failed <= 5)
+                std::cerr << "  FAIL " << protein_id << ": "
+                          << (wt.ok ? "" : "WT: " + wt.error + " ")
                           << (ala.ok ? "" : "ALA: " + ala.error) << "\n";
-            }
             continue;
         }
 
@@ -292,7 +274,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
         // Count rings by type
         for (size_t ri = 0; ri < wt.protein->RingCount(); ++ri) {
-            int const ti = wt.protein->RingAt(ri).TypeIndexAsInt();
+            int ti = wt.protein->RingAt(ri).TypeIndexAsInt();
             if (ti >= 0 && ti < 8) ring_stats[ti].count++;
         }
 
@@ -301,7 +283,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         std::map<size_t, TrpRings> trp_map;
         for (size_t ri = 0; ri < wt.protein->RingCount(); ++ri) {
             const Ring& ring = wt.protein->RingAt(ri);
-            size_t const res = ring.parent_residue_index;
+            size_t res = ring.parent_residue_index;
             if (ring.type_index == RingTypeIndex::TrpPyrrole)   trp_map[res].r5 = ri;
             if (ring.type_index == RingTypeIndex::TrpBenzene)   trp_map[res].r6 = ri;
             if (ring.type_index == RingTypeIndex::TrpPerimeter) trp_map[res].r9 = ri;
@@ -311,29 +293,28 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
             const auto& ca = wt_conf.AtomAt(ai);
 
             for (const auto& rn : ca.ring_neighbours) {
-                int const ti = static_cast<int>(rn.ring_type);
-                double const dist = rn.distance_to_center;
+                int ti = static_cast<int>(rn.ring_type);
+                double dist = rn.distance_to_center;
                 if (ti < 0 || ti >= 8) continue;
 
-                double const bs_t0 = std::abs(rn.G_spherical.T0);
-                double const bs_t2 = rn.G_spherical.T2Magnitude();
+                double bs_t0 = std::abs(rn.G_spherical.T0);
+                double bs_t2 = rn.G_spherical.T2Magnitude();
+                double hm_t0_raw = std::abs(rn.hm_H_spherical.T0);  // should be ~0
 
                 // Reconstruct HM full kernel G from stored data
                 const RingGeometry& geom = wt_conf.ring_geometries[rn.ring_index];
                 Vec3 V = rn.hm_H_tensor * geom.normal;
-                double const hm_full_t0 = std::abs(geom.normal.dot(V) / 3.0);
+                double hm_full_t0 = std::abs(geom.normal.dot(V) / 3.0);
 
                 SphericalTensor hm_G_st;
                 {
                     Mat3 G_hm;
-                    for (int a = 0; a < 3; ++a) {
-                        for (int b = 0; b < 3; ++b) {
+                    for (int a = 0; a < 3; ++a)
+                        for (int b = 0; b < 3; ++b)
                             G_hm(a, b) = geom.normal(b) * V(a);
-                        }
-                    }
                     hm_G_st = SphericalTensor::Decompose(G_hm);
                 }
-                double const hm_full_t2 = hm_G_st.T2Magnitude();
+                double hm_full_t2 = hm_G_st.T2Magnitude();
 
                 // Per-ring-type accumulation
                 ring_stats[ti].atom_pairs++;
@@ -363,14 +344,14 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                         // T2 cosine similarity between BS and HM
                         if (bs_t2 > T2_MIN_FOR_INDEPENDENCE &&
                             hm_full_t2 > T2_MIN_FOR_INDEPENDENCE) {
-                            double const c = T2CosSim(rn.G_spherical.T2, hm_G_st.T2);
+                            double c = T2CosSim(rn.G_spherical.T2, hm_G_st.T2);
                             bin.sum_abs_cos_t2 += std::abs(c);
                             bin.cos_count++;
                         }
 
                         // T0 ratio where both are nonzero
                         if (bs_t0 > 1e-10 && hm_full_t0 > 1e-10) {
-                            double const ratio = hm_full_t0 / bs_t0;
+                            double ratio = hm_full_t0 / bs_t0;
                             bin.sum_t0_ratio += ratio;
                             bin.sum_t0_ratio_sq += ratio * ratio;
                             bin.ratio_count++;
@@ -382,9 +363,8 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
             // --- Fused ring analysis: TRP5+TRP6 vs TRP9 ---
             for (const auto& [res_idx, trp] : trp_map) {
-                if (trp.r5 == SIZE_MAX || trp.r6 == SIZE_MAX || trp.r9 == SIZE_MAX) {
+                if (trp.r5 == SIZE_MAX || trp.r6 == SIZE_MAX || trp.r9 == SIZE_MAX)
                     continue;
-                }
 
                 // Find this atom's RingNeighbourhood entries for each TRP ring
                 const RingNeighbourhood* rn5 = nullptr;
@@ -398,7 +378,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
                 if (rn5 && rn6 && rn9) {
                     // BS: T0(TRP5) + T0(TRP6) vs T0(TRP9)
-                    double const bs_sum = rn5->G_spherical.T0 + rn6->G_spherical.T0;
+                    double bs_sum = rn5->G_spherical.T0 + rn6->G_spherical.T0;
                     fused_bs.sum_t0_sum += std::abs(bs_sum);
                     fused_bs.sum_t0_perim += std::abs(rn9->G_spherical.T0);
                     fused_bs.atom_count++;
@@ -406,10 +386,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                     // HM: same analysis using full kernel
                     auto hm_t0_for = [&](const RingNeighbourhood* rn) {
                         const RingGeometry& g = wt_conf.ring_geometries[rn->ring_index];
-                        Vec3 const v = rn->hm_H_tensor * g.normal;
+                        Vec3 v = rn->hm_H_tensor * g.normal;
                         return g.normal.dot(v) / 3.0;
                     };
-                    double const hm_sum = hm_t0_for(rn5) + hm_t0_for(rn6);
+                    double hm_sum = hm_t0_for(rn5) + hm_t0_for(rn6);
                     fused_hm.sum_t0_sum += std::abs(hm_sum);
                     fused_hm.sum_t0_perim += std::abs(hm_t0_for(rn9));
                     fused_hm.atom_count++;
@@ -417,12 +397,12 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
             }
 
             // --- T2 independence: BS and HM vs all other calculators ---
-            double const bs_t2_mag = ca.bs_shielding_contribution.T2Magnitude();
-            double const hm_t2_mag = ca.hm_shielding_contribution.T2Magnitude();
-            double const mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
-            double const co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
-            double const rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
-            double const hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
+            double bs_t2_mag = ca.bs_shielding_contribution.T2Magnitude();
+            double hm_t2_mag = ca.hm_shielding_contribution.T2Magnitude();
+            double mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
+            double co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
+            double rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
+            double hb_t2_mag = ca.hbond_shielding_contribution.T2Magnitude();
 
             auto accum = [&](T2PairAccum& acc, const std::array<double,5>& a,
                              const std::array<double,5>& b, double a_mag, double b_mag) {
@@ -470,18 +450,20 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
                     if (!delta->HasMatch(ai)) continue;
 
                     bool near = false;
-                    Vec3 const pos = wt_conf.PositionAt(ai);
+                    Vec3 pos = wt_conf.PositionAt(ai);
                     for (const auto& ms : mut_sites) {
                         const Residue& mut_res =
                             wt.protein->ResidueAt(ms.residue_index);
                         if (mut_res.CA != Residue::NONE) {
-                            double const d = (pos - wt_conf.PositionAt(mut_res.CA)).norm();
+                            double d = (pos - wt_conf.PositionAt(mut_res.CA)).norm();
                             if (d < TEST_NEAR_DIST) { near = true; break; }
                         }
                     }
 
-                    double const bs_t0 = std::abs(wt_conf.AtomAt(ai).bs_shielding_contribution.T0);
-                    double const hm_t0 = std::abs(wt_conf.AtomAt(ai).hm_shielding_contribution.T0);
+                    double bs_t0 = std::abs(
+                        wt_conf.AtomAt(ai).bs_shielding_contribution.T0);
+                    double hm_t0 = std::abs(
+                        wt_conf.AtomAt(ai).hm_shielding_contribution.T0);
 
                     if (near) {
                         sum_bs_near += bs_t0;
@@ -504,7 +486,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     // Report
     // ======================================================================
 
-    int const n = n_processed;
+    int n = n_processed;
     std::cout << "\n=== Batch BiotSavart + HaighMallion Summary ===\n";
     std::cout << "  Processed: " << n
               << "  Skipped: " << n_skipped
@@ -521,10 +503,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     for (int ti = 0; ti < 8; ++ti) {
         const auto& s = ring_stats[ti];
         if (s.count == 0) continue;
-        double const bs_mt0 = (s.atom_pairs > 0) ? s.sum_bs_t0 / s.atom_pairs : 0;
-        double const hm_mt0 = (s.atom_pairs > 0) ? s.sum_hm_t0 / s.atom_pairs : 0;
-        double const bs_mt2 = (s.atom_pairs > 0) ? s.sum_bs_t2 / s.atom_pairs : 0;
-        double const hm_mt2 = (s.atom_pairs > 0) ? s.sum_hm_t2 / s.atom_pairs : 0;
+        double bs_mt0 = (s.atom_pairs > 0) ? s.sum_bs_t0 / s.atom_pairs : 0;
+        double hm_mt0 = (s.atom_pairs > 0) ? s.sum_hm_t0 / s.atom_pairs : 0;
+        double bs_mt2 = (s.atom_pairs > 0) ? s.sum_bs_t2 / s.atom_pairs : 0;
+        double hm_mt2 = (s.atom_pairs > 0) ? s.sum_hm_t2 / s.atom_pairs : 0;
         std::cout << "    " << std::setw(6) << std::left
                   << RingTypeName(static_cast<RingTypeIndex>(ti))
                   << " " << std::setw(6) << std::right << s.count
@@ -546,12 +528,15 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
               << "T0 ratio(mean+/-sd)  T2 |cos|(BS,HM)\n";
     for (const auto& bin : dist_bins) {
         if (bin.count == 0) continue;
-        double const bs_mt0 = bin.sum_bs_t0 / bin.count;
-        double const hm_mt0 = bin.sum_hm_t0 / bin.count;
-        double const t2_cos = (bin.cos_count > 0) ? bin.sum_abs_cos_t2 / bin.cos_count : 0;
-        double const ratio_mean = (bin.ratio_count > 0) ? bin.sum_t0_ratio / bin.ratio_count : 0;
-        double const ratio_var = (bin.ratio_count > 1) ? (bin.sum_t0_ratio_sq / bin.ratio_count - ratio_mean * ratio_mean) : 0;
-        double const ratio_sd = (ratio_var > 0) ? std::sqrt(ratio_var) : 0;
+        double bs_mt0 = bin.sum_bs_t0 / bin.count;
+        double hm_mt0 = bin.sum_hm_t0 / bin.count;
+        double t2_cos = (bin.cos_count > 0)
+            ? bin.sum_abs_cos_t2 / bin.cos_count : 0;
+        double ratio_mean = (bin.ratio_count > 0)
+            ? bin.sum_t0_ratio / bin.ratio_count : 0;
+        double ratio_var = (bin.ratio_count > 1)
+            ? (bin.sum_t0_ratio_sq / bin.ratio_count - ratio_mean * ratio_mean) : 0;
+        double ratio_sd = (ratio_var > 0) ? std::sqrt(ratio_var) : 0;
 
         std::cout << "    " << std::setw(6) << std::left << bin.label
                   << " " << std::setw(8) << std::right << bin.count
@@ -569,10 +554,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
     // --- Fused ring analysis ---
     if (fused_bs.atom_count > 0) {
-        double const bs_sum_mean = fused_bs.sum_t0_sum / fused_bs.atom_count;
-        double const bs_per_mean = fused_bs.sum_t0_perim / fused_bs.atom_count;
-        double const hm_sum_mean = fused_hm.sum_t0_sum / fused_hm.atom_count;
-        double const hm_per_mean = fused_hm.sum_t0_perim / fused_hm.atom_count;
+        double bs_sum_mean = fused_bs.sum_t0_sum / fused_bs.atom_count;
+        double bs_per_mean = fused_bs.sum_t0_perim / fused_bs.atom_count;
+        double hm_sum_mean = fused_hm.sum_t0_sum / fused_hm.atom_count;
+        double hm_per_mean = fused_hm.sum_t0_perim / fused_hm.atom_count;
 
         std::cout << "  FUSED RING (TRP): T0(TRP5)+T0(TRP6) vs T0(TRP9)\n"
                   << "    BS:  <|T0(5)+T0(6)|> = " << bs_sum_mean
@@ -586,7 +571,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
     // --- T2 independence ---
     auto report_t2 = [](const char* label, const T2PairAccum& acc) {
-        double const mean = (acc.count > 0) ? acc.sum_abs_cos / acc.count : 0;
+        double mean = (acc.count > 0) ? acc.sum_abs_cos / acc.count : 0;
         std::cout << "    " << std::setw(28) << std::left << label
                   << std::fixed << std::setprecision(4) << mean
                   << " (" << acc.count << " atoms)\n";
@@ -606,10 +591,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
     // --- DFT proximity ---
     if (total_near > 0 && total_far > 0) {
-        double const bs_near = sum_bs_near / total_near;
-        double const bs_far = sum_bs_far / total_far;
-        double const hm_near = sum_hm_near / total_near;
-        double const hm_far = sum_hm_far / total_far;
+        double bs_near = sum_bs_near / total_near;
+        double bs_far = sum_bs_far / total_far;
+        double hm_near = sum_hm_near / total_near;
+        double hm_far = sum_hm_far / total_far;
 
         std::cout << "  DFT PROXIMITY (signal near vs far from mutation sites, <8A):\n"
                   << "    BiotSavart |T0|:\n"
@@ -639,10 +624,10 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
 
     // BS and HM signal stronger near mutation sites
     if (total_near > 100 && total_far > 100) {
-        double const bs_near = sum_bs_near / total_near;
-        double const bs_far = sum_bs_far / total_far;
-        double const hm_near = sum_hm_near / total_near;
-        double const hm_far = sum_hm_far / total_far;
+        double bs_near = sum_bs_near / total_near;
+        double bs_far = sum_bs_far / total_far;
+        double hm_near = sum_hm_near / total_near;
+        double hm_far = sum_hm_far / total_far;
 
         EXPECT_GT(bs_near, bs_far)
             << "BS signal should be stronger near mutation sites";
@@ -653,7 +638,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
     // T2 independence: BS and HM should not be parallel to existing calcs
     auto check_independent = [](const char* label, const T2PairAccum& acc) {
         if (acc.count > 1000) {
-            double const mean = acc.sum_abs_cos / acc.count;
+            double mean = acc.sum_abs_cos / acc.count;
             EXPECT_LT(mean, 0.9) << label << " T2 should not be parallel";
         }
     };

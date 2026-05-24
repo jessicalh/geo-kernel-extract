@@ -109,7 +109,7 @@ TEST_F(ProtonationWithHTest, HisRingTypeMatchesProtonation) {
         const Residue& res = protein->ResidueAt(ri);
         if (res.type != AminoAcid::HIS) continue;
 
-        std::string const variant = conf.Result<ProtonationDetectionResult>()
+        std::string variant = conf.Result<ProtonationDetectionResult>()
                                   .VariantNameAt(ri);
 
         // Find the ring for this HIS residue

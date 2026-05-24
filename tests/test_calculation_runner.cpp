@@ -60,7 +60,7 @@ TEST(OperationRunnerTest, RunSingleDft) {
     files.pdb_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.pdb";
     files.xyz_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.xyz";
     files.prmtop_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT.prmtop";
-    std::string const nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_nmr.out";
+    std::string nmr_path = std::string(nmr::test::TestEnvironment::OrcaDir()) + "A0A7C5FAR6_WT_nmr.out";
 
     if (!fs::exists(files.prmtop_path)) GTEST_SKIP();
     if (!fs::exists(files.xyz_path)) GTEST_SKIP();
@@ -93,7 +93,7 @@ TEST(OperationRunnerTest, RunSingleDft) {
 // ============================================================================
 
 TEST(OperationRunnerTest, RunMutantComparison) {
-    std::string const dir = std::string(nmr::test::TestEnvironment::Consolidated()) + "P84477/";
+    std::string dir = std::string(nmr::test::TestEnvironment::Consolidated()) + "P84477/";
     if (!fs::exists(dir)) GTEST_SKIP() << "P84477 not found";
 
     // WT
@@ -101,18 +101,17 @@ TEST(OperationRunnerTest, RunMutantComparison) {
     wt_files.pdb_path = dir + "P84477_WT.pdb";
     wt_files.xyz_path = dir + "P84477_WT.xyz";
     wt_files.prmtop_path = dir + "P84477_WT.prmtop";
-    std::string const wt_nmr = dir + "P84477_WT_20260311_024106_nmr.out";
+    std::string wt_nmr = dir + "P84477_WT_20260311_024106_nmr.out";
 
     // ALA
     OrcaRunFiles ala_files;
     ala_files.pdb_path = dir + "P84477_ALA.pdb";
     ala_files.xyz_path = dir + "P84477_ALA.xyz";
     ala_files.prmtop_path = dir + "P84477_ALA.prmtop";
-    std::string const ala_nmr = dir + "P84477_ALA_20260311_025630_nmr.out";
+    std::string ala_nmr = dir + "P84477_ALA_20260311_025630_nmr.out";
 
-    if (!fs::exists(wt_files.prmtop_path) || !fs::exists(ala_files.prmtop_path)) {
+    if (!fs::exists(wt_files.prmtop_path) || !fs::exists(ala_files.prmtop_path))
         GTEST_SKIP();
-}
 
     auto wt_build = BuildFromOrca(wt_files);
     auto ala_build = BuildFromOrca(ala_files);

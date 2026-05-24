@@ -89,7 +89,7 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 
     constexpr std::size_t kFrames = 3;
     constexpr std::size_t kDim    = nmr::AIMNET2_AIM_DIMS;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -111,7 +111,7 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/aimnet2_embedding_time_series"));
     auto grp = reopen.getGroup("/trajectory/aimnet2_embedding_time_series");
 
@@ -135,10 +135,7 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     EXPECT_TRUE(std::isnan(buf[(i * kFrames + t) * kDim + d]));
 
     // Attr checks
-    std::string source;
-    std::string policy;
-    std::string irrep;
-    std::string parity;
+    std::string source, policy, irrep, parity;
     bool optional_large = false;
     std::size_t embedding_dim = 0;
     grp.getAttribute("source").read(source);
@@ -182,7 +179,7 @@ TEST(AIMNet2EmbeddingTimeSeries, FinalizeIdempotency) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr std::size_t kFrames = 3;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic");
@@ -212,7 +209,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr std::size_t kFrames = 3;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -235,7 +232,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/aimnet2_charge_response_gradient_time_series"));
     auto grp = reopen.getGroup("/trajectory/aimnet2_charge_response_gradient_time_series");
 
@@ -267,15 +264,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 
     // Attr checks. Vec3 metadata follows existing TR convention:
     // layout + normalization + parity emitted as separate attrs.
-    std::string source;
-    std::string policy;
-    std::string uv;
-    std::string us;
-    std::string ilv;
-    std::string norm_v;
-    std::string plv;
-    std::string ils;
-    std::string pls;
+    std::string source, policy, uv, us, ilv, norm_v, plv, ils, pls;
     grp.getAttribute("source").read(source);
     grp.getAttribute("source_attached_policy").read(policy);
     grp.getAttribute("units_vector").read(uv);
@@ -323,7 +312,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, FinalizeIdempotency) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr std::size_t kFrames = 3;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic");
@@ -353,7 +342,7 @@ TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsen
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr std::size_t kFrames = 3;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic");
@@ -371,7 +360,7 @@ TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsen
          std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     EXPECT_FALSE(reopen.exist("/trajectory/aimnet2_charge_response_gradient_welford"));
     fs::remove(h5_path);
 }

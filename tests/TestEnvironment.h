@@ -18,7 +18,8 @@
 
 #include <string>
 
-namespace nmr::test {
+namespace nmr {
+namespace test {
 
 // Trajectory file paths pinned for test fixtures. No discovery; the
 // testpaths.toml entries name the production sub-path under
@@ -69,4 +70,5 @@ private:
     static bool loaded_;
 };
 
-}  // namespace nmr::test
+}  // namespace test
+}  // namespace nmr

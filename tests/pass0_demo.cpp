@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     RuntimeEnvironment::Load();
 
     if (argc < 2) {
-        (void)fprintf(stderr, "Usage: %s <pdb_file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <pdb_file>\n", argv[0]);
         return 1;
     }
     const char* pdb_path = argv[1];
@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
     // 1. Load protein
     auto r = BuildFromPdb(pdb_path);
     if (!r.Ok()) {
-        (void)fprintf(stderr, "Failed to load protein: %s\n", r.error.c_str());
+        fprintf(stderr, "Failed to load protein: %s\n", r.error.c_str());
         return 1;
     }
     auto& protein = *r.protein;

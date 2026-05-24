@@ -129,7 +129,7 @@ void HydrationShellTimeSeriesTrajectoryResult::WriteH5Group(
                 flat[i*T+t] = source_attached_per_frame_[t] ? src[i][t] : kNaN;
             }
         }
-        HighFive::DataSpace const space({N, T});
+        HighFive::DataSpace space({N, T});
         auto ds = grp.createDataSet<double>(name, space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", units);

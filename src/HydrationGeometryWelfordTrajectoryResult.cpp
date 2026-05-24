@@ -81,7 +81,7 @@ void HydrationGeometryWelfordTrajectoryResult::Compute(
         const double hsa  = a.sasa_half_shell_asymmetry;
         const double dal  = a.sasa_dipole_alignment;
         const double dco  = a.sasa_dipole_coherence;
-        const auto sct = static_cast<double>(a.sasa_first_shell_count);
+        const double sct  = static_cast<double>(a.sasa_first_shell_count);
         WelfordUpdate(w.half_shell_asymmetry, hsa, n_new, frame_idx);
         WelfordUpdate(w.dipole_alignment,     dal, n_new, frame_idx);
         WelfordUpdate(w.dipole_coherence,     dco, n_new, frame_idx);
@@ -213,7 +213,7 @@ void HydrationGeometryWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 }
 
 
-void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
+void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t N = tp.AtomCount();
@@ -235,7 +235,7 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readabil
     grp.createAttribute("n_frames",               n_frames_);
     grp.createAttribute("source_attached_count",  source_attached_count);
     grp.createAttribute("finalized",              finalized_);
-    grp.createAttribute("ddof",                   1);
+    grp.createAttribute("ddof",                   static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",             mean_dt_ps_);
     grp.createAttribute("frame_index_range",      frame_index_range_);
     grp.createAttribute("irrep_layout_dipole",    std::string("v_x,v_y,v_z"));
@@ -256,14 +256,9 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readabil
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(std::size_t)>& get) {
-        std::vector<double> mean(N);
-        std::vector<double> m2(N);
-        std::vector<double> std_(N);
-        std::vector<double> min_(N);
-        std::vector<double> max_(N);
-        std::vector<std::size_t> minf(N);
-        std::vector<std::size_t> maxf(N);
+                       std::function<const WelfordMoments&(std::size_t)> get) {
+        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
+        std::vector<std::size_t> minf(N), maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i] = w.mean; m2[i] = w.m2; std_[i] = w.std;
@@ -404,9 +399,7 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readabil
     }
 
     // Provenance counters
-    std::vector<std::size_t> n_frames(N);
-    std::vector<std::size_t> delta_n(N);
-    std::vector<std::size_t> dxdt_n(N);
+    std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (std::size_t i = 0; i < N; ++i) {
         const HydrationGeometryWelfordState& w = get_w(i);
         n_frames[i] = w.n_frames; delta_n[i] = w.delta_n; dxdt_n[i] = w.dxdt_n;

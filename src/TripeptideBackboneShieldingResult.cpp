@@ -77,11 +77,11 @@ TripeptideBackboneShieldingResult::Dependencies() const {
 // ============================================================================
 
 std::unique_ptr<TripeptideBackboneShieldingResult>
-TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size)
+TripeptideBackboneShieldingResult::Compute(
         ProteinConformation& conf,
         const TripeptideDftTable& table) {
 
-    OperationLog::Scope const scope(
+    OperationLog::Scope scope(
         "TripeptideBackboneShieldingResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " residues=" +
@@ -129,10 +129,8 @@ TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size
         // walk. Wrap-correct for cyclic peptides; covers ACE/NME caps
         // and antibody insertion-coded structures by walking the bond
         // graph rather than chain_id labels.
-        bool has_phi = false;
-        bool has_psi = false;
-        double phi = 0.0;
-        double psi = 0.0;
+        bool has_phi = false, has_psi = false;
+        double phi = 0.0, psi = 0.0;
         if (auto prev_idx = protein.BackbonePredecessor(ri); prev_idx) {
             // Predecessor guarantees prev.C != NONE.
             const std::size_t prev_C = protein.ResidueAt(*prev_idx).C;
@@ -234,7 +232,7 @@ TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size
         }
 
         // Two-path validation assembly.
-        AssembledTripeptide const asm_ = AssembleTripeptide(
+        AssembledTripeptide asm_ = AssembleTripeptide(
             protein, conf, ri, entry,
             TripeptidePoseSide::Central);
         if (!asm_.ok) {
@@ -269,7 +267,7 @@ TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size
             }
             ++result->atoms_assigned_;
         }
-        rm.n_atoms_matched = static_cast<int>(asm_.aligned_atoms.size());
+        rm.n_atoms_matched = (int)asm_.aligned_atoms.size();
 
         ++result->residues_matched_;
         rmsd_sum += asm_.backbone_kabsch_rmsd;
@@ -280,7 +278,7 @@ TripeptideBackboneShieldingResult::Compute(  // NOLINT(readability-function-size
 
     if (result->residues_matched_ > 0) {
         result->mean_backbone_rmsd_ =
-            rmsd_sum / static_cast<double>(result->residues_matched_);
+            rmsd_sum / (double)result->residues_matched_;
     }
 
     OperationLog::Info(LogCalcOther,

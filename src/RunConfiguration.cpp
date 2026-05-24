@@ -143,7 +143,7 @@ RunConfiguration RunConfiguration::ScanForDftPointSet() {
 // vacuum Coulomb skipped (APBS supersedes at N > 1000 atoms).
 // Stride 2: 25 ns × 1250 frames → 625 sampled.
 
-RunConfiguration RunConfiguration::PerFrameExtractionSet() {  // NOLINT(readability-function-size)
+RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     RunConfiguration c;
     c.SetName("PerFrameExtractionSet");
 

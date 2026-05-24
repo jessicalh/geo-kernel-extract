@@ -15,7 +15,7 @@ namespace {
 std::string EscapeJsonString(const std::string& s) {
     std::string out;
     out.reserve(s.size() + 2);
-    for (char const c : s) {
+    for (char c : s) {
         switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
@@ -25,7 +25,7 @@ std::string EscapeJsonString(const std::string& s) {
             default:
                 if (static_cast<unsigned char>(c) < 0x20) {
                     char buf[8];
-                    (void)std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
                     out += buf;
                 } else {
                     out += c;
@@ -67,10 +67,7 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
         // Tokenise the rest: <seqid> <name> rtp <rtp> q <q>
         std::istringstream iss(line.substr(i));
         int seqid = 0;
-        std::string name;
-        std::string rtp_kw;
-        std::string rtp;
-        std::string q_kw;
+        std::string name, rtp_kw, rtp, q_kw;
         double q = 0.0;
         if (!(iss >> seqid)) continue;
         if (!(iss >> name)) continue;
@@ -98,7 +95,7 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
         // Place at 0-based index. Vector grows as needed; gaps stay
         // default-constructed (Unknown aa, empty strings) so consumers
         // can detect missing entries.
-        const auto idx = static_cast<size_t>(seqid - 1);
+        const size_t idx = static_cast<size_t>(seqid - 1);
         if (block.residues.size() <= idx) {
             block.residues.resize(idx + 1);
         }
@@ -141,7 +138,7 @@ bool EmitGromacsToAmberReadbackBlockJson(
 
     out << "{\n";
     out << "  \"schema_version\": 1,\n";
-    out << R"(  "topol_top_path": ")"
+    out << "  \"topol_top_path\": \""
         << EscapeJsonString(block.topol_top_path) << "\",\n";
     out << "  \"n_residues\": " << block.residues.size() << ",\n";
     out << "  \"n_port_label_translations\": "
@@ -158,9 +155,9 @@ bool EmitGromacsToAmberReadbackBlockJson(
         first = false;
         out << "    {";
         out << "\"index\": " << i;
-        out << R"(, "tpr_name": ")" << EscapeJsonString(e.tpr_name) << "\"";
-        out << R"(, "rtp": ")" << EscapeJsonString(e.rtp) << "\"";
-        out << R"(, "canonical_three": ")"
+        out << ", \"tpr_name\": \"" << EscapeJsonString(e.tpr_name) << "\"";
+        out << ", \"rtp\": \"" << EscapeJsonString(e.rtp) << "\"";
+        out << ", \"canonical_three\": \""
             << EscapeJsonString(e.canonical_three) << "\"";
         out << ", \"variant_index\": " << e.variant_index;
         out << ", \"charge_q\": " << e.charge_q;

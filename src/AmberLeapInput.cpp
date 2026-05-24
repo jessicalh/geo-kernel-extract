@@ -12,8 +12,8 @@
 #include <set>
 #include <unordered_map>
 
-
-namespace nmr::amber_leap {
+namespace nmr {
+namespace amber_leap {
 
 namespace {
 
@@ -80,7 +80,7 @@ struct CapAtomTemplate {
     Vec3        offset;    // displacement from the connecting backbone atom
 };
 
-const std::array<CapAtomTemplate, 6> kAceTemplate = {{
+static const std::array<CapAtomTemplate, 6> kAceTemplate = {{
     // Negative-x from the original residue's N (i.e. before it in space).
     {"HH31", Element::H, Vec3(-3.5, +1.0, 0.0)},
     {"HH32", Element::H, Vec3(-3.5, -0.5, +0.87)},
@@ -90,7 +90,7 @@ const std::array<CapAtomTemplate, 6> kAceTemplate = {{
     {"O",    Element::O, Vec3(-1.33, +1.23, 0.0)},
 }};
 
-const std::array<CapAtomTemplate, 6> kNmeTemplate = {{
+static const std::array<CapAtomTemplate, 6> kNmeTemplate = {{
     // Positive-x from the original residue's C (i.e. after it in space).
     {"N",    Element::N, Vec3(+1.33, 0.0, 0.0)},  // ~peptide bond length from C
     {"H",    Element::H, Vec3(+1.33, +1.0, 0.0)},
@@ -105,18 +105,14 @@ bool VariantIsCappable(const Residue& res) {
     // rescued by capping. Other unsupported variants (TYM, ARN) lack
     // INTERNAL templates too; capping doesn't help, so we refuse.
     if (res.protonation_variant_index < 0) return false;
-    // Per-residue protonation_variant_index meaning is residue-specific
-    // (0=ASH/GLH/LYN, 1=CYM); coincidental same-int per branch should
-    // NOT collapse cases — each branch documents one amino acid's
-    // chemistry.
     switch (res.type) {
         case AminoAcid::ASP:
             return res.protonation_variant_index == 0;  // ASH
         case AminoAcid::CYS:
             return res.protonation_variant_index == 1;  // CYM
-        case AminoAcid::GLU:                            // NOLINT(bugprone-branch-clone)
+        case AminoAcid::GLU:
             return res.protonation_variant_index == 0;  // GLH
-        case AminoAcid::LYS:                            // NOLINT(bugprone-branch-clone)
+        case AminoAcid::LYS:
             return res.protonation_variant_index == 0;  // LYN
         default:
             return false;
@@ -139,7 +135,7 @@ void WriteAtomRecord(std::ostream& out,
         insertion_code.empty() ? ' ' : insertion_code.front();
     const std::string esym = SymbolForElement(element);
 
-    (void)std::snprintf(
+    std::snprintf(
         line, sizeof(line),
         "ATOM  %5d %4s %3s %1c%4d%1c   %8.3f%8.3f%8.3f%6.2f%6.2f          %2s",
         serial,
@@ -282,7 +278,7 @@ void GenerateAmberPdb(const Protein& protein,
         const std::string ambr_name =
             AmberResidueNameFor(res, is_disulfide_cys);
 
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             const Vec3 pos = conf.PositionAt(ai);
             WriteAtomRecord(pdb_out, serial,
@@ -327,7 +323,7 @@ std::vector<std::pair<size_t, size_t>> DetectDisulfides(
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const Residue& res = protein.ResidueAt(ri);
         if (res.type != AminoAcid::CYS) continue;
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const Atom& atom = protein.AtomAt(ai);
             if (atom.pdb_atom_name == "SG" && atom.element == Element::S) {
                 cys_sg.emplace_back(ri, ai);
@@ -366,4 +362,5 @@ void GenerateLeapScript(const LeapScriptInputs& inputs,
     script_out << "quit\n";
 }
 
-}  // namespace nmr::amber_leap
+}  // namespace amber_leap
+}  // namespace nmr

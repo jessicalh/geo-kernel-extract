@@ -67,7 +67,7 @@ void HBondCountWelfordTrajectoryResult::Compute(
     constexpr double MIN_DT_PS = 1e-12;
 
     for (size_t i = 0; i < N; ++i) {
-        const auto c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
+        const double c = static_cast<double>(conf.AtomAt(i).hbond_count_within_3_5A);
 
         TrajectoryAtom& ta = tp.MutableAtomAt(i);
         HBondCountWelfordState& w = ta.hbond_count_welford;
@@ -238,7 +238,7 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     grp.createAttribute("result_name",       Name());
     grp.createAttribute("n_frames",          n_frames_);
     grp.createAttribute("finalized",         finalized_);
-    grp.createAttribute("ddof",              1);
+    grp.createAttribute("ddof",              static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",        mean_dt_ps_);
     grp.createAttribute("frame_index_range", frame_index_range_);
     // Group-level `units = "pairs"` reflects the primary count
@@ -256,14 +256,9 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(size_t)>& get) {
-        std::vector<double> mean(N);
-        std::vector<double> m2(N);
-        std::vector<double> std_(N);
-        std::vector<double> min_(N);
-        std::vector<double> max_(N);
-        std::vector<size_t> min_frame(N);
-        std::vector<size_t> max_frame(N);
+                       std::function<const WelfordMoments&(size_t)> get) {
+        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
+        std::vector<size_t> min_frame(N), max_frame(N);
         for (size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i]      = w.mean;
@@ -306,9 +301,7 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
 
     // ── Single scalars and provenance ────────────────────────────
     std::vector<double> rms_delta(N);
-    std::vector<size_t> n_frames(N);
-    std::vector<size_t> delta_n(N);
-    std::vector<size_t> dxdt_n(N);
+    std::vector<size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (size_t i = 0; i < N; ++i) {
         const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
         rms_delta[i] = w.count_rms_delta;
@@ -332,12 +325,8 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     dxdtn_ds.createAttribute("units", std::string("frame_count"));
 
     // ── Legacy unprefixed dataset aliases ────────────────────────
-    std::vector<double> legacy_mean(N);
-    std::vector<double> legacy_std(N);
-    std::vector<double> legacy_min(N);
-    std::vector<double> legacy_max(N);
-    std::vector<double> legacy_delta_mean(N);
-    std::vector<double> legacy_delta_std(N);
+    std::vector<double> legacy_mean(N), legacy_std(N), legacy_min(N), legacy_max(N);
+    std::vector<double> legacy_delta_mean(N), legacy_delta_std(N);
     for (size_t i = 0; i < N; ++i) {
         const HBondCountWelfordState& w = tp.AtomAt(i).hbond_count_welford;
         legacy_mean[i]       = w.count.mean;

@@ -80,7 +80,7 @@ TEST(LarsenContribDispatchTest, Table2Cells) {
     EXPECT_FALSE(LarsenContribDispatch::Applies(TA::CA, Term::Secondary_HaB));
 
     // Cβ row: ALL FALSE (diagnostic; Larsen Table 2 says no contribution).
-    for (int term = 0; term < static_cast<int>(Term::Count); ++term) {
+    for (int term = 0; term < (int)Term::Count; ++term) {
         EXPECT_FALSE(LarsenContribDispatch::Applies(
             TA::CB, static_cast<Term>(term)))
             << "Cβ row must be all-false per Larsen Table 2; term="
@@ -183,17 +183,15 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
         const auto& a = conf.AtomAt(i);
         const auto& m = a.larsen_hbond_shielding_tensor;
         bool finite = true;
-        for (int r = 0; r < 3 && finite; ++r) {
-            for (int c = 0; c < 3 && finite; ++c) {
+        for (int r = 0; r < 3 && finite; ++r)
+            for (int c = 0; c < 3 && finite; ++c)
                 if (!std::isfinite(m(r, c))) finite = false;
-}
-}
         if (m.norm() > 1e-9) {
             ++n_with_total;
             if (finite) ++n_finite_total;
         }
         // Track max |Cβ diagnostic| Frobenius norm.
-        double const cb_norm = a.larsen_hbond_diagnostic_CB.norm();
+        double cb_norm = a.larsen_hbond_diagnostic_CB.norm();
         if (cb_norm > max_cb_frobenius) max_cb_frobenius = cb_norm;
         // Water term sweep count.
         if (a.larsen_hbond_water_term > 0.0) ++n_amide_with_water;
@@ -253,9 +251,9 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
         << "atom-level water-term count should match result aggregate";
 
     // WriteFeatures emits 8 NPYs (spherical-packed per Pattern 11 + 6).
-    fs::path const tmp = fs::temp_directory_path() / "larsen_hbond_phase1_out";
+    fs::path tmp = fs::temp_directory_path() / "larsen_hbond_phase1_out";
     fs::create_directories(tmp);
-    int const n_written = result->WriteFeatures(conf, tmp.string());
+    int n_written = result->WriteFeatures(conf, tmp.string());
     EXPECT_EQ(n_written, 8);
     for (const std::string& stem : {
         "larsen_hbond_shielding",
@@ -267,7 +265,7 @@ TEST_F(LarsenHBondShieldingTest, SmokeOn1UbqPm6) {
         "larsen_hbond_water_term",
         "larsen_hbond_count",
     }) {
-        fs::path const p = tmp / (stem + ".npy");
+        fs::path p = tmp / (stem + ".npy");
         EXPECT_TRUE(fs::exists(p)) << "missing " << p.string();
     }
 }
@@ -315,7 +313,7 @@ TEST_F(LarsenHBondShieldingTest, GlyHaFanOutHitsBothHA) {
         if (res.type != AminoAcid::GLY) continue;
         int n_ha_with_contribution = 0;
         int n_ha_atoms = 0;
-        for (std::size_t const ai : res.atom_indices) {
+        for (std::size_t ai : res.atom_indices) {
             const auto& sem = topo.SemanticAt(ai);
             if (!sem.IsAnyAlphaHydrogen()) continue;
             ++n_ha_atoms;
@@ -327,10 +325,9 @@ TEST_F(LarsenHBondShieldingTest, GlyHaFanOutHitsBothHA) {
         EXPECT_EQ(n_ha_atoms, 2)
             << "GLY at residue " << ri << " should have 2 α-hydrogens; got "
             << n_ha_atoms;
-        if (n_ha_with_contribution == 0) {      ++n_gly_residues_with_no_ha_hit;
-        } else if (n_ha_with_contribution == 1) { ++n_gly_residues_with_partial_ha_hit;
-        } else {                                  ++n_gly_residues_with_both_ha_hit;
-}
+        if (n_ha_with_contribution == 0)      ++n_gly_residues_with_no_ha_hit;
+        else if (n_ha_with_contribution == 1) ++n_gly_residues_with_partial_ha_hit;
+        else                                  ++n_gly_residues_with_both_ha_hit;
     }
     // The fan-out fix asserts: NO GLY residue should have a partial
     // HA hit. Either neither HA contributes (residue not a donor) or
@@ -436,8 +433,8 @@ TEST_F(LarsenHBondShieldingTest, CbDiagnosticDoesNotInflateNPairs) {
     int n_cb_only_with_count = 0;
     for (std::size_t ai = 0; ai < conf.AtomCount(); ++ai) {
         const auto& a = conf.AtomAt(ai);
-        bool const has_cb_diag = a.larsen_hbond_diagnostic_CB.norm() > 1e-9;
-        bool const has_real_contrib = a.larsen_hbond_shielding_tensor.norm() > 1e-9;
+        bool has_cb_diag = a.larsen_hbond_diagnostic_CB.norm() > 1e-9;
+        bool has_real_contrib = a.larsen_hbond_shielding_tensor.norm() > 1e-9;
         if (has_cb_diag && !has_real_contrib && a.larsen_hbond_n_pairs > 0) {
             ++n_cb_only_with_count;
         }

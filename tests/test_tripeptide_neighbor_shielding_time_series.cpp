@@ -151,9 +151,8 @@ std::size_t FindChainACentralCaIndex(const nmr::Protein& prot,
 TEST(TripeptideNeighborShieldingTimeSeries, Frame0Semantics) {
     LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) { GTEST_SKIP() << "fleet_amber " << kFixtureProtein
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                                               << " fixture not on disk";
-}
 
     nmr::RunConfiguration config;
     ConfigureNeighborTimeSeries(config,
@@ -277,7 +276,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     const std::string grp_path =
         "/trajectory/tripeptide_neighbor_shielding_time_series";
     ASSERT_TRUE(reopen.exist(grp_path));
@@ -290,10 +289,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], T);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string irrep_layout;
-    std::string normalization;
-    std::string parity;
-    std::string units;
+    std::string irrep_layout, normalization, parity, units;
     grp.getAttribute("irrep_layout").read(irrep_layout);
     grp.getAttribute("normalization").read(normalization);
     grp.getAttribute("parity").read(parity);
@@ -368,7 +364,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, IntegrationFingerprint1P9J) {
                                                         central_seq);
     ASSERT_NE(ca_idx, SIZE_MAX) << "chain A has no central CA";
 
-    const nmr::SphericalTensor& st = buffer->At(ca_idx, /*offset=*/0);
+    const nmr::SphericalTensor& st = buffer->At(ca_idx, /*frame_idx=*/0);
 
     // Print the diagnostic so it can be re-blessed if the pipeline
     // rolls forward.

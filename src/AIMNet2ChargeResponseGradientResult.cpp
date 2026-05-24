@@ -33,7 +33,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
         ProteinConformation& conf,
         AIMNet2Model& model) {
 
-    OperationLog::Scope const scope("AIMNet2ChargeResponseGradientResult::Compute",
+    OperationLog::Scope scope("AIMNet2ChargeResponseGradientResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     const Protein& protein = conf.ProteinRef();
@@ -48,7 +48,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
     // Element guard — same set as AIMNet2Result. AIMNet2 has no
     // embedding for Z=0 (Element::Unknown).
     for (size_t i = 0; i < N; ++i) {
-        Element const e = protein.AtomAt(i).element;
+        Element e = protein.AtomAt(i).element;
         if (e != Element::H && e != Element::C && e != Element::N &&
             e != Element::O && e != Element::S) {
             OperationLog::Error("AIMNet2ChargeResponseGradientResult::Compute",
@@ -77,7 +77,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
     // The neighbour matrices come from AIMNet2Result's shared static
     // helper so the input convention matches exactly.
     // ----------------------------------------------------------------------
-    const auto N1 = static_cast<int64_t>(N + 1);
+    const int64_t N1 = static_cast<int64_t>(N + 1);
 
     auto coord_cpu = torch::zeros({N1, 3}, torch::kFloat32);
     auto coord_acc = coord_cpu.accessor<float, 2>();
@@ -121,7 +121,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
     // requires_grad on a non-leaf raises in libtorch.
     auto coord_gpu = coord_cpu.to(model.device).detach().requires_grad_(true);
 
-    c10::Dict<std::string, torch::Tensor> const input_dict;
+    c10::Dict<std::string, torch::Tensor> input_dict;
     input_dict.insert("coord",     coord_gpu);
     input_dict.insert("numbers",   numbers_cpu.to(model.device));
     input_dict.insert("charge",    charge_cpu.to(model.device));
@@ -193,7 +193,7 @@ AIMNet2ChargeResponseGradientResult::Compute(
     double max_norm = 0.0;
     double sum_norm = 0.0;
     for (size_t i = 0; i < N; ++i) {
-        Vec3 const v(grad_acc[i][0], grad_acc[i][1], grad_acc[i][2]);
+        Vec3 v(grad_acc[i][0], grad_acc[i][1], grad_acc[i][2]);
         const double s = v.norm();
         auto& ca = conf.MutableAtomAt(i);
         ca.aimnet2_charge_response_gradient_vector = v;

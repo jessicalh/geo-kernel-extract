@@ -4,11 +4,11 @@
 // time series of the AIMNet2 charge-polarisation gradient. Two
 // emissions per atom per frame:
 //
-//   - vector (Vec3): aimnet2_charge_response_gradient_vector, ConformationAtom field.
+//   - vector (Vec3): aimnet2_polarisability_vector, ConformationAtom field.
 //                    Gradient of L = Σ_j q_j² (AIMNet2 charges, in units
 //                    e²) with respect to atomic coordinates (autograd
 //                    backward through AIMNet2 charge head). Units e²/Å.
-//   - scalar (double): aimnet2_charge_response_gradient_scalar, L2 norm of the
+//   - scalar (double): aimnet2_polarisability_scalar, L2 norm of the
 //                    vector — emit both rather than recompute downstream.
 //                    Units e²/Å.
 //
@@ -21,9 +21,9 @@
 //
 // Emission:
 //
-//   /trajectory/aimnet2_charge_response_gradient_time_series/
-//     charge_response_gradient_vector       (N, T, 3) float64 — e²/Å
-//     charge_response_gradient_scalar       (N, T)    float64 — e²/Å (L2 norm)
+//   /trajectory/aimnet2_polarisability_time_series/
+//     polarisability_vector       (N, T, 3) float64 — e²/Å
+//     polarisability_scalar       (N, T)    float64 — e²/Å (L2 norm)
 //     frame_indices               (T,)      uint64
 //     frame_times                 (T,)      float64 — ps
 //     source_attached_per_frame   (T,)      uint8   — always 1 (canonical

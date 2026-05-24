@@ -203,7 +203,7 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, kSSCount};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint32_t>("ss8_occupancy", space);
         ds.write_raw(flat.data());
         ds.createAttribute("units", std::string("frame_count"));
@@ -221,7 +221,7 @@ void Dssp8TransitionTrajectoryResult::WriteH5Group(
             }
         }
         const std::vector<std::size_t> dims = {R, kSSCount, kSSCount};
-        HighFive::DataSpace const space(dims);
+        HighFive::DataSpace space(dims);
         auto ds = grp.createDataSet<std::uint32_t>(
             "ss8_transition_matrix", space);
         ds.write_raw(flat.data());

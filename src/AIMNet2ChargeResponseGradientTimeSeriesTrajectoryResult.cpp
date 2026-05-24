@@ -80,8 +80,8 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Finalize(
         " frames, " + std::to_string(per_atom_vector_.size()) + " atoms");
 }
 
-void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(const TrajectoryProtein& /*tp*/,
-                                                                           HighFive::File& file) const {
+void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
+        const TrajectoryProtein& tp, HighFive::File& file) const {
     const std::size_t N = per_atom_vector_.size();
     const std::size_t T = n_frames_;
 
@@ -126,7 +126,7 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(const
                 flat[base + 2] = v.z();
             }
         }
-        HighFive::DataSpace const space({N, T, static_cast<std::size_t>(3)});
+        HighFive::DataSpace space({N, T, std::size_t(3)});
         HighFive::DataSetCreateProps props;
         props.add(HighFive::Chunking(std::vector<hsize_t>{
             static_cast<hsize_t>(N),
@@ -145,7 +145,7 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(const
                 flat[i * T + f] = atom_frames[f];
             }
         }
-        HighFive::DataSpace const space({N, T});
+        HighFive::DataSpace space({N, T});
         HighFive::DataSetCreateProps props;
         props.add(HighFive::Chunking(std::vector<hsize_t>{
             static_cast<hsize_t>(N),

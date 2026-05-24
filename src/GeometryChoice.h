@@ -26,10 +26,9 @@
 //
 
 #include "Types.h"
-#include <functional>
 #include <string>
-#include <utility>
 #include <vector>
+#include <functional>
 
 namespace nmr {
 
@@ -112,7 +111,9 @@ public:
     // the UI can draw field lines, isosurfaces, or probe values interactively.
     // Returns SphericalTensor at the given point. Null if not applicable.
     bool HasSampler() const { return sampler_ != nullptr; }
-    SphericalTensor SampleAt(Vec3 point) const { return sampler_ ? sampler_(std::move(point)) : SphericalTensor{}; }
+    SphericalTensor SampleAt(Vec3 point) const {
+        return sampler_ ? sampler_(point) : SphericalTensor{};
+    }
 
 private:
     GeometryChoice() = default;
@@ -154,7 +155,7 @@ public:
     void Record(CalculatorId calculator,
                 size_t group_key,
                 const char* label,
-                const std::function<void(GeometryChoice&)>& populate);
+                std::function<void(GeometryChoice&)> populate);
 
 private:
     ProteinConformation& conf_;

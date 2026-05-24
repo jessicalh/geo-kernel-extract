@@ -54,7 +54,7 @@ using namespace nmr;
 static std::string TimestampDir() {
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm_buf{};
+    std::tm tm_buf;
     localtime_r(&time, &tm_buf);
     std::ostringstream oss;
     oss << std::put_time(&tm_buf, "%Y-%m-%d_%H%M%S");
@@ -77,7 +77,7 @@ static std::vector<LogEntry> ParseLog(const std::string& path) {
         LogEntry e;
         // Minimal JSON extraction — fields are always in fixed order from BuildJson.
         auto extract = [&](const std::string& key) -> std::string {
-            std::string const needle = "\"" + key + "\":\"";
+            std::string needle = "\"" + key + "\":\"";
             auto pos = line.find(needle);
             if (pos == std::string::npos) return "";
             pos += needle.size();
@@ -99,9 +99,8 @@ static std::set<std::string> NpyFiles(const std::string& dir) {
     std::set<std::string> result;
     if (!fs::exists(dir)) return result;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        if (entry.path().extension() == ".npy") {
+        if (entry.path().extension() == ".npy")
             result.insert(entry.path().filename().string());
-}
     }
     return result;
 }
@@ -126,8 +125,7 @@ static bool FilesIdentical(const std::string& a, const std::string& b) {
 
     fa.seekg(0); fb.seekg(0);
     const size_t BUF = 8192;
-    char ba[BUF];
-    char bb[BUF];
+    char ba[BUF], bb[BUF];
     while (fa && fb) {
         fa.read(ba, BUF);
         fb.read(bb, BUF);
@@ -165,7 +163,7 @@ protected:
                "smoke tests per the AIMNet2 contract.";
         ASSERT_TRUE(fs::exists(model_path))
             << "AIMNet2 model not found at " << model_path;
-        Status const s = session_->LoadAimnet2Model(model_path);
+        Status s = session_->LoadAimnet2Model(model_path);
         ASSERT_EQ(s, kOk) << session_->LastError();
     }
 
@@ -198,7 +196,7 @@ protected:
         std::string out_dir = run_dir_ + "/" + label;
         fs::create_directories(out_dir);
 
-        std::string const log_path = out_dir + "/log.jsonl";
+        std::string log_path = out_dir + "/log.jsonl";
         OperationLog::ConfigureFile(log_path);
 
         // ---- Phase 1: Run the pipeline ----
@@ -216,7 +214,7 @@ protected:
         }
 
         // ---- Phase 2: Write all features ----
-        int const arrays = ConformationResult::WriteAllFeatures(conf, out_dir);
+        int arrays = ConformationResult::WriteAllFeatures(conf, out_dir);
         EXPECT_GE(arrays, static_cast<int>(min_npy_files))
             << "Expected " << min_npy_files << "+ NPY arrays";
 
@@ -243,7 +241,7 @@ protected:
     }
 
 private:
-    static void ValidateLog(const std::string& log_path,
+    void ValidateLog(const std::string& log_path,
                      const std::vector<std::string>& expected_results) {
         auto entries = ParseLog(log_path);
         ASSERT_GT(entries.size(), 0u) << "Log file is empty";
@@ -276,10 +274,10 @@ private:
         std::vector<std::string> open_scopes;
         for (const auto& e : entries) {
             if (e.op.find("[BEGIN]") != std::string::npos) {
-                std::string const base = e.op.substr(0, e.op.find(" [BEGIN]"));
+                std::string base = e.op.substr(0, e.op.find(" [BEGIN]"));
                 open_scopes.push_back(base);
             } else if (e.op.find("[END]") != std::string::npos) {
-                std::string const base = e.op.substr(0, e.op.find(" [END]"));
+                std::string base = e.op.substr(0, e.op.find(" [END]"));
                 auto it = std::find(open_scopes.rbegin(), open_scopes.rend(), base);
                 if (it != open_scopes.rend()) {
                     open_scopes.erase((it + 1).base());
@@ -293,14 +291,14 @@ private:
         }
     }
 
-    static void ValidateNpy(const std::string& dir, size_t min_count) {
+    void ValidateNpy(const std::string& dir, size_t min_count) {
         auto files = NpyFiles(dir);
         EXPECT_GE(files.size(), min_count)
             << "Expected " << min_count << "+ .npy files, got " << files.size();
 
         int valid = 0;
         for (const auto& name : files) {
-            const std::string path = dir + "/" + name;
+            std::string path = dir + "/" + name;
             auto sz = fs::file_size(path);
             EXPECT_GT(sz, 0u) << name << " is empty";
             EXPECT_TRUE(VerifyNpyMagic(path)) << name << " has bad NPY magic";
@@ -315,7 +313,7 @@ private:
     // in tests/golden/blessed/bless_policy.toml; defaults are permissive
     // enough to absorb platform / LTO / library-rebuild noise but tight
     // enough to flag a calculator regression. See BlessCompare.h.
-    static void BinaryCompare(const std::string& run_dir,
+    void BinaryCompare(const std::string& run_dir,
                        const std::string& blessed_dir) {
         auto run_files = NpyFiles(run_dir);
         auto blessed_files = NpyFiles(blessed_dir);
@@ -337,17 +335,13 @@ private:
                     + "/../golden/blessed/bless_policy.toml";
 #endif
 
-        int identical = 0;
-        int within = 0;
-        int drifted = 0;
-        int zero_out = 0;
-        int structural = 0;
-        int read_failed = 0;
+        int identical = 0, within = 0, drifted = 0,
+            zero_out = 0, structural = 0, read_failed = 0;
 
         for (const auto& f : blessed_files) {
             if (!run_files.count(f)) continue;
-            const std::string a = run_dir + "/" + f;
-            const std::string b = blessed_dir + "/" + f;
+            std::string a = run_dir + "/" + f;
+            std::string b = blessed_dir + "/" + f;
 
             std::string stem = f;
             auto dot = stem.rfind(".npy");
@@ -445,7 +439,7 @@ TEST_F(SmokeTest, NoDft) {
 // ============================================================================
 
 TEST_F(SmokeTest, WithDft) {
-    std::string const dir = std::string(test::TestEnvironment::Consolidated()) + "P84477/";
+    std::string dir = std::string(test::TestEnvironment::Consolidated()) + "P84477/";
     if (!fs::exists(dir)) GTEST_SKIP() << "P84477 consolidated data not found";
 
     // Load protein from ORCA run
@@ -466,7 +460,7 @@ TEST_F(SmokeTest, WithDft) {
 
     // Find ORCA NMR output
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string const name = entry.path().filename().string();
+        std::string name = entry.path().filename().string();
         if (name.find("P84477_WT") == 0 && name.find("_nmr.out") != std::string::npos) {
             opts.orca_nmr_path = entry.path().string();
             break;

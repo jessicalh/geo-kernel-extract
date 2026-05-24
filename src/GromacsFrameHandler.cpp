@@ -12,9 +12,10 @@
 
 namespace nmr {
 
-// nm → Å conversion factor applied at the TRR boundary (positions, box,
-// velocities). GROMACS stores in nm; the rest of the codebase uses Å.
-static constexpr double NM_TO_ANGSTROM = 10.0;
+// nm → Å conversion (TRR stores positions / velocities in nm; our
+// per-frame buffers are in Å / Å/ps to match every other ConformationAtom
+// position field in the system).
+static constexpr float NM_TO_ANGSTROM = 10.0f;
 
 
 GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)
@@ -40,7 +41,7 @@ GromacsFrameHandler::~GromacsFrameHandler() {
 
 bool GromacsFrameHandler::Open(const std::string& trr_path,
                                const std::string& /*tpr_path*/) {
-    OperationLog::Scope const scope("GromacsFrameHandler::Open", trr_path);
+    OperationLog::Scope scope("GromacsFrameHandler::Open", trr_path);
 
     if (trr_fio_) {
         gmx_trr_close(trr_fio_);
@@ -144,7 +145,7 @@ bool GromacsFrameHandler::ReadNextFrame() {
     // FramePdbEmitter::BoxToCellParameters' contract.
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * NM_TO_ANGSTROM;
+            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * 10.0;
         }
     }
 
@@ -192,9 +193,9 @@ bool GromacsFrameHandler::ReadNextFrame() {
         for (std::size_t a = 0; a < pcount; ++a) {
             const std::size_t base = (pstart + a) * 3;
             protein_velocities_.emplace_back(
-                static_cast<double>(raw_v_[base + 0]) * NM_TO_ANGSTROM,
-                static_cast<double>(raw_v_[base + 1]) * NM_TO_ANGSTROM,
-                static_cast<double>(raw_v_[base + 2]) * NM_TO_ANGSTROM);
+                static_cast<double>(raw_v_[base + 0]) * 10.0,
+                static_cast<double>(raw_v_[base + 1]) * 10.0,
+                static_cast<double>(raw_v_[base + 2]) * 10.0);
         }
     }
 

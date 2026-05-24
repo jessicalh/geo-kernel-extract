@@ -79,20 +79,14 @@ public:
     std::vector<ProtonationVariant> variants;
 
     bool HasAtom(const char* name) const {
-        for (const auto& a : atoms) {
-            if (std::string(a.name) == name) {
-                return true;
-            }
-        }
+        for (const auto& a : atoms)
+            if (std::string(a.name) == name) return true;
         return false;
     }
 
     const AminoAcidAtom* FindAtom(const char* name) const {
-        for (const auto& a : atoms) {
-            if (std::string(a.name) == name) {
-                return &a;
-            }
-        }
+        for (const auto& a : atoms)
+            if (std::string(a.name) == name) return &a;
         return nullptr;
     }
 };

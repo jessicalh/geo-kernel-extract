@@ -4,14 +4,13 @@
 #include "RuntimeEnvironment.h"
 #include "OperationLog.h"
 
-#include <cerrno>
-#include <cmath>
+#include <fstream>
+#include <unordered_map>
+#include <sstream>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <unordered_map>
+#include <cmath>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -66,8 +65,8 @@ LoadFf14sbParamFile(const std::string& path) {
                     ++skipped_rows;
                     continue;
                 }
-                double const charge = std::stod(tokens[3]);
-                double const pb_radius = std::stod(tokens[4]);
+                double charge = std::stod(tokens[3]);
+                double pb_radius = std::stod(tokens[4]);
                 if (pb_radius <= 0.0) {
                     ++skipped_rows;
                     continue;
@@ -83,8 +82,8 @@ LoadFf14sbParamFile(const std::string& path) {
                     ++skipped_rows;
                     continue;
                 }
-                double const charge = std::stod(tokens[2]);
-                double const pb_radius = std::stod(tokens[4]);
+                double charge = std::stod(tokens[2]);
+                double pb_radius = std::stod(tokens[4]);
                 if (pb_radius <= 0.0) {
                     ++skipped_rows;
                     continue;
@@ -235,7 +234,7 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
             // Verdict said satisfiable but per-atom lookup missed. This is
             // a contract violation between AnalyzeFlatTableCoverage and the
             // loader's parser — not a runtime data condition.
-            (void)fprintf(stderr,
+            fprintf(stderr,
                 "FATAL: ParamFileChargeSource::LoadCharges: verdict claimed "
                 "Satisfiable but lookup missed (%s %s %s). "
                 "AnalyzeFlatTableCoverage and LoadFf14sbParamFile have "
@@ -247,9 +246,8 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
 
         result[ai] = {entry->partial_charge, entry->pb_radius,
                       ChargeAssignmentStatus::Matched};
-        if (terminal_token == "INTERNAL") { ++internal_matches;
-        } else { ++terminal_matches;
-}
+        if (terminal_token == "INTERNAL") ++internal_matches;
+        else ++terminal_matches;
     }
 
     OperationLog::Info(LogCharges, "ParamFileChargeSource::LoadCharges",
@@ -304,23 +302,19 @@ static std::vector<double> ReadPrmtopSection(const std::string& path,
             // Parse space-separated or fixed-width Fortran doubles
             // E16.8 format: 5 values per line, 16 chars each
             for (size_t pos = 0; pos + 15 < line.size(); pos += 16) {
-                std::string const token = line.substr(pos, 16);
-                char* end = nullptr;
-                errno = 0;
-                const double val = std::strtod(token.c_str(), &end);
-                if (errno == 0 && end != token.c_str()) {
+                std::string token = line.substr(pos, 16);
+                double val = 0.0;
+                if (std::sscanf(token.c_str(), "%lf", &val) == 1) {
                     values.push_back(val);
                 }
             }
             // Handle lines shorter than a full row
-            if (!line.empty() && line.size() % 16 != 0) {
-                size_t const last_start = (line.size() / 16) * 16;
+            if (line.size() > 0 && line.size() % 16 != 0) {
+                size_t last_start = (line.size() / 16) * 16;
                 if (last_start < line.size()) {
-                    std::string const token = line.substr(last_start);
-                    char* end = nullptr;
-                    errno = 0;
-                    const double val = std::strtod(token.c_str(), &end);
-                    if (errno == 0 && end != token.c_str()) {
+                    std::string token = line.substr(last_start);
+                    double val = 0.0;
+                    if (std::sscanf(token.c_str(), "%lf", &val) == 1) {
                         values.push_back(val);
                     }
                 }
@@ -350,7 +344,7 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
         return {};
     }
 
-    size_t const n_protein = conf.AtomCount();
+    size_t n_protein = conf.AtomCount();
 
     if (raw_charges.size() < n_protein) {
         error_out = "prmtop has " + std::to_string(raw_charges.size()) +

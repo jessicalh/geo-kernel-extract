@@ -48,16 +48,16 @@ TEST_F(DemoResultTest, NearestRingDistances) {
 
     // All atoms should have some distance value
     for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-        double const d = demo.NearestRingDistance(ai);
+        double d = demo.NearestRingDistance(ai);
         EXPECT_GE(d, 0.0);
     }
 
     // Atoms in an aromatic residue should be near a ring
     for (size_t ri = 0; ri < protein->RingCount(); ++ri) {
         const auto& ring = protein->RingAt(ri);
-        for (size_t const ai : ring.atom_indices) {
+        for (size_t ai : ring.atom_indices) {
             // Ring atoms should be very close to their own ring center
-            double const d = demo.NearestRingDistance(ai);
+            double d = demo.NearestRingDistance(ai);
             EXPECT_LT(d, 5.0) << "Ring atom " << ai << " too far from ring center";
         }
     }
@@ -79,12 +79,10 @@ TEST_F(DemoResultTest, SphericalTensorRoundtrip) {
 
     Mat3 reconstructed = demo.TestReconstructed();
 
-    for (int i = 0; i < 3; ++i) {
-        for (int j = 0; j < 3; ++j) {
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
             EXPECT_NEAR(reconstructed(i,j), original(i,j), 1e-12)
                 << "Mismatch at (" << i << "," << j << ")";
-}
-}
 }
 
 TEST_F(DemoResultTest, SphericalTensorComponents) {
@@ -101,7 +99,7 @@ TEST_F(DemoResultTest, SphericalTensorComponents) {
 
     // T1 should be non-zero (asymmetric matrix)
     double T1_mag = 0;
-    for (double const v : st.T1) T1_mag += v * v;
+    for (double v : st.T1) T1_mag += v * v;
     EXPECT_GT(T1_mag, 0.0);
 }
 

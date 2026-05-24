@@ -76,7 +76,7 @@ TEST(SasaTimeSeries, SyntheticFourFrames) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
 
     constexpr size_t kFrames = 4;
-    std::vector<nmr::Vec3> const positions(N, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(N, nmr::Vec3::Zero());
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
             &tp.ProteinRef(), positions, "synthetic frame");
@@ -91,16 +91,14 @@ TEST(SasaTimeSeries, SyntheticFourFrames) {
         nmr::SasaTimeSeriesTrajectoryResult)));
     ASSERT_NE(buf, nullptr);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
-    for (size_t const i : {static_cast<size_t>(0), N / 2, N - 1}) {
-        for (size_t t = 0; t < kFrames; ++t) {
+    for (size_t i : {size_t(0), N / 2, N - 1})
+        for (size_t t = 0; t < kFrames; ++t)
             EXPECT_DOUBLE_EQ(buf->At(i, t), static_cast<double>(i) + t * 100.0);
-}
-}
 
     const std::string h5_path = (fs::temp_directory_path() /
         ("sasa_ts_unit_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr->WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/sasa_time_series"));
     fs::remove(h5_path);
 }
@@ -126,7 +124,7 @@ TEST(SasaTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 }
@@ -152,7 +150,7 @@ TEST(SasaTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<double>(std::type_index(typeid(
@@ -188,14 +186,14 @@ TEST(SasaTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::SasaTimeSeriesTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("sasa_ts_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/sasa_time_series");
     auto ds = grp.getDataSet("sasa");
     const auto dims = ds.getSpace().getDimensions();
@@ -203,9 +201,7 @@ TEST(SasaTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[0], tp.AtomCount());
     EXPECT_EQ(dims[1], 1u);
 
-    std::string parity;
-    std::string units;
-    std::string layout;
+    std::string parity, units, layout;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout").read(layout);
@@ -237,7 +233,7 @@ TEST(SasaTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf = tp.GetDenseBuffer<double>(std::type_index(typeid(

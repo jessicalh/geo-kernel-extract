@@ -52,13 +52,9 @@ static bool ReadMatrix(std::ifstream& in, Mat3& m) {
     for (int row = 0; row < 3; ++row) {
         std::string line;
         if (!std::getline(in, line)) return false;
-        std::istringstream iss(line);
-        double a = 0.0;
-        double b = 0.0;
-        double c = 0.0;
-        if (!(iss >> a >> b >> c)) {
+        double a, b, c;
+        if (std::sscanf(line.c_str(), " %lf %lf %lf", &a, &b, &c) != 3)
             return false;
-        }
         m(row, 0) = a;
         m(row, 1) = b;
         m(row, 2) = c;
@@ -88,31 +84,17 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
     // Parse nucleus blocks
     while (std::getline(in, line)) {
         // PDB LOADING BOUNDARY: " Nucleus  NNNX :"
-        if (line.find("Nucleus") == std::string::npos || line.find(':') == std::string::npos) {
+        if (line.find("Nucleus") == std::string::npos || line.find(':') == std::string::npos)
             continue;
-}
 
         // Stop at the next major section
         if (line.find("CHEMICAL SHIFTS") != std::string::npos) break;
         if (line.find("TIMINGS") != std::string::npos) break;
 
-        // Parse " Nucleus NN ElemStr :" via istringstream — sscanf is
-        // cert-err34-c (no errno surface).
         int idx = -1;
-        std::string elem_str_raw;
-        {
-            std::istringstream iss(line);
-            std::string tag;  // "Nucleus"
-            if (!(iss >> tag >> idx >> elem_str_raw)) {
-                continue;
-            }
-        }
         char elem[4] = {};
-        // Copy at most 3 chars of element token (matches original %3s).
-        const std::size_t n_copy = std::min(elem_str_raw.size(), static_cast<std::size_t>(3));
-        for (std::size_t k = 0; k < n_copy; ++k) {
-            elem[k] = elem_str_raw[k];
-        }
+        if (std::sscanf(line.c_str(), " Nucleus %d%3s", &idx, elem) < 1)
+            continue;
 
         ParsedNucleus nuc;
         nuc.index = idx;
@@ -171,7 +153,7 @@ std::unique_ptr<OrcaShieldingResult> OrcaShieldingResult::Compute(
         ProteinConformation& conf,
         const std::string& nmr_out_path) {
 
-    OperationLog::Scope const scope("OrcaShieldingResult::Compute",
+    OperationLog::Scope scope("OrcaShieldingResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " source=" + nmr_out_path);
 
@@ -201,8 +183,8 @@ std::unique_ptr<OrcaShieldingResult> OrcaShieldingResult::Compute(
     const Protein& protein = conf.ProteinRef();
     int mismatches = 0;
     for (size_t ai = 0; ai < nuclei.size(); ++ai) {
-        Element const orca_elem = nuclei[ai].element;
-        Element const atom_elem = protein.AtomAt(ai).element;
+        Element orca_elem = nuclei[ai].element;
+        Element atom_elem = protein.AtomAt(ai).element;
         if (orca_elem != Element::Unknown && orca_elem != atom_elem) {
             if (mismatches < 5) {
                 OperationLog::Error("OrcaShieldingResult::Compute",

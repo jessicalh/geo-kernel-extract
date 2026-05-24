@@ -38,7 +38,7 @@ static std::string WriteTempPdb(const Protein& protein,
     int serial = 1;
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
         const auto& res = protein.ResidueAt(ri);
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const auto& atom = protein.AtomAt(ai);
             Vec3 pos = conf.PositionAt(ai);
 
@@ -54,19 +54,18 @@ static std::string WriteTempPdb(const Protein& protein,
 
             // PDB fixed-width format: atom name in columns 13-16
             char atom_field[5];
-            if (atom.pdb_atom_name.size() <= 3) {
-                (void)snprintf(atom_field, sizeof(atom_field), " %-3s",
+            if (atom.pdb_atom_name.size() <= 3)
+                snprintf(atom_field, sizeof(atom_field), " %-3s",
                          atom.pdb_atom_name.c_str());
-            } else {
-                (void)snprintf(atom_field, sizeof(atom_field), "%-4s",
+            else
+                snprintf(atom_field, sizeof(atom_field), "%-4s",
                          atom.pdb_atom_name.c_str());
-}
 
-            std::string const res_name = ThreeLetterCodeForAminoAcid(res.type);
-            char const chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
+            std::string res_name = ThreeLetterCodeForAminoAcid(res.type);
+            char chain = res.chain_id.empty() ? 'A' : res.chain_id[0];
 
             char line[82];
-            (void)snprintf(line, sizeof(line),
+            snprintf(line, sizeof(line),
                 "ATOM  %5d %4s %3s %c%4d    %8.3f%8.3f%8.3f  1.00  0.00          %2s\n",
                 serial++, atom_field, res_name.c_str(), chain, res.sequence_number,
                 pos.x(), pos.y(), pos.z(), elem_str.c_str());
@@ -85,9 +84,9 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
     result->residues_.resize(protein.ResidueCount());
 
     // Write temp PDB for cif++ / DSSP
-    std::string const tmp_path = WriteTempPdb(protein, conf);
+    std::string tmp_path = WriteTempPdb(protein, conf);
     if (tmp_path.empty()) {
-        (void)fprintf(stderr, "DsspResult::Compute: failed to write temp PDB.\n");
+        fprintf(stderr, "DsspResult::Compute: failed to write temp PDB.\n");
         return nullptr;
     }
 
@@ -95,7 +94,7 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
     struct TempGuard {
         std::string path;
         ~TempGuard() { std::error_code ec; fs::remove(path, ec); }
-    } const guard{tmp_path};
+    } guard{tmp_path};
 
     // TOOL BOUNDARY: cif++ parser + libdssp may throw on unusual geometry.
     try {
@@ -106,25 +105,25 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
         }
 
         auto& db = cif_file.front();
-        cif::mm::structure const structure(db, 1, {});
+        cif::mm::structure structure(db, 1, {});
 
         // min_poly_proline_stretch_length = 3 (standard, Adzhubei & Sternberg 1993)
         // calculate_accessibility = true (SASA via Lee & Richards 1971, 1.4A probe)
-        dssp const dssp_calc(structure, 3, true);
+        dssp dssp_calc(structure, 3, true);
 
         // Build lookup: (chain, seq_num) -> residue index
         std::map<std::pair<std::string, int>, size_t> res_lookup;
         for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
             const auto& res = protein.ResidueAt(ri);
-            std::string const chain = res.chain_id.empty() ? "A" : res.chain_id;
+            std::string chain = res.chain_id.empty() ? "A" : res.chain_id;
             res_lookup[{chain, res.sequence_number}] = ri;
         }
 
         // Map DSSP results to our residues
         // Phi/Psi from DSSP are in degrees; convert to radians
         for (auto& dssp_res : dssp_calc) {
-            std::string const chain = dssp_res.pdb_strand_id();
-            int const seq_id = dssp_res.pdb_seq_num();
+            std::string chain = dssp_res.pdb_strand_id();
+            int seq_id = dssp_res.pdb_seq_num();
 
             auto it = res_lookup.find({chain, seq_id});
             if (it == res_lookup.end()) continue;
@@ -133,7 +132,7 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
             dr.observed = true;  // Codex review 2026-05-19: distinguish
                                  // mapped from default-coil for honest
                                  // downstream SS classification.
-            char const ss = static_cast<char>(dssp_res.type());
+            char ss = static_cast<char>(dssp_res.type());
             dr.secondary_structure = (ss == ' ') ? 'C' : ss;
 
             // DSSP phi/psi are in degrees; convert to radians
@@ -165,7 +164,7 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
             }
         }
     } catch (const std::exception& e) {
-        (void)fprintf(stderr, "DsspResult::Compute: DSSP failed: %s\n", e.what());
+        fprintf(stderr, "DsspResult::Compute: DSSP failed: %s\n", e.what());
         return nullptr;
     }
 
@@ -213,13 +212,13 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     std::vector<double> data(N * 5, 0.0);
 
     for (size_t i = 0; i < N; ++i) {
-        size_t const ri = protein.AtomAt(i).residue_index;
+        size_t ri = protein.AtomAt(i).residue_index;
         if (ri < residues_.size()) {
             const auto& dr = residues_[ri];
             data[i*5 + 0] = dr.phi;
             data[i*5 + 1] = dr.psi;
             data[i*5 + 2] = dr.sasa;
-            char const ss = dr.secondary_structure;
+            char ss = dr.secondary_structure;
             data[i*5 + 3] = (ss == 'H' || ss == 'G' || ss == 'I') ? 1.0 : 0.0;
             data[i*5 + 4] = (ss == 'E' || ss == 'B') ? 1.0 : 0.0;
         }
@@ -231,8 +230,7 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     // dssp_ss8.npy — (N, 8) float64, full 8-class one-hot
     // Column order: H(alpha), G(3_10), I(pi), E(strand), B(bridge), T(turn), S(bend), C(coil)
     {
-        // String mnemonic for the column-order comment above was
-        // "HGIEBTS C" (each character maps to its column index).
+        static const char SS_CLASSES[] = "HGIEBTS C";
         // Map: H=0, G=1, I=2, E=3, B=4, T=5, S=6, C=7
         auto ss_col = [](char ss) -> int {
             switch (ss) {
@@ -249,12 +247,11 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
 
         std::vector<double> ss8(N * 8, 0.0);
         for (size_t i = 0; i < N; ++i) {
-            size_t const ri = protein.AtomAt(i).residue_index;
-            if (ri < residues_.size()) {
+            size_t ri = protein.AtomAt(i).residue_index;
+            if (ri < residues_.size())
                 ss8[i * 8 + ss_col(residues_[ri].secondary_structure)] = 1.0;
-            } else {
+            else
                 ss8[i * 8 + 7] = 1.0; // default coil
-}
         }
         NpyWriter::WriteFloat64(output_dir + "/dssp_ss8.npy", ss8.data(), N, 8);
         files_written++;
@@ -266,7 +263,7 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     {
         std::vector<double> hb(N * 4, 0.0);
         for (size_t i = 0; i < N; ++i) {
-            size_t const ri = protein.AtomAt(i).residue_index;
+            size_t ri = protein.AtomAt(i).residue_index;
             if (ri < residues_.size()) {
                 const auto& dr = residues_[ri];
                 hb[i * 4 + 0] = dr.acceptors[0].energy;
@@ -286,34 +283,34 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     {
         std::vector<double> chi_data(N * 12, 0.0);
         for (size_t i = 0; i < N; ++i) {
-            size_t const ri = protein.AtomAt(i).residue_index;
+            size_t ri = protein.AtomAt(i).residue_index;
             if (ri >= protein.ResidueCount()) continue;
             const auto& res = protein.ResidueAt(ri);
 
             for (int k = 0; k < 4; ++k) {
-                std::size_t const base = i * 12 + static_cast<std::size_t>(k) * 3;
+                int base = i * 12 + k * 3;
                 if (res.chi[k].Valid()) {
-                    Vec3 const p0 = conf.PositionAt(res.chi[k].a[0]);
-                    Vec3 const p1 = conf.PositionAt(res.chi[k].a[1]);
-                    Vec3 const p2 = conf.PositionAt(res.chi[k].a[2]);
-                    Vec3 const p3 = conf.PositionAt(res.chi[k].a[3]);
+                    Vec3 p0 = conf.PositionAt(res.chi[k].a[0]);
+                    Vec3 p1 = conf.PositionAt(res.chi[k].a[1]);
+                    Vec3 p2 = conf.PositionAt(res.chi[k].a[2]);
+                    Vec3 p3 = conf.PositionAt(res.chi[k].a[3]);
 
                     // Dihedral angle via atan2
-                    Vec3 const b1 = p1 - p0;
-                    Vec3 const b2 = p2 - p1;
-                    Vec3 const b3 = p3 - p2;
+                    Vec3 b1 = p1 - p0;
+                    Vec3 b2 = p2 - p1;
+                    Vec3 b3 = p3 - p2;
                     Vec3 n1 = b1.cross(b2);
                     Vec3 n2 = b2.cross(b3);
-                    double const n1_norm = n1.norm();
-                    double const n2_norm = n2.norm();
+                    double n1_norm = n1.norm();
+                    double n2_norm = n2.norm();
                     if (n1_norm > 1e-10 && n2_norm > 1e-10) {
                         n1 /= n1_norm;
                         n2 /= n2_norm;
                         double cos_angle = n1.dot(n2);
                         // clamp for numerical safety
                         cos_angle = std::max(-1.0, std::min(1.0, cos_angle));
-                        Vec3 const m1 = n1.cross(b2.normalized());
-                        double const sin_angle = m1.dot(n2);
+                        Vec3 m1 = n1.cross(b2.normalized());
+                        double sin_angle = m1.dot(n2);
                         chi_data[base + 0] = cos_angle;
                         chi_data[base + 1] = sin_angle;
                         chi_data[base + 2] = 1.0; // exists

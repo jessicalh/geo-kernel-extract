@@ -111,9 +111,8 @@ const std::string kFixtureProtein = "1P9J_5801";
 TEST(AmberStreaming, TrajectoryBuildAndRun) {
     LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) { GTEST_SKIP() << "fleet_amber " << kFixtureProtein
+    if (!FixtureAvailable(fix)) GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                                               << " fixture not on disk";
-}
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
@@ -136,7 +135,7 @@ TEST(AmberStreaming, TrajectoryBuildAndRun) {
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path,
                          fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
 
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
@@ -166,7 +165,7 @@ TEST(AmberStreaming, BondLengthStatsEndToEnd) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
 
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
@@ -223,7 +222,7 @@ TEST(AmberStreaming, BondLengthStatsFrame0Semantics) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u)
@@ -261,7 +260,7 @@ TEST(AmberStreaming, BondLengthStatsFinalizeIdempotency) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
 
@@ -301,7 +300,7 @@ TEST(AmberStreaming, BondLengthStatsH5RoundTrip) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     const nmr::Status s = traj.Run(tp, config, session);
     ASSERT_EQ(s, nmr::kOk);
 
@@ -318,7 +317,7 @@ TEST(AmberStreaming, BondLengthStatsH5RoundTrip) {
     ASSERT_TRUE(fs::exists(h5_path));
 
     // Read it back via HighFive and compare a representative sample.
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/bond_length_stats"));
 
     auto length_mean_ds = reopen.getDataSet(

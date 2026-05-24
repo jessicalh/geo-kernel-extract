@@ -87,7 +87,7 @@ public:
             // Return codes, not exceptions -- but Result<T> is a contract guarantee.
             // If called when not attached, this is a programming error.
             // For now, we abort with a diagnostic message.
-            (void)fprintf(stderr, "FATAL: %s\n", msg.str().c_str());
+            fprintf(stderr, "FATAL: %s\n", msg.str().c_str());
             std::abort();
         }
         return static_cast<T&>(*it->second);
@@ -97,7 +97,7 @@ public:
     const T& Result() const {
         auto it = results_.find(std::type_index(typeid(T)));
         if (it == results_.end()) {
-            (void)fprintf(stderr, "FATAL: Result<%s> not attached.\n", typeid(T).name());
+            fprintf(stderr, "FATAL: Result<%s> not attached.\n", typeid(T).name());
             std::abort();
         }
         return static_cast<const T&>(*it->second);

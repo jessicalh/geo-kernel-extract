@@ -15,13 +15,13 @@
 namespace nmr {
 
 size_t Protein::AddAtom(std::unique_ptr<Atom> atom) {
-    size_t const idx = atoms_.size();
+    size_t idx = atoms_.size();
     atoms_.push_back(std::move(atom));
     return idx;
 }
 
 size_t Protein::AddResidue(Residue residue) {
-    size_t const idx = residues_.size();
+    size_t idx = residues_.size();
     residues_.push_back(std::move(residue));
     return idx;
 }
@@ -108,7 +108,7 @@ DerivedConformation& Protein::AddDerived(
 
 ProteinConformation& Protein::Conformation() {
     if (conformations_.empty()) {
-        (void)fprintf(stderr, "FATAL: Protein::Conformation() -- no conformations.\n");
+        fprintf(stderr, "FATAL: Protein::Conformation() -- no conformations.\n");
         std::abort();
     }
     return *conformations_[0];
@@ -116,7 +116,7 @@ ProteinConformation& Protein::Conformation() {
 
 const ProteinConformation& Protein::Conformation() const {
     if (conformations_.empty()) {
-        (void)fprintf(stderr, "FATAL: Protein::Conformation() -- no conformations.\n");
+        fprintf(stderr, "FATAL: Protein::Conformation() -- no conformations.\n");
         std::abort();
     }
     return *conformations_[0];
@@ -124,7 +124,7 @@ const ProteinConformation& Protein::Conformation() const {
 
 CrystalConformation& Protein::CrystalConf() {
     if (crystal_index_ == SIZE_MAX) {
-        (void)fprintf(stderr, "FATAL: Protein::CrystalConf() -- no crystal conformation.\n");
+        fprintf(stderr, "FATAL: Protein::CrystalConf() -- no crystal conformation.\n");
         std::abort();
     }
     return static_cast<CrystalConformation&>(*conformations_[crystal_index_]);
@@ -132,7 +132,7 @@ CrystalConformation& Protein::CrystalConf() {
 
 const CrystalConformation& Protein::CrystalConf() const {
     if (crystal_index_ == SIZE_MAX) {
-        (void)fprintf(stderr, "FATAL: Protein::CrystalConf() -- no crystal conformation.\n");
+        fprintf(stderr, "FATAL: Protein::CrystalConf() -- no crystal conformation.\n");
         std::abort();
     }
     return static_cast<const CrystalConformation&>(*conformations_[crystal_index_]);
@@ -145,7 +145,7 @@ const CrystalConformation& Protein::CrystalConf() const {
 
 const ProteinTopology& Protein::TopologyBase() const {
     if (!protein_topology_) {
-        (void)fprintf(stderr, "FATAL: Protein::TopologyBase() -- no topology.\n");
+        fprintf(stderr, "FATAL: Protein::TopologyBase() -- no topology.\n");
         std::abort();
     }
     return *protein_topology_;
@@ -217,7 +217,7 @@ std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
 
     const LegacyAmberTopology& topo = LegacyAmber();
     std::optional<size_t> first_match;
-    for (size_t const bond_idx : topo.BondIndicesFor(r.N)) {
+    for (size_t bond_idx : topo.BondIndicesFor(r.N)) {
         const Bond& bond = topo.BondAt(bond_idx);
         if (!bond.IsPeptideBond()) continue;
         const size_t other = (bond.atom_index_a == r.N)
@@ -252,7 +252,7 @@ std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
 
     const LegacyAmberTopology& topo = LegacyAmber();
     std::optional<size_t> first_match;
-    for (size_t const bond_idx : topo.BondIndicesFor(r.C)) {
+    for (size_t bond_idx : topo.BondIndicesFor(r.C)) {
         const Bond& bond = topo.BondAt(bond_idx);
         if (!bond.IsPeptideBond()) continue;
         const size_t other = (bond.atom_index_a == r.C)
@@ -311,7 +311,7 @@ const std::vector<std::unique_ptr<Ring>>& Protein::SaturatedRings() const {
 
 const ForceFieldChargeTable& Protein::ForceFieldCharges() const {
     if (!force_field_charges_) {
-        (void)fprintf(stderr, "FATAL: Protein::ForceFieldCharges() -- no loaded force-field charges.\n");
+        fprintf(stderr, "FATAL: Protein::ForceFieldCharges() -- no loaded force-field charges.\n");
         std::abort();
     }
     return *force_field_charges_;
@@ -320,11 +320,11 @@ const ForceFieldChargeTable& Protein::ForceFieldCharges() const {
 void Protein::SetForceFieldCharges(
         std::unique_ptr<ForceFieldChargeTable> charges) {
     if (!charges) {
-        (void)fprintf(stderr, "FATAL: Protein::SetForceFieldCharges(nullptr).\n");
+        fprintf(stderr, "FATAL: Protein::SetForceFieldCharges(nullptr).\n");
         std::abort();
     }
     if (charges->AtomCount() != AtomCount()) {
-        (void)fprintf(stderr,
+        fprintf(stderr,
             "FATAL: ForceFieldChargeTable atom count %zu != protein atom count %zu.\n",
             charges->AtomCount(), AtomCount());
         std::abort();
@@ -390,7 +390,7 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         const std::string err =
             bonds->OverrideDisulfides(invariants.disulfide_pairs);
         if (!err.empty()) {
-            (void)std::fprintf(stderr,
+            std::fprintf(stderr,
                 "FATAL: Protein::FinalizeConstruction "
                 "OverrideDisulfides: %s\n", err.c_str());
             std::abort();
@@ -447,7 +447,7 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
             std::vector<std::string> parent_names;
             input_names.reserve(res.atom_indices.size());
             parent_names.reserve(res.atom_indices.size());
-            for (size_t const ai : res.atom_indices) {
+            for (size_t ai : res.atom_indices) {
                 if (ai >= atoms_.size() || !atoms_[ai]) {
                     input_names.push_back("");
                     parent_names.push_back("");
@@ -599,7 +599,7 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
 
         std::map<std::string, size_t> name_to_idx;
         bool has_any_H = false;
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const Atom& atom = *atoms_[ai];
             name_to_idx[atom.pdb_atom_name] = ai;
             if (atom.element == Element::H) has_any_H = true;
@@ -609,8 +609,8 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
         bool resolved = res.protonation_state_resolved;
 
         if (res.type == AminoAcid::HIS) {
-            bool const has_HD1 = name_to_idx.find("HD1") != name_to_idx.end();
-            bool const has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
+            bool has_HD1 = name_to_idx.find("HD1") != name_to_idx.end();
+            bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
 
             if (has_HD1 && has_HE2) {
                 variant_idx = 2;  // HIP
@@ -626,7 +626,7 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
             }
         }
         else if (res.type == AminoAcid::ASP) {
-            bool const has_HD2 = name_to_idx.find("HD2") != name_to_idx.end();
+            bool has_HD2 = name_to_idx.find("HD2") != name_to_idx.end();
             if (has_HD2) {
                 variant_idx = 0;  // ASH
                 resolved = true;
@@ -635,7 +635,7 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
             }
         }
         else if (res.type == AminoAcid::GLU) {
-            bool const has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
+            bool has_HE2 = name_to_idx.find("HE2") != name_to_idx.end();
             if (has_HE2) {
                 variant_idx = 0;  // GLH
                 resolved = true;
@@ -650,18 +650,17 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
                 variant_idx = 0;  // CYX
                 resolved = true;
             } else {
-                bool const has_HG = name_to_idx.find("HG") != name_to_idx.end();
+                bool has_HG = name_to_idx.find("HG") != name_to_idx.end();
                 if (has_HG || has_any_H) {
                     resolved = true;  // free CYS default unless CYX detected
                 }
             }
         }
         else if (res.type == AminoAcid::LYS) {
-            bool const has_HZ1 = name_to_idx.find("HZ1") != name_to_idx.end();
-            bool const has_HZ2 = name_to_idx.find("HZ2") != name_to_idx.end();
-            bool const has_HZ3 = name_to_idx.find("HZ3") != name_to_idx.end();
+            bool has_HZ1 = name_to_idx.find("HZ1") != name_to_idx.end();
+            bool has_HZ2 = name_to_idx.find("HZ2") != name_to_idx.end();
+            bool has_HZ3 = name_to_idx.find("HZ3") != name_to_idx.end();
 
-            // NOLINTBEGIN(bugprone-branch-clone): each branch documents a chemically-distinct LYS variant; same `resolved=true` body is coincidental.
             if (has_HZ1 && has_HZ2 && has_HZ3) {
                 resolved = true;  // charged LYS default
             } else if (has_HZ1 || has_HZ2) {
@@ -670,13 +669,12 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
             } else if (has_any_H) {
                 resolved = true;
             }
-            // NOLINTEND(bugprone-branch-clone)
         }
         else if (res.type == AminoAcid::ARG) {
             resolved = true;  // charged ARG default; ARN is not inferred from names
         }
         else if (res.type == AminoAcid::TYR) {
-            bool const has_HH = name_to_idx.find("HH") != name_to_idx.end();
+            bool has_HH = name_to_idx.find("HH") != name_to_idx.end();
             if (!has_HH && has_any_H) {
                 variant_idx = 0;  // TYM
                 resolved = true;
@@ -714,16 +712,15 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
 
 void Protein::CacheResidueBackboneIndices() {
     for (auto& res : residues_) {
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             const std::string& name = atoms_[ai]->pdb_atom_name;
-            if      (name == "N") {   res.N  = ai;
-            } else if (name == "CA") {  res.CA = ai;
-            } else if (name == "C") {   res.C  = ai;
-            } else if (name == "O") {   res.O  = ai;
-            } else if (name == "H" || name == "HN") {  res.H  = ai;
-            } else if (name == "HA" || name == "HA2") { res.HA = ai;
-            } else if (name == "CB") {  res.CB = ai;
-}
+            if      (name == "N")   res.N  = ai;
+            else if (name == "CA")  res.CA = ai;
+            else if (name == "C")   res.C  = ai;
+            else if (name == "O")   res.O  = ai;
+            else if (name == "H" || name == "HN")  res.H  = ai;
+            else if (name == "HA" || name == "HA2") res.HA = ai;
+            else if (name == "CB")  res.CB = ai;
         }
 
         // PDB LOADING BOUNDARY (continued): match chi angle atom names
@@ -733,7 +730,7 @@ void Protein::CacheResidueBackboneIndices() {
         for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
             const ChiAngleDef& def = aatype.chi_angles[ci];
             for (int j = 0; j < 4; ++j) {
-                for (size_t const ai : res.atom_indices) {
+                for (size_t ai : res.atom_indices) {
                     if (atoms_[ai]->pdb_atom_name == def.atoms[j]) {
                         res.chi[ci].a[j] = ai;
                         break;
@@ -799,7 +796,7 @@ void Protein::CacheResidueBackboneIndices_Typed() {
         res.HA = Residue::NONE;
         res.CB = Residue::NONE;
 
-        for (size_t const ai : res.atom_indices) {
+        for (size_t ai : res.atom_indices) {
             if (ai >= topo.AtomSemantic().size()) continue;
             const AtomSemanticTable& sem = topo.SemanticAt(ai);
             switch (sem.backbone_role) {
@@ -816,7 +813,7 @@ void Protein::CacheResidueBackboneIndices_Typed() {
         // Glycine special case. HA2/HA3 carry Locant::Alpha + di_index;
         // BackboneRole::None. Pick HA2 (Position2) for res.HA.
         if (res.type == AminoAcid::GLY) {
-            AtomMechanicalIdentity const gly_ha2_id{
+            AtomMechanicalIdentity gly_ha2_id{
                 Element::H, Locant::Alpha, BranchAddress{},
                 DiastereotopicIndex::Position2, BackboneRole::None
             };
@@ -829,7 +826,7 @@ void Protein::CacheResidueBackboneIndices_Typed() {
         // (Locant::Beta, Element::C, branch{0,0}, di_index=None).
         // Gly has no Cβ atom in its substrate table, so the lookup
         // returns empty and res.CB stays NONE.
-        AtomMechanicalIdentity const cb_id{
+        AtomMechanicalIdentity cb_id{
             Element::C, Locant::Beta, BranchAddress{},
             DiastereotopicIndex::None, BackboneRole::None
         };
@@ -860,7 +857,8 @@ void Protein::CacheResidueBackboneIndices_Typed() {
                 if (elem == Element::Unknown) continue;
 
                 const AtomMechanicalIdentity id =
-                    topology_generated::ComputeAtomMechanicalIdentity(elem, atom_name, /*parent_atom_name=*/"");
+                    topology_generated::ComputeAtomMechanicalIdentity(
+                        elem, atom_name, /*parent_name=*/"");
 
                 std::vector<size_t> matches =
                     topo.ResidueAtomsWithIdentity(res_idx, id, residues_);

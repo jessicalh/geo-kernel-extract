@@ -100,7 +100,7 @@ TEST(WaterFieldWelford, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -122,7 +122,7 @@ TEST(WaterFieldWelford, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const std::size_t probe = tp.AtomCount() / 2;
@@ -145,19 +145,17 @@ TEST(WaterFieldWelford, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::WaterFieldWelfordTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("water_field_welford_h5_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/water_field_welford");
 
-    std::string units;
-    std::string ef;
-    std::string et2;
+    std::string units, ef, et2;
     grp.getAttribute("units").read(units);
     grp.getAttribute("irrep_layout_efield").read(ef);
     grp.getAttribute("irrep_layout_efg_t2").read(et2);
@@ -206,14 +204,12 @@ TEST(WaterFieldWelford, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 
-    std::size_t populated = 0;
-    std::size_t t2_populated = 0;
-    double max_abs_efield_mag = 0.0;
-    double max_abs_t2 = 0.0;
+    std::size_t populated = 0, t2_populated = 0;
+    double max_abs_efield_mag = 0.0, max_abs_t2 = 0.0;
     for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& w = tp.AtomAt(i).water_field_welford;
         EXPECT_TRUE(std::isfinite(w.efield_magnitude.mean));

@@ -140,11 +140,7 @@ TEST_F(LarsenResiduePerceptionTest, AllCombinationsPerceiveCleanly) {
         ASSERT_TRUE(rec.larsen.has_value())
             << c.tripeptide << " (calc_id=" << rec.calc_id
             << "): perception returned nullopt";
-        // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
-        // explicit has_value gate makes the deref provably safe. Unreachable.
-        if (!rec.larsen.has_value()) {
-            FAIL() << "unreachable";
-        }
+
         const LarsenTripeptide& trip = *rec.larsen;
 
         // (a) 5 pieces with required slots.

@@ -103,11 +103,11 @@ std::string MakeFilename(const FramePdbEmitter::Config& cfg,
                          std::size_t frame_idx, double time_ps) {
     char buf[512];
     if (cfg.decorator.empty()) {
-        (void)std::snprintf(buf, sizeof(buf), "%s_f%06zu_t%.1f.pdb",
+        std::snprintf(buf, sizeof(buf), "%s_f%06zu_t%.1f.pdb",
                       cfg.stem.c_str(),
                       frame_idx, time_ps);
     } else {
-        (void)std::snprintf(buf, sizeof(buf), "%s_%s_f%06zu_t%.1f.pdb",
+        std::snprintf(buf, sizeof(buf), "%s_%s_f%06zu_t%.1f.pdb",
                       cfg.stem.c_str(),
                       cfg.decorator.c_str(),
                       frame_idx, time_ps);
@@ -120,15 +120,10 @@ void WriteCryst1IfPresent(std::ofstream& out,
                           const Eigen::Matrix3d* box_matrix) {
     if (!box_matrix) return;
     if (box_matrix->isZero(1e-6)) return;
-    double a;
-    double b;
-    double c;
-    double alpha;
-    double beta;
-    double gamma;
+    double a, b, c, alpha, beta, gamma;
     if (!BoxToCellParameters(*box_matrix, a, b, c, alpha, beta, gamma)) return;
     char buf[96];
-    (void)std::snprintf(buf, sizeof(buf),
+    std::snprintf(buf, sizeof(buf),
         "CRYST1%9.3f%9.3f%9.3f%7.2f%7.2f%7.2f P 1           1\n",
         a, b, c, alpha, beta, gamma);
     out << buf;
@@ -150,7 +145,7 @@ void WriteAtomLine(std::ofstream& out,
     const char* elem2 = ElementSymbolRight2(atom.element);
 
     char line[96];
-    (void)std::snprintf(line, sizeof(line),
+    std::snprintf(line, sizeof(line),
         "ATOM  %5d %4s %-3s %c%4d%c   %8.3f%8.3f%8.3f%6.2f%6.2f          %2s\n",
         serial,
         atom_name4.c_str(),
@@ -174,7 +169,7 @@ void WriteTer(std::ofstream& out, int serial, const Residue& res) {
     const char ins_char =
         res.insertion_code.empty() ? ' ' : res.insertion_code.front();
     char line[96];
-    (void)std::snprintf(line, sizeof(line),
+    std::snprintf(line, sizeof(line),
         "TER   %5d      %-3s %c%4d%c\n",
         serial,
         res3 ? res3 : "UNK",
@@ -215,19 +210,19 @@ void EmitOnePdb(const Protein& protein,
     // ── HEADER + REMARK ─────────────────────────────────────────────
     {
         char buf[128];
-        (void)std::snprintf(buf, sizeof(buf),
+        std::snprintf(buf, sizeof(buf),
             "HEADER    FRAME PDB FROM nmr_extract                       %s\n",
             cfg.stem.c_str());
         out << buf;
-        (void)std::snprintf(buf, sizeof(buf),
+        std::snprintf(buf, sizeof(buf),
             "REMARK   1 frame_idx=%zu time_ps=%.3f\n",
             frame_idx, time_ps);
         out << buf;
-        (void)std::snprintf(buf, sizeof(buf),
+        std::snprintf(buf, sizeof(buf),
             "REMARK   1 stem=%s\n", cfg.stem.c_str());
         out << buf;
         if (!cfg.decorator.empty()) {
-            (void)std::snprintf(buf, sizeof(buf),
+            std::snprintf(buf, sizeof(buf),
                 "REMARK   1 decorator=%s\n", cfg.decorator.c_str());
             out << buf;
         }
@@ -281,7 +276,7 @@ void EmitOnePdb(const Protein& protein,
     for (const Bond& b : bonds) {
         if (b.category != BondCategory::Disulfide) continue;
         char line[64];
-        (void)std::snprintf(line, sizeof(line),
+        std::snprintf(line, sizeof(line),
             "CONECT%5zu%5zu\n",
             b.atom_index_a + 1, b.atom_index_b + 1);
         out << line;

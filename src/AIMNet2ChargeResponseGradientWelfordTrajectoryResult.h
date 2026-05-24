@@ -7,7 +7,7 @@
 // of the polarisability gradient ∂L/∂r_i where L = Σ_j q_j².
 //
 // AV (Always-valid) pattern: each Compute updates the per-atom
-// WelfordMoments on TrajectoryAtom::aimnet2_charge_response_gradient_welford;
+// WelfordMoments on TrajectoryAtom::aimnet2_polarisability_welford;
 // Finalize writes the means/variances to H5. Source-attached gate
 // matches the TS pair: Compute checks
 // HasResult<AIMNet2ChargeResponseGradientResult>() and skips the update on
@@ -15,7 +15,7 @@
 // trajectory pipelines RequireConformationResult'd it at line 167
 // of RunConfiguration.cpp so all frames should attach.
 //
-// Emission (/trajectory/aimnet2_charge_response_gradient_welford/) — full
+// Emission (/trajectory/aimnet2_polarisability_welford/) — full
 // canonical Welford row per sibling TR convention (HydrationGeometry /
 // BsWelford / HmWelford); WelfordFinalize derives std + NaN-fills n=0.
 //   vector_mean         (N, 3) float64 — per-component mean (e²/Å)

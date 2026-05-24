@@ -95,7 +95,7 @@ TEST(JCouplingTimeSeries, Frame0Semantics) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::JCouplingTimeSeriesTrajectoryResult>();
@@ -113,7 +113,7 @@ TEST(JCouplingTimeSeries, FinalizeIdempotency) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto& tr = tp.Result<nmr::JCouplingTimeSeriesTrajectoryResult>();
@@ -134,7 +134,7 @@ TEST(JCouplingTimeSeries, H5RoundTrip) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::JCouplingTimeSeriesTrajectoryResult>();
@@ -144,7 +144,7 @@ TEST(JCouplingTimeSeries, H5RoundTrip) {
         ("j_coupling_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/j_coupling_time_series"));
     auto grp = reopen.getGroup("/trajectory/j_coupling_time_series");
 
@@ -172,16 +172,8 @@ TEST(JCouplingTimeSeries, H5RoundTrip) {
     EXPECT_TRUE(grp.exist("source_attached_per_frame"));
 
     // Convention attrs — citation pins are auditable from the H5 itself.
-    std::string karplus;
-    std::string hn_ha;
-    std::string hn_ha_vog;
-    std::string hn_cb;
-    std::string hn_cp;
-    std::string ha_cp;
-    std::string n_cg;
-    std::string cp_cg;
-    std::string ha_hb;
-    std::string units;
+    std::string karplus, hn_ha, hn_ha_vog, hn_cb, hn_cp, ha_cp,
+                n_cg, cp_cg, ha_hb, units;
     grp.getAttribute("karplus_form").read(karplus);
     grp.getAttribute("J_HN_Halpha_coefficients").read(hn_ha);
     grp.getAttribute("J_HN_Halpha_Vogeli_coefficients").read(hn_ha_vog);
@@ -233,7 +225,7 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path)))
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::JCouplingTimeSeriesTrajectoryResult>();
@@ -245,18 +237,12 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
         ("j_coupling_int_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate);
       tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/j_coupling_time_series");
 
-    std::vector<std::vector<double>> j_hn;
-    std::vector<std::vector<double>> j_hn_vog;
-    std::vector<std::vector<double>> j_hn_cb;
-    std::vector<std::vector<double>> j_hn_cp;
-    std::vector<std::vector<double>> j_ha_cp;
-    std::vector<std::vector<double>> j_n_cg;
-    std::vector<std::vector<double>> j_cp_cg;
-    std::vector<std::vector<double>> j_ha_hb2;
-    std::vector<std::vector<double>> j_ha_hb3;
+    std::vector<std::vector<double>> j_hn, j_hn_vog, j_hn_cb, j_hn_cp,
+                                       j_ha_cp, j_n_cg, j_cp_cg,
+                                       j_ha_hb2, j_ha_hb3;
     grp.getDataSet("J_HN_Halpha").read(j_hn);
     grp.getDataSet("J_HN_Halpha_Vogeli").read(j_hn_vog);
     grp.getDataSet("J_HN_Cbeta").read(j_hn_cb);
@@ -272,14 +258,9 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     ASSERT_EQ(j_ha_cp.size(), R);
     ASSERT_EQ(j_ha_hb2.size(), R);
 
-    std::vector<std::uint8_t> hn_exists;
-    std::vector<std::uint8_t> hn_cb_exists;
-    std::vector<std::uint8_t> hn_cp_exists;
-    std::vector<std::uint8_t> ha_cp_exists;
-    std::vector<std::uint8_t> chi1_exists;
-    std::vector<std::uint8_t> n_cg_exists;
-    std::vector<std::uint8_t> cp_cg_exists;
-    std::vector<std::uint8_t> ha_hb_exists;
+    std::vector<std::uint8_t> hn_exists, hn_cb_exists, hn_cp_exists,
+                              ha_cp_exists, chi1_exists,
+                              n_cg_exists, cp_cg_exists, ha_hb_exists;
     grp.getDataSet("J_HN_Halpha_exists").read(hn_exists);
     grp.getDataSet("J_HN_Cbeta_exists").read(hn_cb_exists);
     grp.getDataSet("J_HN_Cprime_exists").read(hn_cp_exists);
@@ -326,27 +307,17 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     //     TRR-float32 / chi-fallback path enters here). Bounds below
     //     have small slack for float epsilon and to leave room for
     //     refit Karplus parametrizations.
-    std::size_t pro_count = 0;
-    std::size_t gly_count = 0;
-    std::size_t gly_ala_count = 0;
-    std::size_t hn_finite_obs = 0;
-    std::size_t hn_vog_finite_obs = 0;
-    std::size_t hn_cb_finite_obs = 0;
-    std::size_t hn_cp_finite_obs = 0;
+    std::size_t pro_count = 0, gly_count = 0, gly_ala_count = 0;
+    std::size_t hn_finite_obs = 0, hn_vog_finite_obs = 0;
+    std::size_t hn_cb_finite_obs = 0, hn_cp_finite_obs = 0;
     std::size_t ha_cp_finite_obs = 0;
-    std::size_t n_cg_finite_obs = 0;
-    std::size_t cp_cg_finite_obs = 0;
-    std::size_t ha_hb2_finite_obs = 0;
-    std::size_t ha_hb3_finite_obs = 0;
+    std::size_t n_cg_finite_obs = 0, cp_cg_finite_obs = 0;
+    std::size_t ha_hb2_finite_obs = 0, ha_hb3_finite_obs = 0;
     // Cross-channel correlation accumulator (Pearson) for science
     // F10: J_HN_Halpha and J_HN_Cprime read the same phi via
     // different atomic dihedrals; the two channels should be
     // correlated across the (residue, frame) corpus.
-    double sx = 0;
-    double sy = 0;
-    double sxx = 0;
-    double syy = 0;
-    double sxy = 0;
+    double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
     std::size_t n_xy = 0;
     for (std::size_t ri = 0; ri < R; ++ri) {
         const auto& res = tp.ProteinRef().ResidueAt(ri);
@@ -568,7 +539,7 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
     // avoid false positives from chance correlation while still
     // detecting a catastrophic decoupling.
     if (n_xy > 10) {
-        const auto n_d = static_cast<double>(n_xy);
+        const double n_d = static_cast<double>(n_xy);
         const double mean_x = sx / n_d;
         const double mean_y = sy / n_d;
         const double var_x = sxx / n_d - mean_x * mean_x;
@@ -593,7 +564,7 @@ TEST(JCouplingTimeSeries, Integration1P9J) {
 // project phi has the opposite sign, so the compiled project offset is
 // +60°. The direct H-N-CA-HA atomic dihedral is a geometry diagnostic,
 // not the value fed to the backbone Karplus implementation.
-TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
+TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset_1UBQ) {
     nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
     const std::string pdb = nmr::test::TestEnvironment::UbqProtonated();
     if (!fs::exists(pdb)) GTEST_SKIP() << "1ubq_protonated.pdb absent";
@@ -607,9 +578,7 @@ TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
         const nmr::Vec3 p2 = conf.PositionAt(b);
         const nmr::Vec3 p3 = conf.PositionAt(c);
         const nmr::Vec3 p4 = conf.PositionAt(d);
-        const nmr::Vec3 b1 = p2 - p1;
-        const nmr::Vec3 b2 = p3 - p2;
-        const nmr::Vec3 b3 = p4 - p3;
+        const nmr::Vec3 b1 = p2 - p1, b2 = p3 - p2, b3 = p4 - p3;
         const double b2n = b2.norm();
         if (b2n < 1e-10) return std::numeric_limits<double>::quiet_NaN();
         const nmr::Vec3 n1 = b1.cross(b2);
@@ -626,10 +595,7 @@ TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
 
     const size_t R = prot.ResidueCount();
     int n = 0;
-    double sum_ha = 0;
-    double sum_ha_sq = 0;
-    double sum_cb = 0;
-    double sum_cb_sq = 0;
+    double sum_ha = 0, sum_ha_sq = 0, sum_cb = 0, sum_cb_sq = 0;
     int n_cb = 0;
     double sum_phi = 0;
     // Run J(HN,Hα) both ways and compare to literature.
@@ -640,12 +606,9 @@ TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
     double sum_J_atomic = 0;
     double sum_J_project_minus60 = 0;  // unflipped published offset; wrong in project phi sign
     double sum_J_project_plus60 = 0;   // shipped project-sign offset
-    int n_helix = 0;
-    int n_sheet = 0;
-    double sum_J_atomic_helix = 0;
-    double sum_J_project_plus60_helix = 0;
-    double sum_J_atomic_sheet = 0;
-    double sum_J_project_plus60_sheet = 0;
+    int n_helix = 0, n_sheet = 0;
+    double sum_J_atomic_helix = 0, sum_J_project_plus60_helix = 0;
+    double sum_J_atomic_sheet = 0, sum_J_project_plus60_sheet = 0;
     std::cout << "\nri  type  phi(deg)  H-N-CA-HA  diff_ha  H-N-CA-CB  diff_cb\n";
     for (size_t ri = 1; ri + 1 < R; ++ri) {
         const auto& res = prot.ResidueAt(ri);
@@ -718,16 +681,14 @@ TEST(JCouplingTimeSeries, ProbeHNCAHAvsPhiOffset1UBQ) {
                 sum_J_project_minus60 / n, n);
     std::printf("J via project phi + 60 deg (shipped)  : mean = %.3f Hz over %d\n",
                 sum_J_project_plus60 / n, n);
-    if (n_helix > 0) {
+    if (n_helix > 0)
         std::printf("\nproject αR-bin (n=%d): atomic-J = %.3f, project+60-J = %.3f (literature ~4-6 Hz)\n",
                     n_helix, sum_J_atomic_helix / n_helix,
                     sum_J_project_plus60_helix / n_helix);
-}
-    if (n_sheet > 0) {
+    if (n_sheet > 0)
         std::printf("project β-bin  (n=%d): atomic-J = %.3f, project+60-J = %.3f (literature ~8-10 Hz)\n",
                     n_sheet, sum_J_atomic_sheet / n_sheet,
                     sum_J_project_plus60_sheet / n_sheet);
-}
     EXPECT_GT(std::abs(mean_ha), 50.0);
     EXPECT_LT(std::abs(mean_ha), 70.0);
 }
@@ -784,9 +745,7 @@ TEST(JCouplingTimeSeries, LiteratureAnchoredProbeOn1UBQ) {
         const nmr::Vec3 p2 = conf.PositionAt(b);
         const nmr::Vec3 p3 = conf.PositionAt(c);
         const nmr::Vec3 p4 = conf.PositionAt(d);
-        const nmr::Vec3 b1 = p2 - p1;
-        const nmr::Vec3 b2 = p3 - p2;
-        const nmr::Vec3 b3 = p4 - p3;
+        const nmr::Vec3 b1 = p2 - p1, b2 = p3 - p2, b3 = p4 - p3;
         const double b2n = b2.norm();
         if (b2n < 1e-10) return std::nan("");
         const nmr::Vec3 n1 = b1.cross(b2);
@@ -804,14 +763,10 @@ TEST(JCouplingTimeSeries, LiteratureAnchoredProbeOn1UBQ) {
     // project phi, whose sign is opposite to Wang-Bax/DSSP; therefore
     // αR-helix is [+45°, +90°] and β-sheet is [+90°, +150°].
     struct Stat { double sum = 0; int n = 0; };
-    Stat hn_helix;
-    Stat hn_sheet;
-    Stat hncp_helix;
-    Stat hncp_sheet;
-    Stat hncb_helix;
-    Stat hncb_sheet;
-    Stat hacp_helix;
-    Stat hacp_sheet;
+    Stat hn_helix, hn_sheet;
+    Stat hncp_helix, hncp_sheet;
+    Stat hncb_helix, hncb_sheet;
+    Stat hacp_helix, hacp_sheet;
 
     int n_total = 0;
     for (std::size_t ri = 1; ri + 1 < R; ++ri) {

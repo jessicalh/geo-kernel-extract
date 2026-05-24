@@ -144,9 +144,8 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
         }
         ++omega_non_xpro_count;
         const double dev_deg = dev[ri] * 180.0 / M_PI;
-        if (std::abs(dev_deg) > max_abs_dev_deg_non_xpro) {
+        if (std::abs(dev_deg) > max_abs_dev_deg_non_xpro)
             max_abs_dev_deg_non_xpro = std::abs(dev_deg);
-}
         // 1UBQ is 1.8 Å crystal — Berkholz et al. 2009 places 99.9% of
         // |Δω| within 10° on ultra-high-res structures; 15° here is a
         // conservative bound that catches gross pipeline errors.
@@ -157,7 +156,7 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
     const auto& chi2 = result.AromaticChi2();
     ASSERT_EQ(chi2.size(), topo.AromaticRingCount());
     int chi2_valid = 0;
-    for (double const v : chi2) {
+    for (double v : chi2) {
         if (std::isnan(v)) continue;
         ++chi2_valid;
         EXPECT_GE(v, -M_PI - 1e-9);
@@ -180,7 +179,7 @@ TEST_F(PlanarGeometryTest, ComputesPyramidalizationOmegaChi2Pucker) {
         EXPECT_LT(pucker_t[i], 360.0);
     }
 
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "\n=== PlanarGeometry summary (1UBQ) ===\n"
         "  planar atoms:             %d (pyr finite %d/%d)\n"
         "  max |pyr|:                %.3f Å at residue %d %s, atom %s\n"
@@ -269,8 +268,7 @@ TEST(PlanarGeometrySyntheticTest, CremerPopleRegularPentagonAmplitude) {
         const Vec3 n = R1.cross(R2);
         const Vec3 n_hat = n / n.norm();
 
-        double cs = 0.0;
-        double sn = 0.0;
+        double cs = 0.0, sn = 0.0;
         for (size_t j = 0; j < 5; ++j) {
             const double z_j = (positions[j] - G).dot(n_hat);
             const double phi = 4.0 * M_PI * static_cast<double>(j) / 5.0;
@@ -327,7 +325,7 @@ TEST(PlanarGeometrySyntheticTest, CremerPopleRegularPentagonAmplitude) {
         << "Flipping pucker direction should shift θ by 180°; "
         << "θ_up=" << theta_up << " θ_down=" << theta_down;
 
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "\n=== Cremer-Pople synthetic pin (j=2 envelope, Δ=%.3f Å) ===\n"
         "  Q (up):       %.6f  (expected √(2/5)·Δ = %.6f)\n"
         "  θ (up):       %.2f°\n"
@@ -363,7 +361,7 @@ TEST_F(PlanarGeometryTest, WriteFeaturesEmitsAllSixNpys) {
     fs::create_directories(output_dir);
 
     const auto& result = conf.Result<PlanarGeometryResult>();
-    int const written = result.WriteFeatures(conf, output_dir.string());
+    int written = result.WriteFeatures(conf, output_dir.string());
     EXPECT_EQ(written, 7);
 
     for (const char* stem : {"pyramidalization", "omega_actual",

@@ -73,10 +73,9 @@ static Element ElementFromAtomicNumber(int an) {
 // Detect HIS protonation variant by checking which H atoms are present.
 static int DetectHisVariantFromAtoms(const t_atoms& atoms,
                                      int res_start, int res_end) {
-    bool has_HD1 = false;
-    bool has_HE2 = false;
+    bool has_HD1 = false, has_HE2 = false;
     for (int ai = res_start; ai < res_end; ++ai) {
-        std::string const name = *(atoms.atomname[ai]);
+        std::string name = *(atoms.atomname[ai]);
         if (name == "HD1") has_HD1 = true;
         if (name == "HE2") has_HE2 = true;
     }
@@ -117,15 +116,12 @@ static int DetectHisVariantFromAtoms(const t_atoms& atoms,
 // one rather than have it slip through.
 static bool IsWaterMoltype(const gmx_moltype_t& mt) {
     if (mt.atoms.nr != 3 || mt.atoms.nres != 1) return false;
-    int n_O = 0;
-    int n_H = 0;
-    int n_other = 0;
+    int n_O = 0, n_H = 0, n_other = 0;
     for (int i = 0; i < 3; ++i) {
         const int z = mt.atoms.atom[i].atomnumber;
-        if      (z == 8) { ++n_O;
-        } else if (z == 1) { ++n_H;
-        } else {             ++n_other;
-}
+        if      (z == 8) ++n_O;
+        else if (z == 1) ++n_H;
+        else             ++n_other;
     }
     return n_O == 1 && n_H == 2 && n_other == 0;
 }
@@ -147,12 +143,12 @@ static bool IsIonMoltype(const gmx_moltype_t& mt) {
 //   2. BondedParameters (interaction lists, CMAP grids)
 //   3. Stored gmx_mtop_t for BuildProtein()
 
-bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(readability-function-size)
-    OperationLog::Scope const scope("FullSystemReader::ReadTopology", tpr_path);
+bool FullSystemReader::ReadTopology(const std::string& tpr_path) {
+    OperationLog::Scope scope("FullSystemReader::ReadTopology", tpr_path);
 
     tpr_ = std::make_unique<detail::TprData>();
 
-    TpxFileHeader const tpx = readTpxHeader(tpr_path.c_str(), true);
+    TpxFileHeader tpx = readTpxHeader(tpr_path.c_str(), true);
     t_inputrec ir;
     t_state state;
     read_tpx_state(tpr_path.c_str(), tpx.bIr ? &ir : nullptr,
@@ -230,18 +226,16 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(re
             if (n_protein_molblocks > 0) past_protein = true;
 
             if (is_water) {
-                if (topo_.water_count == 0) {
+                if (topo_.water_count == 0)
                     topo_.water_O_start = global_idx;
-}
                 topo_.water_count += molblock.nmol;
                 if (topo_.water_O_charge == 0.0) {
                     topo_.water_O_charge = mt.atoms.atom[0].q;
                     topo_.water_H_charge = mt.atoms.atom[1].q;
                 }
             } else if (is_ion) {
-                if (topo_.ion_count == 0) {
+                if (topo_.ion_count == 0)
                     topo_.ion_start = global_idx;
-}
                 for (int m = 0; m < molblock.nmol; ++m) {
                     topo_.ion_charges.push_back(mt.atoms.atom[0].q);
                     topo_.ion_atomic_numbers.push_back(
@@ -318,7 +312,8 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(re
     bonded_params_.cmap_grid_spacing = idef.cmap_grid.grid_spacing;
     bonded_params_.cmap_grids.clear();
     for (const auto& cm : idef.cmap_grid.cmapdata) {
-        bonded_params_.cmap_grids.emplace_back(cm.cmap.begin(), cm.cmap.end());
+        bonded_params_.cmap_grids.push_back(
+            std::vector<double>(cm.cmap.begin(), cm.cmap.end()));
     }
 
     const size_t prot_lo = topo_.protein_start;
@@ -496,6 +491,7 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(re
         // the canonical localtop's flat atom list without the
         // gmx_mtop_global_atoms() call; staying with the per-moltype
         // walk is direct and sufficient for invariant per-atom fields.)
+        size_t global_offset = 0;
         for (size_t b = 0; b < n_protein_molblocks; ++b) {
             const auto& molblock = mtop.molblock[b];
             const auto& mt = mtop.moltype[molblock.type];
@@ -510,6 +506,7 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(re
                                           : std::string();
                 amber_invariants_.atomtype_string.push_back(std::move(atype_s));
             }
+            global_offset += static_cast<size_t>(atoms.nr) * molblock.nmol;
         }
     }
 
@@ -541,7 +538,7 @@ bool FullSystemReader::ReadTopology(const std::string& tpr_path) {  // NOLINT(re
             const auto& sub = localtop->excls[global_i];
             auto& out = amber_invariants_.exclusions[global_i - topo_.protein_start];
             out.reserve(sub.size());
-            for (int const gj : sub) {
+            for (int gj : sub) {
                 if (in_protein(static_cast<size_t>(gj))) {
                     out.push_back(static_cast<int>(
                         static_cast<size_t>(gj) - topo_.protein_start));
@@ -570,7 +567,7 @@ bool FullSystemReader::ExtractFrame(
         std::vector<Vec3>& protein_positions,
         SolventEnvironment& solvent) const {
 
-    size_t const n_total = xyz.size() / 3;
+    size_t n_total = xyz.size() / 3;
     if (n_total < topo_.total_atoms) {
         return false;
     }
@@ -583,14 +580,13 @@ bool FullSystemReader::ExtractFrame(
     };
 
     protein_positions.resize(topo_.protein_count);
-    for (size_t i = 0; i < topo_.protein_count; ++i) {
+    for (size_t i = 0; i < topo_.protein_count; ++i)
         protein_positions[i] = pos(topo_.protein_start + i);
-}
 
     solvent.waters.resize(topo_.water_count);
     solvent.water_O_positions.resize(topo_.water_count);
     for (size_t w = 0; w < topo_.water_count; ++w) {
-        size_t const base = topo_.water_O_start + w * 3;
+        size_t base = topo_.water_O_start + w * 3;
         auto& mol = solvent.waters[w];
         mol.O_pos     = pos(base);
         mol.H1_pos    = pos(base + 1);
@@ -602,7 +598,7 @@ bool FullSystemReader::ExtractFrame(
 
     solvent.ions.resize(topo_.ion_count);
     for (size_t i = 0; i < topo_.ion_count; ++i) {
-        size_t const idx = topo_.ion_start + i;
+        size_t idx = topo_.ion_start + i;
         solvent.ions[i].pos = pos(idx);
         solvent.ions[i].charge = topo_.ion_charges[i];
         solvent.ions[i].atomic_number = topo_.ion_atomic_numbers[i];
@@ -641,11 +637,9 @@ bool FullSystemReader::MakeProteinWhole(
 
     auto* rvecs = reinterpret_cast<rvec*>(protein_coords.data());
     matrix frame_box;
-    for (int i = 0; i < DIM; ++i) {
-        for (int j = 0; j < DIM; ++j) {
+    for (int i = 0; i < DIM; ++i)
+        for (int j = 0; j < DIM; ++j)
             frame_box[i][j] = box_in[i][j];
-}
-}
     do_pbc_mtop(tpr_->pbc_type, frame_box, &tpr_->mtop, rvecs);
     return true;
 }
@@ -755,7 +749,7 @@ static bool ResolveResidueTypeAndVariant(
 }
 
 
-BuildResult FullSystemReader::BuildProtein(  // NOLINT(readability-function-size)
+BuildResult FullSystemReader::BuildProtein(
         const std::string& protein_id,
         ForceField force_field,
         const GromacsToAmberReadbackBlock* readback) {
@@ -824,11 +818,10 @@ BuildResult FullSystemReader::BuildProtein(  // NOLINT(readability-function-size
         {
             std::vector<int> first_atom(n_residues, -1);
             for (int ai = 0; ai < tpr_atoms.nr; ++ai) {
-                int const ri = tpr_atoms.atom[ai].resind;
+                int ri = tpr_atoms.atom[ai].resind;
                 if (ri >= 0 && ri < static_cast<int>(n_residues) &&
-                    first_atom[ri] < 0) {
+                    first_atom[ri] < 0)
                     first_atom[ri] = ai;
-}
             }
             for (size_t ri = 0; ri < n_residues; ++ri) {
                 ranges[ri].start = first_atom[ri];
@@ -840,7 +833,7 @@ BuildResult FullSystemReader::BuildProtein(  // NOLINT(readability-function-size
         // Residues for this moltype.
         for (size_t ri = 0; ri < n_residues; ++ri) {
             Residue res;
-            std::string const charmm_name = *(tpr_atoms.resinfo[ri].name);
+            std::string charmm_name = *(tpr_atoms.resinfo[ri].name);
             const size_t global_ri = residue_offset + ri;
 
             // Resolve typed res.type + res.protonation_variant_index from
@@ -935,18 +928,17 @@ BuildResult FullSystemReader::BuildProtein(  // NOLINT(readability-function-size
             protein->MutableResidueAt(global_ri).atom_indices.push_back(idx);
             const std::string& name = protein->AtomAt(idx).pdb_atom_name;
             Residue& res_ref = protein->MutableResidueAt(global_ri);
-            if      (name == "N"  && res_ref.N  == Residue::NONE) { res_ref.N  = idx;
-            } else if (name == "CA" && res_ref.CA == Residue::NONE) { res_ref.CA = idx;
-            } else if (name == "C"  && res_ref.C  == Residue::NONE &&
+            if      (name == "N"  && res_ref.N  == Residue::NONE) res_ref.N  = idx;
+            else if (name == "CA" && res_ref.CA == Residue::NONE) res_ref.CA = idx;
+            else if (name == "C"  && res_ref.C  == Residue::NONE &&
                      protein->AtomAt(idx).element == Element::C &&
-                     res_ref.CA != Residue::NONE) { res_ref.C = idx;
-            } else if (name == "O"  && res_ref.O  == Residue::NONE) { res_ref.O  = idx;
-            } else if ((name == "H" || name == "HN") &&
-                     res_ref.H == Residue::NONE) { res_ref.H = idx;
-            } else if ((name == "HA" || name == "HA2") &&
-                     res_ref.HA == Residue::NONE) { res_ref.HA = idx;
-            } else if (name == "CB" && res_ref.CB == Residue::NONE) { res_ref.CB = idx;
-}
+                     res_ref.CA != Residue::NONE) res_ref.C = idx;
+            else if (name == "O"  && res_ref.O  == Residue::NONE) res_ref.O  = idx;
+            else if ((name == "H" || name == "HN") &&
+                     res_ref.H == Residue::NONE) res_ref.H = idx;
+            else if ((name == "HA" || name == "HA2") &&
+                     res_ref.HA == Residue::NONE) res_ref.HA = idx;
+            else if (name == "CB" && res_ref.CB == Residue::NONE) res_ref.CB = idx;
 
             AtomChargeRadius cr;
             cr.partial_charge = tpr_atoms.atom[ai].q;

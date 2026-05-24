@@ -113,13 +113,15 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     // ================================================================
     // Step 4: ChargeAssignmentResult (no dependencies, uses ff14SB file)
     // ================================================================
+    bool charges_ok = false;
     {
         if (!std::filesystem::exists(nmr::test::TestEnvironment::Ff14sbParams())) {
             OperationLog::Warn("FullPipelineTest",
                 "ff14sb_params.dat not found, using stub charges");
-            auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
+            auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams().c_str());
             if (charges && conf.AttachResult(std::move(charges))) {
                 results_attached++;
+                charges_ok = true;
             } else {
                 results_failed++;
             }
@@ -127,6 +129,7 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
             auto charges = ChargeAssignmentResult::Compute(conf, nmr::test::TestEnvironment::Ff14sbParams());
             if (charges && conf.AttachResult(std::move(charges))) {
                 results_attached++;
+                charges_ok = true;
                 OperationLog::Info("FullPipelineTest",
                     "ChargeAssignmentResult: attached (source=" +
                     conf.Result<ChargeAssignmentResult>().Source() +
@@ -245,16 +248,16 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     // VERIFICATION PHASE
     // ================================================================
 
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "\n"
         "================================================================\n"
         "  FULL PIPELINE VERIFICATION: 1UBQ\n"
         "================================================================\n");
 
     // --- Check 1: All 9 results are attached ---
-    (void)fprintf(stderr, "\n--- Check 1: Result attachment ---\n");
-    (void)fprintf(stderr, "  Results attached: %d / 9\n", results_attached);
-    (void)fprintf(stderr, "  Results failed:   %d\n", results_failed);
+    fprintf(stderr, "\n--- Check 1: Result attachment ---\n");
+    fprintf(stderr, "  Results attached: %d / 9\n", results_attached);
+    fprintf(stderr, "  Results failed:   %d\n", results_failed);
 
     EXPECT_TRUE(conf.HasResult<ProtonationDetectionResult>())
         << "ProtonationDetectionResult not attached";
@@ -276,13 +279,13 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
         << "MopacResult not attached";
 
     // --- Check 2: Every atom has role != Unknown (from EnrichmentResult) ---
-    (void)fprintf(stderr, "\n--- Check 2: Atom roles ---\n");
+    fprintf(stderr, "\n--- Check 2: Atom roles ---\n");
     if (conf.HasResult<EnrichmentResult>()) {
         int unknown_count = 0;
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
             if (conf.AtomAt(ai).role == AtomRole::Unknown) unknown_count++;
         }
-        (void)fprintf(stderr, "  Unknown roles: %d / %zu atoms\n",
+        fprintf(stderr, "  Unknown roles: %d / %zu atoms\n",
             unknown_count, conf.AtomCount());
         // Allow very few unknowns (possible edge cases at termini)
         EXPECT_LT(unknown_count, 5)
@@ -290,13 +293,13 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     }
 
     // --- Check 3: Charges assigned ---
-    (void)fprintf(stderr, "\n--- Check 3: Charges ---\n");
+    fprintf(stderr, "\n--- Check 3: Charges ---\n");
     if (conf.HasResult<ChargeAssignmentResult>()) {
         auto& ca_result = conf.Result<ChargeAssignmentResult>();
-        double const sum_charge = ca_result.TotalCharge();
-        (void)fprintf(stderr, "  Assigned: %d\n", ca_result.AssignedCount());
-        (void)fprintf(stderr, "  Unassigned: %d\n", ca_result.UnassignedCount());
-        (void)fprintf(stderr, "  Total charge: %.2f\n", sum_charge);
+        double sum_charge = ca_result.TotalCharge();
+        fprintf(stderr, "  Assigned: %zu\n", ca_result.AssignedCount());
+        fprintf(stderr, "  Unassigned: %zu\n", ca_result.UnassignedCount());
+        fprintf(stderr, "  Total charge: %.2f\n", sum_charge);
 
         EXPECT_GT(ca_result.AssignedCount(),
                   conf.AtomCount() * 9 / 10)
@@ -304,74 +307,70 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     }
 
     // --- Check 4: Every atom has spatial neighbours ---
-    (void)fprintf(stderr, "\n--- Check 4: Spatial neighbours ---\n");
+    fprintf(stderr, "\n--- Check 4: Spatial neighbours ---\n");
     if (conf.HasResult<SpatialIndexResult>()) {
         int no_neighbours = 0;
         double sum_neighbours = 0.0;
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-            size_t const nc = conf.AtomAt(ai).spatial_neighbours.size();
+            size_t nc = conf.AtomAt(ai).spatial_neighbours.size();
             if (nc == 0) no_neighbours++;
             sum_neighbours += static_cast<double>(nc);
         }
-        double const mean_neighbours = sum_neighbours / static_cast<double>(conf.AtomCount());
-        (void)fprintf(stderr, "  Atoms with no neighbours: %d\n", no_neighbours);
-        (void)fprintf(stderr, "  Mean neighbour count: %.1f\n", mean_neighbours);
+        double mean_neighbours = sum_neighbours /
+            static_cast<double>(conf.AtomCount());
+        fprintf(stderr, "  Atoms with no neighbours: %d\n", no_neighbours);
+        fprintf(stderr, "  Mean neighbour count: %.1f\n", mean_neighbours);
         EXPECT_EQ(no_neighbours, 0)
             << no_neighbours << " atoms have no spatial neighbours";
     }
 
     // --- Check 5: At least one residue has SS assignment ---
-    (void)fprintf(stderr, "\n--- Check 5: Secondary structure ---\n");
+    fprintf(stderr, "\n--- Check 5: Secondary structure ---\n");
     if (conf.HasResult<DsspResult>()) {
         const auto& dssp = conf.Result<DsspResult>();
         int n_helix = 0, n_sheet = 0, n_coil = 0, n_other = 0;
         for (size_t ri = 0; ri < protein->ResidueCount(); ++ri) {
-            char const ss = dssp.SecondaryStructure(ri);
-            if (ss == 'H' || ss == 'G' || ss == 'I') {
-                n_helix++;
-            } else if (ss == 'E' || ss == 'B') {
-                n_sheet++;
-            } else if (ss == 'C' || ss == ' ') {
-                n_coil++;
-            } else {
-                n_other++;
-            }
+            char ss = dssp.SecondaryStructure(ri);
+            if (ss == 'H' || ss == 'G' || ss == 'I') n_helix++;
+            else if (ss == 'E' || ss == 'B') n_sheet++;
+            else if (ss == 'C' || ss == ' ') n_coil++;
+            else n_other++;
         }
-        int const total_res = static_cast<int>(protein->ResidueCount());
-        double const pct_helix = 100.0 * n_helix / total_res;
-        double const pct_sheet = 100.0 * n_sheet / total_res;
-        double const pct_coil = 100.0 * (n_coil + n_other) / total_res;
+        int total_res = static_cast<int>(protein->ResidueCount());
+        double pct_helix = 100.0 * n_helix / total_res;
+        double pct_sheet = 100.0 * n_sheet / total_res;
+        double pct_coil  = 100.0 * (n_coil + n_other) / total_res;
 
-        (void)fprintf(stderr, "  Helix:  %d (%.1f%%)\n", n_helix, pct_helix);
-        (void)fprintf(stderr, "  Sheet:  %d (%.1f%%)\n", n_sheet, pct_sheet);
-        (void)fprintf(stderr, "  Coil:   %d (%.1f%%)\n", n_coil + n_other, pct_coil);
+        fprintf(stderr, "  Helix:  %d (%.1f%%)\n", n_helix, pct_helix);
+        fprintf(stderr, "  Sheet:  %d (%.1f%%)\n", n_sheet, pct_sheet);
+        fprintf(stderr, "  Coil:   %d (%.1f%%)\n", n_coil + n_other, pct_coil);
 
         EXPECT_GT(n_helix + n_sheet, 0)
             << "No residues have helix or sheet assignment";
     }
 
     // --- Check 6: APBS E-field is non-zero for most atoms ---
-    (void)fprintf(stderr, "\n--- Check 6: APBS E-field ---\n");
+    fprintf(stderr, "\n--- Check 6: APBS E-field ---\n");
     if (conf.HasResult<ApbsFieldResult>()) {
         const auto& apbs = conf.Result<ApbsFieldResult>();
         int nonzero_E = 0;
         double sum_E_mag = 0.0;
         for (size_t ai = 0; ai < conf.AtomCount(); ++ai) {
-            double const E_mag = apbs.ElectricFieldAt(ai).norm();
+            double E_mag = apbs.ElectricFieldAt(ai).norm();
             if (E_mag > 1e-10) nonzero_E++;
             sum_E_mag += E_mag;
         }
-        double const mean_E = sum_E_mag / static_cast<double>(conf.AtomCount());
-        (void)fprintf(stderr, "  Non-zero E-field: %d / %zu\n",
+        double mean_E = sum_E_mag / static_cast<double>(conf.AtomCount());
+        fprintf(stderr, "  Non-zero E-field: %d / %zu\n",
             nonzero_E, conf.AtomCount());
-        (void)fprintf(stderr, "  Mean |E|: %.6e\n", mean_E);
+        fprintf(stderr, "  Mean |E|: %.6e\n", mean_E);
 
         EXPECT_GT(nonzero_E, static_cast<int>(conf.AtomCount()) / 2)
             << "Too few atoms with non-zero E-field";
     }
 
     // --- Check 7: Graph distances are assigned ---
-    (void)fprintf(stderr, "\n--- Check 7: Graph distances ---\n");
+    fprintf(stderr, "\n--- Check 7: Graph distances ---\n");
     if (conf.HasResult<MolecularGraphResult>()) {
         int has_ring_dist = 0;
         int has_N_dist = 0;
@@ -381,11 +380,11 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
             if (conf.AtomAt(ai).graph_dist_N >= 0) has_N_dist++;
             if (conf.AtomAt(ai).graph_dist_O >= 0) has_O_dist++;
         }
-        (void)fprintf(stderr, "  ring dist assigned: %d / %zu\n",
+        fprintf(stderr, "  ring dist assigned: %d / %zu\n",
             has_ring_dist, conf.AtomCount());
-        (void)fprintf(stderr, "  N dist assigned:    %d / %zu\n",
+        fprintf(stderr, "  N dist assigned:    %d / %zu\n",
             has_N_dist, conf.AtomCount());
-        (void)fprintf(stderr, "  O dist assigned:    %d / %zu\n",
+        fprintf(stderr, "  O dist assigned:    %d / %zu\n",
             has_O_dist, conf.AtomCount());
 
         EXPECT_GT(has_ring_dist, 0)
@@ -393,7 +392,7 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     }
 
     // --- SUMMARY ---
-    (void)fprintf(stderr,
+    fprintf(stderr,
         "\n"
         "================================================================\n"
         "  PIPELINE SUMMARY\n"

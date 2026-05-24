@@ -73,7 +73,9 @@ void AIMNet2ChargeTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void AIMNet2ChargeTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer = tp.GetDenseBuffer<double>(std::type_index(typeid(AIMNet2ChargeTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<double>(std::type_index(
+            typeid(AIMNet2ChargeTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "AIMNet2ChargeTimeSeriesTrajectoryResult::WriteH5Group",
@@ -101,8 +103,8 @@ void AIMNet2ChargeTimeSeriesTrajectoryResult::WriteH5Group(
             flat[i * T + t] = buffer->At(i, t);
         }
     }
-    std::vector<std::size_t> const dims = {N, T};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("charge", space);
     ds.write_raw(flat.data());
 

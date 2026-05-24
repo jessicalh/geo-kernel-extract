@@ -55,9 +55,8 @@ void NamingRegistry::InitialiseStandardResidues() {
     };
 
     // Every standard name maps to itself
-    for (const auto& name : standard_residues_) {
+    for (const auto& name : standard_residues_)
         to_canonical_[name] = name;
-}
 
     // Variant -> canonical mappings (accumulated from all tool universes)
     to_canonical_["HID"] = "HIS";  to_canonical_["HIE"] = "HIS";
@@ -127,16 +126,15 @@ void NamingRegistry::InitialiseAmberContext() {
 // ============================================================================
 
 bool NamingRegistry::IsKnownResidueName(const std::string& name) const {
-    std::string const upper = ToUpper(Trim(name));
+    std::string upper = ToUpper(Trim(name));
     return to_canonical_.count(upper) > 0;
 }
 
 std::string NamingRegistry::ToCanonical(const std::string& name) const {
-    std::string const upper = ToUpper(Trim(name));
+    std::string upper = ToUpper(Trim(name));
     auto it = to_canonical_.find(upper);
-    if (it != to_canonical_.end()) {
+    if (it != to_canonical_.end())
         return it->second;
-}
     return "";  // unknown -- return empty, caller checks
 }
 
@@ -145,16 +143,14 @@ std::string NamingRegistry::ResolveForTool(const std::string& canonical,
                                             const std::string& variant) const {
     // Exact (canonical, context, variant) match
     auto it = context_map_.find({canonical, context, variant});
-    if (it != context_map_.end()) {
+    if (it != context_map_.end())
         return it->second;
-}
 
     // Fall back to default variant
     if (!variant.empty()) {
         it = context_map_.find({canonical, context, ""});
-        if (it != context_map_.end()) {
+        if (it != context_map_.end())
             return it->second;
-}
     }
 
     // No context-specific mapping: return canonical name unchanged
@@ -421,7 +417,7 @@ bool IsGammaMethyleneResidue(AminoAcid aa) {
 // here.)
 // ----------------------------------------------------------------------------
 
-bool NamingApplicator::IsCanonical(const NamingContext& ctx) {
+bool NamingApplicator::IsCanonical(const NamingContext& ctx) const {
     if (ctx.input_name.empty()) return true;  // empty -> idempotent
 
     // ------------------------------------------------------------------
@@ -608,7 +604,9 @@ NamingApplicator::Collect(const NamingContext& ctx) const {
 // exercised by a property test.
 // ----------------------------------------------------------------------------
 
-std::string NamingApplicator::Resolve(const std::vector<NamingApplication>& applications, const NamingContext& ctx) {
+std::string
+NamingApplicator::Resolve(const std::vector<NamingApplication>& applications,
+                          const NamingContext& ctx) const {
     // Branch 1: zero rules fired.
     //
     // Project decision: if the input is already canonical for this
@@ -690,7 +688,7 @@ std::string NamingApplicator::Resolve(const std::vector<NamingApplication>& appl
 NamingApplicator::FailUnresolved(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        std::string_view reason) {
+        std::string_view reason) const {
     std::ostringstream map_str;
     for (const NamingApplication& app : applications) {
         map_str << "\n    " << NamingSourceName(app.rule->source) << "/"
@@ -698,7 +696,7 @@ NamingApplicator::FailUnresolved(
     }
     if (applications.empty()) map_str << "\n    (empty)";
 
-    (void)std::fprintf(stderr,
+    std::fprintf(stderr,
         "FATAL: NamingApplicator: atom '%s' in residue %s seq %d chain '%s' "
         "under source %s: %.*s. "
         "Map:%s. "
@@ -745,7 +743,7 @@ NamingApplicator::FailUnresolved(
 NamingApplicator::FailValidator(
         const NamingContext& ctx,
         const std::vector<NamingApplication>& applications,
-        const std::string& chosen_output) {
+        const std::string& chosen_output) const {
     std::ostringstream map_str;
     for (const NamingApplication& app : applications) {
         map_str << "\n    " << NamingSourceName(app.rule->source) << "/"
@@ -754,7 +752,7 @@ NamingApplicator::FailValidator(
     }
     if (applications.empty()) map_str << "\n    (empty)";
 
-    (void)std::fprintf(stderr,
+    std::fprintf(stderr,
         "FATAL: NamingApplicator post-resolution validator: rule produced "
         "non-canonical output for resolved chemistry context. "
         "Original input '%s' resolved to '%s' (BAD); residue %s seq %d "
@@ -795,7 +793,7 @@ NamingApplicator::FailValidator(
 
 std::string NamingApplicator::Apply(const NamingContext& ctx) const {
     if (ctx.source == NamingSource::Unknown) {
-        (void)std::fprintf(stderr,
+        std::fprintf(stderr,
             "FATAL: NamingApplicator::Apply: ctx.source = "
             "NamingSource::Unknown is forbidden. Loaders must tag every "
             "atom with a real source (CifppPdbInput, "
@@ -810,7 +808,7 @@ std::string NamingApplicator::Apply(const NamingContext& ctx) const {
             ctx.chain_id.c_str());
         std::abort();
     }
-    std::vector<NamingApplication> const applications = Collect(ctx);
+    std::vector<NamingApplication> applications = Collect(ctx);
     std::string output = Resolve(applications, ctx);
 
     // Architectural contract (codex round-2, 2026-05-06): rules may
@@ -921,7 +919,7 @@ std::vector<std::string> NamingApplicator::ApplyResidue(
 // RecanonicaliseAfterProtonation guard.
 // ----------------------------------------------------------------------------
 
-void NamingApplicator::InstallRules() {  // NOLINT(readability-function-size)
+void NamingApplicator::InstallRules() {
     // ========================================================================
     // LYN protonation-variant H-on-NZ — sibling-aware shift to canonical
     // ========================================================================

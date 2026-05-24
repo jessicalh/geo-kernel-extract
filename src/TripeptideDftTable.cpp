@@ -89,11 +89,10 @@ public:
     void SkipArrayBody() {
         int depth = 1;
         while (depth > 0) {
-            JsonToken const t = Next();
-            if (t.type == JsonToken::ArrayStart) { ++depth;
-            } else if (t.type == JsonToken::ArrayEnd) { --depth;
-            } else if (t.type == JsonToken::Eof) { return;
-}
+            JsonToken t = Next();
+            if (t.type == JsonToken::ArrayStart) ++depth;
+            else if (t.type == JsonToken::ArrayEnd) --depth;
+            else if (t.type == JsonToken::Eof) return;
         }
     }
 
@@ -107,11 +106,11 @@ private:
 std::array<double, 5> ParseT2Array(JsonLexer& lex) {
     std::array<double, 5> out = {};
     for (int i = 0; i < 5; ++i) {
-        JsonToken const v = lex.Next();
+        JsonToken v = lex.Next();
         if (v.type == JsonToken::Number) out[i] = v.num;
         if (i < 4) lex.Next();   // consume comma
     }
-    JsonToken const end = lex.Next();
+    JsonToken end = lex.Next();
     (void)end;  // expect ArrayEnd
     return out;
 }
@@ -131,27 +130,26 @@ std::vector<GeometryEntry> ParseGeometryJson(const std::string& json_text) {
     lex.Next();  // [
 
     while (true) {
-        JsonToken const t = lex.Next();
+        JsonToken t = lex.Next();
         if (t.type == JsonToken::ArrayEnd || t.type == JsonToken::Eof) break;
         if (t.type != JsonToken::ObjStart) continue;
 
         GeometryEntry g;
         while (true) {
-            JsonToken const key = lex.Next();
+            JsonToken key = lex.Next();
             if (key.type == JsonToken::ObjEnd) break;
             lex.Next();  // :
-            JsonToken const val = lex.Next();
-            if      (key.text == "atom_idx") { g.atom_idx = static_cast<int>(val.num);
-            } else if (key.text == "element") {  g.element  = ElementFromSymbol(val.text);
-            } else if (key.text == "x") {        g.pos.x()  = val.num;
-            } else if (key.text == "y") {        g.pos.y()  = val.num;
-            } else if (key.text == "z") {        g.pos.z()  = val.num;
-}
-            JsonToken const sep = lex.Next();
+            JsonToken val = lex.Next();
+            if      (key.text == "atom_idx") g.atom_idx = static_cast<int>(val.num);
+            else if (key.text == "element")  g.element  = ElementFromSymbol(val.text);
+            else if (key.text == "x")        g.pos.x()  = val.num;
+            else if (key.text == "y")        g.pos.y()  = val.num;
+            else if (key.text == "z")        g.pos.z()  = val.num;
+            JsonToken sep = lex.Next();
             if (sep.type == JsonToken::ObjEnd) break;
         }
         out.push_back(std::move(g));
-        JsonToken const sep = lex.Next();
+        JsonToken sep = lex.Next();
         if (sep.type == JsonToken::ArrayEnd || sep.type == JsonToken::Eof) break;
     }
     return out;
@@ -176,30 +174,30 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
     lex.Next();  // [
 
     while (true) {
-        JsonToken const t = lex.Next();
+        JsonToken t = lex.Next();
         if (t.type == JsonToken::ArrayEnd || t.type == JsonToken::Eof) break;
         if (t.type != JsonToken::ObjStart) continue;
 
         TensorEntry te;
         while (true) {
-            JsonToken const key = lex.Next();
+            JsonToken key = lex.Next();
             if (key.type == JsonToken::ObjEnd) break;
             lex.Next();  // :
 
             if (key.text == "atom_idx") {
-                JsonToken const v = lex.Next();
+                JsonToken v = lex.Next();
                 te.atom_idx = static_cast<int>(v.num);
             }
             else if (key.text == "element") {
-                JsonToken const v = lex.Next();
+                JsonToken v = lex.Next();
                 te.element = ElementFromSymbol(v.text);
             }
             else if (key.text == "isotropic") {
-                JsonToken const v = lex.Next();
+                JsonToken v = lex.Next();
                 te.isotropic = v.num;
             }
             else if (key.text == "anisotropy") {
-                JsonToken const v = lex.Next();
+                JsonToken v = lex.Next();
                 te.anisotropy = v.num;
             }
             else if (key.text == "tensor_3x3") {
@@ -207,7 +205,7 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
                 for (int row = 0; row < 3; ++row) {
                     lex.Next();  // inner [
                     for (int col = 0; col < 3; ++col) {
-                        JsonToken const v = lex.Next();
+                        JsonToken v = lex.Next();
                         te.tensor(row, col) = v.num;
                         if (col < 2) lex.Next();  // comma
                     }
@@ -222,15 +220,15 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
             }
             else {
                 // Skip eigenvalues (length 3 array) or any unknown key.
-                JsonToken const v = lex.Next();
+                JsonToken v = lex.Next();
                 if (v.type == JsonToken::ArrayStart) lex.SkipArrayBody();
             }
 
-            JsonToken const sep = lex.Next();
+            JsonToken sep = lex.Next();
             if (sep.type == JsonToken::ObjEnd) break;
         }
         out.push_back(std::move(te));
-        JsonToken const sep = lex.Next();
+        JsonToken sep = lex.Next();
         if (sep.type == JsonToken::ArrayEnd || sep.type == JsonToken::Eof) break;
     }
     return out;
@@ -393,7 +391,7 @@ static std::string RedactDsnForLog(const std::string& dsn) {
     char* err = nullptr;
     PQconninfoOption* opts = PQconninfoParse(dsn.c_str(), &err);
     if (!opts) {
-        std::string const msg = err ? err : "unknown libpq parse error";
+        std::string msg = err ? err : "unknown libpq parse error";
         if (err) PQfreemem(err);
         return "<dsn redaction failed: " + msg + ">";
     }
@@ -404,7 +402,7 @@ static std::string RedactDsnForLog(const std::string& dsn) {
         // libpq sets `val` to NULL for unset options. We only include
         // those the user provided. Output key in lowercase canonical
         // form; libpq emits all known options lowercased already.
-        std::string const key = o->keyword;
+        std::string key = o->keyword;
         const std::string val = kSensitive.count(key)
             ? std::string("<redacted>")
             : std::string(o->val);
@@ -416,9 +414,10 @@ static std::string RedactDsnForLog(const std::string& dsn) {
 }
 
 
-TripeptideDftTable::TripeptideDftTable(const std::string& conn_str) : conn_(PQconnectdb(conn_str.c_str())) {
+TripeptideDftTable::TripeptideDftTable(const std::string& conn_str) {
+    conn_ = PQconnectdb(conn_str.c_str());
     if (PQstatus(conn_) != CONNECTION_OK) {
-        std::string const err = PQerrorMessage(conn_);
+        std::string err = PQerrorMessage(conn_);
         PQfinish(conn_);
         conn_ = nullptr;
         throw std::runtime_error(
@@ -505,7 +504,7 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
 
     PGresult* res = PQexec(conn_, query.c_str());
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-        std::string const err = PQerrorMessage(conn_);
+        std::string err = PQerrorMessage(conn_);
         PQclear(res);
         throw std::runtime_error(
             "TripeptideDftTable::QueryNearest: " + err);

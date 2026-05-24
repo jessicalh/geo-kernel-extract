@@ -61,9 +61,8 @@ struct FakeArgv {
 
     FakeArgv(std::initializer_list<std::string> args)
         : storage(args) {
-        for (auto& s : storage) {
+        for (auto& s : storage)
             ptrs.push_back(s.data());
-}
     }
 
     int argc() const { return static_cast<int>(ptrs.size()); }
@@ -175,7 +174,7 @@ TEST(JobSpecParse, NoOutputIsOk) {
 // ============================================================================
 
 TEST(JobSpecValidate, PdbValid) {
-    FakeArgv a{"test", "--pdb", DATA + "/external/1UBQ.pdb",
+    FakeArgv a{"test", "--pdb", (DATA + "/external/1UBQ.pdb").c_str(),
                "--output", "/tmp/jobspec_test_pdb"};
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -193,8 +192,8 @@ TEST(JobSpecValidate, PdbMissingFile) {
 }
 
 TEST(JobSpecValidate, OrcaValid) {
-    std::string const root = DATA + "/orca/A0A7C5FAR6_WT";
-    FakeArgv a{"test", "--orca", "--root", root,
+    std::string root = DATA + "/orca/A0A7C5FAR6_WT";
+    FakeArgv a{"test", "--orca", "--root", root.c_str(),
                "--output", "/tmp/jobspec_test_orca"};
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -214,9 +213,9 @@ TEST(JobSpecValidate, OrcaMissingPrmtopReportsError) {
 }
 
 TEST(JobSpecValidate, MutantValid) {
-    std::string const wt  = DATA + "/orca/A0A7C5FAR6_WT";
-    std::string const ala = DATA + "/orca/A0A7C5FAR6_ALA";
-    FakeArgv a{"test", "--mutant", "--wt", wt, "--ala", ala,
+    std::string wt  = DATA + "/orca/A0A7C5FAR6_WT";
+    std::string ala = DATA + "/orca/A0A7C5FAR6_ALA";
+    FakeArgv a{"test", "--mutant", "--wt", wt.c_str(), "--ala", ala.c_str(),
                "--output", "/tmp/jobspec_test_mutant"};
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -239,9 +238,9 @@ class JobSpecE2E : public ::testing::Test {
 
 
 TEST_F(JobSpecE2E, PdbEndToEnd) {
-    std::string const out = "/tmp/jobspec_e2e_pdb";
-    FakeArgv a{"test", "--pdb", DATA + "/external/1UBQ.pdb",
-               "--output", out};
+    std::string out = "/tmp/jobspec_e2e_pdb";
+    FakeArgv a{"test", "--pdb", (DATA + "/external/1UBQ.pdb").c_str(),
+               "--output", out.c_str()};
 
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -263,16 +262,16 @@ TEST_F(JobSpecE2E, PdbEndToEnd) {
 
     // Write features
     fs::create_directories(out);
-    int const arrays = ConformationResult::WriteAllFeatures(conf, out);
+    int arrays = ConformationResult::WriteAllFeatures(conf, out);
     EXPECT_GT(arrays, 0);
 }
 
 
 TEST_F(JobSpecE2E, ProtonatedPdbEndToEnd) {
-    std::string const out = "/tmp/jobspec_e2e_protonated";
+    std::string out = "/tmp/jobspec_e2e_protonated";
     FakeArgv a{"test", "--protonated-pdb",
-               DATA + "/1ubq_protonated.pdb",
-               "--output", out};
+               (DATA + "/1ubq_protonated.pdb").c_str(),
+               "--output", out.c_str()};
 
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -290,16 +289,16 @@ TEST_F(JobSpecE2E, ProtonatedPdbEndToEnd) {
     EXPECT_TRUE(result.Ok()) << result.error;
 
     fs::create_directories(out);
-    int const arrays = ConformationResult::WriteAllFeatures(conf, out);
+    int arrays = ConformationResult::WriteAllFeatures(conf, out);
     EXPECT_GT(arrays, 0);
 }
 
 
 TEST_F(JobSpecE2E, OrcaEndToEnd) {
-    std::string const root = DATA + "/orca/A0A7C5FAR6_WT";
-    std::string const out = "/tmp/jobspec_e2e_orca";
-    FakeArgv a{"test", "--orca", "--root", root,
-               "--output", out};
+    std::string root = DATA + "/orca/A0A7C5FAR6_WT";
+    std::string out = "/tmp/jobspec_e2e_orca";
+    FakeArgv a{"test", "--orca", "--root", root.c_str(),
+               "--output", out.c_str()};
 
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -313,25 +312,24 @@ TEST_F(JobSpecE2E, OrcaEndToEnd) {
     RunOptions opts;
     opts.charge_source = build.charges.get();
     opts.net_charge = build.net_charge;
-    if (!spec.orca_files.nmr_out_path.empty()) {
+    if (!spec.orca_files.nmr_out_path.empty())
         opts.orca_nmr_path = spec.orca_files.nmr_out_path;
-}
 
     auto result = OperationRunner::Run(conf, opts);
     EXPECT_TRUE(result.Ok()) << result.error;
 
     fs::create_directories(out);
-    int const arrays = ConformationResult::WriteAllFeatures(conf, out);
+    int arrays = ConformationResult::WriteAllFeatures(conf, out);
     EXPECT_GT(arrays, 0);
 }
 
 
 TEST_F(JobSpecE2E, MutantEndToEnd) {
-    std::string const wt_root  = DATA + "/orca/A0A7C5FAR6_WT";
-    std::string const ala_root = DATA + "/orca/A0A7C5FAR6_ALA";
-    std::string const out = "/tmp/jobspec_e2e_mutant";
-    FakeArgv a{"test", "--mutant", "--wt", wt_root,
-               "--ala", ala_root, "--output", out};
+    std::string wt_root  = DATA + "/orca/A0A7C5FAR6_WT";
+    std::string ala_root = DATA + "/orca/A0A7C5FAR6_ALA";
+    std::string out = "/tmp/jobspec_e2e_mutant";
+    FakeArgv a{"test", "--mutant", "--wt", wt_root.c_str(),
+               "--ala", ala_root.c_str(), "--output", out.c_str()};
 
     auto spec = ParseJobSpec(a.argc(), a.argv());
     ASSERT_TRUE(spec.Ok());
@@ -348,23 +346,21 @@ TEST_F(JobSpecE2E, MutantEndToEnd) {
     RunOptions wt_opts;
     wt_opts.charge_source = wt_build.charges.get();
     wt_opts.net_charge = wt_build.net_charge;
-    if (!spec.wt_files.nmr_out_path.empty()) {
+    if (!spec.wt_files.nmr_out_path.empty())
         wt_opts.orca_nmr_path = spec.wt_files.nmr_out_path;
-}
 
     RunOptions ala_opts;
     ala_opts.charge_source = ala_build.charges.get();
     ala_opts.net_charge = ala_build.net_charge;
-    if (!spec.ala_files.nmr_out_path.empty()) {
+    if (!spec.ala_files.nmr_out_path.empty())
         ala_opts.orca_nmr_path = spec.ala_files.nmr_out_path;
-}
 
     auto result = OperationRunner::RunMutantComparison(
         wt_conf, wt_opts, ala_conf, ala_opts);
     EXPECT_TRUE(result.Ok()) << result.error;
 
     fs::create_directories(out);
-    int const arrays = ConformationResult::WriteAllFeatures(wt_conf, out);
+    int arrays = ConformationResult::WriteAllFeatures(wt_conf, out);
     EXPECT_GT(arrays, 0);
 }
 

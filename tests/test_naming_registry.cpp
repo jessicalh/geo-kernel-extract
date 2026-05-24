@@ -248,7 +248,7 @@ TEST(NamingApplicatorGly, CanonicalGlyHa2Ha3PassThrough) {
 TEST(NamingApplicatorPdb2gmxRtp, ProHd1Hd2ShiftsToHd2Hd3) {
     const auto& app = GlobalNamingApplicator();
     // PRO with siblings {HD1, HD2, no HD3} — pdb2gmx-AMBER-RTP shape.
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD1", "HD2"};
@@ -267,7 +267,7 @@ TEST(NamingApplicatorPdb2gmxRtp, ProCanonicalHd2Hd3PassThrough) {
     const auto& app = GlobalNamingApplicator();
     // Canonical PRO siblings include HD2+HD3 (no HD1) — predicate
     // should not fire.
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD2", "HD3"};
@@ -280,7 +280,7 @@ TEST(NamingApplicatorPdb2gmxRtp, ProCanonicalHd2Hd3PassThrough) {
 TEST(NamingApplicatorPdb2gmxRtp, IleHdMethylShifts) {
     const auto& app = GlobalNamingApplicator();
     // ILE with siblings {HD1, HD2, HD3} but NOT HD11/HD12/HD13.
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB",
                                        "CG1", "HG12", "HG13",
                                        "CG2", "HG21", "HG22", "HG23",
@@ -302,7 +302,7 @@ TEST(NamingApplicatorPdb2gmxRtp, IleHdMethylShifts) {
 TEST(NamingApplicatorPdb2gmxRtp, IleHg11Hg12Shift) {
     const auto& app = GlobalNamingApplicator();
     // ILE γ1-methylene shape: HG11+HG12 instead of canonical HG12+HG13.
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB",
                                        "CG1", "HG11", "HG12",
                                        "CG2", "HG21", "HG22", "HG23",
@@ -318,7 +318,7 @@ TEST(NamingApplicatorPdb2gmxRtp, IleHg11Hg12Shift) {
 TEST(NamingApplicatorPdb2gmxRtp, LysDeltaEpsilonMethyleneShifts) {
     const auto& app = GlobalNamingApplicator();
     // LYS pdb2gmx siblings: HD1+HD2 (no HD3) and HE1+HE2 (no HE3).
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD1", "HD2",
@@ -340,7 +340,7 @@ TEST(NamingApplicatorPdb2gmxRtp, LysDeltaEpsilonMethyleneShifts) {
 
 TEST(NamingApplicatorPdb2gmxRtp, ArgDeltaMethyleneShift) {
     const auto& app = GlobalNamingApplicator();
-    std::set<std::string> const siblings = {"N", "CA", "HA", "C", "O",
+    std::set<std::string> siblings = {"N", "CA", "HA", "C", "O",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD1", "HD2",
@@ -362,11 +362,11 @@ TEST(NamingApplicatorPdb2gmxRtp, ArgDeltaMethyleneShift) {
 
 TEST(NamingApplicatorSourceAware, IleHd1UnderDifferentSources) {
     const auto& app = GlobalNamingApplicator();
-    std::set<std::string> const pdb2gmx_siblings = {"CB", "HB",
+    std::set<std::string> pdb2gmx_siblings = {"CB", "HB",
                                                 "CG1", "HG12", "HG13",
                                                 "CG2", "HG21", "HG22", "HG23",
                                                 "CD", "HD1", "HD2", "HD3"};
-    std::set<std::string> const canonical_siblings = {"CB", "HB",
+    std::set<std::string> canonical_siblings = {"CB", "HB",
                                                   "CG1", "HG12", "HG13",
                                                   "CG2", "HG21", "HG22", "HG23",
                                                   "CD1", "HD11", "HD12", "HD13"};
@@ -404,9 +404,9 @@ TEST(NamingApplicatorIdempotency, CanonicalChainAtomsPassThrough) {
 
     for (const AminoAcidType& aatype : AllAminoAcidTypes()) {
         if (aatype.index == AminoAcid::Unknown) continue;
-        std::set<std::string> const siblings = CanonicalSiblingSet(aatype.index);
+        std::set<std::string> siblings = CanonicalSiblingSet(aatype.index);
         for (const auto& a : aatype.atoms) {
-            for (NamingSource const src : sources) {
+            for (NamingSource src : sources) {
                 auto ctx = MakeContext(a.name, aatype.index, src, siblings);
                 const std::string out = app.Apply(ctx);
                 EXPECT_EQ(out, a.name)
@@ -481,7 +481,7 @@ TEST(NamingApplicatorVariantAware, HipAcceptsHd1AndHe2) {
     const auto& app = GlobalNamingApplicator();
     // HIP (variant_index = 2): both ND1 and NE2 are protonated. HD1 and
     // HE2 are both canonical.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3", "CG",
                                        "ND1", "HD1", "CD2", "HD2",
                                        "CE1", "HE1", "NE2", "HE2"};
@@ -502,7 +502,7 @@ TEST(NamingApplicatorVariantAware, HipAcceptsHd1AndHe2) {
 TEST(NamingApplicatorVariantAware, AshAcceptsHd2) {
     const auto& app = GlobalNamingApplicator();
     // ASH (variant_index = 0 for ASP): OD2 protonated. HD2 is canonical.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "OD1", "OD2", "HD2"};
     auto ctx = MakeContext("HD2", AminoAcid::ASP,
@@ -514,7 +514,7 @@ TEST(NamingApplicatorVariantAware, AshAcceptsHd2) {
 TEST(NamingApplicatorVariantAware, GlhAcceptsHe2) {
     const auto& app = GlobalNamingApplicator();
     // GLH (variant_index = 0 for GLU): OE2 protonated. HE2 is canonical.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "OE1", "OE2", "HE2"};
@@ -529,7 +529,7 @@ TEST(NamingApplicatorVariantAwareDeathTest, HieRejectsHd1) {
     // HIE (variant_index = 1): NE2 protonated, ND1 not. HD1 is NOT
     // canonical for HIE; no rule fires; the canonicality oracle returns
     // false; FailUnresolved aborts.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3", "CG",
                                        "ND1", "CD2", "HD2",
                                        "CE1", "HE1", "NE2", "HE2",
@@ -563,7 +563,7 @@ TEST(NamingApplicatorVariantAwareDeathTest, HieRejectsHd1) {
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, CyxRejectsHg) {
     const auto& app = GlobalNamingApplicator();
     // CYX (variant_index = 0): Sγ is in a disulfide, no HG on it.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "SG", "HG"};  // illegal HG on CYX
     auto ctx = MakeContext("HG", AminoAcid::CYS,
@@ -576,7 +576,7 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, CyxRejectsHg) {
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, CymRejectsHg) {
     const auto& app = GlobalNamingApplicator();
     // CYM (variant_index = 1): thiolate, no HG.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "SG", "HG"};  // illegal HG on CYM
     auto ctx = MakeContext("HG", AminoAcid::CYS,
@@ -608,7 +608,7 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
     // safety-net path with a deliberately misbehaving custom rule. Each
     // test asserts ONE protection layer; if either regresses, exactly
     // one test fails, telling us which layer broke.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD2", "HD3",
@@ -624,7 +624,7 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, LynRejectsHz1) {
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, TymRejectsHh) {
     const auto& app = GlobalNamingApplicator();
     // TYM (variant_index = 0): deprotonated phenolate; no HH on Oη.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3", "CG",
                                        "CD1", "HD1", "CD2", "HD2",
                                        "CE1", "HE1", "CE2", "HE2",
@@ -639,7 +639,7 @@ TEST(NamingApplicatorVariantAwareDeletionDeathTest, TymRejectsHh) {
 TEST(NamingApplicatorVariantAwareDeletionDeathTest, ArnRejectsHe) {
     const auto& app = GlobalNamingApplicator();
     // ARN (variant_index = 0): deprotonated guanidinium; no HE on Nε.
-    std::set<std::string> const siblings = {"N", "H", "CA", "HA",
+    std::set<std::string> siblings = {"N", "H", "CA", "HA",
                                        "CB", "HB2", "HB3",
                                        "CG", "HG2", "HG3",
                                        "CD", "HD2", "HD3",
@@ -890,7 +890,7 @@ TEST_F(NamingApplicatorDeathTest, ValidatorCatchesRuleProducingDeletionDeniedOut
         },
         [](const NamingContext&) { return std::string("HG"); },
     });
-    NamingApplicator const app =
+    NamingApplicator app =
         nmr::test::NamingApplicatorTestAccess::MakeWithRules(std::move(rules));
 
     NamingContext ctx;
@@ -924,7 +924,7 @@ TEST(NamingApplicatorPostResolutionValidator, ValidatorAllowsCanonicalOutput) {
         },
         [](const NamingContext&) { return std::string("CA"); },
     });
-    NamingApplicator const app =
+    NamingApplicator app =
         nmr::test::NamingApplicatorTestAccess::MakeWithRules(std::move(rules));
 
     auto ctx = MakeContext("XALPHA", AminoAcid::ALA,
@@ -1015,16 +1015,16 @@ TEST(NamingApplicatorApplyResidue, LynPreMarkleyShiftWholeResidue) {
         "N", "H", "CA", "HA", "CB", "HB2", "HB3",
         "CG", "HG2", "HG3", "CD", "HD2", "HD3",
         "CE", "HE2", "HE3", "NZ", "HZ1", "HZ2"};
-    std::vector<std::string> const parent_names(input_names.size());
+    std::vector<std::string> parent_names(input_names.size());
 
-    const auto outs = app.ApplyResidue(input_names,
-                                       parent_names,
-                                       AminoAcid::LYS,
-                                       /*variant_index=*/-1,
-                                       TerminalState::Internal,
-                                       NamingSource::CifppPdbInput,
-                                       /*residue_sequence_number=*/28,
-                                       "A");
+    const auto outs = app.ApplyResidue(
+        input_names, parent_names,
+        AminoAcid::LYS,
+        /*variant_index=*/-1,
+        TerminalState::Internal,
+        NamingSource::CifppPdbInput,
+        /*sequence_number=*/28,
+        "A");
     ASSERT_EQ(outs.size(), input_names.size());
 
     // LYN HZ shift fires (AmberFf14SBCanonical source-agnostic):
@@ -1034,9 +1034,8 @@ TEST(NamingApplicatorApplyResidue, LynPreMarkleyShiftWholeResidue) {
 
     // All other (canonical) atoms pass through unchanged.
     auto find = [&](const std::string& n) -> std::string {
-        for (size_t i = 0; i < input_names.size(); ++i) {
+        for (size_t i = 0; i < input_names.size(); ++i)
             if (input_names[i] == n) return outs[i];
-}
         return "<missing>";
     };
     EXPECT_EQ(find("HD2"), "HD2");
@@ -1057,22 +1056,21 @@ TEST(NamingApplicatorApplyResidue, IleSnapshotIsIndependentOfPerAtomOrder) {
         "CG1", "HG11", "HG12",
         "CG2", "HG21", "HG22", "HG23",
         "CD", "HD1", "HD2", "HD3"};
-    std::vector<std::string> const parent_names(input_names.size());
+    std::vector<std::string> parent_names(input_names.size());
 
-    const auto outs = app.ApplyResidue(input_names,
-                                       parent_names,
-                                       AminoAcid::ILE,
-                                       /*variant_index=*/-1,
-                                       TerminalState::Internal,
-                                       NamingSource::Pdb2gmxAmberRtpDeviation,
-                                       /*residue_sequence_number=*/1,
-                                       "A");
+    const auto outs = app.ApplyResidue(
+        input_names, parent_names,
+        AminoAcid::ILE,
+        /*variant_index=*/-1,
+        TerminalState::Internal,
+        NamingSource::Pdb2gmxAmberRtpDeviation,
+        /*sequence_number=*/1,
+        "A");
     ASSERT_EQ(outs.size(), input_names.size());
 
     auto find = [&](const std::string& n) -> std::string {
-        for (size_t i = 0; i < input_names.size(); ++i) {
+        for (size_t i = 0; i < input_names.size(); ++i)
             if (input_names[i] == n) return outs[i];
-}
         return "<missing>";
     };
     EXPECT_EQ(find("CD"),  "CD1");

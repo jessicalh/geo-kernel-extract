@@ -125,8 +125,9 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Finalize(
 void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer =
-        tp.GetDenseBuffer<Vec3>(std::type_index(typeid(TripeptideBackboneResidualVecTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<Vec3>(std::type_index(
+            typeid(TripeptideBackboneResidualVecTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group",
@@ -139,9 +140,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
     // ran in ≥1 frame. Downstream readers MUST tolerate group absence
     // for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
-    for (auto v : source_present_per_frame_) {
+    for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
-}
     if (source_present_count == 0) {
         OperationLog::Warn(
             "TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group",
@@ -193,8 +193,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         }
     }
 
-    std::vector<std::size_t> const dims = {N, T, static_cast<std::size_t>(3)};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T, std::size_t(3)};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
     ds.write_raw(flat.data());
 

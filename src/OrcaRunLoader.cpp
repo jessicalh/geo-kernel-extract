@@ -6,13 +6,10 @@
 #include "ForceFieldChargeTable.h"
 #include "OperationLog.h"
 
-#include <cerrno>
-#include <climits>
-#include <cstdio>
-#include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <filesystem>
+#include <cstdio>
 
 namespace fs = std::filesystem;
 
@@ -37,8 +34,7 @@ static std::vector<std::string> ReadPrmtopStrings(
     if (!in.is_open()) return values;
 
     std::string line;
-    bool in_section = false;
-    bool found_format = false;
+    bool in_section = false, found_format = false;
 
     while (std::getline(in, line)) {
         if (line.find("%FLAG " + flag_name) != std::string::npos) {
@@ -51,12 +47,11 @@ static std::vector<std::string> ReadPrmtopStrings(
             if (line.find("%FLAG") != std::string::npos) break;
             for (size_t pos = 0; pos + static_cast<size_t>(field_width) <= line.size();
                  pos += field_width) {
-                std::string const s = line.substr(pos, field_width);
-                size_t const start = s.find_first_not_of(' ');
-                size_t const end = s.find_last_not_of(' ');
-                if (start != std::string::npos) {
+                std::string s = line.substr(pos, field_width);
+                size_t start = s.find_first_not_of(' ');
+                size_t end = s.find_last_not_of(' ');
+                if (start != std::string::npos)
                     values.push_back(s.substr(start, end - start + 1));
-}
             }
         }
     }
@@ -70,8 +65,7 @@ static std::vector<int> ReadPrmtopInts(
     if (!in.is_open()) return values;
 
     std::string line;
-    bool in_section = false;
-    bool found_format = false;
+    bool in_section = false, found_format = false;
 
     while (std::getline(in, line)) {
         if (line.find("%FLAG " + flag_name) != std::string::npos) {
@@ -95,7 +89,7 @@ static std::vector<int> ReadPrmtopInts(
 // XYZ reader (PDB LOADING BOUNDARY)
 // ============================================================================
 
-struct XyzAtom { std::string element; double x = 0.0, y = 0.0, z = 0.0; };
+struct XyzAtom { std::string element; double x, y, z; };
 
 static std::vector<XyzAtom> ReadXyz(const std::string& path) {
     std::vector<XyzAtom> atoms;
@@ -105,37 +99,20 @@ static std::vector<XyzAtom> ReadXyz(const std::string& path) {
     std::string line;
     if (!std::getline(in, line)) return atoms;
     int n = 0;
-    {
-        char* end = nullptr;
-        errno = 0;
-        const long parsed = std::strtol(line.c_str(), &end, 10);
-        if (errno != 0 || end == line.c_str() || parsed <= 0 || parsed > INT_MAX) {
-            OperationLog::Warn("OrcaRunLoader::ReadXyz", "malformed atom-count header in " + path);
-            return atoms;
-        }
-        n = static_cast<int>(parsed);
-    }
+    std::sscanf(line.c_str(), "%d", &n);
+    if (n <= 0) return atoms;
 
     std::getline(in, line);  // title
 
     atoms.reserve(n);
     while (std::getline(in, line) && static_cast<int>(atoms.size()) < n) {
         XyzAtom a;
-        // istringstream parses "Elem x y z" as 4 fields; the stream's
-        // numeric extraction reports failure via operator>>, satisfying
-        // cert-err34-c (no return-value loss like sscanf). Reject and
-        // continue on parse failure; an under-filled `atoms` vector
-        // signals to the caller that the XYZ was truncated/corrupt.
-        std::istringstream iss(line);
-        std::string elem_tok;
-        if (!(iss >> elem_tok >> a.x >> a.y >> a.z)) {
-            continue;
+        char elem[4] = {};
+        if (std::sscanf(line.c_str(), " %3s %lf %lf %lf",
+                         elem, &a.x, &a.y, &a.z) == 4) {
+            a.element = elem;
+            atoms.push_back(a);
         }
-        if (elem_tok.size() > 3) {
-            continue;
-        }
-        a.element = elem_tok;
-        atoms.push_back(a);
     }
     return atoms;
 }
@@ -156,7 +133,7 @@ static Element ElementFromAtomicNumber(int an) {
 // LoadOrcaRun: WITH prmtop path
 // ============================================================================
 
-static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(readability-function-size)
+static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
                                       const std::vector<XyzAtom>& xyz) {
     OrcaLoadInternal result;
 
@@ -170,8 +147,8 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
         return result;
     }
 
-    size_t const n_atoms = atom_names.size();
-    size_t const n_residues = res_labels.size();
+    size_t n_atoms = atom_names.size();
+    size_t n_residues = res_labels.size();
 
     if (xyz.size() != n_atoms) {
         result.error = "XYZ has " + std::to_string(xyz.size()) +
@@ -199,7 +176,7 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
         Residue res;
 
         // PDB LOADING BOUNDARY: AMBER residue name → canonical
-        std::string const canonical = registry.ToCanonical(res_labels[ri]);
+        std::string canonical = registry.ToCanonical(res_labels[ri]);
         if (canonical.empty()) {
             result.error = "unknown residue: " + res_labels[ri] +
                            " at position " + std::to_string(ri);
@@ -290,18 +267,17 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
         atom->pdb_atom_name = per_residue_canonical[resolved_ri]
                                   [per_residue_cursor[resolved_ri]++];
 
-        if (ai < atomic_numbers.size()) {
+        if (ai < atomic_numbers.size())
             atom->element = ElementFromAtomicNumber(atomic_numbers[ai]);
-        } else {
+        else
             atom->element = ElementFromSymbol(xyz[ai].element);
-}
 
         atom->residue_index = resolved_ri;
 
         // H parent: in tleap ordering, H follows its parent heavy atom
         if (atom->element == Element::H && ai > 0) {
             for (size_t prev = ai; prev > 0; --prev) {
-                size_t const pi = prev - 1;
+                size_t pi = prev - 1;
                 if (pi < atomic_numbers.size() && atomic_numbers[pi] != 1) {
                     atom->parent_atom_index = pi;
                     break;
@@ -309,7 +285,7 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
             }
         }
 
-        size_t const idx = protein->AddAtom(std::move(atom));
+        size_t idx = protein->AddAtom(std::move(atom));
 
         // Update residue atom_indices and backbone cache
         Residue& res = protein->MutableResidueAt(
@@ -325,25 +301,23 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
         // NOT aliased to H -- it is a distinct N-terminal cap atom.
         // HA2 stays because Gly's backbone canonical IS HA2/HA3.
         const std::string& name = protein->AtomAt(idx).pdb_atom_name;
-        if (name == "N" && res.N == Residue::NONE) { res.N = idx;
-        } else if (name == "CA" && res.CA == Residue::NONE) { res.CA = idx;
-        } else if (name == "C" && res.C == Residue::NONE &&
+        if (name == "N" && res.N == Residue::NONE) res.N = idx;
+        else if (name == "CA" && res.CA == Residue::NONE) res.CA = idx;
+        else if (name == "C" && res.C == Residue::NONE &&
                  protein->AtomAt(idx).element == Element::C &&
-                 res.CA != Residue::NONE) { res.C = idx;
-        } else if (name == "O" && res.O == Residue::NONE) { res.O = idx;
-        } else if (name == "H" && res.H == Residue::NONE) { res.H = idx;
-        } else if ((name == "HA" || name == "HA2") &&
-                 res.HA == Residue::NONE) { res.HA = idx;
-        } else if (name == "CB" && res.CB == Residue::NONE) { res.CB = idx;
-}
+                 res.CA != Residue::NONE) res.C = idx;
+        else if (name == "O" && res.O == Residue::NONE) res.O = idx;
+        else if (name == "H" && res.H == Residue::NONE) res.H = idx;
+        else if ((name == "HA" || name == "HA2") &&
+                 res.HA == Residue::NONE) res.HA = idx;
+        else if (name == "CB" && res.CB == Residue::NONE) res.CB = idx;
     }
 
     // Build positions and create conformation
     std::vector<Vec3> positions;
     positions.reserve(n_atoms);
-    for (const auto& a : xyz) {
-        positions.emplace_back(a.x, a.y, a.z);
-}
+    for (const auto& a : xyz)
+        positions.push_back(Vec3(a.x, a.y, a.z));
 
     // Set build context
     auto ctx = std::make_unique<ProteinBuildContext>();
@@ -375,7 +349,7 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,  // NOLINT(rea
 BuildResult BuildFromOrca(const OrcaRunFiles& files) {
     BuildResult result;
 
-    OperationLog::Scope const scope("BuildFromOrca",
+    OperationLog::Scope scope("BuildFromOrca",
         "pdb=" + files.pdb_path + " xyz=" + files.xyz_path);
 
     if (!fs::exists(files.xyz_path)) {
@@ -424,7 +398,7 @@ BuildResult BuildFromOrca(const OrcaRunFiles& files) {
         result.error = "charge preparation failed: " + charge_err;
         return result;
     }
-    double const charge_sum = result.protein->ForceFieldCharges().TotalCharge();
+    double charge_sum = result.protein->ForceFieldCharges().TotalCharge();
     result.net_charge = static_cast<int>(
         charge_sum + (charge_sum > 0 ? 0.5 : -0.5));
 

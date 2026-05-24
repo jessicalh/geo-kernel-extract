@@ -69,7 +69,7 @@ public:
 
     // Called once at startup. Reads + parses atom_nom.tbl. Subsequent
     // calls Reset()+Configure(); same idiom as FramePdbEmitter.
-    static void Configure(const Config& config);
+    static void Configure(Config config);
 
     // Emit the structured NPY for one protein. Returns the number of
     // arrays written (0 when inert or substrate empty; 1 when emission

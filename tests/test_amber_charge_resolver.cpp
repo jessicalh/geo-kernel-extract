@@ -37,14 +37,14 @@ std::unique_ptr<Protein> BuildOneResidueProtein(
     res.protonation_variant_index = variant_index;
     res.protonation_state_resolved = true;
     res.terminal_state = terminal_state;
-    size_t const ri = protein->AddResidue(res);
+    size_t ri = protein->AddResidue(res);
 
     const AminoAcidType& aa_type = GetAminoAcidType(aa);
     for (const auto& templ : aa_type.atoms) {
         auto atom = Atom::Create(templ.element);
         atom->pdb_atom_name = templ.name;
         atom->residue_index = ri;
-        size_t const ai = protein->AddAtom(std::move(atom));
+        size_t ai = protein->AddAtom(std::move(atom));
         protein->MutableResidueAt(ri).atom_indices.push_back(ai);
     }
 
@@ -65,7 +65,7 @@ std::filesystem::path WriteCustomDatWithMissingAtom(
     EXPECT_TRUE(out.is_open());
 
     // Write minimal rows: every canonical atom for the residue except one.
-    AminoAcid const aa = AminoAcidFromThreeLetterCode(ff_resname);
+    AminoAcid aa = AminoAcidFromThreeLetterCode(ff_resname);
     const AminoAcidType& aa_type = GetAminoAcidType(
         aa == AminoAcid::Unknown ? AminoAcid::TYR : aa);
     for (const auto& templ : aa_type.atoms) {
@@ -84,7 +84,7 @@ std::filesystem::path WriteCustomDatWithMissingAtom(
 // ============================================================================
 
 TEST(AmberFlatTableCoverageVerdict, OkVerdictHasNoFailuresAndDescribesItself) {
-    AmberFlatTableCoverageVerdict const v;
+    AmberFlatTableCoverageVerdict v;
     EXPECT_TRUE(v.Ok());
     EXPECT_TRUE(v.failures.empty());
     EXPECT_EQ(v.Detail(), "Satisfiable");
@@ -377,14 +377,14 @@ TEST_F(AmberChargeResolverTest, MultipleFailuresCollectedInOneWalk) {
         res.protonation_variant_index = variant_index;
         res.protonation_state_resolved = true;
         res.terminal_state = ts;
-        size_t const ri = protein->AddResidue(res);
+        size_t ri = protein->AddResidue(res);
 
         const AminoAcidType& aa_type = GetAminoAcidType(aa);
         for (const auto& templ : aa_type.atoms) {
             auto atom = Atom::Create(templ.element);
             atom->pdb_atom_name = templ.name;
             atom->residue_index = ri;
-            size_t const ai = protein->AddAtom(std::move(atom));
+            size_t ai = protein->AddAtom(std::move(atom));
             protein->MutableResidueAt(ri).atom_indices.push_back(ai);
         }
     };
@@ -402,12 +402,10 @@ TEST_F(AmberChargeResolverTest, MultipleFailuresCollectedInOneWalk) {
     bool saw_nterm_ash = false;
     bool saw_cterm_lyn = false;
     for (const auto& f : verdict.failures) {
-        if (f.terminal_token == "NTERM" && f.ff_residue_name == "ASH") {
+        if (f.terminal_token == "NTERM" && f.ff_residue_name == "ASH")
             saw_nterm_ash = true;
-}
-        if (f.terminal_token == "CTERM" && f.ff_residue_name == "LYN") {
+        if (f.terminal_token == "CTERM" && f.ff_residue_name == "LYN")
             saw_cterm_lyn = true;
-}
     }
     EXPECT_TRUE(saw_nterm_ash);
     EXPECT_TRUE(saw_cterm_lyn);

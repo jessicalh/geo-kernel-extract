@@ -133,7 +133,9 @@ void ApbsEfgTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer = tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(ApbsEfgTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<SphericalTensor>(std::type_index(
+            typeid(ApbsEfgTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group",
@@ -187,8 +189,8 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
             flat[base + 4] = st.T2[4];
         }
     }
-    std::vector<std::size_t> const dims = {N, T, static_cast<std::size_t>(5)};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T, std::size_t(5)};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("t2", space);
     ds.write_raw(flat.data());
 

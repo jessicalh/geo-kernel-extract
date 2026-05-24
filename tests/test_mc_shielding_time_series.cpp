@@ -98,12 +98,10 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
                     const nmr::SphericalTensor& b,
                     double tol) {
     if (std::abs(a.T0 - b.T0) > tol) return false;
-    for (size_t k = 0; k < 3; ++k) {
+    for (size_t k = 0; k < 3; ++k)
         if (std::abs(a.T1[k] - b.T1[k]) > tol) return false;
-}
-    for (size_t k = 0; k < 5; ++k) {
+    for (size_t k = 0; k < 5; ++k)
         if (std::abs(a.T2[k] - b.T2[k]) > tol) return false;
-}
     return true;
 }
 
@@ -115,9 +113,8 @@ TEST(McConnellShieldingTimeSeries, SyntheticFourFrames) {
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
-    if (!FixtureAvailable(fix)) {
+    if (!FixtureAvailable(fix))
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein << " fixture not on disk";
-}
 
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
@@ -129,7 +126,7 @@ TEST(McConnellShieldingTimeSeries, SyntheticFourFrames) {
 
     constexpr size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
 
     for (size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -148,7 +145,7 @@ TEST(McConnellShieldingTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(buf->AtomCount(), Ntp);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
 
-    for (size_t const i : {static_cast<size_t>(0), Ntp / 2, Ntp - 1}) {
+    for (size_t i : {size_t(0), Ntp / 2, Ntp - 1}) {
         for (size_t t = 0; t < kFrames; ++t) {
             const auto& got = buf->At(i, t);
             EXPECT_TRUE(SphericalEqual(got, SyntheticTensor(i, t), 1e-12))
@@ -164,7 +161,7 @@ TEST(McConnellShieldingTimeSeries, SyntheticFourFrames) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/mc_shielding_time_series"));
     auto grp = reopen.getGroup("/trajectory/mc_shielding_time_series");
     auto ds = grp.getDataSet("xyz");
@@ -203,7 +200,7 @@ TEST(McConnellShieldingTimeSeries, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -235,7 +232,7 @@ TEST(McConnellShieldingTimeSeries, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<nmr::SphericalTensor>(
@@ -277,7 +274,7 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::McConnellShieldingTimeSeriesTrajectoryResult>();
@@ -288,7 +285,7 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
         tr.WriteH5Group(tp, file);
     }
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist("/trajectory/mc_shielding_time_series"));
     auto grp = reopen.getGroup("/trajectory/mc_shielding_time_series");
     auto ds = grp.getDataSet("xyz");
@@ -297,10 +294,7 @@ TEST(McConnellShieldingTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[1], 1u);
     EXPECT_EQ(dims[2], 9u);
 
-    std::string parity;
-    std::string units;
-    std::string layout;
-    std::string normalization;
+    std::string parity, units, layout, normalization;
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);
     grp.getAttribute("normalization").read(normalization);
@@ -337,7 +331,7 @@ TEST(McConnellShieldingTimeSeries, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 1u);
 

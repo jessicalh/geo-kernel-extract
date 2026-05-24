@@ -37,14 +37,13 @@ KabschResult KabschAlign(const Vec3 src[3], const Vec3 dst[3]) {
     KabschResult r;
     r.source_centroid = (src[0] + src[1] + src[2]) / 3.0;
     r.target_centroid = (dst[0] + dst[1] + dst[2]) / 3.0;
-    Eigen::Matrix<double, 3, 3> P;
-    Eigen::Matrix<double, 3, 3> Q;
+    Eigen::Matrix<double, 3, 3> P, Q;
     for (int i = 0; i < 3; ++i) {
         P.col(i) = src[i] - r.source_centroid;
         Q.col(i) = dst[i] - r.target_centroid;
     }
     const Mat3 H = P * Q.transpose();
-    Eigen::JacobiSVD<Mat3> const svd(H,
+    Eigen::JacobiSVD<Mat3> svd(H,
         Eigen::ComputeFullU | Eigen::ComputeFullV);
     const Mat3& U = svd.matrixU();
     const Mat3& V = svd.matrixV();
@@ -52,7 +51,7 @@ KabschResult KabschAlign(const Vec3 src[3], const Vec3 dst[3]) {
     // guard, not the raw determinant. Same correction landed in
     // RmsdTrackingTrajectoryResult 2026-05-21 per maths review.
     const double det = (V * U.transpose()).determinant();
-    Eigen::DiagonalMatrix<double, 3> const D(1.0, 1.0,
+    Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0,
         (det < 0.0) ? -1.0 : 1.0);
     r.rotation = V * D * U.transpose();
     double sumSq = 0.0;
@@ -183,7 +182,7 @@ void EmitAlignedAtom(
 
 // Resolve a LarsenResidue local-atom index to its 0-indexed position in
 // rec.atoms by matching dft_atom_idx. Returns -1 on miss.
-int LarsenLocalToRecIdx(const LarsenResidue& piece, int local_idx,
+static int LarsenLocalToRecIdx(const LarsenResidue& piece, int local_idx,
                                 const TripeptideDftRecord& rec) {
     if (local_idx < 0 ||
         local_idx >= static_cast<int>(piece.atoms.size())) return -1;
@@ -281,7 +280,6 @@ bool AssembleAlaCap(
     out.backbone_kabsch_rmsd  = K.rmsd;
 
     // Emit each cap-slot atom with the protein-side counterpart.
-    // NOLINTNEXTLINE(clang-analyzer-optin.performance.Padding): ephemeral local struct in a 6-row static array, reordering for cache density would obscure the slot semantics.
     struct Slot {
         int           dft_idx;
         std::size_t   protein_idx;
@@ -360,17 +358,15 @@ AtomMechanicalIdentity ProteinIdentityAt(const Protein& protein,
 }
 
 
-// substrate_check_strict applies to the cap-side (loose mode for ACE/NME);
-// the typed central path is perception-only by design (no relaxed mode).
-// Kept in the signature so AssembleCentral can forward unconditionally
-// and the cap-side parallel API stays uniform.
-bool AssembleCentralTyped(const Protein& protein,
-                          const ProteinConformation& conf,
-                          std::size_t residue_idx,
-                          const TripeptideDftRecord& rec,
-                          double validation_threshold_A,
-                          bool substrate_check_strict,  // NOLINT(misc-unused-parameters)
-                          AssembledTripeptide& out) {
+bool AssembleCentralTyped(
+        const Protein& protein,
+        const ProteinConformation& conf,
+        std::size_t residue_idx,
+        const TripeptideDftRecord& rec,
+        double validation_threshold_A,
+        bool substrate_check_strict,
+        AssembledTripeptide& out) {
+
     const Residue& res = protein.ResidueAt(residue_idx);
     if (res.N == Residue::NONE || res.CA == Residue::NONE ||
         res.C == Residue::NONE) {
@@ -441,7 +437,7 @@ bool AssembleCentralTyped(const Protein& protein,
     auto candidate_protein_atoms = [&](const AtomMechanicalIdentity& pid,
                                         bool relaxed) {
         std::vector<std::size_t> matches;
-        for (std::size_t const ai : res.atom_indices) {
+        for (std::size_t ai : res.atom_indices) {
             if (used.count(ai)) continue;
             if (IdentityCompatible(pid, ProteinIdentityAt(protein, ai),
                                     relaxed)) {
@@ -481,7 +477,7 @@ bool AssembleCentralTyped(const Protein& protein,
         // nearest-spatial to swap them under non-canonical chi
         // orientations.
         const bool relaxed = perc.canonical_assignment_ambiguous;
-        std::vector<std::size_t> const cand =
+        std::vector<std::size_t> cand =
             candidate_protein_atoms(perc.identity, relaxed);
         if (cand.empty()) {
             ++out.n_substrate_disagreements;
@@ -496,7 +492,7 @@ bool AssembleCentralTyped(const Protein& protein,
         // feature; downstream analysis filters on it.
         std::size_t best_atom = SIZE_MAX;
         double      best_dist = std::numeric_limits<double>::infinity();
-        for (std::size_t const ai : cand) {
+        for (std::size_t ai : cand) {
             const double d = (aligned[i] - conf.PositionAt(ai)).norm();
             if (d < best_dist) { best_atom = ai; best_dist = d; }
         }
@@ -626,7 +622,7 @@ AssembledTripeptide AssembleTripeptide(
                 out.max_residual_A = a.residual_distance;
             }
         }
-        out.mean_residual_A = sum / static_cast<double>(out.aligned_atoms.size());
+        out.mean_residual_A = sum / (double)out.aligned_atoms.size();
     }
     return out;
 }

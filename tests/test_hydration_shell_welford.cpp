@@ -94,7 +94,7 @@ TEST(HydrationShellWelford, Frame0Semantics) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_EQ(traj.FrameCount(), 1u);
 
@@ -115,7 +115,7 @@ TEST(HydrationShellWelford, FinalizeIdempotency) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const std::size_t probe = tp.AtomCount() / 2;
@@ -136,14 +136,14 @@ TEST(HydrationShellWelford, H5RoundTrip) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     const auto& tr = tp.Result<nmr::HydrationShellWelfordTrajectoryResult>();
     const std::string h5_path = (fs::temp_directory_path() /
         ("hyd_shell_welford_" + std::to_string(::getpid()) + ".h5")).string();
     { HighFive::File file(h5_path, HighFive::File::Truncate); tr.WriteH5Group(tp, file); }
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     auto grp = reopen.getGroup("/trajectory/hydration_shell_welford");
 
     std::string ref;
@@ -190,15 +190,14 @@ TEST(HydrationShellWelford, Integration1P9J) {
     nmr::TrajectoryProtein tp;
     ASSERT_TRUE(tp.BuildFromTrajectory(ProductionDirFor(fix.tpr_path))) << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path), fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     EXPECT_GE(traj.FrameCount(), 2u);
 
     // half_shell_asymmetry, mean_water_dipole_cos, ion_present_fraction
     // are always finite. nearest_ion_distance under the R6 conditional
     // Welford finalizes to NaN when n_ion_present == 0; finite otherwise.
-    std::size_t populated_asymmetry = 0;
-    std::size_t populated_ion = 0;
+    std::size_t populated_asymmetry = 0, populated_ion = 0;
     std::size_t n_ever_present = 0;
     for (std::size_t i = 0; i < tp.AtomCount(); ++i) {
         const auto& w = tp.AtomAt(i).hydration_shell_welford;

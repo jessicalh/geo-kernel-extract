@@ -35,10 +35,9 @@ static std::string FindNmrOutput(const std::string& dir,
     std::string exact = dir + prefix + "_nmr.out";
     if (fs::exists(exact)) return exact;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        std::string const name = entry.path().filename().string();
-        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos) {
+        std::string name = entry.path().filename().string();
+        if (name.find(prefix) == 0 && name.find("_nmr.out") != std::string::npos)
             return entry.path().string();
-        }
     }
     return "";
 }
@@ -57,30 +56,28 @@ struct BatchProtein {
 static BatchProtein LoadAndEnrich(const std::string& dir,
                                    const std::string& protein_id,
                                    const std::string& variant) {
-    std::string const prefix = protein_id + "_" + variant;
+
+    std::string prefix = protein_id + "_" + variant;
 
     OrcaRunFiles files;
     files.pdb_path = dir + prefix + ".pdb";
     files.xyz_path = dir + prefix + ".xyz";
     files.prmtop_path = dir + prefix + ".prmtop";
 
-    if (!fs::exists(files.xyz_path)) {
+    if (!fs::exists(files.xyz_path))
         return {nullptr, false, "xyz not found"};
-    }
-    if (!fs::exists(files.prmtop_path)) {
+    if (!fs::exists(files.prmtop_path))
         return {nullptr, false, "prmtop not found"};
-    }
 
     auto load = BuildFromOrca(files);
-    if (!load.Ok()) {
+    if (!load.Ok())
         return {nullptr, false, "BuildFromOrca: " + load.error};
-    }
 
     auto& conf = load.protein->Conformation();
 
     conf.AttachResult(GeometryResult::Compute(conf));
 
-    PrmtopChargeSource const charge_source(files.prmtop_path);
+    PrmtopChargeSource charge_source(files.prmtop_path);
     conf.AttachResult(ChargeAssignmentResult::Compute(conf, charge_source));
 
     conf.AttachResult(SpatialIndexResult::Compute(conf));
@@ -101,7 +98,7 @@ static BatchProtein LoadAndEnrich(const std::string& dir,
     conf.AttachResult(std::move(rchi));
 
     // ORCA shielding
-    std::string const nmr_path = FindNmrOutput(dir, prefix);
+    std::string nmr_path = FindNmrOutput(dir, prefix);
     if (!nmr_path.empty()) {
         auto orca = OrcaShieldingResult::Compute(conf, nmr_path);
         if (orca) conf.AttachResult(std::move(orca));
@@ -120,7 +117,7 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         GTEST_SKIP() << "Consolidated directory not found";
     }
 
-    uint32_t const saved_mask = OperationLog::GetChannelMask();
+    uint32_t saved_mask = OperationLog::GetChannelMask();
     OperationLog::SetChannelMask(0);
 
     // Per-ring-type counters across the whole batch
@@ -175,21 +172,17 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         double sum_abs_cos = 0;  // sum of |cos(angle)| for mean
         int count = 0;
     };
-    T2PairAccum mc_vs_coulomb;
-    T2PairAccum mc_vs_rchi;
-    T2PairAccum coulomb_vs_rchi;
+    T2PairAccum mc_vs_coulomb, mc_vs_rchi, coulomb_vs_rchi;
 
     auto t2_cos_sim = [](const std::array<double,5>& a,
                          const std::array<double,5>& b) -> double {
-        double dot = 0;
-        double na = 0;
-        double nb = 0;
+        double dot = 0, na = 0, nb = 0;
         for (int m = 0; m < 5; ++m) {
             dot += a[m] * b[m];
             na += a[m] * a[m];
             nb += b[m] * b[m];
         }
-        double const denom = std::sqrt(na * nb);
+        double denom = std::sqrt(na * nb);
         if (denom < 1e-20) return 0.0;  // one or both are zero
         return dot / denom;
     };
@@ -204,14 +197,14 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
 
     for (const auto& entry : fs::directory_iterator(nmr::test::TestEnvironment::Consolidated())) {
         if (!entry.is_directory()) continue;
-        std::string const protein_id = entry.path().filename().string();
-        std::string const dir = entry.path().string() + "/";
+        std::string protein_id = entry.path().filename().string();
+        std::string dir = entry.path().string() + "/";
 
         // Check clean path exists (prmtop + xyz + nmr for both)
-        std::string const wt_prmtop = dir + protein_id + "_WT.prmtop";
-        std::string const wt_xyz = dir + protein_id + "_WT.xyz";
-        std::string const ala_prmtop = dir + protein_id + "_ALA.prmtop";
-        std::string const ala_xyz = dir + protein_id + "_ALA.xyz";
+        std::string wt_prmtop = dir + protein_id + "_WT.prmtop";
+        std::string wt_xyz = dir + protein_id + "_WT.xyz";
+        std::string ala_prmtop = dir + protein_id + "_ALA.prmtop";
+        std::string ala_xyz = dir + protein_id + "_ALA.xyz";
 
         if (!fs::exists(wt_prmtop) || !fs::exists(wt_xyz) ||
             !fs::exists(ala_prmtop) || !fs::exists(ala_xyz)) {
@@ -219,8 +212,8 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
             continue;
         }
 
-        std::string const wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
-        std::string const ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
+        std::string wt_nmr = FindNmrOutput(dir, protein_id + "_WT");
+        std::string ala_nmr = FindNmrOutput(dir, protein_id + "_ALA");
         if (wt_nmr.empty() || ala_nmr.empty()) {
             skipped++;
             continue;
@@ -232,10 +225,10 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
 
         if (!wt.ok || !ala.ok) {
             failed++;
-            if (failed <= 5) {
-                std::cerr << "  FAIL " << protein_id << ": " << (wt.ok ? "" : "WT: " + wt.error + " ")
+            if (failed <= 5)
+                std::cerr << "  FAIL " << protein_id << ": "
+                          << (wt.ok ? "" : "WT: " + wt.error + " ")
                           << (ala.ok ? "" : "ALA: " + ala.error) << "\n";
-            }
             continue;
         }
 
@@ -251,24 +244,22 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         // ------ Coulomb validation on WT ------
         ps.total_charge = wt_conf.Result<ChargeAssignmentResult>().TotalCharge();
 
-        double sum_E = 0;
-        double max_E = 0;
-        double max_trace = 0;
-        double max_decomp = 0;
+        double sum_E = 0, max_E = 0, max_trace = 0, max_decomp = 0;
         double sum_bb_proj = 0;
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             const auto& ca = wt_conf.AtomAt(ai);
 
-            double const E_mag = ca.coulomb_E_magnitude;
+            double E_mag = ca.coulomb_E_magnitude;
             sum_E += E_mag;
             max_E = std::max(max_E, E_mag);
 
-            double const trace = std::abs(ca.coulomb_EFG_total.trace());
+            double trace = std::abs(ca.coulomb_EFG_total.trace());
             max_trace = std::max(max_trace, trace);
 
             // Decomposition check: |E_total - (E_bb + E_sc + E_arom)|
-            Vec3 const E_sum = ca.coulomb_E_backbone + ca.coulomb_E_sidechain + ca.coulomb_E_aromatic;
-            double const decomp_err = (ca.coulomb_E_total - E_sum).norm();
+            Vec3 E_sum = ca.coulomb_E_backbone + ca.coulomb_E_sidechain
+                       + ca.coulomb_E_aromatic;
+            double decomp_err = (ca.coulomb_E_total - E_sum).norm();
             max_decomp = std::max(max_decomp, decomp_err);
 
             sum_bb_proj += ca.coulomb_E_backbone_frac;
@@ -281,18 +272,15 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
 
         // ------ Ring susceptibility validation on WT ------
         double max_tf_diff = 0;
-        double max_rchi_t0 = 0;
-        double max_rchi_t2 = 0;
+        double max_rchi_t0 = 0, max_rchi_t2 = 0;
         int ring_pairs = 0;
-        int wt_with_rn = 0;
-        int ala_with_rn = 0;
+        int wt_with_rn = 0, ala_with_rn = 0;
 
         // Per-ring-type stats: count rings in this protein by type
         for (size_t ri = 0; ri < wt.protein->RingCount(); ++ri) {
-            int const type_idx = wt.protein->RingAt(ri).TypeIndexAsInt();
-            if (type_idx >= 0 && type_idx < 8) {
+            int type_idx = wt.protein->RingAt(ri).TypeIndexAsInt();
+            if (type_idx >= 0 && type_idx < 8)
                 ring_type_stats[type_idx].count++;
-            }
         }
 
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
@@ -301,12 +289,12 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
 
             for (const auto& rn : ca.ring_neighbours) {
                 if (std::abs(rn.chi_scalar) < 1e-15) continue;
-                double const diff = std::abs(rn.chi_spherical.T0 - rn.chi_scalar);
+                double diff = std::abs(rn.chi_spherical.T0 - rn.chi_scalar);
                 max_tf_diff = std::max(max_tf_diff, diff);
                 ring_pairs++;
 
                 // Per-ring-type accumulation
-                int const ti = static_cast<int>(rn.ring_type);
+                int ti = static_cast<int>(rn.ring_type);
                 if (ti >= 0 && ti < 8) {
                     ring_type_stats[ti].atom_pairs++;
                     ring_type_stats[ti].sum_t0 += std::abs(rn.chi_spherical.T0);
@@ -347,12 +335,9 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
                 // mutation site backbone atom)
                 const auto& mut_sites = delta->MutationSites();
 
-                double sum_rchi_near = 0;
-                double sum_rchi_far = 0;
-                double sum_arom_E_near = 0;
-                double sum_arom_E_far = 0;
-                int near_count = 0;
-                int far_count = 0;
+                double sum_rchi_near = 0, sum_rchi_far = 0;
+                double sum_arom_E_near = 0, sum_arom_E_far = 0;
+                int near_count = 0, far_count = 0;
 
                 // Test threshold: atoms within 8A of mutation site CA
                 // are "near." This is a test classification distance,
@@ -363,20 +348,21 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
                     if (!delta->HasMatch(ai)) continue;
 
                     bool near_mutation = false;
-                    Vec3 const pos = wt_conf.PositionAt(ai);
+                    Vec3 pos = wt_conf.PositionAt(ai);
                     for (const auto& ms : mut_sites) {
                         const Residue& mut_res =
                             wt.protein->ResidueAt(ms.residue_index);
                         if (mut_res.CA != Residue::NONE) {
-                            double const d = (pos - wt_conf.PositionAt(mut_res.CA)).norm();
+                            double d = (pos - wt_conf.PositionAt(mut_res.CA)).norm();
                             if (d < TEST_NEAR_MUTATION_DIST) {
                                 near_mutation = true; break;
                             }
                         }
                     }
 
-                    double const rchi_t0 = std::abs(wt_conf.AtomAt(ai).ringchi_shielding_contribution.T0);
-                    double const arom_E = wt_conf.AtomAt(ai).aromatic_E_magnitude;
+                    double rchi_t0 = std::abs(
+                        wt_conf.AtomAt(ai).ringchi_shielding_contribution.T0);
+                    double arom_E = wt_conf.AtomAt(ai).aromatic_E_magnitude;
 
                     if (near_mutation) {
                         sum_rchi_near += rchi_t0;
@@ -406,27 +392,30 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         for (size_t ai = 0; ai < wt_conf.AtomCount(); ++ai) {
             const auto& ca = wt_conf.AtomAt(ai);
 
-            double const mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
-            double const co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
-            double const rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
+            double mc_t2_mag = ca.mc_shielding_contribution.T2Magnitude();
+            double co_t2_mag = ca.coulomb_shielding_contribution.T2Magnitude();
+            double rc_t2_mag = ca.ringchi_shielding_contribution.T2Magnitude();
 
             if (mc_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE &&
                 co_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE) {
-                double const c = t2_cos_sim(ca.mc_shielding_contribution.T2, ca.coulomb_shielding_contribution.T2);
+                double c = t2_cos_sim(ca.mc_shielding_contribution.T2,
+                                      ca.coulomb_shielding_contribution.T2);
                 mc_vs_coulomb.sum_abs_cos += std::abs(c);
                 mc_vs_coulomb.count++;
             }
 
             if (mc_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE &&
                 rc_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE) {
-                double const c = t2_cos_sim(ca.mc_shielding_contribution.T2, ca.ringchi_shielding_contribution.T2);
+                double c = t2_cos_sim(ca.mc_shielding_contribution.T2,
+                                      ca.ringchi_shielding_contribution.T2);
                 mc_vs_rchi.sum_abs_cos += std::abs(c);
                 mc_vs_rchi.count++;
             }
 
             if (co_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE &&
                 rc_t2_mag > TEST_T2_MIN_FOR_INDEPENDENCE) {
-                double const c = t2_cos_sim(ca.coulomb_shielding_contribution.T2, ca.ringchi_shielding_contribution.T2);
+                double c = t2_cos_sim(ca.coulomb_shielding_contribution.T2,
+                                      ca.ringchi_shielding_contribution.T2);
                 coulomb_vs_rchi.sum_abs_cos += std::abs(c);
                 coulomb_vs_rchi.count++;
             }
@@ -441,7 +430,7 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
     // Report and validate
     // ======================================================================
 
-    int const n = static_cast<int>(results.size());
+    int n = static_cast<int>(results.size());
     std::cout << "\n=== Batch Coulomb + RingSusceptibility Summary ===\n";
     std::cout << "  Processed: " << n
               << "  Skipped: " << skipped
@@ -452,10 +441,8 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
     }
 
     // --- Coulomb aggregates ---
-    double grand_mean_E = 0;
-    double grand_max_E = 0;
-    double global_max_trace = 0;
-    double global_max_decomp = 0;
+    double grand_mean_E = 0, grand_max_E = 0;
+    double global_max_trace = 0, global_max_decomp = 0;
     double grand_mean_bb_proj = 0;
     int non_integer_charge = 0;
 
@@ -466,7 +453,7 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         global_max_decomp = std::max(global_max_decomp, ps.max_E_decomp_err);
         grand_mean_bb_proj += ps.mean_backbone_proj;
 
-        double const charge_frac = std::abs(ps.total_charge - std::round(ps.total_charge));
+        double charge_frac = std::abs(ps.total_charge - std::round(ps.total_charge));
         if (charge_frac > 0.01) non_integer_charge++;
     }
     grand_mean_E /= n;
@@ -482,8 +469,7 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
 
     // --- Ring susceptibility aggregates ---
     double global_max_tf = 0;
-    double grand_mean_rchi_t0 = 0;
-    double grand_mean_rchi_t2 = 0;
+    double grand_mean_rchi_t0 = 0, grand_mean_rchi_t2 = 0;
     int total_ring_pairs = 0;
     int wt_more_rn = 0;  // proteins where WT has more ring neighbours than ALA
 
@@ -492,9 +478,8 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         grand_mean_rchi_t0 += ps.max_rchi_t0;
         grand_mean_rchi_t2 += ps.max_rchi_t2;
         total_ring_pairs += ps.ring_neighbour_pairs;
-        if (ps.wt_atoms_with_ring_neighbours > ps.ala_atoms_with_ring_neighbours) {
+        if (ps.wt_atoms_with_ring_neighbours > ps.ala_atoms_with_ring_neighbours)
             wt_more_rn++;
-        }
     }
     grand_mean_rchi_t0 /= n;
     grand_mean_rchi_t2 /= n;
@@ -513,8 +498,8 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
     for (int ti = 0; ti < 8; ++ti) {
         const auto& rts = ring_type_stats[ti];
         if (rts.count == 0) continue;
-        double const mean_t0 = (rts.atom_pairs > 0) ? rts.sum_t0 / rts.atom_pairs : 0;
-        double const mean_t2 = (rts.atom_pairs > 0) ? rts.sum_t2 / rts.atom_pairs : 0;
+        double mean_t0 = (rts.atom_pairs > 0) ? rts.sum_t0 / rts.atom_pairs : 0;
+        double mean_t2 = (rts.atom_pairs > 0) ? rts.sum_t2 / rts.atom_pairs : 0;
         std::cout << "    " << std::setw(8) << std::left
                   << RingTypeName(static_cast<RingTypeIndex>(ti))
                   << " " << std::setw(6) << std::right << rts.count
@@ -530,12 +515,9 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
     // --- DFT proximity analysis ---
     // Calculator signals should be LARGER near mutation sites (where
     // aromatic sidechains were present in WT but removed in ALA).
-    double sum_rchi_near = 0;
-    double sum_rchi_far = 0;
-    double sum_arom_near = 0;
-    double sum_arom_far = 0;
-    int total_near = 0;
-    int total_far = 0;
+    double sum_rchi_near = 0, sum_rchi_far = 0;
+    double sum_arom_near = 0, sum_arom_far = 0;
+    int total_near = 0, total_far = 0;
     for (const auto& ps : results) {
         if (ps.near_count > 0) {
             sum_rchi_near += ps.mean_rchi_t0_near_mutation;
@@ -548,10 +530,10 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
             total_far++;
         }
     }
-    double const grand_rchi_near = (total_near > 0) ? sum_rchi_near / total_near : 0;
-    double const grand_rchi_far = (total_far > 0) ? sum_rchi_far / total_far : 0;
-    double const grand_arom_near = (total_near > 0) ? sum_arom_near / total_near : 0;
-    double const grand_arom_far = (total_far > 0) ? sum_arom_far / total_far : 0;
+    double grand_rchi_near = (total_near > 0) ? sum_rchi_near / total_near : 0;
+    double grand_rchi_far = (total_far > 0) ? sum_rchi_far / total_far : 0;
+    double grand_arom_near = (total_near > 0) ? sum_arom_near / total_near : 0;
+    double grand_arom_far = (total_far > 0) ? sum_arom_far / total_far : 0;
 
     std::cout << "  DFT PROXIMITY (signal near vs far from mutation sites, <8A test threshold):\n"
               << "    Ring Chi |T0|:\n"
@@ -653,9 +635,12 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
     // T2 independence analysis
     // ======================================================================
 
-    double const mean_mc_co = (mc_vs_coulomb.count > 0) ? mc_vs_coulomb.sum_abs_cos / mc_vs_coulomb.count : 0;
-    double const mean_mc_rc = (mc_vs_rchi.count > 0) ? mc_vs_rchi.sum_abs_cos / mc_vs_rchi.count : 0;
-    double const mean_co_rc = (coulomb_vs_rchi.count > 0) ? coulomb_vs_rchi.sum_abs_cos / coulomb_vs_rchi.count : 0;
+    double mean_mc_co = (mc_vs_coulomb.count > 0)
+        ? mc_vs_coulomb.sum_abs_cos / mc_vs_coulomb.count : 0;
+    double mean_mc_rc = (mc_vs_rchi.count > 0)
+        ? mc_vs_rchi.sum_abs_cos / mc_vs_rchi.count : 0;
+    double mean_co_rc = (coulomb_vs_rchi.count > 0)
+        ? coulomb_vs_rchi.sum_abs_cos / coulomb_vs_rchi.count : 0;
 
     std::cout << "  T2 INDEPENDENCE (mean |cos| in 5D, 0=orthogonal, 1=parallel):\n"
               << "    McConnell vs Coulomb EFG:     " << mean_mc_co

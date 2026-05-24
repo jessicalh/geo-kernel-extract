@@ -117,7 +117,7 @@ TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
 
     constexpr std::size_t kFrames = 4;
     const auto& protein_ref = tp.ProteinRef();
-    std::vector<nmr::Vec3> const positions(Ntp, nmr::Vec3::Zero());
+    std::vector<nmr::Vec3> positions(Ntp, nmr::Vec3::Zero());
 
     for (std::size_t t = 0; t < kFrames; ++t) {
         auto conf = std::make_unique<nmr::ProteinConformation>(
@@ -138,7 +138,7 @@ TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
     EXPECT_EQ(buf->AtomCount(), Ntp);
     EXPECT_EQ(buf->StridePerAtom(), kFrames);
 
-    for (std::size_t const i : {static_cast<std::size_t>(0), Ntp / 2, Ntp - 1}) {
+    for (std::size_t i : {std::size_t(0), Ntp / 2, Ntp - 1}) {
         for (std::size_t t = 0; t < kFrames; ++t) {
             EXPECT_DOUBLE_EQ(buf->At(i, t), SyntheticWaterTerm(i, t))
                 << "buffer mismatch at atom " << i << " frame " << t;
@@ -154,7 +154,7 @@ TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist(
         "/trajectory/larsen_hbond_water_term_time_series"));
     auto grp = reopen.getGroup(
@@ -202,7 +202,7 @@ TEST(LarsenHBondWaterTermTimeSeries, Frame0Semantics) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
     ASSERT_EQ(traj.FrameCount(), 1u);
 
@@ -244,7 +244,7 @@ TEST(LarsenHBondWaterTermTimeSeries, FinalizeIdempotency) {
         << tp.Error();
     nmr::Trajectory traj(TrrPathFor(fix.tpr_path),
                          fix.tpr_path, fix.edr_path);
-    nmr::Session const session;
+    nmr::Session session;
     ASSERT_EQ(traj.Run(tp, config, session), nmr::kOk);
 
     auto* buf_first = tp.GetDenseBuffer<double>(
@@ -318,7 +318,7 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
     }
     ASSERT_TRUE(fs::exists(h5_path));
 
-    HighFive::File const reopen(h5_path, HighFive::File::ReadOnly);
+    HighFive::File reopen(h5_path, HighFive::File::ReadOnly);
     ASSERT_TRUE(reopen.exist(
         "/trajectory/larsen_hbond_water_term_time_series"));
 
@@ -330,9 +330,7 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
     EXPECT_EQ(dims[0], tp.AtomCount());
     EXPECT_EQ(dims[1], 1u);
 
-    std::string irrep_layout;
-    std::string parity;
-    std::string units;
+    std::string irrep_layout, parity, units;
     grp.getAttribute("irrep_layout").read(irrep_layout);
     grp.getAttribute("parity").read(parity);
     grp.getAttribute("units").read(units);

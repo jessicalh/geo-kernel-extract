@@ -92,49 +92,50 @@ void WaterFieldWelfordTrajectoryResult::Compute(
         const SphericalTensor& efg  = a.water_efg_spherical;
         const SphericalTensor& efgf = a.water_efg_first_spherical;
         WelfordUpdate(w.efg_t2magnitude,        efg.T2Magnitude(), n_new, frame_idx);
-        for (std::size_t k = 0; k < 5; ++k) {
+        for (std::size_t k = 0; k < 5; ++k)
             WelfordUpdate(w.efg_t2[k],          efg.T2[k],        n_new, frame_idx);
-}
         WelfordUpdate(w.efg_first_t2magnitude,  efgf.T2Magnitude(),n_new, frame_idx);
-        for (std::size_t k = 0; k < 5; ++k) {
+        for (std::size_t k = 0; k < 5; ++k)
             WelfordUpdate(w.efg_first_t2[k],    efgf.T2[k],       n_new, frame_idx);
-}
 
         // Shell occupancy counts (int → double for Welford)
-const auto n_first_d = static_cast<double>(a.water_n_first);
-const auto n_second_d = static_cast<double>(a.water_n_second);
-WelfordUpdate(w.n_first, n_first_d, n_new, frame_idx);
-WelfordUpdate(w.n_second, n_second_d, n_new, frame_idx);
+        const double n_first_d  = static_cast<double>(a.water_n_first);
+        const double n_second_d = static_cast<double>(a.water_n_second);
+        WelfordUpdate(w.n_first,  n_first_d,  n_new, frame_idx);
+        WelfordUpdate(w.n_second, n_second_d, n_new, frame_idx);
 
-w.n_frames = n_new;
+        w.n_frames = n_new;
 
-// Delta variants on the 4 primary scalars
-if (prev_valid_[i]) {
-    const std::size_t dn_new = w.delta_n + 1;
-    auto upd_deltas = [&](double curr, double prev, WelfordMoments& d, WelfordMoments& ad, WelfordMoments& sd) {
-        const double delta = curr - prev;
-        WelfordUpdate(d, delta, dn_new, frame_idx);
-        WelfordUpdate(ad, std::abs(delta), dn_new, frame_idx);
-        WelfordUpdate(sd, delta * delta, dn_new, frame_idx);
-    };
-    upd_deltas(Emag,
-               prev_efield_mag_[i],
-               w.efield_magnitude_delta,
-               w.efield_magnitude_abs_delta,
-               w.efield_magnitude_delta_squared);
-    upd_deltas(n_first_d, prev_n_first_[i], w.n_first_delta, w.n_first_abs_delta, w.n_first_delta_squared);
-    upd_deltas(n_second_d, prev_n_second_[i], w.n_second_delta, w.n_second_abs_delta, w.n_second_delta_squared);
-    w.delta_n = dn_new;
+        // Delta variants on the 4 primary scalars
+        if (prev_valid_[i]) {
+            const std::size_t dn_new = w.delta_n + 1;
+            auto upd_deltas = [&](double curr, double prev,
+                                  WelfordMoments& d, WelfordMoments& ad,
+                                  WelfordMoments& sd) {
+                const double delta = curr - prev;
+                WelfordUpdate(d,  delta,                dn_new, frame_idx);
+                WelfordUpdate(ad, std::abs(delta),      dn_new, frame_idx);
+                WelfordUpdate(sd, delta * delta,        dn_new, frame_idx);
+            };
+            upd_deltas(Emag,        prev_efield_mag_[i],
+                       w.efield_magnitude_delta,
+                       w.efield_magnitude_abs_delta,
+                       w.efield_magnitude_delta_squared);
+            upd_deltas(n_first_d,   prev_n_first_[i],
+                       w.n_first_delta, w.n_first_abs_delta, w.n_first_delta_squared);
+            upd_deltas(n_second_d,  prev_n_second_[i],
+                       w.n_second_delta, w.n_second_abs_delta, w.n_second_delta_squared);
+            w.delta_n = dn_new;
 
-    constexpr double MIN_DT_PS = 1e-12;
-    const double dt = time_ps - prev_time_[i];
-    if (std::abs(dt) > MIN_DT_PS) {
-        const std::size_t dxn = w.dxdt_n + 1;
-        WelfordUpdate(w.efield_magnitude_dxdt, (Emag - prev_efield_mag_[i]) / dt, dxn, frame_idx);
-        WelfordUpdate(w.n_first_dxdt, (n_first_d - prev_n_first_[i]) / dt, dxn, frame_idx);
-        WelfordUpdate(w.n_second_dxdt, (n_second_d - prev_n_second_[i]) / dt, dxn, frame_idx);
-        w.dxdt_n = dxn;
-    }
+            constexpr double MIN_DT_PS = 1e-12;
+            const double dt = time_ps - prev_time_[i];
+            if (std::abs(dt) > MIN_DT_PS) {
+                const std::size_t dxn = w.dxdt_n + 1;
+                WelfordUpdate(w.efield_magnitude_dxdt, (Emag       - prev_efield_mag_[i]) / dt, dxn, frame_idx);
+                WelfordUpdate(w.n_first_dxdt,          (n_first_d  - prev_n_first_[i])    / dt, dxn, frame_idx);
+                WelfordUpdate(w.n_second_dxdt,         (n_second_d - prev_n_second_[i])   / dt, dxn, frame_idx);
+                w.dxdt_n = dxn;
+            }
         }
         prev_efield_mag_[i] = Emag;
         prev_n_first_[i]    = n_first_d;
@@ -230,7 +231,7 @@ void WaterFieldWelfordTrajectoryResult::Finalize(TrajectoryProtein& tp,
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 
-void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-function-size)
+void WaterFieldWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
     const std::size_t N = tp.AtomCount();
@@ -253,7 +254,7 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     grp.createAttribute("n_frames",           n_frames_);
     grp.createAttribute("source_attached_count", source_attached_count);
     grp.createAttribute("finalized",          finalized_);
-    grp.createAttribute("ddof",               1);
+    grp.createAttribute("ddof",               static_cast<int>(1));
     grp.createAttribute("mean_dt_ps",         mean_dt_ps_);
     grp.createAttribute("frame_index_range",  frame_index_range_);
     // Per-component E-field uses Cartesian (x,y,z); EFG T2 uses real-
@@ -271,14 +272,9 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     auto emit_1d = [&](const std::string& prefix,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(std::size_t)>& get) {
-        std::vector<double> mean(N);
-        std::vector<double> m2(N);
-        std::vector<double> std_(N);
-        std::vector<double> min_(N);
-        std::vector<double> max_(N);
-        std::vector<std::size_t> minf(N);
-        std::vector<std::size_t> maxf(N);
+                       std::function<const WelfordMoments&(std::size_t)> get) {
+        std::vector<double> mean(N), m2(N), std_(N), min_(N), max_(N);
+        std::vector<std::size_t> minf(N), maxf(N);
         for (std::size_t i = 0; i < N; ++i) {
             const WelfordMoments& w = get(i);
             mean[i] = w.mean; m2[i] = w.m2; std_[i] = w.std;
@@ -303,14 +299,9 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     auto emit_2d = [&](const std::string& prefix, std::size_t K,
                        const std::string& base_units,
                        const std::string& m2_units,
-                       const std::function<const WelfordMoments&(std::size_t, std::size_t)>& get) {
-        std::vector<double> mean(N * K);
-        std::vector<double> m2(N * K);
-        std::vector<double> std_(N * K);
-        std::vector<double> min_(N * K);
-        std::vector<double> max_(N * K);
-        std::vector<std::size_t> minf(N * K);
-        std::vector<std::size_t> maxf(N * K);
+                       std::function<const WelfordMoments&(std::size_t, std::size_t)> get) {
+        std::vector<double> mean(N * K), m2(N * K), std_(N * K), min_(N * K), max_(N * K);
+        std::vector<std::size_t> minf(N * K), maxf(N * K);
         for (std::size_t i = 0; i < N; ++i) {
             for (std::size_t k = 0; k < K; ++k) {
                 const WelfordMoments& w = get(i, k);
@@ -346,9 +337,8 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     const std::string kCountSq = "dimensionless";
     const std::string kErate    = "V/Angstrom/ps";
     const std::string kErateSq  = "V^2/Angstrom^2/ps^2";
-    // (kEFGrate / kEFGrateSq removed 2026-05-23: the rate variants on
-    // the gradient tensor are not emitted in this TR — only the scalar
-    // and per-component E-field rates are; the labels never had a writer.)
+    const std::string kEFGrate   = "V/Angstrom^2/ps";
+    const std::string kEFGrateSq = "V^2/Angstrom^4/ps^2";
     const std::string kCountRate   = "count/ps";
     const std::string kCountRateSq = "count^2/ps^2";
 
@@ -480,9 +470,7 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(  // NOLINT(readability-fun
     }
 
     // Provenance counters
-    std::vector<std::size_t> n_frames(N);
-    std::vector<std::size_t> delta_n(N);
-    std::vector<std::size_t> dxdt_n(N);
+    std::vector<std::size_t> n_frames(N), delta_n(N), dxdt_n(N);
     for (std::size_t i = 0; i < N; ++i) {
         const WaterFieldWelfordState& w = get_w(i);
         n_frames[i] = w.n_frames;

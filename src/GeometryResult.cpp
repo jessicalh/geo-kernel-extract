@@ -52,26 +52,22 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
         conf.center_of_geometry = center;
 
         double rg_sum = 0.0;
-        for (const auto& p : positions) {
+        for (const auto& p : positions)
             rg_sum += (p - center).squaredNorm();
-}
         conf.radius_of_gyration = std::sqrt(rg_sum / positions.size());
     }
 
     // ---------------------------------------------------------------
     // Pre-built collections: rings by type, bonds by category, residues by type
     // ---------------------------------------------------------------
-    for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
+    for (size_t ri = 0; ri < protein.RingCount(); ++ri)
         conf.rings_by_type[protein.RingAt(ri).type_index].push_back(ri);
-}
 
-    for (size_t bi = 0; bi < protein.BondCount(); ++bi) {
+    for (size_t bi = 0; bi < protein.BondCount(); ++bi)
         conf.bonds_by_category[protein.BondAt(bi).category].push_back(bi);
-}
 
-    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri) {
+    for (size_t ri = 0; ri < protein.ResidueCount(); ++ri)
         conf.residues_by_type[protein.ResidueAt(ri).type].push_back(ri);
-}
 
     // ---------------------------------------------------------------
     // Ring pair properties

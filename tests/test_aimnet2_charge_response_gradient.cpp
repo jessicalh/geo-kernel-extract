@@ -63,7 +63,7 @@ protected:
 };
 
 
-TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseGradient) {
+TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroPolarisability) {
     auto& conf = protein->Conformation();
 
     auto geo = GeometryResult::Compute(conf);
@@ -102,8 +102,8 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        const Vec3& v = ca.aimnet2_charge_response_gradient_vector;
-        const double s = ca.aimnet2_charge_response_gradient_scalar;
+        const Vec3& v = ca.aimnet2_polarisability_vector;
+        const double s = ca.aimnet2_polarisability_scalar;
 
         if (std::isfinite(v.x()) && std::isfinite(v.y()) &&
             std::isfinite(v.z()) && std::isfinite(s)) {
@@ -120,8 +120,8 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
     }
     const double mean_scalar = sum_scalar / static_cast<double>(N);
 
-    (void)fprintf(stderr,
-        "\n=== AIMNet2 charge_response_gradient summary (1UBQ, %zu atoms) ===\n"
+    fprintf(stderr,
+        "\n=== AIMNet2 polarisability summary (1UBQ, %zu atoms) ===\n"
         "  finite values:         %d / %zu\n"
         "  non-zero scalar:       %d / %zu\n"
         "  max scalar:            %.6e\n"
@@ -132,9 +132,9 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroChargeResponseG
         max_scalar, mean_scalar, max_consistency_diff);
 
     EXPECT_EQ(finite_count, static_cast<int>(N))
-        << "Some charge_response_gradient values are NaN or Inf";
+        << "Some polarisability values are NaN or Inf";
     EXPECT_GT(nonzero_count, static_cast<int>(N) / 4)
-        << "Too few atoms with non-zero charge_response_gradient gradient.";
+        << "Too few atoms with non-zero polarisability gradient.";
     EXPECT_GT(max_scalar, 1e-8)
         << "Maximum gradient norm is suspiciously small";
     EXPECT_LT(max_consistency_diff, 1e-9)
@@ -171,15 +171,15 @@ TEST_F(AIMNet2ChargeResponseGradientTest, WriteFeaturesEmitsBothNpys) {
     ASSERT_TRUE(conf.AttachResult(std::move(pol)));
 
     const fs::path output_dir = fs::temp_directory_path() /
-        "aimnet2_charge_response_gradient_test_writefeatures";
+        "aimnet2_polarisability_test_writefeatures";
     fs::create_directories(output_dir);
 
     const auto& result = conf.Result<AIMNet2ChargeResponseGradientResult>();
-    int const written = result.WriteFeatures(conf, output_dir.string());
+    int written = result.WriteFeatures(conf, output_dir.string());
     EXPECT_EQ(written, 2);
 
-    const fs::path vec_path = output_dir / "aimnet2_charge_response_gradient.npy";
-    const fs::path scalar_path = output_dir / "aimnet2_charge_response_gradient_scalar.npy";
+    const fs::path vec_path = output_dir / "aimnet2_polarisability.npy";
+    const fs::path scalar_path = output_dir / "aimnet2_polarisability_scalar.npy";
     EXPECT_TRUE(fs::exists(vec_path)) << "missing " << vec_path;
     EXPECT_TRUE(fs::exists(scalar_path)) << "missing " << scalar_path;
     EXPECT_GT(fs::file_size(vec_path), 0u);

@@ -47,7 +47,6 @@ namespace {
 // the source tree.
 std::string ShellCapture(const std::string& cmd) {
     std::string out;
-    // NOLINTNEXTLINE(cert-env33-c): test grep helper; cmd is constructed in-test from string literals + tree paths (no user input).
     FILE* p = ::popen(cmd.c_str(), "r");
     if (p == nullptr) return out;
     char buf[4096];
@@ -111,8 +110,7 @@ TEST(StringBarrier, RuntimeLibraryHasZeroRdkitSymbols) {
     const std::string cmd = "nm -A " + archive +
                             " 2>/dev/null | grep -c '_ZN5RDKit' || true";
     const std::string out = ShellCapture(cmd);
-    // NOLINTNEXTLINE(cert-err34-c): out is `grep -c | tr` — digits-only or empty (→0). No untrusted input.
-    int const count = std::atoi(out.c_str());
+    int count = std::atoi(out.c_str());
     EXPECT_EQ(0, count) << "RDKit symbols present in libnmr_shielding.a; the "
                           << "string barrier was breached. Inspect with:\n"
                           << "  nm -A " << archive << " | grep _ZN5RDKit";
@@ -235,8 +233,8 @@ TEST(StringBarrier, GeneratedTablesContainOnlyTypedEnumIdentifiers) {
         // Now scan for any "..." string-literal pattern. The generated
         // file should never contain string literals (only enum
         // identifiers, integer literals, true/false, and braces).
-        for (const char i : stripped) {
-            if (i == '"') {
+        for (size_t i = 0; i < stripped.size(); ++i) {
+            if (stripped[i] == '"') {
                 ++violations;
                 if (violation_msg.size() < 1000) {
                     violation_msg += "  line " + std::to_string(line_no) + ": " + line + "\n";

@@ -59,21 +59,21 @@ static PiQuadKernelResult ComputePiQuadKernel(
     PiQuadKernelResult result;
 
     Vec3 d = atom_pos - ring_center;
-    double const r = d.norm();
+    double r = d.norm();
 
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
     result.direction = d / r;
 
-    double const r2 = r * r;
-    double const r5 = r2 * r2 * r;
-    double const r7 = r5 * r2;
-    double const r9 = r7 * r2;
+    double r2 = r * r;
+    double r5 = r2 * r2 * r;
+    double r7 = r5 * r2;
+    double r9 = r7 * r2;
 
-    double const dn = d.dot(ring_normal);       // height above ring plane
-    double const dn2 = dn * dn;
-    double const cos_theta = dn / r;
+    double dn = d.dot(ring_normal);       // height above ring plane
+    double dn2 = dn * dn;
+    double cos_theta = dn / r;
 
     // Scalar: (3 cos^2 theta - 1) / r^4
     result.scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r2 * r2);
@@ -85,7 +85,7 @@ static PiQuadKernelResult ComputePiQuadKernel(
     //   - 15 d_a d_b / r^7
     //   + 6 n_a n_b / r^5
     //   + delta_ab (3/r^5 - 15 dn^2/r^7)
-    double const diag_term = 3.0 / r5 - 15.0 * dn2 / r7;
+    double diag_term = 3.0 / r5 - 15.0 * dn2 / r7;
 
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
@@ -109,7 +109,7 @@ static PiQuadKernelResult ComputePiQuadKernel(
 std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("PiQuadrupoleResult::Compute",
+    OperationLog::Scope scope("PiQuadrupoleResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " rings=" + std::to_string(conf.ProteinRef().RingCount()));
 
@@ -146,13 +146,13 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 const atom_pos = conf.PositionAt(ai);
+        Vec3 atom_pos = conf.PositionAt(ai);
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
 
-        for (size_t const ri : nearby_rings) {
+        for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
@@ -193,9 +193,9 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 new_rn.distance_to_center = kernel.distance;
                 new_rn.direction_to_center = kernel.direction;
 
-                Vec3 const d_vec = atom_pos - geom.center;
-                double const z = d_vec.dot(geom.normal);
-                Vec3 const d_plane = d_vec - z * geom.normal;
+                Vec3 d_vec = atom_pos - geom.center;
+                double z = d_vec.dot(geom.normal);
+                Vec3 d_plane = d_vec - z * geom.normal;
                 new_rn.z = z;
                 new_rn.rho = d_plane.norm();
                 new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));
@@ -210,12 +210,11 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
             rn->quad_scalar = kernel.scalar;
 
             // Per-type accumulation
-            int const ti = ring.TypeIndexAsInt();
+            int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_pq_scalar_sum[ti] += kernel.scalar;
-                for (int c = 0; c < 5; ++c) {
+                for (int c = 0; c < 5; ++c)
                     ca.per_type_pq_T2_sum[ti][c] += rn->quad_spherical.T2[c];
-}
             }
 
             // Accumulate EFG tensor
@@ -237,7 +236,7 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
 }
 
 
-SphericalTensor PiQuadrupoleResult::SampleShieldingAt(const Vec3& point) const {
+SphericalTensor PiQuadrupoleResult::SampleShieldingAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -246,7 +245,7 @@ SphericalTensor PiQuadrupoleResult::SampleShieldingAt(const Vec3& point) const {
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
-        double const distance = (point - geom.center).norm();
+        double distance = (point - geom.center).norm();
         if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
         if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
@@ -278,9 +277,8 @@ int PiQuadrupoleResult::WriteFeatures(const ProteinConformation& conf,
         PackST_PQ(ca.piquad_shielding_contribution, &shielding[i*9]);
         for (int t = 0; t < 8; ++t) {
             per_type_T0[i*8 + t] = ca.per_type_pq_scalar_sum[t];
-            for (int c = 0; c < 5; ++c) {
-                per_type_T2[i * 40 + static_cast<std::size_t>(t) * 5 + c] = ca.per_type_pq_T2_sum[t][c];
-}
+            for (int c = 0; c < 5; ++c)
+                per_type_T2[i*40 + t*5 + c] = ca.per_type_pq_T2_sum[t][c];
         }
     }
 

@@ -73,7 +73,9 @@ void SasaTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 void SasaTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer = tp.GetDenseBuffer<double>(std::type_index(typeid(SasaTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<double>(std::type_index(
+            typeid(SasaTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "SasaTimeSeriesTrajectoryResult::WriteH5Group",
@@ -102,8 +104,8 @@ void SasaTimeSeriesTrajectoryResult::WriteH5Group(
             flat[i * T + t] = buffer->At(i, t);
         }
     }
-    std::vector<std::size_t> const dims = {N, T};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("sasa", space);
     ds.write_raw(flat.data());
 

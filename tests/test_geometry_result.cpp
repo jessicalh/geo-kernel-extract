@@ -72,9 +72,8 @@ TEST_F(GeometryResultTest, PrebuiltCollections) {
 
     // Should have at least some rings by type
     size_t total_rings = 0;
-    for (auto& [type, indices] : conf.rings_by_type) {
+    for (auto& [type, indices] : conf.rings_by_type)
         total_rings += indices.size();
-}
     EXPECT_EQ(total_rings, protein->RingCount());
 
     // Should have residues by type
@@ -86,6 +85,6 @@ TEST_F(GeometryResultTest, RingPairs) {
     auto geo = GeometryResult::Compute(conf);
     conf.AttachResult(std::move(geo));
 
-    size_t const n = protein->RingCount();
+    size_t n = protein->RingCount();
     EXPECT_EQ(conf.ring_pairs.size(), n * (n - 1) / 2);
 }

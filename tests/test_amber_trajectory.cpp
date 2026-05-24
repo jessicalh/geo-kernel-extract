@@ -50,7 +50,7 @@ protected:
         }
     }
 
-    static nmr::test::AmberTrajectoryFixture FixtureFor(
+    nmr::test::AmberTrajectoryFixture FixtureFor(
             const std::string& protein_id) {
         auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(protein_id);
         if (fix.tpr_path.empty()) {
@@ -61,7 +61,7 @@ protected:
 };
 
 
-TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     EXPECT_TRUE(std::filesystem::exists(fix.tpr_path)) << fix.tpr_path;
@@ -69,7 +69,7 @@ TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1P9J) {
     EXPECT_TRUE(std::filesystem::exists(fix.edr_path)) << fix.edr_path;
 }
 
-TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1Z9B) {
+TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles_1Z9B) {
     auto fix = FixtureFor("1Z9B_6577");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     EXPECT_TRUE(std::filesystem::exists(fix.tpr_path)) << fix.tpr_path;
@@ -82,7 +82,7 @@ TEST_F(AmberTrajectoryFixtureTest, FixturesPathsResolveToRealFiles1Z9B) {
 // TPR end-to-end through FullSystemReader. The TPR format itself is
 // force-field-agnostic; this confirms there's no AMBER-specific quirk
 // in our parsing path.
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr_1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) {
@@ -98,7 +98,7 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderReadsAmberTpr1P9J) {
 }
 
 
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1P9J) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1P9J) {
     auto fix = FixtureFor("1P9J_5801");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) GTEST_SKIP();
@@ -134,14 +134,14 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1P9J) {
     EXPECT_EQ(table.AtomCount(), build.protein->AtomCount());
 
     // Net charge should be near-integer (whole-system MD with neutralised box).
-    double const total = table.TotalCharge();
-    double const frac = std::abs(total - std::round(total));
+    double total = table.TotalCharge();
+    double frac = std::abs(total - std::round(total));
     EXPECT_LT(frac, 0.05) << "Total charge " << total
         << " not near-integer (NetCharge integrity check)";
 }
 
 
-TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1Z9B) {
+TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein_1Z9B) {
     auto fix = FixtureFor("1Z9B_6577");
     if (fix.tpr_path.empty()) GTEST_SKIP();
     if (!std::filesystem::exists(fix.tpr_path)) GTEST_SKIP();
@@ -166,8 +166,8 @@ TEST_F(AmberTrajectoryFixtureTest, FullSystemReaderBuildsAmberProtein1Z9B) {
     EXPECT_EQ(build.protein->ForceFieldCharges().SourceForceField(),
               ForceField::Amber_ff14SB);
 
-    double const total = build.protein->ForceFieldCharges().TotalCharge();
-    double const frac = std::abs(total - std::round(total));
+    double total = build.protein->ForceFieldCharges().TotalCharge();
+    double frac = std::abs(total - std::round(total));
     EXPECT_LT(frac, 0.05) << "Total charge " << total
         << " not near-integer (NetCharge integrity check)";
 }
@@ -184,13 +184,11 @@ TEST_F(AmberTrajectoryFixtureTest, ProteinsDifferBetweenFixtures) {
         GTEST_SKIP() << "fixtures not on disk";
     }
 
-    FullSystemReader r1;
-    FullSystemReader r2;
+    FullSystemReader r1, r2;
     ASSERT_TRUE(r1.ReadTopology(fix1.tpr_path)) << r1.error();
     ASSERT_TRUE(r2.ReadTopology(fix2.tpr_path)) << r2.error();
 
-    std::string err1;
-    std::string err2;
+    std::string err1, err2;
     auto rb1 = nmr::ParseTopolTopReadback(
         TopolTopPathForFixture(fix1.tpr_path), err1);
     auto rb2 = nmr::ParseTopolTopReadback(

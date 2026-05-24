@@ -14,20 +14,16 @@ ProteinConformation::ProteinConformation(
 {
     // Build ConformationAtom vector from positions
     atoms_.reserve(positions_.size());
-    for (const auto& pos : positions_) {
+    for (const auto& pos : positions_)
         atoms_.emplace_back(ConformationAtom(pos));
-}
 }
 
 
 bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> result) {
     if (!result) return false;
 
-    std::string const name = result->Name();
-    // Extract the referent for typeid: typeid(*result) is potentially-
-    // evaluated; the named reference makes the polymorphic dispatch explicit.
-    const ConformationResult& result_ref = *result;
-    std::type_index const tid(typeid(result_ref));
+    std::string name = result->Name();
+    std::type_index tid(typeid(*result));
 
     // Singleton check: already attached?
     if (results_.find(tid) != results_.end()) {
@@ -46,9 +42,10 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
                 if (!attached.empty()) attached += ", ";
                 attached += kv.second->Name();
             }
-            const std::string msg = "rejected " + name +
-                                    ": missing dependency. Attached: [" + attached + "]";
-            OperationLog::Log(OperationLog::Level::Warning, LogResultAttach, "AttachResult", msg);
+            OperationLog::Log(OperationLog::Level::Warning, LogResultAttach,
+                              "AttachResult",
+                              "rejected " + name + ": missing dependency. "
+                              "Attached: [" + attached + "]");
             return false;
         }
     }
@@ -65,9 +62,7 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
 void ProteinConformation::ForceAttachResultForTesting(
         std::unique_ptr<ConformationResult> result) {
     if (!result) return;
-    // Extract the referent for typeid: see AttachResult comment.
-    const ConformationResult& result_ref = *result;
-    const std::type_index tid(typeid(result_ref));
+    const std::type_index tid(typeid(*result));
     results_[tid] = std::move(result);
 }
 

@@ -16,7 +16,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,
         const ChargeSource& source) {
 
-    OperationLog::Scope const scope("ChargeAssignmentResult::Compute",
+    OperationLog::Scope scope("ChargeAssignmentResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()) +
         " source=" + source.Describe());
 
@@ -24,15 +24,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
 
     if (!protein.HasForceFieldCharges()) {
         std::string error;
-        // Lazy-init pattern: ChargeAssignmentResult::Compute receives a
-        // const conf (calculator base-class contract) and therefore a
-        // const Protein, but Protein lazy-builds its ForceFieldCharge
-        // table on first need. The mutation here is cache-fill, not an
-        // observable state change. Refactoring requires moving FF
-        // charge ownership off Protein (substrate architecture
-        // decision, not a lint fix).
-        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-        auto& mutable_protein = const_cast<Protein&>(protein);
+        Protein& mutable_protein = const_cast<Protein&>(protein);
         if (!mutable_protein.PrepareForceFieldCharges(source, conf, error)) {
             OperationLog::Error("ChargeAssignmentResult::Compute",
                 "charge table preparation failed: " + error);
@@ -81,7 +73,7 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,
         const std::string& param_file_path) {
 
-    ParamFileChargeSource const source(param_file_path);
+    ParamFileChargeSource source(param_file_path);
     return Compute(conf, source);
 }
 
@@ -96,7 +88,7 @@ double ChargeAssignmentResult::PbRadiusAt(size_t atom_index) const {
 
 const ForceFieldChargeTable& ChargeAssignmentResult::ChargeTable() const {
     if (!charge_table_) {
-        (void)fprintf(stderr, "FATAL: ChargeAssignmentResult has no charge table.\n");
+        fprintf(stderr, "FATAL: ChargeAssignmentResult has no charge table.\n");
         std::abort();
     }
     return *charge_table_;

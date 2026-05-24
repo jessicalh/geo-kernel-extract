@@ -78,7 +78,9 @@ void HBondShieldingTimeSeriesTrajectoryResult::Finalize(
 void HBondShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
         HighFive::File& file) const {
-    const auto* buffer = tp.GetDenseBuffer<SphericalTensor>(std::type_index(typeid(HBondShieldingTimeSeriesTrajectoryResult)));
+    auto* buffer = const_cast<TrajectoryProtein&>(tp)
+        .GetDenseBuffer<SphericalTensor>(std::type_index(
+            typeid(HBondShieldingTimeSeriesTrajectoryResult)));
     if (!buffer) {
         OperationLog::Warn(
             "HBondShieldingTimeSeriesTrajectoryResult::WriteH5Group",
@@ -119,8 +121,8 @@ void HBondShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         }
     }
 
-    std::vector<std::size_t> const dims = {N, T, static_cast<std::size_t>(9)};
-    HighFive::DataSpace const space(dims);
+    std::vector<std::size_t> dims = {N, T, std::size_t(9)};
+    HighFive::DataSpace space(dims);
     auto ds = grp.createDataSet<double>("xyz", space);
     ds.write_raw(flat.data());
 

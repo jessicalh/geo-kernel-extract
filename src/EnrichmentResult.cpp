@@ -5,10 +5,10 @@
 
 namespace nmr {
 
-std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readability-function-size)
+std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
         ProteinConformation& conf) {
 
-    OperationLog::Scope const scope("EnrichmentResult::Compute",
+    OperationLog::Scope scope("EnrichmentResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
     auto result = std::make_unique<EnrichmentResult>();
@@ -23,7 +23,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
     // Set of atom indices that are members of aromatic rings
     std::set<size_t> aromatic_atom_set;
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
-        for (size_t const ai : protein.RingAt(ri).atom_indices) {
+        for (size_t ai : protein.RingAt(ri).atom_indices) {
             aromatic_atom_set.insert(ai);
         }
     }
@@ -98,7 +98,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
             }
             // For other H, check parent atom
             else if (identity.parent_atom_index != SIZE_MAX) {
-                size_t const parent = identity.parent_atom_index;
+                size_t parent = identity.parent_atom_index;
                 const Atom& parent_identity = protein.AtomAt(parent);
 
                 // AromaticH: parent is in the aromatic atom set
@@ -109,9 +109,9 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
                 else if (parent_identity.element == Element::C) {
                     // Count H bonded to parent
                     int h_count = 0;
-                    for (size_t const bi : parent_identity.bond_indices) {
+                    for (size_t bi : parent_identity.bond_indices) {
                         const Bond& bond = protein.BondAt(bi);
-                        size_t const other = (bond.atom_index_a == parent)
+                        size_t other = (bond.atom_index_a == parent)
                             ? bond.atom_index_b : bond.atom_index_a;
                         if (protein.AtomAt(other).element == Element::H) {
                             h_count++;
@@ -126,9 +126,9 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
                 // HydroxylH: parent is O bonded to C (SER OG, THR OG1, TYR OH)
                 else if (parent_identity.element == Element::O) {
                     bool parent_bonded_to_C = false;
-                    for (size_t const bi : parent_identity.bond_indices) {
+                    for (size_t bi : parent_identity.bond_indices) {
                         const Bond& bond = protein.BondAt(bi);
-                        size_t const other = (bond.atom_index_a == parent)
+                        size_t other = (bond.atom_index_a == parent)
                             ? bond.atom_index_b : bond.atom_index_a;
                         if (protein.AtomAt(other).element == Element::C) {
                             parent_bonded_to_C = true;
@@ -164,7 +164,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
         // H-bond donor: hydrogen bonded to N or O
         if (identity.element == Element::H &&
             identity.parent_atom_index != SIZE_MAX) {
-            Element const parent_elem = protein.AtomAt(identity.parent_atom_index).element;
+            Element parent_elem = protein.AtomAt(identity.parent_atom_index).element;
             ca.is_hbond_donor = (parent_elem == Element::N || parent_elem == Element::O);
         } else {
             ca.is_hbond_donor = false;
@@ -180,7 +180,6 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
         //   sp3: all other heavy C/N/O atoms (CA, CB, sidechain CH2, etc.)
         //   Unassigned: H, S, and anything we can't classify
         if (identity.element != Element::H && identity.element != Element::S) {
-            // NOLINTBEGIN(bugprone-branch-clone): each branch tests a chemically-distinct property (aromatic / carbonyl-C / peptide-N); shared sp2 outcome is the chemistry, not duplication.
             if (aromatic_atom_set.count(ai) > 0) {
                 ca.hybridisation = Hybridisation::sp2;
             } else if (ai == res.C) {
@@ -190,7 +189,6 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
             } else {
                 ca.hybridisation = Hybridisation::sp3;
             }
-            // NOLINTEND(bugprone-branch-clone)
         }
 
         // parent_is_sp2: for H atoms, check parent hybridisation.
@@ -198,17 +196,14 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(  // NOLINT(readabil
         // residue atom list, so parent hybridisation is already set.
         if (identity.element == Element::H &&
             identity.parent_atom_index != SIZE_MAX) {
-            size_t const parent = identity.parent_atom_index;
+            size_t parent = identity.parent_atom_index;
             bool parent_sp2 = false;
-            // NOLINTBEGIN(bugprone-branch-clone): each branch tests a chemically-distinct property of the parent (aromatic / carbonyl-C / peptide-N); shared sp2 outcome is the chemistry.
-            if (aromatic_atom_set.count(parent) > 0) {
+            if (aromatic_atom_set.count(parent) > 0)
                 parent_sp2 = true;
-            } else if (parent == res.C) {
+            else if (parent == res.C)
                 parent_sp2 = true;
-            } else if (parent == res.N) {
+            else if (parent == res.N)
                 parent_sp2 = true;
-            }
-            // NOLINTEND(bugprone-branch-clone)
             ca.parent_is_sp2 = parent_sp2;
         } else {
             ca.parent_is_sp2 = false;

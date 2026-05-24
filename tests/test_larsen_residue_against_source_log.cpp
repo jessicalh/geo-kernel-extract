@@ -42,7 +42,7 @@ constexpr const char* kAaaLog =
 // scripts/perceive_larsen_tripeptide.py.
 std::vector<TripeptideDftAtom>
 ParseStandardOrientation(const fs::path& log_path) {
-    std::ifstream const in(log_path);
+    std::ifstream in(log_path);
     std::stringstream ss; ss << in.rdbuf();
     const std::string text = ss.str();
 
@@ -50,7 +50,7 @@ ParseStandardOrientation(const fs::path& log_path) {
     std::size_t pos = std::string::npos;
     std::size_t scan = 0;
     while (true) {
-        std::size_t const hit = text.find("Standard orientation:", scan);
+        std::size_t hit = text.find("Standard orientation:", scan);
         if (hit == std::string::npos) break;
         pos = hit;
         scan = hit + 1;
@@ -72,7 +72,7 @@ ParseStandardOrientation(const fs::path& log_path) {
     };
     // Header skip.
     while (cursor < text.size()) {
-        std::string const line = eat_line();
+        std::string line = eat_line();
         // Trim leading whitespace and look for first dashed separator.
         if (line.find("---") != std::string::npos) break;
     }
@@ -83,15 +83,11 @@ ParseStandardOrientation(const fs::path& log_path) {
 
     std::vector<TripeptideDftAtom> atoms;
     while (cursor < text.size()) {
-        std::string const line = eat_line();
+        std::string line = eat_line();
         if (line.find("---") != std::string::npos) break;
         std::istringstream iss(line);
-        int idx;
-        int z;
-        int atype;
-        double x;
-        double y;
-        double z_coord;
+        int idx, z, atype;
+        double x, y, z_coord;
         if (!(iss >> idx >> z >> atype >> x >> y >> z_coord)) break;
         TripeptideDftAtom a;
         a.atom_idx = idx;
@@ -150,27 +146,20 @@ TEST_F(LarsenResidueAgainstSourceLogTest, AaaLogPerceivesCleanly) {
     ASSERT_TRUE(trip.has_value())
         << "perception failed on raw Gaussian log — see "
            "PerceiveLarsenTripeptide warnings";
-    // ASSERT_TRUE is opaque to bugprone-unchecked-optional-access; the
-    // explicit has_value gate just below makes the deref provably safe
-    // to the checker. The gate is unreachable in practice.
-    if (!trip.has_value()) {
-        FAIL() << "unreachable: ASSERT_TRUE above";
-    }
-    const auto& t = *trip;
 
     // Same structural invariants as the DB parity test, applied to the
     // raw log. This is the independent-of-DB cross-check.
-    EXPECT_EQ(t.ace.atoms.size(),     6u);
-    EXPECT_EQ(t.n_cap.atoms.size(),   10u);
-    EXPECT_EQ(t.central.atoms.size(), 10u);
-    EXPECT_EQ(t.c_cap.atoms.size(),   10u);
-    EXPECT_EQ(t.nme.atoms.size(),     6u);
+    EXPECT_EQ(trip->ace.atoms.size(),     6u);
+    EXPECT_EQ(trip->n_cap.atoms.size(),   10u);
+    EXPECT_EQ(trip->central.atoms.size(), 10u);
+    EXPECT_EQ(trip->c_cap.atoms.size(),   10u);
+    EXPECT_EQ(trip->nme.atoms.size(),     6u);
 
-    EXPECT_TRUE(t.ace.HasAllRequiredSlots());
-    EXPECT_TRUE(t.n_cap.HasAllRequiredSlots());
-    EXPECT_TRUE(t.central.HasAllRequiredSlots());
-    EXPECT_TRUE(t.c_cap.HasAllRequiredSlots());
-    EXPECT_TRUE(t.nme.HasAllRequiredSlots());
+    EXPECT_TRUE(trip->ace.HasAllRequiredSlots());
+    EXPECT_TRUE(trip->n_cap.HasAllRequiredSlots());
+    EXPECT_TRUE(trip->central.HasAllRequiredSlots());
+    EXPECT_TRUE(trip->c_cap.HasAllRequiredSlots());
+    EXPECT_TRUE(trip->nme.HasAllRequiredSlots());
 
-    EXPECT_EQ(t.central.residue, AminoAcid::ALA);
+    EXPECT_EQ(trip->central.residue, AminoAcid::ALA);
 }

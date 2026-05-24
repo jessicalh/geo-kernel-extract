@@ -43,20 +43,21 @@ std::vector<std::type_index> BiotSavartResult::Dependencies() const {
 static Vec3 WireSegmentField(
         const Vec3& a_m, const Vec3& b_m,
         double I_A, const Vec3& r_m) {
-    Vec3 const dl_m = b_m - a_m;
-    Vec3 const dA_m = r_m - a_m;
-    Vec3 const dB_m = r_m - b_m;
 
-    double const lenA = dA_m.norm();
-    double const lenB = dB_m.norm();
+    Vec3 dl_m = b_m - a_m;
+    Vec3 dA_m = r_m - a_m;
+    Vec3 dB_m = r_m - b_m;
+
+    double lenA = dA_m.norm();
+    double lenB = dB_m.norm();
     if (lenA < CalculatorConfig::Get("biot_savart_wire_endpoint_guard") || lenB < CalculatorConfig::Get("biot_savart_wire_endpoint_guard")) return Vec3::Zero();
 
-    Vec3 const cross = dl_m.cross(dA_m);
-    double const crossSq = cross.squaredNorm();
+    Vec3 cross = dl_m.cross(dA_m);
+    double crossSq = cross.squaredNorm();
     if (crossSq < CalculatorConfig::Get("biot_savart_wire_axis_guard")) return Vec3::Zero();
 
-    double const factor = BIOT_SAVART_PREFACTOR * I_A / crossSq;
-    double const dotTerm = dl_m.dot(dA_m) / lenA - dl_m.dot(dB_m) / lenB;
+    double factor = BIOT_SAVART_PREFACTOR * I_A / crossSq;
+    double dotTerm = dl_m.dot(dA_m) / lenA - dl_m.dot(dB_m) / lenB;
 
     return factor * dotTerm * cross;  // Tesla
 }
@@ -79,27 +80,28 @@ static Vec3 JohnsonBoveyField(
         double lobe_offset_ang,
         double current_nanoamperes,
         const Vec3& point_ang) {
-    int const n = static_cast<int>(vertices.size());
+
+    int n = static_cast<int>(vertices.size());
     if (n < 3) return Vec3::Zero();
 
     // Unit conversion at the boundary: Angstroms -> metres, nA -> A.
     // After this block, all computation is pure SI.
-    Vec3 const offset_ang = normal * lobe_offset_ang;
-    double const halfI_A = 0.5 * current_nanoamperes * NANOAMPERES_TO_AMPERES;
+    Vec3 offset_ang = normal * lobe_offset_ang;
+    double halfI_A = 0.5 * current_nanoamperes * NANOAMPERES_TO_AMPERES;
 
     Vec3 B = Vec3::Zero();
     for (int i = 0; i < n; ++i) {
-        int const j = (i + 1) % n;
+        int j = (i + 1) % n;
 
         // Upper loop (z = +d)
-        Vec3 const a_upper = (vertices[i] + offset_ang) * ANGSTROMS_TO_METRES;
-        Vec3 const b_upper = (vertices[j] + offset_ang) * ANGSTROMS_TO_METRES;
+        Vec3 a_upper = (vertices[i] + offset_ang) * ANGSTROMS_TO_METRES;
+        Vec3 b_upper = (vertices[j] + offset_ang) * ANGSTROMS_TO_METRES;
 
         // Lower loop (z = -d)
-        Vec3 const a_lower = (vertices[i] - offset_ang) * ANGSTROMS_TO_METRES;
-        Vec3 const b_lower = (vertices[j] - offset_ang) * ANGSTROMS_TO_METRES;
+        Vec3 a_lower = (vertices[i] - offset_ang) * ANGSTROMS_TO_METRES;
+        Vec3 b_lower = (vertices[j] - offset_ang) * ANGSTROMS_TO_METRES;
 
-        Vec3 const r_m = point_ang * ANGSTROMS_TO_METRES;
+        Vec3 r_m = point_ang * ANGSTROMS_TO_METRES;
 
         B += WireSegmentField(a_upper, b_upper, halfI_A, r_m);
         B += WireSegmentField(a_lower, b_lower, halfI_A, r_m);
@@ -119,17 +121,12 @@ static Vec3 JohnsonBoveyField(
 //   4. Accumulate per-type T0 and T2 sums on ConformationAtom
 // ============================================================================
 
-// Compute is the single per-atom-per-ring Biot-Savart accumulator.
-// Splitting it into helpers would push the 4-step physics (Eq. ABCD
-// above) into separate TUs and break the "direct named code is the
-// norm" + "no pluggable interfaces" disciplines (CLAUDE.md). The
-// length is inherent to the per-type T0/T2 accumulation across all
-// 8 ring types.
-std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readability-function-size)
-    ProteinConformation& conf) {
-    OperationLog::Scope const scope(
-        "BiotSavartResult::Compute",
-        "atoms=" + std::to_string(conf.AtomCount()) + " rings=" + std::to_string(conf.ProteinRef().RingCount()));
+std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
+        ProteinConformation& conf) {
+
+    OperationLog::Scope scope("BiotSavartResult::Compute",
+        "atoms=" + std::to_string(conf.AtomCount()) +
+        " rings=" + std::to_string(conf.ProteinRef().RingCount()));
 
     const Protein& protein = conf.ProteinRef();
     const auto& spatial = conf.Result<SpatialIndexResult>();
@@ -163,14 +160,14 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         auto& ca = conf.MutableAtomAt(ai);
-        Vec3 const atom_pos = conf.PositionAt(ai);
+        Vec3 atom_pos = conf.PositionAt(ai);
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 G_total = Mat3::Zero();
         Vec3 B_total = Vec3::Zero();
 
-        for (size_t const ri : nearby_rings) {
+        for (size_t ri : nearby_rings) {
             const Ring& ring = protein.RingAt(ri);
             const RingGeometry& geom = conf.ring_geometries[ri];
 
@@ -180,21 +177,19 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
             if (recorded_rings.find(ri) == recorded_rings.end()) {
                 recorded_rings.insert(ri);
                 auto verts_copy = geom.vertices;
-                Vec3 const normal_copy = geom.normal;
-                double const lobe_copy = ring.JBLobeOffset();
+                Vec3 normal_copy = geom.normal;
+                double lobe_copy = ring.JBLobeOffset();
                 choices.Record(CalculatorId::BiotSavart, ri, "ring current",
                     [&ring, verts_copy, normal_copy, lobe_copy](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
                         AddNumber(gc, "intensity", ring.Intensity(), "nA");
                         AddNumber(gc, "lobe_offset", ring.JBLobeOffset(), "A");
-                        SetSampler(gc, [verts_copy, normal_copy, lobe_copy](const Vec3& pt) -> SphericalTensor {
+                        SetSampler(gc, [verts_copy, normal_copy, lobe_copy](Vec3 pt) -> SphericalTensor {
                             Vec3 B = JohnsonBoveyField(verts_copy, normal_copy, lobe_copy, 1.0, pt);
                             Mat3 G;
-                            for (int a = 0; a < 3; ++a) {
-                                for (int b = 0; b < 3; ++b) {
+                            for (int a = 0; a < 3; ++a)
+                                for (int b = 0; b < 3; ++b)
                                     G(a, b) = -normal_copy(b) * B(a) * PPM_FACTOR;
-                                }
-                            }
                             return SphericalTensor::Decompose(G);
                         });
                     });
@@ -235,11 +230,9 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
             // Verified: I=-12, G_T0=-0.116 at (0,0,3A) above PHE
             //   -> sigma = (-12)(-0.116) = +1.40 ppm (shielded). Correct.
             Mat3 G;
-            for (int a = 0; a < 3; ++a) {
-                for (int b = 0; b < 3; ++b) {
+            for (int a = 0; a < 3; ++a)
+                for (int b = 0; b < 3; ++b)
                     G(a, b) = -geom.normal(b) * B(a) * PPM_FACTOR;
-                }
-            }
 
             // Find or create RingNeighbourhood for this ring
             RingNeighbourhood* rn = nullptr;
@@ -255,14 +248,14 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
                 new_rn.ring_type = ring.type_index;
                 new_rn.distance_to_center = distance;
 
-                Vec3 const d = atom_pos - geom.center;
+                Vec3 d = atom_pos - geom.center;
                 new_rn.direction_to_center = d.normalized();
 
                 // Cylindrical coordinates in ring frame
-                double const z = d.dot(geom.normal);
-                Vec3 const d_plane = d - z * geom.normal;
-                double const rho = d_plane.norm();
-                double const theta = std::atan2(d_plane.norm(), std::abs(z));
+                double z = d.dot(geom.normal);
+                Vec3 d_plane = d - z * geom.normal;
+                double rho = d_plane.norm();
+                double theta = std::atan2(d_plane.norm(), std::abs(z));
                 new_rn.z = z;
                 new_rn.rho = rho;
                 new_rn.theta = theta;
@@ -270,12 +263,12 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
                 // Azimuthal angle: in-plane angle from center→vertex0.
                 // Encodes position relative to ring frame — distinguishes
                 // nitrogen side from carbon side on asymmetric rings (HIE, TRP).
-                Vec3 const ref = geom.vertices[0] - geom.center;
-                Vec3 const ref_plane = ref - ref.dot(geom.normal) * geom.normal;
-                double const ref_norm = ref_plane.norm();
+                Vec3 ref = geom.vertices[0] - geom.center;
+                Vec3 ref_plane = ref - ref.dot(geom.normal) * geom.normal;
+                double ref_norm = ref_plane.norm();
                 if (rho > 1e-10 && ref_norm > 1e-10) {
-                    Vec3 const d_hat = d_plane / rho;
-                    Vec3 const ref_hat = ref_plane / ref_norm;
+                    Vec3 d_hat = d_plane / rho;
+                    Vec3 ref_hat = ref_plane / ref_norm;
                     new_rn.cos_phi = d_hat.dot(ref_hat);
                     new_rn.sin_phi = d_hat.cross(ref_hat).dot(geom.normal);
                 }
@@ -290,10 +283,10 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
             rn->B_field = B;
 
             // B-field in cylindrical coordinates (ring frame)
-            Vec3 const d = atom_pos - geom.center;
-            double const z_coord = d.dot(geom.normal);
-            Vec3 const d_plane = d - z_coord * geom.normal;
-            double const rho_mag = d_plane.norm();
+            Vec3 d = atom_pos - geom.center;
+            double z_coord = d.dot(geom.normal);
+            Vec3 d_plane = d - z_coord * geom.normal;
+            double rho_mag = d_plane.norm();
             Vec3 rho_hat = Vec3::Zero();
             if (rho_mag > CalculatorConfig::Get("near_zero_vector_norm_threshold")) rho_hat = d_plane / rho_mag;
             rn->B_cylindrical = Vec3(
@@ -306,12 +299,11 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
             B_total += B;
 
             // Per-type T0 and T2 sums
-            int const ti = ring.TypeIndexAsInt();
+            int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_G_T0_sum[ti] += rn->G_spherical.T0;
-                for (int c = 0; c < 5; ++c) {
+                for (int c = 0; c < 5; ++c)
                     ca.per_type_G_T2_sum[ti][c] += rn->G_spherical.T2[c];
-                }
             }
 
             total_pairs++;
@@ -361,7 +353,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(  // NOLINT(readabil
 // applies). DipolarNearFieldFilter still applied for physical validity.
 // ============================================================================
 
-Vec3 BiotSavartResult::SampleBFieldAt(const Vec3& point) const {
+Vec3 BiotSavartResult::SampleBFieldAt(Vec3 point) const {
     if (!conf_) return Vec3::Zero();
 
     const Protein& protein = conf_->ProteinRef();
@@ -374,7 +366,7 @@ Vec3 BiotSavartResult::SampleBFieldAt(const Vec3& point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        double const distance = (point - geom.center).norm();
+        double distance = (point - geom.center).norm();
         if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
         // DipolarNearFieldFilter: multipole invalid inside source
@@ -391,7 +383,7 @@ Vec3 BiotSavartResult::SampleBFieldAt(const Vec3& point) const {
     return B_total;
 }
 
-SphericalTensor BiotSavartResult::SampleShieldingAt(const Vec3& point) const {
+SphericalTensor BiotSavartResult::SampleShieldingAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -404,7 +396,7 @@ SphericalTensor BiotSavartResult::SampleShieldingAt(const Vec3& point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        double const distance = (point - geom.center).norm();
+        double distance = (point - geom.center).norm();
         if (distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (distance < geom.radius) continue;
         if (distance > CalculatorConfig::Get("ring_current_spatial_cutoff")) continue;
@@ -415,11 +407,9 @@ SphericalTensor BiotSavartResult::SampleShieldingAt(const Vec3& point) const {
 
         // G_ab = -n_b * B_a * PPM_FACTOR
         Mat3 G;
-        for (int a = 0; a < 3; ++a) {
-            for (int b = 0; b < 3; ++b) {
+        for (int a = 0; a < 3; ++a)
+            for (int b = 0; b < 3; ++b)
                 G(a, b) = -geom.normal(b) * B(a) * PPM_FACTOR;
-            }
-        }
 
         G_total += G;
     }
@@ -454,9 +444,8 @@ int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
     // bs_shielding: (N, 9) — the full SphericalTensor sum over all rings
     {
         std::vector<double> data(N * 9);
-        for (size_t i = 0; i < N; ++i) {
-            PackST(conf.AtomAt(i).bs_shielding_contribution, &data[i * 9]);
-        }
+        for (size_t i = 0; i < N; ++i)
+            PackST(conf.AtomAt(i).bs_shielding_contribution, &data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/bs_shielding.npy", data.data(), N, 9);
         written++;
     }
@@ -464,11 +453,9 @@ int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
     // bs_per_type_T0: (N, 8) — isotropic kernel per ring type
     {
         std::vector<double> data(N * 8);
-        for (size_t i = 0; i < N; ++i) {
-            for (int t = 0; t < 8; ++t) {
-                data[i * 8 + t] = conf.AtomAt(i).per_type_G_T0_sum[t];
-            }
-        }
+        for (size_t i = 0; i < N; ++i)
+            for (int t = 0; t < 8; ++t)
+                data[i*8 + t] = conf.AtomAt(i).per_type_G_T0_sum[t];
         NpyWriter::WriteFloat64(output_dir + "/bs_per_type_T0.npy", data.data(), N, 8);
         written++;
     }
@@ -476,13 +463,10 @@ int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
     // bs_per_type_T2: (N, 40) — T2[5] per ring type[8]
     {
         std::vector<double> data(N * 40);
-        for (size_t i = 0; i < N; ++i) {
-            for (int t = 0; t < 8; ++t) {
-                for (int c = 0; c < 5; ++c) {
-                    data[i * 40 + static_cast<size_t>(t) * 5 + c] = conf.AtomAt(i).per_type_G_T2_sum[t][c];
-                }
-            }
-        }
+        for (size_t i = 0; i < N; ++i)
+            for (int t = 0; t < 8; ++t)
+                for (int c = 0; c < 5; ++c)
+                    data[i*40 + t*5 + c] = conf.AtomAt(i).per_type_G_T2_sum[t][c];
         NpyWriter::WriteFloat64(output_dir + "/bs_per_type_T2.npy", data.data(), N, 40);
         written++;
     }

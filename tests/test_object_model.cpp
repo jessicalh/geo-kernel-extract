@@ -22,8 +22,8 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     phe.sequence_number = 2;
     phe.chain_id = "A";
 
-    size_t const ri_ala = p.AddResidue(ala);
-    size_t const ri_phe = p.AddResidue(phe);
+    size_t ri_ala = p.AddResidue(ala);
+    size_t ri_phe = p.AddResidue(phe);
 
     // Add backbone atoms for ALA
     auto n = Atom::Create(Element::N); n->pdb_atom_name = "N"; n->residue_index = ri_ala;
@@ -31,17 +31,17 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     auto c = Atom::Create(Element::C); c->pdb_atom_name = "C"; c->residue_index = ri_ala;
     auto o = Atom::Create(Element::O); o->pdb_atom_name = "O"; o->residue_index = ri_ala;
 
-    size_t const n_idx = p.AddAtom(std::move(n));
-    size_t const ca_idx = p.AddAtom(std::move(ca));
-    size_t const c_idx = p.AddAtom(std::move(c));
-    size_t const o_idx = p.AddAtom(std::move(o));
+    size_t n_idx = p.AddAtom(std::move(n));
+    size_t ca_idx = p.AddAtom(std::move(ca));
+    size_t c_idx = p.AddAtom(std::move(c));
+    size_t o_idx = p.AddAtom(std::move(o));
 
     p.MutableResidueAt(ri_ala).atom_indices = {n_idx, ca_idx, c_idx, o_idx};
 
     // Add ring atoms for PHE
     const char* ring_names[] = {"CG", "CD1", "CE1", "CZ", "CE2", "CD2"};
     std::vector<size_t> phe_indices;
-    for (const auto *name : ring_names) {
+    for (auto name : ring_names) {
         auto a = Atom::Create(Element::C); a->pdb_atom_name = name; a->residue_index = ri_phe;
         phe_indices.push_back(p.AddAtom(std::move(a)));
     }
@@ -71,7 +71,7 @@ static std::unique_ptr<Protein> MakeTinyProtein() {
     constexpr double pep_c_o  = PEPTIDE_C_O_DOUBLE_BOND_LENGTH; // 1.231 A; Engh-Huber 1991
     constexpr double offset_x = 10.0;  // arbitrary; positions ALA away from PHE
 
-    std::vector<Vec3> const positions = {
+    std::vector<Vec3> positions = {
         Vec3(offset_x,                          0.0,        0.0),  // ALA N
         Vec3(offset_x + pep_n_ca,               0.0,        0.0),  // ALA CA
         Vec3(offset_x + pep_n_ca + pep_ca_c,    0.0,        0.0),  // ALA C
@@ -165,9 +165,8 @@ TEST(ObjectModel, ResidueQueryMethods) {
 TEST(ObjectModel, ConformationCreation) {
     auto p = MakeTinyProtein();
     std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
-    for (size_t i = 0; i < positions.size(); ++i) {
+    for (size_t i = 0; i < positions.size(); ++i)
         positions[i] = Vec3(i * 1.5, 0.0, 0.0);
-}
 
     p->AddCrystalConformation(positions, 1.5, 0.2, 293.0, "TEST");
     EXPECT_TRUE(p->HasCrystalConformation());
@@ -183,9 +182,8 @@ TEST(ObjectModel, ConformationAtomPosition) {
     std::vector<Vec3> positions(p->AtomCount());
     positions[0] = Vec3(1.0, 2.0, 3.0);
     positions[1] = Vec3(4.0, 5.0, 6.0);
-    for (size_t i = 2; i < positions.size(); ++i) {
+    for (size_t i = 2; i < positions.size(); ++i)
         positions[i] = Vec3::Zero();
-}
 
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
@@ -196,7 +194,7 @@ TEST(ObjectModel, ConformationAtomPosition) {
 
 TEST(ObjectModel, ConformationAtomDefaultFields) {
     auto p = MakeTinyProtein();
-    std::vector<Vec3> const positions(p->AtomCount(), Vec3::Zero());
+    std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
 
@@ -227,7 +225,7 @@ public:
 
 TEST(ObjectModel, AttachAndAccessResult) {
     auto p = MakeTinyProtein();
-    std::vector<Vec3> const positions(p->AtomCount(), Vec3::Zero());
+    std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
 
@@ -239,7 +237,7 @@ TEST(ObjectModel, AttachAndAccessResult) {
 
 TEST(ObjectModel, SingletonGuarantee) {
     auto p = MakeTinyProtein();
-    std::vector<Vec3> const positions(p->AtomCount(), Vec3::Zero());
+    std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
 
@@ -250,7 +248,7 @@ TEST(ObjectModel, SingletonGuarantee) {
 
 TEST(ObjectModel, DependencyCheckPass) {
     auto p = MakeTinyProtein();
-    std::vector<Vec3> const positions(p->AtomCount(), Vec3::Zero());
+    std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
 
@@ -260,7 +258,7 @@ TEST(ObjectModel, DependencyCheckPass) {
 
 TEST(ObjectModel, DependencyCheckFail) {
     auto p = MakeTinyProtein();
-    std::vector<Vec3> const positions(p->AtomCount(), Vec3::Zero());
+    std::vector<Vec3> positions(p->AtomCount(), Vec3::Zero());
     p->AddCrystalConformation(positions, 0.0, 0.0, 0.0, "T");
     auto& conf = p->CrystalConf();
 

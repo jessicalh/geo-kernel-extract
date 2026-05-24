@@ -112,15 +112,13 @@ TEST(AtomFlatTest, PdbLoadingStillWorks) {
     // Hydrogen parent assignment: if the PDB has H atoms, at least some
     // should have parent_atom_index set. Heavy-atom-only crystal structures
     // (like 1UBQ) have no hydrogens, so the test passes trivially.
-    int h_count = 0;
-    int h_with_parent = 0;
+    int h_count = 0, h_with_parent = 0;
     for (size_t ai = 0; ai < result.protein->AtomCount(); ++ai) {
         const auto& atom = result.protein->AtomAt(ai);
         if (atom.element == Element::H) {
             h_count++;
-            if (atom.parent_atom_index != SIZE_MAX) {
+            if (atom.parent_atom_index != SIZE_MAX)
                 h_with_parent++;
-}
         }
     }
     if (h_count > 0) {
@@ -143,7 +141,7 @@ TEST(AtomFlatTest, RingDetectionStillWorks) {
     // Check that ring atoms are valid indices
     for (size_t ri = 0; ri < result.protein->RingCount(); ++ri) {
         const auto& ring = result.protein->RingAt(ri);
-        for (size_t const ai : ring.atom_indices) {
+        for (size_t ai : ring.atom_indices) {
             EXPECT_LT(ai, result.protein->AtomCount())
                 << "Ring " << ri << " has invalid atom index " << ai;
         }
