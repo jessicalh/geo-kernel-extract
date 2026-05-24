@@ -70,6 +70,17 @@ struct JobSpec {
          std::numeric_limits<double>::infinity();  // --pdb-to-ps T1
     std::string pdb_decorator;           // --pdb-decorator TAG; optional run tag
 
+    // -- Trajectory NPY emission (opt-in, parallel to PDB emission) --
+    // --emit-frame-npys DIR turns it on. Each accepted frame becomes
+    // DIR/frame_NNNNNN/ with the full ConformationResult::WriteAllFeatures
+    // output (the same NPY set the four single-conformation modes emit).
+    // Per-protein sidecars (atoms_category_info, topology) land once at
+    // DIR. See FrameNpyEmitter.h for storage-cost notes.
+    std::string emit_frame_npys_dir;                                // --emit-frame-npys DIR; empty = off
+    std::size_t npy_stride = 1;                                     // --npy-stride N; default 1
+    double npy_from_ps = -std::numeric_limits<double>::infinity();  // --npy-from-ps T0
+    double npy_to_ps = std::numeric_limits<double>::infinity();     // --npy-to-ps T1
+
     // -- Common --
     std::string output_dir;    // empty = no feature output (viewer mode)
     std::string config_path;   // TOML calculator parameter overrides

@@ -1,16 +1,17 @@
 #include "Trajectory.h"
-#include "TrajectoryProtein.h"
-#include "TrajectoryResult.h"
-#include "RunConfiguration.h"
-#include "Session.h"
-#include "AIMNet2Result.h"          // AIMNet2Model (forward use)
+#include "AIMNet2Result.h"  // AIMNet2Model (forward use)
 #include "CategoryInfoProjection.h"
-#include "TopologySidecar.h"
+#include "FrameNpyEmitter.h"
 #include "FramePdbEmitter.h"
 #include "GromacsFrameHandler.h"
-#include "ProteinConformation.h"
-#include "OperationRunner.h"
 #include "OperationLog.h"
+#include "OperationRunner.h"
+#include "ProteinConformation.h"
+#include "RunConfiguration.h"
+#include "Session.h"
+#include "TopologySidecar.h"
+#include "TrajectoryProtein.h"
+#include "TrajectoryResult.h"
 #include "errors.h"
 
 // GROMACS EDR reader (copied layout from former GromacsRunContext).
@@ -263,6 +264,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         tp.DispatchCompute(conf0, *this, /*frame_idx=*/0, handler_->Time());
         FramePdbEmitter::OnFrame(conf0, /*frame_idx=*/0, handler_->Time(),
                                  &env_.box_matrix);
+        FrameNpyEmitter::OnFrame(conf0, /*frame_idx=*/0, handler_->Time());
         frame_times_.push_back(handler_->Time());
         frame_indices_.push_back(0);
         frame_count_ = 1;
@@ -311,6 +313,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         tp.DispatchCompute(*conf, *this, handler_->Index(), handler_->Time());
         FramePdbEmitter::OnFrame(*conf, handler_->Index(), handler_->Time(),
                                  &env_.box_matrix);
+        FrameNpyEmitter::OnFrame(*conf, handler_->Index(), handler_->Time());
 
         frame_times_.push_back(handler_->Time());
         frame_indices_.push_back(handler_->Index());

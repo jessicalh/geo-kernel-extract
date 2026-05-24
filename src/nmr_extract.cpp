@@ -7,24 +7,25 @@
 // Usage: nmr_extract --help
 //
 
-#include "JobSpec.h"
-#include "PdbFileReader.h"
-#include "OrcaRunLoader.h"
-#include "TrajectoryProtein.h"
-#include "Trajectory.h"
-#include "RunConfiguration.h"
-#include "Session.h"
-#include "errors.h"
-#include "OperationRunner.h"
-#include "ConformationResult.h"
 #include "AIMNet2Result.h"
-#include "OperationLog.h"
-#include "RuntimeEnvironment.h"
 #include "CalculatorConfig.h"
-#include "GromacsFrameHandler.h"
-#include "FramePdbEmitter.h"
 #include "CategoryInfoProjection.h"
+#include "ConformationResult.h"
+#include "FrameNpyEmitter.h"
+#include "FramePdbEmitter.h"
+#include "GromacsFrameHandler.h"
+#include "JobSpec.h"
+#include "OperationLog.h"
+#include "OperationRunner.h"
+#include "OrcaRunLoader.h"
+#include "PdbFileReader.h"
+#include "RunConfiguration.h"
+#include "RuntimeEnvironment.h"
+#include "Session.h"
 #include "TopologySidecar.h"
+#include "Trajectory.h"
+#include "TrajectoryProtein.h"
+#include "errors.h"
 
 #include <highfive/H5File.hpp>
 
@@ -303,6 +304,19 @@ static int RunTrajectory(const JobSpec& spec, const Session& session) {
         cfg.from_ps    = spec.pdb_from_ps;
         cfg.to_ps      = spec.pdb_to_ps;
         FramePdbEmitter::Configure(tp.ProteinRef(), std::move(cfg));
+    }
+
+    // ── Optional FrameNpyEmitter (opt-in via --emit-frame-npys) ──
+    // Per-protein sidecars (atoms_category_info, topology) are written
+    // into DIR at Configure time. Each accepted frame becomes
+    // DIR/frame_NNNNNN/ during Trajectory::Run.
+    if (!spec.emit_frame_npys_dir.empty()) {
+        FrameNpyEmitter::Config cfg;
+        cfg.output_dir = spec.emit_frame_npys_dir;
+        cfg.stride = spec.npy_stride;
+        cfg.from_ps = spec.npy_from_ps;
+        cfg.to_ps = spec.npy_to_ps;
+        FrameNpyEmitter::Configure(tp.ProteinRef(), std::move(cfg));
     }
 
     // ── Trajectory: file paths + EDR preload ─────────────────────

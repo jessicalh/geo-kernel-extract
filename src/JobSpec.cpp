@@ -176,6 +176,23 @@ JobSpec ParseJobSpec(int argc, char* argv[]) {
         if (!s_to_ps.empty())   spec.pdb_to_ps   = std::atof(s_to_ps.c_str());
         if (spec.pdb_stride == 0) spec.pdb_stride = 1;  // 0 is meaningless
 
+        // ── Optional NPY-frame emission (opt-in) ───────────────────
+        // Parallel to the PDB block above. Each accepted frame writes
+        // a frame_NNNNNN/ subdir into DIR with the full WriteAllFeatures
+        // output. See FrameNpyEmitter.h for the per-frame cost.
+        spec.emit_frame_npys_dir = GetArg(argc, argv, "--emit-frame-npys");
+        std::string s_npy_stride = GetArg(argc, argv, "--npy-stride");
+        std::string s_npy_from_ps = GetArg(argc, argv, "--npy-from-ps");
+        std::string s_npy_to_ps = GetArg(argc, argv, "--npy-to-ps");
+        if (!s_npy_stride.empty())
+            spec.npy_stride = std::strtoull(s_npy_stride.c_str(), nullptr, 10);
+        if (!s_npy_from_ps.empty())
+            spec.npy_from_ps = std::atof(s_npy_from_ps.c_str());
+        if (!s_npy_to_ps.empty())
+            spec.npy_to_ps = std::atof(s_npy_to_ps.c_str());
+        if (spec.npy_stride == 0)
+            spec.npy_stride = 1;
+
         return spec;
     }
 
@@ -391,57 +408,72 @@ bool ValidateJobSpec(JobSpec& spec) {
 
 void PrintJobSpecUsage(const char* prog) {
     fprintf(stderr,
-        "Usage:\n"
-        "  %s --pdb FILE [--pH N] [--config FILE] --output DIR\n"
-        "      Load a bare PDB, protonate with reduce at the given pH\n"
-        "      (default 7.0), assign ff14SB charges, run all calculators.\n"
-        "\n"
-        "  %s --protonated-pdb FILE [--config FILE] --output DIR\n"
-        "      Load a PDB that already has hydrogen atoms (e.g. from reduce,\n"
-        "      tleap, or GROMACS). Detect protonation state from H atoms.\n"
-        "      Assign ff14SB charges.\n"
-        "\n"
-        "  %s --orca --root NAME [--config FILE] --output DIR\n"
-        "      Load an ORCA DFT run. Root expands to:\n"
-        "        {root}.xyz        coordinates from tleap (required)\n"
-        "        {root}.prmtop     AMBER topology — charge source (required)\n"
-        "        {root}_nmr.out    ORCA NMR shielding tensors (optional)\n"
-        "\n"
-        "  %s --mutant --wt NAME --ala NAME [--config FILE] --output DIR\n"
-        "      Load a WT + ALA mutant pair. Each root expands as above.\n"
-        "      Runs both conformations and computes WT-ALA delta tensors.\n"
-        "\n"
-        "  %s --trajectory DIR --output DIR\n"
-        "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
-        "      DIR must contain production.tpr, production.trr, production.edr (all required).\n"
-        "      Pass 1: scan all frames with lightweight calculators, accumulate stats.\n"
-        "      Pass 2: extract selected frames with full calculators, write NPY.\n"
-        "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"
-        "\n"
-        "  %s --trajectory --analysis DIR --aimnet2 MODEL --output DIR\n"
-        "      Analysis mode: single pass, all calculators on every sampled frame.\n"
-        "      Writes exhaustive analysis H5 with full per-atom time series,\n"
-        "      topology, and physics-group decomposition. ~1.2 GB per protein.\n"
-        "\n"
-        "Common options:\n"
-        "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
-        "  --config FILE    TOML file with calculator parameter overrides\n"
-        "  --no-mopac       Skip MOPAC semiempirical (PDB/ORCA/Mutant modes).\n"
-        "  --mopac          (Trajectory mode) Use FullFatFrameExtraction (MOPAC + TR5-TR9).\n"
-        "                   ~10 min/frame; for 1P9J + mutants, not fleet.\n"
-        "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
-        "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
-        "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
-        "  --analysis-h5 FILE  Companion analysis H5 (viewer only; ignored by nmr_extract)\n"
-        "  --help, -h       Show this message\n"
-        "\n"
-        "Trajectory PDB-frame emission (--trajectory only):\n"
-        "  --emit-frame-pdbs DIR   Opt-in: write per-frame PDBs into DIR\n"
-        "  --pdb-stride N          Emit every N-th frame as read (default 1)\n"
-        "  --pdb-from-ps T0        Skip frames with time_ps < T0 (default -inf)\n"
-        "  --pdb-to-ps   T1        Skip frames with time_ps >= T1 (default +inf)\n"
-        "  --pdb-decorator TAG     Optional run tag included in the filename\n",
-        prog, prog, prog, prog, prog, prog);
+            "Usage:\n"
+            "  %s --pdb FILE [--pH N] [--config FILE] --output DIR\n"
+            "      Load a bare PDB, protonate with reduce at the given pH\n"
+            "      (default 7.0), assign ff14SB charges, run all calculators.\n"
+            "\n"
+            "  %s --protonated-pdb FILE [--config FILE] --output DIR\n"
+            "      Load a PDB that already has hydrogen atoms (e.g. from reduce,\n"
+            "      tleap, or GROMACS). Detect protonation state from H atoms.\n"
+            "      Assign ff14SB charges.\n"
+            "\n"
+            "  %s --orca --root NAME [--config FILE] --output DIR\n"
+            "      Load an ORCA DFT run. Root expands to:\n"
+            "        {root}.xyz        coordinates from tleap (required)\n"
+            "        {root}.prmtop     AMBER topology — charge source (required)\n"
+            "        {root}_nmr.out    ORCA NMR shielding tensors (optional)\n"
+            "\n"
+            "  %s --mutant --wt NAME --ala NAME [--config FILE] --output DIR\n"
+            "      Load a WT + ALA mutant pair. Each root expands as above.\n"
+            "      Runs both conformations and computes WT-ALA delta tensors.\n"
+            "\n"
+            "  %s --trajectory DIR --output DIR\n"
+            "      Process a full-system GROMACS trajectory (protein + water + ions).\n"
+            "      DIR must contain production.tpr, production.trr, production.edr (all required).\n"
+            "      Pass 1: scan all frames with lightweight calculators, accumulate stats.\n"
+            "      Pass 2: extract selected frames with full calculators, write NPY.\n"
+            "      Writes per-atom trajectory catalog (atom_catalog.csv).\n"
+            "\n"
+            "  %s --trajectory --analysis DIR --aimnet2 MODEL --output DIR\n"
+            "      Analysis mode: single pass, all calculators on every sampled frame.\n"
+            "      Writes exhaustive analysis H5 with full per-atom time series,\n"
+            "      topology, and physics-group decomposition. ~1.2 GB per protein.\n"
+            "\n"
+            "Common options:\n"
+            "  --output DIR     Output directory for NPY feature arrays (required for CLI)\n"
+            "  --config FILE    TOML file with calculator parameter overrides\n"
+            "  --no-mopac       Skip MOPAC semiempirical (PDB/ORCA/Mutant modes).\n"
+            "  --mopac          (Trajectory mode) Use FullFatFrameExtraction (MOPAC + TR5-TR9).\n"
+            "                   ~10 min/frame; for 1P9J + mutants, not fleet.\n"
+            "  --no-apbs        Skip APBS Poisson-Boltzmann solvated fields\n"
+            "  --no-coulomb     Skip vacuum Coulomb EFG (APBS is preferred for electrostatics)\n"
+            "  --aimnet2 FILE   AIMNet2 .jpt model for neural network charges + EFG\n"
+            "  --analysis-h5 FILE  Companion analysis H5 (viewer only; ignored by nmr_extract)\n"
+            "  --help, -h       Show this message\n"
+            "\n"
+            "Trajectory PDB-frame emission (--trajectory only):\n"
+            "  --emit-frame-pdbs DIR   Opt-in: write per-frame PDBs into DIR\n"
+            "  --pdb-stride N          Emit every N-th frame as read (default 1)\n"
+            "  --pdb-from-ps T0        Skip frames with time_ps < T0 (default -inf)\n"
+            "  --pdb-to-ps   T1        Skip frames with time_ps >= T1 (default +inf)\n"
+            "  --pdb-decorator TAG     Optional run tag included in the filename\n"
+            "\n"
+            "Trajectory NPY-frame emission (--trajectory only):\n"
+            "  --emit-frame-npys DIR   Opt-in: write per-frame NPY dirs into DIR\n"
+            "                          Each accepted frame becomes DIR/frame_NNNNNN/\n"
+            "                          with the WriteAllFeatures NPY set. Per-protein\n"
+            "                          atoms_category_info + topology sidecars land\n"
+            "                          once at DIR. Independent of --pdb-stride.\n"
+            "  --npy-stride N          Emit every N-th frame as read (default 1)\n"
+            "  --npy-from-ps T0        Skip frames with time_ps < T0 (default -inf)\n"
+            "  --npy-to-ps   T1        Skip frames with time_ps >= T1 (default +inf)\n",
+            prog,
+            prog,
+            prog,
+            prog,
+            prog,
+            prog);
 }
 
 

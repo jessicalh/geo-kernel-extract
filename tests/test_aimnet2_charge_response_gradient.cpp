@@ -102,8 +102,8 @@ TEST_F(AIMNet2ChargeResponseGradientTest, PipelineProducesNonZeroPolarisability)
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        const Vec3& v = ca.aimnet2_polarisability_vector;
-        const double s = ca.aimnet2_polarisability_scalar;
+        const Vec3& v = ca.aimnet2_charge_response_gradient_vector;
+        const double s = ca.aimnet2_charge_response_gradient_scalar;
 
         if (std::isfinite(v.x()) && std::isfinite(v.y()) &&
             std::isfinite(v.z()) && std::isfinite(s)) {

@@ -302,6 +302,7 @@ add_library(nmr_shielding
     src/BondedEnergyTimeSeriesTrajectoryResult.cpp
     src/GromacsFramePullResult.cpp
     src/GromacsToAmberReadbackBlock.cpp
+    src/FrameNpyEmitter.cpp
     src/FramePdbEmitter.cpp
     src/FullSystemReader.cpp
     src/WaterFieldResult.cpp
