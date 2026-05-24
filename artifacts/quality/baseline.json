@@ -1,6 +1,6 @@
 {
-  "anchored_at_sha": "e252dcd",
-  "anchored_at_utc": "2026-05-24T21:17:53.887893+00:00",
+  "anchored_at_sha": "a57b534",
+  "anchored_at_utc": "2026-05-24T21:48:20.503225+00:00",
   "tools": {
     "clang-tidy": {
       "src/AIMNet2Result.cpp": {
@@ -356,261 +356,78 @@
       }
     },
     "cppcheck": {
-      "/home/jessica/builds/reduce-src/libpdb/pdb++.h": {
+      "src/AIMNet2ChargeResponseGradientWelfordTrajectoryResult.h": {
         "by_check": {
-          "noExplicitConstructor": 2
-        },
-        "total": 2
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/AtomConn.h": {
-        "by_check": {
-          "useInitializationList": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/AtomDescr.h": {
-        "by_check": {
-          "passedByValue": 1,
-          "useInitializationList": 1
-        },
-        "total": 2
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/AtomPositions.h": {
-        "by_check": {
-          "uninitMemberVar": 3
-        },
-        "total": 3
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/CTab.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/CliqueList.h": {
-        "by_check": {
-          "functionConst": 4
-        },
-        "total": 4
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/DotSph.h": {
-        "by_check": {
-          "functionConst": 4,
-          "noExplicitConstructor": 1
-        },
-        "total": 5
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/ElementInfo.h": {
-        "by_check": {
-          "copyCtorPointerCopying": 1,
-          "missingOverride": 4,
-          "operatorEqToSelf": 1,
-          "uninitMemberVar": 3
-        },
-        "total": 9
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/LocBlk.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/Mover.h": {
-        "by_check": {
-          "functionConst": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/PDBrec.h": {
-        "by_check": {
-          "constVariablePointer": 1,
-          "copyCtorPointerCopying": 2,
-          "functionConst": 2,
-          "noExplicitConstructor": 1,
-          "operatorEqToSelf": 1,
-          "passedByValue": 1,
-          "shadowFunction": 6,
-          "unreadVariable": 6
-        },
-        "total": 20
-      },
-      "/home/jessica/builds/reduce-src/reduce_src/ResBlk.h": {
-        "by_check": {
-          "constParameterReference": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/builds/reduce-src/toolclasses/Point3d.h": {
-        "by_check": {
-          "noExplicitConstructor": 2
-        },
-        "total": 2
-      },
-      "/home/jessica/builds/reduce-src/toolclasses/utility.h": {
-        "by_check": {
-          "shadowFunction": 6
-        },
-        "total": 6
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/topology/idef.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/topology/symtab.h": {
-        "by_check": {
-          "noExplicitConstructor": 2
-        },
-        "total": 2
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/topology/topology.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/arrayref.h": {
-        "by_check": {
-          "noExplicitConstructor": 24,
-          "redundantCondition": 1
-        },
-        "total": 25
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/enumerationhelpers.h": {
-        "by_check": {
-          "functionStatic": 15
-        },
-        "total": 15
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/exceptions.h": {
-        "by_check": {
-          "noExplicitConstructor": 2
-        },
-        "total": 2
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/range.h": {
-        "by_check": {
-          "functionConst": 1,
-          "noExplicitConstructor": 1
-        },
-        "total": 2
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/unique_cptr.h": {
-        "by_check": {
-          "functionConst": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/api/legacy/include/gromacs/utility/vectypes.h": {
-        "by_check": {
-          "noExplicitConstructor": 3,
-          "uninitMemberVar": 3
-        },
-        "total": 6
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/src/external/boost/stl_interfaces/iterator_interface.hpp": {
-        "by_check": {
-          "noExplicitConstructor": 2,
-          "passedByValue": 6
-        },
-        "total": 8
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/src/gromacs/gpu_utils/hostallocator.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
-        },
-        "total": 1
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/src/gromacs/math/include/gromacs/math/arrayrefwithpadding.h": {
-        "by_check": {
-          "noExplicitConstructor": 2,
-          "shadowFunction": 2
-        },
-        "total": 4
-      },
-      "/home/jessica/gromacs/src/gromacs-2026.0/src/gromacs/utility/include/gromacs/utility/allocator.h": {
-        "by_check": {
-          "noExplicitConstructor": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/AmberChargeResolver.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1,
-          "uselessCallsSubstr": 1
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/AmberPreparedChargeSource.h": {
+        "by_check": {
+          "unusedFunction": 2
         },
         "total": 2
       },
       "src/AminoAcidType.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/AminoAcidType.h": {
         "by_check": {
-          "useStlAlgorithm": 2
+          "unusedFunction": 2
         },
         "total": 2
-      },
-      "src/Atom.cpp": {
-        "by_check": {
-          "funcArgNamesDifferent": 1
-        },
-        "total": 1
-      },
-      "src/Atom.h": {
-        "by_check": {
-          "funcArgNamesDifferent": 1
-        },
-        "total": 1
       },
       "src/BiotSavartResult.cpp": {
         "by_check": {
-          "stlFindInsert": 1,
-          "useStlAlgorithm": 1
-        },
-        "total": 2
-      },
-      "src/BondedEnergyResult.cpp": {
-        "by_check": {
-          "constParameterReference": 1
+          "stlFindInsert": 1
         },
         "total": 1
       },
-      "src/CalculatorConfig.cpp": {
+      "src/BondLengthStatsTrajectoryResult.h": {
         "by_check": {
-          "uselessCallsSubstr": 1
+          "unusedFunction": 1
         },
         "total": 1
+      },
+      "src/BondedEnergyResult.h": {
+        "by_check": {
+          "unusedFunction": 7
+        },
+        "total": 7
       },
       "src/CategoryInfoProjection.cpp": {
         "by_check": {
-          "funcArgNamesDifferent": 1,
           "unreadVariable": 2,
-          "useStlAlgorithm": 1,
-          "variableScope": 1
+          "unusedFunction": 6
         },
-        "total": 5
+        "total": 8
       },
-      "src/CategoryInfoProjection.h": {
+      "src/ChargeSource.h": {
         "by_check": {
-          "funcArgNamesDifferent": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/ChargeSource.cpp": {
+      "src/Cli/PrintUsage.cpp": {
         "by_check": {
-          "uselessCallsSubstr": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/CoulombResult.cpp": {
         "by_check": {
-          "constParameterReference": 1
+          "unusedFunction": 3
         },
-        "total": 1
+        "total": 3
       },
       "src/CovalentTopology.cpp": {
         "by_check": {
@@ -618,217 +435,305 @@
         },
         "total": 1
       },
-      "src/DispersionResult.cpp": {
+      "src/DemoResult.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/ForceFieldChargeTable.cpp": {
+      "src/DenseBuffer.h": {
         "by_check": {
-          "useStlAlgorithm": 4
+          "unusedFunction": 6
         },
-        "total": 4
+        "total": 6
       },
-      "src/FramePdbEmitter.cpp": {
+      "src/Dssp8TimeSeriesTrajectoryResult.h": {
         "by_check": {
-          "constVariableReference": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/FullSystemReader.cpp": {
+      "src/ForceFieldChargeTable.h": {
         "by_check": {
-          "funcArgNamesDifferent": 1
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/FrameNpyEmitter.cpp": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/FullSystemReader.h": {
         "by_check": {
-          "funcArgNamesDifferent": 1
+          "unusedFunction": 3
         },
-        "total": 1
+        "total": 3
+      },
+      "src/GeometryChoice.h": {
+        "by_check": {
+          "unusedFunction": 7
+        },
+        "total": 7
       },
       "src/GeometryResult.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 4
+        },
+        "total": 4
+      },
+      "src/GromacsEnergyResult.h": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/GromacsEnergyTimeSeriesTrajectoryResult.h": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/GromacsFrameHandler.cpp": {
+        "by_check": {
+          "unusedFunction": 3
+        },
+        "total": 3
+      },
+      "src/GromacsFrameHandler.h": {
+        "by_check": {
+          "unusedFunction": 5
+        },
+        "total": 5
+      },
+      "src/GromacsFramePullResult.h": {
+        "by_check": {
+          "unusedFunction": 4
+        },
+        "total": 4
+      },
+      "src/GromacsToAmberReadbackBlock.cpp": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/HBondResult.h": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/HaighMallionResult.cpp": {
         "by_check": {
-          "constParameterReference": 1,
           "stlFindInsert": 1,
-          "unreadVariable": 1,
-          "useStlAlgorithm": 1
-        },
-        "total": 4
-      },
-      "src/JobSpec.cpp": {
-        "by_check": {
-          "constParameter": 1,
-          "funcArgNamesDifferent": 1
+          "unreadVariable": 1
         },
         "total": 2
       },
-      "src/JobSpec.h": {
+      "src/KernelEvaluationFilter.h": {
         "by_check": {
-          "funcArgNamesDifferent": 1
+          "unusedFunction": 8
+        },
+        "total": 8
+      },
+      "src/LarsenHBondGrid.h": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/KernelEvaluationFilter.h": {
+      "src/LarsenHBondShieldingResult.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/LarsenHBondShieldingResult.h": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/LarsenResidue.cpp": {
         "by_check": {
-          "useStlAlgorithm": 6
+          "unusedFunction": 2
         },
-        "total": 6
+        "total": 2
       },
       "src/LegacyAmberTopology.cpp": {
         "by_check": {
-          "useStlAlgorithm": 3
-        },
-        "total": 3
-      },
-      "src/MolecularGraphResult.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/MopacCoulombResult.cpp": {
+      "src/LegacyAmberTopology.h": {
         "by_check": {
-          "constParameterReference": 1
+          "unusedFunction": 8
         },
-        "total": 1
+        "total": 8
+      },
+      "src/McConnellResult.cpp": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
       },
       "src/MopacResult.cpp": {
         "by_check": {
           "constVariable": 1,
-          "funcArgNamesDifferent": 4
-        },
-        "total": 5
-      },
-      "src/MopacResult.h": {
-        "by_check": {
-          "funcArgNamesDifferent": 4
-        },
-        "total": 4
-      },
-      "src/MutationDeltaResult.cpp": {
-        "by_check": {
-          "constParameterPointer": 1,
-          "useStlAlgorithm": 4
-        },
-        "total": 5
-      },
-      "src/NamingRegistry.cpp": {
-        "by_check": {
-          "functionStatic": 1,
-          "useStlAlgorithm": 3
-        },
-        "total": 4
-      },
-      "src/NamingRegistry.h": {
-        "by_check": {
-          "functionStatic": 1
-        },
-        "total": 1
-      },
-      "src/OrcaRunLoader.cpp": {
-        "by_check": {
-          "constVariableReference": 1,
-          "useStlAlgorithm": 1
-        },
-        "total": 2
-      },
-      "src/OrcaShieldingResult.cpp": {
-        "by_check": {
-          "constParameterReference": 1,
-          "uselessCallsSubstr": 1
-        },
-        "total": 2
-      },
-      "src/PdbFileReader.cpp": {
-        "by_check": {
-          "constVariableReference": 2,
-          "useStlAlgorithm": 1
+          "unusedFunction": 2
         },
         "total": 3
       },
-      "src/PiQuadrupoleResult.cpp": {
+      "src/MopacResult.h": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/PlanarGeometryResult.cpp": {
+      "src/MutationDeltaResult.cpp": {
         "by_check": {
-          "useStlAlgorithm": 2
+          "unusedFunction": 6
+        },
+        "total": 6
+      },
+      "src/MutationDeltaResult.h": {
+        "by_check": {
+          "unusedFunction": 2
         },
         "total": 2
+      },
+      "src/NamingRegistry.h": {
+        "by_check": {
+          "unusedFunction": 3
+        },
+        "total": 3
+      },
+      "src/OperationLog.cpp": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/OperationRunner.cpp": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/PdbFileReader.cpp": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/PropkaProtonator.h": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
       },
       "src/Protein.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 7
         },
-        "total": 1
+        "total": 7
+      },
+      "src/Protein.h": {
+        "by_check": {
+          "unusedFunction": 3
+        },
+        "total": 3
       },
       "src/ProteinConformation.cpp": {
         "by_check": {
-          "useStlAlgorithm": 2
+          "unusedFunction": 1
         },
-        "total": 2
+        "total": 1
       },
-      "src/ProtonationState.cpp": {
+      "src/ProteinConformation.h": {
         "by_check": {
-          "useStlAlgorithm": 2
+          "unusedFunction": 13
+        },
+        "total": 13
+      },
+      "src/ProteinTopology.h": {
+        "by_check": {
+          "unusedFunction": 1
+        },
+        "total": 1
+      },
+      "src/ProtonationState.h": {
+        "by_check": {
+          "unusedFunction": 2
         },
         "total": 2
       },
       "src/RecordBag.h": {
         "by_check": {
-          "useStlAlgorithm": 3
-        },
-        "total": 3
-      },
-      "src/RingSusceptibilityResult.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/RingTopology.cpp": {
+      "src/Residue.h": {
         "by_check": {
-          "useStlAlgorithm": 2
+          "unusedFunction": 2
         },
         "total": 2
       },
-      "src/RmsdSpikeSelectionTrajectoryResult.cpp": {
+      "src/RingNeighbourhoodTrajectoryStats.h": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/RmsdTrackingTrajectoryResult.h": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/RunConfiguration.cpp": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/RunConfiguration.h": {
+        "by_check": {
+          "unusedFunction": 8
+        },
+        "total": 8
+      },
+      "src/SasaResult.cpp": {
+        "by_check": {
+          "unusedFunction": 2
+        },
+        "total": 2
+      },
+      "src/SemanticEnums.h": {
+        "by_check": {
+          "unusedFunction": 8
+        },
+        "total": 8
+      },
+      "src/Session.cpp": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/RuntimeEnvironment.cpp": {
+      "src/Session.h": {
         "by_check": {
-          "uselessCallsSubstr": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "src/SpatialIndexResult.cpp": {
         "by_check": {
-          "useStlAlgorithm": 3
-        },
-        "total": 3
-      },
-      "src/SpatialIndexResult.h": {
-        "by_check": {
-          "functionStatic": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
@@ -839,60 +744,69 @@
         },
         "total": 24
       },
-      "src/TripeptideDftTable.cpp": {
+      "src/Trajectory.h": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 10
+        },
+        "total": 10
+      },
+      "src/TrajectoryMoments.h": {
+        "by_check": {
+          "unusedFunction": 5
+        },
+        "total": 5
+      },
+      "src/TrajectoryProtein.h": {
+        "by_check": {
+          "unusedFunction": 7
+        },
+        "total": 7
+      },
+      "src/TrajectoryResult.h": {
+        "by_check": {
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "src/Types.cpp": {
+      "src/TripeptideBackboneShieldingResult.h": {
         "by_check": {
-          "funcArgNamesDifferent": 1,
-          "useStlAlgorithm": 1
+          "unusedFunction": 2
         },
         "total": 2
       },
-      "src/Types.h": {
+      "src/Types.cpp": {
         "by_check": {
-          "funcArgNamesDifferent": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
+      "src/Types.h": {
+        "by_check": {
+          "unusedFunction": 3
+        },
+        "total": 3
+      },
       "src/generated/LegacyAmberSemanticTables.h": {
         "by_check": {
-          "useStlAlgorithm": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "tests/BlessCompare.cpp": {
         "by_check": {
-          "invalidPointerCast": 2,
-          "useStlAlgorithm": 2,
-          "uselessCallsSubstr": 1
-        },
-        "total": 5
-      },
-      "tests/TestEnvironment.cpp": {
-        "by_check": {
-          "uselessCallsSubstr": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
-      "tests/pass0_demo.cpp": {
+      "tests/TestEnvironment.cpp": {
         "by_check": {
-          "constVariableReference": 1
+          "unusedFunction": 1
         },
         "total": 1
       },
       "tests/test_apbs_field_result.cpp": {
         "by_check": {
           "unreadVariable": 1
-        },
-        "total": 1
-      },
-      "tests/test_batch_biot_savart_haigh_mallion.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
         },
         "total": 1
       },
@@ -908,37 +822,11 @@
         },
         "total": 1
       },
-      "tests/test_demo_result.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
-      "tests/test_foundation_results.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
-      "tests/test_frame_pdb_emitter.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 2
-        },
-        "total": 2
-      },
       "tests/test_full_pipeline.cpp": {
         "by_check": {
-          "unreadVariable": 3,
-          "variableScope": 1
+          "unreadVariable": 3
         },
-        "total": 4
-      },
-      "tests/test_job_spec.cpp": {
-        "by_check": {
-          "constVariableReference": 1,
-          "useStlAlgorithm": 1
-        },
-        "total": 2
+        "total": 3
       },
       "tests/test_larsen_hbond_grid.cpp": {
         "by_check": {
@@ -946,83 +834,30 @@
         },
         "total": 1
       },
-      "tests/test_larsen_residue_perception.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
-      "tests/test_larsen_residue_wl_ambiguity.cpp": {
-        "by_check": {
-          "negativeContainerIndex": 21
-        },
-        "total": 21
-      },
-      "tests/test_mutation_delta.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
-      "tests/test_naming_registry.cpp": {
-        "by_check": {
-          "constVariableReference": 9
-        },
-        "total": 9
-      },
-      "tests/test_object_model.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
-      "tests/test_pdb_loading.cpp": {
-        "by_check": {
-          "constVariableReference": 1
-        },
-        "total": 1
-      },
-      "tests/test_pi_quadrupole_result.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
-        },
-        "total": 1
-      },
       "tests/test_pipeline_and_sample.cpp": {
         "by_check": {
-          "unreadVariable": 1,
-          "useStlAlgorithm": 1
-        },
-        "total": 2
-      },
-      "tests/test_planar_geometry_result.cpp": {
-        "by_check": {
-          "useStlAlgorithm": 1
+          "unreadVariable": 1
         },
         "total": 1
       },
       "tests/test_protonation_pipeline.cpp": {
         "by_check": {
-          "constVariableReference": 7,
           "unreadVariable": 2,
-          "unusedVariable": 1,
-          "useStlAlgorithm": 1
+          "unusedVariable": 1
         },
-        "total": 11
+        "total": 3
       },
       "tests/test_smoke.cpp": {
         "by_check": {
-          "useStlAlgorithm": 1,
-          "uselessCallsSubstr": 1
+          "unusedFunction": 1
         },
-        "total": 2
+        "total": 1
       },
       "tests/test_spherical_tensor.cpp": {
         "by_check": {
-          "unreadVariable": 1,
-          "useStlAlgorithm": 1
+          "unreadVariable": 1
         },
-        "total": 2
+        "total": 1
       },
       "tests/test_string_barrier.cpp": {
         "by_check": {
@@ -1039,18 +874,6 @@
       "tests/topology/test_legacy_amber_semantic_integration.cpp": {
         "by_check": {
           "syntaxError": 1
-        },
-        "total": 1
-      },
-      "ui/src/ComputeWorker.h": {
-        "by_check": {
-          "unknownMacro": 1
-        },
-        "total": 1
-      },
-      "ui/src/RestServer.h": {
-        "by_check": {
-          "unknownMacro": 1
         },
         "total": 1
       }

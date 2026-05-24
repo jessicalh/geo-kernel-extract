@@ -29,33 +29,68 @@ OUT_XML="${ARTIFACTS_DIR}/cppcheck-${SHA}.xml"
 OUT_JSON="${ARTIFACTS_DIR}/cppcheck-${SHA}.json"
 mkdir -p "${ARTIFACTS_DIR}"
 
-# Standard cppcheck check set:
-#   --enable=all: warnings/style/perf/portability/info/missingInclude
-#   --inconclusive: allow lower-confidence findings (we triage)
-#   --suppress=missingIncludeSystem: don't pester about std headers
-#   --suppress=unusedFunction: many fn defined for ABI we don't always see
-#   --suppress=unmatchedSuppression: harmless meta-suppress
+# W3 discipline (mirrors .clang-tidy 2026-05-24): bugs + UB + dead code
+# only; style / performance / portability preferences out of scope.
 #
-# Pin to C++17 explicitly to match CMakeLists; without it cppcheck
-# sometimes defaults too high or low.
+#   --enable=warning           : real-bug-class findings cppcheck is
+#                                confident about (knownConditionTrueFalse,
+#                                negativeContainerIndex, syntaxError,
+#                                uninit reads, memleak, resourceLeak, ...)
+#   --enable=style             : needed because cppcheck's dead-code
+#                                checks (unreadVariable, redundantAssignment,
+#                                unreachableCode, unusedStructMember,
+#                                unusedScopedObject, unusedLabel) sit in
+#                                the "style" severity bucket. Noisy style
+#                                preferences from this bucket are
+#                                suppressed individually below.
+#   --enable=unusedFunction    : cross-TU dead-function detector. The
+#                                only cppcheck check that crosses TU
+#                                boundaries; clang-tidy cannot do this.
+#                                Previously suppressed by mistake.
+#   (no --inconclusive)        : W3 = high-confidence only. The
+#                                inconclusive flag was producing noise
+#                                we triaged repeatedly without acting on.
+#   --suppress=uninitMemberVar : codebase initializes POD fields at use
+#                                site, not declaration. Same rationale as
+#                                .clang-tidy's disable of
+#                                cppcoreguidelines-pro-type-member-init.
+#   --suppress=...             : pure-preference style IDs that fired
+#                                in the previous baseline without
+#                                indicating a bug.
 #
-# --project consumes compile_commands.json directly so include paths
-# + defines come from the real build.
+# Pin to C++17 to match CMakeLists. --project consumes compile_commands.json
+# directly so include paths + defines come from the real build.
+
+CPPCHECK_BASE=(
+    --enable=warning,style,unusedFunction
+    --std=c++17
+    --suppress=missingIncludeSystem
+    --suppress=unmatchedSuppression
+    # Init-at-use-site is codebase convention.
+    --suppress=uninitMemberVar
+    # Style preferences below — not bugs, not dead code.
+    --suppress=useStlAlgorithm
+    --suppress=noExplicitConstructor
+    --suppress=constVariableReference
+    --suppress=constParameterReference
+    --suppress=constParameterPointer
+    --suppress=constParameter
+    --suppress=functionStatic
+    --suppress=functionConst
+    --suppress=funcArgNamesDifferent
+    --suppress=passedByValue
+    --suppress=uselessCallsSubstr
+    --suppress=shadowFunction
+    --suppress=variableScope
+    --suppress=cstyleCast
+    --suppress=postfixOperator
+    --xml --xml-version=2
+)
 
 if [[ $# -gt 0 ]]; then
-    CPPCHECK_ARGS=(--enable=all --inconclusive --std=c++17
-                   --suppress=missingIncludeSystem
-                   --suppress=unusedFunction
-                   --suppress=unmatchedSuppression
-                   --xml --xml-version=2
-                   -I src -I fileformat
-                   "$@")
+    CPPCHECK_ARGS=("${CPPCHECK_BASE[@]}" -I src -I fileformat "$@")
 else
-    CPPCHECK_ARGS=(--enable=all --inconclusive --std=c++17
-                   --suppress=missingIncludeSystem
-                   --suppress=unusedFunction
-                   --suppress=unmatchedSuppression
-                   --xml --xml-version=2
+    CPPCHECK_ARGS=("${CPPCHECK_BASE[@]}"
                    --project=build/compile_commands.json
                    "-i${PWD}/build"
                    "-i${PWD}/extern")
@@ -79,9 +114,12 @@ for err in tree.iter("error"):
         path = loc.get("file", "")
         if path.startswith(root + "/"):
             path = path[len(root)+1:]
-        # Filter out paths from build/ or external (paranoia in case
-        # cppcheck didn't honor the -i filter).
-        if path.startswith(("build/", "extern/", "/usr/")):
+        # Only keep findings that live inside the project tree —
+        # cppcheck walks the full include closure (reduce/, gromacs/,
+        # libtorch/, openbabel/, miniforge3/...) and reports
+        # unusedFunction on every vendored header. Those aren't our
+        # debt to manage. Mirrors clang-tidy's HeaderFilterRegex.
+        if not path.startswith(("src/", "tests/", "fileformat/")):
             continue
         findings.append({
             "file": path,
