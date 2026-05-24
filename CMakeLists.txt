@@ -221,6 +221,9 @@ target_link_libraries(apbs_bridge PRIVATE ${APBS_LIBS})
 # ============================================================================
 
 add_library(nmr_shielding
+    src/Cli/Parse.cpp
+    src/Cli/Validate.cpp
+    src/Cli/PrintUsage.cpp
     src/Types.cpp
     src/AminoAcidType.cpp
     src/Atom.cpp
@@ -740,6 +743,7 @@ add_executable(job_spec_tests
     tests/test_main.cpp
     tests/TestEnvironment.cpp
     tests/test_job_spec.cpp
+    tests/test_cli_parse_parity.cpp
 )
 target_compile_definitions(job_spec_tests PRIVATE
     NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
