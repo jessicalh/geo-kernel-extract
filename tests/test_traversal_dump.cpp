@@ -143,7 +143,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         EXPECT_LT(intensity, 0.0)
             << "Ring " << ri << " has non-negative intensity";
 
-        double lobe_offset = ring.JBLobeOffset();
+        double lobe_offset = ring.JohnsonBoveyLobeOffset();
         EXPECT_GT(lobe_offset, 0.0);
 
         int n_count = ring.NitrogenCount();
@@ -153,7 +153,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
         RingAromaticity arom = ring.Aromaticity();
         (void)arom;  // Just verify it's accessible as a typed enum
 
-        int size = ring.RingSizeValue();
+        int size = ring.RingAtomCount();
         EXPECT_TRUE(size == 5 || size == 6 || size == 9)
             << "Ring " << ri << " has unexpected size " << size;
 
@@ -237,7 +237,7 @@ TEST_F(TraversalDumpTest, FullTypedTraversal) {
 
     printf("Rings: %zu\n", protein->RingCount());
     for (auto& [type, count] : rings_per_type) {
-        printf("  %s: %zu\n", RingTypeName(type), count);
+        printf("  %s: %zu\n", RingTypeCode(type), count);
     }
 
     printf("Bonds: %zu\n", protein->BondCount());

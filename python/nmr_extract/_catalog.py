@@ -167,8 +167,8 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── Pi-Quadrupole (PiQuadrupoleResult.cpp) ───────────────────
     ArraySpec("pq_shielding",     "pi_quadrupole", ShieldingTensor, 9,   True,  "PQ EFG shielding",
               irreps=_SHIELD_IRREPS, units="Angstrom^-5", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="ring_efg"),
-    ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ isotropic per ring type",
-              irreps="0e", units="Angstrom^-5", mechanism="ring_efg"),
+    ArraySpec("pq_per_type_T0",   "pi_quadrupole", PerRingTypeT0,   8,   True,  "PQ Buckingham A-term scalar per ring type",
+              irreps="0e", units="Angstrom^-4", mechanism="ring_efg"),
     ArraySpec("pq_per_type_T2",   "pi_quadrupole", PerRingTypeT2,   40,  True,  "PQ T2 per ring type",
               irreps="2e", units="Angstrom^-5", tensor_rank=2, mechanism="ring_efg"),
 
@@ -207,7 +207,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     # ── H-Bond (HBondResult.cpp) ─────────────────────────────────
     ArraySpec("hbond_shielding",  "hbond", ShieldingTensor,        9,    True,  "H-bond shielding",
               irreps=_SHIELD_IRREPS, units="Angstrom^-3", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="hbond_kernel"),
-    ArraySpec("hbond_scalars",    "hbond", HBondScalars,           3,    True,  "H-bond scalars",
+    ArraySpec("hbond_scalars",    "hbond", HBondScalars,           4,    True,  "H-bond scalars (nearest_dist, 1/r^3, count, McConnell angular scalar Σ)",
               mechanism="hbond_kernel"),
 
     # ── DSSP (DsspResult.cpp) ────────────────────────────────────

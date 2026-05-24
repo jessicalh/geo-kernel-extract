@@ -195,40 +195,22 @@ enum class RingTypeIndex {
     HisImidazole   = 5,
     HidImidazole   = 6,
     HieImidazole   = 7,
-    ProPyrrolidine = 8,   ///< Saturated 5-ring (Pro pyrrolidine).
-                          ///< Aromaticity = None; Intensity = 0
-                          ///< (Joule & Mills 2010 ch. 7). Falls outside
-                          ///< the `< kAromaticRingTypeCount` boundary
-                          ///< for per-aromatic-type calculator
-                          ///< accumulation.
+    ProPyrrolidine = 8,   ///< Saturated 5-ring (Pro); Aromaticity = None,
+                          ///< outside kAromaticRingTypeCount.
     Count          = 9
 };
 
-/// Boundary between aromatic ring types (indices 0..7) and saturated
-/// ring types (indices 8..Count-1). Saturated rings are excluded from
-/// per-aromatic-type calculator aggregation by the conventional
-/// `if (ti < kAromaticRingTypeCount)` guard.
+/// Boundary between aromatic ring types (indices 0..kAromaticRingTypeCount-1)
+/// and saturated ring types (indices kAromaticRingTypeCount..Count-1).
+/// The conventional `if (ti < kAromaticRingTypeCount)` guard gates Pro out
+/// of per-aromatic-type calculator accumulation.
 ///
-/// **Adoption in calculator code is deferred to the per-calculator
-/// update slices.** Bundle C / Slice A is substrate-side only: the
-/// constant is declared here and documented as the design seam, but
-/// `BiotSavartResult.cpp`, `HaighMallionResult.cpp`,
-/// `PiQuadrupoleResult.cpp`, `DispersionResult.cpp`, and
-/// `ConformationAtom.h`'s `std::array<double, 8>` per-aromatic-type
-/// accumulators continue to use the literal `8` until each
-/// calculator's own update slice picks them up. The literal `8` in
-/// `ConformationAtom.h` is also the stable NPY ABI shape (eight
-/// per-aromatic-type entries per atom in the trajectory output);
-/// changing it requires a coordinated NPY schema migration.
+/// ABI note: `ConformationAtom.h`'s `std::array<double, 8>` and the NPY
+/// per-aromatic-type shape both bake in `8`; changing this boundary is a
+/// coordinated NPY schema migration.
 ///
-/// The static_asserts below pin the constant to the cross-enum
-/// invariant: `kAromaticRingTypeCount` IS the index where saturated
-/// ring types begin, and `Count` must remain strictly greater. If a
-/// future change adds a new aromatic ring at index 8 (shifting Pro
-/// to 9), the first assert fails until `kAromaticRingTypeCount` is
-/// updated to 9 too — surfacing the boundary shift at the build line
-/// instead of leaving the calculator-side guards silently
-/// off-by-one.
+/// The static_asserts pin the constant to the first saturated index, so a
+/// re-order of RingTypeIndex surfaces at the build line.
 inline constexpr int kAromaticRingTypeCount = 8;
 static_assert(static_cast<int>(RingTypeIndex::ProPyrrolidine) == kAromaticRingTypeCount,
               "kAromaticRingTypeCount IS the index of the first saturated "
@@ -240,7 +222,7 @@ static_assert(kAromaticRingTypeCount < static_cast<int>(RingTypeIndex::Count),
               "kAromaticRingTypeCount must be a valid ring type index, "
               "not the Count sentinel.");
 
-inline const char* RingTypeName(RingTypeIndex t) {
+inline const char* RingTypeCode(RingTypeIndex t) {
     switch (t) {
         case RingTypeIndex::PheBenzene:     return "PHE";
         case RingTypeIndex::TyrPhenol:      return "TYR";
@@ -301,31 +283,26 @@ struct SphericalTensor {
     // L2 norm of the T2 components.
     double T2Magnitude() const;
 
-    // T2-subspace inner product with another tensor. Equivalent to the
-    // Frobenius inner product of the underlying symmetric-traceless
-    // matrices because the isometric_real_sph normalization preserves
-    // the Frobenius norm (see Decompose preamble in Types.cpp).
+    // T2-space dot product. Equals the Frobenius inner product of the
+    // symmetric-traceless matrices because the isometric normalization
+    // preserves the Frobenius norm.
     double T2InnerProduct(const SphericalTensor& other) const;
 
-    // T2-subspace cosine similarity in [-1, 1] (SIGNED). The T2
-    // 5-vector representation is sign-deterministic — a sign-flipped
-    // T2 means a physically different (opposite-polarisation) tensor,
-    // not an eigenvector-convention ambiguity. Use signed cos as the
-    // physically meaningful invariant; downstream consumers wanting
-    // a [0, 1] orientation-only measure can take cos² (preserves
-    // rotational invariance, drops sign).
+    // T2-subspace cosine similarity in [-1, 1] (SIGNED). A sign-flipped
+    // T2 is a physically different (opposite-polarisation) tensor, so the
+    // sign is meaningful; consumers wanting an orientation-only measure
+    // can take cos².
     //
     // Returns NaN if either T2 magnitude is below magnitude_threshold
-    // (cosine numerically undefined / divisor near FP noise floor).
-    // The threshold should be calibrated to the signal scale of the
-    // physical quantity, NOT the project-wide direction-vector floor.
+    // (cosine numerically undefined). The threshold should be calibrated
+    // to the signal scale of the physical quantity.
     double T2CosineWith(const SphericalTensor& other,
                         double magnitude_threshold) const;
 };
 
 
 // ============================================================================
-// FieldValue -- a calculator result attributed to a specific source
+// CalculatorId (enum) -- identifies the calculator behind a result
 // ============================================================================
 
 enum class CalculatorId {
@@ -334,13 +311,6 @@ enum class CalculatorId {
     APBS, Orca, Mopac, MopacCoulomb, MopacMcConnell, AIMNet2, SASA,
     WaterField, HydrationShell, HydrationGeometry, EEQ, PlanarGeometry,
     LarsenHBond
-};
-
-struct FieldValue {
-    Mat3 tensor = Mat3::Zero();
-    SphericalTensor spherical;
-    CalculatorId source_calculator = CalculatorId::BiotSavart;
-    size_t source_index = 0;
 };
 
 

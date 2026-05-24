@@ -22,6 +22,8 @@
 //
 // Output:
 //   eeq_charges.npy  (N,) float64 — partial charges (elementary charges)
+//   eeq_cn.npy       (N,) float64 — coordination number (intermediate,
+//                                   for traceability)
 //
 // Parameters (from TOML):
 //   eeq_total_charge — net system charge (default 0, neutral protein)

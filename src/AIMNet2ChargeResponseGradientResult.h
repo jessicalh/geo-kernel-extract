@@ -1,43 +1,38 @@
 #pragma once
 //
-// AIMNet2ChargeResponseGradientResult: per-atom charge-polarisation gradient via
-// autograd through the AIMNet2 TorchScript model.
+// AIMNet2ChargeResponseGradientResult: per-atom charge-response gradient
+// d(Σ q²)/d(r) via autograd through the AIMNet2 TorchScript model.
+// NOT a Buckingham polarisability α = ∂μ/∂E.
+//
+// Returned quantity: the per-atom 3-vector dL/d(r_i) and its L2 norm,
+// NOT the exact charge-response diagonal d(q_i)/d(r_i).
 //
 // Computes coord.grad in a single backward pass on
 //
 //     L = sum_j q_j^2     (over non-sentinel atoms)
 //
-// and stores the per-atom 3-vector dL/d(r_i) plus its L2 norm. The
-// naive choice L = sum(q) gives a near-zero gradient because AIMNet2
+// The naive choice L = sum(q) gives a near-zero gradient because AIMNet2
 // enforces total-charge conservation (sum_j q_j is fixed by
 // construction; d(const)/d(coord) = 0). The L2-of-charges scalar is
-// the cheapest single-pass alternative whose gradient is physically
-// meaningful — a charge-weighted per-atom polarisability — and is
-// proportional to d(q_i)/d(r_i) when q_i dominates the local
+// the cheapest single-pass objective whose gradient is non-trivial,
+// and is proportional to d(q_i)/d(r_i) when q_i dominates the local
 // contribution.
 //
 // The exact diagonal d(q_i)/d(r_i) per atom would require N backward
-// passes (one per atom). The single-pass L2-of-charges proxy is the
-// first-test choice; future variants can swap the scalar objective
-// without changing this Result's class shape.
+// passes (one per atom); the single-pass L2-of-charges proxy is the
+// deliberate design choice. Future variants can swap the scalar
+// objective without changing this Result's class shape.
 //
-// Per Amendment 2026-05-08(b) (spec/PLANNED_CALCULATORS_2026-04-22.md)
-// + the .jpt requires_grad pre-flight check that PASSED on
-// 2026-05-09 (tests/data/illustrative_peptides/aimnet2_requires_grad_check.py).
+// Prerequisite: the .jpt model must support requires_grad on coords.
 //
-// Lifecycle: ConformationResult subclass. PROMOTED FROM TEST FLAG to
-// always-on for the non-trajectory pipeline at 2026-05-09; trajectory
-// pipeline RequireConformationResult'd alongside AIMNet2Result at
-// 2026-05-20 (RunConfiguration.cpp:167). Every trajectory run now
-// triggers autograd backward per frame. Depends on AIMNet2Result for
-// attach ordering, but does NOT share state with it — runs its own
-// forward pass without NoGradGuard, then a single backward.
-//
-// Cost: roughly equal to AIMNet2Result itself (~5-6 s on a 4000-atom
-// protein), since this Result re-runs the full forward pass with
-// gradient tracking enabled. State-sharing with AIMNet2Result would
-// save the second forward pass at the cost of coupling the two
-// Compute paths; deferred to a later optimisation pass.
+// Lifecycle: ConformationResult subclass. Always-on for both the
+// non-trajectory and trajectory pipelines; every run triggers an
+// autograd backward (per frame in trajectory mode). Depends on
+// AIMNet2Result for attach ordering, but does NOT share state with
+// it — runs its own grad-tracking forward (no NoGradGuard), then a
+// single backward. Cost is roughly equal to AIMNet2Result itself,
+// since this Result re-runs the full forward pass with gradient
+// tracking enabled.
 //
 // CUDA mandatory (inherits from AIMNet2Model). No CPU fallback.
 //

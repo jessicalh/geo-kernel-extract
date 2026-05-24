@@ -45,26 +45,36 @@ using AdjacencySet = std::vector<std::set<int>>;
 // Bond perception
 // ============================================================================
 
+// Element-pair covalent-bond distance cutoffs (Å). Values match the
+// Python POC (see file banner); they decide graph topology only — no
+// shielding value depends on them.
+constexpr double kHydrogenSulfurCutoffA = 1.50;
+constexpr double kHydrogenHeavyCutoffA  = 1.30;
+constexpr double kSulfurSulfurCutoffA   = 2.30;
+constexpr double kSulfurHeavyCutoffA    = 2.10;
+constexpr double kOxygenOxygenCutoffA   = 1.60;
+constexpr double kHeavyHeavyCutoffA     = 1.85;
+
 double BondCutoffAngstrom(Element a, Element b) {
-    // Order-insensitive lookup. Cutoffs match the Python POC.
+    // Order-insensitive lookup.
     Element lo = (static_cast<int>(a) <= static_cast<int>(b)) ? a : b;
     Element hi = (lo == a) ? b : a;
     if (lo == Element::H || hi == Element::H) {
         if (lo == Element::H && hi == Element::H) return 0.0;
-        if (hi == Element::S) return 1.50;
-        return 1.30;
+        if (hi == Element::S) return kHydrogenSulfurCutoffA;
+        return kHydrogenHeavyCutoffA;
     }
     // Heavy-heavy.
     if (lo == Element::S || hi == Element::S) {
-        if (lo == Element::S && hi == Element::S) return 2.30;
-        return 2.10;
+        if (lo == Element::S && hi == Element::S) return kSulfurSulfurCutoffA;
+        return kSulfurHeavyCutoffA;
     }
-    if (lo == Element::O && hi == Element::O) return 1.60;
-    return 1.85;
+    if (lo == Element::O && hi == Element::O) return kOxygenOxygenCutoffA;
+    return kHeavyHeavyCutoffA;
 }
 
 
-double Distance(const Vec3& a, const Vec3& b) {
+double DistanceAngstrom(const Vec3& a, const Vec3& b) {
     return (a - b).norm();
 }
 
@@ -77,7 +87,7 @@ AdjacencySet BuildBondGraph(const std::vector<TripeptideDftAtom>& atoms) {
             const double cutoff =
                 BondCutoffAngstrom(atoms[i].element, atoms[j].element);
             if (cutoff <= 0.0) continue;
-            if (Distance(atoms[i].position, atoms[j].position) < cutoff) {
+            if (DistanceAngstrom(atoms[i].position, atoms[j].position) < cutoff) {
                 adj[i].insert(j);
                 adj[j].insert(i);
             }
@@ -91,10 +101,17 @@ AdjacencySet BuildBondGraph(const std::vector<TripeptideDftAtom>& atoms) {
 // Amide identification
 // ============================================================================
 
+// Amide-detection geometry windows (Å). These discriminate a peptide
+// C(=O)-N from other C/N/O arrangements; they decide graph topology
+// only (no shielding value depends on them).
+constexpr double kCarbonylCODoubleBondMaxA = 1.32;  // C=O upper bound
+constexpr double kPeptideCNMinA            = 1.20;  // peptide C-N lower bound
+constexpr double kPeptideCNMaxA            = 1.50;  // peptide C-N upper bound
+
 // Returns (carbonyl_C_idx, amide_N_idx) pairs for all peptide-amide bonds.
 // Filters out sidechain primary amides (ASN ND2, GLN NE2) by requiring the
 // amide N to have at least one heavy neighbour besides the carbonyl C.
-std::vector<std::pair<int, int>> FindPeptideAmides(
+std::vector<std::pair<int, int>> FindPeptideAmideBonds(
         const std::vector<TripeptideDftAtom>& atoms,
         const AdjacencySet& adj) {
     std::vector<std::pair<int, int>> out;
@@ -109,7 +126,8 @@ std::vector<std::pair<int, int>> FindPeptideAmides(
         bool has_double_o = false;
         for (int j : adj[i]) {
             if (atoms[j].element == Element::O &&
-                Distance(atoms[i].position, atoms[j].position) < 1.32) {
+                DistanceAngstrom(atoms[i].position, atoms[j].position) <
+                    kCarbonylCODoubleBondMaxA) {
                 has_double_o = true; break;
             }
         }
@@ -117,21 +135,23 @@ std::vector<std::pair<int, int>> FindPeptideAmides(
 
         for (int j : adj[i]) {
             if (atoms[j].element != Element::N) continue;
-            const double d = Distance(atoms[i].position, atoms[j].position);
-            if (d > 1.20 && d < 1.50) {
+            const double d =
+                DistanceAngstrom(atoms[i].position, atoms[j].position);
+            if (d > kPeptideCNMinA && d < kPeptideCNMaxA) {
                 candidates.emplace_back(i, j);
             }
         }
     }
 
     // Filter: peptide amide N has at least one heavy non-carbonyl-C neighbour.
-    for (const auto& [c, nj] : candidates) {
-        int n_heavy_other = 0;
-        for (int k : adj[nj]) {
-            if (k == c) continue;
-            if (atoms[k].element != Element::H) ++n_heavy_other;
+    for (const auto& [carbonyl_c, amide_n] : candidates) {
+        int noncarbonyl_heavy_neighbours = 0;
+        for (int k : adj[amide_n]) {
+            if (k == carbonyl_c) continue;
+            if (atoms[k].element != Element::H) ++noncarbonyl_heavy_neighbours;
         }
-        if (n_heavy_other >= 1) out.emplace_back(c, nj);
+        if (noncarbonyl_heavy_neighbours >= 1)
+            out.emplace_back(carbonyl_c, amide_n);
     }
 
     return out;
@@ -170,22 +190,22 @@ std::vector<std::vector<int>> OrderPiecesAlongAmideChain(
         const std::vector<std::vector<int>>& pieces,
         const std::vector<std::pair<int, int>>& amides) {
     int total_atoms = 0;
-    for (const auto& p : pieces) total_atoms += static_cast<int>(p.size());
+    for (const auto& piece : pieces) total_atoms += static_cast<int>(piece.size());
     std::vector<int> piece_of(total_atoms, -1);
-    for (int pi = 0; pi < static_cast<int>(pieces.size()); ++pi) {
-        for (int ai : pieces[pi]) piece_of[ai] = pi;
+    for (int piece_idx = 0; piece_idx < static_cast<int>(pieces.size()); ++piece_idx) {
+        for (int atom_idx : pieces[piece_idx]) piece_of[atom_idx] = piece_idx;
     }
     // Directed edges: piece(C) -> piece(N) per amide.
     std::map<int, int> out_edges;
     std::map<int, int> in_edges;
-    for (const auto& [c, nj] : amides) {
-        out_edges[piece_of[c]] = piece_of[nj];
-        in_edges[piece_of[nj]] = piece_of[c];
+    for (const auto& [carbonyl_c, amide_n] : amides) {
+        out_edges[piece_of[carbonyl_c]] = piece_of[amide_n];
+        in_edges[piece_of[amide_n]] = piece_of[carbonyl_c];
     }
     // Chain start: piece with outgoing but no incoming amide.
     int start = -1;
-    for (int pi = 0; pi < static_cast<int>(pieces.size()); ++pi) {
-        if (out_edges.count(pi) && !in_edges.count(pi)) { start = pi; break; }
+    for (int piece_idx = 0; piece_idx < static_cast<int>(pieces.size()); ++piece_idx) {
+        if (out_edges.count(piece_idx) && !in_edges.count(piece_idx)) { start = piece_idx; break; }
     }
     if (start < 0) return {};  // cyclic or disconnected — fail
 
@@ -221,7 +241,7 @@ struct CanonicalPiece {
     // typed AtomMechanicalIdentity carried on each CanonicalAtom.
     std::map<std::string, std::set<std::string>> adj_by_name;
 
-    // Index-keyed adjacency, populated by FinalizeAdjacency() at the
+    // Index-keyed adjacency, populated by BuildIndexAdjacency() at the
     // end of each builder (CanonicalAce / CanonicalNme /
     // CanonicalResidue / CanonicalHisVariant). The WL signature
     // computation and MatchPiece operate on this — no name lookups
@@ -233,7 +253,7 @@ struct CanonicalPiece {
 // Translate adj_by_name → adj_by_idx after canonical construction.
 // Called once per CanonicalPiece (cached via function-local statics),
 // not in the per-record hot path.
-void FinalizeAdjacency(CanonicalPiece& p) {
+void BuildIndexAdjacency(CanonicalPiece& p) {
     std::map<std::string, int> name_to_idx;
     for (int i = 0; i < static_cast<int>(p.atoms.size()); ++i) {
         name_to_idx[p.atoms[i].name] = i;
@@ -252,8 +272,8 @@ void FinalizeAdjacency(CanonicalPiece& p) {
 
 
 void AddBond(CanonicalPiece& p, const std::string& a, const std::string& b) {
-    auto& A = p.adj_by_name[a];
-    auto& B = p.adj_by_name[b];
+    auto& adj_a = p.adj_by_name[a];
+    auto& adj_b = p.adj_by_name[b];
     // Confirm both atoms are in the piece.
     bool has_a = false, has_b = false;
     for (const auto& at : p.atoms) {
@@ -261,7 +281,7 @@ void AddBond(CanonicalPiece& p, const std::string& a, const std::string& b) {
         if (at.name == b) has_b = true;
     }
     if (!has_a || !has_b) return;
-    A.insert(b); B.insert(a);
+    adj_a.insert(b); adj_b.insert(a);
 }
 
 
@@ -299,7 +319,7 @@ CanonicalPiece CanonicalAce() {
     AddBond(p, "CH3", "HH32");
     AddBond(p, "CH3", "HH33");
     StampCapIdentities(p, LarsenResidue::Kind::AceCap);
-    FinalizeAdjacency(p);
+    BuildIndexAdjacency(p);
     return p;
 }
 
@@ -319,13 +339,13 @@ CanonicalPiece CanonicalNme() {
     AddBond(p, "CH3", "HH32");
     AddBond(p, "CH3", "HH33");
     StampCapIdentities(p, LarsenResidue::Kind::NmeCap);
-    FinalizeAdjacency(p);
+    BuildIndexAdjacency(p);
     return p;
 }
 
 
 // Bonds beyond chi-walk that the AminoAcidType representation doesn't
-// encode. Mirror of the Python POC's EXTRA_BONDS table.
+// encode (mirror of the Python POC's EXTRA_BONDS table).
 const std::vector<std::pair<std::string, std::string>>&
 ExtraBondsFor(const std::string& code) {
     static const std::map<std::string, std::vector<std::pair<std::string, std::string>>> kTable = {
@@ -355,8 +375,11 @@ ExtraBondsFor(const std::string& code) {
 
 
 // Hydrogen attachment rules. Returns the heavy-atom parent for a given
-// H atom name, or empty string if not handled. Mirrors the Python POC's
-// canonical_bonds_of_residue H-attach section.
+// H atom name, or empty string if not handled.
+//
+// Prefix-match the H name → heavy parent; order matters (specific
+// before general). H/HA backbone first, then β/γ/δ/ε/ζ/η Hs by shell,
+// with per-residue disambiguation via `has(<heavy>)`.
 std::string ParentHeavyForH(const std::string& h_name,
                               const std::set<std::string>& atoms_in_piece) {
     auto has = [&](const std::string& n) { return atoms_in_piece.count(n); };
@@ -436,7 +459,7 @@ CanonicalPiece CanonicalHisVariant(const std::string& variant_name) {
 
     // adj_by_idx must exist before chain stamping so the methyl-collapse
     // step can count parent-H neighbours via the canonical bond graph.
-    FinalizeAdjacency(p);
+    BuildIndexAdjacency(p);
 
     // Resolve variant_idx from the variant name. Convention is shared
     // with Residue::protonation_variant_index and PerceiveLarsenTripeptide
@@ -494,7 +517,7 @@ CanonicalPiece CanonicalResidue(AminoAcid aa) {
 
     // adj_by_idx must exist before chain stamping so the methyl-collapse
     // step can count parent-H neighbours via the canonical bond graph.
-    FinalizeAdjacency(p);
+    BuildIndexAdjacency(p);
 
     // Non-titratable standard residues use the base (non-variant) row;
     // titratable residues that perception drives via a non-HIS path
@@ -531,23 +554,28 @@ CanonicalPiece CanonicalResidue(AminoAcid aa) {
 // Cost: K=3 over ~50 atoms × ~20 residues = ~3000 string-tuple
 // comparisons per perception call. Negligible.
 
+// One WL round's signature = (element, degree, sorted multiset of
+// (neighbour element, neighbour folded prior-round hash)). At round 0
+// the multiset is empty and the int is the seed 0; at rounds ≥1 the
+// pair's int is the neighbour's prior-round hash folded to 31 bits
+// (kWlPriorHashFoldMask below) — NOT the neighbour's degree.
 using Signature = std::tuple<Element, int, std::vector<std::pair<Element, int>>>;
 
-// One round's signature = (element, degree, sorted-multiset of
-// (neighbour-element, neighbour-degree)). The "prior signatures"
-// argument carries round k-1's per-atom signature; for round 0 it's
-// empty and we fall back to (element, degree) only.
-using SigKey = std::vector<std::uint64_t>;  // K signatures per atom, hashed
+// Fold a 64-bit prior-round hash to 31 bits so it fits the int slot of
+// the neighbour-label pair. Both WL sides (CanonicalWLSignatures and
+// PerceivedWLSignatures) fold identically, so the two signature spaces
+// are comparable — which is what MatchPiece requires. At ~50 atoms per
+// piece the collision risk from the truncation is negligible.
+constexpr std::uint64_t kWlPriorHashFoldMask = 0x7fffffffull;
 
 // Stable hash of a Signature for use as a numeric per-round id.
-std::uint64_t HashSignature(const Signature& s) {
-    // FNV-1a 64-bit over the tuple serialised as bytes.
+std::uint64_t HashWlSignature(const Signature& s) {
     auto fnv = [](std::uint64_t h, std::uint64_t v) {
         h ^= v;
         h *= 0x100000001b3ull;
         return h;
     };
-    std::uint64_t h = 0xcbf29ce484222325ull;
+    std::uint64_t h = 0xcbf29ce484222325ull;  // FNV-1a 64-bit offset basis
     h = fnv(h, static_cast<std::uint64_t>(std::get<0>(s)));
     h = fnv(h, static_cast<std::uint64_t>(std::get<1>(s)));
     for (const auto& [e, d] : std::get<2>(s)) {
@@ -559,68 +587,82 @@ std::uint64_t HashSignature(const Signature& s) {
 
 
 // K=3 WL per-canonical-atom signature ids, keyed by canonical node
-// index. Each intermediate round's hash is (element, degree, sorted-
-// multiset of neighbours' prior-round hashes); round 0 uses
+// index. Each intermediate round's hash is (element, degree, sorted
+// multiset of neighbours' folded prior-round hashes); round 0 uses
 // (element, 0) as the seed. Walks adj_by_idx — no name lookups.
+//
+// Canonical side: dense, vector-indexed by node.
 std::vector<std::uint64_t> CanonicalWLSignatures(
         const CanonicalPiece& p, int rounds = 3) {
     const int n = static_cast<int>(p.atoms.size());
-    std::vector<std::uint64_t> cur(n);
+
+    // Seed: element only, empty neighbour multiset.
+    std::vector<std::uint64_t> prev_round_hash(n);
     for (int i = 0; i < n; ++i) {
         Signature seed{p.atoms[i].element, 0, {}};
-        cur[i] = HashSignature(seed);
+        prev_round_hash[i] = HashWlSignature(seed);
     }
+
     for (int r = 0; r < rounds; ++r) {
-        std::vector<std::uint64_t> next(n);
+        std::vector<std::uint64_t> next_round_hash(n);
         for (int i = 0; i < n; ++i) {
-            std::vector<std::pair<Element, int>> nbr_sig;
+            // Gather (neighbour element, neighbour folded prior hash).
+            std::vector<std::pair<Element, int>> neighbour_labels;
             for (int j : p.adj_by_idx[i]) {
-                // Neighbour's prior-round signature truncated to 31 bits
-                // and paired with its element gives the WL refinement
-                // discriminator. Order-insensitive (sorted multiset).
-                nbr_sig.emplace_back(
+                neighbour_labels.emplace_back(
                     p.atoms[j].element,
-                    static_cast<int>(cur[j] & 0x7fffffff));
+                    static_cast<int>(prev_round_hash[j] & kWlPriorHashFoldMask));
             }
-            std::sort(nbr_sig.begin(), nbr_sig.end());
-            Signature s{p.atoms[i].element,
-                         static_cast<int>(p.adj_by_idx[i].size()), nbr_sig};
-            next[i] = HashSignature(s);
+
+            // Symmetrise (order-insensitive multiset), then hash.
+            std::sort(neighbour_labels.begin(), neighbour_labels.end());
+            Signature round_signature{
+                p.atoms[i].element,
+                static_cast<int>(p.adj_by_idx[i].size()), neighbour_labels};
+            next_round_hash[i] = HashWlSignature(round_signature);
         }
-        cur = std::move(next);
+        prev_round_hash = std::move(next_round_hash);
     }
-    return cur;
+    return prev_round_hash;
 }
 
 
-// Same as CanonicalWLSignatures but for the perceived atoms.
+// Perceived side: sparse, keyed by dft atom index — same refinement
+// as CanonicalWLSignatures.
 std::map<int, std::uint64_t> PerceivedWLSignatures(
         const std::vector<int>& piece_atoms,
         const AdjacencySet& sub_adj,
         const std::vector<TripeptideDftAtom>& atoms,
         int rounds = 3) {
-    std::map<int, std::uint64_t> cur;
+    // Seed: element only, empty neighbour multiset.
+    std::map<int, std::uint64_t> prev_round_hash;
     for (int i : piece_atoms) {
         Signature seed{atoms[i].element, 0, {}};
-        cur[i] = HashSignature(seed);
+        prev_round_hash[i] = HashWlSignature(seed);
     }
+
     for (int r = 0; r < rounds; ++r) {
-        std::map<int, std::uint64_t> next;
+        std::map<int, std::uint64_t> next_round_hash;
         for (int i : piece_atoms) {
-            std::vector<std::pair<Element, int>> nbr_sig;
+            // Gather (neighbour element, neighbour folded prior hash).
+            std::vector<std::pair<Element, int>> neighbour_labels;
             for (int j : sub_adj[i]) {
-                const std::uint64_t prior = cur.at(j);
-                nbr_sig.emplace_back(atoms[j].element,
-                                      static_cast<int>(prior & 0x7fffffff));
+                const std::uint64_t prior = prev_round_hash.at(j);
+                neighbour_labels.emplace_back(
+                    atoms[j].element,
+                    static_cast<int>(prior & kWlPriorHashFoldMask));
             }
-            std::sort(nbr_sig.begin(), nbr_sig.end());
-            Signature s{atoms[i].element,
-                         static_cast<int>(sub_adj[i].size()), nbr_sig};
-            next[i] = HashSignature(s);
+
+            // Symmetrise (order-insensitive multiset), then hash.
+            std::sort(neighbour_labels.begin(), neighbour_labels.end());
+            Signature round_signature{
+                atoms[i].element,
+                static_cast<int>(sub_adj[i].size()), neighbour_labels};
+            next_round_hash[i] = HashWlSignature(round_signature);
         }
-        cur = std::move(next);
+        prev_round_hash = std::move(next_round_hash);
     }
-    return cur;
+    return prev_round_hash;
 }
 
 
@@ -681,7 +723,7 @@ PieceMatch MatchPiece(
         perceived_by_sig[perc_sigs.at(i)].push_back(i);
     }
 
-    // Sig sets must match; per-class cardinality must match.
+    // Validate: signature sets + per-class cardinality must match.
     if (canon_by_sig.size() != perceived_by_sig.size()) return {};
     for (const auto& [sig, canon_ids] : canon_by_sig) {
         auto it = perceived_by_sig.find(sig);
@@ -689,9 +731,9 @@ PieceMatch MatchPiece(
         if (it->second.size() != canon_ids.size()) return {};
     }
 
-    // Map perceived → canonical node within each signature class. For
-    // singleton classes (the common case after K=3 WL), this is a
-    // unique assignment and canonical_ambiguous=false — the canonical
+    // Assign: bind perceived → canonical node within each signature
+    // class. For singleton classes (the common case after K=3 WL),
+    // this is a unique assignment and canonical_ambiguous=false — the canonical
     // node's typed identity (including BranchAddress and
     // DiastereotopicIndex) binds strictly downstream. For multi-atom
     // classes (residual symmetric pairs like CD1/CD2), the within-
@@ -854,6 +896,13 @@ void StampChainIdentitiesViaTable(CanonicalPiece& p,
         // construction; we still copy from the row so any future
         // table-side adjustment to the canonical identity propagates
         // here automatically.
+        // A lookup miss is unreachable from the standard-20 substrate
+        // when the suite is green: LarsenResiduePerceptionTest
+        // .AllCombinationsPerceiveCleanly walks all 20 (residue,
+        // frame_type) combinations and the AAA Gaussian log, and would
+        // abort here if any LookupBy returned null. Reaching it means a
+        // development-time edit to one side (the canonical chemistry in
+        // this file, or the generated table) without the other.
         const AtomSemanticTable* row =
             gen::LookupBy(aa, variant_idx, ident);
         if (row == nullptr) {
@@ -861,18 +910,11 @@ void StampChainIdentitiesViaTable(CanonicalPiece& p,
                 "FATAL: LarsenResidue StampChainIdentitiesViaTable "
                 "lookup miss: aa=%s variant_idx=%u atom_name='%s' "
                 "identity=(element=%u locant=%u branch={%u,%u} "
-                "di=%u role=%u). The canonical chemistry definition "
-                "in LarsenResidue.cpp does not match the generated "
-                "topology table at src/generated/LegacyAmberSemanticTables.cpp "
-                "— update one to match the other. Positive coverage "
-                "for this path lives in LarsenResiduePerceptionTest"
-                ".AllCombinationsPerceiveCleanly: that test walks all "
-                "20 (residue, frame_type) combinations and the AAA "
-                "Gaussian log; if any LookupBy returned null the test "
-                "would abort here instead of pass. A passing test "
-                "suite means this FATAL is unreachable from the "
-                "standard-20 substrate; reaching it indicates a "
-                "development-time edit to one side without the other.\n",
+                "di=%u role=%u). Canonical chemistry in LarsenResidue.cpp "
+                "does not match the generated topology table at "
+                "src/generated/LegacyAmberSemanticTables.cpp — update one "
+                "to match the other; positive coverage: "
+                "LarsenResiduePerceptionTest.AllCombinationsPerceiveCleanly.\n",
                 GetAminoAcidType(aa).three_letter_code,
                 static_cast<unsigned>(variant_idx),
                 a.name.c_str(),
@@ -939,6 +981,7 @@ bool EmitPiece(LarsenResidue::Kind kind,
         const int canon_idx = match.canon_idx_by_dft.at(dft_idx);
         const CanonicalAtom& canon_atom = canon.atoms[canon_idx];
 
+        // Atom payload (copy DB row through).
         LarsenResidue::PerAtom pa;
         pa.dft_atom_idx     = a.atom_idx;
         pa.element          = a.element;
@@ -952,7 +995,7 @@ bool EmitPiece(LarsenResidue::Kind kind,
         pa.identity         = canon_atom.identity;
         out.atoms.push_back(std::move(pa));
 
-        // Slot cache — typed dispatch on the canonical identity. No
+        // Role slots — typed dispatch on the canonical identity, no
         // name comparisons. BackboneRole carries the peptide-amide
         // slot semantics for N / H / CA / HA / C / O; CB is the
         // (Element::C, Locant::Beta) atom on every standard residue
@@ -1014,8 +1057,10 @@ int LarsenResidue::LookupByIdentity(const AtomMechanicalIdentity& id) const {
 bool LarsenResidue::HasAllRequiredSlots() const {
     switch (kind) {
         case Kind::AceCap:
-            // ACE has no BB N/CA/C, but it does have a carbonyl C+O.
-            // Required slots: C, O (the carbonyl pair); 6 atoms total.
+            // ACE has no BB N/CA/C slots in the chain sense; its
+            // carbonyl C/O roles are stamped by StampCapIdentities and
+            // EmitPiece's typed dispatch, and are not re-verified here.
+            // This check guarantees only the 6-atom total.
             return atoms.size() == 6;
         case Kind::NmeCap:
             // NME has BB N + H but no carbonyl C+O. 6 atoms total.
@@ -1088,7 +1133,7 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
     }
 
     AdjacencySet adj = BuildBondGraph(rec.atoms);
-    auto amides      = FindPeptideAmides(rec.atoms, adj);
+    auto amides      = FindPeptideAmideBonds(rec.atoms, adj);
     if (amides.size() != 4) {
         LogPerceptionFailure(rec,
             "expected 4 peptide amides, found " +
@@ -1098,8 +1143,8 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
 
     // Cut amides → 5 components.
     AdjacencySet cut = adj;
-    for (const auto& [c, nj] : amides) {
-        cut[c].erase(nj); cut[nj].erase(c);
+    for (const auto& [carbonyl_c, amide_n] : amides) {
+        cut[carbonyl_c].erase(amide_n); cut[amide_n].erase(carbonyl_c);
     }
     auto comps = ConnectedComponents(cut, static_cast<int>(rec.atoms.size()));
     if (comps.size() != 5) {
@@ -1152,6 +1197,7 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
             }
             return t;
         }();
+        // AminoAcid 0-19 standard, 20 = Unknown fallback.
         int idx = static_cast<int>(aa);
         if (idx < 0 || idx >= 21) idx = 20;
         return table[idx];
@@ -1203,20 +1249,16 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
         } else {  // Central
             tgt.residue = expected_central;
             if (expected_central == AminoAcid::HIS) {
-                // Strict variant enforcement:
-                //   - his_variant_hint ≥ 0: ONLY the hinted variant is
-                //     accepted. Mismatch → fail loud, perception
-                //     returns nullopt. This is the contract the header
-                //     documents and the only way to guarantee a HID
-                //     protein doesn't silently consume HIE/HIP DB rows.
-                //   - his_variant_hint == -1 (no hint): try HID/HIE/HIP
-                //     in canonical order, accept the first match.
-                //     Calculator sites that don't have a protein-side
-                //     variant available rely on this; producing SOME
-                //     LarsenTripeptide is better than declining.
+                // A hint pins the variant (a HID protein must not
+                // silently consume HIE/HIP DB rows); without one we try
+                // HID/HIE/HIP in order and accept the first fit, which
+                // can misassign Hε/Hδ if the protein's true variant
+                // differs — see the header contract on his_variant_hint.
                 static const std::array<const char*, 3> kCanonOrder = {
                     "HID", "HIE", "HIP"
                 };
+
+                // variant try-order: strict hint, else HID/HIE/HIP.
                 const char* hinted = nullptr;
                 if      (his_variant_hint == 0) hinted = "HID";
                 else if (his_variant_hint == 1) hinted = "HIE";
@@ -1229,26 +1271,31 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
                     for (const char* v : kCanonOrder) try_order.push_back(v);
                 }
 
-                bool any_match = false;
-                std::string tried;
+                bool matched = false;
+                std::string attempted_variants;
                 int matched_variant_idx = -1;
-                for (const char* v : try_order) {
-                    const auto& canon = cached_his(v);
-                    if (!tried.empty()) tried += ",";
-                    tried += std::string(v) + "(n=" +
+                for (const char* variant_code : try_order) {
+                    const auto& canon = cached_his(variant_code);
+                    if (!attempted_variants.empty()) attempted_variants += ",";
+                    attempted_variants += std::string(variant_code) + "(n=" +
                               std::to_string(canon.atoms.size()) + ")";
+
+                    // atom-count prefilter.
                     if (static_cast<int>(piece.size()) !=
                         static_cast<int>(canon.atoms.size())) continue;
+
+                    // graph match.
                     if (EmitPiece(kind, piece, rec.atoms, adj, canon, tgt)) {
-                        any_match = true;
+                        matched = true;
                         // Canonical variant index: 0=HID, 1=HIE, 2=HIP.
-                        if      (std::string(v) == "HID") matched_variant_idx = 0;
-                        else if (std::string(v) == "HIE") matched_variant_idx = 1;
-                        else                              matched_variant_idx = 2;
+                        if      (std::string(variant_code) == "HID") matched_variant_idx = 0;
+                        else if (std::string(variant_code) == "HIE") matched_variant_idx = 1;
+                        else                                         matched_variant_idx = 2;
                         break;
                     }
                 }
-                if (!any_match) {
+                // no variant matched.
+                if (!matched) {
                     if (hinted) {
                         LogPerceptionFailure(rec, kind_label +
                             " HIS hinted variant " + std::string(hinted) +
@@ -1256,14 +1303,15 @@ std::optional<LarsenTripeptide> PerceiveLarsenTripeptide(
                             std::to_string(piece.size()) +
                             "; declining (hint=" +
                             std::to_string(his_variant_hint) +
-                            " tried " + tried +
+                            " tried " + attempted_variants +
                             ") — DB row's protonation form differs "
                             "from protein residue.protonation_variant_index");
                     } else {
                         LogPerceptionFailure(rec, kind_label +
                             " no HIS variant matched perceived piece_n=" +
                             std::to_string(piece.size()) +
-                            " (no hint provided; tried " + tried + ")");
+                            " (no hint provided; tried " +
+                            attempted_variants + ")");
                     }
                     return std::nullopt;
                 }

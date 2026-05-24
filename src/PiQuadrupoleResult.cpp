@@ -29,18 +29,15 @@ std::vector<std::type_index> PiQuadrupoleResult::Dependencies() const {
 // We compute G_ab = T_abcd n_c n_d (the -Theta/2 prefactor goes into
 // the learnable parameter Q_type).
 //
-//   G_ab = 105 dn^2 d_a d_b / r^9
-//        - 30 dn (n_a d_b + n_b d_a) / r^7
+//   G_ab = 105 (d·n)^2 d_a d_b / r^9
+//        - 30 (d·n) (n_a d_b + n_b d_a) / r^7
 //        - 15 d_a d_b / r^7
 //        + 6 n_a n_b / r^5
-//        + delta_ab (3/r^5 - 15 dn^2/r^7)
+//        + delta_ab (3/r^5 - 15 (d·n)^2/r^7)
 //
 // Also: scalar = (3 cos^2 theta - 1) / r^4   (Buckingham A-term)
 //
-// Properties:
-//   - Symmetric: yes (every term is symmetric in a,b)
-//   - Traceless: yes (Laplace; verified numerically in tests)
-//   - Units: G in A^-5, scalar in A^-4
+// See header for the Stone T-tensor derivation and properties.
 // ============================================================================
 
 struct PiQuadKernelResult {
@@ -71,30 +68,30 @@ static PiQuadKernelResult ComputePiQuadKernel(
     double r7 = r5 * r2;
     double r9 = r7 * r2;
 
-    double dn = d.dot(ring_normal);       // height above ring plane
-    double dn2 = dn * dn;
-    double cos_theta = dn / r;
+    double d_dot_n = d.dot(ring_normal);       // height above ring plane
+    double d_dot_n_sq = d_dot_n * d_dot_n;
+    double cos_theta = d_dot_n / r;
 
-    // Scalar: (3 cos^2 theta - 1) / r^4
+    // Buckingham A-term kernel: (3 cos^2 theta - 1) / r^4  (feeds pq_per_type_T0)
     result.scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r2 * r2);
 
-    // EFG tensor: G_ab = T_abcd n_c n_d (Stone Ch. 3)
-    //
-    //   105 dn^2 d_a d_b / r^9
-    //   - 30 dn (n_a d_b + n_b d_a) / r^7
+    // EFG tensor G_ab = T_abcd n_c n_d (Stone Ch. 3), five terms in order
+    // ((d·n) = d_dot_n, the height above the ring plane):
+    //   105 (d·n)^2 d_a d_b / r^9
+    //   - 30 (d·n) (n_a d_b + n_b d_a) / r^7
     //   - 15 d_a d_b / r^7
     //   + 6 n_a n_b / r^5
-    //   + delta_ab (3/r^5 - 15 dn^2/r^7)
-    double diag_term = 3.0 / r5 - 15.0 * dn2 / r7;
+    //   + delta_ab (3/r^5 - 15 (d·n)^2/r^7)
+    double delta_term = 3.0 / r5 - 15.0 * d_dot_n_sq / r7;
 
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.G(a, b) =
-                105.0 * dn2 * d(a) * d(b) / r9
-                - 30.0 * dn * (ring_normal(a) * d(b) + ring_normal(b) * d(a)) / r7
+                  105.0 * d_dot_n_sq * d(a) * d(b) / r9
+                - 30.0 * d_dot_n * (ring_normal(a) * d(b) + ring_normal(b) * d(a)) / r7
                 - 15.0 * d(a) * d(b) / r7
                 + 6.0 * ring_normal(a) * ring_normal(b) / r5
-                + (a == b ? diag_term : 0.0);
+                + (a == b ? delta_term : 0.0);
         }
     }
 
@@ -142,10 +139,10 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
 
     GeometryChoiceBuilder choices(conf);
 
-    int total_pairs = 0;
+    int accepted_pairs = 0;
 
     for (size_t ai = 0; ai < n_atoms; ++ai) {
-        auto& ca = conf.MutableAtomAt(ai);
+        auto& conf_atom = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
@@ -166,11 +163,11 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
-                // ---- GeometryChoice: filter exclusion ----
+                // record the exclusion
                 choices.Record(CalculatorId::PiQuadrupole, ri, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
-                        AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Excluded,
+                        AddAtom(gc, &conf_atom, ai, EntityRole::Target, EntityOutcome::Excluded,
                                 filters.LastRejectorName());
                         AddNumber(gc, "distance", kernel.distance, "A");
                         AddNumber(gc, "source_extent", ctx.source_extent, "A");
@@ -178,9 +175,9 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 continue;
             }
 
-            // Find or create RingNeighbourhood
+            // shared ring-neighbour geometry (consumed by other ring calculators)
             RingNeighbourhood* rn = nullptr;
-            for (auto& existing : ca.ring_neighbours) {
+            for (auto& existing : conf_atom.ring_neighbours) {
                 if (existing.ring_index == ri) {
                     rn = &existing;
                     break;
@@ -193,15 +190,16 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 new_rn.distance_to_center = kernel.distance;
                 new_rn.direction_to_center = kernel.direction;
 
+                // ring-frame cylindrical coordinates (z along normal, rho in plane)
                 Vec3 d_vec = atom_pos - geom.center;
                 double z = d_vec.dot(geom.normal);
                 Vec3 d_plane = d_vec - z * geom.normal;
                 new_rn.z = z;
                 new_rn.rho = d_plane.norm();
-                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));
+                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));  // theta folded to [0, pi/2] via |z| — quadrupole is symmetric across the ring plane
 
-                ca.ring_neighbours.push_back(new_rn);
-                rn = &ca.ring_neighbours.back();
+                conf_atom.ring_neighbours.push_back(new_rn);
+                rn = &conf_atom.ring_neighbours.back();
             }
 
             // Store quadrupole kernel on RingNeighbourhood
@@ -209,25 +207,25 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
             rn->quad_spherical = SphericalTensor::Decompose(kernel.G);
             rn->quad_scalar = kernel.scalar;
 
-            // Per-type accumulation
-            int ti = ring.TypeIndexAsInt();
-            if (ti >= 0 && ti < 8) {
-                ca.per_type_pq_scalar_sum[ti] += kernel.scalar;
-                for (int c = 0; c < 5; ++c)
-                    ca.per_type_pq_T2_sum[ti][c] += rn->quad_spherical.T2[c];
+            // per-aromatic-ring-type feature bookkeeping (not part of the EFG sum)
+            int ring_type_index = ring.TypeIndexAsInt();
+            if (ring_type_index >= 0 && ring_type_index < kAromaticRingTypeCount) {
+                conf_atom.per_type_pq_scalar_sum[ring_type_index] += kernel.scalar;
+                for (int c = 0; c < 5; ++c)  // 5 T2 components
+                    conf_atom.per_type_pq_T2_sum[ring_type_index][c] += rn->quad_spherical.T2[c];
             }
 
             // Accumulate EFG tensor
             G_total += kernel.G;
-            total_pairs++;
+            accepted_pairs++;
         }
 
-        // Store accumulated shielding contribution (pure T2)
-        ca.piquad_shielding_contribution = SphericalTensor::Decompose(G_total);
+        // decompose the total EFG tensor (T0=T1=0; pure T2)
+        conf_atom.piquad_shielding_contribution = SphericalTensor::Decompose(G_total);
     }
 
     OperationLog::Info(LogCalcOther, "PiQuadrupoleResult::Compute",
-        "atom_ring_pairs=" + std::to_string(total_pairs) +
+        "atom_ring_pairs=" + std::to_string(accepted_pairs) +
         " rejected={" + filters.ReportRejections() + "}" +
         " atoms=" + std::to_string(n_atoms) +
         " rings=" + std::to_string(n_rings));
@@ -236,12 +234,14 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
 }
 
 
-SphericalTensor PiQuadrupoleResult::SampleShieldingAt(Vec3 point) const {
+SphericalTensor PiQuadrupoleResult::SampleKernelAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
     Mat3 G_total = Mat3::Zero();
 
+    // Same physics as Compute(); no atom-specific filters apply to a bare grid
+    // point — only the geometric guards (singularity / inside-radius / cutoff).
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
@@ -268,6 +268,8 @@ int PiQuadrupoleResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
+    // NPY ABI shapes: 9 = packed SphericalTensor (T0, T1x3, T2x5);
+    // 8 = aromatic ring types; 40 = 8x5 (per-type x T2).
     std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * 8);
     std::vector<double> per_type_T2(N * 40);

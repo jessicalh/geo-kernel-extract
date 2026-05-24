@@ -4,11 +4,11 @@
 //
 // Ring types ARE classes with physics properties baked in.
 // Each type provides const properties derived from its identity.
-// Calculator code is ring-type-agnostic: ring.Intensity(), ring.JBLobeOffset().
+// Calculator code is ring-type-agnostic: ring.Intensity(), ring.JohnsonBoveyLobeOffset().
 //
-// 8 types in 3 size categories:
+// 9 types in 3 size categories:
 //   SixMemberedRing: PheBenzeneRing, TyrPhenolRing, TrpBenzeneRing
-//   FiveMemberedRing: TrpPyrroleRing, HisImidazoleRing, HidImidazoleRing, HieImidazoleRing
+//   FiveMemberedRing: TrpPyrroleRing, HisImidazoleRing, HidImidazoleRing, HieImidazoleRing, ProPyrrolidineRing
 //   FusedRing: IndolePerimeterRing (TRP 9-atom)
 //
 
@@ -16,13 +16,12 @@
 #include "CalculatorConfig.h"
 #include <Eigen/Dense>
 #include <vector>
-#include <map>
 #include <memory>
 
 namespace nmr {
 
 // ============================================================================
-// Ring::Geometry -- conformation-dependent, computed by GeometryResult
+// RingGeometry -- conformation-dependent, computed by Ring::ComputeGeometry
 // ============================================================================
 
 struct RingGeometry {
@@ -30,17 +29,6 @@ struct RingGeometry {
     Vec3              normal = Vec3::Zero();
     double            radius = 0.0;
     std::vector<Vec3> vertices;
-};
-
-// ============================================================================
-// Accumulated ring properties (set by ConformationResult post-pass updates)
-// ============================================================================
-
-struct RingAccumulated {
-    Vec3 total_B_at_center = Vec3::Zero();
-    double intensity_used = 0.0;
-    double total_G_T0_diagnostic = 0.0;
-    std::map<size_t, Vec3> mutual_B_from;
 };
 
 // ============================================================================
@@ -58,13 +46,17 @@ public:
 
     virtual ~Ring() = default;
 
-    // Virtual const properties (overridden by each type class)
+    // Ring-type physical properties (one override per type class):
+    //   Intensity / LiteratureIntensity : ring-current strength, nA/T
+    //                                      (negative = diamagnetic)
+    //   JohnsonBoveyLobeOffset           : JB two-loop z-offset, Å
+    //   NitrogenCount                    : ring N atoms
     virtual double Intensity() const = 0;
     virtual double LiteratureIntensity() const = 0;
-    virtual double JBLobeOffset() const = 0;
+    virtual double JohnsonBoveyLobeOffset() const = 0;
     virtual int NitrogenCount() const = 0;
     virtual RingAromaticity Aromaticity() const = 0;
-    virtual int RingSizeValue() const = 0;
+    virtual int RingAtomCount() const = 0;
     virtual const char* TypeName() const = 0;
 
     // Non-virtual queries
@@ -73,9 +65,6 @@ public:
 
     // Compute geometry from positions (SVD normal)
     RingGeometry ComputeGeometry(const std::vector<Vec3>& positions) const;
-
-    // Accumulated properties (set during extraction passes)
-    RingAccumulated accumulated;
 };
 
 
@@ -85,7 +74,7 @@ public:
 
 class SixMemberedRing : public Ring {
 public:
-    int RingSizeValue() const override { return 6; }
+    int RingAtomCount() const override { return 6; }
 };
 
 class PheBenzeneRing : public SixMemberedRing {
@@ -93,7 +82,7 @@ public:
     PheBenzeneRing() { type_index = RingTypeIndex::PheBenzene; }
     double Intensity() const override { return CalculatorConfig::Get("phe_benzene_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -12.0; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("phe_benzene_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("phe_benzene_jb_lobe_offset"); }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "PHE"; }
@@ -104,7 +93,7 @@ public:
     TyrPhenolRing() { type_index = RingTypeIndex::TyrPhenol; }
     double Intensity() const override { return CalculatorConfig::Get("tyr_phenol_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -11.28; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("tyr_phenol_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("tyr_phenol_jb_lobe_offset"); }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "TYR"; }
@@ -115,7 +104,7 @@ public:
     TrpBenzeneRing() { type_index = RingTypeIndex::TrpBenzene; }
     double Intensity() const override { return CalculatorConfig::Get("trp_benzene_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -12.48; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("trp_benzene_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("trp_benzene_jb_lobe_offset"); }
     int NitrogenCount() const override { return 0; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
     const char* TypeName() const override { return "TRP6"; }
@@ -128,7 +117,7 @@ public:
 
 class FiveMemberedRing : public Ring {
 public:
-    int RingSizeValue() const override { return 5; }
+    int RingAtomCount() const override { return 5; }
 };
 
 class TrpPyrroleRing : public FiveMemberedRing {
@@ -136,7 +125,7 @@ public:
     TrpPyrroleRing() { type_index = RingTypeIndex::TrpPyrrole; }
     double Intensity() const override { return CalculatorConfig::Get("trp_pyrrole_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -6.72; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("trp_pyrrole_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("trp_pyrrole_jb_lobe_offset"); }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Reduced; }
     const char* TypeName() const override { return "TRP5"; }
@@ -147,7 +136,7 @@ public:
     HisImidazoleRing() { type_index = RingTypeIndex::HisImidazole; }
     double Intensity() const override { return CalculatorConfig::Get("his_imidazole_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -5.16; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("his_imidazole_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("his_imidazole_jb_lobe_offset"); }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HIS"; }
@@ -158,7 +147,7 @@ public:
     HidImidazoleRing() { type_index = RingTypeIndex::HidImidazole; }
     double Intensity() const override { return CalculatorConfig::Get("hid_imidazole_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -5.16; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("hid_imidazole_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("hid_imidazole_jb_lobe_offset"); }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HID"; }
@@ -169,7 +158,7 @@ public:
     HieImidazoleRing() { type_index = RingTypeIndex::HieImidazole; }
     double Intensity() const override { return CalculatorConfig::Get("hie_imidazole_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -5.16; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("hie_imidazole_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("hie_imidazole_jb_lobe_offset"); }
     int NitrogenCount() const override { return 2; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Weak; }
     const char* TypeName() const override { return "HIE"; }
@@ -181,14 +170,14 @@ public:
 // ch. 7 (saturated heterocycles) is the chemistry citation: ring
 // current is a property of cyclic π conjugation, which pyrrolidine
 // lacks. The literal 0.0 values for Intensity / LiteratureIntensity
-// / JBLobeOffset are therefore physics, not calibration parameters,
+// / JohnsonBoveyLobeOffset are therefore physics, not calibration parameters,
 // and are not surfaced through CalculatorConfig.
 class ProPyrrolidineRing : public FiveMemberedRing {
 public:
     ProPyrrolidineRing() { type_index = RingTypeIndex::ProPyrrolidine; }
     double Intensity() const override { return 0.0; }
     double LiteratureIntensity() const override { return 0.0; }
-    double JBLobeOffset() const override { return 0.0; }
+    double JohnsonBoveyLobeOffset() const override { return 0.0; }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::None; }
     const char* TypeName() const override { return "PRO"; }
@@ -206,10 +195,10 @@ public:
     IndolePerimeterRing() { type_index = RingTypeIndex::TrpPerimeter; }
     double Intensity() const override { return CalculatorConfig::Get("trp_indole_perimeter_ring_current_intensity"); }
     double LiteratureIntensity() const override { return -19.2; }
-    double JBLobeOffset() const override { return CalculatorConfig::Get("trp_indole_perimeter_jb_lobe_offset"); }
+    double JohnsonBoveyLobeOffset() const override { return CalculatorConfig::Get("trp_indole_perimeter_jb_lobe_offset"); }
     int NitrogenCount() const override { return 1; }
     RingAromaticity Aromaticity() const override { return RingAromaticity::Full; }
-    int RingSizeValue() const override { return 9; }
+    int RingAtomCount() const override { return 9; }
     const char* TypeName() const override { return "TRP9"; }
 };
 

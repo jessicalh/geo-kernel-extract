@@ -61,7 +61,7 @@ std::vector<float> ReadFlatTensorOptional(HighFive::File& f,
             std::to_string(expected_Nrho) +
             ", 3, 3))");
     }
-    std::size_t total = dims[0] * dims[1] * dims[2] * 9;
+    std::size_t total = dims[0] * dims[1] * dims[2] * 9;  // × 9 = flattened 3×3 tensor per grid cell
     std::vector<float> flat(total);
     ds.read(flat.data());
     // Reject NaN/Inf in stored tensors. Parser/pre-compute should never
@@ -112,11 +112,9 @@ std::vector<double> ReadAxis(HighFive::File& f, const std::string& name) {
 
 
 // Schema validation: each archive identity (ALA vs NMA donor, NMA vs
-// HOMe/COO acceptor) has a specific MANDATORY set of readout
-// datasets. Optional reads previously allowed silent zeroing if a
-// mandatory dataset was missing (codex M3 finding). After loading,
-// check the archive's expected set against what was read and throw on
-// any mismatch.
+// HOMe/COO acceptor) has a specific MANDATORY set of readout datasets.
+// After loading, check the archive's expected set against what was read
+// and throw on any missing or extra dataset.
 //
 // Mandatory rules per archive:
 //   All archives: donor_N, donor_CA, donor_C, donor_HA, donor_HN.
@@ -221,7 +219,7 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
                    int ir, int ith, int irho,
                    int ir_next, int ith_next, int irho_next,
                    double fr, double fth, double frho) {
-    auto idx = [&](int i_r, int i_th, int i_rho) -> std::size_t {
+    auto tensor_offset = [&](int i_r, int i_th, int i_rho) -> std::size_t {
         return static_cast<std::size_t>(i_r) * Nth * Nrho * 9
              + static_cast<std::size_t>(i_th) * Nrho * 9
              + static_cast<std::size_t>(i_rho) * 9;
@@ -229,23 +227,27 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
     Mat3 out = Mat3::Zero();
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < 3; ++col) {
-            double c000 = flat[idx(ir,      ith,      irho)      + row * 3 + col];
-            double c001 = flat[idx(ir,      ith,      irho_next) + row * 3 + col];
-            double c010 = flat[idx(ir,      ith_next, irho)      + row * 3 + col];
-            double c011 = flat[idx(ir,      ith_next, irho_next) + row * 3 + col];
-            double c100 = flat[idx(ir_next, ith,      irho)      + row * 3 + col];
-            double c101 = flat[idx(ir_next, ith,      irho_next) + row * 3 + col];
-            double c110 = flat[idx(ir_next, ith_next, irho)      + row * 3 + col];
-            double c111 = flat[idx(ir_next, ith_next, irho_next) + row * 3 + col];
+            // corner index order: (r, θ, ρ) → c{r}{θ}{ρ}
+            double c000 = flat[tensor_offset(ir,      ith,      irho)      + row * 3 + col];
+            double c001 = flat[tensor_offset(ir,      ith,      irho_next) + row * 3 + col];
+            double c010 = flat[tensor_offset(ir,      ith_next, irho)      + row * 3 + col];
+            double c011 = flat[tensor_offset(ir,      ith_next, irho_next) + row * 3 + col];
+            double c100 = flat[tensor_offset(ir_next, ith,      irho)      + row * 3 + col];
+            double c101 = flat[tensor_offset(ir_next, ith,      irho_next) + row * 3 + col];
+            double c110 = flat[tensor_offset(ir_next, ith_next, irho)      + row * 3 + col];
+            double c111 = flat[tensor_offset(ir_next, ith_next, irho_next) + row * 3 + col];
 
+            // 1) lerp along ρ
             double c00 = c000 * (1.0 - frho) + c001 * frho;
             double c01 = c010 * (1.0 - frho) + c011 * frho;
             double c10 = c100 * (1.0 - frho) + c101 * frho;
             double c11 = c110 * (1.0 - frho) + c111 * frho;
 
+            // 2) along θ
             double c0 = c00 * (1.0 - fth) + c01 * fth;
             double c1 = c10 * (1.0 - fth) + c11 * fth;
 
+            // 3) along r
             out(row, col) = c0 * (1.0 - fr) + c1 * fr;
         }
     }
@@ -253,9 +255,8 @@ Mat3 TrilinearMat3(const std::vector<float>& flat,
 }
 
 
-// Check if any of the 8 corner cells (ir,ith,irho), (ir+1,...), ..., (ir+1,ith+1,irho+1)
-// is an imputed bin (validity_mask == 0). Returns false if the grid has
-// no mask.
+// imputed-corner check: true if any of the 8 trilinear corners is
+// masked 0 (validity_mask == 0). Returns false if the grid has no mask.
 bool AnyCornerImputed(const LarsenHBondDenseGrid& g,
                       int ir, int ith, int irho,
                       int ir_next, int ith_next, int irho_next) {
@@ -294,7 +295,8 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
     if (n < 2) return out;
 
     if (periodic) {
-        // Wrap value to [axis[0], axis[0] + period).
+        // periodic axis: wrap into [axis[0], axis[0]+period), then locate
+        // cell; the last cell's upper corner wraps to index 0.
         double step = axis[1] - axis[0];
         double period = axis.back() - axis[0] + step;  // full periodic period
         // Sanity check: for the H-bond ρ axis the period must be 360°.
@@ -302,12 +304,12 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         if (std::abs(period - 360.0) > 1e-6) {
             return out;  // idx remains -1 — caller bails on miss
         }
-        double v = value;
-        // Bring v into the half-open interval starting at axis[0].
-        v = axis[0] + std::fmod(v - axis[0], period);
-        if (v < axis[0]) v += period;
+        double wrapped_value = value;
+        // Bring wrapped_value into the half-open interval starting at axis[0].
+        wrapped_value = axis[0] + std::fmod(wrapped_value - axis[0], period);
+        if (wrapped_value < axis[0]) wrapped_value += period;
 
-        double f = (v - axis[0]) / step;
+        double f = (wrapped_value - axis[0]) / step;
         int i = static_cast<int>(std::floor(f));
         i = std::min(i, n - 1);
         i = std::max(i, 0);
@@ -322,6 +324,7 @@ AxisLookup LookupAxis(const std::vector<double>& axis, double value,
         return out;
     }
 
+    // non-periodic axis: tolerance-clamp to bounds, then lower cell.
     double step = axis[1] - axis[0];
     double tol = std::abs(step) * kAxisBoundTolerance;
     if (value < axis.front() - tol || value > axis.back() + tol) {
@@ -376,13 +379,12 @@ LarsenHBondGeometry ComputeLarsenHBondGeometry(
     geom.theta_deg = std::acos(cos_theta) * (180.0 / M_PI);
 
     // rho dihedral: H - O - C - third. Standard IUPAC convention via
-    // atan2(cross(n1, b2_norm) · n2, n1 · n2).
-    Vec3 b1 = acceptor_O_pos     - donor_H_pos;
-    Vec3 b2 = acceptor_C_pos     - acceptor_O_pos;
-    Vec3 b3 = acceptor_third_pos - acceptor_C_pos;
-    Vec3 n1 = b1.cross(b2);
-    Vec3 n2 = b2.cross(b3);
-    Vec3 m1 = n1.cross(b2.normalized());
+    // atan2(cross(n1, O_to_C_norm) · n2, n1 · n2). The three bond
+    // vectors H→O, O→C, C→third (H_to_O and O_to_C reuse the θ block).
+    Vec3 C_to_third = acceptor_third_pos - acceptor_C_pos;
+    Vec3 n1 = H_to_O.cross(O_to_C);             // n1 ⟂ plane(H,O,C)
+    Vec3 n2 = O_to_C.cross(C_to_third);         // n2 ⟂ plane(O,C,third)
+    Vec3 m1 = n1.cross(O_to_C.normalized());    // m1 = n1 × O_to_Ĉ
     double x = n1.dot(n2);
     double y = m1.dot(n2);
     geom.rho_deg = std::atan2(y, x) * (180.0 / M_PI);
@@ -410,13 +412,13 @@ Mat3 ComputeLarsenDonorFrame(
     // x = component of (donor_H − donor_third) orthogonal to z, normalized.
     // Bail if third is coincident with H or lies on the anchor→H line
     // (the orthogonal component is then zero).
-    Vec3 v3 = donor_H_pos - donor_third_pos;
-    if (v3.norm() < kTinyVec) {
+    Vec3 third_to_H = donor_H_pos - donor_third_pos;
+    if (third_to_H.norm() < kTinyVec) {
         OperationLog::Warn("ComputeLarsenDonorFrame",
             "donor_H and donor_third coincide; returning identity rotation");
         return Mat3::Identity();
     }
-    Vec3 x_raw = v3 - (v3.dot(z)) * z;
+    Vec3 x_raw = third_to_H - (third_to_H.dot(z)) * z;
     if (x_raw.norm() < kTinyVec) {
         OperationLog::Warn("ComputeLarsenDonorFrame",
             "donor_third on the anchor→H line; returning identity rotation");
@@ -559,11 +561,8 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
         rec.acceptor_HA = interp(g.acceptor_HA);
     }
 
-    // r/θ remain the (clamped, in-range) query values; ρ is the
-    // canonical wrapped form set above. (Earlier code recomputed
-    // r/θ from axis * frac which round-tripped the FP-clamped
-    // input — equivalent but confusing; we now leave them as the
-    // canonical query coords.)
+    // r/θ are the clamped in-range query values; ρ is the wrapped
+    // canonical form set at the top of this function.
 
     rec.any_corner_imputed = AnyCornerImputed(
         g, lr.idx, lth.idx, lrho.idx, lr.idx_next, lth.idx_next, lrho.idx_next);

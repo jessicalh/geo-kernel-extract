@@ -51,15 +51,16 @@ static MopacBondKernelResult ComputeBondKernel(
 
     MopacBondKernelResult result;
 
-    Vec3 d = atom_pos - bond_midpoint;
-    double r = d.norm();
+    Vec3 disp = atom_pos - bond_midpoint;  // midpoint->atom displacement
+    double r = disp.norm();
 
+    // too close: return zero kernel (distance stays 0, bond contributes nothing)
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
     double r3 = r * r * r;
-    Vec3 d_hat = d / r;
+    Vec3 d_hat = disp / r;
     result.direction = d_hat;
 
     double cos_theta = d_hat.dot(bond_direction);
@@ -77,9 +78,9 @@ static MopacBondKernelResult ComputeBondKernel(
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.M_over_r3(a, b) =
-                (9.0 * cos_theta * d_hat(a) * bond_direction(b)
-                 - 3.0 * bond_direction(a) * bond_direction(b)
-                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))
+                (9.0 * cos_theta * d_hat(a) * bond_direction(b)   // 9 cosθ d̂⊗b̂ term
+                 - 3.0 * bond_direction(a) * bond_direction(b)    // -3 b̂⊗b̂ term
+                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))  // -(3 d̂⊗d̂ - I) term
                 / r3;
         }
     }
@@ -92,8 +93,8 @@ static MopacBondKernelResult ComputeBondKernel(
 // MopacMcConnellResult::Compute
 //
 // Same loop as McConnellResult but each bond's contribution is weighted
-// by its MOPAC Wiberg bond order. Bonds with no MOPAC order (0.0)
-// contribute nothing — they are electronically insignificant.
+// by its MOPAC Wiberg bond order. Bonds below the bond-order noise floor
+// are skipped.
 // ============================================================================
 
 std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
@@ -148,9 +149,13 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         for (size_t bi : nearby_bonds) {
             const Bond& bond = protein.BondAt(bi);
 
-            // MOPAC Wiberg bond order for this topology bond
+            // bond-order gate: scopes every "nearest"/sum below to bonds above the noise floor
             double bo = mopac.TopologyBondOrder(bi);
-            if (bo < CalculatorConfig::Get("mopac_bond_order_noise_floor")) { zero_bo_skipped++; zero_bo_this_atom++; continue; }
+            if (bo < CalculatorConfig::Get("mopac_bond_order_noise_floor")) {
+                zero_bo_skipped++;
+                zero_bo_this_atom++;
+                continue;
+            }
 
             Vec3 midpoint = conf.bond_midpoints[bi];
             Vec3 direction = conf.bond_directions[bi];
@@ -189,7 +194,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
                     if (kernel.distance < best_co_dist) {
                         best_co_dist = kernel.distance;
                         best_co_f_weighted = weighted_f;
-                        best_co_kernel = kernel;
+                        best_co_kernel = kernel;  // kernel.direction is d̂ = midpoint->atom (kernel is sign-invariant)
                         best_co_bo = bo;
                     }
                     break;
@@ -239,6 +244,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
         ca.mopac_mc_nearest_CO_dist = best_co_dist;
         ca.mopac_mc_nearest_CN_dist = best_cn_dist;
 
+        // nearest CO/CN: reapply bond order + T2 decompose
         if (best_co_dist < NO_DATA_SENTINEL) {
             ca.mopac_mc_T2_CO_nearest =
                 SphericalTensor::Decompose(best_co_bo * best_co_kernel.K);
@@ -248,20 +254,21 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
                 SphericalTensor::Decompose(best_cn_bo * best_cn_kernel.K);
         }
 
-        // Category T2 totals — extract symmetric traceless part
-        Mat3 K_backbone = 0.5 * (M_backbone_total + M_backbone_total.transpose());
-        K_backbone -= (K_backbone.trace() / 3.0) * Mat3::Identity();
-        ca.mopac_mc_T2_backbone_total = SphericalTensor::Decompose(K_backbone);
+        // Category T2: symmetric-traceless part of each category's full-M sum.
+        // symmetrize, then subtract trace/3 -> symmetric-traceless.
+        Mat3 backbone_T2_source = 0.5 * (M_backbone_total + M_backbone_total.transpose());
+        backbone_T2_source -= (backbone_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.mopac_mc_T2_backbone_total = SphericalTensor::Decompose(backbone_T2_source);
 
-        Mat3 K_sidechain = 0.5 * (M_sidechain_total + M_sidechain_total.transpose());
-        K_sidechain -= (K_sidechain.trace() / 3.0) * Mat3::Identity();
-        ca.mopac_mc_T2_sidechain_total = SphericalTensor::Decompose(K_sidechain);
+        Mat3 sidechain_T2_source = 0.5 * (M_sidechain_total + M_sidechain_total.transpose());
+        sidechain_T2_source -= (sidechain_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.mopac_mc_T2_sidechain_total = SphericalTensor::Decompose(sidechain_T2_source);
 
-        Mat3 K_aromatic = 0.5 * (M_aromatic_total + M_aromatic_total.transpose());
-        K_aromatic -= (K_aromatic.trace() / 3.0) * Mat3::Identity();
-        ca.mopac_mc_T2_aromatic_total = SphericalTensor::Decompose(K_aromatic);
+        Mat3 aromatic_T2_source = 0.5 * (M_aromatic_total + M_aromatic_total.transpose());
+        aromatic_T2_source -= (aromatic_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.mopac_mc_T2_aromatic_total = SphericalTensor::Decompose(aromatic_T2_source);
 
-        // Full shielding contribution
+        // Full McConnell shielding contribution (full M: T0+T1+T2)
         ca.mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total);
 
         // ---- GeometryChoice: bond anisotropy ----
@@ -290,7 +297,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 // mopac_mc_scalars (weighted CO/CN/sidechain/aromatic sums, nearest dists).
 // ============================================================================
 
-static void PackST_MMC(const SphericalTensor& st, double* out) {
+static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
     out[0] = st.T0;
     for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
     for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
@@ -300,13 +307,17 @@ int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
                                          const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    std::vector<double> shielding(N * 9);
-    std::vector<double> cat_T2(N * 25);
-    std::vector<double> scalars(N * 6);
+    constexpr int kShieldingCols = 9;
+    constexpr int kCategoryT2Cols = 25;  // 5 categories × 5 T2
+    constexpr int kScalarCols = 6;
+
+    std::vector<double> shielding(N * kShieldingCols);
+    std::vector<double> cat_T2(N * kCategoryT2Cols);
+    std::vector<double> scalars(N * kScalarCols);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_MMC(ca.mopac_mc_shielding_contribution, &shielding[i*9]);
+        PackSphericalTensor9(ca.mopac_mc_shielding_contribution, &shielding[i*kShieldingCols]);
 
         const SphericalTensor* cats[5] = {
             &ca.mopac_mc_T2_backbone_total, &ca.mopac_mc_T2_sidechain_total,
@@ -315,22 +326,22 @@ int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
         };
         for (int c = 0; c < 5; ++c)
             for (int m = 0; m < 5; ++m)
-                cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
+                cat_T2[i*kCategoryT2Cols + c*5 + m] = cats[c]->T2[m];
 
-        scalars[i*6+0] = ca.mopac_mc_co_sum;
-        scalars[i*6+1] = ca.mopac_mc_cn_sum;
-        scalars[i*6+2] = ca.mopac_mc_sidechain_sum;
-        scalars[i*6+3] = ca.mopac_mc_aromatic_sum;
-        scalars[i*6+4] = ca.mopac_mc_nearest_CO_dist;
-        scalars[i*6+5] = ca.mopac_mc_nearest_CN_dist;
+        scalars[i*kScalarCols+0] = ca.mopac_mc_co_sum;
+        scalars[i*kScalarCols+1] = ca.mopac_mc_cn_sum;
+        scalars[i*kScalarCols+2] = ca.mopac_mc_sidechain_sum;
+        scalars[i*kScalarCols+3] = ca.mopac_mc_aromatic_sum;
+        scalars[i*kScalarCols+4] = ca.mopac_mc_nearest_CO_dist;
+        scalars[i*kScalarCols+5] = ca.mopac_mc_nearest_CN_dist;
     }
 
     NpyWriter::WriteFloat64(output_dir + "/mopac_mc_shielding.npy",
-                            shielding.data(), N, 9);
+                            shielding.data(), N, kShieldingCols);
     NpyWriter::WriteFloat64(output_dir + "/mopac_mc_category_T2.npy",
-                            cat_T2.data(), N, 25);
+                            cat_T2.data(), N, kCategoryT2Cols);
     NpyWriter::WriteFloat64(output_dir + "/mopac_mc_scalars.npy",
-                            scalars.data(), N, 6);
+                            scalars.data(), N, kScalarCols);
     return 3;
 }
 

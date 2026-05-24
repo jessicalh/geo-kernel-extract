@@ -508,7 +508,7 @@ TEST(BatchBiotSavartHaighMallion, AllCleanPairs) {
         double bs_mt2 = (s.atom_pairs > 0) ? s.sum_bs_t2 / s.atom_pairs : 0;
         double hm_mt2 = (s.atom_pairs > 0) ? s.sum_hm_t2 / s.atom_pairs : 0;
         std::cout << "    " << std::setw(6) << std::left
-                  << RingTypeName(static_cast<RingTypeIndex>(ti))
+                  << RingTypeCode(static_cast<RingTypeIndex>(ti))
                   << " " << std::setw(6) << std::right << s.count
                   << " " << std::setw(8) << s.atom_pairs
                   << "  " << std::scientific << std::setprecision(3)

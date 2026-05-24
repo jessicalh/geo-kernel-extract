@@ -230,6 +230,7 @@ public:
     double hbond_inv_d3 = 0.0;
     bool hbond_is_backbone = false;
     int hbond_count_within_3_5A = 0;
+    double hbond_mcconnell_scalar = 0.0;  // Σ (3cos²θ−1)/r³ over contributing H-bonds
     bool hbond_is_donor = false;
     bool hbond_is_acceptor = false;
     SphericalTensor hbond_shielding_contribution;

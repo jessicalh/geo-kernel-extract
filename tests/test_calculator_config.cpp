@@ -20,7 +20,7 @@ TEST(CalculatorConfig, DefaultsMatchRingIntensities) {
 }
 
 TEST(CalculatorConfig, DefaultsMatchRingLobeOffsets) {
-    // Ring.h: PheBenzeneRing::JBLobeOffset() etc.
+    // Ring.h: PheBenzeneRing::JohnsonBoveyLobeOffset() etc.
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("phe_benzene_jb_lobe_offset"),          0.64);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("tyr_phenol_jb_lobe_offset"),           0.64);
     EXPECT_DOUBLE_EQ(CalculatorConfig::Get("trp_benzene_jb_lobe_offset"),          0.64);

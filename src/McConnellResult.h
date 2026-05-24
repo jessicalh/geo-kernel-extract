@@ -33,7 +33,9 @@ namespace nmr {
 
 class ProteinConformation;
 
-// Cutoff radius for bond midpoint search (Angstroms)
+// NOTE: vestigial. The runtime cutoff comes from CalculatorConfig
+// "mcconnell_bond_anisotropy_cutoff"; this constant is referenced only
+// in comments/docs, never in the math path.
 constexpr double MCCONNELL_CUTOFF_A = 10.0;
 
 
@@ -47,12 +49,12 @@ public:
     static std::unique_ptr<McConnellResult> Compute(
         ProteinConformation& conf);
 
-    // Query methods
-    double CategorySum(size_t atom_index, BondCategory cat) const;
-    double NearestCOContribution(size_t atom_index) const;
+    // Query methods (return the McConnell scalar f sum, not a tensor)
+    double CategoryScalarSum(size_t atom_index, BondCategory cat) const;
+    double NearestCOScalarContribution(size_t atom_index) const;
 
     // Grid sampling: evaluate McConnell kernel at an arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    SphericalTensor SampleKernelAt(Vec3 point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

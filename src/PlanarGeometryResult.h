@@ -3,20 +3,14 @@
 // PlanarGeometryResult: per-frame conformation companion to the
 // LegacyAmber substrate's typed planar-group / ring-position fields.
 //
-// CROSS-RESULT READ (writer side, 2026-05-19, PATTERNS §17):
-//   PuckerQ() / PuckerTheta() / AromaticChi2() / OmegaActual() are
-//   read per-frame by RingPuckerTimeSeriesTrajectoryResult (Q, theta,
-//   aromatic chi2) and DihedralTimeSeriesTrajectoryResult's cross-
-//   result test (omega). Both reader TRs declare no Dependencies()
-//   because PlanarGeometryResult attaches conditionally (LegacyAmber-
-//   substrate-gated by OperationRunner); the per-frame source-attached
-//   gate captures absence. See RingPuckerTS source_attached_policy
-//   attr and DihedralTS chain_break_policy attr.
+// Optional downstream readers (RingPuckerTimeSeriesTrajectoryResult,
+// DihedralTimeSeriesTrajectoryResult) read these getters per-frame;
+// they attach conditionally, so absence is captured by the
+// source-attached gate.
 //
 // The substrate carries the typed *classification* (PlanarGroupKind,
-// PlanarStereo, RingPosition — landed in the 2026-05-05 → 2026-05-08
-// topology slice). This calculator carries the actual *deviation
-// from canonical* in each frame.
+// PlanarStereo, RingPosition). This calculator carries the actual
+// *deviation from canonical* in each frame.
 //
 // Per Amendment 2026-05-08(a) (spec/PLANNED_CALCULATORS_2026-04-22.md).
 // Three quantities, all derived from positions only — no electronic
@@ -33,16 +27,15 @@
 //     those rows for consumer-side interpretation, not NaN-fill.
 //     NaN at: chain-break boundary (no covalent C(i)-N(i+1)),
 //     C-terminus, missing backbone-cache atoms. Convention: ω in
-//     radians, deviation wrapped to [−π, π]. The X-Pro NaN-fill
-//     described in earlier doc versions was a documentation error;
-//     the impl has always emitted the actual value (corrected
-//     2026-05-19 sweep).
+//     radians, deviation wrapped to [−π, π].
 //
 //   - **sp2 pyramidalization** — signed out-of-plane displacement of
 //     each atom whose AtomSemanticTable::planar_group != None from
 //     the plane of its three bonded neighbours. CHARMM/AMBER
 //     improper-dihedral convention: sign by the right-hand rule on
-//     the cross product of the first two neighbour vectors. Per-atom
+//     the cross product of the two lowest-atom-index neighbour
+//     vectors (neighbours are sorted ascending by atom index, so the
+//     sign is build-stable; see ThreeBondedNeighbours). Per-atom
 //     field on ConformationAtom (zero for non-planar atoms).
 //
 //   - **Aromatic χ₂** — per aromatic ring, the parent residue's χ₂

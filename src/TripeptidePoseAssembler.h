@@ -35,17 +35,15 @@
 //   OperationLog::Warn.
 //
 // Per-atom residual is emitted as a Vec3 (the displacement
-// aligned_position − protein_atom_position). It is NOT a rejection
-// gate — large residuals stay in the output for the ML model to
-// consume as a feature alongside the rotated shielding tensor (per
-// feedback_residual_as_ml_feature). The n_above_threshold counter is
-// a diagnostic stat, not a filter.
+// aligned_position − protein_atom_position). On the central path it is
+// NOT a rejection gate — large residuals stay in the output for the ML
+// model to consume as a feature alongside the rotated shielding tensor
+// (per feedback_residual_as_ml_feature), and n_above_threshold is a
+// diagnostic stat only. The cap path DOES excise on residual. The
+// per-path contract is spelled out at AssembleTripeptide below.
 //
-// History: the previous element-pattern + 5 Å radius + threshold-
-// rejection design was retired 2026-05-11 alongside the introduction
-// of LarsenResidue perception. See
-// spec/plan/larsen-residue-design-2026-05-11.md for the durable design
-// and the retired-design pointer.
+// The pre-2026-05-11 element-pattern + threshold-rejection design is
+// retired; see spec/plan/larsen-residue-design-2026-05-11.md.
 //
 
 #include "Types.h"
@@ -118,9 +116,11 @@ struct AssembledTripeptide {
     std::vector<AlignedDftAtom> aligned_atoms;  // atoms that passed both
                                                 // path 1 + path 2 checks
 
-    // Aggregate diagnostics (across atoms that passed validation).
+    // Aggregate diagnostics for this assembly attempt (both emitted and
+    // rejected atoms contribute to counters).
     int    n_substrate_disagreements = 0;     // path 2 failures (rejected)
-    int    n_above_threshold = 0;             // residual > threshold (rejected)
+    int    n_above_threshold = 0;             // residual > threshold: cap path
+                                              // rejects; central path counts only.
     double max_residual_A = 0.0;
     double mean_residual_A = 0.0;
 };

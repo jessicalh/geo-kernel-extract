@@ -467,13 +467,14 @@ class CoulombScalars:
 
 
 class HBondScalars:
-    """(*, 3) H-bond summary: nearest_dist, 1/r^3, count_within_3.5A."""
+    """(*, 4) H-bond summary: nearest_dist, 1/r^3, count_within_3.5A,
+    mcconnell_scalar (Σ (3cos²θ−1)/r³ over contributing H-bonds)."""
 
     __slots__ = ("_data",)
 
     def __init__(self, data: np.ndarray):
-        if data.shape[-1] != 3:
-            raise ValueError(f"HBondScalars: last dim must be 3, got {data.shape}")
+        if data.shape[-1] != 4:
+            raise ValueError(f"HBondScalars: last dim must be 4, got {data.shape}")
         self._data = data
 
     @property
@@ -491,6 +492,10 @@ class HBondScalars:
     @property
     def count_within_3_5A(self) -> np.ndarray:
         return self._data[..., 2]
+
+    @property
+    def mcconnell_scalar(self) -> np.ndarray:
+        return self._data[..., 3]
 
     def __repr__(self) -> str:
         return f"HBondScalars(shape={self._data.shape})"

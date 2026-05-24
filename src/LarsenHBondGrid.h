@@ -93,7 +93,7 @@
 //   y-axis   = cross(z, x)
 //
 // The free function `ComputeLarsenDonorFrame(h_pos, anchor_pos,
-// third_pos)` builds this rotation matrix; the parser and the future
+// third_pos)` builds this rotation matrix; the parser and the
 // calculator both use it to keep the tensor basis consistent.
 //
 // Per-archive readout atoms (in the canonical frame above):
@@ -105,10 +105,10 @@
 //                                                define 2° terms here).
 //
 // Per-atom-type contribution dispatch (Larsen 2015 Table 2) is done by
-// the calculator (`LarsenHBondShieldingResult`, future session), not
-// here — this layer just returns whichever readouts the archive has.
+// the calculator, not here — this layer just returns whichever readouts
+// the archive has.
 //
-// SidechainCarbonyl acceptor (ASN ODE1, GLN OE1) is approximated by the
+// SidechainCarbonyl acceptor (ASN OD1, GLN OE1) is approximated by the
 // BackboneCarbonyl grid; documented limitation, no separate grid in
 // Larsen's pipeline.
 //
@@ -130,6 +130,7 @@
 //
 //
 // Tensor rotation contract (CRITICAL for the calculator):
+// (canonical donor frame defined above; R = ComputeLarsenDonorFrame)
 //
 //   Grid tensors are stored such that
 //     σ_canonical_stored = R_log · σ_log · R_logᵀ
@@ -168,7 +169,7 @@ enum class HBondDonorClass : std::uint8_t {
 // approximated by BackboneCarbonyl per the design doc).
 enum class HBondAcceptorClass : std::uint8_t {
     BackboneCarbonyl    = 0,  // Backbone C=O (any residue's backbone O).
-    SidechainCarbonyl   = 1,  // ASN ODE1, GLN OE1. Approximated by NMA grid.
+    SidechainCarbonyl   = 1,  // ASN OD1, GLN OE1. Approximated by NMA grid.
     HydroxylOxygen      = 2,  // SER OG, THR OG1, TYR OH.
     CarboxylateOxygen   = 3,  // ASP OD1/OD2, GLU OE1/OE2, C-terminal O.
 };
@@ -279,9 +280,10 @@ struct LarsenHBondRecord {
     double theta_deg  = 0.0;
     double rho_deg    = 0.0;
 
-    // True iff any of the 8 trilinear corner cells was an imputed bin
-    // (nearest-neighbour fill of a Larsen-failed DFT grid point).
-    // The calculator may want to log + downweight or skip these.
+    // True iff any of the 8 trilinear corner cells was an imputed bin.
+    // See the validity-mask narrative in the file header for the
+    // nearest-nominal definition; the calculator may log + downweight
+    // or skip these.
     bool any_corner_imputed = false;
 
     bool is_hit = false;
@@ -340,7 +342,10 @@ public:
     LarsenHBondGrid& operator=(const LarsenHBondGrid&) = delete;
 
     // Query the grid at the given (donor_class, acceptor_class, geom)
-    // tuple. Returns a record with is_hit=true if (r, θ) are within the
+    // tuple. Despite the name, this performs trilinear interpolation
+    // (see below); "Nearest" is historical and retained for parity with
+    // the sibling `TripeptideDftTable::QueryNearest`.
+    // Returns a record with is_hit=true if (r, θ) are within the
     // grid bounds (with ±1e-9 FP tolerance at the bounds). is_hit=false
     // if outside; tensors are then zeroed (the caller decides whether
     // to clamp, fall back, or skip).

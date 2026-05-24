@@ -6,7 +6,7 @@
 //   1. Pipeline: OperationRunner::Run attaches all results
 //   2. Traversal: per-atom fields are populated and consistent
 //   3. SampleAt: grid evaluation matches atom-position values
-//   4. All 8 calculators: SampleShieldingAt returns sensible values
+//   4. All 8 calculators: SampleKernelAt returns sensible values
 //
 // This test is the contract between the library and the viewer.
 // If it passes, the viewer can use the library without touching it.
@@ -185,7 +185,7 @@ TEST(SampleAtTest, BSMatchesAtomValues) {
 
     const auto& bs = conf.Result<nmr::BiotSavartResult>();
 
-    // For atoms near rings, SampleShieldingAt should approximately match
+    // For atoms near rings, SampleKernelAt should approximately match
     // the stored bs_shielding_contribution. Not exact — the atom-position
     // result uses filters (RingBondedExclusion) that SampleAt doesn't.
     // But for atoms NOT bonded to ring vertices, they should be close.
@@ -218,7 +218,7 @@ TEST(SampleAtTest, BSMatchesAtomValues) {
         }
         if (is_ring_atom) continue;
 
-        nmr::SphericalTensor sampled = bs.SampleShieldingAt(atom.Position());
+        nmr::SphericalTensor sampled = bs.SampleKernelAt(atom.Position());
         tested++;
 
         // Relative tolerance: these should match well for non-excluded atoms
@@ -255,7 +255,7 @@ TEST(SampleAtTest, BSGridAboveRing) {
 
     // Sample on the ring normal at 3A above center — should be shielded (T0 > 0)
     nmr::Vec3 above = geom.center + 3.0 * geom.normal;
-    auto st_above = bs.SampleShieldingAt(above);
+    auto st_above = bs.SampleKernelAt(above);
 
     // And in the ring plane at 5A — should be deshielded (T0 < 0)
     // Find a direction perpendicular to normal
@@ -263,7 +263,7 @@ TEST(SampleAtTest, BSGridAboveRing) {
         std::abs(geom.normal.x()) < 0.9 ? nmr::Vec3(1,0,0) : nmr::Vec3(0,1,0)
     ).normalized();
     nmr::Vec3 inplane = geom.center + 5.0 * perp;
-    auto st_inplane = bs.SampleShieldingAt(inplane);
+    auto st_inplane = bs.SampleKernelAt(inplane);
 
     std::cout << "  Ring 0: T0 at +3A normal = " << st_above.T0
               << ", T0 at 5A in-plane = " << st_inplane.T0 << "\n";
@@ -333,28 +333,28 @@ TEST(SampleAtTest, AllCalculatorsSample) {
     nmr::Vec3 test_point = geom.center + 3.0 * geom.normal;
 
     // HM
-    auto hm_st = conf.Result<nmr::HaighMallionResult>().SampleShieldingAt(test_point);
+    auto hm_st = conf.Result<nmr::HaighMallionResult>().SampleKernelAt(test_point);
     EXPECT_NE(hm_st.T0, 0.0) << "HM SampleAt returned zero";
 
     // McConnell — sample near a bond midpoint
     nmr::Vec3 bond_test = conf.bond_midpoints[0] + nmr::Vec3(2.0, 0.0, 0.0);
-    auto mc_st = conf.Result<nmr::McConnellResult>().SampleShieldingAt(bond_test);
+    auto mc_st = conf.Result<nmr::McConnellResult>().SampleKernelAt(bond_test);
     // McConnell is pure T2 (T0 ≈ 0), so check T2 magnitude
     EXPECT_GT(mc_st.T2Magnitude(), 0.0) << "MC SampleAt returned zero T2";
 
     // Ring Susceptibility
-    auto chi_st = conf.Result<nmr::RingSusceptibilityResult>().SampleShieldingAt(test_point);
+    auto chi_st = conf.Result<nmr::RingSusceptibilityResult>().SampleKernelAt(test_point);
     EXPECT_NE(chi_st.T0, 0.0) << "RingSusc SampleAt returned zero";
 
     // PiQuadrupole — pure T2
-    auto pq_st = conf.Result<nmr::PiQuadrupoleResult>().SampleShieldingAt(test_point);
+    auto pq_st = conf.Result<nmr::PiQuadrupoleResult>().SampleKernelAt(test_point);
     EXPECT_GT(pq_st.T2Magnitude(), 0.0) << "PQ SampleAt returned zero T2";
 
     // Dispersion — sample near a ring vertex
     const auto& vertices = geom.vertices;
     if (!vertices.empty()) {
         nmr::Vec3 disp_test = vertices[0] + nmr::Vec3(3.0, 0.0, 0.0);
-        auto disp_st = conf.Result<nmr::DispersionResult>().SampleShieldingAt(disp_test);
+        auto disp_st = conf.Result<nmr::DispersionResult>().SampleKernelAt(disp_test);
         // Dispersion may be zero if point is outside 5A cutoff from all vertices
         // Just verify it doesn't crash
         (void)disp_st;
@@ -365,11 +365,11 @@ TEST(SampleAtTest, AllCalculatorsSample) {
     EXPECT_GT(E.norm(), 0.0) << "Coulomb SampleEFieldAt returned zero";
 
     // HBond — may return zero if no H-bonds near test point, just verify no crash
-    auto hb_st = conf.Result<nmr::HBondResult>().SampleShieldingAt(test_point);
+    auto hb_st = conf.Result<nmr::HBondResult>().SampleKernelAt(test_point);
     (void)hb_st;
 
     std::cout << "  All SampleAt methods exercised successfully\n"
-              << "    BS T0=" << conf.Result<nmr::BiotSavartResult>().SampleShieldingAt(test_point).T0 << "\n"
+              << "    BS T0=" << conf.Result<nmr::BiotSavartResult>().SampleKernelAt(test_point).T0 << "\n"
               << "    HM T0=" << hm_st.T0 << "\n"
               << "    MC T2_mag=" << mc_st.T2Magnitude() << "\n"
               << "    Chi T0=" << chi_st.T0 << "\n"

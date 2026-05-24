@@ -77,7 +77,7 @@ def _required_calculator_npys(out_dir, n_atoms):
             np.zeros((n_atoms, 6), dtype=np.float64))
 
     np.save(out_dir / "hbond_scalars.npy",
-            np.zeros((n_atoms, 3), dtype=np.float64))
+            np.zeros((n_atoms, 4), dtype=np.float64))
 
     np.save(out_dir / "dssp_backbone.npy",
             np.zeros((n_atoms, 5), dtype=np.float64))

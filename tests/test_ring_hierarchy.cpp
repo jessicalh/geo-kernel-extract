@@ -7,38 +7,38 @@ using namespace nmr;
 TEST(RingHierarchy, PheBenzeneProperties) {
     auto ring = CreateRing(RingTypeIndex::PheBenzene);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -12.0);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.64);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.64);
     EXPECT_EQ(ring->NitrogenCount(), 0);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::Full);
-    EXPECT_EQ(ring->RingSizeValue(), 6);
+    EXPECT_EQ(ring->RingAtomCount(), 6);
     EXPECT_EQ(std::string(ring->TypeName()), "PHE");
 }
 
 TEST(RingHierarchy, TyrPhenolProperties) {
     auto ring = CreateRing(RingTypeIndex::TyrPhenol);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -11.28);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.64);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.64);
     EXPECT_EQ(ring->NitrogenCount(), 0);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::Full);
-    EXPECT_EQ(ring->RingSizeValue(), 6);
+    EXPECT_EQ(ring->RingAtomCount(), 6);
 }
 
 TEST(RingHierarchy, TrpPyrroleProperties) {
     auto ring = CreateRing(RingTypeIndex::TrpPyrrole);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -6.72);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.52);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.52);
     EXPECT_EQ(ring->NitrogenCount(), 1);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::Reduced);
-    EXPECT_EQ(ring->RingSizeValue(), 5);
+    EXPECT_EQ(ring->RingAtomCount(), 5);
 }
 
 TEST(RingHierarchy, HisImidazoleProperties) {
     auto ring = CreateRing(RingTypeIndex::HisImidazole);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -5.16);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.50);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.50);
     EXPECT_EQ(ring->NitrogenCount(), 2);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::Weak);
-    EXPECT_EQ(ring->RingSizeValue(), 5);
+    EXPECT_EQ(ring->RingAtomCount(), 5);
 }
 
 TEST(RingHierarchy, HidImidazoleProperties) {
@@ -57,16 +57,16 @@ TEST(RingHierarchy, HieImidazoleProperties) {
 TEST(RingHierarchy, IndolePerimeterProperties) {
     auto ring = CreateRing(RingTypeIndex::TrpPerimeter);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -19.2);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.60);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.60);
     EXPECT_EQ(ring->NitrogenCount(), 1);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::Full);
-    EXPECT_EQ(ring->RingSizeValue(), 9);
+    EXPECT_EQ(ring->RingAtomCount(), 9);
 }
 
 TEST(RingHierarchy, TrpBenzeneProperties) {
     auto ring = CreateRing(RingTypeIndex::TrpBenzene);
     EXPECT_DOUBLE_EQ(ring->Intensity(), -12.48);
-    EXPECT_EQ(ring->RingSizeValue(), 6);
+    EXPECT_EQ(ring->RingAtomCount(), 6);
 }
 
 TEST(RingHierarchy, AllRingTypesCreatable) {
@@ -95,10 +95,10 @@ TEST(RingHierarchy, ProPyrrolidineProperties) {
     auto ring = CreateRing(RingTypeIndex::ProPyrrolidine);
     EXPECT_DOUBLE_EQ(ring->Intensity(), 0.0);
     EXPECT_DOUBLE_EQ(ring->LiteratureIntensity(), 0.0);
-    EXPECT_DOUBLE_EQ(ring->JBLobeOffset(), 0.0);
+    EXPECT_DOUBLE_EQ(ring->JohnsonBoveyLobeOffset(), 0.0);
     EXPECT_EQ(ring->NitrogenCount(), 1);
     EXPECT_EQ(ring->Aromaticity(), RingAromaticity::None);
-    EXPECT_EQ(ring->RingSizeValue(), 5);
+    EXPECT_EQ(ring->RingAtomCount(), 5);
 }
 
 TEST(RingHierarchy, PolymorphicCall) {

@@ -31,7 +31,9 @@ namespace nmr {
 
 class ProteinConformation;
 
-// Uses same cutoff as McConnellResult
+// NOTE: vestigial. The runtime cutoff comes from CalculatorConfig
+// "mopac_mcconnell_bond_anisotropy_cutoff"; this constant is referenced
+// only in comments/docs, never in the math path.
 constexpr double MOPAC_MCCONNELL_CUTOFF_A = 10.0;
 
 

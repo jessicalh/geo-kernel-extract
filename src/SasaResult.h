@@ -39,6 +39,8 @@ public:
     const std::vector<double>& AllSASA() const;
 
 private:
+    // Compute writes results directly to the atoms (atom_sasa, sasa_normal);
+    // this object only holds conf_ to read them back later.
     const ProteinConformation* conf_ = nullptr;
 };
 

@@ -39,11 +39,11 @@ struct BondedInteraction {
     };
 
     Type type;
-    // Atom indices (2 for bond, 3 for angle/UB, 4 for dihedral, 5 for CMAP)
+    // Atom indices (2 bond, 3 angle/UB, 4 dihedral, 5 CMAP); see p[] below
     size_t atoms[5] = {};
     int n_atoms = 0;
 
-    // Parameters (meaning depends on type):
+    // Parameters p[] (slot meaning depends on type):
     // Bond:       p[0]=r0 (nm), p[1]=k (kJ/mol/nm^2)
     // Angle:      p[0]=theta0 (rad), p[1]=k (kJ/mol/rad^2)
     // UreyBradley: p[0]=r13_0 (nm), p[1]=k_ub (kJ/mol/nm^2)
@@ -59,8 +59,9 @@ struct BondedInteraction {
 struct BondedParameters {
     std::vector<BondedInteraction> interactions;
 
-    // CMAP grids: each grid is (grid_spacing x grid_spacing) doubles.
+    // CMAP grids: each grid is (points_per_axis × points_per_axis) doubles.
     // Indexed by BondedInteraction::p[0] for CMAP type.
+    // CMAP grid points per axis (despite the name, this is a point count, not a spacing).
     int cmap_grid_spacing = 0;
     std::vector<std::vector<double>> cmap_grids;  // [type][phi_idx * spacing + psi_idx]
 };

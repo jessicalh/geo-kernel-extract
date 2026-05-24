@@ -39,7 +39,7 @@ public:
         return { std::type_index(typeid(ChargeAssignmentResult)) };
     }
 
-    // Factory: compute E-field and EFG at each atom from charges.
+    // Compute APBS E-field and EFG at each atom from charges.
     static std::unique_ptr<ApbsFieldResult> Compute(ProteinConformation& conf);
 
     // Query methods

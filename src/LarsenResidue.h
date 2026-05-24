@@ -18,17 +18,13 @@
 //   CCapAla            -- 10 atoms, canonical ALA (C-terminal flanking)
 //   NME (methylamide)  -- 6 atoms, no carbonyl-O, has amide H
 //
-// Perception algorithm (in detail in
-// spec/plan/larsen-residue-design-2026-05-11.md). The Python script
-// at scripts/perceive_larsen_tripeptide.py is the original algorithm
-// prototype that validated the bond-graph + WL approach against
-// every (tripeptide, frame_type) DB combination and the AAA Gaussian
-// log — it is NOT a normative spec for the C++ object model. Names
-// die at canonical construction; runtime identity is the typed
+// Perception algorithm (full design in
+// spec/plan/larsen-residue-design-2026-05-11.md). Names die at
+// canonical construction; runtime identity is the typed
 // AtomMechanicalIdentity stamped by the generated topology table.
-// The Python script still returns canonical atom names from its
-// `match_piece` because it predates the typed-substrate work; treat
-// it as a diagnostic tool, not as the contract this code must match.
+// (The bond-graph + WL approach was prototyped in
+// scripts/perceive_larsen_tripeptide.py — a diagnostic tool, not a
+// normative spec for this C++ object model.)
 //
 //   1. Build bond graph from (position, element) with element-pair-
 //      specific distance cutoffs.
@@ -99,8 +95,8 @@ public:
         // True iff the canonical name was chosen within a K=3
         // Weisfeiler-Lehman signature class of size ≥ 2 — the bond
         // graph cannot distinguish this atom from a graph-automorphic
-        // sibling (PHE/TYR CD1↔CD2, ARG NH1↔NH2, ASN/GLN HD21↔HD22,
-        // methyl-Hs whose DiastereotopicIndex collapses). The
+        // sibling (e.g. PHE/TYR CD1↔CD2, ARG NH1↔NH2, ASN/GLN
+        // HD21↔HD22, collapsed methyl-Hs). The
         // chemical identity tuple (Element, Locant, BackboneRole) is
         // sound; only the within-class label (BranchAddress and
         // DiastereotopicIndex) is interchangeable. Matchers should

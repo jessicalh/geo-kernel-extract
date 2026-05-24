@@ -58,15 +58,16 @@ static BondKernelResult ComputeBondKernel(
 
     BondKernelResult result;
 
-    Vec3 d = atom_pos - bond_midpoint;
-    double r = d.norm();
+    Vec3 disp = atom_pos - bond_midpoint;  // midpoint->atom displacement
+    double r = disp.norm();
 
+    // too close: return zero kernel (distance stays 0, bond contributes nothing)
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
 
     double r3 = r * r * r;
-    Vec3 d_hat = d / r;
+    Vec3 d_hat = disp / r;
     result.direction = d_hat;
 
     double cos_theta = d_hat.dot(bond_direction);
@@ -86,9 +87,9 @@ static BondKernelResult ComputeBondKernel(
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.M_over_r3(a, b) =
-                (9.0 * cos_theta * d_hat(a) * bond_direction(b)
-                 - 3.0 * bond_direction(a) * bond_direction(b)
-                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))
+                (9.0 * cos_theta * d_hat(a) * bond_direction(b)   // 9 cosθ d̂⊗b̂ term
+                 - 3.0 * bond_direction(a) * bond_direction(b)    // -3 b̂⊗b̂ term
+                 - (3.0 * d_hat(a) * d_hat(b) - (a == b ? 1.0 : 0.0)))  // -(3 d̂⊗d̂ - I) term
                 / r3;
         }
     }
@@ -116,8 +117,8 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
     auto result_ptr = std::make_unique<McConnellResult>();
     result_ptr->conf_ = &conf;
 
-    // Filter set: SelfSourceFilter (atom is bond endpoint) +
-    // DipolarNearFieldFilter (source extent = bond length).
+    // Filter set: MinDistance + SelfSource (atom is bond endpoint) +
+    // DipolarNearField (source extent = bond length).
     KernelFilterSet filters;
     filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
@@ -203,7 +204,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                         best_co_dist = kernel.distance;
                         best_co_f = kernel.f;
                         best_co_midpoint = midpoint;
-                        best_co_direction = kernel.direction;
+                        best_co_direction = kernel.direction;  // d̂ = midpoint->atom (kernel is sign-invariant)
                         best_co_kernel = kernel;
                     }
                     break;
@@ -254,6 +255,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ca.nearest_CO_dist = best_co_dist;
         ca.nearest_CN_dist = best_cn_dist;
 
+        // nearest CO/CN: renorm direction (CO only) + T2 decompose
         if (best_co_dist < NO_DATA_SENTINEL) {
             double dir_norm = best_co_direction.norm();
             ca.dir_nearest_CO = (dir_norm > CalculatorConfig::Get("near_zero_vector_norm_threshold"))
@@ -264,27 +266,21 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             ca.T2_CN_nearest = SphericalTensor::Decompose(best_cn_kernel.K);
         }
 
-        // Category T2 totals (from symmetric dipolar kernel sums)
-        // Apply traceless projection to fix floating-point drift
-        auto project_traceless = [](Mat3& m) {
-            double trace = m.trace();
-            m -= (trace / 3.0) * Mat3::Identity();
-        };
+        // Category T2: symmetric-traceless part of each category's full-M sum.
+        // symmetrize, then subtract trace/3 -> symmetric-traceless.
+        Mat3 backbone_T2_source = 0.5 * (M_backbone_total + M_backbone_total.transpose());
+        backbone_T2_source -= (backbone_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.T2_backbone_total = SphericalTensor::Decompose(backbone_T2_source);
 
-        // Extract symmetric part for T2 features
-        Mat3 K_backbone = 0.5 * (M_backbone_total + M_backbone_total.transpose());
-        K_backbone -= (K_backbone.trace() / 3.0) * Mat3::Identity();
-        ca.T2_backbone_total = SphericalTensor::Decompose(K_backbone);
+        Mat3 sidechain_T2_source = 0.5 * (M_sidechain_total + M_sidechain_total.transpose());
+        sidechain_T2_source -= (sidechain_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.T2_sidechain_total = SphericalTensor::Decompose(sidechain_T2_source);
 
-        Mat3 K_sidechain = 0.5 * (M_sidechain_total + M_sidechain_total.transpose());
-        K_sidechain -= (K_sidechain.trace() / 3.0) * Mat3::Identity();
-        ca.T2_sidechain_total = SphericalTensor::Decompose(K_sidechain);
+        Mat3 aromatic_T2_source = 0.5 * (M_aromatic_total + M_aromatic_total.transpose());
+        aromatic_T2_source -= (aromatic_T2_source.trace() / 3.0) * Mat3::Identity();
+        ca.T2_aromatic_total = SphericalTensor::Decompose(aromatic_T2_source);
 
-        Mat3 K_aromatic = 0.5 * (M_aromatic_total + M_aromatic_total.transpose());
-        K_aromatic -= (K_aromatic.trace() / 3.0) * Mat3::Identity();
-        ca.T2_aromatic_total = SphericalTensor::Decompose(K_aromatic);
-
-        // Full McConnell shielding contribution (from the full M tensor sum)
+        // Full McConnell shielding contribution (full M: T0+T1+T2)
         ca.mc_shielding_contribution = SphericalTensor::Decompose(M_total);
 
         // ---- GeometryChoice: bond anisotropy ----
@@ -310,7 +306,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 // Query methods
 // ============================================================================
 
-double McConnellResult::CategorySum(size_t atom_index, BondCategory cat) const {
+double McConnellResult::CategoryScalarSum(size_t atom_index, BondCategory cat) const {
     const auto& ca = conf_->AtomAt(atom_index);
     switch (cat) {
         case BondCategory::PeptideCO: return ca.mcconnell_co_sum;
@@ -321,17 +317,18 @@ double McConnellResult::CategorySum(size_t atom_index, BondCategory cat) const {
     }
 }
 
-double McConnellResult::NearestCOContribution(size_t atom_index) const {
+double McConnellResult::NearestCOScalarContribution(size_t atom_index) const {
     return conf_->AtomAt(atom_index).mcconnell_co_nearest;
 }
 
 
 // ============================================================================
-// SampleShieldingAt: evaluate McConnell kernel at arbitrary 3D point.
-// Sums over all bonds within MCCONNELL_CUTOFF_A. No atom-specific filters.
+// SampleKernelAt: evaluate McConnell kernel at arbitrary 3D point.
+// Sums over all bonds within the configured bond cutoff. No atom-specific
+// filters (no atoms at a free grid point).
 // ============================================================================
 
-SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
+SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
 
     const Protein& protein = conf_->ProteinRef();
@@ -343,7 +340,8 @@ SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
         if (kernel.distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (kernel.distance > CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff")) continue;
 
-        // DipolarNearFieldFilter: skip if inside the bond
+        // DipolarNearField: skip if closer than near_field_exclusion_ratio · bond_len
+        // keep in sync with DipolarNearFieldFilter (the per-atom Compute path)
         double bond_len = conf_->bond_lengths[bi];
         if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * bond_len) continue;
 
@@ -359,7 +357,7 @@ SphericalTensor McConnellResult::SampleShieldingAt(Vec3 point) const {
 // mc_scalars (CO/CN/sidechain/aromatic sums, nearest distances).
 // ============================================================================
 
-static void PackST_MC(const SphericalTensor& st, double* out) {
+static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
     out[0] = st.T0;
     for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
     for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
@@ -369,13 +367,17 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
 
-    std::vector<double> shielding(N * 9);
-    std::vector<double> cat_T2(N * 25);
-    std::vector<double> scalars(N * 6);
+    constexpr int kShieldingCols = 9;
+    constexpr int kCategoryT2Cols = 25;  // 5 categories × 5 T2
+    constexpr int kScalarCols = 6;
+
+    std::vector<double> shielding(N * kShieldingCols);
+    std::vector<double> cat_T2(N * kCategoryT2Cols);
+    std::vector<double> scalars(N * kScalarCols);
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_MC(ca.mc_shielding_contribution, &shielding[i*9]);
+        PackSphericalTensor9(ca.mc_shielding_contribution, &shielding[i*kShieldingCols]);
 
         const SphericalTensor* cats[5] = {
             &ca.T2_backbone_total, &ca.T2_sidechain_total,
@@ -383,19 +385,19 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
         };
         for (int c = 0; c < 5; ++c)
             for (int m = 0; m < 5; ++m)
-                cat_T2[i*25 + c*5 + m] = cats[c]->T2[m];
+                cat_T2[i*kCategoryT2Cols + c*5 + m] = cats[c]->T2[m];
 
-        scalars[i*6+0] = ca.mcconnell_co_sum;
-        scalars[i*6+1] = ca.mcconnell_cn_sum;
-        scalars[i*6+2] = ca.mcconnell_sidechain_sum;
-        scalars[i*6+3] = ca.mcconnell_aromatic_sum;
-        scalars[i*6+4] = ca.nearest_CO_dist;
-        scalars[i*6+5] = ca.nearest_CN_dist;
+        scalars[i*kScalarCols+0] = ca.mcconnell_co_sum;
+        scalars[i*kScalarCols+1] = ca.mcconnell_cn_sum;
+        scalars[i*kScalarCols+2] = ca.mcconnell_sidechain_sum;
+        scalars[i*kScalarCols+3] = ca.mcconnell_aromatic_sum;
+        scalars[i*kScalarCols+4] = ca.nearest_CO_dist;
+        scalars[i*kScalarCols+5] = ca.nearest_CN_dist;
     }
 
-    NpyWriter::WriteFloat64(output_dir + "/mc_shielding.npy", shielding.data(), N, 9);
-    NpyWriter::WriteFloat64(output_dir + "/mc_category_T2.npy", cat_T2.data(), N, 25);
-    NpyWriter::WriteFloat64(output_dir + "/mc_scalars.npy", scalars.data(), N, 6);
+    NpyWriter::WriteFloat64(output_dir + "/mc_shielding.npy", shielding.data(), N, kShieldingCols);
+    NpyWriter::WriteFloat64(output_dir + "/mc_category_T2.npy", cat_T2.data(), N, kCategoryT2Cols);
+    NpyWriter::WriteFloat64(output_dir + "/mc_scalars.npy", scalars.data(), N, kScalarCols);
     return 3;
 }
 

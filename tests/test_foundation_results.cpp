@@ -598,7 +598,7 @@ TEST_F(UnifiedHisTest, ProtonationDrivesRingType) {
             const Ring& ring = protein.RingAt(ring_i);
             if (ring.parent_residue_index != ri) continue;
             // Skip perimeter/fused rings
-            if (ring.RingSizeValue() > 5) continue;
+            if (ring.RingAtomCount() > 5) continue;
 
             if (variant == "HID") {
                 EXPECT_EQ(ring.type_index, RingTypeIndex::HidImidazole)

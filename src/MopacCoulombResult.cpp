@@ -38,6 +38,10 @@ std::vector<std::type_index> MopacCoulombResult::Dependencies() const {
 std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ProteinConformation& conf) {
 
+    // Near-verbatim copy of CoulombResult::Compute. Differs only in:
+    //   - charge source: mopac_charge (PM7 Mulliken) vs partial_charge (ff14SB)
+    //   - source set: all pairs (full N^2) vs AtomsWithinRadius cutoff
+    //   - no APBS solvent subtraction, no aromatic-source diagnostic count
     OperationLog::Scope scope("MopacCoulombResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 

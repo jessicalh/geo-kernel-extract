@@ -365,7 +365,7 @@ class TestHBond:
         assert geo.hbond.scalars is not None
 
     def test_scalars_shape(self, geo):
-        assert geo.hbond.scalars.data.shape == (geo.n_atoms, 3)
+        assert geo.hbond.scalars.data.shape == (geo.n_atoms, 4)
 
 
 class TestRingSusceptibility:

@@ -80,7 +80,7 @@ p.coulomb               CoulombGroup
 
 p.hbond                 HBondGroup
   .shielding            ShieldingTensor (N, 9)
-  .scalars              HBondScalars (N, 3)
+  .scalars              HBondScalars (N, 4)  — nearest_dist, 1/r^3, count, mcconnell_scalar
 
 p.dssp                  DsspScalars (N, 5)
 p.dssp_ss8              ndarray (N, 8) | None — 8-class SS one-hot (H/G/I/E/B/T/S/C)

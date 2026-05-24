@@ -41,7 +41,7 @@ public:
         ProteinConformation& conf);
 
     // Grid sampling: evaluate ring susceptibility kernel at arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    SphericalTensor SampleKernelAt(Vec3 point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

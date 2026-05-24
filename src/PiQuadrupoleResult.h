@@ -61,8 +61,9 @@ public:
     static std::unique_ptr<PiQuadrupoleResult> Compute(
         ProteinConformation& conf);
 
-    // Grid sampling: evaluate PQ EFG kernel at arbitrary 3D point.
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    // Grid sampling: accumulated PQ EFG tensor at an arbitrary 3D point
+    // (returns the summed, decomposed geometric tensor, not a final shielding).
+    SphericalTensor SampleKernelAt(Vec3 point) const;
 
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;

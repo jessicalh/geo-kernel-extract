@@ -31,8 +31,18 @@ namespace nmr {
 
 class ProteinConformation;
 
-// Coulomb cutoff: sum over ALL atoms (no spatial cutoff).
-// N^2 is cheap for N < 1000. The physics is long-range.
+// Source set: all atoms within coulomb_efield_cutoff (20 A default, TOML).
+// The 1/r^2 field is long-range but truncated at the configured radius.
+//
+// Two SEPARATE geometric kernels (not a single unified tensor):
+//   E_a  (rank-1)             -> T0 shielding via Buckingham A,B parameters
+//   V_ab (rank-2, symmetric,  -> T2 shielding via gamma
+//         traceless)
+// Unlike McConnell (where chi.K contraction produces an asymmetric tensor
+// with non-zero T0+T1+T2 from geometry alone), there is no single "full
+// tensor" that unifies E and V. coulomb_shielding_contribution stores the
+// T2 (Decompose(EFG)) only; the T0 from E via Buckingham is not a pure
+// geometric kernel and is applied at calibration.
 
 class CoulombResult : public ConformationResult {
 public:

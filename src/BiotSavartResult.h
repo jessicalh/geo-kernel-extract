@@ -7,17 +7,18 @@
 //   1. B-field from Johnson-Bovey double-loop model (wire segments in SI,
 //      two current loops at +/- lobe_offset from ring plane, each I/2).
 //
-//   2. Geometric kernel G_ab = n_b * B_a * PPM_FACTOR (rank-1 outer product
-//      of ring normal with B-field). Dimensionless.
+//   2. Geometric kernel G_ab = -n_b * B_a * PPM_FACTOR (rank-1 outer product
+//      of ring normal with B-field). Dimensionless. (Minus per the shielding
+//      sign convention; see "Sign convention" below and the code.)
 //
 //   3. SphericalTensor decomposition of G:
-//        T0 = (n . B) * PPM_FACTOR / 3  (isotropic ring current shift)
+//        T0 = -(n . B) * PPM_FACTOR / 3  (isotropic ring current shift)
 //        T1 != 0  (asymmetric: n_b B_a != n_a B_b)
 //        T2 != 0  (angular anisotropy)
 //
 // Boyd & Skrynnikov JACS 2002 124:1832 showed that both T0 (eq 1, known
 // since Johnson-Bovey 1957) and the off-diagonal components (eq 2, new)
-// are needed for the full shielding tensor. Our G_ab = n_b B_a construction
+// are needed for the full shielding tensor. Our G_ab = -n_b B_a construction
 // produces exactly their eq 3 decomposition.
 //
 // Sign convention: G_ab = -n_b * B_a * PPM_FACTOR. The minus sign comes
@@ -52,9 +53,10 @@ public:
         ProteinConformation& conf);
 
     // Grid sampling: evaluate BS kernel at an arbitrary 3D point.
-    // Returns the shielding tensor (sum over all rings within cutoff).
-    // Requires Compute() to have run (uses stored ring geometries).
-    SphericalTensor SampleShieldingAt(Vec3 point) const;
+    // Returns the spherical decomposition of the summed unit-current G kernel
+    // (sum over rings within cutoff); multiply by ring intensity to get
+    // shielding. Requires Compute() to have run (uses stored ring geometries).
+    SphericalTensor SampleKernelAt(Vec3 point) const;
 
     // Grid sampling: evaluate B-field at an arbitrary 3D point.
     Vec3 SampleBFieldAt(Vec3 point) const;

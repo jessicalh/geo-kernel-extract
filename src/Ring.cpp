@@ -29,13 +29,13 @@ RingGeometry Ring::ComputeGeometry(const std::vector<Vec3>& positions) const {
             coords.row(i) = (geo.vertices[i] - geo.center).transpose();
 
         Eigen::JacobiSVD<Eigen::MatrixXd> svd(coords, Eigen::ComputeFullV);
-        geo.normal = svd.matrixV().col(2);
+        geo.normal = svd.matrixV().col(2);  // col 2 = smallest singular value (coords is N×3 ⇒ V is 3×3)
 
         // Consistent orientation: normal in same direction as cross product
         // of first two edges (right-hand rule).
-        Vec3 edge01 = geo.vertices[1] - geo.vertices[0];
-        Vec3 edge02 = geo.vertices[2] - geo.vertices[0];
-        if (geo.normal.dot(edge01.cross(edge02)) < 0)
+        Vec3 first_edge  = geo.vertices[1] - geo.vertices[0];
+        Vec3 second_edge = geo.vertices[2] - geo.vertices[0];
+        if (geo.normal.dot(first_edge.cross(second_edge)) < 0)
             geo.normal = -geo.normal;
     }
 
@@ -62,12 +62,8 @@ std::unique_ptr<Ring> CreateRing(RingTypeIndex type) {
         case RingTypeIndex::ProPyrrolidine: return std::make_unique<ProPyrrolidineRing>();
         case RingTypeIndex::Count: break;  // sentinel; not a real ring type
     }
-    // Fail-loud on invalid enum casts. The previous silent fallthrough
-    // to PheBenzeneRing turned an impossible value into chemically
-    // meaningful PHE — the kind of blur this project's discipline
-    // forbids. Reaching here means a caller cast an out-of-range
-    // integer to RingTypeIndex; that's a programmer error, not a
-    // recoverable runtime condition.
+    // Fail loud: an out-of-range enum cast is a programmer error.
+    // (Silent fallthrough to PheBenzene would forge a chemically real PHE.)
     std::fprintf(stderr,
                  "FATAL: CreateRing called with invalid RingTypeIndex = %d\n",
                  static_cast<int>(type));

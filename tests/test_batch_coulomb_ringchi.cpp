@@ -501,7 +501,7 @@ TEST(BatchCoulombRingChi, AllCleanPairs) {
         double mean_t0 = (rts.atom_pairs > 0) ? rts.sum_t0 / rts.atom_pairs : 0;
         double mean_t2 = (rts.atom_pairs > 0) ? rts.sum_t2 / rts.atom_pairs : 0;
         std::cout << "    " << std::setw(8) << std::left
-                  << RingTypeName(static_cast<RingTypeIndex>(ti))
+                  << RingTypeCode(static_cast<RingTypeIndex>(ti))
                   << " " << std::setw(6) << std::right << rts.count
                   << " " << std::setw(8) << rts.atom_pairs
                   << "  " << std::setw(10) << std::fixed << std::setprecision(6) << mean_t0

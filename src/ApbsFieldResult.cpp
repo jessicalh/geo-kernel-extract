@@ -19,7 +19,7 @@ extern "C" {
 namespace nmr {
 
 // ============================================================================
-// Grid interpolation utilities (from old ApbsSolver — no APBS dependency)
+// Grid interpolation utilities (no APBS dependency).
 // ============================================================================
 
 struct GridCache {
@@ -42,6 +42,8 @@ struct GridCache {
         int iy = static_cast<int>(std::floor(frac(1)));
         int iz = static_cast<int>(std::floor(frac(2)));
 
+        // OOB -> 0; the >=20 A grid padding keeps every atom's +/-1-cell
+        // central-difference stencil interior, so atoms never see this zero.
         if (ix < 0 || ix >= dims[0]-1 || iy < 0 || iy >= dims[1]-1 ||
             iz < 0 || iz >= dims[2]-1)
             return 0.0;
@@ -54,6 +56,7 @@ struct GridCache {
             return x + y * dims[0] + z * dims[0] * dims[1];
         };
 
+        // trilinear interpolation (8 corner weights)
         return data[idx(ix,iy,iz)]     * (1-fx)*(1-fy)*(1-fz)
              + data[idx(ix+1,iy,iz)]   * fx*(1-fy)*(1-fz)
              + data[idx(ix,iy+1,iz)]   * (1-fx)*fy*(1-fz)
@@ -65,6 +68,7 @@ struct GridCache {
     }
 };
 
+// E = -grad(phi) by central difference.
 static Vec3 ElectricFieldFromGrid(const GridCache& grid, const Vec3& point) {
     Vec3 E;
     for (int d = 0; d < 3; ++d) {
@@ -80,6 +84,7 @@ static Vec3 ElectricFieldFromGrid(const GridCache& grid, const Vec3& point) {
 
 static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
     Mat3 EFG;
+    // EFG(i,j) = dE_i/dr_j  (j = differentiation axis, i = field component).
     for (int j = 0; j < 3; ++j) {
         Vec3 plus = point, minus = point;
         plus(j)  += grid.spacing(j);
@@ -90,18 +95,11 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
             EFG(i, j) = (Eplus(i) - Eminus(i)) / (2.0 * grid.spacing(j));
     }
 
-    // Symmetrize before any further processing. The Hessian of φ
-    // is analytically symmetric (Schwarz's theorem) but the finite-
-    // difference construction above uses trilinear interpolation
-    // across grid boundaries — `∂E_i/∂r_j` and `∂E_j/∂r_i` are computed
-    // independently and can leave a tiny antisymmetric residue (pure
-    // numerical noise from the interpolation, not physics). After the
-    // 2026-05-18 EFG schema rev that emits only T2 (T0+T1 declared
-    // structural zeros), `SphericalTensor::Decompose` would silently
-    // discard this residue as the "T1 component," masquerading
-    // grid-discretization noise as a physical pseudovector. Explicit
-    // symmetrization here pins T1 = 0 by construction in the emitted
-    // tensor, not just by approximation. Per R4 codex review 2026-05-18.
+    // Symmetrize. The independent finite-difference construction of
+    // dE_i/dr_j and dE_j/dr_i can leave a tiny antisymmetric residue
+    // (interpolation noise, not physics). Since the emit is T2-only,
+    // Decompose would otherwise carry that residue as a spurious T1
+    // pseudovector; explicit symmetrization pins T1 = 0 by construction.
     EFG = 0.5 * (EFG + EFG.transpose());
 
     // Traceless projection: remove the self-potential Laplacian.
@@ -136,15 +134,19 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
             "is quarantined pending explicit CHARMM/APBS support");
     }
 
+    // No atoms: the bbox below seeds from x_coords[0], and there is nothing to
+    // solve. Guard placed after dependency retrieval so that path is unchanged.
+    if (n_atoms == 0) return false;
+
     // Separate x, y, z arrays for the C bridge
-    std::vector<double> xArr(n_atoms), yArr(n_atoms), zArr(n_atoms);
+    std::vector<double> x_coords(n_atoms), y_coords(n_atoms), z_coords(n_atoms);
     std::vector<double> charges(n_atoms), radii(n_atoms);
 
     for (size_t i = 0; i < n_atoms; ++i) {
         Vec3 pos = conf.PositionAt(i);
-        xArr[i] = pos.x();
-        yArr[i] = pos.y();
-        zArr[i] = pos.z();
+        x_coords[i] = pos.x();
+        y_coords[i] = pos.y();
+        z_coords[i] = pos.z();
         charges[i] = conf.AtomAt(i).partial_charge;
 
         double r = conf.AtomAt(i).pb_radius;
@@ -158,25 +160,25 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     }
 
     // Grid sizing: matches APBS mg-auto convention.
-    // Fine grid: extent + 40A (20A padding per side), minimum 40A per axis.
-    // Coarse grid: fine + 30A (for boundary condition accuracy).
-    // Grid dimension: 161 per axis, targeting ~0.3-0.5A spacing.
-    Vec3 lo(xArr[0], yArr[0], zArr[0]);
-    Vec3 hi = lo;
+    // fine_dims:   extent + 40A (20A padding per side), minimum 40A per axis.
+    // coarse_dims: fine + 30A (for boundary condition accuracy).
+    // grid_dim:    161 points per axis, targeting ~0.3-0.5A spacing.
+    int grid_dim = 161;
+
+    Vec3 bbox_min(x_coords[0], y_coords[0], z_coords[0]);
+    Vec3 bbox_max = bbox_min;
     for (size_t i = 0; i < n_atoms; ++i) {
-        Vec3 p(xArr[i], yArr[i], zArr[i]);
-        lo = lo.cwiseMin(p);
-        hi = hi.cwiseMax(p);
+        Vec3 p(x_coords[i], y_coords[i], z_coords[i]);
+        bbox_min = bbox_min.cwiseMin(p);
+        bbox_max = bbox_max.cwiseMax(p);
     }
-    Vec3 extent = hi - lo;
+    Vec3 extent = bbox_max - bbox_min;
 
     double fine_dims[3], coarse_dims[3];
     for (int d = 0; d < 3; ++d) {
         fine_dims[d]   = std::max(extent(d) + 40.0, 40.0);
         coarse_dims[d] = fine_dims[d] + 30.0;
     }
-
-    int grid_dim = 161;
 
     // Standard PB parameters
     double pdie = 4.0;              // protein interior dielectric
@@ -194,10 +196,10 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         "pdie=" + std::to_string(pdie) + " sdie=" + std::to_string(sdie));
 
     // Call the C bridge
-    ApbsGridResult gridResult;
+    ApbsGridResult apbs_grid;
     int rc = apbs_solve(
         static_cast<int>(n_atoms),
-        xArr.data(), yArr.data(), zArr.data(),
+        x_coords.data(), y_coords.data(), z_coords.data(),
         charges.data(), radii.data(),
         pdie, sdie,
         temperature,
@@ -205,32 +207,32 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         grid_dim, grid_dim, grid_dim,
         fine_dims[0], fine_dims[1], fine_dims[2],
         coarse_dims[0], coarse_dims[1], coarse_dims[2],
-        &gridResult
+        &apbs_grid
     );
 
     if (rc != APBS_BRIDGE_OK) {
-        std::string msg = "APBS solve failed: " + std::string(gridResult.error_msg);
+        std::string msg = "APBS solve failed: " + std::string(apbs_grid.error_msg);
         OperationLog::Warn("ApbsFieldResult::Compute", msg);
-        apbs_free_grid(&gridResult);
+        apbs_free_grid(&apbs_grid);
         return false;
     }
 
     // Cache the grid for field/gradient extraction
     GridCache grid;
-    grid.origin = Vec3(gridResult.origin[0], gridResult.origin[1], gridResult.origin[2]);
-    grid.spacing = Vec3(gridResult.spacing[0], gridResult.spacing[1], gridResult.spacing[2]);
-    grid.dims[0] = gridResult.dims[0];
-    grid.dims[1] = gridResult.dims[1];
-    grid.dims[2] = gridResult.dims[2];
-    grid.data.assign(gridResult.data, gridResult.data + gridResult.n_points);
+    grid.origin = Vec3(apbs_grid.origin[0], apbs_grid.origin[1], apbs_grid.origin[2]);
+    grid.spacing = Vec3(apbs_grid.spacing[0], apbs_grid.spacing[1], apbs_grid.spacing[2]);
+    grid.dims[0] = apbs_grid.dims[0];
+    grid.dims[1] = apbs_grid.dims[1];
+    grid.dims[2] = apbs_grid.dims[2];
+    grid.data.assign(apbs_grid.data, apbs_grid.data + apbs_grid.n_points);
     grid.valid = true;
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult",
-        "Grid cached: " + std::to_string(gridResult.n_points) + " points, " +
+        "Grid cached: " + std::to_string(apbs_grid.n_points) + " points, " +
         "spacing=" + std::to_string(grid.spacing(0)) + "A");
 
-    apbs_free_grid(&gridResult);
+    apbs_free_grid(&apbs_grid);
 
     // Extract per-atom E-field and EFG from the potential grid
     for (size_t i = 0; i < n_atoms; ++i) {
@@ -239,7 +241,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         Vec3 E = ElectricFieldFromGrid(grid, pos);
         Mat3 EFG = FieldGradientFromGrid(grid, pos);
 
-        // Sanitise
+        // finite-value guard (zero non-finite E + EFG)
         bool has_nan = false;
         for (int d = 0; d < 3; ++d) {
             if (std::isnan(E(d)) || std::isinf(E(d))) { has_nan = true; break; }
@@ -248,6 +250,10 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
             E = Vec3::Zero();
             EFG = Mat3::Zero();
         } else {
+            // field magnitude cap: a finite-value guard on E only. EFG is
+            // left to the traceless projection + its own NaN guard below
+            // (a clamped-E atom is already flagged anomalous; coupling the
+            // rescale would invent a physical relationship that isn't there).
             double E_mag = E.norm();
             if (E_mag > APBS_SANITY_LIMIT) {
                 E *= APBS_SANITY_LIMIT / E_mag;
@@ -259,13 +265,11 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
                 if (std::isnan(EFG(a,b)) || std::isinf(EFG(a,b)))
                     EFG(a,b) = 0.0;
 
-        // Convert from APBS native units kT/(e*A) to V/A for E-field,
-        // kT/(e*A^2) to V/A^2 for EFG. This makes APBS fields directly
-        // comparable to CoulombResult (also in V/A, V/A^2).
+        // kT/(e*A) -> V/A ; kT/(e*A^2) -> V/A^2  (comparable to CoulombResult)
         E *= KT_OVER_E_298K;
         EFG *= KT_OVER_E_298K;
 
-        // Store on ConformationAtom: both Mat3 AND SphericalTensor
+        // store Mat3 + T2
         auto& ca = conf.MutableAtomAt(i);
         ca.apbs_efield = E;
         ca.apbs_efg = EFG;
@@ -282,7 +286,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
 
 
 // ============================================================================
-// Main compute: try APBS, fall back to vacuum Coulomb on failure
+// Main compute: APBS solve only. No fallback — nullptr on failure.
 // ============================================================================
 
 std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
@@ -325,9 +329,8 @@ SphericalTensor ApbsFieldResult::FieldGradientSphericalAt(size_t atom_index) con
 
 
 // ============================================================================
-// WriteFeatures: apbs_E (N,3), apbs_efg (N,5) — T2 only, post-2026-05-18.
-// Old 9-component packer PackST removed with the schema rev; T2 components
-// are emitted inline in WriteFeatures.
+// Feature export: apbs_E (N,3), apbs_efg (N,5) — T2 only (T0+T1 structural
+// zeros). T2 components emitted inline below.
 // ============================================================================
 
 int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
@@ -344,10 +347,8 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
         NpyWriter::WriteFloat64(output_dir + "/apbs_E.npy", data.data(), N, 3);
     }
 
-    // apbs_efg: (N, 5) — T2 only. APBS EFG = Hessian of φ (Poisson
-    // solution) is mathematically symmetric (Schwarz's theorem) and
-    // explicitly traceless-projected at line 102 → T0+T1 structural zeros.
-    // Schema rev 2026-05-18.
+    // apbs_efg: (N, 5) — T2 only. The EFG is symmetrized + traceless-
+    // projected above, so T0 and T1 are structural zeros.
     {
         std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {

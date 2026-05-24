@@ -45,9 +45,12 @@ static double EvalUB(const Vec3& p0, const Vec3& p2,
 // Dihedral angle from four positions (radians).
 static double DihedralAngle(const Vec3& p0, const Vec3& p1,
                             const Vec3& p2, const Vec3& p3) {
+    // bond vectors
     Vec3 b1 = p1 - p0;
     Vec3 b2 = p2 - p1;
     Vec3 b3 = p3 - p2;
+
+    // plane normals
     Vec3 n1 = b1.cross(b2);
     Vec3 n2 = b2.cross(b3);
     double n1n = n1.norm();
@@ -55,6 +58,8 @@ static double DihedralAngle(const Vec3& p0, const Vec3& p1,
     if (n1n < 1e-10 || n2n < 1e-10) return 0.0;
     n1 /= n1n;
     n2 /= n2n;
+
+    // signed angle via reference axis
     double cos_phi = std::max(-1.0, std::min(1.0, n1.dot(n2)));
     Vec3 m = n1.cross(b2.normalized());
     double sin_phi = m.dot(n2);
@@ -92,11 +97,11 @@ static double EvalCMAP(const Vec3& p0, const Vec3& p1,
     double psi = DihedralAngle(p1, p2, p3, p4);
 
     // Map angle [-π, π] to grid index [0, spacing-1]
-    double dx = 2.0 * M_PI / spacing;
-    double fi = (phi + M_PI) / dx;
-    double fj = (psi + M_PI) / dx;
+    double cell_step_rad = 2.0 * M_PI / spacing;
+    double fi = (phi + M_PI) / cell_step_rad;
+    double fj = (psi + M_PI) / cell_step_rad;
 
-    // Bilinear interpolation (sufficient — CMAP grids are smooth)
+    // cell corners + bilinear weights
     int i0 = static_cast<int>(fi) % spacing;
     int j0 = static_cast<int>(fj) % spacing;
     int i1 = (i0 + 1) % spacing;
@@ -130,26 +135,26 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
     result->cmap_energy_.resize(N, 0.0);
     result->total_bonded_.resize(N, 0.0);
 
-    size_t count_bond = 0, count_angle = 0, count_ub = 0;
+    size_t count_bond = 0, count_angle = 0, count_urey_bradley = 0;
     size_t count_proper = 0, count_improper = 0, count_cmap = 0;
 
     for (const auto& ix : params.interactions) {
-        // All atom indices must be in range
+        // index guard
         bool valid = true;
-        for (int k = 0; k < ix.n_atoms; ++k) {
-            if (ix.atoms[k] >= N) { valid = false; break; }
+        for (int a = 0; a < ix.n_atoms; ++a) {
+            if (ix.atoms[a] >= N) { valid = false; break; }
         }
         if (!valid) continue;
 
         double energy = 0.0;
-        std::vector<double>* target = nullptr;
+        std::vector<double>* channel = nullptr;
 
         switch (ix.type) {
             case BondedInteraction::Bond: {
                 Vec3 p0 = conf.PositionAt(ix.atoms[0]);
                 Vec3 p1 = conf.PositionAt(ix.atoms[1]);
                 energy = EvalBond(p0, p1, ix.p[0], ix.p[1]);
-                target = &result->bond_energy_;
+                channel = &result->bond_energy_;
                 ++count_bond;
                 break;
             }
@@ -158,7 +163,7 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 Vec3 p1 = conf.PositionAt(ix.atoms[1]);
                 Vec3 p2 = conf.PositionAt(ix.atoms[2]);
                 energy = EvalAngle(p0, p1, p2, ix.p[0], ix.p[1]);
-                target = &result->angle_energy_;
+                channel = &result->angle_energy_;
                 ++count_angle;
                 break;
             }
@@ -166,8 +171,8 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 Vec3 p0 = conf.PositionAt(ix.atoms[0]);
                 Vec3 p2 = conf.PositionAt(ix.atoms[2]);
                 energy = EvalUB(p0, p2, ix.p[0], ix.p[1]);
-                target = &result->ub_energy_;
-                ++count_ub;
+                channel = &result->ub_energy_;
+                ++count_urey_bradley;
                 break;
             }
             case BondedInteraction::ProperDih: {
@@ -178,7 +183,7 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 energy = EvalProperDih(p0, p1, p2, p3,
                                        ix.p[0], ix.p[1],
                                        static_cast<int>(ix.p[2]));
-                target = &result->proper_energy_;
+                channel = &result->proper_energy_;
                 ++count_proper;
                 break;
             }
@@ -188,7 +193,7 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 Vec3 p2 = conf.PositionAt(ix.atoms[2]);
                 Vec3 p3 = conf.PositionAt(ix.atoms[3]);
                 energy = EvalImproperDih(p0, p1, p2, p3, ix.p[0], ix.p[1]);
-                target = &result->improper_energy_;
+                channel = &result->improper_energy_;
                 ++count_improper;
                 break;
             }
@@ -205,18 +210,18 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
                 energy = EvalCMAP(p0, p1, p2, p3, p4,
                                   params.cmap_grids[cmap_idx],
                                   params.cmap_grid_spacing);
-                target = &result->cmap_energy_;
+                channel = &result->cmap_energy_;
                 ++count_cmap;
                 break;
             }
         }
 
-        if (!target) continue;
+        if (!channel) continue;
 
-        // Split energy evenly among participating atoms
+        // per-atom split (even)
         double share = energy / ix.n_atoms;
-        for (int k = 0; k < ix.n_atoms; ++k)
-            (*target)[ix.atoms[k]] += share;
+        for (int a = 0; a < ix.n_atoms; ++a)
+            (*channel)[ix.atoms[a]] += share;
     }
 
     // Total bonded = sum of all types
@@ -230,7 +235,7 @@ std::unique_ptr<BondedEnergyResult> BondedEnergyResult::Compute(
     OperationLog::Info(LogCalcOther, "BondedEnergyResult",
         "interactions: bond=" + std::to_string(count_bond) +
         " angle=" + std::to_string(count_angle) +
-        " UB=" + std::to_string(count_ub) +
+        " UB=" + std::to_string(count_urey_bradley) +
         " proper=" + std::to_string(count_proper) +
         " improper=" + std::to_string(count_improper) +
         " CMAP=" + std::to_string(count_cmap));
