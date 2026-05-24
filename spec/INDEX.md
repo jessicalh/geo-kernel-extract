@@ -17,6 +17,9 @@ durable architectural record; this index is just a map to the rest.
 - `spec/CONSTITUTION.md` — supreme constraints.
 - `spec/MATHS_GOALS.md` — what we're solving mathematically.
 - `spec/PHYSICS_FOUNDATIONS.md` — physics underpinning each kernel.
+- `spec/APPLIED_MATHEMATICS.md` — inventory of the numerical methods in
+  `src/`, grouped by Numerical Recipes category, with `file:line` and which
+  library (Eigen / nanoflann / libtorch / external) does the heavy lifting.
 
 ## Active planning (small)
 
