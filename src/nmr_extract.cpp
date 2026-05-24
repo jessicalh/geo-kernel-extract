@@ -264,6 +264,12 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
         : RunConfiguration::PerFrameExtractionSet();
     if (mode.mopac) {
         config.MutablePerFrameRunOptions().net_charge = tp.NetCharge();
+        // Per-frame MOPAC stride: trajectory loop overrides skip_mopac
+        // each frame based on (frame_idx % mopac_stride). Default 1 keeps
+        // the historical FullFatFrameExtraction "MOPAC every frame".
+        // Larger values pair MOPAC with NPY/PDB emit stride so heavy work
+        // coincides with disk-emitted frames.
+        config.SetMopacStride(mode.mopac_stride);
     }
 
     const std::string output_dir = common.output_dir.string();

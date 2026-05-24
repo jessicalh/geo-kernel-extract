@@ -78,6 +78,16 @@ struct MutantMode {
 struct TrajectoryMode {
     std::filesystem::path           dir;
     bool                            mopac = false;
+    /// @brief Stride at which MOPAC runs (in TRR-frame-index units).
+    ///
+    /// When @c mopac is true, MOPAC is invoked only on frames where
+    /// @c frame_idx % mopac_stride == 0. Other dispatched frames run
+    /// the rest of the pipeline without MopacResult attached (per the
+    /// conditional-attach TR discipline). Should match the NPY-emit
+    /// stride so MOPAC-touched frames coincide with the disk-emitted
+    /// frames. Default 1 = MOPAC on every dispatched frame (the
+    /// original FullFatFrameExtraction behaviour).
+    std::size_t mopac_stride = 1;
     std::optional<FramePdbEmission> emit_pdbs;
     std::optional<FrameNpyEmission> emit_npys;
 };

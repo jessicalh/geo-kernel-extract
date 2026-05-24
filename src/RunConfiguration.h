@@ -58,6 +58,16 @@ public:
     void SetStride(std::size_t s) { stride_ = (s == 0) ? 1 : s; }
     std::size_t Stride() const { return stride_; }
 
+    // Stride at which MOPAC runs (in original-TRR-frame-index units).
+    // Trajectory::Run overrides per-frame skip_mopac so MOPAC fires only
+    // when frame_idx % mopac_stride == 0. Default 1 = MOPAC on every
+    // dispatched frame (FullFatFrameExtraction historical behaviour);
+    // higher values match the NPY/PDB emit stride so heavy work
+    // coincides with disk-emitted frames. Ignored when per_frame_opts_
+    // skip_mopac is already true (PerFrameExtractionSet default).
+    void SetMopacStride(std::size_t s) { mopac_stride_ = (s == 0) ? 1 : s; }
+    std::size_t MopacStride() const { return mopac_stride_; }
+
     // Mutable access for the factories themselves to populate.
     RunOptions& MutablePerFrameRunOptions() { return per_frame_opts_; }
     void AddTrajectoryResultFactory(TrajectoryResultFactory f) {
@@ -75,6 +85,7 @@ private:
     std::unordered_set<std::type_index> required_conf_result_types_;
     bool requires_aimnet2_ = false;
     std::size_t stride_ = 1;
+    std::size_t mopac_stride_ = 1;
 };
 
 }  // namespace nmr

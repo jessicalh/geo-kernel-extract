@@ -1,8 +1,114 @@
 {
-  "anchored_at_sha": "cd38f59",
-  "anchored_at_utc": "2026-05-23T23:05:38.688715+00:00",
+  "anchored_at_sha": "a6b22d2",
+  "anchored_at_utc": "2026-05-24T18:13:34.849026+00:00",
   "tools": {
-    "clang-tidy": {},
+    "clang-tidy": {
+      "src/AminoAcidType.h": {
+        "by_check": {
+          "google-readability-braces-around-statements": 2
+        },
+        "total": 2
+      },
+      "src/Bond.h": {
+        "by_check": {
+          "misc-const-correctness": 2
+        },
+        "total": 2
+      },
+      "src/BondedEnergyResult.h": {
+        "by_check": {
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1
+        },
+        "total": 1
+      },
+      "src/Cli/Parse.cpp": {
+        "by_check": {
+          "google-readability-braces-around-statements": 1
+        },
+        "total": 1
+      },
+      "src/ConformationAtom.h": {
+        "by_check": {
+          "clang-analyzer-optin.performance.Padding": 1,
+          "performance-unnecessary-value-param": 1
+        },
+        "total": 2
+      },
+      "src/ConformationResult.h": {
+        "by_check": {
+          "misc-unused-parameters": 2
+        },
+        "total": 2
+      },
+      "src/GeometryChoice.h": {
+        "by_check": {
+          "performance-unnecessary-value-param": 1
+        },
+        "total": 1
+      },
+      "src/OperationLog.h": {
+        "by_check": {
+          "google-explicit-constructor": 1
+        },
+        "total": 1
+      },
+      "src/Protein.h": {
+        "by_check": {
+          "cert-err33-c": 1
+        },
+        "total": 1
+      },
+      "src/ProteinBuildContext.h": {
+        "by_check": {
+          "google-readability-braces-around-statements": 2
+        },
+        "total": 2
+      },
+      "src/ProteinConformation.h": {
+        "by_check": {
+          "cert-err33-c": 2
+        },
+        "total": 2
+      },
+      "src/RecordBag.h": {
+        "by_check": {
+          "google-readability-braces-around-statements": 6
+        },
+        "total": 6
+      },
+      "src/SolventEnvironment.h": {
+        "by_check": {
+          "clang-diagnostic-unused-variable": 1,
+          "misc-const-correctness": 1
+        },
+        "total": 2
+      },
+      "src/Trajectory.cpp": {
+        "by_check": {
+          "cert-err33-c": 2,
+          "cppcoreguidelines-pro-type-member-init,hicpp-member-init": 1,
+          "google-readability-braces-around-statements": 2,
+          "misc-const-correctness": 4,
+          "readability-function-size": 1
+        },
+        "total": 10
+      },
+      "src/TrajectoryProtein.h": {
+        "by_check": {
+          "cert-err33-c": 2
+        },
+        "total": 2
+      },
+      "src/nmr_extract.cpp": {
+        "by_check": {
+          "bugprone-exception-escape": 1,
+          "bugprone-unchecked-optional-access": 2,
+          "cert-err33-c": 24,
+          "google-readability-braces-around-statements": 5
+        },
+        "total": 32
+      }
+    },
     "cppcheck": {
       "/home/jessica/builds/reduce-src/libpdb/pdb++.h": {
         "by_check": {

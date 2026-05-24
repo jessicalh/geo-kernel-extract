@@ -205,6 +205,13 @@ ParseResult ParseTrajectory(int argc, char* argv[]) {
         return r;
     }
     m.mopac     = HasFlag(argc, argv, "--mopac");
+    const std::string s_mopac_stride = GetArg(argc, argv, "--mopac-stride");
+    if (!s_mopac_stride.empty()) {
+        m.mopac_stride = std::strtoull(s_mopac_stride.c_str(), nullptr, 10);
+        if (m.mopac_stride == 0) {
+            m.mopac_stride = 1;
+        }
+    }
     m.emit_pdbs = ParseFramePdbEmission(argc, argv);
     m.emit_npys = ParseFrameNpyEmission(argc, argv);
     r.spec   = ModeSpec{std::move(m)};

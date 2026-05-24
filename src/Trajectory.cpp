@@ -255,6 +255,14 @@ Status Trajectory::Run(TrajectoryProtein& tp,
 
     {
         auto& conf0 = tp.MutableCanonicalConformation_();
+        // Per-frame MOPAC stride override. config.MopacStride() == 1 (default)
+        // keeps the existing FullFatFrameExtraction "MOPAC every frame"
+        // behaviour. Higher values gate MOPAC by frame_idx % stride; the
+        // Mopac* TR family handles HasResult<MopacResult>() per-frame
+        // (conditional-attach TR discipline, OBJECT_MODEL.md).
+        if (config.MopacStride() > 1) {
+            frame_opts.skip_mopac = (/*frame_idx=*/0 % config.MopacStride() != 0);
+        }
         RunResult rr = OperationRunner::Run(conf0, frame_opts);
         if (!rr.Ok()) {
             OperationLog::Error("Trajectory::Run",
@@ -302,6 +310,10 @@ Status Trajectory::Run(TrajectoryProtein& tp,
         frame_opts.velocities   = &env_.velocities;
         frame_opts.box_matrix   = &env_.box_matrix;
 
+        // Per-frame MOPAC stride override; see Phase 6 block above.
+        if (config.MopacStride() > 1) {
+            frame_opts.skip_mopac = (handler_->Index() % config.MopacStride() != 0);
+        }
         auto conf = tp.TickConformation(handler_->ProteinPositions());
         RunResult rr = OperationRunner::Run(*conf, frame_opts);
         if (!rr.Ok()) {
