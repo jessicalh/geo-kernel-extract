@@ -9,6 +9,7 @@
 #include "Types.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
+#include "CalculatorConfig.h"
 
 #include <highfive/H5DataSpace.hpp>
 #include <highfive/H5DataSet.hpp>
@@ -226,7 +227,7 @@ int HBondCountWelfordTrajectoryResult::WriteFeatures(
 //
 // Group attributes: result_name, n_frames, finalized, ddof,
 // mean_dt_ps, frame_index_range, units (group-level "pairs"),
-// source_radius_A = 3.5.
+// source_radius_A (from the hbond_counting_radius config key).
 
 void HBondCountWelfordTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -245,7 +246,9 @@ void HBondCountWelfordTrajectoryResult::WriteH5Group(
     // channel. Per-dataset `units` below are authoritative — the
     // occupancy_fraction channel is dimensionless, not "pairs".
     grp.createAttribute("units",             std::string("pairs"));
-    grp.createAttribute("source_radius_A",   3.5);
+    // Read from CalculatorConfig so the recorded radius tracks the TOML
+    // (hbond_counting_radius) rather than going stale if it is retuned.
+    grp.createAttribute("source_radius_A",   CalculatorConfig::Get("hbond_counting_radius"));
 
     // ── Helper: emit one WelfordMoments channel as 7 1D datasets ──
     // base_units is the unit of the underlying samples; m2_units is the unit

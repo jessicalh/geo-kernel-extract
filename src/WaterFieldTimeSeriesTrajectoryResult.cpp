@@ -5,6 +5,7 @@
 #include "Trajectory.h"
 #include "TrajectoryProtein.h"
 #include "OperationLog.h"
+#include "CalculatorConfig.h"
 
 #include <highfive/H5DataSet.hpp>
 #include <highfive/H5DataSpace.hpp>
@@ -150,12 +151,14 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
 
     grp.createAttribute("count_units",      std::string("dimensionless"));
 
-    // Cutoff radii — efield uses a 15 Å sphere; n_first / n_second use
-    // hydration-shell cutoffs at 3.5 / 5.5 Å (TIP3P standard). Downstream
-    // must not assume same support across these channels.
-    grp.createAttribute("efield_cutoff_A",   15.0);
-    grp.createAttribute("n_first_cutoff_A",  3.5);
-    grp.createAttribute("n_second_cutoff_A", 5.5);
+    // Cutoff radii — efield uses a sphere; n_first / n_second use
+    // hydration-shell cutoffs (TIP3P standard). Read from CalculatorConfig so
+    // the recorded metadata tracks the TOML rather than going stale if the
+    // cutoffs are retuned. Downstream must not assume same support across
+    // these channels.
+    grp.createAttribute("efield_cutoff_A",   CalculatorConfig::Get("water_efield_cutoff"));
+    grp.createAttribute("n_first_cutoff_A",  CalculatorConfig::Get("water_first_shell_cutoff"));
+    grp.createAttribute("n_second_cutoff_A", CalculatorConfig::Get("water_second_shell_cutoff"));
 
     // E-field as (N, T, 3); NaN-filled on source-absent frames.
     auto emit_vec3 = [&](const std::string& name,

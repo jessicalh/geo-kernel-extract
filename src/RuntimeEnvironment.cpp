@@ -152,18 +152,21 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             "no TOML config at " + path + " — using env vars and PATH only");
     }
 
-    // --- Resolve mopac: TOML → PATH → conda default ---
-
+    // --- Resolve mopac: TOML → PATH ---
+    // No machine-specific default: a non-PATH install sets `mopac` in
+    // ~/.nmr_tools.toml. Empty here is a loud skip downstream (see Check()).
     mopac_ = ResolveBinary(toml_mopac, "mopac");
-    if (mopac_.empty()) {
-        // Try conda default location
-        std::string conda_mopac = "/home/jessica/micromamba/envs/mm/bin/mopac";
-        if (fs::exists(conda_mopac)) mopac_ = conda_mopac;
-    }
 
-    // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH → conda ---
-    tleap_ = toml_tleap;
-    if (tleap_.empty() || !fs::exists(tleap_)) {
+    // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH ---
+    // Only accept a TOML path that actually exists, so a stale (nonempty but
+    // missing) config value falls through to AMBERHOME/PATH instead of pinning
+    // tleap_ to a dead path and skipping the later fallbacks (matches how
+    // ResolveBinary treats a stale mopac path).
+    tleap_.clear();
+    if (!toml_tleap.empty() && fs::exists(toml_tleap)) {
+        tleap_ = toml_tleap;
+    }
+    if (tleap_.empty()) {
         const char* amberhome = std::getenv("AMBERHOME");
         if (amberhome) {
             std::string ah_tleap = std::string(amberhome) + "/bin/tleap";
@@ -172,10 +175,6 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
     if (tleap_.empty()) {
         tleap_ = ResolveBinary("", "tleap");
-    }
-    if (tleap_.empty()) {
-        std::string conda_tleap = "/home/jessica/micromamba/envs/mm/bin/tleap";
-        if (fs::exists(conda_tleap)) tleap_ = conda_tleap;
     }
 
     // --- Resolve data files ---
