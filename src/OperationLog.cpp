@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <cstdio>
 #include <cstdlib>
 #include <nlohmann/json.hpp>
 #include <sys/socket.h>
@@ -113,22 +114,82 @@ static std::string BuildJson(OperationLog::Level level,
 }
 
 
+// Last resort when the normal emit path throws (e.g. bad_alloc building the
+// line): emit a schema-shaped marker through one ::write, so the stream
+// records that an entry was lost rather than the program terminating or
+// losing the event silently. This path uses no C++ heap (no std::string /
+// stream / container) and throws no C++ exception out of this noexcept
+// fallback: chrono::now + localtime_r + strftime/snprintf all write into
+// fixed stack buffers (the normal path allocates only because it uses
+// ostringstream). libc time/locale formatting may touch its own internal
+// state, but it will not raise a C++ exception here. The line carries a real
+// "ts" so it matches the BuildJson schema downstream consumers parse.
+static void EmitDroppedMarker() noexcept {
+    char ts[32] = "unknown";
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                  now.time_since_epoch()).count() % 1000;
+    std::tm tm_buf;
+    if (localtime_r(&t, &tm_buf)) {
+        char stamp[20];
+        if (std::strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", &tm_buf) > 0)
+            std::snprintf(ts, sizeof(ts), "%s.%03d", stamp, static_cast<int>(ms));
+    }
+    char line[200];
+    int n = std::snprintf(line, sizeof(line),
+        "{\"ts\":\"%s\",\"level\":\"ERROR\",\"op\":\"OperationLog\","
+        "\"detail\":\"log entry dropped: exception during emit\"}\n", ts);
+    // n<0 can't happen with this fixed format, but clamp defensively; consume
+    // write()'s warn_unused_result (nothing safe to do if even this fails).
+    std::size_t len = (n > 0 && static_cast<std::size_t>(n) < sizeof(line))
+                          ? static_cast<std::size_t>(n) : sizeof(line) - 1;
+    if (::write(STDERR_FILENO, line, len) < 0) { /* give up */ }
+}
+
 void OperationLog::Log(Level level, const std::string& operation,
-                        const std::string& detail) {
-    std::string json = BuildJson(level, operation, detail);
-    if (fileConfigured_)
-        SendFile(json);
-    if (udpConfigured_)
-        SendUdp(json);
-    // Warn/Error always go to stderr — cannot be silently lost if listener is down.
-    // Info/Debug go to stderr only as fallback when UDP is not configured.
-    if (!udpConfigured_ || level == Level::Warning || level == Level::Error)
-        SendStderr(json);
+                        const std::string& detail) noexcept {
+    // Unthrowable by contract (see header). The only realistic throw source
+    // is BuildJson allocating (ostringstream / nlohmann); the sinks are
+    // syscall / default-stream writes that do not throw. Contain everything:
+    // a logging call must never unwind out of a destructor or an in-flight
+    // error path.
+    try {
+        std::string json = BuildJson(level, operation, detail);
+        if (fileConfigured_)
+            SendFile(json);
+        if (udpConfigured_)
+            SendUdp(json);
+        // Warn/Error always go to stderr — cannot be silently lost if listener is down.
+        // Info/Debug go to stderr only as fallback when UDP is not configured.
+        if (!udpConfigured_ || level == Level::Warning || level == Level::Error)
+            SendStderr(json);
+    } catch (...) {
+        EmitDroppedMarker();
+    }
+}
+
+void OperationLog::LogScopeEnd(const std::string& operation,
+                               long long elapsed_ms) noexcept {
+    // The "unthrowable log entry form" for Scope::~Scope: the destructor is
+    // implicitly noexcept, and building the op/detail strings at the call site
+    // would let a bad_alloc escape the destructor → std::terminate. So the
+    // destructor passes only its already-allocated operation_ (by ref) and a
+    // scalar; ALL string assembly happens here, inside the contained boundary.
+    try {
+        // Channelled (LogAll), matching the BEGIN line emitted by Scope's ctor
+        // via Info(): both honour channelMask_, so BEGIN/END stay paired —
+        // when Info is masked off, neither emits.
+        Log(Level::Info, LogAll, operation + " [END]",
+            "elapsed=" + std::to_string(elapsed_ms) + "ms");
+    } catch (...) {
+        EmitDroppedMarker();
+    }
 }
 
 void OperationLog::Log(Level level, uint32_t channel,
                         const std::string& operation,
-                        const std::string& detail) {
+                        const std::string& detail) noexcept {
     // Warnings and errors ALWAYS emit regardless of channel mask.
     if (level == Level::Info || level == Level::Debug) {
         if ((channelMask_ & channel) == 0) return;
@@ -172,13 +233,46 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
         while (!val.empty() && val.front() == '"') val = val.substr(1);
 
         if (key == "channels") {
+            // Fail loud on every way the value can be wrong: unparseable,
+            // trailing junk after the number, or wider than the 32-bit mask
+            // (stoul returns unsigned long; the cast would silently truncate).
             try {
-                channelMask_ = static_cast<uint32_t>(std::stoul(val, nullptr, 0));
-            } catch (...) {}
+                std::size_t pos = 0;
+                unsigned long parsed = std::stoul(val, &pos, 0);
+                if (pos != val.size()) {
+                    Warn("OperationLog::LoadChannelConfig",
+                         "trailing junk after [logging].channels value, keeping default: \"" + val + "\"");
+                } else if (parsed > 0xFFFFFFFFUL) {
+                    Warn("OperationLog::LoadChannelConfig",
+                         "[logging].channels exceeds the 32-bit mask, keeping default: \"" + val + "\"");
+                } else {
+                    channelMask_ = static_cast<uint32_t>(parsed);
+                }
+            } catch (...) {
+                Warn("OperationLog::LoadChannelConfig",
+                     "unparseable [logging].channels value, keeping default: \"" + val + "\"");
+            }
         } else if (key == "udp_host") {
             udp_host = val;
         } else if (key == "udp_port") {
-            try { udp_port = std::stoi(val); } catch (...) {}
+            // Same discipline: unparseable, trailing junk, or out of the valid
+            // 1-65535 port range (htons would otherwise silently truncate).
+            try {
+                std::size_t pos = 0;
+                int parsed = std::stoi(val, &pos);
+                if (pos != val.size()) {
+                    Warn("OperationLog::LoadChannelConfig",
+                         "trailing junk after [logging].udp_port value, UDP disabled: \"" + val + "\"");
+                } else if (parsed < 1 || parsed > 65535) {
+                    Warn("OperationLog::LoadChannelConfig",
+                         "[logging].udp_port out of range 1-65535, UDP disabled: \"" + val + "\"");
+                } else {
+                    udp_port = parsed;
+                }
+            } catch (...) {
+                Warn("OperationLog::LoadChannelConfig",
+                     "unparseable [logging].udp_port value, UDP disabled: \"" + val + "\"");
+            }
         } else if (key == "file") {
             log_file = val;
         }
@@ -252,8 +346,10 @@ OperationLog::Scope::Scope(const std::string& operation, const std::string& deta
 OperationLog::Scope::~Scope() {
     auto elapsed = std::chrono::steady_clock::now() - start_;
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
-    OperationLog::Info(operation_ + " [END]",
-                        "elapsed=" + std::to_string(ms) + "ms");
+    // Pass operation_ by ref + the scalar ms only — no string assembly in this
+    // (implicitly noexcept) destructor body. LogScopeEnd builds and emits the
+    // line inside its own contained boundary so nothing can escape here.
+    OperationLog::LogScopeEnd(operation_, static_cast<long long>(ms));
 }
 
 }  // namespace nmr

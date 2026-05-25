@@ -84,26 +84,32 @@ public:
     static void LogSessionStart();
 
     // Log with channel (Info checks mask, Warn/Error always emit).
+    //
+    // noexcept by contract: the log is the system's external memory and is
+    // ALWAYS ON, so emitting a line must never throw — it is called from
+    // destructors (Scope::~Scope) and during stack unwinding, where an
+    // escaping exception is std::terminate. Any failure to build or send a
+    // line is contained internally (last resort: a fixed marker on stderr).
     static void Log(Level level, uint32_t channel,
                     const std::string& operation,
-                    const std::string& detail);
+                    const std::string& detail) noexcept;
 
     // Log without channel (always emits — for Warn/Error).
     static void Log(Level level,
                     const std::string& operation,
-                    const std::string& detail);
+                    const std::string& detail) noexcept;
 
     // Convenience
-    static void Info(const std::string& op, const std::string& detail) {
+    static void Info(const std::string& op, const std::string& detail) noexcept {
         Log(Level::Info, LogAll, op, detail);
     }
-    static void Info(uint32_t ch, const std::string& op, const std::string& detail) {
+    static void Info(uint32_t ch, const std::string& op, const std::string& detail) noexcept {
         Log(Level::Info, ch, op, detail);
     }
-    static void Warn(const std::string& op, const std::string& detail) {
+    static void Warn(const std::string& op, const std::string& detail) noexcept {
         Log(Level::Warning, op, detail);
     }
-    static void Error(const std::string& op, const std::string& detail) {
+    static void Error(const std::string& op, const std::string& detail) noexcept {
         Log(Level::Error, op, detail);
     }
 
@@ -121,6 +127,13 @@ public:
     static bool IsFileConfigured();
 
 private:
+    // Unthrowable scope-end emit used by Scope::~Scope. The destructor passes
+    // its already-allocated operation_ (by ref) and a scalar; the op/detail
+    // string assembly happens here, inside a contained noexcept boundary, so a
+    // bad_alloc cannot escape the (implicitly noexcept) destructor.
+    static void LogScopeEnd(const std::string& operation,
+                            long long elapsed_ms) noexcept;
+
     static void SendUdp(const std::string& json);
     static void SendFile(const std::string& json);
     static void SendStderr(const std::string& json);

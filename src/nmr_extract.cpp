@@ -29,7 +29,9 @@
 #include <highfive/H5File.hpp>
 
 #include <cstdio>
+#include <exception>
 #include <filesystem>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -297,7 +299,12 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
 // main
 // ============================================================================
 
-int main(int argc, char* argv[]) {
+// All mode handlers use return codes (errors.h), not exceptions — but
+// parsing, config/model loading, std::filesystem and allocation can still
+// throw. RunExtract holds the real body; main is the outermost boundary that
+// turns any escaped exception into a fail-loud diagnostic + nonzero exit
+// rather than std::terminate with no message.
+static int RunExtract(int argc, char* argv[]) {
     Session session;
     if (session.LoadFromToml() != kOk) {
         std::fprintf(stderr, "ERROR: session load: %s\n", session.LastError().c_str());
@@ -385,4 +392,27 @@ int main(int argc, char* argv[]) {
             }
         },
         spec);
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        return RunExtract(argc, argv);
+    } catch (const std::exception& e) {
+        // stderr first: e.what() is a const char*, so this diagnostic needs no
+        // allocation and lands even under memory pressure. The structured log
+        // call (whose arg build could allocate) follows, itself guarded so a
+        // bad_alloc there cannot turn a clean exit-1 into std::terminate.
+        std::fprintf(stderr, "FATAL: unhandled exception: %s\n", e.what());
+        try {
+            OperationLog::Error("nmr_extract::main",
+                                std::string("unhandled exception: ") + e.what());
+        } catch (...) { /* stderr already carried it */ }
+        return 1;
+    } catch (...) {
+        std::fprintf(stderr, "FATAL: unhandled non-std exception\n");
+        try {
+            OperationLog::Error("nmr_extract::main", "unhandled non-std exception");
+        } catch (...) { /* stderr already carried it */ }
+        return 1;
+    }
 }
