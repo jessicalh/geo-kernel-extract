@@ -574,9 +574,9 @@ bool FullSystemReader::ExtractFrame(
 
     auto pos = [&](size_t idx) -> Vec3 {
         return Vec3(
-            static_cast<double>(xyz[idx * 3 + 0]) * 10.0,
-            static_cast<double>(xyz[idx * 3 + 1]) * 10.0,
-            static_cast<double>(xyz[idx * 3 + 2]) * 10.0);
+            static_cast<double>(xyz[idx * 3 + 0]) * ANGSTROM_PER_NANOMETRE,
+            static_cast<double>(xyz[idx * 3 + 1]) * ANGSTROM_PER_NANOMETRE,
+            static_cast<double>(xyz[idx * 3 + 2]) * ANGSTROM_PER_NANOMETRE);
     };
 
     protein_positions.resize(topo_.protein_count);

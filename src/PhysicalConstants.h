@@ -54,6 +54,11 @@ constexpr double ANGSTROMS_TO_METRES = 1.0e-10;
 constexpr double NANOAMPERES_TO_AMPERES = 1.0e-9;
 constexpr double PPM_FACTOR = 1.0e6;
 
+// GROMACS works in nanometres; this library works in Angstroms.
+// 1 nm = 10 A exactly (SI definitions).
+constexpr double ANGSTROM_PER_NANOMETRE = 10.0;
+constexpr double NANOMETRE_PER_ANGSTROM = 0.1;
+
 // Electrostatics in {e, Angstrom, eV} units
 // ke = e / (4 pi epsilon_0) = 14.3996 eV*A / e = 14.3996 V*A
 // Converts E from e/A^2 (raw Coulomb sum) to V/A (physical E-field).
@@ -62,6 +67,12 @@ constexpr double COULOMB_KE = 14.3996;
 // Thermal voltage at 298.15 K: kT/e = k_B * T / e = 0.025693 V
 // Converts APBS potential/field from kT/e units to Volts.
 constexpr double KT_OVER_E_298K = 0.025693;
+
+// AMBER prmtop %FLAG CHARGE stores charges in internal units of
+// e * sqrt(kcal/mol * A) = e * 18.2223; divide by this to recover
+// elementary charge. (AMBER convention; mirrored in
+// tools/amber/generate_ff14sb_pb_table.py.)
+constexpr double AMBER_PRMTOP_CHARGE_FACTOR = 18.2223;
 
 // Biot-Savart prefactor: mu_0/(4*pi) in SI units (T*m/A).
 // Pre-2019 SI: exactly 1e-7. This is the value used in the JB wire model.

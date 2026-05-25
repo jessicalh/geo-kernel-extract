@@ -2,6 +2,7 @@
 #include "AminoAcidType.h"
 #include "Atom.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Protein.h"
 #include "ProteinBuildContext.h"
 #include "ProteinConformation.h"
@@ -133,8 +134,6 @@ AmberPreparedChargeSource::DisulfidePairs1Based() const {
 // ============================================================================
 
 namespace {
-
-constexpr double kAmberChargeFactor = 18.2223;
 
 std::vector<std::string> ReadPrmtopFlagLines(const std::string& path,
                                               const std::string& flag_name) {
@@ -413,7 +412,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         }
         seen[ext_ai] = true;
         result[ext_ai].partial_charge =
-            prmtop.charges_amber[prmtop_ai] / kAmberChargeFactor;
+            prmtop.charges_amber[prmtop_ai] / AMBER_PRMTOP_CHARGE_FACTOR;
         result[ext_ai].pb_radius = prmtop.radii[prmtop_ai];
         result[ext_ai].status = ChargeAssignmentStatus::Matched;
     }

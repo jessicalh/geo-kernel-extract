@@ -18,6 +18,10 @@ import tempfile
 from dataclasses import dataclass
 
 
+# AMBER prmtop %FLAG CHARGE internal units: e * sqrt(kcal/mol * A) = e * 18.2223.
+# Divide by this to recover elementary charge. Mirrors the C++ home of record,
+# PhysicalConstants.h::AMBER_PRMTOP_CHARGE_FACTOR (kept as a local constant here
+# rather than shared across the language boundary for one scalar).
 AMBER_CHARGE_FACTOR = 18.2223
 
 STANDARD_UNITS = [
@@ -247,7 +251,7 @@ def write_table(path: pathlib.Path, rows: list[TableRow], amberhome: pathlib.Pat
         out.write("# Source: AmberTools tleap, leaprc.protein.ff14SB\n")
         out.write("# Template source: amino12.lib, aminont12.lib, aminoct12.lib\n")
         out.write("# PBRadii: mbondi2 (set default PBRadii mbondi2)\n")
-        out.write("# CHARGE: AMBER prmtop CHARGE converted to elementary charge by /18.2223\n")
+        out.write(f"# CHARGE: AMBER prmtop CHARGE converted to elementary charge by /{AMBER_CHARGE_FACTOR}\n")
         out.write("# Format: TERMINAL_STATE RESNAME ATOMNAME CHARGE(e) PB_RADIUS(Angstrom)\n")
         out.write("# Terminal states: INTERNAL, NTERM, CTERM\n")
         out.write("# Internal variants present: " + " ".join(supported_internal_variants) + "\n")

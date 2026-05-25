@@ -4,6 +4,7 @@
 #include "Ring.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 
 #include <filesystem>
 #include <cmath>
@@ -83,7 +84,7 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                               * rn.distance_to_center;
                     r[7]  = (r3 > 1e-30)
                         ? (3.0 * cos_th * cos_th - 1.0) / r3 : 0.0;
-                    r[8]  = std::exp(-rn.distance_to_center / 4.0);
+                    r[8]  = std::exp(-rn.distance_to_center / EXP_DECAY_LENGTH);
 
                     PackST(rn.G_spherical,      r + 9);   // BS shielding kernel
                     PackST(rn.hm_H_spherical,   r + 18);  // HM raw integral (pure T2)

@@ -1,6 +1,7 @@
 #include "GromacsFrameHandler.h"
 #include "TrajectoryProtein.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 
 #include "gromacs/fileio/trrio.h"
 #include "gromacs/utility/vectypes.h"
@@ -12,10 +13,9 @@
 
 namespace nmr {
 
-// nm → Å conversion (TRR stores positions / velocities in nm; our
-// per-frame buffers are in Å / Å/ps to match every other ConformationAtom
-// position field in the system).
-static constexpr float NM_TO_ANGSTROM = 10.0f;
+// TRR stores positions / velocities in nm; our per-frame buffers are in
+// Å / Å/ps to match every other ConformationAtom position field in the
+// system. Conversion factor is PhysicalConstants::ANGSTROM_PER_NANOMETRE.
 
 
 GromacsFrameHandler::GromacsFrameHandler(TrajectoryProtein& tp)
@@ -145,7 +145,7 @@ bool GromacsFrameHandler::ReadNextFrame() {
     // FramePdbEmitter::BoxToCellParameters' contract.
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * 10.0;
+            box_matrix_(j, i) = static_cast<double>(box_rv[i][j]) * ANGSTROM_PER_NANOMETRE;
         }
     }
 
@@ -193,9 +193,9 @@ bool GromacsFrameHandler::ReadNextFrame() {
         for (std::size_t a = 0; a < pcount; ++a) {
             const std::size_t base = (pstart + a) * 3;
             protein_velocities_.emplace_back(
-                static_cast<double>(raw_v_[base + 0]) * 10.0,
-                static_cast<double>(raw_v_[base + 1]) * 10.0,
-                static_cast<double>(raw_v_[base + 2]) * 10.0);
+                static_cast<double>(raw_v_[base + 0]) * ANGSTROM_PER_NANOMETRE,
+                static_cast<double>(raw_v_[base + 1]) * ANGSTROM_PER_NANOMETRE,
+                static_cast<double>(raw_v_[base + 2]) * ANGSTROM_PER_NANOMETRE);
         }
     }
 

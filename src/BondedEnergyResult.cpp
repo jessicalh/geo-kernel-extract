@@ -2,6 +2,7 @@
 #include "ConformationAtom.h"
 #include "NpyWriter.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 #include "Types.h"
 
 #include <cmath>
@@ -13,12 +14,10 @@ namespace nmr {
 // All positions in Angstroms, parameters in GROMACS native units
 // (nm, kJ/mol). We convert distances A→nm before evaluating.
 
-static constexpr double A_TO_NM = 0.1;
-
 // Harmonic bond: E = ½k(r - r0)²
 static double EvalBond(const Vec3& p0, const Vec3& p1,
                        double r0_nm, double k) {
-    double r_nm = (p1 - p0).norm() * A_TO_NM;
+    double r_nm = (p1 - p0).norm() * NANOMETRE_PER_ANGSTROM;
     double dr = r_nm - r0_nm;
     return 0.5 * k * dr * dr;
 }
@@ -37,7 +36,7 @@ static double EvalAngle(const Vec3& p0, const Vec3& p1, const Vec3& p2,
 // Urey-Bradley: E = ½k_ub(r13 - r13_0)²
 static double EvalUB(const Vec3& p0, const Vec3& p2,
                      double r13_0_nm, double k_ub) {
-    double r13_nm = (p2 - p0).norm() * A_TO_NM;
+    double r13_nm = (p2 - p0).norm() * NANOMETRE_PER_ANGSTROM;
     double dr = r13_nm - r13_0_nm;
     return 0.5 * k_ub * dr * dr;
 }

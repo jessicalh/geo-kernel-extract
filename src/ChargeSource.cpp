@@ -3,6 +3,7 @@
 #include "Protein.h"
 #include "RuntimeEnvironment.h"
 #include "OperationLog.h"
+#include "PhysicalConstants.h"
 
 #include <fstream>
 #include <unordered_map>
@@ -362,7 +363,7 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
     std::vector<AtomChargeRadius> result(n_protein);
     for (size_t i = 0; i < n_protein; ++i) {
         // Convert from AMBER internal units to elementary charges
-        result[i].partial_charge = raw_charges[i] / AMBER_CHARGE_FACTOR;
+        result[i].partial_charge = raw_charges[i] / AMBER_PRMTOP_CHARGE_FACTOR;
         result[i].pb_radius = raw_radii[i];
         result[i].status = ChargeAssignmentStatus::Matched;
     }

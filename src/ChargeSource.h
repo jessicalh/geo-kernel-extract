@@ -172,9 +172,6 @@ public:
 private:
     std::string path_;
     ForceField ff_;
-
-    // AMBER prmtop charge units: e * 18.2223 (sqrt(kcal/mol * A))
-    static constexpr double AMBER_CHARGE_FACTOR = 18.2223;
 };
 
 

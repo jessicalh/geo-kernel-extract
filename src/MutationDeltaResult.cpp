@@ -63,7 +63,7 @@ std::vector<std::type_index> MutationDeltaResult::Dependencies() const {
 //
 // From old project EquivariantExtractor: z = d.n, rho = |d - z*n|,
 // theta = atan2(rho, z). McConnell factor = (3cos^2 theta - 1)/r^3.
-// Exponential decay = exp(-r/4.0) with tau = 4A characteristic length.
+// Exponential decay = exp(-r / EXP_DECAY_LENGTH); tau = EXP_DECAY_LENGTH (4 A).
 // ============================================================================
 
 static RingProximity ComputeRingProximity(

@@ -43,7 +43,7 @@ struct RingProximity {
     double rho = 0.0;               // radial distance in ring plane
     double theta = 0.0;             // cone angle from normal: atan2(rho, z)
     double mcconnell_factor = 0.0;  // (3cos^2 theta - 1) / r^3
-    double exp_decay = 0.0;         // exp(-distance / 4.0)
+    double exp_decay = 0.0;         // exp(-distance / EXP_DECAY_LENGTH)
 };
 
 
