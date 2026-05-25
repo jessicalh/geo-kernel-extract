@@ -352,8 +352,7 @@ int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
     {
         std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
-            const auto& st = conf.AtomAt(i).apbs_efg_spherical;
-            for (size_t k = 0; k < 5; ++k) data[i*5+k] = st.T2[k];
+            conf.AtomAt(i).apbs_efg_spherical.PackT2(&data[i*5]);
         }
         NpyWriter::WriteFloat64(output_dir + "/apbs_efg.npy", data.data(), N, 5);
     }

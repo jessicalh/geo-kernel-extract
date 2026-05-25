@@ -297,12 +297,6 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
 // mopac_mc_scalars (weighted CO/CN/sidechain/aromatic sums, nearest dists).
 // ============================================================================
 
-static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
                                          const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -317,7 +311,7 @@ int MopacMcConnellResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackSphericalTensor9(ca.mopac_mc_shielding_contribution, &shielding[i*kShieldingCols]);
+        ca.mopac_mc_shielding_contribution.PackFull9(&shielding[i*kShieldingCols]);
 
         const SphericalTensor* cats[5] = {
             &ca.mopac_mc_T2_backbone_total, &ca.mopac_mc_T2_sidechain_total,

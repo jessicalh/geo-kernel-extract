@@ -453,12 +453,6 @@ SphericalTensor BiotSavartResult::SampleKernelAt(Vec3 point) const {
 // Pack order for SphericalTensor: [T0, T1[0..2], T2[0..4]] = 9 doubles.
 // ============================================================================
 
-static void PackSphericalTensor(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
                                      const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -468,7 +462,7 @@ int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
     {
         std::vector<double> data(N * 9);
         for (size_t i = 0; i < N; ++i)
-            PackSphericalTensor(conf.AtomAt(i).bs_shielding_contribution, &data[i*9]);
+            conf.AtomAt(i).bs_shielding_contribution.PackFull9(&data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/bs_shielding.npy", data.data(), N, 9);
         written++;
     }

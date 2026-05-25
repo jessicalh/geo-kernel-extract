@@ -232,12 +232,6 @@ std::unique_ptr<OrcaShieldingResult> OrcaShieldingResult::Compute(
     return result;
 }
 
-static void PackST_O(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int OrcaShieldingResult::WriteFeatures(const ProteinConformation& conf,
                                         const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -248,9 +242,9 @@ int OrcaShieldingResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_O(ca.orca_shielding_total_spherical, &total[i*9]);
-        PackST_O(ca.orca_shielding_diamagnetic_spherical, &dia[i*9]);
-        PackST_O(ca.orca_shielding_paramagnetic_spherical, &para[i*9]);
+        ca.orca_shielding_total_spherical.PackFull9(&total[i*9]);
+        ca.orca_shielding_diamagnetic_spherical.PackFull9(&dia[i*9]);
+        ca.orca_shielding_paramagnetic_spherical.PackFull9(&para[i*9]);
     }
 
     NpyWriter::WriteFloat64(output_dir + "/orca_total.npy", total.data(), N, 9);

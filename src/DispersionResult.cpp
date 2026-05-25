@@ -374,13 +374,6 @@ SphericalTensor DispersionResult::SampleKernelAt(Vec3 point) const {
 }
 
 
-// flatten SphericalTensor to 9 doubles: [T0 | T1(3) | T2(5)]
-static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int DispersionResult::WriteFeatures(const ProteinConformation& conf,
                                      const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -394,7 +387,7 @@ int DispersionResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackSphericalTensor9(ca.disp_shielding_contribution, &shielding[i*9]);
+        ca.disp_shielding_contribution.PackFull9(&shielding[i*9]);
         for (int t = 0; t < kAromaticRingTypeCount; ++t) {
             per_type_T0[i*kAromaticRingTypeCount + t] = ca.per_type_disp_scalar_sum[t];
             for (int c = 0; c < kT2Components; ++c)

@@ -256,18 +256,12 @@ SphericalTensor RingSusceptibilityResult::SampleKernelAt(Vec3 point) const {
 }
 
 
-static void PackSphericalTensor(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int RingSusceptibilityResult::WriteFeatures(const ProteinConformation& conf,
                                              const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
     std::vector<double> shielding(N * 9);
     for (size_t i = 0; i < N; ++i)
-        PackSphericalTensor(conf.AtomAt(i).ringchi_shielding_contribution, &shielding[i*9]);
+        conf.AtomAt(i).ringchi_shielding_contribution.PackFull9(&shielding[i*9]);
     NpyWriter::WriteFloat64(output_dir + "/ringchi_shielding.npy", shielding.data(), N, 9);
     return 1;
 }

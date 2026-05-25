@@ -405,12 +405,6 @@ SphericalTensor HaighMallionResult::SampleKernelAt(Vec3 point) const {
 // Mirrors BiotSavart layout — same ring-type decomposition, different kernel.
 // ============================================================================
 
-static void PackHaighMallionTensor(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -421,7 +415,7 @@ int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackHaighMallionTensor(ca.hm_shielding_contribution, &shielding[i*9]);
+        ca.hm_shielding_contribution.PackFull9(&shielding[i*9]);
         for (int t = 0; t < 8; ++t) {
             per_type_T0[i*8 + t] = ca.per_type_hm_T0_sum[t];
             for (int c = 0; c < 5; ++c)

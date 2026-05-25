@@ -357,12 +357,6 @@ SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
 // mc_scalars (CO/CN/sidechain/aromatic sums, nearest distances).
 // ============================================================================
 
-static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int McConnellResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -377,7 +371,7 @@ int McConnellResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackSphericalTensor9(ca.mc_shielding_contribution, &shielding[i*kShieldingCols]);
+        ca.mc_shielding_contribution.PackFull9(&shielding[i*kShieldingCols]);
 
         const SphericalTensor* cats[5] = {
             &ca.T2_backbone_total, &ca.T2_sidechain_total,

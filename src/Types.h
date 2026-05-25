@@ -274,6 +274,23 @@ struct SphericalTensor {
     const std::array<double, 3>& Antisymmetric() const { return T1; }
     const std::array<double, 5>& TracelessSymmetric() const { return T2; }
 
+    // Pack into a flat buffer in the canonical decomposition order
+    // [T0, T1[0..2], T2[0..4]] (9 doubles). This is the single owner of that
+    // layout — calculators emitting (N, 9) NPY/H5 call this instead of
+    // hand-rolling the order. Order matches Decompose() above.
+    void PackFull9(double* out) const {
+        out[0] = T0;
+        for (int i = 0; i < 3; ++i) out[1 + i] = T1[i];
+        for (int i = 0; i < 5; ++i) out[4 + i] = T2[i];
+    }
+
+    // Pack just the five traceless-symmetric components (T2[0..4]) into a
+    // flat buffer, for pure-T2 emitters (EFG-style results where T0/T1 are
+    // structurally zero).
+    void PackT2(double* out) const {
+        for (int i = 0; i < 5; ++i) out[i] = T2[i];
+    }
+
     // Decompose a 3x3 tensor into T0 + T1 + T2.
     static SphericalTensor Decompose(const Mat3& tensor);
 

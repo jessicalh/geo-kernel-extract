@@ -386,17 +386,6 @@ TripeptideNeighborShieldingResult::Compute(
 // WriteFeatures
 // ============================================================================
 
-namespace {
-
-void PackSphericalTensor(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1 + i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4 + i] = st.T2[i];
-}
-
-}  // anonymous namespace
-
-
 int TripeptideNeighborShieldingResult::WriteFeatures(
         const ProteinConformation& conf,
         const std::string& output_dir) const {
@@ -410,8 +399,7 @@ int TripeptideNeighborShieldingResult::WriteFeatures(
         for (std::size_t i = 0; i < N; ++i) {
             const auto& ca = conf.AtomAt(i);
             if (ca.tripeptide_neighbor_has_match) {
-                PackSphericalTensor(
-                    ca.tripeptide_neighbor_shielding_spherical,
+                ca.tripeptide_neighbor_shielding_spherical.PackFull9(
                     &data[i * 9]);
             }
         }

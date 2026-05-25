@@ -502,8 +502,7 @@ int AIMNet2Result::WriteFeatures(
                              SphericalTensor ConformationAtom::* member) {
         std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
-            const auto& st = conf.AtomAt(i).*member;
-            for (size_t k = 0; k < 5; ++k) data[i*5+k] = st.T2[k];
+            (conf.AtomAt(i).*member).PackT2(&data[i*5]);
         }
         NpyWriter::WriteFloat64(output_dir + "/" + name, data.data(), N, 5);
     };

@@ -297,12 +297,6 @@ SphericalTensor MopacCoulombResult::EFGSphericalAt(size_t atom_index) const {
 // EFG decompositions, scalar features.
 // ============================================================================
 
-static void PackST_MCC(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -317,16 +311,14 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackST_MCC(ca.mopac_coulomb_shielding_contribution, &shielding[i*9]);
+        ca.mopac_coulomb_shielding_contribution.PackFull9(&shielding[i*9]);
 
         efield[i*3+0] = ca.mopac_coulomb_E_total.x();
         efield[i*3+1] = ca.mopac_coulomb_E_total.y();
         efield[i*3+2] = ca.mopac_coulomb_E_total.z();
 
-        for (size_t k = 0; k < 5; ++k) {
-            efg_bb[i*5+k]  = ca.mopac_coulomb_EFG_backbone_spherical.T2[k];
-            efg_aro[i*5+k] = ca.mopac_coulomb_EFG_aromatic_spherical.T2[k];
-        }
+        ca.mopac_coulomb_EFG_backbone_spherical.PackT2(&efg_bb[i*5]);
+        ca.mopac_coulomb_EFG_aromatic_spherical.PackT2(&efg_aro[i*5]);
 
         scalars[i*4+0] = ca.mopac_coulomb_E_magnitude;
         scalars[i*4+1] = ca.mopac_coulomb_E_bond_proj;

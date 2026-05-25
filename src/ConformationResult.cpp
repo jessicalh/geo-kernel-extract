@@ -14,12 +14,6 @@ namespace fs = std::filesystem;
 
 namespace nmr {
 
-// Pack SphericalTensor as [T0, T1[3], T2[5]] = 9 doubles.
-static void PackST(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
 
 int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                                           const std::string& output_dir) {
@@ -86,11 +80,11 @@ int ConformationResult::WriteAllFeatures(const ProteinConformation& conf,
                         ? (3.0 * cos_th * cos_th - 1.0) / r3 : 0.0;
                     r[8]  = std::exp(-rn.distance_to_center / EXP_DECAY_LENGTH);
 
-                    PackST(rn.G_spherical,      r + 9);   // BS shielding kernel
-                    PackST(rn.hm_H_spherical,   r + 18);  // HM raw integral (pure T2)
-                    PackST(rn.hm_G_spherical,   r + 27);  // HM shielding kernel (T0+T1+T2)
-                    PackST(rn.quad_spherical,    r + 36);
-                    PackST(rn.chi_spherical,     r + 45);
+                    rn.G_spherical.PackFull9(r + 9);       // BS shielding kernel
+                    rn.hm_H_spherical.PackFull9(r + 18);   // HM raw integral (pure T2)
+                    rn.hm_G_spherical.PackFull9(r + 27);   // HM shielding kernel (T0+T1+T2)
+                    rn.quad_spherical.PackFull9(r + 36);
+                    rn.chi_spherical.PackFull9(r + 45);
                     r[54] = rn.disp_scalar;
                     r[55] = static_cast<double>(rn.disp_contacts);
                     r[56] = rn.cos_phi;

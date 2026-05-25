@@ -443,13 +443,6 @@ SphericalTensor HBondResult::SampleKernelAt(Vec3 point) const {
 }
 
 
-// feature packing: layout T0 | T1[3] | T2[5]
-static void PackHBondSphericalTensor(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int HBondResult::WriteFeatures(const ProteinConformation& conf,
                                 const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -459,7 +452,7 @@ int HBondResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackHBondSphericalTensor(ca.hbond_shielding_contribution, &shielding[i*9]);
+        ca.hbond_shielding_contribution.PackFull9(&shielding[i*9]);
         scalars[i*4+0] = ca.hbond_nearest_dist;
         scalars[i*4+1] = ca.hbond_inv_d3;
         scalars[i*4+2] = static_cast<double>(ca.hbond_count_within_3_5A);

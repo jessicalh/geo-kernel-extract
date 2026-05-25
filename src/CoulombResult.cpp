@@ -361,13 +361,6 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
 // scalar features (magnitude, bond projection, backbone fraction).
 // ============================================================================
 
-// pack T0(1) + T1(3) + T2(5) -> 9 doubles
-static void PackSphericalTensor9(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                                   const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -382,16 +375,14 @@ int CoulombResult::WriteFeatures(const ProteinConformation& conf,
 
     for (size_t i = 0; i < N; ++i) {
         const auto& ca = conf.AtomAt(i);
-        PackSphericalTensor9(ca.coulomb_shielding_contribution, &shielding[i*9]);
+        ca.coulomb_shielding_contribution.PackFull9(&shielding[i*9]);
 
         efield[i*3+0] = ca.coulomb_E_total.x();
         efield[i*3+1] = ca.coulomb_E_total.y();
         efield[i*3+2] = ca.coulomb_E_total.z();
 
-        for (size_t k = 0; k < 5; ++k) {
-            efg_bb[i*5+k]  = ca.coulomb_EFG_backbone_spherical.T2[k];
-            efg_aro[i*5+k] = ca.coulomb_EFG_aromatic_spherical.T2[k];
-        }
+        ca.coulomb_EFG_backbone_spherical.PackT2(&efg_bb[i*5]);
+        ca.coulomb_EFG_aromatic_spherical.PackT2(&efg_aro[i*5]);
 
         scalars[i*4+0] = ca.coulomb_E_magnitude;
         scalars[i*4+1] = ca.coulomb_E_bond_proj;

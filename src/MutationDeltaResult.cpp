@@ -676,12 +676,6 @@ double MutationDeltaResult::MatchDistanceAt(size_t i) const {
 // Unmatched atoms get zeros. Arrays are (N, K) where N = WT atom count.
 // ============================================================================
 
-static void PackST(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1+i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4+i] = st.T2[i];
-}
-
 int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
                                         const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
@@ -692,7 +686,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<double> data(N * 9, 0.0);
         for (size_t i = 0; i < N; ++i)
             if (HasMatch(i))
-                PackST(matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical, &data[i*9]);
+                matched_atoms_[wt_to_matched_[i]].delta_shielding_spherical.PackFull9(&data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/delta_shielding.npy", data.data(), N, 9);
         written++;
     }
@@ -708,7 +702,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
         std::vector<double> data(N * 9, 0.0);
         for (size_t i = 0; i < N; ++i)
             if (HasMatch(i))
-                PackST(matched_atoms_[wt_to_matched_[i]].*field, &data[i*9]);
+                (matched_atoms_[wt_to_matched_[i]].*field).PackFull9(&data[i*9]);
         NpyWriter::WriteFloat64(output_dir + "/" + filename, data.data(), N, 9);
     };
 
@@ -753,7 +747,7 @@ int MutationDeltaResult::WriteFeatures(const ProteinConformation& conf,
                 data[i*12 + 0] = m.delta_efield.x();
                 data[i*12 + 1] = m.delta_efield.y();
                 data[i*12 + 2] = m.delta_efield.z();
-                PackST(m.delta_efg_spherical, &data[i*12 + 3]);
+                m.delta_efg_spherical.PackFull9(&data[i*12 + 3]);
             }
         }
         NpyWriter::WriteFloat64(output_dir + "/delta_apbs.npy", data.data(), N, 12);

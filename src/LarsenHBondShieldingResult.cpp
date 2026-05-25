@@ -898,12 +898,6 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
 // downstream consumers key on.
 // ============================================================================
 
-static void PackSphericalST(const SphericalTensor& st, double* out) {
-    out[0] = st.T0;
-    for (int i = 0; i < 3; ++i) out[1 + i] = st.T1[i];
-    for (int i = 0; i < 5; ++i) out[4 + i] = st.T2[i];
-}
-
 int LarsenHBondShieldingResult::WriteFeatures(
         const ProteinConformation& conf,
         const std::string& output_dir) const {
@@ -922,12 +916,12 @@ int LarsenHBondShieldingResult::WriteFeatures(
 
     for (std::size_t i = 0; i < N; ++i) {
         const ConformationAtom& a = conf.AtomAt(i);
-        PackSphericalST(a.larsen_hbond_shielding_spherical,    &shielding[i * 9]);
-        PackSphericalST(a.larsen_hbond_1pHB_spherical,         &sh_1pHB  [i * 9]);
-        PackSphericalST(a.larsen_hbond_2pHB_spherical,         &sh_2pHB  [i * 9]);
-        PackSphericalST(a.larsen_hbond_1pHaB_spherical,        &sh_1pHaB [i * 9]);
-        PackSphericalST(a.larsen_hbond_2pHaB_spherical,        &sh_2pHaB [i * 9]);
-        PackSphericalST(a.larsen_hbond_diagnostic_CB_spherical,&sh_CB    [i * 9]);
+        a.larsen_hbond_shielding_spherical.PackFull9(    &shielding[i * 9]);
+        a.larsen_hbond_1pHB_spherical.PackFull9(         &sh_1pHB  [i * 9]);
+        a.larsen_hbond_2pHB_spherical.PackFull9(         &sh_2pHB  [i * 9]);
+        a.larsen_hbond_1pHaB_spherical.PackFull9(        &sh_1pHaB [i * 9]);
+        a.larsen_hbond_2pHaB_spherical.PackFull9(        &sh_2pHaB [i * 9]);
+        a.larsen_hbond_diagnostic_CB_spherical.PackFull9(&sh_CB    [i * 9]);
         water[i]   = a.larsen_hbond_water_term;
         n_pairs[i] = a.larsen_hbond_n_pairs;
     }

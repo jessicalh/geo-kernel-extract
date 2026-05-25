@@ -215,8 +215,7 @@ int WaterFieldResult::WriteFeatures(
     {
         std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
-            const auto& st = conf.AtomAt(i).water_efg_spherical;
-            for (size_t k = 0; k < 5; ++k) data[i * 5 + k] = st.T2[k];
+            conf.AtomAt(i).water_efg_spherical.PackT2(&data[i * 5]);
         }
         NpyWriter::WriteFloat64(output_dir + "/water_efg.npy", data.data(), N, 5);
         ++n_files;
@@ -226,8 +225,7 @@ int WaterFieldResult::WriteFeatures(
     {
         std::vector<double> data(N * 5);
         for (size_t i = 0; i < N; ++i) {
-            const auto& st = conf.AtomAt(i).water_efg_first_spherical;
-            for (size_t k = 0; k < 5; ++k) data[i * 5 + k] = st.T2[k];
+            conf.AtomAt(i).water_efg_first_spherical.PackT2(&data[i * 5]);
         }
         NpyWriter::WriteFloat64(output_dir + "/water_efg_first.npy", data.data(), N, 5);
         ++n_files;
