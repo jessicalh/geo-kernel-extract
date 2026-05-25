@@ -258,6 +258,16 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
             // left to the traceless projection + its own NaN guard below
             // (a clamped-E atom is already flagged anomalous; coupling the
             // rescale would invent a physical relationship that isn't there).
+            //
+            // Intentionally NOT the shared efield_magnitude_sanity_clamp
+            // config key (used by CoulombResult / WaterFieldResult /
+            // MopacCoulombResult): that key is in V/A, but here E is still in
+            // APBS-native kT/(e*A) units — the KT_OVER_E_298K conversion is
+            // below. The same number means different physical magnitudes in
+            // the two unit systems, so this guard keeps its own constant.
+            // (Whether APBS should instead clamp post-conversion in V/A to
+            // truly match the siblings is a physics/blessing question, not a
+            // config-plumbing one.)
             double E_mag = E.norm();
             if (E_mag > APBS_SANITY_LIMIT) {
                 E *= APBS_SANITY_LIMIT / E_mag;

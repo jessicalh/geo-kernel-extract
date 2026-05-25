@@ -41,6 +41,7 @@ import bz2
 import io
 import json
 import math
+import os
 import re
 import sys
 import tarfile
@@ -1068,7 +1069,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--tar",
-        default="/mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar",
+        default=os.environ.get(
+            "LARSEN_ARCHIVE_TAR",
+            "/mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar"),
         type=Path,
     )
     ap.add_argument(

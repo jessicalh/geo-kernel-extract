@@ -107,6 +107,11 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 try {
                     res.sequence_number = std::stoi(seq_id);
                 } catch (...) {
+                    // Input feeds physics: a non-numeric seq_id is malformed,
+                    // so be loud rather than silently bind it to 0.
+                    OperationLog::Error("PdbFileReader",
+                        "non-numeric residue seq_id '" + seq_id + "' (chain " +
+                        chain_id + ", residue " + comp_id + ") — falling back to 0");
                     res.sequence_number = 0;
                 }
                 res_idx = protein->AddResidue(res);
