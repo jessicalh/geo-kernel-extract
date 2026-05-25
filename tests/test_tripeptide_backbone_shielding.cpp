@@ -46,17 +46,11 @@ using namespace nmr;
 namespace fs = std::filesystem;
 
 
-namespace {
-
-constexpr const char* kLarsen1UbqPm6 =
-    "/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb";
-
-}  // namespace
-
-
 class TripeptideBackboneShieldingTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        const std::string kLarsen1UbqPm6 =
+            nmr::test::TestEnvironment::Larsen1UbqPm6Pdb();
         if (RuntimeEnvironment::TensorCs15Dsn().empty()) {
             GTEST_SKIP() << "tensorcs15 DSN not configured "
                             "(set [databases].tensorcs15 in "
@@ -150,7 +144,8 @@ TEST_F(TripeptideBackboneShieldingTest, RunsOn1UbqPm6) {
         << "got " << n_ser_matched_pbe << "/" << n_ser_attempted;
 
     // Test NPY emission.
-    const std::string out_dir = "/tmp/tripeptide_bb_smoke_out";
+    const std::string out_dir =
+        nmr::test::TestEnvironment::TempPath("tripeptide_bb_smoke_out");
     fs::create_directories(out_dir);
     int n_npy = tbb->WriteFeatures(conf, out_dir);
     EXPECT_EQ(n_npy, 4);

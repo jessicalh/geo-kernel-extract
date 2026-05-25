@@ -11,6 +11,16 @@
 # The --fleet CLI flag was removed 2026-04-12; the fleet/ fixture and
 # its loader (GromacsEnsembleLoader) moved to tests/bones/ on 2026-05-04.
 #
+# ⚠ MAINTENANCE NOTE (audit C10, 2026-05-25): the Use Case B invocation
+# below uses the RETIRED `--orca DIR` shape. The canonical CLI is
+# `--orca --root NAME` (NAME expands to {NAME}.xyz/.prmtop/_nmr.out), so
+# nmr_extract rejects the positional-dir form and the test FAILs. Unlike
+# batch_extract.sh's consolidated data, the orca_dir fixture DOES map to
+# --root (e.g. {orca_dir}/A0A7C5FAR6_ALA), so this is fixable — but doing
+# so needs a decision on which pose(s) to exercise (WT vs ALA), whether
+# MOPAC runs (~10 min/protein), and a baseline_orca re-bless. Left for
+# that decision; the read_toml path-resolution below is already correct.
+#
 
 set -euo pipefail
 
@@ -20,9 +30,16 @@ BUILD_DIR="$PROJECT_DIR/build"
 TOML="$PROJECT_DIR/tests/testpaths.toml"
 REGRESSION_DIR="$SCRIPT_DIR"
 
-# Read a key from testpaths.toml
+# Read a key from testpaths.toml, mirroring TestEnvironment's C10 path
+# resolution: a value that does not start with '/' is repo-root-relative
+# and resolved against PROJECT_DIR; absolute values are used verbatim.
 read_toml() {
-    grep "^$1" "$TOML" | sed 's/.*= *"\(.*\)"/\1/'
+    local val
+    val=$(grep "^$1" "$TOML" | sed 's/.*= *"\(.*\)"/\1/')
+    if [ -n "$val" ] && [ "${val#/}" = "$val" ]; then
+        val="$PROJECT_DIR/$val"
+    fi
+    printf '%s\n' "$val"
 }
 
 NMR_EXTRACT="$BUILD_DIR/nmr_extract"

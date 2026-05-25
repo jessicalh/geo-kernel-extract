@@ -1,20 +1,22 @@
-# Test data paths for batcave.
-# Edit when syncing to a different machine.
+# Test data paths.
+# In-tree fixtures are repo-root-relative (resolved by TestEnvironment
+# against the parent of tests/); external data stays absolute. Edit the
+# absolute entries when syncing to a different machine.
 
 # Protonated 1UBQ (in-tree test data)
-ubq_protonated = "/shared/2026Thesis/nmr-shielding/tests/data/1ubq_protonated.pdb"
+ubq_protonated = "tests/data/1ubq_protonated.pdb"
 
 # Unprotonated 1UBQ crystal structure
-ubq_crystal    = "/shared/2026Thesis/nmr-shielding/tests/data/external/1UBQ.pdb"
+ubq_crystal    = "tests/data/external/1UBQ.pdb"
 
 # GROMACS protonated test PDB
-gmx_protonated = "/shared/2026Thesis/nmr-shielding/tests/data/external/1OKH_4587_protonated.pdb"
+gmx_protonated = "tests/data/external/1OKH_4587_protonated.pdb"
 
 
 # ORCA mutant pair directory (A0A7C5FAR6 WT + ALA)
-orca_dir       = "/shared/2026Thesis/nmr-shielding/tests/data/orca/"
+orca_dir       = "tests/data/orca/"
 
-# 734 WT+ALA consolidated mutant pairs (year of DFT compute)
+# 734 WT+ALA consolidated mutant pairs (year of DFT compute) — external.
 consolidated   = "/shared/2026Thesis/consolidated/"
 
 # fleet_data (CHARMM/XTC fleet/1A6J_5789 + 1AEP_4814) retired 2026-05-04
@@ -43,7 +45,7 @@ consolidated   = "/shared/2026Thesis/consolidated/"
 #                             has ".name=HISH rtp=HIP" — the load-bearing
 #                             test case for NC4 in the canonical-vocabulary
 #                             spec), and the production run subdir.
-fleet_amber    = "/shared/2026Thesis/nmr-shielding/tests/data/fleet_amber"
+fleet_amber    = "tests/data/fleet_amber"
 
 # Per-protein production-trajectory subpath under <fleet_amber>/<id>/.
 # Paths are pinned (no directory discovery / glob — see PATTERNS.md
@@ -57,11 +59,15 @@ fleet_amber_1p9j_5801_subpath = "1P9J_5801/prep_run_20260501T141627Z/batcave_loc
 fleet_amber_1z9b_6577_subpath = "1Z9B_6577/prep_run_20260501T143103Z/batcave_local_15ns_optB_20260501T144823Z/production"
 
 # ff14SB parameter file (for tests that create their own ChargeSource)
-ff14sb_params  = "/shared/2026Thesis/nmr-shielding/data/ff14sb_params.dat"
+ff14sb_params  = "data/ff14sb_params.dat"
 
 # AIMNet2 .jpt model. Required by smoke tests so they exercise the
 # AIMNet2 path per project_aimnet2_contract_20260426.
-aimnet2_model  = "/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt"
+aimnet2_model  = "data/models/aimnet2_wb97m_0.jpt"
 
 # Baseline NPY features for regression
-baseline_features = "/shared/2026Thesis/nmr-shielding/baseline_features/P84477"
+baseline_features = "baseline_features/P84477"
+
+# Larsen-archive PM6-D3H+ optimised 1UBQ geometry — external (gitignored).
+# Tests skip when absent. See /mnt/expansion/larsen_archive/README.md.
+larsen_1ubq_pm6_pdb = "/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb"

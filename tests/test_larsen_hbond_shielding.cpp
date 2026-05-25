@@ -49,14 +49,6 @@ using namespace nmr;
 namespace fs = std::filesystem;
 
 
-namespace {
-
-constexpr const char* kLarsen1UbqPm6 =
-    "/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb";
-
-}  // namespace
-
-
 // ---------------------------------------------------------------------------
 // LarsenContribDispatch::Applies — per-cell Table 2 dispatch verification.
 // ---------------------------------------------------------------------------
@@ -118,6 +110,8 @@ TEST(LarsenContribDispatchTest, Table2Cells) {
 class LarsenHBondShieldingTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        const std::string kLarsen1UbqPm6 =
+            nmr::test::TestEnvironment::Larsen1UbqPm6Pdb();
         if (RuntimeEnvironment::LarsenHBondGridDir().empty()) {
             GTEST_SKIP() << "LarsenHBondGridDir empty; set "
                             "larsen_hbond_grids in ~/.nmr_tools.toml";

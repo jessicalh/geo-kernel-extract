@@ -190,10 +190,12 @@ TEST(HmWelford, H5RoundTrip) {
     ASSERT_EQ(dims.size(), 1u);
     EXPECT_EQ(dims[0], tp.AtomCount());
 
-    // Keep file at fixed location for manual inspection
-    std::cout << "INSPECT_DEBUG: copying " << h5_path << " to /tmp/hm_welford_inspect.h5\n";
+    // Keep file at a stable temp location for manual inspection
+    const std::string inspect_path =
+        nmr::test::TestEnvironment::TempPath("hm_welford_inspect.h5");
+    std::cout << "INSPECT_DEBUG: copying " << h5_path << " to " << inspect_path << "\n";
     try {
-        fs::copy_file(h5_path, "/tmp/hm_welford_inspect.h5",
+        fs::copy_file(h5_path, inspect_path,
                       fs::copy_options::overwrite_existing);
         std::cout << "INSPECT_DEBUG: copy OK\n";
     } catch (const std::exception& e) {

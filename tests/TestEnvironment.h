@@ -14,6 +14,13 @@
 //   aimnet2_model                  = "path/to/aimnet2_wb97m_0.jpt"
 //   fleet_amber                    = "tests/data/fleet_amber"
 //   fleet_amber_<id>_subpath       = pinned per-protein production sub-path
+//   larsen_1ubq_pm6_pdb            = external Larsen-archive PM6-D3H+ 1UBQ
+//
+// Path resolution (C10): a value that does not begin with '/' is treated
+// as repo-root-relative and resolved against the repo root (the parent of
+// NMR_TEST_DATA_DIR's tests/ directory). In-tree fixtures are therefore
+// written relative in testpaths.toml; external data (the consolidated
+// tree, the Larsen archive) stays absolute and is used verbatim.
 //
 
 #include <string>
@@ -53,6 +60,14 @@ public:
     static AmberTrajectoryFixture FleetAmberTrajectory(
         const std::string& protein_id);
 
+    // External Larsen-archive PM6-D3H+ optimised 1UBQ geometry. Empty if
+    // the key is unset; callers GTEST_SKIP when the file is absent.
+    static const std::string& Larsen1UbqPm6Pdb();
+
+    // A path under the system temp directory, for test debug artifacts.
+    // No discovery, no fixed /tmp literals — std::filesystem chooses TMPDIR.
+    static std::string TempPath(const std::string& stem);
+
     static bool RequireLoaded();
 
 private:
@@ -67,6 +82,7 @@ private:
     static std::string fleet_amber_;
     static std::string fleet_amber_1p9j_5801_subpath_;
     static std::string fleet_amber_1z9b_6577_subpath_;
+    static std::string larsen_1ubq_pm6_pdb_;
     static bool loaded_;
 };
 

@@ -22,6 +22,7 @@ std::string TestEnvironment::baseline_features_;
 std::string TestEnvironment::fleet_amber_;
 std::string TestEnvironment::fleet_amber_1p9j_5801_subpath_;
 std::string TestEnvironment::fleet_amber_1z9b_6577_subpath_;
+std::string TestEnvironment::larsen_1ubq_pm6_pdb_;
 bool TestEnvironment::loaded_ = false;
 
 
@@ -47,6 +48,21 @@ void TestEnvironment::Load() {
     const char* env = std::getenv("NMR_TESTPATHS_TOML");
     if (env) toml_path = env;
 
+    // Repo root = parent of the tests/ dir that holds NMR_TEST_DATA_DIR.
+    // Used to resolve repo-root-relative fixture paths (C10).
+    std::string repo_root;
+#ifdef NMR_TEST_DATA_DIR
+    repo_root = fs::path(NMR_TEST_DATA_DIR).parent_path().parent_path().string();
+#endif
+    // A value that does not start with '/' is repo-root-relative; absolute
+    // values (external data) are used verbatim. The *_subpath fragments are
+    // deliberately relative and joined to fleet_amber at the call site, so
+    // they are excluded here.
+    auto resolveRelative = [&](const std::string& v) -> std::string {
+        if (v.empty() || v.front() == '/' || repo_root.empty()) return v;
+        return repo_root + "/" + v;
+    };
+
     if (!toml_path.empty() && fs::exists(toml_path)) {
         std::ifstream in(toml_path);
         std::string line;
@@ -68,6 +84,9 @@ void TestEnvironment::Load() {
             trim(key);
             trim(val);
 
+            if (key.find("subpath") == std::string::npos)
+                val = resolveRelative(val);
+
             if      (key == "ubq_protonated")  ubq_protonated_ = val;
             else if (key == "ubq_crystal")     ubq_crystal_ = val;
             else if (key == "gmx_protonated")  gmx_protonated_ = val;
@@ -81,6 +100,8 @@ void TestEnvironment::Load() {
                 fleet_amber_1p9j_5801_subpath_ = val;
             else if (key == "fleet_amber_1z9b_6577_subpath")
                 fleet_amber_1z9b_6577_subpath_ = val;
+            else if (key == "larsen_1ubq_pm6_pdb")
+                larsen_1ubq_pm6_pdb_ = val;
         }
         OperationLog::Info("TestEnvironment::Load", "read " + toml_path);
     } else {
@@ -107,7 +128,8 @@ void TestEnvironment::Load() {
         " baseline=" + status(baseline_features_) +
         " fleet_amber=" + status(fleet_amber_) +
         " fleet_amber_1p9j_subpath=" + status(fleet_amber_1p9j_5801_subpath_) +
-        " fleet_amber_1z9b_subpath=" + status(fleet_amber_1z9b_6577_subpath_));
+        " fleet_amber_1z9b_subpath=" + status(fleet_amber_1z9b_6577_subpath_) +
+        " larsen_1ubq_pm6=" + status(larsen_1ubq_pm6_pdb_));
 }
 
 
@@ -120,6 +142,12 @@ const std::string& TestEnvironment::Ff14sbParams()    { RequireLoaded(); return 
 const std::string& TestEnvironment::Aimnet2Model()    { RequireLoaded(); return aimnet2_model_; }
 const std::string& TestEnvironment::BaselineFeatures() { RequireLoaded(); return baseline_features_; }
 const std::string& TestEnvironment::FleetAmberData()  { RequireLoaded(); return fleet_amber_; }
+const std::string& TestEnvironment::Larsen1UbqPm6Pdb() { RequireLoaded(); return larsen_1ubq_pm6_pdb_; }
+
+
+std::string TestEnvironment::TempPath(const std::string& stem) {
+    return (fs::temp_directory_path() / stem).string();
+}
 
 
 AmberTrajectoryFixture TestEnvironment::FleetAmberTrajectory(
