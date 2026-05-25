@@ -338,7 +338,6 @@ SphericalTensor CoulombResult::EFGSphericalAt(size_t atom_index) const {
 Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
     if (!conf_) return Vec3::Zero();
 
-    const Protein& protein = conf_->ProteinRef();
     Vec3 E = Vec3::Zero();
 
     for (size_t j = 0; j < conf_->AtomCount(); ++j) {

@@ -471,7 +471,6 @@ int AIMNet2Result::WriteFeatures(
         const std::string& output_dir) const {
 
     const size_t N = conf.AtomCount();
-    const Protein& protein = conf.ProteinRef();
     int files_written = 0;
 
     // aimnet2_charges.npy — (N,) float64

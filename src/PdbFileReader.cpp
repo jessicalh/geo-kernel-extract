@@ -16,9 +16,7 @@
 #include <sstream>
 #include <map>
 #include <filesystem>
-#include <cstdio>
 #include <tuple>
-#include <random>
 
 namespace fs = std::filesystem;
 
@@ -214,21 +212,6 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
     protein->AddConformation(std::move(positions), "protonated");
 
     return protein;
-}
-
-
-// ============================================================================
-// Generate a unique temp file path (GUID-like to avoid collisions)
-// ============================================================================
-
-static std::string UniqueTempPath(const std::string& stem) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint64_t> dist;
-    char buf[256];
-    std::snprintf(buf, sizeof(buf), "/tmp/nmr_%s_%016lx.pdb",
-                  stem.c_str(), dist(gen));
-    return buf;
 }
 
 

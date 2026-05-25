@@ -80,7 +80,6 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
         Mat3 V_first = Mat3::Zero();
         int n_first = 0;
         int n_second = 0;
-        int n_beyond_cutoff = 0;
         int n_singularity_guard = 0;
 
         for (size_t wi = 0; wi < W; ++wi) {
@@ -90,11 +89,9 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
             Vec3 r_O = water.O_pos - pos_i;
             double d_O_sq = r_O.squaredNorm();
             if (d_O_sq > cutoff_sq) {
-                ++n_beyond_cutoff;
                 continue;
             }
 
-            double d_O = std::sqrt(d_O_sq);
             bool in_first = (d_O_sq < first_sq);
 
             // Shell counts (based on O distance)

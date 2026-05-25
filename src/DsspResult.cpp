@@ -230,7 +230,6 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     // dssp_ss8.npy — (N, 8) float64, full 8-class one-hot
     // Column order: H(alpha), G(3_10), I(pi), E(strand), B(bridge), T(turn), S(bend), C(coil)
     {
-        static const char SS_CLASSES[] = "HGIEBTS C";
         // Map: H=0, G=1, I=2, E=3, B=4, T=5, S=6, C=7
         auto ss_col = [](char ss) -> int {
             switch (ss) {

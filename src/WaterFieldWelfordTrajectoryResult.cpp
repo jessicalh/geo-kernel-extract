@@ -337,8 +337,6 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
     const std::string kCountSq = "dimensionless";
     const std::string kErate    = "V/Angstrom/ps";
     const std::string kErateSq  = "V^2/Angstrom^2/ps^2";
-    const std::string kEFGrate   = "V/Angstrom^2/ps";
-    const std::string kEFGrateSq = "V^2/Angstrom^4/ps^2";
     const std::string kCountRate   = "count/ps";
     const std::string kCountRateSq = "count^2/ps^2";
 

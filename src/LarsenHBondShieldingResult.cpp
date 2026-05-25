@@ -246,36 +246,6 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
     return std::nullopt;
 }
 
-// Map AtomSemanticTable BackboneRole to LarsenContribDispatch::TargetAtom.
-// Returns nullopt for atoms outside the 6 ProCS-relevant target roles.
-struct TargetSlot {
-    LarsenContribDispatch::TargetAtom target;
-    bool valid;
-};
-TargetSlot ResolveTargetSlot(const AtomSemanticTable& sem) {
-    using TA = LarsenContribDispatch::TargetAtom;
-    switch (sem.backbone_role) {
-        case BackboneRole::Nitrogen:        return {TA::N,  true};
-        case BackboneRole::AlphaCarbon:     return {TA::CA, true};
-        case BackboneRole::CarbonylCarbon:  return {TA::C,  true};
-        case BackboneRole::AlphaHydrogen:   return {TA::HA, true};
-        case BackboneRole::AmideHydrogen:   return {TA::HN, true};
-        default:                            break;
-    }
-    // CB: not a backbone role; check Element+Locant.
-    if (sem.element == Element::C && sem.locant == Locant::Beta
-        && sem.backbone_role == BackboneRole::None) {
-        return {TA::CB, true};
-    }
-    // GLY HA2/HA3: Locant::Alpha + BackboneRole::None + Element::H.
-    if (sem.element == Element::H && sem.locant == Locant::Alpha
-        && sem.backbone_role == BackboneRole::None) {
-        return {TA::HA, true};
-    }
-    return {TA::N, false};  // invalid; caller checks .valid
-}
-
-
 // Apply a per-class contribution to a target atom's per-class Mat3 field.
 void AccumulateContribution(
     ConformationAtom& atom,

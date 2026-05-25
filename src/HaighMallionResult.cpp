@@ -414,7 +414,6 @@ static void PackHaighMallionTensor(const SphericalTensor& st, double* out) {
 int HaighMallionResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
     const size_t N = conf.AtomCount();
-    int written = 0;
 
     std::vector<double> shielding(N * 9);
     std::vector<double> per_type_T0(N * 8);
