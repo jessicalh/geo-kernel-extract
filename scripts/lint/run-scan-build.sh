@@ -18,9 +18,10 @@ cd "$(git rev-parse --show-toplevel)"
 
 SHA="$(git rev-parse --short HEAD)"
 ARTIFACTS_DIR="artifacts/quality"
-OUT_DIR="${ARTIFACTS_DIR}/scan-build-${SHA}"
-OUT_JSON="${ARTIFACTS_DIR}/scan-build-${SHA}.json"
-BUILD_DIR="build-scan-${SHA}"
+# single overwritable report + reused build tree (no per-SHA accretion)
+OUT_DIR="${ARTIFACTS_DIR}/scan-build-latest"
+OUT_JSON="${ARTIFACTS_DIR}/scan-build-latest.json"
+BUILD_DIR="build-scan-latest"
 mkdir -p "${ARTIFACTS_DIR}"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
@@ -40,7 +41,7 @@ ${SCAN_BUILD} \
     --keep-going \
     cmake -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Debug \
                             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-                            . >> "${ARTIFACTS_DIR}/scan-build-cmake-${SHA}.log" 2>&1 || true
+                            . >> "${ARTIFACTS_DIR}/scan-build-cmake-latest.log" 2>&1 || true
 
 ${SCAN_BUILD} \
     -o "${OUT_DIR}" \
@@ -48,7 +49,7 @@ ${SCAN_BUILD} \
     --use-c++=clang++ \
     --status-bugs \
     --keep-going \
-    cmake --build "${BUILD_DIR}" -- -j"$(nproc)" 2>> "${ARTIFACTS_DIR}/scan-build-build-${SHA}.log" || true
+    cmake --build "${BUILD_DIR}" -- -j"$(nproc)" 2>> "${ARTIFACTS_DIR}/scan-build-build-latest.log" || true
 
 # scan-build creates a dated subdir under OUT_DIR. Flatten by counting.
 n_html=$(find "${OUT_DIR}" -name "*.html" -type f 2>/dev/null | grep -cE "report-[a-z0-9]+\.html" || echo 0)

@@ -25,8 +25,8 @@ fi
 
 SHA="$(git rev-parse --short HEAD)"
 ARTIFACTS_DIR="artifacts/quality"
-OUT_TXT="${ARTIFACTS_DIR}/iwyu-${SHA}.txt"
-OUT_JSON="${ARTIFACTS_DIR}/iwyu-${SHA}.json"
+OUT_TXT="${ARTIFACTS_DIR}/iwyu-latest.txt"   # single overwritable report
+OUT_JSON="${ARTIFACTS_DIR}/iwyu-latest.json"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # iwyu_tool consumes compile_commands.json and dispatches IWYU per TU.

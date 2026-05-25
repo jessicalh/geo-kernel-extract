@@ -25,8 +25,10 @@ fi
 
 SHA="$(git rev-parse --short HEAD)"
 ARTIFACTS_DIR="artifacts/quality"
-OUT_XML="${ARTIFACTS_DIR}/cppcheck-${SHA}.xml"
-OUT_JSON="${ARTIFACTS_DIR}/cppcheck-${SHA}.json"
+# Reporter, not ratchet: one overwritable report (SHA recorded inside the
+# JSON, not in the filename) so runs don't accrete per-SHA dumps.
+OUT_XML="${ARTIFACTS_DIR}/cppcheck-latest.xml"
+OUT_JSON="${ARTIFACTS_DIR}/cppcheck-latest.json"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # W3 discipline (mirrors .clang-tidy 2026-05-24): bugs + UB + dead code

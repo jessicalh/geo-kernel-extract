@@ -28,8 +28,10 @@ fi
 
 SHA="$(git rev-parse --short HEAD)"
 ARTIFACTS_DIR="artifacts/quality"
-OUT_RAW="${ARTIFACTS_DIR}/clang-tidy-${SHA}.txt"
-OUT_JSON="${ARTIFACTS_DIR}/clang-tidy-${SHA}.json"
+# Reporter, not ratchet: one overwritable report (SHA recorded inside the
+# JSON, not in the filename) so runs don't accrete per-SHA dumps.
+OUT_RAW="${ARTIFACTS_DIR}/clang-tidy-latest.txt"
+OUT_JSON="${ARTIFACTS_DIR}/clang-tidy-latest.json"
 mkdir -p "${ARTIFACTS_DIR}"
 
 # Default parallelism: leave 8 cores of headroom on big boxes, all
