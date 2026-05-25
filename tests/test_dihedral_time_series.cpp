@@ -59,12 +59,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 nmr::RunConfiguration BuildConfig(unsigned stride) {
     nmr::RunConfiguration config;
     auto& opts = config.MutablePerFrameRunOptions();
@@ -110,7 +104,7 @@ nmr::RunConfiguration BuildConfigWithCrossResults(unsigned stride) {
 // ── Frame 0 smoke ────────────────────────────────────────────────────
 
 TEST(DihedralTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -131,7 +125,7 @@ TEST(DihedralTimeSeries, Frame0Semantics) {
 // ── Finalize idempotency (data-flow short-circuit) ───────────────────
 
 TEST(DihedralTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -153,7 +147,7 @@ TEST(DihedralTimeSeries, FinalizeIdempotency) {
 // ── H5 round-trip: schema + attrs + dataset shapes ───────────────────
 
 TEST(DihedralTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -257,7 +251,7 @@ TEST(DihedralTimeSeries, H5RoundTrip) {
 // ── Integration on 1P9J: real data, real boundaries ──────────────────
 
 TEST(DihedralTimeSeries, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -433,7 +427,7 @@ TEST(DihedralTimeSeries, Integration1P9J) {
 //      than the sign flip would mean an algorithmic bug.
 
 TEST(DihedralTimeSeries, CrossResultConsistencyDsspPlanarGeometry) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

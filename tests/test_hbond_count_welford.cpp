@@ -50,11 +50,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 // Per-file bridge to the shared TestConfig profile system. HBondResult
 // requires DsspResult; KernelWithDssp profile is the right pick. See
 // spec/plan/test-suite-realignment-deferred-2026-05-17.md.
@@ -71,7 +66,7 @@ void BuildBaseConfig(nmr::RunConfiguration& config, const std::string& name, std
 
 
 TEST(HBondCountWelford, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -95,7 +90,7 @@ TEST(HBondCountWelford, Frame0Semantics) {
 
 
 TEST(HBondCountWelford, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -121,7 +116,7 @@ TEST(HBondCountWelford, FinalizeIdempotency) {
 
 
 TEST(HBondCountWelford, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -165,7 +160,7 @@ TEST(HBondCountWelford, H5RoundTrip) {
 
 
 TEST(HBondCountWelford, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

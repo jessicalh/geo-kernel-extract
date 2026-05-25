@@ -63,12 +63,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(TrrPathFor(fix.tpr_path)) &&
            fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 nmr::SphericalTensor SyntheticTensor(size_t atom_i, size_t frame_t) {
     nmr::SphericalTensor s;
     s.T0 = static_cast<double>(atom_i) + static_cast<double>(frame_t) * 100.0;
@@ -96,7 +90,7 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 
 
 TEST(LarsenHBond1pHaBShieldingTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -164,7 +158,7 @@ TEST(LarsenHBond1pHaBShieldingTimeSeries, SyntheticFourFrames) {
 
 
 TEST(LarsenHBond1pHaBShieldingTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -201,7 +195,7 @@ TEST(LarsenHBond1pHaBShieldingTimeSeries, Frame0Semantics) {
 
 
 TEST(LarsenHBond1pHaBShieldingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -250,7 +244,7 @@ TEST(LarsenHBond1pHaBShieldingTimeSeries, FinalizeIdempotency) {
 
 
 TEST(LarsenHBond1pHaBShieldingTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     nmr::Session session;
     if (session.LoadLarsenHBondGrid() != nmr::kOk
@@ -319,7 +313,7 @@ TEST(LarsenHBond1pHaBShieldingTimeSeries, H5RoundTrip) {
 
 
 TEST(LarsenHBond1pHaBShieldingTimeSeries, IntegrationLogOverages1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     nmr::Session session;

@@ -75,12 +75,6 @@ void ConfigureMinimalRun(nmr::RunConfiguration& config,
     config.RequireConformationResult(typeid(nmr::SpatialIndexResult));
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 // Make a deterministic per-test temp directory under /tmp; clear it
 // first so prior runs don't pollute counts.
 fs::path FreshTempDir(const std::string& test_name) {
@@ -111,7 +105,7 @@ class FramePdbEmitterTest : public ::testing::Test {
 protected:
     void SetUp() override {
         nmr::FramePdbEmitter::Reset();
-        LoadCalculatorConfig();
+        nmr::test::TestEnvironment::LoadCalculatorConfig();
     }
     void TearDown() override {
         nmr::FramePdbEmitter::Reset();

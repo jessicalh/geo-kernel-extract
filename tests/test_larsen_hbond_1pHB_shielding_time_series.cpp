@@ -74,12 +74,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 nmr::SphericalTensor SyntheticTensor(size_t atom_i, size_t frame_t) {
     nmr::SphericalTensor s;
@@ -110,7 +104,7 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 
 
 TEST(LarsenHBond1pHBShieldingTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -181,7 +175,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, SyntheticFourFrames) {
 
 
 TEST(LarsenHBond1pHBShieldingTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -218,7 +212,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, Frame0Semantics) {
 
 
 TEST(LarsenHBond1pHBShieldingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -267,7 +261,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, FinalizeIdempotency) {
 
 
 TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     nmr::Session session;
     if (session.LoadLarsenHBondGrid() != nmr::kOk
@@ -337,7 +331,7 @@ TEST(LarsenHBond1pHBShieldingTimeSeries, H5RoundTrip) {
 
 // Integration: isfinite + log overages above kPerClassT0SanityPpm.
 TEST(LarsenHBond1pHBShieldingTimeSeries, IntegrationLogOverages1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     nmr::Session session;

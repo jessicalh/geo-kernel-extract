@@ -79,12 +79,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 nmr::SphericalTensor SyntheticTensor(size_t atom_i, size_t frame_t) {
     nmr::SphericalTensor s;
@@ -122,7 +116,7 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 // ============================================================================
 
 TEST(HmShieldingTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -220,7 +214,7 @@ TEST(HmShieldingTimeSeries, SyntheticFourFrames) {
 // ============================================================================
 
 TEST(HmShieldingTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix))
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
@@ -268,7 +262,7 @@ TEST(HmShieldingTimeSeries, Frame0Semantics) {
 // ============================================================================
 
 TEST(HmShieldingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -320,7 +314,7 @@ TEST(HmShieldingTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 
 TEST(HmShieldingTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -395,7 +389,7 @@ TEST(HmShieldingTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(HmShieldingTimeSeries, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix))

@@ -62,12 +62,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 }  // namespace
 
 
@@ -76,7 +70,7 @@ void LoadCalculatorConfig() {
 // ============================================================================
 
 TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -167,7 +161,7 @@ TEST(AIMNet2EmbeddingTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 
 
 TEST(AIMNet2EmbeddingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -197,7 +191,7 @@ TEST(AIMNet2EmbeddingTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 
 TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -300,7 +294,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, SyntheticThreeFramesH5RoundTrip) {
 
 
 TEST(AIMNet2ChargeResponseGradientTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -330,7 +324,7 @@ TEST(AIMNet2ChargeResponseGradientTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 
 TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsence) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -378,7 +372,7 @@ TEST(AIMNet2ChargeResponseGradientWelford, SyntheticThreeFramesSkipsGroupOnAbsen
 // ============================================================================
 
 TEST(AIMNet2ChargeResponseGradientWelford, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

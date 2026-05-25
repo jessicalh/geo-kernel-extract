@@ -54,11 +54,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 nmr::RunConfiguration BuildWaterFieldConfig(unsigned stride) {
     nmr::RunConfiguration config;
     auto& opts = config.MutablePerFrameRunOptions();
@@ -84,7 +79,7 @@ nmr::RunConfiguration BuildWaterFieldConfig(unsigned stride) {
 // ============================================================================
 
 TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -116,7 +111,7 @@ TEST(WaterFieldTimeSeries, SyntheticAllAbsentSkipsGroup) {
 
 
 TEST(WaterFieldTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -134,7 +129,7 @@ TEST(WaterFieldTimeSeries, Frame0Semantics) {
 
 
 TEST(WaterFieldTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -153,7 +148,7 @@ TEST(WaterFieldTimeSeries, FinalizeIdempotency) {
 
 
 TEST(WaterFieldTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -210,7 +205,7 @@ TEST(WaterFieldTimeSeries, H5RoundTrip) {
 
 
 TEST(WaterFieldTimeSeries, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

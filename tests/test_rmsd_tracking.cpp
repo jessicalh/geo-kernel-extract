@@ -48,12 +48,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 nmr::RunConfiguration BuildConfig(unsigned stride) {
     nmr::RunConfiguration config;
     auto& opts = config.MutablePerFrameRunOptions();
@@ -77,7 +71,7 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
 // ── Frame 0 semantics ───────────────────────────────────────────────
 
 TEST(RmsdTracking, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -101,7 +95,7 @@ TEST(RmsdTracking, Frame0Semantics) {
 // ── Finalize idempotency ────────────────────────────────────────────
 
 TEST(RmsdTracking, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -124,7 +118,7 @@ TEST(RmsdTracking, FinalizeIdempotency) {
 // ── H5 round-trip + dataset shapes ─────────────────────────────────
 
 TEST(RmsdTracking, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -192,7 +186,7 @@ TEST(RmsdTracking, H5RoundTrip) {
 // ── Multi-frame physical-range sanity ──────────────────────────────
 
 TEST(RmsdTracking, RmsdRange1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

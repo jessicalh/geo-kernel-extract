@@ -58,12 +58,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 // Build a synthetic T2-only SphericalTensor from a deterministic
 // (atom, frame) seed. T0/T1 explicitly zero (mirrors what
 // ApbsFieldResult produces after the Poisson tracelessness
@@ -90,7 +84,7 @@ nmr::SphericalTensor MakeSyntheticT2(std::size_t i, std::size_t t) {
 // not (N, T, 9), (c) attrs parity="2e" / irrep_layout = T2 only.
 
 TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -188,7 +182,7 @@ TEST(ApbsEfgTimeSeries, SyntheticFourFrames) {
 // still emitted (because Finalize succeeded with N samples).
 
 TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -240,7 +234,7 @@ TEST(ApbsEfgTimeSeries, SourceAbsentNanFillAndMaskZero) {
 // ── Layer 0c: Frame0Semantics (stride ≥ fixture length) ─────
 
 TEST(ApbsEfgTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -271,7 +265,7 @@ TEST(ApbsEfgTimeSeries, Frame0Semantics) {
 // ── Layer 0d: FinalizeIdempotency ───────────────────────────
 
 TEST(ApbsEfgTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -323,7 +317,7 @@ TEST(ApbsEfgTimeSeries, FinalizeIdempotency) {
 // log don't assert per feedback_log_overages_dont_assert).
 
 TEST(ApbsEfgTimeSeries, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

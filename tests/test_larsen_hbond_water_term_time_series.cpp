@@ -74,12 +74,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 // Synthetic scalar value per (atom, frame). Distinct so component-
 // mapping errors surface as wrong values.
@@ -94,7 +88,7 @@ double SyntheticWaterTerm(std::size_t atom_i, std::size_t frame_t) {
 
 
 TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -176,7 +170,7 @@ TEST(LarsenHBondWaterTermTimeSeries, SyntheticFourFrames) {
 
 
 TEST(LarsenHBondWaterTermTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -218,7 +212,7 @@ TEST(LarsenHBondWaterTermTimeSeries, Frame0Semantics) {
 
 
 TEST(LarsenHBondWaterTermTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -269,7 +263,7 @@ TEST(LarsenHBondWaterTermTimeSeries, FinalizeIdempotency) {
 
 
 TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     nmr::Session session;
     if (session.LoadLarsenHBondGrid() != nmr::kOk
@@ -357,7 +351,7 @@ TEST(LarsenHBondWaterTermTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(LarsenHBondWaterTermTimeSeries, IntegrationDistribution1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     nmr::Session session;

@@ -55,12 +55,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 // TR11 first (writer for TR12), then TR12, then ChiRotamer (writer
 // for TR13), then TR13. Attach order = dispatch order per PATTERNS
 // §15; this matches RunConfiguration::PerFrameExtractionSet.
@@ -101,7 +95,7 @@ nmr::RunConfiguration BuildConfig(unsigned stride) {
 // ── TR12 + TR13: end-to-end on 1P9J multi-frame ────────────────────
 
 TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -184,7 +178,7 @@ TEST(RmsdSpikeAndDftCoord, EndToEndOn1P9J) {
 // silently breaks the cross-result-read again, this test fails.
 
 TEST(RmsdSpikeAndDftCoord, SpikeFiresAtStrideGreaterThanOne1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -230,7 +224,7 @@ TEST(RmsdSpikeAndDftCoord, SpikeFiresAtStrideGreaterThanOne1P9J) {
 // `finalized_` guard short-circuits the second call.
 
 TEST(RmsdSpikeAndDftCoord, DftPoseCoordinatorFinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

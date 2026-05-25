@@ -57,19 +57,13 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
     return !fix.tpr_path.empty() && fs::exists(fix.tpr_path)
         && fs::exists(TrrPathFor(fix.tpr_path)) && fs::exists(fix.edr_path);
 }
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(std::string(NMR_TEST_DATA_DIR) +
-                                "/../data/calculator_params.toml");
-}
-
 }  // namespace
 
 
 // ── Layer 0a: both sources absent → group skipped ────────────
 
 TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenBothNeverAttached) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -107,7 +101,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenBothNeverAttached) {
 // ── Layer 0b: only one source attached → mask all-0, group skipped ──
 
 TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenOnlyOneSource) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -148,7 +142,7 @@ TEST(MopacVsFf14SbReconciliation, GroupSkippedWhenOnlyOneSource) {
 // ── Integration1P9J: real Trajectory::Run with both sources ──
 
 TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -259,7 +253,7 @@ TEST(MopacVsFf14SbReconciliation, Integration1P9J) {
 // ── Layer 0c: FinalizeIdempotency ──────────────────────────────
 
 TEST(MopacVsFf14SbReconciliation, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";

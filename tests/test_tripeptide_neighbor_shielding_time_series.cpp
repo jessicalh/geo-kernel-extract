@@ -100,12 +100,6 @@ void ConfigureNeighborTimeSeries(nmr::RunConfiguration& config,
         });
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 const std::string kFixtureProtein = "1P9J_5801";
 
 // Build session with TripeptideDftTable loaded if the DSN is set;
@@ -149,7 +143,7 @@ std::size_t FindChainACentralCaIndex(const nmr::Protein& prot,
 // ============================================================================
 
 TEST(TripeptideNeighborShieldingTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                                               << " fixture not on disk";
@@ -193,7 +187,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, Frame0Semantics) {
 // ============================================================================
 
 TEST(TripeptideNeighborShieldingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -243,7 +237,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 
 TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -319,7 +313,7 @@ TEST(TripeptideNeighborShieldingTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(TripeptideNeighborShieldingTimeSeries, IntegrationFingerprint1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured — no neighbor "
                         "shielding to fingerprint";

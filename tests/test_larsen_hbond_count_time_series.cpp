@@ -75,12 +75,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 int SyntheticCount(std::size_t atom_i, std::size_t frame_t) {
     return static_cast<int>((atom_i + frame_t * 7) % 5);
@@ -91,7 +85,7 @@ int SyntheticCount(std::size_t atom_i, std::size_t frame_t) {
 
 
 TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
@@ -166,7 +160,7 @@ TEST(LarsenHBondCountTimeSeries, SyntheticFourFrames) {
 
 
 TEST(LarsenHBondCountTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -203,7 +197,7 @@ TEST(LarsenHBondCountTimeSeries, Frame0Semantics) {
 
 
 TEST(LarsenHBondCountTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -252,7 +246,7 @@ TEST(LarsenHBondCountTimeSeries, FinalizeIdempotency) {
 
 
 TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     nmr::Session session;
     if (session.LoadLarsenHBondGrid() != nmr::kOk
@@ -319,7 +313,7 @@ TEST(LarsenHBondCountTimeSeries, H5RoundTrip) {
 // Integration: tally count distribution; log if any cell exceeds the
 // physical sanity cap.
 TEST(LarsenHBondCountTimeSeries, IntegrationDistribution1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     nmr::Session session;

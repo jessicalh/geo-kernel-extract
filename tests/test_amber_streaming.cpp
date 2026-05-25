@@ -93,12 +93,6 @@ void ConfigureBondLengthStats(nmr::RunConfiguration& config,
         });
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 const std::string kFixtureProtein = "1P9J_5801";
 
 }  // namespace
@@ -109,7 +103,7 @@ const std::string kFixtureProtein = "1P9J_5801";
 // ============================================================================
 
 TEST(AmberStreaming, TrajectoryBuildAndRun) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fleet_amber " << kFixtureProtein
                                               << " fixture not on disk";
@@ -153,7 +147,7 @@ TEST(AmberStreaming, TrajectoryBuildAndRun) {
 // ============================================================================
 
 TEST(AmberStreaming, BondLengthStatsEndToEnd) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -209,7 +203,7 @@ TEST(AmberStreaming, BondLengthStatsEndToEnd) {
 // ============================================================================
 
 TEST(AmberStreaming, BondLengthStatsFrame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -248,7 +242,7 @@ TEST(AmberStreaming, BondLengthStatsFrame0Semantics) {
 
 
 TEST(AmberStreaming, BondLengthStatsFinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -288,7 +282,7 @@ TEST(AmberStreaming, BondLengthStatsFinalizeIdempotency) {
 
 
 TEST(AmberStreaming, BondLengthStatsH5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 

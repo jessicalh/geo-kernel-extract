@@ -1,5 +1,6 @@
 #include "TestEnvironment.h"
 #include "OperationLog.h"
+#include "CalculatorConfig.h"
 
 #include <fstream>
 #include <filesystem>
@@ -147,6 +148,18 @@ const std::string& TestEnvironment::Larsen1UbqPm6Pdb() { RequireLoaded(); return
 
 std::string TestEnvironment::TempPath(const std::string& stem) {
     return (fs::temp_directory_path() / stem).string();
+}
+
+
+void TestEnvironment::LoadCalculatorConfig() {
+    RequireLoaded();
+    OperationLog::SetChannelMask(0xFFFFFFFF);
+#ifdef NMR_TEST_DATA_DIR
+    CalculatorConfig::Load(
+        std::string(NMR_TEST_DATA_DIR) + "/../../data/calculator_params.toml");
+#else
+    CalculatorConfig::Load();
+#endif
 }
 
 

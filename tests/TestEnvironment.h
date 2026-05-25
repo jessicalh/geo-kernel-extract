@@ -68,6 +68,14 @@ public:
     // No discovery, no fixed /tmp literals — std::filesystem chooses TMPDIR.
     static std::string TempPath(const std::string& stem);
 
+    // Per-test setup every trajectory test previously inlined: enable the
+    // full log channel mask and load the canonical data/calculator_params.toml
+    // (the same file test_main loads globally). Replaces the byte-identical
+    // local LoadCalculatorConfig() helpers (G3); the prior local path was
+    // tests/data/../data/... which did not exist, so those silently fell
+    // back to compiled defaults.
+    static void LoadCalculatorConfig();
+
     static bool RequireLoaded();
 
 private:

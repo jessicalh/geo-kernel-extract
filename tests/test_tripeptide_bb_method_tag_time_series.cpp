@@ -75,12 +75,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 // Distinct synthetic tag per (atom, frame): 3 valid values cycling
 // through (0=no_match, 1=opbe, 2=pbe_ser) keyed on (atom_i + frame_t).
@@ -93,7 +87,7 @@ std::uint8_t SyntheticTag(std::size_t atom_i, std::size_t frame_t) {
 
 
 TEST(TripeptideBackboneMethodTagTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -178,7 +172,7 @@ TEST(TripeptideBackboneMethodTagTimeSeries, SyntheticFourFrames) {
 
 
 TEST(TripeptideBackboneMethodTagTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -220,7 +214,7 @@ TEST(TripeptideBackboneMethodTagTimeSeries, Frame0Semantics) {
 
 
 TEST(TripeptideBackboneMethodTagTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -271,7 +265,7 @@ TEST(TripeptideBackboneMethodTagTimeSeries, FinalizeIdempotency) {
 
 
 TEST(TripeptideBackboneMethodTagTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured — source calc "
@@ -363,7 +357,7 @@ TEST(TripeptideBackboneMethodTagTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(TripeptideBackboneMethodTagTimeSeries, IntegrationDistribution1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured";

@@ -107,12 +107,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 // Build a 4-frame synthetic SphericalTensor sequence per atom. Returns
 // the value the (atom_i, frame_t) cell should carry. T0 = atom_i + t*100;
@@ -160,7 +154,7 @@ bool SphericalEqual(const nmr::SphericalTensor& a,
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -273,7 +267,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, SyntheticFourFrames) {
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix))
         GTEST_SKIP() << "fleet_amber " << kFixtureProtein
@@ -333,7 +327,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, Frame0Semantics) {
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -398,7 +392,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, FinalizeIdempotency) {
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured — source calc "
@@ -501,7 +495,7 @@ TEST(TripeptideBackboneShieldingTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(TripeptideBackboneShieldingTimeSeries, IntegrationFingerprint1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured "

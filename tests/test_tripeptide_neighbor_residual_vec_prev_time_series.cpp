@@ -83,12 +83,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 
 nmr::Vec3 SyntheticVec3(size_t atom_i, size_t frame_t) {
     const double base = static_cast<double>(atom_i)
@@ -108,7 +102,7 @@ bool Vec3Equal(const nmr::Vec3& a, const nmr::Vec3& b, double tol) {
 
 
 TEST(TripeptideNeighborResidualVecPrevTimeSeries, SyntheticFourFrames) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
 
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
@@ -200,7 +194,7 @@ TEST(TripeptideNeighborResidualVecPrevTimeSeries, SyntheticFourFrames) {
 
 
 TEST(TripeptideNeighborResidualVecPrevTimeSeries, Frame0Semantics) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix))
         GTEST_SKIP() << "fixture not on disk";
@@ -243,7 +237,7 @@ TEST(TripeptideNeighborResidualVecPrevTimeSeries, Frame0Semantics) {
 
 
 TEST(TripeptideNeighborResidualVecPrevTimeSeries, FinalizeIdempotency) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -294,7 +288,7 @@ TEST(TripeptideNeighborResidualVecPrevTimeSeries, FinalizeIdempotency) {
 
 
 TEST(TripeptideNeighborResidualVecPrevTimeSeries, H5RoundTrip) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured — source calc "
@@ -388,7 +382,7 @@ TEST(TripeptideNeighborResidualVecPrevTimeSeries, H5RoundTrip) {
 // ============================================================================
 
 TEST(TripeptideNeighborResidualVecPrevTimeSeries, IntegrationLogOverages1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     if (nmr::RuntimeEnvironment::TensorCs15Dsn().empty()) {
         GTEST_SKIP() << "tensorcs15 DSN not configured";

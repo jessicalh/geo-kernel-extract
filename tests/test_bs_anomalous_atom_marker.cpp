@@ -77,12 +77,6 @@ bool FixtureAvailable(const nmr::test::AmberTrajectoryFixture& fix) {
            fs::exists(fix.edr_path);
 }
 
-void LoadCalculatorConfig() {
-    nmr::OperationLog::SetChannelMask(0xFFFFFFFF);
-    nmr::CalculatorConfig::Load(
-        std::string(NMR_TEST_DATA_DIR) + "/../data/calculator_params.toml");
-}
-
 // Both BsWelford (upstream) and the marker (downstream) attached in
 // dependency order. Phase 4's validator enforces this; we feed it the
 // right order here.
@@ -115,7 +109,7 @@ nmr::RunConfiguration BuildConfigWithMarker(
 // estimate is unreliable), not a bug.
 
 TEST(BsAnomalousAtomMarker, Frame0SemanticsZeroEvents) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
 
@@ -196,7 +190,7 @@ TEST(BsAnomalousAtomMarker, DependsOnBsWelford) {
 //   4. running totals match per-atom event-bag count
 
 TEST(BsAnomalousAtomMarker, Integration1P9J) {
-    LoadCalculatorConfig();
+    nmr::test::TestEnvironment::LoadCalculatorConfig();
     nmr::test::TestEnvironment::Load();
     auto fix = nmr::test::TestEnvironment::FleetAmberTrajectory(kFixtureProtein);
     if (!FixtureAvailable(fix)) GTEST_SKIP() << "fixture not on disk";
