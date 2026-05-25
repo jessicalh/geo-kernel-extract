@@ -20,52 +20,16 @@
 
 #include <highfive/H5File.hpp>
 #include <highfive/H5Group.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <map>
 #include <string>
 #include <typeindex>
 #include <typeinfo>
 
 namespace nmr {
-
-namespace {
-
-// Minimal JSON-string escape: backslash, quote, common control chars.
-// Used by Trajectory::WriteH5 to encode SelectionRecord metadata maps
-// into one JSON-encoded string per record, surfaced as the
-// `metadata_json` (R,) string dataset per selection group. SDK
-// consumers `json.loads` each row to recover the dict (codex round 1
-// 2026-05-21 HIGH finding: previously metadata was computed by
-// emitters but dropped at the H5 boundary).
-std::string EscapeJsonString(const std::string& s) {
-    std::string out;
-    out.reserve(s.size() + 2);
-    for (char c : s) {
-        switch (c) {
-            case '"':  out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\n': out += "\\n"; break;
-            case '\t': out += "\\t"; break;
-            case '\r': out += "\\r"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    char buf[8];
-                    std::snprintf(buf, sizeof(buf), "\\u%04x",
-                                   static_cast<unsigned char>(c));
-                    out += buf;
-                } else {
-                    out += c;
-                }
-        }
-    }
-    return out;
-}
-
-}  // namespace
-
 
 Trajectory::Trajectory(std::filesystem::path xtc_path,
                        std::filesystem::path tpr_path,
@@ -436,19 +400,14 @@ void Trajectory::WriteH5(HighFive::File& file) const {
             tps[i]    = records[i]->time_ps;
             reason[i] = records[i]->reason;
 
-            std::string j = "{";
-            bool first = true;
+            nlohmann::ordered_json jm = nlohmann::ordered_json::object();
             for (const auto& kv : records[i]->metadata) {
-                if (!first) j += ",";
-                first = false;
-                j += "\"";
-                j += EscapeJsonString(kv.first);
-                j += "\":\"";
-                j += EscapeJsonString(kv.second);
-                j += "\"";
+                jm[kv.first] = kv.second;
             }
-            j += "}";
-            meta_json[i] = std::move(j);
+            // replace handler: metadata values are arbitrary strings; never
+            // throw out of H5 write on a non-UTF-8 byte.
+            meta_json[i] = jm.dump(
+                -1, ' ', false, nlohmann::ordered_json::error_handler_t::replace);
         }
         grp.createDataSet("frame_idx", idx);
         grp.createDataSet("time_ps", tps);

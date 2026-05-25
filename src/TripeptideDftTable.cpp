@@ -13,107 +13,19 @@
 #include <stdexcept>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
 namespace nmr {
 
 
 // ============================================================================
-// Minimal JSONB lexer
-//
-// Tuned to the tensorcs15 schema. The two payloads we parse are
+// tensorcs15 JSONB payloads, parsed with nlohmann/json:
 //   geometry : [{element, x, y, z, atom_idx}, …]
 //   tensors  : [{element, atom_idx, isotropic, anisotropy, tensor_3x3,
 //                eigenvalues, t2_components}, …]
-// Numbers (signed, possibly with decimal/exponent), strings ("..."), and
-// the structural tokens [, ], {, }, :, ,. No general JSON support.
-// Ported verbatim from the gotham TripeptideDatabase.cpp parser; the
-// schema isn't going to grow.
 // ============================================================================
 
 namespace {
-
-struct JsonToken {
-    enum Type {
-        Number, String, ArrayStart, ArrayEnd,
-        ObjStart, ObjEnd, Colon, Comma, Eof
-    };
-    Type type = Eof;
-    std::string text;
-    double num = 0.0;
-};
-
-
-class JsonLexer {
-public:
-    explicit JsonLexer(const char* s) : p_(s) {}
-
-    JsonToken Next() {
-        while (*p_ && (*p_ == ' ' || *p_ == '\n' ||
-                       *p_ == '\r' || *p_ == '\t')) ++p_;
-        if (!*p_) return {JsonToken::Eof, "", 0.0};
-
-        switch (*p_) {
-            case '[': ++p_; return {JsonToken::ArrayStart, "[", 0.0};
-            case ']': ++p_; return {JsonToken::ArrayEnd,   "]", 0.0};
-            case '{': ++p_; return {JsonToken::ObjStart,   "{", 0.0};
-            case '}': ++p_; return {JsonToken::ObjEnd,     "}", 0.0};
-            case ':': ++p_; return {JsonToken::Colon,      ":", 0.0};
-            case ',': ++p_; return {JsonToken::Comma,      ",", 0.0};
-            case '"': {
-                ++p_;
-                const char* start = p_;
-                while (*p_ && *p_ != '"') ++p_;
-                std::string s(start, p_);
-                if (*p_ == '"') ++p_;
-                return {JsonToken::String, std::move(s), 0.0};
-            }
-            default: {
-                const char* start = p_;
-                if (*p_ == '-') ++p_;
-                while (*p_ && ((*p_ >= '0' && *p_ <= '9') ||
-                               *p_ == '.' || *p_ == 'e' || *p_ == 'E' ||
-                               *p_ == '+' || *p_ == '-')) ++p_;
-                std::string s(start, p_);
-                double v = 0.0;
-                if (!s.empty()) {
-                    try { v = std::stod(s); } catch (...) { v = 0.0; }
-                }
-                return {JsonToken::Number, std::move(s), v};
-            }
-        }
-    }
-
-    // Consume tokens until the matching ']' that closes an array we are
-    // currently sitting at (ArrayStart already consumed by the caller).
-    // Used to skip eigenvalues / t2_components arrays we don't care
-    // about (when called from the ParseTensors per-key dispatch).
-    void SkipArrayBody() {
-        int depth = 1;
-        while (depth > 0) {
-            JsonToken t = Next();
-            if (t.type == JsonToken::ArrayStart) ++depth;
-            else if (t.type == JsonToken::ArrayEnd) --depth;
-            else if (t.type == JsonToken::Eof) return;
-        }
-    }
-
-private:
-    const char* p_;
-};
-
-
-// Read t2_components: [a, b, c, d, e]. The outer ArrayStart is already
-// consumed. Reads exactly 5 numbers; returns them in sphericart order.
-std::array<double, 5> ParseT2Array(JsonLexer& lex) {
-    std::array<double, 5> out = {};
-    for (int i = 0; i < 5; ++i) {
-        JsonToken v = lex.Next();
-        if (v.type == JsonToken::Number) out[i] = v.num;
-        if (i < 4) lex.Next();   // consume comma
-    }
-    JsonToken end = lex.Next();
-    (void)end;  // expect ArrayEnd
-    return out;
-}
 
 
 // geometry JSONB: [{element, x, y, z, atom_idx}, …]
@@ -125,32 +37,27 @@ struct GeometryEntry {
 
 
 std::vector<GeometryEntry> ParseGeometryJson(const std::string& json_text) {
+    // .at() (not .value()) on every field: the tensorcs15 schema always
+    // carries all of them, so a missing key is malformed input, not an
+    // optional field. .at() throws -> caught here -> Error + empty, never
+    // a silent default. A defaulted x/y/z (origin) or atom_idx would slip
+    // straight past the merge dup/element checks as silent corruption.
     std::vector<GeometryEntry> out;
-    JsonLexer lex(json_text.c_str());
-    lex.Next();  // [
-
-    while (true) {
-        JsonToken t = lex.Next();
-        if (t.type == JsonToken::ArrayEnd || t.type == JsonToken::Eof) break;
-        if (t.type != JsonToken::ObjStart) continue;
-
-        GeometryEntry g;
-        while (true) {
-            JsonToken key = lex.Next();
-            if (key.type == JsonToken::ObjEnd) break;
-            lex.Next();  // :
-            JsonToken val = lex.Next();
-            if      (key.text == "atom_idx") g.atom_idx = static_cast<int>(val.num);
-            else if (key.text == "element")  g.element  = ElementFromSymbol(val.text);
-            else if (key.text == "x")        g.pos.x()  = val.num;
-            else if (key.text == "y")        g.pos.y()  = val.num;
-            else if (key.text == "z")        g.pos.z()  = val.num;
-            JsonToken sep = lex.Next();
-            if (sep.type == JsonToken::ObjEnd) break;
+    try {
+        for (const auto& o : nlohmann::json::parse(json_text)) {
+            GeometryEntry g;
+            g.atom_idx = o.at("atom_idx").get<int>();
+            g.element  = ElementFromSymbol(o.at("element").get<std::string>());
+            g.pos.x()  = o.at("x").get<double>();
+            g.pos.y()  = o.at("y").get<double>();
+            g.pos.z()  = o.at("z").get<double>();
+            out.push_back(std::move(g));
         }
-        out.push_back(std::move(g));
-        JsonToken sep = lex.Next();
-        if (sep.type == JsonToken::ArrayEnd || sep.type == JsonToken::Eof) break;
+    } catch (const std::exception& e) {
+        OperationLog::Error("TripeptideDftTable::ParseGeometryJson",
+            std::string("malformed or incomplete geometry JSONB: ") + e.what() +
+            " — aborting; downstream sees no atoms");
+        return {};
     }
     return out;
 }
@@ -169,67 +76,45 @@ struct TensorEntry {
 
 
 std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
+    // .at() throughout (see ParseGeometryJson): a missing tensor_3x3,
+    // t2_components, isotropic, or anisotropy would otherwise default to a
+    // silent zero tensor / zero scalar that nothing downstream catches.
+    // Exact shapes (3x3, 5) are asserted as well: .at() already catches a
+    // too-short array, but extra rows/cols/components would be silently
+    // truncated — also malformed, so fail loud (codex MEDIUM 2026-05-25).
     std::vector<TensorEntry> out;
-    JsonLexer lex(json_text.c_str());
-    lex.Next();  // [
+    try {
+        for (const auto& o : nlohmann::json::parse(json_text)) {
+            TensorEntry te;
+            te.atom_idx   = o.at("atom_idx").get<int>();
+            te.element    = ElementFromSymbol(o.at("element").get<std::string>());
+            te.isotropic  = o.at("isotropic").get<double>();
+            te.anisotropy = o.at("anisotropy").get<double>();
 
-    while (true) {
-        JsonToken t = lex.Next();
-        if (t.type == JsonToken::ArrayEnd || t.type == JsonToken::Eof) break;
-        if (t.type != JsonToken::ObjStart) continue;
-
-        TensorEntry te;
-        while (true) {
-            JsonToken key = lex.Next();
-            if (key.type == JsonToken::ObjEnd) break;
-            lex.Next();  // :
-
-            if (key.text == "atom_idx") {
-                JsonToken v = lex.Next();
-                te.atom_idx = static_cast<int>(v.num);
-            }
-            else if (key.text == "element") {
-                JsonToken v = lex.Next();
-                te.element = ElementFromSymbol(v.text);
-            }
-            else if (key.text == "isotropic") {
-                JsonToken v = lex.Next();
-                te.isotropic = v.num;
-            }
-            else if (key.text == "anisotropy") {
-                JsonToken v = lex.Next();
-                te.anisotropy = v.num;
-            }
-            else if (key.text == "tensor_3x3") {
-                lex.Next();  // outer [
-                for (int row = 0; row < 3; ++row) {
-                    lex.Next();  // inner [
-                    for (int col = 0; col < 3; ++col) {
-                        JsonToken v = lex.Next();
-                        te.tensor(row, col) = v.num;
-                        if (col < 2) lex.Next();  // comma
-                    }
-                    lex.Next();  // inner ]
-                    if (row < 2) lex.Next();  // comma
-                }
-                lex.Next();  // outer ]
-            }
-            else if (key.text == "t2_components") {
-                lex.Next();  // [
-                te.t2_components = ParseT2Array(lex);
-            }
-            else {
-                // Skip eigenvalues (length 3 array) or any unknown key.
-                JsonToken v = lex.Next();
-                if (v.type == JsonToken::ArrayStart) lex.SkipArrayBody();
+            const auto& tensor = o.at("tensor_3x3");
+            if (tensor.size() != 3)
+                throw std::runtime_error("tensor_3x3 must have exactly 3 rows");
+            for (int row = 0; row < 3; ++row) {
+                if (tensor.at(row).size() != 3)
+                    throw std::runtime_error("tensor_3x3 row must have exactly 3 cols");
+                for (int col = 0; col < 3; ++col)
+                    te.tensor(row, col) = tensor.at(row).at(col).get<double>();
             }
 
-            JsonToken sep = lex.Next();
-            if (sep.type == JsonToken::ObjEnd) break;
+            const auto& t2 = o.at("t2_components");
+            if (t2.size() != 5)
+                throw std::runtime_error("t2_components must have exactly 5 entries");
+            for (int i = 0; i < 5; ++i)
+                te.t2_components[i] = t2.at(i).get<double>();
+
+            // eigenvalues and any other keys are intentionally not read.
+            out.push_back(std::move(te));
         }
-        out.push_back(std::move(te));
-        JsonToken sep = lex.Next();
-        if (sep.type == JsonToken::ArrayEnd || sep.type == JsonToken::Eof) break;
+    } catch (const std::exception& e) {
+        OperationLog::Error("TripeptideDftTable::ParseTensorJson",
+            std::string("malformed or incomplete tensor JSONB: ") + e.what() +
+            " — aborting; downstream sees no atoms");
+        return {};
     }
     return out;
 }

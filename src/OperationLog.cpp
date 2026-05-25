@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <ctime>
 #include <cstdlib>
+#include <nlohmann/json.hpp>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -94,18 +95,21 @@ static const char* LevelString(OperationLog::Level level) {
 static std::string BuildJson(OperationLog::Level level,
                               const std::string& operation,
                               const std::string& detail) {
-    std::string escaped;
-    for (char c : detail) {
-        if (c == '"') escaped += "\\\"";
-        else if (c == '\\') escaped += "\\\\";
-        else if (c == '\n') escaped += "\\n";
-        else escaped += c;
-    }
-
-    return "{\"ts\":\"" + CurrentTimestamp() +
-           "\",\"level\":\"" + LevelString(level) +
-           "\",\"op\":\"" + operation +
-           "\",\"detail\":\"" + escaped + "\"}";
+    // ordered_json keeps ts/level/op/detail order; compact dump() matches
+    // the historic line format and escapes all control chars correctly
+    // (the old hand loop missed everything below \n).
+    nlohmann::ordered_json j;
+    j["ts"]     = CurrentTimestamp();
+    j["level"]  = LevelString(level);
+    j["op"]     = operation;
+    j["detail"] = detail;
+    // error_handler_t::replace: logging must never throw. detail/operation
+    // carry non-guaranteed-UTF-8 bytes (file paths, PQerrorMessage, e.what())
+    // and the default strict dump() throws type_error.316 on a bad byte —
+    // an exception out of a logging call, often on an error path. replace
+    // substitutes U+FFFD instead. The old hand escaper copied raw bytes and
+    // could not throw; this preserves that infallibility.
+    return j.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace);
 }
 
 

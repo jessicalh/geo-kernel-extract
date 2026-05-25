@@ -1,42 +1,12 @@
 #include "GromacsToAmberReadbackBlock.h"
 
-#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
 
+#include <nlohmann/json.hpp>
+
 namespace nmr {
-
-namespace {
-
-// JSON string escape: backslash, double-quote, common control characters.
-// Path strings and source-line strings are the only inputs; no Unicode
-// escape needs (GROMACS topol.top is ASCII).
-std::string EscapeJsonString(const std::string& s) {
-    std::string out;
-    out.reserve(s.size() + 2);
-    for (char c : s) {
-        switch (c) {
-            case '"':  out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\n': out += "\\n";  break;
-            case '\r': out += "\\r";  break;
-            case '\t': out += "\\t";  break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    char buf[8];
-                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
-                    out += buf;
-                } else {
-                    out += c;
-                }
-        }
-    }
-    return out;
-}
-
-}  // namespace
-
 
 GromacsToAmberReadbackBlock ParseTopolTopReadback(
         const std::string& topol_top_path,
@@ -129,43 +99,39 @@ bool EmitGromacsToAmberReadbackBlockJson(
         std::string& error_out) {
 
     error_out.clear();
+
+    // ordered_json: emitted key order = insertion order (stable output,
+    // no alphabetical reshuffle that would surprise consumers).
+    nlohmann::ordered_json j;
+    j["schema_version"]              = 1;
+    j["topol_top_path"]              = block.topol_top_path;
+    j["n_residues"]                  = block.residues.size();
+    j["n_port_label_translations"]   = block.n_port_label_translations;
+    j["n_disulfide_residues"]        = block.n_disulfide_residues;
+
+    nlohmann::ordered_json residues = nlohmann::ordered_json::array();
+    for (size_t i = 0; i < block.residues.size(); ++i) {
+        const auto& e = block.residues[i];
+        if (e.tpr_name.empty() && e.rtp.empty()) continue;  // skip gaps
+        residues.push_back({
+            {"index",           i},
+            {"tpr_name",        e.tpr_name},
+            {"rtp",             e.rtp},
+            {"canonical_three", e.canonical_three},
+            {"variant_index",   e.variant_index},
+            {"charge_q",        e.charge_q},
+        });
+    }
+    j["residues"] = std::move(residues);
+
     std::ofstream out(output_path);
     if (!out.is_open()) {
         error_out = "EmitGromacsToAmberReadbackBlockJson: failed to open " +
                     output_path;
         return false;
     }
-
-    out << "{\n";
-    out << "  \"schema_version\": 1,\n";
-    out << "  \"topol_top_path\": \""
-        << EscapeJsonString(block.topol_top_path) << "\",\n";
-    out << "  \"n_residues\": " << block.residues.size() << ",\n";
-    out << "  \"n_port_label_translations\": "
-        << block.n_port_label_translations << ",\n";
-    out << "  \"n_disulfide_residues\": "
-        << block.n_disulfide_residues << ",\n";
-    out << "  \"residues\": [\n";
-
-    bool first = true;
-    for (size_t i = 0; i < block.residues.size(); ++i) {
-        const auto& e = block.residues[i];
-        if (e.tpr_name.empty() && e.rtp.empty()) continue;  // skip gaps
-        if (!first) out << ",\n";
-        first = false;
-        out << "    {";
-        out << "\"index\": " << i;
-        out << ", \"tpr_name\": \"" << EscapeJsonString(e.tpr_name) << "\"";
-        out << ", \"rtp\": \"" << EscapeJsonString(e.rtp) << "\"";
-        out << ", \"canonical_three\": \""
-            << EscapeJsonString(e.canonical_three) << "\"";
-        out << ", \"variant_index\": " << e.variant_index;
-        out << ", \"charge_q\": " << e.charge_q;
-        out << "}";
-    }
-    out << "\n  ]\n";
-    out << "}\n";
-
+    out << j.dump(2, ' ', false,
+                  nlohmann::ordered_json::error_handler_t::replace) << "\n";
     if (!out.good()) {
         error_out = "EmitGromacsToAmberReadbackBlockJson: write failure on " +
                     output_path;
