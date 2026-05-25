@@ -44,17 +44,36 @@ item was chunked + dual/codex-reviewed + (where numeric) smoke-blessing-verified
   forbidden discovery glob. Left with a dated in-file note: retire the script
   or re-stem the data (Jessica's decision).
 
-**Remaining (all test-only / small):**
-- C10 — testpaths.toml relative-path resolution in TestEnvironment.
-- G3 — consolidate the repeated test-local `LoadCalculatorConfig()` into
-  TestEnvironment (broad: ~55 test files; needs a test-suite rebuild).
-- G4 — Larsen fixture path → TestEnvironment.
-- G5 — test `/tmp` debug paths → a temp helper.
-- G6 — production.{tpr,trr,edr} filename dedup (small, src/Cli + nmr_extract).
-- G9 — shared H5 frame-dataset name constants (codex: not first pass; deferred).
+**Done + pushed (2026-05-26 — closes Tracks 1–2 except G9):**
+- C10 — testpaths relative resolution + G4 Larsen fixture + G5 temp helper,
+  one TestEnvironment portability chunk (`9d288de`). Also fixed
+  run_regression.sh's read_toml to mirror the same resolution; its stale
+  `--orca DIR` CLI shape (pre-existing, separate) noted in-file for a re-bless.
+- G3 — 54 test-local `LoadCalculatorConfig()` helpers → one
+  `TestEnvironment::LoadCalculatorConfig()`, 234 calls requalified (`156c55e`).
+  The old local path was non-existent → silent default; now loads the real
+  TOML (== defaults, so inert).
+- G6 — `TrajectoryInputFiles::FromProductionDir` owns production.{tpr,trr,edr}
+  in Cli/ModeSpec.h; Validate + nmr_extract use it (`e58b1bb`).
 
-**Track 3 (CMake/install B1–B8): not started.** The whole track. Do behind a
-backup; verify the configure→build→test→install cadence before folding in.
+**Remaining:**
+- G9 — shared H5 frame-dataset name constants (codex: not first pass; deferred).
+- Track 3 (CMake/install B1–B8) — **not started.** The whole track. Do behind
+  a backup; verify the configure→build→test→install cadence before folding in.
+
+**Audit-validation pass (2026-05-26):** an agent re-validated every item
+against the tree (all accurate; no inaccurate claims) and swept for new
+instances in the same categories. Landed (`d09ab02`): a `/mnt/expansion`
+argparse default in parse_larsen_hbond_grids.py the C9 sweep missed (now
+env-overridable), and a fail-loud log on PdbFileReader's non-numeric-seq_id
+fallback. Investigated and REJECTED: a proposed "APBS reads
+efield_magnitude_sanity_clamp like its siblings" change — codex caught that
+the APBS clamp runs in pre-conversion kT/(e·A) units while the shared key is
+V/A, so sharing it would mis-scale APBS under any non-default override. The
+APBS clamp keeps APBS_SANITY_LIMIT; the distinction is now documented in-code
+(ApbsFieldResult.cpp) so it isn't re-flagged. Whether APBS *should* clamp
+post-conversion in V/A to truly match siblings is a physics/blessing question,
+not config plumbing.
 
 ## Existing Homes To Use
 
