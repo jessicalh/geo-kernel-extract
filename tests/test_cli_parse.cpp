@@ -106,14 +106,13 @@ TEST(CliParse, PdbNoMopacFlipsDefault) {
     EXPECT_FALSE(std::get<nmr::cli::PdbMode>(*r.spec).mopac);
 }
 
-TEST(CliParse, SingleConfDefaultsAllOn) {
+TEST(CliParse, SingleConfMopacDefaultsOn) {
+    // MOPAC is the one single-conf toggle; APBS is always on and
+    // home-rolled Coulomb is retired, so neither is parseable.
     Argv a{"nmr_extract", "--pdb", "x.pdb"};
     const auto r = nmr::cli::Parse(a.argc(), a.argv());
     ASSERT_TRUE(r.spec.has_value());
-    const auto& m = std::get<nmr::cli::PdbMode>(*r.spec);
-    EXPECT_TRUE(m.mopac);
-    EXPECT_TRUE(m.apbs);
-    EXPECT_TRUE(m.coulomb);
+    EXPECT_TRUE(std::get<nmr::cli::PdbMode>(*r.spec).mopac);
 }
 
 TEST(CliParse, TrajectoryMopacDefaultsOff) {

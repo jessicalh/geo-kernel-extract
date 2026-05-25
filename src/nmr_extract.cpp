@@ -41,11 +41,11 @@ namespace {
 
 /// Populate the common cross-mode @ref RunOptions slots. Mode-specific
 /// fields (charges, orca_nmr_path) are filled by the caller.
-RunOptions MakeBaseOpts(const Session& session, bool mopac, bool apbs, bool coulomb) {
+RunOptions MakeBaseOpts(const Session& session, bool mopac) {
     RunOptions opts;
     opts.skip_mopac           = !mopac;
-    opts.skip_apbs            = !apbs;
-    opts.skip_coulomb         = !coulomb;
+    opts.skip_apbs            = false;  // APBS is the canonical electrostatics — always on.
+    opts.skip_coulomb         = true;   // Home-rolled vacuum Coulomb retired; APBS supersedes.
     opts.aimnet2_model        = session.Aimnet2Model();
     opts.tripeptide_dft_table = session.TripeptideDftTablePtr();
     opts.larsen_hbond_grid    = session.LarsenHBondGridPtr();
@@ -97,7 +97,7 @@ static int RunPdb(const cli::PdbMode& mode, const cli::CommonOptions& common,
     }
 
     auto& conf = build.protein->Conformation();
-    RunOptions opts        = MakeBaseOpts(session, mode.mopac, mode.apbs, mode.coulomb);
+    RunOptions opts        = MakeBaseOpts(session, mode.mopac);
     opts.charge_source     = build.charges.get();
     opts.net_charge        = build.net_charge;
 
@@ -129,7 +129,7 @@ static int RunProtonatedPdb(const cli::ProtonatedPdbMode& mode,
     }
 
     auto& conf = build.protein->Conformation();
-    RunOptions opts    = MakeBaseOpts(session, mode.mopac, mode.apbs, mode.coulomb);
+    RunOptions opts    = MakeBaseOpts(session, mode.mopac);
     opts.charge_source = build.charges.get();
     opts.net_charge    = build.net_charge;
 
@@ -160,7 +160,7 @@ static int RunOrca(const cli::OrcaMode& mode, const cli::CommonOptions& common,
     }
 
     auto& conf = build.protein->Conformation();
-    RunOptions opts    = MakeBaseOpts(session, mode.mopac, mode.apbs, mode.coulomb);
+    RunOptions opts    = MakeBaseOpts(session, mode.mopac);
     opts.charge_source = build.charges.get();
     opts.net_charge    = build.net_charge;
     if (!mode.files.nmr_out_path.empty()) opts.orca_nmr_path = mode.files.nmr_out_path;
@@ -192,12 +192,12 @@ static int RunMutant(const cli::MutantMode& mode, const cli::CommonOptions& comm
     auto& wt_conf  = wt_build.protein->Conformation();
     auto& ala_conf = ala_build.protein->Conformation();
 
-    RunOptions wt_opts        = MakeBaseOpts(session, mode.mopac, mode.apbs, mode.coulomb);
+    RunOptions wt_opts        = MakeBaseOpts(session, mode.mopac);
     wt_opts.charge_source     = wt_build.charges.get();
     wt_opts.net_charge        = wt_build.net_charge;
     if (!mode.wt.nmr_out_path.empty())  wt_opts.orca_nmr_path = mode.wt.nmr_out_path;
 
-    RunOptions ala_opts       = MakeBaseOpts(session, mode.mopac, mode.apbs, mode.coulomb);
+    RunOptions ala_opts       = MakeBaseOpts(session, mode.mopac);
     ala_opts.charge_source    = ala_build.charges.get();
     ala_opts.net_charge       = ala_build.net_charge;
     if (!mode.ala.nmr_out_path.empty()) ala_opts.orca_nmr_path = mode.ala.nmr_out_path;

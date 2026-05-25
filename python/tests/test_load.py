@@ -475,7 +475,7 @@ class TestCatalog:
 
     def test_required_count(self):
         required = [s for s in CATALOG.values() if s.required]
-        assert len(required) >= 27  # Coulomb is optional (--no-coulomb)
+        assert len(required) >= 27  # Coulomb is optional (FullFat trajectory only)
 
     def test_every_spec_has_description(self):
         for stem, spec in CATALOG.items():

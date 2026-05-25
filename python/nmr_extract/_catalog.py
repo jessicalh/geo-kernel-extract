@@ -192,7 +192,9 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
     ArraySpec("mc_scalars",       "mcconnell", McConnellScalars,   6,    True,  "McConnell scalar sums + distances",
               mechanism="bond_anisotropy"),
 
-    # ── Coulomb (CoulombResult.cpp) — optional via --no-coulomb ──
+    # ── Coulomb (CoulombResult.cpp) — optional; retired from production
+    # (APBS is canonical), so present only in the FullFatFrameExtraction
+    # trajectory (--mopac), where it feeds the MOPAC-vs-FF14SB probe. ──
     ArraySpec("coulomb_shielding",      "coulomb", ShieldingTensor, 9,   False, "Coulomb E-field shielding",
               irreps=_SHIELD_IRREPS, units="V/A^2", sign_convention=_SHIELD_SIGN, tensor_rank=2, mechanism="electrostatic_efg"),
     ArraySpec("coulomb_E",              "coulomb", VectorField,     3,   False, "Coulomb total E-field",

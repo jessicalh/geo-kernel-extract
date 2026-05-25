@@ -23,10 +23,8 @@ namespace nmr::cli {
 /// pipeline runs and emits per-atom NPYs.
 struct PdbMode {
     std::filesystem::path pdb;            ///< Path to the bare PDB.
-    double                pH      = 7.0;  ///< pH passed to @c reduce.
-    bool                  mopac   = true; ///< Run PM7+MOZYME + derived calcs.
-    bool                  apbs    = true; ///< Run APBS solvated EFG.
-    bool                  coulomb = true; ///< Run vacuum Coulomb EFG.
+    double                pH    = 7.0;    ///< pH passed to @c reduce.
+    bool                  mopac = true;   ///< Run PM7+MOZYME + derived calcs.
 };
 
 /// @brief Load a PDB that already has H atoms, run all calculators.
@@ -35,9 +33,7 @@ struct PdbMode {
 /// explicit H atoms present.
 struct ProtonatedPdbMode {
     std::filesystem::path pdb;
-    bool                  mopac   = true;
-    bool                  apbs    = true;
-    bool                  coulomb = true;
+    bool                  mopac = true;
 };
 
 /// @brief Load a single tleap/AMBER-prepared pose, run all calculators.
@@ -47,9 +43,7 @@ struct ProtonatedPdbMode {
 /// @c {root}_nmr.out (ORCA DFT shielding tensors for OrcaShieldingResult).
 struct OrcaMode {
     OrcaRunFiles files;
-    bool         mopac   = true;
-    bool         apbs    = true;
-    bool         coulomb = true;
+    bool         mopac = true;
 };
 
 /// @brief Load a WT+ALA mutant pair, run on both, compute Δ shielding.
@@ -59,9 +53,7 @@ struct OrcaMode {
 struct MutantMode {
     OrcaRunFiles wt;
     OrcaRunFiles ala;
-    bool         mopac   = true;
-    bool         apbs    = true;
-    bool         coulomb = true;
+    bool         mopac = true;
 };
 
 /// @brief Read a GROMACS relaxation run, per-frame calculators + H5.

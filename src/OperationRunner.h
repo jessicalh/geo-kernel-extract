@@ -53,8 +53,10 @@ struct RunOptions {
     bool skip_apbs = false;
 
     // Skip vacuum Coulomb EFG (home-rolled, O(N*k), 25s at 4800 atoms).
-    // APBS is faster and solvated — preferred for all production work.
-    // Coulomb retained for special comparison tests only.
+    // Retired from production: APBS is the canonical electrostatics, so
+    // every single-frame mode and PerFrameExtractionSet set this true.
+    // The only consumer that sets it false is FullFatFrameExtraction,
+    // where CoulombResult feeds the MOPAC-vs-FF14SB reconciliation probe.
     bool skip_coulomb = false;
 
     // AIMNet2: loaded model for neural network charges + EFG.

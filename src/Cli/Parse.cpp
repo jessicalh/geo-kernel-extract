@@ -57,14 +57,12 @@ CommonOptions ParseCommon(int argc, char* argv[]) {
     return opts;
 }
 
-/// Apply the single-conformation skip flags. The negative spellings
-/// (@c --no-mopac, @c --no-apbs, @c --no-coulomb) match modes 1-4
-/// where the default is on.
+/// Apply the single-conformation skip flags. MOPAC is the one orthogonal
+/// toggle (@c --no-mopac); APBS is always on and home-rolled Coulomb is
+/// retired in favour of it, so neither is switchable.
 template <typename Mode>
 void ApplySingleConfFlags(int argc, char* argv[], Mode& m) {
-    if (HasFlag(argc, argv, "--no-mopac"))   m.mopac   = false;
-    if (HasFlag(argc, argv, "--no-apbs"))    m.apbs    = false;
-    if (HasFlag(argc, argv, "--no-coulomb")) m.coulomb = false;
+    if (HasFlag(argc, argv, "--no-mopac")) m.mopac = false;
 }
 
 OrcaRunFiles ExpandOrcaRoot(const std::string& root) {
