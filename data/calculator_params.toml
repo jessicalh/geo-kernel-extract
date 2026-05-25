@@ -77,6 +77,20 @@ water_second_shell_cutoff = 5.5
 # water_first_shell_cutoff is shared with WaterFieldResult (above).
 hydration_ion_cutoff = 20.0
 
+# APBS Poisson-Boltzmann grid sizing + solve conditions (mg-auto convention)
+# Grid points per axis targeting ~0.3-0.5A spacing.
+apbs_grid_dim = 161
+# Fine grid: bbox extent + padding (20A per side), floored at min dimension.
+apbs_fine_padding_A = 40.0
+apbs_fine_min_dim_A = 40.0
+# Coarse grid: fine + padding (boundary condition accuracy).
+apbs_coarse_padding_A = 30.0
+# PB-solve conditions.
+apbs_protein_dielectric = 4.0
+apbs_solvent_dielectric = 78.54
+apbs_temperature_K = 298.15
+apbs_ionic_strength_M = 0.15
+
 # AIMNet2 model file path
 # Set this to the .jpt file to enable neural network charge calculation.
 # Non-silent: if set and the model fails to load, nmr_extract aborts.

@@ -93,6 +93,16 @@ void CalculatorConfig::InitDefaults() {
     // HydrationShellResult — hydration shell geometry
     add("hydration_ion_cutoff",                    20.0, "A",    "nearest-ion search distance");
 
+    // APBS Poisson-Boltzmann grid sizing + solve conditions (mg-auto convention)
+    add("apbs_grid_dim",                          161.0, "",     "APBS grid points per axis (~0.3-0.5A spacing)");
+    add("apbs_fine_padding_A",                     40.0, "A",    "APBS fine grid padding added to bbox extent (20A per side)");
+    add("apbs_fine_min_dim_A",                     40.0, "A",    "APBS fine grid minimum dimension per axis");
+    add("apbs_coarse_padding_A",                   30.0, "A",    "APBS coarse grid padding over fine (boundary condition accuracy)");
+    add("apbs_protein_dielectric",                  4.0, "",     "APBS protein interior dielectric (pdie)");
+    add("apbs_solvent_dielectric",                78.54, "",     "APBS solvent dielectric (sdie, water 25C)");
+    add("apbs_temperature_K",                    298.15, "K",    "APBS PB-solve temperature");
+    add("apbs_ionic_strength_M",                   0.15, "M",    "APBS ionic strength (physiological)");
+
     // EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
     add("eeq_total_charge",                         0.0, "e",    "EEQ net system charge (0 = neutral protein)");
     add("eeq_cn_steepness",                         7.5, "",     "EEQ coordination number error function steepness");

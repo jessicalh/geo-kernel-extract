@@ -1,5 +1,6 @@
 #include "ApbsFieldResult.h"
 #include "Protein.h"
+#include "CalculatorConfig.h"
 #include "PhysicalConstants.h"
 #include "RuntimeEnvironment.h"
 #include "NpyWriter.h"
@@ -163,7 +164,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     // fine_dims:   extent + 40A (20A padding per side), minimum 40A per axis.
     // coarse_dims: fine + 30A (for boundary condition accuracy).
     // grid_dim:    161 points per axis, targeting ~0.3-0.5A spacing.
-    int grid_dim = 161;
+    int grid_dim = static_cast<int>(CalculatorConfig::Get("apbs_grid_dim"));
 
     Vec3 bbox_min(x_coords[0], y_coords[0], z_coords[0]);
     Vec3 bbox_max = bbox_min;
@@ -174,17 +175,20 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     }
     Vec3 extent = bbox_max - bbox_min;
 
+    const double fine_padding   = CalculatorConfig::Get("apbs_fine_padding_A");
+    const double fine_min_dim    = CalculatorConfig::Get("apbs_fine_min_dim_A");
+    const double coarse_padding  = CalculatorConfig::Get("apbs_coarse_padding_A");
     double fine_dims[3], coarse_dims[3];
     for (int d = 0; d < 3; ++d) {
-        fine_dims[d]   = std::max(extent(d) + 40.0, 40.0);
-        coarse_dims[d] = fine_dims[d] + 30.0;
+        fine_dims[d]   = std::max(extent(d) + fine_padding, fine_min_dim);
+        coarse_dims[d] = fine_dims[d] + coarse_padding;
     }
 
     // Standard PB parameters
-    double pdie = 4.0;              // protein interior dielectric
-    double sdie = 78.54;            // solvent dielectric (water, 25C)
-    double temperature = 298.15;    // Kelvin
-    double ionic_strength = 0.15;   // molar (physiological)
+    double pdie = CalculatorConfig::Get("apbs_protein_dielectric");   // protein interior dielectric
+    double sdie = CalculatorConfig::Get("apbs_solvent_dielectric");   // solvent dielectric (water, 25C)
+    double temperature = CalculatorConfig::Get("apbs_temperature_K"); // Kelvin
+    double ionic_strength = CalculatorConfig::Get("apbs_ionic_strength_M"); // molar (physiological)
 
     OperationLog::Log(OperationLog::Level::Info, LogAPBS,
         "ApbsFieldResult",
