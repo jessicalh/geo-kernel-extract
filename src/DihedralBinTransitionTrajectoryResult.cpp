@@ -98,9 +98,10 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
 // boundary points themselves are conventionally assigned to trans
 // (not gauche). This differs from ChiRotamerSelectionTrajectoryResult
 // .cpp:42-52 which uses strict `>` boundaries (places ±120° in
-// gauche); ChiRotamerSelection is in the slated-for-removal
-// ScanForDftPointSet config so the convention is documented-divergent
-// rather than aligned.
+// gauche). Both calculators are live in PerFrameExtractionSet; the two
+// conventions are deliberately documented-divergent rather than aligned
+// (they serve different downstream consumers — bin-transition counting
+// here vs DFT-pose rotamer selection there).
 //   trans = |chi| ≥ 120°    (chi ≈ ±180°)
 //   g+    = 0° < chi < 120° (chi ≈ +60°)
 //   g-    = -120° < chi ≤ 0° (chi ≈ -60°)

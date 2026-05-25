@@ -22,8 +22,8 @@
 //   2. Read frame 0 and tp.Seed — finalize Protein topology, create
 //      the canonical ProteinConformation (conf0), allocate
 //      TrajectoryAtoms.
-//   3. Attach TrajectoryResults from config.TrajectoryResultFactories()
-//      + extras. Now that Protein is finalized, factories see bonds,
+//   3. Attach TrajectoryResults from config.ResultsToBuild()
+//      + extras. Now that Protein is finalized, the builders see bonds,
 //      rings, and the initialized TrajectoryAtoms vector.
 //   4. Validate dependencies (TrajectoryResult-type vs attached set,
 //      ConformationResult-type vs config's required set) and

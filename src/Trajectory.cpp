@@ -144,8 +144,8 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // Configuration-declared factories first (their order is the
     // dispatch order), then caller-supplied extras.
 
-    for (const auto& factory : config.TrajectoryResultFactories()) {
-        auto result = factory(tp);
+    for (const auto& build : config.ResultsToBuild()) {
+        auto result = build(tp);
         const std::string name = result ? result->Name() : std::string("(null)");
         if (!tp.AttachResult(std::move(result))) {
             OperationLog::Error("Trajectory::Run",

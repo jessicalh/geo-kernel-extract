@@ -92,48 +92,30 @@
 #include "BondLengthStatsTrajectoryResult.h"
 #include "PositionsTimeSeriesTrajectoryResult.h"
 
+#include <type_traits>
 #include <typeindex>
 
 namespace nmr {
 
+namespace {
 
-// ── ScanForDftPointSet ───────────────────────────────────────────
-//
-// Cheap per-frame (no MOPAC, APBS, Coulomb, AIMNet2). Intended for
-// rotamer / RMSD / bin-crossing detection to choose frames for
-// FullFatFrameExtraction. The ConformationResults listed below are
-// what OperationRunner attaches under these opts; TRs declaring any
-// of them as Dependencies() must find them here (Phase 4 validation).
-
-RunConfiguration RunConfiguration::ScanForDftPointSet() {
-    RunConfiguration c;
-    c.SetName("ScanForDftPointSet");
-
-    // Per-frame options: cheap set.
-    c.per_frame_opts_.skip_mopac   = true;
-    c.per_frame_opts_.skip_apbs    = true;
-    c.per_frame_opts_.skip_coulomb = true;
-    c.per_frame_opts_.skip_dssp    = false;   // dihedral bins need phi/psi/chi
-
-    // ConformationResults that must run each frame for the attached
-    // TrajectoryResults to have valid inputs.
-    c.RequireConformationResult(typeid(GeometryResult));
-    c.RequireConformationResult(typeid(SpatialIndexResult));
-    c.RequireConformationResult(typeid(EnrichmentResult));
-    c.RequireConformationResult(typeid(DsspResult));
-    c.RequireConformationResult(typeid(BiotSavartResult));
-    c.RequireConformationResult(typeid(SasaResult));
-
-    // Attached TrajectoryResults: BsWelford. The scan-selection TRs
-    // (ChiRotamerSelection et al.) are a pending-decision item —
-    // see spec/pending_decisions_20260423.md item 2.
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BsWelfordTrajectoryResult::Create(tp);
-        });
-
-    return c;
+// Register one or more TrajectoryResults onto a shape. The run
+// "produces" these results; argument order is attach order is dispatch
+// order, so it is load-bearing. Centralizes the unique_ptr<Derived> ->
+// unique_ptr<TrajectoryResult> upcast and the deferral lambda the call
+// sites would otherwise repeat per result.
+template <class... TRs>
+void Produces(RunConfiguration& c) {
+    static_assert((std::is_base_of_v<TrajectoryResult, TRs> && ...),
+                  "Produces<> takes TrajectoryResult subclasses");
+    (c.AddTrajectoryResultFactory(
+         [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
+             return TRs::Create(tp);
+         }),
+     ...);
 }
+
+}  // namespace
 
 
 // ── PerFrameExtractionSet ────────────────────────────────────────
@@ -191,241 +173,98 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // run. Dep checks for always-present-when-DSN-configured deps would
     // be cruft that breaks fleet runs that legitimately lack DSN.
 
-    // Attach order is dispatch order. BsWelford runs first so
-    // downstream TRs that cross-read its fields
-    // (BsAnomalousAtomMarker) see fresh values.
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BsWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HmWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return McConnellWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return EeqWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return SasaWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HBondCountWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BsShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HmShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return McConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return PiQuadrupoleShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return RingSusceptibilityShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return DispersionShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HBondShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return SasaTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2ChargeTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2EmbeddingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return AIMNet2ChargeResponseGradientWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return ApbsEfieldTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return ApbsEfgTimeSeriesTrajectoryResult::Create(tp);
-        });
-    // MOPAC-family TRs (TR5-TR9 of the 13-TR plan) are NOT registered
-    // here — PerFrameExtractionSet sets skip_mopac=true (line 145) and
-    // skip_coulomb=true (line 147), so MopacResult/MopacCoulombResult/
-    // MopacMcConnellResult/CoulombResult never attach and the TRs would
-    // be dead-code per-frame. They are registered in FullFatFrameExtraction
-    // below, which flips skip_mopac AND skip_coulomb to false.
-    // Decision 2026-05-21 per science adversarial review H3 (TR9
-    // unreachable in production) + math adversarial review H3.
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideNeighborShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return TripeptideBackboneMethodTagTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBondWaterTermTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBondCountTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BsAnomalousAtomMarkerTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BsT0AutocorrelationTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BondLengthStatsTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return PositionsTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return GromacsEnergyTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return BondedEnergyTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return WaterFieldTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return WaterFieldWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HydrationGeometryTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HydrationGeometryWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HydrationShellTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return HydrationShellWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return DihedralTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return DihedralBinTransitionTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return Dssp8TimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return Dssp8TransitionTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return RingPuckerTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return JCouplingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return RingNeighbourhoodTrajectoryStats::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return RmsdTrackingTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return RmsdSpikeSelectionTrajectoryResult::Create(tp);
-        });
-    // ChiRotamerSelection is a TR12/TR13 dependency (TR13 reads its
-    // SelectionBag entries at Finalize). Attaching here also enables
-    // sidechain-rotamer-based DFT pose candidates as a parallel
-    // emitter to TR12's whole-protein RMSD spikes.
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return ChiRotamerSelectionTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return DftPoseCoordinatorTrajectoryResult::Create(tp);
-        });
+    // Attach order is dispatch order — the argument order below is
+    // load-bearing. BsWelford comes first so downstream TRs that
+    // cross-read its fields (BsAnomalousAtomMarker) see fresh values.
+
+    // ── Welford accumulators (per-atom mean/variance over frames) ──
+    Produces<BsWelfordTrajectoryResult,
+             HmWelfordTrajectoryResult,
+             McConnellWelfordTrajectoryResult,
+             EeqWelfordTrajectoryResult,
+             SasaWelfordTrajectoryResult,
+             HBondCountWelfordTrajectoryResult>(c);
+
+    // ── Per-frame classical shielding time-series ──
+    Produces<BsShieldingTimeSeriesTrajectoryResult,
+             HmShieldingTimeSeriesTrajectoryResult,
+             McConnellShieldingTimeSeriesTrajectoryResult,
+             PiQuadrupoleShieldingTimeSeriesTrajectoryResult,
+             RingSusceptibilityShieldingTimeSeriesTrajectoryResult,
+             DispersionShieldingTimeSeriesTrajectoryResult,
+             HBondShieldingTimeSeriesTrajectoryResult,
+             SasaTimeSeriesTrajectoryResult>(c);
+
+    // ── AIMNet2 (charge, embedding, charge-response gradient) ──
+    Produces<AIMNet2ChargeTimeSeriesTrajectoryResult,
+             AIMNet2EmbeddingTimeSeriesTrajectoryResult,
+             AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult,
+             AIMNet2ChargeResponseGradientWelfordTrajectoryResult>(c);
+
+    // ── APBS Poisson–Boltzmann (E-field + EFG) ──
+    Produces<ApbsEfieldTimeSeriesTrajectoryResult,
+             ApbsEfgTimeSeriesTrajectoryResult>(c);
+
+    // The MOPAC family (MopacCoulomb / MopacMcConnell shielding, charge
+    // and bond-order Welford, the MOPAC-vs-FF14SB reconciliation) is NOT
+    // here: PerFrameExtractionSet skips MOPAC and vacuum Coulomb, so those
+    // source calcs never attach per frame and the TRs would be dead-code.
+    // They live in FullFatFrameExtraction, which enables both. Decision
+    // 2026-05-21 per science + math adversarial review H3.
+
+    // ── Tripeptide backbone + neighbor (ProCS15) shielding + residuals ──
+    Produces<TripeptideBackboneShieldingTimeSeriesTrajectoryResult,
+             TripeptideBackboneResidualVecTimeSeriesTrajectoryResult,
+             TripeptideNeighborShieldingTimeSeriesTrajectoryResult,
+             TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult,
+             TripeptideNeighborResidualVecNextTimeSeriesTrajectoryResult,
+             TripeptideBackboneMethodTagTimeSeriesTrajectoryResult>(c);
+
+    // ── Larsen H-bond family (water term, count, 1°/2° HB + HαB) ──
+    Produces<LarsenHBondWaterTermTimeSeriesTrajectoryResult,
+             LarsenHBondCountTimeSeriesTrajectoryResult,
+             LarsenHBond1pHBShieldingTimeSeriesTrajectoryResult,
+             LarsenHBond2pHBShieldingTimeSeriesTrajectoryResult,
+             LarsenHBond1pHaBShieldingTimeSeriesTrajectoryResult,
+             LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult>(c);
+
+    // ── Biot–Savart-derived per-atom markers (read BsWelford, above) ──
+    Produces<BsAnomalousAtomMarkerTrajectoryResult,
+             BsT0AutocorrelationTrajectoryResult>(c);
+
+    // ── Geometry + energy bookkeeping ──
+    Produces<BondLengthStatsTrajectoryResult,
+             PositionsTimeSeriesTrajectoryResult,
+             GromacsEnergyTimeSeriesTrajectoryResult,
+             BondedEnergyTimeSeriesTrajectoryResult>(c);
+
+    // ── Explicit solvent: water field + hydration geometry/shell ──
+    Produces<WaterFieldTimeSeriesTrajectoryResult,
+             WaterFieldWelfordTrajectoryResult,
+             HydrationGeometryTimeSeriesTrajectoryResult,
+             HydrationGeometryWelfordTrajectoryResult,
+             HydrationShellTimeSeriesTrajectoryResult,
+             HydrationShellWelfordTrajectoryResult>(c);
+
+    // ── Backbone/sidechain conformation (dihedrals, DSSP8, ring pucker) ──
+    Produces<DihedralTimeSeriesTrajectoryResult,
+             DihedralBinTransitionTrajectoryResult,
+             Dssp8TimeSeriesTrajectoryResult,
+             Dssp8TransitionTrajectoryResult,
+             RingPuckerTimeSeriesTrajectoryResult>(c);
+
+    // ── Scalar couplings + ring spatial neighbourhood ──
+    Produces<JCouplingTimeSeriesTrajectoryResult,
+             RingNeighbourhoodTrajectoryStats>(c);
+
+    // ── Frame selection (RMSD tracking/spikes, chi rotamer, DFT pose) ──
+    // ChiRotamerSelection feeds DftPoseCoordinator (which reads its
+    // SelectionBag at Finalize) and emits sidechain-rotamer DFT pose
+    // candidates alongside RmsdSpikeSelection's whole-protein spikes.
+    Produces<RmsdTrackingTrajectoryResult,
+             RmsdSpikeSelectionTrajectoryResult,
+             ChiRotamerSelectionTrajectoryResult,
+             DftPoseCoordinatorTrajectoryResult>(c);
 
     return c;
 }
@@ -454,29 +293,15 @@ RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     c.per_frame_opts_.skip_mopac   = false;
     c.per_frame_opts_.skip_coulomb = false;
 
-    // MOPAC-family TR registrations — only meaningful when both
-    // skip_mopac and skip_coulomb are false (above), so they live
-    // here rather than in PerFrameExtractionSet.
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacChargeWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacBondOrderWelfordTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacMcConnellShieldingTimeSeriesTrajectoryResult::Create(tp);
-        });
-    c.AddTrajectoryResultFactory(
-        [](const TrajectoryProtein& tp) -> std::unique_ptr<TrajectoryResult> {
-            return MopacVsFf14SbReconciliationTrajectoryResult::Create(tp);
-        });
+    // ── MOPAC family ── only meaningful once skip_mopac and skip_coulomb
+    // are false (above), so these live here rather than in
+    // PerFrameExtractionSet. MopacVsFf14SbReconciliation is the cross-
+    // source MopacCoulomb-vs-FF14SB-Coulomb probe (TR9).
+    Produces<MopacChargeWelfordTrajectoryResult,
+             MopacBondOrderWelfordTrajectoryResult,
+             MopacCoulombShieldingTimeSeriesTrajectoryResult,
+             MopacMcConnellShieldingTimeSeriesTrajectoryResult,
+             MopacVsFf14SbReconciliationTrajectoryResult>(c);
 
     return c;
 }
