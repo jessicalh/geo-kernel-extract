@@ -84,6 +84,26 @@ struct TrajectoryMode {
     std::optional<FrameNpyEmission> emit_npys;
 };
 
+/// @brief The three GROMACS production files a @c --trajectory DIR holds.
+///
+/// Single source of truth for the @c production.{tpr,trr,edr} basenames,
+/// which otherwise appear by hand in validation and execution. No
+/// discovery — the names are fixed by convention (see CLAUDE.md mode 5
+/// and PATTERNS.md "No file discovery"); @ref FromProductionDir only
+/// joins them onto @c dir.
+struct TrajectoryInputFiles {
+    std::filesystem::path tpr;  ///< @c {dir}/production.tpr
+    std::filesystem::path trr;  ///< @c {dir}/production.trr
+    std::filesystem::path edr;  ///< @c {dir}/production.edr
+
+    static TrajectoryInputFiles FromProductionDir(
+            const std::filesystem::path& dir) {
+        return {dir / "production.tpr",
+                dir / "production.trr",
+                dir / "production.edr"};
+    }
+};
+
 /// @brief Discriminated union over the five supported modes.
 ///
 /// Use @c std::visit at the dispatch site:

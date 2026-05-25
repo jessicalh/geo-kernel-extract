@@ -62,9 +62,10 @@ std::string CheckCommon(const CommonOptions& c) {
 std::string CheckTrajectory(const TrajectoryMode& m) {
     std::string e = CheckDir(m.dir, "--trajectory DIR");
     if (!e.empty()) return e;
-    e = CheckFile(m.dir / "production.tpr", "trajectory production.tpr"); if (!e.empty()) return e;
-    e = CheckFile(m.dir / "production.trr", "trajectory production.trr"); if (!e.empty()) return e;
-    e = CheckFile(m.dir / "production.edr", "trajectory production.edr"); if (!e.empty()) return e;
+    const auto files = TrajectoryInputFiles::FromProductionDir(m.dir);
+    e = CheckFile(files.tpr, "trajectory production.tpr"); if (!e.empty()) return e;
+    e = CheckFile(files.trr, "trajectory production.trr"); if (!e.empty()) return e;
+    e = CheckFile(files.edr, "trajectory production.edr"); if (!e.empty()) return e;
     return "";
 }
 

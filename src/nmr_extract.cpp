@@ -256,10 +256,8 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
         FrameNpyEmitter::Configure(tp.ProteinRef(), std::move(cfg));
     }
 
-    const std::string tpr = traj_dir + "/production.tpr";
-    const std::string trr = traj_dir + "/production.trr";
-    const std::string edr = traj_dir + "/production.edr";
-    Trajectory traj(trr, tpr, edr);
+    const auto files = cli::TrajectoryInputFiles::FromProductionDir(mode.dir);
+    Trajectory traj(files.trr, files.tpr, files.edr);
 
     RunConfiguration config = mode.mopac
         ? RunConfiguration::FullFatFrameExtraction()
