@@ -109,15 +109,7 @@ void PiQuadrupoleShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         for (std::size_t t = 0; t < T; ++t) {
             const SphericalTensor& st = buffer->At(i, t);
             const std::size_t base = (i * T + t) * 9;
-            flat[base + 0] = st.T0;
-            flat[base + 1] = st.T1[0];
-            flat[base + 2] = st.T1[1];
-            flat[base + 3] = st.T1[2];
-            flat[base + 4] = st.T2[0];
-            flat[base + 5] = st.T2[1];
-            flat[base + 6] = st.T2[2];
-            flat[base + 7] = st.T2[3];
-            flat[base + 8] = st.T2[4];
+            st.PackFull9(&flat[base]);
         }
     }
 

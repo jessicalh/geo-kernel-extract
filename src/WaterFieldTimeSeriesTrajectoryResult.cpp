@@ -205,7 +205,7 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
                     continue;
                 }
                 const SphericalTensor& st = src[i][t];
-                for (std::size_t k = 0; k < 5; ++k) flat[base + k] = st.T2[k];
+                st.PackT2(&flat[base]);
             }
         }
         HighFive::DataSpace space({N, T, std::size_t(5)});

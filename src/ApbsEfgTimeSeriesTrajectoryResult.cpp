@@ -182,11 +182,7 @@ void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         for (std::size_t t = 0; t < T; ++t) {
             const SphericalTensor& st = buffer->At(i, t);
             const std::size_t base = (i * T + t) * 5;
-            flat[base + 0] = st.T2[0];
-            flat[base + 1] = st.T2[1];
-            flat[base + 2] = st.T2[2];
-            flat[base + 3] = st.T2[3];
-            flat[base + 4] = st.T2[4];
+            st.PackT2(&flat[base]);
         }
     }
     std::vector<std::size_t> dims = {N, T, std::size_t(5)};
