@@ -30,11 +30,20 @@ Landed:
 Kept on purpose: the frame-emit window + stride controls (they compose, not
 duplicate) and the FullFat MOPAC-vs-FF14SB Coulomb probe.
 
-## 5. Configuration / portability
+## 5. Configuration / portability  — runtime/config DONE; CMake track remains
 
 All DB DSNs and filesystem paths live in config (TOML / `RuntimeEnvironment`) —
 **zero hardcoded paths**. Outcome: the program builds and runs anywhere given
 the config.
+
+Status (2026-05-25): the runtime/config + general-cleanup work landed and
+pushed (config literals → PhysicalConstants, APBS params → TOML, SphericalTensor
+pack-order ownership, manifest → ordered_json, conda-path removal, script DSN
+redaction + path de-hardcoding). Full per-item map + what remains (test-only:
+C10/G3/G4/G5/G6; and the whole **CMake/install track B1–B8**, still untouched,
+to be done behind a backup) is tracked in
+`spec/plan/cleanup-config-cmake-audit-2026-05-25.md` → "Progress (updated
+2026-05-25)".
 
 ## 3. Full Doxygen / comment pass — EVERY `.cpp` and `.h`
 
