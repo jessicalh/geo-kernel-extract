@@ -106,7 +106,7 @@ struct QtNpyRingMembershipRow {
 
 
 // ============================================================================
-// atoms_category_info.npy — 84 bytes per row, 37 fields.
+// atoms_category_info.npy — 83 bytes per row, 37 fields.
 // Writer: src/CategoryInfoProjection.cpp WriteStructuredNpy + the typed
 // field layout it composes per atom. (No single descriptor literal there;
 // the field order is the literal sequence of memcpys.)
