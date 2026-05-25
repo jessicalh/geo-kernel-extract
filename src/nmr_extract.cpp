@@ -323,6 +323,16 @@ static int RunExtract(int argc, char* argv[]) {
         return 1;
     }
 
+    // ParseResult's contract (Parse.h): on success spec and common are set
+    // and error is empty. We've already returned on help_requested and on a
+    // non-empty error, so this is the success path. Guard the invariant
+    // anyway -- a contract violation in Parse would otherwise dereference an
+    // empty optional (UB); fail loud instead.
+    if (!parse.spec || !parse.common) {
+        std::fprintf(stderr,
+            "internal: parser reported success but left spec/common unset\n");
+        return 1;
+    }
     cli::ModeSpec      spec   = std::move(*parse.spec);
     cli::CommonOptions common = std::move(*parse.common);
 
