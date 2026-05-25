@@ -50,10 +50,12 @@ Only depends on numpy + scipy.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
@@ -63,7 +65,14 @@ from scipy.interpolate import RegularGridInterpolator
 # Constants
 # -------------------------------------------------------------------------
 
-DATA_DIR = "/shared/2026Thesis/nmr-shielding/data/larsen_hbond_grids"
+# Grid data directory. Resolution order: $LARSEN_HBOND_GRID_DIR if set,
+# else <repo>/data/larsen_hbond_grids resolved relative to this script
+# (scripts/larsen_hbond_grid_parse/ -> repo root is two parents up).
+# A --data-dir CLI argument (see main) overrides this at runtime.
+DATA_DIR = os.environ.get(
+    "LARSEN_HBOND_GRID_DIR",
+    str(Path(__file__).resolve().parents[2] / "data" / "larsen_hbond_grids"),
+)
 
 ARCHIVE_STEMS = ["ALANMA", "NMANMA", "ALACOH", "ALACOO", "NMACOH", "NMACOO"]
 
@@ -452,6 +461,18 @@ def process_archive(stem: str) -> ArchiveSummary:
 
 
 def main() -> int:
+    global DATA_DIR
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="grid data directory "
+        "(default: $LARSEN_HBOND_GRID_DIR or <repo>/data/larsen_hbond_grids)",
+    )
+    args = parser.parse_args()
+    if args.data_dir is not None:
+        DATA_DIR = args.data_dir
+
     summaries: list[ArchiveSummary] = []
     total_mb = 0.0
     for stem in ARCHIVE_STEMS:

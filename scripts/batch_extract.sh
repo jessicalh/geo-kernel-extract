@@ -22,8 +22,32 @@
 
 set -euo pipefail
 
-readonly CONSOLIDATED="/shared/2026Thesis/consolidated"
-readonly NMR_EXTRACT="/shared/2026Thesis/nmr-shielding/build/nmr_extract"
+# ── path configuration (overridable) ─────────────────────────────────
+# Resolution order for each path: environment variable, then a fallback
+# anchored relative to this script's location (repo-relative for the
+# binary, sibling-of-repo for the consolidated tree). Nothing is
+# hardcoded to a single absolute /shared path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+readonly CONSOLIDATED="${BATCH_CONSOLIDATED:-$(dirname "${REPO_ROOT}")/consolidated}"
+readonly NMR_EXTRACT="${BATCH_NMR_EXTRACT:-${REPO_ROOT}/build/nmr_extract}"
+
+# ⚠ MAINTENANCE NOTE (audit C8, 2026-05-25): the per-file --mutant / --orca
+# invocations below use RETIRED nmr_extract flag shapes. The current
+# canonical CLI takes a single root prefix (--orca --root NAME,
+# --mutant --wt NAME --ala NAME) that expands rigidly to
+# {NAME}.xyz / {NAME}.prmtop / {NAME}_nmr.out — no globbing, no timestamp
+# picking. Most of consolidated/ stores the DFT output under a timestamped
+# stem ({prot}_WT_<YYYYMMDD_HHMMSS>_nmr.out) that does NOT match the
+# {prot}_WT stem of the .xyz/.prmtop, so --root cannot expand to the file
+# trio for that majority. (A subset of pairs do carry canonical
+# {prot}_WT_nmr.out / {prot}_ALA_nmr.out aliases that --root WOULD match,
+# but the batch as a whole can't be driven by --root without reintroducing
+# the forbidden timestamp-discovery glob for the rest.) Left as-is pending
+# a decision: retire the script, or re-stem the consolidated data so every
+# pose shares one root. See
+# spec/plan/cleanup-config-cmake-audit-2026-05-25.md (C8).
 
 # ── argument handling ────────────────────────────────────────────────
 if [[ $# -lt 1 ]]; then

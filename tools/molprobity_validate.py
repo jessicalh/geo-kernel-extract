@@ -38,18 +38,41 @@ import argparse
 import csv
 import json
 import multiprocessing as mp
+import os
 import re
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-ENV_BIN = Path("/home/jessica/micromamba/envs/molprobity/bin")
-RAMALYZE = str(ENV_BIN / "molprobity.ramalyze")
-ROTALYZE = str(ENV_BIN / "molprobity.rotalyze")
-CBETADEV = str(ENV_BIN / "molprobity.cbetadev")
-CABLAM   = str(ENV_BIN / "molprobity.cablam")
-MPBONDS  = str(ENV_BIN / "molprobity.mp_validate_bonds")
+
+def _resolve_validator(name: str) -> str:
+    """Resolve a molprobity.* binary.
+
+    Order: $MOLPROBITY_BIN/<name> if MOLPROBITY_BIN is set, then a binary
+    of that name on PATH (shutil.which), then the conda/micromamba
+    molprobity env location used during development. Returns the resolved
+    path if found, else the bare name so subprocess raises a clear
+    FileNotFoundError at call time.
+    """
+    env_dir = os.environ.get("MOLPROBITY_BIN")
+    if env_dir:
+        candidate = Path(env_dir) / name
+        if candidate.exists():
+            return str(candidate)
+    found = shutil.which(name)
+    if found:
+        return found
+    fallback = Path.home() / "micromamba" / "envs" / "molprobity" / "bin" / name
+    return str(fallback)
+
+
+RAMALYZE = _resolve_validator("molprobity.ramalyze")
+ROTALYZE = _resolve_validator("molprobity.rotalyze")
+CBETADEV = _resolve_validator("molprobity.cbetadev")
+CABLAM   = _resolve_validator("molprobity.cablam")
+MPBONDS  = _resolve_validator("molprobity.mp_validate_bonds")
 
 TIMEOUT_SECONDS = 60
 

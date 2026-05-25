@@ -11,13 +11,20 @@ untouched until output is vetted.
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-ROOT = Path("/shared/2026Thesis/nmr-shielding")
+# Repo root: $NMR_SHIELDING_ROOT if set, else resolved relative to this
+# script (scripts/references/qwen_summary.py -> repo root is two parents up).
+ROOT = Path(
+    os.environ.get(
+        "NMR_SHIELDING_ROOT", Path(__file__).resolve().parents[2]
+    )
+)
 
 SYSTEM_PROMPT = """\
 You are summarising a scholarly paper for an NMR shielding-tensor PhD thesis. The thesis builds geometric kernels — ring-current Biot-Savart and Haigh-Mallion, electric-field-gradient, bond magnetic anisotropy, hydrogen-bond — on protein structures, calibrated against DFT shielding values. Rank-2 tensor (T2) preservation is the central novelty; the system outputs kernels, and calibration turns kernels into shielding.

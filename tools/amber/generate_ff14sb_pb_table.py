@@ -13,9 +13,34 @@ import argparse
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+
+
+def default_tleap() -> pathlib.Path | None:
+    """Locate tleap without a hardcoded user path.
+
+    Order: tleap on PATH (shutil.which), then $AMBERHOME/bin/tleap if
+    AMBERHOME is set. Returns None if neither resolves, leaving --tleap
+    required on the command line.
+    """
+    found = shutil.which("tleap")
+    if found:
+        return pathlib.Path(found)
+    amberhome = os.environ.get("AMBERHOME")
+    if amberhome:
+        candidate = pathlib.Path(amberhome) / "bin" / "tleap"
+        if candidate.exists():
+            return candidate
+    # Home-relative conda fallback (not a hardcoded /home/<user> path),
+    # mirroring tools/molprobity_validate.py's resolver. Preserves the
+    # local default without pinning an absolute user path.
+    conda = pathlib.Path.home() / "micromamba" / "envs" / "mm" / "bin" / "tleap"
+    if conda.exists():
+        return conda
+    return None
 
 
 # AMBER prmtop %FLAG CHARGE internal units: e * sqrt(kcal/mol * A) = e * 18.2223.
@@ -268,11 +293,14 @@ def write_table(path: pathlib.Path, rows: list[TableRow], amberhome: pathlib.Pat
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    tleap_default = default_tleap()
     parser.add_argument(
         "--tleap",
         type=pathlib.Path,
-        default=pathlib.Path("/home/jessica/micromamba/envs/mm/bin/tleap"),
-        help="AmberTools tleap executable",
+        default=tleap_default,
+        required=tleap_default is None,
+        help="AmberTools tleap executable "
+        "(default: tleap on PATH, else $AMBERHOME/bin/tleap)",
     )
     parser.add_argument(
         "--amberhome",

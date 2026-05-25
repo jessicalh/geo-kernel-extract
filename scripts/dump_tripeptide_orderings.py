@@ -36,6 +36,29 @@ import psycopg2
 
 CONFIG_PATH = Path.home() / ".nmr_tools.toml"
 
+# Credential keys to redact before a DSN reaches stderr. Mirrors the
+# kSensitive set in src/TripeptideDftTable.cpp::RedactDsnForLog so the
+# Python diagnostic does not leak what the production C++ scrubs.
+_SENSITIVE_DSN_KEYS = {"password", "passfile"}
+
+
+def redact_dsn(dsn: str) -> str:
+    """Redact a libpq DSN before logging, leak-proof by construction.
+
+    URI-form DSNs (postgresql://user:secret@host/db) are blanket-redacted.
+    For keyword/value form, libpq allows quoted values containing spaces, so
+    a token split can't reliably isolate a credential without risking leaking
+    its tail — therefore if ANY sensitive key appears we blanket-redact the
+    whole string. The common password-less (peer-auth / unix-socket) DSN has
+    no sensitive key and prints in full, which is the useful diagnostic case.
+    """
+    if "://" in dsn:
+        return "<dsn redacted (uri form)>"
+    lowered = dsn.lower()
+    if any(key in lowered for key in _SENSITIVE_DSN_KEYS):
+        return "<dsn redacted (credential present)>"
+    return dsn
+
 
 def load_dsn() -> str:
     with CONFIG_PATH.open("rb") as fh:
@@ -143,7 +166,7 @@ def main() -> int:
     args = ap.parse_args()
 
     dsn = load_dsn()
-    print(f"DSN: {dsn}", file=sys.stderr)
+    print(f"DSN: {redact_dsn(dsn)}", file=sys.stderr)
     rows = fetch_orderings(dsn)
     print(f"fetched {len(rows)} (tripeptide, frame_type) combinations", file=sys.stderr)
 
