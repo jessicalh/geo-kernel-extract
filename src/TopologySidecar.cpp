@@ -24,6 +24,8 @@
 #include <string>
 #include <vector>
 
+#include <nlohmann/json.hpp>
+
 namespace fs = std::filesystem;
 
 namespace nmr {
@@ -490,82 +492,95 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
     const bool has_ff_types  = !lat.AtomtypeString().empty();
     const bool has_mass      = !lat.Mass().empty();
 
-    std::ostringstream j;
-    j << "{\n";
-    j << "  \"schema_version\": \"1.0\",\n";
-    j << "  \"extractor\": \"nmr_extract\",\n";
-    j << "  \"extractor_version\": \"0.2.0\",\n";
-    j << "  \"generated_at_utc\": \"" << Iso8601UtcNow() << "\",\n";
-    j << "  \"protein_id\": \"" << protein_id << "\",\n";
-    j << "  \"topology\": {\n";
-    j << "    \"source\": \"amber-ff14SB+cifpp\",\n";
-    j << "    \"has_atom_semantic\": " << (has_substrate ? "true" : "false") << ",\n";
-    j << "    \"has_ff_atom_types\": " << (has_ff_types ? "true" : "false") << ",\n";
-    j << "    \"has_ff_mass\": " << (has_mass ? "true" : "false") << "\n";
-    j << "  },\n";
+    // ordered_json keeps insertion order and handles escaping; dump with
+    // error_handler_t::replace so a stray non-UTF-8 byte (e.g. in protein_id)
+    // can never throw out of this writer (matches OperationLog / Trajectory).
+    nlohmann::ordered_json j;
+    j["schema_version"]    = "1.0";
+    j["extractor"]         = "nmr_extract";
+    j["extractor_version"] = "0.2.0";
+    j["generated_at_utc"]  = Iso8601UtcNow();
+    j["protein_id"]        = protein_id;
+
+    j["topology"] = nlohmann::ordered_json{
+        {"source",            "amber-ff14SB+cifpp"},
+        {"has_atom_semantic", has_substrate},
+        {"has_ff_atom_types",  has_ff_types},
+        {"has_ff_mass",        has_mass},
+    };
+
     // enum_vocab — integer-to-name mapping for the typed enum columns in
     // residues.npy / bonds.npy / rings.npy so a consumer reading
     // `bond_order == 4` knows it's `Peptide` without grepping the source.
     // Per codex contract `enum_vocab_refs`. Mirrors:
     //   ResidueTerminalState (Residue.h), BondOrder / BondCategory /
     //   RingTypeIndex / AminoAcid (Types.h).
-    j << "  \"enum_vocab\": {\n";
-    j << "    \"terminal_state\": {\"0\":\"Internal\",\"1\":\"NTerminus\","
-      <<                          "\"2\":\"CTerminus\",\"3\":\"NAndCTerminus\","
-      <<                          "\"4\":\"Unknown\"},\n";
-    j << "    \"bond_order\": {\"0\":\"Single\",\"1\":\"Double\",\"2\":\"Triple\","
-      <<                       "\"3\":\"Aromatic\",\"4\":\"Peptide\",\"5\":\"Unknown\"},\n";
-    j << "    \"bond_category\": {\"0\":\"PeptideCO\",\"1\":\"PeptideCN\","
-      <<                          "\"2\":\"BackboneOther\",\"3\":\"SidechainCO\","
-      <<                          "\"4\":\"Aromatic\",\"5\":\"Disulfide\","
-      <<                          "\"6\":\"SidechainOther\",\"7\":\"Unknown\"},\n";
-    j << "    \"ring_kind\": {\"0\":\"aromatic\",\"1\":\"saturated\"},\n";
-    j << "    \"ring_type_index\": {\"0\":\"PheBenzene\",\"1\":\"TyrPhenol\","
-      <<                            "\"2\":\"TrpBenzene\",\"3\":\"TrpPyrrole\","
-      <<                            "\"4\":\"TrpPerimeter\",\"5\":\"HisImidazole\","
-      <<                            "\"6\":\"HidImidazole\",\"7\":\"HieImidazole\","
-      <<                            "\"8\":\"ProPyrrolidine\"},\n";
-    j << "    \"residue_type\": {\"0\":\"ALA\",\"1\":\"ARG\",\"2\":\"ASN\","
-      <<                         "\"3\":\"ASP\",\"4\":\"CYS\",\"5\":\"GLN\","
-      <<                         "\"6\":\"GLU\",\"7\":\"GLY\",\"8\":\"HIS\","
-      <<                         "\"9\":\"ILE\",\"10\":\"LEU\",\"11\":\"LYS\","
-      <<                         "\"12\":\"MET\",\"13\":\"PHE\",\"14\":\"PRO\","
-      <<                         "\"15\":\"SER\",\"16\":\"THR\",\"17\":\"TRP\","
-      <<                         "\"18\":\"TYR\",\"19\":\"VAL\",\"20\":\"Unknown\"}\n";
-    j << "  },\n";
-    j << "  \"axis_sizes\": {\n";
-    j << "    \"atom\": " << protein.AtomCount() << ",\n";
-    j << "    \"residue\": " << protein.ResidueCount() << ",\n";
-    j << "    \"bond\": " << bond_count << ",\n";
-    j << "    \"aromatic_ring\": " << aromatic_ring_count << ",\n";
-    j << "    \"saturated_ring\": " << saturated_ring_count << ",\n";
-    j << "    \"ring\": " << (aromatic_ring_count + saturated_ring_count) << ",\n";
-    j << "    \"ring_membership\": " << ring_membership_count << "\n";
-    j << "  },\n";
-    j << "  \"axis_alignment\": {\n";
-    j << "    \"atom\": \"All atom-axis NPYs share row order: "
-      <<                "atoms_category_info.row[i] == pos.row[i] == "
-      <<                "element.row[i] == residue_index.row[i] == atom_index i. "
-      <<                "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
-      <<                "mc_shielding, coulomb_shielding, hbond_shielding, "
-      <<                "larsen_hbond_*, tripeptide_*, etc.) follow the same convention.\",\n";
-    j << "    \"residue\": \"residues.npy is the canonical residue axis. "
-      <<                  "residue_type.npy / residue_index.npy in the identity block are atom-axis "
-      <<                  "(N atom rows, each carrying that atom's residue's type / index). "
-      <<                  "atoms_category_info.residue_index references the residue axis.\",\n";
-    j << "    \"bond\": \"bonds.npy is the canonical bond axis. "
-      <<               "bonds.bond_index is the row index.\",\n";
-    j << "    \"ring\": \"rings.npy lists aromatic rings first (rows 0..aromatic_ring-1) "
-      <<               "then saturated rings (rows aromatic_ring..ring-1). ring_id is the absolute row index.\",\n";
-    j << "    \"aromatic_ring\": \"ring_geometry.npy is aromatic-only. "
-      <<                          "Its rows correspond to rings.npy entries where ring_kind == 0 (aromatic), in order. "
-      <<                          "rings.native_axis_index gives that aromatic-axis index.\",\n";
-    j << "    \"ring_contribution_pair\": \"ring_contributions.npy is per (atom, aromatic_ring) "
-      <<                                  "pair. The ring_index column references the aromatic-ring axis.\",\n";
-    j << "    \"ring_membership\": \"ring_membership.npy is per (ring, ring-vertex-atom) pair. "
-      <<                            "ring_id references rings.npy; atom_index references the atom axis.\"\n";
-    j << "  }\n";
-    j << "}\n";
+    j["enum_vocab"] = nlohmann::ordered_json{
+        {"terminal_state", {
+            {"0", "Internal"}, {"1", "NTerminus"}, {"2", "CTerminus"},
+            {"3", "NAndCTerminus"}, {"4", "Unknown"}}},
+        {"bond_order", {
+            {"0", "Single"}, {"1", "Double"}, {"2", "Triple"},
+            {"3", "Aromatic"}, {"4", "Peptide"}, {"5", "Unknown"}}},
+        {"bond_category", {
+            {"0", "PeptideCO"}, {"1", "PeptideCN"}, {"2", "BackboneOther"},
+            {"3", "SidechainCO"}, {"4", "Aromatic"}, {"5", "Disulfide"},
+            {"6", "SidechainOther"}, {"7", "Unknown"}}},
+        {"ring_kind", {
+            {"0", "aromatic"}, {"1", "saturated"}}},
+        {"ring_type_index", {
+            {"0", "PheBenzene"}, {"1", "TyrPhenol"}, {"2", "TrpBenzene"},
+            {"3", "TrpPyrrole"}, {"4", "TrpPerimeter"}, {"5", "HisImidazole"},
+            {"6", "HidImidazole"}, {"7", "HieImidazole"}, {"8", "ProPyrrolidine"}}},
+        {"residue_type", {
+            {"0", "ALA"}, {"1", "ARG"}, {"2", "ASN"}, {"3", "ASP"},
+            {"4", "CYS"}, {"5", "GLN"}, {"6", "GLU"}, {"7", "GLY"},
+            {"8", "HIS"}, {"9", "ILE"}, {"10", "LEU"}, {"11", "LYS"},
+            {"12", "MET"}, {"13", "PHE"}, {"14", "PRO"}, {"15", "SER"},
+            {"16", "THR"}, {"17", "TRP"}, {"18", "TYR"}, {"19", "VAL"},
+            {"20", "Unknown"}}},
+    };
+
+    j["axis_sizes"] = nlohmann::ordered_json{
+        {"atom",            protein.AtomCount()},
+        {"residue",         protein.ResidueCount()},
+        {"bond",            bond_count},
+        {"aromatic_ring",   aromatic_ring_count},
+        {"saturated_ring",  saturated_ring_count},
+        {"ring",            aromatic_ring_count + saturated_ring_count},
+        {"ring_membership", ring_membership_count},
+    };
+
+    j["axis_alignment"] = nlohmann::ordered_json{
+        {"atom",
+            "All atom-axis NPYs share row order: "
+            "atoms_category_info.row[i] == pos.row[i] == "
+            "element.row[i] == residue_index.row[i] == atom_index i. "
+            "Calculator atom-axis NPYs (bs_shielding, hm_shielding, "
+            "mc_shielding, coulomb_shielding, hbond_shielding, "
+            "larsen_hbond_*, tripeptide_*, etc.) follow the same convention."},
+        {"residue",
+            "residues.npy is the canonical residue axis. "
+            "residue_type.npy / residue_index.npy in the identity block are atom-axis "
+            "(N atom rows, each carrying that atom's residue's type / index). "
+            "atoms_category_info.residue_index references the residue axis."},
+        {"bond",
+            "bonds.npy is the canonical bond axis. "
+            "bonds.bond_index is the row index."},
+        {"ring",
+            "rings.npy lists aromatic rings first (rows 0..aromatic_ring-1) "
+            "then saturated rings (rows aromatic_ring..ring-1). ring_id is the absolute row index."},
+        {"aromatic_ring",
+            "ring_geometry.npy is aromatic-only. "
+            "Its rows correspond to rings.npy entries where ring_kind == 0 (aromatic), in order. "
+            "rings.native_axis_index gives that aromatic-axis index."},
+        {"ring_contribution_pair",
+            "ring_contributions.npy is per (atom, aromatic_ring) "
+            "pair. The ring_index column references the aromatic-ring axis."},
+        {"ring_membership",
+            "ring_membership.npy is per (ring, ring-vertex-atom) pair. "
+            "ring_id references rings.npy; atom_index references the atom axis."},
+    };
 
     const fs::path path = out_dir / "extraction_manifest.json";
     std::ofstream out(path);
@@ -574,7 +589,8 @@ bool WriteManifest(const Protein& protein, const fs::path& out_dir,
             "could not open " + path.string() + " for write");
         return false;
     }
-    out << j.str();
+    out << j.dump(2, ' ', false,
+                  nlohmann::ordered_json::error_handler_t::replace) << "\n";
     return out.good();
 }
 

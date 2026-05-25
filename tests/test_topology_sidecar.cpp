@@ -320,10 +320,11 @@ TEST_F(TopologySidecarTest, ManifestEnumVocabPresent) {
     EXPECT_NE(j.find("\"ring_kind\""), std::string::npos);
     EXPECT_NE(j.find("\"ring_type_index\""), std::string::npos);
     EXPECT_NE(j.find("\"residue_type\""), std::string::npos);
-    // Spot-check specific value bindings.
-    EXPECT_NE(j.find("\"4\":\"Peptide\""), std::string::npos);
-    EXPECT_NE(j.find("\"0\":\"PheBenzene\""), std::string::npos);
-    EXPECT_NE(j.find("\"14\":\"PRO\""), std::string::npos);
+    // Spot-check specific value bindings. (Pretty-printed by nlohmann
+    // ordered_json: "key": "value" with a space after the colon.)
+    EXPECT_NE(j.find("\"4\": \"Peptide\""), std::string::npos);
+    EXPECT_NE(j.find("\"0\": \"PheBenzene\""), std::string::npos);
+    EXPECT_NE(j.find("\"14\": \"PRO\""), std::string::npos);
 }
 
 TEST_F(TopologySidecarTest, ManifestAxisAlignmentClaimsAreCorrect) {
