@@ -464,7 +464,7 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
             // accepts the typed SemanticEnums.h TerminalState; the
             // mapping is conservative (NTerminus -> NtermCharged is
             // the AMBER ff14SB default; NTermNeutral is reserved for
-            // PROPKA-driven distinctions not yet exposed).
+            // distinctions the input protonation may carry, not inferred here).
             TerminalState terminal_state = TerminalState::Internal;
             switch (res.terminal_state) {
                 case ResidueTerminalState::NTerminus:

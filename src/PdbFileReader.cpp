@@ -138,8 +138,8 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
             // that fire independent of source and produce canonical
             // outputs.
             //
-            // KNOWN GAP (deferred to PROPKA wiring at the
-            // PdbFileReader TODO, separate commit): residues labelled
+            // KNOWN GAP: the protonation variant is taken from the input
+            // structure, not inferred here — residues labelled
             // "LYS" but structurally LYN (only HZ1/HZ2 NZ-H, no HZ3)
             // canonicalise correctly during this load-time pass via
             // the LYN HZ1/HZ2 sibling-aware shift rules (siblings

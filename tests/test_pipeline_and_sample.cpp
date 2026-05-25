@@ -53,6 +53,29 @@ static std::unique_ptr<nmr::Protein> LoadTestProtein(const std::string& protein_
 }
 
 
+// BuildFromOrca records the preparation provenance on the Protein's
+// build context. Relocated here from the retired test_protonation_pipeline
+// (the only coverage of build-context provenance — codex review 2026-05-25).
+TEST(OrcaLoaderProvenanceTest, BuildContextRecordsTleapFf14SB) {
+    nmr::OrcaRunFiles files;
+    const std::string dir = std::string(nmr::test::TestEnvironment::OrcaDir());
+    files.pdb_path          = dir + "A0A7C5FAR6_WT.pdb";
+    files.xyz_path          = dir + "A0A7C5FAR6_WT.xyz";
+    files.prmtop_path       = dir + "A0A7C5FAR6_WT.prmtop";
+    files.tleap_script_path = dir + "A0A7C5FAR6_WT_tleap.in";
+    if (!fs::exists(files.prmtop_path)) GTEST_SKIP() << "ORCA test data not found";
+
+    auto result = nmr::BuildFromOrca(files);
+    ASSERT_TRUE(result.Ok()) << result.error;
+
+    const auto& ctx = result.protein->BuildContext();
+    EXPECT_FALSE(ctx.pdb_source.empty());
+    EXPECT_EQ(ctx.force_field, "ff14SB");
+    EXPECT_EQ(ctx.protonation_tool, "tleap");
+    EXPECT_FALSE(ctx.prmtop_path.empty());
+}
+
+
 // ============================================================================
 // Test 1: Pipeline attaches all results in correct order
 // ============================================================================

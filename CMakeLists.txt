@@ -244,8 +244,6 @@ add_library(nmr_shielding
     src/ApbsFieldResult.cpp
     src/ProtonationDetectionResult.cpp
     src/ProtonationState.cpp
-    src/PropkaProtonator.cpp
-    src/KamlProtonator.cpp
     src/ChargeSource.cpp
     src/AmberChargeResolver.cpp
     src/AmberLeapInput.cpp
@@ -629,7 +627,6 @@ nmr_test(conformation_scope_tests
         tests/test_pipeline_and_sample.cpp
         tests/test_planar_geometry_result.cpp
         tests/test_protonation_detection.cpp
-        tests/test_protonation_pipeline.cpp
         tests/test_ring_susceptibility_result.cpp
         tests/test_topology_sidecar.cpp
         tests/test_traversal_dump.cpp
