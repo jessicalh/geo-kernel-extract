@@ -349,6 +349,14 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
             : static_cast<int32_t>(r.fused_partner_index);
         std::memcpy(row + off, &fp, 4); off += 4;
 
+        if (off != kRingRecordSize) {
+            std::fprintf(stderr,
+                "FATAL: TopologySidecar::WriteRings record-size mismatch "
+                "at aromatic row %zu: wrote %zu, expected %zu.\n",
+                ai, off, kRingRecordSize);
+            std::abort();
+        }
+
         membership_rows += r.atom_indices.size();
     }
 
@@ -374,6 +382,14 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
         // fused in our chemistry).
         const int32_t fp = -1;
         std::memcpy(row + off, &fp, 4); off += 4;
+
+        if (off != kRingRecordSize) {
+            std::fprintf(stderr,
+                "FATAL: TopologySidecar::WriteRings record-size mismatch "
+                "at saturated row %zu: wrote %zu, expected %zu.\n",
+                si, off, kRingRecordSize);
+            std::abort();
+        }
 
         membership_rows += r.atom_indices.size();
     }
