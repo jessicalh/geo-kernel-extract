@@ -1,32 +1,9 @@
 #pragma once
 //
-// AmberPreparedChargeSource: produces an authoritative AMBER PRMTOP at
-// run time via tleap when the flat ff14SB parameter file cannot
-// represent the protein, then reads CHARGE/RADII back onto the
-// extractor's atoms.
-//
-// Pipeline (LoadCharges):
-//   1. Hard preconditions (std::abort on violation; re-tleap protection):
-//        - protein.HasForceFieldCharges() must be false
-//        - protein.BuildContext().prmtop_path must be empty
-//   2. Resolve tleap binary (config_.tleap_path or RuntimeEnvironment::Tleap()).
-//   3. Make a deterministic work directory under TmpDir.
-//   4. Generate input PDB from typed Protein state via
-//      amber_leap::GenerateAmberPdb (handles AMBER residue naming for
-//      HID/HIE/HIP, CYX from typed disulfide detection, ASH/GLH/CYM/LYN
-//      variant naming, and ACE/NME caps under
-//      UseCappedFragmentsForUnsupportedTerminalVariants).
-//   5. Generate LEaP script via amber_leap::GenerateLeapScript.
-//   6. Run tleap as a subprocess; parse the resulting PRMTOP for
-//      ATOM_NAME / RESIDUE_LABEL / RESIDUE_POINTER / CHARGE / RADII.
-//   7. Map PRMTOP atoms back to extractor atom indices via the
-//      ResidueAmberMapping built in step 4 (NONE_FOR_CAP-tagged
-//      residues are dropped from the mapping).
-//
-// Configurable via AmberSourceConfig:
-//   - preparation_policy (FailOnUnsupported | UseCappedFragments | UseStockTermini)
-//   - tleap_path (overrides RuntimeEnvironment::Tleap() if non-empty)
-//   - work_dir   (overrides RuntimeEnvironment::TempFilePath if non-empty)
+// Runtime AMBER PRMTOP preparation for proteins the flat ff14SB table cannot
+// represent. LoadCharges requires a protein without existing force-field
+// charges and without build_context.prmtop_path, writes a generated PDB and
+// LEaP script, runs tleap, then maps CHARGE/RADII back to extractor atoms.
 //
 
 #include "AmberChargeResolver.h"
@@ -60,8 +37,6 @@ public:
         const ProteinConformation& conf,
         std::string& error_out) const override;
 
-    // Inspection accessors (used by tests in step 4 and by the
-    // LoadCharges body in step 5).
     AmberPreparationPolicy Policy() const { return policy_; }
     const AmberFlatTableCoverageVerdict& Reason() const { return reason_; }
     const AmberSourceConfig& Config() const { return config_; }

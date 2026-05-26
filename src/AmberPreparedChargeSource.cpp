@@ -38,7 +38,7 @@ std::string AmberPreparedChargeSource::Describe() const {
         << AmberPreparationPolicyName(policy_)
         << ":reason=" << reason_.Detail();
 
-    // Methods-text-facing summary of capping decisions, when applicable.
+    // Keep capped-fragment decisions visible in the source description.
     if (policy_ == AmberPreparationPolicy::
             UseCappedFragmentsForUnsupportedTerminalVariants) {
         bool first = true;
@@ -127,12 +127,6 @@ AmberPreparedChargeSource::DisulfidePairs1Based() const {
     return pairs;
 }
 
-// ============================================================================
-// Local PRMTOP section readers. Duplicated from OrcaRunLoader.cpp /
-// PrmtopChargeSource.cpp; unifying the three copies into a shared
-// PrmtopParser is a queued post-slice cleanup.
-// ============================================================================
-
 namespace {
 
 std::vector<std::string> ReadPrmtopFlagLines(const std::string& path,
@@ -194,9 +188,7 @@ std::vector<std::string> ReadPrmtopStrings(const std::string& path,
              pos + static_cast<size_t>(field_width) <= line.size();
              pos += field_width) {
             std::string token = line.substr(pos, field_width);
-            // Trim trailing spaces.
             while (!token.empty() && token.back() == ' ') token.pop_back();
-            // Trim leading spaces.
             size_t lead = 0;
             while (lead < token.size() && token[lead] == ' ') ++lead;
             token = token.substr(lead);
@@ -312,7 +304,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
     const std::string inpcrd_path  = work_dir + "/prep.inpcrd";
     const std::string log_path     = work_dir + "/tleap.log";
 
-    // 1. Generate PDB + populate residue_mapping_ + disulfide_extractor_pairs_.
+    // GeneratedPdb also populates residue_mapping_ and disulfide pairs.
     {
         std::ofstream pdb_out(pdb_path);
         if (!pdb_out) {
@@ -322,7 +314,6 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         pdb_out << GeneratedPdb(conf);
     }
 
-    // 2. Generate LEaP script.
     {
         std::ofstream script_out(script_path);
         if (!script_out) {
@@ -332,7 +323,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         script_out << GeneratedLeapScript(pdb_path, prmtop_path, inpcrd_path);
     }
 
-    // 3. Run tleap. Stdout/stderr to log file.
+    // Capture tleap stdout/stderr in the work directory.
     const std::string cmd = tleap_bin + " -f " + script_path +
                             " > " + log_path + " 2>&1";
     int rc = std::system(cmd.c_str());
@@ -343,7 +334,6 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         return {};
     }
 
-    // 4. Parse PRMTOP fields.
     auto prmtop = ReadPrmtopFields(prmtop_path);
     if (!prmtop.Ok()) {
         error_out = "AmberPreparedChargeSource: PRMTOP parse failed: " +
@@ -351,8 +341,7 @@ std::vector<AtomChargeRadius> AmberPreparedChargeSource::LoadCharges(
         return {};
     }
 
-    // 5. Atom mapping: walk PRMTOP atoms, map to extractor atoms by
-    //    (extractor residue index from residue_mapping_, atom name).
+    // Map PRMTOP atoms by residue_mapping_ plus atom name.
     if (residue_mapping_.extractor_index_for_prmtop_residue.size() !=
             prmtop.residue_labels.size()) {
         error_out = "AmberPreparedChargeSource: residue_mapping has " +

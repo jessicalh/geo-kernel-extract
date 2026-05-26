@@ -164,24 +164,15 @@ std::vector<std::string> AtomNameCandidates(
 
 }  // namespace
 
-// ============================================================================
-// ParamFileChargeSource: ff14SB from the flat parameter file.
-//
 // The flat file is string-keyed, so string lookup is unavoidable inside this
-// construction-boundary adapter. It produces only AtomChargeRadius rows for the
-// prepared ForceFieldChargeTable; ChargeAssignmentResult is only a projection.
-// ============================================================================
+// construction-boundary adapter.
 
 std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
         const Protein& protein,
         const ProteinConformation& conf,
         std::string& error_out) const {
 
-    // Single source of truth for "can the flat table cover this protein."
-    // The verdict is the typed predicate; this loader only runs when the
-    // verdict is satisfiable. The early-fail message preserves the
-    // existing test contract (terminal_token + ff_resname + "no canonical
-    // fallback" substrings).
+    // Keep the coverage predicate and this parser in lockstep.
     auto verdict = AnalyzeFlatTableCoverage(protein, path_);
     if (!verdict.Ok()) {
         error_out = verdict.Detail();
@@ -203,9 +194,7 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
         const Atom& identity = protein.AtomAt(ai);
         const Residue& res = protein.ResidueAt(identity.residue_index);
 
-        // PDB LOADING BOUNDARY: variant residue name for param lookup.
-        // The verdict already proved every (terminal, resname, atom)
-        // triple resolves; here we only need the value.
+        // The verdict already proved every (terminal, residue, atom) triple.
         std::string ff_resname;
         std::string variant_error;
         if (!Ff14sbVariantResidueName(
@@ -260,23 +249,9 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
 }
 
 
-// GmxTprChargeSource::LoadCharges retired 2026-05-04 to
-// tests/bones/src/GmxTprChargeSource_excerpt.cpp.
-
-
-// ============================================================================
-// PrmtopChargeSource: AMBER prmtop format parser.
-//
-// PDB LOADING BOUNDARY: reads Fortran-formatted text sections from the
-// AMBER topology file. After parsing, everything is doubles.
-//
-// Format: sections delimited by %FLAG <NAME> / %FORMAT(<fmt>)
-// Charges: %FLAG CHARGE, format 5E16.8, AMBER internal units (e * 18.2223)
-// Radii: %FLAG RADII, format 5E16.8, PB radii in Angstroms
-// ============================================================================
-
 // Read a section of doubles from a prmtop file.
-// Reads all values after %FLAG <flag_name> until the next %FLAG.
+// Sections are delimited by %FLAG <NAME> / %FORMAT(<fmt>); CHARGE and RADII
+// use 5E16.8 fields in the topology files this loader accepts.
 static std::vector<double> ReadPrmtopSection(const std::string& path,
                                               const std::string& flag_name) {
     std::vector<double> values;
@@ -300,8 +275,7 @@ static std::vector<double> ReadPrmtopSection(const std::string& path,
         if (in_section && found_format) {
             if (line.find("%FLAG") != std::string::npos) break;  // next section
 
-            // Parse space-separated or fixed-width Fortran doubles
-            // E16.8 format: 5 values per line, 16 chars each
+            // Fixed-width Fortran E16.8: five values per full line.
             for (size_t pos = 0; pos + 15 < line.size(); pos += 16) {
                 std::string token = line.substr(pos, 16);
                 double val = 0.0;
@@ -309,7 +283,7 @@ static std::vector<double> ReadPrmtopSection(const std::string& path,
                     values.push_back(val);
                 }
             }
-            // Handle lines shorter than a full row
+            // The final row may contain fewer than five values.
             if (line.size() > 0 && line.size() % 16 != 0) {
                 size_t last_start = (line.size() / 16) * 16;
                 if (last_start < line.size()) {
@@ -353,7 +327,7 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
         return {};
     }
 
-    // RADII section may be absent in older prmtops
+    // Older PRMTOPs may omit RADII.
     if (raw_radii.size() < n_protein) {
         error_out = "prmtop has " + std::to_string(raw_radii.size()) +
                     " PB radii, protein needs " + std::to_string(n_protein);
@@ -362,7 +336,7 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
 
     std::vector<AtomChargeRadius> result(n_protein);
     for (size_t i = 0; i < n_protein; ++i) {
-        // Convert from AMBER internal units to elementary charges
+        // Convert from AMBER internal units to elementary charges.
         result[i].partial_charge = raw_charges[i] / AMBER_PRMTOP_CHARGE_FACTOR;
         result[i].pb_radius = raw_radii[i];
         result[i].status = ChargeAssignmentStatus::Matched;
@@ -375,10 +349,6 @@ std::vector<AtomChargeRadius> PrmtopChargeSource::LoadCharges(
     return result;
 }
 
-
-// ============================================================================
-// PreloadedChargeSource
-// ============================================================================
 
 std::vector<AtomChargeRadius> PreloadedChargeSource::LoadCharges(
         const Protein& /*protein*/,
