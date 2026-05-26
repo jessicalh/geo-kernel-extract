@@ -26,7 +26,9 @@ stored in mixed units matching the old project:
 - Geometric kernel G: dimensionless (after PPM_FACTOR multiplication)
 - Dipolar kernel K: Angstrom^-3 (1/r^3 with r in Angstroms)
 - EFG: V/Angstrom^2 (from charge in e, distance in Angstroms)
-- Shielding contribution: ppm (kernel × parameter)
+- Shielding contribution: the stored `*_shielding_contribution` is the
+  bare decomposed kernel in natural units; ppm only after calibration
+  multiplies the parameter (the system outputs kernels, not shielding)
 
 Unit conversion for Biot-Savart:
 ```
@@ -552,17 +554,24 @@ each ring vertex, via the C6 dispersion coefficient.
 
 **Geometric kernel** (per ring, summed over vertices):
 ```
-K_disp_ab = sum_vertices C6 * (3 d_a d_b / r^8 - delta_ab / r^6)
-disp_scalar = sum_vertices C6 / r^6
+K_disp_ab = sum_vertices S(r) * (3 d_a d_b / r^8 - delta_ab / r^6)
+disp_scalar = sum_vertices S(r) / r^6
 ```
-where d = r_atom - r_vertex, r = |d|.
+where d = r_atom - r_vertex, r = |d|, and S(r) is the C1-continuous
+CHARMM switching function (Brooks 1983): 1 below R_switch = 4.3 A,
+tapering smoothly to 0 at R_cut = 5.0 A (DispersionResult.cpp). The
+geometric kernel is bare (Angstrom^-6); the dispersion coefficient
+alpha_disp is applied at calibration.
 
 **T2 structure**: Similar to the dipolar kernel but with 1/r^6 decay
 (isotropic) and 1/r^8 (anisotropic). The anisotropic part is small
 relative to the isotropic part. T2 is present but typically dominated
 by McConnell and ring current T2.
 
-Distance filter: R_MIN = 1.5 A to R_CUT = 5.0 A per vertex.
+Distance handling (DispersionResult.cpp): through-bond vertex exclusion
++ DipolarNearFieldFilter near contact, the S(r) taper from R_switch =
+4.3 A to R_cut = 5.0 A, and a 0.1 A singularity guard. (There is no
+1.5 A R_MIN.)
 
 ---
 

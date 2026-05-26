@@ -198,10 +198,12 @@ pipeline is
 identical to every other path.
 
 The ChargeSource hierarchy (ChargeSource.h) enforces this:
-ParamFileChargeSource (ff14SB), PrmtopChargeSource (AMBER prmtop),
-GmxTprChargeSource (GROMACS TPR), PreloadedChargeSource (pre-read
-values). Each is a distinct type that knows its force field
-(ForceField enum) and how to match charges to atoms.
+ParamFileChargeSource (ff14SB flat file), PrmtopChargeSource (AMBER
+prmtop), PreloadedChargeSource (caller-supplied; the GROMACS-TPR
+trajectory path reports ChargeModelKind::GromacsTpr), and
+AmberPreparedChargeSource (runtime tleap -> PRMTOP). Each is a distinct
+type that knows its force field (ForceField enum) and how to match
+charges to atoms.
 
 ---
 

@@ -4,6 +4,8 @@ Small directory. Contains:
 
 - `cleanup-config-cmake-audit-2026-05-25.md` — working inventory for the
   general cleanup, runtime/config cleanup, and CMake/install cleanup pass.
+- `proper-program-phase-2026-05-25.md` — working tracker for the
+  pre-Doxygen "proper program" doc/comment cleanup phase.
 - `bones/` — retired design records, working notes, session handoffs.
   **Archaeology only — do not consult to drive new work.** Decisions
   themselves are in `master`; bones is prose history.
