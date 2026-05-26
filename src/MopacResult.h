@@ -1,6 +1,6 @@
 #pragma once
 //
-// MopacResult: PM7+MOZYME semiempirical calculation via libmopac.
+// MopacResult: PM7+MOZYME semiempirical calculation (MOPAC).
 //
 // Provides per-atom Mulliken charges, orbital populations (s, p),
 // Wiberg bond orders (continuous, conformation-dependent), heat of
@@ -8,17 +8,11 @@
 //
 // Dependencies: none.
 //
-// Calls MOPAC via run_mopac_from_input() (linked libmopac, in-process).
-// Writes a .mop input file to RuntimeEnvironment::TempFilePath,
-// MOPAC writes the .out alongside it, we parse both structured API
-// output and text output for orbital populations.
-//
-// Replaces XtbChargeResult. Same tier in OperationRunner (0.5).
-//
-// Future consumers:
-//   MopacCoulombResult — ChargeAt(i) for QM-derived EFG
-//   MopacBondAnisotropyResult — BondOrder(a,b) for delta-chi modulation
-//   DipolarNearFieldFilter — mopac_p_pop for lobe offset calibration
+// Runs the MOPAC binary as a subprocess (RuntimeEnvironment::Mopac()):
+// writes a .mop input to RuntimeEnvironment::TempFilePath, MOPAC writes
+// the .out alongside it, and we parse the .out text. The in-process
+// run_mopac_from_input() is deliberately not used — it leaves Fortran
+// I/O buffers unflushed, so the .out is incomplete when read.
 //
 
 #include "ConformationResult.h"

@@ -42,7 +42,7 @@ public:
 
     // ── Build ────────────────────────────────────────────────────
 
-    // Parse md.tpr from dir_path; build Protein + charges + bonded
+    // Parse production.tpr from dir_path; build Protein + charges + bonded
     // params. Does not seat conformation 0 (Seed does that on first
     // frame). Returns false on error; call Error() for the message.
     bool BuildFromTrajectory(const std::string& dir_path);

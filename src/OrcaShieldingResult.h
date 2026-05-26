@@ -10,7 +10,7 @@
 //
 // Each protein gets its own OrcaShieldingResult on its own conformation.
 // WT and mutant are separate proteins with separate results. Comparison
-// between them is done by MutantProteinConformationComparison, not here.
+// between them is done by MutationDeltaResult, not here.
 //
 
 #include "ConformationResult.h"

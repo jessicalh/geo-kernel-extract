@@ -262,7 +262,7 @@ public:
     // === ORCA DFT shielding (OrcaShieldingResult) ===
     // Per-conformation: THIS protein's DFT shielding at this atom.
     // WT and mutant are separate Proteins with separate conformations.
-    // Comparison is done by MutantProteinConformationComparison, not here.
+    // Comparison is done by MutationDeltaResult, not here.
     Mat3 orca_shielding_total = Mat3::Zero();
     SphericalTensor orca_shielding_total_spherical;
     Mat3 orca_shielding_diamagnetic = Mat3::Zero();
