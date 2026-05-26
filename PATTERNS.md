@@ -60,7 +60,7 @@ through the Protein back-pointer, never duplicated on ConformationAtom.
 
 ```cpp
 // Identity — from Protein (never changes with geometry)
-const auto& identity = conf.Protein().AtomAt(42);
+const auto& identity = conf.ProteinRef().AtomAt(42);
 Element elem = identity.element;
 
 // Computed data — from ConformationAtom (geometry-dependent)
@@ -95,7 +95,8 @@ safe — each field has exactly one writer.
 
 Each result declares its dependencies as type_index values. Checked
 at AttachResult() time. If a dependency is missing, the attach fails
-with a diagnostic message stating what is attached, what is missing.
+with a diagnostic message naming the rejected result and what is attached
+(it does not name the missing dependency type).
 
 ```cpp
 std::vector<std::type_index> Dependencies() const override {
@@ -164,7 +165,7 @@ Every calculator has a mathematical equation. The code and the equation
 live side by side:
 
 ```cpp
-// McConnell: T_ab = Delta_chi * (3 * d_a * d_b / r^5 - delta_ab / r^3)
+// a dipolar anisotropy tensor (illustrative; McConnell's stored shielding is the fuller asymmetric M)
 Mat3 T = delta_chi * (3.0 * d * d.transpose() / std::pow(r, 5)
                      - Mat3::Identity() / std::pow(r, 3));
 ```
@@ -196,7 +197,7 @@ does not need to know which ring type it is processing.
 
 ```cpp
 double I = ring.Intensity();         // -12.0 for PHE, -5.16 for HIS
-double d = ring.JBLobeOffset();    // 0.64 for PHE, 0.50 for HIS
+double d = ring.JohnsonBoveyLobeOffset();  // 0.64 for PHE, 0.50 for HIS
 ```
 
 ### 13. TrajectoryAtom: private construction, three coexisting shapes
@@ -212,8 +213,8 @@ Per-atom trajectory-scope data lives in three coexisting shapes on
   structure motivates the substruct shape.
 - **Typed struct vectors for known-shape per-source data**, parallel
   to `ConformationAtom::ring_neighbours`. Aspirational; no current
-  fields but the shape is reserved (e.g. future
-  `RingNeighbourhoodTrajectoryStats`).
+  fields but the shape is reserved for future per-source trajectory stats.
+  (`RingNeighbourhoodTrajectoryStats` is already a live realization.)
 - **`RecordBag<AtomEvent> events`** — open-shape event bag for
   scan-mode detectors and lifetime/transition accumulators. Same
   `RecordBag<Record>` template as the run-scope selection bag.
@@ -257,9 +258,9 @@ attach** — factories that size per-bond or per-ring state will
 silently allocate zero otherwise. Factories are not intrinsically
 wrong to look at `BondCount`/`RingCount`; the ordering must support it.
 
-The handler (`GromacsFrameHandler`) is a pure reader: Open mounts TRR
-+ MoleculeWholer from TPR, `ReadNextFrame` reads + PBC-fixes + splits
-protein/solvent. No OperationRunner, no env writes, no TrajectoryResult
+The handler (`GromacsFrameHandler`) is a pure reader: Open mounts the TRR
+stream (the TPR was already parsed); `ReadNextFrame` reads + PBC-fixes
+(MakeProteinWhole) + splits protein/solvent. No OperationRunner, no env writes, no TrajectoryResult
 dispatch — those are `Trajectory::Run`'s job. Handler name stays
 format-specific (GROMACS-specific); additional trajectory formats get
 sibling reader classes, not virtual-base hierarchy.
@@ -386,7 +387,8 @@ data. Its API is string-based — you give it a residue code string and
 get back atom name strings and bond pair strings. This is correct and
 necessary AT LOADING TIME.
 
-After loading, no code ever calls cifpp again. The typed objects
+After loading, identity/topology comes from the typed objects, not cifpp
+(the lone later cif++ use is DsspResult parsing a temp PDB for DSSP). The typed objects
 (AminoAcidType, NamingRegistry, Ring type classes, AtomRole enum)
 are the runtime authorities. They were built from cifpp data during
 PDB loading. They ARE the typed boundary.
@@ -478,9 +480,9 @@ Do not create exception classes. Do not inherit from std::exception.
 Do not use std::expected or std::error_code. Return a status. Check it.
 If something fails, say what failed and what the values were. Simple
 control flow. The system is one-way and processes one protein at a time.
-There is nothing to unwind. Four catch blocks exist at external library
-boundaries (cif++ parsing, DSSP, stoi, UDP socket) — these are
-acceptable at the boundary. Do not add catch blocks in calculator,
+There is nothing to unwind. Catch blocks are limited to external-resource
+boundaries (cif++ parsing, DSSP, stoi, UDP socket, plus a few DB/model-load
+fallbacks) — acceptable at the boundary. Do not add catch blocks in calculator,
 result, or pipeline code.
 
 ### The utility namespace
@@ -489,7 +491,7 @@ Do not create files named Utility.h, Helpers.h, Utils.cpp, Common.h.
 Do not create namespaces named util, helpers, common, or misc. If a
 function belongs to a type, put it on the type. If it does not belong
 to any type, it probably does not need to exist. SphericalTensor has
-Decompose(). Ring has intensity(). Vec3 has normalized(). These exist.
+Decompose(). Ring has Intensity(). Vec3 has normalized(). These exist.
 
 ### Configuration objects for physics constants
 
@@ -520,8 +522,7 @@ Two homes, no exceptions:
   parameters: cutoffs, intensities, guard thresholds.  These are what
   the calibration pipeline optimises.
 - **`PhysicalConstants.h`** — reference data from published sources:
-  Bondi radii, D4 EEQ element parameters, unit conversions, quadrature
-  weights.  Not tuneable.  Every entry has a citation comment with
+  Bondi radii, D4 EEQ element parameters, unit conversions.  Not tuneable.  Every entry has a citation comment with
   author, year, and DOI or ISBN.
 
 If a number comes from a paper and the thesis must cite it, it goes in
@@ -688,7 +689,7 @@ root (`cd build && cmake .. && make -j$(nproc)`).
 
 ## Lessons Learned
 
-### 1. Back-pointer safety: Protein is non-movable (Protein.h:32-33)
+### 1. Back-pointer safety: Protein is non-movable (Protein.h:44-47)
 
 Protein owns conformations via `vector<unique_ptr<ProteinConformation>>`.
 Each conformation holds a raw `const Protein*` back-pointer. If the
@@ -1043,7 +1044,7 @@ convention") creates pages of undifferentiated stuff that compound
 in cognitive cost with each addition. Pre-empt by grouping into
 named substructs at the level where structure exists.
 
-For Welford rollups specifically: each Welford TR's state lives in
+For Welford rollups specifically: each per-atom Welford TR's state lives in
 a per-Welford struct on TrajectoryAtom (`bs_welford`, `hm_welford`,
 ...) containing typed `WelfordMoments` substructs for each channel
 (`t0`, per-component T1 array, per-component T2 array, |T2|, drift
@@ -1125,7 +1126,7 @@ chain from raw sum to stored field must be traceable:
 
     Coulomb: q in e, r in A → raw sum in e/A² → × ke (14.3996 V·A) → V/A
     APBS: native kT/(e·A) → × kT/e (0.025693 V) → V/A
-    Biot-Savart: A → m → SI Tesla → × PPM_FACTOR → × I → ppm
+    Biot-Savart: unit current (1 nA) → SI Tesla → × PPM_FACTOR → ppm·T/nA bare kernel (intensity I applied at calibration, not here)
 
 If two fields are compared (e.g., solvent = APBS − vacuum), they
 must be in the same units. The Coulomb constant k_e = 14.3996 V·A
@@ -1257,7 +1258,7 @@ Per-atom trajectory data lives in two shapes:
   McConnell) carries `WelfordMoments` channels for T0 / T1[3] / T2[5]
   / |T2| plus three delta variants on T0; scalar-source Welfords (Eeq,
   Sasa, HBondCount) carry the same minus the tensor channels.
-  TrajectoryAtom holds one `*WelfordState` substruct per Welford TR.
+  TrajectoryAtom holds one `*WelfordState` substruct per per-atom Welford TR (per-bond Welfords like MopacBondOrder keep state in the result).
 
 Accumulator implementation objects (`Welford`, rolling windows,
 full-history buffers) live inside the owning TR, not on
@@ -1329,8 +1330,8 @@ legitimate TR write surface stays public: `MutableAtomAt(i)`,
   earlier in the same frame, which means the writer's factory comes
   first in the configuration's factory list.
 - **Handler is a pure reader.** `GromacsFrameHandler::Open` mounts
-  the TRR stream and builds the PBC fixer from the TPR;
-  `ReadNextFrame` reads, PBC-fixes, and splits. No OperationRunner
+  the TRR stream (TPR already parsed); `ReadNextFrame` reads, PBC-fixes
+  (MakeProteinWhole), and splits. No OperationRunner
   invocation, no writes to `traj.env_`, no awareness of TRs.
   Orchestration lives in `Trajectory::Run`. Additional trajectory
   formats would be sibling reader classes, not a virtual-base
@@ -1356,7 +1357,7 @@ eight-phase loop in the test body. The 2026-04-24 refactor
 pattern 14 enforcement made them fail to compile. Layer 0 discipline
 tests per TR — frame-0 semantics (stride ≥ fixture length), Finalize
 idempotency, H5 round-trip — live alongside the integration test.
-Template: `tests/test_gromacs_streaming.cpp:BondLengthStats{EndToEnd,Frame0Semantics,FinalizeIdempotency,H5RoundTrip}`.
+Template: `tests/test_amber_streaming.cpp` (AmberStreaming suite): BondLengthStats {EndToEnd, Frame0Semantics, FinalizeIdempotency, H5RoundTrip}.
 
 ### 16. RecordBag<Record>: shared vocabulary at two scopes
 
