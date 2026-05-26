@@ -7,11 +7,6 @@
 
 namespace nmr {
 
-
-// ============================================================================
-// Typed factory: assign charges from any ChargeSource.
-// ============================================================================
-
 std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,
         const ChargeSource& source) {
@@ -64,10 +59,6 @@ std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
 
     return result;
 }
-
-// ============================================================================
-// Compute: ff14SB from param file (convenience, delegates to typed path)
-// ============================================================================
 
 std::unique_ptr<ChargeAssignmentResult> ChargeAssignmentResult::Compute(
         ProteinConformation& conf,

@@ -1,19 +1,7 @@
 #pragma once
 //
-// ProtonationState: per-residue protonation decisions for a protein.
-//
-// This is load-bearing, not metadata:
-//   - Determines partial charges (ASP=-1, ASH=0)
-//   - Determines ring type (HID vs HIE vs HIP → different RingTypeIndex)
-//   - Determines which atoms exist (ASH has one more H than ASP)
-//   - Is the input to tleap (ORCA prep) and pdb2gmx (GROMACS prep)
-//
-// A ProtonationState is a VALUE TYPE. It is created by a protonation tool
-// (PROPKA, KaML, tleap default) and consumed by a topology builder (tleap,
-// pdb2gmx) to produce a Protein with the correct hydrogen atoms and charges.
-//
-// The variant index into AminoAcidType::variants is the canonical form.
-// The NamingRegistry translates to tool-specific names at the tool boundary.
+// Per-residue protonation decisions. variant_index is an index into
+// AminoAcidType::variants; -1 means the default charged form.
 //
 
 #include "Types.h"
@@ -24,7 +12,6 @@
 
 namespace nmr {
 
-// Per-residue protonation decision.
 struct ResidueProtonation {
     size_t residue_index = std::numeric_limits<size_t>::max();
     AminoAcid amino_acid = AminoAcid::Unknown;
@@ -42,46 +29,31 @@ public:
                      ProtonationTool tool, const std::string& tool_version)
         : name_(name), pH_(pH), tool_(tool), tool_version_(tool_version) {}
 
-    // An empty state means no protonation decisions have been made.
-    // Crystal structures without hydrogens start here.
     bool IsEmpty() const { return residues_.empty() && tool_ == ProtonationTool::Manual; }
 
-    // Identity
     const std::string& Name() const { return name_; }
     double pH() const { return pH_; }
     ProtonationTool Tool() const { return tool_; }
     const std::string& ToolVersion() const { return tool_version_; }
 
-    // Add a per-residue decision.
     void AddResidue(ResidueProtonation decision);
 
-    // Number of residues with protonation decisions.
     size_t DecisionCount() const { return residues_.size(); }
 
-    // All decisions.
     const std::vector<ResidueProtonation>& Decisions() const { return residues_; }
 
     // Lookup by residue index. Returns nullptr if no decision for this residue.
     const ResidueProtonation* ForResidue(size_t residue_index) const;
 
-    // Net formal charge from the decisions stored here.
-    // Only counts residues with explicit decisions. For a complete protein
-    // net charge, use NetChargeForProtein() which includes residues at
-    // their default charged state (ARG +1, LYS +1, ASP -1, GLU -1, etc.).
-    // Does NOT include backbone termini — those are from the topology builder.
+    // Only counts explicit decisions; termini are not included.
     int NetDecisionCharge() const;
 
-    // Net formal charge for a whole protein given this protonation state.
-    // For each titratable residue: uses the decision if present, else the
-    // default charged state from AminoAcidType::charged_formal_charge.
-    // Non-titratable residues contribute 0.
-    // residue_types: the AminoAcid enum for each residue in the protein.
+    // Includes default charged states for residue_types without explicit
+    // decisions; termini are not included.
     int NetChargeForProtein(const std::vector<AminoAcid>& residue_types) const;
 
-    // Human-readable summary.
     std::string Describe() const;
 
-    // Value semantics.
     bool operator==(const ProtonationState& other) const;
     bool operator!=(const ProtonationState& other) const { return !(*this == other); }
 

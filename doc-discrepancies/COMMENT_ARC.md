@@ -122,7 +122,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
   PhysicalConstants, SolventEnvironment. Docs: OM, CON, PF.
 - [x] **G3 — topology & perception.** CovalentTopology, RingTopology,
   MolecularGraphResult, LegacyAmberTopology, LarsenResidue, NamingRegistry. Docs: OM, CON, PAT.
-- [ ] **G4 — charge / force field / protonation / readers.** ChargeSource,
+- [x] **G4 — charge / force field / protonation / readers.** ChargeSource,
   AmberChargeResolver, AmberPreparedChargeSource, AmberLeapInput,
   ForceFieldChargeTable, ChargeAssignmentResult, ProtonationState,
   ProtonationDetectionResult, ReduceProtonation, PdbFileReader,
