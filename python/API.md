@@ -61,7 +61,7 @@ p.ring_contributions    RingContributions (P, 58)
 p.ring_geometry         RingGeometry (R, 10)
 ```
 
-P = number of (atom, ring) pairs evaluated.  R = number of rings.
+P = number of (atom, aromatic_ring) pairs evaluated.  R = number of aromatic rings.
 
 ### Bond calculators
 
@@ -87,7 +87,7 @@ p.dssp_ss8              ndarray (N, 8) | None — 8-class SS one-hot (H/G/I/E/B/
 p.dssp_hbond_energy     ndarray (N, 4) | None — H-bond energies (acc0/acc1/don0/don1, kcal/mol)
 p.dssp_chi              ndarray (N, 12) | None — chi1-4 cos/sin/exists (4 x 3 cols)
 p.sasa                  ndarray (N,) | None — per-atom Shrake-Rupley SASA (A^2)
-p.sasa_normal           ndarray (N, 3) | None — outward surface normal (unit vector, zero for buried)
+p.sasa_normal           VectorField (N, 3) | None — outward surface normal (unit vector, zero for buried)
 ```
 
 ### Optional groups (None if not extracted)
@@ -114,7 +114,7 @@ p.delta                 DeltaGroup | None
   .shielding            ShieldingTensor (N, 9)
   .scalars              DeltaScalars (N, 6)
   .apbs                 DeltaAPBS (N, 12) | None
-  .ring_proximity       DeltaRingProximity (N, R*6)
+  .ring_proximity       DeltaRingProximity (N, 6*n_removed_rings)
 
 p.aimnet2               AIMNet2Group | None
   .charges              AIMNet2Charges (N,) — Hirshfeld charges
@@ -158,9 +158,9 @@ p.bonded_energy         ndarray (N, 7) | None — per-atom GROMACS bonded terms
 
 p.planar_geometry       PlanarGeometryGroup | None
   .pyramidalization     ndarray (N,) — signed sp2 out-of-plane displacement (A)
-  .omega_actual         ndarray (R,) — per-residue omega (Ca-C-N-Ca'), radians
-  .omega_deviation      ndarray (R,) — omega - pi, wrapped
-  .omega_is_xpro        ndarray (R,) — X->Pro mask (cis/trans is real signal there)
+  .omega_actual         ndarray (n_residues,) — per-residue omega (Ca-C-N-Ca'), radians
+  .omega_deviation      ndarray (n_residues,) — omega - pi, wrapped
+  .omega_is_xpro        ndarray (n_residues,) — X->Pro mask (cis/trans is real signal there)
   .aromatic_chi2        ndarray — per-aromatic-ring chi2 (ring-flip observable)
   .pucker_Q             ndarray — Cremer-Pople amplitude (saturated 5-rings, A)
   .pucker_theta         ndarray — Cremer-Pople phase (degrees)
@@ -189,7 +189,7 @@ p.larsen_hbond          LarsenHBondGroup | None — Larsen 2015 H-bond terms (pp
   .pHB_1 .pHB_2         ShieldingTensor (N, 9) — primary/secondary amide-H (HB)
   .pHaB_1 .pHaB_2       ShieldingTensor (N, 9) — primary/secondary Halpha (HaB)
   .diagnostic_CB        ShieldingTensor (N, 9) — Cbeta reality-check (should be ~0)
-  .water_term           ndarray (N,) — 2.07 ppm on solvent-exposed amide H
+  .water_term           ndarray (N,) — 2.07 ppm on amide H with zero geometric H-bond candidates
   .count                ndarray (N,) — contributing H-bond pair count
 ```
 
@@ -272,7 +272,7 @@ mc.as_block()           # ndarray (N, 5, 5)
 
 ## RingContributions
 
-Sparse (P, 58) table — one row per (atom, ring) pair.
+Sparse (P, 58) table — one row per (atom, aromatic_ring) pair.
 
 ```python
 rc = p.ring_contributions
@@ -374,7 +374,7 @@ Produced by HydrationGeometryResult from explicit-solvent trajectory.
 [3:6]   surface_normal     SASA-derived outward surface normal (unit vector)
 [6]     asymmetry          half-shell asymmetry using SASA normal (0-1)
 [7]     dipole_alignment   cos(net dipole, SASA normal) (-1 to +1)
-[8]     coherence          dipole coherence |sum d_i| / n (0-1)
+[8]     coherence          dipole coherence |sum d_i| / n_shell (e·Å)
 [9]     shell_count        first-shell water count
 ```
 
@@ -405,7 +405,8 @@ traj = load_trajectory("output/trajectory.h5",
 ```
 
 Returns a `TrajectoryData` for one protein from the analysis H5 master
-file (each C++ `TrajectoryResult` writes its own `/trajectory/<group>/`).
+file (TrajectoryResults that override WriteH5Group write their own
+`/trajectory/<group>/`; selections under `/trajectory/selections/<kind>/`).
 The reader detects the schema (current per-TR analysis vs legacy ensemble)
 and normalises positions to `(T, N, 3)`.
 
@@ -418,7 +419,8 @@ traj.frame_times        ndarray (T,) — ps
 
 ### Group accessors
 
-One accessor per TrajectoryResult family.  A field (or its sub-fields) is
+Most TrajectoryResult families have an accessor (some H5 groups have no SDK
+field yet, e.g. aimnet2_charge_time_series).  A field (or its sub-fields) is
 `None` when that TR did not run for the extraction that produced the H5 —
 the MOPAC groups in particular are absent unless the run was FullFat
 (`--mopac`).
@@ -451,7 +453,7 @@ traj.mopac_mc_shielding_time_series             (T0+T1+T2)
 traj.mopac_vs_ff14sb_reconciliation             signed cos(MOPAC_T2, FF14SB_T2)
 
 # Frame selection + legacy
-traj.selections         dict[kind -> list[SelectionRecord]] (RMSD spikes, chi rotamers, DFT poses)
+traj.selections         dict[kind -> list[SelectionRecordPy]] (RMSD spikes, chi rotamers, DFT poses)
 traj.rollup / traj.bonds  legacy ensemble-schema rollups only (None on analysis H5)
 ```
 
