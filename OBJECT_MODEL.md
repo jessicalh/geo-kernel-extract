@@ -79,18 +79,13 @@ Static methods:
 
 Both Mat3 AND SphericalTensor are stored. No conversion at point of use.
 
-### FieldValue
-A calculator result attributed to a specific source.
-
-| Property | Type | Unit | Description |
-|----------|------|------|-------------|
-| tensor | Mat3 | depends on calculator | Full 3x3 tensor |
-| spherical | SphericalTensor | same | Sphericart decomposition |
-| source_calculator | CalculatorId enum | - | Which calculator |
-| source_index | size_t | - | Index of source ring/bond/atom |
-
-Note: no string identifier for the source. CalculatorId enum is
-sufficient. Strings for identity are forbidden (see PATTERNS.md).
+### Per-source kernel storage (no FieldValue type)
+There is no `FieldValue` type. Per-source kernel data is stored on the
+typed neighbourhood structs — `RingNeighbourhood` (per nearby ring) and
+`BondNeighbourhood` (per nearby bond) — each carrying the source identity
+(ring/bond index and type) plus the calculator's `Mat3` tensor and
+`SphericalTensor` fields directly. No string identifier for the source;
+strings for identity are forbidden (see PATTERNS.md).
 
 ### KernelEvaluationFilter (ABC) and KernelFilterSet
 
@@ -1155,14 +1150,13 @@ inline constexpr int kAromaticRingTypeCount = 8;
 | radius | double | Angstroms | GeometryResult |
 | vertices | vector<Vec3> | Angstroms | GeometryResult |
 
-### Accumulated ring properties (dynamic, set by ConformationResult post-pass updates)
+### Ring-current data location (no per-ring accumulators)
 
-| Property | Type | Unit | Source result | Description |
-|----------|------|------|---------------|-------------|
-| total_B_at_center | Vec3 | Tesla (unit current, 1 nA) | BiotSavartResult | Sum of B from all OTHER rings at this ring's center |
-| intensity_used | double | nA/T | BiotSavartResult | The ring type's effective intensity |
-| total_G_T0_diagnostic | double | ppm·T/nA | BiotSavartResult | Sum of |G_T0| over all nearby atoms |
-| mutual_B_from | map<size_t, Vec3> | Tesla (unit current, 1 nA) | BiotSavartResult | B-field at this ring's center from ring[key] |
+Biot-Savart does not store per-ring accumulators on `Ring`
+(`total_B_at_center`, `intensity_used`, diagnostics, `mutual_B_from` are
+not `Ring` members). Per-ring-source kernel data is stored per-atom on
+`RingNeighbourhood`; per-atom totals (`total_B_field`, `total_G_tensor`,
+…) live on `ConformationAtom`.
 
 ### Query methods
 - `IsFused() -> bool`: fused_partner_index != SIZE_MAX
@@ -1266,31 +1260,13 @@ does NOT require modifying ProteinConformation.
     if (conformation.HasResult<MopacResult>()) { ... }
     for (auto& [type_id, result] : conformation.AllResults()) { ... }
 
-The named accessors below are convenience wrappers, not the mechanism:
-
-### Named result accessors
-
-| Accessor | Returns | Description |
-|----------|---------|-------------|
-| `Dssp()` | `DsspResult&` | Secondary structure, phi/psi, SASA, H-bonds |
-| `ChargeAssignment()` | `ChargeAssignmentResult&` | Partial charges, VdW radii |
-| `SpatialIndex()` | `SpatialIndexResult&` | KD-trees, neighbour lists |
-| `GeometryData()` | `GeometryResult&` | Ring/bond geometry, collections |
-| `Enrichment()` | `EnrichmentResult&` | Atom roles, categoricals |
-| `ApbsField()` | `ApbsFieldResult&` | Solvated E-field and EFG |
-| `MolecularGraph()` | `MolecularGraphResult&` | BFS topology, graph features |
-| `BiotSavart()` | `BiotSavartResult&` | Ring current geometric kernels |
-| `HaighMallion()` | `HaighMallionResult&` | Surface integral tensors |
-| `McConnell()` | `McConnellResult&` | Bond anisotropy tensors |
-| `Coulomb()` | `CoulombResult&` | Coulomb E-field and EFG |
-| `HBond()` | `HBondResult&` | H-bond geometry and tensors |
-| `Dispersion()` | `DispersionResult&` | London dispersion tensors |
-| `PiQuadrupole()` | `PiQuadrupoleResult&` | Quadrupole EFG |
-| `RingSusceptibility()` | `RingSusceptibilityResult&` | Ring susceptibility anisotropy |
-| `OrcaShielding()` | `OrcaShieldingResult&` | DFT shielding tensors |
-| `Result<MopacResult>()` | `MopacResult&` | MOPAC charges, orbital pops, bond orders |
-| `Result<MopacCoulombResult>()` | `MopacCoulombResult&` | Coulomb EFG from QM charges |
-| `Result<MopacMcConnellResult>()` | `MopacMcConnellResult&` | Bond-order-weighted anisotropy |
+There are no per-type named accessors (no `Dssp()`, `Coulomb()`, …).
+Access is uniform: `conf.Result<T>()` / `conf.HasResult<T>()`, where `T`
+is the result type — DsspResult, ChargeAssignmentResult, SpatialIndexResult,
+GeometryResult, EnrichmentResult, ApbsFieldResult, MolecularGraphResult,
+BiotSavartResult, HaighMallionResult, McConnellResult, CoulombResult,
+HBondResult, DispersionResult, PiQuadrupoleResult, RingSusceptibilityResult,
+OrcaShieldingResult, MopacResult, MopacCoulombResult, MopacMcConnellResult, …
 
 ### Result attachment
 
@@ -1351,92 +1327,25 @@ RingPair:
 
 ### Seven query patterns (Constitution requirement)
 
-1. **Nearest N rings by distance from point**
-   `NearestRings(Vec3 point, int n) -> vector<RingQueryResult>`
-   Returns: ring objects sorted by distance, each carrying geometry,
-   type properties, direction and distance FROM query point, cylindrical
-   coordinates of point in ring frame.
+The seven query capabilities (Constitution requirement) are provided by
+**SpatialIndexResult** (KD-trees over atoms / ring centres / bond
+midpoints), the pre-built collections on the conformation (`rings_by_type`,
+`ring_pairs`, `bonds_by_category`, `residues_by_type`), and
+`MolecularGraphResult` (BFS topology) — NOT by methods on
+ProteinConformation. The spatial queries return **index vectors** into the
+protein's atom/ring/bond lists; callers index back and read the stored
+`RingNeighbourhood` / `AtomNeighbour` records directly.
 
-2. **All rings filtered by type**
-   `RingsByType(RingTypeIndex type) -> const vector<size_t>&`
-   Returns: pre-built collection.
-
-3. **Ring pairs by mutual geometry**
-   `RingPairs() -> const vector<RingPair>&`
-   Returns: pre-built pairs.
-
-4. **Atoms filtered by role near point**
-   `AtomsByRole(AtomRole role, Vec3 point, double radius) -> vector<AtomQueryResult>`
-   Returns: intersection of role collection and spatial query.
-
-5. **Bonds filtered by category near point**
-   `BondsByCategory(BondCategory cat, Vec3 point, double radius) -> vector<BondQueryResult>`
-   Returns: intersection of category collection and spatial query.
-
-6. **Graph neighbours by bond count**
-   `GraphNeighbours(size_t atom, int max_bonds) -> vector<GraphNeighbour>`
-   Returns: atoms reachable within N bonds, with bond count and path.
-
-7. **Atoms filtered by element within radius**
-   `AtomsByElement(Element elem, Vec3 point, double radius) -> vector<AtomQueryResult>`
-
-### Query result types
-
-RingQueryResult:
-| Field | Type | Unit | Description |
-|-------|------|------|-------------|
-| ring_index | size_t | - | Into protein's ring list |
-| ring | const Ring& | - | Full ring object |
-| geometry | const Ring::Geometry& | - | This conformation's geometry |
-| distance | double | Angstroms | From query point to ring center |
-| direction | Vec3 | normalised | From query point to ring center |
-| rho | double | Angstroms | Cylindrical radial distance in ring frame |
-| z | double | Angstroms | Signed height above ring plane |
-| theta | double | radians | Angle from ring normal |
-| ring_neighbourhood | const RingNeighbourhood* | - | If accumulated, pointer to stored data |
-
-AtomQueryResult:
-| Field | Type | Unit | Description |
-|-------|------|------|-------------|
-| atom_index | size_t | - | Into protein's atom list |
-| atom | const Atom& | - | Full atom object |
-| distance | double | Angstroms | From query point |
-| direction | Vec3 | normalised | From query point |
-
-BondQueryResult:
-| Field | Type | Unit | Description |
-|-------|------|------|-------------|
-| bond_index | size_t | - | Into protein's bond list |
-| bond | const Bond& | - | Full bond object |
-| distance | double | Angstroms | From query point to bond midpoint |
-| direction | Vec3 | normalised | From query point to bond midpoint |
-
-GraphNeighbour:
-| Field | Type | Description |
-|-------|------|-------------|
-| atom_index | size_t | Target atom |
-| bond_count | int | BFS distance |
-| path | vector<size_t> | Bond indices along path |
-
-### Copy policies
-
-**GeometryOnly**: copy positions, clear all ConformationResult objects.
-Use when foundational properties (protonation, charges) have changed
-and all computed results must be recomputed.
-
-**Full**: copy everything including all attached ConformationResult
-objects. Only valid if ProteinBuildContext is unchanged. Use for
-creating working copies where results are still valid.
+The `RingQueryResult` / `AtomQueryResult` / `BondQueryResult` /
+`GraphNeighbour` return types sketched in earlier drafts do not exist.
 
 ### Copy semantics
-- Atom positions: always preserved (these ARE the conformation)
-- Bond connectivity / neighbour lists / distances: preserved (purely geometric)
-- DSSP: preserved (backbone geometry unchanged)
-- Partial charges: INVALIDATED if protonation changes
-- APBS fields: INVALIDATED if charges change
-- All ConformationResult objects: INVALIDATED if charges or ring types change
-- Features: INVALIDATED if any ConformationResult changes
-- Predictions: INVALIDATED if features change
+
+ProteinConformation is not copied. Positions are const after construction
+— new geometry is a new conformation, not a copy — and results are owned
+`unique_ptr`s on the conformation. There is no GeometryOnly/Full copy
+policy; a different protonation or charge state is a separately built
+conformation (see the non-copyable Protein and "Conformation provenance").
 
 ---
 
@@ -2213,70 +2122,26 @@ Constitution Rule 4.
 
 ---
 
-## Feature (base class)
+## Feature output (no Feature base class)
 
-Each feature is a subclass. Adding a feature = writing a class.
-
-| Property | Type | Description |
-|----------|------|-------------|
-| name | string | Unique identifier for manifest |
-| irrep | IrrepType enum | L0, L1e, L1o, L2e |
-| components | int | 1 (L0), 3 (L1), 5 (L2) |
-
-### IrrepType enum
-```
-enum class IrrepType { L0, L1e, L1o, L2e };
-```
-
-### Virtual method
-```
-virtual void Compute(size_t atom_index,
-                     const ProteinConformation& conf,
-                     FeatureOutput& out) const = 0;
-```
-
-Features ONLY READ from ConformationResult objects on the
-ProteinConformation. They do NOT compute physics. They do NOT access
-raw positions or charges directly. They read what prior
-ConformationResult objects stored.
-
-### FeatureOutput
-```
-struct FeatureOutput {
-    vector<double> L0;          // scalar features
-    vector<Vec3> L1;            // vector features
-    vector<IrrepType> L1_parity; // e or o per L1 feature
-    vector<array<double,5>> L2; // tensor features
-};
-```
+There is no `Feature` base class, `IrrepType` enum, or `FeatureOutput`
+struct. Each ConformationResult emits its own features via
+`ConformationResult::WriteFeatures(...)`, writing NPYs whose shape, units,
+irreps, sign convention, and meaning are declared in the SDK catalog (one
+`ArraySpec` per file, `python/nmr_extract/_catalog.py`). Features read only
+from already-attached ConformationResult data — never raw positions or
+charges.
 
 ---
 
-## Framework Store Interface
+## How results store data (no typed store interface)
 
-ConformationResult objects store properties on atoms and rings through
-the ProteinConformation's typed store interface:
-
-```
-conformation.StoreRingContribution(atom_index, ring_index, result);
-conformation.StoreBondContribution(atom_index, bond_index, result);
-conformation.StoreAtomProperty(atom_index, property_name, value);
-```
-
-Each store operation:
-- Is typed (cannot store double where Mat3 goes)
-- Is logged (UDP log entry emitted automatically)
-- Is append-only (writing to a filled slot is WARNING)
-
-Each retrieval:
-- Is typed (returns correct type)
-- Is checked (empty slot is ERROR)
-
-### Enforcement: The Framework Stores, Not the Extractor
-
-An extractor does not directly write `atom.someProperty = value`.
-The ConformationResult, during attachment, stores properties on
-atoms and rings through the typed store interface.
+There is no `StoreRingContribution` / `StoreBondContribution` /
+`StoreAtomProperty` framework interface. A ConformationResult's `Compute()`
+writes directly to typed fields on `ConformationAtom` and its
+`RingNeighbourhood` / `BondNeighbourhood` records. Each field has exactly
+one writer — the singleton result that owns it — which is what keeps the
+append-only accumulation across results safe.
 
 ---
 
@@ -2305,12 +2170,13 @@ is unchanged.
 
 ---
 
-## UDP Logging (mandatory, automatic)
+## UDP Logging
 
-Every property store operation emits a UDP log entry. This is not
-optional. It is not per-extractor. The framework does it.
-
-Log entry format:
+UDP logging (port 9997) is the primary per-evaluation debug channel
+(`OperationLog`), emitted when UDP logging is configured — NOT an automatic
+per-property-store emission (there is no property-store operation; results
+write fields directly). The JSON below is a conceptual sketch of a
+per-operation entry, not the literal as-built format:
 ```json
 {
   "result_type": "BiotSavartResult",
@@ -2459,9 +2325,7 @@ bfs_decay.
 Per-atom per-ring (RingNeighbourhood): G_tensor, G_spherical, B_field,
 B_cylindrical.
 Per-atom totals: total_B_field, total_G_tensor, total_G_spherical,
-per_type_G_T0_sum, per_type_G_T2_sum, ring counts, ring distances,
-exp-weighted sums, variance.
-Per-ring: total_B_at_center, intensity_used, diagnostics, mutual B.
+per_type_G_T0_sum, per_type_G_T2_sum, ring counts, ring distances.
 Per-atom shielding: bs_shielding_contribution (SphericalTensor, ppm·T/nA — bare kernel, not ppm).
 
 ### HaighMallionResult (requires: SpatialIndexResult, GeometryResult)
