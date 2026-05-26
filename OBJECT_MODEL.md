@@ -477,9 +477,9 @@ The protein owns its conformation list. Conformations are created
 through typed factory methods on the protein:
 
 ```
-protein.AddCrystalConformation(positions, metadata) -> CrystalConformation&
-protein.AddPrediction(positions, metadata) -> PredictionConformation&
-protein.AddMDFrame(positions, metadata) -> MDFrameConformation&
+protein.AddCrystalConformation(positions, resolution, r_factor, temperature, pdb_id) -> CrystalConformation&
+protein.AddPrediction(positions, method, confidence) -> PredictionConformation&
+protein.AddMDFrame(positions, walker, time_ps, weight, rmsd_nm, rg_nm) -> MDFrameConformation&
 protein.AddDerived(parent, description, positions) -> DerivedConformation&
 
 protein.CrystalConf()            // the crystal conformation; aborts if none
@@ -611,7 +611,7 @@ One amino acid at a sequence position.
 | chi[4] | ChiAtoms | - | Dihedral atom indices |
 
 DSSP properties are conformation-dependent. They live on the
-DsspResult ConformationResult, accessed via conformation.Dssp().
+DsspResult ConformationResult, accessed via conformation.Result<DsspResult>().
 
 ### Query methods
 - `IsAromatic() -> bool` (from AminoAcidType)
@@ -621,7 +621,8 @@ DsspResult ConformationResult, accessed via conformation.Dssp().
 - `GetSequenceAddress() -> SequenceAddress {chain_id, sequence_number, insertion_code}`
 
 ### Copy semantics
-Value type within Protein. Copies with Protein.
+Identity/topology owned by Protein (non-copyable); residue identity is
+const after construction.
 
 ---
 
@@ -663,7 +664,7 @@ Each property records its source result type.
 | Property | Type | Unit | Source result | Description |
 |----------|------|------|---------------|-------------|
 | role | AtomRole enum | - | EnrichmentResult | NMR-relevant classification |
-| hybridisation | Hybridisation enum | - | EnrichmentResult | From OpenBabel |
+| hybridisation | Hybridisation enum | - | EnrichmentResult | From EnrichmentResult role/geometry heuristics |
 | is_backbone | bool | - | EnrichmentResult | role in backbone set |
 | is_amide_H | bool | - | EnrichmentResult | role == AmideH |
 | is_alpha_H | bool | - | EnrichmentResult | role == AlphaH |
@@ -930,16 +931,14 @@ via WriteFeatures() for the calibration pipeline.
 - `BondDirection(conformation) -> Vec3`: for H atoms, direction from parent to H
 
 ### Copy semantics
-- Static properties: always preserved
-- Enrichment properties: preserved if what-changed does not affect them
-  (e.g., hybridisation preserved unless bonds change)
-- Conformation-dependent properties: invalidated on copy with new
-  foundational properties. Specifically:
-  - Change protonation -> invalidate: charges, APBS, Coulomb, ring types,
-    all ConformationResult fields, features, predictions
-  - Change charges -> invalidate: APBS, Coulomb, features, predictions
-  - Change geometry -> invalidate: ALL dynamic properties
-  - Same protein same geometry -> preserve: spatial neighbours, DSSP
+Atom is identity/topology only — no position, no per-conformation data.
+Static identity + enrichment properties are const after construction. All
+dynamic, conformation-dependent data (charges, APBS, Coulomb, ring
+neighbourhoods, features) lives on ConformationAtom and is recomputed per
+conformation; none of it is on Atom. The dependency rules (protonation
+change → recompute charges/APBS/ring types; charge change → recompute
+APBS/Coulomb; geometry change → recompute all dynamic data) apply to a
+fresh load, since Protein is non-copyable.
 
 ---
 
@@ -969,9 +968,9 @@ Typed covalent bond between two atoms.
 - `IsAromatic() -> bool`: category == Aromatic
 
 ### Copy semantics
-Value type. Always preserved on copy (topology does not change with
-protonation for most bonds). Exception: disulfide bonds may change
-if CYS protonation changes to CYX.
+Identity/topology owned by Protein. Bond topology does not change with
+protonation for most bonds; the exception is disulfides (CYS → CYX on a
+fresh load can add/remove the S–S bond).
 
 ---
 
@@ -1108,15 +1107,11 @@ Ring (abstract base)
           have this type (7 types). Rewrite has 8.
 ```
 
-Rings accumulate properties over extraction passes. After each full
-pass over the ring's atoms, a ring-level property update runs.
-If a geometric or field property can be precomputed for the ring
-as a whole, it is computed and stored on the ring at the end of that
-pass, ready for the next ConformationResult.
-
-It is NOT forbidden to traverse the atoms of a specific ring to
-harvest properties for calculation. Ring-specific atomic traversal
-is how ring properties are built.
+Rings carry static identity plus per-conformation geometry only
+(`RingGeometry`, via `ComputeGeometry`). Ring-current kernel values are
+NOT accumulated on the Ring — they are stored per-atom on the atom's
+`RingNeighbourhood` records (ConformationAtom). A calculator may traverse
+a specific ring's atoms to compute those per-atom contributions.
 
 ### RingTypeIndex (enum)
 
@@ -1167,11 +1162,12 @@ not `Ring` members). Per-ring-source kernel data is stored per-atom on
 - `ComputeGeometry(positions) -> RingGeometry`
 
 ### Copy semantics
-- Static properties (type, vertices, parent): always preserved
-- Ring type: INVALIDATED if protonation changes HIS tautomer
-  (HIS -> HID or HIE changes the ring type class)
-- Geometry: INVALIDATED if conformation changes
-- Accumulated properties: INVALIDATED on any foundational property change
+Ring is static identity/topology (type, vertices, parent) plus
+per-conformation `RingGeometry`. The ring TYPE depends on protonation
+(HIS → HID/HIE changes the ring-type class), so it is re-perceived on a
+fresh load when protonation changes; geometry is recomputed per
+conformation. Rings hold no accumulated field properties (those are
+per-atom on RingNeighbourhood).
 
 ---
 
@@ -1236,19 +1232,21 @@ type via `Result<T>()` / `HasResult<T>()`; iterate via `AllResults()`.
 `Result<T>()` aborts (FATAL) if that type is not attached.
 
 ```
-auto& dssp = conformation.Dssp();           // DsspResult&
-auto& apbs = conformation.ApbsField();      // ApbsFieldResult&
-auto& bs = conformation.BiotSavart();       // BiotSavartResult&
-auto& coulomb = conformation.Coulomb();     // CoulombResult&
+auto& dssp = conformation.Result<DsspResult>();
+auto& apbs = conformation.Result<ApbsFieldResult>();
+auto& bs = conformation.Result<BiotSavartResult>();
+auto& coulomb = conformation.Result<CoulombResult>();
 ```
 
-Results have physics query methods, not raw data getters:
+Results expose physics query/sampling methods, e.g.:
 
 ```
-bs.SumT0ByRingType(atomIdx, PheBenzene)
-hm.NearestRingContribution(atomIdx)
-coulomb.BackboneField(atomIdx)
-coulomb.SidechainField(atomIdx)
+bs.SampleKernelAt(point)        // SphericalTensor
+bs.SampleBFieldAt(point)        // Vec3
+hm.SampleKernelAt(point)        // SphericalTensor
+coulomb.EFieldAt(atomIdx)       // Vec3
+coulomb.EFGAt(atomIdx)          // Mat3
+coulomb.EFGSphericalAt(atomIdx) // SphericalTensor
 ```
 
 ### Result access mechanism
@@ -1284,7 +1282,7 @@ At attach time:
 
 | Property | Type | Unit | Source |
 |----------|------|------|--------|
-| ring_geometries | vector<Ring::Geometry> | Angstroms | GeometryResult |
+| ring_geometries | vector<RingGeometry> | Angstroms | GeometryResult |
 | bond_lengths | vector<double> | Angstroms | GeometryResult |
 | bond_directions | vector<Vec3> | normalised | GeometryResult |
 | bond_midpoints | vector<Vec3> | Angstroms | GeometryResult |
@@ -1352,8 +1350,8 @@ conformation (see the non-copyable Protein and "Conformation provenance").
 ## ConformationResult (ABC)
 
 Base class for all computed results that attach to a ProteinConformation.
-Each result type is a named singleton. Accessed by name, checked at
-attach time.
+Each result type is a typed singleton. Accessed by type via Result<T>();
+checked at attach time.
 
 ```
 class ConformationResult {
@@ -2080,7 +2078,7 @@ of an atom. Built by McConnellResult.
 | bond_index | size_t | - | McConnellResult | Into protein's bond list |
 | bond_category | BondCategory | - | McConnellResult | Category of source bond |
 | distance_to_midpoint | double | Angstroms | McConnellResult | |r - midpoint| |
-| direction_to_midpoint | Vec3 | normalised | McConnellResult | (midpoint - r) / d |
+| direction_to_midpoint | Vec3 | normalised | McConnellResult | (r - midpoint) / d (points midpoint→atom) |
 | dipolar_tensor | Mat3 | Angstrom^-3 | McConnellResult | Full dipolar tensor |
 | dipolar_spherical | SphericalTensor | Angstrom^-3 | McConnellResult | Decomposition |
 | mcconnell_scalar | double | Angstrom^-3 | McConnellResult | (3cos²θ−1)/r³ angular contraction; NOT the tensor trace |
@@ -2099,23 +2097,23 @@ Per-atom, per-atom spatial relationship. Built by SpatialIndexResult.
 
 ---
 
-## SpatialIndex
+## SpatialIndex (SpatialIndexResult)
 
-Wrapper around nanoflann KD-tree. Three instances on each
-ProteinConformation, built by SpatialIndexResult.
+nanoflann KD-trees — three instances (atoms, ring centres, bond midpoints)
+built and held by SpatialIndexResult. Queries return index vectors:
 
 ### Atom spatial index
 - Built from: atom_positions (vector<Vec3>)
-- Query: `RadiusSearch(Vec3 point, double radius) -> vector<pair<size_t, double>>`
-- Query: `KNearestSearch(Vec3 point, int k) -> vector<pair<size_t, double>>`
+- Query: `AtomsWithinRadius(Vec3 point, double radius) -> vector<size_t>`
+- Query: `KNearestAtoms(Vec3 point, size_t k) -> vector<size_t>`
 
 ### Ring center spatial index
 - Built from: ring_geometries[i].center for all rings
-- Same query interface
+- Query: `RingsWithinRadius(Vec3 point, double radius) -> vector<size_t>`
 
 ### Bond midpoint spatial index
 - Built from: bond_midpoints for all bonds
-- Same query interface
+- Query: `BondsWithinRadius(Vec3 point, double radius) -> vector<size_t>`
 
 All spatial queries through these indices. No linear scans over atoms.
 Constitution Rule 4.
@@ -2161,12 +2159,12 @@ const thereafter. They travel with copies.
 - An atom's partial charge is dynamic (from ChargeAssignmentResult)
 - An atom's ring neighbourhood tensors are dynamic (from
   BiotSavartResult et al.)
-- A ring's accumulated field properties are dynamic
+- A ring's per-conformation geometry (RingGeometry) is dynamic
 
 Dynamic properties are set by ConformationResult attachments and are
-ProteinConformation-specific. They do NOT travel with GeometryOnly
-copies. They travel with Full copies only if the ProteinBuildContext
-is unchanged.
+ProteinConformation-specific — recomputed per conformation, never carried
+across a differing foundational state (ProteinConformation is not copied;
+Protein is non-copyable).
 
 ---
 
@@ -2219,7 +2217,7 @@ If a property is read before being stored:
 
 ### Construction (PDB loading)
 Protein: residues, atoms, rings (topology), bonds (topology), build context
-ProteinConformation: positions, protonation state
+ProteinConformation: positions (protonation is resolved on the topology/residues, not stored on the conformation)
 
 ### GeometryResult (requires: nothing)
 Ring geometry (center, normal, radius, vertices), bond geometry (midpoint,
@@ -2241,7 +2239,7 @@ psi (radians), SASA (Angstroms^2), H-bond acceptors[2] with energy
 - `dssp_chi.npy` (N, 12): chi1-4 dihedral angles as (cos, sin, exists) × 4
 
 ### ChargeAssignmentResult (requires: nothing)
-Per-atom: partial charge (e), VdW radius (Angstroms).
+Per-atom: partial charge (e), PB radius `pb_radius` (Angstroms).
 
 ### MopacResult
 
@@ -2307,7 +2305,7 @@ mopac_mc_ prefix). See src/MopacMcConnellResult.cpp for implementation.
 Per-atom: role (AtomRole), hybridisation (Hybridisation), categorical
 booleans (is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H,
 is_on_aromatic_residue, is_hbond_donor, is_hbond_acceptor, parent_is_sp2).
-Pre-built collection: atoms_by_role.
+Roles are stored per-atom on ConformationAtom; there is no atoms_by_role collection.
 
 ### SpatialIndexResult (requires: GeometryResult)
 KD-trees (atom positions, ring centers, bond midpoints), neighbour lists
@@ -2395,10 +2393,14 @@ Failure is non-silent — returns nullptr and logs an error.
 
 **CUDA required.** No CPU fallback. Unknown elements → nullptr.
 
-**charge_sensitivity:** computed via autograd (d(charges)/d(positions)) only
-if `aimnet2_sensitivity_mode = "autograd"` in TOML. Default: not computed.
-The perturbation approach was removed — it produced conformation-specific
-values that don't generalise.
+**charge_sensitivity:** NOT produced by AIMNet2Result. The autograd
+d(charges)/d(positions) path is an unimplemented TODO — there is no
+`aimnet2_sensitivity_mode` TOML param, no field, and no npy
+(`AIMNet2Result.cpp:321-461` are comments). The earlier per-conformation
+perturbation approach was abandoned as non-generalisable. The active
+charge-response quantity is `AIMNet2ChargeResponseGradientResult`, which
+writes `aimnet2_charge_response_gradient_vector/scalar`
+(`aimnet2_charge_response_gradient.npy`, d(Σq²)/d(r_i)).
 
 **WriteFeatures output:**
 - `aimnet2_charges.npy` (N,): Hirshfeld charges (elementary charge)
@@ -3341,7 +3343,8 @@ public:
 
 Element types observed in current code: `double` (BsT0Autocorrelation
 ρ(k)), `Vec3` (PositionsTimeSeries), `SphericalTensor`
-(BsShieldingTimeSeries). `Mat3` reserved for future EFG
+(BsShieldingTimeSeries), `int` (LarsenHBondCount), `std::uint8_t`
+(TripeptideBackboneMethodTag). `Mat3` reserved for future EFG
 time-series TRs.
 
 H5 emission flattens via explicit named-component access
