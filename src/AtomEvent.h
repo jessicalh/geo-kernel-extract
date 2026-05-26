@@ -1,38 +1,19 @@
 #pragma once
 //
-// AtomEvent: one entry in a per-atom RecordBag on TrajectoryAtom.
-//
-// TrajectoryAtom is a bag of three pattern-shaped things:
-//   (A) typed struct vectors for known-shape per-source data
-//       (e.g. ring_neighbours on ConformationAtom — trajectory-scope
-//        parallel to land as RingNeighbourhoodTrajectoryStats);
-//   (B) typed accumulator fields with one writer each, grouped into
-//       per-Welford state substructs (e.g. ta.bs_welford.t0.mean,
-//       ta.hm_welford.t2[k].std — see TrajectoryAtom.h for the
-//       per-Welford state struct definitions, PATTERNS Lesson 25 for
-//       the differentiated-structure principle);
-//   (C) the per-atom event bag (this record's home) — open-shape
-//       events emitted by scan-mode detectors and lifetime/transition
-//       accumulators.
-//
-// The per-atom bag is orthogonal to the run-scope selection bag on
-// Trajectory: per-atom queries on one axis, per-run queries on the
-// other, same RecordBag<T> verbs.
+// AtomEvent: one entry in a per-atom RecordBag<AtomEvent> on TrajectoryAtom —
+// an open-shape event emitted by a scan-mode detector or a lifetime/
+// transition accumulator.
 //
 // Fields:
-//   emitter    — typeid of the TrajectoryResult that pushed this event.
-//   kind       — the emitter's own event-kind discriminator (typed).
-//                One emitter typically produces several kinds (a chi
-//                rotamer detector emits Chi1Transition, Chi2Transition,
-//                Chi3Transition, Chi4Transition — one emitter, four
-//                kinds). Queries on the bag discriminate on `kind`;
-//                `emitter` is retained so consumers can filter by who
-//                if they want.
-//   frame_idx  — original frame index (explicit top-level field so
-//                the bag can do windowed queries without string
-//                lookups into metadata).
-//   time_ps    — simulation time of the frame.
-//   metadata   — free-form k/v for event-specific extras.
+//   emitter   — typeid of the TrajectoryResult that pushed the event.
+//   kind      — the emitter's own event-kind discriminator. One emitter may
+//               produce several kinds (a chi-rotamer detector emits
+//               Chi1..Chi4Transition). Queries discriminate on kind; emitter
+//               is kept so consumers can also filter by who.
+//   frame_idx — original frame index (top-level so the bag can do windowed
+//               queries without metadata string lookups).
+//   time_ps   — simulation time of the frame.
+//   metadata  — free-form k/v for event-specific extras.
 //
 
 #include <cstddef>

@@ -4,35 +4,16 @@
 // during a trajectory run. Push during Compute, query during Finalize
 // and at WriteH5.
 //
-// The same bag pattern serves two scopes:
-//
-//   Run scope:  Trajectory owns RecordBag<SelectionRecord> for
-//               frame-level events (DFT pose candidates, RMSD spikes,
-//               etc.). TrajectoryResults push directly to
-//               traj.Selections() during their Compute; reducer
-//               TrajectoryResults (e.g. DftPoseCoordinator) consume at
-//               Finalize via ByKind<...>() queries and push their own
-//               reduced set back.
-//
-//   Atom scope: TrajectoryAtom owns RecordBag<AtomEvent> for per-atom
-//               events (rotamer transitions, hbond form/break, ring
-//               flips). Same push/query grammar; different payload;
-//               orthogonal axis (per-atom instead of per-run).
-//
 // The Record type must expose three top-level fields:
-//
 //     std::type_index kind       — discriminator queried against
 //     std::size_t     frame_idx  — original frame index
 //     double          time_ps    — simulation time at emission
+// frame_idx and time_ps are explicit (not stashed in metadata) so window
+// queries are direct reads, not string lookups.
 //
-// frame_idx and time_ps are explicit fields — not stashed in a
-// metadata map — so window queries are direct reads, not string
-// lookups.
-//
-// Query affordances (ByKind, ByKindSinceFrame, ByKindSinceTime,
-// MostRecent, CountByKind) are sample shapes meant to document how the
-// bag is used. Copy the pattern to add new queries; do not build
-// parallel indexes alongside it.
+// The query methods (ByKind, ByKindSinceFrame, ByKindSinceTime, MostRecent,
+// CountByKind) are sample shapes — copy the pattern to add queries; do not
+// build parallel indexes alongside the bag.
 //
 
 #include <cstddef>
