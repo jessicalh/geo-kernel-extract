@@ -1050,6 +1050,7 @@ class Protein:
     hydration: Optional[HydrationGroup] = None
     water_polarization: Optional[WaterPolarizationGroup] = None
     gromacs_energy: Optional[np.ndarray] = None
+    bonded_energy: Optional[np.ndarray] = None  # (N,7) per-atom GROMACS bonded terms
 
     # Geometry-dependent charges
     eeq: Optional[EeqGroup] = None
@@ -1580,6 +1581,7 @@ def load(path: str | Path) -> Protein:
         hydration=hydration,
         water_polarization=water_polarization,
         gromacs_energy=get("gromacs_energy"),
+        bonded_energy=get("bonded_energy"),
         eeq=eeq,
         category_info=category_info,
         topology=topology_group,

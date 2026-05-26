@@ -62,6 +62,9 @@ void BsShieldingTimeSeriesTrajectoryResult::Compute(
 void BsShieldingTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
                                                     Trajectory& traj) {
     (void)traj;
+    // Idempotent: a second call would read the per-atom buffers already
+    // swapped-empty below and index out of bounds (latent UB). Guard early.
+    if (finalized_) return;
     const std::size_t N = tp.AtomCount();
 
     auto buffer =

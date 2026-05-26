@@ -279,8 +279,12 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         if (orca) {
             Attach(conf, std::move(orca), "OrcaShieldingResult", out);
         } else {
-            OperationLog::Error("OperationRunner",
-                "ORCA shielding load failed for " + opts.orca_nmr_path);
+            // Fail loud: a non-empty --orca path that fails to load is an
+            // error, not a silent WT-only success (OI-001). The caller asked
+            // for ORCA shielding by supplying the path.
+            out.error = "ORCA shielding load failed for " + opts.orca_nmr_path;
+            OperationLog::Error("OperationRunner", out.error);
+            return out;
         }
     }
 
