@@ -367,8 +367,8 @@ ChargeSource (abstract)
 ├── PrmtopChargeSource            — ff14SB/ff19SB from AMBER prmtop
 │                                   (authoritative; --orca, --mutant)
 ├── PreloadedChargeSource         — caller-supplied charges (GROMACS TPR
-│                                   trajectory path; reports
-│                                   ChargeModelKind::GromacsTpr)
+│                                   trajectory path; Kind()=Preloaded,
+│                                   charge table stamped GromacsTpr)
 └── AmberPreparedChargeSource     — runtime tleap → PRMTOP → charges
                                     when the flat ff14SB table cannot
                                     represent the protein (--pdb /
@@ -757,8 +757,8 @@ principle.
 
 | Property | Type | Unit | Source result | Description |
 |----------|------|------|---------------|-------------|
-| partial_charge | double | elementary charge (e) | ChargeAssignmentResult (projected from ForceFieldChargeTable) | force-field partial charge — ff14SB on AMBER paths, CHARMM36m on quarantined GROMACS path |
-| pb_radius | double | Angstroms | ChargeAssignmentResult (projected from ForceFieldChargeTable) | Poisson-Boltzmann (electrostatic) radius — mbondi2 on AMBER paths; placeholder on quarantined GROMACS/CHARMM path |
+| partial_charge | double | elementary charge (e) | ChargeAssignmentResult (projected from ForceFieldChargeTable) | force-field partial charge — ff14SB on all live paths (AMBER and GROMACS-TPR trajectory); CHARMM36m enum retained but quarantined |
+| pb_radius | double | Angstroms | ChargeAssignmentResult (projected from ForceFieldChargeTable) | Poisson-Boltzmann (electrostatic) radius — mbondi2 on live paths; placeholder radii on the quarantined GROMACS path |
 | mopac_charge | double | elementary charge (e) | MopacResult | PM7 Mulliken charge |
 | mopac_s_pop | double | electrons | MopacResult | s-orbital population |
 | mopac_p_pop | double | electrons | MopacResult | p-orbital population |
@@ -813,9 +813,9 @@ Ring current totals (populated by BiotSavartResult, HaighMallionResult):
 | n_rings_within_12A | int | - | BiotSavartResult |
 | mean_ring_distance | double | Angstroms | BiotSavartResult |
 | nearest_ring_atom_distance | double | Angstroms | BiotSavartResult |
-| G_iso_exp_sum | double | dimensionless | BiotSavartResult |
-| G_T2_exp_sum | array<double, 5> | dimensionless | BiotSavartResult |
-| G_iso_var_8A | double | dimensionless | BiotSavartResult |
+| G_iso_exp_sum | double | — (legacy field, not populated) | BiotSavartResult |
+| G_T2_exp_sum | array<double, 5> | — (legacy field, not populated) | BiotSavartResult |
+| G_iso_var_8A | double | — (legacy field, not populated) | BiotSavartResult |
 | bs_shielding_contribution | SphericalTensor | ppm*T/nA | BiotSavartResult | decomposed ring-current kernel G = -n⊗B summed over rings (PPM_FACTOR baked in; intensity I_type applied at calibration, not here) |
 
 Bond anisotropy totals (populated by McConnellResult):
@@ -854,7 +854,7 @@ Coulomb field totals (populated by CoulombResult):
 | coulomb_EFG_solvent | Mat3 | V/Angstrom^2 | CoulombResult (= apbs - vacuum) |
 | coulomb_E_magnitude | double | V/Angstrom | CoulombResult |
 | coulomb_E_bond_proj | double | V/Angstrom | CoulombResult |
-| coulomb_E_backbone_frac | double | dimensionless | CoulombResult |
+| coulomb_E_backbone_frac | double | V/Angstrom | CoulombResult |
 | aromatic_E_magnitude | double | V/Angstrom | CoulombResult |
 | aromatic_E_bond_proj | double | V/Angstrom | CoulombResult |
 | aromatic_n_sidechain_atoms | int | - | CoulombResult |
@@ -1781,7 +1781,7 @@ paths) after.
 `Run(tp, config, session, extras, output_dir)` drives the traversal
 in 8 named phases:
 
-1. Open handler (mount XTC + build PBC fixer).
+1. Open handler (mount the TRR stream + build PBC fixer).
 2. Read frame 0 + `tp.Seed` (finalize Protein + create conf0 +
    init TrajectoryAtoms).
 3. Attach TrajectoryResults from `config.TrajectoryResultFactories()`
@@ -1941,7 +1941,7 @@ TWO kinds of output:
 
 ### 1. Geometric output (for features and reuse)
 The raw geometric kernel or field in the calculator's natural units
-(dimensionless for ring current kernels, Angstrom^-3 for dipolar tensors,
+(ppm·T/nA for Biot-Savart and Angstrom^-1 for Haigh-Mallion ring currents, Angstrom^-3 for dipolar tensors,
 V/Angstrom for E-fields, etc.). Stored per atom per source (ring/bond).
 This is what the feature extractor reads. It can be reused with different
 parameters without recomputing geometry.
@@ -2772,7 +2772,7 @@ schema (see pending-include file §7). What's currently emitted:
 - `/atoms/` group with `element`, `residue_index`, `pdb_atom_name`
   emitted by `TrajectoryProtein::WriteH5`. Minimal passthrough from
   `Protein`.
-- `/trajectory/source/` group attributes: `xtc_path`, `tpr_path`,
+- `/trajectory/` group attributes: `xtc_path`, `tpr_path`,
   `edr_path`, `configuration`.
 - `/trajectory/frames/` datasets: `time_ps`, `original_index`.
 - `/trajectory/selections/<kind>/` per-kind sub-groups walked via
@@ -2847,7 +2847,7 @@ per-frame `ConformationResult` pipeline. The static-analysis path
   buffer holding the geometric record over time, and the attached
   `TrajectoryResult`s holding the kernel record over time.
 - `Trajectory` — the process that drives one traversal of a source
-  (XTC + TPR + EDR). Process during `Run`; record after (frame times,
+  (TRR + TPR + EDR). Process during `Run`; record after (frame times,
   frame indices, run-scope selection stream, last-frame env).
 
 ---
@@ -3257,7 +3257,7 @@ the cited site, not just matching the regex.
 
 ## Trajectory
 
-Process entity representing one traversal of a source (XTC + TPR +
+Process entity representing one traversal of a source (TRR + TPR +
 EDR). Non-copyable. Holds source paths, preloaded EDR frames, the
 single-slot per-frame environment, the run record, and during `Run`
 the handler.
@@ -3309,7 +3309,7 @@ failure site.
 
 `WriteH5(file)`:
 
-- `/trajectory/source/` — attributes `xtc_path`, `tpr_path`, `edr_path`, `configuration`.
+- `/trajectory/` — attributes `xtc_path`, `tpr_path`, `edr_path`, `configuration`.
 - `/trajectory/frames/` — datasets `time_ps` (T,), `original_index` (T,); attribute `n_frames`.
 - `/trajectory/selections/<kind>/` — one group per kind in `selections_.Kinds()`, with `frame_idx`, `time_ps`, `reason` datasets and `n_records` attribute. The group path uses `kind.name()` (mangled C++ type name — compiler-dependent but stable within a build).
 
@@ -3493,7 +3493,7 @@ own group and sets its own schema attributes — e.g.
 
 ## GromacsFrameHandler
 
-Format-specific XTC/TPR reader. Mounts the stream, builds the PBC
+Format-specific TRR/TPR reader. Mounts the stream, builds the PBC
 fixer from the TPR, reads frames on demand. Pure reader: does not
 create conformations, does not run calculators, does not write to
 `traj.env_`, does not know `TrajectoryResult`s.
@@ -3506,20 +3506,20 @@ this layer, not a virtual-base hierarchy.
 | Field                 | Type                          | Description                                         |
 |-----------------------|-------------------------------|-----------------------------------------------------|
 | `tp_`                 | `TrajectoryProtein&`          | Borrowed; used for topology access via `SysReader`. |
-| `reader_`             | `XtcStreamReader`             | XTC cursor.                                         |
-| `wholer_`             | `unique_ptr<MoleculeWholer>`  | PBC fixer, built from TPR.                          |
+| `trr_fio_`            | `t_fileio*`                   | libgromacs TRR handle (opaque; lifetime = Open/Close). |
+| `box_matrix_`, `raw_x_`, `raw_v_` | `Matrix3d`, `vector<float>` | per-frame box + raw position/velocity buffers (PBC fixing). |
 | `protein_positions_`  | `vector<Vec3>`                | Last-read frame, protein slice.                     |
 | `solvent_`            | `SolventEnvironment`          | Last-read frame, solvent slice.                     |
 | `last_frame_time_`    | `double`                      |                                                     |
-| `current_index_`      | `size_t`                      | XTC position; valid iff `has_read_`.                |
+| `current_index_`      | `size_t`                      | TRR position; valid iff `has_read_`.                |
 | `has_read_`           | `bool`                        |                                                     |
 
 ### Operations
 
 | Method                                    | Role                                                                 |
 |-------------------------------------------|----------------------------------------------------------------------|
-| `Open(xtc_path, tpr_path)`                | Mount XTC, build wholer from TPR, sanity-check atom counts against `tp.SysReader().Topology().protein_count`. Does not read a frame. |
-| `ReadNextFrame()`                         | Read one XTC frame, PBC-fix protein slice, split into `protein_positions_` + `solvent_`. Returns false at EOF. |
+| `Open(trr_path, tpr_path)`                | Mount the TRR stream, build the PBC fixer from TPR, sanity-check atom counts against `tp.SysReader().Topology().protein_count`. Does not read a frame. |
+| `ReadNextFrame()`                         | Read one TRR frame, PBC-fix protein slice, split into `protein_positions_` + `solvent_`. Returns false at EOF. |
 | `Skip()`                                  | Advance one frame without extracting; accessors return stale data afterward. |
 | `Reopen()`                                | Reset cursor to start (legacy multi-pass flows).                     |
 | `ProteinPositions()`, `Solvent()`, `Index()`, `Time()`, `HasRead()`, `error()` | Accessors.                         |
@@ -3538,7 +3538,7 @@ The file emitted after a successful `Run` has this top-level shape:
     residue_index                        (N,) uint64
     pdb_atom_name                        (N,) string
 
-/trajectory/source/                      attributes: xtc_path, tpr_path, edr_path, configuration
+/trajectory/                             attributes: xtc_path, tpr_path, edr_path, configuration
 /trajectory/frames/
     time_ps                              (T,) float64
     original_index                       (T,) uint64                         attr: n_frames

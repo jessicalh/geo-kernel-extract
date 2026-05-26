@@ -1614,7 +1614,7 @@ captured, it isn't adding physics.
 **APBS solvated field:**
 - L=0: E-field magnitude (the APBS EFG is de-traced — pure T2, no L=0 trace term)
 - L=1 (1e): E-field vector (3 components)
-- L=2 (2e): EFG tensor (5 components via sphericart)
+- L=2 (2e): EFG tensor (5 T2 components from SphericalTensor::Decompose; sphericart-compatible layout)
 
 **MOPAC PM7 (per atom):**
 - L=0: Mulliken charge, s/p orbital populations, Wiberg bond orders

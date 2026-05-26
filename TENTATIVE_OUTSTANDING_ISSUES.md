@@ -101,16 +101,13 @@ Entry conventions:
   `MopacVsFf14SbReconciliationTrajectoryResult.cpp:56`). A frame without
   MOPAC yields empty MOPAC rows, not a hard failure.
 
-### OI-013 — `AllWelfords` revival on `TrajectoryAtom`
+### OI-013 — `AllWelfords` revival on `TrajectoryAtom` — RESOLVED
 
-- **Verified:** `grep -n AllWelfords src/*.{h,cpp}` returns zero hits.
-  `PATTERNS.md:1107-1116` still presents the pattern as live. Each
-  `*WelfordTrajectoryResult::WriteH5Group` hand-spells dataset names —
-  exactly the drift the pattern was meant to prevent.
-- **Source:** `spec/plan/bones/pending_decisions_20260423.md` item 1.
-- **Action:** Either revive AllWelfords on `TrajectoryAtom` or
-  downgrade the §24 pattern in `PATTERNS.md` to "not revived in
-  trajectory scope." Low priority; no blocking consumer yet.
+- **Verified:** `AllWelfords` is gone and not revived; trajectory
+  storage is per-metric Welford state on `TrajectoryAtom`, each
+  `*WelfordTrajectoryResult` owning its `WriteH5Group`. `PATTERNS.md`
+  §24 (~:1193) now documents the pattern as retired. The design chose
+  per-Welford substructs; no blocking consumer.
 
 ### OI-014 — `--trajectory --analysis` is stubbed; AnalysisWriter dissolution incomplete
 

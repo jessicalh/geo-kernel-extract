@@ -298,8 +298,9 @@ from point charges, with Coulomb constant k_e = 14.3996 V·A.
     E_a = k_e · Σ_j q_j (r_i - r_j)_a / |r_i - r_j|³
     V_ab = k_e · Σ_j q_j [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|⁵ - δ_ab / |r_i-r_j|³]
 
-EFG is traceless (Gauss's law). Decomposed into backbone,
-sidechain, aromatic, and solvent (APBS minus vacuum) contributions.
+EFG is traceless (Gauss's law). Decomposed into backbone, aromatic,
+and solvent (APBS minus vacuum) contributions (the sidechain split
+exists for the E-field, not the stored EFG).
 Source geometry: all charged atoms.
 
 **Ring susceptibility** (McConnell 1957). Whole-ring diamagnetic

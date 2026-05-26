@@ -1096,7 +1096,7 @@ source. If you need a new threshold, document why that value.
 
 ### Singularity guard
 
-All 1/r^n terms use MIN_DISTANCE = 0.1 A (PhysicalConstants.h).
+All 1/r^n terms use `singularity_guard_distance` (CalculatorConfig, default 0.1 A; `PhysicalConstants::MIN_DISTANCE` = 0.1 remains for non-calculator consumers).
 Below this, the kernel value is numerically meaningless. The
 MinDistanceFilter in KernelFilterSet enforces this before any
 kernel evaluation begins.
@@ -1329,7 +1329,7 @@ legitimate TR write surface stays public: `MutableAtomAt(i)`,
   earlier in the same frame, which means the writer's factory comes
   first in the configuration's factory list.
 - **Handler is a pure reader.** `GromacsFrameHandler::Open` mounts
-  the XTC stream and builds the PBC fixer from the TPR;
+  the TRR stream and builds the PBC fixer from the TPR;
   `ReadNextFrame` reads, PBC-fixes, and splits. No OperationRunner
   invocation, no writes to `traj.env_`, no awareness of TRs.
   Orchestration lives in `Trajectory::Run`. Additional trajectory
