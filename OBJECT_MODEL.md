@@ -1820,8 +1820,10 @@ methods.
 Typed description of a trajectory-run shape. Three named static
 factories (matching Use Case E/F shapes + the DFT scan loop):
 
-- **`ScanForDftPointSet()`** — *Slated for removal; a later doc pass
-  will handle the replacement.* Cheap per-frame set (no MOPAC, no
+- **`ScanForDftPointSet()`** — *Removed from RunConfiguration; DFT-pose
+  selection now lives in `PerFrameExtractionSet`'s selection TRs
+  (RmsdSpikeSelection / ChiRotamerSelection / DftPoseCoordinator).* It
+  was a cheap per-frame set (no MOPAC, no
   APBS, no Coulomb; Geometry / SpatialIndex / Enrichment / DSSP /
   BiotSavart / SASA). Attaches `BsWelfordTrajectoryResult`
   (placeholder; scan-mode emitters + DftPoseCoordinator land with the
@@ -2728,9 +2730,8 @@ Ile/Val/Thr methine Hbeta is mirrored to both Hbeta slots; methylene
 Hbeta2/Hbeta3 remain separated. GLY uses `Residue.HA = HA2` for the
 Vuister-Bax HN-Halpha channel.
 
-**`ScanForDftPointSet` (scan mode):** *Slated for removal; the
-factory currently attaches only `BsWelfordTrajectoryResult` (see
-`RunConfiguration.cpp::ScanForDftPointSet`). The full DFT-pose-
+**`ScanForDftPointSet` (scan mode, removed):** *The retired scan factory
+attached only `BsWelfordTrajectoryResult`. The full DFT-pose-
 selection stack — `ChiRotamerSelection`, `RmsdTracking`,
 `RmsdSpikeSelection`, `Dssp8Transition`, `DftPoseCoordinator` — is
 attached under `PerFrameExtractionSet` (production canonical), not
@@ -3049,7 +3050,7 @@ Current `RunConfiguration` attach status:
 
 | Configuration           | Attached TRs                                                                                   |
 |-------------------------|-----------------------------------------------------------------------------------------------|
-| `ScanForDftPointSet`    | `BsWelfordTrajectoryResult`                                                                   |
+| `ScanForDftPointSet` *(removed)* | `BsWelfordTrajectoryResult` (historical; selection now in PerFrameExtractionSet) |
 | `PerFrameExtractionSet` | Six AV-pattern Welford rollups (BS / HM / McConnell / Eeq / Sasa / HBondCount — all with Phase 2b/3 substruct shape: per-channel T1[3] + T2[5] where source is tensor-shaped, three delta variants + cadence + schema provenance) PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) PLUS three energy/water/hydration TR pairs (GromacsEnergy + BondedEnergy TS; WaterField TS+Welford; HydrationGeometry TS+Welford; HydrationShell TS+Welford) PLUS DihedralTimeSeries (per-residue phi/psi/omega/chi/rama_region — movie-target) PLUS BS anomaly marker + BS T0 autocorrelation + bond length stats + positions time series |
 | `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
 
@@ -3366,7 +3367,7 @@ factories.
 
 | Factory                     | Per-frame Conformation set                                                                                                                                                                                                                                                                                | Stride | Requires AIMNet2 | Use                                                        |
 |-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|------------------|------------------------------------------------------------|
-| `ScanForDftPointSet()` *(slated for removal)* | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `BiotSavartResult`, `SasaResult`. MOPAC / APBS / Coulomb skipped.                                                                                                                                                                | 1      | no               | Rotamer / RMSD / bin-crossing detection for DFT pose selection. A later doc pass will handle the replacement. |
+| `ScanForDftPointSet()` *(removed)* | (was: `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `BiotSavartResult`, `SasaResult`; MOPAC / APBS / Coulomb skipped) | 1 | no | Historical cheap scan for DFT-pose selection; the capability now lives in `PerFrameExtractionSet`'s RmsdSpikeSelection / ChiRotamerSelection / DftPoseCoordinator TRs. |
 | `PerFrameExtractionSet()`   | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `ChargeAssignmentResult`, `ApbsFieldResult`, `BiotSavartResult`, `HaighMallionResult`, `McConnellResult`, `RingSusceptibilityResult`, `PiQuadrupoleResult`, `DispersionResult`, `HBondResult`, `SasaResult`, `EeqResult`, `AIMNet2Result`, `AIMNet2ChargeResponseGradientResult`, `WaterFieldResult`, `HydrationShellResult`, `HydrationGeometryResult`, `GromacsFramePullResult`, `GromacsEnergyResult`, `BondedEnergyResult` (23 types). MOPAC skipped; vacuum Coulomb skipped (APBS supersedes). | 2      | yes              | Production canonical for the trajectory fleet (effective 676 after structure-quality drops).                |
 | `FullFatFrameExtraction()`  | `PerFrameExtractionSet` with `skip_mopac = false`. MOPAC-family ConformationResult types are not yet in `required_conf_result_types_` — see `spec/pending_decisions_20260423.md` item 3.                                                                                                                  | 2      | yes              | Selected-frame MOPAC (DFT pose set, harvester checkpoints). |
 
