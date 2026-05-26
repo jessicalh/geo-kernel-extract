@@ -5,27 +5,39 @@ campaign in memory `project_doc_squareaway_2026-05-26`. **Delete when the phase
 ends** and the single source of truth lands (`project_docs_single_source_of_truth`).
 Not a permanent design doc.
 
+**Context: the code is FROZEN here** — only a huge field bug reopens it. Comments
+therefore describe the code *as it is*, present-tense. Where a comment claims an
+invariant the code does not actually enforce, fix the *comment* to the enforced
+reality (never the code), and never write comments that aspire to or anticipate a
+code change.
+
 ## The bar — every comment, every group
 
 CODE IS GROUND TRUTH. Verify each comment against the `.cpp` implementation —
 not the header comment, not a doc.
 
-1. **Truthful.** Every comment is true of the code. Fix a found lie in the same
-   pass — never defer a lie.
+1. **Truthful, and present-tense.** Every comment is true of the code. Fix a
+   found lie in the same pass — never defer a lie. A claim that is *completely*
+   out of date may simply be **removed**; re-grounding it is optional, not
+   required. **All changelog narration goes** — dates, commit hashes, "was X /
+   now Y", "Bundle/Slice/phase" labels, "replaces", "previously", "deleted",
+   audit-hotspot references — even when the history is accurate. Git log is the
+   changelog; a comment states what the code IS, now.
 2. **The comment serves THIS code, never the domain.** It earns its place only
    where the code needs help being understood. Never a supplemental textbook —
    no re-deriving physics/math, no domain tutorial. That belongs in the spec/docs.
-3. **Pipeline / project narration goes away.** A comment that tours the
-   program's global operation — naming other components and the order they run
-   ("Seed does that on first frame", "that is Trajectory::Run's job",
-   "Phase 6 …") — is project textbook; delete it (that architecture lives in
-   OBJECT_MODEL / PATTERNS, not the source). A **precondition** is the opposite
-   and survives: it constrains how THIS code is used ("call Seed() before
-   reading the Protein", "caller owns the returned pointer", "positions must be
-   PBC-whole"). Keep a precondition only if real and verified, phrased as a
-   requirement on this code's use — never as a tour of the pipeline. This is the
-   single sharpest filter; the trajectory groups (G10–G14) are thick with
-   pipeline narration and lose most of it.
+3. **Recast overall-story phrasing into precondition or plain effect — don't
+   just delete the substance.** The test is *framing*, not topic. "Before you
+   do X you must Y" (a requirement on the caller) and "this function does Z"
+   (its own effect) are local and KEEP. "This is how it all hangs together" —
+   narrating other components and the order they run ("Seed does that on first
+   frame", "that is Trajectory::Run's job", "Phase 6 …") — is overall story:
+   recast it to the crisp local precondition/effect the reader of THIS code
+   needs, dropping only the narrative connective tissue and the cross-component
+   "that's X's job" attributions. Do NOT delete a real constraint on the
+   assumption the docs capture it — they often do not. Verify any precondition
+   you keep. The trajectory groups (G10–G14) are thick with story phrasing and
+   get recast, not emptied.
 4. **Inline comments are the highest risk — default delete.** Keep one only for
    durable, non-obvious, code-local utility: a unit, a gotcha, a contract, a
    non-obvious *why*.
@@ -47,9 +59,11 @@ not the header comment, not a doc.
    `doc-discrepancies/<UTC-stamp>-<slug>-disc.md` (NEVER a shared file). One entry
    per line: `doc:line | doc claim | code truth | src file:line | DOC|CODE`. A
    later aggregation pass dedupes all `*-disc.md` into one doc-cleanup.
-4. **Follow (codex, reasoning = xhigh)** examines the diff: accuracy vs source,
-   clarity, unkilled darlings / broad-op / textbook, and a CODE-TOUCHED check
-   (the diff must be comment-only).
+4. **Follow (codex, reasoning = xhigh)** examines the diff (accuracy vs source,
+   clarity, CODE-TOUCHED check — must be comment-only) AND scans the full batch
+   files to propose additional cruft / broad-op / textbook / stale comments to
+   cut. codex proposes liberally; Claude integrates and adjudicates against
+   source — the lead brings it together at the end.
 5. Act on findings (re-verify vs source) → commit the group atomically → update
    the baton + tick boxes here.
 
@@ -76,7 +90,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
 - [~] **G0 — verified stragglers** (never-defer; spans groups, done first):
   BuildResult.h, TrajectoryProtein.h, ConformationAtom.h, OrcaShieldingResult.h,
   MopacResult.h. Docs: OM, CON.
-- [ ] **G1 — core object model & Result base.** Protein, ProteinConformation,
+- [~] **G1 — core object model & Result base.** _(Protein.h done.)_ Protein, ProteinConformation,
   ConformationAtom (structure/identity comments only — per-calculator field
   blocks are verified within each calculator's group), ConformationResult, Atom,
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,
