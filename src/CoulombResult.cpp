@@ -23,24 +23,11 @@ std::vector<std::type_index> CoulombResult::Dependencies() const {
     };
 }
 
-
-// ============================================================================
-// CoulombResult::Compute
-//
 // E_a(i) = ke * sum_{j!=i} q_j * (r_i - r_j)_a / |r_i - r_j|^3
 //                                   (j within coulomb_efield_cutoff of i)
-//
 // V_ab(i) = ke * sum_{j!=i} q_j * [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|^5
 //                                   - delta_ab / |r_i-r_j|^3]
 //                                   (j within coulomb_efield_cutoff of i)
-//
-// ke = 14.3996 V*A  (Coulomb's constant in {e, A, eV} units)
-//
-// Decomposed by source atom classification:
-//   backbone:  N, CA, C, O, H, HA, CB (from residue backbone cache)
-//   aromatic:  atoms that are members of any Ring
-//   sidechain: everything else
-// ============================================================================
 
 std::unique_ptr<CoulombResult> CoulombResult::Compute(
         ProteinConformation& conf) {
@@ -54,8 +41,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     auto result_ptr = std::make_unique<CoulombResult>();
     result_ptr->conf_ = &conf;
 
-    // atom classes (backbone / aromatic) from Residue backbone cache and
-    // Ring atom membership; no EnrichmentResult dependency.
+    // Source classes come from Residue backbone cache and Ring membership.
     std::vector<bool> is_backbone(n_atoms, false);
     std::vector<bool> is_aromatic_atom(n_atoms, false);
 
@@ -97,10 +83,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         }
     }
 
-    // ------------------------------------------------------------------
-    // Coulomb sum with spatial cutoff
-    // ------------------------------------------------------------------
-
     // Filter set: SelfSourceFilter (field undefined at source itself).
     // Coulomb is a point-source sum — no DipolarNearFieldFilter needed.
     KernelFilterSet filters;
@@ -112,7 +94,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
     const auto& spatial = conf.Result<SpatialIndexResult>();
     const double coulomb_cutoff = CalculatorConfig::Get("coulomb_efield_cutoff");
 
-    // diagnostic count: feeds the summary log line, not the field sum
+    // Diagnostic count for the summary log line, not the field sum.
     int aromatic_source_count = 0;
     for (size_t j = 0; j < n_atoms; ++j)
         if (is_aromatic_atom[j]) aromatic_source_count++;
@@ -130,7 +112,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         Mat3 EFG_sidechain = Mat3::Zero();
         Mat3 EFG_aromatic = Mat3::Zero();
 
-        // diagnostic count: feeds one stored scalar, not the field sum
         int n_sidechain_aromatic_sources = 0;
 
         auto neighbours = spatial.AtomsWithinRadius(pos_i, coulomb_cutoff);
@@ -139,9 +120,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         int sources_outside_radius = static_cast<int>(n_atoms) - 1
                                     - static_cast<int>(neighbours.size());
 
-        // --- per-source field + EFG sum ---
         for (size_t j : neighbours) {
-            // self-exclusion
             KernelEvaluationContext ctx;
             ctx.atom_index = i;
             ctx.source_atom_a = j;
@@ -167,7 +146,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             E_total += E_j;
             EFG_total += V_j;
 
-            // Classify source atom
             if (is_aromatic_atom[j]) {
                 E_aromatic += E_j;
                 EFG_aromatic += V_j;
@@ -182,7 +160,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             }
         }
 
-        // --- units, tracelessness, sanitise, clamp ---
         // Apply Coulomb constant: convert from e/A^2 to V/A
         E_total     *= COULOMB_KE;
         E_backbone  *= COULOMB_KE;
@@ -204,7 +181,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         project_traceless(EFG_sidechain);  // kept for symmetry; not stored or written to NPY
         project_traceless(EFG_aromatic);
 
-        // Sanitise NaN/Inf
         auto sanitise_vec = [](Vec3& v) {
             for (int d = 0; d < 3; ++d)
                 if (std::isnan(v(d)) || std::isinf(v(d))) { v = Vec3::Zero(); return; }
@@ -230,7 +206,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
             double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
-            // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::Coulomb, i, "E-field clamp",
                 [&conf, i, E_mag, scale](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
@@ -244,7 +219,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             E_aromatic  *= scale;
         }
 
-        // ---- GeometryChoice: cutoff summary ----
         if (sources_outside_radius > 0) {
             int sources_within = static_cast<int>(neighbours.size());
             choices.Record(CalculatorId::Coulomb, i, "coulomb cutoff",
@@ -258,7 +232,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
                 });
         }
 
-        // ===== store: physics outputs, then derived scalars =====
         auto& ca = conf.MutableAtomAt(i);
 
         ca.coulomb_E_total     = E_total;
@@ -275,12 +248,10 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
         ca.coulomb_EFG_aromatic = EFG_aromatic;
         ca.coulomb_EFG_aromatic_spherical = SphericalTensor::Decompose(EFG_aromatic);
 
-        // bond projection
         ca.coulomb_E_magnitude = E_total.norm();
         // E projected along primary bond direction (for Buckingham E_z)
         ca.coulomb_E_bond_proj = E_total.dot(primary_bond_dir[i]);
 
-        // backbone alignment
         // Backbone projection: component of E_backbone along E_total direction.
         // Positive = backbone field aligned with total; negative = opposed.
         // Bounded by |E_backbone|. Stable near cancellation (unlike |bb|/|total|).
@@ -292,7 +263,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             ca.coulomb_E_backbone_frac = 0.0;
         }
 
-        // aromatic scalars
         ca.aromatic_E_magnitude = E_aromatic.norm();
         ca.aromatic_E_bond_proj = E_aromatic.dot(primary_bond_dir[i]);
         ca.aromatic_n_sidechain_atoms = n_sidechain_aromatic_sources;
@@ -305,7 +275,7 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
             ca.coulomb_EFG_solvent = ca.apbs_efg - EFG_total;
         }
 
-        // T2 only; Buckingham T0 not included here (see CoulombResult.h).
+        // T2 only; Buckingham T0 from E is applied at calibration.
         ca.coulomb_shielding_contribution = SphericalTensor::Decompose(EFG_total);
     }
 
@@ -316,11 +286,6 @@ std::unique_ptr<CoulombResult> CoulombResult::Compute(
 
     return result_ptr;
 }
-
-
-// ============================================================================
-// Query methods
-// ============================================================================
 
 Vec3 CoulombResult::EFieldAt(size_t atom_index) const {
     return conf_->AtomAt(atom_index).coulomb_E_total;
@@ -355,11 +320,8 @@ Vec3 CoulombResult::SampleEFieldAt(Vec3 point) const {
     return E * COULOMB_KE;  // V/A
 }
 
-
-// ============================================================================
 // WriteFeatures: coulomb_shielding (9), E-field (3), EFG decompositions,
 // scalar features (magnitude, bond projection, backbone fraction).
-// ============================================================================
 
 int CoulombResult::WriteFeatures(const ProteinConformation& conf,
                                   const std::string& output_dir) const {

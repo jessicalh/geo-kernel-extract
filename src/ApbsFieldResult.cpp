@@ -6,7 +6,7 @@
 #include "NpyWriter.h"
 #include "OperationLog.h"
 
-// C bridge for APBS — isolates FETK's Vec3/Mat3 from Eigen's.
+// C bridge isolates APBS/FETK headers from Eigen headers.
 extern "C" {
 #include "apbs_bridge.h"
 }
@@ -18,10 +18,6 @@ extern "C" {
 #include <algorithm>
 
 namespace nmr {
-
-// ============================================================================
-// Grid interpolation utilities (no APBS dependency).
-// ============================================================================
 
 struct GridCache {
     Vec3 origin = Vec3::Zero();
@@ -57,7 +53,6 @@ struct GridCache {
             return x + y * dims[0] + z * dims[0] * dims[1];
         };
 
-        // trilinear interpolation (8 corner weights)
         return data[idx(ix,iy,iz)]     * (1-fx)*(1-fy)*(1-fz)
              + data[idx(ix+1,iy,iz)]   * fx*(1-fy)*(1-fz)
              + data[idx(ix,iy+1,iz)]   * (1-fx)*fy*(1-fz)
@@ -69,14 +64,12 @@ struct GridCache {
     }
 };
 
-// E = -grad(phi) by central difference.
 static Vec3 ElectricFieldFromGrid(const GridCache& grid, const Vec3& point) {
     Vec3 E;
     for (int d = 0; d < 3; ++d) {
         Vec3 plus = point, minus = point;
         plus(d)  += grid.spacing(d);
         minus(d) -= grid.spacing(d);
-        // E = -grad(phi)
         E(d) = -(grid.Interpolate(plus) - grid.Interpolate(minus))
                / (2.0 * grid.spacing(d));
     }
@@ -117,11 +110,6 @@ static Mat3 FieldGradientFromGrid(const GridCache& grid, const Vec3& point) {
     return EFG;
 }
 
-
-// ============================================================================
-// APBS solve path: calls the C bridge, extracts E-field and EFG per atom
-// ============================================================================
-
 static bool ComputeViaApbs(ProteinConformation& conf) {
     const Protein& protein = conf.ProteinRef();
     const size_t n_atoms = conf.AtomCount();
@@ -139,7 +127,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     // solve. Guard placed after dependency retrieval so that path is unchanged.
     if (n_atoms == 0) return false;
 
-    // Separate x, y, z arrays for the C bridge
     std::vector<double> x_coords(n_atoms), y_coords(n_atoms), z_coords(n_atoms);
     std::vector<double> charges(n_atoms), radii(n_atoms);
 
@@ -184,7 +171,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         coarse_dims[d] = fine_dims[d] + coarse_padding;
     }
 
-    // Standard PB parameters
     double pdie = CalculatorConfig::Get("apbs_protein_dielectric");   // protein interior dielectric
     double sdie = CalculatorConfig::Get("apbs_solvent_dielectric");   // solvent dielectric (water, 25C)
     double temperature = CalculatorConfig::Get("apbs_temperature_K"); // Kelvin
@@ -199,7 +185,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         std::to_string(fine_dims[2]) + "]A, " +
         "pdie=" + std::to_string(pdie) + " sdie=" + std::to_string(sdie));
 
-    // Call the C bridge
     ApbsGridResult apbs_grid;
     int rc = apbs_solve(
         static_cast<int>(n_atoms),
@@ -221,7 +206,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         return false;
     }
 
-    // Cache the grid for field/gradient extraction
     GridCache grid;
     grid.origin = Vec3(apbs_grid.origin[0], apbs_grid.origin[1], apbs_grid.origin[2]);
     grid.spacing = Vec3(apbs_grid.spacing[0], apbs_grid.spacing[1], apbs_grid.spacing[2]);
@@ -238,14 +222,12 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
 
     apbs_free_grid(&apbs_grid);
 
-    // Extract per-atom E-field and EFG from the potential grid
     for (size_t i = 0; i < n_atoms; ++i) {
         Vec3 pos = conf.PositionAt(i);
 
         Vec3 E = ElectricFieldFromGrid(grid, pos);
         Mat3 EFG = FieldGradientFromGrid(grid, pos);
 
-        // finite-value guard (zero non-finite E + EFG)
         bool has_nan = false;
         for (int d = 0; d < 3; ++d) {
             if (std::isnan(E(d)) || std::isinf(E(d))) { has_nan = true; break; }
@@ -254,20 +236,7 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
             E = Vec3::Zero();
             EFG = Mat3::Zero();
         } else {
-            // field magnitude cap: a finite-value guard on E only. EFG is
-            // left to the traceless projection + its own NaN guard below
-            // (a clamped-E atom is already flagged anomalous; coupling the
-            // rescale would invent a physical relationship that isn't there).
-            //
-            // Intentionally NOT the shared efield_magnitude_sanity_clamp
-            // config key (used by CoulombResult / WaterFieldResult /
-            // MopacCoulombResult): that key is in V/A, but here E is still in
-            // APBS-native kT/(e*A) units — the KT_OVER_E_298K conversion is
-            // below. The same number means different physical magnitudes in
-            // the two unit systems, so this guard keeps its own constant.
-            // (Whether APBS should instead clamp post-conversion in V/A to
-            // truly match the siblings is a physics/blessing question, not a
-            // config-plumbing one.)
+            // This guard is in APBS-native kT/(e*A), before the V/A conversion.
             double E_mag = E.norm();
             if (E_mag > APBS_SANITY_LIMIT) {
                 E *= APBS_SANITY_LIMIT / E_mag;
@@ -283,7 +252,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
         E *= KT_OVER_E_298K;
         EFG *= KT_OVER_E_298K;
 
-        // store Mat3 + T2
         auto& ca = conf.MutableAtomAt(i);
         ca.apbs_efield = E;
         ca.apbs_efg = EFG;
@@ -298,11 +266,6 @@ static bool ComputeViaApbs(ProteinConformation& conf) {
     return true;
 }
 
-
-// ============================================================================
-// Main compute: APBS solve only. No fallback — nullptr on failure.
-// ============================================================================
-
 std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
         ProteinConformation& conf) {
 
@@ -316,7 +279,6 @@ std::unique_ptr<ApbsFieldResult> ApbsFieldResult::Compute(
     auto result = std::make_unique<ApbsFieldResult>();
     result->conf_ = &conf;
 
-    // Try APBS Poisson-Boltzmann solve first
     bool apbs_ok = ComputeViaApbs(conf);
 
     if (!apbs_ok) {
@@ -341,11 +303,8 @@ SphericalTensor ApbsFieldResult::FieldGradientSphericalAt(size_t atom_index) con
     return conf_->AtomAt(atom_index).apbs_efg_spherical;
 }
 
-
-// ============================================================================
 // Feature export: apbs_E (N,3), apbs_efg (N,5) — T2 only (T0+T1 structural
 // zeros). T2 components emitted inline below.
-// ============================================================================
 
 int ApbsFieldResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {

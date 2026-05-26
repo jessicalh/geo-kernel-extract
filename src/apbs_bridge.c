@@ -1,15 +1,6 @@
 /*
- * APBS C bridge — includes APBS/FETK headers that conflict with Eigen.
- * Compiled as C.
- *
- * Single solve on the COARSE grid with SDH boundary conditions.
- * The coarse grid (extent + 70Å) puts the boundary far enough from
- * the molecule for SDH to be accurate.
- *
- * TODO: implement two-level focusing (coarse→fine) to match APBS mg-auto.
- * Vpmg_ctor(focusFlag=1) crashes in the Debian APBS 3.4.1 build.
- *
- * In-memory path: arrays → Valist → Vpbe → Vpmg → solve → extract.
+ * APBS C bridge. This path performs one solve on the coarse grid with SDH
+ * boundary conditions and returns the potential grid in memory.
  */
 
 #include "apbs_bridge.h"
@@ -100,8 +91,7 @@ int apbs_solve(
     double cy = Valist_getCenterY(alist);
     double cz = Valist_getCenterZ(alist);
 
-    /* Use COARSE grid extent for single solve — SDH boundary is accurate
-     * at ~35Å from the molecule (half of the 70Å padding). */
+    /* Single-solve path uses the coarse grid extent with SDH boundary. */
     MGparm* mgparm = MGparm_ctor(MCT_MANUAL);
     if (!mgparm) {
         Vpbe_dtor(&pbe); Valist_dtor(&alist);

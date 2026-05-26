@@ -22,26 +22,13 @@ std::vector<std::type_index> MopacCoulombResult::Dependencies() const {
     };
 }
 
-
-// ============================================================================
-// MopacCoulombResult::Compute
-//
 // Same kernel as CoulombResult — same dipolar EFG, same Coulomb constant,
 // same decomposition — but reading mopac_charge (PM7 Mulliken, conformation-
 // dependent) instead of partial_charge (ff14SB, fixed per atom type).
-//
-// E_a(i) = ke * sum_{j!=i} q_mopac_j * (r_i - r_j)_a / |r_i - r_j|^3
-// V_ab(i) = ke * sum_{j!=i} q_mopac_j * [3(r_i-r_j)_a(r_i-r_j)_b/|r_i-r_j|^5
-//                                         - delta_ab / |r_i-r_j|^3]
-// ============================================================================
 
 std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ProteinConformation& conf) {
 
-    // Near-verbatim copy of CoulombResult::Compute. Differs only in:
-    //   - charge source: mopac_charge (PM7 Mulliken) vs partial_charge (ff14SB)
-    //   - source set: all pairs (full N^2) vs AtomsWithinRadius cutoff
-    //   - no APBS solvent subtraction, no aromatic-source diagnostic count
     OperationLog::Scope scope("MopacCoulombResult::Compute",
         "atoms=" + std::to_string(conf.AtomCount()));
 
@@ -51,12 +38,7 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
     auto result_ptr = std::make_unique<MopacCoulombResult>();
     result_ptr->conf_ = &conf;
 
-    // ------------------------------------------------------------------
-    // Atom classification: backbone, aromatic, sidechain.
-    // Same topology walk as CoulombResult — from Residue backbone cache
-    // and Ring atom membership. No EnrichmentResult dependency.
-    // ------------------------------------------------------------------
-
+    // Source classes come from Residue backbone cache and Ring membership.
     std::vector<bool> is_backbone(n_atoms, false);
     std::vector<bool> is_aromatic_atom(n_atoms, false);
 
@@ -80,10 +62,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         }
     }
 
-    // ------------------------------------------------------------------
-    // Primary bond direction for E_bond_proj (same as CoulombResult).
-    // ------------------------------------------------------------------
-
     std::vector<Vec3> primary_bond_dir(n_atoms, Vec3::Zero());
     for (size_t ai = 0; ai < n_atoms; ++ai) {
         const Atom& atom = protein.AtomAt(ai);
@@ -99,10 +77,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
             if (len > CalculatorConfig::Get("near_zero_vector_norm_threshold")) primary_bond_dir[ai] = d / len;
         }
     }
-
-    // ------------------------------------------------------------------
-    // Main N^2 Coulomb sum with MOPAC charges
-    // ------------------------------------------------------------------
 
     KernelFilterSet filters;
     filters.Add(std::make_unique<MinDistanceFilter>());
@@ -132,7 +106,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
             ctx.distance = (pos_i - conf.PositionAt(j)).norm();
             if (!filters.AcceptAll(ctx)) continue;
 
-            // MOPAC QM charge instead of ff14SB fixed charge
             double q_j = conf.AtomAt(j).mopac_charge;
             if (std::abs(q_j) < CalculatorConfig::Get("coulomb_charge_noise_floor")) { charge_floor_skipped++; continue; }
 
@@ -184,7 +157,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         project_traceless(EFG_sidechain);
         project_traceless(EFG_aromatic);
 
-        // Sanitise NaN/Inf
         auto sanitise_vec = [](Vec3& v) {
             for (int d = 0; d < 3; ++d)
                 if (std::isnan(v(d)) || std::isinf(v(d))) { v = Vec3::Zero(); return; }
@@ -203,12 +175,10 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         sanitise_mat(EFG_sidechain);
         sanitise_mat(EFG_aromatic);
 
-        // Clamp extreme E-field magnitudes
         double E_mag = E_total.norm();
         if (E_mag > CalculatorConfig::Get("efield_magnitude_sanity_clamp")) {
             double scale = CalculatorConfig::Get("efield_magnitude_sanity_clamp") / E_mag;
 
-            // ---- GeometryChoice: E-field clamp ----
             choices.Record(CalculatorId::MopacCoulomb, i, "mopac E-field clamp",
                 [&conf, i, E_mag, scale](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i, EntityRole::Target, EntityOutcome::Triggered);
@@ -222,9 +192,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
             E_aromatic  *= scale;
         }
 
-        // ------------------------------------------------------------------
-        // Store on ConformationAtom
-        // ------------------------------------------------------------------
         auto& ca = conf.MutableAtomAt(i);
 
         ca.mopac_coulomb_E_total     = E_total;
@@ -257,7 +224,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
         ca.mopac_coulomb_shielding_contribution =
             SphericalTensor::Decompose(EFG_total);
 
-        // ---- GeometryChoice: charge noise floor count ----
         if (charge_floor_skipped > 0) {
             choices.Record(CalculatorId::MopacCoulomb, i, "mopac charge floor",
                 [&ca, i, charge_floor_skipped](GeometryChoice& gc) {
@@ -274,11 +240,6 @@ std::unique_ptr<MopacCoulombResult> MopacCoulombResult::Compute(
     return result_ptr;
 }
 
-
-// ============================================================================
-// Query methods
-// ============================================================================
-
 Vec3 MopacCoulombResult::EFieldAt(size_t atom_index) const {
     return conf_->AtomAt(atom_index).mopac_coulomb_E_total;
 }
@@ -291,11 +252,8 @@ SphericalTensor MopacCoulombResult::EFGSphericalAt(size_t atom_index) const {
     return conf_->AtomAt(atom_index).mopac_coulomb_EFG_total_spherical;
 }
 
-
-// ============================================================================
 // WriteFeatures: mopac_coulomb_shielding (9), E-field (3),
 // EFG decompositions, scalar features.
-// ============================================================================
 
 int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
                                        const std::string& output_dir) const {
@@ -303,8 +261,7 @@ int MopacCoulombResult::WriteFeatures(const ProteinConformation& conf,
 
     std::vector<double> shielding(N * 9);
     std::vector<double> efield(N * 3);
-    // EFG schema rev 2026-05-18: T2 only (5 components). Same symmetric
-    // outer-product physics as Coulomb → T0+T1 structural zeros.
+    // T2 only; EFG is symmetric and traceless after projection.
     std::vector<double> efg_bb(N * 5);
     std::vector<double> efg_aro(N * 5);
     std::vector<double> scalars(N * 4);
