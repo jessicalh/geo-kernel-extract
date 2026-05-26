@@ -44,10 +44,7 @@ LegacyAmberTopology::LegacyAmberTopology(
             atom_semantic_.size(), atom_count_);
         std::abort();
     }
-    // Default: empty RingTopology if caller didn't supply one. This
-    // keeps stub-fixture call sites simple — they pass `{}` (or omit)
-    // and get an empty topology (AromaticCount() == 0,
-    // SaturatedCount() == 0). The accessors never need to null-check.
+    // Accessors assume rings_ is non-null even for empty-substrate paths.
     if (!rings_) {
         rings_ = std::make_unique<RingTopology>();
     }
@@ -122,58 +119,10 @@ LegacyAmberTopology::AtomWithRole(size_t residue_index,
 }
 
 
-// ============================================================================
-// ComposeAtomSemantic
-//
-// Per spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5. The
-// composition rule:
-//
-//   1. Parse the (canonical) atom name + its heavy-atom parent's name
-//      ONCE per atom via ParseAtomName (lifted into
-//      src/generated/LegacyAmberSemanticTables.h post-Bundle-A). The
-//      typed flags on the parse result drive cap-only / backbone /
-//      chain dispatch below; the AtomMechanicalIdentity tuple used
-//      for LookupBy / LookupCap is built inline from the same parse
-//      output. No second ParseAtomName call, no string-taking
-//      IsCapOnlyAtomName(name) re-read after the parser boundary
-//      (codex-review Finding 3).
-//   2. Methyl-H pseudoatom collapse: substrate clears
-//      DiastereotopicIndex on methyl Hs (PseudoatomKind::M); the runtime
-//      composition replicates this via bond-graph methyl detection
-//      (parent has 3+ H neighbours).
-//   3. Cap-only atoms (H1/H2/H3 / OXT / HXT) resolve via LookupCap with
-//      the residue's terminal state. nullptr is FATAL — the post-
-//      protonation re-canonicalisation pass should have caught any
-//      naming variance upstream.
-//   4. Standard chain atoms resolve via LookupBy(residue, variant_idx,
-//      identity). nullptr is FATAL on the same grounds.
-//   5. Backbone-cap overlay: terminal-residue backbone N (NTERM) or
-//      backbone C/O (CTERM) get cap-delta overlay on top of the chain
-//      row via ApplyCapDelta (field-level rule per §H.5; whole-row
-//      assignment is forbidden). cap_delta nullptr is acceptable for
-//      this overlay path (no cap-side override for this backbone role
-//      at this state); chain row stays as-is.
-//
-// Stub-fixture guard: tests that build proteins from raw element-and-
-// position fixtures (e.g. tests/test_coulomb_result.cpp) have empty
-// pdb_atom_name on every atom. Detect this and return empty (the
-// legitimate "no substrate populated" signal). Calculators that need
-// substrate gate on HasAtomSemantic().
-//
-// The "fail-loudly" policy: post-Bundle-A canonicalisation + post-
-// Bundle-B post-protonation re-canonicalisation are designed to make
-// every atom's (canonical) name match the substrate. Any remaining
-// LookupBy/LookupCap miss is a substrate gap or a naming-rule gap;
-// crashing here surfaces it instead of letting a calculator silently
-// see a default-constructed AtomSemanticTable. The stash@{0}
-// degrade-and-skip predecessor is rejected.
-// ============================================================================
-
 namespace {
 
 nmr::TerminalState NTerminalStateForResidue(const nmr::Residue& res) {
     // AMBER ff14SB default at neutral pH: NtermCharged (NH3+).
-    // Future: branch on a NTERM_NEUTRAL variant if/when one lands.
     if (res.terminal_state == nmr::ResidueTerminalState::NTerminus ||
         res.terminal_state == nmr::ResidueTerminalState::NAndCTerminus) {
         return nmr::TerminalState::NtermCharged;
@@ -183,7 +132,6 @@ nmr::TerminalState NTerminalStateForResidue(const nmr::Residue& res) {
 
 nmr::TerminalState CTerminalStateForResidue(const nmr::Residue& res) {
     // AMBER ff14SB default at neutral pH: CtermDeprotonated (COO-).
-    // Future: branch on a CTERM_PROTONATED variant when added.
     if (res.terminal_state == nmr::ResidueTerminalState::CTerminus ||
         res.terminal_state == nmr::ResidueTerminalState::NAndCTerminus) {
         return nmr::TerminalState::CtermDeprotonated;
@@ -235,20 +183,8 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
                     const CovalentTopology& bonds) {
     namespace gen = nmr::topology_generated;
 
-    // Stub-fixture guard. Tests that construct proteins with raw
-    // element-and-position fixtures (no PDB names) leave pdb_atom_name
-    // empty on every atom. Substrate doesn't apply; return empty vector.
-    // Calculators gate on HasAtomSemantic().
-    //
-    // Codex Finding F4 (2026-05-06): the guard's predicate is "ANY atom
-    // anywhere in the protein has a non-empty pdb_atom_name." It does
-    // NOT pre-skip Unknown residues. An all-Unknown-but-named-atoms
-    // protein hits this guard with has_real_atom_names = true, falls
-    // through to the Unknown-residue fail-loud loop below, and aborts
-    // there — which is the correct behaviour. The previous formulation
-    // ("ignore Unknown residues, look for named atoms only on standard
-    // residues") let an all-Unknown-named-atoms protein silently return
-    // empty, masking a real chemistry error.
+    // Named atoms on AminoAcid::Unknown residues must fall through to
+    // the explicit unsupported-residue check below.
     bool has_real_atom_names = false;
     for (const Residue& res : residues) {
         for (size_t ai : res.atom_indices) {
@@ -261,16 +197,6 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
     }
     if (!has_real_atom_names) return {};
 
-    // Fail-loud on AminoAcid::Unknown residues that carry named atoms
-    // (codex-review Finding 4). The standard-20 substrate has no row
-    // for Unknown residues; previously the per-residue loop simply
-    // skipped them and the result vector kept default-constructed
-    // entries on those atom slots — which `HasAtomSemantic()` reports
-    // as populated, producing default `Element::Unknown` rows that
-    // calculators silently consumed. The fail-loud discipline:
-    // unsupported residues abort before composition rather than leak
-    // default rows downstream. Toy-fixture stub-proteins (atoms with
-    // empty pdb_atom_name) are caught above by the stub guard.
     for (size_t ri = 0; ri < residues.size(); ++ri) {
         const Residue& res = residues[ri];
         if (res.type != AminoAcid::Unknown) continue;
@@ -282,7 +208,6 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
         }
         if (named_atom_count == 0) continue;
 
-        // First named atom for diagnostic context.
         std::string first_name;
         for (size_t ai : res.atom_indices) {
             if (ai < atoms.size() && !atoms[ai]->pdb_atom_name.empty()) {
@@ -317,8 +242,6 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
         const nmr::TerminalState n_state = NTerminalStateForResidue(res);
         const nmr::TerminalState c_state = CTerminalStateForResidue(res);
 
-        // Variant index: kBaseVariantIdx unless protonation has been
-        // resolved AND the residue carries a typed variant.
         const std::uint8_t variant_idx =
             (res.protonation_state_resolved &&
              res.protonation_variant_index >= 0)
@@ -330,19 +253,13 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             const Atom& atom = *atoms[ai];
             const std::string& name = atom.pdb_atom_name;
 
-            // Parent-atom name for H disambiguation (e.g. HG21 on CG2
-            // vs HG2 on CG). parent_atom_index is SIZE_MAX for non-H
-            // atoms; ParseAtomName treats empty as "no parent."
+            // Parent name disambiguates hydrogens such as HG21 vs HG2.
             std::string parent_name;
             if (atom.parent_atom_index != SIZE_MAX &&
                 atom.parent_atom_index < atoms.size()) {
                 parent_name = atoms[atom.parent_atom_index]->pdb_atom_name;
             }
 
-            // PARSE ONCE per atom (codex-review Finding 3 — "parse once,
-            // then no string work in composition"). The typed flags on
-            // `parsed` drive cap-only / backbone / chain dispatch below;
-            // strings DIE at this call's return.
             const gen::ParsedAtomName parsed =
                 gen::ParseAtomName(name, parent_name);
 
@@ -353,13 +270,8 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             ident.di_index      = parsed.di_index;
             ident.backbone_role = parsed.backbone_role;
 
-            // Methyl-H pseudoatom collapse: substrate clears
-            // DiastereotopicIndex on methyl Hs (PseudoatomKind::M) so
-            // HE1/HE2/HE3 of MET, HD11/HD12/HD13 of LEU, etc. share a
-            // single identity row. Detect via the bond graph (parent
-            // has 3+ H neighbours) and clear di_index to match.
-            // Mirrors tools/topology/build_semantic_tables.cpp where
-            // e.di_index = None when e.pseudoatom.kind == M.
+            // Methyl Hs share one generated substrate row, so runtime
+            // identity also clears di_index when the parent has >=3 Hs.
             if (atom.element == nmr::Element::H &&
                 ident.di_index != nmr::DiastereotopicIndex::None &&
                 atom.parent_atom_index != SIZE_MAX &&
@@ -381,12 +293,7 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
                 }
             }
 
-            // Dispatch from typed flags (no second ParseAtomName call,
-            // no IsCapOnlyAtomName(string) re-read).
             if (parsed.is_cap_only_n || parsed.is_cap_only_c) {
-                // Cap-only atoms live only in cap tables. The cap state
-                // selecting the table comes from the atom's typed
-                // family flag.
                 const nmr::TerminalState cap_state =
                     parsed.is_cap_only_n ? n_state
                     : parsed.is_cap_only_c ? c_state
@@ -403,7 +310,6 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
                 continue;
             }
 
-            // Standard chain atom: must resolve via LookupBy.
             const nmr::AtomSemanticTable* base =
                 gen::LookupBy(res.type, variant_idx, ident);
             if (base == nullptr) {
@@ -412,25 +318,8 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             }
             result[ai] = *base;
 
-            // Backbone-cap overlay (FIELD-LEVEL via ApplyCapDelta).
-            //
-            // Codex Finding CC1 (2026-05-06): when
-            // IsBackboneCapOverlayAtom() selects this branch, the
-            // backbone role + terminal state combination is one the
-            // substrate is required to populate (Nitrogen at NTERM*,
-            // CarbonylCarbon / CarbonylOxygen at CTERM*). A nullptr
-            // cap row here is a substrate gap — the chain row would
-            // silently keep its internal-residue chemistry while the
-            // load-time terminal state says it should have cap-delta
-            // overlays applied. Treat nullptr as FATAL with full
-            // mechanical-identity context, mirroring the chain-side
-            // FatalSubstrateMiss path. Test-gap note: constructing a
-            // synthetic fixture that triggers this assertion requires
-            // modifying the (auto-generated) substrate table to omit
-            // the row; the architectural fix is the value, and the
-            // failure becomes obvious any time the substrate is
-            // extended for a new variant or terminal state without
-            // the matching cap-table population.
+            // Apply cap deltas field-by-field so terminal backbone rows
+            // retain the chain identity fields not overridden by the cap.
             const nmr::BackboneRole bb_role = ident.backbone_role;
             if (gen::IsBackboneCapOverlayAtom(bb_role, n_state, c_state)) {
                 const nmr::TerminalState cap_state =

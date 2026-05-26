@@ -1,29 +1,7 @@
 #pragma once
-//
-// LegacyAmberTopology: explicit topology contract for the existing
-// Amber-derived calculator language.
-//
-// THE topology object. Holds the covalent bond graph plus invariant
-// FF-numerical facts the source (TPR, PRMTOP, ...) gives us. All
-// fields are plain const data populated at construction. Loaders
-// pass a `LegacyAmberInvariants` value-pack when they have FF
-// numerical data; loaders that don't (PDB + ff14SB flat table, raw
-// PDB) pass nothing and the corresponding fields are empty.
-//
-// Empty vectors / zero scalars are the legitimate "this load path
-// didn't have it" signal; calculators that need a specific field
-// check for emptiness directly. There is NO `Optional` slot, NO
-// `Attach*Data()` lifecycle, NO `Has*Data()` gate, NO post-hoc
-// mutable accessor on the parent. See memory
-// `feedback_no_attach_lifecycle_for_invariant_data` and
-// `feedback_capture_at_the_boundary`.
-//
-// Water/ion FF data (SETTLE per water moltype, virtual-site geometry
-// for TIP4P-class M-sites) is NOT held here. Waters and ions are
-// not in the typed Protein/Residue substrate per the 2026-04-30
-// walk-back; calculators that need water FF facts read them at
-// per-frame side-channel scope, not from the protein topology.
-//
+// LegacyAmberTopology holds the covalent graph plus invariant
+// force-field facts supplied by the loader. Empty vectors and zero
+// scalars mean the load path did not provide that field.
 
 #include "ProteinTopology.h"
 #include "CovalentTopology.h"
@@ -39,11 +17,8 @@ namespace nmr {
 
 class Atom;
 
-// Transient bundle of invariant FF-numerical fields passed to the
-// `LegacyAmberTopology` constructor. Default-empty: loaders without
-// FF data pass `{}`. Fields are moved into the topology and the
-// bundle goes out of scope. NOT an object that lives on the topology;
-// just constructor-arg packaging.
+// Constructor payload for invariant force-field fields. Default-empty
+// is the "not provided" state.
 struct LegacyAmberInvariants {
     // Per-atom invariant FF-numerical fields (vectors, when populated,
     // are size = atom_count; empty otherwise).
@@ -62,15 +37,12 @@ struct LegacyAmberInvariants {
     double rep_pow  = 12.0;                     // LJ repulsion exponent
     int    atnr     = 0;                        // FF atom-type table dimension
 
-    // Number of non-perturbed interactions per InteractionFunction kind,
-    // for FEP-perturbation diagnostics. Surfaced for completeness; we
-    // do not currently consume FEP-perturbed TPRs.
+    // Number of non-perturbed interactions per InteractionFunction kind.
     std::array<int, 256> num_non_perturbed = {};
 
-    // Authoritative disulfide pairing fact recorded by pdb2gmx
-    // (specbond.cpp + rtp comment line). Applied at FinalizeConstruction
-    // time via CovalentTopology::OverrideDisulfides — geometric SG-SG
-    // inference stops being the source of truth on the consume side.
+    // Disulfide pairing from GROMACS bonded terms, applied through
+    // CovalentTopology::OverrideDisulfides when has_disulfide_authority
+    // is true.
     //
     // Empty `disulfide_pairs` is meaningful only in conjunction with
     // `has_disulfide_authority`:
@@ -105,7 +77,6 @@ public:
     size_t AtomCount() const override { return atom_count_; }
     size_t ResidueCount() const override { return residue_count_; }
 
-    // ── Covalent topology ───────────────────────────────────────────
     const CovalentTopology& Bonds() const { return *bonds_; }
 
     size_t BondCount() const { return bonds_->BondCount(); }
@@ -118,18 +89,8 @@ public:
         return bonds_->HydrogenParentOf(atom_index);
     }
 
-    // ── Ring topology ───────────────────────────────────────────────
-    //
-    // Aromatic rings (PHE/TYR/HIS-variants/TRP-{benzene,pyrrole,9}) and
-    // saturated rings (Pro pyrrolidine) live in a RingTopology
-    // companion object owned here, parallel to CovalentTopology.
-    // Bundle C / Slice B (2026-05-07) moved storage off Protein per the
-    // legacy-amber-implementation-brief Authority Map.
-    //
-    // Stub-fixture path: RingTopology can be empty (rings_->AromaticCount()
-    // == 0 and SaturatedCount() == 0) when atom_semantic_ is empty;
-    // construction guarantees rings_ is non-null after the constructor
-    // returns.
+    // rings_ is always non-null. It may contain zero rings when the
+    // atom-semantic substrate is absent.
     const RingTopology& Rings() const { return *rings_; }
 
     size_t AromaticRingCount() const { return rings_->AromaticCount(); }
@@ -148,7 +109,6 @@ public:
         return rings_->Saturated();
     }
 
-    // ── Invariant FF-numerical fields ───────────────────────────────
     // Empty / zero when the load path didn't carry FF data. Calculators
     // gate on `!Mass().empty()` (etc.) when needed.
 
@@ -163,39 +123,18 @@ public:
     int    Atnr() const { return atnr_; }
     const std::array<int, 256>& NumNonPerturbed() const { return num_non_perturbed_; }
 
-    // ── Per-atom chemistry-substrate (AtomSemanticTable) ────────────
-    //
-    // `atom_semantic_` is composed at FinalizeConstruction time by
-    // ComposeAtomSemantic (free function below). Empty vector means
-    // "not populated" — a legitimate signal for stub calculator-physics
-    // fixtures whose atoms carry no PDB names. When populated, size
-    // equals AtomCount().
-    //
-    // Whole-row primary surface: calculators read fields off the row
-    // returned by SemanticAt(atom_index) directly. Predicate methods
-    // live on AtomSemanticTable itself, not here, per the
-    // Ring::Intensity() / Ring::IsFused() pattern (objects answer
-    // questions about themselves). Per-field shortcuts on this class
-    // were considered and rejected because they channel calculator
-    // authors toward narrow consumption that hides substrate richness
-    // (e.g. IsAromatic(ai) collapses 13 distinct RingPositionLabel
-    // values into one boolean).
+    // Empty atom_semantic_ means no substrate was populated; when
+    // populated, size equals AtomCount().
 
     bool HasAtomSemantic() const { return !atom_semantic_.empty(); }
 
-    // Returns the AtomSemanticTable for the given atom. FATAL+abort if
-    // atom_semantic_ is empty (caller must gate via HasAtomSemantic())
-    // or if atom_index is out of range. Mirrors the bonds_ FATAL pattern
-    // in the constructor.
+    // FATAL+abort if atom_semantic_ is empty or atom_index is out of range.
     const AtomSemanticTable& SemanticAt(size_t atom_index) const;
 
     const std::vector<AtomSemanticTable>& AtomSemantic() const {
         return atom_semantic_;
     }
 
-    // Project the identity-tuple subset from the semantic row. Cheap
-    // convenience for typed-graph queries below; calculators that need
-    // identity directly call this rather than building one by hand.
     AtomMechanicalIdentity IdentityAt(size_t atom_index) const {
         const AtomSemanticTable& sem = SemanticAt(atom_index);
         return AtomMechanicalIdentity{
@@ -204,25 +143,17 @@ public:
         };
     }
 
-    // Typed-graph query: return atom indices in `residue_index`'s
-    // atom_indices whose mechanical identity equals `identity`.
-    // Empty result means no match. Used by Bundle B's typed
-    // CacheResidueBackboneIndices for Glycine HA disambiguation
-    // (Locant::Alpha + DiastereotopicIndex::Position2) and CB cache
-    // (Locant::Beta). Future bundles expand callers.
-    //
     // `residues` is the protein's residue vector (the topology does
     // not own residues; the caller passes them in for atom-index
-    // lookup). FATAL+abort if residue_index out of range.
+    // lookup). Empty result means no match. FATAL+abort if
+    // residue_index is out of range.
     std::vector<size_t> ResidueAtomsWithIdentity(
         size_t residue_index,
         const AtomMechanicalIdentity& identity,
         const std::vector<Residue>& residues) const;
 
-    // Typed backbone-role lookup within a residue. Returns
-    // Residue::NONE if no atom has the role. Used by Bundle B's typed
-    // CacheResidueBackboneIndices (one call per backbone slot per
-    // residue). FATAL+abort if residue_index out of range.
+    // Returns Residue::NONE if no atom in the residue has the role.
+    // FATAL+abort if residue_index is out of range.
     size_t AtomWithRole(size_t residue_index,
                         BackboneRole role,
                         const std::vector<Residue>& residues) const;
@@ -232,8 +163,6 @@ private:
     size_t residue_count_ = 0;
     std::unique_ptr<CovalentTopology> bonds_;
 
-    // Plain const-style fields populated at construction. No Optional,
-    // no Attach lifecycle, no Has gate. Empty / zero is the signal.
     std::vector<double> mass_;
     std::vector<int>    ff_atom_type_index_;
     std::vector<int>    ptype_;
@@ -257,25 +186,15 @@ private:
 };
 
 
-// Compose the per-atom AtomSemanticTable vector by walking each atom in
-// each residue, computing typed mechanical identity from the canonical
-// atom name + heavy-atom parent's canonical name (via the lifted
-// parser in src/generated/LegacyAmberSemanticTables.h), and looking up
-// the substrate row via LookupBy / LookupCap / ApplyCapDelta per
-// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5.
+// Compose the per-atom AtomSemanticTable vector from canonical atom
+// names, heavy-atom parent names, and generated substrate tables.
 //
-// Stub-fixture guard: if no residue carries non-empty atom names
-// across all of its atoms (calculator-physics tests with raw element-
-// and-position fixtures), returns an empty vector. Calculators that
-// need substrate gate on LegacyAmberTopology::HasAtomSemantic().
+// If no atom has a PDB atom name, returns an empty vector.
 //
 // Fails fatally on:
 //   - chain atom whose (residue, variant, identity) has no LookupBy match.
 //   - cap-only atom whose (terminal_state, identity) has no LookupCap match.
-// All these cases indicate substrate gap or naming variance not caught
-// by post-protonation re-canonicalisation; they are bugs to fix, not
-// silent skips. Per the Bundle B brief: "Fail-loudly on substrate
-// misses." (Predecessor stash@{0} chose degrade-and-skip; rejected.)
+//   - named AminoAcid::Unknown residue.
 std::vector<AtomSemanticTable> ComposeAtomSemantic(
     const std::vector<std::unique_ptr<Atom>>& atoms,
     const std::vector<Residue>& residues,
