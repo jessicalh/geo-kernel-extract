@@ -4,9 +4,14 @@ What each classical calculator computes, why, and what angular structure
 (T2) it produces. Parameter values are not specified here — they are
 learnable weights on these geometric kernels. The kernels ARE the physics.
 
-This document is the mathematical foundation for implementing the
-eight classical calculators. It describes the geometry-to-tensor
-mapping of each physical effect, independent of parameterisation.
+This document is the mathematical foundation for the classical
+electromagnetic shielding calculators (the core kernels below, plus the
+two MOPAC-charge variants). It describes the geometry-to-tensor mapping
+of each physical effect, independent of parameterisation. The
+production stack adds field/charge/solvent calculators (APBS, AIMNet2,
+EEQ, SASA, water + hydration) and the literature-comparison families
+(tripeptide/ProCS15, Larsen H-bond); those live in the object model
+(OBJECT_MODEL.md, spec/CONSTITUTION.md), not here.
 
 ---
 
@@ -112,7 +117,7 @@ angular distribution of ring susceptibility shielding.
 | McConnell | bond midpoint | bond axis (for scalar f) | Delta_chi per bond category |
 | RingSusceptibility | ring center | ring normal (for scalar f) | Delta_chi_ring per ring type |
 | HBond | H-bond partner | D-H-A direction | eta per element |
-| Coulomb EFG | each charged atom | (none — sum over all) | charges (from ff14SB/xTB) |
+| Coulomb EFG | each charged atom | (none — sum over all) | charges (ff14SB from AMBER prmtop; MOPAC PM7 in FullFat; EEQ; AIMNet2) |
 
 ---
 
@@ -368,12 +373,12 @@ sigma_ab = -(mu_0 / 4pi) * (Delta_chi / 3) * M_ab / r^3
 ```
 
 In our unit system (distances in Angstroms, Delta_chi in cm^3/mol),
-the prefactor absorbs unit conversions. The exact numerical prefactor
-depends on how Delta_chi is expressed. For implementation: compute
-M_ab / r^3 as the pure geometric kernel (Angstrom^-3), multiply by
-(Delta_chi / 3) and the appropriate unit conversion to get ppm.
-Pin down the exact conversion factor during implementation by
-matching against the old code's output.
+the prefactor absorbs unit conversions. The calculator emits
+M_ab / r^3 as the pure geometric kernel (Angstrom^-3); the
+(Delta_chi / 3) scaling and the conversion to ppm are learnable
+parameters applied at calibration (McConnellResult.cpp). The kernel
+itself is parameter-free geometry — the system outputs kernels, not
+shielding.
 
 ---
 
@@ -423,17 +428,18 @@ tensor from the bond's magnetic anisotropy and the EFG from the C=O
 partial charges. The actual relationship (reinforcing, opposing, or
 orthogonal) at each atom is what the data will show.
 
-**Decomposition**: E and V are decomposed by source:
-- Backbone atoms: E_backbone, V_backbone
-- Sidechain atoms: E_sidechain, V_sidechain
-- Aromatic atoms: E_aromatic, V_aromatic
-- Solvent: E_solvent = APBS_E - vacuum_E (what solvation adds)
+**Decomposition** (CoulombResult.cpp, stored on ConformationAtom):
+- E-field by source: E_backbone, E_sidechain, E_aromatic
+- EFG by source: EFG_backbone, EFG_aromatic (there is no sidechain EFG)
+- Solvent (only when APBS is present): E_solvent = APBS_E - E_vacuum,
+  EFG_solvent = APBS_EFG - EFG_vacuum (what solvation adds)
 
 **APBS relationship**: APBS solves the full Poisson-Boltzmann equation,
-giving the SOLVATED E-field and EFG. Vacuum Coulomb gives the gas-phase
-values. The difference is the solvation contribution. Both are features.
-APBS is already computed in Layer 0; vacuum Coulomb from CoulombResult
-provides the decomposition APBS cannot.
+giving the SOLVATED E-field and EFG; it is always on. Vacuum Coulomb
+supplies the gas-phase values for the solvation subtraction above — but
+in production it runs ONLY in the FullFat (--mopac) probe (PerFrame sets
+skip_coulomb; APBS supersedes vacuum Coulomb above ~1000 atoms). See the
+canonical 5-mode spec in CLAUDE.md.
 
 ---
 
@@ -638,12 +644,11 @@ MopacCoulomb vs ff14SB Coulomb: |cos| = 0.85. Highly correlated (same
 underlying geometry) but not redundant — 15% angular difference from
 charge polarisation. The model can distinguish them.
 
-**Decomposition**: Same as Calculator 4:
-- Backbone atoms: E_backbone, V_backbone
-- Sidechain atoms: E_sidechain, V_sidechain
-- Aromatic atoms: E_aromatic, V_aromatic
-No APBS solvent subtraction (APBS was solved with ff14SB charges; the
-MOPAC-charge solvent field would require a separate PB solve).
+**Decomposition**: Same as Calculator 4 — E-field by source
+(backbone, sidechain, aromatic), EFG by source (backbone, aromatic;
+no sidechain EFG). No APBS solvent subtraction (APBS was solved with
+ff14SB charges; the MOPAC-charge solvent field would require a separate
+PB solve).
 
 **Shielding contribution** (Buckingham 1960, same form as Calculator 4):
 ```
@@ -775,7 +780,7 @@ produce the actual ranking.
 | Ring current (BS) | n ⊗ B outer product | Near aromatic rings only | lobe_offset d |
 | Ring current (HM) | Surface integral | Same physics as BS, different approximation | (intensity) |
 | Ring susceptibility | Full dipolar tensor from ring center | Same kernel as McConnell, fewer sources | (none — pure geometry) |
-| Pi-quadrupole | Quadrupole EFG from ring | 1/r^4 decay, ring-normal dependence | height_offset |
+| Pi-quadrupole | Quadrupole EFG from ring | tensor leading 1/r^5 (scalar A-term 1/r^4), ring-normal dependence | height_offset |
 | Dispersion | 1/r^8 anisotropy | Small anisotropic contribution | (small) |
 | H-bond | Full dipolar tensor from partner | Fewer sources than McConnell | backbone/sidechain weight |
 | MOPAC Coulomb | QM-charge EFG asymmetry | Charge polarisation changes angular EFG | gamma_mopac |
@@ -794,7 +799,15 @@ and geometry.
 
 ---
 
-## Build Order (from shared kernels)
+## Shared-kernel structure (realized)
+
+The dipolar kernel K_ab is implemented once and shared by four
+calculators (McConnell, Coulomb, RingSusceptibility, HBond); the
+ring-current (BS/HM) and quadrupole kernels are separate. The phases
+below are the historical build/validation order — every calculator
+named is implemented and tested, not pending. "Old code" refers to the
+predecessor project used for byte-level cross-validation during the
+port.
 
 ### Phase 1: The dipolar kernel (one implementation, four users)
 
