@@ -21,26 +21,9 @@ std::vector<std::type_index> RingSusceptibilityResult::Dependencies() const {
     };
 }
 
-
-// ============================================================================
 // The full ring susceptibility shielding tensor from one ring at one atom.
-//
-// Same derivation as McConnell (GEOMETRIC_KERNEL_CATALOGUE.md) with
-// b_hat → n_hat (ring normal):
-//
 //   M_ab = 9 cosθ d̂_a n_b  -  3 n_a n_b  -  (3 d̂_a d̂_b - δ_ab)
-//
 // Returns M_ab / r³ (Angstrom⁻³).
-//
-// Also computes:
-//   K_ab = (3 d̂_a d̂_b - δ_ab) / r³   (symmetric traceless dipolar kernel)
-//   f    = (3 cos²θ - 1) / r³           (ring susceptibility scalar)
-//
-// Three terms in M:
-//   Term 1: 9 cosθ d̂ ⊗ n̂      — asymmetric, gives T1
-//   Term 2: -3 n̂ ⊗ n̂           — symmetric, gives T0
-//   Term 3: -(3 d̂ ⊗ d̂ - I)    — symmetric traceless, gives T2
-// ============================================================================
 
 struct RingChiKernelResult {
     Mat3 full_tensor_over_r3 = Mat3::Zero();  // full tensor M_ab / r³ (asymmetric)
@@ -58,7 +41,6 @@ static RingChiKernelResult ComputeRingChiKernel(
 
     RingChiKernelResult result;
 
-    // ring→atom displacement
     Vec3 ring_to_atom = atom_pos - ring_center;
     double r = ring_to_atom.norm();
 
@@ -72,17 +54,13 @@ static RingChiKernelResult ComputeRingChiKernel(
 
     double cos_theta = d_hat.dot(ring_normal);
 
-    // Ring susceptibility scalar: (3 cos²θ - 1) / r³
     result.scalar_kernel = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
-    // Symmetric traceless dipolar kernel K_ab
     for (int a = 0; a < 3; ++a)
         for (int b = 0; b < 3; ++b)
             result.dipolar_kernel(a, b) = (3.0 * d_hat(a) * d_hat(b)
                               - (a == b ? 1.0 : 0.0)) / r3;  // δ_ab
 
-    // Full tensor M_ab / r³
-    //   = [9 cosθ d̂_a n_b - 3 n_a n_b - (3 d̂_a d̂_b - δ_ab)] / r³
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.full_tensor_over_r3(a, b) =
@@ -95,11 +73,6 @@ static RingChiKernelResult ComputeRingChiKernel(
 
     return result;
 }
-
-
-// ============================================================================
-// RingSusceptibilityResult::Compute
-// ============================================================================
 
 std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
         ProteinConformation& conf) {
@@ -143,7 +116,6 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
         auto& atom = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        // nearby rings (spatial index)
         auto nearby_rings = spatial.RingsWithinRadius(atom_pos, CalculatorConfig::Get("ring_current_spatial_cutoff"));
 
         Mat3 M_total = Mat3::Zero();
@@ -155,14 +127,12 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
             RingChiKernelResult kernel = ComputeRingChiKernel(
                 atom_pos, geom.center, geom.normal);
 
-            // filter pair: source extent = ring diameter (2 * radius)
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
-                // record exclusion
                 choices.Record(CalculatorId::RingSusceptibility, ri, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
@@ -174,7 +144,6 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 continue;
             }
 
-            // Attach per-ring feature record to this atom (not kernel math).
             // The ring_neighbours vector may already have an entry from
             // another calculator (BiotSavart). Find by ring index.
             RingNeighbourhood* neighbour = nullptr;
@@ -189,11 +158,8 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 new_neighbour.ring_index = ri;
                 new_neighbour.ring_type = ring.type_index;
                 new_neighbour.distance_to_center = kernel.distance;
-                // contract: unit vector pointing center→atom (see RingChiKernelResult::direction)
                 new_neighbour.direction_to_center = kernel.direction;
 
-                // Ring-frame coordinates: z along normal, rho in-plane,
-                // theta = polar angle from normal (hemisphere-folded).
                 Vec3 atom_offset = atom_pos - geom.center;
                 double z = atom_offset.dot(geom.normal);
                 Vec3 d_plane = atom_offset - z * geom.normal;
@@ -207,18 +173,15 @@ std::unique_ptr<RingSusceptibilityResult> RingSusceptibilityResult::Compute(
                 neighbour = &atom.ring_neighbours.back();
             }
 
-            // store ring kernel
-            // per-neighbour record (overwritten per ring); per-atom sum is M_total below
+            // Per-neighbour record; per-atom sum is M_total below.
             neighbour->chi_tensor = kernel.full_tensor_over_r3;
             neighbour->chi_spherical = SphericalTensor::Decompose(kernel.full_tensor_over_r3);
             neighbour->chi_scalar = kernel.scalar_kernel;
 
-            // accumulate atom tensor
             M_total += kernel.full_tensor_over_r3;
             total_pairs++;
         }
 
-        // decompose atom total
         atom.ringchi_shielding_contribution = SphericalTensor::Decompose(M_total);
     }
 
@@ -238,8 +201,7 @@ SphericalTensor RingSusceptibilityResult::SampleKernelAt(Vec3 point) const {
     const Protein& protein = conf_->ProteinRef();
     Mat3 M_total = Mat3::Zero();
 
-    // Grid-point sampling: same kernel as Compute, evaluated at an arbitrary
-    // point (no per-atom filter set — see plan Q1).
+    // No atom-topology filters exist for free grid points.
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 

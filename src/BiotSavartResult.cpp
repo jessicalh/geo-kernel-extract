@@ -22,23 +22,9 @@ std::vector<std::type_index> BiotSavartResult::Dependencies() const {
     };
 }
 
-
-// ============================================================================
 // Wire segment B-field (Biot-Savart law).
-//
 // All computation in SI: positions in metres, current in amperes, B in Tesla.
-//
 //   B = (mu_0/4pi) * I * (dl x dA) / |dl x dA|^2 * (dl.dA/|dA| - dl.dB/|dB|)
-//
-// where:
-//   dl = b - a  (wire segment vector)
-//   dA = r - a  (field point from segment start)
-//   dB = r - b  (field point from segment end)
-//
-// Numerical guards (in SI, so thresholds are small):
-//   lenA, lenB < 1e-25 m:  field point at segment endpoint
-//   crossSq < 1e-70 m^2:   field point on the wire axis
-// ============================================================================
 
 static Vec3 WireSegmentField(
         const Vec3& a_m, const Vec3& b_m,
@@ -65,17 +51,8 @@ static Vec3 WireSegmentField(
     return biot_savart_scale * endpoint_projection_term * cross;  // Tesla
 }
 
-
-// ============================================================================
 // Johnson-Bovey double-loop model.
-//
-// Two current loops at +/- lobe_offset from the ring plane along the normal.
-// Each loop carries half the total current (I/2). The total B-field is the
-// sum over all wire segments of both loops.
-//
-// Input: vertex positions in Angstroms, current in nanoamperes.
-// Converts to SI at the boundary, computes in pure SI, returns B in Tesla.
-// ============================================================================
+// Two loops are offset along the ring normal; each carries I/2.
 
 static Vec3 JohnsonBoveyField(
         const std::vector<Vec3>& vertices,
@@ -112,18 +89,6 @@ static Vec3 JohnsonBoveyField(
 
     return B;  // Tesla
 }
-
-
-// ============================================================================
-// BiotSavartResult::Compute
-//
-// For each atom, find rings within the ring_current_spatial_cutoff config
-// value (default 15 A). For each ring:
-//   1. Compute B-field from JB double-loop model (unit current, I=1 nA)
-//   2. Construct geometric kernel G_ab = -n_b * B_a * PPM_FACTOR
-//   3. Store G, SphericalTensor(G), B, cylindrical coords on RingNeighbourhood
-//   4. Accumulate per-type T0 and T2 sums on ConformationAtom
-// ============================================================================
 
 std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
         ProteinConformation& conf) {
@@ -181,7 +146,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
             if (geom.vertices.size() < 3) continue;
 
-            // Provenance: record one sampler per ring (physics resumes below).
+            // Record one sampler per ring.
             if (recorded_rings.find(ri) == recorded_rings.end()) {
                 recorded_rings.insert(ri);
                 auto verts_copy = geom.vertices;
@@ -194,7 +159,7 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                         AddNumber(gc, "lobe_offset", ring.JohnsonBoveyLobeOffset(), "A");
                         SetSampler(gc, [verts_copy, normal_copy, lobe_copy](Vec3 pt) -> SphericalTensor {
                             Vec3 B = JohnsonBoveyField(verts_copy, normal_copy, lobe_copy, 1.0, pt);
-                            // G_ab = -n_b B_a PPM_FACTOR (see header sign convention).
+                            // G_ab = -n_b B_a PPM_FACTOR.
                             Mat3 G;
                             for (int a = 0; a < 3; ++a)
                                 for (int b = 0; b < 3; ++b)
@@ -206,14 +171,12 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
 
             double distance = (atom_pos - geom.center).norm();
 
-            // Apply filter: source extent = ring diameter (2 * radius)
             KernelEvaluationContext ctx;
             ctx.distance = distance;
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
-                // Provenance: record this atom-ring pair as filter-excluded.
                 choices.Record(CalculatorId::BiotSavart, ri, "near-field exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
@@ -225,14 +188,12 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 continue;
             }
 
-            // Unit-current B-field (I = 1 nA).
-            // The geometric kernel is independent of intensity.
+            // Unit-current field; the geometric kernel is independent of intensity.
             Vec3 B = JohnsonBoveyField(
                 geom.vertices, geom.normal,
                 ring.JohnsonBoveyLobeOffset(), 1.0, atom_pos);
 
-            // G_ab = -n_b B_a PPM_FACTOR (shielding-sign convention; derivation +
-            // worked example in the header).
+            // G_ab = -n_b B_a PPM_FACTOR.
             Mat3 G;
             for (int a = 0; a < 3; ++a)
                 for (int b = 0; b < 3; ++b)
@@ -255,11 +216,9 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 Vec3 center_to_atom = atom_pos - geom.center;
                 new_rn.direction_to_center = center_to_atom.normalized();
 
-                // Target position in ring frame (axial z, radial rho, polar theta).
                 double z = center_to_atom.dot(geom.normal);
                 Vec3 d_plane = center_to_atom - z * geom.normal;
                 double rho = d_plane.norm();
-                // polar angle from the ring axis, folded to [0, pi/2] via abs(z)
                 double theta = std::atan2(rho, std::abs(z));
                 new_rn.z = z;
                 new_rn.rho = rho;
@@ -271,8 +230,6 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 Vec3 ref = geom.vertices[0] - geom.center;
                 Vec3 ref_plane = ref - ref.dot(geom.normal) * geom.normal;
                 double ref_norm = ref_plane.norm();
-                // Same near-zero-norm degeneracy guard as the B-field
-                // projection block below (cpp ~291).
                 const double rho_guard =
                     CalculatorConfig::Get("near_zero_vector_norm_threshold");
                 if (rho > rho_guard && ref_norm > rho_guard) {
@@ -286,7 +243,6 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 rn = &ca.ring_neighbours.back();
             }
 
-            // Store BS results on RingNeighbourhood
             rn->G_tensor = G;
             rn->G_spherical = SphericalTensor::Decompose(G);
             rn->B_field = B;
@@ -304,14 +260,10 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
                 0.0,                   // B_phi (zero by axial symmetry choice)
                 B.dot(geom.normal));   // B_z
 
-            // Accumulate totals
             G_total += G;
             B_total += B;
 
-            // Per-type T0 and T2 sums
-            // NOTE: 8 = RingTypeIndex count; a ring whose type index >= 8 is
-            // silently dropped here. Keep in sync with the enum (and the
-            // per-type array widths + catalog) if a ring type is added.
+            // Hard-coded output width: aromatic ring types occupy indices 0..7.
             int ti = ring.TypeIndexAsInt();
             if (ti >= 0 && ti < 8) {
                 ca.per_type_G_T0_sum[ti] += rn->G_spherical.T0;
@@ -322,9 +274,8 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             total_pairs++;
         }
 
-        // Store accumulated totals on ConformationAtom.
         // total_G_spherical: running sum across calculators on this atom.
-        // bs_shielding_contribution: this calculator's per-call BS sum only.
+        // bs_shielding_contribution: this calculator's sum only.
         ca.total_B_field += B_total;
         ca.total_G_tensor += G_total;
         ca.total_G_spherical = SphericalTensor::Decompose(
@@ -340,7 +291,6 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
             if (rn.distance_to_center <= ring_proximity_shell_4) ca.n_rings_within_12A++;
         }
 
-        // Provenance: record this atom's ring-shell counts.
         choices.Record(CalculatorId::BiotSavart, ai, "ring shells",
             [&ca, ai](GeometryChoice& gc) {
                 AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
@@ -360,15 +310,10 @@ std::unique_ptr<BiotSavartResult> BiotSavartResult::Compute(
     return result_ptr;
 }
 
-
-// ============================================================================
-// SampleBFieldAt / SampleKernelAt: evaluate at arbitrary 3D points.
-//
 // Same physics as Compute(), single point. Grid points are not atoms, so the
 // per-atom/topology filters (MinDistance, RingBondedExclusion) do not apply;
 // the inline distance/singularity/inside-source guards keep the multipole
 // valid.
-// ============================================================================
 
 Vec3 BiotSavartResult::SampleBFieldAt(Vec3 point) const {
     if (!conf_) return Vec3::Zero();
@@ -386,8 +331,7 @@ Vec3 BiotSavartResult::SampleBFieldAt(Vec3 point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        // Grid acceptance: singularity guard + inside-source guard + distance
-        // cutoff (no per-atom/topology filters; grid points are not atoms).
+        // No atom-topology filters exist for free grid points.
         double distance = (point - geom.center).norm();
         if (distance < singularity_guard) continue;
         if (distance < geom.radius) continue;
@@ -417,8 +361,7 @@ SphericalTensor BiotSavartResult::SampleKernelAt(Vec3 point) const {
         const RingGeometry& geom = conf_->ring_geometries[ri];
         if (geom.vertices.size() < 3) continue;
 
-        // Grid acceptance: singularity guard + inside-source guard + distance
-        // cutoff (no per-atom/topology filters; grid points are not atoms).
+        // No atom-topology filters exist for free grid points.
         double distance = (point - geom.center).norm();
         if (distance < singularity_guard) continue;
         if (distance < geom.radius) continue;
@@ -428,7 +371,7 @@ SphericalTensor BiotSavartResult::SampleKernelAt(Vec3 point) const {
             geom.vertices, geom.normal,
             ring.JohnsonBoveyLobeOffset(), 1.0, point);
 
-        // G_ab = -n_b B_a PPM_FACTOR (see header sign convention).
+        // G_ab = -n_b B_a PPM_FACTOR.
         Mat3 G;
         for (int a = 0; a < 3; ++a)
             for (int b = 0; b < 3; ++b)
@@ -440,18 +383,13 @@ SphericalTensor BiotSavartResult::SampleKernelAt(Vec3 point) const {
     return SphericalTensor::Decompose(G_total);
 }
 
-
-// ============================================================================
 // WriteFeatures: export what Compute() wrote on ConformationAtom.
-//
-// Every field this method reads was written by Compute() above. The arrays
+// Every field this method reads comes from Compute(). The arrays
 // match Compute()'s accumulation: shielding contribution (the full
 // SphericalTensor of the summed G over all rings), per-type T0 and T2
 // sums (8 ring types, matching the RingTypeIndex enum), ring proximity
 // counts, and the total B-field vector.
-//
 // Pack order for SphericalTensor: [T0, T1[0..2], T2[0..4]] = 9 doubles.
-// ============================================================================
 
 int BiotSavartResult::WriteFeatures(const ProteinConformation& conf,
                                      const std::string& output_dir) const {
