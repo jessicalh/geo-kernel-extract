@@ -31,15 +31,14 @@ public:
     virtual std::vector<std::type_index> Dependencies() const = 0;
 
     // Write this result's features to .npy files in output_dir.
-    // Each result knows its own fields on ConformationAtom.
-    // Returns number of arrays written.
+    // Returns the number of arrays written.
     virtual int WriteFeatures(const ProteinConformation& conf,
                               const std::string& output_dir) const { return 0; }
 
-    // Traverse all attached results on the conformation and call each
-    // one's WriteFeatures. The conformation holds the accumulated
-    // knowledge. The CalculationRunner guaranteed the order.
-    // Also writes identity arrays (positions, elements, residues).
+    // Calls each attached result's WriteFeatures (iterated in
+    // unordered_map order; dependency order is enforced at attach time,
+    // not here). Also writes the identity arrays and ring tables that
+    // belong to no single result.
     static int WriteAllFeatures(const ProteinConformation& conf,
                                 const std::string& output_dir);
 };

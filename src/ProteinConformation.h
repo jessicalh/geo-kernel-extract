@@ -1,10 +1,11 @@
 #pragma once
 //
-// ProteinConformation: one geometric instance of a protein.
+// ProteinConformation: one geometric instance of a protein — its
+// positions and everything computed from them. Positions are const
+// after construction; new geometry means a new conformation.
 //
-// Positions are const after construction. New geometry = new conformation.
-// ALL computed properties live here as typed ConformationResult singletons.
-// Access by template: conf.Result<T>(), conf.HasResult<T>().
+// Computed results attach as typed ConformationResult singletons,
+// reached by conf.Result<T>() / conf.HasResult<T>().
 //
 // Typed hierarchy:
 //   ProteinConformation (base, fully functional)
@@ -38,20 +39,17 @@ public:
                         std::string description = "");
     virtual ~ProteinConformation() = default;
 
-    // Back-pointer to owning protein (never null, never dangling)
+    // The owning Protein (borrowed — the caller must ensure it outlives
+    // this conformation).
     const Protein& ProteinRef() const { return *protein_; }
 
-    // Description
     const std::string& Description() const { return description_; }
 
-    // Atom count
     size_t AtomCount() const { return atoms_.size(); }
 
-    // Const positions
     Vec3 PositionAt(size_t i) const { return atoms_[i].Position(); }
     const std::vector<Vec3>& Positions() const { return positions_; }
 
-    // ConformationAtom access
     const ConformationAtom& AtomAt(size_t i) const { return atoms_[i]; }
     ConformationAtom& MutableAtomAt(size_t i) { return atoms_[i]; }
 
@@ -62,19 +60,18 @@ public:
     // Attach a result. Checks dependencies. Returns true on success.
     bool AttachResult(std::unique_ptr<ConformationResult> result);
 
-    // Test-only: insert a result bypassing dependency validation.
-    // Production code MUST use AttachResult. Use case is synthetic
-    // accumulation-path tests for TrajectoryResults whose source
-    // ConformationResult has a deep dependency tree (e.g. AIMNet2
-    // family). Codex 2026-05-20 F4.
+    // Test-only: attach or replace a result with no dependency or
+    // duplicate checks; production code must use AttachResult. For
+    // accumulation-path tests of TrajectoryResults whose source result
+    // has a deep dependency tree (e.g. the AIMNet2 family).
     void ForceAttachResultForTesting(std::unique_ptr<ConformationResult> result);
 
-    // Type-safe access (returns status false if not attached)
+    // Type-safe result access. Result<T>() aborts if T is not attached;
+    // HasResult<T>() reports presence.
     template<typename T>
     T& Result() {
         auto it = results_.find(std::type_index(typeid(T)));
         if (it == results_.end()) {
-            // Diagnostic: state what is attached, what is missing
             std::ostringstream msg;
             msg << "Result<" << typeid(T).name() << "> not attached. Attached: [";
             bool first = true;
@@ -84,9 +81,8 @@ public:
                 first = false;
             }
             msg << "]";
-            // Return codes, not exceptions -- but Result<T> is a contract guarantee.
-            // If called when not attached, this is a programming error.
-            // For now, we abort with a diagnostic message.
+            // Calling Result<T> for an unattached T is a programming
+            // error: abort with a diagnostic listing what is attached.
             fprintf(stderr, "FATAL: %s\n", msg.str().c_str());
             std::abort();
         }
@@ -108,12 +104,8 @@ public:
         return results_.find(std::type_index(typeid(T))) != results_.end();
     }
 
-    // Iteration over all attached results
     const std::unordered_map<std::type_index, std::unique_ptr<ConformationResult>>&
     AllResults() const { return results_; }
-
-    // Back-pointer is stable: Protein is non-movable, non-copyable.
-    // No FixProteinBackPointer needed.
 
     // Ring geometry storage (set by GeometryResult)
     std::vector<RingGeometry> ring_geometries;
@@ -145,8 +137,8 @@ public:
     std::map<BondCategory, std::vector<size_t>> bonds_by_category;
     std::map<AminoAcid, std::vector<size_t>> residues_by_type;
 
-    // Geometric decisions recorded by calculators during Compute().
-    // Flat list, append-only. Populated via GeometryChoiceBuilder::Record().
+    // Geometric decisions recorded by calculators during Compute(),
+    // via the GeometryChoiceBuilder factory.
     std::vector<GeometryChoice> geometry_choices;
 
 protected:

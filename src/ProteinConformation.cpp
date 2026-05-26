@@ -12,7 +12,6 @@ ProteinConformation::ProteinConformation(
     , description_(std::move(description))
     , positions_(std::move(positions))
 {
-    // Build ConformationAtom vector from positions
     atoms_.reserve(positions_.size());
     for (const auto& pos : positions_)
         atoms_.emplace_back(ConformationAtom(pos));
@@ -25,7 +24,6 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
     std::string name = result->Name();
     std::type_index tid(typeid(*result));
 
-    // Singleton check: already attached?
     if (results_.find(tid) != results_.end()) {
         OperationLog::Log(OperationLog::Level::Warning, LogResultAttach,
                           "AttachResult",
@@ -33,10 +31,8 @@ bool ProteinConformation::AttachResult(std::unique_ptr<ConformationResult> resul
         return false;
     }
 
-    // Check dependencies
     for (const auto& dep : result->Dependencies()) {
         if (results_.find(dep) == results_.end()) {
-            // Build diagnostic message listing what IS attached
             std::string attached;
             for (const auto& kv : results_) {
                 if (!attached.empty()) attached += ", ";
