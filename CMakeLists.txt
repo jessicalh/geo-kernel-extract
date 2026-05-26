@@ -106,7 +106,10 @@ set(GROMACS_SRC "/home/jessica/gromacs/src/gromacs-2026.0/src"
 set(GROMACS_BUILD "/home/jessica/gromacs/build/gromacs-2026"
     CACHE PATH "GROMACS build tree (for generated headers)")
 if(NOT EXISTS ${GROMACS_LIB})
-    message(WARNING "libgromacs not found — fleet loader will not link")
+    message(FATAL_ERROR "libgromacs not found at ${GROMACS_LIB} — required "
+                        "(the library links it unconditionally for trajectory "
+                        "reading). Set -DGROMACS_LIB=... (and GROMACS_SRC / "
+                        "GROMACS_BUILD), e.g. in CMakeUserPresets.json.")
 endif()
 message(STATUS "GROMACS: ${GROMACS_LIB}")
 
@@ -122,9 +125,16 @@ set(REDUCE_TOOLCLASSES "/home/jessica/builds/reduce-src/build/toolclasses/libtoo
     CACHE FILEPATH "reduce toolclasses static library")
 set(REDUCE_HET_DICT "${REDUCE_SRC}/reduce_wwPDB_het_dict.txt"
     CACHE FILEPATH "reduce het dictionary")
-if(NOT EXISTS ${REDUCE_LIB})
-    message(WARNING "reducelib not found — protonation will not build")
-endif()
+# reduce links three archives unconditionally (reducelib + libpdb++ +
+# toolclasses, see target_link_libraries below) — all required.
+foreach(_reduce_archive REDUCE_LIB REDUCE_LIBPDB REDUCE_TOOLCLASSES)
+    if(NOT EXISTS ${${_reduce_archive}})
+        message(FATAL_ERROR "reduce archive ${_reduce_archive}=${${_reduce_archive}} "
+                            "not found — required (linked unconditionally for "
+                            "protonation). Set -D${_reduce_archive}=... (and "
+                            "REDUCE_SRC), e.g. in CMakeUserPresets.json.")
+    endif()
+endforeach()
 message(STATUS "reduce: ${REDUCE_LIB}")
 
 # MOPAC (PM7+MOZYME semiempirical) — linked library, replaces xTB subprocess
@@ -133,7 +143,11 @@ set(MOPAC_INCLUDE "/home/jessica/micromamba/envs/mm/include"
 set(MOPAC_LIB "/home/jessica/micromamba/envs/mm/lib/libmopac.so"
     CACHE FILEPATH "MOPAC shared library")
 if(NOT EXISTS ${MOPAC_LIB})
-    message(WARNING "libmopac not found at ${MOPAC_LIB} — MopacResult will return nullptr")
+    message(FATAL_ERROR "libmopac not found at ${MOPAC_LIB} — required "
+                        "(the library links it unconditionally; the --mopac "
+                        "toggle gates whether MOPAC RUNS, not whether it links). "
+                        "Set -DMOPAC_LIB=... (and MOPAC_INCLUDE), e.g. in "
+                        "CMakeUserPresets.json.")
 endif()
 message(STATUS "MOPAC: ${MOPAC_LIB}")
 
@@ -704,7 +718,8 @@ nmr_test(trajectory_scope_tests
 # MOPAC ConfResult (PM7+MOZYME charges, ~10 min/run) + MOPAC-dependent TRs
 # (charge welford, bond order welford, coulomb / mcconnell shielding TS,
 # ff14SB reconciliation) + full_pipeline + mutation_delta. Kept isolated
-# so MOPAC-not-installed envs can exclude this binary cleanly.
+# so day-to-day ctest can skip the slow (~10 min/run) MOPAC fixtures;
+# libmopac itself is a required link dep (checked fail-loud at configure).
 nmr_test(mopac_tests
     LINK highfive
     SOURCES
