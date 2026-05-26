@@ -112,7 +112,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
 - [~] **G0 — verified stragglers** (never-defer; spans groups, done first):
   BuildResult.h, TrajectoryProtein.h, ConformationAtom.h, OrcaShieldingResult.h,
   MopacResult.h. Docs: OM, CON.
-- [~] **G1 — core object model & Result base.** _(done: Protein, conformation spine, value types, small infra, GeometryChoice + CalculatorConfig. STILL OWED in G1 — finish, no defer: ConformationAtom per-calc field blocks; AtomEvent; SelectionRecord; DenseBuffer; RecordBag.)_ Protein, ProteinConformation,
+- [~] **G1 — core object model & Result base.** _(done incl. trajectory record/buffer infra `37e78ae`; DenseBuffer reviewed-clean. TWO items left to close G1: Protein.cpp (only Protein.h done) + ConformationAtom.h per-calc field blocks — each the whole file, one pass.)_ Protein, ProteinConformation,
   ConformationAtom (the WHOLE file, per-calc field blocks included),
   ConformationResult, Atom,
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,
