@@ -1463,8 +1463,9 @@ not string-matched.
 over the extraction pipeline. Each result declares what it needs (other
 results that must already be attached) and what it provides (properties
 on atoms/rings). The dependency graph replaces manual phase ordering.
-The attach method is where computation happens: the result reads from
-prior results and stores its own properties. Once attached, permanent.
+Computation happens in the static `Compute()` factory: it reads from
+prior results and builds the result. `AttachResult` then only runs the
+singleton + dependency checks and stores it. Once attached, permanent.
 
 ### Known result types (with dependencies)
 
@@ -1558,7 +1559,7 @@ per spec/pending_include_trajectory_scope_2026-04-22.md §3.
 
 Key operations:
 
-- `BuildFromTrajectory(dir)` — parses md.tpr, builds Protein + charges.
+- `BuildFromTrajectory(dir)` — parses production.tpr, builds Protein + charges.
   Does NOT finalize (bond detection needs first-frame geometry).
 - `Seed(positions, time_ps)` — runs `Protein::FinalizeConstruction`,
   adds canonical conformation via `AddMDFrame`, allocates
@@ -2871,7 +2872,7 @@ parallel `TrajectoryAtom` vector, and holds the attached
 
 | Method                                       | Role                                                                                   |
 |----------------------------------------------|----------------------------------------------------------------------------------------|
-| `BuildFromTrajectory(dir_path)`              | Parse `dir_path/md.tpr`; build Protein + charges + bonded params. Does not seat conf0. |
+| `BuildFromTrajectory(dir_path)`              | Parse `dir_path/production.tpr`; build Protein + charges + bonded params. Does not seat conf0. |
 | `Seed(first_frame_positions, time_ps)`       | `Protein::FinalizeConstruction` (bonds + rings), seat conf0 via `AddMDFrame`, allocate `TrajectoryAtom`s. |
 | `Error()`                                    | Last-error string from `BuildFromTrajectory`.                                          |
 

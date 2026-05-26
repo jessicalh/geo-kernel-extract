@@ -8,10 +8,11 @@ verification was not re-audited**. Treat every entry as "agent says
 this is true; spot-check before acting."
 
 **Framing:** most items here are **payable debt**, not load-bearing
-flags. The bugs section (2 items, OI-001 / OI-002) is worth
-attention; the rest are routine items that get paid down as work
-happens. Don't read every item every session — read them when
-starting work that intersects.
+flags. OI-001 is resolved; OI-002 is an accepted upstream (FETK)
+limitation — the rest are routine items that get paid down as work
+happens. A 2026-05-26 doc-square-away pass re-audited and resolved
+OI-001 / 011 / 014 / 030 / 044 / 070 / 071 against source. Don't read
+every item every session — read them when starting work that intersects.
 
 Subsumes the former `spec/plan/bones/KNOWN_BUGS.md`, `spec/plan/bones/FIX_TESTS.md`, and
 `spec/plan/bones/pending_decisions_20260423.md`. When confirming or paying down
@@ -38,8 +39,9 @@ Entry conventions:
   looks like success.
 - **Source:** KNOWN_BUGS.md "Regression 1 part 2" (originally cited
   `:218-223`; numbering shifted but the bug stands).
-- **Action:** Set `out.error = "ORCA shielding load failed for " +
-  opts.orca_nmr_path; return out;` at the failure site.
+- **Status:** **RESOLVED** (commit `9a3662d`, 2026-05-26). Failure now
+  sets `out.error = "ORCA shielding load failed for " + opts.orca_nmr_path`
+  and returns — `src/OperationRunner.cpp:285`.
 
 ### OI-002 — APBS global C state does not reinitialise between calls
 
@@ -49,8 +51,10 @@ Entry conventions:
   Not exercised today because `ui/` / `h5-reader/` do not run the
   calculator pipeline; a session-reuse viewer would hit it.
 - **Source:** `spec/plan/bones/DEPENDENCIES.md:62`.
-- **Action:** Document as known limitation if any consumer ever runs
-  APBS twice in one process. Real fix needs FETK-state-reset upstream.
+- **Status:** Accepted limitation. The production pipeline runs APBS
+  once per process; the FETK global-state reset is an upstream fix, not
+  ours. Not triggered today (no consumer runs APBS twice in-process).
+  Documented, not actioned.
 
 ---
 
@@ -75,8 +79,11 @@ Entry conventions:
   et al.) are a pending-decision item."
 - **Source:** `spec/plan/bones/pending_decisions_20260423.md` item 2 +
   `spec/plan/bones/TRAJECTORY_REFACTOR_GAPS_2026-04-23.md` G4.
-- **Action:** Decide if this is the right scan-for-DFT selection shape
-  or design something else. Scan-for-DFT is ≥2 weeks out; can sit.
+- **Status:** **RESOLVED.** `ChiRotamerSelectionTrajectoryResult` is now
+  attached in `RunConfiguration::PerFrameExtractionSet`
+  (`src/RunConfiguration.cpp:266`), feeding `DftPoseCoordinator`. No
+  longer an orphan. (The "Verified" note above describes the old
+  ScanForDftPointSet structure, now superseded.)
 
 ### OI-012 — `FullFatFrameExtraction` missing MOPAC ConformationResult dependencies
 
@@ -107,8 +114,11 @@ Entry conventions:
   into per-Result H5 emitters."* `learn/bones/` holds the retired
   AnalysisWriter; per-result `WriteH5Group` is the target surface.
 - **Source:** `spec/plan/bones/TRAJECTORY_REFACTOR_GAPS_2026-04-23.md` G6.
-- **Action:** Implement `WriteH5Group` per-result emitters across
-  attached TRs; remove the stub.
+- **Status:** **RESOLVED.** AnalysisWriter is dissolved — every
+  TrajectoryResult writes its own `/trajectory/<group>/` via
+  `WriteH5Group`, and the `RunAnalysis` stub is gone from
+  `src/nmr_extract.cpp`. `--analysis` / `--analysis-h5` are out of scope
+  per the canonical 5-mode spec (CLAUDE.md).
 
 ### OI-015 — Narrow `RunConfiguration` in trajectory tests slides suite away from production
 
@@ -146,15 +156,13 @@ Entry conventions:
 
 ### OI-030 — Layer-1 Welford `TrajectoryResult` clones (~9 classes)
 
-- **Verified:** `ls src/*Welford*TrajectoryResult*` returns ONLY
-  `BsWelfordTrajectoryResult`. HmWelford, McWelford, CoulombWelford,
-  HBondWelford, PiQuadWelford, RingSuscWelford, DispersionWelford,
-  TotalGWelford, AimnetPredictedWelford — none landed.
-- **Source:** `spec/plan/bones/TRAJECTORY_RESULT_PLAN_2026-04-24.md:107-152` and
-  `spec/plan/bones/pending_include_trajectory_scope_2026-04-22.md:3553-3604` (~23
-  of 30 cataloged TR classes never landed; superseded in priority by
-  the 2026-05 Larsen tripeptide work).
-- **Action:** Add as Layer-1 fan-out when trajectory-scope work resumes.
+- **Status:** **RESOLVED** (code-complete). The Welford family landed as
+  six per-metric TRs in `RunConfiguration::PerFrameExtractionSet`
+  (`src/RunConfiguration.cpp:181-186`): Bs, Hm, McConnell, Eeq, Sasa,
+  HBondCount. The old "~9 clones" plan (Coulomb / PiQuad / RingSusc /
+  Dispersion / TotalG / AimnetPredicted Welford) was superseded by this
+  per-metric set plus the shielding time-series and the Larsen/tripeptide
+  bundle; the project is code-complete and this set is final.
 
 ### OI-031 — Tripeptide TimeSeries TRs (RESOLVED 2026-05-13 → 2026-05-16)
 
@@ -280,9 +288,9 @@ Entry conventions:
   `per_atom_shielding_[i]` on any second `Finalize` call.
 - **Source:** discovered during pilot cleanup; same code shape, fixed
   in the Tripeptide TRs via bounds-check, not yet propagated to Bs.
-- **Action:** apply the same bounds-check pattern when Bs is next
-  touched. No test currently exercises double-Finalize on Bs, so the
-  bug is latent.
+- **Status:** **RESOLVED** (commit `9a3662d`, 2026-05-26). Added the
+  `if (finalized_) return;` early-out at
+  `src/BsShieldingTimeSeriesTrajectoryResult.cpp:67`.
 
 ### OI-045 — Tripeptide / Larsen TR bundle (RESOLVED 2026-05-15)
 
@@ -353,7 +361,8 @@ Entry conventions:
 ### OI-054 — Event-extractor duplication risk vs `ChiRotamerSelectionTrajectoryResult`
 
 - **Verified:** `src/ChiRotamerSelectionTrajectoryResult.h:42` exists
-  (orphan per OI-011). `RingFlipEventTrajectoryResult`,
+  (now wired into PerFrameExtractionSet per OI-011 — but still the only
+  chi-rotamer selector). `RingFlipEventTrajectoryResult`,
   `RotamerTransitionEventTrajectoryResult`, `HBondEventTrajectoryResult`
   do NOT exist in src/.
 - **Source:** `spec/plan/bones/DIAGNOSTICS_AND_WORKFLOWS_2026-05-09.md:224-229`.
@@ -373,8 +382,9 @@ Entry conventions:
   does singleton check + dep check + store only. Not a real
   contradiction; sloppy paraphrase that could mislead a careful reader.
 - **Source:** `spec/plan/bones/doc_wrongness_20260423.md`.
-- **Action:** Tighten `OBJECT_MODEL.md:1472` to clarify Compute is
-  the factory, AttachResult merely stores. One-line edit.
+- **Status:** **RESOLVED** (2026-05-26). OBJECT_MODEL.md now states
+  computation is in the static `Compute()` factory; `AttachResult` only
+  runs the singleton + dependency checks and stores.
 
 ### OI-071 — `OBJECT_MODEL.md` "md.tpr" vs current "production.tpr"
 
@@ -383,7 +393,8 @@ Entry conventions:
   convention was changed during the AMBER readback work (CHARMM-era
   used `md.*`, AMBER Option B uses `production.*`).
 - **Source:** `review_items_to_assess.md:163-168`.
-- **Action:** Two-line edit to `OBJECT_MODEL.md`.
+- **Status:** **RESOLVED** (2026-05-26). Both OBJECT_MODEL.md sites now
+  say `production.tpr` (matching `src/TrajectoryProtein.cpp`).
 
 ---
 
@@ -417,6 +428,15 @@ Entry conventions:
   Resolved by topology sidecar landing 2026-05-13 (`f2781da` +
   `dc50917`). Still listed under "Open decisions" above with the
   resolved note in place.
+- **OI-001** — ORCA shielding-load silent-Ok. Fixed `9a3662d` (2026-05-26).
+- **OI-011** — ChiRotamerSelection orphan. Now wired into PerFrameExtractionSet.
+- **OI-014** — AnalysisWriter dissolution. Per-TR `WriteH5Group` is the
+  surface; `RunAnalysis` stub removed; `--analysis` out of scope.
+- **OI-030** — Welford TR family. Final six-TR per-metric set landed
+  (code-complete); the old ~9-clone plan was superseded.
+- **OI-044** — Bs Finalize double-call UB. Fixed `9a3662d` (2026-05-26).
+- **OI-070** — OBJECT_MODEL Compute-vs-Attach paraphrase. Tightened 2026-05-26.
+- **OI-071** — OBJECT_MODEL `md.tpr` → `production.tpr`. Fixed 2026-05-26.
 
 ---
 
