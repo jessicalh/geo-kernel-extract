@@ -9,12 +9,10 @@ RingGeometry Ring::ComputeGeometry(const std::vector<Vec3>& positions) const {
     RingGeometry geo;
     if (atom_indices.empty()) return geo;
 
-    // Collect vertex positions
     geo.vertices.reserve(atom_indices.size());
     for (size_t idx : atom_indices)
         geo.vertices.push_back(positions[idx]);
 
-    // Center: centroid of vertex positions
     geo.center = Vec3::Zero();
     for (const auto& v : geo.vertices)
         geo.center += v;
@@ -39,7 +37,6 @@ RingGeometry Ring::ComputeGeometry(const std::vector<Vec3>& positions) const {
             geo.normal = -geo.normal;
     }
 
-    // Radius: mean distance from center to vertices
     geo.radius = 0.0;
     for (const auto& v : geo.vertices)
         geo.radius += (v - geo.center).norm();

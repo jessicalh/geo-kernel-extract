@@ -1,15 +1,8 @@
 #pragma once
 //
-// Ring type class hierarchy.
-//
-// Ring types ARE classes with physics properties baked in.
-// Each type provides const properties derived from its identity.
-// Calculator code is ring-type-agnostic: ring.Intensity(), ring.JohnsonBoveyLobeOffset().
-//
-// 9 types in 3 size categories:
-//   SixMemberedRing: PheBenzeneRing, TyrPhenolRing, TrpBenzeneRing
-//   FiveMemberedRing: TrpPyrroleRing, HisImidazoleRing, HidImidazoleRing, HieImidazoleRing, ProPyrrolidineRing
-//   FusedRing: IndolePerimeterRing (TRP 9-atom)
+// Ring type class hierarchy: each subclass exposes its type-specific
+// physical parameters (ring-current intensity, Johnson-Bovey lobe
+// offset, nitrogen count, ...) through virtual methods.
 //
 
 #include "Types.h"
@@ -20,10 +13,6 @@
 
 namespace nmr {
 
-// ============================================================================
-// RingGeometry -- conformation-dependent, computed by Ring::ComputeGeometry
-// ============================================================================
-
 struct RingGeometry {
     Vec3              center = Vec3::Zero();
     Vec3              normal = Vec3::Zero();
@@ -31,13 +20,9 @@ struct RingGeometry {
     std::vector<Vec3> vertices;
 };
 
-// ============================================================================
-// Ring (base class)
-// ============================================================================
-
 class Ring {
 public:
-    // Structural identity (topology, set at construction)
+    // Structural identity / topology.
     std::vector<size_t> atom_indices;
     RingTypeIndex       type_index = RingTypeIndex::PheBenzene;
     size_t              parent_residue_index = 0;
@@ -59,18 +44,12 @@ public:
     virtual int RingAtomCount() const = 0;
     virtual const char* TypeName() const = 0;
 
-    // Non-virtual queries
     bool IsFused() const { return fused_partner_index != SIZE_MAX; }
     int TypeIndexAsInt() const { return static_cast<int>(type_index); }
 
-    // Compute geometry from positions (SVD normal)
     RingGeometry ComputeGeometry(const std::vector<Vec3>& positions) const;
 };
 
-
-// ============================================================================
-// Six-membered rings
-// ============================================================================
 
 class SixMemberedRing : public Ring {
 public:
@@ -110,10 +89,6 @@ public:
     const char* TypeName() const override { return "TRP6"; }
 };
 
-
-// ============================================================================
-// Five-membered rings
-// ============================================================================
 
 class FiveMemberedRing : public Ring {
 public:
@@ -184,10 +159,6 @@ public:
 };
 
 
-// ============================================================================
-// Fused ring (TRP 9-atom indole perimeter)
-// ============================================================================
-
 class FusedRing : public Ring {};
 
 class IndolePerimeterRing : public FusedRing {
@@ -202,10 +173,6 @@ public:
     const char* TypeName() const override { return "TRP9"; }
 };
 
-
-// ============================================================================
-// Factory: create a Ring subclass from a RingTypeIndex
-// ============================================================================
 
 std::unique_ptr<Ring> CreateRing(RingTypeIndex type);
 

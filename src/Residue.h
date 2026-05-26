@@ -1,9 +1,7 @@
 #pragma once
 //
-// Residue: one amino acid at a specific position in a protein chain.
-//
-// Knows its type, sequence number, chain, and which atoms belong to it.
-// Does NOT store positions. Backbone atom indices cached for fast access.
+// Residue: one amino acid at a position in a protein chain. Identity and
+// topology only — does not store positions.
 //
 
 #include "Types.h"
@@ -63,16 +61,13 @@ public:
     };
     ChiAtoms chi[4];
 
-    // Typed access to amino acid chemistry
     const AminoAcidType& AminoAcidInfo() const { return GetAminoAcidType(type); }
 
-    // Query methods
     bool IsAromatic() const { return AminoAcidInfo().is_aromatic; }
     bool IsTitratable() const { return AminoAcidInfo().is_titratable; }
     bool HasAmideH() const { return AminoAcidInfo().has_amide_H; }
     int ChiAngleCount() const { return AminoAcidInfo().chi_angle_count; }
 
-    // Sequence address (OBJECT_MODEL.md)
     struct SequenceAddress {
         std::string chain_id;
         int sequence_number;

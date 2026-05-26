@@ -19,7 +19,6 @@ struct Bond {
     BondCategory category = BondCategory::Unknown;
     bool         is_rotatable = false;
 
-    // Geometry queries (conformation-dependent, take positions)
     Vec3 Midpoint(const std::vector<Vec3>& positions) const {
         return 0.5 * (positions[atom_index_a] + positions[atom_index_b]);
     }
@@ -34,7 +33,6 @@ struct Bond {
         return (len > 1e-15) ? Vec3(d / len) : Vec3::Zero();
     }
 
-    // Classification helpers
     bool IsPeptideBond() const { return order == BondOrder::Peptide; }
     bool IsPeptideCO() const { return category == BondCategory::PeptideCO; }
     bool IsBackbone() const {

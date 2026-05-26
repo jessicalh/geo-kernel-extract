@@ -103,7 +103,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
 - [~] **G0 — verified stragglers** (never-defer; spans groups, done first):
   BuildResult.h, TrajectoryProtein.h, ConformationAtom.h, OrcaShieldingResult.h,
   MopacResult.h. Docs: OM, CON.
-- [~] **G1 — core object model & Result base.** _(Protein.h + conformation spine done.)_ Protein, ProteinConformation,
+- [~] **G1 — core object model & Result base.** _(Protein.h + conformation spine + core value types Atom/Residue/Bond/Ring + ConformationAtom header done; AtomEvent → G10.)_ Protein, ProteinConformation,
   ConformationAtom (structure/identity comments only — per-calculator field
   blocks are verified within each calculator's group), ConformationResult, Atom,
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,

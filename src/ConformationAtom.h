@@ -2,16 +2,12 @@
 //
 // ConformationAtom: per-atom computed data within a ProteinConformation.
 //
-// Private constructor -- only ProteinConformation can create these.
-// Position is const after construction. All computed fields are public
-// and default-initialised. The singleton guarantee means each field
-// has exactly one writer (the ConformationResult that owns it).
+// All computed fields are public and mutable. One ConformationResult
+// instance per type is enforced; by the convention that each result
+// writes only its own fields, each field then has a single writer.
 //
-// Identity (element, bonds, residue) goes through the Protein back-pointer,
-// NOT duplicated here.
-//
-// ALL fields from OBJECT_MODEL.md are present, even if this pass
-// does not populate them.
+// Identity (element, bonds, residue) is not stored here — look it up on
+// the parallel Protein atom (same index).
 //
 
 #include "Types.h"
