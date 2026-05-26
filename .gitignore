@@ -5,6 +5,11 @@ build-forensic/
 build-gen/
 build-asan/
 
+# Machine-local CMake preset overrides (dependency roots, install
+# prefix). Copy CMakeUserPresets.example.json -> CMakeUserPresets.json
+# and edit for this machine; the copy is never committed.
+CMakeUserPresets.json
+
 # Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
 # scan-build) regenerate on demand; per-sha snapshots can grow large.
 # baseline.json itself IS committed (it's the ratchet anchor); the

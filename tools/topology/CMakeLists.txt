@@ -21,9 +21,18 @@
 #       --log    src/generated/LegacyAmberSemanticTables.log.txt
 #
 
-# RDKit -- micromamba install path used as default; can be overridden
-# by passing -DRDKIT_ROOT=/path at configure time.
-set(RDKIT_ROOT "/home/jessica/micromamba/envs/mm"
+# RDKit installation root. Default resolution order: $RDKIT_ROOT env,
+# then $CONDA_PREFIX (an active conda/micromamba env), then the batcave
+# micromamba path as a last resort. Override explicitly with
+# -DRDKIT_ROOT=/path at configure time. Missing headers fail loud below.
+if(DEFINED ENV{RDKIT_ROOT})
+    set(_rdkit_root_default "$ENV{RDKIT_ROOT}")
+elseif(DEFINED ENV{CONDA_PREFIX})
+    set(_rdkit_root_default "$ENV{CONDA_PREFIX}")
+else()
+    set(_rdkit_root_default "/home/jessica/micromamba/envs/mm")
+endif()
+set(RDKIT_ROOT "${_rdkit_root_default}"
     CACHE PATH "RDKit installation root (must contain include/rdkit + lib)")
 set(RDKIT_INCLUDE "${RDKIT_ROOT}/include/rdkit")
 set(RDKIT_LIB_DIR "${RDKIT_ROOT}/lib")

@@ -1,0 +1,35 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "local",
+      "displayName": "Local machine paths",
+      "description": "Copy this file to CMakeUserPresets.json (gitignored), edit the dependency roots below for this machine, then: cmake --preset local. Every dep is REQUIRED and a wrong path fails loud at configure naming the cache var to set. Committed defaults match the batcave dev box; override only what differs. AIMNet2/Torch, APBS, HDF5, and Eigen are pinned/discovered in CMakeLists.txt and are not overridable here.",
+      "inherits": "default",
+      "cacheVariables": {
+        "PostgreSQL_LIBRARY": "/usr/lib/x86_64-linux-gnu/libpq.so",
+        "PostgreSQL_INCLUDE_DIR": "/usr/include/postgresql",
+        "OPENBABEL_INCLUDE": "/usr/include/openbabel3",
+        "OPENBABEL_LIB": "/usr/lib/x86_64-linux-gnu/libopenbabel.so",
+        "GROMACS_LIB": "/path/to/gromacs/build/lib/libgromacs_mpi.so",
+        "GROMACS_SRC": "/path/to/gromacs/src",
+        "GROMACS_BUILD": "/path/to/gromacs/build",
+        "REDUCE_SRC": "/path/to/reduce-src",
+        "REDUCE_LIB": "/path/to/reduce-src/build/reduce_src/libreducelib.a",
+        "REDUCE_LIBPDB": "/path/to/reduce-src/build/libpdb/libpdb++.a",
+        "REDUCE_TOOLCLASSES": "/path/to/reduce-src/build/toolclasses/libtoolclasses.a",
+        "REDUCE_HET_DICT": "/path/to/reduce-src/reduce_wwPDB_het_dict.txt",
+        "MOPAC_INCLUDE": "/path/to/mopac/include",
+        "MOPAC_LIB": "/path/to/mopac/lib/libmopac.so",
+        "NMR_FETCH_GTEST": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "local", "configurePreset": "local" }
+  ],
+  "testPresets": [
+    { "name": "local", "configurePreset": "local", "output": { "outputOnFailure": true } }
+  ]
+}
