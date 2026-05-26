@@ -28,8 +28,8 @@ Correctness and accessibility of information to extractors IS.
 How this protein instance was built. PDB source, protonation tool +
 version + pH, force field, what was stripped, what was assumed, crystal
 resolution, organism, deposition date. Friend to the Protein. Travels
-with the protein instance. A copy may keep its build context or take
-a new one.
+with the protein instance. Protein is non-copyable; a different build
+context is a separately loaded Protein.
 
 Tool configuration (where binaries live, default parameters) is global,
 not per-protein. ProteinBuildContext records what happened, not where
@@ -62,20 +62,21 @@ The protein owns its conformation list. Conformations are created
 through typed factory methods on the protein:
 
 ```
-protein.AddCrystalConformation(positions, metadata)
-protein.AddMDFrame(positions, metadata)
-protein.AddPrediction(positions, metadata)
-protein.AddDerived(parent, description)
+protein.AddCrystalConformation(positions, resolution, r_factor, temperature, pdb_id)
+protein.AddMDFrame(positions, walker, time_ps, weight, rmsd_nm, rg_nm)
+protein.AddPrediction(positions, method, confidence)
+protein.AddDerived(parent, description, positions)
 
-protein.CrystalConformation()    // exactly one or throws
-protein.MDFrames()               // typed collection
-protein.Predictions()            // typed collection
-protein.Conformations()          // all, heterogeneous
+protein.CrystalConf()            // the crystal conformation; aborts if none
+protein.MDFrameCount() / MDFrameAt(i)
+protein.PredictionCount() / PredictionAt(i)
+protein.ConformationCount() / ConformationAt(i)
 ```
 
 No agent creates a ProteinConformation directly. No loose conformations.
-**Exception:** trajectory streaming (GromacsFrameHandler) creates
-free-standing conformations via the public constructor. These point at
+**Exception:** trajectory streaming creates transient free-standing
+conformations via TrajectoryProtein::TickConformation (the public
+ProteinConformation constructor). These point at
 the Protein for topology but are never added to its conformations\_
 vector. They live for one frame and die. See spec/ENSEMBLE\_MODEL.md.
 
@@ -130,17 +131,18 @@ conformation from others in the protein's list. The base class machinery
 is what makes it USABLE by everyone who comes after you. You are building
 for people you haven't met.
 
-Copy policy:
-- **GeometryOnly**: copy positions, clear all results
-- **Full**: copy everything (only valid if build context unchanged)
+Copy policy: superseded — Protein is non-copyable and non-movable
+(Protein.h:44). A different protonation/build context is a separately
+loaded Protein, not a copy.
 
 ### Residue
 
-All properties of the amino acid at a sequence position. All possible
-angles and chemical properties as an amino acid. Backbone geometry
-(phi, psi, omega), sidechain geometry (chi angles), secondary structure
-assignment (from DSSP). Type, protonation variant, sequence position,
-chain address (not chain entity).
+Identity and topology of the amino acid at a sequence position: type,
+protonation variant, sequence number, chain address (not chain entity),
+atom indices, and chi-angle atom slots. Backbone (phi/psi) and sidechain
+(chi) GEOMETRY and secondary structure are NOT stored on Residue —
+phi/psi/SASA/secondary structure live in DsspResult; chi values are
+computed from conformation coordinates. (omega is not a Residue field.)
 
 ### Bond
 
@@ -155,7 +157,7 @@ typed, not string-identified.
 
 Each atom in a ProteinConformation knows:
 - Element, role (backbone, sidechain, hydrogen, heavy), partial charge,
-  van der Waals radius, hybridisation (from OpenBabel at enrichment)
+  PB radius (pb_radius), hybridisation (assigned by EnrichmentResult heuristics)
 - Distance and direction to all other atoms within 15 Angstroms,
   with ACTUAL distances, stored and accessible
 - Assigned bonds (typed)
@@ -340,11 +342,12 @@ auto& bs = conformation.Result<BiotSavartResult>();
 auto& coulomb = conformation.Result<CoulombResult>();
 ```
 
-The template accessor returns the real typed object. Throws if not
-yet computed. The code reads like English:
-  conformation.Result<BiotSavartResult>().TensorAtAtom(42, ring3)
+The template accessor returns the real typed object. Aborts (FATAL) if
+that type is not attached. Access is uniform:
+  conformation.Result<BiotSavartResult>().SampleKernelAt(point)
+  // per-ring tensors live on ConformationAtom::ring_neighbours[k]
 
-Optional named convenience wrappers exist as sugar:
+There are no named per-result wrappers; the block below is illustrative only:
 ```
 auto& bs = conformation.BiotSavart();       // calls Result<BiotSavartResult>()
 ```
@@ -355,29 +358,29 @@ Each result type declares its dependencies:
 
 ```
 class McConnellResult : ConformationResult {
-    requires: {SpatialIndexResult}
+    requires: {SpatialIndexResult, GeometryResult}
     ...
 };
 ```
 
-At attach time, dependencies are checked. Missing dependency =
-immediate logged error, not a runtime surprise.
+At attach time, dependencies are checked. Missing dependency = logged
+WARNING and AttachResult returns false, not a runtime surprise.
 
 **Once attached, permanent.** A ProteinConformation that has a
 DsspResult keeps it for its lifetime. Results accumulate. Nothing
 is removed.
 
-When a result is attached, it stores properties on the atoms and
-rings it computed for. The BiotSavartResult stores per-atom per-ring
-tensors. The ring summaries update as part of attachment. The next
+A result's Compute() writes properties onto the atoms and rings; attach
+only validates dependencies and stores the result pointer. BiotSavartResult
+writes per-atom per-ring tensors during Compute(). The ring summaries update as part of attachment. The next
 result type finds the data already on the atoms.
 
 **Results ARE the calculation.** Their methods ARE the physics queries:
 
 ```
-bs.SumT0ByRingType(atomIdx, PheBenzene)
-hm.NearestRingContribution(atomIdx)
-coulomb.BackboneField(atomIdx)
+bs.SampleKernelAt(point)
+hm.SampleKernelAt(point)
+coulomb.EFieldAt(atomIdx) / EFGAt(atomIdx) / EFGSphericalAt(atomIdx)
 coulomb.SidechainField(atomIdx)
 ```
 
@@ -390,7 +393,7 @@ Adding a new ConformationResult type does NOT require modifying
 ProteinConformation. The agent writes the result class; access works
 automatically.
 
-    // Type-safe access (throws if not attached)
+    // Type-safe access (aborts FATAL if not attached)
     auto& bs = conformation.Result<BiotSavartResult>();
 
     // Safe existence check
@@ -402,12 +405,12 @@ automatically.
     }
 
     // What's been computed?
-    auto names = conformation.ResultNames();
+    auto& all = conformation.AllResults();   // iterate attached results
 
 Internal storage: unordered_map<type_index, unique_ptr<ConformationResult>>.
-The template methods perform the cast. Named convenience wrappers
-(conformation.BiotSavart()) are optional sugar on top, not the
-mechanism.
+The template methods perform the cast. There are no named convenience
+wrappers (conformation.BiotSavart()); Result<T>()/HasResult<T>()/AllResults()
+is the whole mechanism.
 
 **Why templates, not named accessors as the mechanism:**
 Named accessors require modifying ProteinConformation every time a new
@@ -481,7 +484,7 @@ types depend on. If Layer 0 is broken, nothing above it can be trusted.
 - Parse PDB/mmCIF via cifpp
 - Build Protein (sequence, residue types, canonical atom templates)
 - Build first ProteinConformation from PDB coordinates
-  (CrystalConformation with resolution, R-factor, temperature)
+  (AddConformation(..., "protonated") — a base ProteinConformation)
 - The Protein owns the ProteinConformation. Created via factory method.
 
 ### Bond detection and ring detection
@@ -492,7 +495,7 @@ types depend on. If Layer 0 is broken, nothing above it can be trusted.
 - Ring detection from residue type + atom presence, producing typed
   Ring objects using the class hierarchy (PheBenzeneRing,
   HisImidazoleRing, HidImidazoleRing, HieImidazoleRing,
-  TrpPyrroleRing, TrpBenzeneRing, PhenolRing, IndolePerimeter)
+  TrpPyrroleRing, TrpBenzeneRing, TyrPhenolRing, IndolePerimeterRing)
 - Ring geometry: center, normal (from SVD), radius, vertex positions
 
 ### Protonation state detection
@@ -511,13 +514,15 @@ All external tool invocations must be working and tested:
 - **DSSP**: secondary structure, phi/psi, SASA, H-bond partners.
   Invoked via libdssp. Results stored as DsspResult on the
   ProteinConformation.
-- **Charge assignment**: tleap + ff14SB force field. Produces partial
-  charges on all atoms. Results stored as ChargeAssignmentResult.
+- **Charge assignment**: AMBER charges resolved among PRMTOP, the flat
+  ff14SB parameter table, or AmberPreparedChargeSource (tleap only on the
+  prepared-topology branch). Produces partial charges on all atoms.
+  Results stored as ChargeAssignmentResult.
 - **APBS**: Poisson-Boltzmann solvation. Requires charges first.
   Produces solvated E-field (Vec3) and EFG (Mat3 + sphericart) at
   each atom. Results stored as ApbsFieldResult.
-- **OpenBabel**: bond perception, hybridisation assignment. Used during
-  bond detection and enrichment.
+- **OpenBabel**: bond perception. Used during bond detection.
+  (Hybridisation is assigned by EnrichmentResult heuristics, not OpenBabel.)
 
 ### DFT mutation comparison pipeline
 
@@ -541,7 +546,8 @@ Protonation is fixed BEFORE nmr_extract runs, not predicted inside it:
   tleap/AMBER-prepared poses, GROMACS trajectories).
 
 The protonation variant (HID/HIE/HIP and the other titratable states)
-is read from the input hydrogens into a typed ProtonationState, and
+is read from the input hydrogens into Residue::protonation_variant_index
+(+ protonation_state_resolved) by Protein::ResolveProtonationStates, and
 ring types follow. pKa-prediction tools (PROPKA, pdb2pqr) are an
 UPSTREAM preparation step: structures prepared with them are ingested,
 but nmr_extract does not run pKa prediction and has no in-pipeline pH
@@ -553,8 +559,9 @@ scanning (out of scope per the canonical 5-mode spec in CLAUDE.md).
   via FullSystemReader): frame 0 is seated as the canonical
   MDFrameConformation; subsequent frames are transient
   ProteinConformations (TickConformation)
-- Each frame carries: frame_index, time_picoseconds, walker_index,
-  boltzmann_weight, rmsd, rg
+- Each MDFrameConformation carries: walker_index, time_picoseconds,
+  boltzmann_weight, rmsd_nm, rg_nm (no frame_index). Later frames are
+  transient base ProteinConformations without this metadata.
 - Positions are const on each MDFrameConformation
 - Per-frame analysis: one protein, many MDFrameConformations, each
   independently enriched and extracted (the TrajectoryProtein path)
@@ -714,8 +721,8 @@ scalars destroys information that cannot be recovered.
 - Vec3: magnetic field B at the point
 - Per-ring attribution: which ring produced which contribution
   (not just the sum)
-- Ring-frame cylindrical B-field components: B_n, B_rho, B_phi
-  (for the nearest ring, stored on the atom)
+- Ring-frame cylindrical B-field (per RingNeighbourhood):
+  B_cylindrical = (B_rho, B_phi, B_z)
 
 **Haigh-Mallion surface integral (HaighMallionResult):**
 - Mat3 H: raw surface-integral tensor (symmetric, traceless, pure T2)
@@ -748,7 +755,7 @@ scalars destroys information that cannot be recovered.
 - Per-ring attribution
 
 **Ring susceptibility anisotropy (RingSusceptibilityResult):**
-- Mat3: dipolar tensor from ring center
+- Mat3: full asymmetric McConnell-form tensor (chi_tensor) from ring center
 - sphericart: T0, T1[3], T2[5]
 - Per-ring attribution
 
@@ -759,10 +766,10 @@ scalars destroys information that cannot be recovered.
 - Scalar: contact count, sum of 1/r^6
 
 **H-bond dipolar (HBondResult):**
-- Mat3: dipolar tensor to H-bond partner(s)
+- Mat3: full asymmetric McConnell-form tensor (M) to H-bond partner(s)
 - sphericart: T0, T1[3], T2[5]
-- double: isotropic cos^2 theta / r^3 contribution
-- Geometry: distance, D-H-A angle, donor/acceptor classification
+- double: angular factor (3cos^2 theta - 1)/r^3
+- Geometry: nearest-midpoint distance/direction, inv_d3, donor/acceptor flags
 
 **APBS solvated field (ApbsFieldResult):**
 - Vec3: solvated E-field
@@ -828,7 +835,7 @@ missing getter you work around.
 - PDB atom name (string, but ONLY for display/serialisation -- never
   used for identity in extractors or calculators)
 - Residue membership (index into protein's residue list)
-- Bond list (indices into ProteinConformation's bond list)
+- Bond list (Atom::bond_indices, into the protein topology bonds via Protein::Bonds())
 
 ### Enrichment properties (set once, append-only)
 Added by ConformationResult objects during attachment. Once set, never
@@ -915,7 +922,7 @@ atoms and rings through a typed store interface:
 Result result = myCalculation(atom, ring, conformation);
 
 // The framework stores it on the atom and logs it
-conformation.StoreRingContribution(atomIndex, ringIndex, result);
+ca.ring_neighbours[k].G_tensor = G;  // calculators write typed fields directly (no StoreRingContribution API)
 // This writes to atom's ring neighbourhood structure
 // AND emits UDP log: "BiotSavartResult -> atom 42 x ring PHE-7"
 ```
@@ -997,7 +1004,7 @@ the Protein's atom list. ConformationAtom has typed, named fields for
 every per-atom result from every ConformationResult type. The fields
 are declared upfront with default values (zero, Vec3::Zero(),
 SphericalTensor{}, etc.). ConformationResult objects fill them in
-during Attach().
+during their Compute() (the result is then attached).
 
 ConformationAtom is the "wide table" — one row per atom, one column
 per computed property. Feature extraction reads across all columns.
@@ -1028,10 +1035,11 @@ electrostatic_scalars. The result type is the organising principle.
 
 ---
 
-## UDP Logging (mandatory, automatic)
+## UDP Logging
 
-Every property store operation emits a UDP log entry. This is not
-optional. It is not per-extractor. The framework does it.
+UDP logging (port 9997) is the per-evaluation debug channel via OperationLog,
+emitted by explicit calls where useful (schema {ts, level, op, detail}) when
+configured. There is no automatic per-property-store emission.
 
 Log entry format:
 ```json
@@ -1243,8 +1251,8 @@ Ring types are classes with physics properties baked in:
 ```
 Ring (base)
 +-- SixMemberedRing
-|   +-- BenzeneRing (PHE)        -- I=-12.0, offset=0.64, N=0, full aromatic
-|   +-- PhenolRing (TYR)         -- I=-11.28, offset=0.64, N=0, full aromatic
+|   +-- PheBenzeneRing (PHE)     -- I=-12.0, offset=0.64, N=0, full aromatic
+|   +-- TyrPhenolRing (TYR)      -- I=-11.28, offset=0.64, N=0, full aromatic
 |   +-- TrpBenzeneRing (TRP 6)   -- I=-12.48, offset=0.64, N=0, full aromatic
 +-- FiveMemberedRing
 |   +-- TrpPyrroleRing (TRP 5)   -- I=-6.72, offset=0.52, N=1, reduced aromatic
@@ -1252,16 +1260,19 @@ Ring (base)
 |   +-- HidImidazoleRing (HID)   -- I=-5.16, offset=0.50, N=2, weak aromatic
 |   +-- HieImidazoleRing (HIE)   -- I=-5.16, offset=0.50, N=2, weak aromatic
 +-- FusedRing
-    +-- IndolePerimeter (TRP 9)  -- I=-19.2, offset=0.60, N=1, full aromatic
+    +-- IndolePerimeterRing (TRP 9) -- I=-19.2, offset=0.60, N=1, full aromatic
 ```
 
-Each class provides: intensity, lobe offset, nitrogen count,
-aromaticity level, ring size, vertex count. These are const
-properties of the type, not looked up in a table.
+Each class provides: intensity, lobe offset, nitrogen count, aromaticity
+level, ring size, vertex count. The categorical ones (nitrogen count,
+aromaticity, ring size, vertex count) are const on the type; runtime
+Intensity() and JohnsonBoveyLobeOffset() are read from CalculatorConfig
+(LiteratureIntensity() is the const default).
 
 The ProteinConformation maintains per-type collections:
-- allBenzeneRings, allPhenolRings, allImidazoleRings, etc.
-These are prebuilt at ring detection time. Spatial queries can
+- rings_by_type (map<RingTypeIndex, vector<size_t>>), plus bonds_by_category
+  and residues_by_type.
+These are prebuilt by GeometryResult. Spatial queries can
 intersect with them: "BenzeneRings within 10A of point P."
 
 ### Ring-to-ring relationships (precomputed)
@@ -1454,8 +1465,8 @@ must be a queryable resource, accessible to any extractor that
 needs "what would this atom's shielding be without ring current
 effects?"
 
-The existing code has TripeptideDatabase, TripeptideAssembler, and
-TripeptideConformation. These must be preserved and integrated as
+The existing code has TripeptideDftTable, TripeptidePoseAssembler,
+TripeptideBackboneShieldingResult, and TripeptideNeighborShieldingResult. These must be preserved and integrated as
 a ConformationResult type (TripeptideResult) or a protein-level
 data source.
 
@@ -1519,8 +1530,8 @@ sharing that the force field cannot represent. MOPAC runs as a
 conformation electronic structure precondition — early in the pipeline,
 before the geometric kernel calculators that depend on its output.
 
-MOPAC PM7+MOZYME runs in ~45 seconds on 889-atom proteins via
-subprocess (`/home/jessica/micromamba/envs/mm/bin/mopac`).
+MOPAC PM7+MOZYME runs in ~45 seconds on 889-atom proteins as a subprocess
+via the configured binary (RuntimeEnvironment::Mopac(), from TOML/PATH).
 
 Both ff14SB charges (from ChargeAssignmentResult) and MOPAC charges
 are available. Feature extractors and downstream calculators can use
@@ -1564,8 +1575,9 @@ auto& d = wt_conf.Result<MutationDeltaResult>();
 ```
 
 ### What it stores (internally, not on ConformationAtom)
-- Atom correspondence: position-based matching with element filter
-  and bijection enforcement (0.5A tolerance)
+- Atom correspondence: typed-identity binding by (residue_index,
+  AtomMechanicalIdentity), consumed in order; spatial nearest-neighbour
+  distance is a post-binding diagnostic only
 - Per matched atom: DFT shielding delta (Mat3 + SphericalTensor),
   APBS field delta, charge deltas, DSSP delta, graph delta
 - Ring proximity: cylindrical coordinates of each matched atom

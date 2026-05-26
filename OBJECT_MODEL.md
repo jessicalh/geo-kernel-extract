@@ -2250,7 +2250,7 @@ Per-atom: partial charge (e), PB radius `pb_radius` (Angstroms).
 
 #### What it computes
 PM7+MOZYME semiempirical electronic structure for the full protein.
-Calls MOPAC in-process via linked libmopac (run_mopac_from_input; ~45s for 889 atoms). Provides conformation-
+Calls the MOPAC binary as a subprocess via RuntimeEnvironment::Mopac() (path from TOML/PATH; ~45s for 889 atoms). libmopac is linked but the binary is used — run_mopac_from_input leaves Fortran I/O buffers unflushed (MopacResult.cpp:291). Provides conformation-
 dependent charges and bond orders that downstream calculators draw on.
 
 #### Input
