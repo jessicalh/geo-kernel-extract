@@ -11,8 +11,7 @@
 
 namespace nmr {
 
-// D4 EEQ parameters (atomic units): values in PhysicalConstants.h
-// (D4EeqParams, D4EeqParamsFor).
+// D4 EEQ parameters are stored in PhysicalConstants.h.
 // Caldeweyher et al. 2019, DOI: 10.1063/1.5090222.
 
 
@@ -29,8 +28,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     if (N == 0)
         return nullptr;
 
-    // ── Configuration (TOML) ────────────────────────────────────────
-
     const double Q_total      = CalculatorConfig::Get("eeq_total_charge");
     const double cn_steepness = CalculatorConfig::Get("eeq_cn_steepness");
     const double cn_cutoff  = CalculatorConfig::Get("eeq_cn_cutoff");
@@ -38,8 +35,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     const double cn_cutoff_bohr = cn_cutoff * BOHR_PER_ANGSTROM;
     const double cn_cutoff_bohr_sq = cn_cutoff_bohr * cn_cutoff_bohr;
-
-    // ── Pre-cache per-atom parameters and positions in Bohr ─────────
 
     std::vector<D4EeqParams> params(N);
     for (size_t i = 0; i < N; ++i) {
@@ -56,7 +51,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
 
     GeometryChoiceBuilder choices(conf);
 
-    // GeometryChoice: parameter summary
     choices.Record(CalculatorId::EEQ, 0, "eeq_parameters",
         [Q_total, cn_steepness, cn_cutoff, charge_clamp, N]
         (GeometryChoice& gc) {
@@ -68,10 +62,7 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
             AddNumber(gc, "method", 0.0, "D4_EEQ_Caldeweyher_2019");
         });
 
-    // ── Step 1: coordination numbers (error function counting) ──────
-    //
     // CN_i = Σ_{j≠i} ½ erfc(k · (R_ij/(r_cov_i + r_cov_j) - 1))
-    //
     // Pairs beyond cn_cutoff are skipped — erfc is negligible there.
 
     Eigen::VectorXd cn = Eigen::VectorXd::Zero(N);
@@ -98,32 +89,19 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         }
     }
 
-    // ── Step 2: effective electronegativities ───────────────────────
-    //
     // χ_eff = χ + κ · √(CN + ε)
 
     Eigen::VectorXd chi_eff(N);
     for (size_t i = 0; i < N; ++i)
         chi_eff(i) = params[i].chi
                    + params[i].kappa * std::sqrt(cn(i) + 1e-14);
-                                                // 1e-14: dftd4 guard against sqrt(0)
+                                                // dftd4 guard against sqrt(0)
 
-    // ── Step 3: Coulomb matrix A (N×N, symmetric positive definite) ─
-    //
     // Diagonal: A_ii = η_i (chemical hardness)
     // Off-diagonal: A_ij = γ(R_ij) = 1/√(R² + 1/(η_i·η_j))
-    //
-    // Ohno-Klopman kernel (Ohno 1964, Klopman 1964):
-    //   R→0:  γ → √(η_i·η_j)  (finite, no singularity)
-    //   R→∞:  γ → 1/R          (bare Coulomb)
-    //
-    // Note: the dftd4 reference uses a Gaussian-charge form erf(αR)/R.
-    // The Ohno-Klopman form is a deliberate divergence that preserves the
-    // correct asymptotics; charges differ slightly from exact dftd4 — we
-    // want geometry-responsive charges, not exact dftd4 reproduction.
+    // This kernel is finite at R=0 and tends to 1/R at long range.
 
-    // Field aliases: gam = chemical hardness η_i; rad = Gaussian charge
-    // radius r_i (rcov, used in Step 1, is the separate covalent radius).
+    // gam is chemical hardness η_i; rad is Gaussian charge radius r_i.
     Eigen::MatrixXd A(N, N);
     for (size_t i = 0; i < N; ++i) {
         // Diagonal: η_i + √(2/π) / r_i (Caldeweyher 2019 Eq. 8). The second
@@ -141,8 +119,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         }
     }
 
-    // ── Step 4: solve with charge neutrality constraint ─────────────
-    //
     // Block elimination of the augmented system:
     //   [A  1] [q] = [-χ_eff]
     //   [1' 0] [λ]   [Q     ]
@@ -176,15 +152,11 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
     double lambda = -(Q_total + ones.dot(A_inv_chi)) / denom;
     Eigen::VectorXd charges = -(A_inv_chi + lambda * A_inv_ones);
 
-    // Remove the Cholesky solve residual so the (pre-clamp) sum equals
-    // Q_total.  The block elimination is algebraically exact; the solve
-    // introduces a residual ~cond(A).  A uniform shift preserves per-atom
-    // charge differences.  NOTE: the Step-5 clamp can move the stored sum
-    // off Q_total when it fires (see n_clamped).
+    // Remove the Cholesky solve residual so the pre-clamp sum equals Q_total.
+    // A uniform shift preserves per-atom charge differences; the clamp below
+    // can move the stored sum off Q_total when it fires.
     double charge_residual = charges.sum() - Q_total;
     charges.array() -= charge_residual / static_cast<double>(N);
-
-    // ── Step 5: store charges with clamp guard ──────────────────────
 
     auto result = std::make_unique<EeqResult>();
     result->conf_ = &conf;
@@ -200,7 +172,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
             qi = (qi > 0) ? charge_clamp : -charge_clamp;
             ++n_clamped;
 
-            // GeometryChoice: charge-clamp record
             choices.Record(CalculatorId::EEQ, i, "eeq charge clamp",
                 [&conf, i, original, qi, &cn](GeometryChoice& gc) {
                     AddAtom(gc, &conf.AtomAt(i), i,
@@ -213,8 +184,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         atom.eeq_charge = qi;
     }
 
-    // ── Charge statistics ───────────────────────────────────────────
-
     // Seed from the stored (post-clamp) charge so the reported min/max are
     // consistent with the values the loop compares and every consumer reads.
     double q_sum = 0.0;
@@ -226,7 +195,6 @@ std::unique_ptr<EeqResult> EeqResult::Compute(ProteinConformation& conf) {
         if (qi > q_max) q_max = qi;
     }
 
-    // GeometryChoice: charge statistics summary
     choices.Record(CalculatorId::EEQ, 0, "eeq_charge_statistics",
         [q_sum, q_min, q_max, n_clamped, cn_pairs_counted, cn_pairs_skipped]
         (GeometryChoice& gc) {

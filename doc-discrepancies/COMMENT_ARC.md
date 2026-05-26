@@ -129,7 +129,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
   GromacsToAmberReadbackBlock. Docs: CON, ARCH.
 - [x] **G5 — calculators: ring current.** BiotSavartResult, HaighMallionResult,
   McConnellResult, RingSusceptibilityResult. Docs: CAT, CON, MG, AM, PF, OM, API.
-- [ ] **G6 — calculators: electrostatics.** CoulombResult, ApbsFieldResult,
+- [x] **G6 — calculators: electrostatics.** CoulombResult, ApbsFieldResult,
   apbs_bridge, PiQuadrupoleResult, EeqResult, MopacCoulombResult. Docs: CAT, CON, MG, AM, PF, OM, API.
 - [ ] **G7 — calculators: H-bond / tripeptide / Larsen.** HBondResult,
   LarsenHBondShieldingResult, LarsenHBondGrid, PlanarGeometryResult,
