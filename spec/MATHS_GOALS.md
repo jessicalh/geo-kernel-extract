@@ -83,7 +83,7 @@ system as TOML configuration.
 - The parameter enters the calculator equation at the right place
 - Changing the parameter changes the calculator output proportionally
 
-**Validation:** For each of the 93 parameters:
+**Validation:** For each of the ~64 parameters:
 - The equation in which it appears is stated with a literature reference
 - The default value is stated with a literature reference
 - A unit test verifies that doubling the parameter doubles the relevant
@@ -91,7 +91,7 @@ system as TOML configuration.
   functional dependence for nonlinear ones like lobe offset)
 
 **References:**
-- CALCULATOR_PARAMETER_API.md: all 93 parameters with equations
+- CALCULATOR_PARAMETER_API.md: all ~64 parameters with equations
 - CONSTITUTION.md: per-calculator minimum output specifications
 - OBJECT_MODEL.md: ConformationAtom shielding_contribution fields
 
@@ -425,8 +425,9 @@ compared to the DFT delta.
       atom matching, delta tensors T0+T1+T2, ring proximity with
       cylindrical coords, distance decay curve. 465 pairs batch tested.)
 - [x] MD trajectory loading (DONE — FullSystemReader parses GROMACS
-      production.tpr + .trr via libgromacs into MDFrameConformations,
-      full pipeline per frame)
+      production.tpr + .trr via libgromacs into a TrajectoryProtein
+      (frame 0 the canonical MDFrameConformation; later frames
+      transient), full pipeline per frame)
 
 ### For each classical calculator (Layer 1+):
 All eight classical calculators pass items 1-6. Item 7 requires calibrated parameters.
@@ -452,7 +453,7 @@ All eight classical calculators pass items 1-6. Item 7 requires calibrated param
 - [x] KernelFilterSet: SelfSourceFilter + DipolarNearFieldFilter(bond_length)
 
 ### CoulombResult (2026-04-02):
-- [x] Equation: E = ke * sum q_j r/r³, EFG = ke * sum q_j K_ab. Units V/A.
+- [x] Equation: E = ke * sum q_j r/r³, EFG = ke * sum q_j K_ab. Units: E in V/Å, EFG in V/Å².
 - [x] Full rank-2 EFG tensor: traceless (Gauss's law) to 1.4e-14.
 - [x] Decomposition: backbone + sidechain + aromatic = total (exact to 3.2e-14)
 - [x] E-field magnitudes: grand mean 2.81 V/A (consistent with Case 1995)
@@ -512,7 +513,7 @@ All eight classical calculators pass items 1-6. Item 7 requires calibrated param
       (max |T2| reduced 11x: 7.39→0.66 A^-5 after audit)
 - [x] T2 independence: |cos| = 0.38 vs McConnell, 0.40 vs Coulomb
 - [x] DFT proximity: 29.0x near/far ratio at mutation sites
-- [x] Batch validated: 723 proteins, 0 failures
+- [x] Batch validated: 720 proteins, 0 failures
 
 ### DispersionResult (2026-04-02):
 - [x] Equation: London 1/r^6 kernel summed over ring vertices
@@ -520,7 +521,7 @@ All eight classical calculators pass items 1-6. Item 7 requires calibrated param
 - [x] Through-bond vertex exclusion + DipolarNearFieldFilter
 - [x] DFT proximity: 204x near/far ratio (strongest proximity signal)
 - [x] T2 independence verified (small T2 contribution, dominated by others)
-- [x] Batch validated: 723 proteins, 124K contact pairs, 0 failures
+- [x] Batch validated: 720 proteins, 124K contact pairs, 0 failures
 
 ### For the calibration pipeline (learn/c_equivariant/):
 - [x] Environment features extracted as NPY (via WriteFeatures)

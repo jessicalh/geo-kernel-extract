@@ -549,8 +549,10 @@ scanning (out of scope per the canonical 5-mode spec in CLAUDE.md).
 
 ### MD frame loading
 
-- Reading GROMACS trajectory frames (production.tpr + .trr/.xtc + .edr,
-  via FullSystemReader) into typed MDFrameConformation objects
+- Reading GROMACS trajectory frames (production.tpr + .trr + .edr,
+  via FullSystemReader): frame 0 is seated as the canonical
+  MDFrameConformation; subsequent frames are transient
+  ProteinConformations (TickConformation)
 - Each frame carries: frame_index, time_picoseconds, walker_index,
   boltzmann_weight, rmsd, rg
 - Positions are const on each MDFrameConformation
@@ -654,23 +656,17 @@ design was superseded.
 This is how ensemble analysis works: one protein, many
 ProteinConformations, each with its own enrichment.
 
-### Copy policies
+### Conformation provenance (copy policies superseded)
 
-**GeometryOnly**: copy positions, clear all ConformationResult objects.
-Use when foundational properties (protonation, charges) have changed
-and all computed results must be recomputed.
+Protein is non-copyable and non-movable (`Protein.h:44` deletes copy
+and move); the earlier GeometryOnly/Full copy policies are superseded.
+A different protonation or build context is a separately **loaded**
+Protein, never a copy: protonation precedes `nmr_extract` (CLAUDE.md),
+and mutant comparison runs across two independently loaded poses
+(`MutationDeltaResult`). The dependency structure still holds for a
+fresh load — when foundational properties differ:
 
-**Full**: copy everything including all attached ConformationResult
-objects. Only valid if ProteinBuildContext is unchanged. Use for
-creating working copies where results are still valid.
-
-### Categories of validity on copy
-
-When copying a protein + ProteinConformation with modified foundational
-properties, some computed properties remain valid and some must
-be recomputed:
-
-**Always valid on GeometryOnly copy (geometry-only):**
+**Unaffected (geometry-derived):**
 - Atom positions (these ARE the ProteinConformation)
 - Bond connectivity (topology doesn't change with protonation
   for most bonds -- but disulfides and protonation-dependent
@@ -678,7 +674,7 @@ be recomputed:
 - Neighbour lists and distances (purely geometric)
 - DSSP secondary structure (backbone geometry unchanged)
 
-**Invalid on copy (depend on foundational properties):**
+**Recomputed (depend on foundational properties):**
 - Partial charges (depend on protonation + force field)
 - APBS E-field (depends on charges)
 - Ring type classification (depends on protonation for HIS)
@@ -692,21 +688,8 @@ be recomputed:
 - H-bond classification (may change if protonation changes donors)
 - Categorical atom properties (may change with protonation)
 
-The copy constructor must accept parameters that specify WHAT
-changed, so it can mark the right properties as invalid and
-preserve the rest. This is not an optimisation -- it is correctness.
-A ProteinConformation copied with new charges must NOT retain the
-old APBS field.
-
-### Unit tested
-
-The copy-and-modify pattern must have explicit tests:
-- Copy protein, change protonation, verify ring types update
-- Copy protein, change charges, verify Coulomb features change
-- Copy ProteinConformation from protein A to protein B, verify
-  positions transfer but field results do not
-- Verify that features on the copy are different from the original
-  when foundational properties differ
+Nothing charge-dependent is ever carried across a differing
+foundational state — a fresh load recomputes it from scratch.
 
 ---
 
@@ -798,7 +781,7 @@ only scalar T0 values, or only the diagonal of a tensor, or uses
 extracting the trace: that implementation is WRONG.
 
 The full tensor is the minimum. Scalars are derived from tensors.
-Tensors are decomposed via sphericart. Both forms are stored.
+Tensors are decomposed by SphericalTensor::Decompose (T2 in sphericart real-SH layout). Both forms are stored.
 The next extractor, the model, and the viewer all need the full
 representation. Optimising it away is destroying information.
 
@@ -979,14 +962,13 @@ result-dependent.
 - A ring's accumulated field properties are dynamic
 
 Dynamic properties are set by ConformationResult attachments and are
-ProteinConformation-specific. They do NOT travel with GeometryOnly
-copies. They travel with Full copies only if the ProteinBuildContext
-is unchanged.
+ProteinConformation-specific — recomputed per conformation, never
+carried across a differing foundational state (Protein is non-copyable;
+see "Conformation provenance" above).
 
-This distinction matters for the copy-and-modify pattern:
-when you copy a protein with a new protonation state, static
-properties transfer, dynamic properties are invalidated and
-must be recomputed.
+This static/dynamic distinction is why a new protonation state means a
+fresh load that re-runs the pipeline, not an in-place edit: charges and
+all field properties (dynamic) are recomputed from the loaded state.
 
 ### The Placement Rule (for agents)
 
@@ -1032,7 +1014,7 @@ filled with a scalar. The type system enforces full tensor output.
 on a ProteinConformation. BiotSavartResult is computed once, attached
 once, and never replaced. No other result type writes to its fields.
 If you need different parameters, that's a different conformation
-(copy-and-modify), not a second BiotSavartResult on the same
+(a separate `Add*` call), not a second BiotSavartResult on the same
 conformation. This is why field accumulation on ConformationAtom is
 safe — each field has exactly one writer, guaranteed by the type
 system.

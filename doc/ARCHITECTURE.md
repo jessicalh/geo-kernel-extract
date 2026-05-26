@@ -270,8 +270,8 @@ shielding tensor via the ring normal.
     G_ab = -n_b · B_a · PPM_FACTOR
 
 PPM_FACTOR = 10⁶ (converts SI field ratios to parts per million).
-B is computed by numerical integration of the Biot-Savart law
-around both loops. Source geometry: ring vertices (double loop).
+B is computed analytically per wire segment (closed-form finite-wire
+Biot-Savart) and summed over the ring-polygon edges of both loops. Source geometry: ring vertices (double loop).
 
 **Haigh-Mallion** (Haigh & Mallion 1973). Shielding from ring
 current via surface integral over the ring face, using 7-point

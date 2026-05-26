@@ -40,7 +40,8 @@ mu_0/(4*pi) = 1e-7 T·m/A (exact in SI)
 Positions converted to metres, current to amperes, B computed in
 Tesla. Then: G_ab = -n_b × B_a × PPM_FACTOR (PPM_FACTOR = 1e6; the
 minus is the shielding-sign convention, sigma = -dB_sec/dB_0).
-G is dimensionless.
+G carries kernel units ppm·T/nA (n̂ dimensionless × B in Tesla at unit
+current × PPM_FACTOR), not dimensionless.
 
 For dipolar kernels (McConnell, ring susceptibility, H-bond):
 K computed directly in Angstrom^-3 (no SI conversion needed —
@@ -161,7 +162,7 @@ G_ab = -n_b * B_a * PPM_FACTOR
 where n is the ring normal. The minus sign comes from the shielding
 tensor definition: sigma_ab = -dB_a^sec / dB_{0,b}.
 
-**Units**: B in Tesla, G dimensionless.
+**Units**: B in Tesla (unit current); G in ppm·T/nA.
 
 **Sign convention**: sigma_ab = I_type * G_ab, where I_type is the
 ring current intensity (negative for diamagnetic ring currents).
@@ -177,11 +178,11 @@ non-zero eigenvalue if B is parallel to n, or at most two if B has
 components transverse to n).
 
 Decomposition:
-- T0 = Tr(G)/3 = n . B * PPM_FACTOR / 3. Non-zero when B has a
+- T0 = Tr(G)/3 = -(n . B) * PPM_FACTOR / 3. Non-zero when B has a
   component along the ring normal. This IS the isotropic ring current
   shift.
 - T1 = antisymmetric part of G = (n x B) components / 2 * PPM_FACTOR.
-  Non-zero because G is NOT symmetric (G_ab = n_b B_a ≠ n_a B_b
+  Non-zero because G is NOT symmetric (G_ab = -n_b B_a ≠ -n_a B_b
   in general).
 - T2 = traceless symmetric part. Contains angular information about
   how the B-field projects onto the ring normal.
@@ -474,7 +475,7 @@ where d = r - ring_center, r = |d|, dn = d . n (height above ring plane).
 
 The -Theta/2 prefactor is absorbed into the learnable parameter Q_type.
 
-**Properties** (verified on 723 proteins, 1.03M atom-ring pairs):
+**Properties** (verified on 720 proteins, 1.03M atom-ring pairs):
 - Symmetric: G_ab = G_ba (max asymmetry 2.2e-16)
 - Traceless: Tr(G) = 0 (Laplace equation; max |Tr| = 5.1e-15)
 - Pure T2: T0 = 0, T1 = 0
@@ -811,9 +812,12 @@ and geometry.
 
 ## Shared-kernel structure (realized)
 
-The dipolar kernel K_ab is implemented once and shared by four
-calculators (McConnell, Coulomb, RingSusceptibility, HBond); the
-ring-current (BS/HM) and quadrupole kernels are separate. The phases
+The dipolar-kernel form (3 d̂_a d̂_b − δ_ab)/r³ recurs across
+calculators, each with its own implementation: Coulomb's EFG uses it
+directly (traceless), while McConnell, RingSusceptibility, and HBond
+embed it in the fuller asymmetric McConnell-form tensor M
+([9 cosθ d̂⊗b̂ − 3 b̂⊗b̂ − (3 d̂⊗d̂ − I)]/r³). The ring-current (BS/HM)
+and quadrupole kernels are separate. The phases
 below are the historical build/validation order — every calculator
 named is implemented and tested, not pending. "Old code" refers to the
 predecessor project used for byte-level cross-validation during the

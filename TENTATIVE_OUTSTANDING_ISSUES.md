@@ -88,16 +88,18 @@ Entry conventions:
   longer an orphan. (The "Verified" note above describes the old
   ScanForDftPointSet structure, now superseded.)
 
-### OI-012 — `FullFatFrameExtraction` missing MOPAC ConformationResult dependencies
+### OI-012 — `FullFatFrameExtraction` MOPAC wiring — RESOLVED (by design)
 
-- **Verified:** `src/RunConfiguration.cpp:173-180` — inherits
-  `PerFrameExtractionSet` (no MOPAC deps), only flips
-  `skip_mopac = false`. Comment acknowledges the gap.
-- **Source:** `spec/plan/bones/pending_decisions_20260423.md` item 3 (direction
-  chosen: include MOPAC deps; not yet landed).
-- **Action:** Wire `MopacResult`, `MopacCoulombResult`,
-  `MopacMcConnellResult` into `required_conf_result_types_` BEFORE
-  any MOPAC-family TrajectoryResult lands.
+- **Verified:** `src/RunConfiguration.cpp:293-305` — `FullFatFrameExtraction`
+  sets `skip_mopac = false` and `skip_coulomb = false`, then `Produces` the
+  five MOPAC-family TRs. The landed design is the **opposite** of the old
+  action item: `MopacResult` / `MopacCoulombResult` / `MopacMcConnellResult`
+  are **intentionally NOT** in `required_conf_result_types_`; each MOPAC-family
+  TR gates per-frame on `HasResult<…>()`
+  (`MopacCoulombShieldingTimeSeriesTrajectoryResult.cpp:43,161`;
+  `MopacMcConnellShieldingTimeSeriesTrajectoryResult.cpp:43,180`;
+  `MopacVsFf14SbReconciliationTrajectoryResult.cpp:56`). A frame without
+  MOPAC yields empty MOPAC rows, not a hard failure.
 
 ### OI-013 — `AllWelfords` revival on `TrajectoryAtom`
 

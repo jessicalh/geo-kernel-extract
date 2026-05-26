@@ -64,7 +64,8 @@ Mat3 = Eigen::Matrix3d     // 3x3 matrix
 ```
 
 ### SphericalTensor
-Irreducible decomposition of a 3x3 tensor via sphericart.
+Irreducible decomposition of a 3x3 tensor (T0/T1/T2), computed
+directly in SphericalTensor::Decompose (T2 in sphericart real-SH layout).
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -73,7 +74,7 @@ Irreducible decomposition of a 3x3 tensor via sphericart.
 | T2 | array<double, 5> | Traceless symmetric components (m = -2..+2) |
 
 Static methods:
-- `Decompose(Mat3) -> SphericalTensor`: via sphericart, canonical normalization
+- `Decompose(Mat3) -> SphericalTensor`: direct implementation in Types.cpp (T2 in sphericart real-SH layout), canonical normalization
 - `Reconstruct() -> Mat3`: inverse
 
 Both Mat3 AND SphericalTensor are stored. No conversion at point of use.
@@ -572,14 +573,17 @@ in a LoadResult. Conformations hold a raw Protein* back-pointer that
 is valid for the Protein's lifetime. Non-movable means the pointer
 never dangles. No move constructors, no move assignment.
 
-For the copy-and-modify pattern (pH scanning, mutant comparison):
-use a Copy() factory method that creates a NEW Protein on the heap
-with modified protonation/build context:
-- `Copy(new_protonation)`: new protein, applies new protonation,
-  invalidates ring types for titratable residues, invalidates charges
-- `Copy(new_build_context)`: new protein, applies new build context
-- Geometry-only properties (positions, distances) transfer on copy.
-  Charge-dependent properties (APBS, Coulomb, features) invalidated.
+Protein is non-copyable and non-movable — copy and move
+constructors/assignment are all deleted (`Protein.h:44`). There is no
+`Copy()` / copy-and-modify API. A different protonation or build
+context is a separately **loaded** Protein, not a copy: protonation
+precedes `nmr_extract` (CLAUDE.md), and mutant comparison runs across
+two independently loaded poses (`MutationDeltaResult`). When
+foundational properties differ, charge-dependent properties (charges,
+APBS, Coulomb, ring types, all calculator results, features) are
+recomputed from scratch on the new load; geometry-derived properties
+(positions, bonds, neighbour lists, DSSP) are whatever that load
+computes.
 
 ### Relationship to other objects
 - Owns Residues, Atoms, Rings, Bonds, ProteinBuildContext, ProteinConformations
@@ -796,10 +800,10 @@ Ring current totals (populated by BiotSavartResult, HaighMallionResult):
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
 | total_B_field | Vec3 | Tesla (unit current, 1 nA) | BiotSavartResult |
-| total_G_tensor | Mat3 | dimensionless | BiotSavartResult |
-| total_G_spherical | SphericalTensor | dimensionless | BiotSavartResult |
-| per_type_G_T0_sum | array<double, 8> | dimensionless | BiotSavartResult |
-| per_type_G_T2_sum | array<array<double,5>, 8> | dimensionless | BiotSavartResult |
+| total_G_tensor | Mat3 | ppm·T/nA | BiotSavartResult |
+| total_G_spherical | SphericalTensor | ppm·T/nA | BiotSavartResult |
+| per_type_G_T0_sum | array<double, 8> | ppm·T/nA | BiotSavartResult |
+| per_type_G_T2_sum | array<array<double,5>, 8> | ppm·T/nA | BiotSavartResult |
 | per_type_hm_T0_sum | array<double, 8> | Angstrom^-1 | HaighMallionResult |
 | per_type_hm_T2_sum | array<array<double,5>, 8> | Angstrom^-1 | HaighMallionResult |
 | hm_shielding_contribution | SphericalTensor | Angstrom^-1 | HaighMallionResult | decomposed HM shielding kernel G = -n⊗V summed over rings (bare kernel, not ppm) |
@@ -1155,10 +1159,10 @@ inline constexpr int kAromaticRingTypeCount = 8;
 
 | Property | Type | Unit | Source result | Description |
 |----------|------|------|---------------|-------------|
-| total_B_at_center | Vec3 | dimensionless | BiotSavartResult | Sum of B from all OTHER rings at this ring's center |
+| total_B_at_center | Vec3 | Tesla (unit current, 1 nA) | BiotSavartResult | Sum of B from all OTHER rings at this ring's center |
 | intensity_used | double | nA/T | BiotSavartResult | The ring type's effective intensity |
-| total_G_T0_diagnostic | double | dimensionless | BiotSavartResult | Sum of |G_T0| over all nearby atoms |
-| mutual_B_from | map<size_t, Vec3> | dimensionless | BiotSavartResult | B-field at this ring's center from ring[key] |
+| total_G_T0_diagnostic | double | ppm·T/nA | BiotSavartResult | Sum of |G_T0| over all nearby atoms |
+| mutual_B_from | map<size_t, Vec3> | Tesla (unit current, 1 nA) | BiotSavartResult | B-field at this ring's center from ring[key] |
 
 ### Query methods
 - `IsFused() -> bool`: fused_partner_index != SIZE_MAX
@@ -1758,7 +1762,7 @@ they land as the time-series, Welford, and scan-mode families fill in.
 
 ### Trajectory
 
-Process entity representing one traversal of an XTC + TPR + EDR
+Process entity representing one traversal of a TRR + TPR + EDR
 source. Holds both process-role state (handler, env) during Run and
 record-role state (frame times, frame indices, selection bag, source
 paths) after.
@@ -2137,8 +2141,8 @@ within range of an atom. Built by ring current ConformationResult objects.
 | rho | double | Angstroms | BiotSavartResult | Cylindrical radial in ring frame |
 | z | double | Angstroms | BiotSavartResult | Signed height above ring plane |
 | theta | double | radians | BiotSavartResult | atan2(rho, z) |
-| G_tensor | Mat3 | dimensionless | BiotSavartResult | BS geometric kernel G=-n⊗B×PPM (rank-1) |
-| G_spherical | SphericalTensor | dimensionless | BiotSavartResult | Decomposition of G |
+| G_tensor | Mat3 | ppm·T/nA | BiotSavartResult | BS geometric kernel G=-n⊗B×PPM (rank-1) |
+| G_spherical | SphericalTensor | ppm·T/nA | BiotSavartResult | Decomposition of G |
 | B_field | Vec3 | Tesla | BiotSavartResult | JB B-field from unit current (1 nA) |
 | B_cylindrical | Vec3 | Tesla | BiotSavartResult | (B_rho, 0, B_z) in ring frame |
 | hm_tensor | Mat3 | Angstrom^-1 | HaighMallionResult | Raw surface integral H (symmetric, traceless) |
@@ -3052,7 +3056,7 @@ Current `RunConfiguration` attach status:
 |-------------------------|-----------------------------------------------------------------------------------------------|
 | `ScanForDftPointSet` *(removed)* | `BsWelfordTrajectoryResult` (historical; selection now in PerFrameExtractionSet) |
 | `PerFrameExtractionSet` | Six AV-pattern Welford rollups (BS / HM / McConnell / Eeq / Sasa / HBondCount — all with Phase 2b/3 substruct shape: per-channel T1[3] + T2[5] where source is tensor-shaped, three delta variants + cadence + schema provenance) PLUS six classical SphericalTensor shielding-kernel TRs (Hm + McConnell + PiQuadrupole + RingSusceptibility + Dispersion + HBond) PLUS three scalar/Vec3 calc-output TRs (Sasa + AIMNet2 charge + APBS E-field) PLUS the 12 Tripeptide / Larsen TRs (Tripeptide × 6: BB + Neighbor Shielding/ResidualVec/MethodTag, plus Neighbor prev/next ResidualVec; Larsen × 6: water_term, count, four per-class shieldings) PLUS three energy/water/hydration TR pairs (GromacsEnergy + BondedEnergy TS; WaterField TS+Welford; HydrationGeometry TS+Welford; HydrationShell TS+Welford) PLUS DihedralTimeSeries (per-residue phi/psi/omega/chi/rama_region — movie-target) PLUS BS anomaly marker + BS T0 autocorrelation + bond length stats + positions time series |
-| `FullFatFrameExtraction`| Same as `PerFrameExtractionSet`                                                               |
+| `FullFatFrameExtraction`| `PerFrameExtractionSet` + MOPAC/Coulomb enabled (skip_mopac/skip_coulomb=false) + 5 MOPAC-family TRs (Mopac charge & bond-order Welford; MopacCoulomb + MopacMcConnell shielding TS; MopacVsFf14Sb reconciliation)                                                               |
 
 ### Conditional-attach TR discipline (2026-05-15)
 
@@ -3369,7 +3373,7 @@ factories.
 |-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|------------------|------------------------------------------------------------|
 | `ScanForDftPointSet()` *(removed)* | (was: `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `BiotSavartResult`, `SasaResult`; MOPAC / APBS / Coulomb skipped) | 1 | no | Historical cheap scan for DFT-pose selection; the capability now lives in `PerFrameExtractionSet`'s RmsdSpikeSelection / ChiRotamerSelection / DftPoseCoordinator TRs. |
 | `PerFrameExtractionSet()`   | `GeometryResult`, `SpatialIndexResult`, `EnrichmentResult`, `DsspResult`, `ChargeAssignmentResult`, `ApbsFieldResult`, `BiotSavartResult`, `HaighMallionResult`, `McConnellResult`, `RingSusceptibilityResult`, `PiQuadrupoleResult`, `DispersionResult`, `HBondResult`, `SasaResult`, `EeqResult`, `AIMNet2Result`, `AIMNet2ChargeResponseGradientResult`, `WaterFieldResult`, `HydrationShellResult`, `HydrationGeometryResult`, `GromacsFramePullResult`, `GromacsEnergyResult`, `BondedEnergyResult` (23 types). MOPAC skipped; vacuum Coulomb skipped (APBS supersedes). | 2      | yes              | Production canonical for the trajectory fleet (effective 676 after structure-quality drops).                |
-| `FullFatFrameExtraction()`  | `PerFrameExtractionSet` with `skip_mopac = false`. MOPAC-family ConformationResult types are not yet in `required_conf_result_types_` — see `spec/pending_decisions_20260423.md` item 3.                                                                                                                  | 2      | yes              | Selected-frame MOPAC (DFT pose set, harvester checkpoints). |
+| `FullFatFrameExtraction()`  | `PerFrameExtractionSet` with `skip_mopac = false`. It additionally `Produces` the five MOPAC-family TRs (`RunConfiguration.cpp:300`); these gate on per-frame `HasResult`, so `MopacResult` is intentionally not a hard `required_conf_result_type` — a frame without MOPAC yields empty MOPAC rows, not a failure.                                                                                                                  | 2      | yes              | Selected-frame MOPAC (DFT pose set, harvester checkpoints). |
 
 Mutators for factory authoring: `SetName`, `MutablePerFrameRunOptions`,
 `AddTrajectoryResultFactory`, `RequireConformationResult`,

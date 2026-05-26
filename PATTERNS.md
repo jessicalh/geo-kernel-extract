@@ -87,8 +87,8 @@ if (conf.HasResult<MopacResult>()) {
 One ConformationResult per type per conformation. Computed once,
 attached once, never replaced. No other result type writes to its
 fields on ConformationAtom. Different parameters means a different
-conformation (copy-and-modify), not a second result on the same
-conformation. This is why field accumulation on ConformationAtom is
+conformation (a separate `Add*` call), not a second result on the
+same conformation. This is why field accumulation on ConformationAtom is
 safe — each field has exactly one writer.
 
 ### 4. Dependency declaration
@@ -257,7 +257,7 @@ attach** — factories that size per-bond or per-ring state will
 silently allocate zero otherwise. Factories are not intrinsically
 wrong to look at `BondCount`/`RingCount`; the ordering must support it.
 
-The handler (`GromacsFrameHandler`) is a pure reader: Open mounts XTC
+The handler (`GromacsFrameHandler`) is a pure reader: Open mounts TRR
 + MoleculeWholer from TPR, `ReadNextFrame` reads + PBC-fixes + splits
 protein/solvent. No OperationRunner, no env writes, no TrajectoryResult
 dispatch — those are `Trajectory::Run`'s job. Handler name stays
@@ -746,9 +746,9 @@ Grep for: `PDB LOADING BOUNDARY` to find all boundary code.
 
 Protonation determines which atoms exist, which charges apply, which
 ring types are assigned. Changing protonation means a new Protein
-(copy-and-modify), not mutation of an existing one. ConformationResults
+(a fresh load), not mutation of an existing one. ConformationResults
 attached to a conformation depend on the protonation that was in effect
-when they were computed. There is no "re-protonate" — there is "copy
+when they were computed. There is no "re-protonate" — there is "load
 with new protonation and re-run the pipeline."
 
 ### 14. Typed charge sources, not string-dispatched
@@ -863,7 +863,7 @@ Use the ORCA test protein (A0A7C5FAR6) or 1UBQ. Verify mathematical
 identities (e.g., T0 = f for McConnell/RingSusceptibility, EFG
 tracelessness for Coulomb) at machine precision.
 
-**Step 2: Batch run on the full 723-pair working set.**
+**Step 2: Batch run on the full 720-pair working set.**
 Every clean WT+ALA pair. Zero failures. This tests whether the
 calculator handles all protein sizes, ring counts, charge states,
 and geometries without NaN, Inf, or crash.
@@ -1112,9 +1112,11 @@ filters exist (KernelEvaluationFilter.h). Use them.
 
 Floating-point accumulation across many source terms breaks the
 tracelessness of tensors that are analytically traceless (Coulomb
-EFG, Pi-quadrupole EFG). Apply traceless projection after
-summation: `V -= (V.trace() / 3.0) * Mat3::Identity()`. Do this
-for any tensor where Gauss's law or symmetry guarantees zero trace.
+EFG, APBS EFG). Coulomb applies an explicit post-sum projection
+`V -= (V.trace() / 3.0) * Mat3::Identity()`; do this for any tensor
+where Gauss's law or symmetry guarantees zero trace. (Pi-quadrupole's
+EFG is analytically traceless and decomposed directly — no projection;
+the McConnell-form ring kernels keep their non-zero trace as T0.)
 
 ### Unit chains: state them explicitly
 
@@ -1153,7 +1155,8 @@ scenario before declaring a calculator correct.
 - **Haigh-Mallion:** Adaptive subdivision at 2.0 A (level 1) and
   1.0 A (level 2) for atoms near the ring face. 7-point Gaussian
   quadrature (Stroud T2:5-1). Two subdivision levels max.
-- **Pi-quadrupole:** 1/r⁹ leading term — steepest divergence.
+- **Pi-quadrupole:** steepest near-field divergence (1/r⁹ is the
+  highest inverse power; leading far-field decay is 1/r⁵).
   DipolarNearFieldFilter plus RingBondedExclusionFilter required.
   Without: max |T2| = 7.39 A⁻⁵. With: 0.66 A⁻⁵.
 - **Coulomb EFG:** Traceless per term but accumulation breaks it.

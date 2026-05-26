@@ -124,10 +124,13 @@ projection — **not** a diagonalization.
   `σ −= (tr σ / 3)·I`. Each term is traceless analytically (Gauss/Laplace),
   but float accumulation breaks it, so the projection is applied before
   decomposition. Recurs across Coulomb (`CoulombResult.cpp:164,199`), AIMNet2
-  (`AIMNet2Result.cpp:408,425`), APBS (`ApbsFieldResult.cpp:105,116`), and
-  the ring kernels. This is the recurring **numerical-hygiene** pattern —
-  symmetrize `½(M+Mᵀ)`, de-trace, then (in Coulomb) NaN/Inf-sanitize and
-  magnitude-clamp runaway near-contact fields.
+  (`AIMNet2Result.cpp:408,425`), and APBS (`ApbsFieldResult.cpp:105,116`).
+  This is the recurring **numerical-hygiene** pattern — symmetrize
+  `½(M+Mᵀ)`, de-trace, then (in Coulomb) NaN/Inf-sanitize and
+  magnitude-clamp runaway near-contact fields. The McConnell-form ring
+  kernels do **not** de-trace their main shielding — they decompose the
+  full asymmetric M (T0+T1+T2); only McConnell's per-category T2 NPYs use
+  this symmetrize/de-trace step (`McConnellResult.cpp:272`).
 
 ---
 
@@ -215,7 +218,7 @@ powers).
   ±lobe_offset each carrying I/2). **Not** quadrature — the discretization is
   the physical polygon geometry, integrated analytically per edge. Wire-
   endpoint and on-axis singularity guards.
-- **Stone rank-4 multipole T-tensor (1/r⁹).** `PiQuadrupoleResult.cpp:54-102`.
+- **Stone rank-4 multipole T-tensor (1/r⁵ leading decay, 1/r⁹ highest power).** `PiQuadrupoleResult.cpp:54-102`.
   EFG from a point axial quadrupole, `G_ab = T_abcd n_c n_d`, fully
   pre-contracted to closed form — the highest inverse-power kernel in the
   suite. Tracelessness analytic (Laplace).
@@ -224,8 +227,10 @@ powers).
   `McConnellResult.cpp:54` (bond direction b̂; `MopacMcConnellResult`
   scales each bond by the Wiberg bond order), `RingSusceptibilityResult.cpp:54`
   (b̂ → ring normal n̂), `HBondResult.cpp:72` (b̂ → N···O H-bond axis, source
-  at the N···O midpoint, DSSP-resolved pairs). Series-summed over sources
-  with per-category symmetric-traceless projection.
+  at the N···O midpoint, DSSP-resolved pairs). Series-summed over sources;
+  the per-atom shielding decomposes the full asymmetric M (T0+T1+T2),
+  while the per-category T2 NPYs additionally take the symmetric-traceless
+  part.
 - **C¹ switching / windowing polynomial.** `DispersionResult.cpp:62-72`. The
   London `(3 d⊗d/r⁸ − I/r⁶)` dispersion kernel multiplied by a CHARMM-form
   smooth cutoff S(r) (Brooks 1983) that is C¹-continuous at both
@@ -346,8 +351,8 @@ None of this is our code; we marshal input and parse output.
 | CMAP | bilinear interp (2-D) | hand-rolled | `BondedEnergyResult.cpp:86` |
 | AIMNet2 charge response | reverse-mode autograd | libtorch | `AIMNet2ChargeResponseGradientResult.cpp:162` |
 | Biot–Savart | analytic finite-wire + edge sum | hand-rolled | `BiotSavartResult.cpp:43` |
-| Pi-quadrupole | rank-4 multipole tensor (1/r⁹) | hand-rolled | `PiQuadrupoleResult.cpp:54` |
-| McConnell / ring χ / H-bond | dyadic kernel + series sum + de-trace | hand-rolled | `McConnellResult.cpp:54`, `RingSusceptibilityResult.cpp:54`, `HBondResult.cpp:72` |
+| Pi-quadrupole | rank-4 multipole tensor (1/r⁵–1/r⁹) | hand-rolled | `PiQuadrupoleResult.cpp:54` |
+| McConnell / ring χ / H-bond | full asymmetric M (dyadic) + series sum + decompose | hand-rolled | `McConnellResult.cpp:54`, `RingSusceptibilityResult.cpp:54`, `HBondResult.cpp:72` |
 | Dispersion | London 1/r⁶ + C¹ switching window | hand-rolled | `DispersionResult.cpp:62` |
 | Coulomb EFG | truncated lattice sum + de-trace + clamp | hand-rolled | `CoulombResult.cpp:163` |
 | Dihedral / torsion | atan2(cross, cross) | hand-rolled | `PlanarGeometryResult.cpp:35` (+ others) |
