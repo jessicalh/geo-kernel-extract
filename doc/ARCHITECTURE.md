@@ -65,7 +65,7 @@ Four typed subclasses record provenance:
 
 | Type | Created by | Metadata |
 |------|-----------|----------|
-| CrystalConformation | BuildFromPdb, BuildFromProtonatedPdb | resolution, R-factor, temperature, PDB ID |
+| CrystalConformation | AddCrystalConformation (PDB builders make a base ProteinConformation, "protonated") | resolution, R-factor, temperature, PDB ID |
 | PredictionConformation | BuildFromOrca | method, confidence |
 | MDFrameConformation | FullSystemReader (trajectory) | walker, time (ps), Boltzmann weight, RMSD, Rg |
 | DerivedConformation | Protein::AddDerived | description string |
@@ -80,18 +80,18 @@ type_index).
 ### Ring type hierarchy
 
 Ring types are classes, not data. Calculator code is ring-type-agnostic:
-`ring.Intensity()`, `ring.JBLobeOffset()`, `ring.NitrogenCount()`.
+`ring.Intensity()`, `ring.JohnsonBoveyLobeOffset()`, `ring.NitrogenCount()`.
 No switch statements on ring type in calculator code.
 
-Eight types in three size categories (Ring.h):
+Nine ring types in three size categories (Ring.h) — 8 aromatic + saturated ProPyrrolidineRing:
 - SixMemberedRing: PheBenzene, TyrPhenol, TrpBenzene
 - FiveMemberedRing: TrpPyrrole, HisImidazole, HidImidazole, HieImidazole
 - FusedRing: IndolePerimeter (TRP 9-atom)
 
 The three histidine ring types (His, Hid, Hie) encode protonation
 state in the type system. Protonation is not a string annotation —
-it determines which Ring subclass is constructed during
-DetectAromaticRings.
+it determines which Ring subclass is constructed
+(RingTopology::ConstructFromSubstrate, via Protein::FinalizeConstruction).
 
 ### Topology
 
@@ -112,8 +112,9 @@ cache — typed properties, not string comparisons.
 Five kinds of data enter the system. Each has a different protonation
 strategy and charge source. All produce the same BuildResult
 (BuildResult.h): a Protein, a ChargeSource, and an integer net charge.
-After building, the same OperationRunner::Run pipeline processes every
-protein identically.
+After building, the same OperationRunner::Run drives every protein — the
+steps that actually run are gated by RunOptions (e.g. trajectory frames
+default to skip MOPAC and vacuum Coulomb).
 
 ### Path 1: PDB of unknown provenance
 
@@ -121,7 +122,8 @@ protein identically.
 
 The PDB may or may not have hydrogens. reduce (Richardson lab,
 linked as a C++ library) strips any existing H atoms and rebuilds
-them at the specified pH, optimising flips and rotamers. Charges
+them (optimising flips and rotamers; the pH arg is recorded in the build
+context, not passed to reduce). Charges
 come from a ParamFileChargeSource (ff14SB parameter file).
 
 This is the path for bare PDB files where protonation state is
@@ -134,8 +136,9 @@ unknown or unreliable.
 The PDB already contains all hydrogen atoms (e.g., output from a
 previous reduce run, or a PDB from GROMACS that was externally
 reprotonated for experimental comparison). reduce is not called.
-ProtonationDetectionResult reads existing H atoms to determine
-protonation states. Charges from ParamFileChargeSource (ff14SB).
+Protein::ResolveProtonationStates reads existing H atoms during
+construction; ProtonationDetectionResult reports the resolved residue
+variant state. Charges from ParamFileChargeSource (ff14SB).
 
 ### Path 3: ORCA from tleap (calibration proteins)
 
@@ -180,8 +183,8 @@ accumulators (one TR per metric) plus SphericalTensor time-series TRs;
 per-frame NPYs emit at stride m, PDBs at stride n, and a trajectory H5
 always.
 
-PBC fix is applied per frame via MoleculeWholer (verbatim port of
-fes-sampler's pbc_whole.h). SolventEnvironment carries water and ion
+PBC fix is applied per frame via FullSystemReader::MakeProteinWhole
+(called by GromacsFrameHandler). SolventEnvironment carries water and ion
 positions to solvent calculators through RunOptions.solvent. Frame
 selection (RmsdSpikeSelection, ChiRotamerSelection → DftPoseCoordinator)
 picks candidate DFT-pose frames — selection TRs in the same single
@@ -194,9 +197,9 @@ conformations, a ChargeSource matched to that Protein's atoms, and
 a net charge. OperationRunner::Run does not know or care which
 builder created the protein. The trajectory path (5) additionally
 produces per-atom trajectory statistics (Welford means and variances)
-and time-series via TrajectoryResults, but the per-frame calculator
-pipeline is
-identical to every other path.
+and time-series via TrajectoryResults; the per-frame calculator pipeline
+uses PerFrameExtractionSet/FullFatFrameExtraction (frames default to skip
+MOPAC and vacuum Coulomb).
 
 The ChargeSource hierarchy (ChargeSource.h) enforces this:
 ParamFileChargeSource (ff14SB flat file), PrmtopChargeSource (AMBER
@@ -213,9 +216,11 @@ charges to atoms.
 **Diagram:** doc/diagrams/03_calculator_pipeline (svg, png, mmd source)
 
 OperationRunner::Run (OperationRunner.h:68) sequences all results
-in dependency order. It does not hold state, cache results, or
-decide what to compute. If a step's prerequisites are on the
-conformation, the step runs. If not, it is skipped.
+in dependency order. It does not hold state or cache results. Each step is
+gated by RunOptions (skip_dssp / skip_mopac / skip_apbs / skip_coulomb, a
+non-null charge_source, an AIMNet2 model, solvent / energy resources, …) and
+by the prerequisites present on the conformation; satisfied, ungated steps
+run, the rest are skipped.
 
 ### Tier 0: Foundation and external tools
 
@@ -226,11 +231,11 @@ These provide the substrate that calculators need:
 | GeometryResult | Ring geometry (SVD normals), bond geometry, global measures | none | — |
 | SpatialIndexResult | 15A neighbour lists via nanoflann k-d tree | GeometryResult | — |
 | EnrichmentResult | AtomRole, hybridisation, boolean properties | none | runs after GeometryResult |
-| ProtonationDetectionResult | Reads H atoms to assign protonation variants | none | — |
-| ChargeAssignmentResult | Per-atom charges from the ChargeSource | none | — |
+| ProtonationDetectionResult | Reports resolved protonation variants (H atoms read in Protein::ResolveProtonationStates) | none | not in the OperationRunner sequence |
+| ChargeAssignmentResult | Per-atom charges from the ChargeSource | none | attaches only when opts.charge_source is set |
 | DsspResult | Secondary structure, phi/psi, SASA, H-bond partners (libdssp) | none | runs after GeometryResult |
 | ApbsFieldResult | Solvated E-field and EFG via Poisson-Boltzmann (APBS) | ChargeAssignmentResult | — |
-| MolecularGraphResult | Through-bond distances to rings, N, O via BFS | SpatialIndexResult | — |
+| MolecularGraphResult | Through-bond distances to rings, N, O via BFS | SpatialIndexResult | not in the standard OperationRunner sequence |
 | SasaResult | Per-atom Shrake-Rupley SASA + outward surface normal (Fibonacci lattice) | SpatialIndexResult | — |
 | EeqResult | D4 electronegativity equilibration charges (Caldeweyher 2019, pure C++/Eigen) | none | — |
 | MopacResult | PM7+MOZYME: Mulliken charges, orbital populations, Wiberg bond orders | none | gated on charges |
@@ -245,7 +250,7 @@ to charge neutrality using D4 element-specific parameters (chi, eta,
 kappa, r_cov). One N*N Cholesky solve per frame. Pure C++ with Eigen
 -- no external binary, no CUDA dependency. Output: eeq_charges.npy.
 
-MopacResult runs on every conformation. On a 167-atom protein
+MopacResult runs only when charges are attached and !skip_mopac (CLI --mopac; trajectory frames default it off). On a 167-atom protein
 (Q9UR66), it takes ~14 seconds. On 1231 atoms (1UBQ), longer.
 This is a semiempirical quantum calculation, not a lookup.
 
@@ -263,7 +268,7 @@ derivation. Equations below are exactly what the code computes,
 verified against the .cpp files.
 
 **Biot-Savart** (Johnson & Bovey 1958). Induced B-field from ring
-current modelled as two circular loops offset above and below the
+current modelled as two offset polygonal loops over the ring vertices (analytic finite-wire segments per edge), above and below the
 ring plane. The geometric kernel G relates the B-field to the
 shielding tensor via the ring normal.
 
@@ -443,9 +448,10 @@ follows pointers back into the live model objects, and draws.
 
 ### OperationLog (UDP)
 
-All operations log structured JSON over UDP (OperationLog.h).
-The log is always on. Every result logs its start, completion time,
-key metrics, and filter rejection counts. A listener
+Operations log structured records via OperationLog (OperationLog.h) —
+UDP (port 9997) when configured, else stderr/file. Each result logs its
+start and completion time and key metrics; calculators with a KernelFilterSet
+also log filter rejection counts (ReportRejections). A listener
 (ui/udp_listen.py) captures the stream for real-time diagnostics.
 
 ---
@@ -464,11 +470,11 @@ The core correspondences:
 | Singleton guarantee | ProteinConformation.h:150 — results_ map keyed by type_index |
 | Dependency declaration | ConformationResult.h:31 — Dependencies() returns type_index vector |
 | Compute() factory | Every result: static Compute() returns unique_ptr |
-| Both representations | ConformationAtom.h — every tensor field has Mat3 + SphericalTensor |
-| Ring type virtual interface | Ring.h — Intensity(), JBLobeOffset(), TypeName() are virtual |
+| Both representations | ConformationAtom.h — kernel tensors store Mat3 + SphericalTensor (the *_shielding_contribution totals are SphericalTensor only) |
+| Ring type virtual interface | Ring.h — Intensity(), JohnsonBoveyLobeOffset(), TypeName() are virtual |
 | Equations in comments, Eigen in code | Every calculator .cpp — equation in comment, Eigen expression below |
-| Return codes, not exceptions | BuildResult.h:33 — Ok(), error string. Four catch blocks exist at external library boundaries (cif++, DSSP, stoi); result codes are the pattern for all internal code. |
-| Protein is non-movable | Protein.h:32-33 — move constructor deleted |
+| Return codes, not exceptions | BuildResult.h:33 — Ok(), error string. Catch blocks are confined to external-resource boundaries (cif++, DSSP, stoi, model/DB loading); result codes are the pattern for internal code. |
+| Protein is non-movable | Protein.h:44-47 — copy and move deleted |
 | Protonation flows through Protein | Five builder paths, Ring type hierarchy encodes protonation |
 | Typed charge sources | ChargeSource.h — four concrete implementations, no string dispatch |
 | No adapter/wrapper classes | UI reads Protein and ConformationAtom directly (ui/CLAUDE.md) |
@@ -489,11 +495,11 @@ The core correspondences:
 | BuildResult.h | Common output of all builders |
 | PdbFileReader.h | BuildFromPdb, BuildFromProtonatedPdb |
 | OrcaRunLoader.h | BuildFromOrca |
-| FullSystemReader.h | Single-parse TPR build + TRR frame streaming |
+| FullSystemReader.h | Single-parse TPR build + topology/PBC (TRR frame streaming is GromacsFrameHandler) |
 | OperationRunner.h | Run, RunMutantComparison, RunEnsemble |
 | ChargeSource.h | Four typed charge source implementations |
 | KernelEvaluationFilter.h | Five filters, KernelFilterSet |
 | GeometryChoice.h | Runtime recording of calculator decisions |
-| Ring.h | Ring type hierarchy (8 types, 3 size categories) |
+| Ring.h | Ring type hierarchy (9 types: 8 aromatic + ProPyrrolidine, 3 size categories) |
 | OperationLog.h | Structured JSON/UDP logging |
 | Types.h | Vec3, Mat3, SphericalTensor, all enums |
