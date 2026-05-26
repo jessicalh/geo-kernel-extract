@@ -115,11 +115,13 @@ conf.AttachResult(std::move(bs));
 
 ### 6. Shielding contribution contract
 
-Every classical calculator stores BOTH geometric output (natural units,
-for features and reuse) AND a shielding_contribution SphericalTensor
-(ppm, for calibration comparison). Both are exported via WriteFeatures()
-as NPY arrays. The calibration pipeline reads these alongside DFT
-delta tensors to tune parameters and measure the T2 residual.
+Every classical calculator stores BOTH the per-source geometric output
+(for features and reuse) AND a per-atom `*_shielding_contribution`
+SphericalTensor — the decomposed kernel summed over sources, in natural
+kernel units (NOT ppm, NOT parameter-multiplied; the name is historical).
+Both are exported via WriteFeatures() as NPY arrays. The calibration
+pipeline multiplies the parameter to reach ppm and measures the T2
+residual against DFT deltas. See Lesson 20 and OBJECT_MODEL.md.
 
 ### 7. Fields typed by functional analysis
 
@@ -560,7 +562,7 @@ input-vs-output naming asymmetry:
   the pre-2026-05-06 flat-map + duplicate-detection guard with a
   flat list of `NamingRule` entries each tagged with a typed
   `NamingSource` enum value. Applied at every loader boundary
-  (PdbFileReader, OrcaRunLoader, FullSystemReader, GromacsEnsembleLoader)
+  (PdbFileReader, OrcaRunLoader, FullSystemReader)
   via `GlobalNamingApplicator()`; produces a typed canonicalisation
   outcome per atom; logs which rules fired; fail-loud on contradictions
   the resolver cannot decide.
@@ -752,9 +754,9 @@ with new protonation and re-run the pipeline."
 
 ChargeAssignmentResult takes a typed ChargeSource, not a string path.
 Different force fields are different types (ParamFileChargeSource,
-PrmtopChargeSource, GmxTprChargeSource), not the same function with a
-different string parameter. The ForceField enum records provenance in
-ProteinBuildContext; the code path is determined by type.
+PrmtopChargeSource, AmberPreparedChargeSource), not the same function
+with a different string parameter. The ForceField enum records
+provenance in ProteinBuildContext; the code path is determined by type.
 
 ### 15. Variant index contract
 

@@ -318,10 +318,12 @@ Deep copy. All properties preserved.
 
 ## ProtonationState
 
-Per-protein protonation decisions. Value type. Created by a Protonator
-(PROPKA, KaML, tleap default) and consumed by a topology builder to
-produce a Protein with the correct hydrogen atoms. Changing protonation
-means a new Protein (copy-and-modify), not mutation of an existing one.
+Per-protein protonation provenance. Value type recording which upstream
+tool fixed protonation (the ProtonationTool enum: PROPKA, KaML, TLeap,
+Manual) and at what pH. Protonation itself is upstream — mode 1 runs
+`reduce`; modes 2-5 ingest already-protonated input — and the state is
+read from the input hydrogens, not predicted here. nmr_extract does not
+run pKa prediction or in-pipeline pH scanning.
 
 ### Static properties (const after construction)
 
@@ -363,10 +365,9 @@ ChargeSource (abstract)
 ├── ParamFileChargeSource         — ff14SB from flat parameter file
 ├── PrmtopChargeSource            — ff14SB/ff19SB from AMBER prmtop
 │                                   (authoritative; --orca, --mutant)
-├── PreloadedChargeSource         — caller-supplied charges
-│                                   (used by GROMACS/CHARMM TPR path)
-├── GmxTprChargeSource            — legacy CHARMM36m via `gmx dump`
-│                                   (quarantined; PB radii are placeholders)
+├── PreloadedChargeSource         — caller-supplied charges (GROMACS TPR
+│                                   trajectory path; reports
+│                                   ChargeModelKind::GromacsTpr)
 └── AmberPreparedChargeSource     — runtime tleap → PRMTOP → charges
                                     when the flat ff14SB table cannot
                                     represent the protein (--pdb /
@@ -481,17 +482,15 @@ through typed factory methods on the protein:
 
 ```
 protein.AddCrystalConformation(positions, metadata) -> CrystalConformation&
-protein.AddNMRConformation(positions, metadata) -> NMRConformation&
-protein.AddMDFrame(positions, metadata) -> MDFrameConformation&
 protein.AddPrediction(positions, metadata) -> PredictionConformation&
-protein.AddMinimised(positions, metadata) -> MinimisedConformation&
+protein.AddMDFrame(positions, metadata) -> MDFrameConformation&
 protein.AddDerived(parent, description) -> DerivedConformation&
 
-protein.CrystalConformation()    // exactly one or throws
-protein.NMRConformations()       // typed collection
-protein.MDFrames()               // typed collection
-protein.Predictions()            // typed collection
-protein.Conformations()          // all, heterogeneous
+protein.CrystalConf()            // exactly one or throws
+protein.PredictionAt(i)          // typed accessor
+protein.MDFrameAt(i)             // typed accessor
+protein.Conformation()           // the single working conformation
+protein.ConformationAt(i)        // any, heterogeneous
 ```
 
 No agent creates a ProteinConformation directly. No loose conformations.
@@ -803,7 +802,7 @@ Ring current totals (populated by BiotSavartResult, HaighMallionResult):
 | per_type_G_T2_sum | array<array<double,5>, 8> | dimensionless | BiotSavartResult |
 | per_type_hm_T0_sum | array<double, 8> | dimensionless | HaighMallionResult |
 | per_type_hm_T2_sum | array<array<double,5>, 8> | dimensionless | HaighMallionResult |
-| hm_shielding_contribution | SphericalTensor | ppm | HaighMallionResult | total shielding from HM |
+| hm_shielding_contribution | SphericalTensor | Angstrom^-1 | HaighMallionResult | decomposed HM shielding kernel G = -n⊗V summed over rings (bare kernel, not ppm) |
 | n_rings_within_3A | int | - | BiotSavartResult |
 | n_rings_within_5A | int | - | BiotSavartResult |
 | n_rings_within_8A | int | - | BiotSavartResult |
@@ -813,7 +812,7 @@ Ring current totals (populated by BiotSavartResult, HaighMallionResult):
 | G_iso_exp_sum | double | dimensionless | BiotSavartResult |
 | G_T2_exp_sum | array<double, 5> | dimensionless | BiotSavartResult |
 | G_iso_var_8A | double | dimensionless | BiotSavartResult |
-| bs_shielding_contribution | SphericalTensor | ppm | BiotSavartResult | total shielding from all rings (intensity-weighted sum of G_spherical over all rings) |
+| bs_shielding_contribution | SphericalTensor | ppm*T/nA | BiotSavartResult | decomposed ring-current kernel G = -n⊗B summed over rings (PPM_FACTOR baked in; intensity I_type applied at calibration, not here) |
 
 Bond anisotropy totals (populated by McConnellResult):
 | Property | Type | Unit | Source result |
@@ -855,7 +854,7 @@ Coulomb field totals (populated by CoulombResult):
 | aromatic_E_magnitude | double | V/Angstrom | CoulombResult |
 | aromatic_E_bond_proj | double | V/Angstrom | CoulombResult |
 | aromatic_n_sidechain_atoms | int | - | CoulombResult |
-| coulomb_shielding_contribution | SphericalTensor | ppm | CoulombResult | Buckingham shielding from E-field (A*E_z + B*E_z^2 for T0, gamma*EFG for T2) |
+| coulomb_shielding_contribution | SphericalTensor | V/Angstrom^2 | CoulombResult | decomposed EFG_total (bare T2 kernel; Buckingham A*E_z + B*E_z^2 for T0 and gamma*EFG for T2 applied at calibration) |
 
 Note: coulomb_E_ring_proj (E_total . nearest_ring_normal) is computed
 at feature extraction time, not in CoulombResult, because it depends
@@ -880,14 +879,14 @@ H-bond properties (populated by HBondResult):
 | hbond_count_within_3_5A | int | - | HBondResult |
 | hbond_is_donor | bool | - | HBondResult |
 | hbond_is_acceptor | bool | - | HBondResult |
-| hbond_shielding_contribution | SphericalTensor | ppm | HBondResult | H-bond dipolar shielding |
+| hbond_shielding_contribution | SphericalTensor | Angstrom^-3 | HBondResult | decomposed H-bond dipolar kernel (McConnell-form, b̂→D-A direction; bare kernel, not ppm) |
 
 Ring-based shielding contributions (per-atom totals, populated by respective results):
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
-| piquad_shielding_contribution | SphericalTensor | ppm | PiQuadrupoleResult | quadrupole shielding contribution |
-| ringchi_shielding_contribution | SphericalTensor | ppm | RingSusceptibilityResult | ring susceptibility shielding |
-| disp_shielding_contribution | SphericalTensor | ppm | DispersionResult | dispersion shielding contribution |
+| piquad_shielding_contribution | SphericalTensor | Angstrom^-5 | PiQuadrupoleResult | decomposed quadrupole EFG kernel G (pure-T2 by Laplace; bare kernel, not ppm) |
+| ringchi_shielding_contribution | SphericalTensor | Angstrom^-3 | RingSusceptibilityResult | decomposed ring-susceptibility kernel (McConnell-form, b̂→ring normal; bare kernel, not ppm) |
+| disp_shielding_contribution | SphericalTensor | Angstrom^-6 | DispersionResult | decomposed dispersion kernel (pure-T2; bare kernel, not ppm) |
 
 Graph topology (populated by MolecularGraphResult):
 | Property | Type | Unit | Source result |
@@ -906,7 +905,8 @@ ORCA DFT shielding (populated by OrcaShieldingResult):
 
 Each protein gets its own OrcaShieldingResult on its own conformation.
 WT and mutant are separate Proteins. Comparison (delta computation) is
-done by MutantProteinConformationComparison, not stored on ConformationAtom.
+done by MutationDeltaResult (a ConformationResult attached to the WT),
+not stored on ConformationAtom.
 
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
@@ -1210,20 +1210,14 @@ for people you haven't met.
 
 ```
 ProteinConformation (base -- NOT abstract, fully functional)
-+-- ExperimentalConformation
-|   +-- CrystalConformation
-|   |     resolution_angstroms, r_factor, temperature_kelvin, pdb_id
-|   +-- NMRConformation
-|         ensemble_member, restraint_count
-+-- ComputedConformation
-|   +-- PredictionConformation
-|   |     tool (AlphaFold/OpenFold3/ESMFold), confidence_per_residue
-|   +-- MinimisedConformation
-|   |     parent, method, force_field, energy, converged
-|   +-- MDFrameConformation
-|         frame_index, time_picoseconds, walker_index, boltzmann_weight
++-- CrystalConformation
+|     resolution_angstroms, r_factor, temperature_kelvin, pdb_id
++-- PredictionConformation
+|     method (AlphaFold/OpenFold3/ESMFold), confidence
++-- MDFrameConformation
+|     walker, time_picoseconds, weight, rmsd_nm, rg_nm
 +-- DerivedConformation
-      parent, derivation_description, properties_invalidated
+      derivation_description
 ```
 
 The base class does the heavy lifting: holds positions (const),
@@ -1728,7 +1722,7 @@ Attach, so factories see a finalized Protein).
 | `BsShieldingTimeSeriesTrajectoryResult` | per-atom | `BiotSavartResult` | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/bs_shielding_time_series/` (N, T, 9) with irrep_layout / normalization / parity attrs |
 | `HmShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hm_shielding_time_series/` (N, T, 9); reads `ConformationAtom::hm_shielding_contribution` (HaighMallionResult source, unconditional in PerFrameExtractionSet) |
 | `McConnellShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/mc_shielding_time_series/` (N, T, 9); reads `mc_shielding_contribution` (units = Å⁻³, full asymmetric McConnell tensor; T0 ≠ 0) |
-| `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/piquad_shielding_time_series/` (N, T, 9); reads `piquad_shielding_contribution` (units = Å⁻⁴, **pure-T2** by Laplace — T0 ≡ 0 structurally) |
+| `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/piquad_shielding_time_series/` (N, T, 9); reads `piquad_shielding_contribution` (units = Å⁻⁵, **pure-T2** by Laplace — T0 ≡ 0 structurally) |
 | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/ringchi_shielding_time_series/` (N, T, 9); reads `ringchi_shielding_contribution` (units = Å⁻³) |
 | `DispersionShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/disp_shielding_time_series/` (N, T, 9); reads `disp_shielding_contribution` (units = Å⁻⁶, **pure-T2** — T0 ≡ 0 structurally) |
 | `HBondShieldingTimeSeriesTrajectoryResult` | per-atom | (none declared) | FO | `DenseBuffer<SphericalTensor>` + `/trajectory/hbond_shielding_time_series/` (N, T, 9); reads `hbond_shielding_contribution` (units = Å⁻³, kernel-form; coexists with grid-form `LarsenHBond*ShieldingTimeSeries` family per `feedback_methods_accumulate`) |
@@ -1945,14 +1939,15 @@ V/Angstrom for E-fields, etc.). Stored per atom per source (ring/bond).
 This is what the feature extractor reads. It can be reused with different
 parameters without recomputing geometry.
 
-### 2. Shielding contribution (for calibration and upstream models, in ppm)
-The total shielding contribution from this calculator, per atom, as a
-SphericalTensor in ppm. This is the geometric output multiplied by the
-appropriate parameter (intensity, anisotropy, Buckingham coefficient, etc.).
-Both representations are exported via WriteFeatures() as NPY arrays — the
-calibration pipeline uses them to tune parameters against DFT deltas, and
-the upstream e3nn prediction model consumes them as physics-grounded
-tensor features at all irrep levels (T0, T1, T2):
+### 2. Decomposed kernel total (`*_shielding_contribution`)
+Each calculator also stores a per-atom total `*_shielding_contribution`
+SphericalTensor — the decomposed geometric kernel summed over sources
+(rings/bonds), in the calculator's natural kernel units, NOT ppm and NOT
+parameter-multiplied. The name is historical; the field holds the bare
+kernel. The calibration pipeline multiplies the appropriate parameter
+(the formulas below) to reach ppm when comparing against DFT, and the
+upstream e3nn prediction model consumes these tensor features at all
+irrep levels (T0, T1, T2):
 
 - BiotSavart: sigma_atom = Sum_rings[ I_type * G_tensor ]
 - HaighMallion: sigma_atom = Sum_rings[ J_type * HM_tensor ]
@@ -1965,15 +1960,15 @@ tensor features at all irrep levels (T0, T1, T2):
 
 ### What this enables
 
-The shielding contribution is stored per atom as:
+The decomposed kernel total is stored per atom as:
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
-| shielding_contribution | SphericalTensor | ppm | each calculator |
+| *_shielding_contribution | SphericalTensor | natural kernel units (per-field table above) | each calculator |
 
-This is SEPARATE from the geometric output. Both are stored. The
-geometric output feeds features; the shielding contribution provides
-the parameterised tensor for calibration comparison and for the
-upstream e3nn prediction model that consumes full tensor features.
+Both are stored: the per-source geometric output feeds features; the
+`*_shielding_contribution` total is the decomposed kernel that the
+calibration comparison and the upstream e3nn model consume as full
+tensor features.
 
 After all calculators attach, the T2 residual between classical
 kernel output and DFT delta tensors shows where the angular physics
@@ -1993,23 +1988,17 @@ which reads both sets of NPY arrays.
 | Dispersion | alpha_elem * disp_T0/T1/T2 | Element defaults or TOML-calibrated values |
 | HBond | eta_elem * hbond_T0/T1/T2 | Element defaults or TOML-calibrated values |
 
-### Contract drift (2026-05-16 finding)
+### Realized `*_shielding_contribution` semantics
 
-The contract above describes the intended `*_shielding_contribution`
-semantics: parameter × geometric kernel, in ppm. The **code does not
-match the contract**. Every classical calculator stores the
-DECOMPOSED GEOMETRIC KERNEL (no parameter multiplication) into
-`*_shielding_contribution`. Documented by the calc:
+Every classical calculator stores the DECOMPOSED GEOMETRIC KERNEL
+(no parameter multiplication) into `*_shielding_contribution`:
 `bs/hm/mc/piquad/ringchi/disp/hbond_shielding_contribution =
-SphericalTensor::Decompose(*_total)` with no `param * ` factor at
-the assignment site.
-
-Surfaced 2026-05-16 while building trajectory-scope TRs that capture
-these fields. The TR layer is correct — it faithfully captures what
-the calc writes. The calibration pipeline downstream multiplies by
-the appropriate parameter when comparing against DFT, so the
-end-to-end calibration math is correct. The drift is between this
-doc and the code, not between the code and the science.
+SphericalTensor::Decompose(*_total)`, no `param *` factor at the
+assignment site. The trajectory-scope TRs faithfully capture this; the
+calibration pipeline multiplies the parameter when comparing against
+DFT, so the end-to-end calibration math is correct. (This resolves the
+2026-05-16 doc/code drift in favour of the code — kernels in, ppm only
+after calibration.)
 
 Per-calc actual unit + irrep structure (corrected):
 
@@ -2048,8 +2037,10 @@ Every classical calculator must have unit tests that verify:
    to a PHE ring). This proves the physics is correct independent of
    any model.
 
-2. **Shielding contribution in ppm.** The intensity-weighted / parameter-weighted
-   total must match the analytical prediction.
+2. **Decomposed kernel total.** The `*_shielding_contribution` (decomposed
+   kernel summed over sources, natural units) must match the analytical
+   kernel prediction; the parameter-weighted ppm comparison lives in the
+   calibration pipeline.
 
 3. **Two-path consistency.** Default and corrected paths produce the same
    output when corrected parameters equal default parameters.
@@ -2089,7 +2080,8 @@ A test that checks specific T2[0..4] values forces full tensor implementation.
 - Vec3: E-field at each atom
 - Mat3: EFG tensor V_ab at each atom
 - sphericart: T0, T1[3], T2[5] of V_ab
-- Decomposed: backbone vs sidechain vs solvent contributions
+- Decomposed: E-field backbone/sidechain/aromatic; EFG backbone/aromatic
+  (no sidechain EFG); solvent (E+EFG) only when APBS present
 
 **PiQuadrupoleResult:**
 - Mat3: quadrupole EFG tensor per atom per ring
@@ -2123,8 +2115,8 @@ A test that checks specific T2[0..4] values forces full tensor implementation.
   (Mat3 + sphericart each)
 - Element-verified atom ordering (ORCA nucleus element must match protein atom)
 - One result per protein per conformation. WT and mutant are separate Proteins.
-- Mutant comparison (atom matching, delta computation) is a separate
-  static operation (MutantProteinConformationComparison), not part of this result.
+- Mutant comparison (atom matching, delta computation) is MutationDeltaResult,
+  a separate ConformationResult attached to the WT, not part of this result.
 
 ---
 
@@ -2149,8 +2141,8 @@ within range of an atom. Built by ring current ConformationResult objects.
 | hm_tensor | Mat3 | Angstrom^-1 | HaighMallionResult | Raw surface integral H (symmetric, traceless) |
 | hm_spherical | SphericalTensor | Angstrom^-1 | HaighMallionResult | Decomposition of H (pure T2) |
 | hm_B_field | Vec3 | Angstrom^-1 | HaighMallionResult | Effective B-field V = H·n |
-| quad_tensor | Mat3 | Angstrom^-4 | PiQuadrupoleResult | Quadrupole EFG |
-| quad_spherical | SphericalTensor | Angstrom^-4 | PiQuadrupoleResult | |
+| quad_tensor | Mat3 | Angstrom^-5 | PiQuadrupoleResult | Quadrupole EFG (leading 1/r^5) |
+| quad_spherical | SphericalTensor | Angstrom^-5 | PiQuadrupoleResult | Decomposition of G |
 | quad_scalar | double | Angstrom^-4 | PiQuadrupoleResult | (3cos^2 theta - 1)/r^4 |
 | chi_tensor | Mat3 | Angstrom^-3 | RingSusceptibilityResult | Ring susceptibility dipolar tensor |
 | chi_spherical | SphericalTensor | Angstrom^-3 | RingSusceptibilityResult | |
@@ -2512,7 +2504,7 @@ Per-atom shielding: hbond_shielding_contribution (SphericalTensor, ppm).
 Per-atom: diamagnetic + paramagnetic + total shielding tensors (Mat3 +
 SphericalTensor each). Parsed from ORCA NMR output with element-verified
 atom ordering. Each protein gets its own result — WT and mutant are
-separate Proteins. Comparison is MutantProteinConformationComparison.
+separate Proteins. Comparison is MutationDeltaResult (attached to the WT conformation).
 
 ### SasaResult (requires: SpatialIndexResult)
 Per-atom Shrake-Rupley solvent-accessible surface area using a Fibonacci
