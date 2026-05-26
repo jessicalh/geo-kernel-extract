@@ -18,17 +18,9 @@
 namespace nmr {
 
 
-// ============================================================================
-// tensorcs15 JSONB payloads, parsed with nlohmann/json:
-//   geometry : [{element, x, y, z, atom_idx}, …]
-//   tensors  : [{element, atom_idx, isotropic, anisotropy, tensor_3x3,
-//                eigenvalues, t2_components}, …]
-// ============================================================================
-
 namespace {
 
 
-// geometry JSONB: [{element, x, y, z, atom_idx}, …]
 struct GeometryEntry {
     int     atom_idx = 0;
     Element element  = Element::Unknown;
@@ -37,11 +29,8 @@ struct GeometryEntry {
 
 
 std::vector<GeometryEntry> ParseGeometryJson(const std::string& json_text) {
-    // .at() (not .value()) on every field: the tensorcs15 schema always
-    // carries all of them, so a missing key is malformed input, not an
-    // optional field. .at() throws -> caught here -> Error + empty, never
-    // a silent default. A defaulted x/y/z (origin) or atom_idx would slip
-    // straight past the merge dup/element checks as silent corruption.
+    // Missing coordinates or atom_idx would otherwise default to a
+    // plausible but wrong atom; .at() makes the row malformed instead.
     std::vector<GeometryEntry> out;
     try {
         for (const auto& o : nlohmann::json::parse(json_text)) {
@@ -63,8 +52,6 @@ std::vector<GeometryEntry> ParseGeometryJson(const std::string& json_text) {
 }
 
 
-// tensors JSONB: [{element, atom_idx, isotropic, anisotropy, tensor_3x3,
-//                  eigenvalues, t2_components}, …]
 struct TensorEntry {
     int                   atom_idx       = 0;
     Element               element        = Element::Unknown;
@@ -76,12 +63,9 @@ struct TensorEntry {
 
 
 std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
-    // .at() throughout (see ParseGeometryJson): a missing tensor_3x3,
-    // t2_components, isotropic, or anisotropy would otherwise default to a
-    // silent zero tensor / zero scalar that nothing downstream catches.
-    // Exact shapes (3x3, 5) are asserted as well: .at() already catches a
-    // too-short array, but extra rows/cols/components would be silently
-    // truncated — also malformed, so fail loud (codex MEDIUM 2026-05-25).
+    // Missing tensor fields would otherwise become silent zeroes; exact
+    // shapes are checked because nlohmann::json::at() does not reject
+    // extra rows or components.
     std::vector<TensorEntry> out;
     try {
         for (const auto& o : nlohmann::json::parse(json_text)) {
@@ -107,7 +91,6 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
             for (int i = 0; i < 5; ++i)
                 te.t2_components[i] = t2.at(i).get<double>();
 
-            // eigenvalues and any other keys are intentionally not read.
             out.push_back(std::move(te));
         }
     } catch (const std::exception& e) {
@@ -120,9 +103,8 @@ std::vector<TensorEntry> ParseTensorJson(const std::string& json_text) {
 }
 
 
-// Round to nearest grid multiple in [-180, 180). 180 normalises to -180
-// for the 20° grid (the grid points are -180, -160, …, 160). The 2°
-// ALA-baseline grid keeps 180 as-is: it's a real grid point.
+// For the 20-degree grid, 180 normalizes to -180; the 2-degree ALA
+// baseline keeps 180 as a real grid point.
 int RoundToGrid(double angle, int grid_spacing) {
     int rounded = static_cast<int>(std::round(angle / grid_spacing)) *
                   grid_spacing;
@@ -133,16 +115,6 @@ int RoundToGrid(double angle, int grid_spacing) {
 }
 
 
-// Number of chi angles the central residue uses. Sets the depth of
-// chi columns we include in the WHERE clause.
-//
-// Per the AminoAcidType per-residue tables (cross-checked against
-// per-residue tensorcs15 row counts):
-//   0 chi: A, G, P
-//   1 chi: S, T, C, V
-//   2 chi: L, I, N, D, H, F, Y, W
-//   3 chi: E, M, Q
-//   4 chi: K, R
 int ChiAngleCountForResidue(char letter) {
     switch (letter) {
         case 'A': case 'G': case 'P':                   return 0;
@@ -156,21 +128,9 @@ int ChiAngleCountForResidue(char letter) {
 }
 
 
-// Merge geometry + tensor entries by atom_idx (NOT by parallel-vector
-// position). Both JSONB payloads carry an atom_idx per record; the
-// ingest pipeline is expected to emit them in the same order, but
-// trusting that without validation is exactly the silent-corruption
-// vector that perception is meant to guard against on the downstream
-// end — a future ingest script that reordered one array would leave
-// every tensor on the wrong atom and same-element swaps would be
-// invisible. We key by atom_idx structurally and fail loud on
-// mismatched indices, missing tensors for a geometry atom, or duplicate
-// atom_idx values.
-//
-// Same-element swap detection: even when atom_idx values match across
-// arrays, we cross-check that the tensor's element matches the
-// geometry's element. A divergence means the JSON layer is producing
-// inconsistent records — fail loud rather than silently mis-assigning.
+// Key by atom_idx rather than JSON array position. A reordered geometry
+// or tensor array would otherwise attach shielding tensors to the
+// wrong atoms while still passing same-length checks.
 std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
         const std::vector<GeometryEntry>& geom,
         const std::vector<TensorEntry>&   tens) {
@@ -184,8 +144,6 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
                 " — proceeding with set intersection");
     }
 
-    // Build atom_idx → TensorEntry map. Duplicate atom_idx in tensors
-    // payload is a data-corruption signal; fail loud.
     std::unordered_map<int, const TensorEntry*> tens_by_idx;
     tens_by_idx.reserve(tens.size());
     for (const TensorEntry& t : tens) {
@@ -221,9 +179,6 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
         }
         const TensorEntry& t = *it->second;
 
-        // Same-element cross-check. atom_idx alignment without element
-        // agreement means the JSON payloads disagree about chemistry
-        // for this atom — a serious upstream bug we want to surface.
         if (g.element != t.element) {
             OperationLog::Error(
                 "TripeptideDftTable::MergeGeometryAndTensors",
@@ -250,24 +205,8 @@ std::vector<TripeptideDftAtom> MergeGeometryAndTensors(
 }  // anonymous namespace
 
 
-// ============================================================================
-// TripeptideDftTable lifecycle
-// ============================================================================
-
-// Redact sensitive kv pairs from a libpq DSN before it reaches the
-// operation log. Uses libpq's own PQconninfoParse for structural
-// tokenization so the redaction is robust to:
-//   - case-insensitive keys (libpq DSN keys are case-insensitive;
-//     "Password=..." is valid)
-//   - quoted values with embedded whitespace ('secret with spaces')
-//   - URI form (postgresql://user:secret@host/db)
-//   - non-canonical whitespace (tabs, multiple spaces between kv pairs)
-//
-// Keys redacted: any key in `kSensitive`. Returns a canonical
-// "key='value'" reconstruction of the parsed DSN. On parse failure,
-// returns "<dsn redaction failed: ...>" — never falls back to logging
-// the raw DSN, since a parser failure is the worst-case scenario for
-// silent password leakage.
+// Use libpq's own parser so password redaction handles URI DSNs,
+// quoted values, case-insensitive keys, and odd whitespace.
 static std::string RedactDsnForLog(const std::string& dsn) {
     static const std::set<std::string> kSensitive = {
         "password", "passfile",
@@ -284,9 +223,6 @@ static std::string RedactDsnForLog(const std::string& dsn) {
     std::string out;
     for (PQconninfoOption* o = opts; o->keyword; ++o) {
         if (!o->val) continue;
-        // libpq sets `val` to NULL for unset options. We only include
-        // those the user provided. Output key in lowercase canonical
-        // form; libpq emits all known options lowercased already.
         std::string key = o->keyword;
         const std::string val = kSensitive.count(key)
             ? std::string("<redacted>")
@@ -323,10 +259,6 @@ bool TripeptideDftTable::IsConnected() const {
 }
 
 
-// ============================================================================
-// QueryNearest
-// ============================================================================
-
 TripeptideDftRecord TripeptideDftTable::QueryNearest(
         char residue_letter,
         double phi, double psi,
@@ -341,16 +273,14 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
             "TripeptideDftTable::QueryNearest: not connected");
     }
 
-    // Grid: 2° for AAA baseline, 20° for everything else.
     const int grid = (residue_letter == 'A') ? 2 : 20;
     const std::string tripeptide =
         std::string("A") + residue_letter + "A";
     const int g_phi = RoundToGrid(phi, grid);
     const int g_psi = RoundToGrid(psi, grid);
 
-    // Caller override of chi depth: when n_chi_axes ≥ 0, use that
-    // exact depth (capped to the residue's natural depth so we never
-    // include more chi columns than the residue table holds).
+    // The override is capped to the residue's natural depth so extra
+    // chi columns are never queried for shallow residue tables.
     const int natural_n_chi = ChiAngleCountForResidue(residue_letter);
     int n_chi = (n_chi_axes < 0)
                     ? natural_n_chi
@@ -361,10 +291,6 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     const int g_chi3 = (n_chi >= 3) ? RoundToGrid(chi3, 20) : 0;
     const int g_chi4 = (n_chi >= 4) ? RoundToGrid(chi4, 20) : 0;
 
-    // Build the WHERE clause one chi axis at a time so we can fall
-    // back from the deepest match. Caller-side fallback (re-run with
-    // fewer axes) is handled per-residue by the calculator; here we
-    // do the single attempt at the requested depth.
     std::string where = "tripeptide='" + tripeptide + "' AND phi=" +
                         std::to_string(g_phi) + " AND psi=" +
                         std::to_string(g_psi);
@@ -373,14 +299,9 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     if (n_chi >= 3) where += " AND chi3=" + std::to_string(g_chi3);
     if (n_chi >= 4) where += " AND chi4=" + std::to_string(g_chi4);
 
-    // ORDER BY calc_id ASC: when the chi-fallback drops axes from the
-    // WHERE clause, multiple rows can match (different chi values at
-    // the dropped depths). Without a deterministic ordering, the row
-    // returned depends on the PostgreSQL planner's row-emission order
-    // — i.e., session-arbitrary and not stable across replays. calc_id
-    // is the cheapest stable key (single index lookup); using a chi-
-    // distance metric would be geometrically nicer but bake into a hot
-    // path the calculators call thousands of times per protein.
+    // Caller-side chi fallback can make several rows match. calc_id is
+    // the stable tie-breaker; otherwise PostgreSQL row order is not
+    // replay-stable.
     const std::string query =
         "SELECT calc_id, tripeptide, phi, psi, chi1, chi2, chi3, chi4, "
         "n_atoms, frame_type, geometry::text, tensors::text "
@@ -426,8 +347,6 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
     auto tens_entries = ParseTensorJson(tens_json);
     entry.atoms = MergeGeometryAndTensors(geom_entries, tens_entries);
 
-    // Perceive typed LarsenTripeptide. Resolve expected central residue
-    // from the 1-letter code.
     AminoAcid expected_central = AminoAcid::Unknown;
     for (const auto& t : AllAminoAcidTypes()) {
         if (t.one_letter_code == residue_letter) {
@@ -451,11 +370,6 @@ TripeptideDftRecord TripeptideDftTable::QueryNearest(
             " frame_type=" + entry.frame_type +
             " atoms=" + std::to_string(entry.atoms.size()) +
             " perception=" + perception_tag);
-
-    // Perception self-logs its specific failure reason via
-    // OperationLog::Warn("PerceiveLarsenTripeptide", ...) at the
-    // exact failure site (amide count, segmentation, graph-iso,
-    // slot-cache completeness). We do not double-log here.
 
     return entry;
 }

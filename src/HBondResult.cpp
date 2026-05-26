@@ -23,45 +23,24 @@ std::vector<std::type_index> HBondResult::Dependencies() const {
 }
 
 
-// ============================================================================
-// An identified H-bond from DSSP, resolved to atom positions.
-//
-// DSSP identifies backbone H-bonds by the Kabsch-Sander energy criterion
-// between residue pairs. Each H-bond has:
-//   - donor residue (N-H donates)
-//   - acceptor residue (C=O accepts)
-//
-// We resolve this to atoms:
-//   - donor_N: the backbone N of the donor residue
-//   - acceptor_O: the backbone O of the acceptor residue
-//   - h_hat: unit direction from donor N to acceptor O
-//   - midpoint: midpoint of N...O (the source point for the dipolar field)
-//   - distance: |N...O| distance
-//   - is_backbone: true (all DSSP H-bonds are backbone)
-// ============================================================================
-
 struct ResolvedHBond {
     size_t donor_N = SIZE_MAX;
     size_t acceptor_O = SIZE_MAX;
     size_t donor_residue = SIZE_MAX;
     size_t acceptor_residue = SIZE_MAX;
     Vec3 midpoint = Vec3::Zero();
-    Vec3 h_hat = Vec3::Zero();        // donor N → acceptor O direction
+    Vec3 h_hat = Vec3::Zero();        // donor N to acceptor O direction
     double distance = 0.0;            // N...O distance
     int sequence_separation = 0;
 };
 
 
-// ============================================================================
-// The full H-bond dipolar tensor from one H-bond at one atom.
+// H-bond dipolar tensor from one H-bond at one atom:
 //
-// Same derivation as McConnell with b_hat → h_hat:
+//   M_ab = 9 cos(theta) d_hat_a h_b - 3 h_a h_b
+//          - (3 d_hat_a d_hat_b - delta_ab)
 //
-//   M_ab = 9 cosθ d̂_a h_b  -  3 h_a h_b  -  (3 d̂_a d̂_b - δ_ab)
-//
-// Returns M_ab / r³ (Angstrom⁻³).
-// ============================================================================
-
+// Returns M_ab / r^3 in A^-3.
 struct HBondKernelResult {
     Mat3 M_over_r3 = Mat3::Zero();
     double f = 0.0;
@@ -76,7 +55,6 @@ static HBondKernelResult ComputeHBondKernel(
 
     HBondKernelResult result;
 
-    // field direction (atom relative to midpoint)
     Vec3 d = atom_pos - hbond_midpoint;
     double r = d.norm();
 
@@ -87,10 +65,8 @@ static HBondKernelResult ComputeHBondKernel(
     Vec3 d_hat = d / r;
     double cos_theta = d_hat.dot(h_hat);
 
-    // angular factor
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
-    // dipolar tensor kernel, M_ab / r3
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.M_over_r3(a, b) =
@@ -104,10 +80,6 @@ static HBondKernelResult ComputeHBondKernel(
     return result;
 }
 
-
-// ============================================================================
-// HBondResult::Compute
-// ============================================================================
 
 std::unique_ptr<HBondResult> HBondResult::Compute(
         ProteinConformation& conf) {
@@ -128,23 +100,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
 
     GeometryChoiceBuilder choices(conf);
 
-    // ------------------------------------------------------------------
-    // Step 1: Resolve DSSP H-bond partners to atom positions.
-    //
-    // DSSP provides up to 2 acceptor partners and 2 donor partners per
-    // residue. Each partner is a residue index. We resolve to backbone
-    // N (donor) and O (acceptor) atoms.
-    //
-    // Skip H-bonds where:
-    //   - partner residue index is SIZE_MAX (no partner)
-    //   - backbone N or O atoms are not present
-    //   - sequence separation < SEQUENTIAL_EXCLUSION_THRESHOLD (too close)
-    //   - N...O distance > HBOND_MAX_DIST
-    // ------------------------------------------------------------------
-
     std::vector<ResolvedHBond> hbonds;
 
-    // Use a set to deduplicate: (donor_N, acceptor_O) pairs
     std::set<std::pair<size_t, size_t>> seen;
     size_t choice_record_seq = 0;
 
@@ -152,7 +109,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         const auto& dr = dssp.AllResidues()[ri];
         const Residue& res = protein.ResidueAt(ri);
 
-        // donor side: this residue's backbone N -> partner's acceptor O
         for (int partner_slot = 0; partner_slot < 2; ++partner_slot) {
             size_t acceptor_residue_idx = dr.acceptors[partner_slot].residue_index;
             if (acceptor_residue_idx == SIZE_MAX || acceptor_residue_idx >= n_residues) continue;
@@ -160,10 +116,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             const Residue& acc_res = protein.ResidueAt(acceptor_residue_idx);
             if (res.N == Residue::NONE || acc_res.O == Residue::NONE) continue;
 
-            // sequence exclusion
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(acceptor_residue_idx));
             if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
-                // record: seq-sep reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [ri, acceptor_residue_idx, seq_sep](GeometryChoice& gc) {
                         AddNumber(gc, "donor_residue", static_cast<double>(ri), "index");
@@ -183,9 +137,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            // source distance gate (singular or beyond max N...O)
             if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
-                // record: distance reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [ri, acceptor_residue_idx, dist](GeometryChoice& gc) {
                         AddNumber(gc, "donor_residue", static_cast<double>(ri), "index");
@@ -208,7 +160,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             hbonds.push_back(hb);
         }
 
-        // acceptor side: partner's donor N -> this residue's backbone O
         for (int partner_slot = 0; partner_slot < 2; ++partner_slot) {
             size_t donor_residue_idx = dr.donors[partner_slot].residue_index;
             if (donor_residue_idx == SIZE_MAX || donor_residue_idx >= n_residues) continue;
@@ -216,10 +167,8 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             const Residue& don_res = protein.ResidueAt(donor_residue_idx);
             if (don_res.N == Residue::NONE || res.O == Residue::NONE) continue;
 
-            // sequence exclusion
             int seq_sep = std::abs(static_cast<int>(ri) - static_cast<int>(donor_residue_idx));
             if (seq_sep < static_cast<int>(CalculatorConfig::Get("hbond_sequential_exclusion_residues"))) {
-                // record: seq-sep reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [ri, donor_residue_idx, seq_sep](GeometryChoice& gc) {
                         AddNumber(gc, "donor_residue", static_cast<double>(donor_residue_idx), "index");
@@ -239,9 +188,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             Vec3 d = O_pos - N_pos;
             double dist = d.norm();
 
-            // source distance gate (singular or beyond max N...O)
             if (dist < CalculatorConfig::Get("singularity_guard_distance") || dist > CalculatorConfig::Get("hbond_dipolar_max_distance")) {
-                // record: distance reject
                 choices.Record(CalculatorId::HBond, choice_record_seq++, "hbond resolution",
                     [donor_residue_idx, ri, dist](GeometryChoice& gc) {
                         AddNumber(gc, "donor_residue", static_cast<double>(donor_residue_idx), "index");
@@ -269,7 +216,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         "resolved " + std::to_string(hbonds.size()) +
         " unique backbone H-bonds from DSSP");
 
-    // Store resolved H-bond geometry for SampleAt grid queries
     for (const auto& hb : hbonds) {
         result_ptr->hbond_midpoints_.push_back(hb.midpoint);
         result_ptr->hbond_directions_.push_back(hb.h_hat);
@@ -280,15 +226,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         return result_ptr;
     }
 
-    // ------------------------------------------------------------------
-    // Step 2: Build the filter set for H-bond kernel evaluations.
-    //
-    // SelfSourceFilter: atom cannot be a field point for an H-bond
-    //   where it is the donor N or acceptor O.
-    // DipolarNearFieldFilter: point-source model invalid when field
-    //   point is inside the N...O source distribution.
-    // ------------------------------------------------------------------
-
     KernelFilterSet filters;
     filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<SelfSourceFilter>());
@@ -297,11 +234,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
     OperationLog::Info(LogCalcOther, "HBondResult::Compute",
         "filter set: " + filters.Describe());
 
-    // ------------------------------------------------------------------
-    // Step 3: For each atom, compute the dipolar tensor from all H-bonds
-    // that pass the filter set. 1/r³ decay handles range naturally.
-    // ------------------------------------------------------------------
-
     int total_pairs = 0;
     int filtered_out = 0;
 
@@ -309,11 +241,10 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
-        // Residue index of this atom (for sequence separation)
         size_t ai_res = protein.AtomAt(ai).residue_index;
 
         Mat3 M_total = Mat3::Zero();
-        double f_sum = 0.0;  // McConnell angular scalar, summed over contributing H-bonds
+        double f_sum = 0.0;
         double nearest_dist = NO_DATA_SENTINEL;
         size_t nearest_hb_idx = SIZE_MAX;
         int nearby_hbond_count = 0;
@@ -321,11 +252,9 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
         for (size_t hi = 0; hi < hbonds.size(); ++hi) {
             const auto& hb = hbonds[hi];
 
-            // kernel geometry (computed first so filters can read distance/extent)
             HBondKernelResult kernel = ComputeHBondKernel(
                 atom_pos, hb.midpoint, hb.h_hat);
 
-            // Build evaluation context from already-computed geometry
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
             ctx.source_extent = hb.distance;  // N...O distance
@@ -333,7 +262,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ctx.source_atom_a = hb.donor_N;
             ctx.source_atom_b = hb.acceptor_O;
 
-            // endpoint sequence gap (min to either donor/acceptor residue)
             int sep_don = std::abs(static_cast<int>(ai_res)
                                  - static_cast<int>(hb.donor_residue));
             int sep_acc = std::abs(static_cast<int>(ai_res)
@@ -341,7 +269,6 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ctx.sequence_separation = std::min(sep_don, sep_acc);
 
             if (!filters.AcceptAll(ctx)) {
-                // ---- GeometryChoice: filter exclusion ----
                 choices.Record(CalculatorId::HBond, hi, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddAtom(gc, &conf.AtomAt(hb.donor_N), hb.donor_N,
@@ -357,24 +284,20 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
                 continue;
             }
 
-            // count H-bonds within hbond_counting_radius (default 3.5 A) of this atom
             if (kernel.distance < CalculatorConfig::Get("hbond_counting_radius")) nearby_hbond_count++;
 
-            // Track nearest (among accepted evaluations only)
             if (kernel.distance < nearest_dist) {
                 nearest_dist = kernel.distance;
                 nearest_hb_idx = hi;
             }
 
-            // Accumulate tensor from all H-bonds (1/r³ decay handles range)
             M_total += kernel.M_over_r3;
-            f_sum += kernel.f;  // same accumulation as the tensor
+            f_sum += kernel.f;
             total_pairs++;
         }
 
         ca.hbond_count_within_3_5A = nearby_hbond_count;
 
-        // ---- GeometryChoice: hbond neighbourhood ----
         choices.Record(CalculatorId::HBond, ai, "hbond neighbourhood",
             [&ca, ai, nearby_hbond_count](GeometryChoice& gc) {
                 AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
@@ -385,7 +308,7 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             const auto& nearest_hb = hbonds[nearest_hb_idx];
             ca.hbond_nearest_dist = nearest_dist;
             ca.hbond_nearest_dir = (atom_pos - nearest_hb.midpoint).normalized();
-            ca.hbond_is_backbone = true;  // all DSSP H-bonds are backbone
+            ca.hbond_is_backbone = true;
 
             // recompute kernel for the nearest H-bond only (inner loop did not
             // retain per-bond kernels)
@@ -395,18 +318,15 @@ std::unique_ptr<HBondResult> HBondResult::Compute(
             ca.hbond_nearest_tensor = nearest_kernel.M_over_r3;
             ca.hbond_nearest_spherical = SphericalTensor::Decompose(
                 nearest_kernel.M_over_r3);
-            // 1/r3 to the NEAREST bond's midpoint (atom-to-midpoint r, distinct
-            // from the N...O source extent stored in hbond_distances_)
+            // Atom-to-midpoint r, distinct from the N...O source extent.
             ca.hbond_inv_d3 = 1.0 / (nearest_dist * nearest_dist * nearest_dist);
         }
 
-        // endpoint flags: is this atom a donor N / acceptor O of any resolved bond
         for (const auto& hb : hbonds) {
             if (ai == hb.donor_N) ca.hbond_is_donor = true;
             if (ai == hb.acceptor_O) ca.hbond_is_acceptor = true;
         }
 
-        // decompose accumulated total tensor
         ca.hbond_shielding_contribution = SphericalTensor::Decompose(M_total);
         ca.hbond_mcconnell_scalar = f_sum;
     }
@@ -429,11 +349,9 @@ SphericalTensor HBondResult::SampleKernelAt(Vec3 point) const {
     for (size_t hi = 0; hi < hbond_midpoints_.size(); ++hi) {
         auto kernel = ComputeHBondKernel(
             point, hbond_midpoints_[hi], hbond_directions_[hi]);
-        // distance==0 here means the kernel hit the singularity guard and
-        // returned zero; skip it
+        // The singularity guard leaves distance at zero.
         if (kernel.distance < CalculatorConfig::Get("singularity_guard_distance")) continue;
 
-        // DipolarNearFieldFilter: skip if inside the N...O distribution
         if (kernel.distance < CalculatorConfig::Get("near_field_exclusion_ratio") * hbond_distances_[hi]) continue;
 
         M_total += kernel.M_over_r3;
