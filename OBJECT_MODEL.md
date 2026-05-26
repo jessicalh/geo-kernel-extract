@@ -1646,9 +1646,11 @@ this with `irrep_layout_t1 = "v_x,v_y,v_z"` attribute. T2 IS in
 real-spherical-tesseral m-basis (`irrep_layout_t2 = "m-2,m-1,m0,m+1,m+2"`).
 Downstream rotations on `t1_*` datasets must use Cartesian matrices.
 
-**Forward queue** (additive growth as `*Welford`-style TrajectoryResults
-attach): GromacsEnergyWelford (per-frame aggregate, not per-atom).
-Additional Welfords clone the substruct + WelfordMoments shape.
+**Landed since** (per-atom `*Welford` substructs beyond the six above):
+`water_field_welford`, `hydration_geometry_welford`,
+`hydration_shell_welford`, `aimnet2_charge_response_gradient_welford`,
+`mopac_charge_welford` (TrajectoryAtom.h:442-452). Additional Welfords
+clone the substruct + WelfordMoments shape.
 Principle: PATTERNS Lesson 25 (Export Everything Upstream) — emit
 permissively at the upstream extractor, downstream consumers pick what
 they need. The substruct shape replaced ~136 loose fields of the
@@ -1784,7 +1786,7 @@ in 8 named phases:
 1. Open handler (mount the TRR stream + build PBC fixer).
 2. Read frame 0 + `tp.Seed` (finalize Protein + create conf0 +
    init TrajectoryAtoms).
-3. Attach TrajectoryResults from `config.TrajectoryResultFactories()`
+3. Attach TrajectoryResults from `config.ResultsToBuild()`
    + caller extras.
 4. Validate dependencies and caller-supplied resources (e.g.
    `session.Aimnet2Model()` if `config.RequiresAimnet2()`).
@@ -1821,8 +1823,8 @@ methods.
 
 ### RunConfiguration
 
-Typed description of a trajectory-run shape. Three named static
-factories (matching Use Case E/F shapes + the DFT scan loop):
+Typed description of a trajectory-run shape. Two named static
+factories (`PerFrameExtractionSet`, `FullFatFrameExtraction`):
 
 - **`ScanForDftPointSet()`** — *Removed from RunConfiguration; DFT-pose
   selection now lives in `PerFrameExtractionSet`'s selection TRs
@@ -2137,16 +2139,16 @@ within range of an atom. Built by ring current ConformationResult objects.
 | ring_index | size_t | - | BiotSavartResult | Into protein's ring list |
 | ring_type | RingTypeIndex | - | BiotSavartResult | Type of the source ring |
 | distance_to_center | double | Angstroms | BiotSavartResult | |r - center| |
-| direction_to_center | Vec3 | normalised | BiotSavartResult | (center - r) / |center - r| |
+| direction_to_center | Vec3 | normalised | BiotSavartResult | (r - center) / |r - center| (points center→atom) |
 | rho | double | Angstroms | BiotSavartResult | Cylindrical radial in ring frame |
 | z | double | Angstroms | BiotSavartResult | Signed height above ring plane |
-| theta | double | radians | BiotSavartResult | atan2(rho, z) |
+| theta | double | radians | BiotSavartResult | atan2(rho, |z|) |
 | G_tensor | Mat3 | ppm·T/nA | BiotSavartResult | BS geometric kernel G=-n⊗B×PPM (rank-1) |
 | G_spherical | SphericalTensor | ppm·T/nA | BiotSavartResult | Decomposition of G |
 | B_field | Vec3 | Tesla | BiotSavartResult | JB B-field from unit current (1 nA) |
 | B_cylindrical | Vec3 | Tesla | BiotSavartResult | (B_rho, 0, B_z) in ring frame |
-| hm_tensor | Mat3 | Angstrom^-1 | HaighMallionResult | Raw surface integral H (symmetric, traceless) |
-| hm_spherical | SphericalTensor | Angstrom^-1 | HaighMallionResult | Decomposition of H (pure T2) |
+| hm_H_tensor | Mat3 | Angstrom^-1 | HaighMallionResult | Raw surface integral H (symmetric, traceless) |
+| hm_H_spherical | SphericalTensor | Angstrom^-1 | HaighMallionResult | Decomposition of H (pure T2) |
 | hm_B_field | Vec3 | Angstrom^-1 | HaighMallionResult | Effective B-field V = H·n |
 | quad_tensor | Mat3 | Angstrom^-5 | PiQuadrupoleResult | Quadrupole EFG (leading 1/r^5) |
 | quad_spherical | SphericalTensor | Angstrom^-5 | PiQuadrupoleResult | Decomposition of G |
@@ -2174,11 +2176,11 @@ of an atom. Built by McConnellResult.
 | direction_to_midpoint | Vec3 | normalised | McConnellResult | (midpoint - r) / d |
 | dipolar_tensor | Mat3 | Angstrom^-3 | McConnellResult | Full dipolar tensor |
 | dipolar_spherical | SphericalTensor | Angstrom^-3 | McConnellResult | Decomposition |
-| mcconnell_scalar | double | Angstrom^-3 | McConnellResult | Derived from tensor trace |
+| mcconnell_scalar | double | Angstrom^-3 | McConnellResult | (3cos²θ−1)/r³ angular contraction; NOT the tensor trace |
 
 ---
 
-## AtomNeighbourhood
+## AtomNeighbour
 
 Per-atom, per-atom spatial relationship. Built by SpatialIndexResult.
 
@@ -3284,7 +3286,7 @@ available from Phase 6 onwards.
 
 1. **Open handler.** `handler_ = make_unique<GromacsFrameHandler>(tp)`; `handler_->Open(xtc_path, tpr_path)` mounts the stream and builds the PBC fixer.
 2. **Read frame 0 and seed.** `handler_->ReadNextFrame()`; `tp.Seed(handler_->ProteinPositions(), handler_->Time())`.
-3. **Attach TrajectoryResults.** Iterate `config.TrajectoryResultFactories()` then caller `extras`. Attach order is dispatch order.
+3. **Attach TrajectoryResults.** Iterate `config.ResultsToBuild()` then caller `extras`. Attach order is dispatch order.
 4. **Validate dependencies and resources.** For each attached TR, every `type_index` in `Dependencies()` must be satisfied by another attached TR OR `config.RequiresConformationResult(t)`. If `config.RequiresAimnet2()`, `session.HasAimnet2Model()` must be true.
 5. **Build base `RunOptions`.** From `config.PerFrameRunOptions()` + `tp.Charges()` + `tp.BondedParams()` + `session.Aimnet2Model()`.
 6. **Frame 0.** Populate `env_` from handler + EDR; `OperationRunner::Run(tp.CanonicalConformation(), frame_opts)`; `tp.DispatchCompute(conf0, *this, 0, time)`; record.
@@ -3353,8 +3355,8 @@ Methods: `LoadFromToml()`, `LoadAimnet2Model(path)`, `Aimnet2Model()`,
 
 ## RunConfiguration
 
-Typed description of a trajectory-run shape. Three named static
-factories.
+Typed description of a trajectory-run shape. Two named static
+factories (`PerFrameExtractionSet`, `FullFatFrameExtraction`).
 
 ### Fields
 
@@ -3362,7 +3364,7 @@ factories.
 |-------------------------------|-------------------------------------|------------------------------------------------------|
 | `name_`                       | `string`                            | For logs.                                            |
 | `per_frame_opts_`             | `RunOptions`                        | Base `RunOptions` for `OperationRunner::Run`.        |
-| `traj_factories_`             | `vector<TrajectoryResultFactory>`   | Attach order = dispatch order.                       |
+| `results_to_build_`           | `vector<DeferredResult>`            | Attach order = dispatch order (DeferredResult = std::function<unique_ptr<TrajectoryResult>(const TrajectoryProtein&)>). |
 | `required_conf_result_types_` | `unordered_set<type_index>`         | Checked in Phase 4 against each TR's `Dependencies()`. |
 | `requires_aimnet2_`           | `bool`                              | Phase 4 enforces session has model loaded.           |
 | `stride_`                     | `size_t`                            | Process every N-th frame (default 1).                |
