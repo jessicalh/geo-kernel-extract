@@ -1,8 +1,4 @@
 #pragma once
-//
-// ProteinBuildContext: how this protein instance was built.
-// Immutable after construction. Records provenance.
-//
 
 #include <string>
 #include <vector>

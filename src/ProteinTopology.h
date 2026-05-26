@@ -1,10 +1,8 @@
 #pragma once
 //
-// ProteinTopology: abstract family for named protein topology contracts.
-//
-// This base class is intentionally small. Concrete topology classes expose
-// their own calculator-language accessors; calculators bind to those concrete
-// contracts rather than to a broad virtual interface.
+// ProteinTopology: intentionally minimal abstract base — calculators
+// bind to a concrete topology (e.g. LegacyAmberTopology), not to a
+// broad virtual interface here.
 //
 
 #include <cstddef>

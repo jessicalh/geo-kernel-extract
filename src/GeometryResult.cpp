@@ -11,17 +11,11 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
     const Protein& protein = conf.ProteinRef();
     const auto& positions = conf.Positions();
 
-    // ---------------------------------------------------------------
-    // Ring geometry: center (centroid), normal (SVD), radius, vertices
-    // ---------------------------------------------------------------
     conf.ring_geometries.resize(protein.RingCount());
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         conf.ring_geometries[ri] = protein.RingAt(ri).ComputeGeometry(positions);
     }
 
-    // ---------------------------------------------------------------
-    // Bond geometry: length, direction, midpoint
-    // ---------------------------------------------------------------
     conf.bond_lengths.resize(protein.BondCount());
     conf.bond_directions.resize(protein.BondCount());
     conf.bond_midpoints.resize(protein.BondCount());
@@ -32,9 +26,6 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
         conf.bond_midpoints[bi] = bond.Midpoint(positions);
     }
 
-    // ---------------------------------------------------------------
-    // Global geometry: bounding box, center of geometry, radius of gyration
-    // ---------------------------------------------------------------
     if (!positions.empty()) {
         Vec3 bmin = positions[0];
         Vec3 bmax = positions[0];
@@ -57,9 +48,6 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
         conf.radius_of_gyration = std::sqrt(rg_sum / positions.size());
     }
 
-    // ---------------------------------------------------------------
-    // Pre-built collections: rings by type, bonds by category, residues by type
-    // ---------------------------------------------------------------
     for (size_t ri = 0; ri < protein.RingCount(); ++ri)
         conf.rings_by_type[protein.RingAt(ri).type_index].push_back(ri);
 
@@ -69,9 +57,6 @@ std::unique_ptr<GeometryResult> GeometryResult::Compute(ProteinConformation& con
     for (size_t ri = 0; ri < protein.ResidueCount(); ++ri)
         conf.residues_by_type[protein.ResidueAt(ri).type].push_back(ri);
 
-    // ---------------------------------------------------------------
-    // Ring pair properties
-    // ---------------------------------------------------------------
     for (size_t i = 0; i < protein.RingCount(); ++i) {
         for (size_t j = i + 1; j < protein.RingCount(); ++j) {
             const auto& gi = conf.ring_geometries[i];

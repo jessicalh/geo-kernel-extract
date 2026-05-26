@@ -1,9 +1,8 @@
 #pragma once
 //
-// CalculatorContract: declared topology/charge contract for calculators.
-//
-// Existing calculators should bind to LegacyAmberTopology. Charge table type
-// is a separate axis so topology and charge models stay orthogonal.
+// CalculatorContract: a calculator's declared topology + charge-table
+// contract. The two are separate type parameters so topology and charge
+// models stay orthogonal.
 //
 
 #include "ProteinConformation.h"
