@@ -23,7 +23,7 @@ stored in mixed units matching the old project:
 - Positions: Angstroms (input and storage)
 - Current: nanoamperes (ring current intensity parameter)
 - B-field from Biot-Savart: Tesla (SI, computed internally)
-- Geometric kernel G: dimensionless (after PPM_FACTOR multiplication)
+- Geometric kernel G (Biot-Savart): ppm·T/nA — PPM_FACTOR baked in, NOT dimensionless (intensity I_type applied at calibration)
 - Dipolar kernel K: Angstrom^-3 (1/r^3 with r in Angstroms)
 - EFG: V/Angstrom^2 (from charge in e, distance in Angstroms)
 - Shielding contribution: the stored `*_shielding_contribution` is the
@@ -171,7 +171,7 @@ I=-12, atom 3A above PHE -> sigma = +1.40 ppm (Case 1995).
 
 **T2 structure of Biot-Savart**:
 
-G_ab = n_b * B_a is an outer product of two vectors. This is
+G_ab = -n_b * B_a is an outer product of two vectors. This is
 rank-1 by construction (the matrix has rank 1, meaning only one
 non-zero eigenvalue if B is parallel to n, or at most two if B has
 components transverse to n).
@@ -248,7 +248,7 @@ all irreps) are stored. The model can use either or both.
 
 BS and HM model the same physical effect with different mathematical
 approximations (line integral vs surface integral). Both produce
-rank-1 shielding tensors G = n (x) V, but compute V differently:
+rank-1 shielding tensors G = -n (x) V, but compute V differently:
 - BS: V = B (wire segment B-field in Tesla, then * PPM_FACTOR)
 - HM: V = H . n (surface integral contracted with normal, in A^-1)
 

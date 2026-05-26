@@ -2458,27 +2458,27 @@ Per-atom totals: total_B_field, total_G_tensor, total_G_spherical,
 per_type_G_T0_sum, per_type_G_T2_sum, ring counts, ring distances,
 exp-weighted sums, variance.
 Per-ring: total_B_at_center, intensity_used, diagnostics, mutual B.
-Per-atom shielding: bs_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: bs_shielding_contribution (SphericalTensor, ppm·T/nA — bare kernel, not ppm).
 
 ### HaighMallionResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-ring (RingNeighbourhood): hm_tensor, hm_spherical, hm_B_field.
 Per-atom totals: per_type_hm_T0_sum, per_type_hm_T2_sum.
-Per-atom shielding: hm_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: hm_shielding_contribution (SphericalTensor, Å⁻¹ — bare kernel, not ppm).
 
 ### PiQuadrupoleResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-ring (RingNeighbourhood): quad_tensor, quad_spherical,
 quad_scalar.
-Per-atom shielding: piquad_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: piquad_shielding_contribution (SphericalTensor, Å⁻⁵ — bare kernel, not ppm).
 
 ### RingSusceptibilityResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-ring (RingNeighbourhood): chi_tensor, chi_spherical,
 chi_scalar.
-Per-atom shielding: ringchi_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: ringchi_shielding_contribution (SphericalTensor, Å⁻³ — bare kernel, not ppm).
 
 ### DispersionResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-ring (RingNeighbourhood): disp_tensor, disp_spherical,
 disp_scalar, disp_contacts.
-Per-atom shielding: disp_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: disp_shielding_contribution (SphericalTensor, Å⁻⁶ — bare kernel, not ppm).
 
 ### McConnellResult (requires: SpatialIndexResult, GeometryResult)
 Per-atom per-bond (BondNeighbourhood): dipolar_tensor, dipolar_spherical,
@@ -2603,7 +2603,7 @@ The flow is: C++ geometric kernels → NPY features (via WriteFeatures)
 The calibrated values override literature defaults for ring current
 intensities, bond anisotropies, Buckingham coefficients, and other
 calculator-specific parameters. See spec/plan/bones/CALCULATOR_PARAMETER_API.md for
-the full parameter set (93 parameters with equations and references).
+the full parameter set (~64 parameters with equations and references).
 
 Feature extraction is distributed: each ConformationResult writes its
 own NPY arrays via WriteFeatures(). ConformationResult::WriteAllFeatures()
@@ -2633,7 +2633,7 @@ for the pending rows is
 | ✓ | `BsShieldingTimeSeriesTrajectoryResult` | BiotSavart | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/bs_shielding_time_series/` |
 | ✓ | `HmShieldingTimeSeriesTrajectoryResult` | HaighMallion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hm_shielding_time_series/` |
 | ✓ | `McConnellShieldingTimeSeriesTrajectoryResult` | McConnell | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/mc_shielding_time_series/` (Å⁻³) |
-| ✓ | `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | PiQuadrupole | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/piquad_shielding_time_series/` (Å⁻⁴, pure-T2) |
+| ✓ | `PiQuadrupoleShieldingTimeSeriesTrajectoryResult` | PiQuadrupole | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/piquad_shielding_time_series/` (Å⁻⁵, pure-T2) |
 | ✓ | `RingSusceptibilityShieldingTimeSeriesTrajectoryResult` | RingSusceptibility | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/ringchi_shielding_time_series/` (Å⁻³) |
 | ✓ | `DispersionShieldingTimeSeriesTrajectoryResult` | Dispersion | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/disp_shielding_time_series/` (Å⁻⁶, pure-T2) |
 | ✓ | `HBondShieldingTimeSeriesTrajectoryResult` | HBond (kernel-form) | FO | `DenseBuffer<SphericalTensor>` → `/trajectory/hbond_shielding_time_series/` (Å⁻³) |

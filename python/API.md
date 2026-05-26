@@ -316,7 +316,7 @@ rc.for_ring_type(RingType.PHE)  # rows for PHE rings only
 [8]     exp_decay           exp(-distance / 4.0)
 [9:18]  bs_G                SphericalTensor — BS shielding kernel
 [18:27] hm_H                SphericalTensor — HM raw integral (pure T2)
-[27:36] hm_G                SphericalTensor — HM shielding kernel (intensity * H)
+[27:36] hm_G                SphericalTensor — HM shielding kernel G = -n⊗V (rank-1)
 [36:45] pq_G                SphericalTensor
 [45:54] chi_G               SphericalTensor
 [54]    disp_scalar         1/r^6

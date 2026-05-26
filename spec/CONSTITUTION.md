@@ -1630,7 +1630,7 @@ captured, it isn't adding physics.
 - Method recorded in ProteinBuildContext; model sees which level
 
 **APBS solvated field:**
-- L=0: E-field magnitude, EFG trace
+- L=0: E-field magnitude (the APBS EFG is de-traced — pure T2, no L=0 trace term)
 - L=1 (1e): E-field vector (3 components)
 - L=2 (2e): EFG tensor (5 components via sphericart)
 

@@ -73,7 +73,7 @@ cannot silently lose protonation state.
 
 The calibration pipeline (Python e3nn in learn/c_equivariant/) tunes
 scalar parameters for each classical calculator: ring current
-intensities, bond anisotropies, Buckingham coefficients. 93 parameters
+intensities, bond anisotropies, Buckingham coefficients. ~64 parameters
 total (CALCULATOR_PARAMETER_API.md). Calibrated values enter the C++
 system as TOML configuration.
 
@@ -105,7 +105,7 @@ is the thesis's primary analytical result.
 - SphericalTensor decomposition is mathematically correct (isometric
   normalization, roundtrip verified, 10 tests)
 - Each calculator produces full rank-2 tensor output (not just scalar)
-- Shielding contributions are in ppm, comparable across calculators
+- Shielding contributions are stored as bare native kernels (per-calculator units, e.g. McConnell Å⁻³, Coulomb V/Å²), not directly comparable until calibration multiplies the parameter to reach ppm
 - The residual subtraction is correct: per-atom, per-irrep, per-calculator
 
 **T2 derivation goals:**
@@ -170,8 +170,10 @@ triangulation.
 sigma_HM = I_HM * integral_S [ (1/|r-r'|^3) * (r-r') . dS ]
 ```
 
-Key difference from BS: produces rank-2 tensor (not rank-1). BS and HM
-make opposing T2 predictions at the same geometry.
+Key difference from BS: the raw surface integral H is rank-2 (pure T2),
+but the stored HM shielding contribution is the rank-1 kernel G = -n⊗V
+(like BS). BS and HM T2 predictions AGREE (cosine ~0.999; see PATTERNS),
+not oppose.
 
 #### 3. McConnell bond anisotropy
 McConnell 1957. Full asymmetric shielding tensor from bond midpoint
@@ -228,17 +230,21 @@ derivatives of 1/r, hence leading 1/r^5 tensor decay (NOT 1/r^3).
 McConnell 1957 applied to whole-ring diamagnetic susceptibility.
 
 ```
-T_ab = Delta_chi_ring * (3*d_a*d_b/r^5 - delta_ab/r^3)
+M_ab = 9*cos(theta)*d_a*n_b - 3*n_a*n_b - (3*d_a*d_b - delta_ab)
+sigma_ab = (Delta_chi_ring / 3) * M_ab / r^3   (full McConnell-form, b̂ -> ring normal n̂)
 ```
 
-Same dipolar form as bond McConnell but from ring center.
+Same full McConnell-form tensor as bond McConnell, with the bond axis
+replaced by the ring-center normal.
 
 #### 7. London dispersion
 Per-vertex van der Waals. London 1937.
 
 ```
-T_disp_ab = sum_vertices [ C6 * (3*d_a*d_b/r^8 - delta_ab/r^6) ]
-disp_scalar = sum_vertices [ C6 / r^6 ]
+K_disp_ab = sum_vertices S(r) * (3*d_a*d_b/r^8 - delta_ab/r^6)
+disp_scalar = sum_vertices S(r) / r^6
+# S(r) = C1-continuous CHARMM switching taper (R_switch 4.3 -> R_cut 5.0);
+# the dispersion coefficient (alpha/C6) is applied at calibration, not stored
 ```
 
 #### 8. H-bond dipolar
@@ -246,8 +252,8 @@ Dipolar tensor to H-bond partner. Barfield & Karplus 1969, Cornilescu
 & Bax 1999.
 
 ```
-T_ab = eta * (3*d_a*d_b/r^5 - delta_ab/r^3)
-sigma_hbond = eta * cos^2(alpha) / r^3
+M_ab = 9*cos(alpha)*d_a*h_b - 3*h_a*h_b - (3*d_a*d_b - delta_ab)
+sigma_ab = (eta / 3) * M_ab / r^3   (full McConnell-form, b̂ -> D-A direction ĥ)
 ```
 
 **What must be correct for each calculator:**

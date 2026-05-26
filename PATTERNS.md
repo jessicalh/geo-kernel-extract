@@ -620,9 +620,10 @@ only because both store full tensors.
 
 ### BS-HM T2 redundancy
 
-Biot-Savart (line integral, rank-1) and Haigh-Mallion (surface
-integral, rank-2) make the same T2 prediction (cosine similarity
-0.999 across 279K atoms). This is a finding, not a bug — it shows
+Biot-Savart and Haigh-Mallion both produce a rank-1 shielding kernel
+G = -n⊗(field) (BS: -n⊗B; HM: -n⊗V with V = H·n; HM also stores its raw
+rank-2 surface integral H separately). Their T2 predictions match
+(cosine similarity 0.999 across 279K atoms). This is a finding, not a bug — it shows
 the two mathematical approximations converge in their angular
 structure despite different formulations.
 
