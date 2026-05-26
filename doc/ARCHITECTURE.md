@@ -2,7 +2,7 @@
 
 This document describes the system as it exists in code. Every claim
 is derived from the headers in src/ and verified against the test
-suite (293 tests, 0 failures as of 2026-04-13). Diagrams are in
+suite (714 tests, 0 failures). Diagrams are in
 doc/diagrams/ and were generated from the code structure.
 
 See also: doc/generated/doxygen/ for full class-level UML with members,
@@ -19,7 +19,7 @@ tensors. Each tensor decomposes into T0 (isotropic), T1
 (antisymmetric), and T2 (symmetric traceless, 5 components).
 
 The geometric kernels are calibrated against DFT shielding tensors
-from ORCA on 723 WT-ALA mutant pairs. The WT-ALA delta isolates
+from ORCA on 720 WT-ALA mutant pairs. The WT-ALA delta isolates
 the aromatic contribution. ~80 calculator parameters are tuned to
 minimise the T2 residual between the classical kernels and the DFT
 deltas. The T2 R² — how well the calibrated classical kernels
@@ -67,7 +67,7 @@ Four typed subclasses record provenance:
 |------|-----------|----------|
 | CrystalConformation | BuildFromPdb, BuildFromProtonatedPdb | resolution, R-factor, temperature, PDB ID |
 | PredictionConformation | BuildFromOrca | method, confidence |
-| MDFrameConformation | BuildFromGromacs | walker, time (ps), Boltzmann weight, RMSD, Rg |
+| MDFrameConformation | FullSystemReader (trajectory) | walker, time (ps), Boltzmann weight, RMSD, Rg |
 | DerivedConformation | Protein::AddDerived | description string |
 
 Every conformation holds N ConformationAtoms (one per protein atom)
@@ -109,7 +109,7 @@ cache — typed properties, not string comparisons.
 
 **Diagram:** doc/diagrams/02_provenance_paths (svg, png, mmd source)
 
-Six kinds of data enter the system. Each has a different protonation
+Five kinds of data enter the system. Each has a different protonation
 strategy and charge source. All produce the same BuildResult
 (BuildResult.h): a Protein, a ChargeSource, and an integer net charge.
 After building, the same OperationRunner::Run pipeline processes every
@@ -143,7 +143,7 @@ protonation states. Charges from ParamFileChargeSource (ff14SB).
 
 Calibration data: tleap chose the protonation, built the prmtop,
 produced XYZ coordinates for ORCA. The prmtop is the authority for
-atom names, residues, and charges (PrmtopChargeSource). All 723
+atom names, residues, and charges (PrmtopChargeSource). All 720
 proteins in the consolidated training set use this path.
 
 ### Path 4: ORCA from GROMACS pose
@@ -153,60 +153,48 @@ structure is a GROMACS MD snapshot rather than an AlphaFold
 prediction. The ORCA run and prmtop were still prepared via tleap.
 From the loader's perspective, the data format is identical.
 
-### Path 5a: GROMACS fleet (pre-extracted PDB poses)
+### Path 5: GROMACS trajectory (--trajectory)
 
-**Builder:** `BuildFromGromacs(paths)` (GromacsEnsembleLoader.h:50)
+**Builder:** FullSystemReader (FullSystemReader.h). The single-parse
+TPR builder lives here; the old pre-extracted-pose path
+(BuildFromGromacs / GromacsProtein / GromacsProteinAtom, "10 frames")
+was retired with GromacsEnsembleLoader on 2026-05-04.
 
-The TPR binary topology (read via libgromacs) provides atom names
-(CHARMM naming), residues, and per-atom charges (CHARMM36m).
-Charges are wrapped in a PreloadedChargeSource (ChargeSource.h:174).
-ForceField is declared by the caller (FleetPaths.force_field),
-not inferred from the data.
+The TPR is the sole authority for protein construction — there is no
+reference PDB. `--trajectory DIR` derives its files by name:
+production.tpr + .trr + .edr. FullSystemReader parses production.tpr
+ONCE to identify atom ranges (protein, water, ions) and build the
+protein; ff14SB charges are read from the TPR into a
+PreloadedChargeSource (ChargeModelKind::GromacsTpr).
 
-Pose PDBs provide positions only — one MDFrameConformation per
-pose. GromacsProtein::Build wraps this builder. A typical
-ensemble has 10 frames. The full pipeline (including MOPAC) runs
-independently on each frame. This path is used for paper tests
-and backward compatibility with pre-extracted snapshots.
+TRR frames are streamed one at a time by GromacsFrameHandler
+(GromacsFrameHandler.h) into a TrajectoryProtein. The first frame
+finalizes the protein (bond detection) and seats conformation 0 as an
+MDFrameConformation; subsequent frames are free-standing per-frame
+conformations. The per-frame calculator set is
+RunConfiguration::PerFrameExtractionSet (APBS + AIMNet2 + the classical
+stack; MOPAC off — `--mopac` switches to FullFatFrameExtraction).
+Per-atom statistics accumulate into TrajectoryResult Welford
+accumulators (one TR per metric) plus SphericalTensor time-series TRs;
+per-frame NPYs emit at stride m, PDBs at stride n, and a trajectory H5
+always.
 
-### Path 5b: GROMACS trajectory (full-system XTC)
-
-**Builder:** `BuildProteinFromTpr(tpr_path, protein_id)`
-(GromacsEnsembleLoader.h:57)
-
-The TPR is the sole authority for protein construction — there is
-no reference PDB. FullSystemReader (FullSystemReader.h) reads the
-same TPR to identify atom ranges (protein, water, ions) in the
-full-system frame. Charges are again PreloadedChargeSource from
-the TPR.
-
-XTC frames are streamed one at a time by GromacsFrameHandler
-(GromacsFrameHandler.h). The first frame finalizes the protein
-(bond detection via FinalizeConstruction) and creates conformation
-0 (permanent, lives in the Protein). Subsequent frames produce
-free-standing conformations: GromacsFrameHandler creates the
-conformation, runs calculators via OperationRunner, accumulates
-results into GromacsProteinAtom Welford accumulators
-(GromacsProtein::AccumulateFrame), and frees the conformation.
-
-PBC fix is applied per frame via MoleculeWholer (verbatim port
-of fes-sampler's pbc_whole.h). SolventEnvironment carries
-water and ion positions to solvent calculators through
-RunOptions.solvent.
-
-Two-pass architecture: pass 1 scans all frames (lightweight
-calculators, accumulation), then SelectFrames chooses frames for
-full extraction. Pass 2 reopens the XTC and re-reads only the
-selected frames for full output.
+PBC fix is applied per frame via MoleculeWholer (verbatim port of
+fes-sampler's pbc_whole.h). SolventEnvironment carries water and ion
+positions to solvent calculators through RunOptions.solvent. Frame
+selection (RmsdSpikeSelection, ChiRotamerSelection → DftPoseCoordinator)
+picks candidate DFT-pose frames — selection TRs in the same single
+parse, not a second pass.
 
 ### Convergence
 
-All six paths produce the same types: a Protein with typed
+All five paths produce the same types: a Protein with typed
 conformations, a ChargeSource matched to that Protein's atoms, and
 a net charge. OperationRunner::Run does not know or care which
-builder created the protein. Path 5b additionally produces
-per-atom trajectory statistics (Welford means and variances) via
-GromacsProteinAtom, but the per-frame calculator pipeline is
+builder created the protein. The trajectory path (5) additionally
+produces per-atom trajectory statistics (Welford means and variances)
+and time-series via TrajectoryResults, but the per-frame calculator
+pipeline is
 identical to every other path.
 
 The ChargeSource hierarchy (ChargeSource.h) enforces this:
@@ -362,7 +350,7 @@ density contribute proportionally more.
 ### Solvent calculators (trajectory path)
 
 Three calculators run when SolventEnvironment carries explicit water
-and ion positions (GROMACS trajectory path with full-system XTC).
+and ion positions (GROMACS trajectory path, full-system TRR).
 Gated on `opts.solvent && !opts.solvent->Empty()` in OperationRunner.
 Failure is hard — a fleet run with silently missing water features
 is unrecoverable.
@@ -392,7 +380,7 @@ These are not calculators — they are DFT ground truth. The WT-ALA
 delta isolates the aromatic contribution: what changes when you
 mutate an aromatic residue to alanine. The calibration pipeline
 tunes ~80 calculator parameters to minimize the T2 residual between
-classical geometric kernels and these DFT deltas across 723 proteins.
+classical geometric kernels and these DFT deltas across 720 proteins.
 
 ### Dependency enforcement
 
@@ -486,7 +474,7 @@ The core correspondences:
 
 ## 6. Files
 
-88 headers in src/. Key entry points:
+157 headers in src/. Key entry points:
 
 | File | Purpose |
 |------|---------|
@@ -497,7 +485,7 @@ The core correspondences:
 | BuildResult.h | Common output of all builders |
 | PdbFileReader.h | BuildFromPdb, BuildFromProtonatedPdb |
 | OrcaRunLoader.h | BuildFromOrca |
-| GromacsEnsembleLoader.h | BuildFromGromacs, RunAllFrames |
+| FullSystemReader.h | Single-parse TPR build + TRR frame streaming |
 | OperationRunner.h | Run, RunMutantComparison, RunEnsemble |
 | ChargeSource.h | Four typed charge source implementations |
 | KernelEvaluationFilter.h | Five filters, KernelFilterSet |

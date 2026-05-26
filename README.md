@@ -8,9 +8,12 @@ data from ORCA is supplied alongside the structure).
 
 ![Geometric kernel tensors visualised on a protein structure](projectillustration.png)
 
-10 calculators (8 classical + 2 MOPAC-derived) produce full rank-2
-tensor output per atom.  An equivariant calibration pipeline tunes
-~80 kernel parameters against DFT WT-ALA deltas across 723 proteins.
+The classical electromagnetic kernels (8 + 2 MOPAC-derived), plus
+field/charge/solvent calculators (APBS, AIMNet2, EEQ, SASA, water +
+hydration) and literature-comparison families (tripeptide, Larsen),
+produce full rank-2 tensor output per atom.  An equivariant calibration
+pipeline tunes the kernel parameters against DFT WT-ALA deltas across
+720 proteins.
 
 See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
 
@@ -26,9 +29,10 @@ apt install libeigen3-dev libdssp-dev libcifpp-dev libapbs-dev libfetk-dev
 **Conda:**
 ```
 conda install -c conda-forge openbabel
-pip install propka
-conda create -n xtb-env && conda install -n xtb-env -c conda-forge xtb
 ```
+(Protonation is an upstream preconditioning step done before
+`nmr_extract` — `reduce` for bare PDBs, or already-protonated input —
+so no pKa-prediction tool is a build dependency here.)
 
 **Build from source:** GROMACS 2026.0, reduce 4.10
 
