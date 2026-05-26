@@ -137,7 +137,7 @@ p.hydration             HydrationGroup | None — trajectory path only
 
 p.water_polarization    WaterPolarizationGroup | None — trajectory path only
   .data                 ndarray (N, 10) — packed columns (see below)
-  .dipole_vector        ndarray (N, 3) — net first-shell water dipole (V/A)
+  .dipole_vector        ndarray (N, 3) — net first-shell water dipole (e·Å)
   .surface_normal       ndarray (N, 3) — SASA-derived outward surface normal (unit vector)
   .asymmetry            ndarray (N,) — half-shell asymmetry using SASA normal
   .dipole_alignment     ndarray (N,) — cos(net dipole, SASA normal)
@@ -148,9 +148,10 @@ p.eeq                   EeqGroup | None
   .charges              ndarray (N,) — EEQ partial charges (elementary charges)
   .cn                   ndarray (N,) — coordination number (erfc counting)
 
-p.gromacs_energy        ndarray (F, 42) | None — per-frame GROMACS energy, 42 cols
+p.gromacs_energy        ndarray (1, 42) | None — single-frame GROMACS energy, 42 cols
                         (electrostatic, bonded, VdW, thermo, box, virial,
-                        pressure tensor, per-group T) — trajectory path
+                        pressure tensor, per-group T); for the per-frame
+                        timeline use traj.energy.gromacs (load_trajectory)
 p.bonded_energy         ndarray (N, 7) | None — per-atom GROMACS bonded terms
                         (bond, angle, Urey-Bradley, proper, improper, CMAP, total)
                         kJ/mol — trajectory path
@@ -287,7 +288,7 @@ rc.cos_phi, rc.sin_phi  # azimuthal angle in ring plane (relative to vertex 0)
 # Physics kernels — each is a SphericalTensor (P, 9)
 rc.bs                   # Biot-Savart shielding kernel G
 rc.hm_H                 # Haigh-Mallion raw integral H (pure T2)
-rc.hm                   # Haigh-Mallion shielding kernel G (intensity * H)
+rc.hm                   # Haigh-Mallion shielding kernel G = -n⊗V (rank-1)
 rc.pq                   # Pi-quadrupole
 rc.chi                  # Ring susceptibility
 rc.disp_scalar          # ndarray (P,) — 1/r^6
@@ -369,7 +370,7 @@ Produced by HydrationGeometryResult from explicit-solvent trajectory.
 ### Column layout (10 columns)
 
 ```
-[0:3]   dipole_vector      net first-shell water dipole (V/A)
+[0:3]   dipole_vector      net first-shell water dipole (e·Å)
 [3:6]   surface_normal     SASA-derived outward surface normal (unit vector)
 [6]     asymmetry          half-shell asymmetry using SASA normal (0-1)
 [7]     dipole_alignment   cos(net dipole, SASA normal) (-1 to +1)
@@ -476,7 +477,7 @@ for stem, spec in CATALOG.items():
 Haigh-Mallion provides both forms per ring:
 
 - `rc.hm_H` — raw surface integral H (pure T2, geometry only)
-- `rc.hm` — shielding kernel G = intensity x H (T0+T1+T2)
+- `rc.hm` — shielding kernel G = -n⊗V (rank-1; V = H·n), T0+T1+T2
 
 `rc.hm` sums match `p.haigh_mallion.per_type_T2`.  `rc.hm_H` gives
 the unscaled geometric kernel for analysis.

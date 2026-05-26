@@ -20,7 +20,7 @@ tensors. Each tensor decomposes into T0 (isotropic), T1
 
 The geometric kernels are calibrated against DFT shielding tensors
 from ORCA on 720 WT-ALA mutant pairs. The WT-ALA delta isolates
-the aromatic contribution. ~80 calculator parameters are tuned to
+the aromatic contribution. ~64 calculator parameters are tuned to
 minimise the T2 residual between the classical kernels and the DFT
 deltas. The T2 R² — how well the calibrated classical kernels
 reproduce the angular structure of DFT — is the primary measure.
@@ -146,12 +146,13 @@ produced XYZ coordinates for ORCA. The prmtop is the authority for
 atom names, residues, and charges (PrmtopChargeSource). All 720
 proteins in the consolidated training set use this path.
 
-### Path 4: ORCA from GROMACS pose
+### Path 4: ORCA from a GROMACS MD snapshot (Path-3 variant)
 
-Same builder as Path 3 (`BuildFromOrca`), but the origin of the
-structure is a GROMACS MD snapshot rather than an AlphaFold
-prediction. The ORCA run and prmtop were still prepared via tleap.
-From the loader's perspective, the data format is identical.
+Not a separate CLI mode — the same `BuildFromOrca` builder as Path 3
+(modes `--orca` / `--mutant`), with a structure that originated from a
+GROMACS MD snapshot rather than an AlphaFold prediction. The ORCA run
+and prmtop were still prepared via tleap; from the loader's perspective
+the data format is identical.
 
 ### Path 5: GROMACS trajectory (--trajectory)
 
@@ -381,7 +382,7 @@ per-atom delta tensors at all irrep levels (T0, T1, T2).
 These are not calculators — they are DFT ground truth. The WT-ALA
 delta isolates the aromatic contribution: what changes when you
 mutate an aromatic residue to alanine. The calibration pipeline
-tunes ~80 calculator parameters to minimize the T2 residual between
+tunes ~64 calculator parameters to minimize the T2 residual between
 classical geometric kernels and these DFT deltas across 720 proteins.
 
 ### Dependency enforcement

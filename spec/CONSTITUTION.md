@@ -639,27 +639,17 @@ A Protein is an instantiated object with both static properties
 properties that depend on the instance context (protonation state,
 build context, charge assignments).
 
-### The copy-and-modify pattern
+### Conformations are added, not copied-and-modified (superseded design)
 
-It must be possible, tested, and routine to:
-
-1. Take an existing Protein instance with its ProteinConformations
-2. Copy it (proper copy constructor)
-3. Apply a new ProtonationState to the copy
-4. Apply a new ProteinBuildContext to the copy (or keep the original)
-5. Copy ProteinConformations from the original to the new instance,
-   preserving geometry and any properties that remain valid
-6. Re-run enrichment and extraction on the copy with the new
-   foundational properties
-
-This is how mutant analysis works: same protein, same geometry,
-different protonation -> different ring types -> different features
--> different predictions. The delta between the original and the
-copy IS the experiment.
-
-This is how pH scanning works: same protein, same geometry,
-different pH -> different protonation -> different charges ->
-different Coulomb field.
+`Protein` is non-copyable and non-movable (copy/move are deleted in
+`Protein.h`). A protein owns its conformation list; new geometry is
+added through the typed `Add*Conformation` factories, never by cloning
+the Protein. Mutant analysis uses two SEPARATE Proteins (WT and ALA),
+compared by `MutationDeltaResult` attached to the WT — not a
+copy-and-modify of one Protein. Protonation is fixed upstream (mode 1
+`reduce`; modes 2-5 ingest already-protonated input); there is no
+in-pipeline pH scanning. The earlier copy-and-modify / pH-scanning
+design was superseded.
 
 This is how ensemble analysis works: one protein, many
 ProteinConformations, each with its own enrichment.
@@ -1717,7 +1707,7 @@ Mixing is OK because:
 
 ## Calibration: How Parameters Are Tuned
 
-The ~93 tuneable calculator parameters (ring current intensities, bond
+The ~64 tuneable calculator parameters (ring current intensities, bond
 anisotropies, Buckingham coefficients — see CALCULATOR_PARAMETER_API.md)
 are calibrated by the external Python e3nn model (learn/c_equivariant/)
 against DFT WT-ALA delta tensors. Calibrated values enter the C++

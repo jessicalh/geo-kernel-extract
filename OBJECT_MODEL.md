@@ -42,7 +42,7 @@ as design history documenting how the Protein/ProteinConformation
 separation evolved — the distinction they enforced is real and load-bearing,
 the mechanism described is not.
 
-**Calibration pipeline.** The ~93 tuneable calculator parameters are
+**Calibration pipeline.** The ~64 tuneable calculator parameters are
 calibrated externally by the Python e3nn model (learn/c_equivariant/)
 against DFT WT-ALA delta tensors. Calibrated values enter the C++
 system as TOML configuration overriding literature defaults. There is
@@ -795,13 +795,13 @@ See BondNeighbourhood class below.
 Ring current totals (populated by BiotSavartResult, HaighMallionResult):
 | Property | Type | Unit | Source result |
 |----------|------|------|---------------|
-| total_B_field | Vec3 | dimensionless | BiotSavartResult |
+| total_B_field | Vec3 | Tesla (unit current, 1 nA) | BiotSavartResult |
 | total_G_tensor | Mat3 | dimensionless | BiotSavartResult |
 | total_G_spherical | SphericalTensor | dimensionless | BiotSavartResult |
 | per_type_G_T0_sum | array<double, 8> | dimensionless | BiotSavartResult |
 | per_type_G_T2_sum | array<array<double,5>, 8> | dimensionless | BiotSavartResult |
-| per_type_hm_T0_sum | array<double, 8> | dimensionless | HaighMallionResult |
-| per_type_hm_T2_sum | array<array<double,5>, 8> | dimensionless | HaighMallionResult |
+| per_type_hm_T0_sum | array<double, 8> | Angstrom^-1 | HaighMallionResult |
+| per_type_hm_T2_sum | array<array<double,5>, 8> | Angstrom^-1 | HaighMallionResult |
 | hm_shielding_contribution | SphericalTensor | Angstrom^-1 | HaighMallionResult | decomposed HM shielding kernel G = -n⊗V summed over rings (bare kernel, not ppm) |
 | n_rings_within_3A | int | - | BiotSavartResult |
 | n_rings_within_5A | int | - | BiotSavartResult |
@@ -2012,7 +2012,7 @@ Per-calc actual unit + irrep structure (corrected):
 | `hbond_shielding_contribution` | Å⁻³ | yes | **full McConnell-form** with b̂ → D→A direction ĥ (same three-term tensor as McConnell, NOT rank-1); PATTERNS.md Lesson 19 line 827; `HBondResult.cpp:91-97` |
 | `piquad_shielding_contribution` | Å⁻⁵ | **NO** | **pure-T2 by Laplace** — analytically traceless EFG; T0 ≡ 0 by physics, only round-off dust appears; see `PiQuadrupoleResult.cpp:40-44` (G in Å⁻⁵; the Buckingham scalar A-term `quad_scalar` is the separate Å⁻⁴ companion) |
 | `disp_shielding_contribution` | Å⁻⁶ | **NO** | **pure-T2** — `Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0`; see `DispersionResult.h:17` |
-| `coulomb_shielding_contribution` | (no field) | N/A | CoulombResult writes `coulomb_EFG_total_spherical` (V/Å²) on ConformationAtom rather than a `_shielding_contribution`; not part of the drift surface |
+| `coulomb_shielding_contribution` | V/Å² | NO | bare decomposed `EFG_total` (`CoulombResult.cpp:309`); pure-T2 (the EFG is symmetric-traceless), so T0/T1 are structural zeros |
 
 **Implication for downstream consumers:** statistics or magnitude
 checks on PiQuad / Dispersion must operate on T2 channels, not T0.
@@ -2486,7 +2486,7 @@ mcconnell_sidechain_sum, mcconnell_aromatic_sum, mcconnell_co_nearest,
 T2_CO_nearest, T2_CN_nearest, T2_backbone_total, T2_sidechain_total,
 T2_aromatic_total, nearest_CO_midpoint, nearest_CO_dist, nearest_CN_dist,
 dir_nearest_CO.
-Per-atom shielding: mc_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: mc_shielding_contribution (SphericalTensor, Å⁻³ — bare decomposed kernel, not ppm).
 
 ### CoulombResult (requires: ChargeAssignmentResult, SpatialIndexResult)
 Per-atom: coulomb_E_total, _backbone, _sidechain, _aromatic,
@@ -2494,12 +2494,12 @@ coulomb_EFG_total (+ spherical), _backbone (+ spherical), _aromatic
 (+ spherical), _solvent (derived: APBS - vacuum), coulomb_E_magnitude,
 _bond_proj, _backbone_frac, aromatic_E_magnitude, _bond_proj,
 aromatic_n_sidechain_atoms.
-Per-atom shielding: coulomb_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: coulomb_shielding_contribution (SphericalTensor, V/Å² — bare decomposed EFG, not ppm).
 
 ### HBondResult (requires: DsspResult, SpatialIndexResult)
 Per-atom: hbond_nearest_dist, _dir, _tensor, _spherical, _inv_d3,
 _is_backbone, _count_within_3_5A, _is_donor, _is_acceptor.
-Per-atom shielding: hbond_shielding_contribution (SphericalTensor, ppm).
+Per-atom shielding: hbond_shielding_contribution (SphericalTensor, Å⁻³ — bare decomposed kernel, not ppm).
 
 ### OrcaShieldingResult (requires: nothing)
 Per-atom: diamagnetic + paramagnetic + total shielding tensors (Mat3 +
@@ -2533,9 +2533,9 @@ values that don't generalise.
 **WriteFeatures output:**
 - `aimnet2_charges.npy` (N,): Hirshfeld charges (elementary charge)
 - `aimnet2_aim.npy` (N, 256): electronic embedding
-- `aimnet2_efg.npy` (N, 9): Coulomb EFG total (SphericalTensor)
-- `aimnet2_efg_aromatic.npy` (N, 9): Coulomb EFG from aromatic atoms
-- `aimnet2_efg_backbone.npy` (N, 9): Coulomb EFG from backbone atoms
+- `aimnet2_efg.npy` (N, 5): Coulomb EFG total (T2-only, symmetric-traceless)
+- `aimnet2_efg_aromatic.npy` (N, 5): Coulomb EFG from aromatic atoms (T2-only)
+- `aimnet2_efg_backbone.npy` (N, 5): Coulomb EFG from backbone atoms (T2-only)
 
 ### WaterFieldResult (requires: SpatialIndexResult + SolventEnvironment)
 Per-atom explicit-water E-field and EFG. Same Coulomb kernel as
@@ -2550,8 +2550,8 @@ bridging water, structural water, cavity effects.
 **WriteFeatures output:**
 - `water_efield.npy` (N, 3): total E-field from all water within cutoff (V/Å)
 - `water_efield_first.npy` (N, 3): first-shell E-field (< 3.5 Å from O)
-- `water_efg.npy` (N, 9): total EFG (SphericalTensor)
-- `water_efg_first.npy` (N, 9): first-shell EFG
+- `water_efg.npy` (N, 5): total EFG (T2-only, symmetric-traceless)
+- `water_efg_first.npy` (N, 5): first-shell EFG (T2-only)
 - `water_shell_counts.npy` (N, 2): [n_first, n_second] water O counts
 
 ### HydrationShellResult (requires: SpatialIndexResult + SolventEnvironment)
@@ -2589,11 +2589,11 @@ Whole-system quantities (not per-atom).
 `CoulombTotal() = coulomb_sr + coulomb_recip` (excludes 1-4).
 
 **WriteFeatures output:**
-- `gromacs_energy.npy` (1, 9): [t, Coul_SR, Coul_recip, Coul_14, LJ, pot, T, P, V]
+- `gromacs_energy.npy` (1, 42): per-frame energy — electrostatic, bonded, VdW, thermo, box, virial, pressure tensor, per-group T (GromacsEnergyResult.cpp)
 
 ### Calibration Pipeline (external — not a ConformationResult)
 
-The ~93 tuneable calculator parameters are calibrated by the Python
+The ~64 tuneable calculator parameters are calibrated by the Python
 e3nn model (learn/c_equivariant/) against DFT WT-ALA delta tensors.
 The flow is: C++ geometric kernels → NPY features (via WriteFeatures)
 → Python e3nn calibration → TOML parameters → C++ (next run).

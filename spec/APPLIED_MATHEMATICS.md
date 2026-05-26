@@ -338,7 +338,7 @@ None of this is our code; we marshal input and parse output.
 | EEQ charge solve | Cholesky (LLT) + KKT reduction | Eigen LLT | `EeqResult.cpp:166` |
 | T0/T1/T2 split | spherical-harmonic tensor decomp | hand-rolled | `Types.cpp:25` |
 | R·σ·Rᵀ frame rotation | rank-2 similarity transform | hand-rolled | `TripeptidePoseAssembler.cpp:72`, `LarsenHBondGrid.cpp:438` |
-| EFG build + de-trace | outer product + deviatoric projection | hand-rolled Eigen | `CoulombResult.cpp:201`, `AIMNet2Result.cpp:408` |
+| EFG build + de-trace | outer product + deviatoric projection | hand-rolled Eigen | `CoulombResult.cpp:164,199`, `AIMNet2Result.cpp:408,425` |
 | Haigh–Mallion integral | triangle Gauss cubature (Dunavant 7-pt) + adaptive subdivision | hand-rolled | `HaighMallionResult.cpp:44` |
 | SASA | Shrake–Rupley QMC (Fibonacci lattice) | hand-rolled + nanoflann | `SasaResult.cpp:19` |
 | APBS potential sampling | trilinear interp + central-difference ∇/Hessian | hand-rolled | `ApbsFieldResult.cpp:32` |

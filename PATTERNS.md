@@ -42,7 +42,7 @@ irreducible representations: T0 (isotropic, 1 component), T1
 (antisymmetric, 3 components), T2 (symmetric traceless, 5 components).
 The T2 angular structure is the thesis's primary result. It shows
 where and in which direction each classical model fails to match DFT.
-A calibration pipeline (~80 parameters tuned against DFT WT-ALA
+A calibration pipeline (~64 parameters tuned against DFT WT-ALA
 deltas) provides the connection between geometric kernels and quantum
 chemistry. Nothing flows backward. Everything accumulates forward.
 
@@ -504,7 +504,7 @@ scope with a comment citing the source:
 constexpr double RING_CURRENT_CUTOFF_A = 15.0;
 ```
 
-The ~80-93 tuneable calculator parameters are the exception — they
+The ~64 tuneable calculator parameters are the exception — they
 are genuinely tuneable, calibrated against T2 R² on DFT WT-ALA
 deltas. These are what make the system a calibrated scientific
 instrument rather than a collection of literature defaults. The
@@ -1186,26 +1186,15 @@ Compute() for the pattern. See GeometryChoice.h for the API.
 
 ---
 
-### Data-driven accumulator columns (AllWelfords pattern)
+### Data-driven accumulator columns (AllWelfords pattern — retired)
 
-GromacsProteinAtom has ~45 Welford accumulators. WriteCatalog (CSV)
-and WriteH5 both need the column list. A switch statement indexed by
-column number will go wrong the moment someone adds a column.
-
-The fix: `AllWelfords()` returns a `vector<NamedWelford>` with
-`{name, pointer-to-Welford}` pairs. WriteCatalog and WriteH5 iterate
-this — no switch, no manual indexing, no parallel names vector.
-Adding a new Welford = add the field + one line in AllWelfords().
-The CSV header, H5 rollup, and SDK column names all derive from it.
-
-This is not ideal — the accumulation in AccumulateFrame is still
-manual, and the pointers-into-self pattern prevents moving
-GromacsProteinAtom. But it eliminates the 45-case switch statement
-and the duplicate column list, which are the two places where silent
-corruption from misindexing would be hardest to detect. The
-AccumulateFrame code is write-once (change it when you add a new
-calculator); the column serialisation runs on every protein and must
-not drift.
+The retired `GromacsProteinAtom` (old ensemble path) carried ~45 Welford
+accumulators exposed via `AllWelfords()` — a `{name, pointer-to-Welford}`
+vector that WriteCatalog/WriteH5 iterated, avoiding a 45-case switch and
+a duplicate column list. That path is gone: trajectory storage is now
+per-metric Welford state on `TrajectoryAtom`, and each
+`*WelfordTrajectoryResult` owns its own `WriteH5Group` (no shared column
+list to drift). The generalizable lesson survives:
 
 **Pattern:** When you have N named fields that need serialisation,
 return them as a `{name, pointer}` vector from one method. Iterate

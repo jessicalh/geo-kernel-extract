@@ -51,10 +51,13 @@ Entry conventions:
   Not exercised today because `ui/` / `h5-reader/` do not run the
   calculator pipeline; a session-reuse viewer would hit it.
 - **Source:** `spec/plan/bones/DEPENDENCIES.md:62`.
-- **Status:** Accepted limitation. The production pipeline runs APBS
-  once per process; the FETK global-state reset is an upstream fix, not
-  ours. Not triggered today (no consumer runs APBS twice in-process).
-  Documented, not actioned.
+- **Status:** Known limitation, accepted. A trajectory run calls
+  `apbs_solve()` once per frame (`OperationRunner::Run` per frame,
+  `src/Trajectory.cpp:230,282`), so a long run makes many in-process
+  APBS calls — if the FETK global-state issue is real it IS exercised
+  there. It has not surfaced as a failure in production trajectory runs;
+  the real fix is an upstream FETK state reset, not ours. Documented and
+  watched. (Corrects an earlier "APBS runs once per process" note.)
 
 ---
 
@@ -267,8 +270,10 @@ Entry conventions:
   `Accumulate`/trajectory-handler wiring. Integration target is now
   `TrajectoryResult` (not the retired `GromacsProtein.AccumulateFrame`).
 - **Source:** `spec/plan/bones/TRAJECTORY_EXTRACTION.md:97-98, 127-131`.
-- **Action:** Build per-frame `*TrajectoryResult` wrappers when
-  trajectory accumulation is needed.
+- **Status:** **RESOLVED.** Both now have trajectory accumulation:
+  `EeqWelfordTrajectoryResult` (`src/RunConfiguration.cpp:181`) and the
+  hydration time-series / Welford TRs (`src/RunConfiguration.cpp:242-247`).
+  The "Verified" note above predates those landings.
 
 ### OI-042 — Ring-normal stability audit pending (Sahakyan-Vendruscolo 2013)
 

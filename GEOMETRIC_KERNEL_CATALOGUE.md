@@ -38,7 +38,8 @@ mu_0/(4*pi) = 1e-7 T·m/A (exact in SI)
 ```
 
 Positions converted to metres, current to amperes, B computed in
-Tesla. Then: G_ab = n_b × B_a × PPM_FACTOR (PPM_FACTOR = 1e6).
+Tesla. Then: G_ab = -n_b × B_a × PPM_FACTOR (PPM_FACTOR = 1e6; the
+minus is the shielding-sign convention, sigma = -dB_sec/dB_0).
 G is dimensionless.
 
 For dipolar kernels (McConnell, ring susceptibility, H-bond):
@@ -231,7 +232,7 @@ The magnetic field from the magnetised surface is V_a = sum_c H_ac n_c
 (i.e. V = H . n). The full shielding kernel is:
 
 ```
-G_ab = n_b * V_a = n_b * (H . n)_a
+G_ab = -n_b * V_a = -n_b * (H . n)_a
 ```
 
 This is rank-1 (same structure as BS), with:

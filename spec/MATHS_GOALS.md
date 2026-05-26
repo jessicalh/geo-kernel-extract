@@ -480,7 +480,7 @@ All eight classical calculators pass items 1-6. Item 7 requires calibrated param
 ### BiotSavartResult (2026-04-02):
 - [x] Equation: Johnson-Bovey double-loop, B-field in SI, G = -n⊗B × PPM_FACTOR
 - [x] Sign convention: I=-12, atom 3A above PHE → sigma = +1.40 ppm (shielded)
-- [x] Full rank-1 tensor: G_ab = n_b * B_a, stored as full Mat3 + SphericalTensor
+- [x] Full rank-1 tensor: G_ab = -n_b * B_a, stored as full Mat3 + SphericalTensor
 - [x] Per-ring attribution with cylindrical B-field components (B_n, B_rho, B_phi)
 - [x] KernelFilterSet: DipolarNearFieldFilter + RingBondedExclusionFilter
 - [x] T2 independence: |cos| = 0.37-0.38 vs McConnell/Coulomb/HBond
@@ -519,7 +519,7 @@ All eight classical calculators pass items 1-6. Item 7 requires calibrated param
 ### For the calibration pipeline (learn/c_equivariant/):
 - [x] Environment features extracted as NPY (via WriteFeatures)
 - [x] Model trains on delta T2 (Round 2: val R^2 = 0.60)
-- [ ] 93 calibrated parameters are physically reasonable
+- [ ] ~64 calibrated parameters are physically reasonable
 - [ ] T2 residual analysis produces interpretable patterns
 
 ### For the complete system:
