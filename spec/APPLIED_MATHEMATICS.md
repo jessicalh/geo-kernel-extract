@@ -31,7 +31,7 @@ as a starting point and confirm against the function name.
 
 2. **No Ewald / PME anywhere in our code.** Every *local* electrostatic
    kernel is a truncated real-space cutoff sum over a k-d tree neighbour
-   list. The only reciprocal-space electrostatics in the pipeline is the PME
+   list (the exception is MOPAC Coulomb, an all-pairs N² sum). The only reciprocal-space electrostatics in the pipeline is the PME
    term GROMACS computes and writes to the `.edr`, which we read back.
 
 **The five sources of numerical machinery.** Almost everything physics-
@@ -79,7 +79,7 @@ All via Eigen. Every use of SVD is on a fixed 3×3 — hence `JacobiSVD`
   diagonal — the self term is included precisely to make A diagonally
   dominant → SPD). The charge-neutrality constraint is handled by **bordered-
   system / KKT reduction**, not by factoring the indefinite augmented matrix:
-  solve `A·u = −χ` and `A·v = 1` (two RHS reusing one factorization), then
+  solve `A·u = χ_eff` and `A·v = 1` (two RHS reusing one factorization), then
   `λ = −(Q + 1ᵀu)/(1ᵀv)`, `q = −(u + λv)`, with a final uniform shift to
   clean the O(cond A) residual. **This is the only first-class O(N³) dense
   factorization in the library** and its dominant cost.
@@ -249,7 +249,7 @@ powers).
   `θ = atan2(m1·n2, n1·n2)`. Sites: `PlanarGeometryResult.cpp:35` (ω, χ₂),
   `BondedEnergyResult.cpp:46` (FF dihedrals), `LarsenHBondGrid.cpp:380`
   (H-bond ρ), tripeptide φ/ψ/χ (`TripeptideBackboneShieldingResult.cpp:28`).
-  Angle-wrap via `std::remainder(·, 2π)` (IEEE round-half-to-even).
+  Angle-wrap: `PlanarGeometryResult::WrapPi` uses `std::remainder(·, 2π)`; the other dihedral paths use raw `atan2` or while-loop wrapping.
 - **Cremer–Pople 5-ring puckering.** `PlanarGeometryResult.cpp:100-165`. The
   mean-plane normal from sin/cos-weighted vertex displacements
   (`R1 = Σ r_j sin(2πj/5)`, `R2 = Σ r_j cos(2πj/5)`, `n = R1×R2`), then the

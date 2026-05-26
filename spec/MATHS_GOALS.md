@@ -124,9 +124,9 @@ is the thesis's primary analytical result.
 **Per-calculator T2 explained fields:**
 - Each calculator stores how much T2 residual it reduced
   (OBJECT_MODEL.md: per-calculator shielding_contribution)
-- BS-HM T2 disagreement: Biot-Savart and Haigh-Mallion make opposing
-  T2 predictions at the same geometry. The disagreement vector per
-  atom is a diagnostic and a feature.
+- BS-HM T2 agreement: Biot-Savart and Haigh-Mallion give closely agreeing
+  T2 at the same geometry (both rank-1 G = −n⊗field, same sign; cos ≈ 0.999).
+  The small residual per atom is a diagnostic and a feature.
 
 **Validation:**
 - T2 residual map across 553 proteins, per ring type, per calculator

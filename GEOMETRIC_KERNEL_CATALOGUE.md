@@ -173,9 +173,9 @@ I=-12, atom 3A above PHE -> sigma = +1.40 ppm (Case 1995).
 **T2 structure of Biot-Savart**:
 
 G_ab = -n_b * B_a is an outer product of two vectors. This is
-rank-1 by construction (the matrix has rank 1, meaning only one
-non-zero eigenvalue if B is parallel to n, or at most two if B has
-components transverse to n).
+rank-1 by construction (one non-zero eigenvalue when B ∥ n; when B has
+transverse components the matrix is still rank-1 but nilpotent — all
+eigenvalues zero).
 
 Decomposition:
 - T0 = Tr(G)/3 = -(n . B) * PPM_FACTOR / 3. Non-zero when B has a
@@ -685,7 +685,7 @@ EFGs diverge. That divergence is the charge redistribution signal.
 provides mopac_charge on ConformationAtom), SpatialIndexResult.
 
 **Filter set**: SelfSourceFilter (field undefined at source itself).
-No spatial cutoff — N^2 sum over all atoms, same as Calculator 4.
+No spatial cutoff — all-pairs N^2 sum over all atoms (Calculator 4 Coulomb, by contrast, uses a spatial cutoff).
 
 ---
 
@@ -715,9 +715,9 @@ M_ab = 9 cos_theta * d_hat_a * b_hat_b
 The bond order is not a parameter. It is a measured property of the
 bond at this conformation — part of the geometric reality, like the
 charge in Calculator 9. A C=O with bond order 1.85 contributes 1.85×
-the kernel of a C=O with order 1.0. Bonds with negligible electron
-sharing (order < 0.01) are skipped — they are electronically
-insignificant.
+the kernel of a C=O with order 1.0. Bonds with negligible electron sharing
+(order < mopac_bond_order_noise_floor, default 1e-6) are skipped — they
+are electronically insignificant.
 
 **Units**: Angstrom^-3 (same as Calculator 3, before Dchi multiplication).
 
@@ -750,9 +750,9 @@ redundant (1.0). Bond-order weighting does not merely rescale
 McConnell; it reweights which bonds matter, producing genuinely
 different angular structure.
 
-**Per-category decomposition**: Same 5 categories as Calculator 3
-(PeptideCO, PeptideCN, BackboneOther, SidechainCO, Aromatic). Each
-category accumulates the bond-order-weighted kernel sum. The model
+**Per-category decomposition**: Same BondCategory cases as Calculator 3
+(the BondCategory enum, Types.h). Each category accumulates the
+bond-order-weighted kernel sum. The model
 learns Delta_chi_mopac per category.
 
 The comparison between unweighted and weighted McConnell at each bond
