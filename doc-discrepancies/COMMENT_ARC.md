@@ -41,10 +41,23 @@ not the header comment, not a doc.
 4. **Inline comments are the highest risk — default delete.** Keep one only for
    durable, non-obvious, code-local utility: a unit, a gotcha, a contract, a
    non-obvious *why*.
-5. **Kill darlings.** Cut AI handwaving, motivational/marketing filler, narration
-   that just restates adjacent code, stale "future"/changelog notes, and
-   over-long blocks that are a maintenance/risk surface. Say less, not more;
-   grounded plain language. When in doubt, cut.
+
+   **The deep-dive test (the master keep/cut rule):** keep a comment ONLY if a
+   future reader doing a careful deep-dive grok of the code genuinely could not
+   reconstruct it from the code itself. If they'd figure it out anyway, cut it —
+   section banners, `// ====` separators, typed-hierarchy maps, group labels,
+   restatements all fail this test. What survives is the non-derivable: a *why*,
+   a precondition, a unit, a gotcha, an external constraint, a counter-intuitive
+   behavior. When unsure, side with cutting.
+5. **Cruft and darlings both go — but tell them apart.** *Cruft* is junk: AI
+   handwaving, motivational/marketing filler, restatement of adjacent code,
+   stale/changelog notes. It goes without a second thought. A *darling* is the
+   harder cut: a comment that is genuinely well-made — the right shape, does
+   something nice (a lovely overview, an elegant framing, a satisfying map). It
+   is not cruft. But it serves the *writer's* fondness, not the reader's need —
+   and "reader" includes future-you. The tell is catching yourself keeping it
+   because it's *good*, not because the reader couldn't manage without it. Run
+   the deep-dive test and cut it anyway. Say less; when in doubt, cut.
 6. **Never touch code.** Comment text only. If a comment can't be made true
    without a code change, delete the comment and log the code issue.
 

@@ -47,28 +47,17 @@ public:
     Protein(const Protein&) = delete;
     Protein& operator=(const Protein&) = delete;
 
-    // ================================================================
-    // Atom access
-    // ================================================================
-
     size_t AtomCount() const { return atoms_.size(); }
     const Atom& AtomAt(size_t i) const { return *atoms_[i]; }
     Atom& MutableAtomAt(size_t i) { return *atoms_[i]; }
     const std::vector<std::unique_ptr<Atom>>& Atoms() const { return atoms_; }
     size_t AddAtom(std::unique_ptr<Atom> atom);
 
-    // ================================================================
-    // Residue access
-    // ================================================================
-
     size_t ResidueCount() const { return residues_.size(); }
     const Residue& ResidueAt(size_t i) const { return residues_[i]; }
     Residue& MutableResidueAt(size_t i) { return residues_[i]; }
     size_t AddResidue(Residue residue);
 
-    // ================================================================
-    // Backbone connectivity (bond-graph-driven)
-    //
     // Returns true iff a BondCategory::PeptideCN bond connects res(a).C
     // to res(b).N — i.e. a precedes b on the chain. False if C(a) or
     // N(b) is absent. Uses the bond graph, not residue numbering / chain
@@ -87,13 +76,11 @@ public:
     std::optional<size_t> BackbonePredecessor(size_t residue_idx) const;
     std::optional<size_t> BackboneSuccessor(size_t residue_idx) const;
 
-    // ================================================================
     // Ring access — delegated to LegacyAmberTopology::Rings().
     // RingCount() / RingAt() / Rings() are aromatic-only; the
     // SaturatedRing* accessors cover saturated rings (Pro pyrrolidine).
     // Before FinalizeConstruction (no ring topology attached) the count
     // methods return 0 and the element/list accessors abort.
-    // ================================================================
 
     size_t RingCount() const;
     const Ring& RingAt(size_t i) const;
@@ -103,18 +90,10 @@ public:
     const Ring& SaturatedRingAt(size_t i) const;
     const std::vector<std::unique_ptr<Ring>>& SaturatedRings() const;
 
-    // ================================================================
-    // Bond access (delegated through CovalentTopology)
-    // ================================================================
-
     size_t BondCount() const;
     const Bond& BondAt(size_t i) const;
     const std::vector<Bond>& Bonds() const;
     const CovalentTopology& BondTopology() const;
-
-    // ================================================================
-    // Explicit topology / loaded charge contracts
-    // ================================================================
 
     bool HasTopology() const { return protein_topology_ != nullptr; }
     const ProteinTopology& TopologyBase() const;
@@ -141,18 +120,10 @@ public:
                                   const ProteinConformation& conf,
                                   std::string& error_out);
 
-    // ================================================================
-    // Build context
-    // ================================================================
-
     const ProteinBuildContext& BuildContext() const { return *build_context_; }
     void SetBuildContext(std::unique_ptr<ProteinBuildContext> ctx) {
         build_context_ = std::move(ctx);
     }
-
-    // ================================================================
-    // Conformation factory methods
-    // ================================================================
 
     // Base conformation — provenance unknown or not yet classified.
     // Use when the source doesn't warrant a typed subclass.
@@ -204,10 +175,6 @@ public:
     size_t ConformationCount() const { return conformations_.size(); }
     ProteinConformation& ConformationAt(size_t i) { return *conformations_[i]; }
     const ProteinConformation& ConformationAt(size_t i) const { return *conformations_[i]; }
-
-    // ================================================================
-    // Construction helpers
-    // ================================================================
 
     // FinalizeConstruction: every loader must call this after adding all
     // atoms and residues, and BEFORE creating any ProteinConformation.

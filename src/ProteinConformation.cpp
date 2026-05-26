@@ -63,10 +63,6 @@ void ProteinConformation::ForceAttachResultForTesting(
 }
 
 
-// ============================================================================
-// CrystalConformation
-// ============================================================================
-
 CrystalConformation::CrystalConformation(
     const Protein* protein,
     std::vector<Vec3> positions,
@@ -82,10 +78,6 @@ CrystalConformation::CrystalConformation(
 {}
 
 
-// ============================================================================
-// PredictionConformation
-// ============================================================================
-
 PredictionConformation::PredictionConformation(
     const Protein* protein,
     std::vector<Vec3> positions,
@@ -97,10 +89,6 @@ PredictionConformation::PredictionConformation(
     , confidence_(confidence)
 {}
 
-
-// ============================================================================
-// MDFrameConformation
-// ============================================================================
 
 MDFrameConformation::MDFrameConformation(
     const Protein* protein,
@@ -120,10 +108,6 @@ MDFrameConformation::MDFrameConformation(
     , rg_nm_(rg_nm)
 {}
 
-
-// ============================================================================
-// DerivedConformation
-// ============================================================================
 
 DerivedConformation::DerivedConformation(
     const Protein* protein,

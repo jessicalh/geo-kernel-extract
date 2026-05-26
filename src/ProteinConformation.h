@@ -7,13 +7,6 @@
 // Computed results attach as typed ConformationResult singletons,
 // reached by conf.Result<T>() / conf.HasResult<T>().
 //
-// Typed hierarchy:
-//   ProteinConformation (base, fully functional)
-//   +-- CrystalConformation (resolution, R-factor, temperature, PDB ID)
-//   +-- PredictionConformation (method, confidence)
-//   +-- MDFrameConformation (walker, time, weight, rmsd, rg)
-//   +-- DerivedConformation (parent, description)
-//
 
 #include "Types.h"
 #include "ConformationAtom.h"
@@ -52,10 +45,6 @@ public:
 
     const ConformationAtom& AtomAt(size_t i) const { return atoms_[i]; }
     ConformationAtom& MutableAtomAt(size_t i) { return atoms_[i]; }
-
-    // ============================================================
-    // ConformationResult attachment and access (template mechanism)
-    // ============================================================
 
     // Attach a result. Checks dependencies. Returns true on success.
     bool AttachResult(std::unique_ptr<ConformationResult> result);
@@ -150,10 +139,6 @@ protected:
 };
 
 
-// ============================================================================
-// CrystalConformation
-// ============================================================================
-
 class CrystalConformation : public ProteinConformation {
 public:
     CrystalConformation(const Protein* protein,
@@ -176,10 +161,6 @@ private:
 };
 
 
-// ============================================================================
-// PredictionConformation
-// ============================================================================
-
 class PredictionConformation : public ProteinConformation {
 public:
     PredictionConformation(const Protein* protein,
@@ -195,10 +176,6 @@ private:
     double confidence_;
 };
 
-
-// ============================================================================
-// MDFrameConformation
-// ============================================================================
 
 class MDFrameConformation : public ProteinConformation {
 public:
@@ -224,10 +201,6 @@ private:
     double rg_nm_;
 };
 
-
-// ============================================================================
-// DerivedConformation
-// ============================================================================
 
 class DerivedConformation : public ProteinConformation {
 public:
