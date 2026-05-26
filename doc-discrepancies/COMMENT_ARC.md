@@ -120,7 +120,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
   CalculatorConfig, RecordBag, DenseBuffer, SelectionRecord, errors. Docs: OM, CON, PAT.
 - [x] **G2 — core types, enums, constants.** Types, SemanticEnums, AminoAcidType,
   PhysicalConstants, SolventEnvironment. Docs: OM, CON, PF.
-- [ ] **G3 — topology & perception.** CovalentTopology, RingTopology,
+- [x] **G3 — topology & perception.** CovalentTopology, RingTopology,
   MolecularGraphResult, LegacyAmberTopology, LarsenResidue, NamingRegistry. Docs: OM, CON, PAT.
 - [ ] **G4 — charge / force field / protonation / readers.** ChargeSource,
   AmberChargeResolver, AmberPreparedChargeSource, AmberLeapInput,
