@@ -1,15 +1,5 @@
 #pragma once
-//
-// AminoAcidType: the SINGLE AUTHORITY for amino acid chemistry.
-//
-// Each of the 20 standard amino acids is fully described in one table entry.
-// Its atoms, rings, chi angles, titratable variants -- everything.
-//
-// Usage:
-//   const AminoAcidType& type = GetAminoAcidType(AminoAcid::PHE);
-//   type.is_aromatic;           // true
-//   type.chi_angle_count;       // 2
-//
+// Amino-acid template table and force-field residue-name helpers.
 
 #include "Types.h"
 #include <string>
@@ -17,7 +7,6 @@
 
 namespace nmr {
 
-// An atom in the canonical amino acid template (PDB naming).
 struct AminoAcidAtom {
     const char* name;
     Element     element;
@@ -26,19 +15,16 @@ struct AminoAcidAtom {
 
 // A protonation variant (e.g., HID for histidine, ASH for aspartate).
 //
-// VARIANT INDEX CONTRACT: the position of each variant in
-// AminoAcidType::variants is load-bearing. ProtonationDetectionResult,
-// ChargeAssignmentResult, and ProtonationState all use variant_index
-// to identify the protonation state. Reordering silently breaks every
-// protonation assignment in the system.
+// Variant order is load-bearing: stored variant_index values refer to
+// positions in AminoAcidType::variants.
 //
-// Canonical indices (asserted at startup in ValidateVariantIndices):
+// Canonical indices (checked by ValidateVariantIndices):
 //   HIS: 0=HID (delta), 1=HIE (epsilon), 2=HIP (doubly)
 //   ASP: 0=ASH (protonated)
 //   GLU: 0=GLH (protonated)
 //   CYS: 0=CYX (disulfide), 1=CYM (deprotonated)
 //   LYS: 0=LYN (deprotonated)
-//   ARG: 0=ARN (deprotonated, pKa ~12.5, very rare)
+//   ARG: 0=ARN (deprotonated)
 //   TYR: 0=TYM (deprotonated)
 //
 struct ProtonationVariant {
@@ -49,18 +35,9 @@ struct ProtonationVariant {
                                 // Used by ResolveForTool(canonical, context, key)
 };
 
-// A chi angle definition: four atom names defining the dihedral.
 struct ChiAngleDef {
     const char* atoms[4];
 };
-
-// AminoAcidRing struct + rings[] field were deleted in Bundle C /
-// Slice B (2026-05-07). The string-based ring atom-name table that
-// pre-Bundle-C DetectAromaticRings consumed has been replaced by the
-// substrate-driven RingTopology::ConstructFromSubstrate, which reads
-// typed RingPosition slots from each atom's AtomSemanticTable. No
-// caller outside the deleted DetectAromaticRings consumed these
-// fields.
 
 class AminoAcidType {
 public:
@@ -95,21 +72,14 @@ const AminoAcidType& GetAminoAcidType(AminoAcid aa);
 const std::vector<AminoAcidType>& AllAminoAcidTypes();
 const AminoAcidType& AminoAcidTypeFromCode(const std::string& code);
 
-// Validates that variant ordering matches the documented contract.
-// Called once at startup. Aborts on mismatch.
+// Aborts if variant ordering no longer matches the contract above.
 void ValidateVariantIndices();
 
 // Resolve a variant index from a force-field residue name.
 //
-// Single shared helper: callers that have a force-field residue label
-// (CHARMM HSD/HSE/HSP, AMBER HID/HIE/HIP/CYX/CYM/ASH/GLH/LYN/ARN/TYM,
-// CHARMM-port alternates ASPP/GLUP/CYS2) map it to the canonical
-// variant index for the given amino acid type. Returns -1 when the
-// label names the canonical-charged-state form (no variant) or doesn't
-// match any known variant.
-//
-// Indices match the AminoAcidType.h canonical contract asserted at
-// startup by ValidateVariantIndices():
+// Returns -1 when the label names the canonical charged form or no
+// known variant for this amino-acid type. Indices match the variant
+// ordering contract:
 //
 //   HIS: HID/HSD = 0, HIE/HSE = 1, HIP/HSP = 2
 //   ASP: ASH/ASPP = 0
@@ -119,13 +89,8 @@ void ValidateVariantIndices();
 //   ARG: ARN = 0
 //   TYR: TYM = 0
 //
-// FF-port labels that GROMACS pdb2gmx writes back (HISH / HISE / HISD
-// for amber14sb, etc.) are NOT handled here — those are resolved
-// upstream by reading the topol.top rtp comment line, per the
-// GromacsToAmberReadbackBlock design (compiler-trace shape; see
-// spec/plan/bones/gromacs-to-amber-readback-block-design-2026-05-02.md and
-// memory feedback_readback_block_is_a_compiler_trace). Callers should
-// pass canonical AMBER/CHARMM names, not GROMACS FF-port labels.
+// GROMACS FF-port names such as HISH/HISE/HISD are intentionally not
+// handled here; callers pass the canonical AMBER/CHARMM residue name.
 int VariantIndexFromForceFieldName(AminoAcid type, const std::string& ff_name);
 
 // Strip an N- or C- terminal prefix from a GROMACS rtp name, returning the

@@ -1,42 +1,7 @@
 #pragma once
-//
-// SemanticEnums.h -- typed atom-level chemistry vocabulary for
-// LegacyAmberTopology.
-//
-// This header defines 14 typed-enum / typed-struct fields that
-// together specify the chemistry-substrate classification of every
-// atom in a standard amino-acid residue. Values are populated at
-// `Protein::FinalizeConstruction` from a generated static table
-// (`src/generated/LegacyAmberSemanticTables.cpp`); after that point
-// every chemistry question on an atom resolves to a typed lookup,
-// not a string comparison.
-//
-// String barrier:
-// - This header includes only <array>, <cstdint>. No cifpp, no RDKit,
-//   no gemmi. No std::string fields.
-// - The generator binary (tools/topology/build_semantic_tables) reads
-//   chemistry strings from CCD via cifpp and runs RDKit to perceive
-//   stereo/aromatic/hybridisation, then emits typed-enum literals
-//   into src/generated/LegacyAmberSemanticTables.cpp.
-// - The runtime library libnmr_shielding.a does not link RDKit at
-//   all. The string barrier is enforced by the linker, not by code
-//   review. See spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md.
-//
-// Citation pattern:
-// - Every typed-enum value has a docstring with a chemistry citation,
-//   following the precedent set by Ring::Intensity() with its Case
-//   1995 J. Biomol. NMR citation in src/Ring.cpp.
-// - Synthesised fields (PlanarGroupKind, PolarHKind, RingPositionLabel)
-//   cite the literature that grounds the taxonomy. These are first-
-//   class chemistry contributions, not weaker provenance.
-//
-// Provenance:
-// - Each atom-field carries a typed SemanticProvenance witness
-//   recording the source(s) and confidence.
-// - Witness stash holds up to four source-value pairs so post-hoc
-//   stats can ask "for atoms where source A and source B disagreed,
-//   what is the shielding distribution?"
-//
+// Typed atom-level chemistry vocabulary for LegacyAmberTopology.
+// Runtime records are enum-only; string parsing and RDKit/cifpp work
+// stay in the generated semantic-table build.
 
 #include <array>
 #include <cstdint>
@@ -46,17 +11,9 @@
 namespace nmr {
 
 
-// ============================================================================
 // TerminalState -- which kind of chain-end a residue presents
-// ============================================================================
 //
-// Used to select among the four cap-atom tables emitted alongside the
-// 30 residue tables (per §H.4 of
-// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`). The chain
-// itself uses Internal; an N-terminal residue has its terminus_state set
-// to NtermCharged (default ammonium NH3+) or NtermNeutral (NH2 form);
-// a C-terminal residue has CtermDeprotonated (carboxylate COO-) or
-// CtermProtonated (carboxylic acid COOH).
+// Selects among generated internal, N-terminal, and C-terminal atom tables.
 //
 enum class TerminalState : uint8_t {
     Internal           = 0,   ///< Residue is not at a chain end.
@@ -67,9 +24,7 @@ enum class TerminalState : uint8_t {
 };
 
 
-// ============================================================================
 // BackboneRole -- which canonical backbone atom slot
-// ============================================================================
 //
 // Backbone atoms (N, CA, C, O, H, HA) all share `Locant::None`, so the
 // (Element, Locant, BranchAddress, DiastereotopicIndex) tuple does not
@@ -99,9 +54,7 @@ enum class BackboneRole : uint8_t {
 };
 
 
-// ============================================================================
 // Locant -- Greek-letter / IUPAC position label on the side chain
-// ============================================================================
 //
 // Markley, Bax, Arata, Hilbers, Kaptein, Sykes, Wright, Wuethrich,
 // J. Biomol. NMR 12 (1998) 1-23, "Recommendations for the presentation
@@ -128,9 +81,7 @@ enum class Locant : uint8_t {
 };
 
 
-// ============================================================================
 // BranchAddress -- two-level disambiguator when atoms share a locant
-// ============================================================================
 //
 // Markley 1998, Figure 1 caption (text-2:357-372): when atoms
 // share a Greek-letter locant, the branch index resolves them per
@@ -162,9 +113,7 @@ constexpr bool operator==(BranchAddress a, BranchAddress b) {
 }
 
 
-// ============================================================================
 // DiastereotopicIndex -- the IUPAC 2/3 label on prochiral methylene Hs
-// ============================================================================
 //
 // Markley 1998, Figure 1 caption: prochiral methylene hydrogens
 // (HB2/HB3, HG2/HG3, HD2/HD3, HE2/HE3 plus glycine HA2/HA3) carry
@@ -182,9 +131,7 @@ enum class DiastereotopicIndex : uint8_t {
 };
 
 
-// ============================================================================
 // ProchiralStereo -- Cahn-Ingold-Prelog R/S designation
-// ============================================================================
 //
 // Cahn, Ingold, Prelog, Angew. Chem. Int. Ed. 5 (1966) 385.
 // The CIP rules formalise prochiral assignment via priority
@@ -192,12 +139,6 @@ enum class DiastereotopicIndex : uint8_t {
 // for tetrahedral X with substituents A > B > C = C', sight down
 // A-X with C' replacing C as the heavier isotope; if B, C', C
 // (away from viewer) are clockwise, C' = pro-R, C = pro-S.
-//
-// The thesis methodology cites "RDKit version 2023.09.6 CIPLabeler"
-// as the algorithmic source for this field. RDKit is the primary
-// reconciliation source per the project precedence table; Markley
-// Figure 1 marks are the cross-check. Disagreements are typed-logged
-// in the SemanticProvenance witness stash.
 //
 // CCD `_chem_comp_atom.pdbx_stereo_config` allowed values are
 // {R, S, N} -- this enum maps directly.
@@ -213,20 +154,12 @@ enum class ProchiralStereo : uint8_t {
 };
 
 
-// ============================================================================
 // PlanarGroupKind -- which chemical planar/sp2 group an atom is in
-// ============================================================================
-//
-// Synthesised classification grounded in standard biochemistry:
-// every sp2/planar functional group present in the standard 20
-// amino acids gets an enum value. Citation per value below.
 //
 // The substrate stores the topological membership (which atoms are
 // in the group + canonical IUPAC E/Z label per Markley convention).
 // Per-frame angles (peptide omega, planarity deviation, ring
-// puckering) live on PlanarGeometryResult, the conformation-side
-// companion ConformationResult. Substrate-vs-conformation split
-// per `feedback_object_model_scope_discipline`.
+// puckering) live on PlanarGeometryResult.
 //
 enum class PlanarGroupKind : uint8_t {
     None              = 0,   ///< Atom is not in a planar/sp2 group.
@@ -298,9 +231,7 @@ enum class PlanarGroupKind : uint8_t {
 };
 
 
-// ============================================================================
 // PlanarStereo -- canonical IUPAC E/Z label
-// ============================================================================
 //
 // CCD `_chem_comp_bond.pdbx_stereo_config` allowed values {E, Z, N}.
 // https://mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Items/_chem_comp_bond.pdbx_stereo_config.html
@@ -324,9 +255,7 @@ enum class PlanarStereo : uint8_t {
 };
 
 
-// ============================================================================
 // PseudoatomKind -- Markley 1998 Table 1 IUPAC pseudoatom letter
-// ============================================================================
 //
 // Markley 1998 Table 1 (text-3:181-242) defines the IUPAC pseudoatom
 // taxonomy for proteins. The full set is M, Q, R only:
@@ -337,10 +266,8 @@ enum class PlanarStereo : uint8_t {
 //   R = ring (used as locant-suffix for ring-atom groupings, e.g.
 //       Phe QR = Q across all ring Hs)
 //
-// XPLOR / CARA / DIANA introduce additional letters (X, Y, S, T)
-// but those are NOT IUPAC and are not adopted here. See research
-// dossier `spec/plan/bones/topology-fields-research-2026-05-05.md`
-// "Field 6" for evidence.
+// XPLOR / CARA / DIANA introduce additional letters (X, Y, S, T),
+// but this enum stays inside the IUPAC M/Q/R taxonomy.
 //
 // Terminus convention (synthesised, not Markley-canonical):
 // N-terminal H1/H2/H3 (NTERM_CHARGED) and H1/H2 (NTERM_NEUTRAL)
@@ -359,9 +286,7 @@ enum class PseudoatomKind : uint8_t {
 };
 
 
-// ============================================================================
 // PseudoatomMembership -- per-atom pseudoatom membership record
-// ============================================================================
 //
 // An atom can belong to a primary pseudoatom (e.g. Leu HD11/HD12/HD13
 // belong to MD1, the delta1-methyl) and optionally to a higher-order
@@ -383,9 +308,7 @@ struct PseudoatomMembership {
 };
 
 
-// ============================================================================
 // PolarHKind -- functional-group classification of polar hydrogens
-// ============================================================================
 //
 // Synthesised taxonomy grounded in protein physical chemistry.
 // Each value corresponds to a well-defined exchangeable-hydrogen
@@ -479,9 +402,7 @@ enum class PolarHKind : uint8_t {
 };
 
 
-// ============================================================================
 // RingSystemKind -- which ring system an atom belongs to
-// ============================================================================
 //
 // Classifies by the combined (residue, ring-component) since Trp
 // has two coexisting rings on its sidechain (pyrrole 5-ring + benzene
@@ -509,9 +430,7 @@ enum class RingSystemKind : uint8_t {
 };
 
 
-// ============================================================================
 // RingPositionLabel -- position of an atom within its ring system
-// ============================================================================
 //
 // Carries the ipso/ortho/meta/para labels for benzene-like rings
 // (Vollhardt & Schore, "Organic Chemistry" 8e (2018) ch. 15) plus
@@ -585,13 +504,10 @@ enum class RingPositionLabel : uint8_t {
     /// HIE).
     Heteroatom_NoH  = 11,
 
-    /// Ring oxygen with H (none in standard 20; reserved for
-    /// non-standard residues).
+    /// Ring oxygen with H (none in standard 20).
     Heteroatom_OH   = 12,
 
-    /// Saturated ring carbon (generic; reserved for non-Pro saturated
-    /// ring chemistry that may be added later). Pro ring atoms now
-    /// carry the Pro-specific position labels below.
+    /// Saturated ring carbon, generic non-Pro label.
     Saturated       = 13,
 
     /// Pro pyrrolidine N (in-ring secondary amine; backbone nitrogen
@@ -621,20 +537,13 @@ enum class RingPositionLabel : uint8_t {
     /// proximity).
     ProRingDelta        = 18,
 
-    /// Generic membership label for ring-system slots whose per-atom
-    /// walk-position taxonomy has not yet been committed. Used by the
-    /// tertiary `RingMembership` slot for atoms in the indole 9-atom
-    /// perimeter (`RingSystemKind::Indole_Trp_9`); finer-grained
-    /// perimeter labels are an additive future extension when a
-    /// concrete planned calculator wants per-walk-position
-    /// stratification.
+    /// Generic label used by the tertiary `RingMembership` slot for
+    /// atoms in the indole 9-atom perimeter.
     PerimeterMember     = 19,
 };
 
 
-// ============================================================================
 // RingMembership -- one ring's worth of context for an atom
-// ============================================================================
 //
 // An atom's primary ring is the ring it belongs to (the smaller ring
 // if the atom is at a fused-ring bridge). For non-bridge atoms, the
@@ -653,9 +562,7 @@ struct RingMembership {
 };
 
 
-// ============================================================================
 // RingPosition -- combined primary + secondary + tertiary ring memberships
-// ============================================================================
 //
 // For atoms in a single ring, `secondary.ring == NotInRing` and
 // `tertiary.ring == NotInRing`. For Trp bridgehead atoms (C-delta2,
@@ -706,9 +613,7 @@ struct RingPosition {
 };
 
 
-// ============================================================================
 // BondOrderToNeighbour -- per-bond order to a specific neighbour
-// ============================================================================
 //
 // CCD `_chem_comp_bond.value_order` allowed values: sing, doub, trip,
 // quad, arom, delo, pi, poly. Maps to this enum:
@@ -726,14 +631,12 @@ enum class BondOrderToNeighbour : uint8_t {
     Aromatic     = 4,   ///< CCD "arom" -- classical aromatic bond.
     Delocalised  = 5,   ///< CCD "delo" -- guanidinium / carboxylate.
     Quadruple    = 6,   ///< CCD "quad" -- not present in standard 20.
-    Pi           = 7,   ///< CCD "pi" -- reserved.
-    Polymer      = 8,   ///< CCD "poly" -- reserved.
+    Pi           = 7,   ///< CCD "pi".
+    Polymer      = 8,   ///< CCD "poly".
 };
 
 
-// ============================================================================
 // BondOrderMask -- packed per-neighbour bond orders for an atom
-// ============================================================================
 //
 // Up to 4 neighbours (4-bit each = 16 bits total) suffices for
 // every standard amino-acid atom; quaternary carbons have 4 single
@@ -750,14 +653,7 @@ struct BondOrderMask {
 };
 
 
-// ============================================================================
 // SemanticSource -- typed enum identifying which source produced a value
-// ============================================================================
-//
-// Lists every chemistry-data source contributing to the substrate
-// table. The thesis methodology cites algorithmic sources (RDKit,
-// cifpp/CCD) primarily because they are version-pinned and
-// reproducible.
 //
 enum class SemanticSource : uint8_t {
     None                      = 0,
@@ -776,16 +672,14 @@ enum class SemanticSource : uint8_t {
     IUPAC_1969                = 13,   ///< IUPAC-IUB tentative rules 1969.
     BMRB_NomenclaturePage     = 14,   ///< https://bmrb.io/referenc/nomenclature
     BMRB_PseudoatomTable      = 15,   ///< https://bmrb.io/ref_info/pseudoatom_nom.txt
-    AmberVariantTable         = 16,   ///< Project AminoAcidType variant table.
-    SynthesizedFromChemistry  = 17,   ///< Project synthesis grounded in cited literature.
+    AmberVariantTable         = 16,   ///< AminoAcidType variant table.
+    SynthesizedFromChemistry  = 17,   ///< Synthesised from cited chemistry.
     AlternationDefault        = 18,   ///< Pre-CIP fallback; should be empty after RDKit pass.
     ManualOverride            = 19,   ///< Hand-edited override; see comment at edit site.
 };
 
 
-// ============================================================================
 // SemanticConfidence -- typed enum classifying the confidence of a value
-// ============================================================================
 //
 enum class SemanticConfidence : uint8_t {
     None                    = 0,
@@ -797,9 +691,7 @@ enum class SemanticConfidence : uint8_t {
 };
 
 
-// ============================================================================
 // SemanticSourceWitness -- one source's value for a given field
-// ============================================================================
 //
 // Per-(atom, field) provenance can hold up to four witnesses. Empty
 // slots have source == None. The value is packed as the underlying
@@ -812,9 +704,7 @@ struct SemanticSourceWitness {
 };
 
 
-// ============================================================================
 // SemanticProvenance -- per-(atom, field) provenance record
-// ============================================================================
 //
 // Stores up to four source witnesses, the chosen-primary index, the
 // confidence classification, and a CIP-verification flag. Strings
@@ -830,10 +720,8 @@ struct SemanticProvenance {
 };
 
 
-// ============================================================================
 // AtomSemanticTable -- the runtime per-atom record consumed by the
 // LegacyAmberTopology populator
-// ============================================================================
 //
 // The generated table at src/generated/LegacyAmberSemanticTables.cpp
 // emits a constexpr std::array of these per (residue, variant) and
@@ -843,20 +731,13 @@ struct SemanticProvenance {
 // fields on LegacyAmberTopology. The lookup key is
 // `AtomMechanicalIdentity` (Element + Locant + BranchAddress +
 // DiastereotopicIndex + BackboneRole) -- NOT atom_local_idx and NOT
-// atom_id strings; per §H of
-// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
+// atom_id strings.
 //
 // Provenance is NOT carried in the runtime record (it lives in the
-// generation log, src/generated/LegacyAmberSemanticTables.log.txt,
-// and is committed alongside as the audit trail). Runtime code never
-// needs to inspect provenance; downstream stats analysis joins via
-// (residue, atom_id) keys against the log.
+// generation log, src/generated/LegacyAmberSemanticTables.log.txt).
 //
 struct AtomSemanticTable {
-    // Mechanical-identity fields. These five fields together form the
-    // typed lookup key (`AtomMechanicalIdentity` below) used by the
-    // generated `LookupBy` function at runtime composition. See §H of
-    // `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`.
+    // These five fields form the generated LookupBy key.
     Element               element           = Element::Unknown;
     Locant                locant            = Locant::None;
     BranchAddress         branch            = {};
@@ -875,29 +756,8 @@ struct AtomSemanticTable {
     int8_t                formal_charge     = 0;
     bool                  is_exchangeable   = false;
     uint8_t               equivalence_class = 0;
-    // Note: Hybridisation (from Types.h) and BondOrderMask are not
-    // included in the runtime record at the moment; they are
-    // available via the generation log if needed for analysis.
-    // The runtime is intentionally minimal until a calculator
-    // requires a specific field on the substrate.
-
-    // ========================================================================
-    // Compositional predicate methods
-    // ========================================================================
-    //
-    // Pattern: `Ring::Intensity()` / `Ring::IsFused()` — predicates on
-    // the typed object, not on the parent topology. Calculators that
-    // ask "is this atom backbone?" / "is this a polar H?" / "is this
-    // in any ring?" call methods HERE, not per-field shortcuts on
-    // LegacyAmberTopology. Adding shortcuts there would channel
-    // calculator authors toward narrow consumption that hides substrate
-    // richness (e.g. `IsAromatic(ai)` collapses 13 distinct
-    // `RingPositionLabel` values into a single boolean).
-    //
-    // New predicates land here as calculator patterns demand them.
-    // Bundle B's typed CacheResidueBackboneIndices uses
-    // backbone_role-driven dispatch directly; the predicates below are
-    // the minimum surface that pattern needs.
+    // Hybridisation and BondOrderMask are available in the generation
+    // log, but are not present in this runtime record.
 
     constexpr bool IsBackbone() const {
         return backbone_role != BackboneRole::None;
@@ -946,14 +806,12 @@ struct AtomSemanticTable {
 };
 
 
-// ============================================================================
 // AtomMechanicalIdentity -- typed lookup key for runtime composition
-// ============================================================================
 //
 // The typed mechanical identity that the generated `LookupBy` function
 // keys on. NOT atom_local_idx (index spaces don't align across CCD,
 // AmberAminoAcidVariantTable, and other producers) and NOT atom_id
-// strings (the string wall is sacred). The five fields below are
+// strings. The five fields below are
 // computed by the parser from the atom name + bond graph.
 //
 // Uniqueness contract:
@@ -977,11 +835,6 @@ struct AtomSemanticTable {
 // semantics from the runtime atom record, not the substrate's
 // mechanical identity. The collisions above are limited to chemically
 // equivalent sets where any-of-three is the right answer.
-//
-// See §H of `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md`
-// for the full architectural rationale; section H.1 defines this
-// tuple, H.2 the lookup function, H.4 the cap-table separation.
-//
 struct AtomMechanicalIdentity {
     Element             element       = Element::Unknown;
     Locant              locant        = Locant::None;

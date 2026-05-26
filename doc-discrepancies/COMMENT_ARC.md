@@ -118,7 +118,7 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,
   ProteinTopology, GeometryResult, GeometryChoice, CalculatorContract,
   CalculatorConfig, RecordBag, DenseBuffer, SelectionRecord, errors. Docs: OM, CON, PAT.
-- [ ] **G2 — core types, enums, constants.** Types, SemanticEnums, AminoAcidType,
+- [x] **G2 — core types, enums, constants.** Types, SemanticEnums, AminoAcidType,
   PhysicalConstants, SolventEnvironment. Docs: OM, CON, PF.
 - [ ] **G3 — topology & perception.** CovalentTopology, RingTopology,
   MolecularGraphResult, LegacyAmberTopology, LarsenResidue, NamingRegistry. Docs: OM, CON, PAT.
