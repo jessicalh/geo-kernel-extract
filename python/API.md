@@ -148,7 +148,7 @@ p.eeq                   EeqGroup | None
   .charges              ndarray (N,) — EEQ partial charges (elementary charges)
   .cn                   ndarray (N,) — coordination number (erfc counting)
 
-p.gromacs_energy        ndarray (1, 42) | None — single-frame GROMACS energy, 42 cols
+p.gromacs_energy        ndarray (1, 43) | None — single-frame GROMACS energy, 43 cols
                         (electrostatic, bonded, VdW, thermo, box, virial,
                         pressure tensor, per-group T); for the per-frame
                         timeline use traj.energy.gromacs (load_trajectory)

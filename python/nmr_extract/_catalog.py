@@ -255,7 +255,7 @@ CATALOG: dict[str, ArraySpec] = {s.stem: s for s in [
               mechanism="charges"),
 
     # ── GROMACS energy (GromacsEnergyResult.cpp) ────────────────
-    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     42,   False, "Per-frame energy (42 cols: electrostatic, bonded, VdW, thermo, box, virial, pressure tensor, T_group)",
+    ArraySpec("gromacs_energy",     "gromacs",     np.ndarray,     43,   False, "Per-frame energy (43 cols: electrostatic 3, bonded 6, VdW 3, thermo 8, box 3, virial 9, pressure tensor 9, T_group 2)",
               native_axis="protein", units="kJ/mol", mechanism="gromacs_runtime"),
 
     # ── Bonded energy (BondedEnergyResult.cpp) ─────────────────

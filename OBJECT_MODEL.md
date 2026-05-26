@@ -281,15 +281,15 @@ Records provenance (what happened), not experimental conditions
 (which live on the ProteinConformation subtype metadata).
 
 **Why this contract exists (for agents creating new build contexts):**
-Every protein instance needs a build context because it is the mutable
-part of a protein definition. When we copy a protein to test different
-protonation, the build context tells us what changed. When we compare
-WT and mutant, it tells us which is which. When we serialise results,
+Every protein instance needs a build context because it records how the
+protein was built. A different protonation is a separately built Protein
+(Protein is non-copyable); the build context records what differs. When we
+compare WT and mutant, it tells us which is which. When we serialise results,
 it is the provenance record. Future work you can't see will need to
 rely on this. Provide the basics so downstream consumers don't invent
 their own tracking.
 
-### Static properties (const after construction)
+### Properties (public, mutable; replaceable via Protein::SetBuildContext)
 
 | Property | Type | Unit | Description |
 |----------|------|------|-------------|
@@ -563,8 +563,8 @@ Call BEFORE creating any ProteinConformation.
 
 ### Ownership and lifetime
 Protein is non-movable and non-copyable. It lives on the heap via
-unique_ptr, created by LoadProtein() which returns unique_ptr<Protein>
-in a LoadResult. Conformations hold a raw Protein* back-pointer that
+unique_ptr<Protein>, returned in a `BuildResult` by the builders
+(PdbFileReader / FullSystemReader). Conformations hold a raw Protein* back-pointer that
 is valid for the Protein's lifetime. Non-movable means the pointer
 never dangles. No move constructors, no move assignment.
 
@@ -657,7 +657,7 @@ This was a deliberate simplification from Pass 1: the old subclasses
 
 ### Enrichment properties (set once, append-only)
 
-Set by enrichment ConformationResult objects during attachment.
+Set by EnrichmentResult::Compute() (then attached; AttachResult stores, does not compute).
 Once set, never overwritten or removed within a ProteinConformation.
 Each property records its source result type.
 
@@ -680,7 +680,7 @@ Each property records its source result type.
 Each ProteinConformation holds a `vector<ConformationAtom>` parallel to
 the Protein's atom list. ConformationAtom has typed, named fields for
 every per-atom result. Fields are declared upfront with default values.
-ConformationResult objects fill them in during Attach().
+ConformationResult objects fill them in during their Compute() (then attached).
 
 **Construction and ownership:**
 
@@ -696,7 +696,7 @@ class ConformationAtom {
 public:
     Vec3 Position() const { return position_; }
 
-    // Computed fields below — written by ConformationResult::Attach(),
+    // Computed fields below — written by ConformationResult::Compute(),
     // read by feature extraction and query methods. Public because the
     // singleton guarantee means each field has exactly one writer.
     AtomRole role = AtomRole::Unknown;
@@ -715,7 +715,7 @@ Query identity through the ProteinConformation's back-pointer to Protein:
 
 ```cpp
 // Identity (from Protein — never changes with geometry)
-const auto& identity = conf.Protein().AtomAt(42);
+const auto& identity = conf.ProteinRef().AtomAt(42);
 Element elem = identity.element;
 for (size_t bi : identity.bond_indices) {
     const auto& bond = conf.Protein().BondAt(bi);
@@ -923,12 +923,12 @@ The dia/para decomposition is physics — the paramagnetic contribution
 correlates with ring current effects. Both are exported as features
 via WriteFeatures() for the calibration pipeline.
 
-### Query methods
-- `IsHydrogen() -> bool`: element == Element::H
-- `IsHeavy() -> bool`: element != Element::H
-- `IsBackbone() -> bool`: is_backbone enrichment property
-- `ParentAtom() -> size_t`: for H atoms, parent_atom_index
-- `BondDirection(conformation) -> Vec3`: for H atoms, direction from parent to H
+### Fields (identity/topology)
+Atom exposes its identity fields directly — `element` (Element),
+`pdb_atom_name`, `residue_index`, `bond_indices`, `parent_atom_index` (for
+H atoms). There are no `IsHydrogen()`/`IsBackbone()`/`ParentAtom()` query
+methods on Atom; callers test `element`/`bond_indices` directly, and
+per-conformation data lives on ConformationAtom.
 
 ### Copy semantics
 Atom is identity/topology only — no position, no per-conformation data.
@@ -1104,7 +1104,7 @@ Ring (abstract base)
           NOTE: The 9-atom TRP indole perimeter. This is the physical
           ring current path. TRP5+TRP6 are the sub-rings; TRP9 is
           the perimeter that carries the actual current. v1 did not
-          have this type (7 types). Rewrite has 8.
+          have this type (7 aromatic types). Rewrite has 8 aromatic types (RingTypeIndex Count = 9, adding the saturated ProPyrrolidine).
 ```
 
 Rings carry static identity plus per-conformation geometry only
@@ -1343,7 +1343,7 @@ ProteinConformation is not copied. Positions are const after construction
 — new geometry is a new conformation, not a copy — and results are owned
 `unique_ptr`s on the conformation. There is no GeometryOnly/Full copy
 policy; a different protonation or charge state is a separately built
-conformation (see the non-copyable Protein and "Conformation provenance").
+Protein (see the non-copyable Protein and "Conformation provenance").
 
 ---
 
@@ -1403,7 +1403,7 @@ SasaResult                    requires: SpatialIndexResult
 AIMNet2Result                 requires: SpatialIndexResult, EnrichmentResult (model loaded externally)
 WaterFieldResult              requires: SpatialIndexResult + SolventEnvironment (runtime)
 HydrationShellResult          requires: SpatialIndexResult + SolventEnvironment (runtime)
-GromacsEnergyResult           requires: nothing (reads from .edr file at runtime)
+GromacsEnergyResult           requires: nothing (stores the per-frame GromacsEnergy snapshot the Trajectory preloaded from the .edr)
 
 (Feature extraction is distributed: each ConformationResult implements
 WriteFeatures(). ConformationResult::WriteAllFeatures() traverses all
@@ -1412,8 +1412,8 @@ attached results and exports NPY arrays for the calibration pipeline.)
 
 ### What each result stores on atoms/rings
 
-Each result type, when attached, populates properties on the atoms
-and rings of the ProteinConformation. The next result type in the
+Each result type's Compute() populates properties on the atoms and rings
+of the ProteinConformation (the result is then attached). The next result type in the
 resolved order finds these properties already present.
 
 See the per-result sections below and the Atom field accumulation
@@ -2017,7 +2017,7 @@ A test that checks specific T2[0..4] values forces full tensor implementation.
 - Mat3: dipolar tensor to H-bond partner(s)
 - sphericart: T0, T1[3], T2[5]
 - double: angular factor (3cos²θ−1)/r³
-- Geometry: distance, D-H-A angle, donor/acceptor classification
+- Geometry: nearest-midpoint distance/direction, count, inv_d3, donor/acceptor flags
 
 **ApbsFieldResult:**
 - Vec3: solvated E-field from APBS
@@ -2126,9 +2126,10 @@ There is no `Feature` base class, `IrrepType` enum, or `FeatureOutput`
 struct. Each ConformationResult emits its own features via
 `ConformationResult::WriteFeatures(...)`, writing NPYs whose shape, units,
 irreps, sign convention, and meaning are declared in the SDK catalog (one
-`ArraySpec` per file, `python/nmr_extract/_catalog.py`). Features read only
-from already-attached ConformationResult data — never raw positions or
-charges.
+`ArraySpec` per file, `python/nmr_extract/_catalog.py`). Per-result features
+read from already-attached ConformationResult data; identity arrays
+(positions, atom names) are written directly from the conformation/protein
+by `WriteAllFeatures`.
 
 ---
 
@@ -2153,7 +2154,8 @@ append-only accumulation across results safe.
 - A bond's category is static after bond detection.
 
 Static properties are set at construction or enrichment and are
-const thereafter. They travel with copies.
+const thereafter. (No copy path — Protein is non-copyable; they are simply
+whatever a given load builds.)
 
 ### Dynamic: determined by computation within a ProteinConformation
 - An atom's partial charge is dynamic (from ChargeAssignmentResult)
@@ -2161,7 +2163,7 @@ const thereafter. They travel with copies.
   BiotSavartResult et al.)
 - A ring's per-conformation geometry (RingGeometry) is dynamic
 
-Dynamic properties are set by ConformationResult attachments and are
+Dynamic properties are set by each ConformationResult's Compute() and are
 ProteinConformation-specific — recomputed per conformation, never carried
 across a differing foundational state (ProteinConformation is not copied;
 Protein is non-copyable).
@@ -2248,7 +2250,7 @@ Per-atom: partial charge (e), PB radius `pb_radius` (Angstroms).
 
 #### What it computes
 PM7+MOZYME semiempirical electronic structure for the full protein.
-Calls MOPAC as subprocess (~45s for 889 atoms). Provides conformation-
+Calls MOPAC in-process via linked libmopac (run_mopac_from_input; ~45s for 889 atoms). Provides conformation-
 dependent charges and bond orders that downstream calculators draw on.
 
 #### Input
@@ -2305,7 +2307,7 @@ mopac_mc_ prefix). See src/MopacMcConnellResult.cpp for implementation.
 Per-atom: role (AtomRole), hybridisation (Hybridisation), categorical
 booleans (is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_H,
 is_on_aromatic_residue, is_hbond_donor, is_hbond_acceptor, parent_is_sp2).
-Roles are stored per-atom on ConformationAtom; there is no atoms_by_role collection.
+Pre-built collection: atoms_by_role (on EnrichmentResult, via AtomsByRole()); per-atom role is also on each ConformationAtom.
 
 ### SpatialIndexResult (requires: GeometryResult)
 KD-trees (atom positions, ring centers, bond midpoints), neighbour lists
@@ -2381,7 +2383,7 @@ sphere (~92 points, r_vdW + r_probe). Each point checked for occlusion
 by nearby atoms via SpatialIndexResult. SASA = fraction_exposed × sphere_area.
 
 **Parameters:** `sasa_probe_radius` (default 1.4 Å), `sasa_n_points` (default 92).
-**Physics query:** `AtomSASA(i) -> double`, `AllSASA() -> vector<double>`.
+**Physics query:** `AtomSASA(i) -> double`, `AllSASA() -> const vector<double>&`.
 **WriteFeatures output:** `atom_sasa.npy` (N,) float64, Angstroms² per atom.
 
 ### AIMNet2Result (requires: SpatialIndexResult, EnrichmentResult; model loaded externally)
@@ -2440,9 +2442,10 @@ the local dielectric environment that no geometry-only kernel can see.
 **WriteFeatures output:**
 - `hydration_shell.npy` (N, 4): [asymmetry, dipole_cos, ion_dist, ion_charge]
 
-### GromacsEnergyResult (requires: nothing; reads .edr file at runtime)
-Per-frame aggregate energy terms from the GROMACS simulation. Reads the .edr
-energy file and finds the frame nearest to the conformation's time (ps).
+### GromacsEnergyResult (requires: nothing)
+Per-frame aggregate energy terms from the GROMACS simulation. The Trajectory
+preloads the .edr and finds the frame nearest the conformation's time (ps);
+GromacsEnergyResult stores that matched GromacsEnergy snapshot.
 Whole-system quantities (not per-atom).
 
 **GromacsEnergy struct fields:**
@@ -2461,7 +2464,7 @@ Whole-system quantities (not per-atom).
 `CoulombTotal() = coulomb_sr + coulomb_recip` (excludes 1-4).
 
 **WriteFeatures output:**
-- `gromacs_energy.npy` (1, 42): per-frame energy — electrostatic, bonded, VdW, thermo, box, virial, pressure tensor, per-group T (GromacsEnergyResult.cpp)
+- `gromacs_energy.npy` (1, 43): per-frame energy — electrostatic (3), bonded (6), VdW (3), thermo (8), box (3), virial (9), pressure tensor (9), per-group T (2) (GromacsEnergyResult.cpp)
 
 ### Calibration Pipeline (external — not a ConformationResult)
 
@@ -2820,7 +2823,7 @@ T1 stored as `std::array<WelfordMoments, 3>`; T2 as
 `std::array<WelfordMoments, 5>`.
 
 `_m2` fields carry the running Welford sum-of-squared-deviations;
-`_std` is populated at `Finalize` from `m2 / (n - 1)`. `_std` is
+`_std` is populated at `Finalize` as `sqrt(m2 / (n - 1))` (0 for n=1). `_std` is
 undefined mid-stream. `WelfordFinalize` NaN-fills mean/m2/std when
 `n==0` (uncomputable); min/max are already self-describing via
 ±infinity sentinels. `*_rms_delta = sqrt(*_delta_squared.mean)` if
@@ -3148,12 +3151,12 @@ available from Phase 6 onwards.
 
 `Status Run(tp, config, session, extras = {}, output_dir = {})`:
 
-1. **Open handler.** `handler_ = make_unique<GromacsFrameHandler>(tp)`; `handler_->Open(xtc_path, tpr_path)` mounts the stream and builds the PBC fixer.
+1. **Open handler.** `handler_ = make_unique<GromacsFrameHandler>(tp)`; `handler_->Open(xtc_path, tpr_path)` mounts the TRR stream (PBC fixing happens per-frame in `ReadNextFrame` via `MakeProteinWhole`).
 2. **Read frame 0 and seed.** `handler_->ReadNextFrame()`; `tp.Seed(handler_->ProteinPositions(), handler_->Time())`.
 3. **Attach TrajectoryResults.** Iterate `config.ResultsToBuild()` then caller `extras`. Attach order is dispatch order.
 4. **Validate dependencies and resources.** For each attached TR, every `type_index` in `Dependencies()` must be satisfied by another attached TR OR `config.RequiresConformationResult(t)`. If `config.RequiresAimnet2()`, `session.HasAimnet2Model()` must be true.
 5. **Build base `RunOptions`.** From `config.PerFrameRunOptions()` + `tp.Charges()` + `tp.BondedParams()` + `session.Aimnet2Model()`.
-6. **Frame 0.** Populate `env_` from handler + EDR; `OperationRunner::Run(tp.CanonicalConformation(), frame_opts)`; `tp.DispatchCompute(conf0, *this, 0, time)`; record.
+6. **Frame 0.** Populate `env_` from handler + EDR; `OperationRunner::Run(tp.MutableCanonicalConformation_(), frame_opts)`; `tp.DispatchCompute(conf0, *this, 0, time)`; record.
 7. **Per-frame loop.** `handler_->Skip()` (stride − 1) times; `handler_->ReadNextFrame()`; update `env_`; `tick = tp.TickConformation(positions)`; `OperationRunner::Run(*tick, frame_opts)`; `tp.DispatchCompute(*tick, *this, handler_->Index(), handler_->Time())`; record.
 8. **Finalize.** `tp.FinalizeAllResults(*this)`. Selections were pushed during Compute / Finalize — no sweep here. `state_ = Complete`; release `handler_`.
 
@@ -3360,8 +3363,8 @@ own group and sets its own schema attributes — e.g.
 
 ## GromacsFrameHandler
 
-Format-specific TRR/TPR reader. Mounts the stream, builds the PBC
-fixer from the TPR, reads frames on demand. Pure reader: does not
+Format-specific TRR/TPR reader. Mounts the TRR stream and reads frames on
+demand; PBC fixing happens per-frame in `ReadNextFrame` (`MakeProteinWhole`). Pure reader: does not
 create conformations, does not run calculators, does not write to
 `traj.env_`, does not know `TrajectoryResult`s.
 
@@ -3385,7 +3388,7 @@ this layer, not a virtual-base hierarchy.
 
 | Method                                    | Role                                                                 |
 |-------------------------------------------|----------------------------------------------------------------------|
-| `Open(trr_path, tpr_path)`                | Mount the TRR stream, build the PBC fixer from TPR, sanity-check atom counts against `tp.SysReader().Topology().protein_count`. Does not read a frame. |
+| `Open(trr_path, tpr_path)`                | Mount the TRR stream; sanity-check the TRR's total atom count against `tp.SysReader().Topology().total_atoms`. PBC fixing is per-frame in ReadNextFrame. Does not read a frame. |
 | `ReadNextFrame()`                         | Read one TRR frame, PBC-fix protein slice, split into `protein_positions_` + `solvent_`. Returns false at EOF. |
 | `Skip()`                                  | Advance one frame without extracting; accessors return stale data afterward. |
 | `Reopen()`                                | Reset cursor to start (legacy multi-pass flows).                     |
