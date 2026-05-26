@@ -151,9 +151,22 @@ if(NOT EXISTS ${MOPAC_LIB})
 endif()
 message(STATUS "MOPAC: ${MOPAC_LIB}")
 
-# GTest for unit tests
+# GTest for unit tests. Prefer a system/installed GTest; otherwise fetch
+# it from GitHub. The fetch needs network at first configure, so it is
+# announced (not silent) and gated by NMR_FETCH_GTEST: default ON keeps
+# the current behaviour, OFF requires a system GTest (for offline /
+# restricted-network configures).
+option(NMR_FETCH_GTEST "Fetch googletest from GitHub when no system GTest is found" ON)
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
+    if(NOT NMR_FETCH_GTEST)
+        message(FATAL_ERROR "GTest not found and NMR_FETCH_GTEST=OFF — install "
+                            "a system GTest (e.g. libgtest-dev) or re-enable "
+                            "-DNMR_FETCH_GTEST=ON to fetch it from GitHub.")
+    endif()
+    message(STATUS "GTest not found — fetching googletest v1.14.0 from GitHub "
+                   "(needs network; set -DNMR_FETCH_GTEST=OFF to require a "
+                   "system GTest instead).")
     include(FetchContent)
     FetchContent_Declare(
         googletest
