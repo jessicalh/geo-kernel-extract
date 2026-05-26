@@ -140,12 +140,12 @@ Filter sets per calculator:
 
 | Calculator | Filters | Source extent |
 |------------|---------|---------------|
-| McConnell | SelfSource + DipolarNearField | bond length |
-| CoulombResult | SelfSource (i≠j only) | 0 (point source) |
-| RingSusceptibility | DipolarNearField | ring diameter |
-| HBondResult | SelfSource + DipolarNearField | N...O distance |
-| BiotSavartResult | DipolarNearField | ring diameter |
-| HaighMallionResult | DipolarNearField | ring diameter |
+| McConnell | MinDistance + SelfSource + DipolarNearField | bond length |
+| CoulombResult | MinDistance + SelfSource (i≠j only) | 0 (point source) |
+| RingSusceptibility | MinDistance + DipolarNearField + RingBondedExclusion | ring diameter |
+| HBondResult | MinDistance + SelfSource + DipolarNearField | N...O distance |
+| BiotSavartResult | MinDistance + DipolarNearField + RingBondedExclusion | ring diameter |
+| HaighMallionResult | MinDistance + DipolarNearField + RingBondedExclusion | ring diameter |
 
 Filter sets are configurable from TOML. Rejection counts are logged
 per filter per calculator invocation. Per-rejection detail (which atom,
@@ -177,7 +177,7 @@ Properties (compile-time, per element):
 enum class Hybridisation { sp, sp2, sp3, Unassigned };
 ```
 
-Set by OpenBabel during enrichment. Const after enrichment.
+Set by EnrichmentResult from role/geometry heuristics. Const after enrichment.
 
 ---
 
@@ -227,7 +227,7 @@ enum class AtomRole {
 | AromaticN | N | member of an AromaticRing vertex set | HIS ND1/NE2, TRP NE1 |
 | AmideH | H | bonded to BackboneN | Residue.H index (not PRO) |
 | AlphaH | H | bonded to BackboneCA | Residue.HA index (or HA2 for GLY) |
-| MethylH | H | bonded to a terminal sp3 carbon with 3 H neighbours | parent C has exactly 3 H bonds and 1 C/S bond |
+| MethylH | H | bonded to a carbon with 3 H neighbours | parent is carbon with exactly 3 bonded H |
 | AromaticH | H | bonded to AromaticC | parent is ring member |
 | HydroxylH | H | bonded to O that is bonded to C | SER OG, THR OG1, TYR OH |
 | OtherH | H | none of the above | remaining hydrogens |
@@ -281,7 +281,7 @@ enum class HeuristicTier { REPORT, PASS, SILENT };
 
 ## ProteinBuildContext
 
-How this protein instance was built. Immutable once constructed.
+How this protein instance was built. Public fields, settable via Protein::SetBuildContext().
 Records provenance (what happened), not experimental conditions
 (which live on the ProteinConformation subtype metadata).
 
@@ -485,9 +485,9 @@ through typed factory methods on the protein:
 protein.AddCrystalConformation(positions, metadata) -> CrystalConformation&
 protein.AddPrediction(positions, metadata) -> PredictionConformation&
 protein.AddMDFrame(positions, metadata) -> MDFrameConformation&
-protein.AddDerived(parent, description) -> DerivedConformation&
+protein.AddDerived(parent, description, positions) -> DerivedConformation&
 
-protein.CrystalConf()            // exactly one or throws
+protein.CrystalConf()            // the crystal conformation; aborts if none
 protein.PredictionAt(i)          // typed accessor
 protein.MDFrameAt(i)             // typed accessor
 protein.Conformation()           // the single working conformation
@@ -623,7 +623,7 @@ DsspResult ConformationResult, accessed via conformation.Dssp().
 - `IsTitratable() -> bool`
 - `HasAmideH() -> bool`
 - `ChiAngleCount() -> int`
-- `SequenceAddress() -> (chain_id, sequence_number, insertion_code)`
+- `GetSequenceAddress() -> SequenceAddress {chain_id, sequence_number, insertion_code}`
 
 ### Copy semantics
 Value type within Protein. Copies with Protein.
@@ -1166,11 +1166,11 @@ inline constexpr int kAromaticRingTypeCount = 8;
 
 ### Query methods
 - `IsFused() -> bool`: fused_partner_index != SIZE_MAX
-- `Size() -> RingSize`: FiveMembered or SixMembered
+- `RingAtomCount() -> int`: 5, 6, or 9 (indole perimeter)
 - `Aromaticity() -> RingAromaticity`: from type class
 - `NitrogenCount() -> int`: from type class
 - `TypeIndexAsInt() -> int`: for one-hot encoding
-- `ComputeGeometry(positions) -> Ring::Geometry`
+- `ComputeGeometry(positions) -> RingGeometry`
 
 ### Copy semantics
 - Static properties (type, vertices, parent): always preserved
@@ -1234,13 +1234,12 @@ metadata.
 | Property | Type | Unit | Description |
 |----------|------|------|-------------|
 | atom_positions | vector<Vec3> | Angstroms | One position per atom in protein |
-| protonation | ProtonationState | - | Protonation state for this conformation |
 
 ### ConformationResult storage
 
-Results are named singletons on the ProteinConformation. Accessed by
-name, not by iteration. Each accessor returns the real typed object.
-Throws if not yet computed.
+Results are typed singletons on the ProteinConformation. Accessed by
+type via `Result<T>()` / `HasResult<T>()`; iterate via `AllResults()`.
+`Result<T>()` aborts (FATAL) if that type is not attached.
 
 ```
 auto& dssp = conformation.Dssp();           // DsspResult&
@@ -1301,7 +1300,7 @@ conformation.AttachResult(unique_ptr<ConformationResult> result);
 
 At attach time:
 1. Dependencies are checked. Missing dependency = immediate logged error.
-2. The result computes its values and stores properties on atoms/rings.
+2. The already-computed result is stored (its Compute() ran before attach; AttachResult does not compute — it checks singleton + dependencies).
 3. Once attached, permanent. Nothing is removed.
 4. Results accumulate. The next result type finds prior data already there.
 
@@ -1330,7 +1329,6 @@ At attach time:
 
 | Property | Type | Source |
 |----------|------|--------|
-| atoms_by_role | map<AtomRole, vector<size_t>> | EnrichmentResult |
 | rings_by_type | map<RingTypeIndex, vector<size_t>> | GeometryResult |
 | bonds_by_category | map<BondCategory, vector<size_t>> | GeometryResult |
 | residues_by_type | map<AminoAcid, vector<size_t>> | GeometryResult |
@@ -1495,7 +1493,7 @@ PiQuadrupoleResult            requires: SpatialIndexResult, GeometryResult
 RingSusceptibilityResult      requires: SpatialIndexResult, GeometryResult
 OrcaShieldingResult           requires: nothing (loaded from files)
 SasaResult                    requires: SpatialIndexResult
-AIMNet2Result                 requires: SpatialIndexResult (model loaded externally)
+AIMNet2Result                 requires: SpatialIndexResult, EnrichmentResult (model loaded externally)
 WaterFieldResult              requires: SpatialIndexResult + SolventEnvironment (runtime)
 HydrationShellResult          requires: SpatialIndexResult + SolventEnvironment (runtime)
 GromacsEnergyResult           requires: nothing (reads from .edr file at runtime)
@@ -2083,7 +2081,7 @@ A test that checks specific T2[0..4] values forces full tensor implementation.
 - sphericart: T0, T1[3], T2[5]
 - Per-bond-category subtotals (peptide CO, CN, sidechain, aromatic)
   as separate Mat3 + sphericart each
-- Scalar factor derived FROM tensor trace, not computed instead
+- Scalar f = (3cos²θ−1)/r³ angular contraction; NOT the tensor trace
 
 **CoulombResult:**
 - Vec3: E-field at each atom
@@ -2111,7 +2109,7 @@ A test that checks specific T2[0..4] values forces full tensor implementation.
 **HBondResult:**
 - Mat3: dipolar tensor to H-bond partner(s)
 - sphericart: T0, T1[3], T2[5]
-- double: isotropic cos^2 theta / r^3 contribution
+- double: angular factor (3cos²θ−1)/r³
 - Geometry: distance, D-H-A angle, donor/acceptor classification
 
 **ApbsFieldResult:**
@@ -2467,7 +2465,7 @@ Per-ring: total_B_at_center, intensity_used, diagnostics, mutual B.
 Per-atom shielding: bs_shielding_contribution (SphericalTensor, ppm·T/nA — bare kernel, not ppm).
 
 ### HaighMallionResult (requires: SpatialIndexResult, GeometryResult)
-Per-atom per-ring (RingNeighbourhood): hm_tensor, hm_spherical, hm_B_field.
+Per-atom per-ring (RingNeighbourhood): hm_H_tensor, hm_H_spherical, hm_G_tensor, hm_G_spherical, hm_B_field.
 Per-atom totals: per_type_hm_T0_sum, per_type_hm_T2_sum.
 Per-atom shielding: hm_shielding_contribution (SphericalTensor, Å⁻¹ — bare kernel, not ppm).
 
@@ -2524,7 +2522,7 @@ by nearby atoms via SpatialIndexResult. SASA = fraction_exposed × sphere_area.
 **Physics query:** `AtomSASA(i) -> double`, `AllSASA() -> vector<double>`.
 **WriteFeatures output:** `atom_sasa.npy` (N,) float64, Angstroms² per atom.
 
-### AIMNet2Result (requires: SpatialIndexResult; model loaded externally)
+### AIMNet2Result (requires: SpatialIndexResult, EnrichmentResult; model loaded externally)
 Neural network charges and EFG via AIMNet2 (libtorch, CUDA mandatory).
 Produces per-atom Hirshfeld charges, 256-dim AIM embedding, and Coulomb
 EFG decomposed by source using the same dipolar kernel as CoulombResult.
