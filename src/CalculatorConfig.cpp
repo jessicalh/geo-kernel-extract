@@ -10,7 +10,6 @@ namespace fs = std::filesystem;
 
 namespace nmr {
 
-// Static members
 std::unordered_map<std::string, CalculatorConfig::ParamEntry> CalculatorConfig::defaults_;
 std::unordered_map<std::string, double> CalculatorConfig::overrides_;
 std::unordered_map<std::string, std::string> CalculatorConfig::string_overrides_;
@@ -47,7 +46,6 @@ void CalculatorConfig::InitDefaults() {
     add("hie_imidazole_jb_lobe_offset",        0.50, "A", "HIE imidazole JB lobe offset");
     add("trp_indole_perimeter_jb_lobe_offset", 0.60, "A", "TRP indole perimeter JB lobe offset");
 
-    // Spatial cutoffs — define the reach of each geometric kernel (Angstroms)
     add("ring_current_spatial_cutoff",              15.0, "A", "ring current spatial cutoff");
     add("mcconnell_bond_anisotropy_cutoff",         10.0, "A", "McConnell bond anisotropy cutoff");
     add("mopac_mcconnell_bond_anisotropy_cutoff",   10.0, "A", "MOPAC McConnell bond anisotropy cutoff");
@@ -58,7 +56,6 @@ void CalculatorConfig::InitDefaults() {
     add("dispersion_switching_onset_distance",       4.3, "A", "dispersion switching function onset");
     add("singularity_guard_distance",                0.1, "A", "singularity guard distance");
 
-    // Ring proximity counting shells (Angstroms)
     add("ring_proximity_shell_1",  3.0, "A", "ring proximity shell 1");
     add("ring_proximity_shell_2",  5.0, "A", "ring proximity shell 2");
     add("ring_proximity_shell_3",  8.0, "A", "ring proximity shell 3");
@@ -68,29 +65,23 @@ void CalculatorConfig::InitDefaults() {
     add("haigh_mallion_subdivision_threshold_l1", 2.0, "A", "HM level-1 subdivision threshold");
     add("haigh_mallion_subdivision_threshold_l2", 1.0, "A", "HM level-2 subdivision threshold");
 
-    // Guard thresholds — algorithmic boundaries
     add("efield_magnitude_sanity_clamp",        100.0, "V/A",     "E-field magnitude clamp");
     add("hbond_sequential_exclusion_residues",    2.0, "residues", "H-bond sequence exclusion");
     add("near_field_exclusion_ratio",             0.5, "",         "near-field exclusion ratio");
 
-    // AIMNet2 neural network charge calculator
     add("aimnet2_cutoff_lr",                       15.0, "A",    "AIMNet2 long-range DSF Coulomb cutoff");
     add("aimnet2_max_nb",                         128.0, "",     "AIMNet2 max short-range neighbours");
     add("aimnet2_max_nb_lr",                     4096.0, "",     "AIMNet2 max long-range neighbours");
     add("aimnet2_coulomb_efg_cutoff",              20.0, "A",    "AIMNet2 Coulomb EFG cutoff");
-    // charge sensitivity: no calculator params — computed by
-    // GromacsFrameHandler as per-atom charge variance across ensemble
 
     // SASA (Shrake-Rupley per-atom solvent-accessible surface area)
     add("sasa_probe_radius",                        1.4, "A",    "SASA water probe radius (Bondi)");
     add("sasa_n_points",                           92.0, "",     "SASA Fibonacci sphere point count");
 
-    // WaterFieldResult — explicit solvent E-field and EFG
     add("water_efield_cutoff",                     15.0, "A",    "water E-field summation cutoff (oxygen distance)");
     add("water_first_shell_cutoff",                 3.5, "A",    "first hydration shell boundary (WaterField + HydrationShell)");
     add("water_second_shell_cutoff",                5.5, "A",    "second hydration shell boundary");
 
-    // HydrationShellResult — hydration shell geometry
     add("hydration_ion_cutoff",                    20.0, "A",    "nearest-ion search distance");
 
     // APBS Poisson-Boltzmann grid sizing + solve conditions (mg-auto convention)
@@ -148,7 +139,6 @@ void CalculatorConfig::Load(const std::string& path) {
     while (std::getline(in, line)) {
         ++line_num;
 
-        // Strip comments
         auto pos = line.find('#');
         if (pos != std::string::npos) line = line.substr(0, pos);
 
@@ -158,7 +148,6 @@ void CalculatorConfig::Load(const std::string& path) {
         std::string key = line.substr(0, eq);
         std::string val = line.substr(eq + 1);
 
-        // Trim whitespace
         auto trim = [](std::string& s) {
             while (!s.empty() && (s.front() == ' ' || s.front() == '\t'))
                 s.erase(s.begin());
@@ -195,11 +184,9 @@ void CalculatorConfig::Load(const std::string& path) {
 double CalculatorConfig::Get(const std::string& key) {
     if (!defaults_initialised_) InitDefaults();
 
-    // Check override first
     auto ov = overrides_.find(key);
     if (ov != overrides_.end()) return ov->second;
 
-    // Then default
     auto df = defaults_.find(key);
     if (df != defaults_.end()) return df->second.value;
 
@@ -225,7 +212,6 @@ std::vector<std::string> CalculatorConfig::Validate() {
 
     std::vector<std::string> unknown_keys;
 
-    // Log every parameter
     for (const auto& [key, entry] : defaults_) {
         auto ov = overrides_.find(key);
         const char* source = (ov != overrides_.end()) ? "toml" : "default";
@@ -237,7 +223,6 @@ std::vector<std::string> CalculatorConfig::Validate() {
         OperationLog::Info("CalculatorConfig", buf);
     }
 
-    // Check for unknown keys in overrides
     for (const auto& [key, val] : overrides_) {
         if (defaults_.find(key) == defaults_.end()) {
             unknown_keys.push_back(key);

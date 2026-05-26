@@ -22,7 +22,10 @@ not the header comment, not a doc.
    required. **All changelog narration goes** — dates, commit hashes, "was X /
    now Y", "Bundle/Slice/phase" labels, "replaces", "previously", "deleted",
    audit-hotspot references — even when the history is accurate. Git log is the
-   changelog; a comment states what the code IS, now.
+   changelog; a comment states what the code IS, now. A literature citation
+   or physics factoid is also a claim: verify it. If you cannot (no access to
+   the source, can't confirm the value), preface it `From notes(check):` —
+   never pretend to a vetted reference you have not checked.
 2. **The comment serves THIS code, never the domain.** It earns its place only
    where the code needs help being understood. Never a supplemental textbook —
    no re-deriving physics/math, no domain tutorial. That belongs in the spec/docs.
@@ -80,6 +83,12 @@ not the header comment, not a doc.
 5. Act on findings (re-verify vs source) → commit the group atomically → update
    the baton + tick boxes here.
 
+**Finish each file in one pass — no defer pile.** No half-done files; do not
+defer parts of a file, or whole files, to a later group. A file is done when its
+comments are done, and then it is sealed — we do not revisit it. If finishing a
+file needs understanding of other code (a calculator, TrajectoryAtom, …), go read
+and understand that code now. Never punt a file because understanding it is work.
+
 Completeness check: the union of the group membership rules below must equal
 `find src -maxdepth 2 \( -name '*.h' -o -name '*.cpp' \)` minus the exclusions.
 Verify no file is unassigned before declaring the phase done.
@@ -103,9 +112,9 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
 - [~] **G0 — verified stragglers** (never-defer; spans groups, done first):
   BuildResult.h, TrajectoryProtein.h, ConformationAtom.h, OrcaShieldingResult.h,
   MopacResult.h. Docs: OM, CON.
-- [~] **G1 — core object model & Result base.** _(Protein.h + conformation spine + core value types Atom/Residue/Bond/Ring + ConformationAtom header done; AtomEvent → G10.)_ Protein, ProteinConformation,
-  ConformationAtom (structure/identity comments only — per-calculator field
-  blocks are verified within each calculator's group), ConformationResult, Atom,
+- [~] **G1 — core object model & Result base.** _(done: Protein, conformation spine, value types, small infra, GeometryChoice + CalculatorConfig. STILL OWED in G1 — finish, no defer: ConformationAtom per-calc field blocks; AtomEvent; SelectionRecord; DenseBuffer; RecordBag.)_ Protein, ProteinConformation,
+  ConformationAtom (the WHOLE file, per-calc field blocks included),
+  ConformationResult, Atom,
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,
   ProteinTopology, GeometryResult, GeometryChoice, CalculatorContract,
   CalculatorConfig, RecordBag, DenseBuffer, SelectionRecord, errors. Docs: OM, CON, PAT.

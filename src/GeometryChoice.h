@@ -1,17 +1,10 @@
 #pragma once
 //
-// GeometryChoice: runtime record of one geometric decision made by a calculator.
-//
-// A GeometryChoice is a bag of model objects — ConformationAtom*, Ring*, Bond*,
-// and named numbers — recording what a calculator decided, which entities were
-// involved, and whether each was included or excluded.
-//
-// The conformation owns a flat vector<GeometryChoice>. Calculators populate it
-// during Compute() via the GeometryChoiceBuilder factory, which enforces that
-// every choice is populated within a lambda (keeping the recording code visually
-// separate from the physics).
-//
-// The UI walks the list, follows pointers back into the live model, and draws.
+// GeometryChoice: a record of one geometric decision a calculator made —
+// which model entities (ConformationAtom*/Ring*/Bond*) and named numbers
+// were involved, and whether each was included or excluded. The conformation
+// owns a flat vector<GeometryChoice>, populated during Compute() via
+// GeometryChoiceBuilder.
 //
 // Entity roles:
 //   Source  — the ring/bond/atom generating the field
@@ -39,21 +32,12 @@ struct Bond;
 class ProteinConformation;
 
 
-// ============================================================================
-// Enums
-// ============================================================================
-
 enum class EntityRole   { Source, Target, Context };
 enum class EntityOutcome { Included, Excluded, Triggered, NotTriggered };
 
 
-// ============================================================================
-// GeometryEntity — one entry in the bag.
-//
-// Exactly one of {atom, ring, bond} is non-null per entry.
-// Named numbers use the NamedNumber struct instead.
-// ============================================================================
-
+// GeometryEntity — one entry in the bag; exactly one of {atom, ring, bond}
+// is non-null.
 struct GeometryEntity {
     const ConformationAtom* atom = nullptr;
     const Ring*             ring = nullptr;
@@ -68,24 +52,12 @@ struct GeometryEntity {
 };
 
 
-// ============================================================================
-// NamedNumber — a numeric value with a name and unit.
-//
-// "horizon", 15.0, "A"
-// "intensity", -12.0, "nA"
-// "distance", 7.3, "A"
-// ============================================================================
-
 struct NamedNumber {
     std::string name;
     double      value = 0.0;
     std::string unit;
 };
 
-
-// ============================================================================
-// GeometryChoice — the bag itself.
-// ============================================================================
 
 class GeometryChoice {
     friend class GeometryChoiceBuilder;
@@ -99,17 +71,14 @@ class GeometryChoice {
     friend void SetSampler(GeometryChoice&, std::function<SphericalTensor(Vec3)>);
 
 public:
-    // Read-only access for the UI
     const std::string&              Label()      const { return label_; }
     CalculatorId                    Calculator() const { return calculator_; }
     size_t                          GroupKey()   const { return group_key_; }
     const std::vector<GeometryEntity>& Entities() const { return entities_; }
     const std::vector<NamedNumber>&    Numbers()  const { return numbers_; }
 
-    // Optional field sampler: evaluates this choice's physics at any 3D point.
-    // Captures the source geometry (ring vertices, bond midpoint, etc.) so
-    // the UI can draw field lines, isosurfaces, or probe values interactively.
-    // Returns SphericalTensor at the given point. Null if not applicable.
+    // Optional field sampler: a stored callback evaluating a SphericalTensor
+    // at a 3D point. SampleAt returns a default SphericalTensor if unset.
     bool HasSampler() const { return sampler_ != nullptr; }
     SphericalTensor SampleAt(Vec3 point) const {
         return sampler_ ? sampler_(point) : SphericalTensor{};
@@ -127,25 +96,8 @@ private:
 };
 
 
-// ============================================================================
-// GeometryChoiceBuilder — factory that enforces population in a lambda.
-//
-// Usage in a calculator's Compute():
-//
-//   GeometryChoiceBuilder choices(conf);
-//
-//   choices.Record(CalculatorId::BiotSavart, group, "ring horizon",
-//       [&](GeometryChoice& gc) {
-//           AddRing(gc, ring, EntityRole::Source, EntityOutcome::Included);
-//           AddAtom(gc, &conf.AtomAt(ai), ai, EntityRole::Target, EntityOutcome::Included);
-//           AddNumber(gc, "horizon", 15.0, "A");
-//           AddNumber(gc, "distance", dist, "A");
-//       });
-//
-// The lambda body is the ONLY place entities and numbers are added.
-// This keeps recording code visually offset from physics code.
-// ============================================================================
-
+// GeometryChoiceBuilder: entities and numbers are added ONLY inside the
+// populate lambda passed to Record().
 class GeometryChoiceBuilder {
 public:
     explicit GeometryChoiceBuilder(ProteinConformation& conf);
@@ -162,10 +114,7 @@ private:
 };
 
 
-// ============================================================================
-// Convenience methods on GeometryChoice for use inside the populate lambda.
-// ============================================================================
-
+// Adders for use inside the populate lambda.
 inline void AddAtom(GeometryChoice& gc,
                     const ConformationAtom* atom,
                     size_t atom_index,

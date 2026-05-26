@@ -3,14 +3,14 @@
 // CalculatorConfig: tuneable calculator parameters from TOML.
 //
 // Load() once at startup. Get() returns a double — the TOML value
-// if present, else the compiled literature default. That is all.
+// if present, else the compiled literature default.
 //
 // The TOML file is flat key = value. No sections, no nesting.
 // Missing file → all defaults. Missing key → default for that key.
 //
-// Validate() checks all expected keys, logs every value and its
-// source (toml or default), returns a list of any unknown keys
-// found in the file. Call once before calculators run.
+// Validate() logs every expected key, value, and source (toml or
+// default), and returns any unknown numeric override keys found in the
+// file. Call once before calculators run.
 //
 
 #include <string>
@@ -36,7 +36,7 @@ public:
 
     // Validate the loaded configuration.
     // Logs every parameter: key, value, source (toml/default), unit.
-    // Returns list of unknown keys found in the TOML file (typos).
+    // Returns unknown numeric override keys found in the TOML file (typos).
     // Empty return = all clean.
     static std::vector<std::string> Validate();
 
