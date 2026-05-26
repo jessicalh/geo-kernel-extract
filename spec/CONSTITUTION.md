@@ -257,7 +257,7 @@ normal axis has sigma > 0.
 ## Convention Locks (planned-calculator pre-flight, 2026-05-13)
 
 The following picks are locked once HERE so the planned-calculator
-assembly line (PLANNED_CALCULATORS_2026-04-22.md) does not have to
+assembly line (spec/plan/bones/PLANNED_CALCULATORS_2026-04-22.md, bones) does not have to
 re-decide them per slice. Each pick names the source literature and
 the calculator(s) that consume it.
 

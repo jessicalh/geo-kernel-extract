@@ -24,15 +24,11 @@ durable architectural record; this index is just a map to the rest.
 ## Active planning (small)
 
 - `spec/plan/README.md` — guide to what's live in `spec/plan/`.
-- `spec/plan/comprehensive-calculator-inventory-2026-04-30.md` — the
-  full planned-calculator list. This is what we're building.
-- `spec/plan/planned-calculator-substrate-audit-2026-05-06.md` —
-  substrate ↔ planned-calculator mapping.
-- `spec/PLANNED_CALCULATORS_2026-04-22.md` +
-  `spec/PLANNED_CALCULATORS_TIME_SERIES_2026-04-24.md` +
-  `spec/POLARISABILITY_ROADMAP_2026-04-13.md` — earlier planned-calc
-  snapshots; kept per user direction (planned-calc docs are exempt
-  from retirement).
+
+The project is code-complete: the planned-calculator docs (the
+calculator inventory, the substrate audit, and the PLANNED_CALCULATORS /
+POLARISABILITY_ROADMAP snapshots) were retired to `spec/plan/bones/`
+when the calculators landed — they described work now built.
 
 ## Tracking
 

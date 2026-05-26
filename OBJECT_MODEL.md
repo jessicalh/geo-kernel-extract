@@ -2930,7 +2930,7 @@ cross-TR reads and test assertions.
 **Finalized rollup fields** — `WelfordMoments` substructs grouped into
 per-Welford state substructs on `TrajectoryAtom`, one writer (TR) per
 substruct. Post-Phase-2b expansion shape (see
-`spec/plan/welford-data-shape-design-2026-05-17.md` and PATTERNS Lesson
+`spec/plan/bones/welford-data-shape-design-2026-05-17.md` (bones) and PATTERNS Lesson
 25 for the design rationale):
 
 | Substruct field | Channels | Writer                           |

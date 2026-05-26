@@ -1057,8 +1057,9 @@ with bespoke per-test configs want named profiles. Same root —
 undifferentiated stuff at one level. Same fix — internal structure
 where structure exists.
 
-See `spec/plan/welford-data-shape-design-2026-05-17.md` for the
-landed Welford expansion specification.
+See `spec/plan/bones/welford-data-shape-design-2026-05-17.md` (bones)
+for the landed Welford expansion design rationale; the authoritative
+shape table is in OBJECT_MODEL.md.
 
 ---
 

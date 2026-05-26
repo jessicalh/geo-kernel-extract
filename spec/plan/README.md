@@ -2,19 +2,17 @@
 
 Small directory. Contains:
 
-- `comprehensive-calculator-inventory-2026-04-30.md` — full
-  planned-calculator inventory. This is what we're building.
-- `planned-calculator-substrate-audit-2026-05-06.md` — substrate ↔
-  planned-calculator mapping.
+- `cleanup-config-cmake-audit-2026-05-25.md` — working inventory for the
+  general cleanup, runtime/config cleanup, and CMake/install cleanup pass.
 - `bones/` — retired design records, working notes, session handoffs.
   **Archaeology only — do not consult to drive new work.** Decisions
   themselves are in `master`; bones is prose history.
 
-That's it. The 2026-05-13 audit-and-bones pass moved all other
-session-time planning artifacts to `bones/`. Earlier planned-calc
-snapshots live at the spec root: `spec/PLANNED_CALCULATORS_2026-04-22.md`,
-`spec/PLANNED_CALCULATORS_TIME_SERIES_2026-04-24.md`,
-`spec/POLARISABILITY_ROADMAP_2026-04-13.md`.
+That's it. The project is code-complete: the planned-calculator docs
+(inventory, substrate audit, the PLANNED_CALCULATORS /
+POLARISABILITY_ROADMAP snapshots) and the landed design notes
+(welford-data-shape, test-suite-realignment, adversarial-review-prompt)
+were retired to `bones/` once the work landed. Nothing is exempt.
 
 ## Discipline
 

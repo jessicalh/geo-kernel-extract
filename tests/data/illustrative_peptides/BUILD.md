@@ -1,6 +1,6 @@
 # Illustrative test peptides — build instructions
 
-Per `spec/PLANNED_CALCULATORS_2026-04-22.md` Amendment 2026-05-08(c).
+Per `spec/plan/bones/PLANNED_CALCULATORS_2026-04-22.md` (bones) Amendment 2026-05-08(c).
 Two reference structures used by the calculator-walkthrough Mathematica
 workbook chapters: a folded mini-protein (Trp-cage) for citation-friendly
 illustrations and a designed all-canonical peptide (synthetic 22-mer)
