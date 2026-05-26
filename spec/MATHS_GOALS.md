@@ -146,7 +146,9 @@ Each calculator must produce the correct answer from its equation
 before any parameter correction is applied. The default-parameter
 path must match published analytical results for known test geometries.
 
-**The eight calculators and their equations:**
+**The classical calculators and their equations** (the eight EM kernels
+below; the production stack adds APBS, AIMNet2, EEQ, SASA, water/
+hydration, tripeptide, Larsen — catalogued in OBJECT_MODEL.md):
 
 #### 1. Biot-Savart ring current
 Johnson-Bovey double-loop model (Johnson & Bovey 1958).
@@ -390,8 +392,8 @@ compared to the DFT delta.
 
 **References:**
 - CONSTITUTION.md: "Mutant Comparison: First-Class Operation"
-- CONSTITUTION.md: MutantProteinConformationComparison sealed ABC
-- REWRITE_DECISIONS.md: mutant strategy (3 new categories planned)
+- MutationDeltaResult is the realized API; the old
+  MutantProteinConformationComparison sealed-ABC design was superseded
 
 ---
 
@@ -402,27 +404,26 @@ compared to the DFT delta.
 - [x] PDB loading with correct residue/ring/bond types (DONE)
 - [x] DSSP assignments match known 1UBQ structure (DONE, 6 tests)
 - [x] APBS E-field is real PB solve, not vacuum (DONE, 3 tests)
-- [ ] APBS EFG is traceless (verify)
+- [x] APBS EFG is traceless (ApbsFieldResult symmetrizes + de-traces)
 - [x] ff14SB charges: total charge is integer on protonated structures
-      (DONE — PrmtopChargeSource on ORCA prmtop gives -4.0 exact;
-      GmxTprChargeSource on CHARMM .tpr gives -2.0 exact)
+      (DONE — PrmtopChargeSource on AMBER prmtop gives -4.0 exact)
 - [x] MOPAC charges computed on 1UBQ (DONE — 1231 atoms, charges
       reasonable, heat of formation negative, bond orders present)
 - [x] MOPAC bond orders reasonable (DONE — covalent bonds > 0.1,
       topology bridge verified, sorted descending per atom)
 - [x] Protonation detection matches hydrogen atoms (DONE, 11 tests —
-      works on PDB-standard and CHARMM naming, PROPKA agreement tested)
+      works on PDB-standard / AMBER naming)
 - [x] ORCA shielding tensors load correctly (DONE — dia+para+total,
       543 atoms element-verified, T0 matches raw output)
 - [x] ORCA mutant comparison (DONE — MutationDeltaResult with rich
       atom matching, delta tensors T0+T1+T2, ring proximity with
       cylindrical coords, distance decay curve. 465 pairs batch tested.)
-- [x] MD trajectory loading (DONE — GromacsEnsembleLoader reads TPR
-      via libgromacs, 10 MDFrameConformations per protein, full
-      pipeline per frame, 283 tests pass)
+- [x] MD trajectory loading (DONE — FullSystemReader parses GROMACS
+      production.tpr + .trr via libgromacs into MDFrameConformations,
+      full pipeline per frame)
 
 ### For each classical calculator (Layer 1+):
-All 8 calculators pass items 1-6. Item 7 requires calibrated parameters.
+All eight classical calculators pass items 1-6. Item 7 requires calibrated parameters.
 - [x] Equation matches literature reference
 - [x] Sign convention matches (proton above PHE → sigma > 0)
 - [x] Full rank-2 tensor output (T2 non-zero near relevant sources)

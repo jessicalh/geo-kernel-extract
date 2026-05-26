@@ -123,7 +123,7 @@ projection — **not** a diagonalization.
   `V_ab = q(3 r_a r_b / r⁵ − δ_ab / r³)` accumulated over neighbours, then
   `σ −= (tr σ / 3)·I`. Each term is traceless analytically (Gauss/Laplace),
   but float accumulation breaks it, so the projection is applied before
-  decomposition. Recurs across Coulomb (`CoulombResult.cpp:201`), AIMNet2
+  decomposition. Recurs across Coulomb (`CoulombResult.cpp:164,199`), AIMNet2
   (`AIMNet2Result.cpp:408,425`), APBS (`ApbsFieldResult.cpp:105,116`), and
   the ring kernels. This is the recurring **numerical-hygiene** pattern —
   symmetrize `½(M+Mᵀ)`, de-trace, then (in Coulomb) NaN/Inf-sanitize and

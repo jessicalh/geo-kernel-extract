@@ -99,20 +99,14 @@ the ProteinConformation.
 
 ```
 ProteinConformation (base -- NOT abstract, fully functional)
-+-- ExperimentalConformation
-|   +-- CrystalConformation
-|   |     resolution_angstroms, r_factor, temperature_kelvin, pdb_id
-|   +-- NMRConformation
-|         ensemble_member, restraint_count
-+-- ComputedConformation
-|   +-- PredictionConformation
-|   |     tool (AlphaFold/OpenFold3/ESMFold), confidence_per_residue
-|   +-- MinimisedConformation
-|   |     parent, method, force_field, energy, converged
-|   +-- MDFrameConformation
-|         frame_index, time_picoseconds, walker_index, boltzmann_weight
++-- CrystalConformation
+|     resolution_angstroms, r_factor, temperature_kelvin, pdb_id
++-- PredictionConformation
+|     method (AlphaFold/OpenFold3/ESMFold), confidence
++-- MDFrameConformation
+|     walker, time_picoseconds, weight, rmsd_nm, rg_nm
 +-- DerivedConformation
-      parent, derivation_description, properties_invalidated
+      derivation_description
 ```
 
 The base class does the heavy lifting: holds positions (const),
@@ -537,45 +531,36 @@ The alanine mutation delta-shielding pipeline must be working:
 - Results stored as OrcaShieldingResult on the ProteinConformation
 - This is the ground truth that the ML model learns to predict
 
-### Protonation tools
+### Protonation (upstream precondition)
 
-At least two protonation prediction tools, tested and integrated:
+Protonation is fixed BEFORE nmr_extract runs, not predicted inside it:
 
-- **PROPKA**: pKa prediction from structure. Given a PDB, returns
-  predicted pKa values for all titratable residues.
-- **KaML** (or equivalent second tool): ML-based pKa prediction.
-  Provides an independent estimate for comparison.
+- Mode 1 (`--pdb`) protonates a bare PDB with `reduce`
+  (ReduceProtonation).
+- Modes 2-5 ingest already-protonated input (`--protonated-pdb`, the
+  tleap/AMBER-prepared poses, GROMACS trajectories).
 
-The **copy-and-modify pattern** for generating conformations with
-different protonation states must be tested:
-
-1. Take an existing Protein with its ProteinConformations
-2. Copy it (proper copy constructor)
-3. Apply a new ProtonationState to the copy (e.g., different pH
-   from PROPKA predictions)
-4. Re-detect ring types (HIS variant may change)
-5. Re-run charge assignment (charges change with protonation)
-6. Re-run enrichment and extraction on the copy
-7. The delta between original and copy IS the experiment
-
-This is how pH scanning works: same protein, same geometry,
-different pH -> different protonation -> different charges ->
-different Coulomb field -> different predictions.
+The protonation variant (HID/HIE/HIP and the other titratable states)
+is read from the input hydrogens into a typed ProtonationState, and
+ring types follow. pKa-prediction tools (PROPKA, pdb2pqr) are an
+UPSTREAM preparation step: structures prepared with them are ingested,
+but nmr_extract does not run pKa prediction and has no in-pipeline pH
+scanning (out of scope per the canonical 5-mode spec in CLAUDE.md).
 
 ### MD frame loading
 
-- Reading trajectory frames (e.g., from OpenMM or AMBER) into typed
-  MDFrameConformation objects via the protein's factory method
+- Reading GROMACS trajectory frames (production.tpr + .trr/.xtc + .edr,
+  via FullSystemReader) into typed MDFrameConformation objects
 - Each frame carries: frame_index, time_picoseconds, walker_index,
-  boltzmann_weight
+  boltzmann_weight, rmsd, rg
 - Positions are const on each MDFrameConformation
-- Ensemble analysis: one protein, many MDFrameConformations, each
-  independently enriched and extracted
+- Per-frame analysis: one protein, many MDFrameConformations, each
+  independently enriched and extracted (the TrajectoryProtein path)
 
 ### Layer 0 acceptance criteria
 
-All of the above must have passing unit tests before any agent
-proceeds to implement result types (Layer 2 and beyond). Specifically:
+Layer 0 is the preprocessing layer; its responsibilities, all covered
+by passing unit tests:
 
 - PDB loads and produces a Protein with a CrystalConformation
 - Bonds are detected and typed correctly
@@ -585,9 +570,7 @@ proceeds to implement result types (Layer 2 and beyond). Specifically:
 - Charge assignment runs and produces partial charges
 - APBS runs and produces solvated fields
 - ORCA outputs load and delta tensors are computed correctly
-- PROPKA runs and produces pKa predictions
-- The copy-and-modify pattern works: copy protein, change protonation,
-  verify ring types and charges update
+- Protonation variants (HID/HIE/HIP) are read correctly from input
 - MD frames load as MDFrameConformations with correct metadata
 
 ---
@@ -771,11 +754,11 @@ scalars destroys information that cannot be recovered.
 - Per-ring attribution
 
 **McConnell bond anisotropy (McConnellResult):**
-- Mat3: dipolar tensor per bond
+- Mat3 (per bond): dipolar kernel K_ab; the per-atom sum is the full
+  asymmetric McConnell tensor M (mc_shielding_contribution, T0+T1+T2)
 - sphericart: T0, T1[3], T2[5]
-- Per-bond-category subtotals (PeptideCO, PeptideCN, BackboneOther,
-  SidechainCO, Aromatic, Disulfide, SidechainOther) as separate
-  Mat3 + sphericart each
+- Per-category T2 subtotals: backbone, sidechain, aromatic (grouped
+  from the bond categories), plus nearest-CO and nearest-CN
 - Scalar McConnell factor (3cos^2 theta - 1)/r^3 is derived FROM the
   tensor trace, not computed instead of the tensor
 
@@ -783,8 +766,8 @@ scalars destroys information that cannot be recovered.
 - Vec3: electric field E at the point
 - Mat3: electric field gradient tensor V_ab
 - sphericart: T0, T1[3], T2[5] of V_ab
-- Decomposed: backbone vs sidechain vs solvent contributions
-  (separate Vec3 and Mat3 for each)
+- Decomposed: E-field backbone/sidechain/aromatic; EFG backbone/aromatic
+  (no sidechain EFG member); solvent (E and EFG) only when APBS present
 
 **Pi-quadrupole (PiQuadrupoleResult):**
 - Mat3: quadrupole EFG tensor
