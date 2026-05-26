@@ -74,8 +74,8 @@ p.mcconnell             McConnellGroup
 p.coulomb               CoulombGroup
   .shielding            ShieldingTensor (N, 9)
   .E                    VectorField (N, 3)
-  .efg_backbone         EFGTensor (N, 9)
-  .efg_aromatic         EFGTensor (N, 9)
+  .efg_backbone         EFGTensor (N, 5) — T2-only, symmetric-traceless
+  .efg_aromatic         EFGTensor (N, 5) — T2-only
   .scalars              CoulombScalars (N, 4)
 
 p.hbond                 HBondGroup
@@ -103,7 +103,7 @@ p.mopac                 MopacGroup | None
 
 p.apbs                  APBSGroup | None
   .E                    VectorField (N, 3)
-  .efg                  EFGTensor (N, 9)
+  .efg                  EFGTensor (N, 5) — T2-only, symmetric-traceless
 
 p.orca                  OrcaGroup | None
   .total                ShieldingTensor (N, 9)
@@ -119,15 +119,17 @@ p.delta                 DeltaGroup | None
 p.aimnet2               AIMNet2Group | None
   .charges              AIMNet2Charges (N,) — Hirshfeld charges
   .aim                  AIMNet2AimEmbedding (N, 256) — electronic structure embedding
-  .efg                  EFGTensor (N, 9) — Coulomb EFG from AIMNet2 charges
-  .efg_aromatic         EFGTensor (N, 9) — aromatic decomposition
-  .efg_backbone         EFGTensor (N, 9) — backbone decomposition
+  .efg                  EFGTensor (N, 5) — Coulomb EFG from AIMNet2 charges (T2 only)
+  .efg_aromatic         EFGTensor (N, 5) — aromatic decomposition
+  .efg_backbone         EFGTensor (N, 5) — backbone decomposition
+  .charge_response_gradient         AIMNet2ChargeResponseGradient (N, 3) | None — d(sum q_j^2)/d(r_i)
+  .charge_response_gradient_scalar  ndarray (N,) | None — L2 norm of the gradient vector
 
 p.water_field           WaterFieldGroup | None — trajectory path only
   .efield               VectorField (N, 3) — total water E-field (V/A)
   .efield_first         VectorField (N, 3) — first-shell E-field (<3.5A)
-  .efg                  EFGTensor (N, 9) — total water EFG (SphericalTensor)
-  .efg_first            EFGTensor (N, 9) — first-shell EFG
+  .efg                  EFGTensor (N, 5) — total water EFG (T2 only)
+  .efg_first            EFGTensor (N, 5) — first-shell EFG (T2 only)
   .shell_counts         ndarray (N, 2) — [n_first_shell, n_second_shell]
 
 p.hydration             HydrationGroup | None — trajectory path only
@@ -146,13 +148,53 @@ p.eeq                   EeqGroup | None
   .charges              ndarray (N,) — EEQ partial charges (elementary charges)
   .cn                   ndarray (N,) — coordination number (erfc counting)
 
-p.gromacs_energy        ndarray (1, 9) | None — per-frame GROMACS energy
-                        [time_ps, Coul_SR, Coul_recip, Coul_14, LJ_SR, potential, T, P, V]
+p.gromacs_energy        ndarray (F, 42) | None — per-frame GROMACS energy, 42 cols
+                        (electrostatic, bonded, VdW, thermo, box, virial,
+                        pressure tensor, per-group T) — trajectory path
+p.bonded_energy         ndarray (N, 7) | None — per-atom GROMACS bonded terms
+                        (bond, angle, Urey-Bradley, proper, improper, CMAP, total)
+                        kJ/mol — trajectory path
+
+p.planar_geometry       PlanarGeometryGroup | None
+  .pyramidalization     ndarray (N,) — signed sp2 out-of-plane displacement (A)
+  .omega_actual         ndarray (R,) — per-residue omega (Ca-C-N-Ca'), radians
+  .omega_deviation      ndarray (R,) — omega - pi, wrapped
+  .omega_is_xpro        ndarray (R,) — X->Pro mask (cis/trans is real signal there)
+  .aromatic_chi2        ndarray — per-aromatic-ring chi2 (ring-flip observable)
+  .pucker_Q             ndarray — Cremer-Pople amplitude (saturated 5-rings, A)
+  .pucker_theta         ndarray — Cremer-Pople phase (degrees)
+  (omega_*_per_atom(p.residue_index) project residue arrays onto atom rows)
+
+p.topology              TopologyGroup — sidecar tables (always present on load)
+  .residues             Residues — per-residue records (names, links, flags)
+  .bonds                Bonds — per-bond records (order, category, flags)
+  .rings                Rings — per-ring records (kind, type, residue)
+  .ring_membership      RingMembership — (ring, vertex-atom) rows
+  .manifest             ExtractionManifest — axis sizes, validated at load()
+
+p.category_info         CategoryInfo | None — per-atom AMBER/IUPAC/BMRB names
+                        + typed substrate fields (CategoryInfoProjection)
+
+p.tripeptide            TripeptideGroup | None — ProCS15/Larsen DFT (tensorcs15 DSN)
+  .bb_shielding         ShieldingTensor (N, 9) — sigma_BB^i, ppm
+  .bb_residual_vec      VectorField (N, 3) — central-match residual (Vec3 feature)
+  .bb_match_distance    ndarray (N,) — |residual_vec| (A)
+  .bb_method_tag        ndarray (N,) — 0=none, 1=OPBE Gaussian, 2=PBE ORCA
+  .neighbor_shielding   ShieldingTensor (N, 9) — delta-sigma_BB^{i±1} (Larsen Eq 3)
+  .neighbor_residual_vec_prev/_next   VectorField (N, 3) — per-direction cap residuals
+
+p.larsen_hbond          LarsenHBondGroup | None — Larsen 2015 H-bond terms (ppm)
+  .shielding            ShieldingTensor (N, 9) — sum of the four Table-2 classes
+  .pHB_1 .pHB_2         ShieldingTensor (N, 9) — primary/secondary amide-H (HB)
+  .pHaB_1 .pHaB_2       ShieldingTensor (N, 9) — primary/secondary Halpha (HaB)
+  .diagnostic_CB        ShieldingTensor (N, 9) — Cbeta reality-check (should be ~0)
+  .water_term           ndarray (N,) — 2.07 ppm on solvent-exposed amide H
+  .count                ndarray (N,) — contributing H-bond pair count
 ```
 
 ## Tensor types
 
-### SphericalTensor (and ShieldingTensor, EFGTensor)
+### SphericalTensor (and ShieldingTensor)
 
 9-component packing: [T0, T1[3], T2[5]].
 
@@ -171,6 +213,24 @@ st.T2_magnitude         # ndarray (N,) — L2 norm of T2
 ```
 
 T2 component ordering matches e3nn.  No permutation needed.
+
+### EFGTensor
+
+A SEPARATE 5-component class (NOT a SphericalTensor) — symmetric-traceless
+T2 only, Irreps `1x2e`.  Every EFG in the codebase (Coulomb, MOPAC Coulomb,
+water, AIMNet2, APBS) is symmetric-traceless by construction, so T0 (trace)
+and T1 (antisymmetric) are structural zeros and are not stored.
+
+```python
+efg = p.coulomb.efg_backbone
+
+efg.data                # ndarray (N, 5) — m = -2, -1, 0, +1, +2
+efg.torch()             # torch.Tensor (N, 5)
+efg.irreps              # Irreps("1x2e")
+```
+
+Construction raises on a 9-column array (the pre-2026-05-18 packing);
+migrate older NPYs in place with `T2 = old[..., 4:9]`.
 
 ### VectorField
 
@@ -211,7 +271,7 @@ mc.as_block()           # ndarray (N, 5, 5)
 
 ## RingContributions
 
-Sparse (P, 59) table — one row per (atom, ring) pair.
+Sparse (P, 58) table — one row per (atom, ring) pair.
 
 ```python
 rc = p.ring_contributions
@@ -241,7 +301,7 @@ rc.for_atom(42)         # RingContributions — rows for atom 42
 rc.for_ring_type(RingType.PHE)  # rows for PHE rings only
 ```
 
-### Column layout (59 columns)
+### Column layout (58 columns)
 
 ```
 [0]     atom_index
@@ -332,6 +392,73 @@ D4 element parameters (chi, gam, kappa, rcov, rad) are in
 `PhysicalConstants.h` (`D4EeqParamsFor()`), from Table S1 of
 Caldeweyher et al. (2019).  All in atomic units (Hartree, Bohr).
 Fixed reference data, not tuneable.
+
+## Load a trajectory
+
+```python
+from nmr_extract import load_trajectory
+
+traj = load_trajectory("output/trajectory.h5")                  # rollups + timelines
+traj = load_trajectory("output/trajectory.h5",
+                       load_optional_large=True)                # + 256-dim AIMNet2 embedding
+```
+
+Returns a `TrajectoryData` for one protein from the analysis H5 master
+file (each C++ `TrajectoryResult` writes its own `/trajectory/<group>/`).
+The reader detects the schema (current per-TR analysis vs legacy ensemble)
+and normalises positions to `(T, N, 3)`.
+
+```
+traj.protein_id         str
+traj.n_atoms / n_frames int
+traj.positions          ndarray (T, N, 3) — atom-major per frame
+traj.frame_times        ndarray (T,) — ps
+```
+
+### Group accessors
+
+One accessor per TrajectoryResult family.  A field (or its sub-fields) is
+`None` when that TR did not run for the extraction that produced the H5 —
+the MOPAC groups in particular are absent unless the run was FullFat
+(`--mopac`).
+
+```
+traj.welford            WelfordAccess — per-atom mean/variance over frames
+                        (bs / hm / mcconnell / eeq / sasa / hbond-count)
+traj.energy             EnergyAccess — per-frame GROMACS + bonded energy timeline
+traj.water_field        WaterFieldAccess — water E-field/EFG (time-series + Welford)
+traj.hydration_geometry HydrationGeometryAccess — SASA-normal water polarisation
+traj.hydration_shell    HydrationShellAccess — COM-based water shell features
+traj.dssp8              Dssp8Access — 8-state SS time-series + transitions
+traj.dihedrals          DihedralTimeSeriesGroup | None — per-residue phi/psi/chi
+traj.dihedral_bin_transitions  | None — rotamer / Ramachandran transitions
+traj.ring_pucker        RingPuckerTimeSeriesGroup | None — per-ring Cremer-Pople timeline
+traj.j_coupling         JCouplingTimeSeriesGroup | None — Karplus 3J observables
+traj.ring_neighbourhood_trajectory_stats  | None — per-(atom,ring) geometric residual
+traj.rmsd_tracking      RmsdTrackingGroup | None — backbone RMSD vs frame 0
+traj.apbs_efg           ApbsEfgTimeSeriesGroup | None — solvated EFG TS (T2-only)
+
+# AIMNet2 fleet trio
+traj.aimnet2_embedding                          256-dim per-atom (load_optional_large=True)
+traj.aimnet2_charge_response_gradient           Vec3 + scalar per frame
+traj.aimnet2_charge_response_gradient_welford   rollup of the above
+
+# MOPAC family — FullFat (--mopac) runs only; absent otherwise
+traj.mopac_charge_welford / traj.mopac_bond_order_welford
+traj.mopac_coulomb_shielding_time_series        (T2-only)
+traj.mopac_mc_shielding_time_series             (T0+T1+T2)
+traj.mopac_vs_ff14sb_reconciliation             signed cos(MOPAC_T2, FF14SB_T2)
+
+# Frame selection + legacy
+traj.selections         dict[kind -> list[SelectionRecord]] (RMSD spikes, chi rotamers, DFT poses)
+traj.rollup / traj.bonds  legacy ensemble-schema rollups only (None on analysis H5)
+```
+
+The classical per-frame shielding time-series (bs / hm / mcconnell /
+pi-quadrupole / ring-susceptibility / dispersion / hbond) and the
+tripeptide / Larsen shielding time-series are written to
+`/trajectory/*_time_series/` by their C++ TRs; consult `CATALOG` and
+`nmr_extract._trajectory` for the current set of typed accessors.
 
 ## Catalog
 
