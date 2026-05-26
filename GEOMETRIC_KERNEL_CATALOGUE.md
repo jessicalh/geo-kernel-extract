@@ -387,13 +387,13 @@ Buckingham effect converts these to shielding perturbations.
 
 Electric field (rank-1, Vec3):
 ```
-E_a(i) = sum_j q_j * (r_j - r_i)_a / |r_j - r_i|^3
+E_a(i) = sum_j q_j * (r_i - r_j)_a / |r_i - r_j|^3
 ```
 
 Electric field gradient (rank-2, Mat3, TRACELESS by Gauss's law):
 ```
-V_ab(i) = sum_j q_j * [3 (r_j-r_i)_a (r_j-r_i)_b / |r_j-r_i|^5
-                       - delta_ab / |r_j-r_i|^3]
+V_ab(i) = sum_j q_j * [3 (r_i-r_j)_a (r_i-r_j)_b / |r_i-r_j|^5
+                       - delta_ab / |r_i-r_j|^3]
 ```
 
 Note: V_ab is the SAME dipolar kernel K_ab, weighted by charge q_j

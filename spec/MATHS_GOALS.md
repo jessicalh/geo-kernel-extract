@@ -172,15 +172,22 @@ Key difference from BS: produces rank-2 tensor (not rank-1). BS and HM
 make opposing T2 predictions at the same geometry.
 
 #### 3. McConnell bond anisotropy
-McConnell 1957. Dipolar kernel from bond midpoint.
+McConnell 1957. Full asymmetric shielding tensor from bond midpoint
+(NOT the dipolar kernel alone — see GEOMETRIC_KERNEL_CATALOGUE.md).
 
 ```
-T_ab = Delta_chi * (3 * d_a * d_b / r^5 - delta_ab / r^3)
-f_McConnell = (3 * cos^2(theta) - 1) / r^3   [derived FROM tensor trace]
+M_ab = 9 * cos(theta) * d_a * b_b      (asymmetric coupling -> T1)
+     - 3 * b_a * b_b                   (bond-axis projection -> T0)
+     - (3 * d_a * d_b - delta_ab)      (dipolar kernel K -> T2)
+sigma_ab    = (Delta_chi / 3) * M_ab / r^3
+K_ab        = (3 * d_a * d_b / r^5 - delta_ab / r^3)   (T2 sub-kernel)
+f_McConnell = (3 * cos^2(theta) - 1) / r^3   [= Tr(M)/r^3, derived]
 ```
 
-The scalar factor is DERIVED from the full tensor. Never computed
-instead of the tensor.
+d_hat = unit vector midpoint->atom, b_hat = bond direction,
+cos(theta) = d_hat . b_hat. The full M is asymmetric and non-traceless;
+the symmetric-traceless dipolar kernel K and the scalar f are derived
+sub-features, never computed instead of the tensor.
 
 Per-bond-category decomposition: PeptideCO, PeptideCN, BackboneOther,
 SidechainCO, Aromatic, SidechainOther.
@@ -191,9 +198,9 @@ Buckingham 1960.
 ```
 sigma_Buckingham = A_elem * E_z + B_elem * E_z^2     (T0)
 T2_Buckingham = gamma_elem * EFG_T2                   (T2)
-E_a = sum_j [ q_j * (r_j - r_i)_a / |r_j - r_i|^3 ]
-V_ab = sum_j [ q_j * (3*(r_j-r_i)_a*(r_j-r_i)_b / |r_j-r_i|^5
-                      - delta_ab / |r_j-r_i|^3) ]
+E_a = sum_j [ q_j * (r_i - r_j)_a / |r_i - r_j|^3 ]
+V_ab = sum_j [ q_j * (3*(r_i-r_j)_a*(r_i-r_j)_b / |r_i-r_j|^5
+                      - delta_ab / |r_i-r_j|^3) ]
 ```
 
 Element-dependent coefficients. E-field from ChargeAssignmentResult
@@ -204,10 +211,16 @@ solvent (APBS - vacuum).
 Buckingham 1959. Axial quadrupole from pi-electron density.
 
 ```
-V_quad = Q * (3*cos^2(theta) - 1) / r^4
-V_ab = Q * [ 15*dn^2*d_a*d_b/r^7 - 3*dn*(n_a*d_b + n_b*d_a)/r^5
-           - 3*d_a*d_b/r^5 + delta_ab*(3*dn^2/r^5 - 1/r^3) ]
+V_scalar = Q * (3*cos^2(theta) - 1) / r^4     (Buckingham A-term, T0)
+G_ab = Q * [ 105*dn^2*d_a*d_b/r^9
+           - 30*dn*(n_a*d_b + n_b*d_a)/r^7
+           - 15*d_a*d_b/r^7
+           + 6*n_a*n_b/r^5
+           + delta_ab*(3/r^5 - 15*dn^2/r^7) ]
 ```
+dn = d.n (atom height above ring plane), n = ring normal,
+d = atom - ring_center. EFG from a quadrupole involves 4th
+derivatives of 1/r, hence leading 1/r^5 tensor decay (NOT 1/r^3).
 
 #### 6. Ring susceptibility anisotropy
 McConnell 1957 applied to whole-ring diamagnetic susceptibility.

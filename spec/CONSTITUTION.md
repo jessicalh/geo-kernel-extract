@@ -762,10 +762,12 @@ scalars destroys information that cannot be recovered.
   (for the nearest ring, stored on the atom)
 
 **Haigh-Mallion surface integral (HaighMallionResult):**
-- Mat3: full rank-2 tensor (NOT rank-1)
-- sphericart: T0, T1[3], T2[5]
-- Vec3: effective B-field (from the B-field integral, separate
-  from the tensor integral)
+- Mat3 H: raw surface-integral tensor (symmetric, traceless, pure T2)
+- Mat3 G: shielding kernel G_ab = -n_b * V_a (rank-1 outer product;
+  V = H . n is the effective field). G is the stored shielding
+  contribution that feeds the per-type sums.
+- sphericart: T0, T1[3], T2[5] of both H and G
+- Vec3: effective B-field V = H . n
 - Per-ring attribution
 
 **McConnell bond anisotropy (McConnellResult):**
@@ -810,7 +812,10 @@ scalars destroys information that cannot be recovered.
 - Vec3: solvated E-field
 - Mat3: solvated EFG (field gradient)
 - sphericart: T0, T1[3], T2[5] of the EFG
-- These are FROM APBS, not recomputed. The authoritative solvated answer.
+- The POTENTIAL phi is from APBS (full Poisson-Boltzmann). E = -grad(phi)
+  and EFG = grad(E) are obtained by central-difference finite-differencing
+  of the APBS potential grid (ApbsFieldResult.cpp). Authoritative because
+  phi carries the full PB solvation; the differencing only reads it.
 
 ### Anti-simplification rule
 
