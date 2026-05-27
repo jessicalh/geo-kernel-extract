@@ -39,8 +39,9 @@ double ChiRadians(const Vec3& p0, const Vec3& p1,
     return std::atan2(y, x);
 }
 
-// Three-bin classification of chi in radians. Bins are 120° segments
-// centered on +60° (gauche+), 180° (trans), and -60° (gauche-).
+// Three-bin classification of chi in radians. Strict ±120° boundaries:
+// trans is outside the interval, while exact boundary values land in the
+// gauche bins by the branch order below.
 ChiRotamerSelectionTrajectoryResult::RotamerBin
 BinForChi(double chi_rad) {
     using Bin = ChiRotamerSelectionTrajectoryResult::RotamerBin;

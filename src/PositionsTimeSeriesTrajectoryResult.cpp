@@ -99,9 +99,9 @@ void PositionsTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 // (Matrix<double,3,1> happens to be 3 contiguous doubles today, but
 // this is not a guarantee the library exposes and isn't a contract
 // we should rely on for correctness). Explicit component access is
-// the same pattern every future DenseBuffer<T> emitter uses —
-// DenseBuffer<Mat3> flattens via m(i,j), DenseBuffer<SphericalTensor>
-// flattens via .T0 / .T1[k] / .T2[k]. No layout assumptions.
+// the layout-safe pattern for DenseBuffer<T> emitters: a Mat3 emitter
+// should flatten via m(i,j), and a SphericalTensor emitter should
+// flatten via .T0 / .T1[k] / .T2[k]. No layout assumptions.
 
 void PositionsTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,

@@ -45,7 +45,7 @@
 // but conditionally attached by OperationRunner: if `tp.HasBondedParams()`
 // is false (no .tpr-derived bonded parameters available), the source
 // ConformationResult is silently skipped. Follows "absent, not faked":
-//   - Per-frame `conf.HasResult<BondedEnergyResult>()` check in Compute
+//   - Per-frame source-present check in Compute (`HasResult` or test bypass)
 //   - `source_attached_per_frame` mask emitted as H5 provenance
 //   - NaN-fill rows for source-absent frames
 //   - WriteH5Group skips entire group emission when source attached zero times

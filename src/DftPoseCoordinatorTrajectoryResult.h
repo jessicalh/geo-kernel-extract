@@ -9,10 +9,9 @@
 // ChiRotamerSelectionTrajectoryResult — and pushes a deduplicated
 // REDUCED set back into the same bag under THIS class's own kind.
 //
-// Dedup key: `(residue_index, frame_idx // 50)` ns-bucket per the
-// 13-TR plan. At 20 ps stride, 50 frames ≈ 1 ns. residue_index comes
-// from a record's `metadata["residue_index"]` if present (ChiRotamer
-// records carry it; RmsdSpike doesn't, so we substitute `-1` —
+// Dedup key: `(residue_index, floor(time_ps / 1000 ps))`. residue_index
+// comes from a record's `metadata["residue_index"]` if present
+// (ChiRotamer records carry it; RmsdSpike doesn't, so we substitute `-1` —
 // distinguishing whole-protein events from per-residue events).
 //
 // Within each (residue_index, ns_bucket) cell, keep the FIRST record
@@ -26,9 +25,10 @@
 // CROSS-RESULT READ (reader side):
 //   Reads `traj.Selections().ByKind<RmsdSpikeSelectionTrajectoryResult>()`
 //   and `traj.Selections().ByKind<ChiRotamerSelectionTrajectoryResult>()`
-//   at Finalize. Dependencies() lists both writer TRs so Phase 4
-//   ensures they ran first. Per PATTERNS.md §17, the cross-result
-//   read is warranted: the whole purpose of this TR is to reduce
+//   at Finalize. Dependencies() lists both writer TRs so Phase 4 validates
+//   that they are attached; RunConfiguration attaches them before this
+//   reducer. Per PATTERNS.md §17, the cross-result read is warranted:
+//   the whole purpose of this TR is to reduce
 //   the OTHER TRs' output streams; duplicating their accumulation
 //   would be wasteful AND the semantic coupling is explicit.
 //

@@ -5,7 +5,7 @@
 // parallel to BsWelfordTrajectoryResult which is the always-valid-
 // mid-stream rollup worked example.
 //
-// Every future time-series TrajectoryResult follows this shape:
+// This time-series TrajectoryResult follows this shape:
 //
 //   Compute   — append this frame's per-atom data to internal
 //               per-atom growing buffers. No TrajectoryAtom field
@@ -13,8 +13,8 @@
 //               Finalize.
 //   Finalize  — flatten internal buffers into a DenseBuffer<T>,
 //               transfer ownership to TrajectoryProtein via
-//               AdoptDenseBuffer<T>, record the frame_indices /
-//               frame_times so WriteH5Group has its provenance.
+//               AdoptDenseBuffer<T>. Frame indices / frame times were
+//               recorded during Compute for WriteH5Group provenance.
 //   WriteH5Group — retrieve the buffer via tp.GetDenseBuffer<T>,
 //               emit /trajectory/positions/{xyz,frame_indices,
 //               frame_times} with shape attributes.

@@ -151,8 +151,8 @@ void BondedEnergyTimeSeriesTrajectoryResult::WriteH5Group(
     // kernel-style models. Per-atom-sum gives the PROTEIN-only
     // bonded contribution; it does NOT reproduce the whole-system .edr
     // term because FullSystemReader filters bonded interactions to
-    // protein-slice atoms (src/FullSystemReader.cpp:329 — solvent
-    // bonded interactions are dropped).
+    // protein-slice atoms (FullSystemReader drops bonded interactions
+    // whose atoms are not all in the protein range).
     grp.createAttribute("split_convention",
         std::string("evenly_among_participating_atoms"));
     grp.createAttribute("split_convention_note",

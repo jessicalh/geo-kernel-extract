@@ -41,6 +41,7 @@
 //     pressure_tensor                                  (T, 9) float64 bar
 //     frame_indices                                    (T,)  uint64
 //     frame_times                                      (T,)  float64  ps
+//     energy_frame_times_ps                            (T,)  float64  ps
 //     attrs: result_name, n_frames, finalized, units = "kJ/mol"
 //            tensor_layout = "XX,XY,XZ,YX,YY,YZ,ZX,ZY,ZZ"
 //
@@ -49,7 +50,7 @@
 // is missing or `Trajectory::EnergyAtTime` returns null for a frame,
 // the source ConformationResult is silently skipped. Follows the
 // "absent, not faked" discipline (Larsen TR bundle, 2026-05-15):
-//   - Per-frame `conf.HasResult<GromacsEnergyResult>()` check in Compute
+//   - Per-frame source-present check in Compute (`HasResult` or test bypass)
 //   - `source_attached_per_frame` mask emitted as H5 provenance
 //   - NaN-fill scalar values for source-absent frames
 //   - WriteH5Group skips entire group emission when source attached zero times

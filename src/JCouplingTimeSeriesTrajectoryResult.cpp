@@ -35,8 +35,8 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 // per-channel convention and arithmetic bounds.
 
 
-// Dihedral helper — same atan2-based formulation as DihedralTimeSeries
-// .cpp:45, ChiRotamerSelection, PlanarGeometry, etc. NaN-on-degenerate
+// Dihedral helper — same atan2-based formulation as DihedralTimeSeries,
+// ChiRotamerSelection, PlanarGeometry, etc. NaN-on-degenerate
 // (collinear b2 or zero-norm n1/n2). Per PATTERNS Lesson 10
 // (equation in comment, no utility namespace).
 double Dihedral(const Vec3& p1, const Vec3& p2,
