@@ -1,5 +1,12 @@
 #pragma once
-// Core scalar/vector/tensor vocabulary shared across calculators.
+//
+// Core types for NMR shielding tensor calculations.
+//
+// Vec3 and Mat3 are Eigen types -- no wrapper, no indirection.
+// SphericalTensor decomposes a 3x3 tensor into irreducible representations.
+// Element enumerates the protein elements this library supports.
+// Enums for bond classification, atom roles, hybridisation, ring identity.
+//
 
 #include <Eigen/Dense>
 #include <array>
@@ -8,8 +15,17 @@
 
 namespace nmr {
 
+// ============================================================================
+// Linear algebra from Eigen, used everywhere.
+// ============================================================================
+
 using Vec3 = Eigen::Vector3d;
 using Mat3 = Eigen::Matrix3d;
+
+
+// ============================================================================
+// Element (enum) -- supported protein elements
+// ============================================================================
 
 enum class Element { H, C, N, O, S, Unknown };
 
@@ -44,7 +60,7 @@ inline int AtomicNumberForElement(Element e) {
     }
 }
 
-// Covalent radii in Angstroms.
+// Compile-time element properties (OBJECT_MODEL.md)
 inline double CovalentRadiusForElement(Element e) {
     switch (e) {
         case Element::H: return 0.31;
@@ -56,7 +72,6 @@ inline double CovalentRadiusForElement(Element e) {
     }
 }
 
-// Pauling electronegativity scale.
 inline double ElectronegativityForElement(Element e) {
     switch (e) {
         case Element::H: return 2.20;
@@ -68,7 +83,17 @@ inline double ElectronegativityForElement(Element e) {
     }
 }
 
+
+// ============================================================================
+// Hybridisation (enum)
+// ============================================================================
+
 enum class Hybridisation { sp, sp2, sp3, Unassigned };
+
+
+// ============================================================================
+// AtomRole (enum) -- NMR-relevant classification of each atom
+// ============================================================================
 
 enum class AtomRole {
     // Heavy backbone
@@ -96,6 +121,11 @@ enum class AtomRole {
     Unknown
 };
 
+
+// ============================================================================
+// BondOrder (enum)
+// ============================================================================
+
 enum class BondOrder {
     Single,
     Double,
@@ -105,7 +135,11 @@ enum class BondOrder {
     Unknown
 };
 
-// Finer than bond order; McConnell-style anisotropy uses these categories.
+
+// ============================================================================
+// BondCategory (enum) -- finer than Constitution minimum, needed for McConnell
+// ============================================================================
+
 enum class BondCategory {
     PeptideCO,
     PeptideCN,
@@ -117,13 +151,34 @@ enum class BondCategory {
     Unknown
 };
 
+
+// ============================================================================
+// HeuristicTier (enum)
+// ============================================================================
+
 enum class HeuristicTier { REPORT, PASS, SILENT };
+
+
+// ============================================================================
+// RingAromaticity and RingSize
+// ============================================================================
 
 enum class RingSize { FiveMembered = 5, SixMembered = 6 };
 
-// Ring-current strength class; None covers saturated rings.
+// Aromaticity classification for ring chemistries.
+// `None` covers saturated rings (Pro pyrrolidine); `Full` covers
+// six-membered aromatic carbocycles and the fully-conjugated indole
+// perimeter; `Reduced` covers five-membered aromatic heterocycles
+// like the indole pyrrole subring; `Weak` covers imidazoles
+// (His HID/HIE/HIP).
+// probable source: Joule & Mills, "Heterocyclic Chemistry" 5e (2010).
 enum class RingAromaticity { Full, Reduced, Weak, None };
 
+
+// ============================================================================
+// RingTypeIndex (enum) -- 9 ring types
+// ============================================================================
+//
 // Indices 0..kAromaticRingTypeCount-1 are aromatic ring chemistries;
 // indices kAromaticRingTypeCount..Count-1 are saturated. Calculator
 // per-aromatic-type accumulator arrays are sized
@@ -182,6 +237,10 @@ inline const char* RingTypeCode(RingTypeIndex t) {
 }
 
 
+// ============================================================================
+// AminoAcid (enum) -- the 20 standard amino acids
+// ============================================================================
+
 enum class AminoAcid {
     ALA, ARG, ASN, ASP, CYS, GLN, GLU, GLY,
     HIS, ILE, LEU, LYS, MET, PHE, PRO, SER,
@@ -192,6 +251,8 @@ AminoAcid AminoAcidFromThreeLetterCode(const std::string& code);
 std::string ThreeLetterCodeForAminoAcid(AminoAcid aa);
 bool IsAromaticAminoAcid(AminoAcid aa);
 
+
+// ============================================================================
 // SphericalTensor -- irreducible decomposition of a 3x3 tensor
 //
 // Any 3x3 tensor sigma decomposes uniquely into three parts:
@@ -201,6 +262,7 @@ bool IsAromaticAminoAcid(AminoAcid aa);
 //
 // T2 uses isometric normalization (real spherical harmonics).
 // This preserves the L2 norm: sum(|T2_m|^2) == sum(S_ij^2).
+// ============================================================================
 
 struct SphericalTensor {
     double T0 = 0.0;
@@ -254,6 +316,11 @@ struct SphericalTensor {
                         double magnitude_threshold) const;
 };
 
+
+// ============================================================================
+// CalculatorId (enum) -- identifies the calculator behind a result
+// ============================================================================
+
 enum class CalculatorId {
     BiotSavart, HaighMallion, McConnell, Coulomb,
     PiQuadrupole, RingSusceptibility, Dispersion, HBond,
@@ -261,6 +328,11 @@ enum class CalculatorId {
     WaterField, HydrationShell, HydrationGeometry, EEQ, PlanarGeometry,
     LarsenHBond
 };
+
+
+// ============================================================================
+// ProtonationTool (enum)
+// ============================================================================
 
 enum class ProtonationTool { PROPKA, KaML, TLeap, Manual };
 

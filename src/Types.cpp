@@ -6,6 +6,10 @@
 
 namespace nmr {
 
+// ============================================================================
+// SphericalTensor decomposition
+// ============================================================================
+//
 // The decomposition of a 3x3 tensor into irreducible representations:
 //
 //   sigma = T0*I + epsilon*T1 + S
@@ -16,6 +20,7 @@ namespace nmr {
 //
 // T2 components use isometric normalization (real spherical harmonics).
 // sum|T2_m|^2 = sum S_ij^2 (Frobenius norm preserved).
+//
 
 SphericalTensor SphericalTensor::Decompose(const Mat3& sigma) {
     SphericalTensor st;
@@ -116,6 +121,11 @@ double SphericalTensor::T2CosineWith(const SphericalTensor& other,
     }
     return T2InnerProduct(other) / (mag_a * mag_b);
 }
+
+
+// ============================================================================
+// AminoAcid convenience functions (delegate to AminoAcidType table)
+// ============================================================================
 
 // Forward-declared in Types.h, implemented here rather than requiring
 // AminoAcidType.h in every translation unit.
