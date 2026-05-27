@@ -6,6 +6,7 @@
 namespace nmr {
 
 void ProtonationState::AddResidue(ResidueProtonation decision) {
+    // Replace if a decision for this residue already exists.
     for (auto& r : residues_) {
         if (r.residue_index == decision.residue_index) {
             r = decision;
@@ -47,7 +48,7 @@ int ProtonationState::NetChargeForProtein(
     for (size_t ri = 0; ri < residue_types.size(); ++ri) {
         const AminoAcidType& aat = GetAminoAcidType(residue_types[ri]);
 
-        // Some non-titratable residues still carry formal charge.
+        // Non-titratable residues with formal charge still contribute.
         if (!aat.is_titratable) {
             charge += aat.charged_formal_charge;
             continue;
@@ -58,6 +59,9 @@ int ProtonationState::NetChargeForProtein(
             decision->variant_index < static_cast<int>(aat.variants.size())) {
             charge += aat.variants[decision->variant_index].formal_charge;
         } else {
+            // No decision or default state: use charged_formal_charge.
+            // At physiological pH: LYS(+1), ASP(-1), GLU(-1),
+            // HIS(+1 default but often 0 at pH 7)
             charge += aat.charged_formal_charge;
         }
     }

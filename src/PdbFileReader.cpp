@@ -7,6 +7,8 @@
 #include "AminoAcidType.h"
 #include "NamingRegistry.h"
 #include "OperationLog.h"
+// RuntimeEnvironment::Ff14sbParams() resolves the param file location.
+// Discovery: TOML config → NMR_FF14SB_PARAMS env → data/ff14sb_params.dat.
 #include <cif++.hpp>
 #include <cif++/pdb/pdb2cif.hpp>
 #include <dssp.hpp>
@@ -19,6 +21,13 @@
 namespace fs = std::filesystem;
 
 namespace nmr {
+
+
+// ============================================================================
+// Internal: parse a PDB string into a Protein.
+// This is the cif++ parsing logic. Used by BuildFromPdb on the
+// protonated PDB output from reduce.
+// ============================================================================
 
 static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                                           std::string& error) {
@@ -111,10 +120,41 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 res_idx = it->second;
             }
 
-            // NamingApplicator needs a residue-wide sibling snapshot, so
-            // atoms are staged before AddAtom.
+            // PDB LOADING BOUNDARY (the cifpp surface).
+            //
+            // Two-pass per-residue canonicalisation via the
+            // NamingApplicator. The first pass collects every atom's
+            // raw input name to form the sibling-set snapshot; the
+            // second pass calls applicator.Apply(ctx) per atom with
+            // the snapshot in NamingContext::sibling_input_names.
+            // Sibling-aware predicates examine the snapshot to decide
+            // whether to fire (e.g. PRO HD1->HD2 fires only when
+            // siblings show {HD1,HD2,no HD3}; on canonical {HD2,HD3}
+            // input the predicate evaluates false and the rule does
+            // not fire — the input passes through unchanged).
+            //
+            // source = NamingSource::CifppPdbInput. cifpp-loaded PDB
+            // files carry IUPAC / canonical-AMBER-ff14SB names; the
+            // applicator's pass-through branch in Resolve() returns
+            // them unchanged. Pre-Markley fixtures (LYN HZ1/HZ2 only,
+            // GLY collapsed-HA) have rules tagged AmberFf14SBCanonical
+            // that fire independent of source and produce canonical
+            // outputs.
+            //
+            // KNOWN GAP: the protonation variant is taken from the input
+            // structure, not inferred here — residues labelled
+            // "LYS" but structurally LYN (only HZ1/HZ2 NZ-H, no HZ3)
+            // canonicalise correctly during this load-time pass via
+            // the LYN HZ1/HZ2 sibling-aware shift rules (siblings
+            // {HZ1,HZ2,no HZ3} matches the LYN-pre-Markley pattern).
+            // The post-protonation second applicator pass at
+            // FinalizeConstruction is idempotent on the now-canonical
+            // names.
             const auto& applicator = GlobalNamingApplicator();
 
+            // First pass: harvest raw atom names for the sibling
+            // snapshot, plus the per-atom (element, position, alt-A
+            // gating) data we'll need for the second pass.
             struct PendingAtom {
                 std::string raw_name;
                 Element     elem;
@@ -134,12 +174,15 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 pending.push_back({atom.get_label_atom_id(), elem, Vec3(x, y, z)});
             }
 
+            // Compute the sibling snapshot once for the residue.
             std::vector<std::string> input_names;
             input_names.reserve(pending.size());
             for (const PendingAtom& p : pending) {
                 input_names.push_back(p.raw_name);
             }
-            // No heavy-atom parent names are available at PDB load time.
+            // Parent-input-name vector is empty (PdbFileReader doesn't
+            // resolve heavy-atom parents at load time; this happens in
+            // CovalentTopology::Resolve later).
             const std::vector<std::string> parent_names;
 
             const Residue& res_now = protein->ResidueAt(res_idx);
@@ -153,6 +196,7 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
                 res_now.sequence_number,
                 res_now.chain_id);
 
+            // Second pass: write atoms with canonical names.
             for (size_t k = 0; k < pending.size(); ++k) {
                 auto new_atom = Atom::Create(pending[k].elem);
                 new_atom->pdb_atom_name = canonical_names[k];
@@ -175,12 +219,20 @@ static std::unique_ptr<Protein> ParsePdb(const std::string& pdb_text,
     return protein;
 }
 
+
+// ============================================================================
+// BuildFromPdb: the public entry point.
+//
+// Read PDB → protonate with reduce → parse → assign charges → net charge.
+// ============================================================================
+
 BuildResult BuildFromPdb(const std::string& path, double pH) {
     BuildResult result;
 
     OperationLog::Scope scope("BuildFromPdb",
         path + " pH=" + std::to_string(pH));
 
+    // 1. Read original PDB content
     std::ifstream f(path);
     if (!f.is_open()) {
         result.error = "Cannot open '" + path + "'";
@@ -190,12 +242,14 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
                              std::istreambuf_iterator<char>());
     f.close();
 
+    // 2. Protonate with reduce
     std::string protonated = ProtonateWithReduce(pdb_content);
     if (protonated.empty()) {
         result.error = "reduce protonation failed for " + path;
         return result;
     }
 
+    // 3. Parse protonated structure
     std::string parse_error;
     result.protein = ParsePdb(protonated, parse_error);
     if (!result.protein) {
@@ -203,6 +257,7 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
         return result;
     }
 
+    // 4. Build context
     auto ctx = std::make_unique<ProteinBuildContext>();
     ctx->pdb_source = fs::path(path).filename().string();
     ctx->protonation_tool = "reduce";
@@ -210,6 +265,7 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
     ctx->force_field = "ff14SB";
     result.protein->SetBuildContext(std::move(ctx));
 
+    // 5. Resolve charge source through the typed dispatch.
     AmberSourceConfig source_config;
     source_config.flat_table_path = RuntimeEnvironment::Ff14sbParams();
     source_config.preparation_policy =
@@ -232,6 +288,7 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
         return result;
     }
 
+    // Compute net charge from charge sum
     auto& conf = result.protein->Conformation();
     if (!result.protein->PrepareForceFieldCharges(*result.charges, conf, charge_err)) {
         result.error = "charge preparation failed: " + charge_err;
@@ -251,11 +308,18 @@ BuildResult BuildFromPdb(const std::string& path, double pH) {
     return result;
 }
 
+
+// ============================================================================
+// BuildFromProtonatedPdb: load an already-protonated PDB, assign charges.
+// No reduce call. For test data and pre-processed inputs.
+// ============================================================================
+
 BuildResult BuildFromProtonatedPdb(const std::string& path) {
     BuildResult result;
 
     OperationLog::Scope scope("BuildFromProtonatedPdb", path);
 
+    // Read and parse directly — no reduce step
     std::ifstream f(path);
     if (!f.is_open()) {
         result.error = "Cannot open '" + path + "'";
@@ -272,11 +336,13 @@ BuildResult BuildFromProtonatedPdb(const std::string& path) {
         return result;
     }
 
+    // Build context
     auto ctx = std::make_unique<ProteinBuildContext>();
     ctx->pdb_source = fs::path(path).filename().string();
     ctx->force_field = "ff14SB";
     result.protein->SetBuildContext(std::move(ctx));
 
+    // Resolve charge source through the typed dispatch.
     AmberSourceConfig source_config;
     source_config.flat_table_path = RuntimeEnvironment::Ff14sbParams();
     source_config.preparation_policy =
