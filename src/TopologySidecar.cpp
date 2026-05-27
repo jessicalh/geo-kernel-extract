@@ -324,7 +324,7 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
     std::vector<unsigned char> buf(N * kRingRecordSize, 0);
 
     // Resolve fused-partner ids. The Ring struct's fused_partner_index is
-    // the aromatic-axis index (SIZE_MAX if not fused) per Ring.h:57.
+    // the aromatic-axis index (SIZE_MAX if not fused).
     // Aromatic rows occupy the prefix of rings.npy, so the absolute
     // ring_id is the same value here.
     size_t membership_rows = 0;

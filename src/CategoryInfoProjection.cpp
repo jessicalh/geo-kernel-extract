@@ -514,10 +514,10 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         //     + per-atom topology pointers) ──
         //
         // Per the 2026-05-13 topology sidecar landing. All six fields
-        // are projected from existing typed substrate (Residue.h:39-41
-        // for chain_id / sequence_number / insertion_code; Atom.h:29
-        // for parent_atom_index; LegacyAmberTopology.h:158 for
-        // AtomtypeString; AtomSemanticTable.h:877 for equivalence_class).
+        // are projected from existing typed model surfaces: Residue for
+        // chain_id / sequence_number / insertion_code, Atom for
+        // parent_atom_index, LegacyAmberTopology for AtomtypeString, and
+        // AtomSemanticTable for equivalence_class.
 
         PackString(reinterpret_cast<char*>(row + off), kS2, res.chain_id,
                    "chain_id", ai);
@@ -531,8 +531,8 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
         off += kS1;
 
         // parent_atom_index: Atom::parent_atom_index uses SIZE_MAX as the
-        // sentinel for non-hydrogen atoms (Atom.h:29). Project that to
-        // -1 in the int32 NPY column so consumers can mask via
+        // sentinel for non-hydrogen atoms. Project that to -1 in the
+        // int32 NPY column so consumers can mask via
         // ``data["parent_atom_index"] >= 0``.
         const int32_t parent_idx = (atom.parent_atom_index == SIZE_MAX)
             ? -1
@@ -549,11 +549,10 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                    "ff_atom_type_string", ai);
         off += kS4;
 
-        // equivalence_class: RDKit canonical-rank class from the
-        // generated substrate table (tools/topology/build_semantic_tables.cpp
-        // line 1934). Zero means "not assigned" — either substrate empty
-        // or a chemically-unique atom whose canonical_rank degenerated
-        // to 0 in the table generator.
+        // equivalence_class: RDKit canonical-rank class from the generated
+        // substrate table. Zero is a valid canonical-rank class; absent
+        // substrate also emits zero because this column has no separate
+        // missing-value sentinel.
         if (has_substrate) {
             const AtomSemanticTable& sem = protein.LegacyAmber().SemanticAt(ai);
             row[off++] = static_cast<int8_t>(sem.equivalence_class);
