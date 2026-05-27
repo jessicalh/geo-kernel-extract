@@ -87,8 +87,8 @@ void WaterFieldWelfordTrajectoryResult::Compute(
 
         // EFG SphericalTensor (total + first-shell). T0 and T1 channels
         // intentionally absent — water EFG is symmetric-traceless by
-        // construction (r⊗r outer products + explicit trace removal in
-        // WaterFieldResult.cpp:130,147). T2[5] + |T2| carry the signal.
+        // construction (r⊗r outer products + explicit trace removal).
+        // T2[5] + |T2| carry the signal.
         const SphericalTensor& efg  = a.water_efg_spherical;
         const SphericalTensor& efgf = a.water_efg_first_spherical;
         WelfordUpdate(w.efg_t2magnitude,        efg.T2Magnitude(), n_new, frame_idx);
@@ -106,7 +106,7 @@ void WaterFieldWelfordTrajectoryResult::Compute(
 
         w.n_frames = n_new;
 
-        // Delta variants on the 4 primary scalars
+        // Delta variants on the 3 primary scalars
         if (prev_valid_[i]) {
             const std::size_t dn_new = w.delta_n + 1;
             auto upd_deltas = [&](double curr, double prev,
@@ -367,7 +367,7 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
                 return get_w(i).efield_first_magnitude;
             });
 
-    // EFG: T0 scalar + per-component T1[3] / T2[5] + |T2|, both total and first-shell
+    // EFG: T2[5] + |T2|, both total and first-shell
     // EFG T0 emission intentionally absent — structurally zero
     // (see WaterFieldWelfordState class comment).
     // T1 not emitted — structurally zero (see TrajectoryAtom.h
@@ -400,7 +400,7 @@ void WaterFieldWelfordTrajectoryResult::WriteH5Group(
             });
 
     // Delta variants on the 3 primary scalars (efield_magnitude, n_first,
-    // n_second). efg_t0 deltas omitted — channel structurally zero.
+    // n_second). No EFG delta variants are emitted in this class.
     //
     // Each bundle carries:
     //   base       — H5 dataset name prefix

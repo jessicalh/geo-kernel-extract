@@ -70,7 +70,8 @@ void WaterFieldTimeSeriesTrajectoryResult::Compute(
             n_first_[i].push_back(static_cast<std::uint32_t>(a.water_n_first));
             n_second_[i].push_back(static_cast<std::uint32_t>(a.water_n_second));
         } else {
-            // Push zeros / defaults; NaN-fill at WriteH5Group via the mask.
+            // Push zeros / defaults; WriteH5Group uses the mask to emit
+            // NaN for floating datasets and a max-value sentinel for counts.
             efield_[i].push_back(Vec3::Zero());
             efield_first_[i].push_back(Vec3::Zero());
             efg_[i].push_back(SphericalTensor{});
@@ -135,10 +136,9 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("efield_normalization", std::string("cartesian"));
 
     // Water EFG layout: T2-only, 5 real-spherical-tesseral components.
-    // T0 = 0 (traceless projection in WaterFieldResult.cpp:147-150).
-    // T1 = 0 (water EFG built from r⊗r outer products → symmetric →
-    // antisymmetric pseudovector vanishes; src/WaterFieldResult.cpp:130,
-    // src/Types.cpp:28). Both T0 and T1 are STRUCTURAL zeros, not
+    // T0 = 0 after WaterFieldResult's traceless projection.
+    // T1 = 0 because water EFG is built from symmetric r⊗r outer products,
+    // so the antisymmetric pseudovector vanishes. Both T0 and T1 are STRUCTURAL zeros, not
     // numerical zeros from a particular run — so they are NOT emitted
     // (no kernel pollution / no consumer ambiguity).
     grp.createAttribute("efg_irrep_layout",
@@ -189,9 +189,9 @@ void WaterFieldTimeSeriesTrajectoryResult::WriteH5Group(
     emit_vec3("efield_first", efield_first_, "V/Angstrom");
 
     // EFG SphericalTensor flat as (N, T, 5) — T2 only. Water EFG is
-    // symmetric (built from r⊗r outer products in WaterFieldResult.cpp:130)
-    // and traceless-projected, so T0 = trace = 0 AND T1 = antisymmetric
-    // pseudovector = 0 are both structurally zero. Only T2 carries
+    // symmetric (built from r⊗r outer products) and traceless-projected,
+    // so T0 = trace = 0 AND T1 = antisymmetric pseudovector = 0 are
+    // both structurally zero. Only T2 carries
     // signal. Layout: m=-2,m=-1,m=0,m=+1,m=+2 (real-spherical-tesseral).
     auto emit_sph_t2 = [&](const std::string& name,
                            const std::vector<std::vector<SphericalTensor>>& src,

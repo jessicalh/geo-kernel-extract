@@ -5,11 +5,11 @@
 // channels per atom per frame:
 //
 //   water_efield           Vec3 (V/Å)            — total field (cutoff sphere)
-//   water_efield_first     Vec3 (V/Å)            — first-shell-only (< 3.5 Å)
-//   water_efg_spherical    SphericalTensor       — total EFG (T0+T1+T2)
+//   water_efield_first     Vec3 (V/Å)            — first-shell-only
+//   water_efg_spherical    SphericalTensor       — total EFG source; H5 emits T2 only
 //   water_efg_first_spherical SphericalTensor    — first-shell-only EFG
-//   water_n_first          int                   — water O count, 0..3.5 Å
-//   water_n_second         int                   — water O count, 3.5..5.5 Å
+//   water_n_first          int                   — water O count inside first-shell cutoff
+//   water_n_second         int                   — water O count between first/second cutoffs
 //
 // Storage: separate per-atom growing buffers, six in parallel. H5 emits
 // (N, T, ...) datasets per channel. No DenseBuffer adoption — water-field
@@ -50,9 +50,9 @@
 // conditionally attached by OperationRunner: if `opts.solvent` is null
 // or `opts.solvent->Empty()` (no solvent environment loaded), the source
 // ConformationResult is silently skipped. Follows "absent, not faked":
-//   - Per-frame `conf.HasResult<WaterFieldResult>()` check in Compute
+//   - Per-frame source-present check in Compute
 //   - `source_attached_per_frame` mask emitted as H5 provenance
-//   - NaN-fill atom-axis data for source-absent frames
+//   - NaN-fill float datasets and max-sentinel count datasets for source-absent frames
 //   - WriteH5Group skips entire group emission when source attached zero times
 //   - Protein-only extractions (no water in TPR) ⇒ group absent, not
 //     a hidden all-zero H5 group that mimics solvated runs.

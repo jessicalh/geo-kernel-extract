@@ -22,11 +22,10 @@
 // question. efg_t0 deltas are NOT emitted — T0 is structurally zero.
 //
 // EFG T0+T1 schema rev (2026-05-18 codex F4): water EFG is built from
-// symmetric r⊗r outer products (WaterFieldResult.cpp:130) and explicitly
-// traceless-projected (WaterFieldResult.cpp:147-150). After projection
+// symmetric r⊗r outer products and explicitly traceless-projected. After projection
 // T0 = trace = 0; T1 = antisymmetric pseudovector = 0 because the
-// decomposition reads `0.5*(s_ij - s_ji)` (Types.cpp:31) which is bit-
-// exact zero on symmetric input. Only T2 (symmetric-traceless,
+// decomposition reads `0.5*(s_ij - s_ji)`, which is bit-exact zero
+// on symmetric input. Only T2 (symmetric-traceless,
 // 5 real-spherical-tesseral components m=-2..+2) carries signal.
 //
 // Emission:
@@ -54,7 +53,7 @@
 // conditionally attached by OperationRunner: if `opts.solvent` is null
 // or `opts.solvent->Empty()` (no solvent environment loaded), the source
 // ConformationResult is silently skipped. Follows "absent, not faked":
-//   - Per-frame `conf.HasResult<WaterFieldResult>()` check in Compute
+//   - Per-frame source-present check in Compute
 //   - Source-absent frames SKIP Welford updates entirely (no biased zero
 //     accumulation) and SKIP prev_* cache updates (next-frame delta is
 //     not computed across a gap)
@@ -106,8 +105,7 @@ public:
 private:
     // Per-atom previous-frame caches for the delta trackers. No
     // prev_efg_t0_ cache — `efg_t0` channel removed per 2026-05-18
-    // adversarial review (structurally zero after the traceless
-    // projection in `WaterFieldResult.cpp:147-150`).
+    // adversarial review (structurally zero after the traceless projection).
     std::vector<double>      prev_efield_mag_;
     std::vector<double>      prev_n_first_;
     std::vector<double>      prev_n_second_;
