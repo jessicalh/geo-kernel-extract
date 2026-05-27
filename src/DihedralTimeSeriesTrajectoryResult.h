@@ -20,7 +20,7 @@
 //                   isomerism is real signal, not a deviation — use
 //                   the `omega_is_xpro` static mask to flag those rows
 //                   for consumer-side interpretation). Matches the
-//                   PlanarGeometryResult.cpp:302-303 production impl.
+//                   PlanarGeometryResult production implementation.
 //   chi             (R, T, 4) — NaN where chi[k] not structurally
 //                   cacheable for the residue's AminoAcidType OR
 //                   where per-frame geometry is degenerate (consumers
@@ -74,8 +74,8 @@
 // Convention pins (recorded as group attrs):
 //   - angles in radians
 //   - dihedral sign: IUPAC, atan2(y,x) with the standard 4-atom signed
-//     formulation in PlanarGeometryResult.cpp:35-46 / ChiRotamerSelection
-//     TrajectoryResult.cpp:22-40 — single implementation reused here.
+//     formulation used by PlanarGeometryResult and
+//     ChiRotamerSelectionTrajectoryResult.
 //   - phi   = C(i−1)-N(i)-Cα(i)-C(i)
 //     psi   = N(i)-Cα(i)-C(i)-N(i+1)
 //     omega = Cα(i)-C(i)-N(i+1)-Cα(i+1)

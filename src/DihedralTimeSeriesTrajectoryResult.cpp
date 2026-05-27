@@ -37,17 +37,16 @@ constexpr std::uint8_t kRamaOther      = 5;
 
 // Dihedral from four positions. Returns signed angle in radians in
 // [-π, π] (closed range — atan2 can return both -π and +π exactly).
-// Same atan2(y, x) formulation as PlanarGeometryResult.cpp:35-46 and
-// ChiRotamerSelectionTrajectoryResult.cpp:22-40, but with strict NaN
-// guards at every degeneracy site — the other two sites differ in
-// degenerate behaviour (PlanarGeometry NaN-propagates implicitly via
-// zero-norm normalize(); ChiRotamer returns 0.0). NaN is the honest
-// signal for "indeterminate angle" and lets consumers distinguish from
-// a real 0 rad measurement. Per PATTERNS.md the utility-namespace
-// anti-pattern blocks extracting a shared helper; equation in comment
-// per PATTERNS Lesson 10 ("Equations in comments, Eigen in code"). The
-// drift between the three sites is tracked as a follow-up audit per
-// feedback_audit_the_formula_family.
+// Same atan2(y, x) formulation as PlanarGeometryResult and
+// ChiRotamerSelectionTrajectoryResult, but with strict NaN guards at every
+// degeneracy site — the other two sites differ in degenerate behaviour
+// (PlanarGeometry NaN-propagates implicitly via zero-norm normalize();
+// ChiRotamer returns 0.0). NaN is the honest signal for "indeterminate
+// angle" and lets consumers distinguish from a real 0 rad measurement.
+// Per PATTERNS.md the utility-namespace anti-pattern blocks extracting a
+// shared helper; equation in comment per PATTERNS Lesson 10 ("Equations in
+// comments, Eigen in code"). The drift between the three sites is tracked
+// as a follow-up audit per feedback_audit_the_formula_family.
 //
 //   D(p1,p2,p3,p4) = atan2( (n1×b̂2)·n2, n1·n2 )
 //     b1 = p2−p1, b2 = p3−p2, b3 = p4−p3
@@ -146,10 +145,9 @@ std::uint8_t RamachandranBin(double phi_rad, double psi_rad) {
     return kRamaOther;
 }
 
-// Backbone connectivity is delegated to Protein::BackboneConnected
-// (the canonical query, 2026-05-19). All calc-side residue-adjacency
-// walks route through there; see PATTERNS.md and OBJECT_MODEL.md
-// "Backbone connectivity discipline."
+// Backbone connectivity is delegated to Protein::BackboneConnected and its
+// predecessor/successor helpers; this file's residue-adjacency walks route
+// through that bond-graph discipline.
 
 }  // anonymous namespace
 
@@ -296,11 +294,7 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
         // every well-defined peptide bond INCLUDING X→Pro (cis/trans
         // isomerism is real signal, not a deviation — use the
         // omega_is_xpro static mask to flag those rows). Matches the
-        // PlanarGeometryResult.cpp:302-303 production impl. The PG
-        // header doc at PlanarGeometryResult.h:18-23 claims NaN-fill
-        // for X→Pro; the PG IMPL emits the actual value. We align with
-        // PG impl; PG header doc is flagged as a follow-up audit per
-        // feedback_audit_the_formula_family.
+        // PlanarGeometryResult production implementation.
         const double omega_dev = std::isfinite(omega_val)
             ? WrapPi(omega_val - M_PI) : kNaN;
         omega_deviation_[ri].push_back(omega_dev);
@@ -329,11 +323,8 @@ void DihedralTimeSeriesTrajectoryResult::Compute(
 
 // ── Finalize ─────────────────────────────────────────────────────────
 //
-// Idempotent. Existing per-residue growth buffers stay populated until
-// WriteH5Group runs; if it has run, the buffers are swapped to empty and
-// a second Finalize is a no-op. (Same data-flow short-circuit pattern as
-// TripeptideBackboneShieldingTimeSeriesTrajectoryResult.cpp:75-93 per
-// feedback_bounds_check_over_state_flag.)
+// Idempotent in state: sets finalized_ true and leaves the per-residue
+// growth buffers populated for WriteH5Group.
 
 void DihedralTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
                                                   Trajectory& traj) {

@@ -26,9 +26,9 @@ namespace {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // Dihedral from four positions. Same atan2-based formulation as
-// PlanarGeometryResult.cpp:35-46, ChiRotamerSelectionTrajectoryResult.
-// cpp:22-40, and DihedralTimeSeriesTrajectoryResult.cpp:53-69. Returns
-// signed angle in radians in [-π, π]; NaN at degenerate inputs
+// PlanarGeometryResult, ChiRotamerSelectionTrajectoryResult, and
+// DihedralTimeSeriesTrajectoryResult. Returns signed angle in radians in
+// [-π, π]; NaN at degenerate inputs
 // (collinear b2, zero-norm n1 or n2) so consumers can distinguish
 // "indeterminate" from a real 0 rad measurement.
 //

@@ -25,9 +25,8 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 // Translate DsspResidue::HBondPartner.residue_index (size_t with
 // SIZE_MAX sentinel) to int32 with -1 sentinel. Out-of-range residue
-// indices are also treated as "no partner." Defensive INT32_MAX cap
-// (math-review MED-5, 2026-05-19) — n_res < ~10^4 in practice but the
-// narrowing cast was unguarded.
+// indices are also treated as "no partner." The INT32_MAX cap prevents
+// an unguarded narrowing cast.
 std::int32_t PartnerToInt32(std::size_t partner_idx, std::size_t n_res) {
     if (partner_idx >= n_res) return Dssp8TimeSeriesTrajectoryResult::kNoPartner;
     if (partner_idx > static_cast<std::size_t>(

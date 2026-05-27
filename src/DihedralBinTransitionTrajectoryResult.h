@@ -104,7 +104,7 @@ public:
     }
 
     // No ConformationResult dependency — reads positions + AminoAcidType
-    // chi_axes (via Residue.chi[k]) + Protein::BackbonePredecessor /
+    // chi_angles (via Residue.chi[k]) + Protein::BackbonePredecessor /
     // BackboneSuccessor each frame.
     std::vector<std::type_index> Dependencies() const override {
         return {};
