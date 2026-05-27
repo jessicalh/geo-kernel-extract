@@ -16,7 +16,7 @@
 // family per feedback_methods_accumulate — kernel-form and grid-form
 // H-bond shielding are both reportable methodologies.
 //
-// Emission:
+// Emission uses the SphericalTensor::PackFull9 payload order:
 //
 //   /trajectory/hbond_shielding_time_series/
 //     xyz            (N, T, 9)  float64

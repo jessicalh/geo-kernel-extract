@@ -197,7 +197,7 @@ int HBondCountWelfordTrajectoryResult::WriteFeatures(
 //
 // /trajectory/hbond_count_welford/ — expanded schema (Phase 2b + Commit C).
 //
-// Codex review (2026-05-17) surfaced four MEDIUM findings closed
+// Codex review (2026-05-17) surfaced schema findings closed
 // here:
 //
 //   (1) Per-dataset `units` attributes — occupancy_fraction_* is

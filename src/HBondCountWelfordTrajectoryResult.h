@@ -2,7 +2,8 @@
 //
 // HBondCountWelfordTrajectoryResult: running mean / variance / min / max
 // of per-atom H-bond count (`hbond_count_within_3_5A`, integer source,
-// pairs within 3.5 Å), accumulated across all frames.
+// pairs within hbond_counting_radius; default 3.5 Å), accumulated across
+// all frames.
 //
 // The count channel's running mean is fractional and represents the
 // trajectory-averaged **expected count** ⟨N⟩ of H-bond pairs at each
