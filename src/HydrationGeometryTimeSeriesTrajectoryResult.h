@@ -18,9 +18,9 @@
 // but conditionally attached by OperationRunner: if `opts.solvent` is null
 // or `opts.solvent->Empty()` (no solvent environment loaded), the source
 // ConformationResult is silently skipped. Follows "absent, not faked":
-//   - Per-frame `conf.HasResult<HydrationGeometryResult>()` check in Compute
+//   - Per-frame source-present check in Compute (`HasResult` or test bypass)
 //   - `source_attached_per_frame` mask emitted as H5 provenance
-//   - NaN-fill atom-axis data for source-absent frames
+//   - NaN-fill floating atom-axis data, sentinel-fill count data
 //   - WriteH5Group skips entire group emission when source attached zero times
 //
 // Emission:

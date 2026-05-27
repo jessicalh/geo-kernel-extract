@@ -282,9 +282,8 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
 
     // Vec3 channels: per-component
     static const std::array<const char*, 3> kXyz = {"x", "y", "z"};
-    // Dipole units: e·Å (raw H_charge·displacement sum from Water::Dipole(),
-    // SolventEnvironment.h:32-38). Convert to Debye via 1 e·Å = 4.80320 D
-    // if needed downstream. R5 codex 2026-05-18.
+    // Dipole units: e·Å (raw H_charge·displacement sum from Water::Dipole()).
+    // Convert to Debye via 1 e·Å = 4.80320 D if needed downstream.
     const std::string kDipole = "e_Angstrom";
     const std::string kDipoleSq = "e^2_Angstrom^2";
     const std::string kUnit = "dimensionless";
@@ -308,9 +307,8 @@ void HydrationGeometryWelfordTrajectoryResult::WriteH5Group(
     const std::string kFracSq = "fraction^2";
     const std::string kCos = "cos_angle";
     const std::string kCosSq = "cos_angle^2";
-    // dipole_coherence: source formula |Σ d_i|/n_shell is e·Å, NOT a
-    // [0,1] dimensionless order parameter. Same fix as the TS sibling,
-    // R6 codex 2026-05-18.
+    // dipole_coherence: source formula |Σ d_i|/n_shell is e·Å, not a
+    // [0,1] dimensionless order parameter.
     const std::string kOrd = "e_Angstrom";
     const std::string kOrdSq = "e^2_Angstrom^2";
     emit_1d("half_shell_asymmetry", kFrac, kFracSq,

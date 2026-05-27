@@ -154,10 +154,9 @@ void HydrationShellWelfordTrajectoryResult::Compute(
         }
         prev_half_shell_asymmetry_[i]  = hsa;
         prev_mean_water_dipole_cos_[i] = dpc;
-        // Only update prev_nearest_ion_distance_ when finite — otherwise
-        // the cached value stays at the last-known-finite, ready for
-        // the next attached+finite pair. prev_ion_finite_ records the
-        // CURRENT frame's finiteness for the next frame's pair test.
+        // Only update prev_nearest_ion_distance_ when finite. prev_ion_finite_
+        // records current finiteness so deltas form only across consecutive
+        // finite attached frames.
         if (ion_finite) prev_nearest_ion_distance_[i] = nid;
         prev_nearest_ion_charge_[i]    = nic;
         prev_ion_finite_[i]            = ion_finite;

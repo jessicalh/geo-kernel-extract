@@ -18,16 +18,10 @@
 // within cutoff carry +inf forever; consumers should `np.isfinite()` filter
 // the channel before naive aggregation.
 //
-// Welford inf-arithmetic, precise sequence (corrected R5 codex 2026-05-18):
-//   Frame 1 sample = +inf, mean = 0 → delta = +inf, new_mean = +inf,
-//                  m2 += inf · (inf - inf) = inf · NaN = NaN.
-//   So `m2` is NaN starting at n=1; `mean` is `+inf` at n=1.
-//   Frame 2 sample = +inf → delta = inf - inf = NaN, new_mean = NaN,
-//                  m2 += NaN · ... = NaN.
-//   `mean` poisons to NaN starting at n=2; `m2` stays NaN.
-// Downstream filter: `np.isfinite(welford.mean)` catches buried atoms
-// from n=2 onward. For n=1 (single attached frame), `mean=+inf` survives
-// — combine with `np.isfinite()` on mean if you want both branches caught.
+// The time-series stores HydrationShellResult's source-attached +infinity
+// sentinel as data. The Welford sibling summarizes nearest_ion_distance with
+// finite-only conditional Welford and emits ion_present_fraction for the
+// probability of seeing a finite ion distance.
 //
 // `nearest_ion_charge == 0.0` is similarly ambiguous: "no ion in cutoff"
 // AND "nearest ion is neutral" both emit 0. Disambiguate by joining with
@@ -39,7 +33,7 @@
 // but conditionally attached by OperationRunner: if `opts.solvent` is
 // null/empty, the source ConformationResult is silently skipped. Follows
 // "absent, not faked":
-//   - Per-frame `conf.HasResult<HydrationShellResult>()` check in Compute
+//   - Per-frame source-present check in Compute (`HasResult` or test bypass)
 //   - `source_attached_per_frame` uint8 mask emitted as H5 provenance
 //   - NaN-fill float channels on source-absent frames
 //   - WriteH5Group skips entire group emission when source attached zero times

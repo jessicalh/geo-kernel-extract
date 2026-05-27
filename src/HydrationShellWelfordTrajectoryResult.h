@@ -1,10 +1,12 @@
 #pragma once
 //
 // HydrationShellWelfordTrajectoryResult: per-atom Welford rollup of the
-// COM-based water shell features. Four scalar channels, each with full
-// signed/abs/squared/dxdt delta variants. Sibling of
-// HydrationGeometryWelford (SASA-normal frame) — both methods accumulate
-// per feedback_methods_accumulate; calibration weights them separately.
+// COM-based water shell features. Three scalar channels have full
+// signed/abs/squared/dxdt delta variants; nearest_ion_distance uses
+// finite-only conditional Welford and conditional deltas; ion_present_fraction
+// is Welford only. Sibling of HydrationGeometryWelford (SASA-normal frame) —
+// both methods accumulate per feedback_methods_accumulate; calibration weights
+// them separately.
 //
 // Channels (mirroring HydrationShellTimeSeries source fields):
 //   half_shell_asymmetry   scalar (fraction)         full Welford + delta variants
@@ -16,10 +18,9 @@
 // half_shell_asymmetry / mean_water_dipole_cos / nearest_ion_charge carry
 // per-channel-distinct dynamics questions; full delta variants on each.
 //
-// Nearest-ion conditional Welford (R6 codex 2026-05-18): naively
-// accumulating `nearest_ion_distance = +inf` into a Welford NaN-poisoned
-// any atom that was MIXED contact/no-contact across frames — and at
-// the 20 Å cutoff most protein atoms ARE mixed. Schema rev:
+// Nearest-ion conditional Welford: naively accumulating
+// `nearest_ion_distance = +inf` into Welford produces non-finite moments for
+// atoms that alternate between contact and no-contact frames. Policy:
 //   - `nearest_ion_distance` Welford accumulates ONLY when the sample
 //     is finite. Per-atom counter `n_ion_present` becomes the
 //     Finalize divisor. Atoms that never see an ion in cutoff finalize
@@ -35,8 +36,9 @@
 // summary: "P(ion present)" + "E(distance | ion present)" + standard
 // deviation of the conditional distribution.
 //
-// Dependencies: HydrationShellResult — conditionally attached gated on
-// `opts.solvent`. Source-absent frames skip Welford updates entirely.
+// Dependencies: HydrationShellResult — conditionally attached by
+// OperationRunner when solvent is loaded. Frames failing the source-present
+// check skip Welford updates entirely.
 //
 
 #include "TrajectoryResult.h"

@@ -116,13 +116,11 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("finalized",                  finalized_);
     grp.createAttribute("dipole_vector_layout",       std::string("x,y,z"));
     grp.createAttribute("dipole_vector_parity",       std::string("1o"));
-    // Units: Water::Dipole() (src/SolventEnvironment.h:32-38) returns
-    // H_charge·(H_pos − O_pos) summed over both H atoms; charges in e,
-    // positions in Å → result is e·Å. Convert to Debye via the standard
-    // factor 1 e·Å = 4.80320 D if needed downstream. Per R5 codex
-    // 2026-05-18: previous "Debye_unnormalised" label was wrong by that
-    // factor; the values are in e·Å, raw sum (no normalisation to
-    // unit dipole, no conversion to Debye).
+    // Units: Water::Dipole() returns H_charge·(H_pos − O_pos) summed over
+    // both H atoms; charges in e, positions in Å → result is e·Å. Convert
+    // to Debye via 1 e·Å = 4.80320 D if needed downstream. Values are the
+    // raw vector sum, with no normalisation to unit dipole and no conversion
+    // to Debye.
     grp.createAttribute("dipole_vector_units",        std::string("e_Angstrom"));
     grp.createAttribute("surface_normal_layout",      std::string("x,y,z"));
     grp.createAttribute("surface_normal_parity",      std::string("1o"));
@@ -177,15 +175,10 @@ void HydrationGeometryTimeSeriesTrajectoryResult::WriteH5Group(
     };
     emit_scalar("half_shell_asymmetry", half_shell_asymmetry_, "fraction");
     emit_scalar("dipole_alignment",     dipole_alignment_,     "cos_angle");
-    // dipole_coherence: NOT a dimensionless order parameter despite the
-    // name. Source formula at HydrationGeometryResult.cpp:114 is
-    // `|Σ d_i| / n_shell` — numerator in e·Å (vector-sum magnitude of
-    // per-water dipoles in e·Å), denominator dimensionless. Result is
-    // in e·Å. R6 codex 2026-05-18: previous "order_parameter" label
-    // was wrong. To compute a true [0,1] dimensionless coherence,
-    // divide by `Σ |d_i|` instead of `n_shell` — that source-side
-    // formula change is deferred; consumers needing a true coherence
-    // can post-process from the per-water dipole sum + count.
+    // dipole_coherence is not a dimensionless order parameter despite the
+    // name. HydrationGeometryResult computes `|Σ d_i| / n_shell`: numerator
+    // in e·Å, denominator dimensionless, result in e·Å. A [0,1]
+    // dimensionless coherence would divide by `Σ |d_i|` instead.
     emit_scalar("dipole_coherence",     dipole_coherence_,     "e_Angstrom");
 
     // Shell count uint32; absent sentinel like WaterFieldTS.

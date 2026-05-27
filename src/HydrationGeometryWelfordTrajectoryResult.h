@@ -41,10 +41,11 @@
 //            (attached-subset), irrep_layout_dipole, irrep_layout_normal
 //
 // Dependencies: HydrationGeometryResult — REQUIRED by PerFrameExtractionSet
-// but conditionally attached by OperationRunner: gated on `opts.solvent`.
-// Follows "absent, not faked" — source-absent frames skip Welford updates,
-// invalidate prev_* caches for clean delta restart on the next attached
-// frame, and WriteH5Group skips the group when source_attached_count == 0.
+// but conditionally attached by OperationRunner when solvent is loaded.
+// Follows "absent, not faked" — frames failing the source-present check skip
+// Welford updates, invalidate prev_* caches for clean delta restart on the
+// next attached frame, and WriteH5Group skips the group when
+// source_attached_count == 0.
 //
 
 #include "TrajectoryResult.h"
