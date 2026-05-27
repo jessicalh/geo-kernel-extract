@@ -26,6 +26,11 @@ size_t Protein::AddResidue(Residue residue) {
     return idx;
 }
 
+
+// ============================================================================
+// Conformation factory methods
+// ============================================================================
+
 ProteinConformation& Protein::AddConformation(
     std::vector<Vec3> positions,
     std::string description)
@@ -94,6 +99,7 @@ DerivedConformation& Protein::AddDerived(
     std::string description,
     std::vector<Vec3> positions)
 {
+    // The parent argument is not stored.
     auto conf = std::make_unique<DerivedConformation>(
         this, std::move(positions), std::move(description));
     conformations_.push_back(std::move(conf));
@@ -132,6 +138,11 @@ const CrystalConformation& Protein::CrystalConf() const {
     return static_cast<const CrystalConformation&>(*conformations_[crystal_index_]);
 }
 
+
+// ============================================================================
+// Explicit topology / charge contract access
+// ============================================================================
+
 const ProteinTopology& Protein::TopologyBase() const {
     if (!protein_topology_) {
         fprintf(stderr, "FATAL: Protein::TopologyBase() -- no topology.\n");
@@ -161,12 +172,43 @@ const CovalentTopology& Protein::BondTopology() const {
 }
 
 
+// ─────────────────────────────────────────────────────────────────────
+// Backbone connectivity (canonical, bond-graph-driven). See Protein.h
+// for the discipline note.
+//
+// Geometry-native query: a and b are backbone-connected iff res(a).C
+// is bonded to res(b).N via a Bond tagged `BondOrder::Peptide` /
+// `BondCategory::PeptideCN` (assigned by CovalentTopology::Resolve).
+// This is the substrate that replaces every
+// ad-hoc chain_id / sequence_number / terminal_state / insertion_code
+// adjacency inference across the calculator surface (see PATTERNS.md
+// and OBJECT_MODEL.md "Backbone connectivity discipline (2026-05-19)").
+// ─────────────────────────────────────────────────────────────────────
 bool Protein::BackboneConnected(size_t residue_a_idx,
                                  size_t residue_b_idx) const {
     auto next = BackboneSuccessor(residue_a_idx);
     return next.has_value() && *next == residue_b_idx;
 }
 
+
+// Walk the bond graph off res(ri).N looking for a PeptideCN-categorised
+// bond that connects to the C of a DIFFERENT residue. The
+// `bond.IsPeptideBond()` filter is CovalentTopology::Resolve's typed
+// answer to "is this the backbone amide?": it tags a bond as
+// BondOrder::Peptide + BondCategory::PeptideCN exactly when one atom
+// is `res_a.C` and the other is `res_b.N` (different residues).
+// So the filter and the atom-slot check are mutually-reinforcing —
+// asking the bond for its category rather than re-deriving it.
+//
+// Cyclic peptides: CovalentTopology::Resolve tags the head-to-tail
+// wrap bond as PeptideCN (criterion is positional, not seq-order-based),
+// so Predecessor(0) returns N-1 correctly.
+//
+// Multi-match Huxley discipline (math-review MED-3, 2026-05-19): if
+// construction ever tagged two distinct PeptideCN bonds off a single
+// backbone N (pathological: cross-linked isopeptide mistag, branching,
+// or a CovalentTopology bug), we log a warning and return the first
+// match. Silently choosing one would hide a real upstream problem.
 std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
     if (residue_idx >= residues_.size()) return std::nullopt;
     const Residue& r = residues_[residue_idx];
@@ -198,6 +240,10 @@ std::optional<size_t> Protein::BackbonePredecessor(size_t residue_idx) const {
     return first_match;
 }
 
+
+// Symmetric to BackbonePredecessor. Same loader-tag invariant: any
+// PeptideCN-categorised bond off res.C identifies the successor.
+// Same Huxley multi-match warn discipline as Predecessor above.
 std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
     if (residue_idx >= residues_.size()) return std::nullopt;
     const Residue& r = residues_[residue_idx];
@@ -228,6 +274,15 @@ std::optional<size_t> Protein::BackboneSuccessor(size_t residue_idx) const {
     }
     return first_match;
 }
+
+// ============================================================================
+// Ring access — delegated through RingTopology on LegacyAmberTopology.
+// Bundle C / Slice B (2026-05-07): mirrors the bond delegation above.
+// `RingCount()` and `SaturatedRingCount()` return 0 when no topology
+// is attached (pre-FinalizeConstruction state); the `*At(i)` and
+// `*s()` accessors require a topology and abort if called without one
+// (matches BondAt(i)).
+// ============================================================================
 
 size_t Protein::RingCount() const {
     return protein_topology_ ? LegacyAmber().AromaticRingCount() : 0;
@@ -282,26 +337,55 @@ bool Protein::PrepareForceFieldCharges(
         std::string& error_out) {
     auto table = ForceFieldChargeTable::Build(source, *this, conf, error_out);
     if (!table) return false;
-    // ForceFieldChargeTable is the sole authority for charge-source identity.
+    // ForceFieldChargeTable already records source_force_field_, kind_,
+    // and source_description_ at construction. ProteinBuildContext is
+    // not the second authority on charge identity.
     SetForceFieldCharges(std::move(table));
     return true;
 }
 
+
+// ============================================================================
+// FinalizeConstruction: every loader must call this after adding all atoms
+// and residues. Ensures backbone indices, bonds, and rings are all detected.
+// ============================================================================
+
 void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
                                     LegacyAmberInvariants invariants,
                                     double bond_tolerance) {
-    // The first backbone cache is name-based; the typed substrate pass
-    // at the end overwrites it when semantic tables are available.
+    // Layer 2: symbolic topology (no geometry needed). The first
+    // CacheResidueBackboneIndices() call here is string-matched and
+    // feeds the first ResolveProtonationStates pass (HIS/LYS/etc.
+    // detection from explicit H presence). The typed
+    // CacheResidueBackboneIndices_Typed() pass at the end of this
+    // function overwrites the cache from the substrate.
     ResolveResidueTerminalStates();
     CacheResidueBackboneIndices();
     ResolveProtonationStates(/*bonds=*/nullptr);
 
-    // Loaders without source force-field data pass an empty invariant pack.
+    // Layer 3: geometric topology + FF-numerical invariants. The
+    // invariant value-pack is held until LegacyAmberTopology construction
+    // below, then moved into the topology's plain fields. Loaders without
+    // source FF data pass {}.
+    //
+    // Bundle C / Slice B (2026-05-07): rings are no longer an input
+    // here. The aromatic-bond categorisation moved to a post-Resolve
+    // overlay (CovalentTopology::TagAromaticBonds), called below
+    // after substrate-driven ring construction.
     auto bonds = CovalentTopology::Resolve(atoms_, residues_,
                                            positions, bond_tolerance);
 
-    // An explicit readback authority with zero disulfides still demotes
-    // geometry-inferred disulfides; absence of authority leaves geometry intact.
+    // Apply pdb2gmx's authoritative disulfide pairing (TPR bonded list
+    // + rtp comments). Geometric SG-SG inference at this point in
+    // CovalentTopology agrees with chemistry on standard fixtures, but
+    // the override establishes authority direction: GROMACS decided,
+    // we read.
+    //
+    // Gated on has_disulfide_authority, NOT on !disulfide_pairs.empty():
+    // an authority that says "zero disulfides" is meaningful — any
+    // geometric Disulfide tag in CovalentTopology must be demoted, not
+    // preserved. Falsy authority (PDB load) leaves geometric inference
+    // as source of truth.
     if (invariants.has_disulfide_authority) {
         const std::string err =
             bonds->OverrideDisulfides(invariants.disulfide_pairs);
@@ -313,19 +397,41 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         }
     }
 
-    // CYS/CYX depends on the final disulfide bond list, so this pass
-    // must precede substrate composition.
+    // Second protonation pass against the now-finalized covalent
+    // topology (CYS -> CYX from the disulfide bond list). Run BEFORE
+    // LegacyAmberTopology construction so the substrate-composition
+    // step sees the final variant_index for every residue.
     ResolveProtonationStates(bonds.get());
 
-    // ComposeAtomSemantic needs Hydrogen parent names already cached on Atom.
+    // Copy connectivity onto Atom for convenient calculator access.
+    // Done before substrate composition because ComposeAtomSemantic
+    // uses atom.parent_atom_index for the H-atom parent-name lookup
+    // that ParseAtomName needs.
     for (size_t i = 0; i < atoms_.size(); ++i) {
         atoms_[i]->bond_indices = bonds->BondIndicesFor(i);
         atoms_[i]->parent_atom_index = bonds->HydrogenParentOf(i);
     }
 
-    // Re-apply naming after variant resolution. Atom does not retain
-    // the original naming source, so pass 2 treats current atom names
-    // as AmberFf14SBCanonical inputs.
+    // Post-protonation second applicator pass: now that variant_index
+    // is resolved per residue (LYS-labelled-LYN, HIS variants, etc.),
+    // walk every resolved-variant residue and rewrite atom names with
+    // the now-known variant_index in NamingContext. The applicator's
+    // sibling-aware predicates make this pass IDEMPOTENT on residues
+    // whose Pass-1 names are already canonical for the resolved variant
+    // (canonical LYN siblings {HZ2,HZ3,no HZ1} do NOT match the LYN
+    // pre-Markley pattern and the shift rules don't fire; canonical
+    // LYS-NH3+ siblings {HZ1,HZ2,HZ3} match LysAmmoniumHzPassThrough
+    // which preserves the input). The 1Z9B fleet variance — LYS-labelled
+    // residues with LYN chemistry — is captured during Pass 1 already
+    // (loader source = CifppPdbInput; siblings {HZ1,HZ2,no HZ3} fire
+    // the LYN shift rules); this Pass-2 call is idempotent on those.
+    //
+    // No source tag is preserved across passes: Pass-1 source was
+    // recorded onto Atom::pdb_atom_name as the canonical output; Pass 2
+    // operates on canonical strings tagged AmberFf14SBCanonical (the
+    // applicator's pass-through branch returns canonical inputs
+    // unchanged). Rules that fire on Pass 2 are sibling-aware shift
+    // rules that examine the (now-canonical) sibling set.
     {
         const auto& applicator = GlobalNamingApplicator();
         for (Residue& res : residues_) {
@@ -335,6 +441,8 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
             if (static_cast<size_t>(res.protonation_variant_index)
                     >= aatype.variants.size()) continue;
 
+            // Snapshot input names + parent names from the current
+            // pdb_atom_name across the residue.
             std::vector<std::string> input_names;
             std::vector<std::string> parent_names;
             input_names.reserve(res.atom_indices.size());
@@ -352,8 +460,11 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
                         ? atoms_[pai]->pdb_atom_name : std::string{});
             }
 
-            // Structural N-termini use the ff14SB charged default; this
-            // code does not infer neutral termini.
+            // Map ResidueTerminalState -> TerminalState. The applicator
+            // accepts the typed SemanticEnums.h TerminalState; the
+            // mapping is conservative (NTerminus -> NtermCharged is
+            // the AMBER ff14SB default; NTermNeutral is reserved for
+            // distinctions the input protonation may carry, not inferred here).
             TerminalState terminal_state = TerminalState::Internal;
             switch (res.terminal_state) {
                 case ResidueTerminalState::NTerminus:
@@ -387,26 +498,48 @@ void Protein::FinalizeConstruction(const std::vector<Vec3>& positions,
         }
     }
 
-    // Stub fixtures with empty PDB names produce an empty semantic table.
+    // Compose the per-atom AtomSemanticTable substrate. Empty for stub
+    // calculator-physics fixtures (no PDB names); populated otherwise.
     std::vector<AtomSemanticTable> atom_semantic =
         ComposeAtomSemantic(atoms_, residues_, *bonds);
 
-    // Empty atom_semantic yields an empty RingTopology.
+    // Substrate-driven ring construction (Bundle C / Slice B). Reads
+    // typed RingPosition slots from the substrate; produces aromatic
+    // rings (PHE/TYR/HIS-variants/TRP-{benzene,pyrrole,9}) and
+    // saturated rings (Pro pyrrolidine) in canonical cyclic walk
+    // order. Stub fixtures (empty atom_semantic) get an empty
+    // RingTopology. See spec/plan/ring-investigation-2026-05-06/.
     auto rings = RingTopology::ConstructFromSubstrate(
         residues_, atom_semantic, *bonds);
 
-    // Aromatic categories are assigned only after ring construction.
+    // Aromatic-bond tagging overlay: now that rings exist, tag bonds
+    // whose both endpoints sit in any aromatic ring. Mirrors the
+    // OverrideDisulfides post-Resolve pattern.
     bonds->TagAromaticBonds(rings->Aromatic());
 
+    // Construct the final LegacyAmberTopology with substrate + rings.
     protein_topology_ = std::make_unique<LegacyAmberTopology>(
         atoms_.size(), residues_.size(), std::move(bonds),
         std::move(invariants), std::move(atom_semantic),
         std::move(rings));
 
+    // Typed CacheResidueBackboneIndices: overwrite res.{N, CA, C, O,
+    // H, HA, CB} with substrate-driven indices from
+    // LegacyAmber().AtomSemantic(). On stub fixtures (no substrate),
+    // this is a no-op and the string-matched cache from the first
+    // pass stays.
     CacheResidueBackboneIndices_Typed();
 }
 
-// Uses residue insertion order within each chain, not the bond graph.
+
+// ============================================================================
+// ResolveResidueTerminalStates
+//
+// Construction-boundary interpretation of polymer end state. This records
+// first and last residues by insertion order within each chain_id so
+// force-field adapters can choose terminal templates explicitly.
+// ============================================================================
+
 void Protein::ResolveResidueTerminalStates() {
     std::map<std::string, std::vector<size_t>> by_chain;
     for (size_t ri = 0; ri < residues_.size(); ++ri) {
@@ -431,9 +564,21 @@ void Protein::ResolveResidueTerminalStates() {
     }
 }
 
+
+// ============================================================================
+// ResolveProtonationStates
+//
+// Construction-boundary string interpretation. This prepares residue
+// protonation/variant state before calculators run. ProtonationDetectionResult
+// reports this state; it does not perform identity resolution.
+// ============================================================================
+
 void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
-    // First pass resolves H-present variants; second pass can also see
-    // CYS disulfides through the bond graph.
+    // bonds == nullptr  : first pass. HIS/LYS/TYR/ASP/GLU variants
+    //                     from explicit H presence; CYS variant
+    //                     deferred (needs the bond graph).
+    // bonds != nullptr  : second pass. Adds CYS -> CYX from
+    //                     BondCategory::Disulfide entries.
     std::set<size_t> disulfide_sg;
     if (bonds != nullptr) {
         for (const Bond& bond : bonds->Bonds()) {
@@ -543,7 +688,28 @@ void Protein::ResolveProtonationStates(const CovalentTopology* bonds) {
     }
 }
 
-// Name-based construction pass used before AtomSemanticTable exists.
+
+// ============================================================================
+// DetectAromaticRings: REMOVED Bundle C / Slice B (2026-05-07).
+//
+// Ring construction is now substrate-driven via
+// RingTopology::ConstructFromSubstrate, called from
+// FinalizeConstruction after ComposeAtomSemantic. Rings live on
+// LegacyAmberTopology (parallel to bonds on CovalentTopology) and
+// are reached through the delegating accessors above.
+// ============================================================================
+
+
+// ============================================================================
+// CacheResidueBackboneIndices
+//
+// PDB LOADING BOUNDARY: string comparisons are used here to match PDB atom
+// names ("N", "CA", "C", "O", "H", "HA", "CB") against each residue's atoms.
+// This populates typed backbone index fields (res.N, res.CA, etc.) which are
+// atom INDICES, not strings. After this function, backbone identity is
+// determined entirely by these typed indices -- no further string work.
+// ============================================================================
+
 void Protein::CacheResidueBackboneIndices() {
     for (auto& res : residues_) {
         for (size_t ai : res.atom_indices) {
@@ -557,6 +723,8 @@ void Protein::CacheResidueBackboneIndices() {
             else if (name == "CB")  res.CB = ai;
         }
 
+        // PDB LOADING BOUNDARY (continued): match chi angle atom names
+        // against the residue's atoms for the early name-based cache.
         const AminoAcidType& aatype = res.AminoAcidInfo();
         for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
             const ChiAngleDef& def = aatype.chi_angles[ci];
@@ -572,8 +740,41 @@ void Protein::CacheResidueBackboneIndices() {
     }
 }
 
-// Substrate-driven cache. Without AtomSemanticTable, the earlier
-// name-based cache remains in place.
+
+// ============================================================================
+// CacheResidueBackboneIndices_Typed
+//
+// Substrate-driven backbone-index cache. Reads BackboneRole + Locant +
+// DiastereotopicIndex from the per-atom AtomSemanticTable populated by
+// ComposeAtomSemantic, and overwrites res.{N, CA, C, O, H, HA, CB}
+// with typed indices.
+//
+// Special cases:
+//   - Glycine HA: Gly's HA2/HA3 carry Locant::Alpha + DiastereotopicIndex
+//     (BackboneRole stays None per the parser convention; the typed
+//     identity already disambiguates them). Pick HA2 (Position2) to
+//     match the string-matched cache's prior assignment of res.HA = HA2.
+//   - Proline H: PRO's chain table drops the backbone amide H per the
+//     substrate dependencies §H.10 (Pro is a secondary amine); no atom
+//     has BackboneRole::AmideHydrogen, so res.H stays Residue::NONE.
+//   - CB: the substrate carries Locant::Beta + Element::C + branch{0,0}
+//     for the canonical CB. Glycine has no CB atom in its table, so
+//     res.CB stays Residue::NONE for Gly.
+//
+// Chi-angle resolver: typed-identity (post-2026-05-09). Each chi-atom
+// name from `AminoAcidType::chi_angles[ci].atoms[j]` is converted to
+// an AtomMechanicalIdentity tuple via `ComputeAtomMechanicalIdentity`,
+// then looked up via `LegacyAmberTopology::ResidueAtomsWithIdentity`.
+// Bit-equivalent to the prior string match for canonical AMBER input;
+// no string discrimination in the typed pass.
+//
+// Stub-fixture path: when LegacyAmber().HasAtomSemantic() is false
+// (atoms with empty pdb_atom_name; calculator-physics tests), this
+// function is a no-op and the string-matched cache from the first
+// pass stays (which is fine — those tests don't carry residues with
+// real atom names anyway).
+// ============================================================================
+
 void Protein::CacheResidueBackboneIndices_Typed() {
     if (!protein_topology_) return;
     const LegacyAmberTopology& topo = LegacyAmber();
@@ -582,8 +783,10 @@ void Protein::CacheResidueBackboneIndices_Typed() {
     for (size_t res_idx = 0; res_idx < residues_.size(); ++res_idx) {
         Residue& res = residues_[res_idx];
 
-        // The typed pass may legitimately leave a slot at NONE
-        // (Pro res.H, Gly res.CB).
+        // Reset the backbone slots before substrate-driven repopulation.
+        // The first-pass cache wrote them from strings; the typed pass
+        // is the authoritative version and may legitimately leave a
+        // slot at NONE (Pro res.H, Gly res.CB).
         res.N  = Residue::NONE;
         res.CA = Residue::NONE;
         res.C  = Residue::NONE;
@@ -606,8 +809,8 @@ void Protein::CacheResidueBackboneIndices_Typed() {
             }
         }
 
-        // Gly HA2/HA3 are distinguished by DiastereotopicIndex, not
-        // BackboneRole; the cache picks HA2.
+        // Glycine special case. HA2/HA3 carry Locant::Alpha + di_index;
+        // BackboneRole::None. Pick HA2 (Position2) for res.HA.
         if (res.type == AminoAcid::GLY) {
             AtomMechanicalIdentity gly_ha2_id{
                 Element::H, Locant::Alpha, BranchAddress{},
@@ -618,7 +821,10 @@ void Protein::CacheResidueBackboneIndices_Typed() {
             if (!matches.empty()) res.HA = matches[0];
         }
 
-        // Gly has no C-beta identity in the substrate table.
+        // CB cache: typed identity for the canonical sidechain Cβ
+        // (Locant::Beta, Element::C, branch{0,0}, di_index=None).
+        // Gly has no Cβ atom in its substrate table, so the lookup
+        // returns empty and res.CB stays NONE.
         AtomMechanicalIdentity cb_id{
             Element::C, Locant::Beta, BranchAddress{},
             DiastereotopicIndex::None, BackboneRole::None
@@ -627,8 +833,16 @@ void Protein::CacheResidueBackboneIndices_Typed() {
             res_idx, cb_id, residues_);
         if (!cb_matches.empty()) res.CB = cb_matches[0];
 
-        // Chi definitions use canonical heavy-atom names, so parent_name
-        // is unused when converting them to AtomMechanicalIdentity.
+        // Chi-angle resolver: typed-identity. Each chi-atom name from
+        // AminoAcidType::chi_angles is converted to an
+        // AtomMechanicalIdentity tuple via ComputeAtomMechanicalIdentity,
+        // then looked up via the substrate. Strings stay at the AAType-
+        // table boundary; the lookup is typed.
+        //
+        // The chi-atom names in AminoAcidType are canonical AMBER ff14SB
+        // (N, CA, CB, CG, CD, OD1, NE, NZ, etc.) — heavy atoms only,
+        // which simplifies the parse: ParseAtomName's H-disambiguation
+        // (parent_name) is unused. Pass empty string for parent.
         const AminoAcidType& aatype = res.AminoAcidInfo();
         for (int ci = 0; ci < aatype.chi_angle_count && ci < 4; ++ci) {
             const ChiAngleDef& def = aatype.chi_angles[ci];
