@@ -9,9 +9,10 @@
 // parameterised ppm shielding.
 //
 // **T0 is structurally zero.** The dispersion kernel is analytically
-// traceless: Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0 (see DispersionResult.h
-// :17-19). All physical signal lives in T2. Downstream consumers
-// should compute statistics on the 5 T2 components, not T0.
+// traceless: Tr(K) = S(r)·(3r²/r⁸ - 3/r⁶) = 0 (see DispersionResult.cpp).
+// The per-vertex kernel is also symmetric, so all physical signal lives in T2.
+// Downstream consumers should compute statistics on the 5 T2 components,
+// not T0/T1.
 //
 // Source is DispersionResult, unconditionally attached in
 // PerFrameExtractionSet. No source-attached gate.
@@ -25,6 +26,7 @@
 //     attrs:
 //       result_name    = "DispersionShieldingTimeSeriesTrajectoryResult"
 //       irrep_layout   = "T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"
+//       payload order  = PackFull9 order: T0,T1_x,T1_y,T1_z,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2
 //       normalization  = "isometric_real_sph"
 //       parity         = "0e+1o+2e"
 //       units          = "Angstrom^-6"

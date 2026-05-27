@@ -4,8 +4,8 @@
 // the Shrake-Rupley solvent-accessible surface area
 // (ConformationAtom::atom_sasa, A^2). FO dense-buffer pattern, clones
 // the scalar-double shape of LarsenHBondWaterTermTimeSeries against
-// an unconditional source — SasaResult is in PerFrameExtractionSet
-// (RunConfiguration.cpp:134); no source-attached gate needed.
+// an unconditional source — SasaResult is in PerFrameExtractionSet;
+// no source-attached gate needed.
 //
 // Emission:
 //
