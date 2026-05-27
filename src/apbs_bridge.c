@@ -1,6 +1,11 @@
 /*
- * APBS C bridge. This path performs one solve on the coarse grid with SDH
- * boundary conditions and returns the potential grid in memory.
+ * APBS C bridge — includes APBS/FETK headers outside C++ translation units.
+ * Compiled as C.
+ *
+ * Single solve on the caller-provided coarse grid with SDH boundary
+ * conditions. Two-level focusing is not implemented in this bridge.
+ *
+ * In-memory path: arrays → Valist → Vpbe → Vpmg → solve → extract.
  */
 
 #include "apbs_bridge.h"
@@ -91,7 +96,7 @@ int apbs_solve(
     double cy = Valist_getCenterY(alist);
     double cz = Valist_getCenterZ(alist);
 
-    /* Single-solve path uses the coarse grid extent with SDH boundary. */
+    /* Use the caller-provided coarse grid extent for the single SDH-boundary solve. */
     MGparm* mgparm = MGparm_ctor(MCT_MANUAL);
     if (!mgparm) {
         Vpbe_dtor(&pbe); Valist_dtor(&alist);

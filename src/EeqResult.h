@@ -1,12 +1,39 @@
 #pragma once
 //
-// Geometry-dependent EEQ partial charges using the D4 parameter table.
-// The solve enforces sum(q_i) = eeq_total_charge.
+// EeqResult: geometry-dependent partial charges from extended
+// electronegativity equilibration (Caldeweyher et al. 2019).
 //
-// Objective:
-//   E(q) = sum chi_i q_i + 1/2 sum eta_i q_i^2
-//        + 1/2 sum_{i!=j} q_i q_j gamma(R_ij)
+// Solves the quadratic EEQ system
+//   E(q) = Σ χ_effᵢqᵢ + ½Σ Aᵢᵢqᵢ² + Σ_{i<j} qᵢqⱼγ(Rᵢⱼ)
+// subject to Σqᵢ = Q_total (net-charge constraint).
+//
+// Uses D4 parameters: element-specific electronegativity (χ), chemical
+// hardness (η), CN-dependent EN shift (κ), Gaussian charge radius, and
+// covalent radius (r_cov).
+// Coordination number computed via error function counting (Caldeweyher 2019).
+// Coulomb interaction via Ohno-Klopman kernel (Ohno 1964, Klopman 1964):
 //   γ(R) = 1/√(R² + 1/(ηᵢ·ηⱼ))
+//
+// Pure C++ with Eigen.  No external binary, no CUDA dependency.
+// One N×N linear solve per frame via Cholesky with block elimination
+// for the net-charge constraint.
+//
+// Reference: Caldeweyher, Ehlert, Hansen, Neugebauer, Spicher,
+// Bannwarth & Grimme, J. Chem. Phys. 150, 154122 (2019).
+// DOI: 10.1063/1.5090222.
+//
+// Output:
+//   eeq_charges.npy  (N,) float64 — partial charges (elementary charges)
+//   eeq_cn.npy       (N,) float64 — coordination number (intermediate,
+//                                   for traceability)
+//
+// Parameters (from TOML):
+//   eeq_total_charge — net system charge (default 0, neutral protein)
+//
+// No KernelFilterSet — charge calculation, not field evaluation.
+// GeometryChoice: one summary record (parameters, charge statistics).
+//
+// Dependencies: none (reads protein geometry and element types only).
 //
 
 #include "ConformationResult.h"

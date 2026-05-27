@@ -21,15 +21,24 @@ std::vector<std::type_index> PiQuadrupoleResult::Dependencies() const {
     };
 }
 
+
+// ============================================================================
 // EFG geometric kernel from a point axial quadrupole at the ring center.
+//
+// Stone T-tensor derivation: V_ab = -(Theta/2) * T_abcd n_c n_d
 // We compute G_ab = T_abcd n_c n_d (the -Theta/2 prefactor goes into
 // the learnable parameter Q_type).
+//
 //   G_ab = 105 (d·n)^2 d_a d_b / r^9
 //        - 30 (d·n) (n_a d_b + n_b d_a) / r^7
 //        - 15 d_a d_b / r^7
 //        + 6 n_a n_b / r^5
 //        + delta_ab (3/r^5 - 15 (d·n)^2/r^7)
+//
 // Also: scalar = (3 cos^2 theta - 1) / r^4   (Buckingham A-term)
+//
+// See header for the Stone T-tensor derivation and properties.
+// ============================================================================
 
 struct PiQuadKernelResult {
     Mat3 G = Mat3::Zero();     // EFG geometric kernel (traceless, symmetric)
@@ -66,7 +75,8 @@ static PiQuadKernelResult ComputePiQuadKernel(
     // Buckingham A-term kernel: (3 cos^2 theta - 1) / r^4  (feeds pq_per_type_T0)
     result.scalar = (3.0 * cos_theta * cos_theta - 1.0) / (r2 * r2);
 
-    // G_ab = T_abcd n_c n_d, five terms in order:
+    // EFG tensor G_ab = T_abcd n_c n_d (Stone Ch. 3), five terms in order
+    // ((d·n) = d_dot_n, the height above the ring plane):
     //   105 (d·n)^2 d_a d_b / r^9
     //   - 30 (d·n) (n_a d_b + n_b d_a) / r^7
     //   - 15 d_a d_b / r^7
@@ -87,6 +97,11 @@ static PiQuadKernelResult ComputePiQuadKernel(
 
     return result;
 }
+
+
+// ============================================================================
+// PiQuadrupoleResult::Compute
+// ============================================================================
 
 std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
         ProteinConformation& conf) {
@@ -109,8 +124,11 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
         return result_ptr;
     }
 
-    // Use the same ring near-field and topology exclusions as the dipolar
-    // ring kernels.
+    // Filter set: DipolarNearFieldFilter with source_extent = ring diameter,
+    // plus RingBondedExclusionFilter for topological exclusion. The
+    // quadrupole approximation is less accurate than the dipolar one
+    // at close range (higher multipole → larger convergence radius),
+    // making the topology check especially important here.
     KernelFilterSet filters;
     filters.Add(std::make_unique<MinDistanceFilter>());
     filters.Add(std::make_unique<DipolarNearFieldFilter>());
@@ -138,12 +156,14 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
             PiQuadKernelResult kernel = ComputePiQuadKernel(
                 atom_pos, geom.center, geom.normal);
 
+            // Apply filter: source extent = ring diameter
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
             ctx.source_extent = 2.0 * geom.radius;
             ctx.atom_index = ai;
             ctx.source_ring_index = ri;
             if (!filters.AcceptAll(ctx)) {
+                // record the exclusion
                 choices.Record(CalculatorId::PiQuadrupole, ri, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddRing(gc, &ring, EntityRole::Source, EntityOutcome::Included);
@@ -155,6 +175,7 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 continue;
             }
 
+            // shared ring-neighbour geometry (consumed by other ring calculators)
             RingNeighbourhood* rn = nullptr;
             for (auto& existing : conf_atom.ring_neighbours) {
                 if (existing.ring_index == ri) {
@@ -169,21 +190,24 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                 new_rn.distance_to_center = kernel.distance;
                 new_rn.direction_to_center = kernel.direction;
 
+                // ring-frame cylindrical coordinates (z along normal, rho in plane)
                 Vec3 d_vec = atom_pos - geom.center;
                 double z = d_vec.dot(geom.normal);
                 Vec3 d_plane = d_vec - z * geom.normal;
                 new_rn.z = z;
                 new_rn.rho = d_plane.norm();
-                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));  // folded across the ring plane
+                new_rn.theta = std::atan2(d_plane.norm(), std::abs(z));  // theta folded to [0, pi/2] via |z| — quadrupole is symmetric across the ring plane
 
                 conf_atom.ring_neighbours.push_back(new_rn);
                 rn = &conf_atom.ring_neighbours.back();
             }
 
+            // Store quadrupole kernel on RingNeighbourhood
             rn->quad_tensor = kernel.G;
             rn->quad_spherical = SphericalTensor::Decompose(kernel.G);
             rn->quad_scalar = kernel.scalar;
 
+            // per-aromatic-ring-type feature bookkeeping (not part of the EFG sum)
             int ring_type_index = ring.TypeIndexAsInt();
             if (ring_type_index >= 0 && ring_type_index < kAromaticRingTypeCount) {
                 conf_atom.per_type_pq_scalar_sum[ring_type_index] += kernel.scalar;
@@ -191,10 +215,12 @@ std::unique_ptr<PiQuadrupoleResult> PiQuadrupoleResult::Compute(
                     conf_atom.per_type_pq_T2_sum[ring_type_index][c] += rn->quad_spherical.T2[c];
             }
 
+            // Accumulate EFG tensor
             G_total += kernel.G;
             accepted_pairs++;
         }
 
+        // decompose the total EFG tensor (T0=T1=0; pure T2)
         conf_atom.piquad_shielding_contribution = SphericalTensor::Decompose(G_total);
     }
 
@@ -214,7 +240,8 @@ SphericalTensor PiQuadrupoleResult::SampleKernelAt(Vec3 point) const {
     const Protein& protein = conf_->ProteinRef();
     Mat3 G_total = Mat3::Zero();
 
-    // No atom-topology filters exist for free grid points.
+    // Same physics as Compute(); no atom-specific filters apply to a bare grid
+    // point — only the geometric guards (singularity / inside-radius / cutoff).
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 

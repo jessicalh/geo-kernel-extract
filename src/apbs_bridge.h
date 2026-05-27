@@ -1,6 +1,13 @@
 /*
- * C bridge for APBS. The C implementation includes APBS/FETK headers; C++
- * callers include only this header.
+ * C bridge for APBS — isolates APBS/FETK headers from Eigen headers.
+ *
+ * This header is included by both C and C++ code.
+ * The implementation (apbs_bridge.c) includes APBS/FETK headers.
+ * The C++ caller (ApbsFieldResult.cpp) includes Eigen headers.
+ * They never meet in the same translation unit.
+ *
+ * In-memory path: coordinate/charge/radii arrays go directly into APBS's
+ * Valist/Vpbe/Vpmg objects.  No PQR files, no input files, no temp dirs.
  *
  * Units:
  *   positions: Angstroms (double[3] per atom)
@@ -10,14 +17,15 @@
  *   E-field (derived by caller): kT/(e*Å)
  *   EFG (derived by caller): kT/(e*Å²)
  *
- * Self-potential:
+ * Self-potential note:
  *   The returned grid includes each atom's own Coulomb potential.
  *   At atom positions, ∇²φ_self = -(q/ε)δ(r-r_i), which the grid
  *   discretizes into a large finite Laplacian.  When computing the EFG
- *   tensor (∂²φ/∂x_i∂x_j) at atom positions, callers must apply a
+ *   tensor (∂²φ/∂x_i∂x_j) at atom positions, callers MUST apply a
  *   traceless projection (subtract trace/3 from diagonal) to remove
  *   this self-interaction artifact.  The external-source EFG is
  *   guaranteed traceless by Laplace's equation.
+ *   See FieldGradientFromGrid in ApbsFieldResult.cpp for the C++ implementation.
  */
 
 #ifndef APBS_BRIDGE_H
@@ -27,9 +35,11 @@
 extern "C" {
 #endif
 
+/* Return codes */
 #define APBS_BRIDGE_OK      0
 #define APBS_BRIDGE_ERROR  -1
 
+/* Grid data returned from solve */
 typedef struct {
     double origin[3];       /* grid origin in Angstroms */
     double spacing[3];      /* grid spacing in Angstroms */
@@ -64,10 +74,11 @@ int apbs_solve(
     ApbsGridResult* result
 );
 
+/* Free the grid data allocated by apbs_solve */
 void apbs_free_grid(ApbsGridResult* result);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* APBS_BRIDGE_H */
