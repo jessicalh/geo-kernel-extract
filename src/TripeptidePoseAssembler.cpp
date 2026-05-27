@@ -21,6 +21,10 @@ namespace nmr {
 namespace {
 
 
+// ─────────────────────────────────────────────────────────────────
+// Kabsch
+// ─────────────────────────────────────────────────────────────────
+
 struct KabschResult {
     Mat3   rotation        = Mat3::Identity();
     Vec3   source_centroid = Vec3::Zero();
@@ -31,6 +35,7 @@ struct KabschResult {
 
 KabschResult KabschAlign(const Vec3 src[3], const Vec3 dst[3]) {
     KabschResult result;
+    // centroids
     result.source_centroid = (src[0] + src[1] + src[2]) / 3.0;
     result.target_centroid = (dst[0] + dst[1] + dst[2]) / 3.0;
     Eigen::Matrix<double, 3, 3> src_centered, dst_centered;
@@ -38,18 +43,21 @@ KabschResult KabschAlign(const Vec3 src[3], const Vec3 dst[3]) {
         src_centered.col(i) = src[i] - result.source_centroid;
         dst_centered.col(i) = dst[i] - result.target_centroid;
     }
+    // cross-covariance (src_centered · dst_centeredᵀ)
     const Mat3 cross_covariance = src_centered * dst_centered.transpose();
     Eigen::JacobiSVD<Mat3> svd(cross_covariance,
         Eigen::ComputeFullU | Eigen::ComputeFullV);
     const Mat3& U = svd.matrixU();
     const Mat3& V = svd.matrixV();
-    // Canonical Kabsch: sign(det(V*U^T)) for the reflection guard, not
+    // reflection guard
+    // Canonical Kabsch: sign(det(V·Uᵀ)) for the reflection guard, not
     // the raw determinant — the product is orthogonal (|det|=1), so
     // only the sign matters.
     const double det = (V * U.transpose()).determinant();
     Eigen::DiagonalMatrix<double, 3> D(1.0, 1.0,
         (det < 0.0) ? -1.0 : 1.0);
     result.rotation = V * D * U.transpose();
+    // fitted RMSD
     double sumSq = 0.0;
     for (int i = 0; i < 3; ++i) {
         const Vec3 aligned =
@@ -66,11 +74,20 @@ inline Vec3 ApplyKabsch(const KabschResult& K, const Vec3& p) {
 }
 
 
-// Rotate a rank-2 Cartesian tensor by R from DFT to protein frame.
+// R σ Rᵀ: rotate a rank-2 Cartesian tensor by R (source→target frame;
+// here DFT→protein via K.rotation).
 inline Mat3 RotateTensor(const Mat3& sigma, const Mat3& R) {
     return R * sigma * R.transpose();
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// Substrate cross-check: for a given canonical role slot in the cap,
+// what's the expected BackboneRole / Locant on the protein side?
+// Each slot's expected role is a constant of the canonical ordering;
+// the protein atom we mapped to is looked up via SemanticAt and the
+// two are compared.
+// ─────────────────────────────────────────────────────────────────
 
 enum class SlotRole {
     BackboneN, BackboneCA, BackboneC, BackboneO,
@@ -82,6 +99,8 @@ bool SubstrateRoleMatches(const Protein& protein,
                            size_t protein_atom_idx,
                            SlotRole slot) {
     if (!protein.LegacyAmber().HasAtomSemantic()) {
+        // Substrate not populated (stub fixture): permit; the residual
+        // gate catches mismappings.
         return true;
     }
     const AtomSemanticTable& sem =
@@ -98,8 +117,10 @@ bool SubstrateRoleMatches(const Protein& protein,
         case SlotRole::BackboneAmideH:
             return sem.backbone_role == BackboneRole::AmideHydrogen;
         case SlotRole::BackboneHA:
-            // GLY HA2/HA3 can carry Locant::Alpha without
-            // BackboneRole::AlphaHydrogen; require H to avoid CA matches.
+            // The locant==Alpha clause is load-bearing for GLY HA2/HA3,
+            // stamped (Locant::Alpha, BackboneRole::None) per Markley; the
+            // element==H guard closes the CA over-match (unreachable today
+            // since this only validates the assigned res.HA).
             return sem.backbone_role == BackboneRole::AlphaHydrogen ||
                    (sem.locant == Locant::Alpha &&
                     sem.element == Element::H);
@@ -109,6 +130,11 @@ bool SubstrateRoleMatches(const Protein& protein,
     return false;
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// Add one aligned cap atom to the result, with substrate and residual
+// validation.
+// ─────────────────────────────────────────────────────────────────
 
 void EmitAlignedAtom(
         AssembledTripeptide& out,
@@ -153,6 +179,7 @@ void EmitAlignedAtom(
         return;
     }
 
+    // rotate shielding tensor
     out_atom.shielding_tensor_aligned =
         RotateTensor(src_atom.shielding_tensor, K.rotation);
     out_atom.shielding_spherical_aligned =
@@ -161,6 +188,10 @@ void EmitAlignedAtom(
     out.aligned_atoms.push_back(std::move(out_atom));
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// Cap assembly (NTerm / CTerm — always ALA).
+// ─────────────────────────────────────────────────────────────────
 
 // Resolve a LarsenResidue local-atom index to its 0-indexed position in
 // rec.atoms by matching dft_atom_idx. Returns -1 on miss.
@@ -196,6 +227,9 @@ bool AssembleAlaCap(
         return false;
     }
 
+    // Cross-substrate matching needs typed AtomSemantic; without it
+    // SubstrateRoleMatches is a no-op, so decline rather than emit
+    // untyped data.
     if (!protein.LegacyAmber().HasAtomSemantic()) {
         OperationLog::Warn("TripeptidePoseAssembler::AssembleAlaCap",
             "residue " + std::to_string(res.sequence_number) +
@@ -204,6 +238,8 @@ bool AssembleAlaCap(
         return false;
     }
 
+    // Cap slots come from typed LarsenResidue perception; no heuristic
+    // fallback (perception is the single source of DFT-side identity).
     if (!rec.larsen.has_value()) {
         OperationLog::Warn("TripeptidePoseAssembler::AssembleAlaCap",
             "calc_id=" + std::to_string(rec.calc_id) +
@@ -233,6 +269,7 @@ bool AssembleAlaCap(
         return false;
     }
 
+    // Kabsch from cap N/CA/C to protein residue i N/CA/C.
     const Vec3 src[3] = {
         rec.atoms[cap_n].position,
         rec.atoms[cap_ca].position,
@@ -249,6 +286,7 @@ bool AssembleAlaCap(
     out.target_centroid       = K.target_centroid;
     out.backbone_kabsch_rmsd  = K.rmsd;
 
+    // Emit each cap-slot atom with the protein-side counterpart.
     struct Slot {
         int           dft_idx;
         std::size_t   protein_idx;
@@ -264,6 +302,8 @@ bool AssembleAlaCap(
         {cap_o,  res.O,  SlotRole::BackboneO},
     };
     for (const Slot& s : slots) {
+        // Defensive guard against rec.atoms[-1]: optional cap atoms can
+        // be absent from either the perceived DFT cap or the protein.
         if (s.dft_idx < 0) continue;
         if (s.protein_idx == Residue::NONE) continue;
         EmitAlignedAtom(out, protein, conf, K,
@@ -275,6 +315,17 @@ bool AssembleAlaCap(
     return true;
 }
 
+
+// ─────────────────────────────────────────────────────────────────
+// Typed-identity central assembly. Used when the DFT record carries a
+// perceived LarsenTripeptide. Matching is typed-identity equality with
+// nearest-spatial tiebreak within equivalence classes (methyl Hs,
+// prochiral methylenes whose perception didn't disambiguate diastereo
+// position, aromatic CD/CE pairs whose graph signatures are symmetric).
+// No element-walks; no nearest-element heuristic. The SER OG ↔ O swap
+// is structurally impossible because both atoms carry distinct typed
+// identities (Locant::Gamma vs BackboneRole::CarbonylOxygen).
+// ─────────────────────────────────────────────────────────────────
 
 bool IdentityCompatible(const AtomMechanicalIdentity& a,
                          const AtomMechanicalIdentity& b,
@@ -338,6 +389,7 @@ bool AssembleCentralTyped(
         return false;
     }
 
+    // Kabsch from perceived N/CA/C to protein N/CA/C.
     const Vec3 src[3] = {
         larsen.atoms[larsen.N_idx].position,
         larsen.atoms[larsen.CA_idx].position,
@@ -354,13 +406,19 @@ bool AssembleCentralTyped(
     out.target_centroid      = K.target_centroid;
     out.backbone_kabsch_rmsd = K.rmsd;
 
-    // Residuals keep sidechain chi-grid mismatch; no sidechain
-    // re-rotation is applied after backbone Kabsch alignment.
+    // Aligned positions via the single BB Kabsch K — no sidechain
+    // re-rotation. χ1-grid coarseness is left in residual_vec as an ML
+    // feature (feedback_residual_as_ml_feature) rather than rotated away.
     std::vector<Vec3> aligned(larsen.atoms.size());
     for (std::size_t i = 0; i < larsen.atoms.size(); ++i) {
         aligned[i] = ApplyKabsch(K, larsen.atoms[i].position);
     }
 
+    // Per-atom typed-identity match. For each perceived atom, find the
+    // protein atom whose typed identity equals (or is compatible with,
+    // for diastereotopic / aromatic equivalence classes) the perceived
+    // identity. Within an equivalence class, pick by nearest aligned
+    // position.
     std::set<std::size_t> used;
     auto candidate_protein_atoms = [&](const AtomMechanicalIdentity& perceived_identity,
                                         bool relaxed) {
@@ -379,8 +437,12 @@ bool AssembleCentralTyped(
     for (std::size_t i = 0; i < larsen.atoms.size(); ++i) {
         const auto& perceived = larsen.atoms[i];
 
-        // Relaxed identity drops branch and diastereotopic labels only
-        // for graph-ambiguous assignments marked by perception.
+        // identity candidates
+        // Strict identity for chemistry-distinct branches (e.g. ILE
+        // CG1/CG2); relaxed (drop BranchAddress/DiastereotopicIndex,
+        // nearest-spatial tiebreak) for graph-automorphic pairs (PHE
+        // CD1/CD2, ARG NH1/NH2, methyl Hs) that no WL round can split.
+        // See larsen-residue-design-2026-05-11.md.
         const bool relaxed = perceived.canonical_assignment_ambiguous;
         std::vector<std::size_t> candidates =
             candidate_protein_atoms(perceived.identity, relaxed);
@@ -389,6 +451,11 @@ bool AssembleCentralTyped(
             continue;
         }
 
+        // nearest aligned pose
+        // The identity equality IS the validation; we do not reject on
+        // residual distance because chi-grid coarseness puts deep-
+        // sidechain atoms (Arg / Lys terminal-N region) at 2-4 Å residual
+        // routinely. Residual is captured per-atom as an ML feature.
         std::size_t best_atom = SIZE_MAX;
         double      best_dist = std::numeric_limits<double>::infinity();
         for (std::size_t ai : candidates) {
@@ -398,10 +465,12 @@ bool AssembleCentralTyped(
         if (best_atom == SIZE_MAX) continue;
         used.insert(best_atom);
 
+        // Outlier stat (for diagnostics; does NOT reject).
         if (best_dist > validation_threshold_A) {
             ++out.n_above_threshold;
         }
 
+        // emit (mirrors EmitAlignedAtom; central path keeps outliers)
         AlignedDftAtom aligned_atom;
         aligned_atom.dft_atom_idx     = perceived.dft_atom_idx;
         aligned_atom.protein_atom_idx = best_atom;
@@ -410,7 +479,14 @@ bool AssembleCentralTyped(
         aligned_atom.residual_vec     =
             aligned_atom.aligned_position - conf.PositionAt(best_atom);
         aligned_atom.residual_distance = best_dist;
+        // substrate_role_agrees: relaxed identity match with a non-
+        // empty candidate set means BOTH sides agree on chemistry at
+        // the (element, locant, backbone_role) level; the within-class
+        // assignment (BranchAddress / DiastereotopicIndex) is resolved
+        // by nearest-spatial. That's a principled match, not a
+        // disagreement.
         aligned_atom.substrate_role_agrees = true;
+        // rotate shielding tensor
         aligned_atom.shielding_tensor_aligned =
             RotateTensor(perceived.shielding_tensor, K.rotation);
         aligned_atom.shielding_spherical_aligned =
@@ -418,7 +494,13 @@ bool AssembleCentralTyped(
         out.aligned_atoms.push_back(std::move(aligned_atom));
     }
 
-    // Log one residue-level summary rather than one warning per atom.
+    // Residue-level diagnostic: if any perceived atoms failed identity
+    // match, log a single summary (don't spam per-atom). Common cause
+    // on production trajectories: disulfide-bonded CYS (state CYX) —
+    // tensorcs15 CYS rows were computed against reduced free Cys-SH so
+    // the DB row carries an HG hydrogen the disulfide-bonded protein
+    // side correctly does not. Unmatched atoms remain unassigned/NaN
+    // until CYX DB rows land; matched atoms can still be emitted.
     if (out.n_substrate_disagreements > 0) {
         OperationLog::Warn("TripeptidePoseAssembler::AssembleCentralTyped",
             "residue " + std::to_string(res.sequence_number) + " " +
@@ -444,12 +526,19 @@ bool AssembleCentral(
         bool substrate_check_strict,
         AssembledTripeptide& out) {
 
+    // Typed path: when perception succeeded, route through the typed-
+    // identity matcher. No mixed-state of typed-BB + heuristic-sidechain.
     if (rec.larsen.has_value()) {
         return AssembleCentralTyped(protein, conf, residue_idx, rec,
                                      validation_threshold_A,
                                      substrate_check_strict, out);
     }
 
+    // Perception or nothing. There is no longer a heuristic fallback;
+    // an absent LarsenTripeptide means we decline the residue and the
+    // calculator continues with one fewer assignment. The specific
+    // perception-failure reason is already in the OperationLog via
+    // PerceiveLarsenTripeptide's structured warning.
     OperationLog::Warn("TripeptidePoseAssembler::AssembleCentral",
         "residue " +
         std::to_string(protein.ResidueAt(residue_idx).sequence_number) +
@@ -461,6 +550,10 @@ bool AssembleCentral(
 
 }  // anonymous namespace
 
+
+// ============================================================================
+// Public API
+// ============================================================================
 
 AssembledTripeptide AssembleTripeptide(
         const Protein& protein,
@@ -489,6 +582,7 @@ AssembledTripeptide AssembleTripeptide(
     }
     out.ok = ok && !out.aligned_atoms.empty();
 
+    // Aggregate residual stats.
     if (!out.aligned_atoms.empty()) {
         double sum = 0.0;
         for (const auto& a : out.aligned_atoms) {
