@@ -17,11 +17,12 @@
 //   because DsspResult attaches conditionally on skip_dssp == false;
 //   per-frame source-attached gate captures absence.
 //
-//   Phi() / Psi() are read by DihedralTimeSeriesTrajectoryResult's
-//   cross-result numerical-consistency test only (NOT in production
-//   emission); DSSP returns the negated-IUPAC convention per libdssp
-//   (well-known quirk), and the test compares the new TR's IUPAC
-//   phi/psi against -DsspResult.Phi/Psi at 1e-2 rad tolerance to
+//   Phi() / Psi() are read by MutationDeltaResult when both WT and
+//   mutant conformations have DsspResult attached. They are also read
+//   by DihedralTimeSeriesTrajectoryResult's cross-result numerical-
+//   consistency test; DSSP returns the negated-IUPAC convention per
+//   libdssp (well-known quirk), and the test compares the new TR's
+//   IUPAC phi/psi against -DsspResult.Phi/Psi at 1e-2 rad tolerance to
 //   verify the negation invariant.
 //
 

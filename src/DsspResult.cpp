@@ -107,8 +107,8 @@ std::unique_ptr<DsspResult> DsspResult::Compute(ProteinConformation& conf) {
         auto& db = cif_file.front();
         cif::mm::structure structure(db, 1, {});
 
-        // min_poly_proline_stretch_length = 3 (standard, Adzhubei & Sternberg 1993)
-        // calculate_accessibility = true (SASA via Lee & Richards 1971, 1.4A probe)
+        // Constructor arguments: min_poly_proline_stretch_length = 3,
+        // calculateSurfaceAccessibility = true.
         dssp dssp_calc(structure, 3, true);
 
         // Build lookup: (chain, seq_num) -> residue index
@@ -278,7 +278,7 @@ int DsspResult::WriteFeatures(const ProteinConformation& conf,
     // dssp_chi.npy — (N, 12) float64, per-atom (broadcast from residue)
     // Per chi angle (1-4): cos, sin, exists (1.0/0.0)
     // Chi angles computed from Residue::chi[k] atom indices + conformation positions.
-    // NaN for residues without that chi angle (GLY, ALA, etc.)
+    // Missing or degenerate chi angles keep cos=0, sin=0, exists=0.
     {
         std::vector<double> chi_data(N * 12, 0.0);
         for (size_t i = 0; i < N; ++i) {

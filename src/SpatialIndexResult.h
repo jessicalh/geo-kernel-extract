@@ -23,7 +23,7 @@
 
 namespace nmr {
 
-// Constitution: 15A cutoff where ring current effects become negligible
+// Constitution: 15A cutoff used to build spatial-neighbour lists
 constexpr double SPATIAL_NEIGHBOUR_CUTOFF_A = 15.0;
 
 // ============================================================================
