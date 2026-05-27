@@ -35,9 +35,9 @@ Status Session::LoadFromToml() {
     OperationLog::LogSessionStart();
 
     // CategoryInfoProjection: one-shot setup of the output-side per-atom
-    // categorical record (atom_nom.tbl). Inert when bmrb_atom_nom path is
-    // not set in TOML; emission then runs but emits AMBER names as
-    // fallback (provenance=MissLogged for every atom).
+    // categorical record (atom_nom.tbl). When bmrb_atom_nom is not set,
+    // emission still runs and emits AMBER names as fallback
+    // (provenance=MissLogged for every atom).
     CategoryInfoProjection::Config cic_cfg;
     cic_cfg.atom_nom_tbl = RuntimeEnvironment::BmrbAtomNom();
     CategoryInfoProjection::Configure(std::move(cic_cfg));

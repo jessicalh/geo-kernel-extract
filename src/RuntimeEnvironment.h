@@ -21,7 +21,8 @@
 //                    work directories
 //   bmrb_atom_nom  — references/bmrb_data/atom_nom.tbl path; consumed by
 //                    CategoryInfoProjection at session start. Empty =
-//                    projection runs inert (no atom_nom.tbl-driven names).
+//                    no atom_nom.tbl-driven names; projection emits AMBER
+//                    names as lookup fallbacks.
 //   tensorcs15_dsn — libpq connection string for the local tensorcs15
 //                    Postgres replica (ProCS15 tripeptide DFT data).
 //                    Read from [databases].tensorcs15 in the TOML.

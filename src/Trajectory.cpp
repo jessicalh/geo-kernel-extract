@@ -181,10 +181,9 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // CategoryInfoProjection's structured NPY (atoms_category_info.npy)
     // is invariant for the lifetime of the Protein. Emit ONCE here,
     // before any per-frame work, so the per-frame loop doesn't
-    // redundantly rewrite identical data N times. Inert when the
-    // session didn't configure a bmrb_atom_nom path; in that case
-    // the NPY emits AMBER names as the IUPAC/BMRB fallback with
-    // provenance=MissLogged for every atom.
+    // redundantly rewrite identical data N times. When the session didn't
+    // configure a bmrb_atom_nom path, the NPY emits AMBER names as the
+    // IUPAC/BMRB fallback with provenance=MissLogged for every atom.
     if (!output_dir_.empty()) {
         const int cat = CategoryInfoProjection::WriteFeatures(
             tp.ProteinRef(), output_dir_.string());

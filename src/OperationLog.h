@@ -84,16 +84,15 @@ public:
 
     // Log with channel (Info checks mask, Warn/Error always emit).
     //
-    // noexcept by contract: the log is the system's external memory and is
-    // ALWAYS ON, so emitting a line must never throw — it is called from
-    // destructors (Scope::~Scope) and during stack unwinding, where an
-    // escaping exception is std::terminate. Any failure to build or send a
-    // line is contained internally (last resort: a fixed marker on stderr).
+    // noexcept by contract: logging is called from destructors
+    // (Scope::~Scope) and during stack unwinding, where an escaping
+    // exception is std::terminate. Any failure to build or send a line is
+    // contained internally (last resort: a fixed marker on stderr).
     static void Log(Level level, uint32_t channel,
                     const std::string& operation,
                     const std::string& detail) noexcept;
 
-    // Log without channel (always emits — for Warn/Error).
+    // Log without channel filtering; used by Warn/Error and sink setup.
     static void Log(Level level,
                     const std::string& operation,
                     const std::string& detail) noexcept;

@@ -61,7 +61,7 @@ struct State {
     // Cap-atom table (atom_nom.tbl rows with 1-letter == 'X'); keyed by
     // atom name only. Looked up as fallback after per-residue miss.
     std::map<std::string, AtomNomRow> cap_atoms;
-    // "RES:NAME" -> miss count. Includes provenance prefix when needed.
+    // "RES:NAME" -> atom_nom.tbl lookup miss count.
     std::map<std::string, int> miss_log;
 };
 State& Get() {
@@ -80,7 +80,7 @@ State& Get() {
 //   cols[1]: empty (legacy padding column)
 //   cols[2]: BMRB / IUPAC atom name
 //   cols[3]: SC stereo designation (pro-R / pro-S / Z / E / blank)
-//   cols[4..]: other naming systems (UCSF, XPLOR, MSI, PDB, SYBYL, MIDAS)
+//   cols[4..]: other naming systems (PDB, UCSF, MSI, XPLOR, SYBYL, MIDAS, DIANA)
 //
 // We consume cols 0, 2, 3 only.
 //
@@ -120,9 +120,9 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
             }
             if (std::isspace(static_cast<unsigned char>(c))) {
                 if (in_token) {
-                    // Inside a token, treat space as separator only if
-                    // tabs aren't present elsewhere — but the file
-                    // mixes them. Conservative: end token at first space.
+                    // Treat whitespace inside data rows as a separator too;
+                    // atom names and stereo labels in this table contain no
+                    // spaces.
                     cols.push_back(cur);
                     cur.clear();
                     in_token = false;
@@ -168,7 +168,7 @@ void ParseAtomNomTable(const fs::path& path, State& s) {
     // smaller indicates a parser or file-format regression.
     //
     constexpr size_t kMinPerResidue = 280;   // generous floor; real value ~329
-    constexpr size_t kMinCapAtoms   = 4;     // H1, H2, H3, OXT minimally
+    constexpr size_t kMinCapAtoms   = 4;     // H1, H2, H3, O'' minimally
     if (s.per_residue.size() < kMinPerResidue) {
         std::fprintf(stderr,
             "FATAL: CategoryInfoProjection::Configure -- atom_nom.tbl "
@@ -443,7 +443,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                 iupac_prov = NamingProvenance::Match;
                 bmrb_prov  = NamingProvenance::Match;
             } else {
-                // Log once per (residue 3-letter, atom name).
+                // Tally by (residue 3-letter, atom name).
                 std::string key = std::string(IupacThreeLetter(res.type)) + ":" + amber_name;
                 ++s.miss_log[key];
                 // Fallback: emit AMBER name as IUPAC/BMRB so consumers

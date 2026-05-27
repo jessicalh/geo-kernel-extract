@@ -14,8 +14,8 @@
 // shape as FramePdbEmitter.
 //
 //   Configure(config) -- assemble: parse atom_nom.tbl into the lookup
-//                         table; set configured flag. Called once at
-//                         startup from Session::LoadFromToml.
+//                         table when provided. Called once at startup from
+//                         Session::LoadFromToml.
 //   WriteFeatures(protein, output_dir)
 //                         -- emit one structured NPY per protein. Without
 //                         atom_nom.tbl, emits AMBER names as lookup
@@ -23,10 +23,11 @@
 //                         emits zero-valued substrate fields.
 //   Reset()             -- clear configuration; for tests.
 //
-// Reads ONLY (no model mutation):
+// Primary reads (no model mutation):
 //   - protein.LegacyAmber().AtomSemantic()  (typed substrate per atom)
+//   - protein.LegacyAmber().AtomtypeString()
 //   - protein.AtomAt(i)                     (element, residue_index, pdb_atom_name)
-//   - protein.ResidueAt(j)                  (type, protonation_variant_index, terminal_state)
+//   - protein.ResidueAt(j)                  (identity, sequence address, terminal_state)
 //   - GetAminoAcidType(...)                 (three_letter_code, variants)
 //   - parsed atom_nom.tbl                   (BMRB column, SC stereo column)
 //

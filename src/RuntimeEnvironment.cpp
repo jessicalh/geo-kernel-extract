@@ -205,8 +205,8 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
     fs::create_directories(tmpDir_);
 
-    // bmrb_atom_nom: TOML → env var → empty.
-    // Empty is OK; CategoryInfoProjection runs inert in that case.
+    // bmrb_atom_nom: TOML → env var → empty. Empty is OK;
+    // CategoryInfoProjection emits AMBER names as lookup fallbacks.
     if (!toml_bmrb_atom_nom.empty() && fs::exists(toml_bmrb_atom_nom)) {
         bmrb_atom_nom_ = toml_bmrb_atom_nom;
     } else {
