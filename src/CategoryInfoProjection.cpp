@@ -253,7 +253,7 @@ const std::string& AmberToBmrbCapName(const std::string& amber_name) {
 
 // ── atom_nom.tbl lookup ──────────────────────────────────────
 //
-// Returns nullptr on miss; caller logs to miss_log.
+// Returns nullptr on miss; WriteFeatures tallies lookup misses.
 //
 // Tries per-residue first (e.g. ('A', "HB1") for ALA HB1), then falls
 // back to the cap-atoms table for residue-agnostic atoms (H1, OXT, etc.).

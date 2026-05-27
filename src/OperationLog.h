@@ -67,11 +67,11 @@ public:
     static void ConfigureUdp(const std::string& host, int port);
 
     // Configure file output. Writes JSON-lines to the given path.
-    // Can coexist with UDP — both receive every message.
+    // Can coexist with UDP — both receive every emitted message.
     static void ConfigureFile(const std::string& path);
     static void CloseFile();
 
-    // Set the channel mask. Only Info on enabled channels is emitted.
+    // Set the channel mask. Only Info/Debug on enabled channels is emitted.
     // Warn and Error ALWAYS emit regardless of mask.
     static void SetChannelMask(uint32_t mask);
     static uint32_t GetChannelMask();
@@ -82,7 +82,7 @@ public:
     // Log session start: records active channels.
     static void LogSessionStart();
 
-    // Log with channel (Info checks mask, Warn/Error always emit).
+    // Log with channel (Info/Debug check mask, Warn/Error always emit).
     //
     // noexcept by contract: logging is called from destructors
     // (Scope::~Scope) and during stack unwinding, where an escaping

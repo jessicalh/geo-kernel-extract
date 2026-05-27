@@ -68,9 +68,9 @@ public:
         std::filesystem::path atom_nom_tbl;  // empty = no external lookup table
     };
 
-    // Called once at startup. Reads + parses atom_nom.tbl. Subsequent
-    // calls clear the existing state before parsing; same idiom as
-    // FramePdbEmitter.
+    // Called once at startup. Reads + parses atom_nom.tbl when configured.
+    // Subsequent calls clear the existing state before parsing; same idiom
+    // as FramePdbEmitter.
     static void Configure(Config config);
 
     // Emit the structured NPY for one protein. Returns the number of

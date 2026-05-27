@@ -323,10 +323,10 @@ bool WriteRings(const Protein& protein, const fs::path& out_dir,
 
     std::vector<unsigned char> buf(N * kRingRecordSize, 0);
 
-    // Build aromatic-native to absolute ring_id map for fused-partner
-    // resolution. The Ring struct's fused_partner_index is the
-    // aromatic-axis index (SIZE_MAX if not fused) per Ring.h:57.
-    // We translate it to absolute ring_id (== aromatic-axis index here).
+    // Resolve fused-partner ids. The Ring struct's fused_partner_index is
+    // the aromatic-axis index (SIZE_MAX if not fused) per Ring.h:57.
+    // Aromatic rows occupy the prefix of rings.npy, so the absolute
+    // ring_id is the same value here.
     size_t membership_rows = 0;
 
     for (size_t ai = 0; ai < n_arom; ++ai) {

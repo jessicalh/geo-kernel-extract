@@ -16,7 +16,7 @@
 //   mopac         — MOPAC binary path for MopacResult subprocess calls
 //   ff14sb_params — BuildFromPdb charge assignment
 //   tleap          — AmberPreparedChargeSource runtime topology generation
-//                    (resolved from TOML / AMBERHOME / PATH / conda)
+//                    (resolved from TOML / AMBERHOME / PATH)
 //   tmpdir         — temp files for MOPAC and AmberPreparedChargeSource
 //                    work directories
 //   bmrb_atom_nom  — references/bmrb_data/atom_nom.tbl path; consumed by
