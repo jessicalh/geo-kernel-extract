@@ -22,11 +22,25 @@ std::vector<std::type_index> McConnellResult::Dependencies() const {
     };
 }
 
-// The full McConnell shielding tensor from one bond at one atom.
+
+// ============================================================================
+// The full McConnell tensor kernel from one bond at one atom.
+//
 // M_ab = 9 cos_theta d_hat_a b_hat_b
 //      - 3 b_hat_a b_hat_b
 //      - (3 d_hat_a d_hat_b - delta_ab)
+//
 // Returns M_ab / r^3 (Angstrom^-3).
+//
+// Also computes:
+//   K_ab = (3 d_hat_a d_hat_b - delta_ab) / r^3  (symmetric traceless)
+//   f    = (3 cos^2 theta - 1) / r^3              (McConnell scalar)
+//
+// Three terms in M:
+//   Term 1: 9 cos_theta d_hat ⊗ b_hat     — generally asymmetric; can contribute T1
+//   Term 2: -3 b_hat ⊗ b_hat              — symmetric; contributes T0 and T2
+//   Term 3: -(3 d_hat ⊗ d_hat - I)        — symmetric traceless; contributes T2
+// ============================================================================
 
 struct BondKernelResult {
     Mat3 M_over_r3 = Mat3::Zero();   // full McConnell tensor (asymmetric)
@@ -44,9 +58,10 @@ static BondKernelResult ComputeBondKernel(
 
     BondKernelResult result;
 
-    Vec3 disp = atom_pos - bond_midpoint;
+    Vec3 disp = atom_pos - bond_midpoint;  // midpoint->atom displacement
     double r = disp.norm();
 
+    // too close: return zero kernel (distance stays 0, bond contributes nothing)
     if (r < CalculatorConfig::Get("singularity_guard_distance")) return result;
 
     result.distance = r;
@@ -57,13 +72,18 @@ static BondKernelResult ComputeBondKernel(
 
     double cos_theta = d_hat.dot(bond_direction);
 
+    // McConnell scalar: (3 cos^2 theta - 1) / r^3
     result.f = (3.0 * cos_theta * cos_theta - 1.0) / r3;
 
+    // Symmetric traceless dipolar kernel K_ab
     for (int a = 0; a < 3; ++a)
         for (int b = 0; b < 3; ++b)
             result.K(a, b) = (3.0 * d_hat(a) * d_hat(b)
                               - (a == b ? 1.0 : 0.0)) / r3;
 
+    // Full McConnell tensor M_ab / r^3
+    //   = [9 cos_theta d_hat_a b_hat_b - 3 b_hat_a b_hat_b
+    //      - (3 d_hat_a d_hat_b - delta_ab)] / r^3
     for (int a = 0; a < 3; ++a) {
         for (int b = 0; b < 3; ++b) {
             result.M_over_r3(a, b) =
@@ -76,6 +96,11 @@ static BondKernelResult ComputeBondKernel(
 
     return result;
 }
+
+
+// ============================================================================
+// McConnellResult::Compute
+// ============================================================================
 
 std::unique_ptr<McConnellResult> McConnellResult::Compute(
         ProteinConformation& conf) {
@@ -111,14 +136,17 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         auto& ca = conf.MutableAtomAt(ai);
         Vec3 atom_pos = conf.PositionAt(ai);
 
+        // Find nearby bonds via spatial index
         auto nearby_bonds = spatial.BondsWithinRadius(atom_pos, CalculatorConfig::Get("mcconnell_bond_anisotropy_cutoff"));
 
+        // Per-category accumulators
         double co_sum = 0.0, cn_sum = 0.0, sidechain_sum = 0.0, aromatic_sum = 0.0;
         Mat3 M_backbone_total = Mat3::Zero();
         Mat3 M_sidechain_total = Mat3::Zero();
         Mat3 M_aromatic_total = Mat3::Zero();
         Mat3 M_total = Mat3::Zero();
 
+        // Nearest CO and CN tracking
         double best_co_dist = NO_DATA_SENTINEL;
         double best_cn_dist = NO_DATA_SENTINEL;
         double best_co_f = 0.0;
@@ -134,6 +162,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
 
             BondKernelResult kernel = ComputeBondKernel(atom_pos, midpoint, direction);
 
+            // Build evaluation context and apply filter set
             KernelEvaluationContext ctx;
             ctx.distance = kernel.distance;
             ctx.source_extent = conf.bond_lengths[bi];
@@ -141,6 +170,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             ctx.source_atom_a = bond.atom_index_a;
             ctx.source_atom_b = bond.atom_index_b;
             if (!filters.AcceptAll(ctx)) {
+                // ---- GeometryChoice: filter exclusion ----
                 choices.Record(CalculatorId::McConnell, bi, "filter exclusion",
                     [&](GeometryChoice& gc) {
                         AddBond(gc, &bond, EntityRole::Source, EntityOutcome::Included);
@@ -152,6 +182,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                 filtered_out++; continue;
             }
 
+            // Store in BondNeighbourhood
             BondNeighbourhood bn;
             bn.bond_index = bi;
             bn.bond_category = bond.category;
@@ -162,6 +193,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             bn.mcconnell_scalar = kernel.f;
             ca.bond_neighbours.push_back(bn);
 
+            // Accumulate full McConnell tensor by category
             M_total += kernel.M_over_r3;
 
             switch (bond.category) {
@@ -172,7 +204,7 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
                         best_co_dist = kernel.distance;
                         best_co_f = kernel.f;
                         best_co_midpoint = midpoint;
-                        best_co_direction = kernel.direction;
+                        best_co_direction = kernel.direction;  // d̂ = midpoint->atom (kernel is sign-invariant)
                         best_co_kernel = kernel;
                     }
                     break;
@@ -211,11 +243,13 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
             total_pairs++;
         }
 
+        // Store per-atom totals
         ca.mcconnell_co_sum = co_sum;
         ca.mcconnell_cn_sum = cn_sum;
         ca.mcconnell_sidechain_sum = sidechain_sum;
         ca.mcconnell_aromatic_sum = aromatic_sum;
 
+        // Nearest CO
         ca.mcconnell_co_nearest = best_co_f;
         ca.nearest_CO_midpoint = best_co_midpoint;
         ca.nearest_CO_dist = best_co_dist;
@@ -246,8 +280,10 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
         aromatic_T2_source -= (aromatic_T2_source.trace() / 3.0) * Mat3::Identity();
         ca.T2_aromatic_total = SphericalTensor::Decompose(aromatic_T2_source);
 
+        // Full McConnell shielding contribution (full M: T0+T1+T2)
         ca.mc_shielding_contribution = SphericalTensor::Decompose(M_total);
 
+        // ---- GeometryChoice: bond anisotropy ----
         choices.Record(CalculatorId::McConnell, ai, "bond anisotropy",
             [&ca, ai, best_co_dist, best_cn_dist](GeometryChoice& gc) {
                 AddAtom(gc, &ca, ai, EntityRole::Target, EntityOutcome::Included);
@@ -265,6 +301,11 @@ std::unique_ptr<McConnellResult> McConnellResult::Compute(
     return result_ptr;
 }
 
+
+// ============================================================================
+// Query methods
+// ============================================================================
+
 double McConnellResult::CategoryScalarSum(size_t atom_index, BondCategory cat) const {
     const auto& ca = conf_->AtomAt(atom_index);
     switch (cat) {
@@ -280,8 +321,12 @@ double McConnellResult::NearestCOScalarContribution(size_t atom_index) const {
     return conf_->AtomAt(atom_index).mcconnell_co_nearest;
 }
 
+
+// ============================================================================
+// SampleKernelAt: evaluate McConnell kernel at arbitrary 3D point.
 // Sums over all bonds within the configured bond cutoff. No atom-specific
 // filters (no atoms at a free grid point).
+// ============================================================================
 
 SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
     if (!conf_) return SphericalTensor{};
@@ -307,8 +352,10 @@ SphericalTensor McConnellResult::SampleKernelAt(Vec3 point) const {
 }
 
 
+// ============================================================================
 // WriteFeatures: mc_shielding (9), mc_category_T2 (5 categories × 5 T2),
 // mc_scalars (CO/CN/sidechain/aromatic sums, nearest distances).
+// ============================================================================
 
 int McConnellResult::WriteFeatures(const ProteinConformation& conf,
                                     const std::string& output_dir) const {
