@@ -34,7 +34,7 @@
 // since this Result re-runs the full forward pass with gradient
 // tracking enabled.
 //
-// CUDA mandatory (inherits from AIMNet2Model). No CPU fallback.
+// CUDA mandatory through the shared AIMNet2Model. No CPU fallback.
 //
 
 #include "ConformationResult.h"
@@ -58,8 +58,9 @@ public:
 
     // Factory: run the autograd backward pass and return the populated
     // Result. The caller attaches it to the conformation. Returns
-    // nullptr on any failure (zero atoms, unknown elements, missing
-    // 'charges' tensor in model output, undefined coord.grad).
+    // nullptr on checked failures (zero atoms, unsupported elements,
+    // missing 'charges' tensor in model output, undefined or non-finite
+    // coord.grad).
     static std::unique_ptr<AIMNet2ChargeResponseGradientResult> Compute(
         ProteinConformation& conf,
         AIMNet2Model& model);

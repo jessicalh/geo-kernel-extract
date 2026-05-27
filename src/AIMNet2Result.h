@@ -9,19 +9,17 @@
 // Married to AIMNet2 — no abstract interface, no factory pattern.
 // The .jpt model is loaded once and shared across all conformations.
 //
-// charge_sensitivity: per-conformation, on ConformationAtom.
-// Computed via autograd (d(charges)/d(positions)) if enabled in TOML
-// (aimnet2_sensitivity_mode = "autograd"). Default: "none" (not computed).
-// The perturbation approach was removed — it produced conformation-
-// specific values that lied when applied to other conformations.
+// AIMNet2Result does not compute charge sensitivity. The separate
+// AIMNet2ChargeResponseGradientResult runs its own grad-tracking
+// forward/backward pass and stores the charge-response gradient fields.
 //
 // CUDA mandatory. No CPU fallback.
 //
-// FAILURE POLICY: if AIMNet2 is requested and anything goes wrong
-// (CUDA unavailable, model corrupt, aim embedding missing, unknown
-// elements), Compute returns nullptr and OperationRunner logs an
-// error. Silent degradation is NOT acceptable — a 4-week fleet
-// run with silently missing features means no thesis.
+// FAILURE POLICY: if AIMNet2 is requested and a checked model-load or
+// Compute guard fails (CUDA unavailable, model corrupt, aim embedding
+// missing, unsupported elements), the result is not attached and
+// OperationRunner treats that as a hard failure. Silent degradation is
+// not acceptable.
 //
 
 #include "ConformationResult.h"
@@ -68,7 +66,7 @@ public:
 
     // Factory: compute AIMNet2 charges, aim embedding, and Coulomb EFG.
     // model is the shared loaded model (created once at startup).
-    // Returns nullptr on any failure — never silently degrades.
+    // Returns nullptr for checked failures — never silently degrades.
     static std::unique_ptr<AIMNet2Result> Compute(
         ProteinConformation& conf,
         AIMNet2Model& model);
@@ -76,7 +74,7 @@ public:
     int WriteFeatures(const ProteinConformation& conf,
                       const std::string& output_dir) const override;
 
-    // Build the padded half-neighbour matrix for AIMNet2.
+    // Build the padded symmetric neighbour matrix for AIMNet2.
     // Returns (N+1, max_nb) int32 tensor, sentinel = N.
     //
     // Public so AIMNet2ChargeResponseGradientResult can reuse the convention

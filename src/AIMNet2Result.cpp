@@ -18,8 +18,7 @@
 namespace nmr {
 
 // ============================================================================
-// Helper: pack SphericalTensor into 9-element array
-// [T0, T1x, T1y, T1z, T2_0, T2_1, T2_2, T2_3, T2_4]
+// EFG packing note
 // ============================================================================
 
 // PackST_AN2 (9-component SphericalTensor → flat double[9]) removed
@@ -230,17 +229,17 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
         }
     }
 
-    // charge: (1,) float32 — net molecular charge
+    // charge: (1,) float32 — model charge input, fixed neutral here
     auto charge_cpu = torch::zeros({1}, torch::kFloat32);
 
     // mol_idx: (N+1,) int64 — all zeros (single molecule), sentinel = 0
     auto mol_idx_cpu = torch::zeros({N1}, torch::kInt64);
 
-    // nbmat: (N+1, max_nb) int32 — short-range half-neighbour list
+    // nbmat: (N+1, max_nb) int32 — short-range symmetric neighbour list
     double cutoff_sq = model.cutoff * model.cutoff;
     auto nbmat_cpu = BuildNeighbourMatrix(conf, cutoff_sq, model.max_nb);
 
-    // nbmat_lr: (N+1, max_nb_lr) int32 — long-range half-neighbour list
+    // nbmat_lr: (N+1, max_nb_lr) int32 — long-range symmetric neighbour list
     double cutoff_lr_sq = model.cutoff_lr * model.cutoff_lr;
     auto nbmat_lr_cpu = BuildNeighbourMatrix(conf, cutoff_lr_sq, model.max_nb_lr);
 
@@ -318,13 +317,10 @@ std::unique_ptr<AIMNet2Result> AIMNet2Result::Compute(
     }
 
     // ------------------------------------------------------------------
-    // 6. Charge sensitivity: per-conformation, if enabled in TOML
+    // 6. Charge-response gradient is a separate Result
     // ------------------------------------------------------------------
-    // aimnet2_sensitivity_mode: "none" (default) or "autograd"
-    // Perturbation approach removed — it produced conformation-specific
-    // values via random splats that were non-comparable across frames
-    // and lied about solvation when applied to other conformations.
-    // TODO: autograd path — validate .jpt supports requires_grad on coords
+    // AIMNet2ChargeResponseGradientResult performs its own grad-tracking
+    // forward/backward pass after AIMNet2Result attaches.
 
     // ------------------------------------------------------------------
     // 7. Coulomb EFG from AIMNet2 charges
@@ -441,25 +437,8 @@ void AIMNet2Result::ComputeCoulombEFG(
 
 
 // ============================================================================
-// Charge sensitivity: autograd path (future)
+// Charge-response gradients live in AIMNet2ChargeResponseGradientResult
 // ============================================================================
-//
-// The perturbation approach (10 random bulk displacements, Welford variance)
-// was removed. It was wrong: each perturbation set was random and conformation-
-// specific, so the sensitivity from conformation A was non-comparable to
-// conformation B. Worse, applying A's sensitivity to B lies about solvation.
-//
-// The correct approach is autograd: d(charges)/d(positions) via one backward
-// pass through the TorchScript model. This is deterministic, per-conformation,
-// and physically correct. It requires the .jpt model to support requires_grad
-// on the coordinate tensor — validation pending.
-//
-// When implemented, ComputeChargeSensitivityAutograd will:
-//   1. Run forward with requires_grad=True on coords (no NoGradGuard)
-//   2. Backward on sum(charges) to get coord.grad (N, 3)
-//   3. Per-atom sensitivity = norm of the (3,) gradient vector
-//   4. Store on conf.MutableAtomAt(i).aimnet2_charge_sensitivity
-//
 
 
 // ============================================================================
@@ -496,8 +475,8 @@ int AIMNet2Result::WriteFeatures(
 
     // aimnet2_efg.npy — (N, 5) float64, T2 only. AIMNet2 EFG from same
     // Coulomb-style outer-product physics as CoulombResult → T0+T1
-    // structural zeros after the explicit traceless projection at
-    // line 421-428. Schema rev 2026-05-18.
+    // structural zeros after the explicit traceless projection before
+    // storage.
     auto write_efg_t2 = [&](const std::string& name,
                              SphericalTensor ConformationAtom::* member) {
         std::vector<double> data(N * 5);
@@ -513,10 +492,8 @@ int AIMNet2Result::WriteFeatures(
     write_efg_t2("aimnet2_efg_backbone.npy", &ConformationAtom::aimnet2_EFG_backbone_spherical);
     ++files_written;
 
-    // aimnet2_charge_sensitivity.npy is NOT written here.
-    // Charge sensitivity = per-atom charge variance across the ensemble,
-    // computed by ChargeSensitivityEvaluator from the charges already
-    // on each ConformationAtom. The ensemble IS the perturbation experiment.
+    // Charge-response-gradient NPYs are written by
+    // AIMNet2ChargeResponseGradientResult.
 
     return files_written;
 }
