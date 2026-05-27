@@ -53,6 +53,9 @@ std::string FormatAtomNameColumn(const std::string& name) {
     return std::string(buf, 4);
 }
 
+// ---------------------------------------------------------------------------
+// Capping support.
+//
 // Under UseCappedFragmentsForUnsupportedTerminalVariants, terminal
 // ASH / CYM / GLH / LYN — variants ff14SB ships only as INTERNAL — are
 // modelled as INTERNAL by inserting an ACE acetyl cap at the N end
@@ -69,6 +72,7 @@ std::string FormatAtomNameColumn(const std::string& name) {
 // Atom names are AMBER library names exactly:
 //   ACE: HH31 HH32 HH33 CH3 C O           (N-terminal cap)
 //   NME: N H CH3 HH31 HH32 HH33           (C-terminal cap)
+// ---------------------------------------------------------------------------
 
 struct CapAtomTemplate {
     const char* name;
@@ -228,8 +232,8 @@ void GenerateAmberPdb(const Protein& protein,
     map_out.extractor_index_for_prmtop_residue.reserve(
         protein.ResidueCount() + 8);
 
-    // Disulfide detection is local to AMBER preparation and does not depend
-    // on CovalentTopology's bond perception.
+    // Disulfide detection by direct SG-SG distance check on typed CYS
+    // residues; it does not depend on CovalentTopology's bond perception.
     std::set<size_t> cyx_residues;
     auto disulfide_pairs = DetectDisulfides(protein, conf);
     for (const auto& pair : disulfide_pairs) {
@@ -237,7 +241,8 @@ void GenerateAmberPdb(const Protein& protein,
         cyx_residues.insert(pair.second);
     }
 
-    // Which residues get ACE/NME inserts under the capped-fragment policy.
+    // Capping plan — which residues get ACE / NME inserts
+    // around them under UseCappedFragmentsForUnsupportedTerminalVariants.
     const CappingPlan capping = BuildCappingPlan(protein, policy, verdict);
 
     int serial = 1;

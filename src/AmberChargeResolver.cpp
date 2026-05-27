@@ -55,7 +55,8 @@ std::string AmberFlatTableCoverageVerdict::Detail() const {
     oss << "ff14SB flat table cannot represent " << failures.size()
         << " case" << (failures.size() == 1 ? "" : "s") << "; ";
 
-    // Put the first failure first, then cap the extra cases for readability.
+    // First failure carries the prominent error text the existing tests
+    // expect: terminal_token + ff_resname + "no canonical fallback".
     const auto& f0 = failures.front();
     switch (f0.kind) {
         case AmberFlatTableCoverageKind::UnsupportedTerminalVariant:
@@ -98,10 +99,12 @@ std::string AmberFlatTableCoverageVerdict::Detail() const {
 
 namespace {
 
+// ---------------------------------------------------------------------------
 // Flat-table key parser. Builds the set of valid (terminal, resname, atom)
 // keys plus the set of residue prefixes (terminal+resname) so we can
 // distinguish "residue not present at all" from "atom missing inside an
 // otherwise-present residue template".
+// ---------------------------------------------------------------------------
 
 struct Ff14sbKeySet {
     std::unordered_set<std::string> atom_keys;          // "INTERNAL ALA CA"
@@ -227,6 +230,10 @@ std::vector<std::string> AtomNameCandidates(
 }  // namespace
 
 
+// ============================================================================
+// AnalyzeFlatTableCoverage
+// ============================================================================
+
 AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
         const Protein& protein,
         const std::string& flat_table_path) {
@@ -323,13 +330,17 @@ AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
 }
 
 
+// ============================================================================
+// ResolveAmberChargeSource
+// ============================================================================
+
 std::unique_ptr<ChargeSource> ResolveAmberChargeSource(
         const Protein& protein,
         const ProteinBuildContext& build_context,
         const AmberSourceConfig& config,
         std::string& error_out) {
 
-    // Upstream PRMTOP wins and is not re-tleap'd.
+    // Branch 1: upstream PRMTOP wins, always. Never re-tleap.
     if (!build_context.prmtop_path.empty()) {
         if (!fs::exists(build_context.prmtop_path)) {
             error_out =
@@ -346,13 +357,13 @@ std::unique_ptr<ChargeSource> ResolveAmberChargeSource(
         return nullptr;
     }
 
-    // Flat table is used only after the typed coverage predicate passes.
+    // Branch 2: typed predicate over Protein state.
     auto verdict = AnalyzeFlatTableCoverage(protein, config.flat_table_path);
     if (verdict.Ok()) {
         return std::make_unique<ParamFileChargeSource>(config.flat_table_path);
     }
 
-    // Otherwise, preparation policy decides whether tleap may be used.
+    // Branch 3: prepared topology via tleap.
     if (config.preparation_policy ==
             AmberPreparationPolicy::FailOnUnsupportedTerminalVariants) {
         error_out = "AMBER charge resolution failed under "
@@ -361,6 +372,9 @@ std::unique_ptr<ChargeSource> ResolveAmberChargeSource(
         return nullptr;
     }
 
+    // Runtime-prepared topology via tleap; the source exposes generated
+    // PDB / LEaP script bodies for tests and performs the full round-trip
+    // in LoadCharges.
     return std::make_unique<AmberPreparedChargeSource>(
         protein, config.preparation_policy, std::move(verdict), config);
 }

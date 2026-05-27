@@ -1,8 +1,33 @@
 #pragma once
 //
-// ResolveAmberChargeSource is the dispatch point for AMBER charge sources:
-// upstream PRMTOP first, flat ff14SB table when coverage is complete, and
-// runtime tleap preparation only when policy permits it.
+// AmberChargeResolver: typed dispatch for AMBER charge sources.
+//
+// Single entry point for AMBER-source loaders to obtain a ChargeSource.
+// Loaders populate Protein + ProteinBuildContext, then call
+// ResolveAmberChargeSource(...) to get the right concrete source for
+// the typed state. Three branches:
+//
+//   1. build_context.prmtop_path non-empty
+//      → PrmtopChargeSource over that file (--orca / --mutant paths).
+//   2. AnalyzeFlatTableCoverage returns Satisfiable
+//      → ParamFileChargeSource over the flat ff14SB table
+//        (standard --pdb / --protonated-pdb proteins).
+//   3. Verdict non-satisfiable AND policy permits preparation
+//      → AmberPreparedChargeSource (runtime tleap pipeline).
+//
+// Branch 3 under FailOnUnsupportedTerminalVariants returns nullptr
+// with a typed error.
+//
+// AnalyzeFlatTableCoverage is the single source of truth for "can
+// ParamFileChargeSource satisfy this protein." Loaders should not
+// duplicate this logic.
+//
+// AmberPreparationPolicy values:
+//   FailOnUnsupportedTerminalVariants                — default; loud fail
+//   UseStockTermini                                  — prepared tleap path, no ACE/NME caps
+//   UseCappedFragmentsForUnsupportedTerminalVariants — ACE/NME caps
+//                                                       around ASH/CYM/GLH/LYN
+//                                                       at unsupported termini
 //
 
 #include "ChargeSource.h"
@@ -11,6 +36,14 @@
 #include <vector>
 
 namespace nmr {
+
+// ============================================================================
+// AmberPreparationPolicy
+//
+// Selects what AmberPreparedChargeSource does when the flat ff14SB table
+// cannot represent the protein. The default for --pdb / --protonated-pdb
+// is FailOnUnsupportedTerminalVariants (current behaviour).
+// ============================================================================
 
 enum class AmberPreparationPolicy {
     UseStockTermini,
@@ -21,8 +54,14 @@ enum class AmberPreparationPolicy {
 const char* AmberPreparationPolicyName(AmberPreparationPolicy policy);
 
 
-// flat_table_path is always required; tleap_path and work_dir are used only
-// when runtime PRMTOP preparation is selected.
+// ============================================================================
+// AmberSourceConfig
+//
+// What the resolver needs to make a decision. flat_table_path is required;
+// tleap_path / work_dir are required only when the resolver chooses
+// AmberPreparedChargeSource.
+// ============================================================================
+
 struct AmberSourceConfig {
     std::string flat_table_path;
     AmberPreparationPolicy preparation_policy =
@@ -32,8 +71,14 @@ struct AmberSourceConfig {
 };
 
 
-// Coverage verdict for the flat ff14SB table. Failures retain enough typed
-// residue/end information for capped-fragment preparation.
+// ============================================================================
+// AmberFlatTableCoverageVerdict
+//
+// Output of AnalyzeFlatTableCoverage. Carries the kind of the first
+// failure (or Satisfiable) and the full list of failures, so capping can
+// decide per-end without re-walking the protein.
+// ============================================================================
+
 enum class AmberFlatTableCoverageKind {
     Satisfiable,
     UnsupportedTerminalVariant,
@@ -67,29 +112,49 @@ struct AmberFlatTableCoverageVerdict {
 };
 
 
-// Pure function: given a Protein with typed terminal_state and
-// protonation_variant_index already resolved, and a path to the ff14SB
-// flat parameter file, decide whether ParamFileChargeSource can satisfy
-// every atom. Reports the first failure plus any later failures it can
-// see in the same single walk.
+// ============================================================================
+// AnalyzeFlatTableCoverage
+//
+// Given a Protein with typed terminal_state and protonation_variant_index
+// already resolved, and a path to the ff14SB flat parameter file, decide
+// whether ParamFileChargeSource can satisfy every atom. Reports the first
+// failure plus any later failures it can see in the same single walk.
 //
 // Construction-boundary note: this function performs string lookups on
 // (terminal_token, ff_resname, atom_name) keys. That is allowed because
 // it operates against a force-field table that is itself string-keyed
-// — the same boundary discipline as ParamFileChargeSource.
+// — the same boundary discipline as ParamFileChargeSource. Calculators
+// must never call this function.
+// ============================================================================
 
 AmberFlatTableCoverageVerdict AnalyzeFlatTableCoverage(
     const Protein& protein,
     const std::string& flat_table_path);
 
 
-// Dispatch rules:
-//   - build_context.prmtop_path selects PrmtopChargeSource and is not re-tleap'd.
-//   - satisfiable flat-table coverage selects ParamFileChargeSource.
-//   - non-satisfiable coverage selects AmberPreparedChargeSource only when
-//     the policy permits preparation.
+// ============================================================================
+// ResolveAmberChargeSource
+//
+// Single dispatch point for AMBER charge sources. Loaders that handle
+// AMBER chemistry (BuildFromPdb, BuildFromProtonatedPdb, BuildFromOrca,
+// BuildFromMutant) call this instead of constructing ChargeSource
+// subclasses directly.
+//
+// Branch 1: build_context.prmtop_path is non-empty
+//     → PrmtopChargeSource over that file. Never re-tleap'd.
+//       --orca / --mutant always take this branch by precondition;
+//       a missing prmtop_path on those paths must already have been
+//       rejected by the loader.
+//
+// Branch 2: AnalyzeFlatTableCoverage returns Satisfiable
+//     → ParamFileChargeSource over config.flat_table_path.
+//
+// Branch 3: verdict is non-satisfiable AND policy permits preparation
+//     → AmberPreparedChargeSource runtime tleap pipeline.
+//
 // Returns nullptr on dispatch error, populating error_out with a
 // typed description.
+// ============================================================================
 
 class ChargeSource;
 

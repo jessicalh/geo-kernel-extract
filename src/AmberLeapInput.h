@@ -1,7 +1,23 @@
 #pragma once
 //
-// Pure builders for the PDB body, LEaP script body, and extractor-to-PRMTOP
-// residue mapping used by AmberPreparedChargeSource. They perform no I/O.
+// AmberLeapInput: builders for deterministic LEaP input artifacts
+// (PDB body and LEaP script body) from typed Protein state. No I/O of
+// their own — callers stream output to a file.
+//
+// These functions are the testable boundary for AmberPreparedChargeSource:
+//   GenerateAmberPdb       — typed PDB generator (residue naming derives
+//                            from protonation_variant_index;
+//                            disulfide-CYS detected via DetectDisulfides
+//                            and emitted as CYX; ACE/NME caps inserted
+//                            under UseCappedFragmentsForUnsupportedTerminalVariants
+//                            for unsupported terminal variants).
+//   GenerateLeapScript     — leaprc.protein.ff14SB + mbondi2 +
+//                            loadPdb + bond mol.<ri>.SG mol.<rj>.SG +
+//                            saveamberparm. Pure function on its inputs.
+//   DetectDisulfides       — typed pairwise SG-SG distance check on CYS
+//                            residues.
+//   ResidueAmberMapping    — extractor↔PRMTOP residue index map; cap
+//                            residues marked NONE_FOR_CAP.
 //
 
 #include "AmberChargeResolver.h"
@@ -19,8 +35,11 @@ class ProteinConformation;
 
 namespace amber_leap {
 
-// Per generated-PRMTOP residue: which extractor residue it corresponds
-// to, or NONE_FOR_CAP if it is an inserted ACE/NME/NHE cap.
+// Per generated-PRMTOP residue: which extractor residue does it correspond
+// to, or NONE_FOR_CAP if it is an inserted ACE/NME cap.
+//
+// Built during GenerateAmberPdb; consumed by the atom-mapping
+// step of AmberPreparedChargeSource::LoadCharges.
 struct ResidueAmberMapping {
     static constexpr size_t NONE_FOR_CAP =
         std::numeric_limits<size_t>::max();
@@ -43,7 +62,7 @@ struct LeapScriptInputs {
 // each with a < b).
 //
 // Any pair of CYS residues whose SG atoms are within
-// max_ss_distance_angstroms of each other (default 2.5 Angstrom) is renamed
+// `max_ss_distance_angstroms` of each other (default 2.5 Å) is renamed
 // CYX and bonded explicitly in the LEaP script. It does not depend on
 // CovalentTopology::Resolve or any external bond-perception library;
 // AmberPreparedChargeSource is methodologically self-contained for
@@ -54,17 +73,22 @@ std::vector<std::pair<size_t, size_t>> DetectDisulfides(
     double max_ss_distance_angstroms = 2.5);
 
 
+// Emits a PDB body suitable for `loadPdb` in tleap.
+//
 // Walks the Protein's residues in order; each residue's name is the
 // AMBER unit name derived from typed state:
 //   - HIS variant 0/1/2 → HID/HIE/HIP
-//   - HIS no variant → HIE (ff14SB has no neutral generic HIS)
+//   - HIS no variant → HIE
 //   - CYS in a Disulfide bond → CYX (overrides any other variant)
 //   - CYS variant 1 → CYM
 //   - ASP variant 0 → ASH; GLU variant 0 → GLH; LYS variant 0 → LYN
 //   - others → canonical three-letter
-// Atom records are emitted in extractor atom-index order. ACE/NME caps under
-// UseCappedFragmentsForUnsupportedTerminalVariants are marked NONE_FOR_CAP
-// in ResidueAmberMapping.
+//
+// Atom records emitted in extractor atom-index order. TER between chains.
+//
+// Without caps, every extractor residue maps 1:1 to a PRMTOP residue.
+// Under UseCappedFragmentsForUnsupportedTerminalVariants, ACE/NME cap
+// residues may be inserted and marked NONE_FOR_CAP.
 void GenerateAmberPdb(const Protein& protein,
                       const ProteinConformation& conf,
                       AmberPreparationPolicy policy,
