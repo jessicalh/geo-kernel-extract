@@ -41,6 +41,13 @@ public:
     // ----- Conformation seam -----
     std::size_t frameCount() const override { return h5_->frameCount(); }
     double timePicoseconds(std::size_t frame) const override;
+    // H5 row -> original (XTC) frame index via the frame_indices map; identity
+    // fallback if the row is out of range. This is the key the DFT job dirs and
+    // per-frame npys are named by.
+    std::size_t originalFrameIndex(std::size_t frame) const override {
+        const auto& idx = h5_->frameIndices();
+        return frame < idx.size() ? static_cast<std::size_t>(idx[frame]) : frame;
+    }
     Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
     const TrajectoryConformation* asTrajectory() const override { return this; }
 

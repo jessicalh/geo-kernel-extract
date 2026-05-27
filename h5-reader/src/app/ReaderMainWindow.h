@@ -33,6 +33,7 @@ struct QtLoadResult;
 
 namespace h5reader::model {
 class AtomSelection;
+class DftShieldingStore;
 }
 
 namespace h5reader::app {
@@ -102,6 +103,11 @@ private:
     // the selection; charts its derived geometry (distance/angle/dihedral) over
     // frames. Deliberately NOT a second VTK surface (see StripChartDock.h).
     class StripChartDock* stripChartDock_ = nullptr;
+
+    // DFT shielding provider for the strip chart's shielding panel — constructed
+    // only when the run has a dft/ campaign (located by convention from the run
+    // path). Window-owned (Qt parent); the dock holds a QPointer to it.
+    model::DftShieldingStore* dftStore_ = nullptr;
 
     // Toolbar controls.
     QPointer<QSlider> frameSlider_;

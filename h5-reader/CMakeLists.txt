@@ -102,9 +102,12 @@ add_executable(h5reader
     src/model/ConformationGeometry.cpp
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
+    src/model/StripChartChannel.h
     src/model/DftShielding.h
     src/model/SphericalDecomposition.h
     src/model/SphericalDecomposition.cpp
+    src/model/DftShieldingStore.h
+    src/model/DftShieldingStore.cpp
     src/model/AtomSelection.h
     src/model/AtomSelection.cpp
     src/model/QtFrame.h

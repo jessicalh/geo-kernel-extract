@@ -60,6 +60,14 @@ public:
     virtual std::size_t frameCount() const = 0;
     virtual double timePicoseconds(std::size_t frame) const = 0;
 
+    // The ORIGINAL trajectory frame index for this row — the key shared by the
+    // H5 frame_indices, the per-frame npys/frame_NNNNNN dirs, and the DFT job
+    // dirs (..._fNNNNNN_t<ps>). Base default is identity (a single pose is its
+    // own frame 0); TrajectoryConformation overrides via the H5 frame_indices
+    // map. Frame-IDENTITY metadata, so it lives on the facade beside
+    // timePicoseconds — not dense per-frame data that would belong in the subclass.
+    virtual std::size_t originalFrameIndex(std::size_t frame) const { return frame; }
+
     // Per-atom position for `frame`. The ONE position seam both run shapes
     // share — rendering (MoleculeScene) and geometry overlays read this:
     // trajectory → the resident H5; single pose → the snapshot's Pos column.

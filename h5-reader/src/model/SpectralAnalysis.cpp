@@ -50,7 +50,12 @@ PowerSpectrum ComputePowerSpectrum(const std::vector<double>& series, double dtP
     s.frequencyPerNs.resize(half + 1);
     s.power.resize(half + 1);
 
-    double      peakPower = -1.0;
+    // Strictly-positive peak gate (init 0.0, not -1.0): a flat / constant series
+    // is all-zero power after mean subtraction, so NO non-DC bin clears 0 and
+    // peakK stays 0 — dominantPeriodPs keeps its 0.0 default, which the readout
+    // shows as "no dominant period". With the old -1.0 init the first bin always
+    // "won" and a featureless series reported a bogus record-length period.
+    double      peakPower = 0.0;
     std::size_t peakK     = 0;
     for (std::size_t k = 0; k <= half; ++k) {
         s.frequencyPerNs[k] = (static_cast<double>(k) / recordPs) * 1000.0;  // ps^-1 -> ns^-1

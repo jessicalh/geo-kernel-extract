@@ -30,6 +30,7 @@ namespace h5reader::io {
 
 QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
     QtLoadResult result;
+    result.runPath = h5_path;
     QFileInfo fi(h5_path);
     if (!fi.exists()) {
         result.error = QStringLiteral("QtProteinLoader: H5 path does not exist: %1").arg(h5_path);
@@ -138,6 +139,7 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
 
 QtLoadResult QtProteinLoader::LoadPose(const QString& run_dir) {
     QtLoadResult result;
+    result.runPath = run_dir;
     QFileInfo fi(run_dir);
     if (!fi.exists() || !fi.isDir()) {
         result.error = QStringLiteral("QtProteinLoader::LoadPose: run dir does not exist: %1").arg(run_dir);

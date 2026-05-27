@@ -20,7 +20,11 @@
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
 #include "../model/Conformation.h"
+#include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
+
+#include <QDir>
+#include <QFileInfo>
 
 #include <QAction>
 #include <QApplication>
@@ -45,7 +49,24 @@ namespace h5reader::app {
 
 namespace {
 Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
+
+// Locate the DFT campaign's jobs dir relative to the opened run path, by a
+// BOUNDED documented-convention check (not file discovery): the dataset root
+// holds extract/ and dft/ as siblings, so dft/jobs is either <runDir>/dft/jobs
+// or <runDir>/../dft/jobs (when the run path points inside extract/). Empty if
+// neither exists — then the run has no DFT and the shielding panel stays hidden.
+// A head-of-directory TOML descriptor (#25) will state this path explicitly.
+QString locateDftJobsDir(const QString& runPath) {
+    if (runPath.isEmpty()) return {};
+    const QFileInfo fi(runPath);
+    const QDir runDir = fi.isDir() ? QDir(runPath) : fi.absoluteDir();
+    for (const QString& rel : {QStringLiteral("dft/jobs"), QStringLiteral("../dft/jobs")}) {
+        const QString cand = runDir.absoluteFilePath(rel);
+        if (QFileInfo(cand).isDir()) return QDir(cand).absolutePath();
+    }
+    return {};
 }
+}  // namespace
 
 ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                                    QWidget* parent)
@@ -190,6 +211,16 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     ACONNECT(playback_,       &QtPlaybackController::frameChanged,
              stripChartDock_, &StripChartDock::setFrame);
+
+    // DFT shielding campaign (optional): if the run sits in a dataset with a
+    // sibling dft/jobs directory, wire the per-frame ORCA shielding into the
+    // strip chart's shielding panel. Absent dft/ leaves that panel hidden.
+    if (const QString dftJobs = locateDftJobsDir(loaded_->runPath); !dftJobs.isEmpty()) {
+        dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dftJobs, this);
+        stripChartDock_->setDftStore(dftStore_);
+        qCInfo(cWindow).noquote() << "DFT shielding store wired |" << dftJobs
+                                  << "| jobs=" << dftStore_->jobCount();
+    }
 
     // Initial status bar population.
     onFrameChanged(0);

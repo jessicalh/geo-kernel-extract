@@ -5,38 +5,42 @@
 // ("first, Rosalind Franklin had to go get some graph paper" — memory
 // project_h5reader_killer_app_multiatom_compare_20260526).
 //
-// Two stacked panels:
-//   * TIME domain — the derived geometry (distance / angle / dihedral over
-//     frames, via model::Measure) with a scrolling fixed-width window (the cure
-//     for the old dock's "scrunch as you go"), a Fit-all toggle, major+minor
-//     science grids, a red dashed playhead, and a digital value readout.
-//   * FREQUENCY domain — the FFT power spectrum of that series
-//     (model::ComputePowerSpectrum) so a periodic motion shows up as a peak;
-//     the dominant period is read out. The dihedral is phase-unwrapped before
-//     the transform so a ±180°-straddling oscillation reads as one clean peak.
-//     Recomputed on selection change (the whole-trajectory spectrum is
-//     frame-independent), so it carries no playhead.
+// A REAL strip chart (rearchitected 2026-05-27). The earlier version built the
+// WHOLE per-frame series up front and slid a cursor over a finished curve — that
+// cannot scale to the microsecond (~1e6-frame) trajectories ahead, and it is not
+// a strip chart. Now each plotted series is an authoritative value buffer WE own
+// (model::ChannelBuffer — a std::vector grown one append per playback frame);
+// the PAST stays, the FUTURE is never drawn, and there is NO decimation of the
+// stored data (a 1e6-frame buffer is ≈ 8 MB). See StripChartChannel.h for the
+// buffer/source seam and why those are plain data, not QObjects.
 //
-// Seeing periodicity in a dihedral is the headline — directly observable and
-// assumption-free. A future analysis tab can host the worthier 3-D methods
-// (PCA / dihedral-PCA collective modes; recurrence / RQA) when wanted; see
-// notes/PLANNED_ANALYSIS_METHODS.md.
+// Panels (each a "track" = an owned buffer + its source + Qt Charts handles):
+//   * STRUCTURAL — the selection's geometry (distance / angle / dihedral via
+//     model::Measure), the always-present track.
+//   * SHIELDING  — (added with the DFT channel) the focus atom's DFT σ; a gap
+//     where no DFT frame exists, never a faked zero.
+//   * FREQUENCY  — the FFT power spectrum of the structural track's collected
+//     values (model::ComputePowerSpectrum); a periodic motion shows as a peak.
 //
-// Engine: Qt Charts (QChartView), deliberately NOT a second VTK surface
-// (decision 2026-05-27). The app's heavy GPU load is the molecule scene's
-// QVTKOpenGLNativeWidget; a 2-D dockable chart neither needs VTK's muscle nor a
-// second OpenGL context (which would demand Qt::AA_ShareOpenGLContexts and
-// dockable-context-recreation handling). The FFT math is Eigen-only (no VTK).
-//
-// Trajectory-only, like the time-series dock: a single pose has no frame axis.
+// Engine: Qt Charts fed only the VISIBLE WINDOW sliced from the authoritative
+// buffer — deliberately NOT a second VTK surface (the molecule scene's
+// QVTKOpenGLNativeWidget is the heavy GPU surface; a second context would demand
+// Qt::AA_ShareOpenGLContexts), and deliberately NOT a software QLineSeries of
+// all 1e6 points. The buffer + source are the durable seam; the Qt Charts
+// presentation is the swap-out half when a richer widget lands (memory: keep the
+// data, swap the view). Multi-frame-only: a single pose has no frame axis.
 
 #pragma once
+
+#include "../model/StripChartChannel.h"  // ChannelBuffer, ChannelSource
 
 #include <QDockWidget>
 #include <QPointer>
 
 class QCheckBox;
+class QColor;
 class QLabel;
+class QVBoxLayout;
 
 // Qt 6.2+ merges the QtCharts namespace into the global namespace, so these
 // forward declarations work as-is (same as QtAtomTimeSeriesDock).
@@ -49,6 +53,7 @@ namespace h5reader::model {
 class QtProtein;
 class Conformation;
 class AtomSelection;
+class DftShieldingStore;
 }
 
 namespace h5reader::app {
@@ -63,58 +68,89 @@ public:
     // dock then shows an explanatory placeholder rather than an empty axis.
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
 
-    // Bind the selection whose derived geometry this charts. The dock ACONNECTs
-    // its changed()/cleared() itself (same pattern as SelectionDock).
+    // Bind the selection whose derived geometry this charts. Safe to call more
+    // than once: any prior selection's signals are disconnected first (ACONNECT
+    // cannot pass Qt::UniqueConnection, so the re-bind guard is explicit).
     void setSelection(model::AtomSelection* selection);
 
+    // Bind the DFT shielding provider (present only when the run has a dft/
+    // campaign). The shielding panel appears only once a store is set; its
+    // channel follows the selection's FOCUS atom (σ of one nucleus over the
+    // trajectory). nullptr leaves the panel hidden (no-DFT runs).
+    void setDftStore(model::DftShieldingStore* store);
+
 public slots:
-    // Move the playhead + slide the scrolling window + refresh the readout.
-    // Cheap: the series + spectrum are fixed; per frame only the cursor moves.
+    // Playback advanced / scrubbed. Forward motion APPENDS the new frames'
+    // values to each track's buffer; backward motion only moves the cursor (the
+    // past is kept). Then each track renders its visible window.
     void setFrame(int t);
 
-    // Selection membership changed — rebuild the geometry series AND its spectrum.
+    // Selection membership changed — rebuild the channel set: reset the buffers,
+    // rebind the sources, backfill 0..currentFrame so the new series shows its
+    // history up to now (never the future).
     void onSelectionChanged();
 
-    // Selection emptied — clear both panels.
+    // Selection emptied — clear all tracks.
     void clearSelection();
 
 private slots:
     void onFitToggled(bool on);
 
 private:
-    void rebuildGeometrySeries();  // time series + FFT, on selection change
-    void updateCursorAndWindow();  // playhead + scrolling window, per frame
+    // One plotted series: its authoritative buffer (the durable half), the
+    // source that fills it, and the Qt Charts handles (the throwaway half).
+    // active == this track currently has a channel bound.
+    struct Track {
+        model::ChannelBuffer buffer;
+        model::ChannelSource source;
+        bool                 active = false;
 
-    QPointer<QChartView> chartView_;
-    QPointer<QCheckBox>  fitAllBox_;
-    QPointer<QLabel>     readout_;
+        // Owned by chart (Qt parent ownership); raw pointers, the QtCharts
+        // convention used across the reader's docks.
+        QChart*      chart   = nullptr;
+        QChartView*  view    = nullptr;
+        QLineSeries* series  = nullptr;  // the visible-window slice only
+        QLineSeries* cursor  = nullptr;  // red dashed playhead
+        QValueAxis*  xAxis   = nullptr;
+        QValueAxis*  yAxis   = nullptr;
+        QLabel*      readout = nullptr;  // digital value at the current frame
+    };
 
-    // FFT (frequency-domain) panel, stacked below the time-domain chart.
-    QPointer<QChartView> fftView_;
-    QPointer<QLabel>     fftReadout_;
+    // Build a track's panel (chart + data/cursor series + axes + readout) into
+    // `into`. Called once per panel in the ctor; the channel is bound later.
+    void buildTrack(Track& tr, QVBoxLayout* into, const QColor& traceColor, int stretch);
 
-    // Owned by chart_ / chartView_ (Qt parent ownership); raw pointers, the
-    // same convention as QtAtomTimeSeriesDock.
-    QChart*      chart_        = nullptr;
-    QLineSeries* geomSeries_   = nullptr;
-    QLineSeries* cursorSeries_ = nullptr;
-    QValueAxis*  xAxis_        = nullptr;
-    QValueAxis*  yAxis_        = nullptr;
+    void rebuildChannels();             // selection changed: rebind sources + backfill
+    void extendTo(int t);               // append source(f) for f in (lastFrame, t]
+    void renderTrack(Track& tr, int t); // visible-window slice + cursor + readout
+    void rebuildFft();                  // FFT over the structural track's valid prefix
 
-    QChart*      fftChart_  = nullptr;
-    QLineSeries* fftSeries_ = nullptr;
-    QValueAxis*  fftXAxis_  = nullptr;
-    QValueAxis*  fftYAxis_  = nullptr;
+    // Bind/rebuild the DFT shielding channel to the current focus atom (called
+    // from rebuildChannels when a store is present).
+    void bindDftChannel();
 
-    const model::QtProtein*        protein_ = nullptr;
-    QPointer<model::Conformation>  conformation_;
-    QPointer<model::AtomSelection> selection_;
+    // ----- Tracks -----
+    Track structural_;  // panel 1: the selection's geometry (always present)
+    Track dft_;         // panel 2: DFT σ of the focus atom (shown only with a store)
 
-    int    frame_      = 0;
-    bool   fitAll_     = false;
-    bool   haveSeries_ = false;
-    double yMin_       = 0.0;
-    double yMax_       = 1.0;
+    // ----- Frequency-domain panel (Qt Charts; small N, bound to structural_) --
+    QChart*      fftChart_   = nullptr;
+    QChartView*  fftView_    = nullptr;
+    QLineSeries* fftSeries_  = nullptr;
+    QValueAxis*  fftXAxis_   = nullptr;
+    QValueAxis*  fftYAxis_   = nullptr;
+    QPointer<QLabel> fftReadout_;
+
+    QPointer<QCheckBox> fitAllBox_;
+
+    const model::QtProtein*            protein_ = nullptr;
+    QPointer<model::Conformation>      conformation_;
+    QPointer<model::AtomSelection>     selection_;
+    QPointer<model::DftShieldingStore> dftStore_;
+
+    int  frame_       = 0;
+    bool fitAll_      = false;
+    int  fftRecomputeAtSize_ = 0;  // throttle: next valid-count at which to redo the FFT
 };
 
 }  // namespace h5reader::app

@@ -31,6 +31,12 @@ struct QtLoadResult {
     bool ok = false;
     QString error;
     int decodeWarnings = 0;
+
+    // The path that was opened (the trajectory.h5 file or the run dir). Lets the
+    // window locate sibling artifacts by documented convention — e.g. the DFT
+    // campaign at <dataset-root>/dft/jobs. A head-of-directory TOML descriptor
+    // will formalise this later (#25); for now it is a bounded convention check.
+    QString runPath;
 };
 
 class QtProteinLoader {
