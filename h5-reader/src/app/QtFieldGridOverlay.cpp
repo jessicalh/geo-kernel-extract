@@ -7,7 +7,7 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
-#include "../model/QtFrame.h"
+#include "../model/ConformationGeometry.h"
 #include "../model/QtResidue.h"
 
 #include <QElapsedTimer>
@@ -49,8 +49,8 @@ QtFieldGridOverlay::~QtFieldGridOverlay() {
     }
 }
 
-void QtFieldGridOverlay::Build(const model::QtProtein&      protein,
-                                const model::QtConformation& conformation) {
+void QtFieldGridOverlay::Build(const model::QtProtein& protein,
+                                model::Conformation&    conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && !rings_.empty())
@@ -148,8 +148,7 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
     if (!rg.imageData) return;
 
     const auto& ring = protein_->ring(ri);
-    const auto& frame = conformation_->frame(static_cast<size_t>(t));
-    const auto geo = frame.ringGeometry(ri);
+    const auto geo = model::RingGeometryAt(*conformation_, ri, static_cast<size_t>(t));
     if (geo.radius < 1e-6) {
         // No valid geometry (e.g. ring_geometry slab missing or loader
         // flagged the layout invalid). Zero the scalars and let the
@@ -160,7 +159,7 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
         return;
     }
 
-    const auto vertices = frame.ringVertices(ri);
+    const auto vertices = model::RingVertices(*conformation_, ri, static_cast<size_t>(t));
     if (vertices.size() < 3) {
         rg.actorShielded->SetVisibility(0);
         rg.actorDeshielded->SetVisibility(0);
@@ -180,7 +179,7 @@ void QtFieldGridOverlay::RecomputeRingScalars(size_t ri, int t) {
     rg.imageData->SetSpacing(spacing, spacing, spacing);
 
     const double intensityNA = ring.LiteratureIntensity();
-    const double lobeOffsetA = ring.JBLobeOffset();
+    const double lobeOffsetA = ring.JohnsonBoveyLobeOffset();
 
     // Evaluate kernel at every grid point. PointInValidRange inside
     // each calculator handles "too close" / "inside ring" / "too far".
@@ -232,14 +231,33 @@ void QtFieldGridOverlay::setFrame(int t) {
     if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount()) return;
     if (!visible_) return;   // skip the expensive re-eval when off
 
-    QElapsedTimer timer;
-    timer.start();
+    // Mirror QtBFieldStreamOverlay's two-stage timing — eval (kernel
+    // grid fill) and pipe (forced contour-filter Update). Logged at
+    // INFO during the Windows-vs-Linux perf investigation; restore
+    // to DEBUG once the bottleneck is identified.
+    QElapsedTimer evalT;
+    evalT.start();
     for (size_t ri = 0; ri < rings_.size(); ++ri) {
         RecomputeRingScalars(ri, t);
     }
-    qCDebug(cField).noquote()
-        << "frame" << t << "|" << rings_.size() << "rings |"
-        << timer.elapsed() << "ms";
+    const qint64 evalMs = evalT.elapsed();
+
+    QElapsedTimer pipeT;
+    pipeT.start();
+    for (auto& rg : rings_) {
+        if (visible_ && shieldedVisible_   && rg.contourShielded)
+            rg.contourShielded->Update();
+        if (visible_ && deshieldedVisible_ && rg.contourDeshielded)
+            rg.contourDeshielded->Update();
+    }
+    const qint64 pipeMs = pipeT.elapsed();
+
+    qCInfo(cField).noquote()
+        << "frame" << t
+        << "|" << rings_.size() << "rings"
+        << "| eval=" << evalMs << "ms"
+        << "| pipe=" << pipeMs << "ms"
+        << "| total=" << (evalMs + pipeMs) << "ms";
 }
 
 void QtFieldGridOverlay::setMode(FieldGridMode mode) {

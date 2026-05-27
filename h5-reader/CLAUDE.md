@@ -61,9 +61,15 @@ read the relevant `references/` file for the topic at hand.
 
 ## Scope (see memory: project_h5_north_star)
 
-Single protein, trajectory-animated. `QtConformation` is the trajectory;
-`QtFrame` is one sampled XTC frame.The H5 is the authoritative data backing.Rendering reflects per - frame H5 values; re-evaluation happens
-only for volumetric BS/HM isosurfaces (which the H5 does not carry).
+Single protein. Two run shapes behind one `Conformation` base:
+`TrajectoryConformation` (animated, `trajectory.h5`-backed) and
+`SingleConformation` (one `--orca`/`--mutant`/`--pdb` pose, no H5).
+`QtFrame` is one sampled XTC frame of a trajectory; positions for both
+shapes come through the shared `Conformation::atomPosition` seam. The H5
+(when present) is the authoritative per-frame backing; full-fidelity
+per-frame detail is the lazily-loaded `QtConformationSnapshot`.
+Re-evaluation happens only for the volumetric BS/HM isosurfaces (not in
+the H5).
 
 See `notes/SCOPE.md` for the full scope statement.
 
@@ -113,7 +119,7 @@ build directory. That is an editor-configuration issue, not a code issue
 
 ## What this directory does NOT do
 
-- Animate using the library's `BiotSavartResult::SampleShieldingAt()` —
+- Animate using the library's `BiotSavartResult::SampleKernelAt()` —
   we don't link the library. Volumetric BS/HM grids are re-evaluated
   by `QtBiotSavartCalc` / `QtHaighMallionCalc` classes in `src/calculators/`
   using closed-form math and the same TOML the extractor uses.

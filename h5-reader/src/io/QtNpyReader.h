@@ -68,6 +68,28 @@ public:
     static StructuredResult
     ReadRawBytes(const QString& path, std::vector<unsigned char>& out_bytes, std::size_t& out_record_size);
 
+    // ── 2-D / 1-D numeric read with dtype widening ──────────────────
+    // Result of ReadArrayWidened: a plain (non-structured) NPY of rank 1 or 2,
+    // every dtype widened element-wise to double, row-major.
+    struct WidenedArray {
+        bool ok = false;
+        QString error;             // empty on success
+        std::size_t rows = 0;
+        std::size_t cols = 0;      // 1 for a 1-D array
+        std::string descr;         // verbatim dtype descr, for diagnostics
+        std::vector<double> data;  // size == rows * cols, row-major
+    };
+
+    // Read a plain numeric NPY (the per-frame calculator arrays) of rank 1 or 2
+    // and widen every element to double. Supports float32/64, int8/16/32/64,
+    // uint8/16/32/64 (little-endian — the reader's contract); structured dtypes
+    // and rank>2 fail loud via ErrorBus. This is the per-frame loader's array
+    // primitive; the ReadStructured overload above stays for the 1-D sidecar
+    // record arrays. The header shape is authoritative for (rows, cols) — the
+    // field catalog's `cols` is only a cross-check (and drifts, e.g.
+    // gromacs_energy).
+    static WidenedArray ReadArrayWidened(const QString& path);
+
 private:
     // Parsed-header struct (file-scope; not exposed in the public API).
     struct ParsedHeader {

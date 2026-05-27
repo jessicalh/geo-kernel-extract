@@ -25,7 +25,7 @@ namespace h5reader::io {
 #pragma pack(push, 1)
 
 // ============================================================================
-// residues.npy — 38 bytes per row, 20 fields.
+// residues.npy — 42 bytes per row, 20 fields.
 // Writer: src/TopologySidecar.cpp:104..127 (kResiduesDtypeDescr +
 //         kResidueRecordSize).
 // ============================================================================
@@ -118,7 +118,7 @@ struct QtNpyRingMembershipRow {
 struct QtNpyAtomCategoryRow {
     int32_t atom_index;             // 4
     int32_t residue_index;          // 4
-    int8_t element;                 // Element ordinal
+    int8_t element;                 // atomic number (1/6/7/8/16), NOT enum ordinal
     char amber_atom_name[8];        // S8
     char iupac_atom_name[8];        // S8
     char bmrb_atom_name[8];         // S8

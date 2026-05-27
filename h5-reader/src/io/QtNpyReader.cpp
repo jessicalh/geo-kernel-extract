@@ -9,6 +9,7 @@
 
 #include <QByteArray>
 #include <QFile>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -287,6 +288,155 @@ QtNpyReader::ReadRawBytes(const QString& path, std::vector<unsigned char>& out_b
                      reinterpret_cast<const unsigned char*>(bytes.constData()) + bytes.size());
     r.ok = true;
     r.row_count = hdr.shape[0];
+    return r;
+}
+
+
+// ── 2-D / 1-D numeric read with dtype widening ──────────────────────
+QtNpyReader::WidenedArray QtNpyReader::ReadArrayWidened(const QString& path) {
+    WidenedArray r;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: could not open %1").arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    const ParsedHeader hdr = ParseHeader(bytes, path);  // logs its own structural errors
+    if (!hdr.ok) {
+        r.error = hdr.error;
+        return r;
+    }
+    r.descr = hdr.descr_substring;
+
+    // Rank → (rows, cols). 1-D is rows x 1; the caller reshapes a Protein-axis
+    // 1-D row if needed.
+    std::size_t rows = 0;
+    std::size_t cols = 0;
+    if (hdr.shape.size() == 1) {
+        rows = hdr.shape[0];
+        cols = 1;
+    } else if (hdr.shape.size() == 2) {
+        rows = hdr.shape[0];
+        cols = hdr.shape[1];
+    } else {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: rank %1 unsupported in %2")
+                      .arg(hdr.shape.size())
+                      .arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+
+    // Reject structured dtypes (list-of-tuples descr) — those are sidecar
+    // records read via ReadStructured, not numeric calculator arrays.
+    if (hdr.descr_substring.find('[') != std::string::npos) {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: structured dtype %1 in %2")
+                      .arg(QString::fromStdString(hdr.descr_substring), path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+
+    // Parse dtype kind + element size from the descr ('<f8' -> f,8; '|i1' ->
+    // i,1). Byte order assumed little-endian (Intel/AMD/ARM64 default).
+    char kind = 0;
+    int esize = 0;
+    for (std::size_t i = 0; i < hdr.descr_substring.size(); ++i) {
+        const char c = hdr.descr_substring[i];
+        if (c == 'f' || c == 'i' || c == 'u' || c == 'b') {
+            kind = c;
+            std::string digits;
+            for (std::size_t j = i + 1;
+                 j < hdr.descr_substring.size() && std::isdigit(static_cast<unsigned char>(hdr.descr_substring[j]));
+                 ++j)
+                digits += hdr.descr_substring[j];
+            if (!digits.empty())
+                esize = std::stoi(digits);
+            break;
+        }
+    }
+    const bool supported = (kind == 'f' && (esize == 4 || esize == 8)) ||
+                           ((kind == 'i' || kind == 'u' || kind == 'b') &&
+                            (esize == 1 || esize == 2 || esize == 4 || esize == 8));
+    if (!supported) {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: unsupported dtype %1 in %2")
+                      .arg(QString::fromStdString(hdr.descr_substring), path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+
+    const std::size_t n = rows * cols;
+    const std::size_t raw = static_cast<std::size_t>(bytes.size()) - hdr.data_offset;
+    if (raw != n * static_cast<std::size_t>(esize)) {
+        r.error = QStringLiteral("QtNpyReader::ReadArrayWidened: byte count %1 != rows*cols*esize %2 in %3")
+                      .arg(raw)
+                      .arg(n * static_cast<std::size_t>(esize))
+                      .arg(path);
+        h5reader::diagnostics::ErrorBus::Report(h5reader::diagnostics::Severity::Error,
+                                                QStringLiteral("QtNpyReader"), r.error, path);
+        return r;
+    }
+
+    r.data.resize(n);
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes.constData()) + hdr.data_offset;
+    for (std::size_t i = 0; i < n; ++i) {
+        const unsigned char* q = p + i * static_cast<std::size_t>(esize);
+        double v = 0.0;
+        if (kind == 'f' && esize == 8) {
+            double t;
+            std::memcpy(&t, q, 8);
+            v = t;
+        } else if (kind == 'f' && esize == 4) {
+            float t;
+            std::memcpy(&t, q, 4);
+            v = static_cast<double>(t);
+        } else if (kind == 'i' && esize == 8) {
+            std::int64_t t;
+            std::memcpy(&t, q, 8);
+            v = static_cast<double>(t);
+        } else if (kind == 'i' && esize == 4) {
+            std::int32_t t;
+            std::memcpy(&t, q, 4);
+            v = static_cast<double>(t);
+        } else if (kind == 'i' && esize == 2) {
+            std::int16_t t;
+            std::memcpy(&t, q, 2);
+            v = static_cast<double>(t);
+        } else if (kind == 'i' && esize == 1) {
+            std::int8_t t;
+            std::memcpy(&t, q, 1);
+            v = static_cast<double>(t);
+        } else {  // 'u' or 'b'
+            if (esize == 8) {
+                std::uint64_t t;
+                std::memcpy(&t, q, 8);
+                v = static_cast<double>(t);
+            } else if (esize == 4) {
+                std::uint32_t t;
+                std::memcpy(&t, q, 4);
+                v = static_cast<double>(t);
+            } else if (esize == 2) {
+                std::uint16_t t;
+                std::memcpy(&t, q, 2);
+                v = static_cast<double>(t);
+            } else {
+                std::uint8_t t;
+                std::memcpy(&t, q, 1);
+                v = static_cast<double>(t);
+            }
+        }
+        r.data[i] = v;
+    }
+
+    r.rows = rows;
+    r.cols = cols;
+    r.ok = true;
     return r;
 }
 

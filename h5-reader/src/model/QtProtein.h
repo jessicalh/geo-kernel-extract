@@ -1,6 +1,6 @@
 // QtProtein — identity + topology of one protein, mirroring
 // `nmr::Protein`. Non-copyable + non-movable (back-pointers from
-// QtConformation must never dangle).
+// a Conformation must never dangle).
 //
 // Owns:
 //   - QtAtom[] (substrate-typed identity per atom)
@@ -10,8 +10,8 @@
 //     reverse-index caches for per-atom / per-ring lookups)
 //
 // Does NOT own:
-//   - QtConformation (the trajectory) — held separately on the
-//     QtLoadResult and accessed via the loader's surface
+//   - Conformation (the trajectory or single pose) — held separately on
+//     the QtLoadResult and accessed via the loader's surface
 //
 // The library's nmr::Protein owns its conformations; the reader keeps
 // them separate so the existing ReaderMainWindow's ownership pattern
@@ -24,6 +24,7 @@
 #include "QtAtomNames.h"
 #include "QtBond.h"
 #include "QtResidue.h"
+#include "QtResidueNames.h"
 #include "QtRing.h"
 #include "QtRingMembership.h"
 #include "QtTopology.h"
@@ -65,6 +66,16 @@ public:
     const QtResidue& residue(std::size_t i) const { return residues_[i]; }
     const std::vector<QtResidue>& residues() const { return residues_; }
 
+    // ----- Name projections (selectable; labels are projections, NOT
+    // identity — the reader is not label-driven). atomNames() above is the
+    // verbatim atom projection; residueNames() is the verbatim residue
+    // projection. The *Label() helpers pick a convention (and, for
+    // residues, a source: Verbatim from the sidecar vs Derived from the
+    // typed AminoAcid). -----
+    const QtResidueNames& residueNames(std::size_t i) const { return residueNames_[i]; }
+    QString atomLabel(std::size_t i, NamingConvention conv) const;
+    QString residueLabel(std::size_t i, NamingConvention conv, NamingSource src) const;
+
     // ----- Topology (bonds + rings + ring_membership) -----
     const QtTopology& topology() const { return *topology_; }
     QtTopology& mutableTopology() { return *topology_; }
@@ -89,6 +100,7 @@ private:
     QString proteinId_;
     std::vector<QtAtom> atoms_;
     std::vector<QtAtomNames> atomNames_;
+    std::vector<QtResidueNames> residueNames_;  // verbatim projection, parallel to residues_
     std::vector<QtResidue> residues_;
     std::unique_ptr<QtTopology> topology_;
 };

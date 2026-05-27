@@ -12,10 +12,11 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkIdTypeArray.h>
@@ -42,8 +43,8 @@ public:
 
     // Build the ribbon pipeline from the protein identity + frame-0
     // positions + DSSP codes. Must be called once before setFrame().
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
 public slots:
     // Update CA positions (and other backbone atom positions) and DSSP
@@ -73,9 +74,9 @@ private:
     vtkSmartPointer<vtkProteinRibbonFilter>       ribbon_;
     vtkSmartPointer<vtkActor>                     actor_;
 
-    const model::QtProtein*      protein_      = nullptr;
-    const model::QtConformation* conformation_ = nullptr;
-    int                          subdivideFactor_ = 20;
+    const model::QtProtein*       protein_      = nullptr;
+    QPointer<model::Conformation> conformation_;
+    int                           subdivideFactor_ = 20;
     bool                         visible_      = true;
 
     // Cached per-segment residue lists for coloring — rebuilt each

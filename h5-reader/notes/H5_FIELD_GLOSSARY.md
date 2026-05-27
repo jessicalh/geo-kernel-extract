@@ -361,7 +361,7 @@ per-ring-type axis is ordered by `RingTypeIndex`.
   *Useful:* T0 and |T2| already in the time-series strip chart
   (extend to eigenvalue traces δ_ZZ, δ_YY, δ_XX once glyph lands).
   Atom colour bubble by T0 is a light-weight global scan.
-  *Provenance:* `BiotSavartResult::SampleShieldingAt`.
+  *Provenance:* `BiotSavartResult::SampleKernelAt`.
 - **`hm_shielding (T, N, 9) float64, ppm.** Same structure,
   surface-integral model (Haigh-Mallion).
   *Primary:* **tensor glyph** next to the BS glyph (toggle BS /

@@ -2,11 +2,17 @@
 
 ## What this is
 
-A standalone Qt6/VTK reference implementation that opens an analysis H5 file
-produced by `nmr_extract --trajectory --analysis` and presents the protein
-and its full per-frame physics — positions, kernel contributions, vector
-fields, solvent environment, DSSP, dihedrals, bonded energies — as an
-animated, inspectable 3D scene.
+A standalone Qt6/VTK reference implementation that opens a per-protein run
+directory — a `--trajectory` run (`trajectory.h5` + 5-NPY sidecar +
+`per_frame_npys/`) or a single-pose `--orca`/`--mutant`/`--pdb` run — and
+presents the protein and its full per-frame physics — positions, kernel
+contributions, vector fields, solvent environment, DSSP, dihedrals, bonded
+energies — as an inspectable 3D scene (animated for a trajectory, static
+for a single pose). An ordered selection of up to four atoms (the
+colour-coded `AtomSelection` model + a Selection panel) is the basis of
+an in-progress geometry-measurement surface — distance / angle / dihedral
+computed from the coordinates and held in 3D — for cross-checking the
+extracted geometric fields.
 
 This program is distributed to Jessica's professors and advisers to run
 locally on Windows, macOS, or Linux. Build targets and code quality hold
@@ -18,9 +24,11 @@ misbehaves, no platform shortcuts.
 
 - A writer. It never emits H5 files. It never triggers re-extraction.
 - A duplicate protein model. It does not link the `nmr_shielding` library.
-  The typed classes inside (`QtProtein`, `QtConformation`, `QtFrame`,
-  `QtRing` hierarchy, `QtNamingRegistry`, `QtSphericalTensor`) are its own,
-  matched to the H5's serialised shape, not a mirror of the library's types.
+  The typed classes inside (`QtProtein`, the `Conformation` hierarchy —
+  `TrajectoryConformation` / `SingleConformation` — `QtFrame`,
+  `QtConformationSnapshot` + its per-result group views, the `QtRing`
+  hierarchy, `SphericalTensor`) are its own, matched to the sidecar/H5
+  serialised shape, not a mirror of the library's types.
 - A calculator. The frozen analysis H5 already contains every per-atom
   kernel value at every sampled frame. The reader reads; it does not
   re-derive per-atom results.
@@ -60,10 +68,13 @@ those two dependencies to an adviser, the adviser can build and run.
 Inherited from `spec/CONSTITUTION.md` and lived through in the library:
 
 - **Protein / Conformation split.** `QtProtein` holds identity, topology,
-  bonds, ring-class hierarchy. `QtConformation` is the trajectory (one H5
-  file = one conformation). `QtFrame` is one sampled XTC frame. Atoms
-  query identity through the protein back-pointer; per-frame data through
-  the frame slab.
+  bonds, ring-class hierarchy. `Conformation` is the per-protein state —
+  `TrajectoryConformation` (N frames, `trajectory.h5`-backed) or
+  `SingleConformation` (one pose, no H5); `QtFrame` is one sampled XTC
+  frame of a trajectory. Atoms query identity through the protein
+  back-pointer; positions through `Conformation::atomPosition`; full
+  per-frame detail through the lazily-loaded `QtConformationSnapshot` (read
+  via the typed group views).
 - **Typed enums, never strings for identity.** Element, AtomRole,
   Hybridisation, BondCategory, BondOrder, RingTypeIndex, DSSP 8-class,
   ProtonationVariant — all enums decoded once at H5 load.
@@ -72,9 +83,10 @@ Inherited from `spec/CONSTITUTION.md` and lived through in the library:
   `QtHieImidazoleRing`, `QtIndolePerimeterRing` etc. — virtual
   `Intensity()`, `NitrogenCount()`, `JBLobeOffset()`. Same physics the
   library bakes into its ring types.
-- **NamingRegistry at the H5 boundary.** CHARMM-flavoured `atom_name`
-  entries decode to canonical for display; unknown names rejected, not
-  silently passed through.
+- **Typed atom names from the sidecar (`QtNamingRegistry` retired 2026-05-23).**
+  `atoms_category_info.npy` carries typed `AmberAtomName` / `IupacAtomName` /
+  `BmrbAtomName` per atom; names are a display projection (`QtAtomNames`),
+  never identity. No string dispatch on names for chemistry.
 - **SphericalTensor preserved, never collapsed to T0.** Every per-atom
   shielding dataset is (T, N, 9) decoded to `QtSphericalTensor` with
   T0 (scalar), T1 (3-array), T2 (5-array). Glyphs render T2 as ellipsoids;

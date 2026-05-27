@@ -27,6 +27,7 @@
 
 #include "../model/QtAtom.h"
 #include "../model/QtAtomNames.h"
+#include "../model/QtResidueNames.h"
 #include "../model/QtBond.h"
 #include "../model/QtResidue.h"
 #include "../model/QtRing.h"
@@ -51,6 +52,7 @@ public:
 
         std::vector<h5reader::model::QtAtom> atoms;
         std::vector<h5reader::model::QtAtomNames> atomNames;
+        std::vector<h5reader::model::QtResidueNames> residueNames;  // verbatim projection
         std::vector<h5reader::model::QtResidue> residues;
         std::vector<h5reader::model::QtBond> bonds;
         std::vector<std::unique_ptr<h5reader::model::QtRing>> rings;

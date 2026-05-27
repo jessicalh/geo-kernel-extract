@@ -9,11 +9,12 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 #include "../model/QtRing.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkCellArray.h>
@@ -40,8 +41,8 @@ public:
 
     // Build one polygon-and-arrow actor pair per ring. Must be called
     // before setFrame(). Idempotent on the same inputs.
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
 public slots:
     // Update polygon vertices and arrow orientation from ring_geometry
@@ -74,7 +75,7 @@ private:
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
     const model::QtProtein*                       protein_      = nullptr;
-    const model::QtConformation*                  conformation_ = nullptr;
+    QPointer<model::Conformation>                 conformation_;
     std::vector<RingActor>                        rings_;
     bool                                          visible_      = true;
 };

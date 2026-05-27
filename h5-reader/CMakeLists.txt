@@ -62,7 +62,7 @@ add_executable(h5reader
     src/diagnostics/ShutdownSignals.h
     src/diagnostics/ShutdownSignals.cpp
 
-    # Typed object model — QtProtein / QtConformation / QtFrame
+    # Typed object model — QtProtein / Conformation hierarchy / QtFrame
     # mirroring the nmr_shielding library shape, populated from the
     # sidecar substrate + per-TR H5 buffers.
     src/model/Types.h
@@ -92,8 +92,18 @@ add_executable(h5reader
     src/model/QtSelectionBag.h
     src/model/QtSelectionBag.cpp
 
-    src/model/QtConformation.h
-    src/model/QtConformation.cpp
+    src/model/Conformation.h
+    src/model/Conformation.cpp
+    src/model/TrajectoryConformation.h
+    src/model/TrajectoryConformation.cpp
+    src/model/SingleConformation.h
+    src/model/SingleConformation.cpp
+    src/model/ConformationGeometry.h
+    src/model/ConformationGeometry.cpp
+    src/model/SpectralAnalysis.h
+    src/model/SpectralAnalysis.cpp
+    src/model/AtomSelection.h
+    src/model/AtomSelection.cpp
     src/model/QtFrame.h
     src/model/QtFrame.cpp
     src/model/QtFrameAtomView.h
@@ -116,6 +126,8 @@ add_executable(h5reader
     # No consumers. Files remain on disk for now; deletion in a future session.
     src/io/QtProteinLoader.h
     src/io/QtProteinLoader.cpp
+    src/io/FrameNpyLoader.h
+    src/io/FrameNpyLoader.cpp
 
     # App layer — window, playback, scene, overlays.
     src/app/QtPlaybackController.h
@@ -138,10 +150,16 @@ add_executable(h5reader
     src/app/QtAtomPicker.cpp
     src/app/QtSelectionOverlay.h
     src/app/QtSelectionOverlay.cpp
+    src/app/MeasurementOverlay.h
+    src/app/MeasurementOverlay.cpp
+    src/app/SelectionDock.h
+    src/app/SelectionDock.cpp
     src/app/QtAtomInspectorDock.h
     src/app/QtAtomInspectorDock.cpp
     src/app/QtAtomTimeSeriesDock.h
     src/app/QtAtomTimeSeriesDock.cpp
+    src/app/StripChartDock.h
+    src/app/StripChartDock.cpp
 
     # Closed-form kernel evaluators
     src/calculators/QtPhysicalConstants.h

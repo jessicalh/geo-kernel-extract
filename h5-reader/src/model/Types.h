@@ -40,9 +40,13 @@ using Mat3 = Eigen::Matrix3d;
 // ============================================================================
 // Element — atomic species for protein NMR.
 // Library mirror: nmr::Element (src/Types.h:30).
-// Sidecar storage: atoms_category_info.element (int8 enum ordinal).
-// H5 /atoms/element stores atomic number (1, 6, 7, 8, 16) — decoded
-// via ElementFromAtomicNumber() at the loader boundary.
+// Storage: atoms_category_info.element AND H5 /atoms/element both store
+// the int8 ATOMIC NUMBER (1, 6, 7, 8, 16) — NOT the enum ordinal —
+// decoded via ElementFromAtomicNumber() at the loader boundary
+// (CategoryInfoProjection.cpp:417 emits AtomicNumberForElement;
+// QtTopologySidecar.cpp:188 decodes). A naive static_cast<Element>(row)
+// would mis-decode every atom (e.g. C atomic-number 6 -> Element ord 6 =
+// Unknown), so keep the ElementFromAtomicNumber() decode.
 // ============================================================================
 
 enum class Element : int8_t { H = 0, C = 1, N = 2, O = 3, S = 4, Unknown = 5 };
@@ -395,6 +399,24 @@ enum class NamingProvenance : int8_t {
 
 
 // ============================================================================
+// NamingConvention / NamingSource — selectors for the name PROJECTIONS.
+// Labels are projections, never identity: the reader is NOT label-driven,
+// the typed AminoAcid/substrate is the single source of truth, and these
+// pick only which display / ML-join label to surface. See QtAtomNames.h +
+// QtResidueNames.h.
+// ============================================================================
+
+enum class NamingConvention : int8_t { Amber = 0, Iupac = 1, Bmrb = 2 };
+
+// Verbatim = the string the library's CategoryInfoProjection wrote into the
+//            sidecar (atom_nom.tbl-driven), read as-deposited.
+// Derived  = recomputed reader-side from the typed AminoAcid (+ variant) via
+//            the QtResidueNames helpers. Atom names have no Derived source
+//            (the reader does not re-derive atom names; the library did).
+enum class NamingSource : int8_t { Verbatim = 0, Derived = 1 };
+
+
+// ============================================================================
 // QtFfAtomType — typed AMBER ff14SB atom-type vocabulary.
 //
 // Replaces the bare std::string `ff_atom_type_string` column with a
@@ -483,13 +505,25 @@ enum class QtFfAtomType : int16_t {
 // SphericalTensor — irreducible decomposition of a 3x3 tensor.
 // Library mirror: nmr::SphericalTensor (src/Types.h:286).
 //
-// Layout in the H5 per-TR group `xyz` dataset for tensor TRs (shape
-// [N, T, 9]) per the `irrep_layout` attribute "T0,T1_m-1,T1_m0,T1_m+1,
-// T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2". File T1 is in m-basis; runtime
-// SphericalTensor.T1 carries Cartesian in the library. T0 and |T2|
-// are well-defined regardless. The reader exposes raw 9-component
-// access; consumers requiring rotationally-meaningful T1 should
-// transform from m-basis explicitly.
+// 9-component layout [T0, T1[3], T2[5]]. T2 is real-spherical-tesseral
+// (m = -2..+2), isometric-normalised (matches e3nn). T0 and |T2| are
+// basis-independent.
+//
+// T1 basis — TWO paths, do not conflate:
+//  * Per-frame NPY path (the result-group views over QtConformationSnapshot):
+//    columns are the library's PackFull9 straight off Decompose, so T1[0..2]
+//    is the CARTESIAN antisymmetric pseudovector (v_x=A_yz, v_y=A_zx,
+//    v_z=A_xy; src/Types.cpp). The views pass it through raw — a T1 from a
+//    group view is Cartesian.
+//  * H5 per-TR `xyz` path (dense time-series): the `irrep_layout` attr labels
+//    T1 "T1_m-1,T1_m0,T1_m+1" (m-basis). Whether that path re-orders to
+//    m-basis or also carries Cartesian is a library convention to CONFIRM
+//    against QtTrajectoryH5 — flagged, not assumed.
+//
+// Parity: T1 (antisymmetric pseudovector) is axial -> e3nn 1e (even); the
+// whole tensor is 0e+1e+2e (all-even), per _catalog.py. The SDK _tensors.py
+// declares 1o for T1 — a library-side inconsistency (a definite-parity tensor
+// cannot mix 1o with 0e/2e); the catalog's 1e is correct.
 // ============================================================================
 
 struct SphericalTensor {

@@ -24,6 +24,7 @@
 #pragma once
 
 #include <QString>
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 

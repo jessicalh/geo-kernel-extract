@@ -54,7 +54,23 @@ find_package(VTK 9 REQUIRED COMPONENTS
 
 find_package(HDF5 REQUIRED COMPONENTS C)
 
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+# Eigen: apt/brew ship 3.4.x, vcpkg has moved to 5.0.x. The API we use
+# (Vector3d, Matrix3d, dynamic Matrix, JacobiSVD with ComputeFullV,
+# Eigen::Index) is stable from 3.4 through the 5.x line, so any of them
+# is fine. We deliberately do NOT use a find_package version range
+# ("3.4...<6"): CMake ranges require the package's ConfigVersion script
+# to opt into range handling, and Eigen 3.4.0's shipped
+# Eigen3ConfigVersion.cmake predates that — it rejects the range outright
+# (verified against apt /usr/share/eigen3 on the build host). A bare
+# SameMajorVersion request ("3.4") conversely rejects vcpkg's 5.0.x. So:
+# find unversioned, then assert the floor ourselves. Identical on all
+# three platforms.
+find_package(Eigen3 REQUIRED NO_MODULE)
+if(Eigen3_VERSION VERSION_LESS 3.4)
+    message(FATAL_ERROR
+        "Eigen >= 3.4 required (found ${Eigen3_VERSION} at ${Eigen3_DIR}).")
+endif()
+message(STATUS "h5reader: Eigen ${Eigen3_VERSION}")
 
 # HighFive — header-only, vendored in the parent tree.
 set(HIGHFIVE_INCLUDE_DIR

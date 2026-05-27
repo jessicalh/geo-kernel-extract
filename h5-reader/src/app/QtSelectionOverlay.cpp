@@ -3,8 +3,6 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
-#include "../model/QtFrame.h"
-
 #include <QLoggingCategory>
 
 #include <vtkPolyDataMapper.h>
@@ -35,8 +33,8 @@ QtSelectionOverlay::~QtSelectionOverlay() {
     if (actor_) renderer_->RemoveActor(actor_);
 }
 
-void QtSelectionOverlay::Build(const model::QtProtein&      protein,
-                                const model::QtConformation& conformation) {
+void QtSelectionOverlay::Build(const model::QtProtein& protein,
+                                model::Conformation&    conformation) {
     ASSERT_THREAD(this);
     if (protein_ == &protein && conformation_ == &conformation && actor_)
         return;
@@ -96,8 +94,7 @@ void QtSelectionOverlay::applyCurrentPosition(int t) {
         actor_->SetVisibility(0);
         return;
     }
-    const auto& frame = conformation_->frame(static_cast<size_t>(t));
-    const model::Vec3 p = frame.position(pickedAtom_);
+    const model::Vec3 p = conformation_->atomPosition(static_cast<size_t>(t), pickedAtom_);
     sphere_->SetCenter(p.x(), p.y(), p.z());
     actor_->SetVisibility(1);
 }

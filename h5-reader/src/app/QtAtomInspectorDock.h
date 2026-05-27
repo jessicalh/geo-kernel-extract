@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QDockWidget>
@@ -39,8 +39,8 @@ public:
 
     // Bind the typed model. Call once after H5 load, before any
     // setPickedAtom / setFrame.
-    void setContext(const model::QtProtein*      protein,
-                    const model::QtConformation* conformation);
+    void setContext(const model::QtProtein* protein,
+                    model::Conformation*    conformation);
 
 public slots:
     // The dock's two inputs: which atom and which frame. Both cause a
@@ -51,14 +51,21 @@ public slots:
     // Clear the tree (e.g. load unmounted or picker cleared).
     void clearSelection();
 
+private slots:
+    // The conformation finished loading `frame`'s snapshot; if it is the
+    // parked frame, rebuild to show the full per-frame detail. Async-shaped:
+    // v1 loads synchronously so this fires inside requestSnapshot, but the
+    // committed prefetch increment will fire it from a worker handoff.
+    void onSnapshotReady(std::size_t frame);
+
 private:
     void rebuild();
     void populateIdentity(QTreeWidgetItem* parent);
     void populatePerFrame(QTreeWidgetItem* root);
 
-    QPointer<QTreeWidget>        tree_;
-    const model::QtProtein*      protein_      = nullptr;
-    const model::QtConformation* conformation_ = nullptr;
+    QPointer<QTreeWidget>         tree_;
+    const model::QtProtein*       protein_      = nullptr;
+    QPointer<model::Conformation> conformation_;
     bool                         hasSelection_ = false;
     std::size_t                  atomIdx_      = 0;
     int                          frame_        = 0;

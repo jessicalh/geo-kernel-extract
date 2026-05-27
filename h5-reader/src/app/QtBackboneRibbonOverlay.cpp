@@ -4,6 +4,7 @@
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/QtFrame.h"
 #include "../model/QtResidue.h"
+#include "../model/TrajectoryConformation.h"
 
 #include <QLoggingCategory>
 
@@ -168,7 +169,7 @@ QtBackboneRibbonOverlay::~QtBackboneRibbonOverlay() {
         renderer_->RemoveActor(actor_);
 }
 
-void QtBackboneRibbonOverlay::Build(const model::QtProtein& protein, const model::QtConformation& conformation) {
+void QtBackboneRibbonOverlay::Build(const model::QtProtein& protein, model::Conformation& conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && actor_)
@@ -273,17 +274,24 @@ void QtBackboneRibbonOverlay::Build(const model::QtProtein& protein, const model
 
 void QtBackboneRibbonOverlay::UpdateInputArrays(int t) {
     const size_t tIndex = static_cast<size_t>(t);
-    const auto& frame = conformation_->frame(tIndex);
+    model::Conformation* c = conformation_;
+    if (!c)
+        return;
+    // DSSP is per-frame and trajectory-only (it rides the H5's dssp8 TR);
+    // a single pose has no asTrajectory() and renders as plain coil. Positions
+    // come through the shared atomPosition seam for both run shapes.
+    const model::TrajectoryConformation* traj = c->asTrajectory();
     const vtkIdType nAtoms = static_cast<vtkIdType>(protein_->atomCount());
 
     for (vtkIdType i = 0; i < nAtoms; ++i) {
         const size_t si = static_cast<size_t>(i);
-        const model::Vec3 p = frame.position(si);
+        const model::Vec3 p = c->atomPosition(tIndex, si);
         points_->SetPoint(i, p.x(), p.y(), p.z());
 
         const auto& atom = protein_->atom(si);
-        const model::DsspCode code = atom.residueIndex >= 0 ? frame.dsspCode(static_cast<size_t>(atom.residueIndex))
-                                                            : model::DsspCode::Unknown;
+        model::DsspCode code = model::DsspCode::Unknown;
+        if (traj && atom.residueIndex >= 0)
+            code = traj->frame(tIndex).dsspCode(static_cast<size_t>(atom.residueIndex));
         ss_->SetValue(i, SsCharForDssp(code));
         ssBegin_->SetValue(i, 0);
         ssEnd_->SetValue(i, 0);

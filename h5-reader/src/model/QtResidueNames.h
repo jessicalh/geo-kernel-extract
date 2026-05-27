@@ -21,7 +21,24 @@
 
 #include "Types.h"  // AminoAcid
 
+#include <QString>
+
 namespace h5reader::model {
+
+// Verbatim residue-name projection — the AMBER / IUPAC / BMRB 3-letter
+// codes the library's CategoryInfoProjection wrote into the sidecar
+// (amber/iupac + one-letter from residues.npy; bmrb from the residue's
+// atoms in atoms_category_info, where the BMRB residue label lives).
+// Mirror of QtAtomNames on the residue axis. This struct is the VERBATIM
+// source; the free functions below are the DERIVED source (recomputed
+// from the typed AminoAcid). The reader is not label-driven — both are
+// selectable projections (NamingSource), neither is identity.
+struct QtResidueNames {
+    QString amber;        // AMBER ff14SB variant 3-letter (HID/HIE/HIP, CYX, ...)
+    QString iupac;        // IUPAC canonical 3-letter
+    QString bmrb;         // BMRB 3-letter (collapses variants, e.g. HID -> HIS)
+    char oneLetter = '?';
+};
 
 // Variant-aware AMBER 3-letter code. For most residues, returns the
 // canonical 3-letter. For HIS/ASP/GLU/LYS/CYS/TYR with non-default

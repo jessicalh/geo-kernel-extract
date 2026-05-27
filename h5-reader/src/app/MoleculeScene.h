@@ -44,10 +44,11 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkGenericOpenGLRenderWindow.h>
@@ -65,6 +66,7 @@ class QtRingPolygonOverlay;
 class QtFieldGridOverlay;
 class QtBFieldStreamOverlay;
 class QtSelectionOverlay;
+class MeasurementOverlay;
 
 class MoleculeScene final : public QObject {
     Q_OBJECT
@@ -78,8 +80,8 @@ public:
     // Must be called once after construction, before any setFrame() call.
     // Idempotent on the same protein/conformation — subsequent calls with
     // the same pointers no-op; different pointers rebuild from scratch.
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
     // Current renderer — for future overlay classes to attach actors.
     vtkRenderer* Renderer() const { return renderer_.Get(); }
@@ -96,6 +98,7 @@ public:
     QtFieldGridOverlay*      fieldGridOverlay()  const { return fieldGrid_; }
     QtBFieldStreamOverlay*   bfieldStreamOverlay() const { return bfieldStream_; }
     QtSelectionOverlay*      selectionOverlay()   const { return selection_; }
+    MeasurementOverlay*      measurementOverlay() const { return measurement_; }
 
 public slots:
     // Update atom positions to frame t AND propagate to every overlay.
@@ -126,16 +129,17 @@ private:
     QtRingPolygonOverlay*    ringPolygons_ = nullptr;   // QObject child
     QtFieldGridOverlay*      fieldGrid_    = nullptr;   // QObject child
     QtBFieldStreamOverlay*   bfieldStream_ = nullptr;   // QObject child
-    QtSelectionOverlay*      selection_    = nullptr;   // QObject child
+    QtSelectionOverlay*      selection_    = nullptr;   // QObject child (dormant; superseded by measurement_)
+    MeasurementOverlay*      measurement_  = nullptr;   // QObject child
 
     // Computes the centroid of the given frame's atom positions.
     // Used for the camera-follow feature so the molecule stays centred
     // in the view as it diffuses through the MD simulation box.
     model::Vec3 ComputeCentroid(size_t tIndex) const;
 
-    const model::QtProtein*      protein_      = nullptr;
-    const model::QtConformation* conformation_ = nullptr;
-    int                          currentFrame_ = -1;
+    const model::QtProtein*       protein_      = nullptr;
+    QPointer<model::Conformation> conformation_;
+    int                           currentFrame_ = -1;
 
     // Last centroid the camera was pointed at. Initialised at Build()
     // time from frame 0; every setFrame() translates the camera by the

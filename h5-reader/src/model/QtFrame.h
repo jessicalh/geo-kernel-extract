@@ -1,4 +1,4 @@
-// QtFrame — per-frame typed view into QtConformation's per-TR buffers.
+// QtFrame — per-frame typed view into TrajectoryConformation's per-TR buffers.
 //
 // Light-weight: holds (conformation*, tIndex_) — copyable, value type.
 // All accessors delegate to the right per-TR buffer via
@@ -10,7 +10,7 @@
 // API preserved from the pre-2026-05-23 QtFrame so existing overlays /
 // inspectors compile without changes; the implementation reads from
 // QtTrajectoryH5 typed buffers. Consumers wanting explicit "absent vs
-// zero" semantics should consult QtConformation::h5()->xxx() pointer-
+// zero" semantics should consult TrajectoryConformation::h5()->xxx() pointer-
 // or-null directly, or use QtFrameAtomView's typed-optional accessors.
 
 #pragma once
@@ -24,11 +24,11 @@
 
 namespace h5reader::model {
 
-class QtConformation;
+class TrajectoryConformation;
 
 class QtFrame {
 public:
-    QtFrame(const QtConformation* conformation, std::size_t tIndex);
+    QtFrame(const TrajectoryConformation* conformation, std::size_t tIndex);
 
     ~QtFrame() = default;
     QtFrame(const QtFrame&) = default;
@@ -38,7 +38,7 @@ public:
     std::size_t tIndex() const { return tIndex_; }
     double timePicoseconds() const;
     int xtcFrameIndex() const;
-    const QtConformation* conformation() const { return conformation_; }
+    const TrajectoryConformation* conformation() const { return conformation_; }
 
     // ----- Per-atom positions -----
     Vec3 position(std::size_t atomIdx) const;
@@ -112,7 +112,7 @@ public:
     double eeqCoordinationNumber(std::size_t atomIdx) const;
 
 private:
-    const QtConformation* conformation_ = nullptr;
+    const TrajectoryConformation* conformation_ = nullptr;
     std::size_t tIndex_ = 0;
 };
 

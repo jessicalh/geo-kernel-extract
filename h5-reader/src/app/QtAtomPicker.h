@@ -26,7 +26,7 @@
 class QVTKOpenGLNativeWidget;
 
 namespace h5reader::model {
-class QtConformation;
+class Conformation;
 class QtProtein;
 }
 
@@ -40,27 +40,29 @@ public:
     QtAtomPicker(QVTKOpenGLNativeWidget*                vtkWidget,
                  vtkSmartPointer<vtkRenderer>           renderer,
                  const model::QtProtein*                 protein,
-                 const model::QtConformation*            conformation,
+                 model::Conformation*                    conformation,
                  const QtPlaybackController*             playback,
                  QObject*                                parent = nullptr);
     ~QtAtomPicker() override;
 
 signals:
     // Emitted when the user double-clicks over an atom (within the
-    // 2 Å ray-distance tolerance). atomIdx is an index into QtProtein.
-    // If no atom is close enough, no signal fires.
-    void atomPicked(std::size_t atomIdx);
+    // 2 Å ray-distance tolerance). atomIdx is an index into QtProtein;
+    // modifiers carries the keyboard state at click time (Shift =
+    // add-to-selection) for AtomSelection to interpret — the picker stays
+    // dumb and does not act on it. If no atom is close enough, none fires.
+    void atomPicked(std::size_t atomIdx, Qt::KeyboardModifiers modifiers);
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
-    void doPick(int displayX, int displayY);
+    void doPick(int displayX, int displayY, Qt::KeyboardModifiers mods);
 
     QPointer<QVTKOpenGLNativeWidget> vtkWidget_;
     vtkSmartPointer<vtkRenderer>     renderer_;
     const model::QtProtein*          protein_;
-    const model::QtConformation*     conformation_;
+    QPointer<model::Conformation>    conformation_;
     const QtPlaybackController*      playback_;
 };
 

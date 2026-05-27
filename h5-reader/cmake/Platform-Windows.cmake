@@ -72,8 +72,61 @@ if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{VCPKG_ROOT})
 endif()
 
 function(h5reader_apply_platform_target_settings target)
+    if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        # MSVC RWDI defaults to /O2 /Ob1 /Zi with no /GL — so cl never
+        # sees across TU boundaries, and the BS/HM kernel call chain
+        # (RecomputeRingScalars → EvaluateShielding → JohnsonBoveyField
+        # → WireSegmentField, four TUs deep) pays a function-call
+        # frame per kernel evaluation. With the field grid overlay
+        # turned on that's 128k×4 frames per playback frame, which we
+        # measured at ~2500 ms on Strix Halo. Whole-program optimisation
+        # / link-time codegen lets cl inline the chain into the inner
+        # loop and use the Eigen Vec3 specialisations end-to-end.
+        #
+        # BuildType-Release.cmake already enables IPO for Release via
+        # CheckIPOSupported; we mirror that here, but only for the
+        # Windows RWDI path so Linux/macOS RWDI link times stay short.
+        include(CheckIPOSupported)
+        check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_err LANGUAGES CXX)
+        if(_ipo_ok)
+            set_target_properties(${target} PROPERTIES
+                INTERPROCEDURAL_OPTIMIZATION TRUE)
+            message(STATUS
+                "h5reader: Windows RWDI; LTO/IPO enabled (/GL + /LTCG)")
+        else()
+            message(STATUS
+                "h5reader: Windows RWDI; LTO/IPO unavailable (${_ipo_err})")
+        endif()
+    endif()
+
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
+
+        # MSVC's <cmath> does not expose M_PI etc. without this define.
+        # The overlay code (QtBFieldStreamOverlay, QtRingPolygonOverlay)
+        # uses M_PI; setting it on the command line guarantees it is
+        # visible before any TU includes <cmath>. Harmless on Linux/macOS;
+        # we only set it here so the Linux/macOS modules stay untouched.
+        target_compile_definitions(${target} PRIVATE _USE_MATH_DEFINES)
+
+        # Some Windows headers leak min/max macros that collide with
+        # std::min / std::max and Qt's containers. NOMINMAX disables them.
+        target_compile_definitions(${target} PRIVATE NOMINMAX)
+
+        # AVX2 baseline for MSVC. Eigen's vectorised paths and the
+        # Biot-Savart inner loops (QtBiotSavartCalc, QtHaighMallionCalc,
+        # QtBFieldStreamOverlay grid eval) all benefit. Strix Halo /
+        # Zen 4 / Zen 5 / any Haswell+ Intel supports AVX2 natively;
+        # the adviser-class Win11 machines this binary targets all
+        # post-date Haswell (2013). On pre-Haswell hosts the binary
+        # will refuse to start with an "illegal instruction" — same
+        # behaviour as Linux when /march=haswell+ is set.
+        #
+        # Skipping /arch:AVX512 deliberately: Zen 5 supports it but
+        # not all reviewer machines will, and the marginal win over
+        # AVX2 for our workload is small. Revisit if profiling shows
+        # the BS grid eval is still the bottleneck.
+        target_compile_options(${target} PRIVATE /arch:AVX2)
     endif()
 
     # Crash-handler minidump support.

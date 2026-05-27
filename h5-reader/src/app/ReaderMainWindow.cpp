@@ -8,20 +8,28 @@
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
+#include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QtSelectionOverlay.h"
+#include "SelectionDock.h"
+#include "StripChartDock.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtProteinLoader.h"
-#include "../model/QtConformation.h"
+#include "../model/AtomSelection.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QFileDialog>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLoggingCategory>
+#include <QMenuBar>
+#include <QProcess>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -89,38 +97,32 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                  playback_, &QtPlaybackController::setFps);
     }
 
-    // Atom picker — event filter on the VTK widget. Emits atomPicked
-    // on double-click. Two listeners:
-    //   - MoleculeScene's selection overlay (yellow sphere on the atom).
-    //   - QtAtomInspectorDock (rebuild tree with per-frame values).
-    // Pull the renderer smart-ptr out of the render window so the
-    // picker holds the same instance MoleculeScene installed.
+    // Atom picker — event filter on the VTK widget. Emits
+    // atomPicked(idx, modifiers) on double-click. It stays dumb: it does NOT
+    // interpret the gesture. AtomSelection (below) is the sole consumer; it
+    // applies the plain/Shift policy and fans typed changes to the inspector,
+    // the time-series dock, and the measurement overlay. Pull the renderer
+    // smart-ptr out of the render window so the picker holds the same
+    // instance MoleculeScene installed.
     auto* firstRenderer = renderWindow_->GetRenderers()->GetFirstRenderer();
     picker_ = new QtAtomPicker(vtkWidget_, firstRenderer,
                                 loaded_->protein.get(),
                                 loaded_->conformation.get(),
                                 playback_, this);
-    if (auto* sel = scene_->selectionOverlay()) {
-        ACONNECT(picker_, &QtAtomPicker::atomPicked,
-                 sel,     &QtSelectionOverlay::setPickedAtom);
-    }
 
-    // Atom inspector dock — tabified on the right. Starts with a
-    // placeholder; fills in when the first pick arrives.
+    // Atom inspector dock — tabified on the right. Tracks the selection's
+    // FOCUS atom (one atom's full per-frame pile). Starts empty; fills in on
+    // the first pick.
     inspectorDock_ = new QtAtomInspectorDock(this);
     inspectorDock_->setContext(loaded_->protein.get(),
                                 loaded_->conformation.get());
     addDockWidget(Qt::RightDockWidgetArea, inspectorDock_);
 
-    ACONNECT(picker_,    &QtAtomPicker::atomPicked,
-             inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
 
-    // Time-series dock — per-atom scalar-vs-frame line chart via
-    // Qt6 Charts. Tabified with the inspector so they share the
-    // right dock area; user clicks the tab to switch between
-    // "current values" and "trace across the trajectory".
+    // Time-series dock — per-atom scalar-vs-frame line chart via Qt6 Charts.
+    // Also tracks the FOCUS atom. Tabified with the inspector.
     timeSeriesDock_ = new QtAtomTimeSeriesDock(this);
     timeSeriesDock_->setContext(loaded_->protein.get(),
                                  loaded_->conformation.get());
@@ -128,21 +130,66 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     tabifyDockWidget(inspectorDock_, timeSeriesDock_);
     inspectorDock_->raise();   // inspector on top by default
 
-    ACONNECT(picker_,    &QtAtomPicker::atomPicked,
-             timeSeriesDock_, &QtAtomTimeSeriesDock::setPickedAtom);
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              timeSeriesDock_, &QtAtomTimeSeriesDock::setFrame);
 
-    // One more wire: when the selection overlay receives a pick, the
-    // scene needs to reposition the sphere for the CURRENT frame.
-    // Hook it through the scene's render-request path — on pick,
-    // re-run setFrame so the selection overlay sees the pick AND
-    // the position update in one pass.
-    ACONNECT(picker_, &QtAtomPicker::atomPicked,
-             this,   [this](std::size_t /*a*/) {
-                 if (scene_ && playback_)
-                     scene_->refreshCurrentFrame();
+    // ---- Selection model — the single source of selection truth ----------
+    //
+    // The picker reports a pick + its keyboard modifiers; AtomSelection
+    // interprets the gesture (plain = replace the focus; Shift = toggle the
+    // atom in the ≤4 ordered set) and is itself the QAbstractListModel the
+    // SelectionDock view binds to. It fans typed changes out:
+    //   focusChanged → inspector + time-series retarget to the focus atom;
+    //   cleared      → those two clear;
+    //   changed      → the measurement overlay rebuilds, and the scene
+    //                  refreshes the current frame so the spheres reposition.
+    selection_ = new model::AtomSelection(loaded_->protein.get(), this);
+
+    ACONNECT(picker_,    &QtAtomPicker::atomPicked,
+             selection_, &model::AtomSelection::applyPick);
+
+    ACONNECT(selection_, &model::AtomSelection::focusChanged,
+             inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
+    ACONNECT(selection_, &model::AtomSelection::focusChanged,
+             timeSeriesDock_, &QtAtomTimeSeriesDock::setPickedAtom);
+    ACONNECT(selection_, &model::AtomSelection::cleared,
+             inspectorDock_, &QtAtomInspectorDock::clearSelection);
+    ACONNECT(selection_, &model::AtomSelection::cleared,
+             timeSeriesDock_, &QtAtomTimeSeriesDock::clearSelection);
+
+    if (auto* meas = scene_->measurementOverlay()) {
+        meas->setSelection(selection_);
+        ACONNECT(selection_, &model::AtomSelection::changed,
+                 meas,       &MeasurementOverlay::onSelectionChanged);
+    }
+    ACONNECT(selection_, &model::AtomSelection::changed,
+             this, [this]() {
+                 if (scene_) scene_->refreshCurrentFrame();
              });
+
+    // Selected-atoms panel — the QListView bound to the AtomSelection model
+    // (slot colour swatch + residue:atom label + geometry kind). The model's
+    // first view; tabified with the inspector + time-series.
+    selectionDock_ = new SelectionDock(this);
+    selectionDock_->setModel(selection_);
+    addDockWidget(Qt::RightDockWidgetArea, selectionDock_);
+    tabifyDockWidget(inspectorDock_, selectionDock_);
+    inspectorDock_->raise();
+
+    // Strip-chart dock — the trajectory geometry instrument (QtCharts, NOT a
+    // second VTK surface; decision 2026-05-27). Charts the SELECTION's derived
+    // geometry (distance / angle / dihedral) over frames with a scrolling
+    // window, science grids, and a digital readout. setSelection ACONNECTs the
+    // selection's changed()/cleared() itself; playback drives the playhead.
+    stripChartDock_ = new StripChartDock(this);
+    stripChartDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    stripChartDock_->setSelection(selection_);
+    addDockWidget(Qt::RightDockWidgetArea, stripChartDock_);
+    tabifyDockWidget(inspectorDock_, stripChartDock_);
+    inspectorDock_->raise();
+
+    ACONNECT(playback_,       &QtPlaybackController::frameChanged,
+             stripChartDock_, &StripChartDock::setFrame);
 
     // Initial status bar population.
     onFrameChanged(0);
@@ -151,6 +198,37 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     setWindowTitle(QStringLiteral("h5-reader — %1").arg(loaded_->proteinId));
 
     qCInfo(cWindow).noquote() << "ctor done";
+}
+
+void ReaderMainWindow::showEvent(QShowEvent* event) {
+    QMainWindow::showEvent(event);
+    if (glInfoLogged_) return;
+    glInfoLogged_ = true;
+
+    // The VTK widget hasn't painted yet at showEvent time, so the GL
+    // context isn't current. Defer the query to the next event-loop
+    // tick — by then the first frame has rendered and ReportCapabilities
+    // returns a populated string. Single-shot, never repeats.
+    QPointer<ReaderMainWindow> self(this);
+    QTimer::singleShot(0, this, [self]() {
+        if (!self || !self->renderWindow_) return;
+        const QString caps =
+            QString::fromUtf8(self->renderWindow_->ReportCapabilities());
+        const QStringList wanted = {
+            QStringLiteral("OpenGL vendor"),
+            QStringLiteral("OpenGL renderer"),
+            QStringLiteral("OpenGL version"),
+            QStringLiteral("OpenGL vendor-specific"),
+        };
+        for (const QString& line : caps.split(QChar('\n'))) {
+            for (const QString& key : wanted) {
+                if (line.contains(key, Qt::CaseInsensitive)) {
+                    qCInfo(cWindow).noquote() << "GL:" << line.trimmed();
+                    break;
+                }
+            }
+        }
+    });
 }
 
 ReaderMainWindow::~ReaderMainWindow() {
@@ -193,6 +271,14 @@ void ReaderMainWindow::buildUi() {
     renderWindow_ = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
     vtkWidget_->setRenderWindow(renderWindow_);
     setCentralWidget(vtkWidget_);
+
+    // File ▸ Open Directory… — point the reader at a run directory (a
+    // trajectory or a single pose) or a trajectory.h5. Launches a fresh
+    // reader process on the chosen path (multiple-instance safe).
+    auto* fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
+    auto* openDirAct = fileMenu->addAction(QStringLiteral("Open Directory…"));
+    openDirAct->setShortcut(QKeySequence::Open);
+    ACONNECT(openDirAct, &QAction::triggered, this, &ReaderMainWindow::onOpenDirectory);
 }
 
 void ReaderMainWindow::buildToolbar() {
@@ -325,8 +411,8 @@ void ReaderMainWindow::buildStatusBar() {
 void ReaderMainWindow::onFrameChanged(int t) {
     ASSERT_THREAD(this);
     const int T = static_cast<int>(loaded_->conformation->frameCount());
-    const double t_ps = loaded_->conformation->frame(
-        static_cast<size_t>(std::clamp(t, 0, T - 1))).timePicoseconds();
+    const double t_ps = loaded_->conformation->timePicoseconds(
+        static_cast<size_t>(std::clamp(t, 0, T - 1)));
 
     if (frameLabel_) {
         frameLabel_->setText(QStringLiteral("frame %1 / %2").arg(t + 1).arg(T));
@@ -349,6 +435,21 @@ void ReaderMainWindow::onFpsChanged(int /*fps*/) {
     // Reserved for future display (e.g., a "current fps" readout that
     // differs from the requested fps when frame rendering is slower
     // than the interval).
+}
+
+void ReaderMainWindow::onOpenDirectory() {
+    ASSERT_THREAD(this);
+    const QString dir = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("Open a run directory (trajectory or single pose)"));
+    if (dir.isEmpty())
+        return;
+    // Launch a fresh reader process on the chosen directory rather than
+    // tearing down and rebuilding the scene in place — multiple-instance
+    // safe (project_viewer_cli_needs). main() sniffs the path shape.
+    const bool ok = QProcess::startDetached(QCoreApplication::applicationFilePath(),
+                                            QStringList{dir});
+    if (!ok)
+        qCWarning(cWindow).noquote() << "failed to launch a reader for" << dir;
 }
 
 }  // namespace h5reader::app

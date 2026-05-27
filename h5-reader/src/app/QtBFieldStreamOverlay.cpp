@@ -7,7 +7,7 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
-#include "../model/QtFrame.h"
+#include "../model/ConformationGeometry.h"
 
 #include <QElapsedTimer>
 #include <QLoggingCategory>
@@ -70,8 +70,8 @@ QtBFieldStreamOverlay::~QtBFieldStreamOverlay() {
     }
 }
 
-void QtBFieldStreamOverlay::Build(const model::QtProtein&      protein,
-                                    const model::QtConformation& conformation) {
+void QtBFieldStreamOverlay::Build(const model::QtProtein& protein,
+                                    model::Conformation&    conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && !rings_.empty())
@@ -169,15 +169,14 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
     if (!rs.grid) return;
 
     const auto& ring  = protein_->ring(ri);
-    const auto& frame = conformation_->frame(static_cast<size_t>(t));
-    const auto geo    = frame.ringGeometry(ri);
+    const auto geo    = model::RingGeometryAt(*conformation_, ri, static_cast<size_t>(t));
     if (geo.radius < 1e-6) {
         rs.actor->SetVisibility(0);
         return;
     }
     if (visible_) rs.actor->SetVisibility(1);
 
-    const auto vertices = frame.ringVertices(ri);
+    const auto vertices = model::RingVertices(*conformation_, ri, static_cast<size_t>(t));
     if (vertices.size() < 3) {
         rs.actor->SetVisibility(0);
         return;
@@ -191,7 +190,7 @@ void QtBFieldStreamOverlay::UpdateRing(size_t ri, int t) {
 
     const double spacing = 2.0 * kGridExtentA / (kGridDim - 1);
     const double intensityNA = ring.LiteratureIntensity();
-    const double lobeOffsetA = ring.JBLobeOffset();
+    const double lobeOffsetA = ring.JohnsonBoveyLobeOffset();
 
     // Update grid points (ring-local → world) + B-field vectors.
     double magMin =  std::numeric_limits<double>::infinity();
@@ -261,15 +260,37 @@ void QtBFieldStreamOverlay::setFrame(int t) {
     if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount()) return;
     if (!visible_) return;
 
-    QElapsedTimer timer;
-    timer.start();
+    // Time the two stages independently so the log distinguishes
+    // "CPU BS kernel grid eval" from "VTK pipeline (streamline
+    // integrator + tube tessellator)". The render itself happens
+    // outside this method on the GUI paint event; a separate
+    // observer on the render window captures that. See
+    // MoleculeScene::installRenderTimer().
+    QElapsedTimer evalT;
+    evalT.start();
     for (size_t ri = 0; ri < rings_.size(); ++ri) UpdateRing(ri, t);
-    // DEBUG level — restored from INFO after the pipeline was verified
-    // running end-to-end. Flip back to INFO if streamlines stop
-    // appearing and we need to trace the pipeline again.
-    qCDebug(cStream).noquote()
-        << "frame" << t << "|" << rings_.size() << "rings | eval"
-        << timer.elapsed() << "ms";
+    const qint64 evalMs = evalT.elapsed();
+
+    // Force the downstream filters to execute now so we can time
+    // them — without this, the tracer + tube filter run lazily on
+    // the next mapper render and bleed into "render" time. Per ring
+    // (vs one batched Update()) so individual hotspots can be
+    // spotted if needed later.
+    QElapsedTimer pipeT;
+    pipeT.start();
+    for (auto& rs : rings_) {
+        if (rs.tubes && rs.actor && rs.actor->GetVisibility()) {
+            rs.tubes->Update();
+        }
+    }
+    const qint64 pipeMs = pipeT.elapsed();
+
+    qCInfo(cStream).noquote()
+        << "frame" << t
+        << "|" << rings_.size() << "rings"
+        << "| eval=" << evalMs << "ms"
+        << "| pipe=" << pipeMs << "ms"
+        << "| total=" << (evalMs + pipeMs) << "ms";
 }
 
 void QtBFieldStreamOverlay::setVisible(bool visible) {

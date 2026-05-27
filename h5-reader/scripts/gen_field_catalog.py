@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Generate QtFieldCatalog.gen.h from python/nmr_extract/_catalog.py.
+
+This is the h5-reader's no-strings load boundary. `_catalog.py` is the
+single source of truth for every NPY the C++ extractor can emit; this
+script mirrors its CATALOG into a typed C++ table so the reader resolves
+a filename stem to a typed FieldSpec exactly once (FindFieldByStem) and
+then dispatches on the FieldKind / FieldGroup / NativeAxis enums.
+
+Faithful-by-construction: it parses _catalog.py's CATALOG with the
+stdlib `ast` module rather than re-typing ~70 entries by hand, so a
+silent cols/irreps/axis transcription error cannot creep in. stdlib-only
+on purpose (no numpy / torch / e3nn import), so it runs on any box that
+has the source tree. The generated header is committed, so the portable
+adviser build never needs Python at compile time.
+
+    python3 h5-reader/scripts/gen_field_catalog.py
+
+Re-run whenever _catalog.py changes; the FrameNpyLoader's load-time
+guard cross-checks a real frame dir's files against the table so any
+drift surfaces loudly.
+"""
+
+import ast
+import datetime
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve()
+ROOT = HERE.parents[2]  # .../nmr-shielding
+CATALOG_PY = ROOT / "python" / "nmr_extract" / "_catalog.py"
+OUT_H = ROOT / "h5-reader" / "src" / "io" / "QtFieldCatalog.gen.h"
+
+
+# Physics/method acronyms so enumerators read like the library
+# ("the name is the thing"): mc_shielding -> McShielding, hbond -> HBond,
+# bs_per_type_T0 -> BSPerTypeT0. Tokens not listed get plain Title case.
+_ACRONYMS = {
+    "bs": "BS", "hm": "HM", "pq": "PQ", "mc": "Mc", "efg": "EFG",
+    "dssp": "DSSP", "sasa": "SASA", "apbs": "APBS", "eeq": "EEQ",
+    "cn": "CN", "bb": "BB", "mopac": "MOPAC", "aimnet2": "AIMNet2",
+    "hbond": "HBond", "mcconnell": "McConnell", "ringchi": "RingChi",
+}
+
+
+def pascal(name: str) -> str:
+    """snake_case (or mixed) -> PascalCase enumerator, acronym-aware."""
+    return "".join(
+        _ACRONYMS.get(part.lower(), part[:1].upper() + part[1:])
+        for part in name.split("_")
+    )
+
+
+def cpp_str(s) -> str:
+    s = "" if s is None else str(s)
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def main() -> int:
+    src = CATALOG_PY.read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    # Module-level string constants referenced in kwargs (_SHIELD_IRREPS,
+    # _EFG_IRREPS, _SHIELD_SIGN) so we can resolve Name nodes to literals.
+    consts: dict[str, object] = {}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            try:
+                consts[node.targets[0].id] = ast.literal_eval(node.value)
+            except Exception:
+                pass
+
+    def resolve(node):
+        if node is None:
+            return None
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return consts.get(node.id, node.id)  # const value, else the bare id
+        if isinstance(node, ast.Attribute):     # e.g. np.ndarray
+            parts = []
+            n = node
+            while isinstance(n, ast.Attribute):
+                parts.append(n.attr)
+                n = n.value
+            if isinstance(n, ast.Name):
+                parts.append(n.id)
+            return ".".join(reversed(parts))
+        return ast.literal_eval(node)
+
+    # Find  CATALOG: dict[...] = {s.stem: s for s in [ ArraySpec(...), ... ]}
+    # It is an *annotated* assignment (ast.AnnAssign), so handle both forms.
+    calls = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+            value = node.value
+        else:
+            continue
+        if "CATALOG" in names and isinstance(value, ast.DictComp):
+            iterable = value.generators[0].iter
+            calls = [e for e in iterable.elts if isinstance(e, ast.Call)]
+            break
+    if calls is None:
+        print("ERROR: CATALOG dict-comprehension not found in _catalog.py", file=sys.stderr)
+        return 1
+
+    POS = ["stem", "group", "wrapper", "cols", "required", "description"]
+    entries = []
+    for call in calls:
+        d = {}
+        for i, arg in enumerate(call.args):
+            d[POS[i]] = resolve(arg)
+        for kw in call.keywords:
+            d[kw.arg] = resolve(kw.value)
+        entries.append(d)
+
+    groups, axes = [], []
+    for e in entries:
+        if e["group"] not in groups:
+            groups.append(e["group"])
+        ax = e.get("native_axis", "atom")
+        if ax not in axes:
+            axes.append(ax)
+
+    out = []
+    w = out.append
+    w("// QtFieldCatalog.gen.h - GENERATED by h5-reader/scripts/gen_field_catalog.py")
+    w(f"// from {CATALOG_PY.relative_to(ROOT)} on {datetime.date.today().isoformat()}")
+    w(f"// {len(entries)} fields / {len(groups)} groups / {len(axes)} axes. DO NOT EDIT BY HAND.")
+    w("// Regenerate: python3 h5-reader/scripts/gen_field_catalog.py")
+    w("//")
+    w("// The no-strings load boundary. A filename stem is resolved to a typed")
+    w("// FieldSpec exactly once (FindFieldByStem); everything downstream uses the")
+    w("// FieldKind / FieldGroup / NativeAxis enums. wrapper/irreps/units/mechanism")
+    w("// are interop + display metadata (e3nn irrep string etc.), never identity.")
+    w("#pragma once")
+    w("#include <array>")
+    w("#include <cstdint>")
+    w("#include <optional>")
+    w("#include <string_view>")
+    w("")
+    w("namespace h5reader::io {")
+    w("")
+    w("enum class FieldKind : std::int16_t {")
+    for e in entries:
+        w(f"    {pascal(e['stem'])},")
+    w("    Count")
+    w("};")
+    w("")
+    w("enum class FieldGroup : std::int8_t {")
+    for g in groups:
+        w(f"    {pascal(g)},")
+    w("};")
+    w("")
+    w("enum class NativeAxis : std::int8_t {")
+    for ax in axes:
+        w(f"    {pascal(ax)},")
+    w("};")
+    w("")
+    w("struct FieldSpec {")
+    w("    FieldKind kind;")
+    w("    std::string_view stem;        // identity at the boundary, resolved once")
+    w("    FieldGroup group;")
+    w("    NativeAxis axis;")
+    w("    int cols;                     // -1 = variable / 1-D (None in _catalog.py)")
+    w("    bool required;")
+    w("    bool is_feature;              // ML-eligibility flag from _catalog.py")
+    w("    std::int8_t tensor_rank;")
+    w("    bool parity_odd;")
+    w("    std::string_view wrapper;     // Python wrapper class name (shape hint)")
+    w("    std::string_view irreps;      // e3nn irrep string (GNN / interop)")
+    w("    std::string_view units;")
+    w("    std::string_view mechanism;")
+    w("};")
+    w("")
+    w(f"inline constexpr std::array<FieldSpec, {len(entries)}> kFieldCatalog = {{{{")
+    for e in entries:
+        cols = e.get("cols")
+        cols = -1 if cols is None else int(cols)
+        rank = int(e.get("tensor_rank", 0) or 0)
+        req = "true" if e.get("required") else "false"
+        feat = "true" if e.get("is_feature", True) else "false"
+        parity = "true" if e.get("parity") == "odd" else "false"
+        w(f"    {{ FieldKind::{pascal(e['stem'])}, {cpp_str(e['stem'])}, "
+          f"FieldGroup::{pascal(e['group'])}, NativeAxis::{pascal(e.get('native_axis', 'atom'))}, "
+          f"{cols}, {req}, {feat}, {rank}, {parity}, "
+          f"{cpp_str(e.get('wrapper', ''))}, {cpp_str(e.get('irreps', ''))}, "
+          f"{cpp_str(e.get('units', ''))}, {cpp_str(e.get('mechanism', ''))} }},")
+    w("}};")
+    w("")
+    w(f"// Boundary lookup: stem -> FieldKind. Linear scan over {len(entries)} entries, called")
+    w("// once per NPY at load time. The ONE place a filename string is compared.")
+    w("inline std::optional<FieldKind> FindFieldByStem(std::string_view stem) {")
+    w("    for (const auto& fs : kFieldCatalog)")
+    w("        if (fs.stem == stem) return fs.kind;")
+    w("    return std::nullopt;")
+    w("}")
+    w("")
+    w("// kFieldCatalog is emitted in FieldKind order, so the ordinal indexes it.")
+    w("inline const FieldSpec& FieldSpecFor(FieldKind k) {")
+    w("    return kFieldCatalog[static_cast<std::size_t>(k)];")
+    w("}")
+    w("")
+    w("}  // namespace h5reader::io")
+    w("")
+
+    OUT_H.parent.mkdir(parents=True, exist_ok=True)
+    OUT_H.write_text("\n".join(out), encoding="utf-8")
+    print(f"wrote {OUT_H.relative_to(ROOT)}: "
+          f"{len(entries)} fields, {len(groups)} groups, {len(axes)} axes")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

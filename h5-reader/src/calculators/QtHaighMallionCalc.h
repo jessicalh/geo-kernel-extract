@@ -3,7 +3,7 @@
 // Ports the 7-point Gauss quadrature (Stroud T2:5-1) on a fan
 // triangulation of the ring, with adaptive subdivision up to level 2,
 // from nmr-shielding/src/HaighMallionResult.cpp::SurfaceIntegral and
-// SampleShieldingAt. Same sign convention: V = H * normal,
+// SampleKernelAt. Same sign convention: V = H * normal,
 // G_ab = -n_b * V_a, scaled by ring-type intensity.
 //
 // Free functions — thread-safe by construction. See QtBiotSavartCalc.h

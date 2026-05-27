@@ -9,10 +9,11 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkGenericOpenGLRenderWindow.h>
@@ -33,8 +34,8 @@ public:
         QObject* parent = nullptr);
     ~QtSelectionOverlay() override;
 
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
 public slots:
     // Move the sphere to this atom and show it. Called from
@@ -56,8 +57,8 @@ private:
     vtkSmartPointer<vtkSphereSource>              sphere_;
     vtkSmartPointer<vtkActor>                     actor_;
 
-    const model::QtProtein*      protein_      = nullptr;
-    const model::QtConformation* conformation_ = nullptr;
+    const model::QtProtein*       protein_      = nullptr;
+    QPointer<model::Conformation> conformation_;
 
     bool        hasSelection_ = false;
     std::size_t pickedAtom_   = 0;

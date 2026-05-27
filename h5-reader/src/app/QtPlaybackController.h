@@ -26,7 +26,7 @@ class QtPlaybackController final : public QObject {
     Q_OBJECT
 
 public:
-    // frameCount is the trajectory's QtConformation::frameCount(). fps
+    // frameCount is the trajectory's Conformation::frameCount(). fps
     // defaults to 10 frames/sec — user can override via setFps.
     explicit QtPlaybackController(int frameCount, QObject* parent = nullptr);
     ~QtPlaybackController() override = default;

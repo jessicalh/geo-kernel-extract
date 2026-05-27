@@ -5,6 +5,7 @@
 #include "../diagnostics/ThreadGuard.h"
 
 #include "../model/QtFrame.h"
+#include "../model/TrajectoryConformation.h"
 
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
@@ -219,7 +220,7 @@ QtAtomTimeSeriesDock::QtAtomTimeSeriesDock(QWidget* parent) : QDockWidget(QStrin
              &QtAtomTimeSeriesDock::onScalarChanged);
 }
 
-void QtAtomTimeSeriesDock::setContext(const model::QtProtein* protein, const model::QtConformation* conformation) {
+void QtAtomTimeSeriesDock::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
     protein_ = protein;
     conformation_ = conformation;
     if (xAxis_ && conformation_) {
@@ -264,6 +265,15 @@ void QtAtomTimeSeriesDock::rebuildSeries() {
     if (atomIdx_ >= protein_->atomCount())
         return;
 
+    // The time series loops every frame — it is the one genuinely
+    // trajectory-only consumer (per-field across all frames = the H5's
+    // columnar layout). A single pose has no asTrajectory(); clear + bail.
+    const model::TrajectoryConformation* traj = conformation_->asTrajectory();
+    if (!traj) {
+        dataSeries_->clear();
+        return;
+    }
+
     const int comboIdx = scalarCombo_ ? scalarCombo_->currentIndex() : 0;
     if (comboIdx < 0 || comboIdx >= descCount())
         return;
@@ -276,7 +286,7 @@ void QtAtomTimeSeriesDock::rebuildSeries() {
     double yMin = +std::numeric_limits<double>::infinity();
     double yMax = -std::numeric_limits<double>::infinity();
     for (int t = 0; t < T; ++t) {
-        const auto& f = conformation_->frame(static_cast<std::size_t>(t));
+        const auto& f = traj->frame(static_cast<std::size_t>(t));
         const double v = d.extract(f, atomIdx_);
         if (std::isfinite(v)) {
             pts.append(QPointF(t, v));
@@ -326,11 +336,12 @@ void QtAtomTimeSeriesDock::updateCursor() {
 
     // Current-value readout — read at the cursor frame for the selected
     // scalar, if a selection is active.
-    if (hasSelection_ && conformation_ && scalarCombo_ && valueLabel_) {
+    const model::TrajectoryConformation* traj = conformation_ ? conformation_->asTrajectory() : nullptr;
+    if (hasSelection_ && traj && scalarCombo_ && valueLabel_) {
         const int comboIdx = scalarCombo_->currentIndex();
         if (comboIdx >= 0 && comboIdx < descCount()) {
             const Desc& d = descAt(comboIdx);
-            const auto& f = conformation_->frame(static_cast<std::size_t>(t));
+            const auto& f = traj->frame(static_cast<std::size_t>(t));
             const double v = d.extract(f, atomIdx_);
             valueLabel_->setText(
                 QStringLiteral("frame %1: %2 %3").arg(t).arg(v, 0, 'g', 6).arg(QString::fromLatin1(d.unit ? d.unit : "")));

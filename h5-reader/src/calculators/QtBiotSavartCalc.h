@@ -2,7 +2,7 @@
 //
 // Ports the Johnson-Bovey two-loop wire integral from
 // nmr-shielding/src/BiotSavartResult.cpp::JohnsonBoveyField +
-// WireSegmentField + SampleShieldingAt. Same sign convention:
+// WireSegmentField + SampleKernelAt. Same sign convention:
 // G_ab = -n_b * B_a * PPM_FACTOR.
 //
 // Free functions on const inputs — no shared state, no Qt, no VTK.

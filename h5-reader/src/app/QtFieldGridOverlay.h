@@ -18,10 +18,11 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkContourFilter.h>
@@ -52,8 +53,8 @@ public:
         QObject* parent = nullptr);
     ~QtFieldGridOverlay() override;
 
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
 public slots:
     // Recompute per-ring scalar grids from kernel re-eval at frame t,
@@ -93,7 +94,7 @@ private:
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
     const model::QtProtein*                       protein_      = nullptr;
-    const model::QtConformation*                  conformation_ = nullptr;
+    QPointer<model::Conformation>                 conformation_;
     std::vector<RingGrid>                         rings_;
 
     FieldGridMode mode_              = FieldGridMode::BiotSavart;

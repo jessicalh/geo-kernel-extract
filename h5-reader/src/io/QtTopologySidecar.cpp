@@ -442,6 +442,31 @@ QtTopologySidecar::LoadResult QtTopologySidecar::Load(const QString& sidecar_dir
         r.residues.push_back(DecodeResidue(row));
     }
 
+    // 3b. Verbatim residue-name projection (#7). amber/iupac/one_letter come
+    //     from residues.npy; bmrb_residue_3letter lives only per-atom in
+    //     atoms_category_info, so take it from any atom of the residue (it is
+    //     a residue property replicated on each of its atoms). Labels are
+    //     projections, never identity — see QtResidueNames.h.
+    std::vector<QString> residueBmrb(residueRows.size());
+    for (const auto& arow : atomRows) {
+        if (arow.residue_index >= 0
+            && static_cast<std::size_t>(arow.residue_index) < residueBmrb.size()
+            && residueBmrb[static_cast<std::size_t>(arow.residue_index)].isEmpty()) {
+            residueBmrb[static_cast<std::size_t>(arow.residue_index)] =
+                PackedStringToQString(arow.bmrb_residue_3letter, 4);
+        }
+    }
+    r.residueNames.reserve(residueRows.size());
+    for (std::size_t i = 0; i < residueRows.size(); ++i) {
+        const auto& row = residueRows[i];
+        h5reader::model::QtResidueNames n;
+        n.amber = PackedStringToQString(row.amber_residue_3letter, 4);
+        n.iupac = PackedStringToQString(row.iupac_residue_3letter, 4);
+        n.bmrb = residueBmrb[i].isEmpty() ? n.amber : residueBmrb[i];  // amber fallback
+        n.oneLetter = (row.one_letter[0] != '\0') ? row.one_letter[0] : '?';
+        r.residueNames.push_back(std::move(n));
+    }
+
     // 4. Bonds (soft fail — reader can function without)
     std::vector<QtNpyBondRow> bondRows;
     if (QFile::exists(bondsPath)) {

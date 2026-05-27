@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QDockWidget>
@@ -42,8 +42,8 @@ public:
     ~QtAtomTimeSeriesDock() override = default;
 
     // Bind the typed model once at load.
-    void setContext(const model::QtProtein*      protein,
-                    const model::QtConformation* conformation);
+    void setContext(const model::QtProtein* protein,
+                    model::Conformation*    conformation);
 
 public slots:
     void setPickedAtom(std::size_t atomIdx);
@@ -73,9 +73,9 @@ private:
     QValueAxis*  xAxis_       = nullptr;
     QValueAxis*  yAxis_       = nullptr;
 
-    const model::QtProtein*      protein_      = nullptr;
-    const model::QtConformation* conformation_ = nullptr;
-    bool                         hasSelection_ = false;
+    const model::QtProtein*       protein_      = nullptr;
+    QPointer<model::Conformation> conformation_;
+    bool                          hasSelection_ = false;
     std::size_t                  atomIdx_      = 0;
     int                          frame_        = 0;
 };

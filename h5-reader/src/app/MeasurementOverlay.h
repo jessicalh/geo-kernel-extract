@@ -1,0 +1,98 @@
+// MeasurementOverlay — the ≤4 colour-coded spheres marking the current
+// AtomSelection, repositioned every frame from Conformation::atomPosition so
+// they HOLD on their atoms as the molecule rotates and the trajectory plays.
+//
+// Increment 1 of the killer app (memory
+// project_h5reader_killer_app_multiatom_compare_20260526): the ≤4 spheres.
+// Increment 2 (this): a connecting POLYLINE through the ordered atoms — one
+// segment for a distance, two for an angle, three for a dihedral — re-read
+// every frame so it holds on the atoms through rotation. LINES ONLY: the
+// measured value is shown in the strip chart's digital readout, deliberately
+// NOT as floating text over the moving molecule (user decision 2026-05-26).
+// The prettier angle-arc / dihedral-wedge glyph is deferred.
+// It is the deliberate successor to QtSelectionOverlay (the single-atom yellow
+// highlight, now dormant): one highlight system, an ordered colour-coded set.
+//
+// MoleculeScene-owned; obeys the overlay contract (MoleculeScene.h §1-5):
+// Build() once, setFrame(t) per frame, NO self-Render (the scene issues one
+// Render per frame after fanning setFrame to every overlay). All VTK state
+// mutation on the GUI thread.
+
+#pragma once
+
+#include "../model/Conformation.h"
+#include "../model/QtProtein.h"
+
+#include <QObject>
+#include <QPointer>
+
+#include <vtkActor.h>
+#include <vtkCellArray.h>
+#include <vtkGenericOpenGLRenderWindow.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkRenderer.h>
+#include <vtkSmartPointer.h>
+#include <vtkSphereSource.h>
+
+#include <array>
+#include <cstddef>
+
+namespace h5reader::model {
+class AtomSelection;
+}
+
+namespace h5reader::app {
+
+class MeasurementOverlay final : public QObject {
+    Q_OBJECT
+public:
+    explicit MeasurementOverlay(
+        vtkSmartPointer<vtkRenderer>                  renderer,
+        vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow,
+        QObject*                                      parent = nullptr);
+    ~MeasurementOverlay() override;
+
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
+
+    // Bind the selection whose atoms this overlay marks. Wired by
+    // ReaderMainWindow once the scene + selection both exist.
+    void setSelection(model::AtomSelection* selection);
+
+public slots:
+    // Selection membership changed — re-evaluate which spheres show, at the
+    // current frame. No Render (the scene refreshes the frame right after).
+    void onSelectionChanged();
+
+    // Reposition the visible spheres to frame t's atom positions.
+    void setFrame(int t);
+
+    // Show / hide the whole overlay (a future "Measure" toolbar toggle).
+    void setVisible(bool on);
+
+private:
+    void applyFrame(int t);
+
+    vtkSmartPointer<vtkRenderer>                  renderer_;
+    vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
+
+    static constexpr std::size_t kMaxSpheres = 4;  // == AtomSelection::kMaxAtoms
+    std::array<vtkSmartPointer<vtkSphereSource>, kMaxSpheres> spheres_;
+    std::array<vtkSmartPointer<vtkActor>,        kMaxSpheres> actors_;
+
+    // Connecting polyline through the ordered selected atoms (slot order).
+    // Lines only — the measured value lives in the strip chart readout.
+    vtkSmartPointer<vtkPolyData>  lineData_;
+    vtkSmartPointer<vtkPoints>    linePoints_;
+    vtkSmartPointer<vtkCellArray> lineCells_;
+    vtkSmartPointer<vtkActor>     lineActor_;
+
+    const model::QtProtein*         protein_ = nullptr;
+    QPointer<model::Conformation>   conformation_;
+    QPointer<model::AtomSelection>  selection_;
+    bool visible_   = true;
+    int  lastFrame_ = 0;
+};
+
+}  // namespace h5reader::app

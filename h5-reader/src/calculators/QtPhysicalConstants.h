@@ -7,7 +7,7 @@
 // open-space grid points.
 //
 // If any of these drift from the library, butterflies rendered here
-// won't match what BiotSavartResult::SampleShieldingAt produces on
+// won't match what BiotSavartResult::SampleKernelAt produces on
 // the same geometry. Keep synchronised when library values change.
 
 #pragma once

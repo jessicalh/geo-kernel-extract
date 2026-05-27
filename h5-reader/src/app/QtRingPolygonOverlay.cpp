@@ -2,7 +2,7 @@
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
-#include "../model/QtFrame.h"
+#include "../model/ConformationGeometry.h"
 #include "../model/QtResidue.h"
 
 #include <QLoggingCategory>
@@ -63,8 +63,8 @@ QtRingPolygonOverlay::~QtRingPolygonOverlay() {
     }
 }
 
-void QtRingPolygonOverlay::Build(const model::QtProtein&      protein,
-                                  const model::QtConformation& conformation) {
+void QtRingPolygonOverlay::Build(const model::QtProtein& protein,
+                                  model::Conformation&    conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && !rings_.empty())
@@ -227,9 +227,8 @@ void QtRingPolygonOverlay::setFrame(int t) {
     if (!protein_ || !conformation_) return;
     if (t < 0 || static_cast<size_t>(t) >= conformation_->frameCount()) return;
 
-    const auto& frame = conformation_->frame(static_cast<size_t>(t));
     for (size_t ri = 0; ri < rings_.size(); ++ri) {
-        const auto geo = frame.ringGeometry(ri);
+        const auto geo = model::RingGeometryAt(*conformation_, ri, static_cast<size_t>(t));
         UpdateRingActor(rings_[ri], geo);
     }
     // MoleculeScene will invoke Render() after all overlays finish — we

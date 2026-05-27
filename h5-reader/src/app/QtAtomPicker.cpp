@@ -5,8 +5,7 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
-#include "../model/QtConformation.h"
-#include "../model/QtFrame.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QEvent>
@@ -34,7 +33,7 @@ constexpr double kMaxPickDistanceA = 2.0;
 QtAtomPicker::QtAtomPicker(QVTKOpenGLNativeWidget*                vtkWidget,
                             vtkSmartPointer<vtkRenderer>           renderer,
                             const model::QtProtein*                 protein,
-                            const model::QtConformation*            conformation,
+                            model::Conformation*                    conformation,
                             const QtPlaybackController*             playback,
                             QObject*                                parent)
     : QObject(parent),
@@ -57,13 +56,13 @@ bool QtAtomPicker::eventFilter(QObject* obj, QEvent* event) {
     if (obj == vtkWidget_.data()
         && event->type() == QEvent::MouseButtonDblClick) {
         auto* me = static_cast<QMouseEvent*>(event);
-        doPick(me->position().x(), me->position().y());
+        doPick(me->position().x(), me->position().y(), me->modifiers());
         return true;
     }
     return QObject::eventFilter(obj, event);
 }
 
-void QtAtomPicker::doPick(int displayX, int displayY) {
+void QtAtomPicker::doPick(int displayX, int displayY, Qt::KeyboardModifiers mods) {
     ASSERT_THREAD(this);
     if (!protein_ || !conformation_ || !renderer_ || !vtkWidget_) return;
 
@@ -93,8 +92,7 @@ void QtAtomPicker::doPick(int displayX, int displayY) {
     // approach to the ray is smallest, provided it's in front of the
     // camera (projLen >= 0) and within the pick tolerance.
     const int t = playback_ ? playback_->currentFrame() : 0;
-    const auto& frame = conformation_->frame(
-        static_cast<size_t>(std::max(0, t)));
+    const size_t st = static_cast<size_t>(std::max(0, t));
 
     double bestDist = std::numeric_limits<double>::infinity();
     size_t bestAtom = 0;
@@ -102,7 +100,7 @@ void QtAtomPicker::doPick(int displayX, int displayY) {
 
     const size_t N = protein_->atomCount();
     for (size_t i = 0; i < N; ++i) {
-        const model::Vec3 pos = frame.position(i);
+        const model::Vec3 pos = conformation_->atomPosition(st, i);
         const model::Vec3 toAtom = pos - rayOrigin;
         const double projLen = toAtom.dot(rayDir);
         if (projLen < 0.0) continue;                  // behind camera
@@ -124,7 +122,7 @@ void QtAtomPicker::doPick(int displayX, int displayY) {
     qCInfo(cPicker).noquote()
         << "atom" << bestAtom << "| dist=" << bestDist << "Å"
         << "| frame=" << t;
-    emit atomPicked(bestAtom);
+    emit atomPicked(bestAtom, mods);
 }
 
 }  // namespace h5reader::app

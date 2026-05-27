@@ -5,10 +5,10 @@
 #include "QtFieldGridOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QtSelectionOverlay.h"
+#include "MeasurementOverlay.h"
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
-#include "../model/QtFrame.h"
 #include "../model/Types.h"
 
 #include <QElapsedTimer>
@@ -18,7 +18,9 @@
 
 #include <cstdio>
 
+#include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
+#include <vtkCommand.h>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkNew.h>
 #include <vtkProperty.h>
@@ -79,6 +81,26 @@ MoleculeScene::MoleculeScene(vtkSmartPointer<vtkGenericOpenGLRenderWindow> rende
         iren->SetInteractorStyle(style);
     }
 
+    // Render-time observer: vtkRenderer::GetLastRenderTimeInSeconds()
+    // reports CPU wall-time spent in the last Render() call (includes
+    // any lazy filter Update() that runs during render, plus GPU dispatch
+    // overhead). Logged after every EndEvent of the render window so the
+    // log stream gives BS-overlay-pipe-time alongside total render time.
+    // Diagnostic during Windows-vs-Linux perf investigation; the
+    // callback is cheap (one double read + one log line) and can be
+    // left in.
+    auto renderTimeCb = vtkSmartPointer<vtkCallbackCommand>::New();
+    renderTimeCb->SetClientData(this);
+    renderTimeCb->SetCallback(
+        [](vtkObject* /*caller*/, unsigned long, void* clientData, void*) {
+            auto* self = static_cast<MoleculeScene*>(clientData);
+            if (!self || !self->renderer_) return;
+            const double ms = self->renderer_->GetLastRenderTimeInSeconds() * 1000.0;
+            qCInfo(cScene).noquote() << "render"
+                                      << QString::number(ms, 'f', 1) << "ms";
+        });
+    renderWindow_->AddObserver(vtkCommand::EndEvent, renderTimeCb);
+
     qCInfo(cScene).noquote()
         << "Renderer initialised: FXAA on, depth peeling OFF, AlphaBitPlanes=1,"
         << "MSAA=0, style=vtkInteractorStyleTrackballCamera";
@@ -88,8 +110,8 @@ MoleculeScene::~MoleculeScene() {
     // VTK smart pointers clean up themselves. We just drop the references.
 }
 
-void MoleculeScene::Build(const model::QtProtein&      protein,
-                          const model::QtConformation& conformation) {
+void MoleculeScene::Build(const model::QtProtein& protein,
+                          model::Conformation&    conformation) {
     ASSERT_THREAD(this);
 
     if (protein_ == &protein && conformation_ == &conformation && molecule_) {
@@ -112,11 +134,11 @@ void MoleculeScene::Build(const model::QtProtein&      protein,
     molecule_ = vtkSmartPointer<vtkMolecule>::New();
 
     // Atoms — positions come from frame 0 so the first render is
-    // consistent before any setFrame call.
-    const auto& frame0 = conformation.frame(0);
+    // consistent before any setFrame call. atomPosition is the shared
+    // seam: the H5 for a trajectory, the snapshot's Pos column for a pose.
     for (size_t i = 0; i < protein.atomCount(); ++i) {
         const auto& atom = protein.atom(i);
-        const model::Vec3 pos = frame0.position(i);
+        const model::Vec3 pos = conformation.atomPosition(0, i);
         const unsigned short z = static_cast<unsigned short>(
             model::AtomicNumberForElement(atom.element));
         molecule_->AppendAtom(z, pos.x(), pos.y(), pos.z());
@@ -169,6 +191,11 @@ void MoleculeScene::Build(const model::QtProtein&      protein,
     }
     selection_->Build(protein, conformation);
 
+    if (!measurement_) {
+        measurement_ = new MeasurementOverlay(renderer_, renderWindow_, this);
+    }
+    measurement_->Build(protein, conformation);
+
     qCInfo(cScene).noquote()
         << "Built molecule + overlays |"
         << "atoms=" << molecule_->GetNumberOfAtoms()
@@ -211,9 +238,8 @@ model::Vec3 MoleculeScene::ComputeCentroid(size_t tIndex) const {
     if (!protein_ || !conformation_) return model::Vec3::Zero();
     const size_t N = protein_->atomCount();
     if (N == 0) return model::Vec3::Zero();
-    const auto& frame = conformation_->frame(tIndex);
     model::Vec3 sum = model::Vec3::Zero();
-    for (size_t i = 0; i < N; ++i) sum += frame.position(i);
+    for (size_t i = 0; i < N; ++i) sum += conformation_->atomPosition(tIndex, i);
     return sum / static_cast<double>(N);
 }
 
@@ -226,7 +252,8 @@ void MoleculeScene::setFrame(int t) {
     QElapsedTimer timer;
     timer.start();
 
-    const auto& frame = conformation_->frame(static_cast<size_t>(t));
+    model::Conformation* conf = conformation_;
+    const size_t st = static_cast<size_t>(t);
     const size_t N = protein_->atomCount();
 
     // Update atom positions AND accumulate centroid + bounds in one
@@ -247,7 +274,7 @@ void MoleculeScene::setFrame(int t) {
     model::Vec3 sum = model::Vec3::Zero();
     double bounds[6] = { +1e30, -1e30, +1e30, -1e30, +1e30, -1e30 };
     for (size_t i = 0; i < N; ++i) {
-        const model::Vec3 p = frame.position(i);
+        const model::Vec3 p = conf->atomPosition(st, i);
         sum += p;
         if (p.x() < bounds[0]) bounds[0] = p.x();
         if (p.x() > bounds[1]) bounds[1] = p.x();
@@ -328,6 +355,7 @@ void MoleculeScene::setFrame(int t) {
     if (fieldGrid_)    fieldGrid_->setFrame(t);
     if (bfieldStream_) bfieldStream_->setFrame(t);
     if (selection_)    selection_->setFrame(t);
+    if (measurement_)  measurement_->setFrame(t);
 
     // Resync near/far clipping planes from THIS FRAME's actual atom
     // bounds (computed above), not from vtkActor::GetBounds() which

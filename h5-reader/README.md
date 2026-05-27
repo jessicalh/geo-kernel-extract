@@ -6,15 +6,20 @@ Standalone Qt6/VTK reader for the per-TR-emits-its-own-group
 
 ## What it does
 
-Opens a per-protein analysis tree (`trajectory.h5` plus
-`atoms_category_info.npy`, `residues.npy`, `bonds.npy`, `rings.npy`,
-`ring_membership.npy`, and `extraction_manifest.json`), builds a typed
-`QtProtein` / `QtConformation` / `QtFrame` object model, and presents
-an interactive 3D viewer with per-frame animation. Calculator
+Opens a per-protein run directory — either a `--trajectory` run
+(`trajectory.h5` + the 5-NPY sidecar + `per_frame_npys/`) or a single-pose
+`--orca`/`--mutant`/`--pdb` run (the flat per-atom NPYs + sidecar, no H5) —
+builds a typed `QtProtein` / `Conformation` / `QtFrame` object model
+(`Conformation` is `TrajectoryConformation` for an animated run or
+`SingleConformation` for one pose), and presents an interactive 3D viewer
+(per-frame animation for a trajectory; a static scene for a pose). Calculator
 contributions are visualisable — ring-current isosurfaces (BS and HM),
 per-atom tensor glyphs, electric field arrows, water dipoles,
 SASA surfaces, DSSP-coloured backbone, bond-order tubes, per-atom
-inspection on click.
+inspection on click. Up to four atoms can be selected at once
+(colour-coded, listed in a Selection panel) — the basis of the in-progress
+geometry-measurement feature: distance / angle / dihedral read from the
+coordinates and held in 3D as the molecule rotates.
 
 Read-only: never writes H5, never re-runs the extraction pipeline.
 
@@ -188,12 +193,19 @@ set them as defaults in `cmake/Platform-<OS>.cmake`.
 
 ## Running the reader
 
+Point the reader at a **run directory** (a `--trajectory` run root or a
+single-pose `--orca`/`--mutant`/`--pdb` run root) or directly at a
+`trajectory.h5`; it sniffs the run shape (`QtProteinLoader::LoadRunPath`).
+The **File ▸ Open Directory…** menu does the same from inside the GUI
+(it launches a fresh reader process — multiple-instance safe).
+
 Linux / macOS:
 
 ```sh
-./build/<preset>/h5reader path/to/trajectory.h5
+./build/<preset>/h5reader path/to/run-dir        # trajectory or single pose
+./build/<preset>/h5reader path/to/trajectory.h5  # also accepted
 # or:
-H5READER_PRESET=mac-rwdi ./launch_reader.sh path/to/trajectory.h5
+H5READER_PRESET=mac-rwdi ./launch_reader.sh path/to/run-dir
 ```
 
 Windows:
@@ -306,10 +318,12 @@ _WIN32`; the conditional code lives inside the handler classes.
 
 See `notes/SCOPE.md` for the full statement. Short version:
 
-- Single protein per H5. The reader does not load multiple H5s into
+- Single protein per run. The reader does not load multiple runs into
   one scene.
-- Trajectory-animated. `QtConformation` is the trajectory; `QtFrame`
-  is one sampled XTC frame.
+- Two run shapes behind one `Conformation` base: `TrajectoryConformation`
+  (animated, H5-backed) and `SingleConformation` (one pose, no H5).
+  `QtFrame` is one sampled XTC frame of a trajectory; positions for both
+  shapes come through the shared `Conformation::atomPosition` seam.
 - Rendering is honest per-frame: every frame reads its own data, runs
   any needed closed-form kernel re-evaluation (only BS and HM
   volumetric grids), and renders the result. No interpolation, no

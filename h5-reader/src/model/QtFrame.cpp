@@ -9,54 +9,16 @@
 #include "QtFrame.h"
 
 #include "../io/QtTrajectoryH5.h"
-#include "QtConformation.h"
+#include "TrajectoryConformation.h"
 #include "QtProtein.h"
 #include "QtTopology.h"
+#include "ConformationGeometry.h"
 
-#include <Eigen/SVD>
 #include <cstdint>
 
 namespace h5reader::model {
 
-namespace {
-
-// Compute ring geometry (center, normal, radius) from vertex positions
-// via SVD. Mirrors nmr::Ring::ComputeGeometry's least-squares plane
-// fit shape.
-RingGeometry FitRingGeometry(const std::vector<Vec3>& verts) {
-    RingGeometry g;
-    if (verts.empty())
-        return g;
-
-    // Center = centroid
-    g.center = Vec3::Zero();
-    for (const auto& v : verts)
-        g.center += v;
-    g.center /= static_cast<double>(verts.size());
-
-    // Normal = smallest singular vector of the centered point matrix
-    if (verts.size() >= 3) {
-        Eigen::Matrix<double, Eigen::Dynamic, 3> M(verts.size(), 3);
-        for (std::size_t i = 0; i < verts.size(); ++i)
-            M.row(static_cast<Eigen::Index>(i)) = (verts[i] - g.center).transpose();
-        Eigen::JacobiSVD<Eigen::Matrix<double, Eigen::Dynamic, 3>> svd(M, Eigen::ComputeFullV);
-        g.normal = svd.matrixV().col(2);
-        if (g.normal.norm() > 1e-12)
-            g.normal.normalize();
-    }
-
-    // Radius = mean distance from center
-    double r_sum = 0.0;
-    for (const auto& v : verts)
-        r_sum += (v - g.center).norm();
-    g.radius = r_sum / static_cast<double>(verts.size());
-    return g;
-}
-
-}  // namespace
-
-
-QtFrame::QtFrame(const QtConformation* conformation, std::size_t tIndex) : conformation_(conformation), tIndex_(tIndex) {}
+QtFrame::QtFrame(const TrajectoryConformation* conformation, std::size_t tIndex) : conformation_(conformation), tIndex_(tIndex) {}
 
 
 // ── Frame identity ──────────────────────────────────────────────────
@@ -94,27 +56,15 @@ Vec3 QtFrame::position(std::size_t atomIdx) const {
 
 // ── Ring geometry ────────────────────────────────────────────────────
 
+// Ring geometry is a pure function of positions + topology, shared with
+// the single-pose path via the free helpers over Conformation
+// (ConformationGeometry.h). QtFrame supplies its trajectory frame index.
 RingGeometry QtFrame::ringGeometry(std::size_t ringIdx) const {
-    if (!conformation_)
-        return {};
-    const QtProtein* p = conformation_->protein();
-    if (!p || ringIdx >= p->ringCount())
-        return {};
-    return FitRingGeometry(ringVertices(ringIdx));
+    return conformation_ ? RingGeometryAt(*conformation_, ringIdx, tIndex_) : RingGeometry{};
 }
 
 std::vector<Vec3> QtFrame::ringVertices(std::size_t ringIdx) const {
-    std::vector<Vec3> verts;
-    if (!conformation_)
-        return verts;
-    const QtProtein* p = conformation_->protein();
-    if (!p || ringIdx >= p->ringCount())
-        return verts;
-    const QtRing& ring = p->ring(ringIdx);
-    verts.reserve(ring.atomIndices.size());
-    for (int32_t a : ring.atomIndices)
-        verts.push_back(position(static_cast<std::size_t>(a)));
-    return verts;
+    return conformation_ ? RingVertices(*conformation_, ringIdx, tIndex_) : std::vector<Vec3>{};
 }
 
 

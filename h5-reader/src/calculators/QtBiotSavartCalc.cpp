@@ -88,7 +88,7 @@ Vec3 JohnsonBoveyField(
 // ---------------------------------------------------------------------------
 // Shared spatial filter: skip the point if it's too close to or too far
 // from the ring center, or inside the ring (multipole invalid). Matches
-// the library's SampleShieldingAt / SampleBFieldAt predicate.
+// the library's SampleKernelAt / SampleBFieldAt predicate.
 // ---------------------------------------------------------------------------
 bool PointInValidRange(const Vec3& pointAng, const model::RingGeometry& geo) {
     const double distance = (pointAng - geo.center).norm();

@@ -38,10 +38,10 @@ constexpr std::array<QtAminoAcidType, 21> kTable = {{
     /* TRP = 17 */ {AminoAcid::TRP, "TRP", 'W', true, false, true, 2},
     /* TYR = 18 */ {AminoAcid::TYR, "TYR", 'Y', true, true, true, 2},
     /* VAL = 19 */ {AminoAcid::VAL, "VAL", 'V', false, false, true, 1},
-    /* UNK = 20 */ {AminoAcid::Unknown, "UNK", 'X', false, false, true, 0},
+    /* UNK = 20 */ {AminoAcid::Unknown, "UNK", 'X', false, false, false, 0},
 }};
 
-constexpr QtAminoAcidType kUnknownSentinel = {AminoAcid::Unknown, "UNK", 'X', false, false, true, 0};
+constexpr QtAminoAcidType kUnknownSentinel = {AminoAcid::Unknown, "UNK", 'X', false, false, false, 0};
 
 }  // namespace
 

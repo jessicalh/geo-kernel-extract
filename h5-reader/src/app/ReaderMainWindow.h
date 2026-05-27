@@ -31,6 +31,10 @@ namespace h5reader::io {
 struct QtLoadResult;
 }
 
+namespace h5reader::model {
+class AtomSelection;
+}
+
 namespace h5reader::app {
 
 class MoleculeScene;
@@ -52,10 +56,19 @@ public slots:
     // finalises the VTK render window before Qt tears down the GL context.
     void shutdown();
 
+protected:
+    // Logs OpenGL vendor / renderer / version exactly once on the first
+    // show. The GL context only exists after the widget has been mapped
+    // and painted, so the log itself defers via QTimer::singleShot(0)
+    // from inside this handler. Diagnostic-only — if Qt fell back to
+    // ANGLE / software OpenGL, this is where it shows up.
+    void showEvent(QShowEvent* event) override;
+
 private slots:
     void onFrameChanged(int t);
     void onPlayPauseClicked();
     void onFpsChanged(int fps);
+    void onOpenDirectory();
 
 private:
     void buildUi();
@@ -79,6 +92,17 @@ private:
     class QtAtomInspectorDock* inspectorDock_ = nullptr;
     class QtAtomTimeSeriesDock* timeSeriesDock_ = nullptr;
 
+    // Selection model — the QAbstractListModel for the ≤4-atom group — plus
+    // its QListView panel. The picker feeds the model; the model fans focus
+    // to the inspector/time-series and the set to the measurement overlay.
+    model::AtomSelection* selection_ = nullptr;
+    class SelectionDock* selectionDock_ = nullptr;
+
+    // Strip-chart dock — the trajectory geometry instrument (QtCharts). Bound to
+    // the selection; charts its derived geometry (distance/angle/dihedral) over
+    // frames. Deliberately NOT a second VTK surface (see StripChartDock.h).
+    class StripChartDock* stripChartDock_ = nullptr;
+
     // Toolbar controls.
     QPointer<QSlider> frameSlider_;
     QPointer<QSpinBox> fpsSpinner_;
@@ -94,6 +118,7 @@ private:
     QPointer<QLabel> timeLabel_;
 
     bool shutdownDone_ = false;
+    bool glInfoLogged_ = false;
 };
 
 }  // namespace h5reader::app

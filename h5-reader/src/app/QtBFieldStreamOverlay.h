@@ -17,10 +17,11 @@
 
 #pragma once
 
-#include "../model/QtConformation.h"
+#include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 
 #include <QObject>
+#include <QPointer>
 
 #include <vtkActor.h>
 #include <vtkCellArray.h>
@@ -48,8 +49,8 @@ public:
         QObject* parent = nullptr);
     ~QtBFieldStreamOverlay() override;
 
-    void Build(const model::QtProtein&      protein,
-               const model::QtConformation& conformation);
+    void Build(const model::QtProtein& protein,
+               model::Conformation&    conformation);
 
 public slots:
     void setFrame(int t);
@@ -76,7 +77,7 @@ private:
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
     const model::QtProtein*                       protein_      = nullptr;
-    const model::QtConformation*                  conformation_ = nullptr;
+    QPointer<model::Conformation>                 conformation_;
     std::vector<RingStream>                       rings_;
     bool                                          visible_      = false;
 };
