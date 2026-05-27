@@ -55,12 +55,9 @@ bool GromacsFrameHandler::Open(const std::string& trr_path,
         return false;
     }
 
-    // Probe the first frame's header to learn natoms and whether
-    // velocities are present. We do this with a peek then rewind via
-    // Reopen — gmx_trr's stream model doesn't natively peek-and-rewind,
-    // so instead we rely on the system topology's total atom count
-    // (already parsed from the TPR) and treat the first ReadNextFrame
-    // as the source of truth for natoms/v presence.
+    // Do not consume a frame during Open. Use the TPR-derived total atom
+    // count now; the first ReadNextFrame validates natoms and detects
+    // velocity presence from the read buffers.
     const auto& topo = tp_.SysReader().Topology();
     natoms_ = static_cast<int>(topo.total_atoms);
 

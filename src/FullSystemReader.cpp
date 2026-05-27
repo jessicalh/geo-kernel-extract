@@ -52,7 +52,7 @@ FullSystemReader::FullSystemReader() = default;
 FullSystemReader::~FullSystemReader() = default;
 
 
-// ── PDB LOADING BOUNDARY helpers ────────────────────────────────
+// ── TPR LOADING BOUNDARY helpers ────────────────────────────────
 // Translation from GROMACS types to our typed objects. These operate
 // on GROMACS t_atoms — valid only during the TPR parse, never at
 // runtime. (Parallel implementations originally lived in
@@ -612,9 +612,9 @@ bool FullSystemReader::ExtractFrame(
 //
 // Replaces the former MoleculeWholer dependency. do_pbc_mtop walks
 // the protein-only mtop (built once at ReadTopology time) and makes
-// each molecule whole within the box. Coordinates are float (XTC
-// precision) and treated as rvec*; the static_assert in the GROMACS
-// headers guarantees real == float in this build.
+// each molecule whole within the box. Coordinates are held in float
+// buffers and treated as rvec*; this path assumes the linked GROMACS
+// build uses single-precision real.
 
 bool FullSystemReader::MakeProteinWhole(
         std::vector<float>& protein_coords,
@@ -651,7 +651,7 @@ bool FullSystemReader::MakeProteinWhole(
 // (Original BuildProteinFromTpr lived in GromacsEnsembleLoader.cpp,
 // retired 2026-05-04 to tests/bones/src/. This version uses the
 // gmx_mtop_t already parsed by ReadTopology().)
-// PDB LOADING BOUNDARY: translates CHARMM naming to typed objects.
+// TPR LOADING BOUNDARY: translates GROMACS residue naming to typed objects.
 
 // Resolve a residue's typed type + variant_index from either the readback
 // block (when present) or the NamingRegistry fallback.
@@ -867,7 +867,7 @@ BuildResult FullSystemReader::BuildProtein(
 
         // Atoms for this moltype, with global residue index.
         //
-        // PDB LOADING BOUNDARY (the GROMACS TPR atomname surface).
+        // TPR LOADING BOUNDARY (the GROMACS TPR atomname surface).
         //
         // Two-pass per-residue canonicalisation via the
         // NamingApplicator. The first pass collects every atom's raw

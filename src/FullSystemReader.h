@@ -4,11 +4,11 @@
 // frames, splitting atoms into protein + solvent.
 //
 // The TPR contains the topology for ALL atoms (protein, water, ions).
-// The full-system .xtc contains positions for ALL atoms at each frame.
+// The full-system trajectory contains positions for ALL atoms at each frame.
 // This reader:
 //   1. Reads the TPR once — extracts atom ranges, bonded interaction
 //      parameters, and everything needed to build the Protein object
-//   2. Splits full-system .xtc frames: protein → Vec3, solvent → SolventEnvironment
+//   2. Splits full-system coordinate frames: protein → Vec3, solvent → SolventEnvironment
 //
 // Single parse: ReadTopology() parses the TPR once and populates
 // SystemTopology + BondedParameters + stored protein topology data.
@@ -70,7 +70,7 @@ public:
     // Returns false on error (check error()).
     bool ReadTopology(const std::string& tpr_path);
 
-    // Given a full-system XTC frame (all atoms, in nm),
+    // Given a full-system coordinate frame (all atoms, in nm),
     // extract protein positions (in Angstroms) and SolventEnvironment.
     // protein_positions will have protein_count entries.
     bool ExtractFrame(const std::vector<float>& full_frame_xyz,
@@ -97,7 +97,7 @@ public:
     // Build a Protein + ChargeSource from the stored TPR parse.
     // Must be called after ReadTopology(). Returns a Protein with
     // residues + atoms but no conformations (FinalizeConstruction
-    // needs positions from the first XTC frame).
+    // needs positions from the first trajectory frame).
     //
     // `readback`, when non-null, provides per-residue rtp facts read
     // from the matching topol.top. The per-residue loop consults it
@@ -116,7 +116,7 @@ public:
 
     // PBC-fix the protein slice in-place. `protein_coords` is the
     // contiguous protein-only float coordinate buffer (size =
-    // 3 * Topology().protein_count, typically carved from a full XTC
+    // 3 * Topology().protein_count, typically carved from a full-system
     // frame). `box_in` is this frame's box (varies per frame in NPT).
     // Walks the protein-only mtop (built once at ReadTopology time)
     // so the bond-graph traversal touches only the protein atoms.
