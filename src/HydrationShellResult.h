@@ -4,10 +4,10 @@
 // explicit water positions.
 //
 // For each protein atom, characterises the water packing:
-//   - Half-shell asymmetry (UCSB method): what fraction of first-shell
-//     waters are on the solvent-exposed side vs the protein interior.
-//     Computed using the solvent-accessibility vector (from atom to
-//     center of mass of first-shell waters vs center of protein).
+//   - Half-shell asymmetry: what fraction of first-shell waters are on
+//     the solvent-exposed side vs the protein interior.  Computed with
+//     a protein-coordinate-centroid proxy: atom→water directions toward
+//     the centroid count buried; directions away from it count exposed.
 //   - Mean water dipole orientation: how ordered are the water dipoles
 //     around this atom (cos angle between water dipole and atom→water vector).
 //   - Nearest ion distance and charge.
@@ -27,7 +27,8 @@
 //
 // GeometryChoice: one summary record (parameters used).
 //
-// Dependencies: SpatialIndexResult.
+// Dependencies: SpatialIndexResult (declared pipeline dependency; Compute
+// reads atom positions directly from ProteinConformation).
 // Requires: SolventEnvironment (passed to Compute).
 //
 

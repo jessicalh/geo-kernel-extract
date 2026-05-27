@@ -72,7 +72,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
 
             // Half-shell: is this water on the exposed side (along surface normal)
             // or the buried side (against normal)?
-            // For buried atoms (normal == 0), all waters count as exposed.
+            // For atoms with no meaningful normal, all waters count as exposed.
             double d = std::sqrt(d_sq);
             Vec3 r_hat = r / d;
             if (normal.norm() > near_zero) {
@@ -82,7 +82,7 @@ std::unique_ptr<HydrationGeometryResult> HydrationGeometryResult::Compute(
                 else
                     ++n_buried;   // water is on the interior side
             } else {
-                // Buried atom: no meaningful normal, count all as exposed
+                // No meaningful normal: count all waters as exposed.
                 ++n_exposed;
             }
         }

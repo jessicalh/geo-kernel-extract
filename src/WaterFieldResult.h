@@ -4,9 +4,9 @@
 // solvent water molecules.
 //
 // Same Coulomb kernel as CoulombResult, but summing over water
-// charges (TIP3P: O = -0.834e, H = +0.417e) instead of protein
-// partial charges.  Uses SpatialIndexResult for the protein atom
-// positions; builds its own index over water oxygen positions.
+// charges from SolventEnvironment instead of protein partial charges.
+// Compute scans explicit water molecules and filters by water-oxygen
+// distance from each protein atom.
 //
 // This is what APBS approximates with a continuum dielectric.
 // The explicit field includes water orientation fluctuations,
@@ -34,7 +34,8 @@
 // GeometryChoice: one summary record (parameters), per-atom records for
 // singularity guard and E-field clamp events.
 //
-// Dependencies: SpatialIndexResult (for protein positions).
+// Dependencies: SpatialIndexResult (declared pipeline dependency; Compute
+// reads atom positions directly from ProteinConformation).
 // Requires: SolventEnvironment (passed to Compute).
 //
 

@@ -47,7 +47,7 @@ std::unique_ptr<HydrationShellResult> HydrationShellResult::Compute(
             AddNumber(gc, "n_waters", static_cast<double>(W), "count");
         });
 
-    // Compute protein center of mass (for half-shell direction)
+    // Compute protein coordinate centroid (for half-shell direction)
     Vec3 protein_com = Vec3::Zero();
     for (size_t i = 0; i < N; ++i)
         protein_com += conf.AtomAt(i).Position();

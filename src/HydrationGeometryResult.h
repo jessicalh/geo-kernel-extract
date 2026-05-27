@@ -5,7 +5,7 @@
 //
 // For each protein atom, characterises the first-shell water orientation
 // relative to the proper surface normal (from SasaResult), replacing the
-// crude protein-COM direction used by HydrationShellResult.
+// protein-centroid direction used by HydrationShellResult.
 //
 // Output: water_polarization.npy (N, 10):
 //   0-2  Net water dipole vector (Vec3) — direction + coherence of local

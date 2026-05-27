@@ -67,8 +67,8 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
     // For each protein atom, sum E-field from nearby water charges.
     // Water molecule has 3 charge sites: O (q_O), H1 (q_H), H2 (q_H).
     //
-    // E_i = Σ_j  q_j * r_ij / |r_ij|³   (V/A)
-    // V_ij = q_j * (3 r_ij r_ij^T / |r_ij|⁵  -  I / |r_ij|³)  (V/A²)
+    // E_i = COULOMB_KE * Σ_j q_j * r_ij / |r_ij|³   (V/A)
+    // V_ij = COULOMB_KE * q_j * (3 r_ij r_ij^T / |r_ij|⁵  -  I / |r_ij|³)  (V/A²)
 
     for (size_t ai = 0; ai < N; ++ai) {
         auto& atom = conf.MutableAtomAt(ai);
@@ -138,7 +138,7 @@ std::unique_ptr<WaterFieldResult> WaterFieldResult::Compute(
             add_charge(water.H2_pos, water.H_charge);
         }
 
-        // Make EFG traceless (remove self-potential artifact)
+        // Make EFG traceless after finite-precision accumulation.
         double trace_total = V_total.trace() / 3.0;
         V_total -= trace_total * Mat3::Identity();
         double trace_first = V_first.trace() / 3.0;
