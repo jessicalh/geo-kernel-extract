@@ -26,9 +26,9 @@
 // 100-frame COOLDOWN during which no further spikes are emitted —
 // prevents oversampling a single conformational event.
 //
-// Rolling mean window: 100 frames. The criterion is suppressed until
-// at least 10 frames have been observed (rolling mean unstable
-// otherwise). After 10 frames, criterion engages.
+// Rolling mean window: 100 frames. The absolute trigger is suppressed
+// until at least 10 frames have been observed; the local-delta trigger
+// waits for the full 100-frame window.
 //
 // Per the 13-TR plan: thresholds + cooldown are PROJECT-DECISION
 // values (not literature constants); they balance pose diversity
@@ -95,7 +95,7 @@ public:
     }
 
     // CROSS-RESULT READ: requires RmsdTrackingTrajectoryResult.
-    // Phase 4 validates that TR11 is attached before TR12.
+    // RunConfiguration attaches TR11 before TR12 so it dispatches first.
     std::vector<std::type_index> Dependencies() const override;
 
     static std::unique_ptr<RmsdSpikeSelectionTrajectoryResult> Create(

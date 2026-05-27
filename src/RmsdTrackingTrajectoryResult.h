@@ -46,13 +46,13 @@
 //
 // Pairs with:
 //   - TR12 RmsdSpikeSelectionTrajectoryResult, which CROSS-RESULT READs
-//     this TR's per-frame rmsd to detect spikes (thresholds: 2.0A vs
-//     frame 0 + 0.5A vs rolling 100-frame mean; cooldown 100 frames).
+//     this TR's latest per-frame rmsd to detect spikes (thresholds: 1.5A
+//     vs frame 0 + 0.5A vs rolling 100-frame mean; cooldown 100 frames).
 //
 // CROSS-RESULT READ (writer side):
 //   Fields read by other TRs during their Compute:
-//     - `RmsdAtFrame(frame_idx)` const accessor returns the AV
-//       per-frame RMSD scalar (Angstrom). Read by
+//     - `LatestRmsd()` returns the AV per-frame RMSD scalar (Angstrom)
+//       most recently appended by Compute. Read by
 //       RmsdSpikeSelectionTrajectoryResult.
 
 #include "TrajectoryResult.h"

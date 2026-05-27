@@ -26,7 +26,7 @@ RmsdSpikeSelectionTrajectoryResult::Create(const TrajectoryProtein& tp) {
 //
 // Per frame:
 //   1. CROSS-RESULT READ: get current RMSD from RmsdTrackingTrajectoryResult.
-//      Phase 4 guarantees TR11 is attached first per frame.
+//      RunConfiguration attaches TR11 before TR12 so it dispatches first.
 //   2. Decrement cooldown counter if active.
 //   3. Push to rolling window.
 //   4. If not in cooldown AND rolling window has >= 10 frames:

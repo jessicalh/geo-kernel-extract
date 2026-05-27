@@ -16,8 +16,7 @@
 //                             toward atom, in [0, 2*pi); NaN when the
 //                             atom is on the ring axis (rho <
 //                             MIN_DISTANCE = 0.1 Å -- the project-wide
-//                             singularity-guard threshold from
-//                             PhysicalConstants.h:76).
+//                             singularity-guard threshold).
 //
 // Static (atom, ring) cutoff snapshot frozen at first Compute call
 // (frame 0): for each atom, the list of aromatic-ring indices within
@@ -27,9 +26,9 @@
 // 15 A during the run still has its geometry emitted -- consumer
 // applies their own analysis-time cutoff via the distance channel).
 //
-// Aromatic only -- TR reads `protein.RingAt(i)` (aromatic-only API);
-// filters SpatialIndexResult's full-ring result on
-// `ri < protein.RingCount()`. ProPyrrolidine excluded (no
+// Aromatic only -- TR filters SpatialIndexResult's full-ring result on
+// `ri < protein.RingCount()`; Protein::RingCount is the aromatic-ring count.
+// ProPyrrolidine excluded (no
 // ring-current physics; emit via `RingPuckerTimeSeries` separately).
 //
 // Per-frame geometry computed FRESH from `conf.ring_geometries[ri]`
@@ -66,10 +65,10 @@
 // Group attrs document channel_layout, units, cutoff, NaN semantics,
 // aromatic-only convention, static-snapshot origin.
 //
-// Group is SKIPPED entirely when `r_per_atom_max_ == 0` (protein has
-// no aromatic rings -- nothing to emit). Reader contract: group
-// absence means "no aromatic rings in this protein," analogous to
-// the conditional-source skip pattern.
+// Group is SKIPPED entirely when `r_per_atom_max_ == 0` (no
+// aromatic-ring/atom pairs in the frame-0 cutoff set). Reader contract:
+// group absence means "no aromatic ring neighbourhoods to emit,"
+// analogous to the conditional-source skip pattern.
 //
 // Locked-scope provenance: project_ring_neighbourhood_debt_2026-05-21.
 // Fat-union + parallel-writer pattern on `ca.ring_neighbours` stays

@@ -24,9 +24,8 @@ namespace {
 
 // Kabsch alignment of N points: returns the RMSD between
 // `current` (rotated to best-fit) and `reference` (the target).
-// Both inputs are M-row × 3-col matrices in Eigen's row-major
-// interpretation; we use the (P, Q) -> H = P^T Q convention with
-// P = current_centered, Q = reference_centered.
+// Both inputs are assembled as 3 × M Eigen matrices with one point per
+// column; we use P = current_centered, Q = reference_centered, H = P Q^T.
 //
 // RMSD = sqrt(mean(|R*(p_i - p_centroid) + q_centroid - q_i|^2))
 //      = sqrt(mean(|R*(p_i - p_centroid) - (q_i - q_centroid)|^2))
@@ -34,8 +33,9 @@ namespace {
 // Degenerate cases:
 //   - M < 3:           RMSD undefined (rotation underdetermined).
 //                      Returns NaN.
-//   - Both clouds collapse to a single point (zero variance):
-//                      RMSD = |q_centroid - p_centroid|.
+//   - Collapsed point clouds are not special-cased; after centroid
+//                      subtraction, identical zero-variance clouds give
+//                      zero centered residual.
 //
 double KabschRmsd(const std::vector<Vec3>& current,
                   const std::vector<Vec3>& reference) {

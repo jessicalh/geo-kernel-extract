@@ -29,7 +29,7 @@ constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 // Singularity threshold for the in-plane azimuth: atoms with rho
 // below this OR with degenerate ring vertex-0 geometry return NaN
 // for in_plane_angle. Matches the project-wide `MIN_DISTANCE` (0.1 Å)
-// 1/r-singularity convention in `src/PhysicalConstants.h:76`; the
+// 1/r-singularity convention in PhysicalConstants.h; the
 // pre-2026-05-21-review value of 1e-12 was 11 orders too tight and
 // would have admitted geometrically-meaningless angles from near-axis
 // atoms (ρ ≪ 0.1 Å).
@@ -104,8 +104,8 @@ void RingNeighbourhoodTrajectoryStats::Compute(
 
     const std::size_t slot_count = r_per_atom_max_ * kChannelCount;
 
-    // r_per_atom_max_ == 0 means protein has no aromatic rings in
-    // range of any atom. Per-frame slab is zero-sized; we still
+    // r_per_atom_max_ == 0 means no aromatic-ring/atom pairs are in the
+    // frame-0 cutoff set. Per-frame slab is zero-sized; we still
     // advance frame counters so the absence is uniform with other
     // TRs' source_attached_per_frame timeline.
     for (std::size_t ai = 0; ai < n_atoms_; ++ai) {

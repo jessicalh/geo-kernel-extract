@@ -23,7 +23,7 @@
 //   atom_b          (B,) uint64
 //   order           (B,) int8    — BondOrder enum value
 //   category        (B,) int8    — BondCategory enum value
-//   attrs: result_name, n_bonds, n_frames, finalized, units="Å"
+//   attrs: result_name, n_bonds, n_frames, finalized, units="Angstrom"
 //
 // Topology metadata (atom_a, atom_b, order, category) is frame-
 // invariant and technically belongs in a future /topology/bonds/

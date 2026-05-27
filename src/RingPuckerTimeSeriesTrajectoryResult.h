@@ -10,10 +10,10 @@
 //
 // CROSS-RESULT READ (reader side): PlanarGeometryResult exposes the
 // per-frame pucker arrays + aromatic-ring χ₂ array. This TR copies
-// them into per-ring growing buffers. PG attaches conditionally on
-// the LegacyAmber substrate being populated (OperationRunner.cpp:106-
-// 112); when PG never attached, the H5 group is skipped per the
-// 2026-05-15 conditional-attach discipline.
+// them into per-ring growing buffers. OperationRunner calls PG each frame;
+// PG attaches only if PlanarGeometryResult::Compute succeeds, which requires
+// the LegacyAmber AtomSemanticTable substrate. When PG never attached, the
+// H5 group is skipped per the 2026-05-15 conditional-attach discipline.
 //
 // Two axes (saturated and aromatic rings) -- these are DIFFERENT
 // counts indexed differently inside LegacyAmberTopology. Per-ring
@@ -50,7 +50,7 @@
 //                                parent residue."
 //   source                 = "PlanarGeometryResult"
 //   source_attached_policy = "conditional -- PG attaches when
-//                              LegacyAmber substrate is populated."
+//                              PlanarGeometryResult::Compute succeeds."
 //
 // NaN-fill: PG emits NaN for rings where the geometry was degenerate
 // (5-ring CP requires a well-defined ring plane). We pass NaN through
