@@ -74,13 +74,11 @@ void BsT0AutocorrelationTrajectoryResult::Compute(
 //   2. FT[C(·)] is a non-negative power spectrum (Wiener-Khinchin),
 //      which is the right input for J(ω) / relaxation-time analysis
 //      in NMR.
-//   3. Matches the convention used by MDAnalysis, numpy.correlate
-//      (1/N normalisation), and the MD-NMR literature (Lipari-Szabo
-//      order parameters, spectral density mapping).
+//   3. Uses the same 1/N normalisation at every lag; lag-dependent
+//      pair loss reduces C(k) rather than changing the denominator.
 //
 // Constant-signal atoms (C(0) < 1e-15): ρ is undefined and we emit
-// zero at all lags. Tests that check ρ(0) = 1 partition atoms into
-// variance-bearing and constant.
+// zero at all lags.
 //
 // Lag-range: k ∈ [0, N_LAGS). Entries where k ≥ N (lag exceeds
 // trajectory length) have no pairs to contribute; we emit zero.

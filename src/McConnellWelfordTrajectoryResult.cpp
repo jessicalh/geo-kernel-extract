@@ -41,13 +41,11 @@ McConnellWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 
 // ── Compute ──────────────────────────────────────────────────────
 //
-// Phase 2b expansion (2026-05-17). CORRECTED 2026-05-17 PM: prior
-// version dropped T1 under a misreading of PATTERNS Lesson 19. The
-// McConnell three-term tensor IS asymmetric (T1 ≠ 0); the antisymmetric
-// part of M_ab/r³ is (9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³, generically
-// nonzero. Sibling McConnellShieldingTimeSeriesTrajectoryResult emits
-// T1 from the same source field — this Welford must roll up the same
-// channels for the calibration pipeline to see the antisymmetric signal.
+// Phase 2b expansion (2026-05-17): the McConnell three-term tensor is
+// asymmetric (T1 ≠ 0); the antisymmetric part of M_ab/r³ is
+// (9 cosθ/2)(d̂_a b̂_b - b̂_a d̂_b)/r³. The sibling
+// McConnellShieldingTimeSeriesTrajectoryResult emits T1 from the same
+// source field, and this Welford rolls up the same channels.
 
 void McConnellWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -213,9 +211,8 @@ int McConnellWelfordTrajectoryResult::WriteFeatures(
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
 // /trajectory/mc_welford/ — expanded schema (Phase 2b/C). Identical
-// shape to BS — McConnell three-term tensor IS asymmetric (T1 ≠ 0)
-// per PATTERNS Lesson 19; the prior "no T1 for McConnell" claim
-// was wrong and is now corrected.
+// shape to BS; the McConnell three-term tensor is asymmetric and emits
+// T1 from the same source field as McConnellShieldingTimeSeries.
 //
 // T1 storage: SphericalTensor.T1 is the Cartesian Levi-Civita dual
 // of the rank-1 part (T1[0]=v_x, T1[1]=v_y, T1[2]=v_z), NOT real-

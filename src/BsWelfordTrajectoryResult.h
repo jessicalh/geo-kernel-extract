@@ -31,9 +31,10 @@
 //   t0_delta           — signed Δ (telescopes → drift)
 //   t0_abs_delta       — |Δ| (fluctuation amplitude)
 //   t0_delta_squared   — Δ² (sqrt(mean) → RMS fluctuation, Finalize)
+//   t0_dxdt            — cadence-normalized Δ/Δt
 //
-// Internal state: per-atom previous-frame T0 cache for the delta
-// trackers. Small (one double per atom), stays on the result.
+// Internal state: per-atom previous-frame T0/time caches and validity
+// flags for the delta and dxdt trackers; state stays on the result.
 //
 
 #include "TrajectoryResult.h"

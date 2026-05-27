@@ -45,9 +45,10 @@ HmWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // Tensor channels preserved through to rollup — per PATTERNS Lesson
 // 25, the |T2| amplitude rollup is kept (for parity with BS) but
 // per-component T1[3] and T2[5] are emitted alongside so downstream
-// sees the orientation. Three frame-to-frame delta variants distinguish
-// drift from dynamics (signed Δ telescopes to (x_N - x_0)/(N-1); |Δ|
-// and Δ² don't).
+// sees the orientation. Frame-to-frame delta and rate variants
+// distinguish drift from dynamics (signed Δ telescopes to
+// (x_N - x_0)/(N-1); |Δ| and Δ² don't; dxdt normalizes by
+// captured-frame cadence).
 
 void HmWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,

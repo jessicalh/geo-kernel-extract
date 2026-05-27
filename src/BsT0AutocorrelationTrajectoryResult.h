@@ -30,8 +30,8 @@
 //      access — no reinterpret cast, same discipline as Positions.
 //
 // Memory note: the full history buffer is O(atoms × n_frames × 8 B).
-// At the 685-protein fleet scale with stride 2 on 25 ns runs
-// (≈ 625 frames × ~4000 atoms) that's ~20 MB per run — comfortable.
+// The emitted lag grid is fixed, but the buffered history grows with
+// the number of captured frames.
 // If a later session needs bounded memory for μs-scale runs, the
 // refactor is: replace the per-atom history vector with a circular
 // window + per-lag running left/right tail sums, then Finalize
@@ -59,10 +59,10 @@ namespace nmr {
 
 class BsT0AutocorrelationTrajectoryResult : public TrajectoryResult {
 public:
-    // Number of lags computed. 120 samples at stride-2 / 20-ps frame
-    // cadence ≈ 4.8 ns of lag — enough to see the fall-off of typical
-    // shielding autocorrelations. Set at compile time for simplicity;
-    // future Results can template over N_LAGS.
+    // Number of lags computed. The physical lag span is this count
+    // times the median captured-frame interval emitted in lag_times_ps.
+    // Set at compile time for simplicity; future Results can template
+    // over N_LAGS.
     static constexpr std::size_t N_LAGS = 120;
 
     std::string Name() const override {

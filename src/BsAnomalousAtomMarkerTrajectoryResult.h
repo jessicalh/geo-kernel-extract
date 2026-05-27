@@ -57,11 +57,10 @@
 // Attach order is dispatch order, so BsWelford's Compute runs before
 // this Result's Compute on each frame. The running mean includes the
 // current frame's contribution when we compare against it; at `n`
-// frames the z-score magnitude is biased by ~1/n toward zero. With
-// MIN_BURN_IN_FRAMES = 20 the bias is below the threshold noise
-// floor. Documented rather than worked around; the alternatives
-// (attach BsWelford after, or two-pass compute) complicate the
-// exemplar without changing the result.
+// frames the z-score magnitude is biased toward zero. Documented
+// rather than worked around; the alternatives (attach BsWelford after,
+// or two-pass compute) complicate the exemplar without changing the
+// result.
 //
 
 #include "TrajectoryResult.h"

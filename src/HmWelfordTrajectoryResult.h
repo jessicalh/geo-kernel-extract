@@ -14,9 +14,9 @@
 //
 // Phase 2b expansion (2026-05-17): identical channel shape to BS —
 // per-component T1[3] + T2[5] preserve tensor orientation that |T2|
-// amplitude rollup discards; three frame-to-frame delta variants on
-// T0 distinguish drift / |Δ| / Δ² → RMS fluctuation. Per PATTERNS
-// Lesson 25 (Export Everything Upstream). See
+// amplitude rollup discards; T0 delta/rate variants distinguish drift,
+// |Δ|, Δ² → RMS fluctuation, and cadence-normalized Δ/Δt. Per
+// PATTERNS Lesson 25 (Export Everything Upstream). See
 // spec/plan/welford-data-shape-design-2026-05-17.md.
 //
 

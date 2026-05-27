@@ -45,9 +45,9 @@ BsWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // to rollup. Per PATTERNS Lesson 25, the |T2| amplitude rollup is
 // kept (for AnomalyMarker consumers) but per-component T1[3] and
 // T2[5] are emitted alongside so downstream sees the orientation.
-// Three frame-to-frame delta variants distinguish drift from
+// Frame-to-frame delta and rate variants distinguish drift from
 // dynamics (signed Δ telescopes to (x_N - x_0)/(N-1); |Δ| and Δ²
-// don't).
+// don't; dxdt normalizes by captured-frame cadence).
 //
 // CROSS-RESULT READ (writer side, PATTERNS §17):
 // BsAnomalousAtomMarkerTrajectoryResult reads ta.bs_welford.t0.mean,
@@ -232,7 +232,7 @@ int BsWelfordTrajectoryResult::WriteFeatures(
 //     t0_rms_delta                              — Finalize-derived sqrt(<Δ²>)
 //
 //   Provenance (1D):
-//     n_frames_per_atom, delta_n_per_atom
+//     n_frames_per_atom, delta_n_per_atom, dxdt_n_per_atom
 //
 //   Per-dataset attributes (Commit C):
 //     units                                       (authoritative; differs by dataset)

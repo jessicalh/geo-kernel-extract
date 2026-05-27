@@ -42,10 +42,10 @@ EeqWelfordTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // ── Compute ──────────────────────────────────────────────────────
 //
 // Phase 2b expansion (2026-05-17): scalar source — no T1/T2 channels.
-// Per PATTERNS Lesson 25, the three frame-to-frame delta variants
-// distinguish drift (signed Δ telescopes to (x_N - x_0)/(N-1) — endpoint
-// drift) from dynamics (|Δ| and Δ² don't telescope; rms_delta = sqrt(<Δ²>)
-// is the standard fluctuation measure).
+// Per PATTERNS Lesson 25, frame-to-frame delta and rate variants
+// distinguish drift (signed Δ telescopes to (x_N - x_0)/(N-1) —
+// endpoint drift) from dynamics (|Δ| and Δ² don't telescope;
+// rms_delta = sqrt(<Δ²>); dxdt normalizes by captured-frame cadence).
 
 void EeqWelfordTrajectoryResult::Compute(
         const ProteinConformation& conf,
