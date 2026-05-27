@@ -1,7 +1,10 @@
 #pragma once
 //
-// Prepared per-atom charge/PB-radius rows owned by Protein.
-// ChargeAssignmentResult only projects these values onto ConformationAtom.
+// ForceFieldChargeTable: loaded force-field partial charges and PB radii.
+//
+// This is the prepared per-atom charge/PB-radius object owned by Protein.
+// ChargeAssignmentResult projects this table into the old conformation fields;
+// it does not own the authoritative loaded charge model.
 //
 
 #include "ChargeSource.h"

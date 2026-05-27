@@ -24,13 +24,17 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
 
     std::string line;
     while (std::getline(in, line)) {
+        // Locate "; residue " (allow leading whitespace, allow no space after ';').
         size_t i = line.find_first_not_of(" \t");
         if (i == std::string::npos || line[i] != ';') continue;
         ++i;
+        // Skip whitespace after ';'.
         while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) ++i;
+        // Expect literal "residue" keyword.
         if (line.compare(i, 7, "residue") != 0) continue;
         i += 7;
 
+        // Tokenise the rest: <seqid> <name> rtp <rtp> q <q>
         std::istringstream iss(line.substr(i));
         int seqid = 0;
         std::string name, rtp_kw, rtp, q_kw;
@@ -42,7 +46,7 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
         if (!(iss >> q_kw) || q_kw != "q") continue;
         if (!(iss >> q)) continue;
 
-        if (seqid <= 0) continue;
+        if (seqid <= 0) continue;  // defensive: malformed seqid
 
         GromacsToAmberReadbackBlock::ResidueEntry entry;
         entry.tpr_name    = name;
@@ -58,7 +62,9 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
                 VariantIndexFromForceFieldName(entry.aa, base);
         }
 
-        // Gaps stay default-constructed so consumers can detect missing rows.
+        // Place at 0-based index. Vector grows as needed; gaps stay
+        // default-constructed (Unknown aa, empty strings) so consumers
+        // can detect missing entries.
         const size_t idx = static_cast<size_t>(seqid - 1);
         if (block.residues.size() <= idx) {
             block.residues.resize(idx + 1);
@@ -72,6 +78,7 @@ GromacsToAmberReadbackBlock ParseTopolTopReadback(
         return block;
     }
 
+    // Audit counts.
     for (const auto& e : block.residues) {
         const std::string base = BaseFfPortNameFromGromacsRtp(e.rtp);
         if (!e.tpr_name.empty() && !base.empty() && e.tpr_name != base) {
@@ -93,7 +100,8 @@ bool EmitGromacsToAmberReadbackBlockJson(
 
     error_out.clear();
 
-    // Preserve insertion order for stable audit output.
+    // ordered_json: emitted key order = insertion order (stable output,
+    // no alphabetical reshuffle that would surprise consumers).
     nlohmann::ordered_json j;
     j["schema_version"]              = 1;
     j["topol_top_path"]              = block.topol_top_path;
