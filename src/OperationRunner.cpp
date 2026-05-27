@@ -40,8 +40,8 @@ namespace nmr {
 
 
 // Helper: attach a result, log failure, accumulate name list.
-// Timing: each Compute is already wrapped by the caller in a lambda
-// that includes the Scope. The Attach itself just moves the pointer.
+// Attach itself just moves the pointer; compute timing belongs to the
+// caller or to the result's own Compute implementation.
 static bool Attach(ProteinConformation& conf,
                    std::unique_ptr<ConformationResult> result,
                    const char* name,
@@ -59,8 +59,7 @@ static bool Attach(ProteinConformation& conf,
 }
 
 // Timed compute + attach. The Scope emits [BEGIN] and [END] with
-// elapsed ms over UDP. Every calculator gets an entry in the log
-// so we can see where per-frame time goes.
+// elapsed ms through OperationLog for the calculators routed here.
 template<typename F>
 static bool TimedAttach(ProteinConformation& conf, const char* name,
                         RunResult& out, F&& compute) {
@@ -74,7 +73,7 @@ static bool TimedAttach(ProteinConformation& conf, const char* name,
 // Run: the standard sequence.
 //
 // Order:
-//   Tier 0 — foundation (no inter-dependencies)
+//   Tier 0 — foundation
 //   Tier 0.5 — external tools (need charges)
 //   Tier 1 — calculator stack
 //   Tier 2 — DFT comparison (optional)
@@ -346,7 +345,7 @@ RunResult OperationRunner::RunMutantComparison(
 
 
 // =================================================================
-// RunEnsemble: use case D with trajectories.
+// RunEnsemble: run a shared option set over existing conformations.
 // =================================================================
 
 std::vector<RunResult> OperationRunner::RunEnsemble(

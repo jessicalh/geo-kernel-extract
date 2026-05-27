@@ -16,7 +16,7 @@
 
 namespace nmr::cli {
 
-/// @brief Load a bare PDB, protonate with @c reduce, run all calculators.
+/// @brief Load a bare PDB, protonate with @c reduce, run the standard pipeline.
 ///
 /// Heavy-atom-only PDB on input. Hydrogens are added at runtime via the
 /// @c reduce tool, charges from ff14SB, then the full per-conformation
@@ -27,7 +27,7 @@ struct PdbMode {
     bool                  mopac = true;   ///< Run PM7+MOZYME + derived calcs.
 };
 
-/// @brief Load a PDB that already has H atoms, run all calculators.
+/// @brief Load a PDB that already has H atoms, run the standard pipeline.
 ///
 /// Skips the @c reduce step; protonation variant is detected from the
 /// explicit H atoms present.
@@ -36,11 +36,11 @@ struct ProtonatedPdbMode {
     bool                  mopac = true;
 };
 
-/// @brief Load a single tleap/AMBER-prepared pose, run all calculators.
+/// @brief Load a single tleap/AMBER-prepared pose, run the standard pipeline.
 ///
 /// The pose is described by a root name: @c {root}.xyz (coordinates),
-/// @c {root}.prmtop (topology + charges), and optional
-/// @c {root}_nmr.out (ORCA DFT shielding tensors for OrcaShieldingResult).
+/// @c {root}.prmtop (topology + charges), and @c {root}_nmr.out path for
+/// OrcaShieldingResult.
 struct OrcaMode {
     OrcaRunFiles files;
     bool         mopac = true;

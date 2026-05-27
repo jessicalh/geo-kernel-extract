@@ -36,7 +36,7 @@ class  TripeptideDftTable; // forward declaration (TripeptideDftTable.h)
 class  LarsenHBondGrid;    // forward declaration (LarsenHBondGrid.h)
 
 struct RunOptions {
-    // Charges — required for real physics.
+    // Charges — required for charge-dependent calculators.
     // Null = no Coulomb, no APBS, no MOPAC.
     const ChargeSource* charge_source = nullptr;
     int net_charge = 0;
@@ -50,7 +50,7 @@ struct RunOptions {
     // Skip APBS Poisson-Boltzmann.
     bool skip_apbs = false;
 
-    // Skip vacuum Coulomb EFG (home-rolled, O(N*k), 25s at 4800 atoms).
+    // Skip vacuum Coulomb EFG (home-rolled, O(N*k)).
     // Retired from production: APBS is the canonical electrostatics, so
     // every single-frame mode and PerFrameExtractionSet set this true.
     // The only consumer that sets it false is FullFatFrameExtraction,

@@ -267,8 +267,8 @@ static int RunTrajectory(const cli::TrajectoryMode& mode,
         // Per-frame MOPAC stride: trajectory loop overrides skip_mopac
         // each frame based on (frame_idx % mopac_stride). Default 1 keeps
         // the historical FullFatFrameExtraction "MOPAC every frame".
-        // Larger values pair MOPAC with NPY/PDB emit stride so heavy work
-        // coincides with disk-emitted frames.
+        // Larger values can be matched with NPY/PDB emit stride so heavy
+        // work coincides with disk-emitted frames.
         config.SetMopacStride(mode.mopac_stride);
     }
 
