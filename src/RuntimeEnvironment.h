@@ -6,14 +6,15 @@
 // Every accessor checks this and aborts if you forgot. There is
 // no silent fallback. If the TOML doesn't exist, Load() still
 // runs — it reads env vars and PATH, logs what it found, and
-// warns about what's missing. But it must be called.
+// records missing values as <not set>. But it must be called.
 //
 // TOML location: ~/.nmr_tools.toml (or pass explicit path).
 // Every resolved value is logged at Load() time so you can see
 // exactly what the program thinks its environment is.
 //
 // Live surface:
-//   ff14sb_params  — BuildFromPdb charge assignment
+//   mopac         — MOPAC binary path for MopacResult subprocess calls
+//   ff14sb_params — BuildFromPdb charge assignment
 //   tleap          — AmberPreparedChargeSource runtime topology generation
 //                    (resolved from TOML / AMBERHOME / PATH / conda)
 //   tmpdir         — temp files for MOPAC and AmberPreparedChargeSource
@@ -25,16 +26,16 @@
 //                    Postgres replica (ProCS15 tripeptide DFT data).
 //                    Read from [databases].tensorcs15 in the TOML.
 //                    Consumed by Session::LoadTripeptideDftTable.
-//                    Empty = TripeptideBackboneShieldingResult cannot
-//                    run; the calculator returns nullptr at Compute.
+//                    Empty = Session leaves the table unloaded, so
+//                    OperationRunner skips tripeptide DFT calculators.
 //   larsen_hbond_grids — directory holding the 6 dense.h5 grids
 //                    produced by scripts/larsen_hbond_grid_parse/.
 //                    Read from top-level `larsen_hbond_grids` key in
 //                    the TOML. Consumed by Session::LoadLarsenHBondGrid.
-//                    Empty = LarsenHBondShieldingResult cannot run.
+//                    Empty = Session leaves the grid unloaded, so
+//                    OperationRunner skips LarsenHBondShieldingResult.
 //
-// MOPAC is linked (libmopac.so), not a binary path. tleap IS a
-// binary path (subprocess invocation by AmberPreparedChargeSource).
+// MOPAC and tleap are binary paths used for subprocess invocation.
 //
 
 #include <string>
@@ -60,7 +61,8 @@ public:
     static const std::string& TensorCs15Dsn();
     static const std::string& LarsenHBondGridDir();
 
-    // Verify live tools exist. Returns list of missing (name + path).
+    // Verify required runtime files exist. Returns list of missing
+    // (name + path) entries for MOPAC and ff14sb_params.
     static std::vector<std::string> Verify();
 
     // Generate a temp file path: tmpdir/guid_proteinName_suffix

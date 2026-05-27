@@ -17,10 +17,10 @@
 //                         table; set configured flag. Called once at
 //                         startup from Session::LoadFromToml.
 //   WriteFeatures(protein, output_dir)
-//                         -- emit one structured NPY per protein. Inert
-//                         when not configured or when the protein has no
-//                         AtomSemanticTable substrate (HasAtomSemantic()
-//                         false).
+//                         -- emit one structured NPY per protein. Without
+//                         atom_nom.tbl, emits AMBER names as lookup
+//                         fallbacks; without AtomSemanticTable substrate,
+//                         emits zero-valued substrate fields.
 //   Reset()             -- clear configuration; for tests.
 //
 // Reads ONLY (no model mutation):
@@ -32,8 +32,8 @@
 //
 // Writes:
 //   - one structured NPY at output_dir/atoms_category_info.npy. Shape
-//     (N,) with a packed structured dtype (~28 fields). Mixed S8 / S4 /
-//     S1 / i1 / i4 columns. ~50 bytes per atom.
+//     (N,) with a packed structured dtype. Mixed S8 / S4 / S1 / i1 / i4
+//     columns.
 //
 // Architectural rule (memory feedback_naming_input_output_asymmetry):
 // input-side and output-side naming systems are NEVER glued together.
@@ -47,8 +47,8 @@
 //
 // Deliberately not a ConformationResult / TrajectoryResult. Holds no
 // per-frame state; participates in no dependency graph; emits no H5.
-// One-shot per Protein, called from entry points (non-trajectory) and
-// Trajectory::Run (trajectory) BEFORE any per-frame work.
+// Per-output-directory projection for a Protein, called from entry
+// points and trajectory output boundaries.
 //
 
 #include <cstddef>
@@ -64,16 +64,17 @@ enum class AminoAcid : int;
 class CategoryInfoProjection {
 public:
     struct Config {
-        std::filesystem::path atom_nom_tbl;  // empty = inert
+        std::filesystem::path atom_nom_tbl;  // empty = no external lookup table
     };
 
     // Called once at startup. Reads + parses atom_nom.tbl. Subsequent
-    // calls Reset()+Configure(); same idiom as FramePdbEmitter.
+    // calls clear the existing state before parsing; same idiom as
+    // FramePdbEmitter.
     static void Configure(Config config);
 
     // Emit the structured NPY for one protein. Returns the number of
-    // arrays written (0 when inert or substrate empty; 1 when emission
-    // succeeded). Idempotent; safe to call multiple times.
+    // arrays written (1 when emission succeeded, 0 on write failure).
+    // Idempotent; safe to call multiple times.
     static int WriteFeatures(const Protein& protein,
                               const std::string& output_dir);
 
@@ -86,7 +87,8 @@ public:
     // Per-atom queries — for tests and downstream callers (viewer,
     // h5-reader, debugging). All const, all read-only on the protein.
     // Empty string when no projection match (and Configure has been
-    // called); MissLog records the miss.
+    // called). WriteFeatures records misses; these query methods are
+    // read-only and do not update MissLog.
     static std::string IupacAtomName(const Protein&, std::size_t atom_index);
     static std::string BmrbAtomName(const Protein&, std::size_t atom_index);
     static std::string BmrbStereoLabel(const Protein&, std::size_t atom_index);

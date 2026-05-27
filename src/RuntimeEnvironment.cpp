@@ -154,7 +154,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
 
     // --- Resolve mopac: TOML → PATH ---
     // No machine-specific default: a non-PATH install sets `mopac` in
-    // ~/.nmr_tools.toml. Empty here is a loud skip downstream (see Check()).
+    // ~/.nmr_tools.toml. Empty here is a loud skip downstream.
     mopac_ = ResolveBinary(toml_mopac, "mopac");
 
     // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH ---
@@ -215,9 +215,9 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     }
 
     // tensorcs15 connection string: TOML → env var → empty. Empty is
-    // OK; Session::LoadTripeptideDftTable will skip and the calculator
-    // returns nullptr at Compute. The DSN is a libpq kv-pair string,
-    // not a path, so we don't fs::exists-check it.
+    // OK; Session::LoadTripeptideDftTable will skip and OperationRunner
+    // will not call the tripeptide calculators. The DSN is a libpq
+    // kv-pair string, not a path, so we don't fs::exists-check it.
     if (!toml_tensorcs15_dsn.empty()) {
         tensorcs15_dsn_ = toml_tensorcs15_dsn;
     } else {

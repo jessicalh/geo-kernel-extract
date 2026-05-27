@@ -10,22 +10,23 @@
 //   ring_membership.npy       structured NPY, one row per (ring, atom)
 //   extraction_manifest.json  topology declarations + axis sizes
 //
-// Reads ONLY (no model mutation):
+// Primary reads (no model mutation):
+//   - protein residues and atoms                  (residue rows + axis sizes)
 //   - protein.LegacyAmber().BondList()            (Bond struct)
 //   - protein.LegacyAmber().Rings()               (RingTopology surface)
-//   - protein.LegacyAmber().HasAtomSemantic()     (gates substrate fields)
-//   - protein.AtomCount(), ResidueCount()         (manifest axis sizes)
+//   - protein.LegacyAmber().HasAtomSemantic()     (manifest flags)
 //
 // Same architectural shape as CategoryInfoProjection and FramePdbEmitter:
 // singleton static-method, fixed shape, no virtuals, no
 // ConformationResult / TrajectoryResult lifecycle. Holds no per-frame
-// state. Called once per Protein from each entry point alongside the
+// state. Called at output boundaries alongside the
 // CategoryInfoProjection call.
 //
-// All five output files are INVARIANT per-protein -- topology does not
+// The four NPY outputs are invariant per-protein -- topology does not
 // change between conformations or trajectory frames. Calling
-// WriteFeatures multiple times per Protein on the same output_dir is
-// idempotent; the second write overwrites with bit-identical content.
+// WriteFeatures multiple times per Protein on the same output_dir
+// overwrites the files; the manifest carries a fresh generated_at_utc
+// timestamp.
 //
 // Architectural rule (memory feedback_naming_input_output_asymmetry +
 // the OBJECT_MODEL "Protein is identity and topology only" wall):
@@ -51,11 +52,9 @@ public:
     // ``protein_id`` is recorded in the manifest. Empty string is
     // acceptable; callers typically pass fs::path(output_dir).filename().
     //
-    // Inert when the protein has no LegacyAmber substrate
-    // (HasAtomSemantic() false AND zero bonds AND zero rings) -- mirrors
-    // CategoryInfoProjection's stub-fixture behavior. Manifest is still
-    // emitted with the populated flags so a consumer can distinguish
-    // "no topology" from "topology omitted".
+    // Always emits the five files when writes succeed. The manifest's
+    // populated flags let consumers distinguish absent substrate fields
+    // from omitted topology output.
     static int WriteFeatures(const Protein& protein,
                               const std::string& output_dir,
                               const std::string& protein_id = "");

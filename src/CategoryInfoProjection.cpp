@@ -453,7 +453,7 @@ std::vector<unsigned char> BuildRecords(const Protein& protein, State& s) {
                 sc_stereo  = "";
             }
         } else {
-            // No projection configured. Emit AMBER name as fallback.
+            // No atom_nom.tbl configured. Emit AMBER name as fallback.
             iupac_name = amber_name;
             bmrb_name  = amber_name;
         }

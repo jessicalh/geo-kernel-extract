@@ -1,20 +1,19 @@
 #pragma once
 //
-// OperationLog: structured UDP logging for every meaningful operation.
+// OperationLog: structured logging for meaningful operations.
 //
 // This is not optional debugging. This is the system's external memory.
 // When an agent builds layers of complexity and can no longer hold the
 // full state in context, the operation log shows what actually happened.
 //
-// Every operation that changes state, computes a result, loads data,
-// calls an external tool, or encounters an error emits a structured
-// JSON message over UDP. A listener captures the stream.
+// Operations that change state, compute a result, load data, call an
+// external tool, or encounter an error emit structured JSON through the
+// configured sinks: UDP, file, and/or stderr.
 //
-// The log is ALWAYS ON. The cost of a UDP send is negligible compared
-// to any calculation this library performs. The cost of NOT logging
-// is hours of debugging silent failures.
+// Warnings and errors always emit. Info/debug messages obey the channel
+// mask. The cost of not logging is hours of debugging silent failures.
 //
-// Message format (JSON over UDP or stderr):
+// Message format (JSON over UDP, file, or stderr):
 // {
 //   "ts": "2026-04-01T18:34:56.789",
 //   "level": "info",
@@ -64,7 +63,7 @@ public:
     enum class Level { Debug, Info, Warning, Error };
 
     // Configure UDP destination. Call once at startup.
-    // If not called, logs go to stderr.
+    // If not called, stderr remains the Info/Debug fallback sink.
     static void ConfigureUdp(const std::string& host, int port);
 
     // Configure file output. Writes JSON-lines to the given path.

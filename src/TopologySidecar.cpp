@@ -100,8 +100,7 @@ bool WriteStructuredNpy(const fs::path& path,
 // plus prev/next links and Markley-style 1-letter / 3-letter
 // renderings.
 //
-// Chain boundary detection: row i is at chain start if i == 0 OR
-// chain_id changes from i-1 to i. Same for chain end with i+1.
+// Prev/next residue links are derived from the covalent backbone graph.
 //
 constexpr const char* kResiduesDtypeDescr =
     "[('residue_index', '<i4'),"
@@ -463,9 +462,8 @@ bool WriteRingMembership(const Protein& protein, const fs::path& out_dir,
 
 // ── Manifest emission ─────────────────────────────────────────────
 //
-// Hand-written JSON; format-style direct to match the project's "no
-// utility namespace, no abstractions" rule. Topology summary + axis
-// sizes + axis-alignment statements.
+// Explicit manifest schema: topology summary + axis sizes +
+// axis-alignment statements.
 //
 // The axis-alignment block makes explicit what is implicit in the
 // extraction layout: all atom-axis NPYs share row order, ring_geometry
