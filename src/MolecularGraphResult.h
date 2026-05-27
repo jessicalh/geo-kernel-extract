@@ -1,5 +1,17 @@
 #pragma once
-// BFS-based through-bond features from Protein's bond graph.
+//
+// MolecularGraphResult: BFS-based through-bond features from the bond graph.
+//
+// Dependencies: SpatialIndexResult.
+//
+// Uses the bond graph (Protein's bond list) for BFS traversal.
+// Per atom: graph_dist_ring, graph_dist_N, graph_dist_O,
+// eneg_sum_1, eneg_sum_2, n_pi_bonds_3, is_conjugated,
+// bfs_to_nearest_ring_atom, bfs_decay.
+//
+// The BFS uses the TYPED bond graph from Protein -- atom.bond_indices
+// gives bonds, each bond gives the other atom. No string work.
+//
 
 #include "ConformationResult.h"
 #include "ProteinConformation.h"
@@ -19,6 +31,7 @@ public:
         return { typeid(SpatialIndexResult) };
     }
 
+    // Factory: compute BFS distances and through-bond features
     static std::unique_ptr<MolecularGraphResult> Compute(ProteinConformation& conf);
 
 private:
