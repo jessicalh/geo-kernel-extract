@@ -2,10 +2,10 @@
 //
 // GromacsEnergyResult: per-frame energy terms from the GROMACS simulation.
 //
-// Reads the .edr energy file and extracts the frame matching the
-// conformation's time (ps). Stores the GROMACS-computed electrostatic
-// energy (PME: short-range + reciprocal), LJ, potential, temperature,
-// and pressure components.
+// Receives the .edr energy row already selected for the conformation's
+// time (ps). Stores the GROMACS-computed electrostatic energy (PME:
+// short-range + reciprocal), LJ, potential, temperature, and pressure
+// components.
 //
 // These are aggregate (whole-system) quantities, not per-atom. They
 // characterise the electrostatic environment that GROMACS computed
@@ -15,7 +15,7 @@
 // APBS per-atom fields to quantify what information the trajectory
 // carries that our calculators do or don't capture.
 //
-// Dependencies: none (reads from external file, not from conformation).
+// Dependencies: none (uses caller-supplied energy data, not conformation state).
 //
 
 #include "ConformationResult.h"

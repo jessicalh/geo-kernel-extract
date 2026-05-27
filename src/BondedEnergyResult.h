@@ -11,9 +11,8 @@
 // dihedral, improper dihedral, CMAP correction. Each stored as a
 // per-atom double (kJ/mol, split evenly among participating atoms).
 //
-// Dependencies: GeometryResult (needs positions, but that's always
-// present). The bonded parameters come through RunOptions, not from
-// another ConformationResult.
+// Dependencies: none. Compute needs conformation positions plus bonded
+// parameters supplied through RunOptions, not another ConformationResult.
 //
 
 #include "ConformationResult.h"

@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 namespace nmr {
 
 // ============================================================================
-// PDB LOADING BOUNDARY: parse ORCA NMR shielding tensor output.
+// ORCA OUTPUT BOUNDARY: parse ORCA NMR shielding tensor output.
 //
 // Format per nucleus:
 //   " Nucleus  NNNX :"              (index, element)
@@ -83,7 +83,7 @@ static std::vector<ParsedNucleus> ParseOrcaNmrOutput(const std::string& path) {
 
     // Parse nucleus blocks
     while (std::getline(in, line)) {
-        // PDB LOADING BOUNDARY: " Nucleus  NNNX :"
+        // ORCA output boundary: " Nucleus  NNNX :"
         if (line.find("Nucleus") == std::string::npos || line.find(':') == std::string::npos)
             continue;
 
