@@ -42,9 +42,9 @@ std::vector<std::type_index> DispersionResult::Dependencies() const {
 // taper truncates a convergent sum smoothly instead. The onset (R_switch,
 // default 4.3 A) and cutoff (R_cut, default 5.0 A) are read from
 // CalculatorConfig; the defaults below are illustrative. The 0.7 A taper
-// width is comparable to MD position fluctuations (~0.5 A RMS), so no atom
-// crosses the whole taper in one frame, and at R_cut the 1/r^6 term is
-// ~0.03% of a typical 2 A contact (truncation error < 0.1%).
+// width is the same order as MD position fluctuations (~0.5 A RMS), reducing
+// cutoff jumps, and at R_cut the raw 1/r^6 term is below 0.5% of a typical
+// 2 A contact before the switch takes it to zero.
 // ============================================================================
 
 static double DispersionSwitchingFunction(double r) {
@@ -116,7 +116,7 @@ static DispVertexResult ComputeDispVertex(
 
 
 // ============================================================================
-// Build the set of atoms bonded to any vertex of a ring.
+// Build the set of ring vertices and atoms bonded to any vertex.
 // Used to exclude through-bond pairs from the through-space 1/r^6 kernel.
 // ============================================================================
 
@@ -353,8 +353,8 @@ SphericalTensor DispersionResult::SampleKernelAt(Vec3 point) const {
     for (size_t ri = 0; ri < protein.RingCount(); ++ri) {
         const RingGeometry& geom = conf_->ring_geometries[ri];
 
-        // grid-sampling guard: skip inside-ring and out-of-range points (raw
-        // field sample, no provenance recording)
+        // grid-sampling guard: skip points inside the ring-radius sphere and
+        // out-of-range points (raw field sample, no provenance recording)
         double ring_dist = (point - geom.center).norm();
         if (ring_dist < CalculatorConfig::Get("singularity_guard_distance")) continue;
         if (ring_dist < geom.radius) continue;

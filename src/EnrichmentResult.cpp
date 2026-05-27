@@ -105,7 +105,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
                 if (aromatic_atom_set.count(parent) > 0) {
                     role = AtomRole::AromaticH;
                 }
-                // MethylH: parent is sp3 C with exactly 3 H bonds
+                // MethylH: parent is carbon with exactly 3 H bonds
                 else if (parent_identity.element == Element::C) {
                     // Count H bonded to parent
                     int h_count = 0;
@@ -170,7 +170,7 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
             ca.is_hbond_donor = false;
         }
 
-        // H-bond acceptor: N or O with lone pair (heavy atoms)
+        // H-bond acceptor: coarse heavy-atom N/O flag
         ca.is_hbond_acceptor = (identity.element == Element::N ||
                                 identity.element == Element::O);
 
@@ -191,9 +191,8 @@ std::unique_ptr<EnrichmentResult> EnrichmentResult::Compute(
             }
         }
 
-        // parent_is_sp2: for H atoms, check parent hybridisation.
-        // Heavy atoms are processed before their hydrogens in the
-        // residue atom list, so parent hybridisation is already set.
+        // parent_is_sp2: for H atoms, classify the parent from ring and
+        // backbone-cache membership.
         if (identity.element == Element::H &&
             identity.parent_atom_index != SIZE_MAX) {
             size_t parent = identity.parent_atom_index;
