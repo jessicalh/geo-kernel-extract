@@ -1,7 +1,7 @@
 #pragma once
 //
 // Trajectory: process entity representing one traversal of a
-// trajectory source (XTC + TPR + EDR). Peer of TrajectoryProtein in
+// trajectory source (TRR + TPR + EDR). Peer of TrajectoryProtein in
 // the trajectory-scope object model but distinct in role:
 //
 //   TrajectoryProtein = the protein as observed (physical-world).
@@ -18,7 +18,7 @@
 // frames 1..N go through tp.TickConformation (ephemeral conformation
 // owned by the iteration).
 //
-//   1. Open the handler (mount XTC + build PBC fixer from TPR).
+//   1. Open the handler (mount TRR + build PBC fixer from TPR).
 //   2. Read frame 0 and tp.Seed — finalize Protein topology, create
 //      the canonical ProteinConformation (conf0), allocate
 //      TrajectoryAtoms.
@@ -71,12 +71,12 @@ class GromacsFrameHandler;
 // per-frame pipeline beyond atomic coordinates: solvent (water + ions),
 // the current EDR energy pointer, frame index + time. Named so
 // TrajectoryResults can read the current frame's environment during
-// dispatch without going through RunOptions; handlers write into it
-// at each read.
+// dispatch without going through RunOptions; Trajectory::Run writes
+// it from handler data each dispatched frame.
 //
 // Multi-frame environment history (e.g. water dipoles per frame over
-// the whole trajectory) is NOT stored here — that's per-handler
-// buffers-from-ctor, deposited from this env's current slot each frame.
+// the whole trajectory) is NOT stored here — results that need it keep
+// their own buffers or copy from this slot during Compute.
 struct TrajectoryEnv {
     SolventEnvironment solvent;
     const GromacsEnergy* current_energy = nullptr;
@@ -85,7 +85,7 @@ struct TrajectoryEnv {
 
     // Per-frame TRR data carried from GromacsFrameHandler. Per-atom
     // velocities (Å/ps), simulation box matrix (Å). Empty/zero on load
-    // paths that don't carry these (XTC-only legacy paths, or
+    // paths that don't carry these (TRR without velocities, or
     // non-trajectory loads). Read by GromacsFramePullResult through
     // RunOptions pointers; not consumed directly off env_ by other
     // code (env is a single-slot per-frame stash, overwritten next
@@ -167,12 +167,12 @@ public:
     // ── Per-frame environment stash (single-slot) ──────────────
 
     // The current frame's environment: solvent, energy pointer, frame
-    // index + time. Written by the handler each frame before
-    // OperationRunner::Run; read by calculators through RunOptions,
-    // and by TrajectoryResults directly during tp.DispatchCompute.
-    // Overwritten each frame; handlers that want per-frame environment
-    // across the trajectory copy from this slot into their own
-    // buffers-from-ctor during Compute.
+    // index + time. Written by Trajectory::Run from handler data before
+    // OperationRunner::Run; read by calculators through RunOptions, and
+    // by TrajectoryResults directly during tp.DispatchCompute.
+    // Overwritten each frame; results that want per-frame environment
+    // across the trajectory copy from this slot into their own buffers
+    // during Compute.
     TrajectoryEnv& MutableEnv() { return env_; }
     const TrajectoryEnv& Env() const { return env_; }
 

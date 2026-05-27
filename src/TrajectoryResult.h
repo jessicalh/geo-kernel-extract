@@ -5,10 +5,10 @@
 // OBJECT_MODEL.md (trajectory-scope) and PATTERNS.md §14 for the
 // pattern; see BsWelfordTrajectoryResult for the canonical exemplar.
 //
-// Invariant worth stating: accumulator state (Welford, DeltaTracker,
-// rolling window, FFT buffer) lives inside the TR subclass, not on
-// TrajectoryAtom. The TR writes finalized OUTPUT fields onto
-// TrajectoryAtom, one writer per field.
+// State discipline: Welford-style per-atom accumulators live in named
+// TrajectoryAtom substructs owned by one writer TR. Results that need
+// growing histories, rolling windows, dense buffers, or reducer state
+// keep that state inside the TR subclass until Finalize / emission.
 //
 
 #include <memory>

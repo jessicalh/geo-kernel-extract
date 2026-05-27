@@ -12,9 +12,9 @@
 // surface ~9x without changing memory layout.
 //
 // Phase 2a (2026-05-17): refactor only — existing channels in
-// substructs, behavior unchanged. Phase 2b lands the per-component
-// T1 / T2, drift / abs / rms delta variants, and schema provenance
-// per the design doc.
+// substructs, behavior unchanged. Phase 2b: per-component T1 / T2,
+// drift / abs / rms delta variants, and schema provenance per the
+// design doc.
 //
 
 #include "AtomEvent.h"
@@ -188,11 +188,11 @@ struct SasaWelfordState {
 // information for downstream calibration without re-running the fleet.
 //
 // EFG T0 and T1 channels both intentionally absent — structural zeros
-// for water EFG: T0 = (1/3) trace(V) = 0 because WaterFieldResult.cpp
-// :147-150 traceless-projects V_total before SphericalTensor::Decompose;
+// for water EFG: T0 = (1/3) trace(V) = 0 because WaterFieldResult
+// traceless-projects V_total before SphericalTensor::Decompose;
 // T1 = antisymmetric pseudovector = 0 because water EFG is built from
-// symmetric r⊗r outer products (WaterFieldResult.cpp:130) and Types.cpp
-// :31 reads `0.5*(s_ij - s_ji)` which is bit-exact zero on symmetric input.
+// symmetric r⊗r outer products and Types.cpp reads
+// `0.5*(s_ij - s_ji)` on the tensor off-diagonals.
 // Only T2 (symmetric-traceless, 5 components m=-2..+2) carries signal.
 struct WaterFieldWelfordState {
     // E-field (Vec3, V/Å) per-component + magnitude
@@ -203,11 +203,11 @@ struct WaterFieldWelfordState {
 
     // EFG (SphericalTensor, V/Å²) — T2[5] (real-spherical m=-2..+2) +
     // |T2| Frobenius magnitude. T0 and T1 are both omitted: T0 is
-    // structurally zero from the explicit traceless projection at
-    // WaterFieldResult.cpp:147-150; T1 is structurally zero because
+    // structurally zero from WaterFieldResult's explicit traceless
+    // projection; T1 is structurally zero because
     // water EFG is built from symmetric r⊗r outer products
-    // (WaterFieldResult.cpp:130) and T1 is the antisymmetric pseudovector
-    // component of a rank-2 tensor (Types.cpp:28). Only T2 — the
+    // and T1 is the antisymmetric pseudovector component of a rank-2
+    // tensor. Only T2 — the
     // symmetric-traceless part — carries signal.
     std::array<WelfordMoments, 5> efg_t2;
     WelfordMoments                efg_t2magnitude;
@@ -339,9 +339,10 @@ struct MopacChargeWelfordState {
 };
 
 // Written by HydrationShellWelfordTrajectoryResult.
-// Source: COM-based older sibling of HydrationGeometry — half_shell_asymmetry
-// (COM reference frame instead of SASA normal), mean_water_dipole_cos,
-// nearest_ion_distance, nearest_ion_charge. All scalar.
+// Source: protein-centroid older sibling of HydrationGeometry —
+// half_shell_asymmetry (centroid reference frame instead of SASA
+// normal), mean_water_dipole_cos, nearest_ion_distance,
+// nearest_ion_charge. All scalar.
 //
 // Nearest-ion conditional Welford (R6 codex 2026-05-18): the source
 // emits `nearest_ion_distance = +infinity` and `nearest_ion_charge = 0.0`

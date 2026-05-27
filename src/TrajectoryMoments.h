@@ -5,10 +5,9 @@
 // Free functions, not a class. The ConformationAtom → TrajectoryAtom
 // bridge in each TrajectoryResult::Compute does per-atom online
 // scalar accumulation (mean, M2, min, max). These three primitives
-// centralise the numerical discipline so the 40-plus TrajectoryResult
-// subclasses that follow BsWelfordTrajectoryResult share one
-// implementation of the Welford update rather than copy-pasting the
-// four-line inline block.
+// centralise the numerical discipline so Welford-pattern
+// TrajectoryResult subclasses share one implementation of the Welford
+// update rather than copy-pasting the four-line inline block.
 //
 // Not a helper class — the project's PATTERNS.md rules out Adapter /
 // Wrapper / Proxy / Helper / Bridge naming. These are three one-line
@@ -34,9 +33,9 @@ namespace nmr {
 // substruct on TrajectoryAtom (e.g. `bs_welford.t0`, `bs_welford.t1[k]`)
 // per the differentiated-structure principle in PATTERNS.md Lesson 25.
 //
-// Layout: 5 doubles + 2 size_t = 56 bytes per channel. Storage is
-// per-atom × per-channel, so 6 Welford TRs × ~10 channels each ×
-// 56 bytes × 1500 atoms = ~5 MB per protein for the rollup state.
+// Layout: 5 doubles + 2 size_t = 56 bytes per channel on the current
+// supported platform. Storage scales per atom × per Welford channel
+// declared by TrajectoryAtom's named state structs.
 //
 // Field discipline:
 //   - mean, m2: running Welford accumulators, updated every frame

@@ -78,7 +78,7 @@ Status Trajectory::Run(TrajectoryProtein& tp,
     // =========================================================
     // Phase 1: open handler
     // =========================================================
-    // Mount XTC + build PBC fixer from TPR. No frame is read here;
+    // Mount TRR + build PBC fixer from TPR. No frame is read here;
     // the handler is a pure reader that advances frames on demand.
 
     handler_ = std::make_unique<GromacsFrameHandler>(tp);

@@ -1,8 +1,7 @@
 #include "TrajectoryResult.h"
 
-// TrajectoryResult is pure-virtual; no implementation here. File exists
-// so the class has a translation unit for its vtable and for future
-// non-virtual helpers.
+// TrajectoryResult has no out-of-line implementation today. File kept
+// as the stable translation unit for future non-virtual helpers.
 
 namespace nmr {
 }  // namespace nmr

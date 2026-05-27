@@ -254,11 +254,9 @@ void TrajectoryProtein::WriteH5(HighFive::File& file) const {
     file.createAttribute("finalized", finalized_);
 
     // /atoms/ — minimal per-atom identity passthrough: element,
-    // residue_index, pdb_atom_name. Richer per-atom identity (typed
-    // semantic fields, naming projections) is deferred to the
-    // LegacyAmberTopology landing — see
-    // spec/openai-5.5-strong-architecture-layout.md and memory entry
-    // project_proteintopology_architecture.
+    // residue_index, pdb_atom_name. Richer per-atom identity and
+    // topology projections are emitted by CategoryInfoProjection and
+    // TopologySidecar.
     std::vector<int> elements(N);
     std::vector<size_t> residue_indices(N);
     std::vector<std::string> atom_names(N);
