@@ -18,9 +18,19 @@ namespace nmr {
 
 namespace {
 
+// ============================================================================
+// Helpers
+// ============================================================================
+
 // Read the RingPositionLabel for a given ring kind from any of the
-// three RingPosition slots. TRP bridge atoms carry both 5-ring and
-// 6-ring labels, so walkers must search all slots.
+// three RingPosition slots. Returns NotInRing if no slot matches.
+//
+// Bridge atoms (TRP CD2/CE2) have BridgeFusion in primary (5-ring)
+// AND BridgeFusion in secondary (6-ring) AND PerimeterMember in
+// tertiary (9-perimeter). Non-bridge perimeter atoms have their
+// 5-or-6-ring label in primary, NotInRing in secondary, and
+// PerimeterMember in tertiary. This helper hides slot-search from
+// each per-kind walker.
 RingPositionLabel LabelForKind(const AtomSemanticTable& sem,
                                RingSystemKind kind) {
     if (sem.ring_position.primary.ring == kind) {
@@ -35,6 +45,7 @@ RingPositionLabel LabelForKind(const AtomSemanticTable& sem,
     return RingPositionLabel::NotInRing;
 }
 
+// Scan the protein's bond list for an a-b connection.
 bool AreBonded(size_t a, size_t b, const CovalentTopology& bonds) {
     for (size_t bi : bonds.BondIndicesFor(a)) {
         const Bond& bond = bonds.BondAt(bi);
@@ -46,6 +57,8 @@ bool AreBonded(size_t a, size_t b, const CovalentTopology& bonds) {
     return false;
 }
 
+// Find a candidate whose substrate label-for-kind equals `label`.
+// Returns SIZE_MAX if no candidate matches.
 size_t FindWithLabel(const std::vector<size_t>& candidates,
                      const std::vector<AtomSemanticTable>& sem,
                      RingSystemKind kind,
@@ -67,9 +80,23 @@ size_t FindWithLabel(const std::vector<size_t>& candidates,
     std::abort();
 }
 
+// ============================================================================
+// Per-RingSystemKind cyclic-walk helpers
+// ============================================================================
+//
+// Each helper documents the AminoAcidType.cpp atom_names sequence it
+// reproduces and the disambiguation rule used. The first three atoms
+// of each walk fix the ring-normal sign via Ring::ComputeGeometry's
+// cross-product orientation fix (Ring.cpp:32-37); reversing the walk
+// flips the normal and the shielding sign at every probe atom in
+// every ring-current calculator. Bless bit-identity is the gate.
+
 // PHE benzene / TYR phenol walk:
 //   Ipso (CG) -> Ortho1 (CD1) -> Meta1 (CE1) -> Para (CZ) ->
 //   Meta2 (CE2) -> Ortho2 (CD2)
+// All six labels distinct in the ring; no disambiguation needed.
+// Reproduces the AminoAcidType.cpp PHE/TYR atom_names order
+// {CG, CD1, CE1, CZ, CE2, CD2}.
 std::vector<size_t> WalkSixRingByLabel(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -105,6 +132,8 @@ std::vector<size_t> WalkSixRingByLabel(
 // This is variant-stable: the substrate generator emits Locant::Delta
 // for ND1 and Locant::Epsilon for NE2 in HID/HIE/HIP alike; only the
 // Heteroatom_NH/_NoH label flips between them across variants.
+// Reproduces the AminoAcidType.cpp HIS atom_names order
+// {CG, ND1, CE1, NE2, CD2}.
 std::vector<size_t> WalkHisImidazole(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -151,6 +180,8 @@ std::vector<size_t> WalkHisImidazole(
 // bonded to NE1 (the Heteroatom_NH); CD2 is the BridgeFusion bonded
 // to CG (the Ipso). The 5-ring's outer edge runs CG-CD1-NE1-CE2-CD2-CG;
 // the bridge bond CE2-CD2 is the shared edge with the 6-ring.
+// Reproduces the AminoAcidType.cpp TRP pyrrole atom_names order
+// {CG, CD1, NE1, CE2, CD2}.
 std::vector<size_t> WalkIndolePyrrole(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -200,6 +231,8 @@ std::vector<size_t> WalkIndolePyrrole(
 // Two BridgeFusion atoms; disambiguation by bond-graph adjacency.
 // CD2 sits between CE2 (across the bridge) and CE3 (the Ortho1
 // neighbour); CE2 sits between CD2 and CZ2 (the Ortho2 neighbour).
+// Reproduces the AminoAcidType.cpp TRP benzene atom_names order
+// {CD2, CE2, CZ2, CH2, CZ3, CE3}.
 std::vector<size_t> WalkIndoleBenzene(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -258,9 +291,14 @@ std::vector<size_t> WalkIndoleBenzene(
 // walking. The walk uses each atom's PRIMARY-slot label (which the
 // 5-ring atoms own as 5/* and the non-bridge 6-ring atoms own as 6/*),
 // with bond-graph adjacency disambiguating the two BridgeFusion atoms.
-// Bridge atoms are selected through their 5-ring BridgeFusion labels.
-// Case 1995, J. Biomol. NMR 6, 341-346 is the citation for the
-// 9-atom indole pi current circuit.
+// Bridge atoms have BridgeFusion in primary (5-ring) AND secondary
+// (6-ring); we read the 5-ring label since both bridges' primary
+// label in the substrate is Indole_Trp_5/BridgeFusion.
+//
+// probable source: Case 1995, J. Biomol. NMR 6, 341-346.
+// Reproduces the AminoAcidType.cpp
+// TRP perimeter atom_names order
+// {CG, CD1, NE1, CE2, CZ2, CH2, CZ3, CE3, CD2}.
 std::vector<size_t> WalkIndolePerimeter(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -295,6 +333,7 @@ std::vector<size_t> WalkIndolePerimeter(
     size_t bridge_adj_het = SIZE_MAX;
     size_t bridge_adj_ipso = SIZE_MAX;
     for (size_t ai : candidates) {
+        // Bridge atoms have BridgeFusion in primary (Indole_Trp_5).
         if (LabelForKind(sem[ai], k5) !=
             RingPositionLabel::BridgeFusion) continue;
         const bool to_het  = AreBonded(ai, het,  bonds);
@@ -319,8 +358,10 @@ std::vector<size_t> WalkIndolePerimeter(
 // Pro pyrrolidine walk:
 //   ProRingNitrogen (N) -> ProRingAlphaCarbon (CA) -> ProRingBeta (CB)
 //   -> ProRingPuckerPivot (CG) -> ProRingDelta (CD)
-// ProPyrrolidineRing::Intensity() returns 0.0 because this is a
-// saturated heterocycle.
+// All five labels distinct; no disambiguation needed.
+// Saturated heterocycle; ring current is identically zero, encoded
+// in ProPyrrolidineRing::Intensity() and
+// ProPyrrolidineRing::LiteratureIntensity() returning literal 0.0.
 std::vector<size_t> WalkProPyrrolidine(
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& sem,
@@ -349,7 +390,11 @@ std::vector<size_t> WalkProPyrrolidine(
     return walk;
 }
 
-// HIS and Pro are intentionally outside this mapping.
+// Map RingSystemKind -> RingTypeIndex for non-HIS aromatic kinds.
+// HIS is handled separately by HisRingTypeFromVariant; Pro is
+// handled by direct mapping at the call site in
+// ConstructFromSubstrate. Calling this for HIS or Pro is a
+// programmer error and aborts.
 RingTypeIndex AromaticTypeFromKind(RingSystemKind kind) {
     switch (kind) {
         case RingSystemKind::Benzene_Phe:    return RingTypeIndex::PheBenzene;
@@ -369,8 +414,10 @@ RingTypeIndex AromaticTypeFromKind(RingSystemKind kind) {
     std::abort();
 }
 
-// variant_index: 0=HID, 1=HIE, 2=HIP. Unresolved and HIP both use the
-// ambiguous HisImidazole type.
+// HIS variant_index -> RingTypeIndex:
+//   0 = HID, 1 = HIE, 2 = HIP (-> ambiguous HisImidazole).
+// Any other value also maps to HisImidazole so heavy-atom-only inputs
+// can still build an imidazole ring.
 RingTypeIndex HisRingTypeFromVariant(int variant_index) {
     switch (variant_index) {
         case 0: return RingTypeIndex::HidImidazole;
@@ -382,12 +429,19 @@ RingTypeIndex HisRingTypeFromVariant(int variant_index) {
 
 }  // anonymous namespace
 
+
+// ============================================================================
+// CanonicalCyclicWalk dispatcher (private static)
+// ============================================================================
+
 std::vector<size_t> RingTopology::CanonicalCyclicWalk(
         RingSystemKind kind,
         const std::vector<size_t>& candidates,
         const std::vector<AtomSemanticTable>& atom_semantic,
         const CovalentTopology& bonds) {
 
+    // Diagnostics: walkers report kind in their FATAL messages.
+    // Residue-seq context is not threaded through the dispatcher.
     constexpr int residue_seq = -1;
 
     switch (kind) {
@@ -420,6 +474,10 @@ std::vector<size_t> RingTopology::CanonicalCyclicWalk(
 }
 
 
+// ============================================================================
+// ConstructFromSubstrate (static factory)
+// ============================================================================
+
 std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
         const std::vector<Residue>& residues,
         const std::vector<AtomSemanticTable>& atom_semantic,
@@ -427,11 +485,17 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
 
     auto topo = std::unique_ptr<RingTopology>(new RingTopology());
 
+    // Stub-fixture path: empty substrate means no PDB names were
+    // available (raw element/position calculator-physics fixtures).
+    // Mirror LegacyAmberTopology::HasAtomSemantic() — return empty.
+    // Protein::RingCount() / SaturatedRingCount() will both be 0.
     if (atom_semantic.empty()) return topo;
 
     // Track each TRP residue's aromatic_-vector indices for the
     // benzene <-> pyrrole fused-partner post-pass. The 9-atom
-    // perimeter is not linked because fused_partner_index is binary.
+    // perimeter is intentionally NOT linked via fused_partner_index;
+    // the existing field is binary and links only the benzene/pyrrole
+    // pair.
     struct TrpRingIndices {
         size_t benzene_idx = SIZE_MAX;
         size_t pyrrole_idx = SIZE_MAX;
@@ -445,15 +509,28 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
     for (size_t ri = 0; ri < residues.size(); ++ri) {
         const Residue& res = residues[ri];
 
-        // RingTypeIndex order controls output ring order. For TRP it
-        // gives benzene, pyrrole, then 9-atom perimeter; enum order
-        // would put the 5-ring before the 6-ring.
+        // Discover (RingSystemKind, RingTypeIndex) pairs present in
+        // this residue. We deliberately do NOT use a std::set keyed
+        // on RingSystemKind because the enum-value ordering disagrees
+        // with the historical emission order (TRP: enum gives 5 < 6
+        // but the pre-Bundle-C aatype.rings[] array emitted 6-ring
+        // first, then 5-ring, then 9-perimeter — that ordering is the
+        // bless bit-identity gate for ring_geometry.npy and every NPY
+        // that references ring_index). Sorting by RingTypeIndex value
+        // reproduces that historical order exactly: TrpBenzene (2) <
+        // TrpPyrrole (3) < TrpPerimeter (4). Single-ring residues
+        // (PHE/TYR/HIS/PRO) have only one entry; ordering is moot.
         std::vector<std::pair<RingSystemKind, RingTypeIndex>> kinds_with_type;
         std::set<RingSystemKind> seen;
         auto note_kind = [&](RingSystemKind kind) {
             if (kind == RingSystemKind::NotInRing) return;
             if (seen.count(kind) > 0) return;
             seen.insert(kind);
+
+            // HIS variant resolution: 0/1 select HID/HIE, 2 selects
+            // the symmetric HIP/ambiguous type. Any other value also
+            // uses HisImidazole so heavy-atom-only inputs can still
+            // build an imidazole ring.
 
             RingTypeIndex type;
             if (kind == RingSystemKind::Imidazole_His) {
@@ -482,7 +559,9 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
                        static_cast<int>(b.second);
             });
 
+        // Materialise one Ring per (kind, type), sorted by RingTypeIndex.
         for (const auto& [kind, type] : kinds_with_type) {
+            // Heavy atoms in this residue with any slot match.
             std::vector<size_t> heavy;
             for (size_t ai : res.atom_indices) {
                 if (!is_heavy(ai)) continue;
@@ -501,6 +580,7 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
             ring->parent_residue_index = ri;
             ring->parent_residue_number = res.sequence_number;
 
+            // Sort to aromatic_ or saturated_.
             if (type == RingTypeIndex::ProPyrrolidine) {
                 topo->saturated_.push_back(std::move(ring));
             } else {
@@ -518,6 +598,7 @@ std::unique_ptr<RingTopology> RingTopology::ConstructFromSubstrate(
         }
     }
 
+    // TRP fused-partner post-pass: link benzene <-> pyrrole.
     for (const auto& kv : trp_rings) {
         const TrpRingIndices& trp = kv.second;
         if (trp.benzene_idx != SIZE_MAX &&
