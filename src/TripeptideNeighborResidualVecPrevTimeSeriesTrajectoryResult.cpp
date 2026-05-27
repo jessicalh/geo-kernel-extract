@@ -34,11 +34,11 @@ void TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     // "Absent, not faked" provenance: record whether the source
-    // calculator (TripeptideNeighborShieldingResult) attached this
-    // frame. When absent, the in-memory field is zero-default — we
-    // capture that here but NaN-fill at WriteH5Group time so
-    // downstream readers can distinguish "no measurement" from "real
-    // measurement = 0."
+    // calculator (TripeptideNeighborShieldingResult) is present for this
+    // frame through actual attachment or the test-only override. When
+    // absent, the in-memory field is zero-default — we capture that here
+    // but NaN-fill at WriteH5Group time so downstream readers can
+    // distinguish "no measurement" from "real measurement = 0."
     const bool source_attached = force_source_present_for_testing_
         || conf.HasResult<TripeptideNeighborShieldingResult>();
     source_present_per_frame_.push_back(source_attached ? 1u : 0u);
@@ -102,10 +102,10 @@ void TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    // "Absent, not faked" — if the source ConformationResult was not
-    // attached in any frame, skip emission. Group existence ⇒ source
-    // ran in ≥1 frame. Downstream readers MUST tolerate group absence
-    // for conditionally-attached-source TRs.
+    // "Absent, not faked" — if no frame had the source-present flag,
+    // skip emission. Group existence ⇒ source ran in ≥1 frame, or a
+    // synthetic test forced presence. Downstream readers MUST tolerate
+    // group absence for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
     for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
@@ -137,8 +137,8 @@ void TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult::WriteH5Group(
 
     // Flat (N, T, 3) via explicit component access — NaN values
     // from "no i-1 neighbour contribution this frame" propagate
-    // through unchanged. Also NaN-fill rows where source wasn't
-    // attached (absent-not-faked).
+    // through unchanged. Also NaN-fill rows where the source-present
+    // flag is 0 (absent-not-faked).
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::vector<double> flat(N * T * 3);
     for (std::size_t i = 0; i < N; ++i) {
@@ -164,7 +164,7 @@ void TripeptideNeighborResidualVecPrevTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);
 
-    // Provenance mask: per-frame source-attached flags.
+    // Provenance mask: per-frame source-present flags.
     grp.createDataSet("source_attached_per_frame", source_present_per_frame_);
 }
 

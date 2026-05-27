@@ -40,11 +40,11 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     // "Absent, not faked" provenance: record whether the source
-    // calculator (TripeptideBackboneShieldingResult) attached this
-    // frame. When absent, the in-memory field is zero-default — we
-    // capture that here but NaN-fill at WriteH5Group time so
-    // downstream readers can distinguish "no measurement" from "real
-    // measurement = 0."
+    // calculator (TripeptideBackboneShieldingResult) is present for this
+    // frame through actual attachment or the test-only override. When
+    // absent, the in-memory field is zero-default — we capture that here
+    // but NaN-fill at WriteH5Group time so downstream readers can
+    // distinguish "no measurement" from "real measurement = 0."
     const bool source_attached = force_source_present_for_testing_
         || conf.HasResult<TripeptideBackboneShieldingResult>();
     source_present_per_frame_.push_back(source_attached ? 1u : 0u);
@@ -120,7 +120,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::Finalize(
 // The (irrep_layout="x,y,z", normalization="cartesian") attribute
 // pair tells downstream e3nn consumers to apply the Cartesian →
 // real-spherical change of basis themselves (rather than the
-// SphericalTensor TRs which emit pre-decomposed (T0, T1_m, T2_m)).
+// SphericalTensor TRs which emit pre-decomposed
+// (T0, T1_x/y/z, T2_m)).
 
 void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -135,10 +136,10 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    // "Absent, not faked" — if the source ConformationResult was not
-    // attached in any frame, skip emission. Group existence ⇒ source
-    // ran in ≥1 frame. Downstream readers MUST tolerate group absence
-    // for conditionally-attached-source TRs.
+    // "Absent, not faked" — if no frame had the source-present flag,
+    // skip emission. Group existence ⇒ source ran in ≥1 frame, or a
+    // synthetic test forced presence. Downstream readers MUST tolerate
+    // group absence for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
     for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
@@ -172,8 +173,8 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("parity",        std::string("1o"));
     grp.createAttribute("units",         std::string("angstrom"));
 
-    // Flat (N, T, 3) via explicit component access. NaN-fill rows
-    // where source wasn't attached — readers use isfinite/isnan to
+    // Flat (N, T, 3) via explicit component access. NaN-fill rows where
+    // the source-present flag is 0 — readers use isfinite/isnan to
     // distinguish "no measurement" from "measurement was zero." Atom-
     // major: [atom_0_frame_0_xyz, atom_0_frame_1_xyz, ..., atom_1_frame_0_xyz, ...].
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
@@ -201,7 +202,7 @@ void TripeptideBackboneResidualVecTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);
 
-    // Provenance mask: per-frame source-attached flags.
+    // Provenance mask: per-frame source-present flags.
     grp.createDataSet("source_attached_per_frame", source_present_per_frame_);
 }
 

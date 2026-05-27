@@ -9,11 +9,10 @@
 // no-deps capture-as-is source-field shape.
 //
 // The residual is defined as `aligned_DFT_position - protein_position`
-// (TripeptidePoseAssembler.cpp:508 — sign matters). It encodes
-// chi-grid coarseness and DFT geometry mismatch as a per-atom ML
-// feature alongside the σ_BB^i tensor. Magnitudes are typically
-// ≤ 0.5 Å on backbone, 1-4 Å on deep sidechains per
-// ConformationAtom.h:293-294.
+// in TripeptidePoseAssembler; sign matters. It encodes chi-grid
+// coarseness and DFT geometry mismatch as a per-atom ML feature alongside
+// the σ_BB^i tensor. Deep sidechain atoms can routinely carry 2-4 Å
+// residuals without being rejected on the central path.
 //
 // No-match contract:
 //   The ConformationAtom field defaults to Vec3::Zero() and is only
@@ -106,11 +105,12 @@ private:
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
-    // Per-frame source-attached mask. 1 if the source ConformationResult
-    // (TripeptideBackboneShieldingResult) was attached this frame; 0 if
-    // not. Emitted as the `source_attached_per_frame` H5 dataset for
-    // downstream provenance. When all-zero (calc never ran), WriteH5Group
-    // skips emission entirely per the "absent, not faked" discipline.
+    // Per-frame source-present mask. 1 if the source ConformationResult
+    // (TripeptideBackboneShieldingResult) was attached this frame, or if
+    // the test-only override forces it present; 0 otherwise. Emitted as
+    // the `source_attached_per_frame` H5 dataset for downstream provenance.
+    // When all-zero (calc never ran), WriteH5Group skips emission
+    // entirely per the "absent, not faked" discipline.
     std::vector<std::uint8_t> source_present_per_frame_;
     bool force_source_present_for_testing_ = false;
 

@@ -41,11 +41,11 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     // "Absent, not faked" provenance: record whether the source
-    // calculator (TripeptideBackboneShieldingResult) attached this
-    // frame. When absent, the in-memory field is zero-default — we
-    // capture that here but NaN-fill at WriteH5Group time so
-    // downstream readers can distinguish "no measurement" from "real
-    // measurement = 0."
+    // calculator (TripeptideBackboneShieldingResult) is present for this
+    // frame through actual attachment or the test-only override. When
+    // absent, the in-memory field is zero-default — we capture that here
+    // but NaN-fill at WriteH5Group time so downstream readers can
+    // distinguish "no measurement" from "real measurement = 0."
     const bool source_attached = force_source_present_for_testing_
         || conf.HasResult<TripeptideBackboneShieldingResult>();
     source_present_per_frame_.push_back(source_attached ? 1u : 0u);
@@ -112,23 +112,20 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::Finalize(
 // Flat (N · T · 9) double array via explicit component access on each
 // SphericalTensor — .T0 / .T1[k] / .T2[k] — so the layout is
 // independent of any assumption about struct packing. The 9-component
-// trailing axis is the lexicographic (l, m) ordering that e3nn, NequIP,
-// MACE, and sphericart all expect:
+// trailing axis follows SphericalTensor::PackFull9:
 //
 //   index 0: T0   (l=0, m=0)
-//   index 1: T1_{-1}   (l=1, m=-1)
-//   index 2: T1_{0}
-//   index 3: T1_{+1}
+//   index 1: T1_x   (Cartesian Levi-Civita dual)
+//   index 2: T1_y
+//   index 3: T1_z
 //   index 4: T2_{-2}
 //   index 5: T2_{-1}
 //   index 6: T2_{0}
 //   index 7: T2_{+1}
 //   index 8: T2_{+2}
 //
-// The irrep_layout, normalization, and parity attributes pin the
-// semantics for downstream Python consumers. A future e3nn consumer
-// reads these and constructs `Irreps("0e+1o+2e")` directly without
-// guessing the convention.
+// The payload order above is explicit; group attributes also record
+// normalization, parity, units, and the emitted irrep_layout string.
 
 void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,
@@ -143,10 +140,10 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    // "Absent, not faked" — if the source ConformationResult was not
-    // attached in any frame, skip emission. Group existence ⇒ source
-    // ran in ≥1 frame. Downstream readers MUST tolerate group absence
-    // for conditionally-attached-source TRs.
+    // "Absent, not faked" — if no frame had the source-present flag,
+    // skip emission. Group existence ⇒ source ran in ≥1 frame, or a
+    // synthetic test forced presence. Downstream readers MUST tolerate
+    // group absence for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
     for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
@@ -172,17 +169,17 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createAttribute("n_frames",    T);
     grp.createAttribute("finalized",   finalized_);
 
-    // e3nn-consumable metadata.
+    // Schema metadata.
     grp.createAttribute("irrep_layout",
         std::string("T0,T1_m-1,T1_m0,T1_m+1,T2_m-2,T2_m-1,T2_m0,T2_m+1,T2_m+2"));
     grp.createAttribute("normalization", std::string("isometric_real_sph"));
     grp.createAttribute("parity",        std::string("0e+1o+2e"));
     grp.createAttribute("units",         std::string("ppm"));
 
-    // Flat (N, T, 9) via explicit component access. NaN-fill rows
-    // where source wasn't attached — readers use isfinite/isnan to
+    // Flat (N, T, 9) via explicit component access. NaN-fill rows where
+    // the source-present flag is 0 — readers use isfinite/isnan to
     // distinguish "no measurement" from "measurement was zero." Atom-
-    // major: [atom_0_frame_0_T0, ..._T1_-1, ..., ..._T2_+2,
+    // major: [atom_0_frame_0_T0, ..._T1_x, ..., ..._T2_+2,
     // atom_0_frame_1_T0, ...].
     constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
     std::vector<double> flat(N * T * 9);
@@ -207,7 +204,7 @@ void TripeptideBackboneShieldingTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);
 
-    // Provenance mask: per-frame source-attached flags.
+    // Provenance mask: per-frame source-present flags.
     grp.createDataSet("source_attached_per_frame", source_present_per_frame_);
 }
 

@@ -15,7 +15,7 @@
 // tripeptide_neighbor_shielding_spherical field. This TR captures
 // that field across the trajectory.
 //
-// Emission pins the e3nn-compatible convention:
+// Emission uses the SphericalTensor::PackFull9 payload order:
 //
 //   /trajectory/tripeptide_neighbor_shielding_time_series/
 //     xyz            (N, T, 9)  float64
@@ -35,8 +35,8 @@
 // onto residue i's N/CA/C backbone. The underlying object is a
 // magnetic shielding tensor (its T1 part is a parity-odd
 // pseudovector in the e3nn Irreps convention), so the parity matches
-// the BS / HM / McConnell magnetic-kernel TimeSeries TRs. Coulomb /
-// APBS EFG (symmetric traceless, T1=0) use parity "0e+1e+2e".
+// the BS / HM / McConnell magnetic-kernel TimeSeries TRs. Pure EFG
+// emitters with structural T0/T1 zeros use T2-only parity "2e".
 //
 
 #include "DenseBuffer.h"
@@ -59,10 +59,10 @@ public:
     }
 
     // No trajectory-scope dependencies; the underlying ConformationResult
-    // (TripeptideNeighborShieldingResult) is always attached when DSN is
-    // configured (project precondition). This TR captures whatever is in
-    // tripeptide_neighbor_shielding_spherical each frame — zero-default
-    // SphericalTensor if the calc did not attach.
+    // (TripeptideNeighborShieldingResult) is conditionally attached when
+    // the [databases].tensorcs15 table is configured. This TR captures
+    // whatever is in tripeptide_neighbor_shielding_spherical each frame —
+    // zero-default SphericalTensor if the calc did not attach.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<TripeptideNeighborShieldingTimeSeriesTrajectoryResult> Create(
@@ -97,11 +97,12 @@ private:
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
-    // Per-frame source-attached mask. 1 if the source ConformationResult
-    // (TripeptideNeighborShieldingResult) was attached this frame; 0 if
-    // not. Emitted as the `source_attached_per_frame` H5 dataset for
-    // downstream provenance. When all-zero (calc never ran), WriteH5Group
-    // skips emission entirely per the "absent, not faked" discipline.
+    // Per-frame source-present mask. 1 if the source ConformationResult
+    // (TripeptideNeighborShieldingResult) was attached this frame, or if
+    // the test-only override forces it present; 0 otherwise. Emitted as
+    // the `source_attached_per_frame` H5 dataset for downstream provenance.
+    // When all-zero (calc never ran), WriteH5Group skips emission
+    // entirely per the "absent, not faked" discipline.
     std::vector<std::uint8_t> source_present_per_frame_;
     bool force_source_present_for_testing_ = false;
 

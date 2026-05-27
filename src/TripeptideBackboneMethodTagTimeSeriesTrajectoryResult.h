@@ -10,9 +10,8 @@
 //   1 = gaussian_standard_orientation (OPBE/6-31G(d,p), 19 residues)
 //   2 = orca_input_orientation        (PBE/6-31G(d,p), SER regen)
 //
-// Finalize-only dense-buffer pattern. Establishes the int-buffer +
-// (N, T) 2D H5 emission shape for the bundle's other discrete-categorical
-// TRs (e.g. LarsenHBondCountTimeSeries).
+// Finalize-only dense-buffer pattern. Emits this uint8 categorical as a
+// (N, T) 2D H5 dataset.
 //
 // Emission shape:
 //
@@ -24,7 +23,7 @@
 //       result_name = "TripeptideBackboneMethodTagTimeSeriesTrajectoryResult"
 //       units       = "categorical"
 //       dtype       = "uint8"
-//       legend      = "0=no_match, 1=opbe_gaussian, 2=pbe_orca_ser"
+//       legend      = "0=no_match, 1=opbe_6-31g(d,p)_gaussian, 2=pbe_6-31g(d,p)_orca_ser"
 //       n_atoms, n_frames, finalized
 //
 // No parity/irrep_layout attributes: this is a discrete categorical,
@@ -89,11 +88,12 @@ private:
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
-    // Per-frame source-attached mask. 1 if the source ConformationResult
-    // (TripeptideBackboneShieldingResult) was attached this frame; 0 if
-    // not. Emitted as the `source_attached_per_frame` H5 dataset for
-    // downstream provenance. When all-zero (calc never ran), WriteH5Group
-    // skips emission entirely per the "absent, not faked" discipline.
+    // Per-frame source-present mask. 1 if the source ConformationResult
+    // (TripeptideBackboneShieldingResult) was attached this frame, or if
+    // the test-only override forces it present; 0 otherwise. Emitted as
+    // the `source_attached_per_frame` H5 dataset for downstream provenance.
+    // When all-zero (calc never ran), WriteH5Group skips emission
+    // entirely per the "absent, not faked" discipline.
     std::vector<std::uint8_t> source_present_per_frame_;
     bool force_source_present_for_testing_ = false;
 
