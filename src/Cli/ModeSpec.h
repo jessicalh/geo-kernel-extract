@@ -64,9 +64,8 @@ struct MutantMode {
 /// PDBs (@c emit_pdbs) and per-frame NPYs (@c emit_npys) are independent
 /// opt-ins.
 ///
-/// MOPAC default is off here because the per-frame cost
-/// (~10 min/frame for PM7+MOZYME) makes fleet-scale trajectory runs
-/// infeasible.
+/// MOPAC default is off here because PM7+MOZYME is too expensive for
+/// fleet-scale trajectory runs.
 struct TrajectoryMode {
     std::filesystem::path           dir;
     bool                            mopac = false;

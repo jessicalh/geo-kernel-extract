@@ -3,16 +3,14 @@
 // OperationRunner: the ONE home for all ordered sequences.
 //
 // THIS IS ONLY FOR ORDER. The conformation is the buffer where
-// results accumulate. The runner does not hold state, does not
-// cache intermediate results, does not decide what to compute.
-// It sequences operations. If a step's prerequisites are on the
-// conformation, the step runs. If not, it is skipped. Nothing
-// runs backwards. Nothing runs twice. These are the ONLY
-// variations — the presence or absence of upstream results.
+// results accumulate. The runner does not hold state and does not
+// cache intermediate results. It applies one ordered compute policy:
+// RunOptions and already-attached prerequisites decide which optional
+// steps run. Nothing runs backwards. Nothing runs twice. These are the
+// variations — options plus the presence or absence of upstream results.
 //
-// Every use case (UI, CLI, batch, training) calls one of
-// these methods. The conformation arrives with its protein
-// identity determined (protonated, topology resolved). The
+// In-tree dispatchers call these methods with a conformation whose
+// protein identity is determined (protonated, topology resolved). The
 // runner fills it with computed results in dependency order.
 //
 // All ordered sequences live here. Future agents add new
@@ -62,14 +60,13 @@ struct RunOptions {
     // AIMNet2: loaded model for neural network charges + EFG.
     // Null = skip AIMNet2. Loaded once, shared across all conformations.
     // When set, OperationRunner::Run also attaches
-    // AIMNet2ChargeResponseGradientResult automatically (single forward+backward
-    // pass, ~250 ms on a 1200-atom protein).
+    // AIMNet2ChargeResponseGradientResult automatically (single
+    // forward+backward pass).
     AIMNet2Model* aimnet2_model = nullptr;
 
     // Per-frame energy from GROMACS .edr (preloaded by Trajectory).
     // Null = skip GromacsEnergyResult. O(1) per frame.
-    // Set by GromacsFrameHandler via trajectory->EnergyAtTime() after
-    // each frame.
+    // Set by Trajectory::Run via EnergyAtTime() after each frame.
     const GromacsEnergy* frame_energy = nullptr;
 
     // Explicit solvent: water + ion positions for this frame.
@@ -123,13 +120,12 @@ public:
     // =================================================================
     // Run: the standard sequence (use cases A, B, D-per-item).
     //
-    // Tier 0: Geometry, SpatialIndex, Enrichment, DSSP
-    //         Charges (if charge_source provided)
-    //         MOPAC (if charges available)
-    //         APBS (if charges)
-    // Tier 1: classical calculators
-    //         Coulomb (if charges and not skip_coulomb), HBond (if DSSP)
-    // Tier 2: ORCA DFT (if orca_nmr_path provided)
+    // Foundation: Geometry, SpatialIndex, Enrichment, PlanarGeometry,
+    //             DSSP, Charges.
+    // Calculator stack: classical shielding, Sasa, Eeq, optional
+    //             MOPAC/APBS/Coulomb/HBond/AIMNet2, solvent, GROMACS,
+    //             tripeptide, and Larsen resources.
+    // DFT comparison: ORCA shielding tensors if orca_nmr_path is provided.
     // =================================================================
 
     static RunResult Run(ProteinConformation& conf,
@@ -151,10 +147,10 @@ public:
 
 
     // =================================================================
-    // RunEnsemble: use case D with trajectories.
+    // RunEnsemble: run a shared option set over existing conformations.
     //
     // Runs the standard sequence on every conformation of a protein.
-    // Returns per-frame results.
+    // Returns one RunResult per conformation.
     // =================================================================
 
     static std::vector<RunResult> RunEnsemble(

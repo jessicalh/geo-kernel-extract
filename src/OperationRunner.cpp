@@ -76,7 +76,7 @@ static bool TimedAttach(ProteinConformation& conf, const char* name,
 // Order:
 //   Tier 0 — foundation (no inter-dependencies)
 //   Tier 0.5 — external tools (need charges)
-//   Tier 1 — 8 classical calculators
+//   Tier 1 — calculator stack
 //   Tier 2 — DFT comparison (optional)
 // =================================================================
 
@@ -159,7 +159,7 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
         }
     }
 
-    // --- Tier 1: 8 classical calculators ---
+    // --- Tier 1: calculator stack ---
 
     if (!TimedAttach(conf, "BiotSavartResult", out, [&]{
             return BiotSavartResult::Compute(conf); })) return out;
@@ -198,12 +198,9 @@ RunResult OperationRunner::Run(ProteinConformation& conf,
 
     // AIMNet2: FAILURE POLICY: if model is loaded, AIMNet2 MUST succeed.
     // ChargeResponseGradient runs unconditionally after AIMNet2Result;
-    // chains via Dependencies() for ordering and runs its own
-    // forward+backward pass. Per Amendment 2026-05-08(b); landed
-    // always-on after the
-    // 1UBQ smoke test showed ~250 ms per call (cheap relative to the
-    // standard pipeline). Trajectory mode is unaffected — that path
-    // dispatches via RunConfiguration, not RunOptions.
+    // chains via Dependencies() for attach ordering and runs its own
+    // forward+backward pass. Trajectory mode supplies the model through
+    // Trajectory::Run's per-frame RunOptions.
     if (opts.aimnet2_model) {
         if (!TimedAttach(conf, "AIMNet2Result", out, [&]{
                 return AIMNet2Result::Compute(conf, *opts.aimnet2_model); })) return out;

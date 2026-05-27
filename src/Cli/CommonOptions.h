@@ -13,15 +13,15 @@ namespace nmr::cli {
 /// @see ModeSpec
 struct CommonOptions {
     /// Output directory for NPY feature arrays and trajectory H5.
-    /// Empty in viewer-only contexts.
+    /// RunExtract requires this after parsing.
     std::filesystem::path output_dir;
 
     /// TOML file with calculator parameter overrides.
-    /// Empty means use built-in literature defaults.
+    /// Empty means use the default data/calculator_params.toml if present.
     std::filesystem::path config_path;
 
     /// AIMNet2 TorchScript (.jpt) model path.
-    /// Empty disables AIMNet2-derived calculators.
+    /// Empty at parse time means resolve from calculator_params.toml later.
     std::filesystem::path aimnet2_model_path;
 };
 

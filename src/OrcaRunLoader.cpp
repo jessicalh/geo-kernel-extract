@@ -332,8 +332,8 @@ static OrcaLoadInternal LoadWithPrmtop(const OrcaRunFiles& files,
     // Must run BEFORE creating the conformation.
     protein->FinalizeConstruction(positions);
 
-    // Create conformation with XYZ positions.
-    // These are tleap-protonated AlphaFold structures — predictions, not crystals.
+    // Create the single conformation from XYZ positions.
+    // The prediction label records the current ORCA-path convention.
     protein->AddPrediction(std::move(positions), "AlphaFold+tleap");
 
     result.protein = std::move(protein);

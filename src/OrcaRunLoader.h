@@ -1,27 +1,24 @@
 #pragma once
 //
-// OrcaRunLoader: load a protein from an ORCA DFT run.
+// OrcaRunLoader: load a protein from an ORCA/tleap-prepared pose.
 //
-// An ORCA run always has:
-//   - PDB: AlphaFold/crystal structure (heavy atoms, sequence identity)
-//   - XYZ: protonated coordinates from tleap (all atoms, ORCA geometry)
+// Required:
+//   - XYZ: protonated coordinates from tleap/ORCA geometry
+//   - prmtop: AMBER topology (atom names, residues, elements, charges)
 //
-// It may also have:
-//   - prmtop: AMBER topology (authoritative atom names, residues, charges)
+// Optional/provenance:
+//   - PDB: upstream structure path, recorded on ProteinBuildContext
 //   - NMR output: per-atom shielding tensors (loaded separately)
 //   - tleap artifacts: script, log, amber PDB, inpcrd
 //
-// Two loading paths:
-//   WITH prmtop: prmtop provides the protonated atom list (names,
-//     residues, element); XYZ provides positions.
-//   WITHOUT prmtop (legacy fallback): PDB provides sequence;
-//     AminoAcidType provides the canonical atom list per residue
-//     (including H); XYZ provides positions. Atoms matched by
-//     residue structure and element.
+// Loading path:
+//   prmtop provides the protonated atom list (names, residues, element);
+//   XYZ provides positions. Missing or unreadable prmtop is a hard load
+//   error; there is no canonical-residue fallback on ORCA paths.
 //
-// Both paths produce: a Protein with the full protonated atom list and
+// BuildFromOrca produces a Protein with the full protonated atom list and
 // one conformation with XYZ positions. Charges and NMR tensors attach
-// separately as ConformationResults from whatever source is available.
+// separately as ConformationResults from the supplied ORCA-path files.
 //
 
 #include "Protein.h"
@@ -32,17 +29,17 @@
 namespace nmr {
 
 struct OrcaRunFiles {
-    std::string pdb_path;           // AlphaFold/crystal PDB (sequence identity)
+    std::string pdb_path;           // Upstream PDB path (provenance)
     std::string xyz_path;           // tleap-protonated coordinates (required)
-    std::string prmtop_path;        // AMBER topology (optional — empty if not available)
+    std::string prmtop_path;        // AMBER topology (required)
     std::string nmr_out_path;       // ORCA NMR shielding output (for OrcaShieldingResult)
     std::string tleap_script_path;  // tleap input script (provenance, optional)
 };
 
 
-// Load a protonated Protein from an ORCA run.
+// Load a protonated Protein from an ORCA/tleap-prepared pose.
 //
-// If prmtop_path is provided: topology from prmtop, positions from XYZ.
+// Requires prmtop_path: topology from prmtop, positions from XYZ.
 // Charges from PrmtopChargeSource. Net charge from prmtop charge sum.
 //
 // The resulting Protein has one PredictionConformation with XYZ positions.

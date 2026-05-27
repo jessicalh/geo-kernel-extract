@@ -26,8 +26,8 @@ bool HasFlag(int argc, char* argv[], const char* name) {
     return false;
 }
 
-/// Return the argument that follows @c name, or empty if not present
-/// or the flag has no value following it.
+/// Return the next argv token after @c name, or empty if @c name is
+/// absent or is the final token.
 std::string GetArg(int argc, char* argv[], const char* name) {
     for (int i = 1; i < argc - 1; ++i) {
         if (std::strcmp(argv[i], name) == 0) return argv[i + 1];
