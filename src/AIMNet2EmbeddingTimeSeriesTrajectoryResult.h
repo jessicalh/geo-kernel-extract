@@ -3,13 +3,13 @@
 // AIMNet2EmbeddingTimeSeriesTrajectoryResult: per-atom per-frame time
 // series of the 256-dim AIMNet2 'aim' embedding tensor
 // (ConformationAtom::aimnet2_aim, std::array<float, AIMNET2_AIM_DIMS>).
-// FO dense-buffer pattern; clone of AIMNet2ChargeTimeSeriesTrajectoryResult
-// with the embedding axis added.
+// Per-atom buffered writer with the embedding axis added.
 //
 // AIMNet2Result is in PerFrameExtractionSet (RunConfiguration.cpp); when
 // the AIMNet2 model is not Session-loaded, OperationRunner aborts the
-// run before any TR Compute fires — no per-frame conditional gate at
-// the TR layer (always_attached policy).
+// run before any TR Compute fires. Compute still gates on
+// HasResult<AIMNet2Result>() and emits NaN-fill + mask=0 if a custom
+// configuration omits the required source.
 //
 // Emission:
 //
@@ -22,7 +22,7 @@
 //       n_atoms, n_frames, finalized
 //       embedding_dim           = 256
 //       units                   = "dimensionless"
-//       source                  = "AIMNet2Result.aimnet2_aim (AIMNET2_AIM_DIMS=256)"
+//       source                  describes AIMNet2Result.aimnet2_aim and AIMNET2_AIM_DIMS
 //       source_attached_policy  = "always_attached" — but Compute's
 //                                  HasResult<AIMNet2Result>() gate
 //                                  emits NaN-fill + source_attached
@@ -33,9 +33,8 @@
 //
 // Storage discipline: float32 native (per `feedback_embedding_float32`).
 // At fleet scale the dataset is ~3.8 GB/protein uncompressed; chunked
-// (N, frame_chunk=64, 256) for movie-target seek. Compression is the
-// HighFive default for now; revisit with Blosc2 if storage budget
-// requires.
+// (1, frame_chunk=64, 256) for per-atom writes and movie-target seek.
+// No explicit compression is configured here.
 //
 
 #include "TrajectoryResult.h"

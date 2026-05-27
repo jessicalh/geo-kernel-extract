@@ -35,8 +35,8 @@ void AIMNet2EmbeddingTimeSeriesTrajectoryResult::Compute(
     (void)tp; (void)traj;
     const std::size_t N = per_atom_embedding_.size();
     // Source-attached gate. Always-attached policy means the source
-    // should be present every frame in the production config (line 165
-    // of RunConfiguration.cpp RequireConformationResult's AIMNet2Result);
+    // should be present every frame in the production config;
+    // RunConfiguration requires AIMNet2Result there.
     // a custom config that omits the require could land a zero-default
     // aimnet2_aim. Detect that here and capture mask=0 so the H5
     // records the contract violation rather than silent contamination

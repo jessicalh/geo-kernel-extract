@@ -35,9 +35,9 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::Compute(
     (void)tp; (void)traj;
     const std::size_t N = per_atom_vector_.size();
     // Source-attached gate. Always-attached policy means the source
-    // should be present every frame in the production config (line 167
-    // of RunConfiguration.cpp RequireConformationResult's
-    // AIMNet2ChargeResponseGradientResult). A custom config that omits
+    // should be present every frame in the production config;
+    // RunConfiguration requires AIMNet2ChargeResponseGradientResult there.
+    // A custom config that omits
     // the Require would land NaN-fill rows here; the F1 non-finite
     // gradient guard at the source calculator can also trip this gate
     // by returning nullptr on degenerate-backward frames (codex F1
@@ -96,7 +96,7 @@ void AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult::WriteH5Group(
     // Vec3 metadata follows the existing TR convention: layout +
     // normalization + parity emitted as separate attrs (codex review
     // 2026-05-20). Charge-response gradient vector is a Cartesian-ordered
-    // Vec3 with odd parity (gradient of a scalar w.r.t. polar coordinates).
+    // Vec3 with odd parity (gradient of a scalar w.r.t. atomic coordinates).
     grp.createAttribute("irrep_layout_vector",    std::string("x,y,z"));
     grp.createAttribute("normalization_vector",   std::string("cartesian"));
     grp.createAttribute("parity_vector",          std::string("1o"));

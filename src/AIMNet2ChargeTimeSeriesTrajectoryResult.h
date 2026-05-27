@@ -4,7 +4,7 @@
 // series of the AIMNet2 neural-network Hirshfeld charge
 // (ConformationAtom::aimnet2_charge, elementary charge). FO
 // dense-buffer pattern. AIMNet2Result is in PerFrameExtractionSet
-// (RunConfiguration.cpp:136) and requires a Session-loaded model;
+// and requires a Session-loaded model;
 // when the model is not loaded, OperationRunner aborts the run
 // before any TR Compute is called — no per-frame conditional gate
 // at the TR layer.

@@ -1,21 +1,21 @@
 #pragma once
 //
 // AIMNet2ChargeResponseGradientWelfordTrajectoryResult: AV companion to
-// AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult (TR #3 of the
-// AIMNet2 fleet trio). Per-atom Welford rollup of the four
+// AIMNet2ChargeResponseGradientTimeSeriesTrajectoryResult. Per-atom
+// Welford rollup of the four
 // channels — three Cartesian Vec3 components + one scalar L2 norm
-// of the polarisability gradient ∂L/∂r_i where L = Σ_j q_j².
+// of the charge-response gradient ∂L/∂r_i where L = Σ_j q_j².
 //
 // AV (Always-valid) pattern: each Compute updates the per-atom
-// WelfordMoments on TrajectoryAtom::aimnet2_polarisability_welford;
-// Finalize writes the means/variances to H5. Source-attached gate
+// WelfordMoments on
+// TrajectoryAtom::aimnet2_charge_response_gradient_welford; Finalize
+// derives std and WriteH5Group writes the means/variances to H5. Source-attached gate
 // matches the TS pair: Compute checks
 // HasResult<AIMNet2ChargeResponseGradientResult>() and skips the update on
 // absent frames (records mask=0 for SDK provenance). Production
-// trajectory pipelines RequireConformationResult'd it at line 167
-// of RunConfiguration.cpp so all frames should attach.
+// trajectory pipelines require this source so all frames should attach.
 //
-// Emission (/trajectory/aimnet2_polarisability_welford/) — full
+// Emission (/trajectory/aimnet2_charge_response_gradient_welford/) — full
 // canonical Welford row per sibling TR convention (HydrationGeometry /
 // BsWelford / HmWelford); WelfordFinalize derives std + NaN-fills n=0.
 //   vector_mean         (N, 3) float64 — per-component mean (e²/Å)
@@ -45,14 +45,14 @@
 // Attrs:
 //   result_name             = "AIMNet2ChargeResponseGradientWelfordTrajectoryResult"
 //   n_atoms, n_frames, source_attached_count, finalized
-//   units_vector            = "e^2/Angstrom"
-//   units_scalar            = "e^2/Angstrom"
+//   units_vector            = "e^2/Å"
+//   units_scalar            = "e^2/Å"
 //   irrep_layout_vector     = "x,y,z"
 //   normalization_vector    = "cartesian"
 //   parity_vector           = "1o"
 //   irrep_layout_scalar     = "T0"
 //   parity_scalar           = "0e"
-//   source                  = "AIMNet2ChargeResponseGradientResult.{vector,scalar}"
+//   source                  describes the AIMNet2ChargeResponseGradientResult vector/scalar fields
 //   source_attached_policy  = "always_attached" with HasResult gate
 //
 // Minimum-viable design (no delta variants in v0; mean/std/m2/min/max
@@ -60,27 +60,20 @@
 // HydrationGeometryWelfordTrajectoryResult is available if a
 // calibration finding requests dx/dt or rms_delta later.
 //
-// PHYSICS NOTE: "Polarisability" is project shorthand inherited from
-// the pre-trajectory AIMNet2ChargeResponseGradientResult (2026-05-09 always-on
-// promotion). The emitted quantity is ∂(Σ_j q_j²)/∂r_i (gradient of a
-// sum-of-squared-AIMNet2-charges scalar with respect to atomic
+// PHYSICS NOTE: The emitted quantity is ∂(Σ_j q_j²)/∂r_i (gradient
+// of a sum-of-squared-AIMNet2-charges scalar with respect to atomic
 // coordinates), NOT a Buckingham α tensor (α_ab = ∂μ_a/∂E_b, the
 // dipole-response-to-field quantity that conventionally appears in
 // NMR shielding theory). The L = Σ q² objective is a
 // computationally-cheap, autograd-friendly proxy for per-atom charge
 // sensitivity; physical-observable connection to NMR shielding is
 // exploratory and calibration-ridge decides if signal carries beyond
-// the AIMNet2 charge channel. Rename to AIMNet2ChargeResponseGradient
-// is on the post-codex backlog (would touch ~12 files).
+// the AIMNet2 charge channel.
 //
-// NUMERICAL CAVEAT: the per-atom Welford std contains an autograd-
-// noise floor contribution. AIMNet2's backward kernel uses
-// non-deterministic cuBLAS matmul / scatter_add by default; repeated
-// runs on the same coords can produce gradient values differing in
-// the 6th-10th significant figure. For atoms in tightly-constrained
-// regions (interior heavy atoms with little motion), the noise floor
-// can match or exceed the real physical variance, artificially
-// inflating std. Math review M3 2026-05-20.
+// NUMERICAL CAVEAT: the per-atom Welford std includes variation from
+// the AIMNet2 autograd backward pass as well as trajectory motion.
+// Treat very small std values as numerical-plus-physical variation,
+// especially for tightly constrained atoms.
 //
 
 #include "TrajectoryResult.h"
