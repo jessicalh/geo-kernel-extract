@@ -7,13 +7,12 @@
 // clones this shape against the bond axis).
 //
 // SPARSE CADENCE — "absent, not faked": MopacResult is attached
-// conditionally by OperationRunner (Attach at OperationRunner.cpp:142,
-// gated by `!opts.skip_mopac` at line 138 and the non-null Compute
-// return at line 141; NOT RequireConformationResult). MOPAC runs
+// conditionally by OperationRunner (gated by `!opts.skip_mopac` and
+// a non-null Compute return; NOT RequireConformationResult). MOPAC runs
 // every ~20 ps in
 // production (CLI-driven; the TR is cadence-agnostic). On
 // frames where MopacResult is absent, the per-frame `HasResult` gate
-// skips both the Welford update AND increments source_attached_count_;
+// skips the Welford update and does not increment source_attached_count_;
 // the per-frame mask records 0. When source_attached_count == 0 across
 // the whole trajectory (e.g. MOPAC disabled), WriteH5Group skips the
 // /trajectory/mopac_charge_welford/ group entirely (canonical
@@ -47,7 +46,7 @@
 //   result_name             = "MopacChargeWelfordTrajectoryResult"
 //   n_atoms, n_frames, source_attached_count, finalized
 //   units                   = "e" (elementary charge)
-//   source                  = "MopacResult.mopac_charge (Mulliken)"
+//   source                  describes MopacResult.mopac_charge (Mulliken)
 //   source_attached_policy  = "conditional -- MopacResult attaches
 //                              sparsely per Mopac cadence
 //                              (OperationRunner TimedAttach not

@@ -42,8 +42,8 @@
 // MAGNITUDE FLOOR: cosine is undefined when either |T2| <
 // `coulomb_efg_t2_magnitude_floor` (CalculatorConfig, V/Å² —
 // calibrated to the EFG signal scale, NOT the project-wide
-// direction-vector floor 1e-10 which would be 7 orders of magnitude
-// below typical EFG signal and let FP-noise-dominated atoms through.
+// direction-vector floor 1e-10 which is seven orders below this
+// EFG-scale floor and would let FP-noise-dominated atoms through.
 // Decision 2026-05-21 per math adversarial review H1.) Per-atom NaN
 // under that condition; SDK readers MUST use isfinite() to gate.
 //
@@ -58,10 +58,7 @@
 //       n_atoms, n_frames, source_attached_count, finalized
 //       parity                  = "0e"  (rotation-invariant scalar)
 //       units                   = "dimensionless"  ([-1, 1] cosine)
-//       sources                 = "MopacCoulombResult.mopac_coulomb_shielding_contribution
-//                                   + CoulombResult.coulomb_shielding_contribution
-//                                   (both T2 EFG kernels in V/Å²; signed
-//                                   cos in the T2 5-vector subspace)"
+//       sources                 describes the MopacCoulombResult and CoulombResult T2 EFG fields
 //       source_attached_policy  = "conditional -- requires BOTH ..."
 //       magnitude_floor         = (value of coulomb_efg_t2_magnitude_floor)
 //       magnitude_floor_units   = "V/Å^2"

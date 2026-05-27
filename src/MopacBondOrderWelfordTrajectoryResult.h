@@ -13,9 +13,8 @@
 // (factory invocation), so the Protein is finalised.
 //
 // SPARSE CADENCE — same "absent, not faked" gate as TR5: MopacResult
-// is Attach'd at OperationRunner.cpp:142 (gated by !opts.skip_mopac
-// at line 138 + non-null Compute return at line 141; NOT
-// RequireConformationResult). Frames without MOPAC skip the Welford
+// is attached when OperationRunner allows MOPAC and Compute returns
+// non-null; it is NOT a RequireConformationResult. Frames without MOPAC skip the Welford
 // update and record mask=0. When source_attached_count == 0 across
 // the whole trajectory, WriteH5Group skips
 // /trajectory/mopac_bond_order_welford/ entirely.
@@ -23,8 +22,8 @@
 // Source: MopacResult.TopologyBondOrders() — std::vector<double>
 // parallel to protein.Bonds(). MopacResult sets bond order to 0.0
 // (exact) for bonds MOPAC didn't report (NOT NaN). NOTE: the
-// MopacResult parser itself filters at `bo > 0.01` (see
-// MopacResult.cpp:197), so any Wiberg order in (0.0, 0.01] is
+// MopacResult parser itself filters at `bo > 0.01`, so any Wiberg
+// order in (0.0, 0.01] is
 // dropped at the parser and arrives here as the 0.0 sentinel —
 // indistinguishable from "MOPAC didn't print this bond at all".
 // For typical MD this fuses two cases:

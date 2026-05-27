@@ -66,7 +66,7 @@ void MopacChargeWelfordTrajectoryResult::Compute(
 // ── Finalize ─────────────────────────────────────────────────────
 //
 // Per canonical Welford TR pattern: call WelfordFinalize per atom to
-// derive std (and NaN-fill std for atoms with n_frames == 0). Only
+// derive std from the accumulated frames. Only
 // touch the per-atom Welford slots if at least one frame attached
 // the source — same defensive pattern as AIMNet2ChargeResponseGradient
 // Welford (MutableAtomAt accessing un-touched slots when no Compute
