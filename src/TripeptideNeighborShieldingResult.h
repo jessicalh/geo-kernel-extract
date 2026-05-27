@@ -34,7 +34,7 @@
 //
 //   1. AAA reference: query AAA at (φ=-120, ψ=140), one-shot cached.
 //   2. For each residue i in the protein:
-//      a. For δ ∈ {-1, +1} where (i+δ) exists in the same chain:
+//      a. For δ ∈ {-1, +1} where a backbone predecessor/successor exists:
 //         i.   Get (i+δ)'s identity, actual φ/ψ/χ.
 //         ii.  Query DB: A-(i+δ)-A at (i+δ)'s actual angles.
 //         iii. Identify the flanking ALA cap of (i+δ)'s tripeptide:
@@ -48,9 +48,10 @@
 //                 σ_AXA_k → R_(i+δ) σ_AXA_k R_(i+δ)^T (aligned to protein)
 //                 σ_AAA_k → R_AAA  σ_AAA_k R_AAA^T  (aligned to protein)
 //                 Δσ_k = σ_AXA_k - σ_AAA_k
-//              Match the flanking ALA atom k to a protein atom in
-//              residue i by element + nearest distance (post-rotation),
-//              accumulate Δσ_k on that protein atom.
+//              Use TripeptidePoseAssembler's typed cap-slot mapping
+//              for both AXA and AAA; subtract tensors for atoms that
+//              mapped to the same protein atom and accumulate Δσ_k
+//              on that protein atom.
 //
 // Larsen's assumption: the effect of i±1's side-chain on residue i
 // is dominated by the chemistry change at the flanking ALA position,
@@ -68,11 +69,12 @@
 // Per-side breakdown can be derived in a separate calculator if a
 // downstream consumer needs it.
 //
-// frame_type discriminator: both AXA and AAA rows are typically
+// frame_type discriminator: both neighbor and AAA rows are typically
 // gaussian_standard_orientation (OPBE). If the flanking residue is
-// SER (i-1 = S), the AXA query returns an ASA row with
+// SER, the neighbor-row query returns an ASA row with
 // frame_type=orca_input_orientation. Δσ then mixes OPBE (AAA) and
-// PBE (ASA) — methods caveat applies (project_serine_pbe_discontinuity).
+// PBE (ASA) — method caveat applies; see
+// spec/plan/bones/session_2026-05-10_calculator_queue_and_data_backend.md.
 //
 
 #include "ConformationResult.h"

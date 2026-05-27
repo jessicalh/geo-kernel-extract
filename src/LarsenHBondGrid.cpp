@@ -121,8 +121,8 @@ std::vector<double> ReadAxis(HighFive::File& f, const std::string& name) {
 //   ALA donor archives (ALANMA/ALACOH/ALACOO): donor_CB present.
 //   NMA donor archives (NMANMA/NMACOH/NMACOO): donor_CB ABSENT
 //     (NMA has no Cβ — presence would be a parser regression).
-//   NMA acceptor archives (NMANMA, ALANMA): acceptor_N, _HN, _HA all
-//     present.
+//   NMA acceptor archives (NMANMA, ALANMA): acceptor_N, _HN, _CA,
+//     _C, and _HA all present.
 //   HOMe / COO acceptor archives: acceptor_* all ABSENT (Larsen 2015
 //     does not define 2° terms for those acceptor classes).
 void ValidateSchema(const fs::path& h5_path,
@@ -561,8 +561,8 @@ LarsenHBondRecord LarsenHBondGrid::QueryNearest(
         rec.acceptor_HA = interp(g.acceptor_HA);
     }
 
-    // r/θ are the clamped in-range query values; ρ is the wrapped
-    // canonical form set at the top of this function.
+    // r/θ remain the input geometry values; ρ is the wrapped canonical
+    // form set at the top of this function.
 
     rec.any_corner_imputed = AnyCornerImputed(
         g, lr.idx, lth.idx, lrho.idx, lr.idx_next, lth.idx_next, lrho.idx_next);

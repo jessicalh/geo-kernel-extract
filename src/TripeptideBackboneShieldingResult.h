@@ -12,23 +12,25 @@
 //        ProteinConformation.
 //     2. Query TripeptideDftTable.QueryNearest(letter, φ, ψ, χ₁..χ₄)
 //        for the matching DFT pose. n_chi is set per residue type.
-//     3. On a chi-specific miss, fall back to fewer chi axes
-//        (drop χ₄, then χ₃, etc.) until the WHERE clause matches.
+//     3. On a chi-specific miss or perception failure, fall back to
+//        fewer chi axes (drop χ₄, then χ₃, etc.) until a row matches
+//        and typed LarsenTripeptide perception succeeds.
 //     4. Kabsch-align tripeptide central N/CA/C onto the protein's
 //        N/CA/C → R, t.
 //     5. Apply the same R to the σ tensors (R σ Rᵀ) at every central-
 //        residue atom.
-//     6. Apply a sidechain re-rotation around the CA-CB axis
-//        (Rodrigues with the angle that takes the aligned trip CB to
-//        the protein CB direction) — fixes the 20° grid coarseness on
-//        χ₁ while preserving the backbone alignment.
-//     7. Match each rotated tripeptide central atom to the nearest
-//        protein atom of the same element within 5 Å, take the
-//        rotated σ tensor, store on ConformationAtom.
+//     6. Match perceived central atoms to protein residue atoms by
+//        typed AtomMechanicalIdentity, relaxing only graph-ambiguous
+//        branch/diastereotopic labels and resolving those by nearest
+//        aligned position.
+//     7. Store the rotated σ tensor plus residual_vec on the matched
+//        ConformationAtom. Large central-path residuals are diagnostic
+//        ML features, not rejection gates.
 //
-// Substrate gates: BackboneRole and matched-atom-element checks via
-// LegacyAmberTopology / Protein::AtomAt(i).element. NO string
-// comparisons on atom names. Per PATTERNS.md anti-string-traversal.
+// Substrate gates: typed LarsenResidue perception on the DFT side and
+// LegacyAmberTopology::SemanticAt typed identity on the protein side.
+// NO string comparisons on atom names. Per PATTERNS.md
+// anti-string-traversal.
 //
 // Per-atom storage on ConformationAtom (T2 sacred):
 //   tripeptide_bb_shielding_tensor       Mat3 ppm
@@ -71,7 +73,7 @@ public:
 
     // Factory. Returns nullptr only on hard structural errors (zero
     // atoms, table not connected); per-residue misses are handled
-    // internally with NaN / has_match=false on the per-atom record.
+    // internally with has_match=false and NaN in emitted NPY arrays.
     static std::unique_ptr<TripeptideBackboneShieldingResult> Compute(
         ProteinConformation& conf,
         const TripeptideDftTable& table);

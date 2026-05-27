@@ -91,13 +91,13 @@ struct AcceptorTriple {
 //
 // Class dispatch (substrate-typed):
 //   BackboneCarbonyl       — res.O carbonyl O; C = res.C; third = N(j+1)
-//                            (no third if at C-terminus → 2° term skipped
-//                            but 1° still applies).
+//                            (no third if at C-terminus → the pair is
+//                            skipped because ρ cannot be computed).
 //   SidechainCarbonyl      — Asn OD1 / Gln OE1 (PlanarGroupKind::SidechainAmide
 //                            + Element::O); C = the sidechain carbonyl C;
 //                            third = the sidechain amide N.
 //   HydroxylOxygen         — Ser OG / Thr OG1 / Tyr OH (bond-walk for a
-//                            HydroxylOH_* polar H); C = the bonded sp3
+//                            HydroxylOH_* polar H); C = the bonded
 //                            heavy atom; third = the bonded hydroxyl H.
 //   CarboxylateOxygen      — Asp OD1/OD2 / Glu OE1/OE2 / C-term carboxylate
 //                            O (PlanarGroupKind::Carboxylate + Element::O);
@@ -159,7 +159,7 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
     }
 
     // (2) BackboneCarbonyl: substrate flag, residue-cached C, i+1 from
-    //     next residue's N (same-chain).
+    //     the backbone successor's N.
     if (sem.IsBackboneCarbonylOxygen()) {
         t.class_ = HBondAcceptorClass::BackboneCarbonyl;
         const auto& o_atom = protein.AtomAt(O_idx);
@@ -220,7 +220,8 @@ std::optional<AcceptorTriple> ClassifyAcceptor(const Protein& protein,
     }
 
     // (4) HydroxylOxygen: bond-walk discovers the hydroxyl H; the
-    //     bonded sp3 C is the "acceptor C"; the hydroxyl H is "third".
+    //     bonded heavy atom is the "acceptor C"; the hydroxyl H is
+    //     "third".
     {
         std::size_t hydroxyl_H = Residue::NONE;
         if (IsHydroxylOxygen(protein, O_idx, hydroxyl_H)) {
@@ -426,17 +427,17 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // exposure (codex finding F2, 2026-05-12).
     std::vector<bool> amide_h_geometric_paired(n_atoms, false);
 
-    // n_pairs_grid_skipped counts every geometric candidate that the
+    // n_pairs_grid_skipped counts every processed candidate that the
     // grid path could not turn into contributions. Three exclusive
-    // disposition classes increment it (codex finding F4, 2026-05-12):
+    // disposition classes increment it:
     //   • MissingFrameAtoms  — classification ok, but a frame anchor
     //                           is None (e.g. chain boundary).
     //   • ThetaOutOfRange    — θ < 90° or > 180°. NOT an H-bond.
     //   • GridMiss           — θ in range, but r outside the grid's
     //                           r-axis bounds. H-bond confirmed; just
     //                           outside Larsen's scan range.
-    // Mass conservation: geometric_candidates == pairs_found
-    //                                          + n_pairs_grid_skipped.
+    // Mass conservation: processed_candidates == pairs_found
+    //                                      + n_pairs_grid_skipped.
     int n_pairs_grid_skipped = 0;
 
     // backbone_prev_of: canonical Protein::BackbonePredecessor query.
@@ -713,8 +714,8 @@ std::unique_ptr<LarsenHBondShieldingResult> LarsenHBondShieldingResult::Compute(
     // Donor sweep — one pass over all atoms in the protein, dispatching
     // amide H and α-hydrogen donors to the spatial enumeration. The
     // donor frame anchors per donor class:
-    //   AmideHydrogen: anchor = res.N, third = prev_res.C  (same chain;
-    //                  prev_res via Protein::BackbonePredecessor —
+    //   AmideHydrogen: anchor = res.N, third = prev_res.C
+    //                  (prev_res via Protein::BackbonePredecessor —
     //                  bond-graph backbone predecessor of d_ri).
     //   AlphaHydrogen: anchor = res.CA, third = res.N (this residue's
     //                  own N — no preceding-residue dependency).

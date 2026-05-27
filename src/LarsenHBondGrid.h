@@ -33,7 +33,7 @@
 //   acceptor_O    — the H-bond acceptor oxygen.
 //   acceptor_C    — the heavy atom bonded to acceptor_O. For carbonyl
 //                   acceptors this is the C=O carbon; for hydroxyl
-//                   acceptors this is the sp3 C bonded to OH.
+//                   acceptors this is the heavy atom bonded to OH.
 //   acceptor_third — the second neighbour used to disambiguate the
 //                   dihedral. Per-acceptor-class mapping below.
 //
@@ -70,7 +70,7 @@
 //   HydroxylOxygen       SER OG /     SER CB /      SER HG /
 //                        THR OG1 /    THR CB /      THR HG1 /
 //                        TYR OH       TYR CZ        TYR HH
-//   CarboxylateOxygen    closer of    ASP CG /      OTHER O on the
+//   CarboxylateOxygen    candidate    ASP CG /      OTHER O on the
 //                        Asp OD1/2,   GLU CD,       carboxylate C
 //                        Glu OE1/2,   C-term C      (the symmetric
 //                        or C-term O                 carboxylate O)
@@ -93,14 +93,15 @@
 //   y-axis   = cross(z, x)
 //
 // The free function `ComputeLarsenDonorFrame(h_pos, anchor_pos,
-// third_pos)` builds this rotation matrix; the parser and the
-// calculator both use it to keep the tensor basis consistent.
+// third_pos)` builds this rotation matrix on the C++ side; the parser
+// uses the same frame definition to keep the tensor basis consistent.
 //
 // Per-archive readout atoms (in the canonical frame above):
 //   ALA donor: donor {N, CA, CB, C, HA, HN}
 //   NMA donor: donor {N, CA, C, HA, HN}      (no CB — NMA has no sidechain)
-//   NMA acceptor (Backbone): acceptor {N, HN, HA}  (Δσ_2° contributions,
-//                                                  representing residue i+1)
+//   NMA acceptor (Backbone): acceptor {N, HN, CA, C, HA}
+//       (Δσ_2° contributions; N/HN/CA/HA represent residue i+1,
+//        C represents the acceptor residue i)
 //   HOMe/Acetate acceptor: no acceptor readouts (Larsen 2015 does not
 //                                                define 2° terms here).
 //
@@ -116,7 +117,7 @@
 // subtracted via r-max-edge proxy; see parser README for the
 // approximation). No further subtraction at runtime.
 //
-// Validity mask: each archive carries a uint8 mask (Nr × Nθ × Nρ)
+// Validity mask: an archive may carry a uint8 mask (Nr × Nθ × Nρ)
 // marking which dense-grid cells correspond to nominal bins where
 // real DFT data existed (1) vs nominal bins that were filled by
 // nearest-neighbour imputation at parse time (0). Larsen 2015 noted
@@ -126,7 +127,8 @@
 // whose cubic-spline stencil includes imputed nominals is still
 // marked valid). Per-query, the `any_corner_imputed` field on
 // `LarsenHBondRecord` is true iff any of the 8 trilinear corner
-// cells is an imputed bin under this nearest-nominal definition.
+// cells is an imputed bin under this nearest-nominal definition when
+// a mask is present.
 //
 //
 // Tensor rotation contract (CRITICAL for the calculator):
@@ -182,17 +184,17 @@ enum class HBondAcceptorClass : std::uint8_t {
 // contract documented in the file header.
 struct LarsenHBondGeometry {
     double r_angstrom = 0.0;   // |donor_H − acceptor_O|, Å.
-    double theta_deg  = 0.0;   // angle(donor_H, acceptor_O, acceptor_C), [90, 180].
+    double theta_deg  = 0.0;   // angle(donor_H, acceptor_O, acceptor_C), deg.
     double rho_deg    = 0.0;   // dihedral(donor_H, acceptor_O, acceptor_C,
                                // acceptor_third), IUPAC sign, [−180, 180].
 };
 
 
 // Compute (r, θ, ρ) from the four atom positions per the geometry
-// contract. Free function so both the parser (Python side, conceptually)
-// and the calculator (C++ runtime, future) compute geometry the same
-// way. ρ uses standard IUPAC dihedral convention (atan2 of cross
-// products), matching what the parser keys grid bins on.
+// contract. The parser-side geometry code uses the same convention, so
+// parser bins and runtime queries stay aligned. ρ uses standard IUPAC
+// dihedral convention (atan2 of cross products), matching what the
+// parser keys grid bins on.
 LarsenHBondGeometry ComputeLarsenHBondGeometry(
     const Vec3& donor_H_pos,
     const Vec3& acceptor_O_pos,
@@ -237,9 +239,9 @@ Mat3 RotateTensorToProteinLabFrame(
     const Mat3& R_protein);
 
 
-// Returned tensors per readout. Each Mat3 is the rotation-invariant
-// shielding contribution in the CANONICAL DONOR FRAME (consumer
-// rotates to protein lab frame at calculator runtime).
+// Returned tensors per readout. Each Mat3 is a shielding contribution
+// in the CANONICAL DONOR FRAME (consumer rotates to protein lab frame
+// at calculator runtime).
 //
 // The `has_*` flags indicate which readouts the archive populates.
 // Currently:
@@ -272,18 +274,18 @@ struct LarsenHBondRecord {
     bool has_donor_CB         = false;
     bool has_acceptor_readouts = false;
 
-    // Snapped / interpolated query coordinates, after FP tolerance
-    // clamp on r/θ and periodic wrap on ρ to [−180°, +180°). Use these
-    // (not the raw input) when logging diagnostics so the canonical
-    // grid coordinates are what's recorded.
+    // Query coordinates stored for diagnostics. r/θ are the input
+    // values; ρ is the periodic wrap to [−180°, +180°). The axis lookup
+    // may tolerance-clamp r/θ internally without changing these fields.
     double r_angstrom = 0.0;
     double theta_deg  = 0.0;
     double rho_deg    = 0.0;
 
-    // True iff any of the 8 trilinear corner cells was an imputed bin.
-    // See the validity-mask narrative in the file header for the
-    // nearest-nominal definition; the calculator may log + downweight
-    // or skip these.
+    // For archives with a validity mask, true iff any of the 8
+    // trilinear corner cells was an imputed bin. False when the archive
+    // has no mask. See the validity-mask narrative in the file header
+    // for the nearest-nominal definition; the calculator may log +
+    // downweight or skip these.
     bool any_corner_imputed = false;
 
     bool is_hit = false;
@@ -360,7 +362,8 @@ public:
     // resolution (5×/2×/3× denser than the original DFT scan).
     //
     // The record's `any_corner_imputed` flag is set if any of the 8
-    // corner cells came from nearest-neighbour fill at parse time.
+    // corner cells came from nearest-neighbour fill at parse time, or
+    // false if the archive has no validity mask.
     LarsenHBondRecord QueryNearest(
         HBondDonorClass    donor_class,
         HBondAcceptorClass acceptor_class,

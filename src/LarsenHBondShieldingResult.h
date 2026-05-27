@@ -130,7 +130,8 @@ public:
 
     // Factory. Returns nullptr only on hard structural errors (zero
     // atoms, grid not loaded). Per-pair classification failures are
-    // logged via GeometryChoiceBuilder and skipped silently.
+    // skipped; geometric/grid dispositions are logged via
+    // GeometryChoiceBuilder.
     static std::unique_ptr<LarsenHBondShieldingResult> Compute(
         ProteinConformation& conf,
         const LarsenHBondGrid& grid);
@@ -159,10 +160,10 @@ public:
     //
     // PairsFound counts pairs the grid path successfully processed
     // (geometry computed, grid hit, tensors accumulated).
-    // PairsGridSkipped counts geometric H-bond candidates the grid
-    // path SKIPPED (out-of-range θ, grid miss, no i+1 mapping for the
-    // 2° term on C-terminus acceptor). The two together sum to the
-    // total geometric H-bond candidate count.
+    // PairsGridSkipped counts classified spatial candidates the grid
+    // path SKIPPED (missing frame anchor, out-of-range θ, grid miss).
+    // The two together sum to the processed candidate count after
+    // classification and carboxylate symmetry filtering.
     // AmideHsUnboundWithWater counts amide Hs that received the
     // Δσ_w = 2.07 ppm term — gated on "ZERO geometric H-bond
     // candidates found." A grid-skipped pair does NOT trigger spurious
