@@ -18,10 +18,11 @@
 // reason is explicit: an atom that IS the source cannot be a field point
 // for that source's dipolar field.
 //
-// Filter sets are configurable from TOML. The test for a filter is:
-// it works but not as well without it. A filter that changes nothing
-// is dead code. A filter without which the calculator crashes is
-// papering over a bug.
+// Filter membership is chosen by each calculator; thresholds come from
+// CalculatorConfig where relevant. The test for a filter is: it works
+// but not as well without it. A filter that changes nothing is dead
+// code. A filter without which the calculator crashes is papering over
+// a bug.
 //
 
 #include "PhysicalConstants.h"
@@ -100,7 +101,7 @@ public:
     // Should this kernel evaluation proceed?
     virtual bool Accept(const KernelEvaluationContext& ctx) const = 0;
 
-    // Short identifier for logging and TOML configuration.
+    // Short identifier for logging and diagnostics.
     virtual const char* Name() const = 0;
 
     // Physics reason this filter exists.
@@ -126,9 +127,9 @@ public:
 // is large but physically meaningless — the field point is inside the
 // charge/current distribution.
 //
-// Criterion: distance > source_extent / 2.
-// Source extent is a measured property of each source, not a global
-// tuning parameter.
+// Criterion: distance > near_field_exclusion_ratio * source_extent
+// (default ratio 0.5). Source extent is measured per source; the ratio
+// threshold comes from CalculatorConfig.
 //
 // Demonstrated effect (HBondResult, 466 proteins):
 //   With filter:  max |T2| = 0.78 A^-3
@@ -144,7 +145,7 @@ public:
 // this filter prevents the evaluation from starting at all and provides
 // a named rejection for GeometryChoice recording.
 //
-// Criterion: distance >= MIN_DISTANCE (0.1 A).
+// Criterion: distance >= singularity_guard_distance (default 0.1 A).
 // ============================================================================
 
 class MinDistanceFilter : public KernelEvaluationFilter {
@@ -252,7 +253,7 @@ public:
 //
 // Criterion: sequence_separation >= min_separation.
 // The default min_separation (2) excludes same-residue and immediate
-// neighbour interactions. Configurable from TOML.
+// neighbour interactions. The threshold comes from CalculatorConfig.
 // ============================================================================
 
 class SequentialExclusionFilter : public KernelEvaluationFilter {

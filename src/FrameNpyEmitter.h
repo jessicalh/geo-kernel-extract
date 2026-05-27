@@ -30,12 +30,11 @@
 //                                  output of modes 1-4.
 //   Reset()                       -- clear configuration. For tests.
 //
-// Cost reality. WriteAllFeatures emits ~60-80 NPY files per frame; the
-// AIMNet2 256-dim embedding dominates (~4 MB at 4000 atoms). At
-// stride 1 on 600 frames that is ~2-3 GB per protein. The H5 already
-// carries the trajectory-scope time series; per-frame NPYs serve a
-// different consumer (calibration scripts that read NPY without
-// h5py, cross-tool numpy ingestion).
+// Cost reality. WriteAllFeatures emits many NPY files per accepted
+// frame, and wide per-atom arrays such as AIMNet2 embeddings dominate
+// disk use. The H5 already carries the trajectory-scope time series;
+// per-frame NPYs serve a different consumer (calibration scripts that
+// read NPY without h5py, cross-tool numpy ingestion).
 //
 // Deliberately not a TrajectoryResult / ConformationResult. Holds no
 // Welford / DenseBuffer / Selection state; participates in no

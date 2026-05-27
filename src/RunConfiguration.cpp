@@ -2,9 +2,9 @@
 #include "TrajectoryProtein.h"
 #include "TrajectoryResult.h"
 
-// Per-frame ConformationResult types that TrajectoryResults in this
-// session (BsWelford) depend on. Include full types so type_index
-// values are valid at factory call time.
+// Per-frame ConformationResult types used by the named trajectory
+// configurations. Include full types so type_index values are valid at
+// factory call time.
 #include "GeometryResult.h"
 #include "SpatialIndexResult.h"
 #include "EnrichmentResult.h"
@@ -120,10 +120,10 @@ void Produces(RunConfiguration& c) {
 
 // ── PerFrameExtractionSet ────────────────────────────────────────
 //
-// Production canonical for the 685-protein fleet. Full classical
-// stack + APBS + AIMNet2 every frame. MOPAC skipped (FullFat only);
-// vacuum Coulomb skipped (APBS supersedes at N > 1000 atoms).
-// Stride 2: 25 ns × 1250 frames → 625 sampled.
+// Production canonical trajectory shape. Full classical stack + APBS +
+// AIMNet2 every dispatched frame. MOPAC skipped (FullFat only);
+// vacuum Coulomb skipped because APBS is the active electrostatic field.
+// Default stride 2: process every other trajectory frame.
 
 RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     RunConfiguration c;
@@ -134,7 +134,7 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     c.per_frame_opts_.skip_coulomb = true;   // APBS supersedes
     c.per_frame_opts_.skip_dssp    = false;
 
-    // Production stride: 25 ns × 1250 frames × stride 2 → 625 sampled.
+    // Production stride: process every other trajectory frame.
     c.SetStride(2);
 
     // Mandatory per frame; Phase 4 returns kConfigRequiresAimnet2
@@ -272,14 +272,15 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
 
 // ── FullFatFrameExtraction ───────────────────────────────────────
 //
-// PerFrameExtractionSet with MOPAC enabled. Meant for a selected-frame
-// subset (DFT pose set, harvester checkpoints) — every-frame MOPAC
-// on a 25 ns trajectory is ~15 h/protein. Selected-frame mechanism
-// is a pending-decision item (spec/pending_decisions_20260423.md).
+// PerFrameExtractionSet with MOPAC and vacuum Coulomb enabled. Intended
+// for selected or strided frame use; CLI --mopac-stride gates MOPAC by
+// original TRR frame index while the rest of the pipeline still runs on
+// each dispatched frame.
 //
-// MOPAC-family ConformationResult deps (MopacResult,
-// MopacCoulombResult, MopacMcConnellResult) are a pending-decision
-// item — see spec/pending_decisions_20260423.md item 3.
+// MOPAC-family ConformationResult sources attach conditionally inside
+// OperationRunner when MOPAC runs and succeeds; the MOPAC-family
+// TrajectoryResults use HasResult gates rather than hard Phase-4
+// RequireConformationResult dependencies.
 
 RunConfiguration RunConfiguration::FullFatFrameExtraction() {
     RunConfiguration c = PerFrameExtractionSet();

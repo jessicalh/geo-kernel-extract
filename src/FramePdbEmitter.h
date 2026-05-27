@@ -35,9 +35,7 @@
 //
 // Deliberately not a TrajectoryResult / ConformationResult. Holds no
 // Welford / DenseBuffer / Selection state; participates in no
-// dependency graph; emits no H5. It is a projection-only output, the
-// PDB analog of the planned IUPAC / BMRB string projections on
-// LegacyAmberTopology.
+// dependency graph; emits no H5. It is a projection-only output.
 //
 
 #include <Eigen/Dense>
