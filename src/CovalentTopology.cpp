@@ -20,6 +20,10 @@
 namespace nmr {
 
 
+// ============================================================================
+// Bond pair detection (same two paths as the old Protein::DetectCovalentBonds).
+// ============================================================================
+
 #ifdef HAS_OPENBABEL
 static std::vector<std::pair<size_t, size_t>> DetectBondsViaOpenBabel(
         const std::vector<std::unique_ptr<Atom>>& atoms,
@@ -51,6 +55,23 @@ static std::vector<std::pair<size_t, size_t>> DetectBondsViaOpenBabel(
 #endif
 
 
+// ============================================================================
+// CovalentTopology::Resolve
+//
+// The geometry→topology boundary. Takes atoms (with canonical names),
+// residues (with backbone indices cached), and ONE set of positions.
+// Returns a self-contained topology object with bonds detected and
+// categorised — except aromatic-bond tagging, which is a separate
+// post-Resolve overlay (TagAromaticBonds) that runs once aromatic
+// rings have been constructed from the substrate.
+//
+// Bundle C / Slice B (2026-05-07): Resolve no longer takes rings as
+// input. The substrate-driven ring construction
+// (RingTopology::ConstructFromSubstrate) runs AFTER ComposeAtomSemantic,
+// so rings don't exist when Resolve runs. The aromatic-tagging overlay
+// is invoked from FinalizeConstruction once rings are produced.
+// ============================================================================
+
 std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         const std::vector<std::unique_ptr<Atom>>& atoms,
         const std::vector<Residue>& residues,
@@ -63,6 +84,12 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     topo->bond_indices_.resize(n_atoms);
     topo->h_parent_.assign(n_atoms, SIZE_MAX);
 
+    // ---------------------------------------------------------------
+    // Pre-build typed lookup structures (no string access).
+    // The aromatic_atoms set is no longer built here — aromatic
+    // categorisation moved to TagAromaticBonds(rings) overlay.
+    // ---------------------------------------------------------------
+
     std::vector<bool> is_backbone(n_atoms, false);
     for (const auto& res : residues) {
         if (res.N  != Residue::NONE) is_backbone[res.N]  = true;
@@ -74,6 +101,9 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         if (res.CB != Residue::NONE) is_backbone[res.CB] = true;
     }
 
+    // ---------------------------------------------------------------
+    // Step 1: DETECT bond pairs.
+    // ---------------------------------------------------------------
     std::vector<std::pair<size_t, size_t>> bond_pairs;
 
 #ifdef HAS_OPENBABEL
@@ -92,6 +122,9 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
     }
 #endif
 
+    // ---------------------------------------------------------------
+    // Step 2: CLASSIFY each bond pair using ONLY typed properties.
+    // ---------------------------------------------------------------
     for (const auto& [i, j] : bond_pairs) {
         double dist = (positions[i] - positions[j]).norm();
 
@@ -102,10 +135,17 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         const Atom& a = *atoms[i];
         const Atom& b = *atoms[j];
 
+        // Disulfide: both atoms are sulfur
         if (a.element == Element::S && b.element == Element::S) {
             bond.order = BondOrder::Single;
             bond.category = BondCategory::Disulfide;
         }
+        // Aromatic categorisation moved to TagAromaticBonds(rings),
+        // called as a post-Resolve overlay once substrate-driven
+        // ring construction has produced the aromatic ring set
+        // (Bundle C / Slice B). Bonds whose endpoints are both ring
+        // members fall through here to backbone/sidechain treatment
+        // and get rewritten by the overlay.
         else {
             bool a_bb = is_backbone[i];
             bool b_bb = is_backbone[j];
@@ -166,6 +206,10 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
         topo->bond_indices_[j].push_back(bond_idx);
     }
 
+    // ---------------------------------------------------------------
+    // Assign hydrogen parent indices.
+    // For each H atom, find the nearest bonded heavy atom.
+    // ---------------------------------------------------------------
     for (size_t i = 0; i < n_atoms; ++i) {
         if (atoms[i]->element != Element::H) continue;
 
@@ -186,9 +230,27 @@ std::unique_ptr<CovalentTopology> CovalentTopology::Resolve(
 }
 
 
+// ============================================================================
+// TagAromaticBonds: post-Resolve overlay that tags bonds whose both
+// endpoints sit in any aromatic ring. Lifted from the pre-Bundle-C
+// aromatic branch in Resolve. Mirrors the OverrideDisulfides shape:
+// authoritative-chemistry overlay applied after the geometric pass.
+//
+// Disulfide-precedence note: Resolve already tagged S-S bonds as
+// BondCategory::Disulfide. This overlay does NOT demote those — it
+// only rewrites bonds whose category is anything other than
+// Disulfide. Biologically irrelevant (no aromatic ring contains an S
+// that bonds another S) but worth being explicit so the precedence
+// is documented rather than incidental.
+// ============================================================================
+
 void CovalentTopology::TagAromaticBonds(
         const std::vector<std::unique_ptr<Ring>>& rings) {
 
+    // Flatten all aromatic-ring atom indices into one set. Saturated
+    // rings (Pro pyrrolidine) live in a parallel collection on
+    // LegacyAmberTopology and are not passed here; only aromatic
+    // rings produce Aromatic bond tags.
     std::set<size_t> aromatic_atoms;
     for (const auto& ring : rings) {
         for (size_t ai : ring->atom_indices) {
@@ -207,6 +269,25 @@ void CovalentTopology::TagAromaticBonds(
     }
 }
 
+
+// ============================================================================
+// OverrideDisulfides: applies the readback authority for SG-SG bonds.
+//
+// Inputs are the chemistry decisions GROMACS pdb2gmx made (specbond.cpp +
+// rtp comment line) carried through as DisulfidePair records. The caller
+// invokes this only when upstream authority exists. After this runs,
+// every SG-SG bond categorised as Disulfide in the topology IS in the
+// authority list, and vice versa — the geometric inference in Resolve()
+// stops being the source of truth on the consume side.
+//
+// Empty pairs means "authority says zero disulfides", not "no source";
+// all geometry-derived Disulfide tags are demoted in that case.
+//
+// "Force-add" path: if pdb2gmx recorded an SG-SG bond that the active
+// geometric bond-perception path did not detect, we add the bond explicitly
+// so downstream calculators see the chemistry decision rather than silently
+// miss it.
+// ============================================================================
 
 std::string CovalentTopology::OverrideDisulfides(
         const std::vector<DisulfidePair>& pairs) {
@@ -241,6 +322,7 @@ std::string CovalentTopology::OverrideDisulfides(
 
         authority_pair_set.insert(canonical_pair(a, b));
 
+        // Find an existing bond between a and b (if any).
         size_t found_index = SIZE_MAX;
         for (size_t bi : bond_indices_[a]) {
             const Bond& bnd = bonds_[bi];
@@ -259,8 +341,10 @@ std::string CovalentTopology::OverrideDisulfides(
             bnd.category = BondCategory::Disulfide;
             bnd.order    = BondOrder::Single;
         } else {
-            // Force-added bonds use the same canonical endpoint order
-            // as the geometric path.
+            // Force-add: pdb2gmx recorded an SG-SG bond that the active
+            // geometric bond-perception path did not see. Append + index
+            // using the same canonical (min, max) endpoint ordering the
+            // geometric path uses.
             Bond bnd;
             bnd.atom_index_a = std::min(a, b);
             bnd.atom_index_b = std::max(a, b);
@@ -274,6 +358,9 @@ std::string CovalentTopology::OverrideDisulfides(
         }
     }
 
+    // Walk all bonds; any Disulfide-tagged bond NOT in the authority
+    // list is geometric inference disagreeing with chemistry. Rare in
+    // standard MD; reset to SidechainOther and warn.
     int n_demoted = 0;
     for (Bond& bnd : bonds_) {
         if (bnd.category != BondCategory::Disulfide) continue;
