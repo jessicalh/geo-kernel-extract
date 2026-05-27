@@ -25,10 +25,15 @@ namespace nmr {
 
 namespace {
 
+// IEEE quiet NaN for "not applicable" rows in per-residue/per-ring vectors.
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 
-// Dihedral angle in radians, range [-pi, pi].
+// ─────────────────────────────────────────────────────────────────
+// Dihedral angle from four positions (radians, range [-π, π])
+// Standard formulation: project on the plane orthogonal to b2, take
+// signed angle between b1 and b3.
+// ─────────────────────────────────────────────────────────────────
 double Dihedral(const Vec3& p1, const Vec3& p2,
                  const Vec3& p3, const Vec3& p4) {
     const Vec3 b1 = p2 - p1;
@@ -43,29 +48,52 @@ double Dihedral(const Vec3& p1, const Vec3& p2,
 }
 
 
-// Matches DihedralTimeSeriesTrajectoryResult::WrapPi bit-identically.
+// Wrap to [-π, π] via std::remainder (single-call, IEEE round-half-to-
+// even at ±π). Matches DihedralTimeSeriesTrajectoryResult::WrapPi
+// bit-identically so omega_deviation agrees across the two producers.
 double WrapPi(double a) {
     if (!std::isfinite(a)) return a;
     return std::remainder(a, 2.0 * M_PI);
 }
 
 
-// Signed out-of-plane displacement of A from the B/C/D plane. Units: A.
+// ─────────────────────────────────────────────────────────────────
+// Pyramidalization at atom A whose three bonded neighbours are at
+// positions B, C, D. Signed out-of-plane displacement of A from the
+// plane through B, C, D, with sign by the right-hand rule on
+// (B-centroid) × (C-centroid). Units: Å.
+//
+// The plane normal is constructed from (B-centroid) × (C-centroid)
+// where centroid is the centroid of (B, C, D). For a perfectly planar
+// sp2 site A lies in the neighbour plane, so (A - centroid)·n̂ is zero.
+// ─────────────────────────────────────────────────────────────────
 double Pyramidalization(const Vec3& A, const Vec3& B,
                          const Vec3& C, const Vec3& D) {
     const Vec3 centroid = (B + C + D) / 3.0;
     const Vec3 normal = (B - centroid).cross(C - centroid);
     const double normal_norm = normal.norm();
-    if (normal_norm < 1e-12) return 0.0;
+    if (normal_norm < 1e-12) return 0.0;  // degenerate plane (collinear)
     const Vec3 normal_hat = normal / normal_norm;
     return (A - centroid).dot(normal_hat);
 }
 
 
-// Cremer-Pople 5-ring pucker. Input atoms are in canonical cyclic order.
-// Cremer & Pople, JACS 1975, 97, 1354-1358.
+// ─────────────────────────────────────────────────────────────────
+// Cremer-Pople pucker for a 5-ring.
+//
+// Cremer, D. & Pople, J. A. (1975) "A general definition of ring
+// puckering coordinates." J. Am. Chem. Soc. 97, 1354–1358.
+//
+// Atoms in canonical cyclic order (length N = 5). Returns
+// (Q, θ_degrees), with θ wrapped to [0, 360) and Q ≥ 0.
+// θ mod 72° gives the envelope (E) / twist (T) configuration.
+//
+// For 5-rings the formulation has a single (Q₂, θ₂) pair (vs the
+// (Q₂, θ₂, Q₃, …) family for larger rings). Equation 16 of
+// Cremer & Pople 1975.
+// ─────────────────────────────────────────────────────────────────
 struct PuckerCP {
-    double Q;        // amplitude (A)
+    double Q;        // amplitude (Å)
     double theta;    // phase (degrees), [0, 360)
 };
 
@@ -76,9 +104,22 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     for (const auto& p : positions) G += p;
     G /= 5.0;
 
-    // Cremer-Pople's sin/cos-weighted normal fixes the phase convention;
-    // the simpler edge-cross-product normal is antiparallel for the
-    // standard pyrrolidine order and shifts theta by 180 degrees.
+    // mean-plane normal
+    //
+    // Canonical Cremer-Pople 1975 construction, Eqs 11–12: orthogonal
+    // sin/cos-weighted basis from the displacement vectors, with the
+    // normal as the cross product.
+    //
+    //   R'₁ = Σⱼ (rⱼ - G) sin(2π j / N)
+    //   R'₂ = Σⱼ (rⱼ - G) cos(2π j / N)
+    //   n   = R'₁ × R'₂
+    //
+    // The simpler edge-cross-product accumulator
+    //   n = Σⱼ rⱼ × rⱼ₊₁
+    // gives a normal anti-parallel to the canonical direction for the
+    // standard cyclic atom order of a pyrrolidine 5-ring, which inverts
+    // the (Q, θ) phase by 180° and silently swaps envelope/twist
+    // endo/exo labels.
     Vec3 sin_basis = Vec3::Zero();
     Vec3 cos_basis = Vec3::Zero();
     for (size_t j = 0; j < 5; ++j) {
@@ -92,9 +133,20 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     if (mean_plane_normal_norm < 1e-12) return {kNaN, kNaN};
     const Vec3 mean_plane_normal_hat = mean_plane_normal / mean_plane_normal_norm;
 
+    // (Q,θ) projection
+    //
+    // Per-atom z = displacement along normal. Cremer-Pople (Q₂ cos θ₂,
+    // Q₂ sin θ₂) projection for the 2-fold (m=2) mode of a 5-ring:
+    //
+    //   Q₂ cos θ₂ = √(2/5) Σⱼ z_j cos(2 · 2π(j) / 5)
+    //   Q₂ sin θ₂ = -√(2/5) Σⱼ z_j sin(2 · 2π(j) / 5)
+    //
+    // (j = 0..4, 0-indexed; equivalent to the 1..5 indexing in the
+    // 1975 paper modulo phase choice).
     double q2_cos_sum = 0.0, q2_sin_sum = 0.0;
     for (size_t j = 0; j < 5; ++j) {
         const double z_j = (positions[j] - G).dot(mean_plane_normal_hat);
+        // m=2 (2nd-harmonic) phase, hence 4π j / 5.
         const double phi = 4.0 * M_PI * static_cast<double>(j) / 5.0;
         q2_cos_sum +=  z_j * std::cos(phi);
         q2_sin_sum += -z_j * std::sin(phi);
@@ -103,7 +155,15 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
     const double q2_cos = scale * q2_cos_sum;
     const double q2_sin = scale * q2_sin_sum;
     const double Q = std::sqrt(q2_cos * q2_cos + q2_sin * q2_sin);
-    // Below this amplitude, theta is just atan2 of coordinate noise.
+    // Sub-amplitude degeneracy guard: a perfectly planar pentagon makes
+    // z_j ≈ 0 for every vertex, so q2_cos/q2_sin become floating-point
+    // noise and theta = atan2(noise, noise) is meaningless. Typical
+    // real proline pyrrolidine puckering is far above this cutoff
+    // (probable source: Ho & Cornilescu 2000 JBNMR 18:155). Anything
+    // below 1e-6 Å is structural noise at Å-scale coordinates. Return
+    // NaN theta so downstream readers see
+    // "degenerate" honestly (the H5 attr already says NaN means
+    // degenerate).
     if (Q < 1e-6) return {Q, kNaN};
     double theta = std::atan2(q2_sin, q2_cos) * 180.0 / M_PI;
     if (theta < 0.0) theta += 360.0;
@@ -115,6 +175,11 @@ PuckerCP CremerPople5Ring(const std::vector<Vec3>& positions) {
 // at atom `ai`. Resolves the bond list (Atom::bond_indices is a list
 // of BOND indices into the bonds_ table, not neighbour atom indices)
 // and picks the other endpoint of each bond.
+//
+// Returns true and fills neighbours[0..2] when the atom has exactly
+// three bonded neighbours; otherwise returns false and the calculator
+// emits 0.0 for this atom (legitimate for ring-edge sp2 atoms whose
+// bond graph degenerates in unusual structures).
 bool ThreeBondedNeighbours(const Protein& protein, size_t ai,
                             std::array<size_t, 3>& neighbours) {
     const Atom& a = protein.AtomAt(ai);
@@ -125,7 +190,9 @@ bool ThreeBondedNeighbours(const Protein& protein, size_t ai,
         neighbours[k] = (b.atom_index_a == ai) ? b.atom_index_b
                                                 : b.atom_index_a;
     }
-    // bond_indices order is not stable; the sign convention needs one.
+    // Sort by atom index so the pyramidalization sign is build-stable
+    // and portable across structures (bond order in `bond_indices` is
+    // not stable).
     std::sort(neighbours.begin(), neighbours.end());
     return true;
 }
@@ -179,6 +246,15 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
             AddNumber(gc, "saturated_rings", static_cast<double>(topo.SaturatedRingCount()), "");
         });
 
+    // ──────────────────────────────────────────────────────────────
+    // 1. Per-atom sp2 pyramidalization
+    //
+    // Signed out-of-plane displacement (Å) at every atom whose
+    // typed planar_group != None. Atoms with planar_group == None
+    // emit 0.0. Atoms whose bond graph does not have exactly three
+    // neighbours (degenerate) also emit 0.0 — never a fail-loud case
+    // because the substrate already carries the chemistry decision.
+    // ──────────────────────────────────────────────────────────────
     int planar_atom_count = 0;
     double max_abs_pyr = 0.0;
     for (size_t ai = 0; ai < N_atoms; ++ai) {
@@ -202,8 +278,34 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         if (std::abs(pyr) > max_abs_pyr) max_abs_pyr = std::abs(pyr);
     }
 
-    // BackboneSuccessor is bond-graph based, so cyclic peptides and
-    // insertion-code or numbering gaps follow actual C-N connectivity.
+    // ──────────────────────────────────────────────────────────────
+    // 2. Per-residue ω (Cα(i)-C(i)-N(successor)-Cα(successor)) and Δω
+    //
+    // ω is emitted for every well-defined peptide bond, INCLUDING
+    // X→Pro bonds. cis/trans isomerism at X-Pro is a real
+    // conformational signal, not a "non-planar amide" deviation, but
+    // the value itself is what the consumer wants. The
+    // `omega_is_xpro` mask tags those rows so the BMRB-stratified
+    // atlas can interpret deviation values appropriately at the
+    // consumer side.
+    //
+    // Connectivity comes from `protein.BackboneSuccessor(ri)` (canonical
+    // bond-graph walk). The query returns the residue index
+    // whose N is covalently bonded to res(ri).C, or nullopt at chain
+    // ends. This is the geometry-native substrate: the bond graph is
+    // the authoritative answer, label-based heuristics (chain_id,
+    // sequence_number, terminal_state, insertion_code) are banned per
+    // the "Backbone connectivity discipline" in OBJECT_MODEL.md.
+    //
+    // The query is wrap-correct (cyclic peptide: Successor(N-1) = 0),
+    // bonded across antibody insertion codes (100A -> 100B), correct
+    // on residue numbering gaps with intact bonds (those ARE bonded;
+    // the bond graph says so), and correct on ACE/NME caps (cap C/N
+    // participate).
+    //
+    // NaN at: chain boundary (Successor returns nullopt), residues
+    // with missing CA backbone-cache atoms (incomplete structure).
+    // ──────────────────────────────────────────────────────────────
     result_ptr->omega_actual_.assign(N_res, kNaN);
     result_ptr->omega_deviation_.assign(N_res, kNaN);
     result_ptr->omega_is_xpro_.assign(N_res, 0);
@@ -212,6 +314,7 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     for (size_t ri = 0; ri < N_res; ++ri) {
         auto next_idx = protein.BackboneSuccessor(ri);
         if (!next_idx) continue;
+        // Successor guarantees res_i.C and res_next.N exist.
         const Residue& res_i    = protein.ResidueAt(ri);
         const Residue& res_next = protein.ResidueAt(*next_idx);
         if (res_i.CA    == Residue::NONE) continue;
@@ -232,7 +335,13 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         ++omega_valid;
     }
 
-    // Per-frame chi2 is an instantaneous dihedral, not a flip rate.
+    // ──────────────────────────────────────────────────────────────
+    // 3. Per-aromatic-ring χ₂ (parent residue's chi[1] dihedral)
+    //
+    // Per Akke & Weininger 2023 (M17), Phe/Tyr ring flips are 180°
+    // rotamer transitions of χ₂. Per-frame value is *instantaneous*,
+    // NOT a flip rate.
+    // ──────────────────────────────────────────────────────────────
     const size_t N_arom = topo.AromaticRingCount();
     result_ptr->aromatic_chi2_.assign(N_arom, kNaN);
     int chi2_valid = 0;
@@ -254,6 +363,13 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
         ++chi2_valid;
     }
 
+    // ──────────────────────────────────────────────────────────────
+    // 4. Per-saturated-ring Cremer-Pople pucker (Q, θ)
+    //
+    // 5-ring formulation per Cremer & Pople 1975. Atoms read from
+    // the substrate-side canonical cyclic walk (already at
+    // construction time per Bundle C / Slice B).
+    // ──────────────────────────────────────────────────────────────
     const size_t N_sat = topo.SaturatedRingCount();
     result_ptr->pucker_Q_.assign(N_sat, kNaN);
     result_ptr->pucker_theta_.assign(N_sat, kNaN);
@@ -261,7 +377,9 @@ std::unique_ptr<PlanarGeometryResult> PlanarGeometryResult::Compute(
     for (size_t sat_i = 0; sat_i < N_sat; ++sat_i) {
         const Ring& ring = topo.SaturatedRingAt(sat_i);
         if (ring.atom_indices.size() != 5) {
-            // Only the 5-ring Cremer-Pople formulation is implemented.
+            // Only the 5-ring Cremer-Pople formulation is implemented
+            // (Pro pyrrolidine today); a non-5 saturated ring is left
+            // NaN. Note the skip so it is not silent.
             OperationLog::Info(LogCalcOther, "PlanarGeometryResult::Compute",
                 "saturated ring " + std::to_string(sat_i) + " has " +
                 std::to_string(ring.atom_indices.size()) +
@@ -354,9 +472,10 @@ int PlanarGeometryResult::WriteFeatures(
     }
 
     // omega_is_xpro.npy (R,) int8 — per-residue mask: 1 where the
-    // bond into i+1 is X→Pro (cis/trans isomerism is real signal
-    // there, not a deviation), 0 otherwise. Use this to interpret
-    // omega_deviation rows at the consumer side.
+    // bond from residue i to its backbone successor is X→Pro
+    // (cis/trans isomerism is real signal there, not a deviation),
+    // 0 otherwise. Use this to interpret omega_deviation rows at the
+    // consumer side.
     {
         const auto& v = omega_is_xpro_;
         NpyWriter::WriteInt8(output_dir + "/omega_is_xpro.npy",
