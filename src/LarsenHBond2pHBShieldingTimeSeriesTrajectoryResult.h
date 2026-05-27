@@ -60,11 +60,12 @@ private:
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
-    // Per-frame source-attached mask. 1 if the source ConformationResult
-    // (LarsenHBondShieldingResult) was attached this frame; 0 if
-    // not. Emitted as the `source_attached_per_frame` H5 dataset for
-    // downstream provenance. When all-zero (calc never ran), WriteH5Group
-    // skips emission entirely per the "absent, not faked" discipline.
+    // Per-frame source-present mask. 1 if the source ConformationResult
+    // (LarsenHBondShieldingResult) was attached this frame, or if the
+    // test-only override forces it present; 0 otherwise. Emitted as the
+    // `source_attached_per_frame` H5 dataset for downstream provenance.
+    // When all-zero (calc never ran), WriteH5Group skips emission
+    // entirely per the "absent, not faked" discipline.
     std::vector<std::uint8_t> source_present_per_frame_;
     bool force_source_present_for_testing_ = false;
 

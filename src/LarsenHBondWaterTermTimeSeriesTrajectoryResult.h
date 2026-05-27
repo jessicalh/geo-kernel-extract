@@ -3,12 +3,13 @@
 // LarsenHBondWaterTermTimeSeriesTrajectoryResult: per-atom per-frame
 // time series of ConformationAtom::larsen_hbond_water_term (double,
 // ppm). This is Larsen's isotropic Δσ_w contribution (2.07 ppm,
-// NMA-water complex value) applied on amide H atoms that received
-// ZERO H-bond pair contributions in this frame; zero elsewhere.
+// NMA-water complex value) applied on amide H atoms with no geometric
+// H-bond candidate found by Larsen's spatial sweep in this frame; zero
+// elsewhere.
 //
-// Finalize-only dense-buffer pattern. Establishes the scalar-double
-// (N, T) 2D H5 emission shape for the bundle's scalar TRs. Same
-// (N, T) flat layout as BsT0AutocorrelationTrajectoryResult but
+// Finalize-only dense-buffer pattern. Emits this double-valued scalar
+// as a (N, T) 2D H5 dataset. Same (N, T) flat layout as
+// BsT0AutocorrelationTrajectoryResult but
 // with frame_indices/frame_times as the second axis instead of lag
 // indices.
 //
@@ -55,8 +56,8 @@ public:
     // LarsenHBondShieldingResult is conditionally attached when the
     // Larsen H-bond grids are configured (project precondition).
     // Capture-as-is: default 0.0 means either non-HN atom or HN with
-    // ≥1 H-bond pair this frame; positive 2.07 ppm means amide H with
-    // no pairs.
+    // a geometric H-bond candidate this frame; positive 2.07 ppm means
+    // amide H with no such candidate.
     std::vector<std::type_index> Dependencies() const override { return {}; }
 
     static std::unique_ptr<LarsenHBondWaterTermTimeSeriesTrajectoryResult>
@@ -91,11 +92,12 @@ private:
     std::vector<std::size_t> frame_indices_;
     std::vector<double> frame_times_;
 
-    // Per-frame source-attached mask. 1 if the source ConformationResult
-    // (LarsenHBondShieldingResult) was attached this frame; 0 if
-    // not. Emitted as the `source_attached_per_frame` H5 dataset for
-    // downstream provenance. When all-zero (calc never ran), WriteH5Group
-    // skips emission entirely per the "absent, not faked" discipline.
+    // Per-frame source-present mask. 1 if the source ConformationResult
+    // (LarsenHBondShieldingResult) was attached this frame, or if the
+    // test-only override forces it present; 0 otherwise. Emitted as the
+    // `source_attached_per_frame` H5 dataset for downstream provenance.
+    // When all-zero (calc never ran), WriteH5Group skips emission
+    // entirely per the "absent, not faked" discipline.
     std::vector<std::uint8_t> source_present_per_frame_;
     bool force_source_present_for_testing_ = false;
 

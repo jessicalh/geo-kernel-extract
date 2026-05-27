@@ -34,7 +34,8 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::Compute(
         double time_ps) {
     (void)tp; (void)traj;
     // "Absent, not faked" provenance: record whether the source
-    // calculator (LarsenHBondShieldingResult) attached this frame.
+    // calculator (LarsenHBondShieldingResult) is present for this frame
+    // through actual attachment or the test-only override.
     // Int-typed TR — no NaN-fill of the data (0 is the existing
     // "no pairs" sentinel) but the mask still gates H5 group
     // emission so the group is absent rather than all-zero when the
@@ -101,10 +102,10 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
         return;
     }
 
-    // "Absent, not faked" — if the source ConformationResult was not
-    // attached in any frame, skip emission. Group existence ⇒ source
-    // ran in ≥1 frame. Downstream readers MUST tolerate group absence
-    // for conditionally-attached-source TRs.
+    // "Absent, not faked" — if no frame had the source-present flag,
+    // skip emission. Group existence ⇒ source ran in ≥1 frame, or a
+    // synthetic test forced presence. Downstream readers MUST tolerate
+    // group absence for conditionally-attached-source TRs.
     std::size_t source_present_count = 0;
     for (auto v : source_present_per_frame_)
         if (v) ++source_present_count;
@@ -151,7 +152,7 @@ void LarsenHBondCountTimeSeriesTrajectoryResult::WriteH5Group(
     grp.createDataSet("frame_indices", frame_indices_);
     grp.createDataSet("frame_times",   frame_times_);
 
-    // Provenance mask: per-frame source-attached flags.
+    // Provenance mask: per-frame source-present flags.
     grp.createDataSet("source_attached_per_frame", source_present_per_frame_);
 }
 
