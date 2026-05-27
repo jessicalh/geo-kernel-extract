@@ -102,6 +102,9 @@ add_executable(h5reader
     src/model/ConformationGeometry.cpp
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
+    src/model/DftShielding.h
+    src/model/SphericalDecomposition.h
+    src/model/SphericalDecomposition.cpp
     src/model/AtomSelection.h
     src/model/AtomSelection.cpp
     src/model/QtFrame.h
@@ -128,6 +131,8 @@ add_executable(h5reader
     src/io/QtProteinLoader.cpp
     src/io/FrameNpyLoader.h
     src/io/FrameNpyLoader.cpp
+    src/io/OrcaShieldingParser.h
+    src/io/OrcaShieldingParser.cpp
 
     # App layer — window, playback, scene, overlays.
     src/app/QtPlaybackController.h
