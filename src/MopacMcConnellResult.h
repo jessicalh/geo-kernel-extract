@@ -15,8 +15,9 @@
 // A C=O with order 1.8 contributes more kernel than one with 1.2.
 // The model learns Delta_chi per category for this weighted kernel.
 //
-// Same per-category decomposition as McConnellResult:
-// PeptideCO, PeptideCN, BackboneOther, SidechainCO, Aromatic.
+// Same output grouping as McConnellResult: total shielding, category
+// T2 for backbone/sidechain/aromatic/nearest-CO/nearest-CN, and scalar
+// sums for CO/CN/sidechain/aromatic plus nearest distances.
 //
 // Dependencies: MopacResult (bond orders), SpatialIndexResult, GeometryResult.
 //

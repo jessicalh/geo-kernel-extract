@@ -22,7 +22,7 @@ namespace nmr {
 // ============================================================================
 // Write .mop input file for MOPAC PM7+MOZYME 1SCF.
 //
-// Keywords: PM7 MOZYME 1SCF CHARGE=N BONDS MULLIK LET GEO-OK THREADS=8
+// Keywords: PM7 MOZYME 1SCF CHARGE=N BONDS MULLIK LET GEO-OK THREADS=<threads>
 //   PM7:     semiempirical Hamiltonian
 //   MOZYME:  linear-scaling SCF (~45s for 889 atoms)
 //   1SCF:    single-point, no geometry optimisation
@@ -68,10 +68,8 @@ static std::string WriteMopFile(const Protein& protein,
 // Parse MOPAC .out file for Mulliken charges, orbital populations,
 // bond orders, heat of formation.
 //
-// This is the text-parsing path needed because run_mopac_from_input()
-// does not return a mopac_properties struct — it writes the .out file.
-// The parsing matches what mopac_extract.py does, preserving the same
-// data and structure.
+// This is the text-parsing path needed because the subprocess writes
+// the .out file. The parsed fields feed the current mopac_* NPY schema.
 // ============================================================================
 
 struct MopacParsed {
@@ -91,9 +89,8 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
     result.s_pop.resize(natoms, 0.0);
     result.p_pop.resize(natoms, 0.0);
 
-    // Read the .out file using POSIX read to bypass any C++/Fortran
-    // stream buffering interaction. run_mopac_from_input uses Fortran I/O
-    // which may not fully flush to the C++ iostream layer.
+    // Read the .out file with C stdio after the subprocess exits, so
+    // MOPAC's Fortran I/O has closed its file handles.
     std::string text;
     {
         std::error_code fec;
@@ -241,7 +238,7 @@ static MopacParsed ParseMopacOutput(const std::string& out_path, size_t natoms) 
 
 
 // ============================================================================
-// Compute: write .mop, call MOPAC in-process, parse .out
+// Compute: write .mop, call MOPAC as a subprocess, parse .out
 // ============================================================================
 
 std::unique_ptr<MopacResult> MopacResult::Compute(
@@ -363,7 +360,7 @@ std::unique_ptr<MopacResult> MopacResult::Compute(
     // Build O(1) bond order lookup map
     for (const auto& bo : result->bond_orders_) {
         uint64_t key = PairKey(bo.atom_a, bo.atom_b);
-        // MOPAC lists each pair from both sides; keep the first (or max)
+        // MOPAC lists each pair from both sides; keep the max reported order.
         auto it = result->bond_order_map_.find(key);
         if (it == result->bond_order_map_.end() || bo.wiberg_order > it->second) {
             result->bond_order_map_[key] = bo.wiberg_order;
@@ -471,7 +468,7 @@ double MopacResult::TopologyBondOrder(size_t bond_index) const {
 
 
 // ============================================================================
-// WriteFeatures: compatible with mopac_extract.py output format.
+// WriteFeatures: current mopac_* NPY output schema.
 //
 //   mopac_charges.npy     — (N,)   Mulliken charges
 //   mopac_scalars.npy     — (N, 4) [charge, s_pop, p_pop, valency]

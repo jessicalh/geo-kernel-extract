@@ -194,7 +194,7 @@ std::unique_ptr<MopacMcConnellResult> MopacMcConnellResult::Compute(
                     if (kernel.distance < best_co_dist) {
                         best_co_dist = kernel.distance;
                         best_co_f_weighted = weighted_f;
-                        best_co_kernel = kernel;  // kernel.direction is d̂ = midpoint->atom (kernel is sign-invariant)
+                        best_co_kernel = kernel;  // nearest CO uses K/f, which are sign-invariant in d̂
                         best_co_bo = bo;
                     }
                     break;
