@@ -30,7 +30,7 @@ MopacCoulombShieldingTimeSeriesTrajectoryResult::Create(
 //
 // Sparse cadence gate identical to TR5/TR6: HasResult<MopacCoulombResult>
 // skip + NaN-fill on absent frames. Source field is T2-only per the
-// MopacCoulombResult.cpp:251 source comment ("Pure T2 (EFG is traceless)").
+// MopacCoulombResult source comment ("Pure T2 (EFG is traceless)").
 
 void MopacCoulombShieldingTimeSeriesTrajectoryResult::Compute(
         const ProteinConformation& conf,
@@ -101,9 +101,9 @@ void MopacCoulombShieldingTimeSeriesTrajectoryResult::Finalize(
 
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
-// T2-only (N, T, 5) emission — source field is genuinely T2 per the
-// MopacCoulombResult.cpp:251 source comment. Group skipped entirely
-// when source never attached (canonical "absent, not faked").
+// T2-only (N, T, 5) emission — source field is genuinely T2. Group
+// skipped entirely when source never attached (canonical "absent, not
+// faked").
 
 void MopacCoulombShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,

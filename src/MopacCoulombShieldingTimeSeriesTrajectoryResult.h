@@ -16,16 +16,14 @@
 //                  NaN-fill on absent frames, source_attached_per_frame
 //                  mask, group-absent when source never attached.
 //
-// SOURCE STRUCTURE: MopacCoulombResult.cpp:251-254 explicitly comments
-// "Pure T2 (EFG is traceless). gamma converts this to shielding" — the
-// field is `SphericalTensor::Decompose(EFG_total)` where EFG_total is
-// symmetric traceless (Hessian of φ from MOPAC Mulliken charges with
-// trace projection applied at source). T0 and T1 are structurally
-// zero, so (N, T, 5) emission is information-preserving.
+// SOURCE STRUCTURE: MopacCoulombResult stores
+// `SphericalTensor::Decompose(EFG_total)`, where EFG_total is the
+// trace-projected dipolar EFG from MOPAC Mulliken charges. T0 and T1
+// are structurally zero, so (N, T, 5) emission is information-preserving.
 //
-// SPARSE CADENCE: MopacCoulombResult attaches via TimedAttach in
-// OperationRunner.cpp:183 (NOT Require). Same CLI-driven Mopac
-// cadence as TR5/TR6. WriteH5Group skips the entire
+// SPARSE CADENCE: MopacCoulombResult attaches via TimedAttach, not
+// RequireConformationResult. Same CLI-driven Mopac cadence as TR5/TR6.
+// WriteH5Group skips the entire
 // /trajectory/mopac_coulomb_shielding_time_series/ group when no
 // frame attached the source.
 //
@@ -44,7 +42,7 @@
 //       units                   = "V/Å^2"  (EFG kernel, pre-γ)
 //       source                  = "MopacCoulombResult.mopac_coulomb_shielding_contribution
 //                                  (T2-only per source comment 'Pure T2
-//                                  (EFG is traceless)' at MopacCoulombResult.cpp:251)"
+//                                  (EFG is traceless)')"
 //       source_attached_policy  = "conditional -- MopacCoulombResult attaches
 //                                  sparsely per the Mopac cadence ..."
 //

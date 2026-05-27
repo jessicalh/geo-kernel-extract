@@ -183,7 +183,7 @@ void MopacMcConnellShieldingTimeSeriesTrajectoryResult::WriteH5Group(
         "when source_attached_count==0."));
 
     // (N, T, 9) — full SphericalTensor (T0 + T1[3] + T2[5]).
-    // Atom-major: [atom_0_frame_0_(T0,T1_-1,T1_0,T1_+1,T2_-2,T2_-1,T2_0,T2_+1,T2_+2),
+    // Atom-major: [atom_0_frame_0_(T0,T1_x,T1_y,T1_z,T2_-2,T2_-1,T2_0,T2_+1,T2_+2),
     //              atom_0_frame_1_..., atom_1_frame_0_..., ...].
     std::vector<double> flat(N * T * 9);
     for (std::size_t i = 0; i < N; ++i) {

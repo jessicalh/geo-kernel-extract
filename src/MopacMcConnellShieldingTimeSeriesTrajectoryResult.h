@@ -15,32 +15,32 @@
 // NOT traceless. Per user direction 2026-05-21: "if not traceless
 // write both" — and the methods-accumulate principle.
 //
-// SOURCE STRUCTURE: MopacMcConnellResult.cpp:265 sets
+// SOURCE STRUCTURE: MopacMcConnellResult sets
 //   ca.mopac_mc_shielding_contribution = SphericalTensor::Decompose(M_total);
 // where M_total accumulates the bond-anisotropy kernel
 //   M_ab = 9*cos_theta*d_hat_a*b_hat_b - 3*b_hat_a*b_hat_b - (3*d_hat_a*d_hat_b - delta_ab)
 // weighted by Wiberg bond order. M_total is NOT symmetric-traceless —
 // the antisymmetric part (T1) and trace (T0) are nonzero in general.
 // The per-category T2 totals (T2_backbone, T2_sidechain, T2_aromatic)
-// ARE explicitly symmetrized at lines 252-262, but the overall
+// are explicitly symmetrized before trace projection, but the overall
 // shielding contribution is not. So emit all 9 components and let
 // downstream readers separate T0/T1/T2 channels as needed.
 //
-// SPARSE CADENCE: MopacMcConnellResult attaches via TimedAttach in
-// OperationRunner.cpp:185 (NOT Require). Same gate as TR5/TR6/TR7.
+// SPARSE CADENCE: MopacMcConnellResult attaches via TimedAttach, not
+// RequireConformationResult. Same gate as TR5/TR6/TR7.
 //
 // Emission:
 //   /trajectory/mopac_mc_shielding_time_series/
-//     xyz            (N, T, 9)  float64 — T0, T1_m-1, T1_m0, T1_m+1,
+//     xyz            (N, T, 9)  float64 — T0, T1_x, T1_y, T1_z,
 //                                          T2_m-2, T2_m-1, T2_m0, T2_m+1,
 //                                          T2_m+2  (Å⁻³)
-//     T0 channel: trace(M_total)/3 = bond-order-weighted sum of
-//       McConnell f-scalars (matches mopac_mc_co_sum +
-//       mopac_mc_cn_sum + mopac_mc_sidechain_sum + mopac_mc_aromatic_sum
-//       per the M kernel structure).
+//     T0 channel: trace(M_total)/3 from all bond categories that enter
+//       M_total. The named mopac_mc_*_sum scalars cover the named CO,
+//       CN, sidechain-CO, and aromatic scalar subsets, not every T0
+//       contributor.
 //     T1 channel: antisymmetric pseudovector from the McConnell
-//       cross-coupling 9·cos_θ·d̂_a·b̂_b - 3·b̂_a·b̂_b (these are
-//       the asymmetric outer-product terms — d̂×b̂-flavoured).
+//       cross-coupling 9·cos_θ·d̂_a·b̂_b; the b̂⊗b̂ and d̂⊗d̂ terms
+//       are symmetric and contribute only to T0/T2.
 //     T2 channel: symmetric traceless McConnell tensor — the
 //       canonical bond-anisotropy contribution.
 //     frame_indices  (T,)       uint64
