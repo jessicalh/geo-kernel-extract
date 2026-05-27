@@ -9,15 +9,15 @@
 // decomposed GEOMETRIC KERNEL, not the parameterised ppm shielding.
 // Pre-existing naming drift across most classical calcs — see
 // OBJECT_MODEL.md "Calculator Shielding Contribution Contract drift".
-// Units: G tensor is Å⁻⁵ per PiQuadrupoleResult.cpp:43 (the related
-// Buckingham scalar A-term is Å⁻⁴; do not confuse).
+// Units: G tensor is Å⁻⁵; the related Buckingham scalar A-term is
+// Å⁻⁴, so do not confuse the two.
 //
 // **T0 is structurally zero.** The EFG kernel is analytically traceless
 // by Laplace's equation (Stone, *Theory of Intermolecular Forces*,
-// OUP 2013, Ch. 3; see PiQuadrupoleResult.cpp:40-44, asserted at
-// tests/test_pi_quadrupole_result.cpp:475-476). All physical signal
-// lives in T2. Downstream consumers reading this TR's H5 output
-// should compute statistics on the 5 T2 components, not T0.
+// OUP 2013, Ch. 3; see PiQuadrupoleResult's derivation and the
+// tracelessness test). All physical signal lives in T2. Downstream
+// consumers reading this TR's H5 output should compute statistics on
+// the 5 T2 components, not T0.
 //
 // Source is PiQuadrupoleResult, unconditionally attached in
 // PerFrameExtractionSet. No source-attached gate.

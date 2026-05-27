@@ -5,13 +5,15 @@
 // SphericalTensor. Finalize-only dense-buffer pattern, same as
 // PositionsTimeSeriesTrajectoryResult but with a tensor payload.
 //
-// Canonical worked example for SphericalTensor time-series emission.
-// Every *ShieldingTimeSeriesTrajectoryResult that follows (McConnell,
-// HaighMallion, RingSusceptibility, PiQuadrupole, Dispersion, HBond,
-// Coulomb, APBS, AIMNet2) clones this shape against its own source
-// field on ConformationAtom and its own calculator-specific parity.
+// Canonical worked example for full SphericalTensor time-series
+// emission. Full-tensor shielding time-series results such as
+// McConnell, HaighMallion, RingSusceptibility, PiQuadrupole,
+// Dispersion, HBond, and MOPAC McConnell clone this shape against
+// their own source field on ConformationAtom and their own
+// calculator-specific parity. Pure-T2 EFG results use a narrower
+// T2-only shape.
 //
-// Emission pins the e3nn-compatible convention:
+// Emission uses the SphericalTensor::PackFull9 payload order:
 //
 //   /trajectory/bs_shielding_time_series/
 //     xyz            (N, T, 9)  float64
@@ -30,9 +32,8 @@
 // normal with a magnetic field. B is an axial (pseudo) vector, n is
 // an axial vector, but the rank-2 shielding tensor's antisymmetric
 // part is a parity-odd pseudovector in the e3nn Irreps convention
-// (1o). Every future magnetic-kernel shielding TR has the same
-// parity; Coulomb / APBS EFG (which are symmetric traceless, T1=0)
-// use parity "0e+1e+2e".
+// (1o). Magnetic-kernel shielding TRs use the same parity. Pure EFG
+// emitters with structural T0/T1 zeros emit only T2 with even parity.
 //
 
 #include "DenseBuffer.h"

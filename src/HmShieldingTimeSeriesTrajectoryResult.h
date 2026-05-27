@@ -9,7 +9,7 @@
 // Source is HaighMallionResult, unconditionally attached in
 // PerFrameExtractionSet. No source-attached gate.
 //
-// Emission pins the e3nn-compatible convention:
+// Emission uses the SphericalTensor::PackFull9 payload order:
 //
 //   /trajectory/hm_shielding_time_series/
 //     xyz            (N, T, 9)  float64

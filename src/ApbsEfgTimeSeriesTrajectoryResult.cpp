@@ -27,9 +27,9 @@ ApbsEfgTimeSeriesTrajectoryResult::Create(const TrajectoryProtein& tp) {
 // ── Compute ──────────────────────────────────────────────────────
 //
 // Source-attached gate: in production ApbsFieldResult is
-// RequireConformationResult'd in PerFrameExtractionSet
-// (RunConfiguration.cpp:157), so HasResult<ApbsFieldResult>() is
-// always true here. The gate is defensive — if a non-standard
+// RequireConformationResult'd in PerFrameExtractionSet, so
+// HasResult<ApbsFieldResult>() is always true here. The gate is
+// defensive — if a non-standard
 // RunConfiguration omits the Require, this TR NaN-fills the absent
 // frames and records mask=0 instead of capturing the zero-default
 // apbs_efg_spherical (canonical "absent, not faked" — see
@@ -119,16 +119,15 @@ void ApbsEfgTimeSeriesTrajectoryResult::Finalize(TrajectoryProtein& tp,
 // ── WriteH5Group ─────────────────────────────────────────────────
 //
 // Flat (N · T · 5) double array via explicit T2[k] component access.
-// T2-only emission per the 2026-05-18 EFG schema rev (task #166):
-// APBS EFG = Hessian of φ is rank-2 symmetric-traceless after the
-// Poisson tracelessness projection applied at source
-// (ApbsFieldResult.cpp:262-272), so T0 and T1 are structurally zero.
+// T2-only emission: APBS EFG is rank-2 symmetric-traceless after the
+// symmetrization and trace projection applied at source, so T0 and T1
+// are structurally zero.
 //
 // The 5-component trailing axis is the e3nn real-spherical
 // (l=2, m=-2 ... m=+2) ordering matching SphericalTensor::T2 layout.
 // The (irrep_layout, normalization, parity, units) attrs pin the
 // convention for downstream Python consumers — parity "2e" because
-// the Hessian of a parity-even scalar is parity-even rank-2.
+// the gradient of a polar vector is an even-parity rank-2 tensor.
 
 void ApbsEfgTimeSeriesTrajectoryResult::WriteH5Group(
         const TrajectoryProtein& tp,

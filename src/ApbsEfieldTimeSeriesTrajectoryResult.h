@@ -5,8 +5,8 @@
 // (ConformationAtom::apbs_efield, V/Angstrom). FO dense-buffer
 // pattern with Vec3 payload (clones PositionsTimeSeriesTrajectoryResult
 // shape against the apbs_efield field). ApbsFieldResult is
-// unconditionally attached in PerFrameExtractionSet
-// (RunConfiguration.cpp:126); no source-attached gate.
+// unconditionally attached in PerFrameExtractionSet; no
+// source-attached gate.
 //
 // Emission:
 //
