@@ -4,6 +4,17 @@ This map separates build-critical producer material from local state, archives,
 and independent subprojects. It is a packaging aid: if a comment here stops
 matching the tree, fix the tree or fix the comment.
 
+## Target Release Boundary
+
+The long-term public/release repository is `nmr-extract` plus `h5-reader`:
+the binaries, their build/install/test machinery, and the producer Docker path
+for `nmr-extract`. Thesis drafts, literature review material, reference-corpus
+metadata, Mathematica notebooks, meeting notes, and paper-writing artifacts are
+project documents, not release inputs. They should move to a separate private
+docs repository once that migration path exists. Until then, do not delete them
+as housekeeping; either leave them visible or explicitly untrack/ignore them
+while preserving local copies on disk.
+
 ## Active Producer Surface
 
 These paths are part of building, testing, or understanding `nmr_extract`:
@@ -26,7 +37,7 @@ These paths are part of building, testing, or understanding `nmr_extract`:
 | `h5-reader/` | Active desktop reader. It has its own CMake/dependency/distribution process, is being handled separately, and is not part of the producer Docker image. |
 | `learn/` | Independent calibration and analysis workspace. It is ignored/untracked, kept on disk, and should not be treated as producer build input or staged with producer packaging work. |
 | `analysis-speculative/` | Independent scratch/prototype workspace. Keep it on disk, but do not treat it as producer release surface. |
-| `references/`, `references-meta/` | Literature corpus and committed metadata. Derived text/page renders are ignored. |
+| `references/`, `references-meta/` | Literature corpus and metadata. Current repo still contains tracked corpus files, but the target state is a private docs repo. Keep `references/bmrb_data/atom_nom.tbl` accounted for before splitting the corpus, because tests/runtime config still consume it. |
 
 ## Release Noise / Git Policy
 
@@ -39,6 +50,8 @@ explicit Git operation; do not move or delete them as part of producer cleanup.
 | `site/` | Ignored generated/static output from an older documentation pass. It is not the outward-facing site and should not ship as producer release material. |
 | `learn/` | Ignored/untracked independent analysis/calibration workspace, left on disk. |
 | `analysis-speculative/` | Ignored/untracked independent scratch/prototype workspace, left on disk. |
+| `papers/`, `reviews/`, `references/`, `references-meta/` | Thesis/literature-review material. Target is a separate private docs repo; do not make a broad cut until active runtime/test dependencies and source citation policy are separated. |
+| `doc/mathematica/`, `intermediate/`, `meetings/` | Local thesis/math drafting material, ignored and left on disk pending the docs split. |
 
 ## Retired Or Local State
 

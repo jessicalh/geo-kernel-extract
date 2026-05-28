@@ -130,12 +130,11 @@ for work inside it; read that file before modifying the directory.
 - **`doc/`** — `ARCHITECTURE.md` (Tier 1), diagrams, doxygen.
 - **`analysis-speculative/`** — independent scratch/prototype workspace
   kept on disk. It is not producer release surface.
-- **`references/`** — fetched PDFs (committed, citable) + ingest
-  pipeline. `references-text/` (3-page chunks, gitignored) is the
-  AI reading surface; `references-images/` (page renders, gitignored)
-  for figures; `references-meta/` (committed summaries/keywords/INDEX)
-  is the source of truth for the corpus. Discipline in
-  `references-meta/WORKFLOW.md`; the `nmr-scholarship` skill loads it.
+- **`references/` / `references-meta/`** — current local literature
+  corpus and metadata. They are not release surface; target state is a
+  separate private docs repository. `references/bmrb_data/atom_nom.tbl`
+  is still an active runtime/test dependency and must be accounted for
+  before the corpus split.
 - **`data/`** — `calculator_params.toml`, `ff14sb_params.dat`,
   `models/`; read at runtime.
 - **`tests/`** — library + SDK suites. Large fixture and generated-output
@@ -248,11 +247,11 @@ more; none relaxes these.
 
 ### References
 
-- **Save fetched papers to `references/`** — persist the PDF, not just
-  the URL. Run `scripts/references/ingest_pdf.sh` to produce the text
-  chunks, page images, and committed `references-meta/` summary +
-  keywords. Discipline in `references-meta/WORKFLOW.md`; the
-  `nmr-scholarship` skill loads the same rules on demand.
+- **Fetched papers are docs-private material** — keep them local for now,
+  but do not treat new PDFs or reference metadata as release-repo inputs.
+  The durable target is a separate private docs repository; until that
+  exists, avoid broad corpus cuts because a small runtime/test dependency
+  still lives under `references/bmrb_data/`.
 
 ## Operational guardrails
 

@@ -17,6 +17,13 @@ analysis-speculative/
 site/
 ui/
 
+# Local thesis/draft work pending the private-docs split. These are not
+# release inputs for nmr-extract or h5-reader.
+doc/mathematica/
+intermediate/
+meetings/
+papers/annotated-bib/*AutoRecovered*
+
 # Local agent/tool caches and staging directories.
 .cache/
 .codex-skill-dashboard-staging/
@@ -155,15 +162,10 @@ tests/data/sdk_geo_only/
 # paper-archival copies live at /shared/2026Thesis/paper_archive/.
 molprobity_runs/
 
-# Reference-corpus derived files — trivially regenerable from
-# references/*.pdf via scripts/references/ingest_pdf.sh. At ~500
-# papers these would add ~2 GB. Source-of-truth is the PDFs plus
-# the distilled summaries and keywords in references-meta/ (both
-# committed). See scripts/references/README.md.
-references-text/*
-references-images/*
-!references-text/README.md
-!references-images/README.md
+# Reference-corpus derived files. These are local/private-docs material,
+# not release inputs; regenerate from PDFs when needed.
+references-text/
+references-images/
 
 # PDB Chemical Component Dictionary — reference data, freely
 # re-fetchable from wwPDB. ~376 MB uncompressed; see
