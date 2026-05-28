@@ -30,6 +30,7 @@
 #include "io/QtProteinLoader.h"
 
 #include <QApplication>
+#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFile>
 #include <QFileInfo>
@@ -153,7 +154,30 @@ int main(int argc, char* argv[]) {
                               QStringLiteral("A run directory (trajectory or single-pose) "
                                              "or a trajectory.h5 file."),
                               QStringLiteral("<run_path>"));
+    const QCommandLineOption dashboardSmokeOption(
+        QStringLiteral("dashboard-path-smoke"),
+        QStringLiteral("Run the in-app dashboard signal/controller smoke path, then exit."));
+    const QCommandLineOption dashboardStripSmokeOption(
+        QStringLiteral("dashboard-strip-smoke"),
+        QStringLiteral("Alias for --dashboard-path-smoke."));
+    const QCommandLineOption dashboardSmokeFramesOption(
+        QStringLiteral("dashboard-smoke-frames"),
+        QStringLiteral("Number of frames to advance during --dashboard-path-smoke."),
+        QStringLiteral("frames"),
+        QStringLiteral("10"));
+    cli.addOption(dashboardSmokeOption);
+    cli.addOption(dashboardStripSmokeOption);
+    cli.addOption(dashboardSmokeFramesOption);
     cli.process(app);
+
+    bool framesOk = false;
+    const int dashboardSmokeFrames = cli.value(dashboardSmokeFramesOption).toInt(&framesOk);
+    const bool runDashboardSmoke = cli.isSet(dashboardSmokeOption) || cli.isSet(dashboardStripSmokeOption);
+    if (runDashboardSmoke && (!framesOk || dashboardSmokeFrames <= 0)) {
+        qCCritical(cLifecycle).noquote()
+            << "--dashboard-smoke-frames must be a positive integer";
+        return 1;
+    }
 
     const QStringList args = cli.positionalArguments();
     if (args.isEmpty()) {
@@ -184,10 +208,19 @@ int main(int argc, char* argv[]) {
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
 
     // 9. Deferred show — event loop must be running before first render.
-    QTimer::singleShot(0, window, [window]() {
-        window->show();
-        qCInfo(cLifecycle).noquote() << "window shown";
-    });
+    if (runDashboardSmoke) {
+        QTimer::singleShot(0, window, [window, dashboardSmokeFrames]() {
+            window->show();
+            qCInfo(cLifecycle).noquote() << "window shown for dashboard path smoke";
+            const bool ok = window->runDashboardPathSmoke(dashboardSmokeFrames);
+            QCoreApplication::exit(ok ? 0 : 4);
+        });
+    } else {
+        QTimer::singleShot(0, window, [window]() {
+            window->show();
+            qCInfo(cLifecycle).noquote() << "window shown";
+        });
+    }
 
     // 10. Event loop.
     qCInfo(cLifecycle).noquote() << "entering event loop";

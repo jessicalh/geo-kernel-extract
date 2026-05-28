@@ -104,6 +104,14 @@ add_executable(h5reader
     src/model/SpectralAnalysis.cpp
     src/model/SignalDictionary.h
     src/model/SignalDictionary.cpp
+    src/model/DashboardSignal.h
+    src/model/DashboardSignal.cpp
+    src/model/DashboardSignalModel.h
+    src/model/DashboardSignalModel.cpp
+    src/model/TrajectorySignalCatalog.h
+    src/model/TrajectorySignalCatalog.cpp
+    src/model/SignalTimeSeries.h
+    src/model/SignalTimeSeries.cpp
     src/model/StripCalculation.h
     src/model/GeometryStrips.h
     src/model/GeometryStrips.cpp
@@ -175,6 +183,12 @@ add_executable(h5reader
     src/app/SelectionDock.cpp
     src/app/NearbySignalModel.h
     src/app/NearbySignalModel.cpp
+    src/app/SignalDisplayDialog.h
+    src/app/SignalDisplayDialog.cpp
+    src/app/DashboardDisplayController.h
+    src/app/DashboardDisplayController.cpp
+    src/app/DashboardStripDock.h
+    src/app/DashboardStripDock.cpp
     src/app/SignalPickerDock.h
     src/app/SignalPickerDock.cpp
     src/app/QtAtomInspectorDock.h

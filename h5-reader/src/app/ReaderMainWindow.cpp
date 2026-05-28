@@ -13,8 +13,9 @@
 #include "QtRingPolygonOverlay.h"
 #include "QtSelectionOverlay.h"
 #include "SelectionDock.h"
-#include "SignalPickerDock.h"
-#include "StripChartDock.h"
+#include "DashboardStripDock.h"
+#include "DashboardDisplayController.h"
+#include "SignalDisplayDialog.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
@@ -22,8 +23,11 @@
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
 #include "../model/Conformation.h"
+#include "../model/DashboardSignalModel.h"
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
+#include "../model/TrajectoryConformation.h"
+#include "../model/TrajectorySignalCatalog.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -38,6 +42,7 @@
 #include <QProcess>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStringList>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTimer>
@@ -47,10 +52,15 @@
 
 #include <vtkRendererCollection.h>
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 namespace h5reader::app {
 
 namespace {
 Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
+Q_LOGGING_CATEGORY(cDashboardSmoke, "h5reader.dashboard.smoke")
 
 // Locate the DFT campaign's jobs dir relative to the opened run path, by a
 // BOUNDED documented-convention check (not file discovery): the dataset root
@@ -67,6 +77,122 @@ QString locateDftJobsDir(const QString& runPath) {
         if (QFileInfo(cand).isDir()) return QDir(cand).absolutePath();
     }
     return {};
+}
+
+void addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
+                                      model::DashboardSignalModel* activeModel,
+                                      const QString& descriptorId,
+                                      const model::SignalAnchor& anchor,
+                                      const QStringList& displayModes,
+                                      bool followsFocus,
+                                      const QString& label = QString())
+{
+    if (!catalog || !activeModel)
+        return;
+    const model::SignalDescriptor* descriptor = catalog->findDescriptor(descriptorId);
+    if (!descriptor)
+        return;
+    activeModel->addSignal(*descriptor, anchor, QString(), displayModes, followsFocus, label);
+}
+
+bool isStripMode(const QString& mode) {
+    return mode.startsWith(QStringLiteral("strip."));
+}
+
+bool isSmokeStripMode(const QString& mode) {
+    return isStripMode(mode) && mode != QStringLiteral("strip.spectrum");
+}
+
+QStringList stripModesForDescriptor(const model::SignalDescriptor& descriptor) {
+    QStringList modes;
+    for (const QString& mode : model::AllDisplayModes(descriptor)) {
+        if (isStripMode(mode) && !modes.contains(mode))
+            modes.push_back(mode);
+    }
+    return modes;
+}
+
+QStringList smokeStripModesForDescriptor(const model::SignalDescriptor& descriptor) {
+    QStringList modes;
+    for (const QString& mode : stripModesForDescriptor(descriptor)) {
+        if (isSmokeStripMode(mode))
+            modes.push_back(mode);
+    }
+    return modes;
+}
+
+model::SignalAnchor defaultSmokeAnchor(model::SignalAxis axis, const model::QtProtein* protein) {
+    switch (axis) {
+    case model::SignalAxis::Atom:
+        return model::AtomAnchor{0};
+    case model::SignalAxis::Residue:
+        if (protein && protein->atomCount() > 0) {
+            const int residue = protein->atom(0).residueIndex;
+            if (residue >= 0)
+                return model::ResidueAnchor{static_cast<std::size_t>(residue)};
+        }
+        return model::ResidueAnchor{0};
+    case model::SignalAxis::AtomTuple: {
+        std::vector<std::size_t> atoms;
+        const std::size_t n = protein ? std::min<std::size_t>(protein->atomCount(), model::AtomSelection::kMaxAtoms)
+                                      : 0;
+        atoms.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+            atoms.push_back(i);
+        return model::AtomTupleAnchor{std::move(atoms)};
+    }
+    case model::SignalAxis::Bond:
+        return model::BondAnchor{0};
+    case model::SignalAxis::Ring:
+        return model::RingAnchor{0};
+    case model::SignalAxis::AromaticRing:
+        return model::AromaticRingAnchor{0};
+    case model::SignalAxis::SaturatedRing:
+        return model::SaturatedRingAnchor{0};
+    case model::SignalAxis::RingContributionPair:
+        return model::RingContributionPairAnchor{0};
+    case model::SignalAxis::RingMembership:
+        return model::RingMembershipAnchor{0};
+    case model::SignalAxis::MutationMatchPair:
+        return model::MutationMatchPairAnchor{0};
+    case model::SignalAxis::Protein:
+        return model::ProteinAnchor{};
+    case model::SignalAxis::System:
+        return model::SystemAnchor{};
+    case model::SignalAxis::Event:
+        return model::EventAnchor{};
+    case model::SignalAxis::None:
+        return model::NoneAnchor{};
+    }
+    return model::NoneAnchor{};
+}
+
+std::vector<int> dashboardSmokeFrames(const model::Conformation* conformation, int maxFrames) {
+    std::vector<int> frames;
+    if (!conformation)
+        return frames;
+
+    const int totalFrames = static_cast<int>(conformation->frameCount());
+    const int requestedFrames = std::clamp(maxFrames > 0 ? maxFrames : 10, 1, std::max(1, totalFrames));
+
+    if (const auto* trajectory = conformation->asTrajectory()) {
+        const std::vector<std::size_t>& sampledRows = trajectory->sampledFrameRows();
+        if (!sampledRows.empty()) {
+            const int count = std::min<int>(requestedFrames, static_cast<int>(sampledRows.size()));
+            frames.reserve(count);
+            for (int i = 0; i < count; ++i) {
+                if (sampledRows[static_cast<std::size_t>(i)] < static_cast<std::size_t>(totalFrames))
+                    frames.push_back(static_cast<int>(sampledRows[static_cast<std::size_t>(i)]));
+            }
+            if (!frames.empty())
+                return frames;
+        }
+    }
+
+    frames.reserve(requestedFrames);
+    for (int frame = 0; frame < requestedFrames; ++frame)
+        frames.push_back(frame);
+    return frames;
 }
 }  // namespace
 
@@ -173,6 +299,22 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     //                  refreshes the current frame so the spheres reposition.
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
 
+    signalCatalog_ = new model::TrajectorySignalCatalog(this);
+    dashboardSignals_ = new model::DashboardSignalModel(this);
+    signalDisplayDialog_ = new SignalDisplayDialog(this);
+    signalDisplayDialog_->setTrajectorySignalCatalog(signalCatalog_);
+    signalDisplayDialog_->setDashboardSignalModel(dashboardSignals_);
+    signalDisplayDialog_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    signalDisplayDialog_->setSelection(selection_);
+    ACONNECT(playback_, &QtPlaybackController::frameChanged,
+             signalDisplayDialog_, &SignalDisplayDialog::setFrame);
+    addInitialGenericDashboardSignal(signalCatalog_, dashboardSignals_,
+                                     QStringLiteral("npy:dssp_chi"),
+                                     model::ResidueAnchor{},
+                                     {QStringLiteral("strip.per-class")},
+                                     true,
+                                     QStringLiteral("Generic NPY DSSP chi"));
+
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
     ACONNECT(picker_, &QtAtomPicker::atomPicked,
@@ -186,6 +328,15 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
     ACONNECT(selection_, &model::AtomSelection::cleared,
              timeSeriesDock_, &QtAtomTimeSeriesDock::clearSelection);
+    const auto updateMetricAction = [this]() {
+        if (signalDisplaysAction_)
+            signalDisplaysAction_->setEnabled(selection_ && selection_->hasFocus());
+    };
+    ACONNECT(selection_, &model::AtomSelection::focusChanged, this, [updateMetricAction](std::size_t) {
+        updateMetricAction();
+    });
+    ACONNECT(selection_, &model::AtomSelection::cleared, this, updateMetricAction);
+    updateMetricAction();
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -206,44 +357,29 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     tabifyDockWidget(inspectorDock_, selectionDock_);
     inspectorDock_->raise();
 
-    // Signal picker — discovery surface for dashboard strips. It follows the
-    // focus atom while Live is checked, builds a nearby atom/residue candidate
-    // set by radius, and lists signal keys/display modes that can become pinned
-    // dashboard strips in the next increment. It does not mutate AtomSelection.
-    signalPickerDock_ = new SignalPickerDock(this);
-    signalPickerDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
-    signalPickerDock_->setSelection(selection_);
-    addDockWidget(Qt::RightDockWidgetArea, signalPickerDock_);
-    tabifyDockWidget(inspectorDock_, signalPickerDock_);
+    // Dashboard strips — active signals from SignalDisplayDialog rendered
+    // through one shared strip surface and the shared TimeViewportController.
+    dashboardStripDock_ = new DashboardStripDock(this);
+    dashboardStripDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
+    dashboardStripDock_->setSelection(selection_);
+    dashboardStripDock_->setTimeViewport(timeViewport_);
+    addDockWidget(Qt::RightDockWidgetArea, dashboardStripDock_);
+    tabifyDockWidget(inspectorDock_, dashboardStripDock_);
     inspectorDock_->raise();
 
-    // Strip-chart dock — the trajectory geometry instrument (QtCharts, NOT a
-    // second VTK surface; decision 2026-05-27). Charts the SELECTION's derived
-    // geometry (distance / angle / dihedral) over frames with a scrolling
-    // window, science grids, and a digital readout. setSelection ACONNECTs the
-    // selection's changed()/cleared() itself; playback drives the playhead.
-    stripChartDock_ = new StripChartDock(this);
-    stripChartDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
-    stripChartDock_->setTimeViewport(timeViewport_);
-    stripChartDock_->setSelection(selection_);
-    addDockWidget(Qt::RightDockWidgetArea, stripChartDock_);
-    tabifyDockWidget(inspectorDock_, stripChartDock_);
-    inspectorDock_->raise();
+    ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
+             scene_,              &MoleculeScene::revealBinding);
+    ACONNECT(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
+             this,                &ReaderMainWindow::onOpenSignalDisplays);
+    ACONNECT(playback_,           &QtPlaybackController::frameChanged,
+             dashboardStripDock_, &DashboardStripDock::setFrame);
 
-    ACONNECT(stripChartDock_, &StripChartDock::revealRequested,
-             scene_,          &MoleculeScene::revealBinding);
-    ACONNECT(playback_,       &QtPlaybackController::frameChanged,
-             stripChartDock_, &StripChartDock::setFrame);
-    ACONNECT(playback_,          &QtPlaybackController::frameChanged,
-             signalPickerDock_,  &SignalPickerDock::setFrame);
-
-    // DFT shielding campaign (optional): if the run sits in a dataset with a
-    // sibling dft/jobs directory, wire the per-frame ORCA shielding into the
-    // strip chart's shielding panel. Absent dft/ leaves that panel hidden.
+    // DFT shielding campaign (optional): make the frame-local source available
+    // to descriptor-family samplers. Its presence does not auto-pin a DFT strip.
     if (const QString dftJobs = locateDftJobsDir(loaded_->runPath); !dftJobs.isEmpty()) {
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dftJobs, this);
-        stripChartDock_->setDftStore(dftStore_);
-        signalPickerDock_->setDftStore(dftStore_);
+        dashboardStripDock_->setDftStore(dftStore_);
         qCInfo(cWindow).noquote() << "DFT shielding store wired |" << dftJobs
                                   << "| jobs=" << dftStore_->jobCount();
     }
@@ -297,6 +433,200 @@ ReaderMainWindow::~ReaderMainWindow() {
             << "destructor called without prior shutdown(); running now";
         shutdown();
     }
+}
+
+bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
+    ASSERT_THREAD(this);
+
+    if (!loaded_ || !loaded_->protein || !loaded_->conformation || !playback_
+        || !signalCatalog_ || !dashboardSignals_ || !dashboardStripDock_) {
+        qCCritical(cDashboardSmoke).noquote()
+            << "dashboard path smoke cannot run: main window is not fully wired";
+        return false;
+    }
+
+    playback_->pause();
+
+    const auto atomCount = loaded_->protein->atomCount();
+    if (selection_) {
+        selection_->clear();
+        if (atomCount > 0) {
+            selection_->applyPick(0, Qt::NoModifier);
+            const std::size_t selected = std::min<std::size_t>(atomCount, model::AtomSelection::kMaxAtoms);
+            for (std::size_t atom = 1; atom < selected; ++atom)
+                selection_->applyPick(atom, Qt::ShiftModifier);
+        }
+    }
+
+    playback_->setFrame(0);
+    dashboardStripDock_->setFrame(0);
+
+    dashboardSignals_->clear();
+
+    int stripDescriptorCount = 0;
+    int activatedDescriptorCount = 0;
+    int activatedStripDisplayModeCount = 0;
+    int advertisedStripDisplayModeCount = 0;
+    int advertisedSpectrumModeCount = 0;
+    int skippedSpectrumOnlyCount = 0;
+    int bindFailureCount = 0;
+    for (const model::SignalDescriptor& descriptor : signalCatalog_->descriptorList()) {
+        const QStringList stripModes = stripModesForDescriptor(descriptor);
+        if (stripModes.isEmpty())
+            continue;
+
+        ++stripDescriptorCount;
+        advertisedStripDisplayModeCount += stripModes.size();
+        for (const QString& mode : stripModes) {
+            if (mode == QStringLiteral("strip.spectrum"))
+                ++advertisedSpectrumModeCount;
+        }
+
+        const QStringList smokeModes = smokeStripModesForDescriptor(descriptor);
+        if (smokeModes.isEmpty()) {
+            ++skippedSpectrumOnlyCount;
+            continue;
+        }
+
+        const model::SignalAxis anchorAxis = descriptor.requiredAnchor != model::SignalAxis::None
+                                                 ? descriptor.requiredAnchor
+                                                 : descriptor.nativeAxis;
+        const QString label = descriptor.label.isEmpty() ? descriptor.id : descriptor.label;
+        const model::SignalAnchor anchor = defaultSmokeAnchor(anchorAxis, loaded_->protein.get());
+        QStringList acceptedModes;
+        for (const QString& mode : smokeModes) {
+            model::DisplaySignalBinding binding;
+            binding.sourceKind = descriptor.sourceKind;
+            binding.descriptorId = descriptor.id;
+            binding.conceptKey = descriptor.conceptKey;
+            binding.displayModeId = mode;
+            binding.anchor = anchor;
+            binding.followsFocus = false;
+            if (!signalCatalog_->canBind(binding)) {
+                ++bindFailureCount;
+                qCWarning(cDashboardSmoke).noquote()
+                    << "dashboard path smoke descriptor failed binding validation"
+                    << "| descriptor=" << descriptor.id
+                    << "| mode=" << mode
+                    << "| axis=" << model::ToString(anchorAxis);
+                continue;
+            }
+            acceptedModes.push_back(mode);
+        }
+        if (acceptedModes.isEmpty())
+            continue;
+
+        dashboardSignals_->addSignal(descriptor,
+                                     anchor,
+                                     QString(),
+                                     acceptedModes,
+                                     false,
+                                     QStringLiteral("[smoke %1] %2 | %3 | %4 | %5 mode%6")
+                                         .arg(activatedDescriptorCount + 1, 3, 10, QChar('0'))
+                                         .arg(label,
+                                              model::ToString(descriptor.sourceKind),
+                                              model::ToString(anchorAxis),
+                                              QString::number(acceptedModes.size()),
+                                              acceptedModes.size() == 1 ? QString() : QStringLiteral("s")));
+        ++activatedDescriptorCount;
+        activatedStripDisplayModeCount += acceptedModes.size();
+    }
+
+    const std::vector<int> framesToRun = dashboardSmokeFrames(loaded_->conformation.get(), maxFrames);
+    const int firstFrame = framesToRun.empty() ? 0 : framesToRun.front();
+    const int lastFrame = framesToRun.empty() ? 0 : framesToRun.back();
+    const long long expectedBufferFrames = framesToRun.empty() ? 0LL : static_cast<long long>(lastFrame) + 1;
+
+    qCInfo(cDashboardSmoke).noquote()
+        << "dashboard path smoke started"
+        << "| catalog_descriptors=" << signalCatalog_->descriptorList().size()
+        << "| strip_descriptors=" << stripDescriptorCount
+        << "| active_descriptors=" << activatedDescriptorCount
+        << "| active_strip_display_modes=" << activatedStripDisplayModeCount
+        << "| advertised_strip_display_modes=" << advertisedStripDisplayModeCount
+        << "| advertised_spectrum_modes=" << advertisedSpectrumModeCount
+        << "| skipped_spectrum_only=" << skippedSpectrumOnlyCount
+        << "| bind_failures=" << bindFailureCount
+        << "| active_signals=" << dashboardSignals_->rowCount()
+        << "| visited_frames=" << framesToRun.size()
+        << "| first_frame=" << firstFrame
+        << "| last_frame=" << lastFrame
+        << "| buffer_frames=" << expectedBufferFrames;
+
+    int playbackFramesObserved = 0;
+    const QMetaObject::Connection frameObserver =
+        QObject::connect(playback_, &QtPlaybackController::frameChanged, this,
+                         [&playbackFramesObserved](int) { ++playbackFramesObserved; });
+
+    int snapshotsResident = 0;
+    int snapshotsAbsent = 0;
+    for (int i = 0; i < static_cast<int>(framesToRun.size()); ++i) {
+        const int frame = framesToRun[static_cast<std::size_t>(i)];
+        loaded_->conformation->requestSnapshot(static_cast<std::size_t>(frame));
+        if (loaded_->conformation->snapshot(static_cast<std::size_t>(frame)))
+            ++snapshotsResident;
+        else
+            ++snapshotsAbsent;
+
+        if (i == 0 && playback_->currentFrame() == frame)
+            dashboardStripDock_->setFrame(frame);
+        else
+            playback_->setFrame(frame);
+    }
+    QObject::disconnect(frameObserver);
+
+    const DashboardSmokeSummary summary = dashboardStripDock_->smokeSummary();
+    const int stripDisplaySinkCount = dashboardStripDock_->stripDisplaySinkCount();
+    const int spectrumDisplaySinkCount = dashboardStripDock_->spectrumDisplaySinkCount();
+    const long long expectedSamples = static_cast<long long>(summary.seriesCount) * expectedBufferFrames;
+
+    qCInfo(cDashboardSmoke).noquote()
+        << "dashboard path smoke summary"
+        << "| series=" << summary.seriesCount
+        << "| strip_display_sinks=" << stripDisplaySinkCount
+        << "| spectrum_display_sinks=" << spectrumDisplaySinkCount
+        << "| with_samples=" << summary.seriesWithSamples
+        << "| with_valid=" << summary.seriesWithValidSamples
+        << "| pending_only=" << summary.seriesPendingOnly
+        << "| mismatched_buffers=" << summary.seriesWithMismatchedBuffers
+        << "| samples=" << summary.samples
+        << "| channel_values=" << summary.channelValues
+        << "| channel_validity=" << summary.channelValidity
+        << "| valid=" << summary.validSamples
+        << "| gaps=" << summary.gapSamples
+        << "| pending_gaps=" << summary.pendingGapSamples
+        << "| source_absent_gaps=" << summary.sourceAbsentGapSamples
+        << "| frame_source_absent_gaps=" << summary.frameSourceAbsentGapSamples
+        << "| anchor_unavailable_gaps=" << summary.anchorUnavailableGapSamples
+        << "| invalid=" << summary.invalidSamples
+        << "| snapshots_resident=" << snapshotsResident
+        << "| snapshots_absent=" << snapshotsAbsent
+        << "| playback_frame_changed=" << playbackFramesObserved;
+
+    if (summary.validSamples == 0) {
+        qCWarning(cDashboardSmoke).noquote()
+            << "dashboard path smoke produced no valid samples; pending gaps are expected until source samplers are wired";
+    }
+
+    const bool ok = stripDescriptorCount > 0
+                    && activatedDescriptorCount > 0
+                    && bindFailureCount == 0
+                    && dashboardSignals_->rowCount() > 0
+                    && summary.seriesCount > 0
+                    && stripDisplaySinkCount == summary.seriesCount
+                    && spectrumDisplaySinkCount == 0
+                    && summary.seriesWithMismatchedBuffers == 0
+                    && summary.invalidSamples == 0
+                    && summary.samples == expectedSamples
+                    && summary.channelValues == expectedSamples
+                    && summary.channelValidity == expectedSamples
+                    && playbackFramesObserved == std::max(0, static_cast<int>(framesToRun.size()) - 1);
+    if (!ok) {
+        qCCritical(cDashboardSmoke).noquote()
+            << "dashboard path smoke failed"
+            << "| expected_samples_at_least=" << expectedSamples;
+    }
+    return ok;
 }
 
 void ReaderMainWindow::shutdown() {
@@ -367,6 +697,14 @@ void ReaderMainWindow::buildToolbar() {
     fpsSpinner_ = new QSpinBox(tb);
     fpsSpinner_->setSuffix(QStringLiteral(" /s"));
     tb->addWidget(fpsSpinner_);
+
+    tb->addSeparator();
+
+    signalDisplaysAction_ = tb->addAction(QStringLiteral("Metrics..."));
+    signalDisplaysAction_->setEnabled(false);
+    signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
+    ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
+             this, &ReaderMainWindow::onOpenSignalDisplays);
 
     tb->addSeparator();
 
@@ -507,6 +845,20 @@ void ReaderMainWindow::onOpenDirectory() {
                                             QStringList{dir});
     if (!ok)
         qCWarning(cWindow).noquote() << "failed to launch a reader for" << dir;
+}
+
+void ReaderMainWindow::onOpenSignalDisplays() {
+    ASSERT_THREAD(this);
+    if (!signalDisplayDialog_)
+        return;
+    if (!selection_ || !selection_->hasFocus())
+        return;
+    if (playback_)
+        signalDisplayDialog_->setFrame(playback_->currentFrame());
+    signalDisplayDialog_->refreshCatalog();
+    signalDisplayDialog_->show();
+    signalDisplayDialog_->raise();
+    signalDisplayDialog_->activateWindow();
 }
 
 }  // namespace h5reader::app

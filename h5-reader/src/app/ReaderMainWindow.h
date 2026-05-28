@@ -33,7 +33,9 @@ struct QtLoadResult;
 
 namespace h5reader::model {
 class AtomSelection;
+class DashboardSignalModel;
 class DftShieldingStore;
+class TrajectorySignalCatalog;
 }
 
 namespace h5reader::app {
@@ -53,6 +55,8 @@ public:
     explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded, QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
 
+    bool runDashboardPathSmoke(int maxFrames = 10);
+
 public slots:
     // Called from aboutToQuit. Stops timers, cancels any workers, and
     // finalises the VTK render window before Qt tears down the GL context.
@@ -71,6 +75,7 @@ private slots:
     void onPlayPauseClicked();
     void onFpsChanged(int fps);
     void onOpenDirectory();
+    void onOpenSignalDisplays();
 
 private:
     void buildUi();
@@ -100,12 +105,16 @@ private:
     // to the inspector/time-series and the set to the measurement overlay.
     model::AtomSelection* selection_ = nullptr;
     class SelectionDock* selectionDock_ = nullptr;
-    class SignalPickerDock* signalPickerDock_ = nullptr;
+    class SignalDisplayDialog* signalDisplayDialog_ = nullptr;
 
-    // Strip-chart dock — the trajectory geometry instrument (QtCharts). Bound to
-    // the selection; charts its derived geometry (distance/angle/dihedral) over
-    // frames. Deliberately NOT a second VTK surface (see StripChartDock.h).
-    class StripChartDock* stripChartDock_ = nullptr;
+    // Scale-first dashboard signal state. AtomSelection supplies focus/context;
+    // this model is the active signal/display set edited by SignalDisplayDialog.
+    model::TrajectorySignalCatalog* signalCatalog_ = nullptr;
+    model::DashboardSignalModel* dashboardSignals_ = nullptr;
+
+    // Unified strip dashboard. SignalDisplayDialog owns selection of active
+    // signals/display modes; this dock renders strip-capable active signals.
+    class DashboardStripDock* dashboardStripDock_ = nullptr;
 
     // DFT shielding provider for the strip chart's shielding panel — constructed
     // only when the run has a dft/ campaign (located by convention from the run
@@ -120,6 +129,7 @@ private:
     QPointer<QAction> showRingsAction_;
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
+    QPointer<QAction> signalDisplaysAction_;
 
     // Status bar labels.
     QPointer<QLabel> proteinLabel_;

@@ -53,6 +53,8 @@ public:
     void setSpectrumTracks(QVector<SpectrumTrack> tracks);
     void setTimeViewport(TimeViewportController* viewport);
     void setCurrentFrame(int frame);
+    int trackCount() const { return tracks_.size(); }
+    int spectrumTrackCount() const { return spectrumTracks_.size(); }
 
 signals:
     void revealRequested(const model::SignalBinding& binding);

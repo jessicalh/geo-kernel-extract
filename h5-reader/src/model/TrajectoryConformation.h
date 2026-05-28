@@ -59,6 +59,7 @@ public:
     // point at where full per-atom detail IS sampled when the cursor sits
     // between emit-stride frames. nullopt if the run emitted no per_frame_npys.
     std::optional<std::size_t> nearestSampledFrame(std::size_t frame) const;
+    const std::vector<std::size_t>& sampledFrameRows() const { return sampledRows_; }
 
 protected:
     std::shared_ptr<const QtConformationSnapshot> loadSnapshot(std::size_t frame) override;
