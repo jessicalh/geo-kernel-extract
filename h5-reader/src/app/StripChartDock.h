@@ -32,14 +32,23 @@
 
 #pragma once
 
+#include "../model/DftSigmaStrips.h"
+#include "../model/SignalDictionary.h"
 #include "../model/StripChartChannel.h"  // ChannelBuffer, ChannelSource
 
 #include <QDockWidget>
+#include <QPointF>
 #include <QPointer>
+#include <QString>
+#include <QVector>
+
+#include <memory>
+#include <optional>
 
 class QCheckBox;
 class QColor;
 class QLabel;
+class QSpinBox;
 class QVBoxLayout;
 
 // Qt 6.2+ merges the QtCharts namespace into the global namespace, so these
@@ -57,6 +66,9 @@ class DftShieldingStore;
 }
 
 namespace h5reader::app {
+
+class TimeViewportController;
+class StripStackWidget;
 
 class StripChartDock final : public QDockWidget {
     Q_OBJECT
@@ -79,6 +91,14 @@ public:
     // trajectory). nullptr leaves the panel hidden (no-DFT runs).
     void setDftStore(model::DftShieldingStore* store);
 
+    // Bind shared time viewport state. Playback still appends values through
+    // setFrame(); this controller owns the visible range/follow mode so future
+    // panels can stay synchronized without talking to this dock directly.
+    void setTimeViewport(TimeViewportController* viewport);
+
+signals:
+    void revealRequested(const model::SignalBinding& binding);
+
 public slots:
     // Playback advanced / scrubbed. Forward motion APPENDS the new frames'
     // values to each track's buffer; backward motion only moves the cursor (the
@@ -95,6 +115,8 @@ public slots:
 
 private slots:
     void onFitToggled(bool on);
+    void onResidueModeToggled(bool on);
+    void onVisibleRangeChanged(int first, int last);
 
 private:
     // One plotted series: its authoritative buffer (the durable half), the
@@ -104,6 +126,7 @@ private:
         model::ChannelBuffer buffer;
         model::ChannelSource source;
         bool                 active = false;
+        std::optional<model::SignalBinding> binding;
 
         // Owned by chart (Qt parent ownership); raw pointers, the QtCharts
         // convention used across the reader's docks.
@@ -122,16 +145,31 @@ private:
 
     void rebuildChannels();             // selection changed: rebind sources + backfill
     void extendTo(int t);               // append source(f) for f in (lastFrame, t]
+    bool extendDenseTrackTo(Track& tr, int t);
     void renderTrack(Track& tr, int t); // visible-window slice + cursor + readout
+    void refreshStackTracks();          // expose active buffers to the custom stack widget
     void rebuildFft();                  // FFT over the structural track's valid prefix
 
     // Bind/rebuild the DFT shielding channel to the current focus atom (called
     // from rebuildChannels when a store is present).
     void bindDftChannel();
+    void clearDftSignalStrips();
+    void bindResidueDihedralChannels();
+    void clearTrack(Track& tr, const QString& readout = QStringLiteral("—"));
+    void clearResidueDihedralChannels();
+    QString atomDisplayLabel(std::size_t atomIdx) const;
+    QString residueDisplayLabel(std::size_t residueIdx) const;
+    QString selectionTupleLabel(const std::vector<std::size_t>& atoms) const;
+    void updateViewportReadout(int first, int last);
+    std::optional<model::SignalBinding> currentDftBinding() const;
+    std::optional<model::SignalBinding> sourceBindingForFft() const;
 
     // ----- Tracks -----
     Track structural_;  // panel 1: the selection's geometry (always present)
     Track dft_;         // panel 2: DFT σ of the focus atom (shown only with a store)
+    std::vector<Track> residueDihedrals_;
+    std::unique_ptr<model::DftSigmaAtomTimeStrip> dftTimeStrip_;
+    std::unique_ptr<model::DftSigmaAtomFftStrip> dftFftStrip_;
 
     // ----- Frequency-domain panel (Qt Charts; small N, bound to structural_) --
     QChart*      fftChart_   = nullptr;
@@ -142,15 +180,26 @@ private:
     QPointer<QLabel> fftReadout_;
 
     QPointer<QCheckBox> fitAllBox_;
+    QPointer<QCheckBox> followBox_;
+    QPointer<QCheckBox> residueModeBox_;
+    QPointer<QSpinBox> windowFramesSpin_;
+    QPointer<QLabel> viewportReadout_;
+    QPointer<StripStackWidget> stackWidget_;
 
     const model::QtProtein*            protein_ = nullptr;
     QPointer<model::Conformation>      conformation_;
     QPointer<model::AtomSelection>     selection_;
     QPointer<model::DftShieldingStore> dftStore_;
+    QPointer<TimeViewportController>   timeViewport_;
 
     int  frame_       = 0;
     bool fitAll_      = false;
+    bool residueMode_ = false;
     int  fftRecomputeAtSize_ = 0;  // throttle: next valid-count at which to redo the FFT
+    QVector<QPointF> fftPoints_;
+    QString fftReadoutText_ = QStringLiteral("—");
+    QVector<QPointF> dftFftPoints_;
+    QString dftFftReadoutText_ = QStringLiteral("—");
 };
 
 }  // namespace h5reader::app

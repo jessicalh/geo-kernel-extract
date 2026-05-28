@@ -40,6 +40,7 @@ namespace h5reader::app {
 
 class MoleculeScene;
 class QtPlaybackController;
+class TimeViewportController;
 
 class ReaderMainWindow final : public QMainWindow {
     Q_OBJECT
@@ -86,6 +87,7 @@ private:
     // Scene + playback.
     MoleculeScene* scene_ = nullptr;
     QtPlaybackController* playback_ = nullptr;
+    TimeViewportController* timeViewport_ = nullptr;
 
     // Atom picker + inspector dock. Picker is an event filter on the
     // VTK widget; inspector is a tabified QDockWidget on the right.
@@ -98,6 +100,7 @@ private:
     // to the inspector/time-series and the set to the measurement overlay.
     model::AtomSelection* selection_ = nullptr;
     class SelectionDock* selectionDock_ = nullptr;
+    class SignalPickerDock* signalPickerDock_ = nullptr;
 
     // Strip-chart dock — the trajectory geometry instrument (QtCharts). Bound to
     // the selection; charts its derived geometry (distance/angle/dihedral) over

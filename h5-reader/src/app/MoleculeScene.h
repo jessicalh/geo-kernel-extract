@@ -46,6 +46,7 @@
 
 #include "../model/Conformation.h"
 #include "../model/QtProtein.h"
+#include "../model/SignalDictionary.h"
 
 #include <QObject>
 #include <QPointer>
@@ -58,6 +59,8 @@
 #include <vtkSmartPointer.h>
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace h5reader::app {
 
@@ -67,6 +70,7 @@ class QtFieldGridOverlay;
 class QtBFieldStreamOverlay;
 class QtSelectionOverlay;
 class MeasurementOverlay;
+class SceneRevealOverlay;
 
 class MoleculeScene final : public QObject {
     Q_OBJECT
@@ -99,6 +103,7 @@ public:
     QtBFieldStreamOverlay*   bfieldStreamOverlay() const { return bfieldStream_; }
     QtSelectionOverlay*      selectionOverlay()   const { return selection_; }
     MeasurementOverlay*      measurementOverlay() const { return measurement_; }
+    SceneRevealOverlay*      revealOverlay()      const { return reveal_; }
 
 public slots:
     // Update atom positions to frame t AND propagate to every overlay.
@@ -118,7 +123,16 @@ public slots:
     // back on — its kernel re-eval needs to run for the current frame.
     void refreshCurrentFrame();
 
+    // Dashboard strip reveal: highlight and camera-focus the atom, residue, or
+    // atom tuple represented by a strip binding without changing AtomSelection.
+    void revealBinding(const model::SignalBinding& binding);
+    void clearReveal();
+
 private:
+    void focusCameraOnReveal(const model::SignalBinding& binding,
+                             const std::vector<std::size_t>& atoms,
+                             int frame);
+
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkMolecule>                  molecule_;
@@ -131,6 +145,7 @@ private:
     QtBFieldStreamOverlay*   bfieldStream_ = nullptr;   // QObject child
     QtSelectionOverlay*      selection_    = nullptr;   // QObject child (dormant; superseded by measurement_)
     MeasurementOverlay*      measurement_  = nullptr;   // QObject child
+    SceneRevealOverlay*      reveal_       = nullptr;   // QObject child
 
     // Computes the centroid of the given frame's atom positions.
     // Used for the camera-follow feature so the molecule stays centred
@@ -140,6 +155,7 @@ private:
     const model::QtProtein*       protein_      = nullptr;
     QPointer<model::Conformation> conformation_;
     int                           currentFrame_ = -1;
+    std::optional<model::SignalBinding> activeRevealBinding_;
 
     // Last centroid the camera was pointed at. Initialised at Build()
     // time from frame 0; every setFrame() translates the camera by the

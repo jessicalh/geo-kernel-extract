@@ -8,10 +8,12 @@
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
 #include "QtPlaybackController.h"
+#include "TimeViewportController.h"
 #include "MeasurementOverlay.h"
 #include "QtRingPolygonOverlay.h"
 #include "QtSelectionOverlay.h"
 #include "SelectionDock.h"
+#include "SignalPickerDock.h"
 #include "StripChartDock.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
@@ -91,11 +93,16 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // the render. Toolbar controls drive the playback.
     const int T = static_cast<int>(loaded_->conformation->frameCount());
     playback_ = new QtPlaybackController(T, this);
+    timeViewport_ = new TimeViewportController(T, this);
 
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              scene_,    &MoleculeScene::setFrame);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              this,      &ReaderMainWindow::onFrameChanged);
+    ACONNECT(playback_,     &QtPlaybackController::frameChanged,
+             timeViewport_, &TimeViewportController::setCurrentFrame);
+    ACONNECT(timeViewport_, &TimeViewportController::playbackFrameRequested,
+             playback_,     &QtPlaybackController::setFrame);
     ACONNECT(playback_, &QtPlaybackController::playingChanged,
              this,      [this](bool playing) {
                  if (playAction_) {
@@ -168,6 +175,8 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
+    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+             scene_,  &MoleculeScene::clearReveal);
 
     ACONNECT(selection_, &model::AtomSelection::focusChanged,
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
@@ -197,6 +206,17 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     tabifyDockWidget(inspectorDock_, selectionDock_);
     inspectorDock_->raise();
 
+    // Signal picker — discovery surface for dashboard strips. It follows the
+    // focus atom while Live is checked, builds a nearby atom/residue candidate
+    // set by radius, and lists signal keys/display modes that can become pinned
+    // dashboard strips in the next increment. It does not mutate AtomSelection.
+    signalPickerDock_ = new SignalPickerDock(this);
+    signalPickerDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    signalPickerDock_->setSelection(selection_);
+    addDockWidget(Qt::RightDockWidgetArea, signalPickerDock_);
+    tabifyDockWidget(inspectorDock_, signalPickerDock_);
+    inspectorDock_->raise();
+
     // Strip-chart dock — the trajectory geometry instrument (QtCharts, NOT a
     // second VTK surface; decision 2026-05-27). Charts the SELECTION's derived
     // geometry (distance / angle / dihedral) over frames with a scrolling
@@ -204,13 +224,18 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // selection's changed()/cleared() itself; playback drives the playhead.
     stripChartDock_ = new StripChartDock(this);
     stripChartDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
+    stripChartDock_->setTimeViewport(timeViewport_);
     stripChartDock_->setSelection(selection_);
     addDockWidget(Qt::RightDockWidgetArea, stripChartDock_);
     tabifyDockWidget(inspectorDock_, stripChartDock_);
     inspectorDock_->raise();
 
+    ACONNECT(stripChartDock_, &StripChartDock::revealRequested,
+             scene_,          &MoleculeScene::revealBinding);
     ACONNECT(playback_,       &QtPlaybackController::frameChanged,
              stripChartDock_, &StripChartDock::setFrame);
+    ACONNECT(playback_,          &QtPlaybackController::frameChanged,
+             signalPickerDock_,  &SignalPickerDock::setFrame);
 
     // DFT shielding campaign (optional): if the run sits in a dataset with a
     // sibling dft/jobs directory, wire the per-frame ORCA shielding into the
@@ -218,6 +243,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     if (const QString dftJobs = locateDftJobsDir(loaded_->runPath); !dftJobs.isEmpty()) {
         dftStore_ = new model::DftShieldingStore(loaded_->protein.get(), dftJobs, this);
         stripChartDock_->setDftStore(dftStore_);
+        signalPickerDock_->setDftStore(dftStore_);
         qCInfo(cWindow).noquote() << "DFT shielding store wired |" << dftJobs
                                   << "| jobs=" << dftStore_->jobCount();
     }

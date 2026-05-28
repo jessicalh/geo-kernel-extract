@@ -102,6 +102,11 @@ add_executable(h5reader
     src/model/ConformationGeometry.cpp
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
+    src/model/SignalDictionary.h
+    src/model/SignalDictionary.cpp
+    src/model/AbstractStrip.h
+    src/model/DftSigmaStrips.h
+    src/model/DftSigmaStrips.cpp
     src/model/StripChartChannel.h
     src/model/DftShielding.h
     src/model/SphericalDecomposition.h
@@ -140,6 +145,8 @@ add_executable(h5reader
     # App layer — window, playback, scene, overlays.
     src/app/QtPlaybackController.h
     src/app/QtPlaybackController.cpp
+    src/app/TimeViewportController.h
+    src/app/TimeViewportController.cpp
     src/app/MoleculeScene.h
     src/app/MoleculeScene.cpp
     src/app/ReaderMainWindow.h
@@ -160,12 +167,20 @@ add_executable(h5reader
     src/app/QtSelectionOverlay.cpp
     src/app/MeasurementOverlay.h
     src/app/MeasurementOverlay.cpp
+    src/app/SceneRevealOverlay.h
+    src/app/SceneRevealOverlay.cpp
     src/app/SelectionDock.h
     src/app/SelectionDock.cpp
+    src/app/NearbySignalModel.h
+    src/app/NearbySignalModel.cpp
+    src/app/SignalPickerDock.h
+    src/app/SignalPickerDock.cpp
     src/app/QtAtomInspectorDock.h
     src/app/QtAtomInspectorDock.cpp
     src/app/QtAtomTimeSeriesDock.h
     src/app/QtAtomTimeSeriesDock.cpp
+    src/app/StripStackWidget.h
+    src/app/StripStackWidget.cpp
     src/app/StripChartDock.h
     src/app/StripChartDock.cpp
 

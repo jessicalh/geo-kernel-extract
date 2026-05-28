@@ -39,6 +39,7 @@ private slots:
 
 private:
     QPointer<QLabel>               header_;
+    QPointer<QLabel>               detail_;
     QPointer<QListView>            list_;
     QPointer<model::AtomSelection> selection_;
 };

@@ -6,6 +6,7 @@
 #include "QtRingPolygonOverlay.h"
 #include "QtSelectionOverlay.h"
 #include "MeasurementOverlay.h"
+#include "SceneRevealOverlay.h"
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
@@ -25,6 +26,9 @@
 #include <vtkNew.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
+
+#include <algorithm>
+#include <cmath>
 
 namespace h5reader::app {
 
@@ -46,6 +50,14 @@ unsigned short VtkBondOrderFor(model::BondOrder o) {
         case BondOrder::Unknown:  return 1;
     }
     return 1;
+}
+
+bool SameRevealBinding(const model::SignalBinding& a, const model::SignalBinding& b) {
+    return a.key == b.key
+        && a.anchorKind == b.anchorKind
+        && a.atom == b.atom
+        && a.residue == b.residue
+        && a.atomTuple == b.atomTuple;
 }
 }  // namespace
 
@@ -195,6 +207,11 @@ void MoleculeScene::Build(const model::QtProtein& protein,
         measurement_ = new MeasurementOverlay(renderer_, renderWindow_, this);
     }
     measurement_->Build(protein, conformation);
+
+    if (!reveal_) {
+        reveal_ = new SceneRevealOverlay(renderer_, this);
+    }
+    reveal_->Build(protein, conformation);
 
     qCInfo(cScene).noquote()
         << "Built molecule + overlays |"
@@ -356,6 +373,7 @@ void MoleculeScene::setFrame(int t) {
     if (bfieldStream_) bfieldStream_->setFrame(t);
     if (selection_)    selection_->setFrame(t);
     if (measurement_)  measurement_->setFrame(t);
+    if (reveal_)       reveal_->setFrame(t);
 
     // Resync near/far clipping planes from THIS FRAME's actual atom
     // bounds (computed above), not from vtkActor::GetBounds() which
@@ -409,6 +427,117 @@ void MoleculeScene::setFrame(int t) {
             << "][" << bounds[2] << "," << bounds[3]
             << "][" << bounds[4] << "," << bounds[5] << "]";
     }
+}
+
+void MoleculeScene::revealBinding(const model::SignalBinding& binding) {
+    ASSERT_THREAD(this);
+    if (!reveal_ || !protein_ || !conformation_)
+        return;
+
+    if (activeRevealBinding_ && SameRevealBinding(*activeRevealBinding_, binding)) {
+        clearReveal();
+        return;
+    }
+
+    const int frame = currentFrame_ >= 0 ? currentFrame_ : 0;
+    reveal_->reveal(binding, frame);
+    if (reveal_->isActive()) {
+        activeRevealBinding_ = binding;
+        focusCameraOnReveal(binding, reveal_->activeAtoms(), frame);
+    } else {
+        activeRevealBinding_.reset();
+    }
+    requestRender();
+}
+
+void MoleculeScene::clearReveal() {
+    ASSERT_THREAD(this);
+    if (!reveal_)
+        return;
+    activeRevealBinding_.reset();
+    reveal_->clear();
+    requestRender();
+}
+
+void MoleculeScene::focusCameraOnReveal(const model::SignalBinding& binding,
+                                        const std::vector<std::size_t>& atoms,
+                                        int frame) {
+    if (!renderer_ || !protein_ || !conformation_ || atoms.empty())
+        return;
+    if (frame < 0 || static_cast<std::size_t>(frame) >= conformation_->frameCount())
+        return;
+
+    auto* camera = renderer_->GetActiveCamera();
+    if (!camera)
+        return;
+
+    auto atomPosition = [this, frame](std::size_t atom) {
+        return conformation_->atomPosition(static_cast<std::size_t>(frame), atom);
+    };
+
+    model::Vec3 center = model::Vec3::Zero();
+    for (std::size_t atom : atoms)
+        center += atomPosition(atom);
+    center /= static_cast<double>(atoms.size());
+
+    double oldFpRaw[3];
+    double oldPosRaw[3];
+    camera->GetFocalPoint(oldFpRaw);
+    camera->GetPosition(oldPosRaw);
+    const model::Vec3 oldFp(oldFpRaw[0], oldFpRaw[1], oldFpRaw[2]);
+    const model::Vec3 oldPos(oldPosRaw[0], oldPosRaw[1], oldPosRaw[2]);
+    const double distance = std::max(12.0, (oldPos - oldFp).norm());
+
+    const bool canLookDownDihedral =
+        binding.anchorKind == model::SignalAnchorKind::AtomTuple && binding.atomTuple.size() >= 4
+        && binding.atomTuple[1] < protein_->atomCount()
+        && binding.atomTuple[2] < protein_->atomCount();
+
+    if (canLookDownDihedral) {
+        const model::Vec3 b = atomPosition(binding.atomTuple[1]);
+        const model::Vec3 c = atomPosition(binding.atomTuple[2]);
+        model::Vec3 axis = c - b;
+        if (axis.norm() > 1e-9) {
+            axis.normalize();
+            center = (b + c) * 0.5;
+
+            model::Vec3 currentView = oldFp - oldPos;
+            if (currentView.norm() > 1e-9)
+                currentView.normalize();
+            const model::Vec3 viewDir = currentView.dot(axis) >= currentView.dot(-axis) ? axis : -axis;
+
+            camera->SetFocalPoint(center.x(), center.y(), center.z());
+            const model::Vec3 pos = center - viewDir * distance;
+            camera->SetPosition(pos.x(), pos.y(), pos.z());
+
+            double oldUpRaw[3];
+            camera->GetViewUp(oldUpRaw);
+            model::Vec3 up(oldUpRaw[0], oldUpRaw[1], oldUpRaw[2]);
+            up -= up.dot(viewDir) * viewDir;
+            if (up.norm() < 1e-6) {
+                up = model::Vec3(0.0, 0.0, 1.0);
+                up -= up.dot(viewDir) * viewDir;
+            }
+            if (up.norm() < 1e-6) {
+                up = model::Vec3(0.0, 1.0, 0.0);
+                up -= up.dot(viewDir) * viewDir;
+            }
+            if (up.norm() > 1e-6) {
+                up.normalize();
+                camera->SetViewUp(up.x(), up.y(), up.z());
+            }
+            camera->OrthogonalizeViewUp();
+            renderer_->ResetCameraClippingRange();
+            return;
+        }
+    }
+
+    const model::Vec3 delta = center - oldFp;
+    camera->SetFocalPoint(center.x(), center.y(), center.z());
+    camera->SetPosition(oldPos.x() + delta.x(),
+                        oldPos.y() + delta.y(),
+                        oldPos.z() + delta.z());
+    renderer_->ResetCameraClippingRange();
 }
 
 }  // namespace h5reader::app
