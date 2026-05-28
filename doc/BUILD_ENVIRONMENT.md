@@ -99,7 +99,7 @@ non-home deployments, set `NMR_TOOLS_TOML=/path/to/nmr_tools.toml`.
 | AmberTools tleap | `tleap` | `NMR_TLEAP`, then `AMBERHOME/bin/tleap` |
 | ff14SB parameter table | `ff14sb_params` | `NMR_FF14SB_PARAMS` |
 | temp directory | `tmpdir` | `NMR_TMPDIR` |
-| BMRB atom-name table | `bmrb_atom_nom` | `NMR_BMRB_ATOM_NOM` |
+| BMRB atom-name table (`data/bmrb_atom_nom.tbl`) | `bmrb_atom_nom` | `NMR_BMRB_ATOM_NOM` |
 | tensorcs15 DSN | `[databases].tensorcs15` | `NMR_TENSORCS15_DSN` |
 | Larsen H-bond grids | `larsen_hbond_grids` | `NMR_LARSEN_HBOND_GRIDS` |
 | UDP log host/port | `[logging].udp_host`, `[logging].udp_port` | `NMR_LOG_UDP_HOST`, `NMR_LOG_UDP_PORT` |

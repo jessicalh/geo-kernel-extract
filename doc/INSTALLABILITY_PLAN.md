@@ -43,7 +43,7 @@ documented locations:
 | AmberTools | `tleap` and `AMBERHOME` or an explicit configured `tleap` path. |
 | APBS | APBS/MALOC/FETK libraries used by the bridge. |
 | Chemistry/support libraries | OpenBabel, DSSP/cifpp, HDF5/curl/zlib/aec/sz, BLAS/LAPACK, OpenMPI, and their ABI-compatible transitives. |
-| Installed data | `ff14sb_params.dat`, `calculator_params.toml`, optional Larsen grids, optional BMRB atom-name table, and configured locations for large model/data assets. |
+| Installed data | `ff14sb_params.dat`, `calculator_params.toml`, BMRB atom-name table, optional Larsen grids, and configured locations for large model/data assets. |
 
 ## Container Shape
 

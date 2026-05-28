@@ -37,7 +37,7 @@ These paths are part of building, testing, or understanding `nmr_extract`:
 | `h5-reader/` | Active desktop reader. It has its own CMake/dependency/distribution process, is being handled separately, and is not part of the producer Docker image. |
 | `learn/` | Independent calibration and analysis workspace. It is ignored/untracked, kept on disk, and should not be treated as producer build input or staged with producer packaging work. |
 | `analysis-speculative/` | Independent scratch/prototype workspace. Keep it on disk, but do not treat it as producer release surface. |
-| `references/`, `references-meta/` | Literature corpus and metadata. Current repo still contains tracked corpus files, but the target state is a private docs repo. Keep `references/bmrb_data/atom_nom.tbl` accounted for before splitting the corpus, because tests/runtime config still consume it. |
+| `references/`, `references-meta/` | Literature corpus and metadata. Current repo still contains tracked corpus files, but the target state is a private docs repo. The BMRB atom-name table was separated into `data/bmrb_atom_nom.tbl` because tests/runtime config consume it; it is not part of the literature-corpus split. |
 
 ## Release Noise / Git Policy
 

@@ -19,7 +19,7 @@
 //                    (resolved from TOML / AMBERHOME / PATH)
 //   tmpdir         — temp files for MOPAC and AmberPreparedChargeSource
 //                    work directories
-//   bmrb_atom_nom  — references/bmrb_data/atom_nom.tbl path; consumed by
+//   bmrb_atom_nom  — data/bmrb_atom_nom.tbl path; consumed by
 //                    CategoryInfoProjection at session start. Empty =
 //                    no atom_nom.tbl-driven names; projection emits AMBER
 //                    names as lookup fallbacks.

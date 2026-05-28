@@ -27,18 +27,21 @@ import pytest
 
 # ── Inputs ────────────────────────────────────────────────────────────
 
-ATOM_NOM_TBL = Path(
-    "/shared/2026Thesis/nmr-shielding/references/bmrb_data/atom_nom.tbl"
-)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+ATOM_NOM_TBL = Path(os.environ.get(
+    "NMR_BMRB_ATOM_NOM",
+    REPO_ROOT / "data/bmrb_atom_nom.tbl",
+))
 
 # Optional: if a recent extraction has atoms_category_info.npy, point at
 # the directory here and the round-trip tests will run against it. The
 # environment override lets CI swap in any extraction without code edits.
 CATEGORY_INFO_NPY = os.environ.get(
     "NMR_CATEGORY_INFO_NPY",
-    "/shared/2026Thesis/nmr-shielding/tests/data/sdk_geo_only/"
-    "1Q8K/1Q8K_10023_01_boltzmann_minimum_8.86e-02_frame001/"
-    "atoms_category_info.npy",
+    str(REPO_ROOT / "tests/data/sdk_geo_only/"
+        "1Q8K/1Q8K_10023_01_boltzmann_minimum_8.86e-02_frame001/"
+        "atoms_category_info.npy"),
 )
 
 

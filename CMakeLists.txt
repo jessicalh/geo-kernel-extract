@@ -896,6 +896,7 @@ install(PROGRAMS
     DESTINATION "${CMAKE_INSTALL_BINDIR}"
     RENAME nmr-run-with-cuda-env)
 install(FILES
+        data/bmrb_atom_nom.tbl
         data/calculator_params.toml
         data/ff14sb_params.dat
     DESTINATION "${NMR_INSTALL_DATA_DIR}")

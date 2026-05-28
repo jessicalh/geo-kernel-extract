@@ -132,9 +132,8 @@ for work inside it; read that file before modifying the directory.
   kept on disk. It is not producer release surface.
 - **`references/` / `references-meta/`** — current local literature
   corpus and metadata. They are not release surface; target state is a
-  separate private docs repository. `references/bmrb_data/atom_nom.tbl`
-  is still an active runtime/test dependency and must be accounted for
-  before the corpus split.
+  separate private docs repository. `data/bmrb_atom_nom.tbl`
+  is active runtime/test data, not literature-corpus material.
 - **`data/`** — `calculator_params.toml`, `ff14sb_params.dat`,
   `models/`; read at runtime.
 - **`tests/`** — library + SDK suites. Large fixture and generated-output
@@ -251,7 +250,7 @@ more; none relaxes these.
   but do not treat new PDFs or reference metadata as release-repo inputs.
   The durable target is a separate private docs repository; until that
   exists, avoid broad corpus cuts because a small runtime/test dependency
-  still lives under `references/bmrb_data/`.
+  now lives under `data/bmrb_atom_nom.tbl`.
 
 ## Operational guardrails
 
