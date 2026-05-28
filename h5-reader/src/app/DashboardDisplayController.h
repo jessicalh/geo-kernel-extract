@@ -135,8 +135,6 @@ private:
                             QVector<ActiveSeries>& series) const;
     QVector<model::ChannelDescriptor> channelsForMode(const model::SignalDescriptor& descriptor,
                                                       const QString& displayModeId) const;
-    model::SignalBinding revealBindingForSignal(const model::DashboardSignal& signal,
-                                                const model::SignalDescriptor& descriptor) const;
     model::SignalAnchor resolvedAnchorForSignal(const model::DashboardSignal& signal,
                                                 const model::SignalDescriptor& descriptor) const;
     QString channelLabel(const model::DashboardSignal& signal,
@@ -147,6 +145,8 @@ private:
                        const model::ChannelDescriptor& channel) const;
     bool seriesIsVisibleInActivePanel(const ActiveSeries& series) const;
     int activePanelSeriesCount() const;
+    void refreshPanelVisibility();
+    void updateStatusText();
     void extendToFrame(int frame);
     QColor colorForIndex(int index) const;
 
@@ -161,6 +161,7 @@ private:
     QVector<ActiveSeries> series_;
     QString statusText_ = QStringLiteral("No active strip signals.");
     int frame_ = 0;
+    int activeStripSignalCount_ = 0;
 };
 
 }  // namespace h5reader::app

@@ -21,13 +21,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "Build type defaulted to RelWithDebInfo")
 endif()
 
-# Qt6 auto-gen — must be set BEFORE add_executable, otherwise Q_OBJECT
-# classes silently fail to generate moc and the link fails with
-# unresolved vtable symbols. Hard-won lesson from the viewer.
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ============================================================================
@@ -36,6 +29,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(Platform-${CMAKE_SYSTEM_NAME})
 include(DiscoverDeps)
+qt_standard_project_setup()
 
 # BuildType-Debug / BuildType-Release exist; RelWithDebInfo + MinSizeRel
 # use CMake's defaults (no module). OPTIONAL so missing modules don't
@@ -46,7 +40,7 @@ include(BuildType-${CMAKE_BUILD_TYPE} OPTIONAL)
 # Target
 # ============================================================================
 
-add_executable(h5reader
+qt_add_executable(h5reader
     # Diagnostics — installed in main() before any Qt construction.
     src/diagnostics/StructuredLogger.h
     src/diagnostics/StructuredLogger.cpp

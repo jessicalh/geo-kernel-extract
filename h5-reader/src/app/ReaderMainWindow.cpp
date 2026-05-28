@@ -908,12 +908,6 @@ void ReaderMainWindow::onPlayPauseClicked() {
     if (playback_) playback_->togglePlayPause();
 }
 
-void ReaderMainWindow::onFpsChanged(int /*fps*/) {
-    // Reserved for future display (e.g., a "current fps" readout that
-    // differs from the requested fps when frame rendering is slower
-    // than the interval).
-}
-
 void ReaderMainWindow::onOpenDirectory() {
     ASSERT_THREAD(this);
     const QString dir = QFileDialog::getExistingDirectory(

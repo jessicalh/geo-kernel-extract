@@ -139,13 +139,6 @@ void AddOptBool(QTreeWidgetItem* p, const QString& name, const std::optional<boo
     AddKV(p, name, v ? (*v ? QStringLiteral("true") : QStringLiteral("false")) : QStringLiteral("—"));
 }
 
-const char* AtomRoleName(model::AtomRole r) {
-    return model::NameForAtomRole(r);
-}
-const char* HybName(model::Hybridisation h) {
-    return model::NameForHybridisation(h);
-}
-
 }  // namespace
 
 QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringLiteral("Atom Inspector"), parent) {

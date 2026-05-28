@@ -584,7 +584,7 @@ void ReadScalarWelford(HighFive::File& file,
                                   channel_name,
                                   n_atoms,
                                   buf->value,
-                                  /*accept_legacy=*/true)) {
+                                  /*accept_legacy_no_prefix=*/true)) {
         WarnShapeMismatch(group_path, QStringLiteral("scalar Welford value channel missing"));
         return;
     }
@@ -1045,39 +1045,6 @@ void ReadDssp8TimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "ss8_legend", buf->ss8_legend);
     TryReadAttributeQ(grp, "hbond_threshold", buf->hbond_threshold);
-    out = std::move(buf);
-}
-
-void ReadPerResidueScalarTimeSeries(HighFive::File& file,
-                                    const char* group_path,
-                                    const char* dataset_name,
-                                    std::size_t n_residues,
-                                    std::unique_ptr<QtPerResidueScalarTimeSeries>& out) {
-    if (!file.exist(group_path)) {
-        WarnGroupAbsent(group_path);
-        return;
-    }
-    auto grp = file.getGroup(group_path);
-    if (!grp.exist(dataset_name)) {
-        WarnShapeMismatch(group_path, QStringLiteral("missing dataset %1").arg(QString::fromUtf8(dataset_name)));
-        return;
-    }
-    auto ds = grp.getDataSet(dataset_name);
-    const auto dims = ds.getDimensions();
-    if (dims.size() != 2 || dims[0] != n_residues) {
-        WarnShapeMismatch(
-            group_path,
-            QStringLiteral("%1 shape != [n_residues=%2, T]").arg(QString::fromUtf8(dataset_name)).arg(n_residues));
-        return;
-    }
-    auto buf = std::make_unique<QtPerResidueScalarTimeSeries>();
-    buf->n_residues = n_residues;
-    buf->n_frames = dims[1];
-    buf->dataset_name = QString::fromUtf8(dataset_name);
-    ReadFlat<double>(ds, buf->data, n_residues * buf->n_frames);
-    TryReadFrameMeta(grp, buf->meta, buf->n_frames, group_path);
-    TryReadAttributeQ(grp, "units", buf->units);
-    TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
 }
 

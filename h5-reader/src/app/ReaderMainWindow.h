@@ -76,7 +76,6 @@ protected:
 private slots:
     void onFrameChanged(int t);
     void onPlayPauseClicked();
-    void onFpsChanged(int fps);
     void onOpenDirectory();
     void onOpenSignalDisplays();
 

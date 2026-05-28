@@ -72,6 +72,12 @@ if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{VCPKG_ROOT})
 endif()
 
 function(h5reader_apply_platform_target_settings target)
+    # qt_add_executable() correctly makes release-style Windows builds GUI
+    # applications. Keep Debug as a console subsystem so structured logging is
+    # visible when the Windows machine is doing first-pass bring-up.
+    set_target_properties(${target} PROPERTIES
+        WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+
     if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
         # MSVC RWDI defaults to /O2 /Ob1 /Zi with no /GL — so cl never
         # sees across TU boundaries, and the BS/HM kernel call chain

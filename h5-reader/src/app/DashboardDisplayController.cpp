@@ -159,7 +159,7 @@ std::optional<std::size_t> anchorRow(const model::SignalAnchor& anchor,
     if (const auto* residue = std::get_if<model::ResidueAnchor>(&anchor)) {
         if (protein && rows == static_cast<int>(protein->atomCount())) {
             if (const auto atom = firstAtomInResidue(protein, residue->residue))
-                return *atom;
+                return atom;
         }
         return inRange(residue->residue);
     }
@@ -361,7 +361,7 @@ SamplePlan frameNpyPlan(const model::SignalDescriptor& descriptor,
                         const QString& displayModeId,
                         const model::SignalAnchor& anchor,
                         const model::QtProtein* protein,
-                        QPointer<model::Conformation> conformation) {
+                        const QPointer<model::Conformation>& conformation) {
     SamplePlan plan;
     plan.needsFrameSnapshot = true;
 
@@ -402,7 +402,7 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
                        const QString& displayModeId,
                        const model::SignalAnchor& anchor,
                        const model::QtProtein* protein,
-                       QPointer<model::Conformation> conformation) {
+                       const QPointer<model::Conformation>& conformation) {
     SamplePlan plan;
     plan.sample = [descriptor, channel, displayModeId, anchor, protein, conformation](std::size_t frame) {
         auto gap = [](model::GapReason reason) {
@@ -894,8 +894,8 @@ SamplePlan dftPlan(const model::SignalDescriptor& descriptor,
                    const QString& displayModeId,
                    const model::SignalAnchor& anchor,
                    const model::QtProtein* protein,
-                   QPointer<model::Conformation> conformation,
-                   QPointer<model::DftShieldingStore> dftStore) {
+                   const QPointer<model::Conformation>& conformation,
+                   const QPointer<model::DftShieldingStore>& dftStore) {
     const std::optional<std::size_t> atom = atomFromAnchor(anchor, protein);
     if (!atom)
         return pendingPlan();
@@ -932,7 +932,7 @@ SamplePlan dftPlan(const model::SignalDescriptor& descriptor,
 SamplePlan geometryPlan(const model::SignalDescriptor& descriptor,
                         const model::SignalAnchor& anchor,
                         const model::QtProtein* protein,
-                        QPointer<model::Conformation> conformation) {
+                        const QPointer<model::Conformation>& conformation) {
     if (descriptor.storagePath == QStringLiteral("atom_displacement")) {
         const std::optional<std::size_t> atom = atomFromAnchor(anchor, protein);
         if (!atom)
@@ -981,7 +981,7 @@ SamplePlan geometryPlan(const model::SignalDescriptor& descriptor,
 SamplePlan topologyPlan(const model::SignalDescriptor& descriptor,
                         const model::SignalAnchor& anchor,
                         const model::QtProtein* protein,
-                        QPointer<model::Conformation> conformation) {
+                        const QPointer<model::Conformation>& conformation) {
     if (descriptor.storagePath != QStringLiteral("bond_length"))
         return pendingPlan();
     const auto* bond = std::get_if<model::BondAnchor>(&anchor);
@@ -1010,8 +1010,8 @@ SamplePlan topologyPlan(const model::SignalDescriptor& descriptor,
 }
 
 SamplePlan selectionEventsPlan(const model::SignalDescriptor& descriptor,
-                               QPointer<model::Conformation> conformation,
-                               QPointer<model::AtomSelection> selection) {
+                               const QPointer<model::Conformation>& conformation,
+                               const QPointer<model::AtomSelection>& selection) {
     SamplePlan plan;
     plan.sample = [descriptor, conformation, selection](std::size_t frame) {
         if (descriptor.storagePath == QStringLiteral("/trajectory/selections")) {
@@ -1044,9 +1044,9 @@ SamplePlan samplePlanFor(const model::DashboardSignal& signal,
                          const QString& displayModeId,
                          const model::SignalAnchor& anchor,
                          const model::QtProtein* protein,
-                         QPointer<model::Conformation> conformation,
-                         QPointer<model::DftShieldingStore> dftStore,
-                         QPointer<model::AtomSelection> selection) {
+                         const QPointer<model::Conformation>& conformation,
+                         const QPointer<model::DftShieldingStore>& dftStore,
+                         const QPointer<model::AtomSelection>& selection) {
     (void)signal;
     switch (descriptor.sourceKind) {
     case model::SignalSourceKind::DenseH5Trajectory:
@@ -1107,17 +1107,19 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
     panelModel_ = panelModel;
     if (panelModel_) {
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
-                 this, [this](const QUuid&) { rebuild(); });
+                 this, [this](const QUuid&) { refreshPanelVisibility(); });
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::displayRefsChanged,
-                 this, [this](const QUuid&) { rebuild(); });
+                 this, [this](const QUuid&) { refreshPanelVisibility(); });
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelAdded,
-                 this, [this](const QUuid&) { rebuild(); });
+                 this, [this](const QUuid&) { refreshPanelVisibility(); });
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelRemoved,
-                 this, [this](const QUuid&, const QVector<model::DashboardDisplayRef>&) { rebuild(); });
+                 this, [this](const QUuid&, const QVector<model::DashboardDisplayRef>&) {
+                     refreshPanelVisibility();
+                 });
         ACONNECT(panelModel_.data(), &QAbstractItemModel::modelReset,
-                 this, &DashboardDisplayController::rebuild);
+                 this, &DashboardDisplayController::refreshPanelVisibility);
     }
-    rebuild();
+    refreshPanelVisibility();
 }
 
 void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
@@ -1349,13 +1351,13 @@ void DashboardDisplayController::rebuild() {
     ASSERT_THREAD(this);
 
     QVector<ActiveSeries> next;
-    int activeStripSignals = 0;
+    activeStripSignalCount_ = 0;
 
     if (catalog_ && activeModel_) {
         for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
             if (!signal.enabled || !hasStripMode(signal.displayModeIds))
                 continue;
-            ++activeStripSignals;
+            ++activeStripSignalCount_;
             const model::SignalDescriptor* descriptor = catalog_->findDescriptor(signal.binding.descriptorId);
             if (!descriptor)
                 continue;
@@ -1369,19 +1371,29 @@ void DashboardDisplayController::rebuild() {
     series_ = std::move(next);
     extendToFrame(frame_);
 
+    updateStatusText();
+    emit stripTracksChanged();
+}
+
+void DashboardDisplayController::refreshPanelVisibility() {
+    ASSERT_THREAD(this);
+    updateStatusText();
+    emit stripTracksChanged();
+}
+
+void DashboardDisplayController::updateStatusText() {
     if (!catalog_ || !activeModel_) {
         statusText_ = QStringLiteral("Dashboard signal model is not connected.");
-    } else if (activeStripSignals == 0) {
+    } else if (activeStripSignalCount_ == 0) {
         statusText_ = QStringLiteral("No active strip display modes.");
     } else {
         const int displayedSeries = activePanelSeriesCount();
         statusText_ = QStringLiteral("%1 displayed signal time series from %2 active strip signal%3.")
                           .arg(displayedSeries)
-                          .arg(activeStripSignals)
-                          .arg(activeStripSignals == 1 ? QString() : QStringLiteral("s"));
+                          .arg(activeStripSignalCount_)
+                          .arg(activeStripSignalCount_ == 1 ? QString() : QStringLiteral("s"));
         statusText_ += QStringLiteral(" Unimplemented sources append explicit pending gaps.");
     }
-    emit stripTracksChanged();
 }
 
 void DashboardDisplayController::buildGenericTracks(const model::DashboardSignal& signal,
@@ -1457,14 +1469,6 @@ DashboardDisplayController::channelsForMode(const model::SignalDescriptor& descr
     if (channels.isEmpty())
         channels = descriptor.channels;
     return channels;
-}
-
-model::SignalBinding
-DashboardDisplayController::revealBindingForSignal(const model::DashboardSignal& signal,
-                                                   const model::SignalDescriptor& descriptor) const {
-    return bindingFromAnchor(descriptor,
-                             resolvedAnchorForSignal(signal, descriptor),
-                             signal.binding.followsFocus);
 }
 
 model::SignalAnchor
