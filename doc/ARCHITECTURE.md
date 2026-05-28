@@ -440,19 +440,21 @@ A GeometryChoice records:
 - Named numbers (distance, intensity, threshold — with units)
 - Which filter rejected, if any
 - An optional field sampler (closure that evaluates the physics
-  at any 3D point, for UI visualisation)
+  at any 3D point, for visualization)
 
 Choices are appended to the conformation's flat geometry_choices
-vector (ProteinConformation.h:143). The UI walks this list,
-follows pointers back into the live model objects, and draws.
+vector (ProteinConformation.h:143). The retired local viewer used
+this list for direct inspection; current supported desktop inspection
+lives in `h5-reader/` and reads emitted H5/sidecar artifacts.
 
 ### OperationLog (UDP)
 
 Operations log structured records via OperationLog (OperationLog.h) —
 UDP (port 9997) when configured, else stderr/file. Each result logs its
 start and completion time and key metrics; calculators with a KernelFilterSet
-also log filter rejection counts (ReportRejections). A listener
-(ui/udp_listen.py) captures the stream for real-time diagnostics.
+also log filter rejection counts (ReportRejections). Local listeners can
+subscribe to the UDP stream for real-time diagnostics; the old `ui/`
+listener is no longer release material.
 
 ---
 
@@ -477,7 +479,7 @@ The core correspondences:
 | Protein is non-movable | Protein.h:44-47 — copy and move deleted |
 | Protonation flows through Protein | Five builder paths, Ring type hierarchy encodes protonation |
 | Typed charge sources | ChargeSource.h — four concrete implementations, no string dispatch |
-| No adapter/wrapper classes | UI reads Protein and ConformationAtom directly (ui/CLAUDE.md) |
+| No adapter/wrapper classes | Producer code exposes Protein and ConformationAtom directly; desktop H5 inspection is a separate reader boundary. |
 | Configuration objects: physics constants at namespace scope | PhysicalConstants.h — constexpr values with comments citing sources |
 
 ---

@@ -82,9 +82,10 @@ those skips into preflight failures.
 `NMR_SCAN_BUILD_DSSP=0` or `NMR_SCAN_BUILD_REDUCE=0` only when those
 dependencies are already provided by the image or machine.
 
-The retired `ui/` viewer is not part of the active producer build. Desktop UI
-work lives in `h5-reader/`, which has its own CMake presets and distribution
-process. `artifacts/test_runner.sh` does not build h5-reader; this keeps
+The retired `ui/` viewer is ignored local archive, not part of the release repo
+or active producer build. Desktop UI work lives in `h5-reader/`, which has its
+own CMake presets and distribution process. `artifacts/test_runner.sh` does not
+build h5-reader; this keeps
 producer/Docker validation separate from desktop Qt/VTK dependency choices.
 
 ## Runtime Config

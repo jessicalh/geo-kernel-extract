@@ -84,9 +84,9 @@ Three stages (`project_three_stages` memory):
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results; not
   yet active.
 
-Viewer/reader: `ui/` is retired to legacy/bones status and is no longer
-part of the active producer build. `h5-reader/` is the desktop trajectory
-reader for emitted H5/sidecar artifacts; next sessions expand the
+Viewer/reader: `ui/` is retired legacy archive, ignored/untracked and no
+longer part of the release repo or active producer build. `h5-reader/` is
+the desktop trajectory reader for emitted H5/sidecar artifacts; next sessions expand the
 time-series illustrator, then handle Windows/macOS distribution on those
 machines. See `h5-reader/notes/POLISH_BACKLOG.md`.
 
@@ -101,8 +101,8 @@ for work inside it; read that file before modifying the directory.
   model. No local `CLAUDE.md`; rules are `spec/CONSTITUTION.md`,
   `PATTERNS.md`, `OBJECT_MODEL.md`. Consumed by downstream tools via
   the NPY/H5/JSON output surface.
-- **`ui/`** — legacy/bones `nmr-viewer`. Not built by the top-level CMake
-  project; do not spend feature work here unless explicitly requested.
+- **`ui/`** — ignored local archive of the retired `nmr-viewer`. Not built
+  by the top-level CMake project and not release surface.
 - **`h5-reader/`** — standalone Qt6/VTK trajectory reader. Does NOT
   link the library; reads the trajectory H5 + 5-NPY topology sidecar
   via its own `QtTrajectoryH5` boundary. Parallel Qt-native type
@@ -163,8 +163,8 @@ for work inside it; read that file before modifying the directory.
   the ctor, named operations on entities are rooms not wrappers, the
   per-frame loop is four lines. Multiple sessions re-derived this
   through tangles — the memory entries exist so future ones don't.
-- **Legacy viewer archaeology.** `cd ui/`, read `ui/CLAUDE.md`. Treat this
-  as bones/archival unless the user explicitly reactivates it.
+- **Legacy viewer archaeology.** `ui/` may exist locally as ignored archive.
+  Treat it as archival unless the user explicitly reactivates it.
 - **Trajectory reader feature.** `cd h5-reader/`, read
   `h5-reader/CLAUDE.md` + `notes/SCOPE.md` + `notes/POLISH_BACKLOG.md`.
   Do not link the library.

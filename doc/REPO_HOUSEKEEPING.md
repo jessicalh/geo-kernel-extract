@@ -44,7 +44,7 @@ explicit Git operation; do not move or delete them as part of producer cleanup.
 
 | Path | Status |
 | --- | --- |
-| `ui/` | Retired legacy viewer. It is not built by the top-level producer CMake. |
+| `ui/` | Ignored local archive of the retired legacy viewer. It is not release surface and is not built by the top-level producer CMake. |
 | `tests/bones/` | Ignored archival test/code/data material. Not part of active CTest discovery. |
 | `bones-make/` | Quarantined stray-root CMake archive/local state. Not an active build tree. |
 | `bad-builds/` | Salvaged old build artifacts. Not source. |
@@ -78,7 +78,7 @@ See `tests/TEST_HEALTH.md` for commands and refresh rules.
 ## Packaging Rules
 
 Do not include local build trees, generated smoke output, `tests/bones/`,
-`bones-make/`, `bad-builds/`, `site/`, `learn/`, `analysis-speculative/`, or
+`bones-make/`, `bad-builds/`, `site/`, `ui/`, `learn/`, `analysis-speculative/`, or
 large local fixture trees in a Docker build context unless a specific image
 needs them.
 
