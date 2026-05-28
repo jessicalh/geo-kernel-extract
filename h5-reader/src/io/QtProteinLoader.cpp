@@ -113,14 +113,17 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
                                                                        sidecar.saturatedRingCount);
 
     // Step 6: build the trajectory conformation. The per-frame snapshot detail
-    // is lazily loaded from per_frame_npys/ (a sibling of trajectory.h5, present
-    // only when the run used --emit-frame-npys); absent → no detail, playback
-    // still runs off the dense H5.
+    // is lazily loaded from a sibling of trajectory.h5. Prefer the canonical
+    // per_frame_npys/ name, but accept the older/current extract/npys/ layout
+    // used by calibration runs. Absent -> no detail; dense H5 still drives
+    // playback.
     QString perFrameNpysDir;
-    {
-        const QString candidate = QStringLiteral("%1/per_frame_npys").arg(sidecar_dir);
-        if (QFileInfo::exists(candidate))
+    for (const QString& name : {QStringLiteral("per_frame_npys"), QStringLiteral("npys")}) {
+        const QString candidate = QStringLiteral("%1/%2").arg(sidecar_dir, name);
+        if (QFileInfo::exists(candidate)) {
             perFrameNpysDir = candidate;
+            break;
+        }
     }
     auto conformation = std::make_unique<h5reader::model::TrajectoryConformation>(protein.get(), std::move(traj),
                                                                                   perFrameNpysDir);
@@ -128,7 +131,7 @@ QtLoadResult QtProteinLoader::Load(const QString& h5_path) {
     qCInfo(cLoader).noquote() << "Loaded" << result.proteinId << "| atoms=" << protein->atomCount()
                               << "| residues=" << protein->residueCount() << "| bonds=" << protein->bondCount()
                               << "| rings=" << protein->ringCount() << "| frames=" << conformation->frameCount()
-                              << "| per_frame_npys=" << (perFrameNpysDir.isEmpty() ? "absent" : "present")
+                              << "| frame_npys=" << (perFrameNpysDir.isEmpty() ? "absent" : perFrameNpysDir)
                               << "| warnings=" << result.decodeWarnings;
 
     result.protein = std::move(protein);
@@ -203,13 +206,16 @@ QtLoadResult QtProteinLoader::LoadPose(const QString& run_dir) {
 QtLoadResult QtProteinLoader::LoadRunPath(const QString& path) {
     QFileInfo fi(path);
     if (fi.isDir()) {
-        // A directory: a trajectory run has trajectory.h5 beside its sidecar;
-        // a single-pose run root does not. This is a documented-convention
-        // presence check (the same QFileInfo::exists Load() uses for the
-        // sidecar), not file discovery / globbing.
-        const QString h5 = QStringLiteral("%1/trajectory.h5").arg(QDir(path).absolutePath());
-        if (QFileInfo::exists(h5))
-            return Load(h5);
+        // A directory: a trajectory run has trajectory.h5 beside its sidecar,
+        // or uses the dataset-root/extract/trajectory.h5 layout. This is a
+        // bounded convention check, not file discovery / globbing.
+        const QDir dir(path);
+        const QString directH5 = QStringLiteral("%1/trajectory.h5").arg(dir.absolutePath());
+        if (QFileInfo::exists(directH5))
+            return Load(directH5);
+        const QString extractH5 = QStringLiteral("%1/extract/trajectory.h5").arg(dir.absolutePath());
+        if (QFileInfo::exists(extractH5))
+            return Load(extractH5);
         return LoadPose(path);
     }
     // A file path: treat it as the trajectory.h5 to load.

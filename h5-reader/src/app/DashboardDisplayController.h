@@ -26,11 +26,47 @@ class TrajectorySignalCatalog;
 namespace h5reader::app {
 
 struct DashboardSmokeSummary {
+    struct SeriesSparseness {
+        QString signalLabel;
+        QString descriptorId;
+        QString conceptKey;
+        QString sourceKind;
+        QString storagePath;
+        QString displayModeId;
+        QString channelId;
+        QString channelLabel;
+        long long samples = 0;
+        long long validSamples = 0;
+        long long gapSamples = 0;
+        long long invalidSamples = 0;
+        long long pendingGapSamples = 0;
+        long long sourceAbsentGapSamples = 0;
+        long long frameSourceAbsentGapSamples = 0;
+        long long sourceMaskOffGapSamples = 0;
+        long long anchorUnavailableGapSamples = 0;
+        long long notApplicableGapSamples = 0;
+        long long nanSentinelGapSamples = 0;
+        long long malformedSourceGapSamples = 0;
+        int firstValidFrame = -1;
+        int lastValidFrame = -1;
+        int longestValidRun = 0;
+        int longestGapRun = 0;
+    };
+
     int seriesCount = 0;
     int seriesWithSamples = 0;
     int seriesWithValidSamples = 0;
     int seriesPendingOnly = 0;
+    int denseSeries = 0;
+    int sparseSeries = 0;
+    int allGapSeries = 0;
+    int seriesWithFrameSourceAbsentGaps = 0;
+    int frameNpySeriesWithFrameSourceAbsentGaps = 0;
+    int orcaDftSeriesWithFrameSourceAbsentGaps = 0;
+    int seriesWithSourceAbsentGaps = 0;
+    int seriesWithAnchorUnavailableGaps = 0;
     int seriesWithMismatchedBuffers = 0;
+    int maxLongestGapRun = 0;
     long long samples = 0;
     long long channelValues = 0;
     long long channelValidity = 0;
@@ -39,8 +75,11 @@ struct DashboardSmokeSummary {
     long long pendingGapSamples = 0;
     long long sourceAbsentGapSamples = 0;
     long long frameSourceAbsentGapSamples = 0;
+    long long frameNpyFrameSourceAbsentGapSamples = 0;
+    long long orcaDftFrameSourceAbsentGapSamples = 0;
     long long anchorUnavailableGapSamples = 0;
     long long invalidSamples = 0;
+    QVector<SeriesSparseness> seriesSparseness;
 };
 
 class DashboardDisplayController final : public QObject {
@@ -66,6 +105,7 @@ public:
 
     QVector<StripTrack> stripTracks() const;
     DashboardSmokeSummary smokeSummary() const;
+    DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;
     QString statusText() const { return statusText_; }
 
 public slots:

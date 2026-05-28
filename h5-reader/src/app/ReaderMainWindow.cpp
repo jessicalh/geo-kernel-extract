@@ -175,30 +175,21 @@ model::SignalAnchor defaultSmokeAnchor(model::SignalAxis axis, const model::QtPr
     return model::NoneAnchor{};
 }
 
-std::vector<int> dashboardSmokeFrames(const model::Conformation* conformation, int maxFrames) {
+std::vector<int> dashboardSmokeFrames(const model::Conformation* conformation,
+                                      int firstFrame,
+                                      int frameCount) {
     std::vector<int> frames;
     if (!conformation)
         return frames;
 
     const int totalFrames = static_cast<int>(conformation->frameCount());
-    const int requestedFrames = std::clamp(maxFrames > 0 ? maxFrames : 10, 1, std::max(1, totalFrames));
+    if (totalFrames <= 0 || firstFrame < 0 || firstFrame >= totalFrames)
+        return frames;
 
-    if (const auto* trajectory = conformation->asTrajectory()) {
-        const std::vector<std::size_t>& sampledRows = trajectory->sampledFrameRows();
-        if (!sampledRows.empty()) {
-            const int count = std::min<int>(requestedFrames, static_cast<int>(sampledRows.size()));
-            frames.reserve(count);
-            for (int i = 0; i < count; ++i) {
-                if (sampledRows[static_cast<std::size_t>(i)] < static_cast<std::size_t>(totalFrames))
-                    frames.push_back(static_cast<int>(sampledRows[static_cast<std::size_t>(i)]));
-            }
-            if (!frames.empty())
-                return frames;
-        }
-    }
-
+    const int availableFrames = totalFrames - firstFrame;
+    const int requestedFrames = std::clamp(frameCount > 0 ? frameCount : 10, 1, availableFrames);
     frames.reserve(requestedFrames);
-    for (int frame = 0; frame < requestedFrames; ++frame)
+    for (int frame = firstFrame; frame < firstFrame + requestedFrames; ++frame)
         frames.push_back(frame);
     return frames;
 }
@@ -454,7 +445,9 @@ ReaderMainWindow::~ReaderMainWindow() {
     }
 }
 
-bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
+bool ReaderMainWindow::runDashboardPathSmoke(int firstFrame,
+                                             int frameCount,
+                                             bool requireFrameSnapshots) {
     ASSERT_THREAD(this);
 
     if (!loaded_ || !loaded_->protein || !loaded_->conformation || !playback_
@@ -555,10 +548,15 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         activatedStripDisplayModeCount += acceptedModes.size();
     }
 
-    const std::vector<int> framesToRun = dashboardSmokeFrames(loaded_->conformation.get(), maxFrames);
-    const int firstFrame = framesToRun.empty() ? 0 : framesToRun.front();
-    const int lastFrame = framesToRun.empty() ? 0 : framesToRun.back();
-    const long long expectedBufferFrames = framesToRun.empty() ? 0LL : static_cast<long long>(lastFrame) + 1;
+    const std::vector<int> framesToRun = dashboardSmokeFrames(loaded_->conformation.get(),
+                                                              firstFrame,
+                                                              frameCount);
+    const int smokeFirstFrame = framesToRun.empty() ? -1 : framesToRun.front();
+    const int smokeLastFrame = framesToRun.empty() ? -1 : framesToRun.back();
+    const long long expectedWindowFrames = static_cast<long long>(framesToRun.size());
+    const long long expectedBufferFrames = framesToRun.empty()
+                                               ? 0LL
+                                               : static_cast<long long>(smokeLastFrame) + 1;
 
     qCInfo(cDashboardSmoke).noquote()
         << "dashboard path smoke started"
@@ -572,11 +570,17 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         << "| bind_failures=" << bindFailureCount
         << "| active_signals=" << dashboardSignals_->rowCount()
         << "| visited_frames=" << framesToRun.size()
-        << "| first_frame=" << firstFrame
-        << "| last_frame=" << lastFrame
+        << "| require_frame_snapshots=" << requireFrameSnapshots
+        << "| requested_first_frame=" << firstFrame
+        << "| requested_frames=" << frameCount
+        << "| window_first_frame=" << smokeFirstFrame
+        << "| window_last_frame=" << smokeLastFrame
+        << "| window_frames=" << expectedWindowFrames
+        << "| prefix_backfill_frames=" << std::max(0, smokeFirstFrame)
         << "| buffer_frames=" << expectedBufferFrames;
 
     int playbackFramesObserved = 0;
+    int playbackFramesExpected = 0;
     const QMetaObject::Connection frameObserver =
         QObject::connect(playback_, &QtPlaybackController::frameChanged, this,
                          [&playbackFramesObserved](int) { ++playbackFramesObserved; });
@@ -591,17 +595,19 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         else
             ++snapshotsAbsent;
 
-        if (i == 0 && playback_->currentFrame() == frame)
+        if (playback_->currentFrame() == frame) {
             dashboardStripDock_->setFrame(frame);
-        else
+        } else {
+            ++playbackFramesExpected;
             playback_->setFrame(frame);
+        }
     }
     QObject::disconnect(frameObserver);
 
-    const DashboardSmokeSummary summary = dashboardStripDock_->smokeSummary();
+    const DashboardSmokeSummary summary = dashboardStripDock_->smokeSummary(smokeFirstFrame, smokeLastFrame);
     const int stripDisplaySinkCount = dashboardStripDock_->stripDisplaySinkCount();
     const int spectrumDisplaySinkCount = dashboardStripDock_->spectrumDisplaySinkCount();
-    const long long expectedSamples = static_cast<long long>(summary.seriesCount) * expectedBufferFrames;
+    const long long expectedSamples = static_cast<long long>(summary.seriesCount) * expectedWindowFrames;
 
     qCInfo(cDashboardSmoke).noquote()
         << "dashboard path smoke summary"
@@ -611,6 +617,15 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         << "| with_samples=" << summary.seriesWithSamples
         << "| with_valid=" << summary.seriesWithValidSamples
         << "| pending_only=" << summary.seriesPendingOnly
+        << "| dense_series=" << summary.denseSeries
+        << "| sparse_series=" << summary.sparseSeries
+        << "| all_gap_series=" << summary.allGapSeries
+        << "| frame_source_absent_series=" << summary.seriesWithFrameSourceAbsentGaps
+        << "| frame_npy_frame_source_absent_series=" << summary.frameNpySeriesWithFrameSourceAbsentGaps
+        << "| orca_dft_frame_source_absent_series=" << summary.orcaDftSeriesWithFrameSourceAbsentGaps
+        << "| source_absent_series=" << summary.seriesWithSourceAbsentGaps
+        << "| anchor_unavailable_series=" << summary.seriesWithAnchorUnavailableGaps
+        << "| max_gap_run=" << summary.maxLongestGapRun
         << "| mismatched_buffers=" << summary.seriesWithMismatchedBuffers
         << "| samples=" << summary.samples
         << "| channel_values=" << summary.channelValues
@@ -620,18 +635,60 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         << "| pending_gaps=" << summary.pendingGapSamples
         << "| source_absent_gaps=" << summary.sourceAbsentGapSamples
         << "| frame_source_absent_gaps=" << summary.frameSourceAbsentGapSamples
+        << "| frame_npy_frame_source_absent_gaps=" << summary.frameNpyFrameSourceAbsentGapSamples
+        << "| orca_dft_frame_source_absent_gaps=" << summary.orcaDftFrameSourceAbsentGapSamples
         << "| anchor_unavailable_gaps=" << summary.anchorUnavailableGapSamples
         << "| invalid=" << summary.invalidSamples
         << "| snapshots_resident=" << snapshotsResident
         << "| snapshots_absent=" << snapshotsAbsent
-        << "| playback_frame_changed=" << playbackFramesObserved;
+        << "| playback_frame_changed=" << playbackFramesObserved
+        << "| expected_playback_frame_changed=" << playbackFramesExpected;
+
+    for (const DashboardSmokeSummary::SeriesSparseness& s : summary.seriesSparseness) {
+        if (s.samples == 0 || (s.gapSamples == 0 && s.invalidSamples == 0))
+            continue;
+        const QString channel = s.channelLabel.isEmpty() ? s.channelId : s.channelLabel;
+        const double validPct = s.samples > 0
+                                    ? 100.0 * static_cast<double>(s.validSamples) / static_cast<double>(s.samples)
+                                    : 0.0;
+        qCInfo(cDashboardSmoke).noquote()
+            << "dashboard signal coverage"
+            << "| label=" << s.signalLabel
+            << "| descriptor=" << s.descriptorId
+            << "| concept=" << s.conceptKey
+            << "| source=" << s.sourceKind
+            << "| storage=" << s.storagePath
+            << "| display=" << s.displayModeId
+            << "| channel=" << channel
+            << "| samples=" << s.samples
+            << "| valid=" << s.validSamples
+            << "| valid_pct=" << QString::number(validPct, 'f', 1)
+            << "| gaps=" << s.gapSamples
+            << "| invalid=" << s.invalidSamples
+            << "| first_valid=" << s.firstValidFrame
+            << "| last_valid=" << s.lastValidFrame
+            << "| longest_valid_run=" << s.longestValidRun
+            << "| longest_gap_run=" << s.longestGapRun
+            << "| pending=" << s.pendingGapSamples
+            << "| source_absent=" << s.sourceAbsentGapSamples
+            << "| frame_source_absent=" << s.frameSourceAbsentGapSamples
+            << "| source_mask_off=" << s.sourceMaskOffGapSamples
+            << "| anchor_unavailable=" << s.anchorUnavailableGapSamples
+            << "| not_applicable=" << s.notApplicableGapSamples
+            << "| nan=" << s.nanSentinelGapSamples
+            << "| malformed=" << s.malformedSourceGapSamples;
+    }
 
     if (summary.validSamples == 0) {
         qCWarning(cDashboardSmoke).noquote()
             << "dashboard path smoke produced no valid samples; pending gaps are expected until source samplers are wired";
     }
 
+    const bool frameSnapshotRequirementOk =
+        !requireFrameSnapshots || (snapshotsAbsent == 0 && summary.frameNpyFrameSourceAbsentGapSamples == 0);
+
     const bool ok = stripDescriptorCount > 0
+                    && !framesToRun.empty()
                     && activatedDescriptorCount > 0
                     && bindFailureCount == 0
                     && dashboardSignals_->rowCount() > 0
@@ -643,11 +700,13 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
                     && summary.samples == expectedSamples
                     && summary.channelValues == expectedSamples
                     && summary.channelValidity == expectedSamples
-                    && playbackFramesObserved == std::max(0, static_cast<int>(framesToRun.size()) - 1);
+                    && playbackFramesObserved == playbackFramesExpected
+                    && frameSnapshotRequirementOk;
     if (!ok) {
         qCCritical(cDashboardSmoke).noquote()
             << "dashboard path smoke failed"
-            << "| expected_samples_at_least=" << expectedSamples;
+            << "| expected_samples=" << expectedSamples
+            << "| frame_snapshot_requirement_ok=" << frameSnapshotRequirementOk;
     }
     return ok;
 }

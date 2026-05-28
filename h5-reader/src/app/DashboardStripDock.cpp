@@ -215,6 +215,12 @@ DashboardSmokeSummary DashboardStripDock::smokeSummary() const {
     return controller_->smokeSummary();
 }
 
+DashboardSmokeSummary DashboardStripDock::smokeSummary(int firstFrame, int lastFrame) const {
+    if (!controller_)
+        return {};
+    return controller_->smokeSummary(firstFrame, lastFrame);
+}
+
 int DashboardStripDock::stripDisplaySinkCount() const {
     return stackWidget_ ? stackWidget_->trackCount() : 0;
 }

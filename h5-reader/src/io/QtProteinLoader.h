@@ -4,7 +4,7 @@
 // Two entry points, one per run shape (decided 2026-05-26):
 //   Load(h5_path)     — a --trajectory run: sidecar + trajectory.h5 ->
 //                       QtProtein + TrajectoryConformation (N frames, dense H5,
-//                       lazy per-frame snapshots from per_frame_npys/).
+//                       lazy per-frame snapshots from per_frame_npys/ or npys/).
 //   LoadPose(run_dir) — a single-pose run (--orca / --mutant / --pdb): sidecar +
 //                       the flat run-root per-atom NPYs -> QtProtein +
 //                       SingleConformation (one frame, no H5).
@@ -42,8 +42,8 @@ struct QtLoadResult {
 class QtProteinLoader {
 public:
     // h5_path is the absolute path to trajectory.h5. The sidecar (5 NPYs +
-    // extraction_manifest.json) and per_frame_npys/ are found in the same
-    // directory by canonical name — per feedback_no_file_discovery, no globbing.
+    // extraction_manifest.json) and frame snapshot directory are found in the
+    // same directory by bounded convention: per_frame_npys/ first, then npys/.
     static QtLoadResult Load(const QString& h5_path);
 
     // run_dir is a single-pose run root holding the 5 sidecar NPYs +
@@ -52,9 +52,10 @@ public:
     static QtLoadResult LoadPose(const QString& run_dir);
 
     // Sniff a run path and dispatch by documented convention (NOT globbing):
-    //   - a directory containing trajectory.h5  -> Load(that h5)
-    //   - the trajectory.h5 file itself          -> Load(path)
-    //   - a single-pose run-root directory       -> LoadPose(path)
+    //   - a directory containing trajectory.h5         -> Load(that h5)
+    //   - a dataset root containing extract/trajectory.h5 -> Load(that h5)
+    //   - the trajectory.h5 file itself                 -> Load(path)
+    //   - a single-pose run-root directory              -> LoadPose(path)
     // This is the "open a directory" entry point; main() and the window's
     // Open-Directory action both route through it.
     static QtLoadResult LoadRunPath(const QString& path);

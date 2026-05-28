@@ -42,6 +42,7 @@ public:
     void setDftStore(model::DftShieldingStore* store);
     void setTimeViewport(TimeViewportController* viewport);
     DashboardSmokeSummary smokeSummary() const;
+    DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;
     int stripDisplaySinkCount() const;
     int spectrumDisplaySinkCount() const;
 

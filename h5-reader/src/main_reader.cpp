@@ -162,20 +162,38 @@ int main(int argc, char* argv[]) {
         QStringLiteral("Alias for --dashboard-path-smoke."));
     const QCommandLineOption dashboardSmokeFramesOption(
         QStringLiteral("dashboard-smoke-frames"),
-        QStringLiteral("Number of frames to advance during --dashboard-path-smoke."),
+        QStringLiteral("Number of frames in the --dashboard-path-smoke evaluation window."),
         QStringLiteral("frames"),
         QStringLiteral("10"));
+    const QCommandLineOption dashboardSmokeWindowStartOption(
+        QStringLiteral("dashboard-smoke-window-start"),
+        QStringLiteral("Zero-based first frame of the --dashboard-path-smoke evaluation window."),
+        QStringLiteral("frame"),
+        QStringLiteral("0"));
+    const QCommandLineOption dashboardRequireFrameSnapshotsOption(
+        QStringLiteral("dashboard-require-frame-snapshots"),
+        QStringLiteral("Fail --dashboard-path-smoke if any frame in the evaluation window lacks a frame-local NPY snapshot."));
     cli.addOption(dashboardSmokeOption);
     cli.addOption(dashboardStripSmokeOption);
     cli.addOption(dashboardSmokeFramesOption);
+    cli.addOption(dashboardSmokeWindowStartOption);
+    cli.addOption(dashboardRequireFrameSnapshotsOption);
     cli.process(app);
 
     bool framesOk = false;
     const int dashboardSmokeFrames = cli.value(dashboardSmokeFramesOption).toInt(&framesOk);
+    bool windowStartOk = false;
+    const int dashboardSmokeWindowStart = cli.value(dashboardSmokeWindowStartOption).toInt(&windowStartOk);
     const bool runDashboardSmoke = cli.isSet(dashboardSmokeOption) || cli.isSet(dashboardStripSmokeOption);
+    const bool requireFrameSnapshots = cli.isSet(dashboardRequireFrameSnapshotsOption);
     if (runDashboardSmoke && (!framesOk || dashboardSmokeFrames <= 0)) {
         qCCritical(cLifecycle).noquote()
             << "--dashboard-smoke-frames must be a positive integer";
+        return 1;
+    }
+    if (runDashboardSmoke && (!windowStartOk || dashboardSmokeWindowStart < 0)) {
+        qCCritical(cLifecycle).noquote()
+            << "--dashboard-smoke-window-start must be a non-negative integer";
         return 1;
     }
 
@@ -209,10 +227,15 @@ int main(int argc, char* argv[]) {
 
     // 9. Deferred show — event loop must be running before first render.
     if (runDashboardSmoke) {
-        QTimer::singleShot(0, window, [window, dashboardSmokeFrames]() {
+        QTimer::singleShot(0, window, [window,
+                                       dashboardSmokeWindowStart,
+                                       dashboardSmokeFrames,
+                                       requireFrameSnapshots]() {
             window->show();
             qCInfo(cLifecycle).noquote() << "window shown for dashboard path smoke";
-            const bool ok = window->runDashboardPathSmoke(dashboardSmokeFrames);
+            const bool ok = window->runDashboardPathSmoke(dashboardSmokeWindowStart,
+                                                          dashboardSmokeFrames,
+                                                          requireFrameSnapshots);
             QCoreApplication::exit(ok ? 0 : 4);
         });
     } else {

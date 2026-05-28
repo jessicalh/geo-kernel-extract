@@ -25,7 +25,7 @@ TrajectoryConformation::TrajectoryConformation(const QtProtein* protein,
 
     // Index which H5 rows have a per-frame snapshot dir, so the UI can point at
     // the nearest sampled frame when parked between emit-stride frames. Scan the
-    // sparse frame_NNNNNN dirs once (O(emitted), not O(frames)) and map each
+    // frame_NNNNNN dirs once (O(emitted), not O(frames)) and map each
     // original index back to its H5 row via frame_indices.
     if (!perFrameNpysDir_.isEmpty()) {
         const auto& fidx = h5_->frameIndices();
@@ -79,7 +79,7 @@ std::optional<std::size_t> TrajectoryConformation::nearestSampledFrame(std::size
 
 std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapshot(std::size_t frame) {
     if (perFrameNpysDir_.isEmpty())
-        return nullptr;  // run emitted no per-frame NPYs — detail unavailable
+        return nullptr;  // run emitted no per-frame NPY snapshots; detail unavailable
 
     // The frame dir is keyed by the ORIGINAL (XTC) frame index, zero-padded to
     // six digits (frame_NNNNNN), matching FrameNpyEmitter's layout. The H5 row
@@ -88,11 +88,9 @@ std::shared_ptr<const QtConformationSnapshot> TrajectoryConformation::loadSnapsh
     const std::size_t orig = frame < idx.size() ? static_cast<std::size_t>(idx[frame]) : frame;
     const QString dir = QStringLiteral("%1/frame_%2").arg(perFrameNpysDir_).arg(orig, 6, 10, QLatin1Char('0'));
 
-    // Per-frame NPYs are emitted at a STRIDE: most H5 frames have no frame
-    // dir, and that is normal, not an error. Check the documented dir name
-    // (the same optional-artifact check QtProteinLoader uses for
-    // per_frame_npys itself) and return null silently when absent, so
-    // scrubbing past unsampled frames does not spam the loader's
+    // Per-frame NPYs may be emitted at a stride. Check the documented frame
+    // directory name and return null silently when absent, so scrubbing past
+    // unsampled frames does not spam the loader's
     // "directory does not exist" report. A present-but-malformed dir still
     // reports through the FrameNpyLoader seam.
     if (!QFileInfo::exists(dir))

@@ -1166,70 +1166,149 @@ QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stri
 }
 
 DashboardSmokeSummary DashboardDisplayController::smokeSummary() const {
+    int lastFrame = -1;
+    for (const ActiveSeries& series : series_) {
+        if (!series.buffer.statuses.empty()) {
+            lastFrame = std::max(lastFrame,
+                                 static_cast<int>(series.buffer.statuses.size() - 1));
+        }
+    }
+    return smokeSummary(0, lastFrame);
+}
+
+DashboardSmokeSummary DashboardDisplayController::smokeSummary(int firstFrame, int lastFrame) const {
     DashboardSmokeSummary summary;
     summary.seriesCount = series_.size();
+    summary.seriesSparseness.reserve(series_.size());
+
+    const int first = std::max(0, firstFrame);
+    const bool hasWindow = lastFrame >= first;
+    const std::size_t begin = hasWindow ? static_cast<std::size_t>(first) : 0;
+    const std::size_t end = hasWindow ? static_cast<std::size_t>(lastFrame) + 1 : 0;
+    auto rangeCount = [begin, end](std::size_t size) -> long long {
+        if (end <= begin || size <= begin)
+            return 0;
+        return static_cast<long long>(std::min(size, end) - begin);
+    };
 
     for (const ActiveSeries& series : series_) {
         const std::vector<model::SampleStatus>& statuses = series.buffer.statuses;
         const std::vector<model::GapReason>& gapReasons = series.buffer.gapReasons;
-        summary.channelValues += static_cast<long long>(series.buffer.channel.values.size());
-        summary.channelValidity += static_cast<long long>(series.buffer.channel.valid.size());
-        if (series.buffer.channel.values.size() != statuses.size()
+        DashboardSmokeSummary::SeriesSparseness sparseness;
+        sparseness.signalLabel = series.signal.label;
+        sparseness.descriptorId = series.descriptor.id;
+        sparseness.conceptKey = series.descriptor.conceptKey;
+        sparseness.sourceKind = model::ToString(series.descriptor.sourceKind);
+        sparseness.storagePath = series.descriptor.storagePath;
+        sparseness.displayModeId = series.displayModeId;
+        sparseness.channelId = series.channel.id;
+        sparseness.channelLabel = series.channel.label;
+        sparseness.samples = rangeCount(statuses.size());
+
+        summary.channelValues += rangeCount(series.buffer.channel.values.size());
+        summary.channelValidity += rangeCount(series.buffer.channel.valid.size());
+        const bool bufferSizeMismatch =
+            series.buffer.channel.values.size() != statuses.size()
             || series.buffer.channel.valid.size() != statuses.size()
-            || gapReasons.size() != statuses.size()) {
+            || gapReasons.size() != statuses.size();
+        const bool requestedWindowMissing =
+            hasWindow
+            && (statuses.size() < end
+                || series.buffer.channel.values.size() < end
+                || series.buffer.channel.valid.size() < end
+                || gapReasons.size() < end);
+        if (bufferSizeMismatch || requestedWindowMissing) {
             ++summary.seriesWithMismatchedBuffers;
         }
-        if (!statuses.empty())
+        if (sparseness.samples > 0)
             ++summary.seriesWithSamples;
 
         bool hasValid = false;
-        bool pendingOnly = !statuses.empty();
-        summary.samples += static_cast<long long>(statuses.size());
+        bool pendingOnly = sparseness.samples > 0;
+        summary.samples += sparseness.samples;
+        int currentValidRun = 0;
+        int currentGapRun = 0;
 
-        for (std::size_t i = 0; i < statuses.size(); ++i) {
+        const std::size_t loopEnd = hasWindow ? std::min(statuses.size(), end) : 0;
+        for (std::size_t i = begin; i < loopEnd; ++i) {
             const model::SampleStatus status = statuses[i];
             const model::GapReason reason = i < gapReasons.size() ? gapReasons[i] : model::GapReason::None;
 
             switch (status) {
             case model::SampleStatus::Valid:
                 ++summary.validSamples;
+                ++sparseness.validSamples;
                 hasValid = true;
                 pendingOnly = false;
+                if (sparseness.firstValidFrame < 0)
+                    sparseness.firstValidFrame = static_cast<int>(i);
+                sparseness.lastValidFrame = static_cast<int>(i);
+                ++currentValidRun;
+                currentGapRun = 0;
+                sparseness.longestValidRun = std::max(sparseness.longestValidRun, currentValidRun);
                 break;
             case model::SampleStatus::Gap:
                 ++summary.gapSamples;
+                ++sparseness.gapSamples;
+                ++currentGapRun;
+                currentValidRun = 0;
+                sparseness.longestGapRun = std::max(sparseness.longestGapRun, currentGapRun);
                 break;
             case model::SampleStatus::NotAvailable:
                 ++summary.gapSamples;
+                ++sparseness.gapSamples;
                 pendingOnly = false;
+                ++currentGapRun;
+                currentValidRun = 0;
+                sparseness.longestGapRun = std::max(sparseness.longestGapRun, currentGapRun);
                 break;
             case model::SampleStatus::Invalid:
                 ++summary.invalidSamples;
+                ++sparseness.invalidSamples;
                 pendingOnly = false;
+                ++currentGapRun;
+                currentValidRun = 0;
+                sparseness.longestGapRun = std::max(sparseness.longestGapRun, currentGapRun);
                 break;
             }
 
             switch (reason) {
             case model::GapReason::Pending:
                 ++summary.pendingGapSamples;
+                ++sparseness.pendingGapSamples;
                 break;
             case model::GapReason::SourceAbsent:
                 ++summary.sourceAbsentGapSamples;
+                ++sparseness.sourceAbsentGapSamples;
                 pendingOnly = false;
                 break;
             case model::GapReason::FrameSourceAbsent:
                 ++summary.frameSourceAbsentGapSamples;
+                ++sparseness.frameSourceAbsentGapSamples;
                 pendingOnly = false;
                 break;
             case model::GapReason::AnchorUnavailable:
                 ++summary.anchorUnavailableGapSamples;
+                ++sparseness.anchorUnavailableGapSamples;
+                pendingOnly = false;
+                break;
+            case model::GapReason::SourceMaskOff:
+                ++sparseness.sourceMaskOffGapSamples;
+                pendingOnly = false;
+                break;
+            case model::GapReason::NotApplicable:
+                ++sparseness.notApplicableGapSamples;
+                pendingOnly = false;
+                break;
+            case model::GapReason::NaNSentinel:
+                ++sparseness.nanSentinelGapSamples;
+                pendingOnly = false;
+                break;
+            case model::GapReason::MalformedSource:
+                ++sparseness.malformedSourceGapSamples;
                 pendingOnly = false;
                 break;
             case model::GapReason::None:
-            case model::GapReason::SourceMaskOff:
-            case model::GapReason::NotApplicable:
-            case model::GapReason::NaNSentinel:
-            case model::GapReason::MalformedSource:
                 pendingOnly = false;
                 break;
             }
@@ -1239,6 +1318,28 @@ DashboardSmokeSummary DashboardDisplayController::smokeSummary() const {
             ++summary.seriesWithValidSamples;
         if (pendingOnly)
             ++summary.seriesPendingOnly;
+        if (sparseness.samples > 0 && sparseness.validSamples == sparseness.samples)
+            ++summary.denseSeries;
+        if (sparseness.samples > 0 && sparseness.validSamples == 0)
+            ++summary.allGapSeries;
+        if (sparseness.validSamples > 0 && sparseness.gapSamples > 0)
+            ++summary.sparseSeries;
+        if (sparseness.frameSourceAbsentGapSamples > 0) {
+            ++summary.seriesWithFrameSourceAbsentGaps;
+            if (series.descriptor.sourceKind == model::SignalSourceKind::FrameNpySnapshot) {
+                ++summary.frameNpySeriesWithFrameSourceAbsentGaps;
+                summary.frameNpyFrameSourceAbsentGapSamples += sparseness.frameSourceAbsentGapSamples;
+            } else if (series.descriptor.sourceKind == model::SignalSourceKind::OrcaDftFrame) {
+                ++summary.orcaDftSeriesWithFrameSourceAbsentGaps;
+                summary.orcaDftFrameSourceAbsentGapSamples += sparseness.frameSourceAbsentGapSamples;
+            }
+        }
+        if (sparseness.sourceAbsentGapSamples > 0)
+            ++summary.seriesWithSourceAbsentGaps;
+        if (sparseness.anchorUnavailableGapSamples > 0)
+            ++summary.seriesWithAnchorUnavailableGaps;
+        summary.maxLongestGapRun = std::max(summary.maxLongestGapRun, sparseness.longestGapRun);
+        summary.seriesSparseness.push_back(std::move(sparseness));
     }
 
     return summary;

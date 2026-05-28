@@ -30,9 +30,9 @@ class TrajectoryConformation final : public Conformation {
     Q_OBJECT
 
 public:
-    // perFrameNpysDir: absolute path to the run's per_frame_npys/ directory, or
-    // empty if the --trajectory run did not emit per-frame NPYs (then snapshots
-    // simply never become resident — the dense H5 still drives playback).
+    // perFrameNpysDir: absolute path to the run's frame snapshot NPY directory,
+    // or empty if the --trajectory run did not emit per-frame NPYs (then
+    // snapshots simply never become resident -- dense H5 still drives playback).
     TrajectoryConformation(const QtProtein* protein,
                            std::unique_ptr<h5reader::io::QtTrajectoryH5> h5,
                            QString perFrameNpysDir);
@@ -57,7 +57,7 @@ public:
 
     // Nearest H5 frame-row that has a per-frame snapshot on disk — lets the UI
     // point at where full per-atom detail IS sampled when the cursor sits
-    // between emit-stride frames. nullopt if the run emitted no per_frame_npys.
+    // between emit-stride frames. nullopt if the run emitted no frame snapshots.
     std::optional<std::size_t> nearestSampledFrame(std::size_t frame) const;
     const std::vector<std::size_t>& sampledFrameRows() const { return sampledRows_; }
 
@@ -67,7 +67,7 @@ protected:
 private:
     std::unique_ptr<h5reader::io::QtTrajectoryH5> h5_;
     QString perFrameNpysDir_;
-    std::vector<std::size_t> sampledRows_;  // sorted H5 rows that have a per_frame_npys dir
+    std::vector<std::size_t> sampledRows_;  // sorted H5 rows that have a frame snapshot dir
 };
 
 }  // namespace h5reader::model

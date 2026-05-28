@@ -56,7 +56,9 @@ public:
     explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded, QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
 
-    bool runDashboardPathSmoke(int maxFrames = 10);
+    bool runDashboardPathSmoke(int firstFrame = 0,
+                               int frameCount = 10,
+                               bool requireFrameSnapshots = false);
 
 public slots:
     // Called from aboutToQuit. Stops timers, cancels any workers, and
