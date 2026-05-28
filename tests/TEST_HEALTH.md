@@ -55,8 +55,8 @@ Important fixture variables:
 | `NMR_FLEET_AMBER_DIR` | Large AMBER trajectory fixtures. |
 | `NMR_LARSEN_1UBQ_PM6_PDB` | External Larsen PM6-D3H+ 1UBQ geometry. |
 
-`tests/bones/` is archival and not part of active test discovery. New files
-there are ignored; tracked leftovers are archive-only.
+`tests/bones/` is ignored archival material and not part of active test
+discovery.
 Do not move tests there as a soft-delete unless they are genuinely retired,
 and do not restore ignored bones code into the active build without an
 explicit user decision.

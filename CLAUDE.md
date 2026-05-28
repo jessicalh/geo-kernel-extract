@@ -143,7 +143,7 @@ for work inside it; read that file before modifying the directory.
   CTest labels and fixture policy live in `tests/TEST_HEALTH.md`.
 - **`scripts/`** — producer helper scripts.
 - **`deploy/`** — deployment/setup scaffolding.
-- **`site/`** — tracked generated/static output from an older doc pass.
+- **`site/`** — ignored generated/static output from an older doc pass.
   It is release noise, not the outward-facing site.
 - **`bad-builds/`** — gitignored build-artifact salvage.
 
@@ -281,9 +281,8 @@ fixture/output trees, `fileformat/test/**/*.h5` (~42 GB), `.claude/`
 at any depth, `calibration/*/`, and build output (`*.npy`, `*.o`,
 `*.a`, `*.so`). Existing tracked files under `tests/golden/blessed/`
 remain committed baselines; new files there are ignored unless explicitly
-force-added. `learn/`, `analysis-speculative/`, and `site/` are
-non-producer surfaces kept on disk; some files there may still be tracked
-until an explicit untrack cleanup. Committed producer material is source,
+force-added. `learn/`, `analysis-speculative/`, and `site/` are ignored
+non-producer surfaces kept on disk. Committed producer material is source,
 design docs, test code, configuration, vendored HighFive headers, and
 runtime data. See `doc/REPO_HOUSEKEEPING.md` for the packaging map.
 

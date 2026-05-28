@@ -24,7 +24,7 @@ These paths are part of building, testing, or understanding `nmr_extract`:
 | Path | Status |
 | --- | --- |
 | `h5-reader/` | Active desktop reader. It has its own CMake/dependency/distribution process, is being handled separately, and is not part of the producer Docker image. |
-| `learn/` | Independent calibration and analysis workspace. It is kept on disk and should not be treated as producer build input or staged with producer packaging work. Some files may remain tracked until an explicit untrack cleanup. |
+| `learn/` | Independent calibration and analysis workspace. It is ignored/untracked, kept on disk, and should not be treated as producer build input or staged with producer packaging work. |
 | `analysis-speculative/` | Independent scratch/prototype workspace. Keep it on disk, but do not treat it as producer release surface. |
 | `references/`, `references-meta/` | Literature corpus and committed metadata. Derived text/page renders are ignored. |
 
@@ -36,9 +36,9 @@ explicit Git operation; do not move or delete them as part of producer cleanup.
 
 | Path | Current decision |
 | --- | --- |
-| `site/` | Tracked generated/static output from an older documentation pass. It is not the outward-facing site and should not ship as producer release material. |
-| `learn/` | Independent analysis/calibration workspace, left on disk. Some files may remain tracked until an explicit untrack cleanup. |
-| `analysis-speculative/` | Independent scratch/prototype workspace. |
+| `site/` | Ignored generated/static output from an older documentation pass. It is not the outward-facing site and should not ship as producer release material. |
+| `learn/` | Ignored/untracked independent analysis/calibration workspace, left on disk. |
+| `analysis-speculative/` | Ignored/untracked independent scratch/prototype workspace, left on disk. |
 
 ## Retired Or Local State
 

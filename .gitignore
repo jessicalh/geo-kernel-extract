@@ -10,25 +10,34 @@ build-asan/
 # and edit for this machine; the copy is never committed.
 CMakeUserPresets.json
 
-# Independent non-producer workspaces kept on disk. Some files in these trees
-# are still tracked until an explicit untrack cleanup; these patterns keep new
-# local analysis/generated/site files out of producer packaging status.
+# Independent non-producer workspaces kept on disk. Ignored so local
+# analysis/generated/site files stay out of producer packaging status.
 learn/
 analysis-speculative/
 site/
+
+# Local agent/tool caches and staging directories.
+.cache/
+.codex-skill-dashboard-staging/
 
 # Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
 # scan-build) regenerate on demand; per-sha snapshots can grow large.
 # baseline.json itself IS committed (it's the ratchet anchor); the
 # per-sha snapshots and HTML/JSON reports under artifacts/quality/
-# are derived state.
-artifacts/quality/*-*.{json,xml,txt,sarif,html}
+# are derived state. Gitignore does not support brace expansion; keep
+# the extensions explicit.
+artifacts/quality/*-*.json
+artifacts/quality/*-*.xml
+artifacts/quality/*-*.txt
+artifacts/quality/*-*.sarif
+artifacts/quality/*-*.html
 artifacts/quality/scan-build-*/
 artifacts/quality/clang-tidy-*.json
 artifacts/quality/cppcheck-*.xml
 artifacts/quality/iwyu-*.txt
 !artifacts/quality/baseline.json
 !artifacts/quality/README.md
+artifacts/test_run_*/
 Testing/
 *.o
 *.a
