@@ -1,16 +1,19 @@
-// AbstractStrip -- common contract for dashboard strip instances.
+// StripCalculation -- common Qt contract for dashboard strip calculations.
 //
-// Concrete strips own their sampling/render preparation. They bind to a
-// SignalKey/anchor and expose render data in a shared shape so the dashboard
-// can stack many different strip types without each one inventing UI rules.
+// Concrete calculations own their binding, frame sampling, durable strip buffer,
+// and render preparation. The dashboard owns StripCalculation instances, not
+// transient chart widgets; source readers only provide current-frame data.
 
 #pragma once
 
 #include "SignalDictionary.h"
 
+#include <QObject>
 #include <QPointF>
 #include <QString>
 #include <QVector>
+
+#include <cstddef>
 
 namespace h5reader::model {
 
@@ -31,9 +34,12 @@ struct StripRenderData {
     QVector<QPointF> points;
 };
 
-class AbstractStrip {
+class StripCalculation : public QObject {
+    Q_OBJECT
+
 public:
-    virtual ~AbstractStrip() = default;
+    explicit StripCalculation(QObject* parent = nullptr) : QObject(parent) {}
+    ~StripCalculation() override = default;
 
     virtual StripSpec spec() const = 0;
     virtual bool canBind(const SignalBinding& binding) const = 0;
@@ -44,6 +50,10 @@ public:
     // prefix/window, but they still do not read future trajectory data.
     virtual void extendToFrame(std::size_t frame) = 0;
     virtual StripRenderData renderData() const = 0;
+
+signals:
+    void bindingChanged();
+    void bufferChanged(std::size_t frame);
 };
 
 }  // namespace h5reader::model

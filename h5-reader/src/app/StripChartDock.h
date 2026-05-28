@@ -33,6 +33,7 @@
 #pragma once
 
 #include "../model/DftSigmaStrips.h"
+#include "../model/GeometryStrips.h"
 #include "../model/SignalDictionary.h"
 #include "../model/StripChartChannel.h"  // ChannelBuffer, ChannelSource
 
@@ -153,7 +154,9 @@ private:
     // Bind/rebuild the DFT shielding channel to the current focus atom (called
     // from rebuildChannels when a store is present).
     void bindDftChannel();
+    void bindGeometryStrips();
     void clearDftSignalStrips();
+    void clearGeometryStrips();
     void bindResidueDihedralChannels();
     void clearTrack(Track& tr, const QString& readout = QStringLiteral("—"));
     void clearResidueDihedralChannels();
@@ -161,6 +164,7 @@ private:
     QString residueDisplayLabel(std::size_t residueIdx) const;
     QString selectionTupleLabel(const std::vector<std::size_t>& atoms) const;
     void updateViewportReadout(int first, int last);
+    std::optional<model::SignalBinding> currentGeometryBinding() const;
     std::optional<model::SignalBinding> currentDftBinding() const;
     std::optional<model::SignalBinding> sourceBindingForFft() const;
 
@@ -168,6 +172,9 @@ private:
     Track structural_;  // panel 1: the selection's geometry (always present)
     Track dft_;         // panel 2: DFT σ of the focus atom (shown only with a store)
     std::vector<Track> residueDihedrals_;
+    std::unique_ptr<model::GeometryTupleTimeStrip> geometryTimeStrip_;
+    std::unique_ptr<model::GeometryTupleFftStrip> geometryFftStrip_;
+    std::optional<model::SignalBinding> geometryBinding_;
     std::unique_ptr<model::DftSigmaAtomTimeStrip> dftTimeStrip_;
     std::unique_ptr<model::DftSigmaAtomFftStrip> dftFftStrip_;
 
@@ -198,6 +205,8 @@ private:
     int  fftRecomputeAtSize_ = 0;  // throttle: next valid-count at which to redo the FFT
     QVector<QPointF> fftPoints_;
     QString fftReadoutText_ = QStringLiteral("—");
+    QVector<QPointF> geometryFftPoints_;
+    QString geometryFftReadoutText_ = QStringLiteral("—");
     QVector<QPointF> dftFftPoints_;
     QString dftFftReadoutText_ = QStringLiteral("—");
 };

@@ -17,9 +17,8 @@
 // into SphericalTensor / Vec3 / the typed blocks. The views are where
 // "objects answer questions about themselves"; this class is the store.
 //
-// Held in a bounded LRU on the conformation (each snapshot loads complete,
-// including the AIMNet2 256-d embedding; the LRU bound keeps that safe on
-// adviser hardware).
+// Held only as current-frame source data by the conformation. Long-lived
+// dashboard history belongs in strip buffers after observers sample the frame.
 
 #pragma once
 

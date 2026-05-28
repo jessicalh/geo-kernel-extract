@@ -1,25 +1,25 @@
 // Conformation — abstract base: a viewable sequence of >=1 frames of one
-// protein, AND the working buffer for per-frame full-fidelity detail.
+// protein, AND the current-frame seam for per-frame full-fidelity detail.
 //
 // Two concrete subclasses ("subclass, don't hack" — feedback_vtk_subclassing):
 //   TrajectoryConformation — N frames backed by trajectory.h5 (dense, eager).
 //   SingleConformation     — one pose, no H5 (a --orca / --mutant / --pdb run).
 //
 // WHY this is a QObject (the manager role lives here — decided 2026-05-26, see
-// memory project_h5reader_buffering_decision_20260526): the conformation owns
-// the snapshot buffer and emits the readiness signal. The buffered piles
-// (QtConformationSnapshot) stay PLAIN immutable-after-load data behind
-// shared_ptr<const> — no QObject, no thread affinity, so a future prefetch
-// worker can fill one and hand it to the GUI lock-free. "pin" a frame = keep
-// its shared_ptr (the LRU cannot evict what a holder keeps alive); "observe" =
-// drop it.
+// memory project_h5reader_buffering_decision_20260526): the conformation emits
+// readiness signals for source frames. QtConformationSnapshot stays PLAIN
+// immutable-after-load data behind shared_ptr<const> — no QObject, no thread
+// affinity, so a future worker can fill one and hand it to the GUI. The app
+// should not accumulate source snapshots here; observers/strips own durable
+// display history after sampling the current frame.
 //
 // WHY it stays a thin FACADE (codex review, 2026-05-26): the DENSE per-frame
 // data (positions, time-series) lives in the subclass
 // (TrajectoryConformation / QtTrajectoryH5). When windowed-H5 streaming lands
 // for the microsecond trajectories, its residency policy stays THERE — never
-// here. This base manages only the sparse snapshot buffer + the frame-access
-// seam, so it never becomes a god-manager of two residency policies.
+// here. This base manages only the current sparse snapshot source + the
+// frame-access seam, so it never becomes a god-manager of multiple source
+// lifetimes.
 //
 // Cross-object holders of a Conformation* MUST use QPointer<Conformation>
 // (crash-diagnosis.md QPointer discipline) — it is a QObject with a lifetime
@@ -32,10 +32,9 @@
 #include <QObject>
 
 #include <cstddef>
-#include <deque>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
+#include <optional>
 
 namespace h5reader::model {
 
@@ -80,17 +79,18 @@ public:
     // those features simply do not engage.
     virtual const TrajectoryConformation* asTrajectory() const { return nullptr; }
 
-    // ----- Full-fidelity detail (the buffered pile) -----
-    // Cached-or-null; NEVER blocks. null == not resident: call
+    // ----- Full-fidelity detail (current-frame source data) -----
+    // Current-resident-or-null; NEVER blocks. null == not resident: call
     // requestSnapshot() and react to snapshotReady(). Holding the returned
-    // shared_ptr pins the snapshot against LRU eviction.
+    // shared_ptr is only for immediate observer use; strips retain sampled
+    // display values in their own buffers.
     std::shared_ptr<const QtConformationSnapshot> snapshot(std::size_t frame) const;
 
     // Ensure `frame`'s snapshot is loaded, then emit snapshotReady(frame).
-    // v1: SYNCHRONOUS — loads + caches + emits before returning. The committed
+    // v1: SYNCHRONOUS — loads + exposes + emits before returning. The committed
     // prefetch increment moves the load onto a worker behind this SAME
     // signature; consumers already cope with snapshot()==null and react to
-    // snapshotReady, so they do not change. Idempotent for a resident frame.
+    // snapshotReady, so they do not change. Idempotent for the resident frame.
     void requestSnapshot(std::size_t frame);
 
 signals:
@@ -99,9 +99,7 @@ signals:
     void snapshotReady(std::size_t frame);
 
 protected:
-    // cacheCapacity = max resident snapshots in the LRU. SingleConformation
-    // passes 1 (its one pose, effectively pinned).
-    Conformation(const QtProtein* protein, std::size_t cacheCapacity);
+    Conformation(const QtProtein* protein);
 
     // Where a frame's snapshot comes from — the ONE virtual that varies
     // behaviour (no factories, no handles, no pluggable store: honours the
@@ -112,17 +110,12 @@ protected:
     const QtProtein* protein_ = nullptr;
 
 private:
-    // Frame-keyed LRU of immutable snapshots. The mutex is present from day one
-    // even though v1 loads synchronously on the GUI thread: the shared_ptr
-    // control block is atomic, but the map/deque bookkeeping is not, so the
-    // moment prefetch goes async this is already the guarded container (one
-    // fewer 2am use-after-free — crash-diagnosis discipline).
-    mutable std::mutex cacheMutex_;
-    std::unordered_map<std::size_t, std::shared_ptr<const QtConformationSnapshot>> cache_;
-    std::deque<std::size_t> lru_;  // front = least-recently-used
-    std::size_t cacheCapacity_;
-
-    void touch_(std::size_t frame);  // move to MRU; caller holds cacheMutex_
+    // Single current source frame. The mutex is present even though v1 loads
+    // synchronously on the GUI thread, so a future worker can swap in the
+    // current snapshot without changing the public seam.
+    mutable std::mutex snapshotMutex_;
+    std::optional<std::size_t> residentSnapshotFrame_;
+    std::shared_ptr<const QtConformationSnapshot> residentSnapshot_;
 };
 
 }  // namespace h5reader::model

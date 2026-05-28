@@ -104,7 +104,9 @@ add_executable(h5reader
     src/model/SpectralAnalysis.cpp
     src/model/SignalDictionary.h
     src/model/SignalDictionary.cpp
-    src/model/AbstractStrip.h
+    src/model/StripCalculation.h
+    src/model/GeometryStrips.h
+    src/model/GeometryStrips.cpp
     src/model/DftSigmaStrips.h
     src/model/DftSigmaStrips.cpp
     src/model/StripChartChannel.h

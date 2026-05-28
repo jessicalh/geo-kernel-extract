@@ -427,7 +427,8 @@ private:
 // NON-OWNING view into the snapshot's column buffer (256 contiguous doubles for
 // one atom) — avoids a 2 KB copy per access for the GNN / ML-feeding path.
 // Valid only while the owning QtConformationSnapshot is alive; do NOT retain a
-// view across an LRU eviction (same transient-use contract as the group views).
+// view after the source frame is released (same transient-use contract as the
+// group views).
 struct AIMNet2Embedding {
     static constexpr std::size_t kDim = 256;  // == AIMNET2_AIM_DIMS (library)
     const double* data = nullptr;

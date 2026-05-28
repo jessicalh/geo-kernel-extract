@@ -26,8 +26,8 @@ class SingleConformation final : public Conformation {
 
 public:
     // `pose` is the run-root snapshot (loaded by FrameNpyLoader on the run
-    // directory). Held for the conformation's lifetime — its one frame is
-    // effectively pinned (cache capacity 1, never evicted).
+    // directory). Held for the conformation's lifetime because a single-pose
+    // run has exactly one source frame.
     SingleConformation(const QtProtein* protein, std::shared_ptr<const QtConformationSnapshot> pose);
     ~SingleConformation() override;
 

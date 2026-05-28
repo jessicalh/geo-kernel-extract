@@ -9,7 +9,7 @@ namespace h5reader::model {
 
 SingleConformation::SingleConformation(const QtProtein* protein,
                                        std::shared_ptr<const QtConformationSnapshot> pose)
-    : Conformation(protein, /*cacheCapacity=*/1), pose_(std::move(pose)) {
+    : Conformation(protein), pose_(std::move(pose)) {
     setObjectName(QStringLiteral("SingleConformation"));
 }
 

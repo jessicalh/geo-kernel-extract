@@ -113,6 +113,7 @@ void DftSigmaAtomTimeStrip::bind(const SignalBinding& binding) {
     bound_ = canBind(binding);
     binding_ = binding;
     buffer_.clear();
+    emit bindingChanged();
 }
 
 std::optional<double> DftSigmaAtomTimeStrip::sample(std::size_t frame) const {
@@ -126,14 +127,21 @@ std::optional<double> DftSigmaAtomTimeStrip::sample(std::size_t frame) const {
 }
 
 void DftSigmaAtomTimeStrip::extendToFrame(std::size_t frame) {
-    if (!bound_)
+    if (!bound_ || !conformation_ || conformation_->frameCount() == 0)
         return;
-    const std::size_t last = conformation_ ? std::min(frame, conformation_->frameCount() - 1) : frame;
+    const std::size_t last = std::min(frame, conformation_->frameCount() - 1);
     const long long from = buffer_.lastFrame() + 1;
-    for (long long f = from; f < static_cast<long long>(last); ++f)
+    bool changed = false;
+    for (long long f = from; f < static_cast<long long>(last); ++f) {
         buffer_.append(std::nullopt);
-    if (from <= static_cast<long long>(last))
+        changed = true;
+    }
+    if (from <= static_cast<long long>(last)) {
         buffer_.append(sample(last));
+        changed = true;
+    }
+    if (changed)
+        emit bufferChanged(last);
 }
 
 StripRenderData DftSigmaAtomTimeStrip::renderData() const {
@@ -177,6 +185,7 @@ void DftSigmaAtomFftStrip::bind(const SignalBinding& binding) {
     buffer_.clear();
     spectrum_.clear();
     readout_ = QStringLiteral("—");
+    emit bindingChanged();
 }
 
 std::optional<double> DftSigmaAtomFftStrip::sample(std::size_t frame) const {
@@ -190,9 +199,9 @@ std::optional<double> DftSigmaAtomFftStrip::sample(std::size_t frame) const {
 }
 
 void DftSigmaAtomFftStrip::extendToFrame(std::size_t frame) {
-    if (!bound_)
+    if (!bound_ || !conformation_ || conformation_->frameCount() == 0)
         return;
-    const std::size_t last = conformation_ ? std::min(frame, conformation_->frameCount() - 1) : frame;
+    const std::size_t last = std::min(frame, conformation_->frameCount() - 1);
     const long long from = buffer_.lastFrame() + 1;
     bool changed = false;
     for (long long f = from; f < static_cast<long long>(last); ++f) {
@@ -205,6 +214,8 @@ void DftSigmaAtomFftStrip::extendToFrame(std::size_t frame) {
     }
     if (changed)
         rebuildSpectrum();
+    if (changed)
+        emit bufferChanged(last);
 }
 
 void DftSigmaAtomFftStrip::rebuildSpectrum() {

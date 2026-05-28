@@ -1,28 +1,25 @@
-// DftSigmaStrips -- concrete dashboard strips for atom DFT sigma.
+// GeometryStrips -- concrete dashboard strips for atom-tuple geometry.
 //
-// These are deliberately concrete. The time strip and FFT strip bind to the
-// same SignalKey/atom anchor and both sample DftShieldingStore directly; the
-// FFT strip does not depend on the time strip being present.
+// Distance, angle, and dihedral strips deliberately use the existing
+// ConformationGeometry::Measure path. The time strip and FFT strip bind to the
+// same Geometry/AtomTuple signal and sample independently, matching the DFT
+// strip convention.
 
 #pragma once
 
-#include "DftShieldingStore.h"
 #include "StripCalculation.h"
 #include "StripChartChannel.h"
 
-#include <QPointer>
-
 #include <cstddef>
 #include <optional>
-#include <vector>
 
 namespace h5reader::model {
 
 class Conformation;
 
-class DftSigmaAtomTimeStrip final : public StripCalculation {
+class GeometryTupleTimeStrip final : public StripCalculation {
 public:
-    DftSigmaAtomTimeStrip(const Conformation* conformation, DftShieldingStore* store);
+    explicit GeometryTupleTimeStrip(const Conformation* conformation);
 
     StripSpec spec() const override;
     bool canBind(const SignalBinding& binding) const override;
@@ -34,17 +31,17 @@ public:
 
 private:
     std::optional<double> sample(std::size_t frame) const;
+    void configureBuffer();
 
     const Conformation* conformation_ = nullptr;
-    QPointer<DftShieldingStore> store_;
     SignalBinding binding_;
     ChannelBuffer buffer_;
     bool bound_ = false;
 };
 
-class DftSigmaAtomFftStrip final : public StripCalculation {
+class GeometryTupleFftStrip final : public StripCalculation {
 public:
-    DftSigmaAtomFftStrip(const Conformation* conformation, DftShieldingStore* store);
+    explicit GeometryTupleFftStrip(const Conformation* conformation);
 
     StripSpec spec() const override;
     bool canBind(const SignalBinding& binding) const override;
@@ -54,10 +51,10 @@ public:
 
 private:
     std::optional<double> sample(std::size_t frame) const;
+    void configureBuffer();
     void rebuildSpectrum();
 
     const Conformation* conformation_ = nullptr;
-    QPointer<DftShieldingStore> store_;
     SignalBinding binding_;
     ChannelBuffer buffer_;
     QVector<QPointF> spectrum_;

@@ -8,14 +8,17 @@
 // at present), so a missing job is an honest GAP, never a faked value.
 //
 // A full Qt citizen (QObject), deliberately — it owns lazy, eventually-async
-// file I/O and emits a readiness signal, exactly the manager role the
-// Conformation snapshot facade plays (memory project_h5reader_buffering_decision
-// _20260526). It mirrors that facade's contract:
-//   * sample()/frame() are CHEAP — cached-or-null, they never parse or block;
-//   * requestFrame() does the parse+validate+cache, then emits frameReady().
-// The committed-later prefetch worker fills frames behind this same signature.
-// The parsed DftShieldingFrame it caches is plain immutable data (DftShielding.h)
-// behind shared_ptr<const> — no QObject, lock-free to hand from a future worker.
+// file I/O and emits a readiness signal. Architecturally this is just one
+// per-frame source provider, orthogonal to FrameNpyLoader and any other reader:
+// load one frame's source data, let observers sample it, then release it.
+// It mirrors the frame-source contract:
+//   * sample()/frame() are CHEAP — current-frame-or-null, they never parse or block;
+//   * requestFrame() parses/validates one frame, makes it resident for observers,
+//     then emits frameReady().
+// The dashboard strips own persistent display history. This store does not
+// accumulate parsed DFT frames; once another frame is requested, the prior
+// parsed frame is released and the source data is effectively back on disk.
+// The committed-later prefetch worker can fill the same current-frame seam.
 //
 // Validation before a frame is exposed (the loader is strict even though the
 // parser is permissive — "be smart, not fluff it", user 2026-05-27):
@@ -35,6 +38,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace h5reader::model {
 
@@ -65,17 +69,18 @@ public:
     // lookup — distinguishes a "not computed" gap from "not yet parsed".)
     bool hasJob(std::size_t originalIndex) const;
 
-    // Cached-or-null; NEVER parses or blocks. null == not resident: call
-    // requestFrame() and react to frameReady().
+    // Current-resident-or-null; NEVER parses or blocks. null == not resident:
+    // call requestFrame() and react to frameReady().
     const DftShieldingFrame* frame(std::size_t originalIndex) const;
 
-    // Parse + validate + cache `originalIndex`, then emit frameReady(). v1:
-    // SYNCHRONOUS (parses on the calling thread). Idempotent for a resident or
-    // known-absent frame. A job that does not exist, or fails validation, is
-    // cached as absent so it is not re-attempted every frame.
+    // Parse + validate `originalIndex`, make that single parsed frame resident,
+    // then emit frameReady(). v1: SYNCHRONOUS (parses on the calling thread).
+    // Idempotent for the resident frame or a known-absent frame. A job that does
+    // not exist, or fails validation, is remembered as absent so it is not
+    // re-attempted every frame.
     void requestFrame(std::size_t originalIndex);
 
-    // Cheap chart sample: cached value for (atom, part, scalar), or nullopt when
+    // Cheap chart sample: resident value for (atom, part, scalar), or nullopt when
     // the frame is not resident / absent / the atom is out of range. Never
     // parses — the caller drives loading with requestFrame().
     std::optional<double> sample(std::size_t originalIndex, std::size_t atom,
@@ -97,9 +102,13 @@ private:
     // originalIndex -> absolute job directory path (built once at construction).
     std::unordered_map<std::size_t, QString> dirByOriginal_;
 
-    // originalIndex -> parsed frame; a null shared_ptr value means "resolved as
-    // absent/invalid" (cached so we do not re-parse a known-bad frame).
-    mutable std::unordered_map<std::size_t, std::shared_ptr<const DftShieldingFrame>> cache_;
+    // The single parsed frame currently exposed to observers. Persistent chart
+    // history lives in strip ChannelBuffers, not here.
+    std::optional<std::size_t> residentOriginal_;
+    std::shared_ptr<const DftShieldingFrame> residentFrame_;
+
+    // Negative cache only: no parsed data is retained for these frames.
+    std::unordered_set<std::size_t> resolvedAbsent_;
 };
 
 }  // namespace h5reader::model

@@ -15,19 +15,10 @@
 
 namespace h5reader::model {
 
-namespace {
-// Bounded LRU depth for parked-frame detail. A handful of frames resident at
-// once keeps memory safe on adviser hardware (each snapshot is the full ~80
-// per-atom NPYs incl. the AIMNet2 embedding); enough that scrubbing back a few
-// frames stays warm. The committed prefetch increment widens the warm set
-// around the cursor by calling requestSnapshot() ahead of need.
-constexpr std::size_t kSnapshotCacheCapacity = 4;
-}  // namespace
-
 TrajectoryConformation::TrajectoryConformation(const QtProtein* protein,
                                                std::unique_ptr<h5reader::io::QtTrajectoryH5> h5,
                                                QString perFrameNpysDir)
-    : Conformation(protein, kSnapshotCacheCapacity),
+    : Conformation(protein),
       h5_(std::move(h5)),
       perFrameNpysDir_(std::move(perFrameNpysDir)) {
     setObjectName(QStringLiteral("TrajectoryConformation"));

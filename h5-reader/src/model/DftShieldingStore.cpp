@@ -68,26 +68,44 @@ bool DftShieldingStore::hasJob(std::size_t originalIndex) const {
 }
 
 const DftShieldingFrame* DftShieldingStore::frame(std::size_t originalIndex) const {
-    const auto it = cache_.find(originalIndex);
-    return (it != cache_.end()) ? it->second.get() : nullptr;  // null value => resolved-absent
+    if (!residentOriginal_ || *residentOriginal_ != originalIndex)
+        return nullptr;
+    return residentFrame_.get();
 }
 
 void DftShieldingStore::requestFrame(std::size_t originalIndex) {
     ASSERT_THREAD(this);
-    // Idempotent: a resolved frame (resident OR known-absent) just re-announces.
-    // (cache_ is GUI-thread-only in v1; add a mutex here when a prefetch worker
-    // lands, exactly as the Conformation snapshot cache does.)
-    if (cache_.find(originalIndex) == cache_.end())
-        cache_.emplace(originalIndex, loadAndValidate(originalIndex));  // may cache null (absent/invalid)
+    // Idempotent: a resident frame or known-absent frame just re-announces.
+    // The parsed frame is a temporary source object. Strips keep the durable
+    // sampled display values in their ChannelBuffers.
+    if (residentOriginal_ && *residentOriginal_ == originalIndex) {
+        emit frameReady(originalIndex);
+        return;
+    }
+
+    residentOriginal_.reset();
+    residentFrame_.reset();
+
+    if (resolvedAbsent_.find(originalIndex) != resolvedAbsent_.end()) {
+        emit frameReady(originalIndex);
+        return;
+    }
+
+    residentFrame_ = loadAndValidate(originalIndex);
+    if (residentFrame_) {
+        residentOriginal_ = originalIndex;
+    } else {
+        resolvedAbsent_.insert(originalIndex);
+    }
     emit frameReady(originalIndex);
 }
 
 std::optional<double> DftShieldingStore::sample(std::size_t originalIndex, std::size_t atom,
                                                 DftPart part, DftScalar scalar) const {
-    const auto it = cache_.find(originalIndex);
-    if (it == cache_.end() || !it->second)
+    const DftShieldingFrame* framePtr = frame(originalIndex);
+    if (!framePtr)
         return std::nullopt;  // not resident, or resolved-absent
-    const DftShieldingFrame& fr = *it->second;
+    const DftShieldingFrame& fr = *framePtr;
     if (atom >= fr.atoms.size())
         return std::nullopt;
     const DftAtomShielding& a    = fr.atoms[atom];

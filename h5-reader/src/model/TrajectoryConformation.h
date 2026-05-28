@@ -1,7 +1,7 @@
 // TrajectoryConformation — the H5-backed conformation: N frames of dense,
 // eager-loaded per-TR time-series (positions + ~56 calculator groups), with
-// the sparse per-frame snapshot detail lazily loaded on park into the base
-// Conformation's LRU.
+// sparse per-frame snapshot detail loaded as current-frame source data through
+// the base Conformation seam.
 //
 // This is the former QtConformation, lifted under the Conformation base. It
 // keeps the dense layer it always owned (QtTrajectoryH5 + the QtFrame view);

@@ -300,7 +300,7 @@ void StripChartDock::setFrame(int t) {
     extendTo(t);                  // forward motion appends; backward is a no-op
     renderTrack(structural_, t);  // window + cursor + readout (cheap)
     renderTrack(dft_, t);
-    if (dftFftStrip_)
+    if (geometryFftStrip_ || dftFftStrip_)
         refreshStackTracks();
     else if (stackWidget_)
         stackWidget_->setCurrentFrame(t);
@@ -316,12 +316,15 @@ void StripChartDock::clearSelection() {
     for (Track* tr : {&structural_, &dft_}) {
         clearTrack(*tr);
     }
+    clearGeometryStrips();
     clearDftSignalStrips();
     clearResidueDihedralChannels();
     if (fftSeries_) fftSeries_->clear();
     if (fftReadout_) fftReadout_->setText(QStringLiteral("—"));
     fftPoints_.clear();
     fftReadoutText_ = QStringLiteral("—");
+    geometryFftPoints_.clear();
+    geometryFftReadoutText_ = QStringLiteral("—");
     dftFftPoints_.clear();
     dftFftReadoutText_ = QStringLiteral("—");
     fftRecomputeAtSize_ = 0;
@@ -389,9 +392,34 @@ std::optional<model::SignalBinding> StripChartDock::currentDftBinding() const {
     return binding;
 }
 
+std::optional<model::SignalBinding> StripChartDock::currentGeometryBinding() const {
+    if (!selection_ || selection_->geometryKind() == model::GeometryKind::None)
+        return std::nullopt;
+
+    model::SignalBinding binding;
+    binding.key.family = model::SignalFamily::Geometry;
+    switch (selection_->geometryKind()) {
+        case model::GeometryKind::Distance:
+            binding.key.name = QStringLiteral("distance");
+            break;
+        case model::GeometryKind::Angle:
+            binding.key.name = QStringLiteral("angle");
+            break;
+        case model::GeometryKind::Dihedral:
+            binding.key.name = QStringLiteral("dihedral");
+            break;
+        case model::GeometryKind::None:
+            return std::nullopt;
+    }
+    binding.anchorKind = model::SignalAnchorKind::AtomTuple;
+    binding.atomTuple = selection_->atoms();
+    binding.followsFocus = true;
+    return binding;
+}
+
 std::optional<model::SignalBinding> StripChartDock::sourceBindingForFft() const {
-    if (structural_.active && structural_.binding)
-        return structural_.binding;
+    if (geometryBinding_)
+        return geometryBinding_;
     for (const Track& tr : residueDihedrals_) {
         if (tr.active && tr.binding)
             return tr.binding;
@@ -420,6 +448,14 @@ void StripChartDock::clearDftSignalStrips() {
     dftFftStrip_.reset();
     dftFftPoints_.clear();
     dftFftReadoutText_ = QStringLiteral("—");
+}
+
+void StripChartDock::clearGeometryStrips() {
+    geometryTimeStrip_.reset();
+    geometryFftStrip_.reset();
+    geometryBinding_.reset();
+    geometryFftPoints_.clear();
+    geometryFftReadoutText_ = QStringLiteral("—");
 }
 
 QString StripChartDock::residueDisplayLabel(std::size_t residueIdx) const {
@@ -464,6 +500,7 @@ void StripChartDock::rebuildChannels() {
     // measurement; residue mode shows all available dihedrals for the focused
     // atom's residue. DFT stays with normal atom mode for now.
     clearTrack(structural_);
+    clearGeometryStrips();
     if (residueMode_)
         clearTrack(dft_);
     clearDftSignalStrips();
@@ -473,6 +510,8 @@ void StripChartDock::rebuildChannels() {
     fftReadoutText_ = QStringLiteral("—");
     dftFftPoints_.clear();
     dftFftReadoutText_ = QStringLiteral("—");
+    geometryFftPoints_.clear();
+    geometryFftReadoutText_ = QStringLiteral("—");
 
     model::Conformation* conf     = conformation_;  // QPointer -> raw
     const bool           haveTraj = protein_ && conf && conf->frameCount() > 1;
@@ -485,7 +524,7 @@ void StripChartDock::rebuildChannels() {
         return;
     }
 
-    // ----- Structural channel: a >=2-atom geometry over a trajectory. -----
+    // ----- Geometry observable: a >=2-atom tuple over a trajectory. -----
     QString structMsg;
     if (!haveTraj) {
         // Multi-frame only (gate on frameCount, NOT asTrajectory, so any future
@@ -496,56 +535,12 @@ void StripChartDock::rebuildChannels() {
         structMsg = (selection_ && !selection_->empty()) ? QStringLiteral("select ≥ 2 atoms")
                                                          : QStringLiteral("—");
     } else {
-        // Build the structural channel for THIS selection tuple. The source
-        // captures a copy of the ordered atoms and reads positions through the
-        // conformation's atomPosition seam via model::Measure — works for any
-        // conformation backing, not just the trajectory H5.
-        const model::GeometryKind kind   = selection_->geometryKind();
-        const bool                isDist = (kind == model::GeometryKind::Distance);
-        structural_.buffer.id    = QStringLiteral("geometry");
-        structural_.buffer.label = QStringLiteral("%1: %2")
-                                       .arg(QString::fromLatin1(model::NameForGeometryKind(kind)),
-                                            selectionTupleLabel(selection_->atoms()));
-        structural_.buffer.unit  = isDist ? QString::fromUtf8("Å") : QString::fromUtf8("°");
-
-        const std::vector<std::size_t> atoms = selection_->atoms();
-        structural_.source.id    = structural_.buffer.id;
-        structural_.source.label = structural_.buffer.label;
-        structural_.source.unit  = structural_.buffer.unit;
-        structural_.source.sample = [this, atoms](std::size_t frame) -> std::optional<double> {
-            model::Conformation* c = conformation_;  // QPointer null-checked each call
-            if (!c) return std::nullopt;
-            const auto m = model::Measure(*c, frame, atoms);
-            return m.valid ? std::optional<double>(m.value) : std::nullopt;
-        };
-        model::SignalBinding binding;
-        binding.key.family = model::SignalFamily::Geometry;
-        switch (kind) {
-            case model::GeometryKind::Distance:
-                binding.key.name = QStringLiteral("distance");
-                break;
-            case model::GeometryKind::Angle:
-                binding.key.name = QStringLiteral("angle");
-                break;
-            case model::GeometryKind::Dihedral:
-                binding.key.name = QStringLiteral("dihedral");
-                break;
-            case model::GeometryKind::None:
-                break;
-        }
-        binding.anchorKind = model::SignalAnchorKind::AtomTuple;
-        binding.atomTuple = atoms;
-        binding.followsFocus = true;
-        structural_.binding = std::move(binding);
-        structural_.active = true;
-        if (structural_.yAxis) {
-            structural_.yAxis->setTitleText(structural_.buffer.label.toLower() +
-                                            QStringLiteral(" (") + structural_.buffer.unit + QStringLiteral(")"));
-        }
-        qCDebug(cStrip).noquote() << "structural channel |" << structural_.buffer.label
+        bindGeometryStrips();
+        qCDebug(cStrip).noquote() << "geometry observable |"
+                                  << (geometryTimeStrip_ ? geometryTimeStrip_->buffer().label : QStringLiteral("—"))
                                   << "| frames=" << conf->frameCount() << "| backfill to" << frame_;
     }
-    if (!structural_.active) {
+    if (!geometryTimeStrip_) {
         if (structural_.series) structural_.series->clear();
         if (structural_.cursor) structural_.cursor->clear();
         if (structural_.readout) structural_.readout->setText(structMsg);
@@ -563,6 +558,30 @@ void StripChartDock::rebuildChannels() {
     renderTrack(structural_, frame_);
     renderTrack(dft_, frame_);
     refreshStackTracks();
+}
+
+void StripChartDock::bindGeometryStrips() {
+    clearGeometryStrips();
+    model::Conformation* conf = conformation_;
+    const auto binding = currentGeometryBinding();
+    if (!conf || !binding)
+        return;
+
+    geometryTimeStrip_ = std::make_unique<model::GeometryTupleTimeStrip>(conf);
+    if (geometryTimeStrip_->canBind(*binding)) {
+        geometryTimeStrip_->bind(*binding);
+        geometryBinding_ = *binding;
+    } else {
+        geometryTimeStrip_.reset();
+        return;
+    }
+
+    geometryFftStrip_ = std::make_unique<model::GeometryTupleFftStrip>(conf);
+    if (geometryFftStrip_->canBind(*binding)) {
+        geometryFftStrip_->bind(*binding);
+    } else {
+        geometryFftStrip_.reset();
+    }
 }
 
 void StripChartDock::bindDftChannel() {
@@ -698,11 +717,15 @@ bool StripChartDock::extendDenseTrackTo(Track& tr, int t) {
 void StripChartDock::extendTo(int t) {
     if (t < 0) return;
 
-    // Structural/residue channels are dense and cheap: every frame in
+    // Geometry/residue channels are dense and cheap: every frame in
     // (lastFrame, t] is sampled from resident H5 positions or per-residue TRs.
     // Forward play / a forward scrub appends; backward motion only moves the
     // cursor. No frame > t is ever sampled ("you cannot see the future").
-    bool structExt = extendDenseTrackTo(structural_, t);
+    if (geometryTimeStrip_)
+        geometryTimeStrip_->extendToFrame(static_cast<std::size_t>(t));
+    if (geometryFftStrip_)
+        geometryFftStrip_->extendToFrame(static_cast<std::size_t>(t));
+
     bool residueExt = false;
     for (Track& tr : residueDihedrals_)
         residueExt = extendDenseTrackTo(tr, t) || residueExt;
@@ -716,9 +739,8 @@ void StripChartDock::extendTo(int t) {
     if (dftFftStrip_)
         dftFftStrip_->extendToFrame(static_cast<std::size_t>(t));
 
-    const Track* fftTrack = structural_.active ? &structural_
-                                               : (!residueDihedrals_.empty() ? &residueDihedrals_.front() : nullptr);
-    if ((structExt || residueExt) && fftTrack
+    const Track* fftTrack = (!residueDihedrals_.empty() ? &residueDihedrals_.front() : nullptr);
+    if (residueExt && fftTrack
         && static_cast<int>(fftTrack->buffer.size()) >= fftRecomputeAtSize_) {
         rebuildFft();
         fftRecomputeAtSize_ = static_cast<int>(fftTrack->buffer.size()) + kFftRecomputeStride;
@@ -830,8 +852,8 @@ void StripChartDock::refreshStackTracks() {
         }
         tracks.push_back(std::move(item));
     };
-    if (structural_.active) {
-        addTimeTrack(&structural_.buffer, kGeomColor, structural_.binding);
+    if (geometryTimeStrip_) {
+        addTimeTrack(&geometryTimeStrip_->buffer(), kGeomColor, geometryBinding_);
     }
     const auto dftBinding = currentDftBinding();
     if (dftTimeStrip_) {
@@ -871,6 +893,20 @@ void StripChartDock::refreshStackTracks() {
         }
         spectrumTracks.push_back(std::move(item));
     };
+    if (geometryFftStrip_) {
+        const model::StripRenderData geometryFft = geometryFftStrip_->renderData();
+        geometryFftPoints_ = geometryFft.points;
+        geometryFftReadoutText_ = geometryFft.readout;
+        if (!geometryFftPoints_.empty()) {
+            addSpectrumTrack(&geometryFftPoints_,
+                             geometryFft.label,
+                             geometryFft.xUnit,
+                             geometryFft.yUnit,
+                             geometryFftReadoutText_,
+                             kFftColor,
+                             geometryBinding_);
+        }
+    }
     if (!fftPoints_.empty()) {
         addSpectrumTrack(&fftPoints_,
                          QStringLiteral("Power spectrum"),
@@ -909,15 +945,13 @@ void StripChartDock::rebuildFft() {
             stackWidget_->setSpectrumTracks(QVector<StripStackWidget::SpectrumTrack>{});
     };
 
-    const Track* sourceTrack = structural_.active ? &structural_
-                                                  : (!residueDihedrals_.empty() ? &residueDihedrals_.front() : nullptr);
+    const Track* sourceTrack = !residueDihedrals_.empty() ? &residueDihedrals_.front() : nullptr;
     if (!sourceTrack || !sourceTrack->active) {
         blankFft();
         return;
     }
 
-    // FFT over the structural track's collected VALID values (the geometry
-    // channel is gapless in practice; gather defensively). A dihedral straddling
+    // FFT over the residue-mode track's collected VALID values. A dihedral straddling
     // ±180° must read as one smooth signal, so phase-unwrap a copy before the
     // transform (the time-domain panel keeps the physical wrapped values).
     const auto&         buf = sourceTrack->buffer;
