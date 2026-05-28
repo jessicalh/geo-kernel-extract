@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(nmr-shielding LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -10,6 +12,46 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # build directory; scripts/lint/* + clangd consume it from there.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(NMR_PROFILE "local" CACHE STRING
+    "Configuration profile: local or producer-full")
+set_property(CACHE NMR_PROFILE PROPERTY STRINGS local producer-full)
+option(NMR_REQUIRE_PORTABLE_DEPS
+    "Fail configure when producer dependencies resolve through machine-local paths"
+    OFF)
+set(NMR_PORTABLE_DEP_ALLOW_REGEXES "" CACHE STRING
+    "Semicolon-separated regexes for additional dependency paths allowed by NMR_REQUIRE_PORTABLE_DEPS")
+if(NMR_PROFILE STREQUAL "producer-full")
+    set(NMR_REQUIRE_PORTABLE_DEPS ON CACHE BOOL
+        "Fail configure when producer dependencies resolve through machine-local paths" FORCE)
+    set(NMR_USE_INSTALL_DATA_DIR ON CACHE BOOL
+        "Compile NMR_DATA_DIR to the install data directory instead of the source tree" FORCE)
+    set(NMR_ENABLE_NATIVE_ARCH OFF CACHE BOOL
+        "Compile nmr_shielding with -march=native on compilers that support it" FORCE)
+    if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+        set(CMAKE_INSTALL_PREFIX "/opt/nmr-shielding" CACHE PATH
+            "Install path prefix" FORCE)
+    endif()
+elseif(NOT NMR_PROFILE STREQUAL "local")
+    message(FATAL_ERROR
+        "Unknown NMR_PROFILE='${NMR_PROFILE}'. Expected 'local' or "
+        "'producer-full'.")
+endif()
+
+set(NMR_INSTALL_DATA_DIR "${CMAKE_INSTALL_DATAROOTDIR}/nmr-shielding/data"
+    CACHE STRING "Relative install directory for nmr-shielding runtime data")
+option(NMR_USE_INSTALL_DATA_DIR
+    "Compile NMR_DATA_DIR to the install data directory instead of the source tree"
+    OFF)
+if(NMR_USE_INSTALL_DATA_DIR)
+    if(IS_ABSOLUTE "${NMR_INSTALL_DATA_DIR}")
+        set(NMR_RUNTIME_DATA_DIR "${NMR_INSTALL_DATA_DIR}")
+    else()
+        set(NMR_RUNTIME_DATA_DIR "${CMAKE_INSTALL_PREFIX}/${NMR_INSTALL_DATA_DIR}")
+    endif()
+else()
+    set(NMR_RUNTIME_DATA_DIR "${CMAKE_SOURCE_DIR}/data")
+endif()
+
 # Default build type: optimised with debug symbols.
 # Override with: cmake -DCMAKE_BUILD_TYPE=Release ..
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -18,18 +60,160 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # ============================================================================
-# RUNPATH: prepend /usr/lib/x86_64-linux-gnu so the system libpq +
+# Machine-local dependency knobs
+#
+# Public override surface:
+#   1. CMake cache variables (-D..., CMakeUserPresets.json)
+#   2. Matching NMR_* environment variables at first configure
+#   3. Standard system discovery / compatibility probes
+#
+# The committed build files must not encode a username or a private absolute
+# path. Keep per-machine choices in the cache, environment, or ignored
+# CMakeUserPresets.json.
+# ============================================================================
+
+function(nmr_cache_from_env cache_var env_var cache_type help_text)
+    if((NOT DEFINED ${cache_var}
+        OR "${${cache_var}}" STREQUAL ""
+        OR "${${cache_var}}" MATCHES "-NOTFOUND$")
+       AND NOT "$ENV{${env_var}}" STREQUAL "")
+        set(${cache_var} "$ENV{${env_var}}" CACHE ${cache_type} "${help_text}" FORCE)
+    endif()
+endfunction()
+
+function(nmr_cache_first_existing cache_var cache_type help_text)
+    if(DEFINED ${cache_var}
+       AND NOT "${${cache_var}}" STREQUAL ""
+       AND NOT "${${cache_var}}" MATCHES "-NOTFOUND$")
+        return()
+    endif()
+    foreach(_candidate ${ARGN})
+        if(NOT "${_candidate}" STREQUAL "" AND EXISTS "${_candidate}")
+            set(${cache_var} "${_candidate}" CACHE ${cache_type} "${help_text}" FORCE)
+            return()
+        endif()
+    endforeach()
+endfunction()
+
+function(nmr_require_existing cache_var description)
+    if(NOT DEFINED ${cache_var}
+       OR "${${cache_var}}" STREQUAL ""
+       OR "${${cache_var}}" MATCHES "-NOTFOUND$"
+       OR NOT EXISTS "${${cache_var}}")
+        message(FATAL_ERROR
+            "${description} not found at '${${cache_var}}'. Set ${cache_var} "
+            "or the documented matching NMR_* environment variable.")
+    endif()
+endfunction()
+
+function(nmr_require_contains cache_var relative_path description)
+    if(NOT DEFINED ${cache_var}
+       OR "${${cache_var}}" STREQUAL ""
+       OR "${${cache_var}}" MATCHES "-NOTFOUND$"
+       OR NOT EXISTS "${${cache_var}}/${relative_path}")
+        message(FATAL_ERROR
+            "${description} not found under '${${cache_var}}' "
+            "(expected ${relative_path}). Set ${cache_var} or the "
+            "documented matching NMR_* environment variable.")
+    endif()
+endfunction()
+
+set(NMR_MACHINE_LOCAL_PATH_REGEX "^(/home/|/shared/|/mnt/|/opt/orca/|/usr/local/cuda/)")
+set(_nmr_portability_errors)
+
+function(nmr_require_portable_paths label)
+    if(NOT NMR_REQUIRE_PORTABLE_DEPS)
+        return()
+    endif()
+
+    foreach(_path IN LISTS ARGN)
+        if("${_path}" STREQUAL "" OR "${_path}" MATCHES "-NOTFOUND$")
+            continue()
+        endif()
+        if(NOT IS_ABSOLUTE "${_path}")
+            continue()
+        endif()
+
+        set(_allowed OFF)
+        foreach(_allow_regex IN LISTS NMR_PORTABLE_DEP_ALLOW_REGEXES)
+            if(NOT "${_allow_regex}" STREQUAL "" AND "${_path}" MATCHES "${_allow_regex}")
+                set(_allowed ON)
+            endif()
+        endforeach()
+
+        if(NOT _allowed AND "${_path}" MATCHES "${NMR_MACHINE_LOCAL_PATH_REGEX}")
+            list(APPEND _nmr_portability_errors "${label}: ${_path}")
+        endif()
+    endforeach()
+    set(_nmr_portability_errors "${_nmr_portability_errors}" PARENT_SCOPE)
+endfunction()
+
+function(nmr_fail_on_portability_errors)
+    if(NOT NMR_REQUIRE_PORTABLE_DEPS)
+        return()
+    endif()
+
+    if(NOT NMR_USE_INSTALL_DATA_DIR)
+        message(FATAL_ERROR
+            "NMR_REQUIRE_PORTABLE_DEPS=ON requires "
+            "NMR_USE_INSTALL_DATA_DIR=ON so installed builds do not compile "
+            "NMR_DATA_DIR to the source tree.")
+    endif()
+
+    if(NMR_ENABLE_NATIVE_ARCH)
+        message(FATAL_ERROR
+            "NMR_REQUIRE_PORTABLE_DEPS=ON requires "
+            "NMR_ENABLE_NATIVE_ARCH=OFF so binaries are not tied to this CPU.")
+    endif()
+
+    if(_nmr_portability_errors)
+        list(REMOVE_DUPLICATES _nmr_portability_errors)
+        string(REPLACE ";" "\n  " _nmr_portability_report "${_nmr_portability_errors}")
+        message(FATAL_ERROR
+            "NMR_REQUIRE_PORTABLE_DEPS=ON but machine-local dependency paths "
+            "were resolved:\n  ${_nmr_portability_report}\n"
+            "Set these dependencies to a deliberate producer prefix or use "
+            "NMR_PROFILE=local for machine-local development.")
+    endif()
+endfunction()
+
+nmr_cache_from_env(NMR_SYSTEM_LIBRARY_DIR NMR_SYSTEM_LIBRARY_DIR PATH
+    "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency")
+if(NOT NMR_SYSTEM_LIBRARY_DIR)
+    if(CMAKE_LIBRARY_ARCHITECTURE AND EXISTS "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+        set(NMR_SYSTEM_LIBRARY_DIR "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
+            CACHE PATH "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency" FORCE)
+    elseif(EXISTS "/usr/lib/x86_64-linux-gnu")
+        set(NMR_SYSTEM_LIBRARY_DIR "/usr/lib/x86_64-linux-gnu"
+            CACHE PATH "System library directory to prepend to RUNPATH / LD_LIBRARY_PATH for libpq/OpenSSL consistency" FORCE)
+    endif()
+endif()
+option(NMR_INSTALL_RPATH_USE_ORIGIN
+    "Add $ORIGIN-relative install RUNPATH for bundled producer dependencies"
+    ON)
+option(NMR_INSTALL_RPATH_USE_LINK_PATH
+    "Allow CMake to append external link directories to installed RUNPATH"
+    OFF)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH "${NMR_INSTALL_RPATH_USE_LINK_PATH}")
+
+# ============================================================================
+# RUNPATH: prepend the selected system library directory so the system libpq +
 # libssl + libcrypto trio resolves consistently. Other linked libs
 # (libmopac, libreducelib, libgromacs_mpi, libtorch, libnvrtc, ...)
-# bring micromamba and torch lib dirs along as RUNPATH entries
-# automatically; without this prepend the loader picks micromamba's
-# libpq → micromamba's libssl (OpenSSL 3.2-3.6 symbol requirements)
-# but system libcrypto (3.0 symbols only), and the load fails. We
+# bring their own dependency lib dirs along as RUNPATH entries
+# automatically; without this prepend the loader can pick libpq/libssl
+# from one dependency environment but libcrypto from the host system,
+# and the load fails. We
 # don't USE OpenSSL — libpq's NEEDED entries pull libssl/libcrypto
 # at process startup regardless of runtime config — but the two
 # halves of the SSL pair must come from the same install.
-list(PREPEND CMAKE_BUILD_RPATH "/usr/lib/x86_64-linux-gnu")
-list(PREPEND CMAKE_INSTALL_RPATH "/usr/lib/x86_64-linux-gnu")
+if(NMR_SYSTEM_LIBRARY_DIR)
+    list(PREPEND CMAKE_BUILD_RPATH "${NMR_SYSTEM_LIBRARY_DIR}")
+    list(APPEND CMAKE_INSTALL_RPATH "${NMR_SYSTEM_LIBRARY_DIR}")
+endif()
+if(NMR_INSTALL_RPATH_USE_ORIGIN)
+    list(PREPEND CMAKE_INSTALL_RPATH "$ORIGIN/../${CMAKE_INSTALL_LIBDIR}")
+endif()
 set(CMAKE_BUILD_RPATH_USE_ORIGIN OFF)
 
 # ============================================================================
@@ -37,6 +221,13 @@ set(CMAKE_BUILD_RPATH_USE_ORIGIN OFF)
 # ============================================================================
 
 find_package(Eigen3 REQUIRED)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+nmr_cache_from_env(NMR_DSSP_ROOT NMR_DSSP_ROOT PATH
+    "DSSP installation root; optional hint before find_package(dssp)")
+if(NMR_DSSP_ROOT)
+    list(PREPEND CMAKE_PREFIX_PATH "${NMR_DSSP_ROOT}")
+endif()
 find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
 
 # PostgreSQL libpq — required for TripeptideDftTable (ProCS15 tripeptide
@@ -44,36 +235,58 @@ find_package(dssp QUIET)  # brings cifpp::cifpp with mm module
 # read from ~/.nmr_tools.toml [databases].tensorcs15. No DSN configured
 # means TripeptideBackboneShieldingResult skips at Compute time;
 # linking is unconditional so the calculator code is always present.
-# PostgreSQL libpq — explicit system path. We do NOT use find_package
-# here because find_package picks up micromamba's libpq, which pulls
-# in a newer libssl (OpenSSL 3.2-3.6 symbols) that doesn't match the
-# system's libcrypto (3.0 symbols). Loading the test binary fails. We
-# use system libpq instead, which pulls system libssl + libcrypto
-# consistently. We don't USE SSL at all (DSN is a Unix socket) but
-# libpq's NEEDED entries pull libssl/libcrypto at process startup
-# regardless of runtime config — so the versions must match.
-set(PostgreSQL_LIBRARY "/usr/lib/x86_64-linux-gnu/libpq.so"
-    CACHE FILEPATH "System libpq (avoids micromamba OpenSSL mismatch)")
-set(PostgreSQL_INCLUDE_DIR "/usr/include/postgresql"
-    CACHE PATH "System libpq headers")
-if(NOT EXISTS ${PostgreSQL_LIBRARY})
-    message(FATAL_ERROR "System libpq not found at ${PostgreSQL_LIBRARY}; "
-                        "install libpq-dev or set PostgreSQL_LIBRARY explicitly")
+# PostgreSQL libpq — explicitly resolved so libpq, libssl, and libcrypto
+# come from one installation. We do NOT use find_package here because
+# dependency environments can provide a libpq that pulls a different
+# OpenSSL pair than the host linker resolves by default.
+nmr_cache_from_env(PostgreSQL_LIBRARY NMR_POSTGRESQL_LIBRARY FILEPATH
+    "libpq shared library")
+nmr_cache_from_env(PostgreSQL_INCLUDE_DIR NMR_POSTGRESQL_INCLUDE_DIR PATH
+    "libpq include directory containing libpq-fe.h")
+find_library(PostgreSQL_LIBRARY
+    NAMES pq
+    PATHS "${NMR_SYSTEM_LIBRARY_DIR}"
+    DOC "libpq shared library")
+find_path(PostgreSQL_INCLUDE_DIR
+    NAMES libpq-fe.h
+    PATH_SUFFIXES postgresql
+    DOC "libpq include directory containing libpq-fe.h")
+if(NOT PostgreSQL_LIBRARY OR NOT EXISTS "${PostgreSQL_LIBRARY}")
+    message(FATAL_ERROR "libpq not found. Set PostgreSQL_LIBRARY or "
+                        "NMR_POSTGRESQL_LIBRARY to the desired libpq.so.")
 endif()
-if(NOT EXISTS ${PostgreSQL_INCLUDE_DIR}/libpq-fe.h)
-    message(FATAL_ERROR "System libpq headers not found at "
-                        "${PostgreSQL_INCLUDE_DIR}; install libpq-dev")
+if(NOT PostgreSQL_INCLUDE_DIR OR NOT EXISTS "${PostgreSQL_INCLUDE_DIR}/libpq-fe.h")
+    message(FATAL_ERROR "libpq headers not found. Set PostgreSQL_INCLUDE_DIR "
+                        "or NMR_POSTGRESQL_INCLUDE_DIR to the directory "
+                        "containing libpq-fe.h.")
 endif()
 add_library(PostgreSQL::PostgreSQL UNKNOWN IMPORTED)
 set_target_properties(PostgreSQL::PostgreSQL PROPERTIES
     IMPORTED_LOCATION "${PostgreSQL_LIBRARY}"
     INTERFACE_INCLUDE_DIRECTORIES "${PostgreSQL_INCLUDE_DIR}")
-message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARY} (explicit system path)")
+message(STATUS "PostgreSQL libpq: ${PostgreSQL_LIBRARY}")
 if(NOT dssp_FOUND)
     # Manual fallback for machines without dssp cmake config (Ubuntu 22.04).
-    # Requires libdssp.a + dssp.hpp installed to /usr/local, cifpp from apt.
-    find_library(DSSP_LIB dssp PATHS /usr/local/lib REQUIRED)
-    find_path(DSSP_INCLUDE dssp.hpp PATHS /usr/local/include REQUIRED)
+    # Requires libdssp + dssp.hpp, cifpp from apt or another CMAKE_PREFIX_PATH.
+    nmr_cache_from_env(DSSP_LIB NMR_DSSP_LIB FILEPATH
+        "DSSP library for manual fallback")
+    nmr_cache_from_env(DSSP_INCLUDE NMR_DSSP_INCLUDE PATH
+        "DSSP include directory containing dssp.hpp")
+    find_library(DSSP_LIB
+        NAMES dssp
+        HINTS "${NMR_DSSP_ROOT}"
+        PATH_SUFFIXES lib lib64
+        DOC "DSSP library for manual fallback")
+    find_path(DSSP_INCLUDE
+        NAMES dssp.hpp
+        HINTS "${NMR_DSSP_ROOT}"
+        PATH_SUFFIXES include
+        DOC "DSSP include directory containing dssp.hpp")
+    if(NOT DSSP_LIB OR NOT DSSP_INCLUDE)
+        message(FATAL_ERROR "dssp not found via find_package or manual "
+                            "fallback. Set NMR_DSSP_ROOT, DSSP_LIB, and/or "
+                            "DSSP_INCLUDE.")
+    endif()
     find_package(cifpp REQUIRED)
     add_library(dssp::dssp STATIC IMPORTED)
     set_target_properties(dssp::dssp PROPERTIES
@@ -84,97 +297,147 @@ if(NOT dssp_FOUND)
     message(STATUS "dssp: manual fallback — ${DSSP_LIB}")
 endif()
 
-# OpenBabel3 for bond perception and hybridisation
-# Installed in miniforge3. The cmake config is there but does not
-# export include dirs properly, so we set them explicitly.
-set(OPENBABEL_INCLUDE "/usr/include/openbabel3"
-    CACHE PATH "OpenBabel3 include directory")
-set(OPENBABEL_LIB "/usr/lib/x86_64-linux-gnu/libopenbabel.so"
-    CACHE FILEPATH "OpenBabel3 library")
-if(NOT EXISTS ${OPENBABEL_LIB})
-    message(FATAL_ERROR "OpenBabel3 not found at ${OPENBABEL_LIB}")
+# OpenBabel3 for bond perception and hybridisation. The cmake config is
+# not reliable across package managers, so resolve the include + library
+# explicitly but allow any install root.
+nmr_cache_from_env(NMR_OPENBABEL_ROOT NMR_OPENBABEL_ROOT PATH
+    "OpenBabel installation root")
+nmr_cache_from_env(OPENBABEL_INCLUDE NMR_OPENBABEL_INCLUDE PATH
+    "OpenBabel3 include directory containing openbabel/mol.h")
+nmr_cache_from_env(OPENBABEL_LIB NMR_OPENBABEL_LIB FILEPATH
+    "OpenBabel3 shared library")
+find_path(OPENBABEL_INCLUDE
+    NAMES openbabel/mol.h
+    HINTS "${NMR_OPENBABEL_ROOT}"
+    PATH_SUFFIXES include/openbabel3 openbabel3
+    DOC "OpenBabel3 include directory containing openbabel/mol.h")
+find_library(OPENBABEL_LIB
+    NAMES openbabel
+    HINTS "${NMR_OPENBABEL_ROOT}"
+    PATH_SUFFIXES lib lib64
+    DOC "OpenBabel3 shared library")
+if(NOT OPENBABEL_INCLUDE OR NOT EXISTS "${OPENBABEL_INCLUDE}/openbabel/mol.h")
+    message(FATAL_ERROR "OpenBabel3 headers not found. Set OPENBABEL_INCLUDE "
+                        "or NMR_OPENBABEL_INCLUDE.")
+endif()
+if(NOT OPENBABEL_LIB OR NOT EXISTS "${OPENBABEL_LIB}")
+    message(FATAL_ERROR "OpenBabel3 library not found. Set OPENBABEL_LIB "
+                        "or NMR_OPENBABEL_LIB.")
 endif()
 message(STATUS "OpenBabel3: ${OPENBABEL_LIB}")
 
 # GROMACS 2026 for TPR reading (fleet loader)
 # Linked against the installed libgromacs.so; internal headers from
 # the source tree because GROMACS does not install them as public API.
-set(GROMACS_LIB "/home/jessica/gromacs/build/gromacs-2026/lib/libgromacs_mpi.so"
-    CACHE FILEPATH "GROMACS library")
-set(GROMACS_SRC "/home/jessica/gromacs/src/gromacs-2026.0/src"
-    CACHE PATH "GROMACS source tree (for internal headers)")
-set(GROMACS_BUILD "/home/jessica/gromacs/build/gromacs-2026"
-    CACHE PATH "GROMACS build tree (for generated headers)")
-if(NOT EXISTS ${GROMACS_LIB})
+nmr_cache_from_env(NMR_GROMACS_ROOT NMR_GROMACS_ROOT PATH
+    "GROMACS install root; optional hint for libgromacs")
+nmr_cache_from_env(GROMACS_LIB NMR_GROMACS_LIB FILEPATH
+    "GROMACS library")
+nmr_cache_from_env(GROMACS_SRC NMR_GROMACS_SRC PATH
+    "GROMACS source tree (for internal headers)")
+nmr_cache_from_env(GROMACS_BUILD NMR_GROMACS_BUILD PATH
+    "GROMACS build tree (for generated headers)")
+find_library(GROMACS_LIB
+    NAMES gromacs_mpi gromacs
+    HINTS "${NMR_GROMACS_ROOT}"
+    PATH_SUFFIXES lib lib64
+    DOC "GROMACS library")
+nmr_cache_first_existing(GROMACS_LIB FILEPATH "GROMACS library"
+    "$ENV{HOME}/gromacs/build/gromacs-2026/lib/libgromacs_mpi.so"
+    "$ENV{HOME}/build/gmx2026/gromacs-2026-build/lib/libgromacs_mpi.so"
+    "/opt/gromacs/2026.0/lib/libgromacs_mpi.so")
+nmr_cache_first_existing(GROMACS_SRC PATH "GROMACS source tree (for internal headers)"
+    "$ENV{HOME}/gromacs/src/gromacs-2026.0/src"
+    "$ENV{HOME}/build/gmx2026/gromacs-2026.0/src")
+nmr_cache_first_existing(GROMACS_BUILD PATH "GROMACS build tree (for generated headers)"
+    "$ENV{HOME}/gromacs/build/gromacs-2026"
+    "$ENV{HOME}/build/gmx2026/gromacs-2026-build")
+if(NOT GROMACS_LIB OR NOT EXISTS "${GROMACS_LIB}")
     message(FATAL_ERROR "libgromacs not found at ${GROMACS_LIB} — required "
                         "(the library links it unconditionally for trajectory "
-                        "reading). Set -DGROMACS_LIB=... (and GROMACS_SRC / "
-                        "GROMACS_BUILD), e.g. in CMakeUserPresets.json.")
+                        "reading). Set GROMACS_LIB or NMR_GROMACS_LIB.")
+endif()
+if(NOT GROMACS_SRC OR NOT EXISTS "${GROMACS_SRC}/gromacs")
+    message(FATAL_ERROR "GROMACS source headers not found at ${GROMACS_SRC}. "
+                        "Set GROMACS_SRC or NMR_GROMACS_SRC.")
+endif()
+if(NOT GROMACS_BUILD OR NOT EXISTS "${GROMACS_BUILD}")
+    message(FATAL_ERROR "GROMACS build tree not found at ${GROMACS_BUILD}. "
+                        "Set GROMACS_BUILD or NMR_GROMACS_BUILD.")
 endif()
 message(STATUS "GROMACS: ${GROMACS_LIB}")
 
 # Richardson lab reduce (hydrogen placement for protonation)
-# Pre-built as static library from /home/jessica/builds/reduce-src
-set(REDUCE_SRC "/home/jessica/builds/reduce-src"
-    CACHE PATH "reduce source tree")
-set(REDUCE_LIB "/home/jessica/builds/reduce-src/build/reduce_src/libreducelib.a"
-    CACHE FILEPATH "reduce static library")
-set(REDUCE_LIBPDB "/home/jessica/builds/reduce-src/build/libpdb/libpdb++.a"
-    CACHE FILEPATH "reduce libpdb++ static library")
-set(REDUCE_TOOLCLASSES "/home/jessica/builds/reduce-src/build/toolclasses/libtoolclasses.a"
-    CACHE FILEPATH "reduce toolclasses static library")
+nmr_cache_from_env(REDUCE_SRC NMR_REDUCE_SRC PATH
+    "reduce source tree")
+nmr_cache_from_env(REDUCE_LIB NMR_REDUCE_LIB FILEPATH
+    "reduce static library")
+nmr_cache_from_env(REDUCE_LIBPDB NMR_REDUCE_LIBPDB FILEPATH
+    "reduce libpdb++ static library")
+nmr_cache_from_env(REDUCE_TOOLCLASSES NMR_REDUCE_TOOLCLASSES FILEPATH
+    "reduce toolclasses static library")
+nmr_cache_first_existing(REDUCE_SRC PATH "reduce source tree"
+    "$ENV{HOME}/builds/reduce-src")
+nmr_cache_first_existing(REDUCE_LIB FILEPATH "reduce static library"
+    "${REDUCE_SRC}/build/reduce_src/libreducelib.a")
+nmr_cache_first_existing(REDUCE_LIBPDB FILEPATH "reduce libpdb++ static library"
+    "${REDUCE_SRC}/build/libpdb/libpdb++.a")
+nmr_cache_first_existing(REDUCE_TOOLCLASSES FILEPATH "reduce toolclasses static library"
+    "${REDUCE_SRC}/build/toolclasses/libtoolclasses.a")
+nmr_cache_from_env(REDUCE_HET_DICT NMR_REDUCE_HET_DICT FILEPATH
+    "reduce het dictionary")
 set(REDUCE_HET_DICT "${REDUCE_SRC}/reduce_wwPDB_het_dict.txt"
     CACHE FILEPATH "reduce het dictionary")
 # reduce links three archives unconditionally (reducelib + libpdb++ +
 # toolclasses, see target_link_libraries below) — all required.
 foreach(_reduce_archive REDUCE_LIB REDUCE_LIBPDB REDUCE_TOOLCLASSES)
-    if(NOT EXISTS ${${_reduce_archive}})
+    if(NOT EXISTS "${${_reduce_archive}}")
         message(FATAL_ERROR "reduce archive ${_reduce_archive}=${${_reduce_archive}} "
                             "not found — required (linked unconditionally for "
-                            "protonation). Set -D${_reduce_archive}=... (and "
-                            "REDUCE_SRC), e.g. in CMakeUserPresets.json.")
+                            "protonation). Set ${_reduce_archive} or the "
+                            "matching NMR_REDUCE_* environment variable.")
     endif()
 endforeach()
+if(NOT EXISTS "${REDUCE_HET_DICT}")
+    message(FATAL_ERROR "reduce het dictionary not found at ${REDUCE_HET_DICT}. "
+                        "Set REDUCE_HET_DICT or NMR_REDUCE_HET_DICT.")
+endif()
 message(STATUS "reduce: ${REDUCE_LIB}")
 
 # MOPAC (PM7+MOZYME semiempirical) — linked library, replaces xTB subprocess
-set(MOPAC_INCLUDE "/home/jessica/micromamba/envs/mm/include"
-    CACHE PATH "MOPAC include directory (mopac.h)")
-set(MOPAC_LIB "/home/jessica/micromamba/envs/mm/lib/libmopac.so"
-    CACHE FILEPATH "MOPAC shared library")
-if(NOT EXISTS ${MOPAC_LIB})
+nmr_cache_from_env(NMR_MOPAC_ROOT NMR_MOPAC_ROOT PATH
+    "MOPAC installation root")
+if(NOT NMR_MOPAC_ROOT AND NOT "$ENV{CONDA_PREFIX}" STREQUAL "")
+    set(NMR_MOPAC_ROOT "$ENV{CONDA_PREFIX}" CACHE PATH "MOPAC installation root" FORCE)
+elseif(NOT NMR_MOPAC_ROOT AND NOT "$ENV{MAMBA_ROOT_PREFIX}" STREQUAL ""
+       AND EXISTS "$ENV{MAMBA_ROOT_PREFIX}/envs/mm")
+    set(NMR_MOPAC_ROOT "$ENV{MAMBA_ROOT_PREFIX}/envs/mm" CACHE PATH "MOPAC installation root" FORCE)
+endif()
+nmr_cache_from_env(MOPAC_INCLUDE NMR_MOPAC_INCLUDE PATH
+    "MOPAC include directory (mopac.h)")
+nmr_cache_from_env(MOPAC_LIB NMR_MOPAC_LIB FILEPATH
+    "MOPAC shared library")
+find_path(MOPAC_INCLUDE
+    NAMES mopac.h
+    HINTS "${NMR_MOPAC_ROOT}"
+    PATH_SUFFIXES include
+    DOC "MOPAC include directory (mopac.h)")
+find_library(MOPAC_LIB
+    NAMES mopac
+    HINTS "${NMR_MOPAC_ROOT}"
+    PATH_SUFFIXES lib lib64
+    DOC "MOPAC shared library")
+if(NOT MOPAC_INCLUDE OR NOT EXISTS "${MOPAC_INCLUDE}/mopac.h")
+    message(FATAL_ERROR "MOPAC headers not found. Set MOPAC_INCLUDE or "
+                        "NMR_MOPAC_INCLUDE.")
+endif()
+if(NOT MOPAC_LIB OR NOT EXISTS "${MOPAC_LIB}")
     message(FATAL_ERROR "libmopac not found at ${MOPAC_LIB} — required "
                         "(the library links it unconditionally; the --mopac "
                         "toggle gates whether MOPAC RUNS, not whether it links). "
-                        "Set -DMOPAC_LIB=... (and MOPAC_INCLUDE), e.g. in "
-                        "CMakeUserPresets.json.")
+                        "Set MOPAC_LIB or NMR_MOPAC_LIB.")
 endif()
 message(STATUS "MOPAC: ${MOPAC_LIB}")
-
-# GTest for unit tests. Prefer a system/installed GTest; otherwise fetch
-# it from GitHub. The fetch needs network at first configure, so it is
-# announced (not silent) and gated by NMR_FETCH_GTEST: default ON keeps
-# the current behaviour, OFF requires a system GTest (for offline /
-# restricted-network configures).
-option(NMR_FETCH_GTEST "Fetch googletest from GitHub when no system GTest is found" ON)
-find_package(GTest QUIET)
-if(NOT GTest_FOUND)
-    if(NOT NMR_FETCH_GTEST)
-        message(FATAL_ERROR "GTest not found and NMR_FETCH_GTEST=OFF — install "
-                            "a system GTest (e.g. libgtest-dev) or re-enable "
-                            "-DNMR_FETCH_GTEST=ON to fetch it from GitHub.")
-    endif()
-    message(STATUS "GTest not found — fetching googletest v1.14.0 from GitHub "
-                   "(needs network; set -DNMR_FETCH_GTEST=OFF to require a "
-                   "system GTest instead).")
-    include(FetchContent)
-    FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
-    )
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
-endif()
 
 # ============================================================================
 # Header-only external libraries
@@ -184,15 +447,46 @@ add_library(extern_headers INTERFACE)
 target_include_directories(extern_headers INTERFACE ${CMAKE_SOURCE_DIR}/extern)
 
 # HighFive — header-only HDF5 C++ interface (extern/HighFive)
-# Link HDF5 directly to avoid cmake pulling in curl/ssl transitive deps
+# Link HDF5 directly so the exact HDF5/curl/zlib installation is visible
+# in the cache and can be pinned per machine.
+nmr_cache_from_env(NMR_HDF5_INCLUDE_DIR NMR_HDF5_INCLUDE_DIR PATH
+    "HDF5 C include directory containing hdf5.h")
+nmr_cache_from_env(NMR_HDF5_C_LIBRARY NMR_HDF5_C_LIBRARY FILEPATH
+    "HDF5 C library")
+nmr_cache_from_env(NMR_CURL_LIBRARY NMR_CURL_LIBRARY FILEPATH
+    "libcurl library linked with HDF5")
+nmr_cache_from_env(NMR_Z_LIBRARY NMR_Z_LIBRARY FILEPATH
+    "zlib library linked with HDF5")
+find_path(NMR_HDF5_INCLUDE_DIR
+    NAMES hdf5.h
+    PATHS "/usr/include/hdf5/serial"
+    PATH_SUFFIXES hdf5/serial
+    DOC "HDF5 C include directory containing hdf5.h")
+find_library(NMR_HDF5_C_LIBRARY
+    NAMES hdf5
+    PATHS "${NMR_SYSTEM_LIBRARY_DIR}/hdf5/serial"
+    PATH_SUFFIXES hdf5/serial
+    DOC "HDF5 C library")
+find_library(NMR_CURL_LIBRARY
+    NAMES curl
+    PATHS "${NMR_SYSTEM_LIBRARY_DIR}"
+    DOC "libcurl library linked with HDF5")
+find_library(NMR_Z_LIBRARY
+    NAMES z
+    PATHS "${NMR_SYSTEM_LIBRARY_DIR}"
+    DOC "zlib library linked with HDF5")
+nmr_require_contains(NMR_HDF5_INCLUDE_DIR hdf5.h "HDF5 C headers")
+nmr_require_existing(NMR_HDF5_C_LIBRARY "HDF5 C library")
+nmr_require_existing(NMR_CURL_LIBRARY "libcurl library")
+nmr_require_existing(NMR_Z_LIBRARY "zlib library")
 add_library(highfive INTERFACE)
 target_include_directories(highfive INTERFACE
     ${CMAKE_SOURCE_DIR}/extern/HighFive/include
-    /usr/include/hdf5/serial)
+    ${NMR_HDF5_INCLUDE_DIR})
 target_link_libraries(highfive INTERFACE
-    /usr/lib/x86_64-linux-gnu/hdf5/serial/libhdf5.so
-    /usr/lib/x86_64-linux-gnu/libcurl.so
-    /usr/lib/x86_64-linux-gnu/libz.so)
+    ${NMR_HDF5_C_LIBRARY}
+    ${NMR_CURL_LIBRARY}
+    ${NMR_Z_LIBRARY})
 
 # ============================================================================
 # xdrfile — XTC trajectory I/O (ported from fes-sampler, GROMACS XDR format)
@@ -208,9 +502,25 @@ target_include_directories(xdrfile PUBLIC ${CMAKE_SOURCE_DIR}/extern/xdrfile)
 # libtorch (CUDA) — AIMNet2 neural network charge calculator
 # ============================================================================
 
-set(CMAKE_PREFIX_PATH
-    "/home/jessica/.local/lib/python3.12/site-packages/torch/share/cmake"
-    ${CMAKE_PREFIX_PATH})
+nmr_cache_from_env(NMR_TORCH_CMAKE_PREFIX_PATH NMR_TORCH_CMAKE_PREFIX_PATH PATH
+    "Directory containing TorchConfig.cmake, or a prefix with share/cmake/Torch")
+if(NMR_TORCH_CMAKE_PREFIX_PATH)
+    list(PREPEND CMAKE_PREFIX_PATH "${NMR_TORCH_CMAKE_PREFIX_PATH}")
+elseif(NOT Torch_DIR)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import pathlib, torch; print(pathlib.Path(torch.__file__).parent / 'share' / 'cmake')"
+        OUTPUT_VARIABLE _nmr_torch_cmake_from_python
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _nmr_torch_python_status
+    )
+    if(_nmr_torch_python_status EQUAL 0 AND EXISTS "${_nmr_torch_cmake_from_python}/Torch/TorchConfig.cmake")
+        set(NMR_TORCH_CMAKE_PREFIX_PATH "${_nmr_torch_cmake_from_python}"
+            CACHE PATH "Directory containing TorchConfig.cmake, or a prefix with share/cmake/Torch" FORCE)
+        list(PREPEND CMAKE_PREFIX_PATH "${NMR_TORCH_CMAKE_PREFIX_PATH}")
+        message(STATUS "Torch hint from ${Python3_EXECUTABLE}: ${NMR_TORCH_CMAKE_PREFIX_PATH}")
+    endif()
+endif()
 find_package(Torch REQUIRED)
 message(STATUS "Torch: ${TORCH_LIBRARIES}")
 # libtorch headers use some constructs that trigger these warnings
@@ -224,24 +534,105 @@ set(TORCH_CXX_FLAGS -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-decl
 add_library(apbs_bridge STATIC
     ${CMAKE_SOURCE_DIR}/src/apbs_bridge.c
 )
-target_include_directories(apbs_bridge PRIVATE
+nmr_cache_from_env(NMR_APBS_INCLUDE_DIR NMR_APBS_INCLUDE_DIR PATH
+    "APBS include root containing apbs/apbs.h")
+nmr_cache_from_env(NMR_FETK_INCLUDE_DIR NMR_FETK_INCLUDE_DIR PATH
+    "FETK include root containing fetk/")
+nmr_cache_from_env(NMR_MALOC_INCLUDE_DIR NMR_MALOC_INCLUDE_DIR PATH
+    "MALOC include root containing maloc/")
+find_path(NMR_APBS_INCLUDE_DIR
+    NAMES apbs/apbs.h
+    DOC "APBS include root containing apbs/apbs.h")
+find_path(NMR_FETK_INCLUDE_DIR
+    NAMES fetk/punc/punc.h
+    DOC "FETK include root containing fetk/")
+find_path(NMR_MALOC_INCLUDE_DIR
+    NAMES maloc/maloc.h
+    DOC "MALOC include root containing maloc/")
+nmr_require_contains(NMR_APBS_INCLUDE_DIR apbs/apbs.h "APBS headers")
+nmr_require_contains(NMR_MALOC_INCLUDE_DIR maloc/maloc.h "MALOC headers")
+
+set(_nmr_apbs_include_dirs
     ${CMAKE_SOURCE_DIR}/src
-    /usr/include/apbs
-    /usr/include/fetk
-    /usr/include/maloc
+    ${NMR_APBS_INCLUDE_DIR}
+    ${NMR_APBS_INCLUDE_DIR}/apbs
+    ${NMR_MALOC_INCLUDE_DIR}
+    ${NMR_MALOC_INCLUDE_DIR}/maloc
 )
+if(NMR_FETK_INCLUDE_DIR AND NOT "${NMR_FETK_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
+    nmr_require_contains(NMR_FETK_INCLUDE_DIR fetk/punc/punc.h "FETK headers")
+    list(APPEND _nmr_apbs_include_dirs
+        ${NMR_FETK_INCLUDE_DIR}
+        ${NMR_FETK_INCLUDE_DIR}/fetk)
+endif()
+target_include_directories(apbs_bridge PRIVATE ${_nmr_apbs_include_dirs})
 # FETK libs (mc, punc) are separate on Ubuntu 24.04 but bundled
 # inside libapbs on 22.04.  Link them only if found.
 find_library(FETK_MC mc)
 find_library(FETK_PUNC punc)
-set(APBS_LIBS apbs_routines apbs_mg apbs_generic apbs_pmgc maloc)
+nmr_cache_from_env(NMR_APBS_ROUTINES_LIBRARY NMR_APBS_ROUTINES_LIBRARY FILEPATH
+    "APBS routines library")
+nmr_cache_from_env(NMR_APBS_MG_LIBRARY NMR_APBS_MG_LIBRARY FILEPATH
+    "APBS multigrid library")
+nmr_cache_from_env(NMR_APBS_GENERIC_LIBRARY NMR_APBS_GENERIC_LIBRARY FILEPATH
+    "APBS generic library")
+nmr_cache_from_env(NMR_APBS_PMGC_LIBRARY NMR_APBS_PMGC_LIBRARY FILEPATH
+    "APBS PMGC library")
+nmr_cache_from_env(NMR_MALOC_LIBRARY NMR_MALOC_LIBRARY FILEPATH
+    "MALOC library")
+find_library(NMR_APBS_ROUTINES_LIBRARY NAMES apbs_routines DOC "APBS routines library")
+find_library(NMR_APBS_MG_LIBRARY NAMES apbs_mg DOC "APBS multigrid library")
+find_library(NMR_APBS_GENERIC_LIBRARY NAMES apbs_generic DOC "APBS generic library")
+find_library(NMR_APBS_PMGC_LIBRARY NAMES apbs_pmgc DOC "APBS PMGC library")
+find_library(NMR_MALOC_LIBRARY NAMES maloc DOC "MALOC library")
+nmr_require_existing(NMR_APBS_ROUTINES_LIBRARY "APBS routines library")
+nmr_require_existing(NMR_APBS_MG_LIBRARY "APBS multigrid library")
+nmr_require_existing(NMR_APBS_GENERIC_LIBRARY "APBS generic library")
+nmr_require_existing(NMR_APBS_PMGC_LIBRARY "APBS PMGC library")
+nmr_require_existing(NMR_MALOC_LIBRARY "MALOC library")
+set(APBS_LIBS
+    ${NMR_APBS_ROUTINES_LIBRARY}
+    ${NMR_APBS_MG_LIBRARY}
+    ${NMR_APBS_GENERIC_LIBRARY}
+    ${NMR_APBS_PMGC_LIBRARY}
+    ${NMR_MALOC_LIBRARY})
 if(FETK_MC)
+    nmr_require_existing(FETK_MC "FETK mc library")
     list(APPEND APBS_LIBS ${FETK_MC})
 endif()
 if(FETK_PUNC)
+    nmr_require_existing(FETK_PUNC "FETK punc library")
     list(APPEND APBS_LIBS ${FETK_PUNC})
 endif()
 target_link_libraries(apbs_bridge PRIVATE ${APBS_LIBS})
+
+nmr_require_portable_paths("PostgreSQL"
+    "${PostgreSQL_LIBRARY}" "${PostgreSQL_INCLUDE_DIR}")
+nmr_require_portable_paths("DSSP"
+    "${NMR_DSSP_ROOT}" "${DSSP_LIB}" "${DSSP_INCLUDE}")
+nmr_require_portable_paths("OpenBabel"
+    "${NMR_OPENBABEL_ROOT}" "${OPENBABEL_INCLUDE}" "${OPENBABEL_LIB}")
+nmr_require_portable_paths("GROMACS"
+    "${NMR_GROMACS_ROOT}" "${GROMACS_LIB}" "${GROMACS_SRC}" "${GROMACS_BUILD}")
+nmr_require_portable_paths("reduce"
+    "${REDUCE_SRC}" "${REDUCE_LIB}" "${REDUCE_LIBPDB}"
+    "${REDUCE_TOOLCLASSES}" "${REDUCE_HET_DICT}")
+nmr_require_portable_paths("MOPAC"
+    "${NMR_MOPAC_ROOT}" "${MOPAC_INCLUDE}" "${MOPAC_LIB}")
+nmr_require_portable_paths("HDF5"
+    "${NMR_HDF5_INCLUDE_DIR}" "${NMR_HDF5_C_LIBRARY}"
+    "${NMR_CURL_LIBRARY}" "${NMR_Z_LIBRARY}")
+nmr_require_portable_paths("Torch"
+    "${NMR_TORCH_CMAKE_PREFIX_PATH}" "${Torch_DIR}" "${Caffe2_DIR}"
+    ${TORCH_INCLUDE_DIRS} ${TORCH_LIBRARIES})
+nmr_require_portable_paths("CUDA toolkit"
+    "${CMAKE_CUDA_COMPILER}" "${CUDA_TOOLKIT_ROOT_DIR}"
+    "${CUDA_NVCC_EXECUTABLE}" "${CUDA_NVRTC_LIB}"
+    "${CUDA_CUDART}" "${CUDA_CUDART_LIBRARY}"
+    "${CUDA_nvrtc_LIBRARY}" "${CUDA_cudart_LIBRARY}")
+nmr_require_portable_paths("APBS/MALOC/FETK"
+    "${NMR_APBS_INCLUDE_DIR}" "${NMR_FETK_INCLUDE_DIR}"
+    "${NMR_MALOC_INCLUDE_DIR}" ${APBS_LIBS})
 
 # ============================================================================
 # Main library
@@ -411,9 +802,28 @@ target_include_directories(nmr_shielding PUBLIC
     ${TORCH_INCLUDE_DIRS}
 )
 
-target_compile_options(nmr_shielding PRIVATE -Wall -Wextra -Wpedantic -march=native -flto ${TORCH_CXX_FLAGS})
+option(NMR_ENABLE_NATIVE_ARCH
+    "Compile nmr_shielding with -march=native on compilers that support it"
+    ON)
+option(NMR_ENABLE_LTO
+    "Compile nmr_shielding with -flto on compilers that support it"
+    ON)
+set(NMR_EXTRA_CXX_FLAGS "" CACHE STRING
+    "Additional C++ compile flags for nmr_shielding, semicolon-separated")
+nmr_fail_on_portability_errors()
+set(_nmr_compile_options -Wall -Wextra -Wpedantic ${TORCH_CXX_FLAGS})
+if(NMR_ENABLE_NATIVE_ARCH)
+    list(APPEND _nmr_compile_options -march=native)
+endif()
+if(NMR_ENABLE_LTO)
+    list(APPEND _nmr_compile_options -flto)
+endif()
+if(NMR_EXTRA_CXX_FLAGS)
+    list(APPEND _nmr_compile_options ${NMR_EXTRA_CXX_FLAGS})
+endif()
+target_compile_options(nmr_shielding PRIVATE ${_nmr_compile_options})
 target_compile_definitions(nmr_shielding PUBLIC
-    NMR_DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    NMR_DATA_DIR="${NMR_RUNTIME_DATA_DIR}"
     HAS_OPENBABEL=1
     BOOLPREDEFINED=1
     CHARFUNCMACROS=1
@@ -443,17 +853,14 @@ target_link_libraries(nmr_shielding PUBLIC
     ${TORCH_LIBRARIES}
 )
 
-# Match HDF5 1.10 headers to the 1.10 .so for every TU in the library —
-# OpenBabel/MOPAC's micromamba include path contributes 1.14 headers
-# which causes HighFive to emit H5Treclaim and bakes mismatched
-# H5_VERS_* into compilation units; the link library is system
-# libhdf5 1.10. Without this prepend, the library's WriteH5 paths
-# (TrajectoryProtein, *TimeSeriesTrajectoryResult, etc.) compile against
-# 1.14 and crash at runtime when HDF5 init detects the mismatch.
-# Same hazard pattern as the gromacs_streaming_tests / nmr-viewer
-# fixes below.
+# Match HDF5 headers to the selected HDF5 library for every TU in the
+# library. Dependency include paths can contribute headers from a different
+# HDF5 install, which causes HighFive to emit symbols the selected link
+# library may not have and bakes mismatched H5_VERS_* into compilation units.
+# Without this prepend, WriteH5 paths can crash at runtime when HDF5 init
+# detects the mismatch. Same hazard pattern as the trajectory tests.
 target_include_directories(nmr_shielding BEFORE PUBLIC
-    /usr/include/hdf5/serial
+    ${NMR_HDF5_INCLUDE_DIR}
 )
 
 # ============================================================================
@@ -462,11 +869,42 @@ target_include_directories(nmr_shielding BEFORE PUBLIC
 
 add_executable(nmr_extract src/nmr_extract.cpp)
 target_link_libraries(nmr_extract PRIVATE nmr_shielding)
-# Same HDF5-1.10-headers prepend for nmr_extract.cpp itself (the
+# Same selected-HDF5-headers prepend for nmr_extract.cpp itself (the
 # RunTrajectory WriteH5 site is in this TU).
 target_include_directories(nmr_extract BEFORE PRIVATE
-    /usr/include/hdf5/serial
+    ${NMR_HDF5_INCLUDE_DIR}
 )
+
+add_custom_target(nmr_shielding_doctor
+    COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/nmr-shielding-doctor.sh" "$<TARGET_FILE:nmr_extract>"
+    DEPENDS nmr_extract
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Run lightweight nmr-shielding producer installability checks")
+
+install(TARGETS nmr_extract
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(PROGRAMS
+        scripts/nmr-shielding-doctor.sh
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    RENAME nmr-shielding-doctor)
+install(PROGRAMS
+        scripts/tensorcs15-check.py
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    RENAME nmr-tensorcs15-check)
+install(PROGRAMS
+        scripts/run_with_cuda_env.sh
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    RENAME nmr-run-with-cuda-env)
+install(FILES
+        data/calculator_params.toml
+        data/ff14sb_params.dat
+    DESTINATION "${NMR_INSTALL_DATA_DIR}")
+install(FILES
+        config/nmr_tools.toml.example
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/nmr-shielding")
+install(FILES
+        config/tensorcs15.manifest.toml
+    DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/nmr-shielding")
 
 
 # ============================================================================
@@ -487,12 +925,39 @@ target_include_directories(nmr_extract BEFORE PRIVATE
 #
 # One macro `nmr_test()` defines the first six. Discovery in PRE_TEST mode
 # (AIMNet2/torch needs LD_LIBRARY_PATH set at test run time, before binary
-# enumeration). Only `fast` is a sanctioned LABEL; hardware / dependency
-# gating is NOT a test classifier (see memory entry
-# `feedback_aimnet2_required_no_weasel`).
+# enumeration). Labels are suite/tier selectors, not skip policy: tests still
+# decide fixture availability at runtime and skip with a reason when optional
+# local data is absent.
 # ============================================================================
 
 enable_testing()
+
+# GTest for unit tests. Prefer a system/installed GTest; otherwise fetch
+# it from GitHub. The fetch needs network at first configure, so it is
+# announced (not silent) and gated by NMR_FETCH_GTEST: default ON keeps
+# the current behaviour, OFF requires a system GTest (for offline /
+# restricted-network configures). This lives after the producer dependency
+# closure checks so NMR_PROFILE=producer-full fails on non-portable producer
+# paths before considering test-only downloads.
+option(NMR_FETCH_GTEST "Fetch googletest from GitHub when no system GTest is found" ON)
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+    if(NOT NMR_FETCH_GTEST)
+        message(FATAL_ERROR "GTest not found and NMR_FETCH_GTEST=OFF — install "
+                            "a system GTest (e.g. libgtest-dev) or re-enable "
+                            "-DNMR_FETCH_GTEST=ON to fetch it from GitHub.")
+    endif()
+    message(STATUS "GTest not found — fetching googletest v1.14.0 from GitHub "
+                   "(needs network; set -DNMR_FETCH_GTEST=OFF to require a "
+                   "system GTest instead).")
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
 include(GoogleTest)
 
 # Resolve PyTorch's bundled cu13 nvrtc-builtins directory at configure
@@ -504,50 +969,75 @@ include(GoogleTest)
 # (./build/<binary>) and ctest invocation share the same env source.
 # See reference_nvrtc_rpath_fix and scripts/run_with_cuda_env.sh
 # (the same path resolution, used for manual runs of the binaries).
-execute_process(
-    COMMAND python3 -c "import nvidia.cu13; print(list(nvidia.cu13.__path__)[0])"
-    OUTPUT_VARIABLE NMR_NVIDIA_CU13_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-    RESULT_VARIABLE _python_cu13_status
-)
-if(NOT _python_cu13_status EQUAL 0 OR NOT NMR_NVIDIA_CU13_DIR)
+nmr_cache_from_env(NMR_NVIDIA_CU13_DIR NMR_NVIDIA_CU13_DIR PATH
+    "Python nvidia.cu13 package directory")
+nmr_cache_from_env(NMR_NVRTC_LIB_DIR NMR_NVRTC_LIB_DIR PATH
+    "Directory containing libnvrtc-builtins.so.13.0")
+if(NOT NMR_NVRTC_LIB_DIR AND NMR_NVIDIA_CU13_DIR)
+    set(NMR_NVRTC_LIB_DIR "${NMR_NVIDIA_CU13_DIR}/lib"
+        CACHE PATH "Directory containing libnvrtc-builtins.so.13.0" FORCE)
+endif()
+if(NOT NMR_NVRTC_LIB_DIR)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import nvidia.cu13; print(list(nvidia.cu13.__path__)[0])"
+        OUTPUT_VARIABLE NMR_NVIDIA_CU13_DIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _python_cu13_status
+    )
+    if(_python_cu13_status EQUAL 0 AND NMR_NVIDIA_CU13_DIR)
+        set(NMR_NVIDIA_CU13_DIR "${NMR_NVIDIA_CU13_DIR}"
+            CACHE PATH "Python nvidia.cu13 package directory" FORCE)
+        set(NMR_NVRTC_LIB_DIR "${NMR_NVIDIA_CU13_DIR}/lib"
+            CACHE PATH "Directory containing libnvrtc-builtins.so.13.0" FORCE)
+    endif()
+endif()
+if(NOT NMR_NVRTC_LIB_DIR OR NOT EXISTS "${NMR_NVRTC_LIB_DIR}")
     message(FATAL_ERROR
         "Could not locate the bundled PyTorch cu13 directory via "
-        "'python3 -c \"import nvidia.cu13\"'. Tests that exercise "
-        "AIMNet2 will fail at runtime without LD_LIBRARY_PATH set "
-        "to this directory's lib/. Install via "
-        "'pip install --user nvidia-cu13' or equivalent. See "
+        "'${Python3_EXECUTABLE} -c \"import nvidia.cu13\"'. Tests that "
+        "exercise AIMNet2 will fail at runtime without LD_LIBRARY_PATH set "
+        "to this directory's lib/. Set NMR_NVRTC_LIB_DIR directly, set "
+        "NMR_NVIDIA_CU13_DIR, or install nvidia-cu13 for the configured "
+        "Python interpreter. See "
         "memory entry reference_nvrtc_rpath_fix for the full picture.")
 endif()
-set(NMR_NVRTC_LIB_DIR "${NMR_NVIDIA_CU13_DIR}/lib")
+nmr_require_portable_paths("cu13 nvrtc builtins"
+    "${NMR_NVIDIA_CU13_DIR}" "${NMR_NVRTC_LIB_DIR}")
+nmr_fail_on_portability_errors()
 message(STATUS "Tests: bundled cu13 lib dir = ${NMR_NVRTC_LIB_DIR}")
 
 # Test environment string. Two prepends to LD_LIBRARY_PATH, in order:
 #
-#  1. /usr/lib/x86_64-linux-gnu so the system libpq + libssl + libcrypto
-#     trio resolves consistently. The binary's RUNPATH includes
-#     micromamba lib (for libmopac, libreducelib, etc.), and without
-#     this prepend the loader picks micromamba's libpq -> micromamba's
-#     libssl (OpenSSL 3.2-3.6 symbol requirements) but system libcrypto
-#     (3.0 symbols only) -- load fails. We don't USE OpenSSL (DSN is a
+#  1. NMR_SYSTEM_LIBRARY_DIR so the selected libpq + libssl + libcrypto
+#     trio resolves consistently. The binary's RUNPATH can include
+#     dependency lib dirs (for libmopac, libreducelib, etc.), and without
+#     this prepend the loader can pick libpq/libssl from one environment
+#     but libcrypto from the host system -- load fails. We don't USE OpenSSL (DSN is a
 #     Unix socket) but libpq's NEEDED entries pull libssl/libcrypto at
-#     process startup regardless. Prepending /usr/lib forces both halves
-#     of the SSL pair to the same install.
+#     process startup regardless. Prepending the selected system library
+#     directory forces both halves of the SSL pair to the same install.
 #
 #  2. cu13 lib so libnvrtc.so.13's dlopen of libnvrtc-builtins.so.13.0
 #     succeeds at AIMNet2 inference time.
 #
 # $ENV{LD_LIBRARY_PATH} captures the configure-time shell's existing
 # path (orca, system cuda); we don't displace it.
-set(NMR_TEST_ENVIRONMENT
-    "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${NMR_NVRTC_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
-)
+set(_nmr_test_ld_library_path_entries)
+if(NMR_SYSTEM_LIBRARY_DIR)
+    list(APPEND _nmr_test_ld_library_path_entries "${NMR_SYSTEM_LIBRARY_DIR}")
+endif()
+list(APPEND _nmr_test_ld_library_path_entries "${NMR_NVRTC_LIB_DIR}")
+string(REPLACE ";" ":" _nmr_test_ld_library_path "${_nmr_test_ld_library_path_entries}")
+if(NOT "$ENV{LD_LIBRARY_PATH}" STREQUAL "")
+    set(_nmr_test_ld_library_path "${_nmr_test_ld_library_path}:$ENV{LD_LIBRARY_PATH}")
+endif()
+set(NMR_TEST_ENVIRONMENT "LD_LIBRARY_PATH=${_nmr_test_ld_library_path}")
 
 # ----------------------------------------------------------------------------
 # nmr_test(<NAME>
 #     SOURCES <file.cpp> ...    test sources beyond the universal two
-#     [LABELS fast]             only "fast" is sanctioned (absence = full)
+#     [LABELS <label>]          one primary CTest suite/tier label
 #     [LINK   <lib> ...]        extras beyond nmr_shielding + GTest::gtest
 # )
 #
@@ -559,10 +1049,9 @@ set(NMR_TEST_ENVIRONMENT
 #     ENVIRONMENT = NMR_TEST_ENVIRONMENT (the libssl + cu13 LD_LIBRARY_PATH
 #     that AIMNet2's torch runtime needs at test invocation).
 #
-# When LINK contains "highfive", /usr/include/hdf5/serial is prepended to
-# the include path so HighFive picks up the 1.10 ABI matching the system
-# libhdf5 link (OpenBabel's micromamba contributes 1.14 headers that
-# would emit symbols the link library doesn't have).
+# When LINK contains "highfive", NMR_HDF5_INCLUDE_DIR is prepended to
+# the include path so HighFive picks up headers matching the selected
+# libhdf5 link.
 # ----------------------------------------------------------------------------
 macro(nmr_test NAME)
     set(_multi SOURCES LABELS LINK)
@@ -579,7 +1068,7 @@ macro(nmr_test NAME)
 
     list(FIND _NT_LINK "highfive" _hf_idx)
     if(NOT _hf_idx EQUAL -1)
-        target_include_directories(${NAME} BEFORE PRIVATE /usr/include/hdf5/serial)
+        target_include_directories(${NAME} BEFORE PRIVATE ${NMR_HDF5_INCLUDE_DIR})
     endif()
     target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
 
@@ -589,19 +1078,33 @@ macro(nmr_test NAME)
         ${_NT_LINK}
     )
 
-    set(_props ENVIRONMENT "${NMR_TEST_ENVIRONMENT}")
-    if(_NT_LABELS)
-        list(APPEND _props LABELS ${_NT_LABELS})
+    list(LENGTH _NT_LABELS _nt_label_count)
+    if(_nt_label_count GREATER 1)
+        message(FATAL_ERROR
+            "nmr_test(${NAME}) accepts one primary CTest label. "
+            "Multiple labels do not round-trip reliably through "
+            "gtest_discover_tests(... DISCOVERY_MODE PRE_TEST).")
     endif()
-    gtest_discover_tests(${NAME}
-        DISCOVERY_MODE PRE_TEST
-        PROPERTIES ${_props}
-    )
+
+    if(_NT_LABELS)
+        gtest_discover_tests(${NAME}
+            DISCOVERY_MODE PRE_TEST
+            PROPERTIES
+                ENVIRONMENT "${NMR_TEST_ENVIRONMENT}"
+                LABELS "${_NT_LABELS}"
+        )
+    else()
+        gtest_discover_tests(${NAME}
+            DISCOVERY_MODE PRE_TEST
+            PROPERTIES
+                ENVIRONMENT "${NMR_TEST_ENVIRONMENT}"
+        )
+    endif()
 endmacro()
 
 
 # -- unit_tests -------------------------------------------------------------
-# Pure logic; no protein loading, no torch init. <5s. LABELS fast.
+# Pure logic; no protein loading, no torch init. <5s.
 nmr_test(unit_tests
     LABELS fast
     SOURCES
@@ -620,6 +1123,7 @@ nmr_test(unit_tests
 # CategoryInfo projection; cli parse. Static PDB path, no MOPAC, no MD
 # trajectory. Loads torch via nmr_shielding (AIMNet2 path).
 nmr_test(conformation_scope_tests
+    LABELS conformation
     SOURCES
         tests/test_aimnet2_charge_response_gradient.cpp
         tests/test_amber_charge_resolver.cpp
@@ -671,6 +1175,7 @@ nmr_test(conformation_scope_tests
 # all live here. Links highfive for H5RoundTrip checks. MOPAC-dependent TRs
 # live in mopac_tests; batch sweeps live in batch_tests.
 nmr_test(trajectory_scope_tests
+    LABELS trajectory
     LINK highfive
     SOURCES
         tests/TestConfig.cpp
@@ -734,6 +1239,7 @@ nmr_test(trajectory_scope_tests
 # so day-to-day ctest can skip the slow (~10 min/run) MOPAC fixtures;
 # libmopac itself is a required link dep (checked fail-loud at configure).
 nmr_test(mopac_tests
+    LABELS mopac
     LINK highfive
     SOURCES
         tests/test_full_pipeline.cpp
@@ -749,9 +1255,9 @@ nmr_test(mopac_tests
 
 # -- batch_tests -----------------------------------------------------------
 # Multi-protein sweeps across consolidated/ (~2 hr wall). Isolated so
-# day-to-day ctest never touches them; run explicitly via
-# `ctest -R batch_tests`.
+# day-to-day ctest never touches them; run explicitly via `ctest -L batch`.
 nmr_test(batch_tests
+    LABELS batch
     SOURCES
         tests/test_batch_biot_savart_haigh_mallion.cpp
         tests/test_batch_coulomb_ringchi.cpp
@@ -764,6 +1270,7 @@ nmr_test(batch_tests
 # End-to-end pipeline validation against bless baselines
 # (tests/golden/blessed/). Includes BlessCompare comparator.
 nmr_test(smoke_tests
+    LABELS smoke
     SOURCES
         tests/BlessCompare.cpp
         tests/test_smoke.cpp
@@ -793,7 +1300,9 @@ target_link_libraries(string_barrier_tests PRIVATE
 )
 gtest_discover_tests(string_barrier_tests
     DISCOVERY_MODE PRE_TEST
-    PROPERTIES ENVIRONMENT "${NMR_TEST_ENVIRONMENT}"
+    PROPERTIES
+        ENVIRONMENT "${NMR_TEST_ENVIRONMENT}"
+        LABELS fast
 )
 
 
@@ -803,74 +1312,6 @@ gtest_discover_tests(string_barrier_tests
 
 add_executable(nmr_pass0_demo tests/pass0_demo.cpp)
 target_link_libraries(nmr_pass0_demo PRIVATE nmr_shielding)
-
-
-# ============================================================================
-# Qt/VTK viewer (optional — only built if Qt6 and VTK 9 are found)
-# ============================================================================
-
-find_package(Qt6 COMPONENTS Widgets OpenGLWidgets Network QUIET)
-find_package(VTK 9 COMPONENTS
-    IOChemistry DomainsChemistry DomainsChemistryOpenGL2
-    FiltersSources FiltersCore FiltersGeneral
-    RenderingOpenGL2 RenderingCore RenderingAnnotation
-    GUISupportQt InteractionStyle ImagingHybrid
-    FiltersFlowPaths CommonColor
-    QUIET)
-
-option(NMR_BUILD_VIEWER "Build nmr-viewer (Qt6+VTK)" OFF)
-
-# ui/ still depends on the legacy JobSpec API and has not yet been migrated
-# to nmr::cli. NMR_BUILD_VIEWER defaults OFF so the top-level build stays
-# green; flip it ON once ui/main_viewer.cpp + MainWindow + ComputeWorker +
-# RestServer have been ported.
-if(NMR_BUILD_VIEWER AND Qt6_FOUND AND VTK_FOUND)
-    set(CMAKE_AUTOMOC ON)
-    add_executable(nmr-viewer
-        ui/src/main_viewer.cpp
-        ui/src/MainWindow.cpp
-        ui/src/ComputeWorker.cpp
-        ui/src/RestServer.cpp
-        ui/src/BackboneRibbonOverlay.cpp
-        ui/src/ButterflyOverlay.cpp
-        ui/src/TensorGlyph.cpp
-        ui/src/EllipsoidGlyph.cpp
-        ui/src/FieldOverlay.cpp
-        ui/src/FieldGridOverlay.cpp
-        ui/src/IsosurfaceOverlay.cpp
-        ui/src/RingCurrentOverlay.cpp
-        ui/src/PeptideBondOverlay.cpp
-        # Typed read boundary for `nmr_extract --trajectory` H5 output.
-        # See ui/src/TrajectoryH5.h.
-        ui/src/TrajectoryH5.cpp
-    )
-    target_include_directories(nmr-viewer PRIVATE
-        ${CMAKE_SOURCE_DIR}/ui/src
-    )
-    # HighFive reads the HDF5 header version and picks between H5Dvlen_reclaim
-    # (<1.12) and H5Treclaim (>=1.12).  OpenBabel's transitive micromamba
-    # include path contributes HDF5 1.14 headers; the link library is the
-    # system libhdf5 1.10 which lacks H5Treclaim.  Prepending system HDF5
-    # here keeps HighFive emitting the old API matching the link library.
-    target_include_directories(nmr-viewer BEFORE PRIVATE
-        /usr/include/hdf5/serial
-    )
-    target_compile_definitions(nmr-viewer PRIVATE
-        NMR_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/tests/data"
-    )
-    target_link_libraries(nmr-viewer PRIVATE
-        nmr_shielding
-        highfive
-        Qt6::Widgets Qt6::OpenGLWidgets Qt6::Network
-        ${VTK_LIBRARIES}
-    )
-    vtk_module_autoinit(TARGETS nmr-viewer MODULES ${VTK_LIBRARIES})
-    message(STATUS "Building nmr-viewer (NMR_BUILD_VIEWER=ON, Qt6+VTK found)")
-elseif(NMR_BUILD_VIEWER)
-    message(STATUS "NMR_BUILD_VIEWER=ON but Qt6/VTK not found — skipping nmr-viewer")
-else()
-    message(STATUS "Skipping nmr-viewer (NMR_BUILD_VIEWER=OFF; ui/ pending nmr::cli migration)")
-endif()
 
 
 # ============================================================================

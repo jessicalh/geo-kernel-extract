@@ -24,8 +24,7 @@
 //      std::string literals carrying chemistry data (only typed-enum
 //      identifier text, which is compile-time).
 //
-// See spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md
-// for the architectural rationale.
+// This keeps substrate generation behind the topology table build boundary.
 
 #include <array>
 #include <cstdio>
@@ -187,8 +186,7 @@ TEST(StringBarrier, RdkitAndGemmiNeverInRuntimeSrc) {
     EXPECT_TRUE(gemmi_users.empty())
         << "gemmi appears in src/ runtime files. gemmi is not currently used "
            "by the project; if a new chemistry source is being added, the "
-           "decision should be reviewed against the string barrier in "
-           "spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md. "
+           "decision should be reviewed against the topology table build boundary. "
            "Violations:\n"
         << [&gemmi_users]{ std::string s; for (const auto& v : gemmi_users) s += v + "\n"; return s; }();
 }

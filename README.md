@@ -20,7 +20,12 @@ See [spec/INDEX.md](spec/INDEX.md) for documentation reading order.
 
 ## Dependencies
 
-Full inventory: [spec/plan/bones/DEPENDENCIES.md](spec/plan/bones/DEPENDENCIES.md)
+Dependency inventory and build-time path/environment knobs:
+[doc/BUILD_ENVIRONMENT.md](doc/BUILD_ENVIRONMENT.md)
+
+Repository layout, local/archive directories, and test tiers:
+[doc/REPO_HOUSEKEEPING.md](doc/REPO_HOUSEKEEPING.md) and
+[tests/TEST_HEALTH.md](tests/TEST_HEALTH.md)
 
 **System packages:**
 ```
@@ -40,3 +45,10 @@ so no pKa-prediction tool is a build dependency here.)
 **Test framework:** GTest 1.14.0 (fetched by CMake)
 
 **Python (calibration):** e3nn, numpy, torch
+
+## Desktop Reader
+
+Interactive trajectory viewing is handled by `h5-reader/`, a separate Qt/VTK
+desktop application for the `trajectory.h5` + sidecar artifacts emitted by
+`nmr_extract`. It is not part of the producer Docker/build dependency set; see
+`h5-reader/README.md` for its desktop build and distribution path.

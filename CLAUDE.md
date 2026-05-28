@@ -29,9 +29,7 @@ These are the five — and only five — supported `nmr_extract` modes.
 Anything elsewhere in this codebase claiming additional modes, flags,
 or use cases predates this block and is obsolete: do not add new
 modes, do not document them, do not implement against fragments of
-obsolete prose (notably the `spec/plan/bones/*` and
-`session-handoff-*` files, and `spec/plan/bones/USE_CASES.md` pending
-Jessica's rewrite).
+obsolete planning prose.
 
 1. **`--pdb FILE`** — load a bare unprotonated PDB, protonate with
    `reduce`, apply ff14SB charges, run all calculators, emit
@@ -86,12 +84,11 @@ Three stages (`project_three_stages` memory):
 - **Stage 3 — model evaluation.** Upstream of Stage 2 results; not
   yet active.
 
-Viewer/reader: `ui/` single-conformation viewer reads the analysis H5
-read-only (Time Series dock, atom-identity check). `h5-reader/` is
-feature-complete at the scaffold level (picker, inspector, time-series
-dock, BS/HM isosurfaces, streamlines, ribbon, ring polygons); next
-sessions expand the time-series illustrator, then a cross-platform
-build pass. See `h5-reader/notes/POLISH_BACKLOG.md`.
+Viewer/reader: `ui/` is retired to legacy/bones status and is no longer
+part of the active producer build. `h5-reader/` is the desktop trajectory
+reader for emitted H5/sidecar artifacts; next sessions expand the
+time-series illustrator, then handle Windows/macOS distribution on those
+machines. See `h5-reader/notes/POLISH_BACKLOG.md`.
 
 ## Subprojects
 
@@ -102,11 +99,10 @@ for work inside it; read that file before modifying the directory.
 - **`src/`** — the `nmr_shielding` library: physics kernels and the
   `Protein` / `ProteinConformation` / `ConformationResult` object
   model. No local `CLAUDE.md`; rules are `spec/CONSTITUTION.md`,
-  `PATTERNS.md`, `OBJECT_MODEL.md`. Consumed by `ui/` (direct link)
-  and the Python SDK (via the NPY/H5/JSON output surface).
-- **`ui/`** — `nmr-viewer`, single-conformation Qt6/VTK viewer; links
-  the library. Owns `ui/CLAUDE.md`, `ui/UI_ROADMAP.md`. Reads the
-  analysis H5 read-only; never writes H5, never triggers extraction.
+  `PATTERNS.md`, `OBJECT_MODEL.md`. Consumed by downstream tools via
+  the NPY/H5/JSON output surface.
+- **`ui/`** — legacy/bones `nmr-viewer`. Not built by the top-level CMake
+  project; do not spend feature work here unless explicitly requested.
 - **`h5-reader/`** — standalone Qt6/VTK trajectory reader. Does NOT
   link the library; reads the trajectory H5 + 5-NPY topology sidecar
   via its own `QtTrajectoryH5` boundary. Parallel Qt-native type
@@ -124,16 +120,16 @@ for work inside it; read that file before modifying the directory.
   output. Contract is `python/nmr_extract/_catalog.py` (one
   `ArraySpec` per NPY); every new output file needs an entry + wrapper.
   See `python/API.md`. No changes that let the SDK write H5.
-- **`learn/`** — calibration/analysis (ridge on 720 proteins/446K
-  atoms). Owns `learn/CLAUDE.md`. Stage 1 discipline (2026-04-15):
-  stratify by AMBER atom name within each element. Python + R, no
-  notebooks.
+- **`learn/`** — independent calibration/analysis workspace (ridge on
+  720 proteins/446K atoms). Owns `learn/CLAUDE.md`. It is not producer
+  release surface; do not stage or depend on its local outputs during
+  producer packaging unless explicitly requested.
 
 **Workspaces**
 - **`spec/`** — design docs; tiered reading order in `spec/INDEX.md`.
 - **`doc/`** — `ARCHITECTURE.md` (Tier 1), diagrams, doxygen.
-- **`analysis-speculative/`** — scratch area for scope notes /
-  prototypes before they graduate into a real subproject.
+- **`analysis-speculative/`** — independent scratch/prototype workspace
+  kept on disk. It is not producer release surface.
 - **`references/`** — fetched PDFs (committed, citable) + ingest
   pipeline. `references-text/` (3-page chunks, gitignored) is the
   AI reading surface; `references-images/` (page renders, gitignored)
@@ -142,12 +138,14 @@ for work inside it; read that file before modifying the directory.
   `references-meta/WORKFLOW.md`; the `nmr-scholarship` skill loads it.
 - **`data/`** — `calculator_params.toml`, `ff14sb_params.dat`,
   `models/`; read at runtime.
-- **`tests/`** — library + SDK suites. `tests/golden/` blessed
-  baselines and `tests/data/fleet_test_large/` are machine-local /
-  gitignored.
-- **`scripts/`**, **`deploy/`**, **`site/`**, **`bad-builds/`** —
-  helper scripts, deploy scaffolding, static doc site, gitignored
-  artifact salvage.
+- **`tests/`** — library + SDK suites. Large fixture and generated-output
+  trees are machine-local / gitignored unless explicitly tracked. Current
+  CTest labels and fixture policy live in `tests/TEST_HEALTH.md`.
+- **`scripts/`** — producer helper scripts.
+- **`deploy/`** — deployment/setup scaffolding.
+- **`site/`** — tracked generated/static output from an older doc pass.
+  It is release noise, not the outward-facing site.
+- **`bad-builds/`** — gitignored build-artifact salvage.
 
 ## Where to start, by task
 
@@ -165,8 +163,8 @@ for work inside it; read that file before modifying the directory.
   the ctor, named operations on entities are rooms not wrappers, the
   per-frame loop is four lines. Multiple sessions re-derived this
   through tangles — the memory entries exist so future ones don't.
-- **Single-conformation viewer feature.** `cd ui/`, read `ui/CLAUDE.md`.
-  Do not modify the library for a viewer feature.
+- **Legacy viewer archaeology.** `cd ui/`, read `ui/CLAUDE.md`. Treat this
+  as bones/archival unless the user explicitly reactivates it.
 - **Trajectory reader feature.** `cd h5-reader/`, read
   `h5-reader/CLAUDE.md` + `notes/SCOPE.md` + `notes/POLISH_BACKLOG.md`.
   Do not link the library.
@@ -278,13 +276,16 @@ Memory entries loaded at session start that codify discipline:
 
 ## Repo vs not
 
-Gitignored / machine-local: `build*/` trees, `bad-builds/`,
-`tests/data/fleet_test_large/`, `fileformat/test/**/*.h5` (~42 GB),
-`.claude/` at any depth, `learn/runs/`, `calibration/*/`, and build
-output (`*.npy`, `*.o`, `*.a`, `*.so`). The blessed smoke baselines
-under `tests/golden/blessed/` are also local. Committed: source,
-design docs, test code, configuration, vendored HighFive headers,
-reference PDFs.
+Gitignored / machine-local: `build*/` trees, `bad-builds/`, large
+fixture/output trees, `fileformat/test/**/*.h5` (~42 GB), `.claude/`
+at any depth, `calibration/*/`, and build output (`*.npy`, `*.o`,
+`*.a`, `*.so`). Existing tracked files under `tests/golden/blessed/`
+remain committed baselines; new files there are ignored unless explicitly
+force-added. `learn/`, `analysis-speculative/`, and `site/` are
+non-producer surfaces kept on disk; some files there may still be tracked
+until an explicit untrack cleanup. Committed producer material is source,
+design docs, test code, configuration, vendored HighFive headers, and
+runtime data. See `doc/REPO_HOUSEKEEPING.md` for the packaging map.
 
 ## Git
 

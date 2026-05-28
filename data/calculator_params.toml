@@ -94,7 +94,8 @@ apbs_ionic_strength_M = 0.15
 # AIMNet2 model file path
 # Set this to the .jpt file to enable neural network charge calculation.
 # Non-silent: if set and the model fails to load, nmr_extract aborts.
-aimnet2_model_path = "/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt"
+# Relative paths are resolved from this TOML file's directory.
+aimnet2_model_path = "models/aimnet2_wb97m_0.jpt"
 
 # EEQ — Extended Electronegativity Equilibration (Caldeweyher et al. 2019)
 # D4 geometry-dependent charges.  Pure C++/Eigen, no external binary.

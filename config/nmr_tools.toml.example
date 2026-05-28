@@ -1,0 +1,23 @@
+# Example runtime configuration for a producer-full install.
+# Copy to a machine-local path and point NMR_TOOLS_TOML at it.
+# Do not commit secrets.
+
+mopac = "/opt/nmr-shielding/bin/mopac"
+tleap = "/opt/ambertools/bin/tleap"
+ff14sb_params = "/opt/nmr-shielding/share/nmr-shielding/data/ff14sb_params.dat"
+tmpdir = "/tmp/nmr_shielding"
+
+# Optional but useful for complete feature output.
+bmrb_atom_nom = "/opt/nmr-shielding/share/nmr-shielding/data/bmrb_atom_nom.tbl"
+larsen_hbond_grids = "/opt/nmr-shielding/share/nmr-shielding/data/larsen_hbond_grids"
+
+[databases]
+# Prefer local peer/socket auth or a service file. Avoid password-bearing DSNs
+# in process arguments or logs.
+tensorcs15 = "host=/var/run/postgresql dbname=tensorcs15 user=nmr_shielding"
+
+[logging]
+channels = "0xffffffff"
+# file = "/var/log/nmr-shielding/nmr_extract.jsonl"
+# udp_host = "127.0.0.1"
+# udp_port = 5514

@@ -1,7 +1,9 @@
 # Test data paths.
 # In-tree fixtures are repo-root-relative (resolved by TestEnvironment
-# against the parent of tests/); external data stays absolute. Edit the
-# absolute entries when syncing to a different machine.
+# against the parent of tests/). External/local fixture roots are either
+# empty when there is no portable default, or point at the conventional
+# repo-relative local path. Override with environment variables or a local
+# NMR_TESTPATHS_TOML file when syncing to a different machine.
 
 # Protonated 1UBQ (in-tree test data)
 ubq_protonated = "tests/data/1ubq_protonated.pdb"
@@ -17,11 +19,11 @@ gmx_protonated = "tests/data/external/1OKH_4587_protonated.pdb"
 orca_dir       = "tests/data/orca/"
 
 # 734 WT+ALA consolidated mutant pairs (year of DFT compute) — external.
-consolidated   = "/shared/2026Thesis/consolidated/"
+# Override with NMR_CONSOLIDATED_DIR or a local NMR_TESTPATHS_TOML file.
+consolidated   = ""
 
-# fleet_data (CHARMM/XTC fleet/1A6J_5789 + 1AEP_4814) retired 2026-05-04
-# to tests/bones/data/fleet/. The two AMBER fixtures (1P9J_5801 +
-# 1Z9B_6577) below replace it.
+# fleet_data (CHARMM/XTC fleet/1A6J_5789 + 1AEP_4814) retired 2026-05-04.
+# The two AMBER fixtures (1P9J_5801 + 1Z9B_6577) below replace it.
 
 # AMBER-ff GROMACS straight-relaxation MD trajectories (gitignored).
 # Test set: two proteins (1P9J_5801 and 1Z9B_6577), 1 × 15 ns each at
@@ -69,5 +71,5 @@ aimnet2_model  = "data/models/aimnet2_wb97m_0.jpt"
 baseline_features = "baseline_features/P84477"
 
 # Larsen-archive PM6-D3H+ optimised 1UBQ geometry — external (gitignored).
-# Tests skip when absent. See /mnt/expansion/larsen_archive/README.md.
-larsen_1ubq_pm6_pdb = "/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb"
+# Tests skip when absent. Override with NMR_LARSEN_1UBQ_PM6_PDB.
+larsen_1ubq_pm6_pdb = ""

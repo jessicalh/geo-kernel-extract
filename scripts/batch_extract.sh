@@ -30,8 +30,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-readonly CONSOLIDATED="${BATCH_CONSOLIDATED:-$(dirname "${REPO_ROOT}")/consolidated}"
-readonly NMR_EXTRACT="${BATCH_NMR_EXTRACT:-${REPO_ROOT}/build/nmr_extract}"
+readonly CONSOLIDATED="${NMR_CONSOLIDATED_DIR:-${BATCH_CONSOLIDATED:-$(dirname "${REPO_ROOT}")/consolidated}}"
+readonly NMR_EXTRACT="${NMR_EXTRACT:-${BATCH_NMR_EXTRACT:-${REPO_ROOT}/build/nmr_extract}}"
 
 # ⚠ MAINTENANCE NOTE (audit C8, 2026-05-25): the per-file --mutant / --orca
 # invocations below use RETIRED nmr_extract flag shapes. The current

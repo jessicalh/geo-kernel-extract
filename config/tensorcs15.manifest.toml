@@ -1,0 +1,80 @@
+# tensorcs15 frozen-corpus identity manifest.
+#
+# Observed from the local tensorcs15 PostgreSQL replica on 2026-05-28.
+# This is a packaging/restore integrity contract for the existing DFT fragment
+# corpus. It is not a recomputation recipe.
+
+manifest_id = "tensorcs15-raw-dft-calculations-2026-05-28"
+table = "raw_dft_calculations"
+
+total_rows = 1870631
+distinct_tripeptides = 20
+distinct_frame_types = 2
+min_calc_id = 1
+max_calc_id = 1898975
+null_payloads = 0
+
+required_columns = [
+  "calc_id",
+  "tripeptide",
+  "central_residue",
+  "phi",
+  "psi",
+  "chi1",
+  "chi2",
+  "chi3",
+  "chi4",
+  "n_atoms",
+  "frame_type",
+  "geometry",
+  "tensors",
+]
+
+[frame_type_counts]
+gaussian_standard_orientation = 1864372
+orca_input_orientation = 6259
+
+[sentinel]
+tripeptide = "AAA"
+phi = -180
+psi = -180
+calc_id = 4525
+n_atoms = 42
+frame_type = "gaussian_standard_orientation"
+geometry_type = "array"
+geometry_len = 42
+tensors_type = "array"
+tensors_len = 42
+
+[grid_minus_180_minus_180]
+distinct_tripeptides = 20
+
+[grid_minus_180_minus_180.frame_type_counts]
+gaussian_standard_orientation = 5425
+orca_input_orientation = 19
+
+[grid_minus_180_minus_180.frame_type_distinct_tripeptides]
+gaussian_standard_orientation = 19
+orca_input_orientation = 1
+
+[tripeptide_counts]
+AAA = 31037
+ACA = 6326
+ADA = 120083
+AEA = 134013
+AFA = 110016
+AGA = 344
+AHA = 112157
+AIA = 98438
+AKA = 145598
+ALA = 103998
+AMA = 129661
+ANA = 115284
+APA = 258
+AQA = 130681
+ARA = 285028
+ASA = 6259
+ATA = 115733
+AVA = 5955
+AWA = 105099
+AYA = 114663

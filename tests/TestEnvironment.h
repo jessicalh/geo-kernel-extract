@@ -18,9 +18,9 @@
 //
 // Path resolution (C10): a value that does not begin with '/' is treated
 // as repo-root-relative and resolved against the repo root (the parent of
-// NMR_TEST_DATA_DIR's tests/ directory). In-tree fixtures are therefore
-// written relative in testpaths.toml; external data (the consolidated
-// tree, the Larsen archive) stays absolute and is used verbatim.
+// NMR_TEST_DATA_DIR's tests/ directory). External/local fixture roots are
+// supplied per machine via testpaths.toml or env vars such as
+// NMR_CONSOLIDATED_DIR, NMR_AIMNET2_MODEL, and NMR_LARSEN_1UBQ_PM6_PDB.
 //
 
 #include <string>

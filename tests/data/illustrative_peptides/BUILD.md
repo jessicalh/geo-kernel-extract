@@ -1,6 +1,5 @@
 # Illustrative test peptides — build instructions
 
-Per `spec/plan/bones/PLANNED_CALCULATORS_2026-04-22.md` (bones) Amendment 2026-05-08(c).
 Two reference structures used by the calculator-walkthrough Mathematica
 workbook chapters: a folded mini-protein (Trp-cage) for citation-friendly
 illustrations and a designed all-canonical peptide (synthetic 22-mer)
@@ -21,12 +20,12 @@ for chemistry features Trp-cage doesn't reach.
   produces `synthetic_22mer.pdb`. ff14SB force field, CYX residues
   for the disulfide pair, HIE for histidine.
 - `aimnet2_requires_grad_check.py` — pre-flight investigation for
-  the planned AIMNet2PolarisabilityResult calculator slice (per
+  the AIMNet2ChargeResponseGradientResult calculator slice (per
   PLANNED_CALCULATORS Amendment 2026-05-08(b)). Verifies that
   `data/models/aimnet2_wb97m_0.jpt` propagates gradients through
   the coordinate input tensor. Result on 2026-05-09: **PASSED**
-  (autograd path is viable; the polarisability calculator can be
-  built without re-exporting the model). See script docstring for
+  (autograd path is viable; the charge-response gradient calculator can
+  be built without re-exporting the model). See script docstring for
   full details.
 
 ## Regenerating
@@ -46,7 +45,7 @@ The first MODEL block is what becomes the single-conformation file.
 ```bash
 $AMBERHOME/bin/tleap -f build_synthetic.tleap
 # or
-/home/jessica/micromamba/envs/mm/bin/tleap -f build_synthetic.tleap
+$NMR_TLEAP -f build_synthetic.tleap
 ```
 
 Deterministic — tleap applies ff14SB ideal angles and the standard

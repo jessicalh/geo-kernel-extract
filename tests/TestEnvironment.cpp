@@ -63,6 +63,13 @@ void TestEnvironment::Load() {
         if (v.empty() || v.front() == '/' || repo_root.empty()) return v;
         return repo_root + "/" + v;
     };
+    auto applyEnvPath = [&](std::string& slot, const char* env_name) {
+        const char* env = std::getenv(env_name);
+        if (env && *env) slot = resolveRelative(env);
+    };
+    auto ensureTrailingSlash = [](std::string& v) {
+        if (!v.empty() && v.back() != '/') v.push_back('/');
+    };
 
     if (!toml_path.empty() && fs::exists(toml_path)) {
         std::ifstream in(toml_path);
@@ -110,6 +117,19 @@ void TestEnvironment::Load() {
             "testpaths.toml not found at " + toml_path +
             " — test data paths will be empty. Fix testpaths.toml.");
     }
+
+    applyEnvPath(ubq_protonated_, "NMR_UBQ_PROTONATED");
+    applyEnvPath(ubq_crystal_, "NMR_UBQ_CRYSTAL");
+    applyEnvPath(gmx_protonated_, "NMR_GMX_PROTONATED");
+    applyEnvPath(orca_dir_, "NMR_ORCA_TEST_DIR");
+    applyEnvPath(consolidated_, "NMR_CONSOLIDATED_DIR");
+    applyEnvPath(ff14sb_params_, "NMR_FF14SB_PARAMS");
+    applyEnvPath(aimnet2_model_, "NMR_AIMNET2_MODEL");
+    applyEnvPath(baseline_features_, "NMR_BASELINE_FEATURES");
+    applyEnvPath(fleet_amber_, "NMR_FLEET_AMBER_DIR");
+    applyEnvPath(larsen_1ubq_pm6_pdb_, "NMR_LARSEN_1UBQ_PM6_PDB");
+    ensureTrailingSlash(orca_dir_);
+    ensureTrailingSlash(consolidated_);
 
     loaded_ = true;
 

@@ -142,8 +142,7 @@ std::set<std::string> CanonicalSiblingSet(AminoAcid residue_type) {
 // ============================================================================
 // NamingApplicator — Bundle B atom-name canonicalisation tests
 //
-// Verifies the rule-application object model introduced 2026-05-06
-// (spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md).
+// Verifies the rule-application object model introduced 2026-05-06.
 // Each test exercises a specific predicate path: pass-through on
 // canonical inputs, sibling-aware shifts on pre-Markley/pdb2gmx-RTP
 // patterns, and the resolution-method branches.

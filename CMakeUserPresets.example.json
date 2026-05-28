@@ -5,23 +5,45 @@
     {
       "name": "local",
       "displayName": "Local machine paths",
-      "description": "Copy this file to CMakeUserPresets.json (gitignored), edit the dependency roots below for this machine, then: cmake --preset local. Every dep is REQUIRED and a wrong path fails loud at configure naming the cache var to set. Committed defaults match the batcave dev box; override only what differs. AIMNet2/Torch, APBS, HDF5, and Eigen are pinned/discovered in CMakeLists.txt and are not overridable here.",
+      "description": "Copy this file to CMakeUserPresets.json (gitignored), then edit or delete placeholder entries for this machine before running: cmake --preset local. Every required dependency fails loud at configure naming the cache variable or NMR_* environment variable to set.",
       "inherits": "default",
       "cacheVariables": {
-        "PostgreSQL_LIBRARY": "/usr/lib/x86_64-linux-gnu/libpq.so",
-        "PostgreSQL_INCLUDE_DIR": "/usr/include/postgresql",
-        "OPENBABEL_INCLUDE": "/usr/include/openbabel3",
-        "OPENBABEL_LIB": "/usr/lib/x86_64-linux-gnu/libopenbabel.so",
-        "GROMACS_LIB": "/path/to/gromacs/build/lib/libgromacs_mpi.so",
+        "NMR_SYSTEM_LIBRARY_DIR": "/usr/lib/x86_64-linux-gnu",
+
+        "NMR_GROMACS_ROOT": "/path/to/gromacs/install",
         "GROMACS_SRC": "/path/to/gromacs/src",
         "GROMACS_BUILD": "/path/to/gromacs/build",
+        "GROMACS_LIB": "/path/to/gromacs/install/lib/libgromacs_mpi.so",
+
         "REDUCE_SRC": "/path/to/reduce-src",
         "REDUCE_LIB": "/path/to/reduce-src/build/reduce_src/libreducelib.a",
         "REDUCE_LIBPDB": "/path/to/reduce-src/build/libpdb/libpdb++.a",
         "REDUCE_TOOLCLASSES": "/path/to/reduce-src/build/toolclasses/libtoolclasses.a",
         "REDUCE_HET_DICT": "/path/to/reduce-src/reduce_wwPDB_het_dict.txt",
+
+        "NMR_MOPAC_ROOT": "/path/to/mopac",
         "MOPAC_INCLUDE": "/path/to/mopac/include",
         "MOPAC_LIB": "/path/to/mopac/lib/libmopac.so",
+
+        "NMR_OPENBABEL_ROOT": "/path/to/openbabel",
+        "NMR_TORCH_CMAKE_PREFIX_PATH": "/path/to/torch/share/cmake",
+        "NMR_NVRTC_LIB_DIR": "/path/to/nvidia/cu13/lib",
+
+        "NMR_HDF5_INCLUDE_DIR": "/path/to/hdf5/include",
+        "NMR_HDF5_C_LIBRARY": "/path/to/libhdf5.so",
+        "NMR_CURL_LIBRARY": "/path/to/libcurl.so",
+        "NMR_Z_LIBRARY": "/path/to/libz.so",
+
+        "NMR_APBS_INCLUDE_DIR": "/path/to/apbs/include-root",
+        "NMR_MALOC_INCLUDE_DIR": "/path/to/maloc/include-root",
+        "NMR_APBS_ROUTINES_LIBRARY": "/path/to/libapbs_routines.so",
+        "NMR_APBS_MG_LIBRARY": "/path/to/libapbs_mg.so",
+        "NMR_APBS_GENERIC_LIBRARY": "/path/to/libapbs_generic.so",
+        "NMR_APBS_PMGC_LIBRARY": "/path/to/libapbs_pmgc.so",
+        "NMR_MALOC_LIBRARY": "/path/to/libmaloc.so",
+
+        "NMR_ENABLE_NATIVE_ARCH": "ON",
+        "NMR_ENABLE_LTO": "ON",
         "NMR_FETCH_GTEST": "ON"
       }
     }

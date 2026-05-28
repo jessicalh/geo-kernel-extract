@@ -24,8 +24,8 @@ This script:
 
 Outcome:
   - PASSES → AIMNet2 architecturally enforces charge conservation;
-    the polarisability gradient channel has no spurious all-ones bias.
-  - FAILS → conservation is approximate. Either (a) the polarisability
+    the charge-response gradient channel has no spurious all-ones bias.
+  - FAILS → conservation is approximate. Either (a) the charge-response
     gradient needs explicit projection at backward time, or (b) the
     AIMNet2ChargeResponseGradientResult docstring needs to flag the residual
     bias. Calibration-ridge would absorb the bias, but flagging it
@@ -33,12 +33,17 @@ Outcome:
 """
 
 from pathlib import Path
+import os
 import sys
 
 import torch
 
 
-JPT_PATH = Path("/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+JPT_PATH = Path(os.environ.get(
+    "NMR_AIMNET2_MODEL",
+    REPO_ROOT / "data/models/aimnet2_wb97m_0.jpt",
+))
 TOL_MAX_ABS_GRAD = 1e-5
 
 
@@ -120,7 +125,7 @@ def main():
         print("FAIL — ∂(Σq)/∂r exceeds tolerance; conservation is approximate.")
         print("       AIMNet2ChargeResponseGradientResult's gradient has a residual")
         print("       all-ones bias of magnitude ~{:.2e}. Calibration-ridge".format(grad_max))
-        print("       will absorb it but the polarisability gradient should be")
+        print("       will absorb it but the charge-response gradient should be")
         print("       projected to remove the bias, OR the docstring should flag")
         print("       this so downstream readers don't treat the gradient as the")
         print("       physically-pure centred-charge sum.")

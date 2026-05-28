@@ -1,227 +1,223 @@
-# Test Health — 2026-05-04
+# Test Health - 2026-05-28
 
-**HEAD:** `776ca75` plus the working-tree Phase-1 cleanup + bless v2 +
-IUPAC NPY removals + AIMNet2 wired into smoke + catalog `required=True`
-for AIMNet2 arrays + `TestRequired.test_aimnet2_*` added (uncommitted at
-audit time; will commit as one bundle when this checkin closes).
+This file records the live test topology and the last verification performed
+during the packaging cleanup. Do not preserve stale pass/fail counts here:
+rerun the relevant tier and update this file when the catalog or skip behavior
+changes.
 
-This file is a snapshot of what passes / fails / skips, with the reason
-for every non-pass. Future readers (Claude, OpenAI, anyone landing on
-the tree) should not have to run the suite to know what is healthy.
-Re-run + refresh this file whenever non-pass counts change.
+## C++ CTest Catalog
 
----
+Current catalog after CMake discovery:
 
-## Summary
+| Label | Tests | Command | Purpose |
+| --- | ---: | --- | --- |
+| `fast` | 119 | `ctest --test-dir build -L fast --output-on-failure` | Pure logic plus source-tree discipline checks. |
+| `conformation` | 303 | `ctest --test-dir build -L conformation --output-on-failure` | Static-structure calculators, topology, charge setup, CLI parsing. |
+| `trajectory` | 232 | `ctest --test-dir build -L trajectory --output-on-failure` | AMBER trajectory loading, per-frame trajectory results, H5 round trips. |
+| `mopac` | 38 | `ctest --test-dir build -L mopac --output-on-failure` | MOPAC result family and MOPAC-dependent trajectory results. |
+| `batch` | 4 | `ctest --test-dir build -L batch --output-on-failure` | Multi-protein consolidated mutant-pair sweeps. |
+| `smoke` | 2 | `ctest --test-dir build -L smoke --output-on-failure` | End-to-end producer smoke tests against blessed output policy. |
 
-| Suite              | Total | Pass | Fail | Skip | Wall (parallel) |
-|--------------------|-------|------|------|------|-----------------|
-| C++ ctest          | 347   | 336  | 0    | 11   | 7m 09s          |
-| Python pytest      | 68    | 64   | 0    | 4    | 1s              |
-| **Combined**       | 415   | 400  | 0    | 15   |                 |
+CTest discovery reports 698 tests total. The labels are primary
+suite selectors only. Fixture availability is still decided inside the tests
+with `GTEST_SKIP()` and a reason.
 
-**Health verdict: clean green.** No failures. The 11 C++ skips and
-4 Python skips all carry clear GTEST_SKIP / pytest skip reasons
-(no silent fall-through, no documented-inert "expected failures").
+## Test Binaries
 
-Pytest count grew from 66 to 68 between intermediate runs because the
-2026-05-04 audit added `TestRequired.test_aimnet2_present` +
-`test_aimnet2_charges_shape` + `test_aimnet2_aim_shape` (and retired
-the stale `TestOptionalAbsent.test_aimnet2_absent` that mis-asserted
-AIMNet2 was optional). Net +2 tests.
+The top-level CMake build defines these test executables:
 
----
+| Binary | Label | Notes |
+| --- | --- | --- |
+| `unit_tests` | `fast` | Logic-only tests plus runtime/config sanity. |
+| `string_barrier_tests` | `fast` | Source-tree dependency boundary checks; intentionally does not link `nmr_shielding`. |
+| `conformation_scope_tests` | `conformation` | Per-conformation and per-calculator tests. |
+| `trajectory_scope_tests` | `trajectory` | TrajectoryResult tests plus AMBER/GROMACS streaming coverage. |
+| `mopac_tests` | `mopac` | Slow/optional MOPAC coverage isolated from day-to-day tiers. |
+| `batch_tests` | `batch` | Requires `NMR_CONSOLIDATED_DIR` or a local `tests/testpaths.toml` override. |
+| `smoke_tests` | `smoke` | Requires current in-tree smoke fixtures and the AIMNet2 model. |
 
-## C++ ctest detail
+## Fixture Contract
 
-Run with `ctest --test-dir build --output-on-failure -j$(nproc)`.
+`tests/testpaths.toml` is the default local fixture map. In-tree paths are
+repo-root-relative. External/local fixture roots are supplied per machine by
+conventional repo-relative local paths, empty opt-in fields, environment
+variables, or a local `NMR_TESTPATHS_TOML`.
 
-### Skipped tests (11)
+Important fixture variables:
 
-| # | Test | Source | Skip condition |
-|---|------|--------|---------------|
-| 190 | AmberPreparedChargeStep5NegativeTest.LoadChargesFailsWhenTleapPathDoesNotExist | tests/test_amber_prepared_charge_source.cpp | Skips when `RuntimeEnvironment::Tleap()` IS set (test exercises the no-tleap branch; needs a machine without tleap to run) |
-| 191 | AmberPreparedChargeStep5NegativeTest.LoadChargesFailsWhenNoTleapBinaryAnywhere | tests/test_amber_prepared_charge_source.cpp | Same — inverse fixture condition |
-| 208 | PropkaTest.PredictsPkaValues | tests/test_protonation_pipeline.cpp | `propka3` binary not found in PATH |
-| 209 | PropkaTest.ProtonatesAtPhysiologicalPH | tests/test_protonation_pipeline.cpp | `propka3` binary not found |
-| 210 | PropkaTest.LowPHProtonatesAcids | tests/test_protonation_pipeline.cpp | `propka3` binary not found |
-| 211 | PropkaTest.DecisionsAreTyped | tests/test_protonation_pipeline.cpp | `propka3` binary not found |
-| 212 | PropkaTest.ProtonationDetectionOnProtonatedStructure | tests/test_protonation_pipeline.cpp | `propka3` binary not found |
-| 213 | PropkaTest.PropkaAgreesWithStructure | tests/test_protonation_pipeline.cpp | `propka3` binary not found |
-| 221 | KamlTest.PredictsPkaValues | tests/test_protonation_pipeline.cpp | KaML model not available |
-| 222 | KamlTest.ProtonatesAtPhysiologicalPH | tests/test_protonation_pipeline.cpp | KaML model not available |
-| 223 | KamlTest.DecisionsAreTyped | tests/test_protonation_pipeline.cpp | KaML model not available |
+| Variable | Used for |
+| --- | --- |
+| `NMR_TESTPATHS_TOML` | Replace the whole fixture map. |
+| `NMR_CONSOLIDATED_DIR` | Batch mutant-pair sweeps. |
+| `NMR_ORCA_TEST_DIR` | ORCA single-pair fixture directory. |
+| `NMR_AIMNET2_MODEL` | Smoke and AIMNet2 calculator tests. |
+| `NMR_BASELINE_FEATURES` | Python SDK and write-feature baseline output. |
+| `NMR_FLEET_AMBER_DIR` | Large AMBER trajectory fixtures. |
+| `NMR_LARSEN_1UBQ_PM6_PDB` | External Larsen PM6-D3H+ 1UBQ geometry. |
 
-All skips are environment-dependent. None are fixture-absent on this
-batcave configuration. To reduce skips: install `propka3` and the
-KaML model.
+`tests/bones/` is archival and not part of active test discovery. New files
+there are ignored; tracked leftovers are archive-only.
+Do not move tests there as a soft-delete unless they are genuinely retired,
+and do not restore ignored bones code into the active build without an
+explicit user decision.
 
-### Tier breakdown (live executables in build/)
+## Golden Output
 
-| Executable | Tests | Status | Wall |
-|------------|-------|--------|------|
-| unit_tests | 7 | all pass | <5s |
-| structure_tests | 22 | all pass | ~5min |
-| trajectory_tests | 6 | all pass | ~30s |
-| smoke_tests | 2 | all pass | 64s + 5s |
-| job_spec_tests | 19 | all pass | ~10min |
-| gromacs_streaming_tests | 4 | all pass | ~4.5min |
-| mopac_tests | 3 | all pass | ~6min each |
-| batch_tests | 4 | all pass | ~2hr |
+`tests/golden/smoke/` is generated smoke output. `tests/golden/blessed/` is
+ignored for new files, but currently has tracked blessed baselines. Existing
+tracked files remain durable; adding a new baseline under that ignored tree
+requires an explicit `git add -f`.
 
-Retired this checkin (now in `tests/bones/`): `fleet_smoke_tests`,
-`water_field_tests`, `fes_fleet_smoke_tests`. See
-`spec/plan/session-handoff-20260503.md` Phase 1 for the rationale.
+## Test Cruft / Watchlist
 
-### Smoke baselines (bless v2)
+These are housekeeping observations from source inspection and the commands
+listed below:
 
-`tests/golden/blessed/nodft/` re-blessed 2026-05-04 against current
-code. Reason: `data/ff14sb_params.dat` regenerated by commit
-`6f66363` (AMBER charge slice, 2026-05-01); the prior nodft baseline
-predates that regen. See `tests/golden/blessed/BLESS_NOTES.md` for
-the full drift table.
+| Item | Status |
+| --- | --- |
+| `tests/regression/run_regression.sh` | Manual runner, not wired into CTest. Its active ORCA path now uses `--orca --root`, but the optional baseline comparison is still byte-identical rather than the smoke/bless tolerance policy. Decide whether to keep it manual, wire it into CTest, or fold it into the blessed-output mechanism before treating it as a health signal. |
+| `tests/regression/baseline_orca/` | Local ignored `.npy` baseline directory. It is not a durable blessed baseline like tracked files under `tests/golden/blessed/`. |
+| Consolidated fixture gating | These tests are runnable, not dead. The portable default leaves `consolidated` empty so CTest skips them; on this machine `/shared/2026Thesis/consolidated` exists and the consolidated-gated reruns passed with `NMR_CONSOLIDATED_DIR` set. Keep this as an explicit fixture dependency rather than baking the local absolute path into tracked config. |
+| Larsen PM6 1UBQ fixture | These tests are runnable, not dead. The portable default leaves `larsen_1ubq_pm6_pdb` empty; on this machine the historical archive fixture exists at `/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb` and all eight gated tests passed with `NMR_LARSEN_1UBQ_PM6_PDB` set. |
+| Python SDK fixture skips | `python3 -m pytest python/tests -q -rs` reports 141 passed, 84 skipped. The skips are stale/missing fixture skips: 10 missing `atoms_category_info.npy` for `sdk_geo_only`, 10 missing `/tmp/mutant_smoke`, 60 stale GEO-only extraction rows missing `residues.npy`, 2 stale P84477 baseline rows missing `aimnet2_charges.npy`, and 2 unavailable mutant extraction rows. |
 
-`tests/golden/blessed/withdft/` did NOT need re-blessing — that path
-uses `PrmtopChargeSource`, not the flat ff14SB table, so the regen
-had no effect. All 56 of its NPYs stay bit-identical.
+Resolved during this cleanup: `AIMNet2ChargeResponseGradientTest.WriteFeaturesEmitsBothNpys`
+was a stale test, not an AIMNet2 availability failure. AIMNet2 loaded,
+inference ran, and the backward charge-response gradient completed; the test
+still expected the pre-2026-05-20 `aimnet2_polarisability*.npy` names. The
+test and nearby active comments were updated to the current
+`aimnet2_charge_response_gradient*.npy` contract.
 
-The bless contract is now tolerance + nonzero sanity (replacing
-byte-identity), implemented in `tests/BlessCompare.{h,cpp}` with
-per-array policy in `tests/golden/blessed/bless_policy.toml`.
-Diagnostics on drift report magnitudes
-(`max |Δ|=1.7e+00 max |Δ|/|val|=1.95e+02 across N elements`)
-rather than just `BINARY DIFF: file (X bytes vs X bytes)`.
+Also resolved during this cleanup: `mopac_tests` built with two format-string
+warnings in `tests/test_full_pipeline.cpp` (`%zu` for `int` count accessors).
+The format specifiers were corrected and `mopac_tests` rebuilt cleanly.
 
----
+Also resolved during this cleanup: the two active no-`tleap` negative-path
+tests were removed after user agreement. The production failure mode still
+exists, and the remaining active Amber preparation tests cover positive `tleap`
+use and invalid-input loud failures. The removed tests only exercised the
+absence of `tleap` on a host where `tleap` is normally configured, making them
+skip-only cruft rather than a useful health signal.
 
-## Python pytest detail
+## Last Verification In This Cleanup
 
-Run with `cd python && pytest -v`.
+Run on 2026-05-27:
 
-### Failed tests
+```bash
+cmake --build build --target unit_tests string_barrier_tests -j$(nproc)
+cmake --build build --target conformation_scope_tests -j8
+cmake --build build --target trajectory_scope_tests -j8
+cmake --build build --target mopac_tests -j8
+cmake --build build --target smoke_tests -j8
+cmake --build build --target batch_tests -j8
+cmake -S . -B build
+ctest --test-dir build -N
+ctest --test-dir build -N -L fast
+ctest --test-dir build -N -L conformation
+ctest --test-dir build -N -L trajectory
+ctest --test-dir build -N -L mopac
+ctest --test-dir build -N -L batch
+ctest --test-dir build -N -L smoke
+ctest --test-dir build -L fast --output-on-failure
+ctest --test-dir build -R 'AIMNet2ChargeResponseGradientTest\.' --output-on-failure
+ctest --test-dir build -L conformation --output-on-failure
+ctest --test-dir build -L trajectory --output-on-failure
+ctest --test-dir build -L mopac --output-on-failure
+ctest --test-dir build -L smoke --output-on-failure
+ctest --test-dir build -L batch --output-on-failure
+/usr/bin/env NMR_CONSOLIDATED_DIR=/shared/2026Thesis/consolidated \
+  ctest --test-dir build -R '^(OperationRunnerTest\.(RunMutantComparison|AttachesAllResults|AtomFieldsPopulated|SkipsCoulombWithoutCharges|GeometryAccessible)|BatchHBond\.AllCleanPairs|SampleAtTest\.(BSMatchesAtomValues|BSGridAboveRing|BSButterflyField|AllCalculatorsSample)|WriteFeatures\.P84477Baseline|SmokeTest\.WithDft)$' --output-on-failure
+/usr/bin/env NMR_CONSOLIDATED_DIR=/shared/2026Thesis/consolidated \
+  ctest --test-dir build -L batch --output-on-failure
+/usr/bin/env NMR_LARSEN_1UBQ_PM6_PDB=/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb \
+  ctest --test-dir build -R 'LarsenHBondShieldingTest' --output-on-failure
+/usr/bin/env NMR_LARSEN_1UBQ_PM6_PDB=/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb \
+  ctest --test-dir build -R '^(TripeptideBackboneShieldingTest\.RunsOn1UbqPm6|TripeptideNeighborShieldingTest\.RunsOn1UbqPm6)$' --output-on-failure
+python3 -m pytest python/tests -q
+python3 -m pytest python/tests -q -rs
+```
 
-None.
+The label counts above are from those commands. The `fast` tier passed
+119/119 in 41.23 seconds after the final CMake reconfigure and rebuild.
 
-### Skipped tests (4)
+Additional targeted run on 2026-05-28:
 
-| Test | Skip reason |
-|------|------------|
-| TestMopac.test_present_in_baseline | `baseline_features/P84477` extraction lacks AIMNet2 NPYs (now `required=True`); loader raises FileNotFoundError; fixture handler catches + skips |
-| TestMopac.test_coulomb | same baseline fixture |
-| TestDelta.test_present_in_mutant | `/tmp/sdk_mutant_test` mutant fixture not on disk |
-| TestDelta.test_shielding | same mutant fixture |
+```bash
+ctest --test-dir build -N -R AIMNet2
+ctest --test-dir build -R AIMNet2 --output-on-failure
+```
 
-The two baseline skips are stale-fixture-with-clear-reason: the
-2026-04-26 contract made AIMNet2 required, but the
-`baseline_features/P84477` directory was created before that and
-never re-extracted. To resolve permanently: re-extract P84477 with
-AIMNet2 enabled, OR replace the fixture with a current extraction.
-The fixture skip is non-blocking — the test framework handles it
-cleanly.
+The AIMNet2 selection listed 12 tests and passed 12/12 in 21.62 seconds
+(2 `conformation`, 10 `trajectory`). This exercises model loading/callability,
+including response-gradient and trajectory time-series integration tests.
 
----
+The `conformation` tier initially exposed the stale AIMNet2 output-name test
+described above. After the test fix, the final `conformation` run completed
+without failures:
 
-## Findings beyond pass/fail
+Default portable fixture map:
 
-All findings raised by this audit are RESOLVED in this checkin
-except F4 (carried-legacy entry, no action needed) and F5 (stale
-baseline fixtures, deferred). Status given per finding.
+| Label | Pass | Fail | Skip | Wall |
+| --- | ---: | ---: | ---: | ---: |
+| `fast` | 119 | 0 | 0 | 41.23s |
+| `conformation` | 284 | 0 | 19 | 288.57s |
+| `trajectory` | 232 | 0 | 0 | 3402.36s |
+| `mopac` | 38 | 0 | 0 | 1081.80s |
+| `smoke` | 1 | 0 | 1 | 92.61s |
+| `batch` | 0 | 0 | 4 | 1.08s |
 
-### F1. AIMNet2 contract gap — RESOLVED
+Local external fixtures enabled:
 
-The 2026-04-26 contract (`project_aimnet2_contract_20260426`) said
-AIMNet2 is required in production output and the catalog should
-have `required=True` on the 5 AIMNet2 arrays. Investigation
-discovered that:
-- The smoke tests were not loading the AIMNet2 model — running an
-  AIMNet2-absent path in contravention of the contract.
-- The catalog had `required=False` for all AIMNet2 arrays (contract
-  articulated, never landed).
-- `TestOptionalAbsent.test_aimnet2_absent` was a stale assertion
-  that mis-asserted AIMNet2 was optional.
+| Run | Pass | Fail | Skip | Wall |
+| --- | ---: | ---: | ---: | ---: |
+| Consolidated-gated conformation/smoke subset | 12 | 0 | 0 | 134.18s |
+| `batch` with `NMR_CONSOLIDATED_DIR=/shared/2026Thesis/consolidated` | 4 | 0 | 0 | 341.73s |
+| Larsen H-bond 1UBQ PM6 group with `NMR_LARSEN_1UBQ_PM6_PDB=/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb` | 6 | 0 | 0 | 6.62s |
+| Tripeptide 1UBQ PM6 pair with `NMR_LARSEN_1UBQ_PM6_PDB=/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb` | 2 | 0 | 0 | 4.04s |
 
-Fixed in this checkin:
-- AIMNet2 model loading wired into `SmokeTest::SetUpTestSuite` via
-  process-scoped `Session`; both NoDft and WithDft now exercise
-  the AIMNet2 path (5 aimnet2 NPYs per protein).
-- `python/nmr_extract/_catalog.py:172-176` updated to `required=True`.
-- `tests/test_load.py::TestOptionalAbsent.test_aimnet2_absent` retired.
-- `tests/test_load.py::TestRequired.test_aimnet2_*` added: positive
-  assertion that AIMNet2 IS in production output.
-- Baseline + mutant SDK fixture handlers now catch FileNotFoundError
-  (raised by the loader when required=True files are missing) and
-  skip with a clear "stale" reason instead of erroring out.
+Skipped conformation entries grouped by cause:
 
-### F2. `Testing/` artifact dir not gitignored — RESOLVED
+| Cause | Count | Tests |
+| --- | ---: | --- |
+| `NMR_CONSOLIDATED_DIR` / consolidated P84477 fixture not supplied in the default portable fixture map. These passed when rerun with `/shared/2026Thesis/consolidated`. | 11 | `OperationRunnerTest.RunMutantComparison`; `OperationRunnerTest.AttachesAllResults`; `OperationRunnerTest.AtomFieldsPopulated`; `OperationRunnerTest.SkipsCoulombWithoutCharges`; `OperationRunnerTest.GeometryAccessible`; `BatchHBond.AllCleanPairs`; `SampleAtTest.BSMatchesAtomValues`; `SampleAtTest.BSGridAboveRing`; `SampleAtTest.BSButterflyField`; `SampleAtTest.AllCalculatorsSample`; `WriteFeatures.P84477Baseline` |
+| `NMR_LARSEN_1UBQ_PM6_PDB` not supplied in the default portable fixture map. These passed when rerun with `/mnt/expansion/larsen_archive/structures/1UBQ_pm6dh3plus.pdb`. | 8 | `LarsenHBondShieldingTest.*` six-test fixture group; `TripeptideBackboneShieldingTest.RunsOn1UbqPm6`; `TripeptideNeighborShieldingTest.RunsOn1UbqPm6` |
 
-CTest writes `Testing/Temporary/{LastTest.log,CTestCostData.txt}`
-at project root after each ctest run. Added `Testing/` to
-`.gitignore`.
+Skipped smoke entry:
 
-### F3. CLAUDE.md mis-attributes one of the documented "inert" failures — RESOLVED
+| Cause | Count | Tests |
+| --- | ---: | --- |
+| `NMR_CONSOLIDATED_DIR` / consolidated P84477 fixture not supplied in the default portable fixture map. This passed when rerun with `/shared/2026Thesis/consolidated`. | 1 | `SmokeTest.WithDft` |
 
-The 2026-04-29 block in `CLAUDE.md` listed `SmokeTest.NoDft` as one
-of five "documented and inert" failures attributed to the
-`tests/data/fleet/1A6J_5789/poses/ensemble.json` trim. Actual cause
-was the `ff14sb_params.dat` regen + bless deferral. Block updated
-to split the two distinct causes and mark both as RESOLVED.
+Trajectory runtime note: the tier is green but not short. Several AMBER
+streaming and frame-PDB-emitter tests each run a full trajectory path and take
+about 200-300 seconds apiece.
 
-### F4. Stale `aimnet2_charge_sensitivity` catalog entry — INFORMATIONAL
+Skipped batch entries under the default portable fixture map:
 
-`python/nmr_extract/_catalog.py:183` carries
-`aimnet2_charge_sensitivity` as `required=False` (LEGACY) for
-backward compat with old extractions. Current code does not
-produce it (removed 2026-04-12). Tolerated as a legacy reader;
-no action needed.
+| Cause | Count | Tests |
+| --- | ---: | --- |
+| `NMR_CONSOLIDATED_DIR` / consolidated P84477 fixture not supplied. These passed when rerun with `/shared/2026Thesis/consolidated`. | 4 | `BatchBiotSavartHaighMallion.AllCleanPairs`; `BatchCoulombRingChi.AllCleanPairs`; `BatchMcConnell.AllCleanPairs`; `BatchPiQuadDisp.AllCleanPairs` |
 
-### F5. Two stale SDK fixtures (baseline P84477, mutant) — DEFERRED
+Python pytest result:
 
-`baseline_features/P84477/` and `/tmp/sdk_mutant_test` predate the
-2026-04-26 AIMNet2 contract and lack the now-required AIMNet2 NPYs.
-The pytest fixture handlers correctly skip with a clear
-"stale: Required file aimnet2_charges.npy missing" message, so
-this does not block test health. To resolve permanently: re-extract
-both fixtures with current code (AIMNet2 enabled). Out of scope
-for this checkin.
+| Command | Pass | Fail | Skip | Wall |
+| --- | ---: | ---: | ---: | ---: |
+| `python3 -m pytest python/tests -q` | 141 | 0 | 84 | 2.09s |
+| `python3 -m pytest python/tests -q -rs` | 141 | 0 | 84 | 1.92s |
 
-### F6. Contract-without-enforcement audit — QUEUED
+Python skip groups from `-rs`:
 
-The AIMNet2 contract (`project_aimnet2_contract_20260426`) was
-articulated in a memory entry but the code-side enforcement
-(`required=True` in `_catalog.py`) never landed at the time. F1
-fixed this specific instance, but the *pattern* — memory-captured
-contracts that don't enforce in code — is generic and likely
-repeats elsewhere.
+| Cause | Count |
+| --- | ---: |
+| `tests/data/sdk_geo_only/1Q8K/.../atoms_category_info.npy` missing; set `NMR_CATEGORY_INFO_NPY` or generate the category-info extraction. | 10 |
+| `/tmp/mutant_smoke` extraction missing; set `NMR_MUTANT_SMOKE_DIR` or run the mutant smoke extraction. | 10 |
+| GEO-only extraction fixture is stale and missing `residues.npy`. | 60 |
+| P84477 baseline fixture is stale and missing `aimnet2_charges.npy`. | 2 |
+| Mutant extraction fixture is unavailable. | 2 |
 
-Suggested audit shape: walk every `project_*_contract_*` and
-`feedback_*` memory entry, identify any code-side claim
-(catalog flag, JobSpec validation, type signature, fixture
-content), grep for whether the claim is actually enforced. Aim
-is a similar findings-list to this audit, scoped to contract
-drift rather than test status.
+## Refresh Procedure
 
-Belongs in the upcoming doc-cleanup pass per user agenda.
-
-### Items NOT in this audit (relevant context)
-
-- **Skipped tests targeting install env, not batcave.** The
-  `AmberPreparedChargeStep5NegativeTest.LoadCharges*` (skip when
-  tleap IS available) and `PropkaTest.*` / `KamlTest.*` (skip when
-  binaries are absent) are designed for the install-target
-  deployment environment, not for batcave specifically. Skip on
-  batcave is not a defect; it is the intended behavior. The audit
-  pass/fail counts treat skips as neutral.
-- **`tests/regression/run_regression.sh` orphan status** — flagged
-  in the session conversation; needs broader context to decide
-  retire-vs-wire-in. Not in audit scope.
-
----
-
-## How to refresh this file
-
-1. `cmake --build build -j$(nproc)` — clean build.
-2. `ctest --test-dir build --output-on-failure -j$(nproc) > /tmp/full_ctest.log 2>&1`
-3. `cd python && pytest -v --tb=short 2>&1 | tee /tmp/full_pytest.log`
-4. Update the Summary table counts and walltimes from the new logs.
-5. Compare skip lists; update F-numbered findings if anything moved.
-6. Date-stamp the new section, keeping prior sections as history.
+1. Build the affected test binaries, or run `cmake --build build -j$(nproc)` for a full local build.
+2. Check the catalog with `ctest --test-dir build -N` and label counts with `ctest --test-dir build -N -L <label>`.
+3. Run the tier you are claiming as healthy.
+4. Update this file only with counts and skip reasons from commands you actually ran.

@@ -4,9 +4,7 @@
 // TPRs cleanly when the force-field tag is set explicitly.
 //
 // GROMACS interaction is via the linked C++ API (read_tpx_state /
-// xdrfile) — no subprocess `gmx dump` or `gmx trjconv` calls. See the
-// "GROMACS doctrine" note in
-// spec/plan/bones/amber-implementation-plan-2026-04-29.md.
+// xdrfile) — no subprocess `gmx dump` or `gmx trjconv` calls.
 //
 // Tests SKIP when fixtures are absent (the AMBER trajectory tree is
 // gitignored at tests/data/fleet_amber/ and generated via the fleet

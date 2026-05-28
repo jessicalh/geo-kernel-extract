@@ -93,8 +93,13 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
 
     std::string path = tomlPath;
     if (path.empty()) {
-        const char* home = std::getenv("HOME");
-        if (home) path = std::string(home) + "/.nmr_tools.toml";
+        const char* env_path = std::getenv("NMR_TOOLS_TOML");
+        if (env_path && *env_path) {
+            path = env_path;
+        } else {
+            const char* home = std::getenv("HOME");
+            if (home) path = std::string(home) + "/.nmr_tools.toml";
+        }
     }
 
     std::string toml_mopac, toml_tleap, toml_ff14sb, toml_tmpdir,
@@ -152,12 +157,22 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
             "no TOML config at " + path + " — using env vars and PATH only");
     }
 
-    // --- Resolve mopac: TOML → PATH ---
+    // --- Resolve mopac: TOML → env → PATH ---
     // No machine-specific default: a non-PATH install sets `mopac` in
-    // ~/.nmr_tools.toml. Empty here is a loud skip downstream.
-    mopac_ = ResolveBinary(toml_mopac, "mopac");
+    // ~/.nmr_tools.toml or NMR_MOPAC. Empty here is a loud skip downstream.
+    mopac_.clear();
+    if (!toml_mopac.empty() && fs::exists(toml_mopac)) {
+        mopac_ = toml_mopac;
+    }
+    if (mopac_.empty()) {
+        const char* env_mopac = std::getenv("NMR_MOPAC");
+        if (env_mopac && fs::exists(env_mopac)) mopac_ = env_mopac;
+    }
+    if (mopac_.empty()) {
+        mopac_ = ResolveBinary("", "mopac");
+    }
 
-    // --- Resolve tleap: TOML → AMBERHOME/bin/tleap → PATH ---
+    // --- Resolve tleap: TOML → env → AMBERHOME/bin/tleap → PATH ---
     // Only accept a TOML path that actually exists, so a stale (nonempty but
     // missing) config value falls through to AMBERHOME/PATH instead of pinning
     // tleap_ to a dead path and skipping the later fallbacks (matches how
@@ -165,6 +180,10 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
     tleap_.clear();
     if (!toml_tleap.empty() && fs::exists(toml_tleap)) {
         tleap_ = toml_tleap;
+    }
+    if (tleap_.empty()) {
+        const char* env_tleap = std::getenv("NMR_TLEAP");
+        if (env_tleap && fs::exists(env_tleap)) tleap_ = env_tleap;
     }
     if (tleap_.empty()) {
         const char* amberhome = std::getenv("AMBERHOME");
@@ -246,6 +265,10 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         if (v.empty()) return "<not set>";
         return v;
     };
+    auto secret_status = [](const std::string& v) -> std::string {
+        if (v.empty()) return "<not set>";
+        return "<configured>";
+    };
 
     OperationLog::Info("RuntimeEnvironment::Load",
         "mopac=" + status(mopac_) +
@@ -253,7 +276,7 @@ void RuntimeEnvironment::Load(const std::string& tomlPath) {
         " ff14sb_params=" + status(ff14sb_params_) +
         " tmpdir=" + status(tmpDir_) +
         " bmrb_atom_nom=" + status(bmrb_atom_nom_) +
-        " tensorcs15_dsn=" + status(tensorcs15_dsn_) +
+        " tensorcs15_dsn=" + secret_status(tensorcs15_dsn_) +
         " larsen_hbond_grids=" + status(larsen_hbond_grid_dir_) +
         " guid=" + processGuid_);
 }

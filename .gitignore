@@ -10,6 +10,13 @@ build-asan/
 # and edit for this machine; the copy is never committed.
 CMakeUserPresets.json
 
+# Independent non-producer workspaces kept on disk. Some files in these trees
+# are still tracked until an explicit untrack cleanup; these patterns keep new
+# local analysis/generated/site files out of producer packaging status.
+learn/
+analysis-speculative/
+site/
+
 # Static-analysis output. Reports (clang-tidy / cppcheck / IWYU /
 # scan-build) regenerate on demand; per-sha snapshots can grow large.
 # baseline.json itself IS committed (it's the ratchet anchor); the
@@ -36,13 +43,17 @@ CTestTestfile.cmake
 *.npy
 
 # Quarantined stray-root CMake tree — see bones-make/README.md.
-# Slated for deletion ~2026-05-26 once nothing freaks out.
+# Ignored archive/local state, not an active build tree.
 bones-make/
 
-# Stray-root build artefacts. The four sanctioned build trees are
-# build/, build-ui/, build-check/, build-forensic/ — never the repo
-# root. If these files appear at root, something configured CMake in
-# the wrong place; ignore so git status doesn't notice.
+# Archive/bones directories are not active producer material. They are kept on
+# disk as ignored local archive; if a tracked file appears here, untrack it
+# explicitly rather than depending on it from active code or docs.
+bones/
+
+# Stray-root build artefacts. Build trees belong in build*/ directories,
+# never the repo root. If these files appear at root, something configured
+# CMake in the wrong place; ignore so git status doesn't notice.
 /*_tests
 /*_tests[1]_include.cmake
 /*_tests[1]_tests.cmake
@@ -64,15 +75,15 @@ python/doc/_build/
 doc/generated/
 ui/doc/generated/
 
-# Large data — regenerable from consolidated/ via batch_extract.sh
+# Large calibration data — regenerable from consolidated/ via batch_extract.sh
 calibration/*/
-learn/bones/old_extractions/
-learn/runs/
 
 # MOPAC/APBS solver output
 *.mc
 
-# Smoke test output (timestamped runs + blessed baselines are machine-local)
+# Smoke test output. Timestamped runs are generated. Existing tracked blessed
+# baselines remain tracked; new blessed files under this ignored tree require
+# an explicit `git add -f`.
 tests/golden/smoke/
 tests/golden/blessed/
 
@@ -92,9 +103,6 @@ extern/HighFive/src/
 extern/HighFive/tests/
 extern/HighFive/deps/
 extern/HighFive/.*
-
-# Analysis outputs (regenerable from scripts)
-learn/src/output/
 
 # Stale git backup
 .git-old/
@@ -119,12 +127,10 @@ bad-builds/
 tests/data/fleet_test_large/
 tests/bones/
 
-# AMBER-ff GROMACS straight-relaxation MD trajectories used for
-# trajectory tests (1P9J_5801 + 1Z9B_6577). Per-protein full
-# pipeline output: sources/ + decisions.json + validator_report.json
-# + em / nvt / npt / relax_2.0ns / production_scan*. Total ~6.2 GB.
-# Regenerable from sources/ via the fleet preparation pipeline;
-# machine-local, not repo material.
+# AMBER-ff GROMACS straight-relaxation MD trajectories used for trajectory
+# tests (1P9J_5801 + 1Z9B_6577). Per-protein full pipeline output includes
+# sources/, decisions.json, validator_report.json, equilibration, relaxation,
+# and production runs. Large and machine-local; not repo material.
 tests/data/fleet_amber/
 
 # Geometry-only SDK fixture (1Q8K extraction, ~137 MB).

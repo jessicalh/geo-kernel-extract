@@ -297,8 +297,8 @@ TEST_F(FullPipelineTest, EntirePipelineEndToEnd) {
     if (conf.HasResult<ChargeAssignmentResult>()) {
         auto& ca_result = conf.Result<ChargeAssignmentResult>();
         double sum_charge = ca_result.TotalCharge();
-        fprintf(stderr, "  Assigned: %zu\n", ca_result.AssignedCount());
-        fprintf(stderr, "  Unassigned: %zu\n", ca_result.UnassignedCount());
+        fprintf(stderr, "  Assigned: %d\n", ca_result.AssignedCount());
+        fprintf(stderr, "  Unassigned: %d\n", ca_result.UnassignedCount());
         fprintf(stderr, "  Total charge: %.2f\n", sum_charge);
 
         EXPECT_GT(ca_result.AssignedCount(),

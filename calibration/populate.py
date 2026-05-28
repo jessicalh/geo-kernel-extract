@@ -20,7 +20,8 @@ Layout per protein:
         metadata.json
 
 Usage:
-    python calibration/populate.py                 # populate (default)
+    NMR_CONSOLIDATED_DIR=/data/consolidated python calibration/populate.py
+    python calibration/populate.py --consolidated /data/consolidated
     python calibration/populate.py --dry-run       # preview only
     python calibration/populate.py --verify        # check existing links
 """
@@ -31,8 +32,9 @@ import shutil
 import sys
 from pathlib import Path
 
-CONSOLIDATED = Path("/shared/2026Thesis/consolidated")
 CALIBRATION  = Path(__file__).resolve().parent
+REPO_ROOT = CALIBRATION.parent
+DEFAULT_CONSOLIDATED = REPO_ROOT.parent / "consolidated"
 
 # The six files ExpandOrcaRoot constructs from a root name.
 # These sit at the protein directory root.
@@ -79,9 +81,9 @@ def is_complete(protein_dir: Path, protein_id: str) -> tuple[bool, list[str]]:
     return len(missing) == 0, missing
 
 
-def populate_one(protein_id: str, dry_run: bool = False) -> dict:
+def populate_one(protein_id: str, consolidated: Path, dry_run: bool = False) -> dict:
     """Create calibration/{ID}/ with symlinks for one protein."""
-    src_dir = CONSOLIDATED / protein_id
+    src_dir = consolidated / protein_id
     dst_dir = CALIBRATION / protein_id
 
     result = {"protein_id": protein_id, "ok": False,
@@ -157,16 +159,34 @@ def verify_one(protein_id: str) -> list[str]:
 
 def main():
     parser = argparse.ArgumentParser(description="Populate calibration symlink tree")
+    parser.add_argument(
+        "--consolidated",
+        type=Path,
+        default=None,
+        help="source consolidated/ directory (default: NMR_CONSOLIDATED_DIR, then ../consolidated)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="preview without creating")
     parser.add_argument("--verify", action="store_true", help="check existing links")
     parser.add_argument("--protein", type=str, help="single protein only")
     args = parser.parse_args()
 
+    consolidated = (
+        args.consolidated
+        or Path(os.environ.get("NMR_CONSOLIDATED_DIR", DEFAULT_CONSOLIDATED))
+    ).expanduser()
+    if not consolidated.is_dir():
+        print(
+            f"FATAL: consolidated directory not found at {consolidated}. "
+            "Set --consolidated or NMR_CONSOLIDATED_DIR.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     # Discover proteins
     if args.protein:
         proteins = [args.protein]
     else:
-        proteins = sorted(d.name for d in CONSOLIDATED.iterdir()
+        proteins = sorted(d.name for d in consolidated.iterdir()
                           if d.is_dir() and not d.name.startswith("."))
 
     if args.verify:
@@ -187,7 +207,7 @@ def main():
     prep_total = 0
 
     for pid in proteins:
-        r = populate_one(pid, dry_run=args.dry_run)
+        r = populate_one(pid, consolidated, dry_run=args.dry_run)
         if r["ok"]:
             ok_count += 1
             extraction_total += r["extraction"]

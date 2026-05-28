@@ -34,12 +34,17 @@ Outcome decides the calculator slice plan:
 """
 
 from pathlib import Path
+import os
 import sys
 
 import torch
 
 
-JPT_PATH = Path("/shared/2026Thesis/nmr-shielding/data/models/aimnet2_wb97m_0.jpt")
+REPO_ROOT = Path(__file__).resolve().parents[3]
+JPT_PATH = Path(os.environ.get(
+    "NMR_AIMNET2_MODEL",
+    REPO_ROOT / "data/models/aimnet2_wb97m_0.jpt",
+))
 
 
 def build_minimal_input(device: str = "cpu"):
@@ -168,9 +173,9 @@ def main() -> int:
     print("")
     print("PASS: requires_grad propagates through the .jpt model. The "
           "AIMNet2ChargeResponseGradientResult calculator slice is unblocked.")
-    print("Per-atom polarisability is the gradient of charges with "
-          "respect to coordinates, which this run confirmed is "
-          "computable in a single backward pass.")
+    print("The charge-response gradient result needs gradients of charges "
+          "with respect to coordinates; this run confirmed that autograd "
+          "path is usable.")
     return 0
 
 

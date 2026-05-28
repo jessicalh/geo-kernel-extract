@@ -24,7 +24,7 @@
 # Why a discovery script and not hardcoded paths:
 #   PyTorch is pip-installed under the user's site-packages; its
 #   exact path varies by user and machine. Hardcoding it would
-#   break deployment to other batcave-class machines. Resolving via
+#   break deployment to other machines. Resolving via
 #   Python at launch is one location-sensitive lookup.
 #
 # Usage:
@@ -37,15 +37,25 @@
 
 set -e
 
-# Resolve the bundled cu13 directory via Python. Returns the package
-# directory; the libraries we need are in the lib/ subdirectory.
-CU13_DIR=$(python3 -c "import nvidia.cu13; print(list(nvidia.cu13.__path__)[0])" 2>/dev/null)
-
-if [ -n "$CU13_DIR" ] && [ -d "${CU13_DIR}/lib" ]; then
-    export LD_LIBRARY_PATH="${CU13_DIR}/lib:${LD_LIBRARY_PATH}"
+# Resolution order:
+#   NMR_NVRTC_LIB_DIR      directory containing libnvrtc-builtins.so.13.0
+#   NMR_NVIDIA_CU13_DIR    Python nvidia.cu13 package directory
+#   NMR_PYTHON/python3     import nvidia.cu13 and use its lib/ subdir
+PYTHON=${NMR_PYTHON:-python3}
+if [ -n "${NMR_NVRTC_LIB_DIR:-}" ]; then
+    CU13_LIB_DIR=$NMR_NVRTC_LIB_DIR
+elif [ -n "${NMR_NVIDIA_CU13_DIR:-}" ]; then
+    CU13_LIB_DIR=${NMR_NVIDIA_CU13_DIR%/}/lib
 else
-    echo "run_with_cuda_env: nvidia.cu13 not found via Python; AIMNet2 / libtorch CUDA JIT will fail." >&2
-    echo "run_with_cuda_env: install via 'pip install --user nvidia-cu13' or equivalent." >&2
+    CU13_DIR=$("$PYTHON" -c "import nvidia.cu13; print(list(nvidia.cu13.__path__)[0])" 2>/dev/null || true)
+    CU13_LIB_DIR=${CU13_DIR:+${CU13_DIR}/lib}
+fi
+
+if [ -n "${CU13_LIB_DIR:-}" ] && [ -d "$CU13_LIB_DIR" ]; then
+    export LD_LIBRARY_PATH="${CU13_LIB_DIR}:${LD_LIBRARY_PATH:-}"
+else
+    echo "run_with_cuda_env: cu13 lib dir not found; AIMNet2 / libtorch CUDA JIT will fail." >&2
+    echo "run_with_cuda_env: set NMR_NVRTC_LIB_DIR, set NMR_NVIDIA_CU13_DIR, or install nvidia-cu13 for ${PYTHON}." >&2
 fi
 
 exec "$@"
