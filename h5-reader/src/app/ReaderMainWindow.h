@@ -33,6 +33,7 @@ struct QtLoadResult;
 
 namespace h5reader::model {
 class AtomSelection;
+class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
 class TrajectorySignalCatalog;
@@ -111,6 +112,7 @@ private:
     // this model is the active signal/display set edited by SignalDisplayDialog.
     model::TrajectorySignalCatalog* signalCatalog_ = nullptr;
     model::DashboardSignalModel* dashboardSignals_ = nullptr;
+    model::DashboardPanelModel* dashboardPanels_ = nullptr;
 
     // Unified strip dashboard. SignalDisplayDialog owns selection of active
     // signals/display modes; this dock renders strip-capable active signals.

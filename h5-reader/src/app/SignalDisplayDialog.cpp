@@ -7,6 +7,7 @@
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/AtomSelection.h"
 #include "../model/Conformation.h"
+#include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
 #include "../model/QtAtom.h"
 #include "../model/QtProtein.h"
@@ -507,6 +508,7 @@ private:
 struct SignalDisplayDialog::Impl {
     QPointer<model::TrajectorySignalCatalog> catalog;
     QPointer<model::DashboardSignalModel> activeModel;
+    QPointer<model::DashboardPanelModel> panelModel;
     QPointer<model::AtomSelection> selection;
     const model::QtProtein* protein = nullptr;
     QPointer<model::Conformation> conformation;
@@ -528,6 +530,8 @@ struct SignalDisplayDialog::Impl {
     QComboBox* modeFilter = nullptr;
     QTableView* candidateView = nullptr;
     QVector<ModeControl> candidateModes;
+    QComboBox* panelCombo = nullptr;
+    QLineEdit* newPanelEdit = nullptr;
     QPushButton* addButton = nullptr;
 
     QLineEdit* activeSearch = nullptr;
@@ -647,6 +651,16 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
         addLayout->addWidget(box);
     }
     addLayout->addStretch(1);
+    addLayout->addWidget(new QLabel(QStringLiteral("Panel"), addGroup));
+    d_->panelCombo = new QComboBox(addGroup);
+    d_->panelCombo->setMinimumContentsLength(12);
+    d_->panelCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    addLayout->addWidget(d_->panelCombo);
+    d_->newPanelEdit = new QLineEdit(addGroup);
+    d_->newPanelEdit->setClearButtonEnabled(true);
+    d_->newPanelEdit->setPlaceholderText(QStringLiteral("New panel name"));
+    d_->newPanelEdit->setMaximumWidth(180);
+    addLayout->addWidget(d_->newPanelEdit);
     d_->addButton = new QPushButton(QStringLiteral("Add Signal"), addGroup);
     d_->addButton->setEnabled(false);
     addLayout->addWidget(d_->addButton);
@@ -765,6 +779,7 @@ SignalDisplayDialog::SignalDisplayDialog(QWidget* parent)
     ACONNECT(d_->addButton, &QPushButton::clicked, this, &SignalDisplayDialog::onAddSelected);
     ACONNECT(d_->removeButton, &QPushButton::clicked, this, &SignalDisplayDialog::onRemoveActive);
     ACONNECT(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    refreshPanelTargets();
 }
 
 SignalDisplayDialog::~SignalDisplayDialog() = default;
@@ -781,6 +796,28 @@ void SignalDisplayDialog::setDashboardSignalModel(model::DashboardSignalModel* m
     d_->activeProxy->setSourceModel(model);
     d_->activeView->resizeColumnsToContents();
     onActiveSelectionChanged();
+}
+
+void SignalDisplayDialog::setDashboardPanelModel(model::DashboardPanelModel* panelModel) {
+    ASSERT_THREAD(this);
+    if (d_->panelModel)
+        disconnect(d_->panelModel, nullptr, this, nullptr);
+    d_->panelModel = panelModel;
+    if (d_->panelModel) {
+        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::rowsInserted,
+                 this, &SignalDisplayDialog::refreshPanelTargets);
+        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::rowsRemoved,
+                 this, &SignalDisplayDialog::refreshPanelTargets);
+        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::modelReset,
+                 this, &SignalDisplayDialog::refreshPanelTargets);
+        ACONNECT(d_->panelModel.data(), &QAbstractItemModel::dataChanged,
+                 this, [this](const QModelIndex&, const QModelIndex&, const QList<int>&) {
+                     refreshPanelTargets();
+                 });
+        ACONNECT(d_->panelModel.data(), &model::DashboardPanelModel::activePanelChanged,
+                 this, &SignalDisplayDialog::refreshPanelTargets);
+    }
+    refreshPanelTargets();
 }
 
 void SignalDisplayDialog::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
@@ -989,6 +1026,21 @@ void SignalDisplayDialog::onAddSelected() {
     if (displayModes.isEmpty())
         return;
 
+    QUuid panelId;
+    const QString newPanelName = d_->newPanelEdit ? d_->newPanelEdit->text().trimmed() : QString();
+    if (d_->panelModel) {
+        if (!newPanelName.isEmpty()) {
+            panelId = d_->panelModel->addPanel(newPanelName);
+            d_->panelModel->setActivePanel(panelId);
+            if (d_->newPanelEdit)
+                d_->newPanelEdit->clear();
+        } else if (d_->panelCombo && d_->panelCombo->currentIndex() >= 0) {
+            panelId = d_->panelCombo->currentData().toUuid();
+        }
+        if (panelId.isNull())
+            panelId = d_->panelModel->activePanelId();
+    }
+
     const QString label = QStringLiteral("%1 - %2").arg(record->descriptor.label, candidate->label);
     const QUuid id = d_->activeModel->addSignal(record->descriptor,
                                                 anchor,
@@ -996,11 +1048,23 @@ void SignalDisplayDialog::onAddSelected() {
                                                 displayModes,
                                                 false,
                                                 label);
+    int addedRefs = 0;
+    if (d_->panelModel && !panelId.isNull()) {
+        const QVector<model::DashboardDisplayRef> refs =
+            model::DisplayRefsForSignal(id, record->descriptor, displayModes);
+        for (const model::DashboardDisplayRef& ref : refs) {
+            if (d_->panelModel->addDisplayRef(panelId, ref))
+                ++addedRefs;
+        }
+        d_->panelModel->setActivePanel(panelId);
+    }
     if (d_->statusLabel) {
-        d_->statusLabel->setText(QStringLiteral("Added '%1' on %2 with %3.")
+        d_->statusLabel->setText(QStringLiteral("Added '%1' on %2 with %3 (%4 display%5).")
                                      .arg(record->descriptor.label,
                                           candidate->label,
-                                          displayModes.join(QStringLiteral(", "))));
+                                          displayModes.join(QStringLiteral(", ")),
+                                          QString::number(addedRefs),
+                                          addedRefs == 1 ? QString() : QStringLiteral("s")));
     }
     const QModelIndex sourceActive = d_->activeModel->indexForId(id);
     if (sourceActive.isValid()) {
@@ -1010,6 +1074,37 @@ void SignalDisplayDialog::onAddSelected() {
             d_->activeView->scrollTo(proxyActive);
         }
     }
+}
+
+void SignalDisplayDialog::refreshPanelTargets() {
+    ASSERT_THREAD(this);
+    if (!d_->panelCombo)
+        return;
+    const QUuid previous = d_->panelCombo->currentData().toUuid();
+    const QUuid active = d_->panelModel ? d_->panelModel->activePanelId() : QUuid{};
+
+    const QSignalBlocker block(d_->panelCombo);
+    d_->panelCombo->clear();
+    if (!d_->panelModel) {
+        d_->panelCombo->addItem(QStringLiteral("Dashboard"), QUuid{});
+        d_->panelCombo->setEnabled(false);
+        return;
+    }
+
+    d_->panelCombo->setEnabled(true);
+    int selectRow = -1;
+    for (int row = 0; row < d_->panelModel->rowCount(); ++row) {
+        const QModelIndex index = d_->panelModel->index(row, 0);
+        const QString name = d_->panelModel->data(index, model::DashboardPanelModel::NameRole).toString();
+        const QUuid id = d_->panelModel->data(index, model::DashboardPanelModel::UuidRole).toUuid();
+        d_->panelCombo->addItem(name, id);
+        if ((!previous.isNull() && id == previous) || (previous.isNull() && id == active))
+            selectRow = row;
+    }
+    if (selectRow < 0)
+        selectRow = std::max(0, d_->panelModel->activePanelRow());
+    if (selectRow >= 0 && selectRow < d_->panelCombo->count())
+        d_->panelCombo->setCurrentIndex(selectRow);
 }
 
 QModelIndex currentActiveSourceIndex(QTableView* view, QSortFilterProxyModel* proxy) {
@@ -1087,6 +1182,20 @@ void SignalDisplayDialog::onActiveModeToggled(bool checked) {
         box->setChecked(!checked);
         return;
     }
+    if (d_->panelModel) {
+        const model::SignalDescriptor* descriptor =
+            descriptorForActiveSignal(d_->catalog, d_->activeModel, sourceIndex);
+        const QUuid panelId = d_->panelModel->activePanelId();
+        if (descriptor && !panelId.isNull()) {
+            const QVector<model::DashboardDisplayRef> refs =
+                model::DisplayRefsForSignal(id, *descriptor, {modeId});
+            if (checked) {
+                d_->panelModel->addDisplayRefs(panelId, refs);
+            } else {
+                d_->panelModel->removeDisplayRefsForSignalMode(id, modeId);
+            }
+        }
+    }
     if (d_->statusLabel)
         d_->statusLabel->setText(QStringLiteral("Updated display mode '%1'.").arg(modeId));
 }
@@ -1100,6 +1209,8 @@ void SignalDisplayDialog::onRemoveActive() {
     if (id.isNull())
         return;
     const bool removed = d_->activeModel->removeSignal(id);
+    if (d_->panelModel)
+        d_->panelModel->removeDisplayRefsForSignal(id);
     if (d_->statusLabel)
         d_->statusLabel->setText(removed ? QStringLiteral("Removed active signal.")
                                          : QStringLiteral("Could not remove active signal."));

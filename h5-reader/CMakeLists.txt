@@ -108,6 +108,8 @@ add_executable(h5reader
     src/model/DashboardSignal.cpp
     src/model/DashboardSignalModel.h
     src/model/DashboardSignalModel.cpp
+    src/model/DashboardPanelModel.h
+    src/model/DashboardPanelModel.cpp
     src/model/TrajectorySignalCatalog.h
     src/model/TrajectorySignalCatalog.cpp
     src/model/SignalTimeSeries.h

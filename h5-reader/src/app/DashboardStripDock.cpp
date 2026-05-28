@@ -8,13 +8,19 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../model/AtomSelection.h"
+#include "../model/DashboardPanelModel.h"
 
+#include <QAbstractItemModel>
 #include <QCheckBox>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QTabBar>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -33,6 +39,20 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     auto* layout = new QVBoxLayout(container);
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(4);
+
+    auto* tabRow = new QHBoxLayout;
+    tabRow->setSpacing(4);
+    panelTabs_ = new QTabBar(container);
+    panelTabs_->setDocumentMode(true);
+    panelTabs_->setExpanding(false);
+    panelTabs_->setMovable(true);
+    panelTabs_->setTabsClosable(true);
+    tabRow->addWidget(panelTabs_, 1);
+    addPanelButton_ = new QToolButton(container);
+    addPanelButton_->setText(QStringLiteral("+"));
+    addPanelButton_->setToolTip(QStringLiteral("Create a dashboard panel."));
+    tabRow->addWidget(addPanelButton_);
+    layout->addLayout(tabRow);
 
     auto* top = new QHBoxLayout;
     followBox_ = new QCheckBox(QStringLiteral("Follow"), container);
@@ -74,6 +94,12 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
              this, &DashboardStripDock::revealRequested);
     ACONNECT(metricButton_.data(), &QPushButton::clicked,
              this, &DashboardStripDock::metricPickerRequested);
+    ACONNECT(panelTabs_.data(), &QTabBar::currentChanged,
+             this, &DashboardStripDock::onPanelTabChanged);
+    ACONNECT(panelTabs_.data(), &QTabBar::tabCloseRequested,
+             this, &DashboardStripDock::onPanelTabCloseRequested);
+    ACONNECT(addPanelButton_.data(), &QToolButton::clicked,
+             this, &DashboardStripDock::onAddPanelRequested);
     ACONNECT(followBox_.data(), &QCheckBox::toggled, this, [this](bool on) {
         if (windowFramesSpin_)
             windowFramesSpin_->setEnabled(on);
@@ -95,6 +121,29 @@ void DashboardStripDock::setSignalModels(model::TrajectorySignalCatalog* catalog
                                          model::DashboardSignalModel* activeModel) {
     ASSERT_THREAD(this);
     controller_->setSignalModels(catalog, activeModel);
+}
+
+void DashboardStripDock::setPanelModel(model::DashboardPanelModel* panelModel) {
+    ASSERT_THREAD(this);
+    if (panelModel_)
+        disconnect(panelModel_, nullptr, this, nullptr);
+    panelModel_ = panelModel;
+    controller_->setPanelModel(panelModel);
+    if (panelModel_) {
+        ACONNECT(panelModel_.data(), &QAbstractItemModel::rowsInserted,
+                 this, &DashboardStripDock::syncPanelTabs);
+        ACONNECT(panelModel_.data(), &QAbstractItemModel::rowsRemoved,
+                 this, &DashboardStripDock::syncPanelTabs);
+        ACONNECT(panelModel_.data(), &QAbstractItemModel::modelReset,
+                 this, &DashboardStripDock::syncPanelTabs);
+        ACONNECT(panelModel_.data(), &QAbstractItemModel::dataChanged,
+                 this, [this](const QModelIndex&, const QModelIndex&, const QList<int>&) {
+                     syncPanelTabs();
+                 });
+        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
+                 this, [this](const QUuid&) { syncPanelTabs(); });
+    }
+    syncPanelTabs();
 }
 
 void DashboardStripDock::setSelection(model::AtomSelection* selection) {
@@ -208,6 +257,70 @@ void DashboardStripDock::refreshTracks() {
 void DashboardStripDock::updateViewportReadout(int first, int last) {
     if (viewportReadout_)
         viewportReadout_->setText(QStringLiteral("f%1-f%2").arg(first + 1).arg(last + 1));
+}
+
+void DashboardStripDock::syncPanelTabs() {
+    ASSERT_THREAD(this);
+    if (!panelTabs_)
+        return;
+
+    const QSignalBlocker block(panelTabs_);
+    while (panelTabs_->count() > 0)
+        panelTabs_->removeTab(0);
+    if (!panelModel_) {
+        panelTabs_->setVisible(false);
+        if (addPanelButton_)
+            addPanelButton_->setVisible(false);
+        return;
+    }
+
+    panelTabs_->setVisible(true);
+    if (addPanelButton_)
+        addPanelButton_->setVisible(true);
+    for (int row = 0; row < panelModel_->rowCount(); ++row) {
+        const QModelIndex index = panelModel_->index(row, 0);
+        const QString name = panelModel_->data(index, model::DashboardPanelModel::NameRole).toString();
+        const QUuid id = panelModel_->data(index, model::DashboardPanelModel::UuidRole).toUuid();
+        panelTabs_->addTab(name);
+        panelTabs_->setTabData(row, id);
+    }
+    panelTabs_->setTabsClosable(panelModel_->rowCount() > 1);
+    const int activeRow = panelModel_->activePanelRow();
+    if (activeRow >= 0)
+        panelTabs_->setCurrentIndex(activeRow);
+}
+
+void DashboardStripDock::onPanelTabChanged(int row) {
+    ASSERT_THREAD(this);
+    if (!panelModel_ || row < 0)
+        return;
+    const QUuid id = panelTabs_ ? panelTabs_->tabData(row).toUuid() : QUuid{};
+    if (!id.isNull())
+        panelModel_->setActivePanel(id);
+}
+
+void DashboardStripDock::onPanelTabCloseRequested(int row) {
+    ASSERT_THREAD(this);
+    if (!panelModel_ || row < 0)
+        return;
+    panelModel_->removePanelAt(row);
+}
+
+void DashboardStripDock::onAddPanelRequested() {
+    ASSERT_THREAD(this);
+    if (!panelModel_)
+        return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(this,
+                                               QStringLiteral("New dashboard panel"),
+                                               QStringLiteral("Name"),
+                                               QLineEdit::Normal,
+                                               QStringLiteral("Panel %1").arg(panelModel_->rowCount() + 1),
+                                               &ok);
+    if (!ok)
+        return;
+    const QUuid id = panelModel_->addPanel(name);
+    panelModel_->setActivePanel(id);
 }
 
 }  // namespace h5reader::app

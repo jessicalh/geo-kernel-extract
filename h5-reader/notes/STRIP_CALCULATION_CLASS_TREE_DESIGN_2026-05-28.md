@@ -963,6 +963,32 @@ descriptors and reducers feeding a smaller class tree.
 - Do not design for non-trajectory application data.
 - Do not keep the current tab layout as a hidden permanent compatibility layer.
 
+## Dashboard Panel Ownership Decision
+
+Decision recorded 2026-05-28: dashboard signals are a singleton live inventory.
+Panels/tabs describe where already-instantiated display references are shown;
+they do not own sampling, frame observers, or buffers.
+
+The split is:
+
+- `DashboardSignalModel`: one live collection of user-picked signal bindings.
+  A signal is sampled/updated once, regardless of how many panels reference it.
+- `DashboardPanelModel`: the user-visible panel collection. Each panel stores an
+  ordered set of concrete display references:
+  `signalId + displayModeId + channelId`.
+- `DashboardDisplayController`: owns/updates sampled buffers for live signals
+  and exposes render instances filtered by the active panel.
+- `DashboardStripDock`: owns the tab UI and strip renderer. Switching tabs
+  changes placement only.
+
+If a display reference is removed from a panel, only that placement is removed.
+If a signal has no remaining panel references, the controller/model may remove
+the signal. This keeps the common user mental model intact: picked metrics leave
+a frame trail until the strip or the tab containing it is deleted.
+
+Do not put `panelId` on `DashboardSignal` unless this decision is revisited.
+Panel placement is not signal identity.
+
 ## Open Risks
 
 - Dense H5 currently owns large startup-loaded payloads. The class tree should

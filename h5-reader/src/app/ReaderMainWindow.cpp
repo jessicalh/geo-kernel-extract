@@ -23,6 +23,7 @@
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
 #include "../model/Conformation.h"
+#include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
@@ -47,6 +48,7 @@
 #include <QStyle>
 #include <QTimer>
 #include <QToolBar>
+#include <QUuid>
 
 #include <QVTKOpenGLNativeWidget.h>
 
@@ -79,20 +81,26 @@ QString locateDftJobsDir(const QString& runPath) {
     return {};
 }
 
-void addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
-                                      model::DashboardSignalModel* activeModel,
-                                      const QString& descriptorId,
-                                      const model::SignalAnchor& anchor,
-                                      const QStringList& displayModes,
-                                      bool followsFocus,
-                                      const QString& label = QString())
+QUuid addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
+                                       model::DashboardSignalModel* activeModel,
+                                       model::DashboardPanelModel* panelModel,
+                                       const QString& descriptorId,
+                                       const model::SignalAnchor& anchor,
+                                       const QStringList& displayModes,
+                                       bool followsFocus,
+                                       const QString& label = QString())
 {
     if (!catalog || !activeModel)
-        return;
+        return {};
     const model::SignalDescriptor* descriptor = catalog->findDescriptor(descriptorId);
     if (!descriptor)
-        return;
-    activeModel->addSignal(*descriptor, anchor, QString(), displayModes, followsFocus, label);
+        return {};
+    const QUuid id = activeModel->addSignal(*descriptor, anchor, QString(), displayModes, followsFocus, label);
+    if (panelModel && !id.isNull()) {
+        panelModel->addDisplayRefs(panelModel->activePanelId(),
+                                   model::DisplayRefsForSignal(id, *descriptor, displayModes));
+    }
+    return id;
 }
 
 bool isStripMode(const QString& mode) {
@@ -301,19 +309,29 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     signalCatalog_ = new model::TrajectorySignalCatalog(this);
     dashboardSignals_ = new model::DashboardSignalModel(this);
+    dashboardPanels_ = new model::DashboardPanelModel(this);
     signalDisplayDialog_ = new SignalDisplayDialog(this);
     signalDisplayDialog_->setTrajectorySignalCatalog(signalCatalog_);
     signalDisplayDialog_->setDashboardSignalModel(dashboardSignals_);
+    signalDisplayDialog_->setDashboardPanelModel(dashboardPanels_);
     signalDisplayDialog_->setContext(loaded_->protein.get(), loaded_->conformation.get());
     signalDisplayDialog_->setSelection(selection_);
     ACONNECT(playback_, &QtPlaybackController::frameChanged,
              signalDisplayDialog_, &SignalDisplayDialog::setFrame);
     addInitialGenericDashboardSignal(signalCatalog_, dashboardSignals_,
+                                     dashboardPanels_,
                                      QStringLiteral("npy:dssp_chi"),
                                      model::ResidueAnchor{},
                                      {QStringLiteral("strip.per-class")},
                                      true,
                                      QStringLiteral("Generic NPY DSSP chi"));
+    ACONNECT(dashboardPanels_, &model::DashboardPanelModel::displayRefRemoved,
+             this, [this](const QUuid&, const model::DashboardDisplayRef& ref) {
+                 if (dashboardPanels_ && dashboardSignals_
+                     && dashboardPanels_->signalReferenceCount(ref.signalId) == 0) {
+                     dashboardSignals_->removeSignal(ref.signalId);
+                 }
+             });
 
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
@@ -362,6 +380,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_ = new DashboardStripDock(this);
     dashboardStripDock_->setContext(loaded_->protein.get(), loaded_->conformation.get());
     dashboardStripDock_->setSignalModels(signalCatalog_, dashboardSignals_);
+    dashboardStripDock_->setPanelModel(dashboardPanels_);
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
     addDockWidget(Qt::RightDockWidgetArea, dashboardStripDock_);
@@ -439,7 +458,7 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
     ASSERT_THREAD(this);
 
     if (!loaded_ || !loaded_->protein || !loaded_->conformation || !playback_
-        || !signalCatalog_ || !dashboardSignals_ || !dashboardStripDock_) {
+        || !signalCatalog_ || !dashboardSignals_ || !dashboardPanels_ || !dashboardStripDock_) {
         qCCritical(cDashboardSmoke).noquote()
             << "dashboard path smoke cannot run: main window is not fully wired";
         return false;
@@ -462,6 +481,7 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
     dashboardStripDock_->setFrame(0);
 
     dashboardSignals_->clear();
+    dashboardPanels_->clear();
 
     int stripDescriptorCount = 0;
     int activatedDescriptorCount = 0;
@@ -516,18 +536,21 @@ bool ReaderMainWindow::runDashboardPathSmoke(int maxFrames) {
         if (acceptedModes.isEmpty())
             continue;
 
-        dashboardSignals_->addSignal(descriptor,
-                                     anchor,
-                                     QString(),
-                                     acceptedModes,
-                                     false,
-                                     QStringLiteral("[smoke %1] %2 | %3 | %4 | %5 mode%6")
-                                         .arg(activatedDescriptorCount + 1, 3, 10, QChar('0'))
-                                         .arg(label,
-                                              model::ToString(descriptor.sourceKind),
-                                              model::ToString(anchorAxis),
-                                              QString::number(acceptedModes.size()),
-                                              acceptedModes.size() == 1 ? QString() : QStringLiteral("s")));
+        const QUuid signalId =
+            dashboardSignals_->addSignal(descriptor,
+                                         anchor,
+                                         QString(),
+                                         acceptedModes,
+                                         false,
+                                         QStringLiteral("[smoke %1] %2 | %3 | %4 | %5 mode%6")
+                                             .arg(activatedDescriptorCount + 1, 3, 10, QChar('0'))
+                                             .arg(label,
+                                                  model::ToString(descriptor.sourceKind),
+                                                  model::ToString(anchorAxis),
+                                                  QString::number(acceptedModes.size()),
+                                                  acceptedModes.size() == 1 ? QString() : QStringLiteral("s")));
+        dashboardPanels_->addDisplayRefs(dashboardPanels_->activePanelId(),
+                                         model::DisplayRefsForSignal(signalId, descriptor, acceptedModes));
         ++activatedDescriptorCount;
         activatedStripDisplayModeCount += acceptedModes.size();
     }

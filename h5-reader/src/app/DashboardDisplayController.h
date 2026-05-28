@@ -16,6 +16,7 @@
 namespace h5reader::model {
 class AtomSelection;
 class Conformation;
+class DashboardPanelModel;
 class DashboardSignalModel;
 class DftShieldingStore;
 class QtProtein;
@@ -59,6 +60,7 @@ public:
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setSignalModels(model::TrajectorySignalCatalog* catalog,
                          model::DashboardSignalModel* activeModel);
+    void setPanelModel(model::DashboardPanelModel* panelModel);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
 
@@ -103,6 +105,8 @@ private:
                          const QString& displayModeId) const;
     QString unitsLabel(const model::SignalDescriptor& descriptor,
                        const model::ChannelDescriptor& channel) const;
+    bool seriesIsVisibleInActivePanel(const ActiveSeries& series) const;
+    int activePanelSeriesCount() const;
     void extendToFrame(int frame);
     QColor colorForIndex(int index) const;
 
@@ -110,6 +114,7 @@ private:
     QPointer<model::Conformation> conformation_;
     QPointer<model::TrajectorySignalCatalog> catalog_;
     QPointer<model::DashboardSignalModel> activeModel_;
+    QPointer<model::DashboardPanelModel> panelModel_;
     QPointer<model::AtomSelection> selection_;
     QPointer<model::DftShieldingStore> dftStore_;
 

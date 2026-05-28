@@ -8,6 +8,7 @@
 #include "../model/Conformation.h"
 #include "../model/ConformationGeometry.h"
 #include "../model/QtConformationSnapshot.h"
+#include "../model/DashboardPanelModel.h"
 #include "../model/DashboardSignalModel.h"
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
@@ -1099,6 +1100,26 @@ void DashboardDisplayController::setSignalModels(model::TrajectorySignalCatalog*
     rebuild();
 }
 
+void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panelModel) {
+    ASSERT_THREAD(this);
+    if (panelModel_)
+        disconnect(panelModel_, nullptr, this, nullptr);
+    panelModel_ = panelModel;
+    if (panelModel_) {
+        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
+                 this, [this](const QUuid&) { rebuild(); });
+        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::displayRefsChanged,
+                 this, [this](const QUuid&) { rebuild(); });
+        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelAdded,
+                 this, [this](const QUuid&) { rebuild(); });
+        ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelRemoved,
+                 this, [this](const QUuid&, const QVector<model::DashboardDisplayRef>&) { rebuild(); });
+        ACONNECT(panelModel_.data(), &QAbstractItemModel::modelReset,
+                 this, &DashboardDisplayController::rebuild);
+    }
+    rebuild();
+}
+
 void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
     ASSERT_THREAD(this);
     if (selection_)
@@ -1132,6 +1153,8 @@ QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stri
     QVector<StripTrack> out;
     out.reserve(series_.size());
     for (const ActiveSeries& series : series_) {
+        if (!seriesIsVisibleInActivePanel(series))
+            continue;
         StripTrack item;
         item.buffer = &series.buffer.channel;
         item.color = series.color;
@@ -1250,8 +1273,9 @@ void DashboardDisplayController::rebuild() {
     } else if (activeStripSignals == 0) {
         statusText_ = QStringLiteral("No active strip display modes.");
     } else {
-        statusText_ = QStringLiteral("%1 signal time series from %2 active strip signal%3.")
-                          .arg(series_.size())
+        const int displayedSeries = activePanelSeriesCount();
+        statusText_ = QStringLiteral("%1 displayed signal time series from %2 active strip signal%3.")
+                          .arg(displayedSeries)
                           .arg(activeStripSignals)
                           .arg(activeStripSignals == 1 ? QString() : QStringLiteral("s"));
         statusText_ += QStringLiteral(" Unimplemented sources append explicit pending gaps.");
@@ -1415,6 +1439,26 @@ QString DashboardDisplayController::unitsLabel(const model::SignalDescriptor& de
     if (!channel.sourceUnits.sourceSymbol.isEmpty())
         return channel.sourceUnits.sourceSymbol;
     return descriptor.sourceUnits.sourceSymbol;
+}
+
+bool DashboardDisplayController::seriesIsVisibleInActivePanel(const ActiveSeries& series) const {
+    if (!panelModel_)
+        return true;
+    const model::DashboardPanel* panel = panelModel_->activePanel();
+    if (!panel)
+        return false;
+    const model::DashboardDisplayRef ref{
+        series.signal.id,
+        series.displayModeId,
+        series.channel.id,
+    };
+    return panel->displays.contains(ref);
+}
+
+int DashboardDisplayController::activePanelSeriesCount() const {
+    return static_cast<int>(std::count_if(series_.begin(), series_.end(), [this](const ActiveSeries& series) {
+        return seriesIsVisibleInActivePanel(series);
+    }));
 }
 
 void DashboardDisplayController::extendToFrame(int frame) {

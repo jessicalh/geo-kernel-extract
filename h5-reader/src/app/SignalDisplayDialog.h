@@ -14,6 +14,7 @@
 namespace h5reader::model {
 class AtomSelection;
 class Conformation;
+class DashboardPanelModel;
 class DashboardSignalModel;
 class QtProtein;
 class TrajectorySignalCatalog;
@@ -30,6 +31,7 @@ public:
 
     void setTrajectorySignalCatalog(model::TrajectorySignalCatalog* catalog);
     void setDashboardSignalModel(model::DashboardSignalModel* model);
+    void setDashboardPanelModel(model::DashboardPanelModel* panelModel);
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setSelection(model::AtomSelection* selection);
 
@@ -49,6 +51,7 @@ private slots:
     void onCandidateSelectionChanged();
     void onCandidateModeChanged();
     void onAddSelected();
+    void refreshPanelTargets();
     void onActiveSelectionChanged();
     void onActiveModeToggled(bool checked);
     void onRemoveActive();
