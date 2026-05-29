@@ -203,8 +203,13 @@ uint32_t OperationLog::GetChannelMask() { return channelMask_; }
 void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
     std::string path = tomlPath;
     if (path.empty()) {
-        const char* home = std::getenv("HOME");
-        if (home) path = std::string(home) + "/.nmr_tools.toml";
+        const char* env_path = std::getenv("NMR_TOOLS_TOML");
+        if (env_path && *env_path) {
+            path = env_path;
+        } else {
+            const char* home = std::getenv("HOME");
+            if (home) path = std::string(home) + "/.nmr_tools.toml";
+        }
     }
     if (path.empty()) return;
 
@@ -277,6 +282,20 @@ void OperationLog::LoadChannelConfig(const std::string& tomlPath) {
             log_file = val;
         }
     }
+
+    if (const char* env_host = std::getenv("NMR_LOG_UDP_HOST"); env_host && *env_host)
+        udp_host = env_host;
+    if (const char* env_port = std::getenv("NMR_LOG_UDP_PORT"); env_port && *env_port) {
+        try {
+            int parsed = std::stoi(env_port);
+            if (parsed >= 1 && parsed <= 65535) udp_port = parsed;
+        } catch (...) {
+            Warn("OperationLog::LoadChannelConfig",
+                 "unparseable NMR_LOG_UDP_PORT value, UDP TOML/default retained");
+        }
+    }
+    if (const char* env_file = std::getenv("NMR_LOG_FILE"); env_file && *env_file)
+        log_file = env_file;
 
     // Configure UDP if both host and port are specified.
     if (!udp_host.empty() && udp_port > 0)

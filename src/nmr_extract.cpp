@@ -41,6 +41,15 @@ using namespace nmr;
 
 namespace {
 
+fs::path ResolveConfigRelativePath(const std::string& path,
+                                   const fs::path& config_path) {
+    fs::path p(path);
+    if (p.empty() || p.is_absolute() || config_path.empty()) return p;
+    fs::path base = config_path.parent_path();
+    if (base.empty()) base = ".";
+    return base / p;
+}
+
 /// Populate the common cross-mode @ref RunOptions slots. Mode-specific
 /// fields (charges, orca_nmr_path) are filled by the caller.
 RunOptions MakeBaseOpts(const Session& session, bool mopac) {
@@ -336,25 +345,39 @@ static int RunExtract(int argc, char* argv[]) {
 
     // Load CalculatorConfig before AIMNet2 fallback so the TOML key
     // is available for resolution.
+    fs::path loaded_config_path;
     if (!common.config_path.empty()) {
+        loaded_config_path = common.config_path;
         CalculatorConfig::Load(common.config_path.string());
     } else {
-        const std::string default_config =
-            std::string(NMR_DATA_DIR) + "/calculator_params.toml";
-        if (fs::exists(default_config)) CalculatorConfig::Load(default_config);
+        loaded_config_path = fs::path(NMR_DATA_DIR) / "calculator_params.toml";
+        if (fs::exists(loaded_config_path)) {
+            CalculatorConfig::Load(loaded_config_path.string());
+        } else {
+            loaded_config_path.clear();
+        }
     }
 
-    // AIMNet2 fallback: CLI flag wins; otherwise calculator_params.toml
-    // aimnet2_model_path key. AIMNet2 is required in every production
-    // path (feedback_aimnet2_required_no_weasel).
+    // AIMNet2 fallback: CLI flag wins, then NMR_AIMNET2_MODEL, then
+    // calculator_params.toml aimnet2_model_path. TOML-relative model paths
+    // resolve from the TOML file directory, so committed configs stay
+    // relocatable across machines and containers.
+    if (common.aimnet2_model_path.empty()) {
+        const char* env_model = std::getenv("NMR_AIMNET2_MODEL");
+        if (env_model && *env_model) common.aimnet2_model_path = env_model;
+    }
     if (common.aimnet2_model_path.empty()) {
         const std::string toml_default = CalculatorConfig::GetString("aimnet2_model_path");
-        if (!toml_default.empty()) common.aimnet2_model_path = toml_default;
+        if (!toml_default.empty()) {
+            common.aimnet2_model_path =
+                ResolveConfigRelativePath(toml_default, loaded_config_path);
+        }
     }
     if (common.aimnet2_model_path.empty()) {
         std::fprintf(stderr,
-            "ERROR: AIMNet2 model required: pass --aimnet2 PATH or set "
-            "aimnet2_model_path in calculator_params.toml.\n");
+            "ERROR: AIMNet2 model required: pass --aimnet2 PATH, set "
+            "NMR_AIMNET2_MODEL, or set aimnet2_model_path in "
+            "calculator_params.toml.\n");
         return 1;
     }
 
