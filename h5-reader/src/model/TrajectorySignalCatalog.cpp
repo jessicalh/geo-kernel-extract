@@ -265,6 +265,11 @@ bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& s
             QStringLiteral("/trajectory/hydration_shell_welford"),
             QStringLiteral("/trajectory/hydration_geometry_welford"),
             QStringLiteral("/trajectory/bs_t0_autocorrelation"),
+            QStringLiteral("/trajectory/ired_order_parameters"),
+            QStringLiteral("/trajectory/kernel_dynamics"),
+            QStringLiteral("/trajectory/reorientational_dynamics"),
+            QStringLiteral("/trajectory/dihedral_autocorrelation"),
+            QStringLiteral("/trajectory/kernel_coherence"),
             QStringLiteral("/trajectory/dssp8_transition"),
             QStringLiteral("/trajectory/dihedral_bin_transition"),
         };
@@ -506,6 +511,270 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                            true));
     }
 
+    // ── Per-atom × per-channel (KernelDynamics) ─────────────────────
+    // The 13 kernel channels are stable across the codebase (producer
+    // emits them in canonical thesis-narrative order). Catalog declares
+    // them as ChannelDescriptors so the strip-mode dispatch + the
+    // panel renderers can index by channel id.
+    static const struct { const char* id; const char* label; } kKernelChannels[] = {
+        {"bs_T0", "BS T0"},     {"bs_absT2", "BS |T2|"},
+        {"hm_T0", "HM T0"},     {"hm_absT2", "HM |T2|"},
+        {"mc_T0", "MC T0"},     {"mc_absT2", "MC |T2|"},
+        {"ringchi_T0", "RingChi T0"}, {"ringchi_absT2", "RingChi |T2|"},
+        {"hbond_T0", "H-bond T0"},    {"hbond_absT2", "H-bond |T2|"},
+        {"piquad_absT2", "PiQuad |T2|"},
+        {"disp_absT2", "Disp |T2|"},
+        {"apbs_absT2", "APBS |T2|"},
+    };
+    QVector<ChannelDescriptor> kernelChannels;
+    for (const auto& ch : kKernelChannels) {
+        kernelChannels.push_back(channel(ch.id, ch.label, SignalValueShape::Scalar, none));
+    }
+
+    // Two curve-shaped descriptors (ACF over lag, PSD over frequency) +
+    // three per-channel scalar reductions all sharing one storagePath.
+    // The denseH5Plan branch dispatches by descriptor.conceptKey.
+    add(descriptors,
+        makeDescriptor("h5:kernel_dynamics_acf",
+                       "kernel_dynamics.acf",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "kernel_dynamics",
+                       "Kernel autocorrelation (ACF)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::CurveOverLag,
+                       none,
+                       {},                       // not a temporal strip
+                       {QStringLiteral("static.curve.lag.animated")},
+                       kernelChannels,
+                       "/trajectory/kernel_dynamics",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+    add(descriptors,
+        makeDescriptor("h5:kernel_dynamics_psd",
+                       "kernel_dynamics.psd",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "kernel_dynamics",
+                       "Kernel power spectrum (PSD)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::Spectrum,
+                       none,
+                       {},
+                       {QStringLiteral("static.spectrum.power")},
+                       kernelChannels,
+                       "/trajectory/kernel_dynamics",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+    auto addKernelScalar = [&](const char* id, const char* conceptKey,
+                               const char* label, const UnitSpec& units) {
+        add(descriptors,
+            makeDescriptor(id,
+                           conceptKey,
+                           SignalSourceKind::DenseH5Trajectory,
+                           "TrajectoryH5",
+                           "kernel_dynamics",
+                           label,
+                           SourceResidency::StartupLoaded,
+                           SignalAxis::Atom,
+                           SignalAxis::Atom,
+                           SignalValueShape::PerClassBlock,
+                           units,
+                           perClassStripModes(),
+                           perClassStaticModes(),
+                           kernelChannels,
+                           "/trajectory/kernel_dynamics",
+                           true));
+    };
+    addKernelScalar("h5:kernel_dynamics_decay_time",
+                    "kernel_dynamics.decay_time",
+                    "Kernel decay time (per channel, ps)",
+                    unit(UnitDimension::Time, "ps", "ps"));
+    addKernelScalar("h5:kernel_dynamics_peak_freq",
+                    "kernel_dynamics.peak_freq",
+                    "Kernel peak frequency (per channel, 1/ps)",
+                    unit(UnitDimension::Frequency, "1/ps", "1/ps"));
+    addKernelScalar("h5:kernel_dynamics_spectral_centroid",
+                    "kernel_dynamics.spectral_centroid",
+                    "Kernel spectral centroid (per channel, 1/ps)",
+                    unit(UnitDimension::Frequency, "1/ps", "1/ps"));
+
+    // ── KernelCoherence (atom × matrix) ─────────────────────────────
+    add(descriptors,
+        makeDescriptor("h5:kernel_coherence",
+                       "kernel_coherence.matrix",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "kernel_coherence",
+                       "Kernel coherence matrix (per atom, 13×13 Pearson)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::Atom,
+                       SignalAxis::Atom,
+                       SignalValueShape::Matrix,
+                       none,
+                       {},
+                       {QStringLiteral("static.chord.coupling"),
+                        QStringLiteral("static.table")},
+                       kernelChannels,
+                       "/trajectory/kernel_coherence",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+
+    // ── Residue-axis dihedral autocorrelation (phi/psi only for v1) ─
+    auto addDihedralScalar = [&](const char* id, const char* conceptKey,
+                                  const char* label) {
+        add(descriptors,
+            makeDescriptor(id, conceptKey,
+                           SignalSourceKind::DenseH5Trajectory,
+                           "TrajectoryH5",
+                           "dihedral_autocorrelation",
+                           label,
+                           SourceResidency::StartupLoaded,
+                           SignalAxis::Residue,
+                           SignalAxis::Residue,
+                           SignalValueShape::Scalar,
+                           unit(UnitDimension::Time, "ps", "ps"),
+                           {},
+                           {QStringLiteral("static.bar.sequence"),
+                            QStringLiteral("static.table")},
+                           scalarChannels(unit(UnitDimension::Time, "ps", "ps")),
+                           "/trajectory/dihedral_autocorrelation",
+                           true,
+                           false,
+                           SampleStatus::Valid,
+                           GapReason::None));
+    };
+    addDihedralScalar("h5:dihedral_phi_corr_time", "dihedral.phi_corr_time",
+                      "phi torsional decorrelation time (ps)");
+    addDihedralScalar("h5:dihedral_psi_corr_time", "dihedral.psi_corr_time",
+                      "psi torsional decorrelation time (ps)");
+
+    auto addDihedralCurve = [&](const char* id, const char* conceptKey,
+                                 const char* label) {
+        add(descriptors,
+            makeDescriptor(id, conceptKey,
+                           SignalSourceKind::DenseH5Trajectory,
+                           "TrajectoryH5",
+                           "dihedral_autocorrelation",
+                           label,
+                           SourceResidency::StartupLoaded,
+                           SignalAxis::Residue,
+                           SignalAxis::Residue,
+                           SignalValueShape::CurveOverLag,
+                           none,
+                           {},
+                           {QStringLiteral("static.curve.lag.animated")},
+                           scalarChannels(none),
+                           "/trajectory/dihedral_autocorrelation",
+                           true,
+                           false,
+                           SampleStatus::Valid,
+                           GapReason::None));
+    };
+    addDihedralCurve("h5:dihedral_phi_acf", "dihedral.phi_acf", "phi torsional ACF");
+    addDihedralCurve("h5:dihedral_psi_acf", "dihedral.psi_acf", "psi torsional ACF");
+
+    // ── Bond-vector axis (Reorientational dynamics / Lipari-Szabo) ──
+    // Seven descriptors all keyed to /trajectory/reorientational_dynamics.
+    // Scalars use SequenceBarPanel via static.bar.sequence. The two TCFs
+    // use LagDecayPanel via static.curve.lag.animated. Orientation tensor
+    // and J(ω) FixedFreqBlock land as static.table for v1 (tensor glyph
+    // + J-vs-freq line plot are end-of-plan polish items).
+    auto addReorientScalar = [&](const char* id, const char* conceptKey,
+                                  const char* label, const UnitSpec& units) {
+        add(descriptors,
+            makeDescriptor(id, conceptKey,
+                           SignalSourceKind::DenseH5Trajectory,
+                           "TrajectoryH5",
+                           "reorientational_dynamics",
+                           label,
+                           SourceResidency::StartupLoaded,
+                           SignalAxis::BondVector,
+                           SignalAxis::BondVector,
+                           SignalValueShape::Scalar,
+                           units,
+                           {},
+                           {QStringLiteral("static.bar.sequence"),
+                            QStringLiteral("static.table")},
+                           scalarChannels(units),
+                           "/trajectory/reorientational_dynamics",
+                           true,
+                           false,
+                           SampleStatus::Valid,
+                           GapReason::None));
+    };
+    addReorientScalar("h5:reorient_s2",  "reorient.s2",  "Reorientational S²", none);
+    addReorientScalar("h5:reorient_tau_e","reorient.tau_e","Reorientational τ_e (ps)",
+                      unit(UnitDimension::Time, "ps", "ps"));
+    addReorientScalar("h5:reorient_r1",   "reorient.r1",  "15N R1 (NH only, s⁻¹)",
+                      unit(UnitDimension::Frequency, "1/s", "1/s"));
+    addReorientScalar("h5:reorient_r2",   "reorient.r2",  "15N R2 (NH only, s⁻¹)",
+                      unit(UnitDimension::Frequency, "1/s", "1/s"));
+    addReorientScalar("h5:reorient_noe",  "reorient.noe", "15N {1H} NOE (NH only)", none);
+
+    auto addReorientCurve = [&](const char* id, const char* conceptKey, const char* label) {
+        add(descriptors,
+            makeDescriptor(id, conceptKey,
+                           SignalSourceKind::DenseH5Trajectory,
+                           "TrajectoryH5",
+                           "reorientational_dynamics",
+                           label,
+                           SourceResidency::StartupLoaded,
+                           SignalAxis::BondVector,
+                           SignalAxis::BondVector,
+                           SignalValueShape::CurveOverLag,
+                           none,
+                           {},
+                           {QStringLiteral("static.curve.lag.animated")},
+                           scalarChannels(none),
+                           "/trajectory/reorientational_dynamics",
+                           true,
+                           false,
+                           SampleStatus::Valid,
+                           GapReason::None));
+    };
+    addReorientCurve("h5:reorient_acf_internal", "reorient.acf_internal",
+                     "Reorientational TCF (body frame)");
+    addReorientCurve("h5:reorient_acf_lab",      "reorient.acf_lab",
+                     "Reorientational TCF (lab frame)");
+
+    // ── Bond-vector axis (Lipari-Szabo / iRED) ──────────────────────
+    // IRed S² is per-N-H-vector. Displayed as a per-residue sequence
+    // bar (NMR-relaxation idiom) via static.bar.sequence on the
+    // BondVector axis. The producer's vector identity (residue+kind)
+    // is rebuilt into the QtIRedOrderParameters::identity table; the
+    // sampler resolves a BondVectorAnchor(residue, kind=NH) to a row.
+    add(descriptors,
+        makeDescriptor("h5:ired_s2",
+                       "ired.s2",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "lipari_szabo",
+                       "iRED order parameter (N-H)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::BondVector,
+                       SignalAxis::BondVector,
+                       SignalValueShape::Scalar,
+                       none,
+                       {},                                    // not a temporal strip
+                       {QStringLiteral("static.bar.sequence"),
+                        QStringLiteral("static.table")},
+                       scalarChannels(none),
+                       "/trajectory/ired_order_parameters",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
     add(descriptors, makeDescriptor("h5:dssp8_transition", "dssp_ss8.transition", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "dssp", "DSSP8 transition matrix", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::EventRecord, tag, eventStripModes(), eventStaticModes(), {}, "/trajectory/dssp8_transition", true));
     add(descriptors, makeDescriptor("h5:dihedral_bin_transition", "residue_dihedral.transition", SignalSourceKind::DenseH5Trajectory, "TrajectoryH5", "planar_geometry", "Dihedral-bin transition matrix", SourceResidency::StartupLoaded, SignalAxis::Residue, SignalAxis::Residue, SignalValueShape::EventRecord, tag, eventStripModes(), eventStaticModes(), {}, "/trajectory/dihedral_bin_transition", true));
     add(descriptors, makeDescriptor("h5:selections", "selections", SignalSourceKind::SelectionEvents, "TrajectoryH5", "selections", "Trajectory selections", SourceResidency::StartupLoaded, SignalAxis::Event, SignalAxis::Event, SignalValueShape::EventRecord, tag, eventStripModes(), eventStaticModes(), {}, "/trajectory/selections", true));

@@ -53,6 +53,13 @@ enum class DisplayModeKind : std::uint8_t {
     Table,
     ColorMap,
     TensorGlyph,
+    // Phase A-G additions for the new static-panel modes (see
+    // h5-reader/notes/SCOPE_NEW_TRS_2026-05-29.md). Each maps to a
+    // specific panel subclass via the controller's panel-build
+    // dispatch (isPanelMode in DashboardDisplayController.cpp).
+    BarSequence,   // SequenceBarPanel — iRED S², Reorient relaxation, Dihedral corr_time
+    CurveLag,      // LagDecayPanel    — KernelDynamics ACF, Reorient TCFs, Dihedral ACF
+    ChordCoupling, // ChordCouplingPanel — KernelCoherence Pearson matrix
 };
 
 struct ModeControl {
@@ -103,6 +110,12 @@ QString modeKindLabel(DisplayModeKind kind) {
         return QStringLiteral("Color map");
     case DisplayModeKind::TensorGlyph:
         return QStringLiteral("Glyph / overlay");
+    case DisplayModeKind::BarSequence:
+        return QStringLiteral("Bar (sequence)");
+    case DisplayModeKind::CurveLag:
+        return QStringLiteral("Curve (lag)");
+    case DisplayModeKind::ChordCoupling:
+        return QStringLiteral("Chord (coupling)");
     }
     return {};
 }
@@ -119,6 +132,12 @@ QString modeKindKey(DisplayModeKind kind) {
         return QStringLiteral("colorMap");
     case DisplayModeKind::TensorGlyph:
         return QStringLiteral("tensorGlyph");
+    case DisplayModeKind::BarSequence:
+        return QStringLiteral("barSequence");
+    case DisplayModeKind::CurveLag:
+        return QStringLiteral("curveLag");
+    case DisplayModeKind::ChordCoupling:
+        return QStringLiteral("chordCoupling");
     }
     return {};
 }
@@ -135,6 +154,12 @@ QString canonicalModeId(DisplayModeKind kind) {
         return QStringLiteral("static.atomColor");
     case DisplayModeKind::TensorGlyph:
         return QStringLiteral("static.tensor");
+    case DisplayModeKind::BarSequence:
+        return QStringLiteral("static.bar.sequence");
+    case DisplayModeKind::CurveLag:
+        return QStringLiteral("static.curve.lag.animated");
+    case DisplayModeKind::ChordCoupling:
+        return QStringLiteral("static.chord.coupling");
     }
     return {};
 }
@@ -156,6 +181,12 @@ bool modeMatchesKind(const QString& modeId, DisplayModeKind kind) {
     case DisplayModeKind::TensorGlyph:
         return lower.contains(QStringLiteral("glyph")) || lower.contains(QStringLiteral("overlay"))
             || (lower.startsWith(QStringLiteral("static.")) && lower.contains(QStringLiteral("tensor")));
+    case DisplayModeKind::BarSequence:
+        return lower == QStringLiteral("static.bar.sequence");
+    case DisplayModeKind::CurveLag:
+        return lower == QStringLiteral("static.curve.lag.animated");
+    case DisplayModeKind::ChordCoupling:
+        return lower == QStringLiteral("static.chord.coupling");
     }
     return false;
 }
@@ -181,7 +212,10 @@ QString modeSummary(const QStringList& displayModes) {
                                  DisplayModeKind::Spectrum,
                                  DisplayModeKind::Table,
                                  DisplayModeKind::ColorMap,
-                                 DisplayModeKind::TensorGlyph}) {
+                                 DisplayModeKind::TensorGlyph,
+                                 DisplayModeKind::BarSequence,
+                                 DisplayModeKind::CurveLag,
+                                 DisplayModeKind::ChordCoupling}) {
         if (modeListContainsKind(displayModes, kind))
             labels.push_back(modeKindLabel(kind));
     }
@@ -243,12 +277,15 @@ bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requ
     return false;
 }
 
-std::array<DisplayModeKind, 5> allModeKinds() {
+std::array<DisplayModeKind, 8> allModeKinds() {
     return {DisplayModeKind::Strip,
             DisplayModeKind::Spectrum,
             DisplayModeKind::Table,
             DisplayModeKind::ColorMap,
-            DisplayModeKind::TensorGlyph};
+            DisplayModeKind::TensorGlyph,
+            DisplayModeKind::BarSequence,
+            DisplayModeKind::CurveLag,
+            DisplayModeKind::ChordCoupling};
 }
 
 void configureTable(QTableView* view) {
@@ -500,7 +537,10 @@ protected:
                     || (modeKindFilter_ == QStringLiteral("spectrum") && modeMatchesKind(mode, DisplayModeKind::Spectrum))
                     || (modeKindFilter_ == QStringLiteral("table") && modeMatchesKind(mode, DisplayModeKind::Table))
                     || (modeKindFilter_ == QStringLiteral("colorMap") && modeMatchesKind(mode, DisplayModeKind::ColorMap))
-                    || (modeKindFilter_ == QStringLiteral("tensorGlyph") && modeMatchesKind(mode, DisplayModeKind::TensorGlyph))) {
+                    || (modeKindFilter_ == QStringLiteral("tensorGlyph") && modeMatchesKind(mode, DisplayModeKind::TensorGlyph))
+                    || (modeKindFilter_ == QStringLiteral("barSequence") && modeMatchesKind(mode, DisplayModeKind::BarSequence))
+                    || (modeKindFilter_ == QStringLiteral("curveLag") && modeMatchesKind(mode, DisplayModeKind::CurveLag))
+                    || (modeKindFilter_ == QStringLiteral("chordCoupling") && modeMatchesKind(mode, DisplayModeKind::ChordCoupling))) {
                     matched = true;
                     break;
                 }

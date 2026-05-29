@@ -20,6 +20,7 @@ enum class SignalAnchorKind : uint8_t {
     Residue,
     AtomTuple,
     Bond,
+    BondVector,
     Ring,
     AromaticRing,
     SaturatedRing,

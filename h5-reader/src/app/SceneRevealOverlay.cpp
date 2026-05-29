@@ -2,6 +2,9 @@
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
+#include "../io/QtTrajectoryH5.h"
+#include "../model/QtBondVectorBuffers.h"
+#include "../model/TrajectoryConformation.h"
 
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
@@ -185,6 +188,27 @@ std::vector<std::size_t> SceneRevealOverlay::atomsForBinding(const model::Signal
         addTypedRing(model::QtRingAxis::SaturatedRing, ring->ring);
     } else if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor)) {
         addRingMembership(membership->membership);
+    } else if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
+        // Resolve (residue, kind) via the bond-vector identity tables
+        // each TR owns. Walks iRED first (N-H only), then Reorient
+        // (N-H + Cα-Hα + C=O). Returns the {tail, head} atom pair so
+        // the existing addAtom path lights up both endpoints.
+        const auto* trajectory = conformation_ ? conformation_->asTrajectory() : nullptr;
+        const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+        auto lookup = [&](const model::QtBondVectorTable* table) -> bool {
+            if (!table || table->n_vectors == 0) return false;
+            const auto row = table->rowFor(vec->residue, vec->kind);
+            if (!row) return false;
+            if (table->tail_atom[*row] >= 0)
+                addAtom(static_cast<std::size_t>(table->tail_atom[*row]));
+            if (table->head_atom[*row] >= 0)
+                addAtom(static_cast<std::size_t>(table->head_atom[*row]));
+            return true;
+        };
+        const model::QtIRedOrderParameters* ired = h5 ? h5->iredOrderParameters() : nullptr;
+        const model::QtReorientationalDynamics* rd = h5 ? h5->reorientationalDynamics() : nullptr;
+        if (!lookup(ired ? &ired->identity : nullptr))
+            lookup(rd ? &rd->identity : nullptr);
     }
     return atoms;
 }
@@ -240,6 +264,27 @@ void SceneRevealOverlay::reveal(const model::SignalBinding& binding, int frame)
             if (row.ringId >= 0)
                 setLineFromRing(static_cast<std::size_t>(row.ringId));
         }
+    } else if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
+        // Bond-vector reveal: connect the {tail, head} pair with the
+        // same dashed line used for explicit bond reveals. Walks iRED
+        // first, then Reorient. Atom-sphere highlights are populated
+        // through atomsForBinding() above.
+        const auto* trajectory = conformation_ ? conformation_->asTrajectory() : nullptr;
+        const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+        auto lookupLine = [&](const model::QtBondVectorTable* table) -> bool {
+            if (!table || table->n_vectors == 0) return false;
+            const auto row = table->rowFor(vec->residue, vec->kind);
+            if (!row) return false;
+            if (table->tail_atom[*row] >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(table->tail_atom[*row]));
+            if (table->head_atom[*row] >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(table->head_atom[*row]));
+            return true;
+        };
+        const model::QtIRedOrderParameters* ired = h5 ? h5->iredOrderParameters() : nullptr;
+        const model::QtReorientationalDynamics* rd = h5 ? h5->reorientationalDynamics() : nullptr;
+        if (!lookupLine(ired ? &ired->identity : nullptr))
+            lookupLine(rd ? &rd->identity : nullptr);
     }
     if (activeAtoms_.empty()) {
         clear();

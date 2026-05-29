@@ -237,4 +237,57 @@ struct QtJCouplingTimeSeries {
 };
 
 
+
+// ──────────────────────────────────────────────────────────────────
+// QtDihedralAutocorrelation — /trajectory/dihedral_autocorrelation/
+//
+// Per-residue circular ACF of phi/psi/chi torsions + 1/e decorrelation
+// times. v1 surfaces phi + psi only; chi[0..3] are present in the H5
+// for future expansion. Static (no time axis on the curves).
+// ──────────────────────────────────────────────────────────────────
+
+struct QtPerResidueCurve {
+    std::size_t n_residues = 0;
+    std::size_t n_samples = 0;
+    std::vector<double> data;          // (R * n_samples,) row-major
+    std::vector<double> axis_values;   // (n_samples,) lag times
+    QString axis_unit;
+    QString units;
+    QString result_name;
+
+    double at(std::size_t residue, std::size_t sample) const {
+        if (residue >= n_residues || sample >= n_samples || data.empty())
+            return 0.0;
+        return data[residue * n_samples + sample];
+    }
+};
+
+struct QtPerResidueScalar {
+    std::size_t n_residues = 0;
+    std::vector<double> values;        // (R,)
+    std::vector<uint8_t> defined;      // (R,) — 1 if structurally defined
+    QString units;
+    QString result_name;
+
+    double at(std::size_t residue) const {
+        return (residue < n_residues && residue < values.size())
+                   ? values[residue] : 0.0;
+    }
+    bool isDefined(std::size_t residue) const {
+        return (residue < defined.size()) ? (defined[residue] != 0) : true;
+    }
+};
+
+struct QtDihedralAutocorrelation {
+    std::size_t n_residues = 0;
+    std::size_t n_lags = 0;
+    QtPerResidueCurve  phi_acf;        // (R, L)
+    QtPerResidueCurve  psi_acf;        // (R, L)
+    QtPerResidueScalar phi_corr_time;  // (R,) ps
+    QtPerResidueScalar psi_corr_time;  // (R,) ps
+    double sample_interval_ps = 0.0;
+    QString result_name;
+};
+
+
 }  // namespace h5reader::model

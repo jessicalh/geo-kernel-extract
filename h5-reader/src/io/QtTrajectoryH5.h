@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "../model/QtBondVectorBuffers.h"
+#include "../model/QtPerAtomChannelBuffers.h"
 #include "../model/QtPerResidueBuffers.h"
 #include "../model/QtSelectionBag.h"
 #include "../model/QtSpecialBuffers.h"
@@ -153,6 +155,25 @@ public:
     const h5reader::model::QtHydrationWelford* hydrationGeometryWelford() const { return hydration_geometry_welford_.get(); }
     const h5reader::model::QtAutocorrelation* bsT0Autocorrelation() const { return bs_t0_autocorrelation_.get(); }
 
+    // ── Bond-vector axis (TR-specific identity tables) ────────────
+    const h5reader::model::QtIRedOrderParameters* iredOrderParameters() const {
+        return ired_order_parameters_.get();
+    }
+
+    // ── Per-atom × per-channel composites ─────────────────────────
+    const h5reader::model::QtKernelDynamics* kernelDynamics() const {
+        return kernel_dynamics_.get();
+    }
+    const h5reader::model::QtReorientationalDynamics* reorientationalDynamics() const {
+        return reorientational_dynamics_.get();
+    }
+    const h5reader::model::QtDihedralAutocorrelation* dihedralAutocorrelation() const {
+        return dihedral_autocorrelation_.get();
+    }
+    const h5reader::model::QtKernelCoherence* kernelCoherence() const {
+        return kernel_coherence_.get();
+    }
+
     // ── Transition trackers ───────────────────────────────────────
     const h5reader::model::QtDssp8Transitions* dssp8Transitions() const { return dssp8_transitions_.get(); }
     const h5reader::model::QtDihedralBinTransitions* dihedralBinTransitions() const { return dihedral_bin_transitions_.get(); }
@@ -258,6 +279,15 @@ private:
     std::unique_ptr<h5reader::model::QtHydrationWelford> hydration_shell_welford_;
     std::unique_ptr<h5reader::model::QtHydrationWelford> hydration_geometry_welford_;
     std::unique_ptr<h5reader::model::QtAutocorrelation> bs_t0_autocorrelation_;
+
+    // Bond-vector axis (each TR owns its identity table; see QtBondVectorBuffers.h).
+    std::unique_ptr<h5reader::model::QtIRedOrderParameters> ired_order_parameters_;
+
+    // Per-atom × per-channel composites.
+    std::unique_ptr<h5reader::model::QtKernelDynamics> kernel_dynamics_;
+    std::unique_ptr<h5reader::model::QtReorientationalDynamics> reorientational_dynamics_;
+    std::unique_ptr<h5reader::model::QtDihedralAutocorrelation> dihedral_autocorrelation_;
+    std::unique_ptr<h5reader::model::QtKernelCoherence> kernel_coherence_;
 
     // Transitions
     std::unique_ptr<h5reader::model::QtDssp8Transitions> dssp8_transitions_;

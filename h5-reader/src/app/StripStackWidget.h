@@ -16,6 +16,10 @@
 #include <QWidget>
 
 #include "../model/SignalDictionary.h"
+#include "AbstractStripPanel.h"
+
+#include <memory>
+#include <vector>
 
 namespace h5reader::model {
 struct ChannelBuffer;
@@ -52,10 +56,20 @@ public:
 
     void setTracks(QVector<Track> tracks);
     void setSpectrumTracks(QVector<SpectrumTrack> tracks);
+
+    // setOwnedPanels — canonical entry for heterogeneous panel types
+    // (SequenceBarPanel, PowerSpectrumPanel, LagDecayPanel,
+    // ChordCouplingPanel, ...) that don't ride the Track / SpectrumTrack
+    // data shapes. These panels own their own data and render after the
+    // temporal + spectrum tracks in the stack. New panel subclasses opt
+    // in here rather than overloading Track.
+    void setOwnedPanels(std::vector<std::unique_ptr<AbstractStripPanel>> panels);
+
     void setTimeViewport(TimeViewportController* viewport);
     void setCurrentFrame(int frame);
     int trackCount() const { return tracks_.size(); }
     int spectrumTrackCount() const { return spectrumTracks_.size(); }
+    int ownedPanelCount() const { return static_cast<int>(ownedPanels_.size()); }
 
 signals:
     void revealRequested(const model::SignalBinding& binding);
@@ -82,6 +96,7 @@ private:
 
     QVector<Track> tracks_;
     QVector<SpectrumTrack> spectrumTracks_;
+    std::vector<std::unique_ptr<AbstractStripPanel>> ownedPanels_;
     QPointer<TimeViewportController> viewport_;
     int currentFrame_ = 0;
     bool hasHover_ = false;

@@ -111,6 +111,16 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
 
     ACONNECT(controller_, &DashboardDisplayController::stripTracksChanged,
              this, &DashboardStripDock::refreshTracks);
+    // Owned panels (SequenceBarPanel etc.) survive playhead ticks; only
+    // a controller rebuild produces a new set. The dock pulls them out
+    // (move-out) only on this signal, NOT on every frame change —
+    // otherwise the first setFrame() drains them and the panel
+    // disappears.
+    ACONNECT(controller_, &DashboardDisplayController::ownedPanelsChanged,
+             this, [this]() {
+        if (stackWidget_)
+            stackWidget_->setOwnedPanels(controller_->takeOwnedPanels());
+    });
     ACONNECT(stackWidget_.data(), &StripStackWidget::revealRequested,
              this, &DashboardStripDock::revealRequested);
     ACONNECT(metricButton_.data(), &QPushButton::clicked,
@@ -276,6 +286,9 @@ void DashboardStripDock::refreshTracks() {
     }
     stackWidget_->setTracks(std::move(tracks));
     stackWidget_->setSpectrumTracks({});
+    // Owned panels are NOT touched here. They flow through the
+    // separate ownedPanelsChanged → setOwnedPanels path so they
+    // survive setFrame()-only ticks.
     stackWidget_->setCurrentFrame(frame_);
     if (statusLabel_)
         statusLabel_->setText(controller_->statusText());

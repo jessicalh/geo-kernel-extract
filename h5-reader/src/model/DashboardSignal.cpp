@@ -63,6 +63,8 @@ QString ToString(SignalAxis axis) {
         return QStringLiteral("atom tuple");
     case SignalAxis::Bond:
         return QStringLiteral("bond");
+    case SignalAxis::BondVector:
+        return QStringLiteral("bond vector");
     case SignalAxis::Ring:
         return QStringLiteral("ring");
     case SignalAxis::AromaticRing:
@@ -109,6 +111,16 @@ QString ToString(SignalValueShape shape) {
         return QStringLiteral("rollup moments");
     case SignalValueShape::EventRecord:
         return QStringLiteral("event record");
+    case SignalValueShape::Matrix:
+        return QStringLiteral("matrix");
+    case SignalValueShape::Spectrum:
+        return QStringLiteral("spectrum");
+    case SignalValueShape::CurveOverLag:
+        return QStringLiteral("curve over lag");
+    case SignalValueShape::Mat3PerRow:
+        return QStringLiteral("Mat3 per row");
+    case SignalValueShape::FixedFreqBlock:
+        return QStringLiteral("fixed-frequency block");
     }
     return QStringLiteral("unknown");
 }
@@ -197,6 +209,7 @@ SignalAxis AxisForAnchor(const SignalAnchor& anchor) {
             [](const ResidueAnchor&) { return SignalAxis::Residue; },
             [](const AtomTupleAnchor&) { return SignalAxis::AtomTuple; },
             [](const BondAnchor&) { return SignalAxis::Bond; },
+            [](const BondVectorAnchor&) { return SignalAxis::BondVector; },
             [](const RingAnchor&) { return SignalAxis::Ring; },
             [](const AromaticRingAnchor&) { return SignalAxis::AromaticRing; },
             [](const SaturatedRingAnchor&) { return SignalAxis::SaturatedRing; },
@@ -216,8 +229,15 @@ bool AnchorMatchesAxis(const SignalAnchor& anchor, SignalAxis axis) {
     const SignalAxis anchorAxis = AxisForAnchor(anchor);
     if (anchorAxis == axis)
         return true;
-    return axis == SignalAxis::Ring
-           && (anchorAxis == SignalAxis::AromaticRing || anchorAxis == SignalAxis::SaturatedRing);
+    if (axis == SignalAxis::Ring
+        && (anchorAxis == SignalAxis::AromaticRing || anchorAxis == SignalAxis::SaturatedRing))
+        return true;
+    // Residue-grouping ergonomic: a BondVector descriptor accepts a parent
+    // Residue anchor (picking a residue surfaces its bond vectors as a
+    // sub-list, analogous to how Ring axis accepts Aromatic/Saturated).
+    if (axis == SignalAxis::BondVector && anchorAxis == SignalAxis::Residue)
+        return true;
+    return false;
 }
 
 QString AnchorLabel(const SignalAnchor& anchor) {
@@ -234,6 +254,18 @@ QString AnchorLabel(const SignalAnchor& anchor) {
                 return QStringLiteral("Atoms [%1]").arg(parts.join(QStringLiteral(", ")));
             },
             [](const BondAnchor& a) { return indexLabel("Bond", a.bond); },
+            [](const BondVectorAnchor& a) {
+                const char* kindName = nullptr;
+                switch (a.kind) {
+                case 1: kindName = "N-H"; break;
+                case 2: kindName = "Cα-Hα"; break;
+                case 3: kindName = "C=O"; break;
+                default: kindName = "vector"; break;
+                }
+                return QStringLiteral("Residue %1 %2")
+                    .arg(static_cast<qulonglong>(a.residue))
+                    .arg(QString::fromUtf8(kindName));
+            },
             [](const RingAnchor& a) { return indexLabel("Ring", a.ring); },
             [](const AromaticRingAnchor& a) { return indexLabel("Aromatic ring", a.ring); },
             [](const SaturatedRingAnchor& a) { return indexLabel("Saturated ring", a.ring); },

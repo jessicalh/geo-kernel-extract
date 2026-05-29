@@ -698,6 +698,449 @@ void ReadHydrationWelford(HighFive::File& file,
     out = std::move(buf);
 }
 
+void ReadIRedOrderParameters(HighFive::File& file,
+                             const char* group_path,
+                             std::unique_ptr<QtIRedOrderParameters>& out) {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    if (!grp.exist("s2_ired") || !grp.exist("residue_index")
+        || !grp.exist("n_atom") || !grp.exist("h_atom")) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("missing one of s2_ired / residue_index / n_atom / h_atom"));
+        return;
+    }
+    auto s2_ds = grp.getDataSet("s2_ired");
+    const auto s2_dims = s2_ds.getDimensions();
+    if (s2_dims.size() != 1) {
+        WarnShapeMismatch(group_path, QStringLiteral("s2_ired shape != (M,)"));
+        return;
+    }
+    const std::size_t M = s2_dims[0];
+
+    // Every identity dataset must match s2_ired's M; mismatched lengths
+    // mean malformed/partial-write H5 and downstream lookups (rowFor,
+    // SceneRevealOverlay) would index OOB. Bail loudly rather than
+    // silently truncate. This guard is the template Phases D-G clone.
+    auto same_M = [&](const char* name) -> bool {
+        if (!grp.exist(name))
+            return false;
+        const auto d = grp.getDataSet(name).getDimensions();
+        if (d.size() != 1 || d[0] != M) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("%1 shape != (%2,)")
+                    .arg(QString::fromLatin1(name)).arg(M));
+            return false;
+        }
+        return true;
+    };
+    if (!same_M("residue_index") || !same_M("n_atom") || !same_M("h_atom"))
+        return;
+    if (grp.exist("eigenvalues") && grp.getDataSet("eigenvalues").getDimensions().size() == 1
+        && grp.getDataSet("eigenvalues").getDimensions()[0] != M) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("eigenvalues shape != (%1,)").arg(M));
+        return;
+    }
+
+    auto buf = std::make_unique<QtIRedOrderParameters>();
+    buf->identity.n_vectors = M;
+    buf->identity.kind.assign(M, 1);  // all amide N-H per the producer
+    s2_ds.read(buf->s2_ired);
+    if (grp.exist("eigenvalues"))
+        grp.getDataSet("eigenvalues").read(buf->eigenvalues);
+    grp.getDataSet("residue_index").read(buf->identity.residue_index);
+    grp.getDataSet("n_atom").read(buf->identity.tail_atom);
+    grp.getDataSet("h_atom").read(buf->identity.head_atom);
+    buf->identity.owning_atom = buf->identity.head_atom;   // highlight = H
+
+    if (grp.hasAttribute("separability_gap"))
+        grp.getAttribute("separability_gap").read(buf->separability_gap);
+    std::size_t n_frames = 0;
+    if (grp.hasAttribute("n_frames")) {
+        grp.getAttribute("n_frames").read(n_frames);
+        buf->n_frames = n_frames;
+    }
+    TryReadAttributeQ(grp, "reference", buf->reference);
+    TryReadAttributeQ(grp, "frame", buf->frame);
+    TryReadAttributeQ(grp, "vector_set", buf->vector_set);
+    TryReadAttributeQ(grp, "result_name", buf->result_name);
+    out = std::move(buf);
+}
+
+void ReadKernelCoherence(HighFive::File& file,
+                         const char* group_path,
+                         std::size_t n_atoms,
+                         std::unique_ptr<QtKernelCoherence>& out) {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    if (!grp.exist("correlation_matrix") || !grp.exist("channel_names")) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("missing correlation_matrix or channel_names"));
+        return;
+    }
+    const auto dims = grp.getDataSet("correlation_matrix").getDimensions();
+    if (dims.size() != 3 || dims[0] != n_atoms || dims[1] != dims[2]) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("correlation_matrix shape != (n_atoms=%1, C, C)").arg(n_atoms));
+        return;
+    }
+    const std::size_t C = dims[1];
+
+    auto buf = std::make_unique<QtKernelCoherence>();
+    buf->matrix.n_atoms = n_atoms;
+    buf->matrix.n_channels = C;
+    ReadFlat<double>(grp.getDataSet("correlation_matrix"),
+                     buf->matrix.data, n_atoms * C * C);
+
+    std::vector<std::string> names, units;
+    grp.getDataSet("channel_names").read(names);
+    if (grp.exist("channel_units"))
+        grp.getDataSet("channel_units").read(units);
+    if (names.size() != C) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("channel_names length != C=%1").arg(C));
+        return;
+    }
+    for (const auto& s : names) buf->matrix.channel_names.push_back(QString::fromStdString(s));
+    for (const auto& s : units) buf->matrix.channel_units.push_back(QString::fromStdString(s));
+    buf->matrix.units = QStringLiteral("Pearson r (dimensionless)");
+    TryReadAttributeQ(grp, "result_name", buf->matrix.result_name);
+
+    out = std::move(buf);
+}
+
+void ReadDihedralAutocorrelation(HighFive::File& file,
+                                 const char* group_path,
+                                 std::unique_ptr<QtDihedralAutocorrelation>& out) {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    for (const char* req : {"phi_acf", "psi_acf",
+                            "phi_corr_time_ps", "psi_corr_time_ps",
+                            "lag_times_ps"}) {
+        if (!grp.exist(req)) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("missing %1").arg(QString::fromLatin1(req)));
+            return;
+        }
+    }
+    const auto phi_dims = grp.getDataSet("phi_acf").getDimensions();
+    if (phi_dims.size() != 2 || phi_dims[0] == 0) {
+        WarnShapeMismatch(group_path, QStringLiteral("phi_acf shape != (R, L)"));
+        return;
+    }
+    const std::size_t R = phi_dims[0];
+    const std::size_t L = phi_dims[1];
+
+    const auto psi_dims = grp.getDataSet("psi_acf").getDimensions();
+    if (psi_dims.size() != 2 || psi_dims[0] != R || psi_dims[1] != L) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("psi_acf shape != (R=%1, L=%2)").arg(R).arg(L));
+        return;
+    }
+    auto check_R = [&](const char* name) {
+        const auto d = grp.getDataSet(name).getDimensions();
+        if (d.size() != 1 || d[0] != R) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("%1 shape != (R=%2,)")
+                    .arg(QString::fromLatin1(name)).arg(R));
+            return false;
+        }
+        return true;
+    };
+    if (!check_R("phi_corr_time_ps") || !check_R("psi_corr_time_ps"))
+        return;
+
+    auto buf = std::make_unique<QtDihedralAutocorrelation>();
+    buf->n_residues = R;
+    buf->n_lags = L;
+
+    auto fill_curve = [&](const char* name, QtPerResidueCurve& dst) {
+        dst.n_residues = R;
+        dst.n_samples = L;
+        ReadFlat<double>(grp.getDataSet(name), dst.data, R * L);
+        grp.getDataSet("lag_times_ps").read(dst.axis_values);
+        dst.axis_unit = QStringLiteral("ps");
+        dst.units = QStringLiteral("dimensionless");
+    };
+    fill_curve("phi_acf", buf->phi_acf);
+    fill_curve("psi_acf", buf->psi_acf);
+
+    auto fill_scalar = [&](const char* values_name, const char* defined_name,
+                           QtPerResidueScalar& dst) {
+        dst.n_residues = R;
+        grp.getDataSet(values_name).read(dst.values);
+        if (grp.exist(defined_name))
+            grp.getDataSet(defined_name).read(dst.defined);
+        dst.units = QStringLiteral("ps");
+    };
+    fill_scalar("phi_corr_time_ps", "phi_defined", buf->phi_corr_time);
+    fill_scalar("psi_corr_time_ps", "psi_defined", buf->psi_corr_time);
+
+    if (grp.hasAttribute("sample_interval_ps"))
+        grp.getAttribute("sample_interval_ps").read(buf->sample_interval_ps);
+
+    out = std::move(buf);
+}
+
+void ReadReorientationalDynamics(HighFive::File& file,
+                                 const char* group_path,
+                                 std::unique_ptr<QtReorientationalDynamics>& out) {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    for (const char* req : {"bond_vector_autocorrelation",
+                            "bond_vector_autocorrelation_lab",
+                            "order_parameter_S2",
+                            "lipari_szabo_tau_e",
+                            "bond_orientation_tensor",
+                            "vector_kind",
+                            "owning_atom", "tail_atom", "head_atom",
+                            "residue_index",
+                            "lag_times_ps",
+                            "spectral_density_j",
+                            "relaxation_R1", "relaxation_R2",
+                            "relaxation_NOE",
+                            "relaxation_larmor_freqs_rad_per_s"}) {
+        if (!grp.exist(req)) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("missing %1").arg(QString::fromLatin1(req)));
+            return;
+        }
+    }
+
+    // V = number of vectors; L = lag count.
+    const auto s2_dims = grp.getDataSet("order_parameter_S2").getDimensions();
+    if (s2_dims.size() != 1 || s2_dims[0] == 0) {
+        WarnShapeMismatch(group_path, QStringLiteral("order_parameter_S2 shape != (V,)"));
+        return;
+    }
+    const std::size_t V = s2_dims[0];
+
+    const auto tcf_dims = grp.getDataSet("bond_vector_autocorrelation").getDimensions();
+    if (tcf_dims.size() != 2 || tcf_dims[0] != V) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("bond_vector_autocorrelation shape != (V=%1, L)").arg(V));
+        return;
+    }
+    const std::size_t L = tcf_dims[1];
+
+    auto check_V = [&](const char* name) {
+        const auto d = grp.getDataSet(name).getDimensions();
+        if (d.size() != 1 || d[0] != V) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("%1 shape != (V=%2,)")
+                    .arg(QString::fromLatin1(name)).arg(V));
+            return false;
+        }
+        return true;
+    };
+    if (!check_V("lipari_szabo_tau_e") || !check_V("vector_kind")
+        || !check_V("owning_atom") || !check_V("tail_atom")
+        || !check_V("head_atom") || !check_V("residue_index")
+        || !check_V("relaxation_R1") || !check_V("relaxation_R2")
+        || !check_V("relaxation_NOE")) {
+        return;
+    }
+
+    const auto tens_dims = grp.getDataSet("bond_orientation_tensor").getDimensions();
+    if (tens_dims.size() != 3 || tens_dims[0] != V || tens_dims[1] != 3 || tens_dims[2] != 3) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("bond_orientation_tensor shape != (V=%1, 3, 3)").arg(V));
+        return;
+    }
+
+    const auto j_dims = grp.getDataSet("spectral_density_j").getDimensions();
+    if (j_dims.size() != 2 || j_dims[0] != V) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("spectral_density_j shape != (V=%1, K)").arg(V));
+        return;
+    }
+    const std::size_t K = j_dims[1];
+
+    auto buf = std::make_unique<QtReorientationalDynamics>();
+
+    // Identity table
+    buf->identity.n_vectors = V;
+    grp.getDataSet("vector_kind").read(buf->identity.kind);
+    grp.getDataSet("residue_index").read(buf->identity.residue_index);
+    grp.getDataSet("owning_atom").read(buf->identity.owning_atom);
+    grp.getDataSet("tail_atom").read(buf->identity.tail_atom);
+    grp.getDataSet("head_atom").read(buf->identity.head_atom);
+
+    // Curves (body + lab)
+    auto fill_curve = [&](const char* name, QtPerBondVectorCurve& dst) {
+        dst.n_vectors = V;
+        dst.n_samples = L;
+        ReadFlat<double>(grp.getDataSet(name), dst.data, V * L);
+        grp.getDataSet("lag_times_ps").read(dst.axis_values);
+        dst.axis_unit = QStringLiteral("ps");
+        dst.units = QStringLiteral("dimensionless");
+    };
+    fill_curve("bond_vector_autocorrelation",     buf->acf_internal);
+    fill_curve("bond_vector_autocorrelation_lab", buf->acf_lab);
+
+    // Per-vector scalars (S², τ_e, R1, R2, NOE)
+    auto fill_scalar = [&](const char* name, QtPerBondVectorScalar& dst, const char* unit) {
+        dst.n_vectors = V;
+        grp.getDataSet(name).read(dst.values);
+        dst.units = QString::fromLatin1(unit);
+    };
+    fill_scalar("order_parameter_S2",  buf->s2,    "dimensionless");
+    fill_scalar("lipari_szabo_tau_e",  buf->tau_e, "ps");
+    fill_scalar("relaxation_R1",       buf->r1,    "1/s");
+    fill_scalar("relaxation_R2",       buf->r2,    "1/s");
+    fill_scalar("relaxation_NOE",      buf->noe,   "dimensionless");
+
+    // Mat3 orientation tensor
+    buf->orientation_tensor.n_vectors = V;
+    ReadFlat<double>(grp.getDataSet("bond_orientation_tensor"),
+                     buf->orientation_tensor.data, V * 9);
+
+    // Spectral-density J at the K KTB Larmor frequencies
+    buf->spectral_density_J.n_vectors = V;
+    buf->spectral_density_J.n_freqs = K;
+    ReadFlat<double>(grp.getDataSet("spectral_density_j"),
+                     buf->spectral_density_J.data, V * K);
+    grp.getDataSet("relaxation_larmor_freqs_rad_per_s").read(buf->spectral_density_J.freq_values);
+    buf->spectral_density_J.units = QStringLiteral("s");
+
+    // Per-trajectory attrs
+    if (grp.hasAttribute("tau_m_ps")) grp.getAttribute("tau_m_ps").read(buf->tau_m_ps);
+    if (grp.hasAttribute("trajectory_length_over_tau_m"))
+        grp.getAttribute("trajectory_length_over_tau_m").read(buf->trajectory_length_over_tau_m);
+    if (grp.hasAttribute("tau_m_converged"))
+        grp.getAttribute("tau_m_converged").read(buf->tau_m_converged);
+    if (grp.hasAttribute("relaxation_field_tesla"))
+        grp.getAttribute("relaxation_field_tesla").read(buf->relaxation_field_tesla);
+    TryReadAttributeQ(grp, "result_name", buf->result_name);
+
+    out = std::move(buf);
+}
+
+void ReadKernelDynamics(HighFive::File& file,
+                        const char* group_path,
+                        std::size_t n_atoms,
+                        std::unique_ptr<QtKernelDynamics>& out) {
+    if (!file.exist(group_path)) {
+        WarnGroupAbsent(group_path);
+        return;
+    }
+    auto grp = file.getGroup(group_path);
+    for (const char* req : {"acf", "power_spectrum", "decay_time_ps",
+                            "peak_freq_per_ps", "spectral_centroid_per_ps",
+                            "channel_names", "channel_units",
+                            "lag_times_ps", "frequencies_per_ps"}) {
+        if (!grp.exist(req)) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("missing %1").arg(QString::fromLatin1(req)));
+            return;
+        }
+    }
+
+    const auto acf_dims = grp.getDataSet("acf").getDimensions();
+    if (acf_dims.size() != 3 || acf_dims[0] != n_atoms) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("acf shape != (n_atoms=%1, n_channels, n_lags)").arg(n_atoms));
+        return;
+    }
+    const std::size_t N = acf_dims[0];
+    const std::size_t C = acf_dims[1];
+    const std::size_t L = acf_dims[2];
+
+    const auto psd_dims = grp.getDataSet("power_spectrum").getDimensions();
+    if (psd_dims.size() != 3 || psd_dims[0] != N || psd_dims[1] != C) {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("power_spectrum shape != (N=%1, C=%2, F)").arg(N).arg(C));
+        return;
+    }
+    const std::size_t F = psd_dims[2];
+
+    auto check_NC = [&](const char* name) {
+        const auto d = grp.getDataSet(name).getDimensions();
+        if (d.size() != 2 || d[0] != N || d[1] != C) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("%1 shape != (N=%2, C=%3)")
+                    .arg(QString::fromLatin1(name)).arg(N).arg(C));
+            return false;
+        }
+        return true;
+    };
+    if (!check_NC("decay_time_ps") || !check_NC("peak_freq_per_ps")
+        || !check_NC("spectral_centroid_per_ps")) {
+        return;
+    }
+
+    auto buf = std::make_unique<QtKernelDynamics>();
+    buf->n_atoms = N;
+    buf->n_channels = C;
+
+    // Channel metadata
+    {
+        std::vector<std::string> names, units;
+        grp.getDataSet("channel_names").read(names);
+        grp.getDataSet("channel_units").read(units);
+        if (names.size() != C || units.size() != C) {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("channel_names/channel_units length != C=%1").arg(C));
+            return;
+        }
+        for (const auto& s : names) buf->channel_names.push_back(QString::fromStdString(s));
+        for (const auto& s : units) buf->channel_units.push_back(QString::fromStdString(s));
+    }
+    if (grp.hasAttribute("sample_interval_ps"))
+        grp.getAttribute("sample_interval_ps").read(buf->sample_interval_ps);
+
+    // ACF curves
+    buf->acf.n_atoms = N;
+    buf->acf.n_channels = C;
+    buf->acf.n_samples = L;
+    ReadFlat<double>(grp.getDataSet("acf"), buf->acf.data, N * C * L);
+    grp.getDataSet("lag_times_ps").read(buf->acf.axis_values);
+    buf->acf.axis_unit = QStringLiteral("ps");
+    buf->acf.axis_label = QStringLiteral("lag");
+    buf->acf.units = QStringLiteral("dimensionless");
+    buf->acf.channel_names = buf->channel_names;
+    buf->acf.channel_units = buf->channel_units;
+
+    // PSD curves
+    buf->power_spectrum.n_atoms = N;
+    buf->power_spectrum.n_channels = C;
+    buf->power_spectrum.n_samples = F;
+    ReadFlat<double>(grp.getDataSet("power_spectrum"), buf->power_spectrum.data, N * C * F);
+    grp.getDataSet("frequencies_per_ps").read(buf->power_spectrum.axis_values);
+    buf->power_spectrum.axis_unit = QStringLiteral("1/ps");
+    buf->power_spectrum.axis_label = QStringLiteral("frequency");
+    buf->power_spectrum.units = QStringLiteral("channel_units^2*ps");
+    buf->power_spectrum.channel_names = buf->channel_names;
+    buf->power_spectrum.channel_units = buf->channel_units;
+
+    // Scalar reductions
+    auto fill_scalar = [&](const char* name, QtPerAtomChannelScalar& dst, const char* unit) {
+        dst.n_atoms = N;
+        dst.n_channels = C;
+        ReadFlat<double>(grp.getDataSet(name), dst.data, N * C);
+        dst.units = QString::fromLatin1(unit);
+        dst.channel_names = buf->channel_names;
+        dst.channel_units = buf->channel_units;
+    };
+    fill_scalar("decay_time_ps",            buf->decay_time_ps,            "ps");
+    fill_scalar("peak_freq_per_ps",         buf->peak_freq_per_ps,         "1/ps");
+    fill_scalar("spectral_centroid_per_ps", buf->spectral_centroid_per_ps, "1/ps");
+
+    out = std::move(buf);
+}
+
 void ReadAutocorrelation(HighFive::File& file,
                          const char* group_path,
                          std::size_t n_atoms,
@@ -1617,6 +2060,15 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
                          n_atoms_,
                          hydration_geometry_welford_);
     ReadAutocorrelation(const_cast<File&>(file), "/trajectory/bs_t0_autocorrelation", n_atoms_, bs_t0_autocorrelation_);
+
+    // ── Bond-vector axis ─────────────────────────────────────────
+    ReadIRedOrderParameters(const_cast<File&>(file), "/trajectory/ired_order_parameters", ired_order_parameters_);
+
+    // ── Per-atom × per-channel composites ────────────────────────
+    ReadKernelDynamics(const_cast<File&>(file), "/trajectory/kernel_dynamics", n_atoms_, kernel_dynamics_);
+    ReadReorientationalDynamics(const_cast<File&>(file), "/trajectory/reorientational_dynamics", reorientational_dynamics_);
+    ReadDihedralAutocorrelation(const_cast<File&>(file), "/trajectory/dihedral_autocorrelation", dihedral_autocorrelation_);
+    ReadKernelCoherence(const_cast<File&>(file), "/trajectory/kernel_coherence", n_atoms_, kernel_coherence_);
 
     // ── Selections ───────────────────────────────────────────────
     ReadSelections(const_cast<File&>(file), selections_);

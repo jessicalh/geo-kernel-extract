@@ -125,6 +125,21 @@ private slots:
     void testCatalog_descriptorAutoPromotionForKnownPaths();
     void testCatalog_canSampleRequiresStripMode();
     void testCatalog_canSampleFalseForStaticMode();
+
+    // ---- Per-TR catalog presence (one row per new TR landing) ----------
+
+    void testCatalog_iredS2DescriptorPresent();
+    void testCatalog_kernelDynamicsDescriptorsPresent();
+    void testCatalog_reorientDescriptorsPresent();
+    void testCatalog_dihedralAutocorrDescriptorsPresent();
+    void testCatalog_kernelCoherenceDescriptorPresent();
+
+    // ---- Phase H: lockstep regression ---------------------------------
+    // Iterate every Valid temporal DenseH5Trajectory descriptor; assert
+    // canSample(synthetic binding) returns true. Catches the "added a
+    // descriptor but forgot to register its storagePath in kDensePaths
+    // AND/OR forgot to add the denseH5Plan branch" failure mode.
+    void testCatalog_allValidTemporalDenseH5DescriptorsAreSampleable();
 };
 
 // ---- anchor variant + axis-matching -------------------------------------
@@ -149,6 +164,10 @@ void DashboardModelTests::testAnchorEquality_data() {
     QTest::newRow("tuple-equal")     << withAnchor(AtomTupleAnchor{{1, 2, 3}}) << withAnchor(AtomTupleAnchor{{1, 2, 3}}) << true;
     QTest::newRow("tuple-order")     << withAnchor(AtomTupleAnchor{{1, 2, 3}}) << withAnchor(AtomTupleAnchor{{3, 2, 1}}) << false;
     QTest::newRow("bond-equal")      << withAnchor(BondAnchor{12}) << withAnchor(BondAnchor{12}) << true;
+    QTest::newRow("bondvec-equal")    << withAnchor(BondVectorAnchor{7, 1}) << withAnchor(BondVectorAnchor{7, 1}) << true;
+    QTest::newRow("bondvec-diff-res") << withAnchor(BondVectorAnchor{7, 1}) << withAnchor(BondVectorAnchor{8, 1}) << false;
+    QTest::newRow("bondvec-diff-kind")<< withAnchor(BondVectorAnchor{7, 1}) << withAnchor(BondVectorAnchor{7, 2}) << false;
+    QTest::newRow("bondvec-vs-bond")  << withAnchor(BondVectorAnchor{7, 1}) << withAnchor(BondAnchor{7}) << false;
     QTest::newRow("ring-equal")      << withAnchor(RingAnchor{2}) << withAnchor(RingAnchor{2}) << true;
     QTest::newRow("aromatic-equal")  << withAnchor(AromaticRingAnchor{0}) << withAnchor(AromaticRingAnchor{0}) << true;
     QTest::newRow("saturated-equal") << withAnchor(SaturatedRingAnchor{0}) << withAnchor(SaturatedRingAnchor{0}) << true;
@@ -183,6 +202,13 @@ void DashboardModelTests::testAnchorMatchesAxis_data() {
     QTest::newRow("saturated-satisfies-ring")<< SignalAnchor{SaturatedRingAnchor{0}} << int(SignalAxis::Ring) << true;
     QTest::newRow("ring-does-not-satisfy-aromatic") << SignalAnchor{RingAnchor{0}} << int(SignalAxis::AromaticRing) << false;
     QTest::newRow("atom-mismatch-residue")   << SignalAnchor{AtomAnchor{0}} << int(SignalAxis::Residue) << false;
+    // The BondVector-widening rule: a Residue anchor satisfies a
+    // BondVector-required descriptor (picking residue Lys17 surfaces its
+    // N-H / Cα-Hα / C=O candidates). The reverse does NOT widen.
+    QTest::newRow("bondvec-axis-match")       << SignalAnchor{BondVectorAnchor{0, 1}} << int(SignalAxis::BondVector) << true;
+    QTest::newRow("residue-satisfies-bondvec")<< SignalAnchor{ResidueAnchor{0}} << int(SignalAxis::BondVector) << true;
+    QTest::newRow("bondvec-no-residue")       << SignalAnchor{BondVectorAnchor{0, 1}} << int(SignalAxis::Residue) << false;
+    QTest::newRow("atom-no-bondvec")          << SignalAnchor{AtomAnchor{0}} << int(SignalAxis::BondVector) << false;
 }
 
 void DashboardModelTests::testAnchorMatchesAxis() {
@@ -408,6 +434,148 @@ void DashboardModelTests::testCatalog_canSampleRequiresStripMode() {
     stripBinding.anchor = AtomAnchor{0};
 
     QVERIFY(catalog.canSample(stripBinding));
+}
+
+void DashboardModelTests::testCatalog_iredS2DescriptorPresent() {
+    const TrajectorySignalCatalog catalog;
+
+    const SignalDescriptor* ired = catalog.findDescriptor(QStringLiteral("h5:ired_s2"));
+    QVERIFY(ired != nullptr);
+    QCOMPARE(ired->sourceKind, SignalSourceKind::DenseH5Trajectory);
+    QCOMPARE(ired->nativeAxis, SignalAxis::BondVector);
+    QCOMPARE(ired->requiredAnchor, SignalAxis::BondVector);
+    QCOMPARE(ired->valueShape, SignalValueShape::Scalar);
+    QCOMPARE(ired->storagePath, QStringLiteral("/trajectory/ired_order_parameters"));
+    QCOMPARE(ired->samplingStatus, SampleStatus::Valid);
+    QCOMPARE(ired->samplingGapReason, GapReason::None);
+    QVERIFY(ired->staticModes.contains(QStringLiteral("static.bar.sequence")));
+}
+
+void DashboardModelTests::testCatalog_kernelDynamicsDescriptorsPresent() {
+    const TrajectorySignalCatalog catalog;
+
+    // ACF curve descriptor
+    const SignalDescriptor* acf = catalog.findDescriptor(QStringLiteral("h5:kernel_dynamics_acf"));
+    QVERIFY(acf != nullptr);
+    QCOMPARE(acf->valueShape, SignalValueShape::CurveOverLag);
+    QCOMPARE(acf->storagePath, QStringLiteral("/trajectory/kernel_dynamics"));
+    QVERIFY(acf->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
+    QCOMPARE(acf->channels.size(), 13);
+    QCOMPARE(acf->channels.first().id, QStringLiteral("bs_T0"));
+
+    // PSD curve descriptor
+    const SignalDescriptor* psd = catalog.findDescriptor(QStringLiteral("h5:kernel_dynamics_psd"));
+    QVERIFY(psd != nullptr);
+    QCOMPARE(psd->valueShape, SignalValueShape::Spectrum);
+    QVERIFY(psd->staticModes.contains(QStringLiteral("static.spectrum.power")));
+
+    // Three scalar reductions (per-class block on atom axis)
+    for (const char* id : {"h5:kernel_dynamics_decay_time",
+                           "h5:kernel_dynamics_peak_freq",
+                           "h5:kernel_dynamics_spectral_centroid"}) {
+        const SignalDescriptor* scalar = catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(scalar != nullptr, id);
+        QCOMPARE(scalar->valueShape, SignalValueShape::PerClassBlock);
+        QCOMPARE(scalar->channels.size(), 13);
+    }
+}
+
+void DashboardModelTests::testCatalog_reorientDescriptorsPresent() {
+    const TrajectorySignalCatalog catalog;
+    // Five scalar descriptors all on BondVector axis.
+    for (const char* id : {"h5:reorient_s2", "h5:reorient_tau_e",
+                           "h5:reorient_r1", "h5:reorient_r2", "h5:reorient_noe"}) {
+        const SignalDescriptor* d = catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(d != nullptr, id);
+        QCOMPARE(d->nativeAxis, SignalAxis::BondVector);
+        QCOMPARE(d->valueShape, SignalValueShape::Scalar);
+        QCOMPARE(d->storagePath, QStringLiteral("/trajectory/reorientational_dynamics"));
+        QVERIFY(d->staticModes.contains(QStringLiteral("static.bar.sequence")));
+    }
+    // Two TCF curve descriptors.
+    for (const char* id : {"h5:reorient_acf_internal", "h5:reorient_acf_lab"}) {
+        const SignalDescriptor* d = catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(d != nullptr, id);
+        QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
+        QVERIFY(d->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
+    }
+}
+
+void DashboardModelTests::testCatalog_dihedralAutocorrDescriptorsPresent() {
+    const TrajectorySignalCatalog catalog;
+    for (const char* id : {"h5:dihedral_phi_corr_time", "h5:dihedral_psi_corr_time"}) {
+        const SignalDescriptor* d = catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(d != nullptr, id);
+        QCOMPARE(d->nativeAxis, SignalAxis::Residue);
+        QCOMPARE(d->valueShape, SignalValueShape::Scalar);
+        QCOMPARE(d->storagePath, QStringLiteral("/trajectory/dihedral_autocorrelation"));
+    }
+    for (const char* id : {"h5:dihedral_phi_acf", "h5:dihedral_psi_acf"}) {
+        const SignalDescriptor* d = catalog.findDescriptor(QString::fromLatin1(id));
+        QVERIFY2(d != nullptr, id);
+        QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
+    }
+}
+
+void DashboardModelTests::testCatalog_kernelCoherenceDescriptorPresent() {
+    const TrajectorySignalCatalog catalog;
+    const SignalDescriptor* d = catalog.findDescriptor(QStringLiteral("h5:kernel_coherence"));
+    QVERIFY(d != nullptr);
+    QCOMPARE(d->nativeAxis, SignalAxis::Atom);
+    QCOMPARE(d->valueShape, SignalValueShape::Matrix);
+    QCOMPARE(d->storagePath, QStringLiteral("/trajectory/kernel_coherence"));
+    QVERIFY(d->staticModes.contains(QStringLiteral("static.chord.coupling")));
+    QCOMPARE(d->channels.size(), 13);
+}
+
+void DashboardModelTests::testCatalog_allValidTemporalDenseH5DescriptorsAreSampleable() {
+    const TrajectorySignalCatalog catalog;
+    int checked = 0;
+    int failed = 0;
+    QStringList failureMessages;
+    for (const SignalDescriptor& d : catalog.descriptorList()) {
+        if (d.sourceKind != SignalSourceKind::DenseH5Trajectory) continue;
+        if (d.samplingStatus != SampleStatus::Valid) continue;
+        if (d.temporalModes.isEmpty()) continue;
+
+        DisplaySignalBinding binding;
+        binding.sourceKind = d.sourceKind;
+        binding.descriptorId = d.id;
+        binding.conceptKey = d.conceptKey;
+        binding.displayModeId = d.temporalModes.first();
+        // Anchor matching the descriptor's required axis. Synthetic row 0.
+        switch (d.requiredAnchor) {
+        case SignalAxis::Atom:    binding.anchor = AtomAnchor{0}; break;
+        case SignalAxis::Residue: binding.anchor = ResidueAnchor{0}; break;
+        case SignalAxis::Bond:    binding.anchor = BondAnchor{0}; break;
+        case SignalAxis::Ring:    binding.anchor = RingAnchor{0}; break;
+        case SignalAxis::AromaticRing: binding.anchor = AromaticRingAnchor{0}; break;
+        case SignalAxis::SaturatedRing: binding.anchor = SaturatedRingAnchor{0}; break;
+        case SignalAxis::RingMembership: binding.anchor = RingMembershipAnchor{0}; break;
+        case SignalAxis::RingContributionPair: binding.anchor = RingContributionPairAnchor{0}; break;
+        case SignalAxis::MutationMatchPair: binding.anchor = MutationMatchPairAnchor{0}; break;
+        case SignalAxis::Protein: binding.anchor = ProteinAnchor{}; break;
+        case SignalAxis::System:  binding.anchor = SystemAnchor{}; break;
+        case SignalAxis::Event:   binding.anchor = EventAnchor{}; break;
+        case SignalAxis::AtomTuple: binding.anchor = AtomTupleAnchor{{0}}; break;
+        case SignalAxis::BondVector: binding.anchor = BondVectorAnchor{0, 1}; break;
+        case SignalAxis::None:    binding.anchor = NoneAnchor{}; break;
+        }
+        ++checked;
+        if (!catalog.canSample(binding)) {
+            ++failed;
+            failureMessages << QStringLiteral("  %1 (path=%2, mode=%3)")
+                                   .arg(d.id, d.storagePath, binding.displayModeId);
+        }
+    }
+    if (failed > 0) {
+        const QString details = failureMessages.join(QStringLiteral("\n"));
+        QFAIL(qPrintable(QStringLiteral(
+            "Lockstep: %1 of %2 Valid temporal DenseH5Trajectory descriptors are not "
+            "sampleable. Likely missing kDensePaths entry or denseH5Plan branch.\n%3")
+                                .arg(failed).arg(checked).arg(details)));
+    }
+    QVERIFY(checked > 0);  // Sanity: we actually iterated some descriptors.
 }
 
 void DashboardModelTests::testCatalog_canSampleFalseForStaticMode() {

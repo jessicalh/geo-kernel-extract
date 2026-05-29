@@ -12,8 +12,14 @@
 #include "../model/DashboardSignalModel.h"
 #include "../model/DftShieldingStore.h"
 #include "../model/QtProtein.h"
+#include "../model/QtBondVectorBuffers.h"
+#include "../model/QtPerAtomChannelBuffers.h"
 #include "../model/TrajectoryConformation.h"
 #include "../model/TrajectorySignalCatalog.h"
+#include "ChordCouplingPanel.h"
+#include "LagDecayPanel.h"
+#include "PowerSpectrumPanel.h"
+#include "SequenceBarPanel.h"
 
 #include <QAbstractItemModel>
 #include <QSet>
@@ -39,6 +45,17 @@ bool isStripMode(const QString& mode) {
 
 bool hasStripMode(const QStringList& modes) {
     return std::any_of(modes.begin(), modes.end(), isStripMode);
+}
+
+// Static-display modes that map to AbstractStripPanel subclasses
+// rendered via setOwnedPanels (NOT via the temporal-strip ChannelBuffer
+// path). Each new panel kind landing in Phases C-G appends its mode
+// here.
+bool isPanelMode(const QString& mode) {
+    return mode == QStringLiteral("static.bar.sequence")
+        || mode == QStringLiteral("static.spectrum.power")
+        || mode == QStringLiteral("static.curve.lag.animated")
+        || mode == QStringLiteral("static.chord.coupling");
 }
 
 QString canonicalModeChannel(const QString& mode) {
@@ -74,6 +91,7 @@ bool bindingHasRevealTarget(const model::SignalBinding& binding) {
     case model::SignalAxis::Atom:
     case model::SignalAxis::Residue:
     case model::SignalAxis::Bond:
+    case model::SignalAxis::BondVector:
     case model::SignalAxis::Ring:
     case model::SignalAxis::AromaticRing:
     case model::SignalAxis::SaturatedRing:
@@ -179,6 +197,7 @@ std::optional<std::size_t> anchorRow(const model::SignalAnchor& anchor,
     case model::SignalAxis::Residue:
     case model::SignalAxis::AtomTuple:
     case model::SignalAxis::Bond:
+    case model::SignalAxis::BondVector:
     case model::SignalAxis::Ring:
     case model::SignalAxis::AromaticRing:
     case model::SignalAxis::SaturatedRing:
@@ -853,6 +872,104 @@ SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
             return finish(ts->at(*row, 0));
         }
 
+        if (path == QStringLiteral("/trajectory/kernel_dynamics")) {
+            // Five descriptors share this path. Curve-shaped ones
+            // (ACF/PSD) bypass denseH5Plan and render via the owned-panels
+            // path; only the 3 scalar reductions land here. Dispatch on
+            // descriptor.conceptKey to pick the right (N, C) buffer, then
+            // on channel.id to pick the column.
+            const model::QtKernelDynamics* kd = h5->kernelDynamics();
+            if (!kd)
+                return gap(model::GapReason::SourceAbsent);
+            const std::optional<std::size_t> row = rowFor(model::SignalAxis::Atom, kd->n_atoms);
+            if (!row)
+                return gap(model::GapReason::AnchorUnavailable);
+            const QString chan = channel.id;
+            const int colIdx = kd->channel_names.indexOf(chan);
+            if (colIdx < 0)
+                return gap(model::GapReason::AnchorUnavailable);
+            const std::size_t col = static_cast<std::size_t>(colIdx);
+            const QString conceptKey = descriptor.conceptKey;
+            if (conceptKey == QStringLiteral("kernel_dynamics.decay_time"))
+                return finish(kd->decay_time_ps.at(*row, col));
+            if (conceptKey == QStringLiteral("kernel_dynamics.peak_freq"))
+                return finish(kd->peak_freq_per_ps.at(*row, col));
+            if (conceptKey == QStringLiteral("kernel_dynamics.spectral_centroid"))
+                return finish(kd->spectral_centroid_per_ps.at(*row, col));
+            return gap(model::GapReason::Pending);
+        }
+
+        if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")) {
+            // Per-residue phi/psi corr_time scalars. ACF curves go via
+            // the owned-panels path. Anchor is ResidueAnchor.
+            const model::QtDihedralAutocorrelation* da = h5->dihedralAutocorrelation();
+            if (!da)
+                return gap(model::GapReason::SourceAbsent);
+            const auto* res = std::get_if<model::ResidueAnchor>(&anchor);
+            if (!res || res->residue >= da->n_residues)
+                return gap(model::GapReason::AnchorUnavailable);
+            const QString conceptKey = descriptor.conceptKey;
+            if (conceptKey == QStringLiteral("dihedral.phi_corr_time"))
+                return finish(da->phi_corr_time.at(res->residue));
+            if (conceptKey == QStringLiteral("dihedral.psi_corr_time"))
+                return finish(da->psi_corr_time.at(res->residue));
+            return gap(model::GapReason::Pending);
+        }
+
+        if (path == QStringLiteral("/trajectory/reorientational_dynamics")) {
+            // Scalar reductions only (the 2 TCF curves render via the
+            // owned-panels path). Dispatch on conceptKey to pick which
+            // QtPerBondVectorScalar; same BondVectorAnchor / Residue
+            // widening as iRED.
+            const model::QtReorientationalDynamics* rd = h5->reorientationalDynamics();
+            if (!rd)
+                return gap(model::GapReason::SourceAbsent);
+            std::optional<std::size_t> row;
+            if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
+                row = rd->identity.rowFor(vec->residue, vec->kind);
+            } else if (const auto* res = std::get_if<model::ResidueAnchor>(&anchor)) {
+                // Wildcard kind = first matching row (NH preferred by
+                // identity-table order, since producer adds NH before
+                // CaHa before CO per residue).
+                row = rd->identity.rowFor(res->residue, /*kind=*/0);
+            }
+            if (!row)
+                return gap(model::GapReason::AnchorUnavailable);
+            const QString conceptKey = descriptor.conceptKey;
+            if (conceptKey == QStringLiteral("reorient.s2"))
+                return finish(rd->s2.at(*row));
+            if (conceptKey == QStringLiteral("reorient.tau_e"))
+                return finish(rd->tau_e.at(*row));
+            if (conceptKey == QStringLiteral("reorient.r1"))
+                return finish(rd->r1.at(*row));
+            if (conceptKey == QStringLiteral("reorient.r2"))
+                return finish(rd->r2.at(*row));
+            if (conceptKey == QStringLiteral("reorient.noe"))
+                return finish(rd->noe.at(*row));
+            return gap(model::GapReason::Pending);
+        }
+
+        if (path == QStringLiteral("/trajectory/ired_order_parameters")) {
+            // Static per-bond-vector S² — same value every frame
+            // (matches the bs_t0_autocorrelation pattern above). Anchor
+            // is either a BondVectorAnchor(residue, kind) or — via the
+            // BondVector ↔ Residue widening rule — a ResidueAnchor,
+            // in which case we resolve to the first matching row
+            // (kind=0 wildcard).
+            const model::QtIRedOrderParameters* ts = h5->iredOrderParameters();
+            if (!ts)
+                return gap(model::GapReason::SourceAbsent);
+            std::optional<std::size_t> row;
+            if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
+                row = ts->identity.rowFor(vec->residue, vec->kind);
+            } else if (const auto* res = std::get_if<model::ResidueAnchor>(&anchor)) {
+                row = ts->identity.rowFor(res->residue, /*kind wildcard=*/0);
+            }
+            if (!row)
+                return gap(model::GapReason::AnchorUnavailable);
+            return finish(ts->s2_ired[*row]);
+        }
+
         if (path == QStringLiteral("/trajectory/dssp8_transition")) {
             const model::QtDssp8Transitions* ts = h5->dssp8Transitions();
             if (!ts)
@@ -1342,17 +1459,84 @@ void DashboardDisplayController::rebuild() {
     ASSERT_THREAD(this);
 
     QVector<ActiveSeries> next;
+    std::vector<std::unique_ptr<AbstractStripPanel>> nextPanels;
     activeStripSignalCount_ = 0;
 
     if (catalog_ && activeModel_) {
         for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
-            if (!signal.enabled || !hasStripMode(signal.displayModeIds))
+            if (!signal.enabled)
                 continue;
-            ++activeStripSignalCount_;
-            const model::SignalDescriptor* descriptor = catalog_->findDescriptor(signal.binding.descriptorId);
+            const model::SignalDescriptor* descriptor =
+                catalog_->findDescriptor(signal.binding.descriptorId);
             if (!descriptor)
                 continue;
-            buildGenericTracks(signal, *descriptor, next);
+
+            // Static-display path: build an AbstractStripPanel directly.
+            // Mode + descriptor.storagePath dispatch — one branch per
+            // (mode, source) pair landing in Phases C-G. We loop over
+            // ALL panel-mode entries in displayModeIds (matches the
+            // temporal-strip loop just below) so a signal carrying
+            // both static.bar.sequence and static.table emits the
+            // SequenceBarPanel regardless of which mode happens to be
+            // the binding's primary.
+            for (const QString& mode : signal.displayModeIds) {
+                if (!isPanelMode(mode))
+                    continue;
+                // Active-panel filter: same scope rule the temporal
+                // strip path uses (see seriesIsVisibleInActivePanel).
+                // If the user has multiple dashboard tabs, the panel
+                // emits only for the tab whose displays include this
+                // (signal, mode, channel="panel") ref.
+                if (panelModel_) {
+                    const model::DashboardPanel* activePanel = panelModel_->activePanel();
+                    if (!activePanel) continue;
+                    const model::DashboardDisplayRef ref{
+                        signal.id, mode, QStringLiteral("panel")};
+                    if (!activePanel->displays.contains(ref))
+                        continue;
+                }
+                const QString& path = descriptor->storagePath;
+                if (path == QStringLiteral("/trajectory/ired_order_parameters")
+                    && mode == QStringLiteral("static.bar.sequence")) {
+                    if (auto panel = buildIRedSequenceBarPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/kernel_dynamics")
+                           && mode == QStringLiteral("static.spectrum.power")) {
+                    if (auto panel = buildKernelDynamicsPowerSpectrumPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/kernel_dynamics")
+                           && mode == QStringLiteral("static.curve.lag.animated")) {
+                    if (auto panel = buildKernelDynamicsLagDecayPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
+                           && mode == QStringLiteral("static.bar.sequence")) {
+                    if (auto panel = buildReorientSequenceBarPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
+                           && mode == QStringLiteral("static.curve.lag.animated")) {
+                    if (auto panel = buildReorientLagDecayPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
+                           && mode == QStringLiteral("static.bar.sequence")) {
+                    if (auto panel = buildDihedralSequenceBarPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
+                           && mode == QStringLiteral("static.curve.lag.animated")) {
+                    if (auto panel = buildDihedralLagDecayPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/kernel_coherence")
+                           && mode == QStringLiteral("static.chord.coupling")) {
+                    if (auto panel = buildKernelCoherenceChordPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
+                }
+                // Future per-phase branches land here.
+            }
+
+            // Temporal-strip path: existing ChannelBuffer pipeline.
+            if (hasStripMode(signal.displayModeIds)) {
+                ++activeStripSignalCount_;
+                buildGenericTracks(signal, *descriptor, next);
+            }
         }
     }
 
@@ -1360,10 +1544,362 @@ void DashboardDisplayController::rebuild() {
         next[i].color = colorForIndex(i);
 
     series_ = std::move(next);
+    ownedPanels_ = std::move(nextPanels);
     extendToFrame(frame_);
 
     updateStatusText();
     emit stripTracksChanged();
+    emit ownedPanelsChanged();
+}
+
+std::vector<std::unique_ptr<AbstractStripPanel>>
+DashboardDisplayController::takeOwnedPanels() {
+    return std::move(ownedPanels_);
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildIRedSequenceBarPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_)
+        return nullptr;
+    const model::TrajectoryConformation* trajectory = conformation_->asTrajectory();
+    if (!trajectory)
+        return nullptr;
+    const auto* h5 = trajectory->h5();
+    if (!h5)
+        return nullptr;
+    const model::QtIRedOrderParameters* ired = h5->iredOrderParameters();
+    if (!ired || ired->identity.n_vectors == 0)
+        return nullptr;
+
+    std::vector<SequenceBarRow> rows;
+    rows.reserve(ired->identity.n_vectors);
+    for (std::size_t i = 0; i < ired->identity.n_vectors; ++i) {
+        SequenceBarRow row;
+        row.residue_index = ired->identity.residue_index[i];
+        row.value = (i < ired->s2_ired.size()) ? ired->s2_ired[i] : 0.0;
+        row.kind = ired->identity.kind[i];
+        rows.push_back(row);
+    }
+
+    // Bar-click → reveal a BondVectorAnchor for the bar's (residue, kind).
+    // Captured by value so the panel is self-contained.
+    SequenceBarPanel::BindingForRow bindingForRow =
+        [rows, descriptorId = descriptor.id](std::size_t row) -> model::SignalBinding {
+        model::SignalBinding b;
+        b.descriptorId = descriptorId;
+        if (row < rows.size()) {
+            model::BondVectorAnchor anchor;
+            anchor.residue = static_cast<std::size_t>(rows[row].residue_index);
+            anchor.kind = rows[row].kind;
+            b.anchor = anchor;
+        }
+        return b;
+    };
+
+    return std::make_unique<SequenceBarPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        QStringLiteral("S²"),
+        std::move(rows),
+        std::move(bindingForRow),
+        QColor(115, 229, 214),
+        0.0,
+        1.0);
+}
+
+// Helper: resolve the signal's anchor → atom row (atom axis only,
+// no need for the BondVector machinery here).
+static std::optional<std::size_t> atomRowForKernelSignal(
+        const model::DashboardSignal& signal,
+        std::size_t n_atoms) {
+    if (const auto* a = std::get_if<model::AtomAnchor>(&signal.binding.anchor)) {
+        if (a->atom < n_atoms) return a->atom;
+    }
+    return std::nullopt;
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildKernelDynamicsPowerSpectrumPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* kd = h5->kernelDynamics();
+    if (!kd || kd->n_atoms == 0) return nullptr;
+    const auto row = atomRowForKernelSignal(signal, kd->n_atoms);
+    if (!row) return nullptr;
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = model::AtomAnchor{*row};
+    return std::make_unique<PowerSpectrumPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        &kd->power_spectrum,
+        *row,
+        std::move(reveal));
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildKernelDynamicsLagDecayPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* kd = h5->kernelDynamics();
+    if (!kd || kd->n_atoms == 0) return nullptr;
+    const auto row = atomRowForKernelSignal(signal, kd->n_atoms);
+    if (!row) return nullptr;
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = model::AtomAnchor{*row};
+    return std::make_unique<LagDecayPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        &kd->acf,
+        *row,
+        std::move(reveal));
+}
+
+// Resolve a Reorient signal's anchor (BondVectorAnchor or widened
+// ResidueAnchor) → identity-table row.
+static std::optional<std::size_t> reorientRowFor(
+        const model::DashboardSignal& signal,
+        const model::QtReorientationalDynamics& rd) {
+    if (const auto* vec = std::get_if<model::BondVectorAnchor>(&signal.binding.anchor))
+        return rd.identity.rowFor(vec->residue, vec->kind);
+    if (const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor))
+        return rd.identity.rowFor(res->residue, /*kind=*/0);
+    return std::nullopt;
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildReorientSequenceBarPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* rd = h5->reorientationalDynamics();
+    if (!rd || rd->identity.n_vectors == 0) return nullptr;
+
+    // Which scalar to plot? conceptKey selects.
+    const QString conceptKey = descriptor.conceptKey;
+    const model::QtPerBondVectorScalar* scalar = nullptr;
+    QString unit = QStringLiteral("dimensionless");
+    std::optional<double> yMin, yMax;
+    if (conceptKey == QStringLiteral("reorient.s2"))   { scalar = &rd->s2;    yMin = 0.0; yMax = 1.0; }
+    else if (conceptKey == QStringLiteral("reorient.tau_e")) { scalar = &rd->tau_e; unit = QStringLiteral("ps"); }
+    else if (conceptKey == QStringLiteral("reorient.r1"))    { scalar = &rd->r1;    unit = QStringLiteral("s⁻¹"); }
+    else if (conceptKey == QStringLiteral("reorient.r2"))    { scalar = &rd->r2;    unit = QStringLiteral("s⁻¹"); }
+    else if (conceptKey == QStringLiteral("reorient.noe"))   { scalar = &rd->noe;   yMin = -1.0; yMax = 1.0; }
+    if (!scalar) return nullptr;
+
+    std::vector<SequenceBarRow> rows;
+    rows.reserve(rd->identity.n_vectors);
+    for (std::size_t i = 0; i < rd->identity.n_vectors; ++i) {
+        SequenceBarRow row;
+        row.residue_index = rd->identity.residue_index[i];
+        row.value = scalar->at(i);
+        row.kind = rd->identity.kind[i];
+        if (!std::isfinite(row.value))
+            continue;  // NaN rows (e.g. R1/R2/NOE on non-NH) drop out cleanly
+        rows.push_back(row);
+    }
+    if (rows.empty()) return nullptr;
+
+    SequenceBarPanel::BindingForRow bindingForRow =
+        [rows, descriptorId = descriptor.id](std::size_t row) -> model::SignalBinding {
+        model::SignalBinding b;
+        b.descriptorId = descriptorId;
+        if (row < rows.size()) {
+            model::BondVectorAnchor anchor;
+            anchor.residue = static_cast<std::size_t>(rows[row].residue_index);
+            anchor.kind = rows[row].kind;
+            b.anchor = anchor;
+        }
+        return b;
+    };
+
+    return std::make_unique<SequenceBarPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        unit,
+        std::move(rows),
+        std::move(bindingForRow),
+        QColor(255, 175, 76),  // amber — distinguishes Reorient from iRED's teal
+        yMin,
+        yMax);
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildReorientLagDecayPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* rd = h5->reorientationalDynamics();
+    if (!rd || rd->identity.n_vectors == 0) return nullptr;
+    const auto row = reorientRowFor(signal, *rd);
+    if (!row) return nullptr;
+
+    // Pick body or lab TCF per descriptor.
+    const model::QtPerBondVectorCurve* tcf = nullptr;
+    if (descriptor.conceptKey == QStringLiteral("reorient.acf_internal"))
+        tcf = &rd->acf_internal;
+    else if (descriptor.conceptKey == QStringLiteral("reorient.acf_lab"))
+        tcf = &rd->acf_lab;
+    if (!tcf || tcf->n_samples < 2) return nullptr;
+
+    // Synthesise a single-row, single-channel view from the per-bond-vector
+    // curve so LagDecayPanel can render it (one polyline). The panel owns
+    // this view; no lifetime coupling to the H5 buffer.
+    auto view = std::make_unique<model::QtPerAtomChannelCurve>();
+    view->n_atoms = 1;
+    view->n_channels = 1;
+    view->n_samples = tcf->n_samples;
+    view->data.assign(tcf->n_samples, 0.0);
+    for (std::size_t s = 0; s < tcf->n_samples; ++s)
+        view->data[s] = tcf->at(*row, s);
+    view->axis_values = tcf->axis_values;
+    view->axis_unit = tcf->axis_unit;
+    view->axis_label = QStringLiteral("lag");
+    view->units = tcf->units;
+    view->channel_names = QStringList{descriptor.conceptKey};
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    model::BondVectorAnchor anchor;
+    anchor.residue = static_cast<std::size_t>(rd->identity.residue_index[*row]);
+    anchor.kind = rd->identity.kind[*row];
+    reveal.anchor = anchor;
+
+    return std::make_unique<LagDecayPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        std::move(view),
+        /*atomRow=*/0,
+        std::move(reveal));
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildKernelCoherenceChordPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* kc = h5->kernelCoherence();
+    if (!kc || kc->matrix.n_atoms == 0) return nullptr;
+    const auto row = atomRowForKernelSignal(signal, kc->matrix.n_atoms);
+    if (!row) return nullptr;
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = model::AtomAnchor{*row};
+    return std::make_unique<ChordCouplingPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        &kc->matrix,
+        *row,
+        /*threshold=*/0.3,
+        std::move(reveal));
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildDihedralSequenceBarPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* da = h5->dihedralAutocorrelation();
+    if (!da || da->n_residues == 0) return nullptr;
+
+    const QString conceptKey = descriptor.conceptKey;
+    const model::QtPerResidueScalar* scalar = nullptr;
+    if (conceptKey == QStringLiteral("dihedral.phi_corr_time"))      scalar = &da->phi_corr_time;
+    else if (conceptKey == QStringLiteral("dihedral.psi_corr_time")) scalar = &da->psi_corr_time;
+    if (!scalar) return nullptr;
+
+    std::vector<SequenceBarRow> rows;
+    rows.reserve(scalar->n_residues);
+    for (std::size_t i = 0; i < scalar->n_residues; ++i) {
+        if (!scalar->isDefined(i)) continue;
+        SequenceBarRow row;
+        row.residue_index = static_cast<std::int32_t>(i);
+        row.value = scalar->at(i);
+        if (!std::isfinite(row.value)) continue;
+        rows.push_back(row);
+    }
+    if (rows.empty()) return nullptr;
+
+    SequenceBarPanel::BindingForRow bindingForRow =
+        [rows, descriptorId = descriptor.id](std::size_t row) -> model::SignalBinding {
+        model::SignalBinding b;
+        b.descriptorId = descriptorId;
+        if (row < rows.size())
+            b.anchor = model::ResidueAnchor{static_cast<std::size_t>(rows[row].residue_index)};
+        return b;
+    };
+
+    return std::make_unique<SequenceBarPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        QStringLiteral("ps"),
+        std::move(rows),
+        std::move(bindingForRow),
+        QColor(135, 211, 124),  // green
+        std::nullopt,
+        std::nullopt);
+}
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildDihedralLagDecayPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* da = h5->dihedralAutocorrelation();
+    if (!da || da->n_residues == 0) return nullptr;
+
+    const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor);
+    if (!res || res->residue >= da->n_residues) return nullptr;
+
+    const model::QtPerResidueCurve* curve = nullptr;
+    if (descriptor.conceptKey == QStringLiteral("dihedral.phi_acf"))      curve = &da->phi_acf;
+    else if (descriptor.conceptKey == QStringLiteral("dihedral.psi_acf")) curve = &da->psi_acf;
+    if (!curve || curve->n_samples < 2) return nullptr;
+
+    auto view = std::make_unique<model::QtPerAtomChannelCurve>();
+    view->n_atoms = 1;
+    view->n_channels = 1;
+    view->n_samples = curve->n_samples;
+    view->data.assign(curve->n_samples, 0.0);
+    for (std::size_t s = 0; s < curve->n_samples; ++s)
+        view->data[s] = curve->at(res->residue, s);
+    view->axis_values = curve->axis_values;
+    view->axis_unit = curve->axis_unit;
+    view->axis_label = QStringLiteral("lag");
+    view->units = curve->units;
+    view->channel_names = QStringList{descriptor.conceptKey};
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = model::ResidueAnchor{res->residue};
+
+    return std::make_unique<LagDecayPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        std::move(view),
+        /*atomRow=*/0,
+        std::move(reveal));
 }
 
 void DashboardDisplayController::refreshPanelVisibility() {
@@ -1489,6 +2025,7 @@ DashboardDisplayController::resolvedAnchorForSignal(const model::DashboardSignal
         return model::NoneAnchor{};
     case model::SignalAxis::None:
     case model::SignalAxis::Bond:
+    case model::SignalAxis::BondVector:
     case model::SignalAxis::Ring:
     case model::SignalAxis::AromaticRing:
     case model::SignalAxis::SaturatedRing:

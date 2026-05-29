@@ -34,6 +34,7 @@ enum class SignalAxis : std::uint8_t {
     Residue,
     AtomTuple,
     Bond,
+    BondVector,
     Ring,
     AromaticRing,
     SaturatedRing,
@@ -57,6 +58,25 @@ enum class SignalValueShape : std::uint8_t {
     Embedding,
     RollupMoments,
     EventRecord,
+    // Per-row N×N (KernelCoherence). Layout (row, channel, channel).
+    Matrix,
+    // Per-row 1D curve over a frequency grid (Spectrum). Distinct from
+    // CurveOverLag so the catalog/REST inventory and the display-mode
+    // dispatch can tell power-spectrum panels from lag-decay panels.
+    Spectrum,
+    // Per-row 1D curve over a lag grid (KernelDynamics ACF,
+    // ReorientationalDynamics body/lab TCFs, DihedralAutocorrelation).
+    CurveOverLag,
+    // Per-row 3×3 dense tensor (ReorientationalDynamics body-frame
+    // <u⊗u>). TensorComponents is reserved for the rank-2 EFG/CSA family
+    // already in use; this shape is for a bare Mat3 attached to a
+    // bond-vector row.
+    Mat3PerRow,
+    // Per-row K-vector at K externally-fixed frequencies
+    // (ReorientationalDynamics J(ω) sampled at the 5 KTB Larmor
+    // combinations). The K frequencies are descriptor metadata, not a
+    // per-row axis.
+    FixedFreqBlock,
 };
 
 enum class SampleStatus : std::uint8_t {
@@ -165,6 +185,20 @@ struct BondAnchor {
     std::size_t bond = 0;
     friend bool operator==(const BondAnchor& a, const BondAnchor& b) { return a.bond == b.bond; }
 };
+// Semantic bond-vector identity (residue, kind). The producer-side
+// IRedOrderParameter emits only N-H vectors; ReorientationalDynamics
+// emits N-H / Cα-Hα / C=O. Each TR has its own M-row identity table,
+// so an opaque row-index would not be invariant across TRs. The (residue,
+// kind) tuple IS invariant: the per-TR sampler resolves it to its
+// table's row at lookup time. Kind values match the producer's
+// vector_kind enum: 1=NH, 2=CaHa, 3=CO; 0 = any/unspecified.
+struct BondVectorAnchor {
+    std::size_t residue = 0;
+    std::uint8_t kind = 0;
+    friend bool operator==(const BondVectorAnchor& a, const BondVectorAnchor& b) {
+        return a.residue == b.residue && a.kind == b.kind;
+    }
+};
 struct RingAnchor {
     std::size_t ring = 0;
     friend bool operator==(const RingAnchor& a, const RingAnchor& b) { return a.ring == b.ring; }
@@ -213,6 +247,7 @@ using SignalAnchor = std::variant<NoneAnchor,
                                   ResidueAnchor,
                                   AtomTupleAnchor,
                                   BondAnchor,
+                                  BondVectorAnchor,
                                   RingAnchor,
                                   AromaticRingAnchor,
                                   SaturatedRingAnchor,

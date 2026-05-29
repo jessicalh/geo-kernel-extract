@@ -1,5 +1,6 @@
 #include "StripStackWidget.h"
 
+#include "AbstractStripPanel.h"
 #include "TimeViewportController.h"
 
 #include "../diagnostics/ConnectionAuditor.h"
@@ -9,13 +10,10 @@
 
 #include <QApplication>
 #include <QEvent>
-#include <QFont>
-#include <QFontMetricsF>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPolygonF>
-#include <QSize>
-#include <QStringList>
+#include <QPointF>
 #include <QToolTip>
 #include <QWheelEvent>
 
@@ -27,164 +25,11 @@
 namespace h5reader::app {
 
 namespace {
-constexpr int kMinTrackHeight = 72;
-constexpr int kGap = 6;
 
-const QColor kCanvas(17, 18, 23);
-const QColor kPanel(24, 27, 31);
-const QColor kPanelBorder(43, 48, 56);
-const QColor kGrid(48, 54, 66);
-const QColor kText(216, 217, 218);
-const QColor kTextMuted(154, 160, 166);
-const QColor kCursor(217, 26, 26);
-const QColor kSelection(87, 148, 242, 55);
-const QColor kHover(199, 208, 217);
-const QColor kReveal(115, 229, 214);
-
-QFont uiFont(int px, QFont::Weight weight = QFont::Normal)
-{
-    QFont f;
-    f.setFamilies(QStringList{QStringLiteral("Inter"), QStringLiteral("Helvetica"),
-                              QStringLiteral("Arial"), QStringLiteral("sans-serif")});
-    f.setPixelSize(px);
-    f.setWeight(weight);
-    f.setStyleStrategy(QFont::PreferAntialias);
-    return f;
-}
-
-QFont monoFont(int px)
-{
-    QFont f;
-    f.setFamilies(QStringList{QStringLiteral("Roboto Mono"), QStringLiteral("DejaVu Sans Mono"),
-                              QStringLiteral("monospace")});
-    f.setPixelSize(px);
-    f.setStyleStrategy(QFont::PreferAntialias);
-    return f;
-}
-
-QString fmt(double value, int decimals = 2)
-{
-    return QString::number(value, 'f', decimals);
-}
-
-void drawRevealButton(QPainter& p, const QRectF& r, bool hover)
-{
-    p.save();
-    p.setRenderHint(QPainter::Antialiasing, true);
-    QColor fill = kReveal;
-    fill.setAlpha(hover ? 58 : 30);
-    p.setBrush(fill);
-    p.setPen(QPen(kReveal.lighter(120), 1.1));
-    p.drawEllipse(r.adjusted(1.0, 1.0, -1.0, -1.0));
-
-    const QPointF c = r.center();
-    p.setBrush(Qt::NoBrush);
-    p.setPen(QPen(kReveal.lighter(140), 1.1));
-    p.drawEllipse(c, 3.6, 3.6);
-    p.drawLine(QPointF(c.x() - 6.0, c.y()), QPointF(c.x() - 3.5, c.y()));
-    p.drawLine(QPointF(c.x() + 3.5, c.y()), QPointF(c.x() + 6.0, c.y()));
-    p.drawLine(QPointF(c.x(), c.y() - 6.0), QPointF(c.x(), c.y() - 3.5));
-    p.drawLine(QPointF(c.x(), c.y() + 3.5), QPointF(c.x(), c.y() + 6.0));
-    p.restore();
-}
-
-struct ValueRange {
-    double min = 0.0;
-    double max = 1.0;
-    bool valid = false;
-};
-
-struct StackGeometry {
-    QSize viewportSize;
-    int panelCount = 0;
-};
-
-struct PanelGeometry {
-    QRectF panel;
-    QRectF plot;
-    QRectF reveal;
-};
-
-struct HeaderText {
-    QString title;
-    QString readout;
-};
-
-struct FrameWindow {
-    int first = 0;
-    int last = 0;
-
-    bool valid() const { return first <= last; }
-};
-
-struct TimeScale {
-    int first = 0;
-    int last = 0;
-
-    double xForFrame(int frame, const QRectF& plot) const
-    {
-        if (last <= first)
-            return plot.left() + plot.width() * 0.5;
-        return plot.left() + plot.width() * (frame - first) / std::max(1, last - first);
-    }
-
-    int frameAt(const QPoint& pos, const QRectF& plot) const
-    {
-        const double xNorm = std::clamp((pos.x() - plot.left()) / std::max(1.0, plot.width()), 0.0, 1.0);
-        return first + static_cast<int>(std::round(xNorm * std::max(0, last - first)));
-    }
-};
-
-struct PaintContext {
-    const TimeViewportController* viewport = nullptr;
-    int currentFrame = 0;
-    bool hasHover = false;
-    QPoint hoverPos;
-    TimeScale time;
-};
-
-QRectF panelRectForIndex(const StackGeometry& stack, int panelIndex)
-{
-    const int n = std::max(1, stack.panelCount);
-    const double h = (stack.viewportSize.height() - (n + 1) * kGap) / static_cast<double>(n);
-    return QRectF(kGap, kGap + panelIndex * (h + kGap), stack.viewportSize.width() - 2 * kGap, h);
-}
-
-QRectF plotRectForPanel(const QRectF& r)
-{
-    if (r.height() < 96.0)
-        return r.adjusted(48, 28, -10, -20);
-    return r.adjusted(52, 30, -12, -24);
-}
-
-QRectF revealRectForPanel(const QRectF& r)
-{
-    return QRectF(r.left() + 8.0, r.top() + 6.0, 18.0, 18.0);
-}
-
-PanelGeometry panelGeometryForIndex(const StackGeometry& stack, int panelIndex)
-{
-    PanelGeometry geometry;
-    geometry.panel = panelRectForIndex(stack, panelIndex);
-    geometry.plot = plotRectForPanel(geometry.panel);
-    geometry.reveal = revealRectForPanel(geometry.panel);
-    return geometry;
-}
-
-ValueRange padRange(ValueRange range)
-{
-    if (!range.valid)
-        return range;
-    if (std::abs(range.max - range.min) < 1e-12) {
-        range.min -= 1.0;
-        range.max += 1.0;
-    } else {
-        const double pad = (range.max - range.min) * 0.08;
-        range.min -= pad;
-        range.max += pad;
-    }
-    return range;
-}
+// Theme + fonts + geometry types + paint helpers all live in
+// AbstractStripPanel.h now. What remains here is panel-specific:
+// the two concrete panels that ride Track / SpectrumTrack data, plus
+// the temporal-axis ValueRange helper that walks a ChannelBuffer.
 
 ValueRange visibleTemporalRange(const model::ChannelBuffer& buffer, const TimeScale& time)
 {
@@ -212,160 +57,6 @@ ValueRange visibleTemporalRange(const model::ChannelBuffer& buffer, const TimeSc
     return padRange(range);
 }
 
-double yForValue(double value, const ValueRange& range, const QRectF& plot)
-{
-    return plot.bottom() - plot.height() * (value - range.min) / std::max(1e-12, range.max - range.min);
-}
-
-void paintPanelBackground(QPainter& p, const PanelGeometry& geometry)
-{
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(QPen(kPanelBorder, 1.0));
-    p.setBrush(kPanel);
-    p.drawRoundedRect(geometry.panel.adjusted(0.5, 0.5, -0.5, -0.5), 5, 5);
-}
-
-void paintHeader(QPainter& p,
-                 const PanelGeometry& geometry,
-                 const HeaderText& text,
-                 int readoutWidth,
-                 const QColor& readoutColor,
-                 bool hasBinding,
-                 bool revealHover)
-{
-    if (hasBinding)
-        drawRevealButton(p, geometry.reveal, revealHover);
-
-    p.setFont(uiFont(13, QFont::Medium));
-    p.setPen(kText);
-    const double titleLeft = geometry.panel.left() + (hasBinding ? 34.0 : 10.0);
-    const QRectF titleRect(titleLeft,
-                           geometry.panel.top() + 6.0,
-                           std::max(20.0, geometry.panel.right() - titleLeft - readoutWidth - 10.0),
-                           22.0);
-    p.drawText(titleRect,
-               Qt::AlignLeft | Qt::AlignVCenter,
-               QFontMetricsF(p.font()).elidedText(text.title,
-                                                  Qt::ElideMiddle,
-                                                  static_cast<int>(titleRect.width())));
-
-    if (!text.readout.isEmpty()) {
-        p.setFont(monoFont(12));
-        p.setPen(readoutColor);
-        p.drawText(geometry.panel.adjusted(10, 6, -10, -geometry.panel.height() + 28),
-                   Qt::AlignRight | Qt::AlignVCenter,
-                   text.readout);
-    }
-}
-
-void paintGrid(QPainter& p, const QRectF& plot)
-{
-    p.setRenderHint(QPainter::Antialiasing, false);
-    p.setPen(QPen(kGrid, 1.0));
-    for (int g = 0; g <= 3; ++g) {
-        const double y = plot.top() + plot.height() * g / 3.0;
-        p.drawLine(QPointF(plot.left(), std::round(y) + 0.5),
-                   QPointF(plot.right(), std::round(y) + 0.5));
-    }
-    for (int g = 0; g <= 4; ++g) {
-        const double x = plot.left() + plot.width() * g / 4.0;
-        p.drawLine(QPointF(std::round(x) + 0.5, plot.top()),
-                   QPointF(std::round(x) + 0.5, plot.bottom()));
-    }
-}
-
-void paintYAxisLabels(QPainter& p, const PanelGeometry& geometry, const ValueRange& range)
-{
-    if (!range.valid)
-        return;
-    p.setFont(monoFont(10));
-    p.setPen(kTextMuted);
-    p.drawText(QRectF(geometry.panel.left() + 8, geometry.plot.top() - 8, 38, 16),
-               Qt::AlignRight | Qt::AlignVCenter, fmt(range.max, 2));
-    p.drawText(QRectF(geometry.panel.left() + 8, geometry.plot.bottom() - 8, 38, 16),
-               Qt::AlignRight | Qt::AlignVCenter, fmt(range.min, 2));
-}
-
-void paintPlotBorder(QPainter& p, const QRectF& plot)
-{
-    p.setRenderHint(QPainter::Antialiasing, false);
-    p.setPen(QPen(kPanelBorder, 1.0));
-    p.setBrush(Qt::NoBrush);
-    p.drawRect(plot.adjusted(0.5, 0.5, -0.5, -0.5));
-}
-
-void paintTimeTicks(QPainter& p, const QRectF& plot, const TimeScale& time)
-{
-    p.setFont(monoFont(10));
-    p.setPen(kTextMuted);
-    for (int g = 0; g <= 4; ++g) {
-        const double frac = g / 4.0;
-        const double x = plot.left() + plot.width() * frac;
-        const int tickFrame = time.first + static_cast<int>(std::round((time.last - time.first) * frac));
-        const QRectF labelRect(x - 28.0, plot.bottom() + 4.0, 56.0, 16.0);
-        p.drawText(labelRect, Qt::AlignHCenter | Qt::AlignVCenter,
-                   QStringLiteral("f%1").arg(tickFrame + 1));
-    }
-}
-
-void paintSpectrumTicks(QPainter& p, const QRectF& plot, double xMin, double xMax)
-{
-    p.setFont(monoFont(10));
-    p.setPen(kTextMuted);
-    for (int g = 0; g <= 4; ++g) {
-        const double frac = g / 4.0;
-        const double x = plot.left() + plot.width() * frac;
-        const double tick = xMin + (xMax - xMin) * frac;
-        const QRectF labelRect(x - 32.0, plot.bottom() + 4.0, 64.0, 16.0);
-        p.drawText(labelRect, Qt::AlignHCenter | Qt::AlignVCenter,
-                   QStringLiteral("%1").arg(tick, 0, 'f', tick < 10.0 ? 2 : 1));
-    }
-}
-
-void paintSelectedTimeRange(QPainter& p, const PanelGeometry& geometry, const PaintContext& context)
-{
-    if (!context.viewport || !context.viewport->hasSelectedRange())
-        return;
-    const double a = context.time.xForFrame(context.viewport->selectedStart(), geometry.plot);
-    const double b = context.time.xForFrame(context.viewport->selectedEnd(), geometry.plot);
-    p.fillRect(QRectF(QPointF(std::min(a, b), geometry.plot.top()),
-                      QPointF(std::max(a, b), geometry.plot.bottom())),
-               kSelection);
-}
-
-void paintTemporalCursor(QPainter& p, const PanelGeometry& geometry, const PaintContext& context)
-{
-    const double cursorX = context.time.xForFrame(context.currentFrame, geometry.plot);
-    p.setPen(QPen(kCursor, 1.2, Qt::DashLine));
-    p.drawLine(QPointF(cursorX + 0.5, geometry.plot.top()),
-               QPointF(cursorX + 0.5, geometry.plot.bottom()));
-
-    if (context.hasHover && geometry.plot.contains(context.hoverPos)) {
-        p.setPen(QPen(kHover, 1.0, Qt::DotLine));
-        p.drawLine(QPointF(context.hoverPos.x() + 0.5, geometry.plot.top()),
-                   QPointF(context.hoverPos.x() + 0.5, geometry.plot.bottom()));
-    }
-}
-
-class AbstractStripPanel {
-public:
-    virtual ~AbstractStripPanel() = default;
-    virtual bool hasRevealBinding() const = 0;
-    virtual model::SignalBinding revealBinding() const = 0;
-    virtual QString tooltipLine(int) const { return {}; }
-    virtual void paint(QPainter& p, const PanelGeometry& geometry, const PaintContext& context) const = 0;
-
-    bool revealContains(const PanelGeometry& geometry, const QPoint& pos) const
-    {
-        return hasRevealBinding() && geometry.reveal.contains(pos);
-    }
-
-    virtual bool plotContains(const PanelGeometry&, const QPoint&) const
-    {
-        return false;
-    }
-};
-
 class TemporalStripPanel final : public AbstractStripPanel {
 public:
     explicit TemporalStripPanel(const StripStackWidget::Track& track)
@@ -389,7 +80,7 @@ public:
         if (idx >= buffer->valid.size() || !buffer->valid[idx])
             return {};
         return QStringLiteral("<span style='color:%1'>■</span> %2: <b>%3 %4</b><br/>")
-            .arg(track_.color.name(), buffer->label, fmt(buffer->values[idx], 3), buffer->unit);
+            .arg(track_.color.name(), buffer->label, fmtValue(buffer->values[idx], 3), buffer->unit);
     }
 
     void paint(QPainter& p, const PanelGeometry& geometry, const PaintContext& context) const override
@@ -408,14 +99,14 @@ public:
         if (readoutFrame >= 0 && readoutFrame < static_cast<int>(buffer.size())) {
             const std::size_t idx = static_cast<std::size_t>(readoutFrame);
             if (idx < buffer.valid.size() && buffer.valid[idx])
-                readout = QStringLiteral("f%1  %2").arg(readoutFrame + 1).arg(fmt(buffer.values[idx], 3));
+                readout = QStringLiteral("f%1  %2").arg(readoutFrame + 1).arg(fmtValue(buffer.values[idx], 3));
         }
 
         paintHeader(p,
                     geometry,
                     HeaderText{QStringLiteral("%1 (%2)").arg(buffer.label, buffer.unit), readout},
                     170,
-                    hoverInPlot ? kHover : kTextMuted,
+                    hoverInPlot ? kStripHover : kStripTextMuted,
                     track_.hasBinding,
                     context.hasHover && geometry.reveal.contains(context.hoverPos));
         paintGrid(p, geometry.plot);
@@ -468,7 +159,7 @@ private:
         }
 
         const int markerStride = std::max(1, frameSpan / 220);
-        p.setPen(QPen(kPanel, 1.0));
+        p.setPen(QPen(kStripPanel, 1.0));
         p.setBrush(markerFill);
         for (int f = dataWindow.first; f <= dataWindow.last; f += markerStride) {
             if (!isValidAt(buffer, f))
@@ -580,7 +271,7 @@ private:
             const std::size_t idx = static_cast<std::size_t>(context.currentFrame);
             const QPointF pt(context.time.xForFrame(context.currentFrame, geometry.plot),
                              yForValue(buffer.values[idx], range, geometry.plot));
-            p.setPen(QPen(kCanvas, 2.0));
+            p.setPen(QPen(kStripCanvas, 2.0));
             p.setBrush(track_.color);
             p.drawEllipse(pt, 4.0, 4.0);
         }
@@ -610,7 +301,7 @@ public:
                     geometry,
                     HeaderText{title, track_.readout},
                     track_.readout.isEmpty() ? 12 : 170,
-                    kTextMuted,
+                    kStripTextMuted,
                     track_.hasBinding,
                     context.hasHover && geometry.reveal.contains(context.hoverPos));
         paintGrid(p, geometry.plot);
@@ -690,6 +381,7 @@ private:
 
     const StripStackWidget::SpectrumTrack& track_;
 };
+
 }  // namespace
 
 StripStackWidget::StripStackWidget(QWidget* parent)
@@ -698,7 +390,7 @@ StripStackWidget::StripStackWidget(QWidget* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("StripStackWidget"));
     setMouseTracking(true);
-    setMinimumHeight(kMinTrackHeight * 2 + kGap);
+    setMinimumHeight(kStripMinPanelHeight * 2 + kStripPanelGap);
     setFocusPolicy(Qt::StrongFocus);
 }
 
@@ -715,6 +407,15 @@ void StripStackWidget::setSpectrumTracks(QVector<SpectrumTrack> tracks)
 {
     ASSERT_THREAD(this);
     spectrumTracks_ = std::move(tracks);
+    updateMinimumHeight();
+    updateGeometry();
+    update();
+}
+
+void StripStackWidget::setOwnedPanels(std::vector<std::unique_ptr<AbstractStripPanel>> panels)
+{
+    ASSERT_THREAD(this);
+    ownedPanels_ = std::move(panels);
     updateMinimumHeight();
     updateGeometry();
     update();
@@ -765,13 +466,13 @@ QRectF StripStackWidget::revealRect(const QRectF& r) const
 
 int StripStackWidget::panelCount() const
 {
-    return static_cast<int>(tracks_.size() + spectrumTracks_.size());
+    return static_cast<int>(tracks_.size() + spectrumTracks_.size() + ownedPanels_.size());
 }
 
 void StripStackWidget::updateMinimumHeight()
 {
     const int n = std::max(2, panelCount());
-    setMinimumHeight(kMinTrackHeight * n + kGap * (n + 1));
+    setMinimumHeight(kStripMinPanelHeight * n + kStripPanelGap * (n + 1));
 }
 
 bool StripStackWidget::timePlotContains(const QPoint& pos) const
@@ -805,6 +506,17 @@ bool StripStackWidget::revealAt(const QPoint& pos, model::SignalBinding* binding
             return true;
         }
     }
+    const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
+    for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
+        const auto& panel = *ownedPanels_[i];
+        const PanelGeometry geometry =
+            panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
+        if (panel.revealContains(geometry, pos)) {
+            if (binding)
+                *binding = panel.revealBinding();
+            return true;
+        }
+    }
     return false;
 }
 
@@ -830,11 +542,11 @@ void StripStackWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.fillRect(rect(), kCanvas);
+    p.fillRect(rect(), kStripCanvas);
 
-    if (tracks_.empty() && spectrumTracks_.empty()) {
+    if (tracks_.empty() && spectrumTracks_.empty() && ownedPanels_.empty()) {
         p.setFont(uiFont(13));
-        p.setPen(kTextMuted);
+        p.setPen(kStripTextMuted);
         p.drawText(rect(), Qt::AlignCenter, QStringLiteral("Select atoms to start a trajectory strip"));
         return;
     }
@@ -859,6 +571,14 @@ void StripStackWidget::paintEvent(QPaintEvent*)
         const int panelIndex = static_cast<int>(tracks_.size()) + i;
         panel.paint(p, panelGeometryForIndex(stack, panelIndex), context);
     }
+
+    const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
+    for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
+        const auto& panel = *ownedPanels_[i];
+        const PanelGeometry geometry =
+            panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
+        panel.paint(p, geometry, context);
+    }
 }
 
 void StripStackWidget::mousePressEvent(QMouseEvent* event)
@@ -869,6 +589,26 @@ void StripStackWidget::mousePressEvent(QMouseEvent* event)
             emit revealRequested(binding);
             event->accept();
             return;
+        }
+        // Forward to owned panels for in-plot click handling
+        // (chord arc click, sequence-bar click, etc.). Temporal
+        // panels do NOT use this path — their drag-select-range
+        // gesture is handled below via timePlotContains.
+        const StackGeometry stack{size(), panelCount()};
+        const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
+        for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
+            auto& panel = *ownedPanels_[i];
+            const PanelGeometry geometry =
+                panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
+            if (geometry.plot.contains(event->pos())) {
+                if (auto pressBinding = panel.mousePressInPlot(event, geometry); pressBinding) {
+                    emit revealRequested(*pressBinding);
+                    event->accept();
+                    return;
+                }
+                if (event->isAccepted())
+                    return;
+            }
         }
     }
 
@@ -896,6 +636,16 @@ void StripStackWidget::mouseMoveEvent(QMouseEvent* event)
         QToolTip::showText(event->globalPosition().toPoint(), QStringLiteral("Reveal in 3-D scene"), this);
     } else {
         unsetCursor();
+        // Forward to owned panels for in-plot hover handling.
+        const StackGeometry stack{size(), panelCount()};
+        const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
+        for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
+            auto& panel = *ownedPanels_[i];
+            const PanelGeometry geometry =
+                panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
+            if (geometry.plot.contains(event->pos()))
+                panel.mouseMoveInPlot(event, geometry);
+        }
     }
     if (selecting_ && viewport_) {
         if (!dragSelecting_ &&

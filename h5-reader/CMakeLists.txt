@@ -181,6 +181,16 @@ qt_add_executable(h5reader
     src/app/DashboardStripDock.cpp
     src/app/QtAtomInspectorDock.h
     src/app/QtAtomInspectorDock.cpp
+    src/app/AbstractStripPanel.h
+    src/app/AbstractStripPanel.cpp
+    src/app/SequenceBarPanel.h
+    src/app/SequenceBarPanel.cpp
+    src/app/PowerSpectrumPanel.h
+    src/app/PowerSpectrumPanel.cpp
+    src/app/LagDecayPanel.h
+    src/app/LagDecayPanel.cpp
+    src/app/ChordCouplingPanel.h
+    src/app/ChordCouplingPanel.cpp
     src/app/StripStackWidget.h
     src/app/StripStackWidget.cpp
     src/app/RestServer.h

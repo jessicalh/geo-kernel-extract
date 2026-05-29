@@ -3,6 +3,7 @@
 #include "../model/DashboardSignal.h"
 #include "../model/SignalDictionary.h"
 #include "../model/SignalTimeSeries.h"
+#include "AbstractStripPanel.h"
 
 #include <QObject>
 #include <QColor>
@@ -11,6 +12,8 @@
 #include <QVector>
 
 #include <functional>
+#include <memory>
+#include <vector>
 #include <cstddef>
 
 namespace h5reader::model {
@@ -104,6 +107,14 @@ public:
     void setDftStore(model::DftShieldingStore* store);
 
     QVector<StripTrack> stripTracks() const;
+
+    // Move-out the panels built during rebuild() for static-display
+    // signals (SequenceBarPanel, future ChordCouplingPanel /
+    // PowerSpectrumPanel / LagDecayPanel). The dock forwards them to
+    // StripStackWidget::setOwnedPanels(). Returns an empty vector after
+    // the move; the controller rebuilds on the next rebuild().
+    std::vector<std::unique_ptr<AbstractStripPanel>> takeOwnedPanels();
+
     DashboardSmokeSummary smokeSummary() const;
     DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;
     QString statusText() const { return statusText_; }
@@ -114,6 +125,11 @@ public slots:
 
 signals:
     void stripTracksChanged();
+    // Emitted ONLY from rebuild() (NOT from setFrame() ticks). Owned
+    // panels are static-display artifacts that don't change on time
+    // advance; emitting from every tick would drain ownedPanels_ via
+    // the dock's setOwnedPanels(controller->takeOwnedPanels()) wiring.
+    void ownedPanelsChanged();
 
 private:
     struct ActiveSeries {
@@ -133,6 +149,34 @@ private:
     void buildGenericTracks(const model::DashboardSignal& signal,
                             const model::SignalDescriptor& descriptor,
                             QVector<ActiveSeries>& series) const;
+
+    // Per-TR panel builders. One per static-display TR landing in
+    // Phases C-G; each returns a fully-constructed AbstractStripPanel
+    // (or nullptr if the underlying H5 buffer is absent / malformed).
+    std::unique_ptr<AbstractStripPanel>
+        buildIRedSequenceBarPanel(const model::DashboardSignal& signal,
+                                  const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildKernelDynamicsPowerSpectrumPanel(const model::DashboardSignal& signal,
+                                              const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildKernelDynamicsLagDecayPanel(const model::DashboardSignal& signal,
+                                         const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildReorientSequenceBarPanel(const model::DashboardSignal& signal,
+                                      const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildReorientLagDecayPanel(const model::DashboardSignal& signal,
+                                   const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildDihedralSequenceBarPanel(const model::DashboardSignal& signal,
+                                       const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildDihedralLagDecayPanel(const model::DashboardSignal& signal,
+                                    const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildKernelCoherenceChordPanel(const model::DashboardSignal& signal,
+                                        const model::SignalDescriptor& descriptor) const;
     QVector<model::ChannelDescriptor> channelsForMode(const model::SignalDescriptor& descriptor,
                                                       const QString& displayModeId) const;
     model::SignalAnchor resolvedAnchorForSignal(const model::DashboardSignal& signal,
@@ -159,6 +203,11 @@ private:
     QPointer<model::DftShieldingStore> dftStore_;
 
     QVector<ActiveSeries> series_;
+
+    // Owned panels for static-display signals (built during rebuild(),
+    // moved out via takeOwnedPanels()).
+    mutable std::vector<std::unique_ptr<AbstractStripPanel>> ownedPanels_;
+
     QString statusText_ = QStringLiteral("No active strip signals.");
     int frame_ = 0;
     int activeStripSignalCount_ = 0;

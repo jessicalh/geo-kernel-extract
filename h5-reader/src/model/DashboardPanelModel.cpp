@@ -50,6 +50,15 @@ QString DashboardDisplayRef::stableKey() const {
         .arg(signalId.toString(QUuid::WithoutBraces), displayModeId, channelId);
 }
 
+// Panel-mode predicate kept in step with isPanelMode in
+// DashboardDisplayController.cpp — both lists must stay aligned.
+static bool isPanelDisplayMode(const QString& mode) {
+    return mode == QStringLiteral("static.bar.sequence")
+        || mode == QStringLiteral("static.spectrum.power")
+        || mode == QStringLiteral("static.curve.lag.animated")
+        || mode == QStringLiteral("static.chord.coupling");
+}
+
 QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
                                                   const SignalDescriptor& descriptor,
                                                   const QStringList& displayModeIds) {
@@ -59,6 +68,13 @@ QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
 
     const QStringList modes = normalizedModeList(displayModeIds);
     for (const QString& mode : modes) {
+        // Panel modes are tracked with a "panel" sentinel channel id so
+        // the cleanup cascade (removeDisplayRefsForSignal) drops them
+        // alongside any strip-mode refs the signal carries.
+        if (isPanelDisplayMode(mode)) {
+            refs.push_back(DashboardDisplayRef{signalId, mode, QStringLiteral("panel")});
+            continue;
+        }
         if (!mode.startsWith(QStringLiteral("strip.")))
             continue;
 
