@@ -25,10 +25,8 @@ durable architectural record; this index is just a map to the rest.
 
 - `spec/plan/README.md` — guide to what's live in `spec/plan/`.
 
-The project is code-complete: the planned-calculator docs (the
-calculator inventory, the substrate audit, and the PLANNED_CALCULATORS /
-POLARISABILITY_ROADMAP snapshots) were retired to `spec/plan/bones/`
-when the calculators landed — they described work now built.
+The project is code-complete: the planned-calculator docs described work
+now built and are retired history, not implementation authority.
 
 ## Tracking
 
@@ -44,9 +42,9 @@ authoritative rules for work inside it.
 
 ## Archaeology
 
-- `spec/plan/bones/` — retired design docs, working notes, session
-  handoffs. **Do not consult to drive new work.** The decisions
-  themselves are in `master`; bones is prose history only.
+- Retired design docs, working notes, and session handoffs are prose
+  history only. **Do not consult them to drive new work.** The decisions
+  themselves are in `master`.
 - `spec/meta-docs-review/` — 2026-04-03 documentation-audit artifacts.
 
 ## Discipline

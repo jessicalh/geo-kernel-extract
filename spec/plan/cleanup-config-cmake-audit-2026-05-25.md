@@ -47,8 +47,8 @@ item was chunked + dual/codex-reviewed + (where numeric) smoke-blessing-verified
 **Done + pushed (2026-05-26 — closes Tracks 1–2 except G9):**
 - C10 — testpaths relative resolution + G4 Larsen fixture + G5 temp helper,
   one TestEnvironment portability chunk (`9d288de`). Also fixed
-  run_regression.sh's read_toml to mirror the same resolution; its stale
-  `--orca DIR` CLI shape (pre-existing, separate) noted in-file for a re-bless.
+  run_regression.sh's read_toml to mirror the same resolution. The script now
+  uses canonical `--orca --root NAME`; remaining policy is retire vs reframe.
 - G3 — 54 test-local `LoadCalculatorConfig()` helpers → one
   `TestEnvironment::LoadCalculatorConfig()`, 234 calls requalified (`156c55e`).
   The old local path was non-existent → silent default; now loads the real

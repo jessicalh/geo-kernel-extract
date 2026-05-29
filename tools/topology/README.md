@@ -6,8 +6,7 @@ This tool reads the wwPDB Chemical Component Dictionary
 (`data/ccd/components.cif`) via cifpp, runs RDKit chemistry
 perception (CIP labelling, canonical rank, aromaticity,
 hybridisation, bond-type), applies the per-field reconciliation
-precedence table specified in
-`spec/plan/bones/topology-substrate-implementation-plan-2026-05-05.md`,
+precedence table implemented in `build_semantic_tables.cpp`,
 and emits a typed-enum constexpr table consumed at runtime by
 `LegacyAmberTopology`.
 
@@ -25,10 +24,10 @@ cmake -B build-gen -DNMR_BUILD_TABLE_GENERATOR=ON
 cmake --build build-gen --target build_semantic_tables
 ```
 
-By default, RDKit is found in the local micromamba `mm` environment
-at `/home/jessica/micromamba/envs/mm`. Override with
-`-DRDKIT_ROOT=/path/to/rdkit-root` if RDKit is installed elsewhere
-(must contain `include/rdkit/` and `lib/libRDKit*.so`).
+RDKit is found with standard CMake discovery plus explicit overrides:
+`-DRDKIT_ROOT=/path/to/rdkit-root`, `RDKIT_ROOT`, `NMR_RDKIT_ROOT`,
+`RDKIT_INCLUDE`, or `RDKIT_LIB_DIR`. A root install should contain
+`include/rdkit/` and `lib/libRDKit*.so`.
 
 cifpp is found via the standard project mechanism (`find_package(cifpp)`).
 

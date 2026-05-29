@@ -21,45 +21,79 @@
 #       --log    src/generated/LegacyAmberSemanticTables.log.txt
 #
 
-# RDKit installation root. Default resolution order: $RDKIT_ROOT env,
-# then $CONDA_PREFIX (an active conda/micromamba env), then the batcave
-# micromamba path as a last resort. Override explicitly with
-# -DRDKIT_ROOT=/path at configure time. Missing headers fail loud below.
-if(DEFINED ENV{RDKIT_ROOT})
-    set(_rdkit_root_default "$ENV{RDKIT_ROOT}")
-elseif(DEFINED ENV{CONDA_PREFIX})
-    set(_rdkit_root_default "$ENV{CONDA_PREFIX}")
-else()
-    set(_rdkit_root_default "/home/jessica/micromamba/envs/mm")
+# RDKit installation. Cache variables are the primary override surface;
+# environment variables seed the cache at first configure. RDKit can come
+# from a system package, vcpkg, conda/micromamba, or a source install.
+if(NOT RDKIT_ROOT AND NOT "$ENV{RDKIT_ROOT}" STREQUAL "")
+    set(RDKIT_ROOT "$ENV{RDKIT_ROOT}" CACHE PATH "RDKit installation root" FORCE)
 endif()
-set(RDKIT_ROOT "${_rdkit_root_default}"
-    CACHE PATH "RDKit installation root (must contain include/rdkit + lib)")
-set(RDKIT_INCLUDE "${RDKIT_ROOT}/include/rdkit")
-set(RDKIT_LIB_DIR "${RDKIT_ROOT}/lib")
+if(NOT RDKIT_ROOT AND NOT "$ENV{NMR_RDKIT_ROOT}" STREQUAL "")
+    set(RDKIT_ROOT "$ENV{NMR_RDKIT_ROOT}" CACHE PATH "RDKit installation root" FORCE)
+endif()
+if(NOT RDKIT_INCLUDE AND NOT "$ENV{NMR_RDKIT_INCLUDE}" STREQUAL "")
+    set(RDKIT_INCLUDE "$ENV{NMR_RDKIT_INCLUDE}" CACHE PATH "RDKit include directory containing GraphMol/GraphMol.h" FORCE)
+endif()
+if(NOT RDKIT_LIB_DIR AND NOT "$ENV{NMR_RDKIT_LIB_DIR}" STREQUAL "")
+    set(RDKIT_LIB_DIR "$ENV{NMR_RDKIT_LIB_DIR}" CACHE PATH "RDKit library directory" FORCE)
+endif()
+set(RDKIT_ROOT "${RDKIT_ROOT}"
+    CACHE PATH "RDKit installation root")
+set(RDKIT_INCLUDE "${RDKIT_INCLUDE}"
+    CACHE PATH "RDKit include directory containing GraphMol/GraphMol.h")
+set(RDKIT_LIB_DIR "${RDKIT_LIB_DIR}"
+    CACHE PATH "RDKit library directory")
+
+if(NOT RDKIT_INCLUDE)
+    find_path(RDKIT_INCLUDE
+        NAMES GraphMol/GraphMol.h
+        HINTS "${RDKIT_ROOT}"
+        PATH_SUFFIXES include/rdkit rdkit
+        DOC "RDKit include directory containing GraphMol/GraphMol.h")
+endif()
+if(NOT RDKIT_LIB_DIR AND RDKIT_ROOT)
+    foreach(_rdkit_lib_candidate "${RDKIT_ROOT}/lib" "${RDKIT_ROOT}/lib64")
+        if(EXISTS "${_rdkit_lib_candidate}")
+            set(RDKIT_LIB_DIR "${_rdkit_lib_candidate}"
+                CACHE PATH "RDKit library directory" FORCE)
+            break()
+        endif()
+    endforeach()
+endif()
+if(NOT RDKIT_LIB_DIR AND NOT "$ENV{CONDA_PREFIX}" STREQUAL ""
+   AND EXISTS "$ENV{CONDA_PREFIX}/lib")
+    set(RDKIT_LIB_DIR "$ENV{CONDA_PREFIX}/lib"
+        CACHE PATH "RDKit library directory" FORCE)
+endif()
 if(NOT EXISTS "${RDKIT_INCLUDE}/GraphMol/GraphMol.h")
     message(FATAL_ERROR
         "RDKit headers not found at ${RDKIT_INCLUDE}. "
-        "Set -DRDKIT_ROOT=/path/to/rdkit-root that contains include/rdkit + lib.")
+        "Set RDKIT_INCLUDE, RDKIT_ROOT, NMR_RDKIT_INCLUDE, or NMR_RDKIT_ROOT.")
 endif()
 message(STATUS "RDKit headers: ${RDKIT_INCLUDE}")
 message(STATUS "RDKit libs:    ${RDKIT_LIB_DIR}")
 
 # RDKit is split into many shared libraries; we use the subset needed
 # for chemistry perception + CIP labelling.
-set(RDKIT_LIBRARIES
-    ${RDKIT_LIB_DIR}/libRDKitGraphMol.so
-    ${RDKIT_LIB_DIR}/libRDKitFileParsers.so
-    ${RDKIT_LIB_DIR}/libRDKitSmilesParse.so
-    ${RDKIT_LIB_DIR}/libRDKitMolStandardize.so
-    ${RDKIT_LIB_DIR}/libRDKitCIPLabeler.so
-    ${RDKIT_LIB_DIR}/libRDKitDataStructs.so
-    ${RDKIT_LIB_DIR}/libRDKitRDGeneral.so
-    ${RDKIT_LIB_DIR}/libRDKitRDGeometryLib.so
-)
-foreach(_lib ${RDKIT_LIBRARIES})
-    if(NOT EXISTS ${_lib})
-        message(FATAL_ERROR "RDKit library not found: ${_lib}")
+set(_rdkit_components
+    GraphMol
+    FileParsers
+    SmilesParse
+    MolStandardize
+    CIPLabeler
+    DataStructs
+    RDGeneral
+    RDGeometryLib)
+set(RDKIT_LIBRARIES)
+foreach(_component ${_rdkit_components})
+    find_library(_rdkit_lib_${_component}
+        NAMES RDKit${_component}
+        HINTS "${RDKIT_LIB_DIR}"
+        DOC "RDKit ${_component} library")
+    if(NOT _rdkit_lib_${_component})
+        message(FATAL_ERROR "RDKit ${_component} library not found. "
+                            "Set RDKIT_LIB_DIR or NMR_RDKIT_LIB_DIR.")
     endif()
+    list(APPEND RDKIT_LIBRARIES "${_rdkit_lib_${_component}}")
 endforeach()
 
 add_executable(build_semantic_tables

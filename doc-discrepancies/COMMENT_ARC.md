@@ -13,6 +13,13 @@ code change.
 
 ## The bar — every comment, every group
 
+> **SUPERSEDED for the codex truth-only re-run (2026-05-27):** the cut-doctrine
+> below — "all changelog goes", cruft/darling cutting, the deep-dive keep/cut
+> test — no longer applies to the codex pass. The only action now is to fix UNTRUE
+> comments (correct or delete); everything true stays untouched, whatever its
+> shape. See `CODEX_COMMENT_RUN.md`. The arc, file membership, and checkboxes
+> below remain in use.
+
 CODE IS GROUND TRUTH. Verify each comment against the `.cpp` implementation —
 not the header comment, not a doc.
 
@@ -22,10 +29,13 @@ not the header comment, not a doc.
    required. **All changelog narration goes** — dates, commit hashes, "was X /
    now Y", "Bundle/Slice/phase" labels, "replaces", "previously", "deleted",
    audit-hotspot references — even when the history is accurate. Git log is the
-   changelog; a comment states what the code IS, now. A literature citation
-   or physics factoid is also a claim: verify it. If you cannot (no access to
-   the source, can't confirm the value), preface it `From notes(check):` —
-   never pretend to a vetted reference you have not checked.
+   changelog; a comment states what the code IS, now. **No meta, no secret
+   history:** when you fix or delete an untruth, leave no trace of the edit — no
+   "corrected / was / now / previously", no parenthetical preserving the old wrong
+   version, no scaffolding to justify a claim. Truth silently replaces untruth.
+   A literature citation or physics factoid is also a claim: verify it (research
+   is allowed). If you cannot confirm the source/value, reword it to `probable
+   source:` — never present an unconfirmed reference as authoritative.
 2. **The comment serves THIS code, never the domain.** It earns its place only
    where the code needs help being understood. Never a supplemental textbook —
    no re-deriving physics/math, no domain tutorial. That belongs in the spec/docs.
@@ -112,57 +122,57 @@ Status: [ ] todo · [~] in progress · [x] done (commit)
 - [x] **G0 — verified stragglers** (never-defer; spans groups, done first):
   BuildResult.h, TrajectoryProtein.h, ConformationAtom.h, OrcaShieldingResult.h,
   MopacResult.h. Docs: OM, CON.
-- [x] **G1 — core object model & Result base.** _(done incl. trajectory record/buffer infra `37e78ae`; DenseBuffer reviewed-clean. closed with Protein.cpp + ConformationAtom.h per-calc field blocks.)_ Protein, ProteinConformation,
+- [x] **G1 — core object model & Result base.** _(done incl. trajectory record/buffer infra `37e78ae`; DenseBuffer reviewed-clean. closed with Protein.cpp + ConformationAtom.h per-calc field blocks `276150b`.)_ Protein, ProteinConformation,
   ConformationAtom (the WHOLE file, per-calc field blocks included),
   ConformationResult, Atom,
   AtomEvent, Residue, Bond, Ring, BuildResult, ProteinBuildContext,
   ProteinTopology, GeometryResult, GeometryChoice, CalculatorContract,
   CalculatorConfig, RecordBag, DenseBuffer, SelectionRecord, errors. Docs: OM, CON, PAT.
-- [x] **G2 — core types, enums, constants.** Types, SemanticEnums, AminoAcidType,
-  PhysicalConstants, SolventEnvironment. Docs: OM, CON, PF.
-- [x] **G3 — topology & perception.** CovalentTopology, RingTopology,
+- [x] **G2 — core types, enums, constants.** _(closed with `b6d8605`.)_ Types,
+  SemanticEnums, AminoAcidType, PhysicalConstants, SolventEnvironment. Docs: OM, CON, PF.
+- [x] **G3 — topology & perception.** _(closed with `f5f6fe0`, `aa6879e`, `c2d67cd`, `8b95d31`, `ca53530`, `cd01c73`.)_ CovalentTopology, RingTopology,
   MolecularGraphResult, LegacyAmberTopology, LarsenResidue, NamingRegistry. Docs: OM, CON, PAT.
-- [x] **G4 — charge / force field / protonation / readers.** ChargeSource,
+- [x] **G4 — charge / force field / protonation / readers.** _(closed with `f1a2671`, `b396e5a`, `0b21e8a`, `7fc4d33`.)_ ChargeSource,
   AmberChargeResolver, AmberPreparedChargeSource, AmberLeapInput,
   ForceFieldChargeTable, ChargeAssignmentResult, ProtonationState,
   ProtonationDetectionResult, ReduceProtonation, PdbFileReader,
   GromacsToAmberReadbackBlock. Docs: CON, ARCH.
-- [x] **G5 — calculators: ring current.** BiotSavartResult, HaighMallionResult,
+- [x] **G5 — calculators: ring current.** _(closed with `73b7393`.)_ BiotSavartResult, HaighMallionResult,
   McConnellResult, RingSusceptibilityResult. Docs: CAT, CON, MG, AM, PF, OM, API.
-- [x] **G6 — calculators: electrostatics.** CoulombResult, ApbsFieldResult,
+- [x] **G6 — calculators: electrostatics.** _(closed with `2d2be27`.)_ CoulombResult, ApbsFieldResult,
   apbs_bridge, PiQuadrupoleResult, EeqResult, MopacCoulombResult. Docs: CAT, CON, MG, AM, PF, OM, API.
-- [ ] **G7 — calculators: H-bond / tripeptide / Larsen.** HBondResult,
+- [x] **G7 — calculators: H-bond / tripeptide / Larsen.** _(closed with `ebce295`, `48a2969`, `2536038`.)_ HBondResult,
   LarsenHBondShieldingResult, LarsenHBondGrid, PlanarGeometryResult,
   TripeptideBackboneShieldingResult, TripeptideNeighborShieldingResult,
   TripeptideDftTable, TripeptidePoseAssembler. Docs: CAT, CON, OM, API.
-- [ ] **G8 — calculators: QM / charge-derived / dispersion.** MopacResult,
+- [x] **G8 — calculators: QM / charge-derived / dispersion.** _(closed with `a898b04`, `9a26551`, `b762f25`.)_ MopacResult,
   MopacMcConnellResult, AIMNet2Result, AIMNet2ChargeResponseGradientResult,
   EnrichmentResult, DispersionResult. Docs: CAT, CON, OM (MOPAC §2253), API.
-- [ ] **G9 — calculators: solvent / structure / reference / delta.**
+- [x] **G9 — calculators: solvent / structure / reference / delta.** _(closed with `4ef016d`, `b3195a3`, `3b6b218`.)_
   WaterFieldResult, HydrationShellResult, HydrationGeometryResult, SasaResult,
   DsspResult, SpatialIndexResult, GromacsEnergyResult, BondedEnergyResult,
   OrcaShieldingResult, MutationDeltaResult, DemoResult. Docs: CAT, CON, OM, API.
-- [ ] **G10 — trajectory core machinery.** Trajectory, TrajectoryProtein,
+- [x] **G10 — trajectory core machinery.** _(closed with `424e62d`, `21e976e`, `2414be5`.)_ Trajectory, TrajectoryProtein,
   TrajectoryAtom, TrajectoryResult, TrajectoryMoments, FullSystemReader,
   GromacsFrameHandler, GromacsFramePullResult, KernelEvaluationFilter,
   FrameNpyEmitter, FramePdbEmitter, RunConfiguration. Docs: OM, PAT §§13-18, ARCH.
-- [ ] **G11 — trajectory results: ring-current + electrostatics.** `Bs*`, `Hm*`,
+- [x] **G11 — trajectory results: ring-current + electrostatics.** _(closed with `79904ef`, `083a624`, `9e37e82`.)_ `Bs*`, `Hm*`,
   `McConnell{Welford,ShieldingTimeSeries}`, `RingSusceptibility*TimeSeries`,
   `Apbs*`, `Eeq*`, `MopacCoulomb*TimeSeries`, `MopacMcConnell*TimeSeries`,
   `PiQuadrupole*TimeSeries`. Docs: OM, API, CAT.
-- [ ] **G12 — trajectory results: H-bond + tripeptide.** `HBondCountWelford`,
+- [x] **G12 — trajectory results: H-bond + tripeptide.** _(closed with `4310d8e`, `3f6e747`, `771e286`.)_ `HBondCountWelford`,
   `HBondShieldingTimeSeries`, `LarsenHBond*`, `Tripeptide{Backbone,Neighbor}*`
   (TimeSeries/Welford/MethodTag/ResidualVec). Docs: OM, API, CAT.
-- [ ] **G13 — trajectory results: QM/charge + solvent.** `AIMNet2*` (TimeSeries/
+- [x] **G13 — trajectory results: QM/charge + solvent.** _(closed with `d02f04c`, `6a49341`, `7f77ec2`, `2c0f052`, `d7b725e`.)_ `AIMNet2*` (TimeSeries/
   Welford/Embedding), `Mopac{BondOrder,Charge}Welford`, `MopacVsFf14Sb*`,
   `Dispersion*TimeSeries`, `WaterField*`, `Hydration{Shell,Geometry}*`, `Sasa*`. Docs: OM, API.
-- [ ] **G14 — trajectory results: structure / geometry / selection.** `Dihedral*`,
+- [x] **G14 — trajectory results: structure / geometry / selection.** _(closed with `0988eac`, `2d7a364`, `4feebcb`.)_ `Dihedral*`,
   `Dssp8*`, `Rmsd*`, `RingPucker*`, `RingNeighbourhoodTrajectoryStats`,
   `BondLengthStats`, `ChiRotamerSelection`, `PositionsTimeSeries`,
   `DftPoseCoordinator`, `JCouplingTimeSeries`, `GromacsEnergyTimeSeries`,
   `BondedEnergyTimeSeries`. Docs: OM, API, ARCH.
-- [ ] **G15 — job-running / orchestration / CLI.** OperationRunner, Session,
+- [x] **G15 — job-running / orchestration / CLI.** _(closed with `ca3e341`, `9ca6612`.)_ OperationRunner, Session,
   nmr_extract.cpp, Cli/* (CommonOptions, FrameEmission, ModeSpec, Parse,
   PrintUsage, Validate), OrcaRunLoader. Docs: ARCH, CLAUDE.md (5-mode spec), CON.
-- [ ] **G16 — core infrastructure / IO.** RuntimeEnvironment, OperationLog,
+- [x] **G16 — core infrastructure / IO.** _(closed with `a676a51`, `9c67c4a`, `ea02949`, `b6730f4`.)_ RuntimeEnvironment, OperationLog,
   NpyWriter, TopologySidecar, CategoryInfoProjection. Docs: ARCH, OM, API.

@@ -9,9 +9,8 @@ This is the document for the 4-way critique: the human researcher,
 the primary AI collaborator, an independent Opus review, and a Gemini
 review. Each reviewer validates the maths from their perspective.
 
-**Note:** References to UNIFICATION_BUGS.md, DESIGN_REVIEW_PRELIM.md,
-REWRITE_DECISIONS.md, and CATEGORICAL_ANALYSIS_PASS1.md are historical.
-Those documents are now in learn/bones/.
+**Note:** References to old critique documents are historical, not
+current implementation authority.
 
 ---
 

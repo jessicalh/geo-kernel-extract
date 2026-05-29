@@ -63,7 +63,7 @@ Han, B., Liu, Y., Ginzinger, S.W. and Wishart, D.S. (2011)
 prediction', Journal of Biomolecular NMR, 50(1), pp. 43-57.
 doi:10.1007/s10858-011-9478-4.
 
-Secondary source (Software system review). Relative High Accuracy NMR Shift Prediction  
+Secondary source (Software system review). Relative High Accuracy NMR Shift Prediction
 
 Authors created this NMR prediction system as refinement of two previous systems, SHIFTX and SHIFTY (renamed SHIFTX+ and SHIFTY+).  SHIFTX+ contributions included a boosted bagged REPTree algorithm, ring current, H-bonds, electrostatics, and surface exposure.  SHIFTY+ work contributed sequence information and BLAST information.  System claims  extremely high coefficients for backbone shift predictions at high speed.  The authors put forward the tool as transformative for shift based structure prediction.  Provides a compendium of weights which predate current ML approaches.
 
@@ -96,7 +96,7 @@ doi:10.1016/j.pnmrs.2025.101575.
 
 Secondary source (review). Comprehensive Review of NMR Shift Prediction Methods and Scope
 
-This review includes current applications of automated NMR analysis, prediction, and spectrum reconstruction, and broad coverage of systems and underlying methodologies for both proteins and molecular solids.  Reviews the available sets of training data at present (BMRB, etc.), including limitations on available data for training.  For protein prediction, the paper describes landmark systems and (briefly) reviews their underlying methods.  These include neural network models, regression tree and alignment models, models based on regression of vectorised descriptors of the atomic environment, and message passing network graphs (referred to as "deep neural network" here).  Reference is a useful map of tools, techniques, data source limitations, and emergent areas of interest. 
+This review includes current applications of automated NMR analysis, prediction, and spectrum reconstruction, and broad coverage of systems and underlying methodologies for both proteins and molecular solids.  Reviews the available sets of training data at present (BMRB, etc.), including limitations on available data for training.  For protein prediction, the paper describes landmark systems and (briefly) reviews their underlying methods.  These include neural network models, regression tree and alignment models, models based on regression of vectorised descriptors of the atomic environment, and message passing network graphs (referred to as "deep neural network" here).  Reference is a useful map of tools, techniques, data source limitations, and emergent areas of interest.
 
 [word count: __]
 
@@ -115,20 +115,20 @@ The group created a system of approximately 2.35 million DFT calculations on tri
 
 [word count: __]
 
-================================================================                                        
-ENTRY 7 — Markwick et al. 2010  [PRIMARY]                                                             
-================================================================                                        
-                                                                                   
-Markwick, P.R.L., Cervantes, C.F., Abel, B.L., Komives, E.A.,                                           
-Blackledge, M. and McCammon, J.A. (2010) 'Enhanced conformational                                     
-space sampling improves the prediction of chemical shifts in                                            
-proteins', Journal of the American Chemical Society, 132(4),   
-pp. 1220-1221. doi:10.1021/ja9093692.                                                                   
-                                                                                   
-Primary source. Accelerated Time Scales Improve Prediction in Exchange Active Regions                                                                                
-                                                                                   
-SHIFTX prediction was performed for static, normal MD (five 10 ns runs) and free energy accelerated MD on 1NFI.  Static x-ray crystallography cumulative RMSD (HN, N, CA, CB, C') of 8.19 ppm dropped to 7.44 ppm with normal MD and 5.92 ppm accelerated MD (using a modified AMBER10), and motion in the accelerated MD was shown to occur mostly in the exchange active regions (so is less likely to be noise). The best gain was found for N, which the authors suggest corresponds to motion on longer time scales. The authors suggest that ensemble averaging is appropriate as NMR is ms-scale average.  Paper is straightforward indication that FES averages may be most effective but that even short non-accelerated MD can provide improvement in NMR shift prediction                                                                                                 
-                                                                                   
+================================================================
+ENTRY 7 — Markwick et al. 2010  [PRIMARY]
+================================================================
+
+Markwick, P.R.L., Cervantes, C.F., Abel, B.L., Komives, E.A.,
+Blackledge, M. and McCammon, J.A. (2010) 'Enhanced conformational
+space sampling improves the prediction of chemical shifts in
+proteins', Journal of the American Chemical Society, 132(4),
+pp. 1220-1221. doi:10.1021/ja9093692.
+
+Primary source. Accelerated Time Scales Improve Prediction in Exchange Active Regions
+
+SHIFTX prediction was performed for static, normal MD (five 10 ns runs) and free energy accelerated MD on 1NFI.  Static x-ray crystallography cumulative RMSD (HN, N, CA, CB, C') of 8.19 ppm dropped to 7.44 ppm with normal MD and 5.92 ppm accelerated MD (using a modified AMBER10), and motion in the accelerated MD was shown to occur mostly in the exchange active regions (so is less likely to be noise). The best gain was found for N, which the authors suggest corresponds to motion on longer time scales. The authors suggest that ensemble averaging is appropriate as NMR is ms-scale average.  Paper is straightforward indication that FES averages may be most effective but that even short non-accelerated MD can provide improvement in NMR shift prediction
+
 [word count: __]
 
 ================================================================
@@ -142,7 +142,7 @@ B, 117(7), pp. 1989-1998. doi:10.1021/jp3057306.
 
 Primary source. An Examination of Point Dipole and Haigh-Mallion Models Across Ring Current, Electric Field, Nucleus and Ring Type
 
-Study created a database of ring arrangements from RNA crystal structures classed adjacent, spatially close, or hydrogen bonded.  DFT was calculated across the set of crystal structure arrangements, and point dipole and Haigh-Mallion results were calculated. Linear fit was found for ring current, electric field, and ring current plus electric field, across H, C, N and O nuclei, and across five and six membered rings.  Maximum effect of neighboring rings (excluding hydrogen-bonded) was calculated, with ¹H at 4.84 ppm, ¹⁵N at 34.49 ppm, and ¹³C at 27.18 ppm.  The work effectively provides a hierarchy of electric field and ring current effects across ring atom type.  While the work is on RNA bases, these results are illuminating for a project doing classical H-M and electric field calculations that are tested for signal against DFT, and used to predict chemical shift. 
+Study created a database of ring arrangements from RNA crystal structures classed adjacent, spatially close, or hydrogen bonded.  DFT was calculated across the set of crystal structure arrangements, and point dipole and Haigh-Mallion results were calculated. Linear fit was found for ring current, electric field, and ring current plus electric field, across H, C, N and O nuclei, and across five and six membered rings.  Maximum effect of neighboring rings (excluding hydrogen-bonded) was calculated, with ¹H at 4.84 ppm, ¹⁵N at 34.49 ppm, and ¹³C at 27.18 ppm.  The work effectively provides a hierarchy of electric field and ring current effects across ring atom type.  While the work is on RNA bases, these results are illuminating for a project doing classical H-M and electric field calculations that are tested for signal against DFT, and used to predict chemical shift.
 
 [word count: __]
 

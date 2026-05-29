@@ -53,7 +53,7 @@ Package: iftex 2022/02/03 v1.0f TeX engine tests
 Package: fontenc 2021/04/29 v2.0v Standard LaTeX package
 )
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/helvet.sty
-Package: helvet 2020/03/25 PSNFSS-v9.3 (WaS) 
+Package: helvet 2020/03/25 PSNFSS-v9.3 (WaS)
 )
 (/usr/share/texlive/texmf-dist/tex/latex/sansmath/sansmath.sty
 Package: sansmath 2007/02/28  ver 1.1 Donald Arseneau
@@ -291,7 +291,7 @@ LaTeX Font Info:    ... okay on input line 22.
 * paper: a4paper
 * layout: <same size as paper>
 * layoutoffset:(h,v)=(0.0pt,0.0pt)
-* modes: 
+* modes:
 * h-part:(L,W,R)=(72.26999pt, 452.9679pt, 72.26999pt)
 * v-part:(T,H,B)=(72.26999pt, 700.50687pt, 72.26999pt)
 * \paperwidth=597.50787pt
@@ -388,7 +388,7 @@ L3 programming layer <2024-01-22>
  ***********
 Package rerunfilecheck Info: File `submission.out' has not changed.
 (rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
- ) 
+ )
 Here is how much of TeX's memory you used:
  10589 strings out of 474222
  166392 string characters out of 5748733

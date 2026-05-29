@@ -168,8 +168,7 @@ Each atom in a ProteinConformation knows:
   is_backbone, is_amide_H, is_alpha_H, is_methyl, is_aromatic_residue,
   parent_hybridisation, H-bond donor/acceptor role
   (from the categorical analysis: at minimum the 19 classification
-  schemes from the categorical analysis (now in learn/bones/), expressed as
-  typed properties, not strings)
+  schemes expressed as typed properties, not strings)
 - If a future extractor needs a property not yet present, it is added
   to the atom's property set properly, with name AND description from
   the tool or calculation that produced it
@@ -258,8 +257,7 @@ normal axis has sigma > 0.
 
 ## Convention Locks (planned-calculator pre-flight, 2026-05-13)
 
-The following picks are locked once HERE so the planned-calculator
-assembly line (spec/plan/bones/PLANNED_CALCULATORS_2026-04-22.md, bones) does not have to
+The following picks are locked once HERE so implementation work does not
 re-decide them per slice. Each pick names the source literature and
 the calculator(s) that consume it.
 

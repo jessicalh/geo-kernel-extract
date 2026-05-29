@@ -8,7 +8,7 @@ Paste the contents below into a new session as the first user message. Start the
 
 **Who I am.** Jessica Hansberry, PhD student at Birkbeck, working on NMR chemical shielding prediction via geometric kernels on protein structures. Project root `/shared/2026Thesis/nmr-shielding/`. Auto-memory system at `~/.claude/projects/-shared-2026Thesis-nmr-shielding/memory/MEMORY.md` — read it.
 
-**The assignment.** Birkbeck annotated bibliography + literature review outline. Worth 5% of project grade. Due **14:00 today (2026-04-27)**. Hard rules: **exactly 8 references, ≥5 primary, 120-240 words per annotation**, combined into a single PDF or .docx for Moodle upload. Each annotation must label primary/secondary, summarise, evaluate, and demonstrate relevance to my project. 
+**The assignment.** Birkbeck annotated bibliography + literature review outline. Worth 5% of project grade. Due **14:00 today (2026-04-27)**. Hard rules: **exactly 8 references, ≥5 primary, 120-240 words per annotation**, combined into a single PDF or .docx for Moodle upload. Each annotation must label primary/secondary, summarise, evaluate, and demonstrate relevance to my project.
 
 **Working environment.** I'm editing `entries-working.txt` in SlickEdit on a Windows PC over a network share to this Linux box. Race condition risk: if you edit `entries-working.txt` directly while I have it open, my unsaved buffer collides with your changes. **DO NOT EDIT `entries-working.txt`.** Hand me text via paste-block files in `papers/annotated-bib/`. I copy them into SlickEdit. The previous session (long context) was getting fuzzy; that's why we're starting fresh.
 

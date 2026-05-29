@@ -231,10 +231,6 @@ so when any atom is clamped the **stored** sum no longer equals `Q_total`.
 - `EeqWelfordTrajectoryResult::Compute` (`src/EeqWelfordTrajectoryResult.cpp:66`)
   reads `conf.AtomAt(i).eeq_charge` — the stored, post-clamp value — and runs
   per-atom Welford. It never sums charges, never checks neutrality.
-- `learn/bones/GromacsProtein.cpp:282-285` reads stored `eeq_charge` /
-  `eeq_cn` per atom (with a `==0.0` "did EEQ run" guard). No neutrality check.
-- `learn/bones/AnalysisWriter.cpp:229,998` writes the stored per-atom
-  `eeq_charge` straight to H5 `(T,N)`. No sum.
 - `ui/src/RestServer.cpp:1023` and `ui/src/MainWindow.cpp:1385` display the
   stored per-atom value. Per-atom only.
 - SDK `python/nmr_extract/_catalog.py:250` (`eeq_charges`, units `e`) and

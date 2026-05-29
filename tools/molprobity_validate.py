@@ -51,10 +51,9 @@ def _resolve_validator(name: str) -> str:
     """Resolve a molprobity.* binary.
 
     Order: $MOLPROBITY_BIN/<name> if MOLPROBITY_BIN is set, then a binary
-    of that name on PATH (shutil.which), then the conda/micromamba
-    molprobity env location used during development. Returns the resolved
-    path if found, else the bare name so subprocess raises a clear
-    FileNotFoundError at call time.
+    of that name on PATH (shutil.which). Returns the resolved path if
+    found, else the bare name so subprocess raises a clear FileNotFoundError
+    at call time.
     """
     env_dir = os.environ.get("MOLPROBITY_BIN")
     if env_dir:
@@ -64,8 +63,7 @@ def _resolve_validator(name: str) -> str:
     found = shutil.which(name)
     if found:
         return found
-    fallback = Path.home() / "micromamba" / "envs" / "molprobity" / "bin" / name
-    return str(fallback)
+    return name
 
 
 RAMALYZE = _resolve_validator("molprobity.ramalyze")

@@ -50,7 +50,6 @@ WarningsAsErrors: ""
 HeaderFilterRegex: '/(src|tests|fileformat)/[^/]+\.(h|hpp)$'
 
 FormatStyle: file
-User: jessica
 
 CheckOptions:
   # bugprone-argument-comment: only warn for mismatched comments, not

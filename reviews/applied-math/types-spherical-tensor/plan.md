@@ -202,8 +202,8 @@ m). **Consumers all read it in the same `[0..4]` order**: the serialized
 producers (`BsShieldingTimeSeriesTrajectoryResult.cpp:157-161`,
 `HmShieldingTimeSeriesTrajectoryResult.cpp:121-125`,
 `ApbsEfgTimeSeriesTrajectoryResult.cpp:185-189`, `ApbsFieldResult.cpp:355`,
-`OrcaShieldingResult.cpp:238`, `TripeptideNeighborShieldingResult.cpp:394`)
-and `learn/bones/AnalysisWriter.cpp:535-539`. The SDK contract
+`OrcaShieldingResult.cpp:238`, `TripeptideNeighborShieldingResult.cpp:394`).
+The SDK contract
 (`python/nmr_extract/_catalog.py`, `EFGTensor`/`PerRingTypeT2`/`*_T2` specs,
 irreps `1x2e` / `0e+1e+2e`) carries the same 5-component T2. Producer and
 consumers **agree**; the layout is a stable contract and must not move. The

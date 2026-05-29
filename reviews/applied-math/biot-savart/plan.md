@@ -241,9 +241,8 @@ independent of intensity." The thesis-wide rule is **"the system outputs kernels
 not shielding"** — calibration multiplies kernels by intensity / regression
 weights downstream. The catalog encodes this in the **units**:
 `bs_shielding` is `"ppm_T_per_nA"`, `bs_per_type_T0/T2` are `"ppm_T_per_nA"` —
-i.e. per-nanoampere, *not* ppm. `learn/` (e.g. `learn/bones/pre_sdk/load.py:135`,
-`stage2/block_avg_convergence.py`) consumes these as features fed into ridge,
-which supplies the intensity scaling.
+i.e. per-nanoampere, *not* ppm. Calibration consumes these as features
+fed into ridge, which supplies the intensity scaling.
 
 `SampleShieldingAt` does the identical thing for an arbitrary grid point, and its
 **only consumers are viewers**: `ui/ComputeWorker.cpp:427` reads `stResult.T0`

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Dump one canonical DFT-output row per (tripeptide, frame_type).
 
-Phase 1 step 1 of the typed-tripeptide-topology refactor
-(spec/plan/bones/typed-tripeptide-topology-design-2026-05-10.md — RETIRED
-2026-05-11 before any of its code landed; this script is an orphan from
-that retired plan and is not called from any test or production path).
+Phase 1 step 1 of a retired typed-tripeptide-topology refactor. The plan
+retired on 2026-05-11 before any of its code landed; this script is an
+orphan and is not called from any test or production path.
 The output JSON was the source the user reviewed before hand-authoring
 data/topology/tripeptide_orderings.toml; the refactor was replaced by
 the perception-driven LarsenResidue model and this script never went

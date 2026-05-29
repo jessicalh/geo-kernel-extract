@@ -1407,7 +1407,8 @@ def load(path: str | Path) -> Protein:
     _validate_topology_invariants(
         topology_group, n_atoms, protein_id, available.get("residue_index"))
 
-    # AIMNet2 (optional)
+    # AIMNet2 production arrays are required by the catalog; this guard keeps
+    # legacy/pre-contract extractions from constructing a partial group.
     aimnet2 = None
     if "aimnet2_charges" in available:
         aimnet2 = AIMNet2Group(

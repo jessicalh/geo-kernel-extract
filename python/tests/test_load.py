@@ -10,7 +10,9 @@ BASELINE and MUTANT are secondary (may be unavailable on some machines).
 """
 
 import numpy as np
+import os
 import pytest
+import tempfile
 import torch
 from e3nn.o3 import Irreps
 from pathlib import Path
@@ -32,12 +34,23 @@ from nmr_extract import (
 )
 
 
-# Primary: geometry-only fleet extraction (always available)
-GEO_ONLY = "/shared/2026Thesis/nmr-shielding/tests/data/sdk_geo_only/1Q8K/1Q8K_10023_01_boltzmann_minimum_8.86e-02_frame001"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Primary: geometry-only fleet extraction (always available when fixtures are present)
+GEO_ONLY = Path(os.environ.get(
+    "NMR_SDK_GEO_ONLY",
+    REPO_ROOT / "tests/data/sdk_geo_only/1Q8K/1Q8K_10023_01_boltzmann_minimum_8.86e-02_frame001",
+))
 
 # Secondary: legacy extractions (may not exist)
-BASELINE = "/shared/2026Thesis/nmr-shielding/baseline_features/P84477"
-MUTANT = "/tmp/sdk_mutant_test"
+BASELINE = Path(os.environ.get(
+    "NMR_BASELINE_FEATURES",
+    REPO_ROOT / "baseline_features/P84477",
+))
+MUTANT = Path(os.environ.get(
+    "NMR_SDK_MUTANT_TEST",
+    Path(tempfile.gettempdir()) / "sdk_mutant_test",
+))
 
 
 # ── Fixtures ────────────────────────────────────────────────────────
@@ -48,7 +61,7 @@ def geo():
     if not Path(GEO_ONLY).exists():
         pytest.skip("GEO_ONLY extraction not available")
     try:
-        return load(GEO_ONLY)
+        return load(str(GEO_ONLY))
     except (ValueError, KeyError, FileNotFoundError) as e:
         pytest.skip(f"GEO_ONLY extraction stale (re-emit needed): {e}")
 
@@ -58,7 +71,7 @@ def baseline():
     if not Path(BASELINE).exists():
         pytest.skip("baseline extraction not available")
     try:
-        return load(BASELINE)
+        return load(str(BASELINE))
     except (ValueError, KeyError, FileNotFoundError) as e:
         pytest.skip(f"baseline extraction stale: {e}")
 
@@ -68,7 +81,7 @@ def mutant():
     if not Path(MUTANT).exists():
         pytest.skip("mutant extraction not available")
     try:
-        return load(MUTANT)
+        return load(str(MUTANT))
     except (ValueError, KeyError, FileNotFoundError) as e:
         pytest.skip(f"mutant extraction stale: {e}")
 

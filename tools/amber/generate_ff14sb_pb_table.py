@@ -22,10 +22,15 @@ from dataclasses import dataclass
 def default_tleap() -> pathlib.Path | None:
     """Locate tleap without a hardcoded user path.
 
-    Order: tleap on PATH (shutil.which), then $AMBERHOME/bin/tleap if
-    AMBERHOME is set. Returns None if neither resolves, leaving --tleap
-    required on the command line.
+    Order: $NMR_TLEAP, tleap on PATH (shutil.which), then
+    $AMBERHOME/bin/tleap if AMBERHOME is set. Returns None if none
+    resolves, leaving --tleap required on the command line.
     """
+    explicit = os.environ.get("NMR_TLEAP")
+    if explicit:
+        candidate = pathlib.Path(explicit)
+        if candidate.exists():
+            return candidate
     found = shutil.which("tleap")
     if found:
         return pathlib.Path(found)
@@ -34,12 +39,6 @@ def default_tleap() -> pathlib.Path | None:
         candidate = pathlib.Path(amberhome) / "bin" / "tleap"
         if candidate.exists():
             return candidate
-    # Home-relative conda fallback (not a hardcoded /home/<user> path),
-    # mirroring tools/molprobity_validate.py's resolver. Preserves the
-    # local default without pinning an absolute user path.
-    conda = pathlib.Path.home() / "micromamba" / "envs" / "mm" / "bin" / "tleap"
-    if conda.exists():
-        return conda
     return None
 
 

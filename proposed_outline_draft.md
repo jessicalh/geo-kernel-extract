@@ -157,6 +157,7 @@ The common theme is that the data object (T, N, K, 9) is structurally the same k
 - Is a diagnostic, not a training target.
 - Cross-stage corroboration of the ¹⁵N-hard finding from Stage 1 (backbone N hardest, sidechain N second-best).
 - Audit of the 10 calibration proteins for dynamical diversity — Markwick's ubiquitin-vs-IκBα contrast shows improvement scales with heterogeneity; a uniformly rigid calibration set would mute Stage 2 signal.
+- 1P9J has experimentally measured per-residue backbone dynamics (Wingens et al. 2003, BMRB 5801: R₁ / R₁ρ / {¹H}-¹⁵N NOE, with ~40% of residues showing Rex chemical exchange contributions and S²-derived ps-ns flexibility in the termini). This makes 1P9J a direct Markwick-validation test case among the 10.
 
 **Exploratory (extension):**
 - Tensor-decomposition modes must have chemical interpretation — kernel-aligned, residue-type-aligned, or secondary-structure-aligned. If the top modes of a Tucker decomposition of (T, N, K, 9) don't admit physical reading, the factorisation is capturing statistical structure without physics and must be reported that way.

@@ -1,8 +1,8 @@
 # TENTATIVE_OUTSTANDING_ISSUES.md
 
 **Status:** tentative. The items below were surfaced by a four-agent
-harvest pass over ~30 docs being retired to `spec/plan/bones/`
-(2026-05-13). Each was nominally verified against source — agents
+harvest pass over retired planning docs (2026-05-13). Each was
+nominally verified against source — agents
 made 60-90 tool calls each, citing `file:line` evidence — but **the
 verification was not re-audited**. Treat every entry as "agent says
 this is true; spot-check before acting."
@@ -14,16 +14,15 @@ happens. A 2026-05-26 doc-square-away pass re-audited and resolved
 OI-001 / 011 / 014 / 030 / 044 / 070 / 071 against source. Don't read
 every item every session — read them when starting work that intersects.
 
-Subsumes the former `spec/plan/bones/KNOWN_BUGS.md`, `spec/plan/bones/FIX_TESTS.md`, and
-`spec/plan/bones/pending_decisions_20260423.md`. When confirming or paying down
-an item, move it to **Resolved** with the resolving commit. Append
-new items at the bottom of the matching section.
+Subsumes older known-bugs, fix-tests, and pending-decisions notes. When
+confirming or paying down an item, move it to **Resolved** with the
+resolving commit. Append new items at the bottom of the matching section.
 
 Entry conventions:
 - **OI-NNN** stable ID.
 - **Verified (per agent):** `file:line` or grep evidence per the
   harvest pass.
-- **Source:** original doc where the item surfaced (most are bones'd).
+- **Source:** original retired planning note where the item surfaced.
 - **Action:** one-line if obvious; otherwise the item sits.
 
 ---
@@ -50,7 +49,7 @@ Entry conventions:
   logging) are not reset between `apbs_solve()` invocations. Latent.
   Not exercised today because `ui/` / `h5-reader/` do not run the
   calculator pipeline; a session-reuse viewer would hit it.
-- **Source:** `spec/plan/bones/DEPENDENCIES.md:62`.
+- **Source:** retired dependency inventory note.
 - **Status:** Known limitation, accepted. A trajectory run calls
   `apbs_solve()` once per frame (`OperationRunner::Run` per frame,
   `src/Trajectory.cpp:230,282`), so a long run makes many in-process
@@ -80,8 +79,7 @@ Entry conventions:
   `src/RunConfiguration.cpp:71-77` only attaches `BsWelford` to
   `ScanForDftPointSet`. Comment in the .cpp explicitly: "(ChiRotamerSelection
   et al.) are a pending-decision item."
-- **Source:** `spec/plan/bones/pending_decisions_20260423.md` item 2 +
-  `spec/plan/bones/TRAJECTORY_REFACTOR_GAPS_2026-04-23.md` G4.
+- **Source:** retired pending-decisions and trajectory-refactor notes.
 - **Status:** **RESOLVED.** `ChiRotamerSelectionTrajectoryResult` is now
   attached in `RunConfiguration::PerFrameExtractionSet`
   (`src/RunConfiguration.cpp:266`), feeding `DftPoseCoordinator`. No
@@ -113,9 +111,9 @@ Entry conventions:
 
 - **Verified:** `src/nmr_extract.cpp:309-315` — `RunAnalysis()` is
   hard-stubbed: *"disabled pending the dissolution of AnalysisWriter
-  into per-Result H5 emitters."* `learn/bones/` holds the retired
-  AnalysisWriter; per-result `WriteH5Group` is the target surface.
-- **Source:** `spec/plan/bones/TRAJECTORY_REFACTOR_GAPS_2026-04-23.md` G6.
+  into per-Result H5 emitters."* The retired AnalysisWriter is no longer
+  the target surface; per-result `WriteH5Group` is.
+- **Source:** retired trajectory-refactor note.
 - **Status:** **RESOLVED.** AnalysisWriter is dissolved — every
   TrajectoryResult writes its own `/trajectory/<group>/` via
   `WriteH5Group`, and the `RunAnalysis` stub is gone from
@@ -128,7 +126,7 @@ Entry conventions:
   `tests/test_frame_pdb_emitter.cpp:71-72` set `skip_apbs = true`,
   `skip_coulomb = true`, `skip_dssp = true`. None of these tests
   exercise the full `PerFrameExtractionSet`.
-- **Source:** `spec/plan/bones/FIX_TESTS.md` §1 (§2 NVRTC fix landed 2026-04-25
+- **Source:** retired fix-tests note (§2 NVRTC fix landed 2026-04-25
   and unblocked the dread of moving these to full pipeline).
 - **Action:** ~700-line refactor: build shared `ProductionTestSession`
   helper, convert sites, leave one MOPAC canary. Document baseline
@@ -147,7 +145,7 @@ Entry conventions:
 - **Verified:** `src/LarsenResidue.cpp:382-445` — methyl-H pseudoatom
   collapse implemented; no CIP perception for pro-R/pro-S yet.
   Spatial-tiebreak is current behavior.
-- **Source:** `spec/plan/bones/larsen-residue-design-2026-05-11.md:486-524`.
+- **Source:** retired Larsen residue design note.
 - **Action:** Open only if calibration shows systematic pro-R/pro-S
   bias on methylene Hα/HB/HG/HD/HE pairs. Trigger is
   calibration-residual asymmetry.
@@ -182,7 +180,7 @@ Entry conventions:
 - **Verified:** `grep AmideTensorGeometry src/` returns nothing.
   Recommended frame in design: z along N–H, y normal to amide plane,
   x = y × z. Loth 2005 not in `references/`.
-- **Source:** `spec/plan/bones/session_2026-05-10_calculator_queue_and_data_backend.md:118-128`.
+- **Source:** retired calculator queue/data-backend session note.
 - **Action:** Acquire Loth 2005, verify convention, then implement.
 
 ### OI-033 — Canonicalization JSON log writer not landed
@@ -191,7 +189,7 @@ Entry conventions:
   src/ProteinBuildContext.h src/FullSystemReader.cpp` returns empty.
   `GromacsToAmberReadbackBlock` covers the protein-side merge but
   does not emit the JSON canonicalization log.
-- **Source:** `spec/plan/bones/naming-canonical-vocabulary-2026-04-30.md:648-703`
+- **Source:** retired naming-canonical-vocabulary note.
   steps NC1–NC7.
 - **Action:** Emit
   `prep_run_*/.../gromacs_to_amber_readback_block.json` per the design.
@@ -202,7 +200,7 @@ Entry conventions:
   tests/test_calculation_runner.cpp tests/test_pipeline_and_sample.cpp
   tests/test_write_features.cpp` returns empty. Full tree census not
   yet done.
-- **Source:** `spec/plan/bones/session-handoff-20260504.md:136-170`.
+- **Source:** retired session-handoff note.
 - **Action:** Census the tests/ tree, build a shared
   `ProductionTestSession` helper, convert the sites, leave one MOPAC
   canary in the one-shot set.
@@ -213,19 +211,19 @@ Entry conventions:
   `git ls-files tests/golden/blessed/` returns 53+ tracked files
   including the fleet subtree. `.gitignore` is in place but does not
   retroactively untrack.
-- **Source:** `spec/plan/bones/session-handoff-20260504.md:173-180` (P3).
+- **Source:** retired session-handoff note (P3).
 - **Action:** `git rm --cached -r tests/golden/blessed/fleet/`,
   commit separately for readable diff.
 
 ### OI-036 — `tests/regression/run_regression.sh` orphan
 
 - **Verified:** Script exists; `tests/regression/output_fleet/` has
-  frame artifacts; `grep add_test` returns no references; Use Case B
-  invocation at `:46` is also broken (calls `--orca "$ORCA_DIR"`
-  without `--root NAME`, current `JobSpec` rejects).
-- **Source:** `spec/plan/bones/session-handoff-20260504.md:179-184` (P3).
-- **Action:** `git rm tests/regression/run_regression.sh` and the
-  `output_fleet/` artifact dir.
+  frame artifacts; `grep add_test` returns no references. Use Case B now
+  invokes the canonical `--orca --root NAME` shape; the remaining question
+  is whether this manual runner is still useful beside smoke/bless.
+- **Source:** retired session-handoff note (P3).
+- **Action:** Decide whether to retire the manual runner or reframe it as
+  explicit ORCA regression coverage with tolerance-aware comparison.
 
 ### OI-037 — Tighten `min_npy_files` thresholds in `tests/test_smoke.cpp`
 
@@ -233,7 +231,7 @@ Entry conventions:
   `RunSmoke("nodft", conf, opts, 14, 40, ...)` and `:478`
   `RunSmoke("withdft", conf, opts, 15, 45, ...)`. Actual outputs are
   57 and 60; thresholds at 40 and 45 catch only catastrophic regression.
-- **Source:** `spec/plan/bones/session-handoff-20260504.md:200-203` (P4).
+- **Source:** retired session-handoff note (P4).
 - **Action:** Set to ~95% of expected (55 / 58) to catch partial-output
   regressions.
 
@@ -242,7 +240,7 @@ Entry conventions:
 - **Verified:** `tests/BlessCompare.cpp:389` `LoadTable` returns empty
   default; `grep warn tests/BlessCompare.cpp` returns nothing. Comment
   at `BlessCompare.h:69` promised the warn line.
-- **Source:** `spec/plan/bones/session-handoff-20260504.md:209-212`.
+- **Source:** retired session-handoff note.
 - **Action:** Add the warn-once log line.
 
 ### OI-039 — `tests/external/1OKH_4587_protonated.pdb` FF provenance unresolved
@@ -251,7 +249,7 @@ Entry conventions:
   `tests/test_foundation_results.cpp:564,569` still consume
   `GmxProtonated()`; `tests/testpaths.toml:11` maps it. CHARMM-era
   vs AMBER-era origin undocumented.
-- **Source:** `spec/plan/bones/test_inventory_2026-05-03.md:22, 210-213`.
+- **Source:** retired test-inventory note.
 - **Action:** Verify provenance and document, or retire if CHARMM-era.
 
 ### OI-040 — SDK test fixture missing for water / hydration / gromacs_energy NPYs
@@ -268,7 +266,7 @@ Entry conventions:
 - **Verified:** Both exist as `ConformationResult` classes; no
   `Accumulate`/trajectory-handler wiring. Integration target is now
   `TrajectoryResult` (not the retired `GromacsProtein.AccumulateFrame`).
-- **Source:** `spec/plan/bones/TRAJECTORY_EXTRACTION.md:97-98, 127-131`.
+- **Source:** retired trajectory-extraction note.
 - **Status:** **RESOLVED.** Both now have trajectory accumulation:
   `EeqWelfordTrajectoryResult` (`src/RunConfiguration.cpp:181`) and the
   hydration time-series / Welford TRs (`src/RunConfiguration.cpp:242-247`).
@@ -279,7 +277,7 @@ Entry conventions:
 - **Verified:** `src/BiotSavartResult.cpp` and `src/HaighMallionResult.cpp`
   use single-normal ring computation. Two-normal averaging (their fix
   for out-of-plane fluctuations in MD) is not implemented.
-- **Source:** `spec/plan/bones/md-rerun-685-discussion-priors-2026-04-30.md:226-235`.
+- **Source:** retired MD rerun discussion note.
 - **Action:** Pre-MDP-lock audit on a 2-protein subset; histogram Δθ
   between independent ring normals.
 
@@ -321,7 +319,7 @@ Entry conventions:
 - **Verified:** Both `_backup_round1_15ns_2.5nm_padding_20260501/` and
   `_backup_round2_15ns_bumped_padding_spec_cadence_20260501/` still
   on disk under `tests/data/fleet_amber/`.
-- **Source:** `spec/plan/bones/test_inventory_2026-05-03.md:225-227`.
+- **Source:** retired test-inventory note.
 - **Action:** Remove (these are the rejected pre-Option-B MDP attempts;
   current canonical is the `optB` subdirectory).
 
@@ -334,7 +332,7 @@ Entry conventions:
 - **Verified:** `scripts/run_with_cuda_env.sh` exists; `CMakeLists.txt:374,406`
   applies it via `set_tests_properties(... ENVIRONMENT ...)` for ctest.
   Direct binary invocation silently fails AIMNet2 path at first inference.
-- **Source:** `spec/plan/bones/TEST_FRAMEWORK.md:53-57`, `feedback_test_invocation_via_ctest`
+- **Source:** retired test-framework note and `feedback_test_invocation_via_ctest`
   memory.
 - **Action:** Use `ctest -R` or `scripts/run_with_cuda_env.sh
   ./build/<binary>`. Discipline only.
@@ -358,7 +356,7 @@ Entry conventions:
   `scripts/larsen_hbond_grid_parse/parse_larsen_hbond_grids.py`
   documents `ρ` is sign-flipped relative to standard IUPAC.
   Get this wrong once and every contribution has silent angular garbage.
-- **Source:** `spec/plan/bones/larsen-hbond-shielding-design-2026-05-11.md:298-319`.
+- **Source:** retired Larsen H-bond shielding design note.
 - **Action:** Discipline only — verified covered by the canonicalization
   helpers; future grid extensions must use the same convention.
 
@@ -369,7 +367,7 @@ Entry conventions:
   chi-rotamer selector). `RingFlipEventTrajectoryResult`,
   `RotamerTransitionEventTrajectoryResult`, `HBondEventTrajectoryResult`
   do NOT exist in src/.
-- **Source:** `spec/plan/bones/DIAGNOSTICS_AND_WORKFLOWS_2026-05-09.md:224-229`.
+- **Source:** retired diagnostics/workflows note.
 - **Action:** Anyone writing a rotamer-transition event extractor
   must audit `ChiRotamerSelectionTrajectoryResult` for overlap first.
 
@@ -385,7 +383,7 @@ Entry conventions:
   happens." `src/ProteinConformation.cpp:22-56` confirms AttachResult
   does singleton check + dep check + store only. Not a real
   contradiction; sloppy paraphrase that could mislead a careful reader.
-- **Source:** `spec/plan/bones/doc_wrongness_20260423.md`.
+- **Source:** retired doc-wrongness note.
 - **Status:** **RESOLVED** (2026-05-26). OBJECT_MODEL.md now states
   computation is in the static `Compute()` factory; `AttachResult` only
   runs the singleton + dependency checks and stores.
@@ -407,7 +405,7 @@ Entry conventions:
 ### OI-090 — Larsen H-bond reference subtraction uses r-max-edge proxy
 
 - **Verified:** Per `project_larsen_acceptor_reference_subtraction`
-  memory and `spec/plan/bones/larsen-hbond-shielding-design-2026-05-11.md:741-755`.
+  memory and the retired Larsen H-bond shielding design note.
   Bias 10-30× on N/CA/C acceptor tensors; calibration absorbs.
   True monomer DFT not in published Larsen archive.
 - **Source:** Documented in the design doc + memory entry.
@@ -420,7 +418,7 @@ Entry conventions:
   documented approximation. `src/SemanticEnums.h:934-940` carries
   the `IsSidechainAmideOxygen()` predicate; no separate sidechain-amide
   grid in Larsen's published set.
-- **Source:** `spec/plan/bones/larsen-hbond-shielding-design-2026-05-11.md:813-816`.
+- **Source:** retired Larsen H-bond shielding design note.
 - **Revisit trigger:** Direct sidechain-amide DFT scan if it ever
   becomes available; or if calibration residuals stratify the way.
 

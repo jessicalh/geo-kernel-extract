@@ -234,10 +234,9 @@ path keeps those terms' T2 content. claude J26 independently confirms the
 full-M path (`mc_shielding_contribution`, decomposed directly at `:288`) keeps
 T0+T1+T2, consistent with the header.
 
-**Producer/consumers agree.** No consumer treats `mc_category_T2` as a `K`-sum;
-all read it as a 5-vector T2 feature (`learn/bones/.../dataset.py:55-57`,
-`features.py:219`). The mismatch is purely in the .cpp comment wording and the
-local `K_*` names — fixed by E1 + E5.
+**Producer/consumers agree.** No consumer should treat `mc_category_T2` as
+a `K`-sum; it is a 5-vector T2 feature. The mismatch was purely in the
+.cpp comment wording and local `K_*` names — fixed by E1 + E5.
 
 ### 4.2 `direction_to_midpoint` / `best_co_direction` store midpoint→atom (`d̂`), not atom→midpoint — **coherent (expected); field name is the inaccuracy**
 

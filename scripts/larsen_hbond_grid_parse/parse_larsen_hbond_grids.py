@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Parse Larsen 2015 ProCS15 H-bond DFT grids from
-`/mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar`.
+"""Parse Larsen 2015 ProCS15 H-bond DFT grids from an external archive.
 
 Streams through 6 nested archives (NMA|ALA donor × NMA|HOMe|acetate
 acceptor). Per Gaussian log:
@@ -27,8 +26,10 @@ Reference subtraction (parser provides Δσ = σ_grid − σ_ref):
 
 Usage:
   python3 parse_larsen_hbond_grids.py \\
-      --tar /mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar \\
+      --tar /path/to/hydrogenbondnmrlogs.tar \\
       --out data/larsen_hbond_grids/
+
+`--tar` may also be supplied via NMR_LARSEN_ARCHIVE_TAR.
 
 Specific archive:
   python3 parse_larsen_hbond_grids.py --archive ALANMA --out ...
@@ -1069,9 +1070,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--tar",
-        default=os.environ.get(
-            "LARSEN_ARCHIVE_TAR",
-            "/mnt/expansion/larsen_archive/hydrogenbondnmrlogs.tar"),
+        default=os.environ.get("NMR_LARSEN_ARCHIVE_TAR")
+            or os.environ.get("LARSEN_ARCHIVE_TAR"),
         type=Path,
     )
     ap.add_argument(
@@ -1092,6 +1092,10 @@ def main():
         help="Limit per archive (for smoke testing).",
     )
     args = ap.parse_args()
+    if args.tar is None:
+        ap.error("--tar is required, or set NMR_LARSEN_ARCHIVE_TAR")
+    if not args.tar.exists():
+        ap.error(f"--tar not found: {args.tar}")
 
     archives_to_process = (
         [args.archive] if args.archive else list(ARCHIVE_CONFIG.keys())

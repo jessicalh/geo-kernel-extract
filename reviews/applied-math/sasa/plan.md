@@ -102,7 +102,6 @@ positive area. Consumers:
 - `ui/src/MainWindow.cpp:1453` — displayed as `"%.2f A^2"`, no transform.
 - `ui/src/TrajectoryH5.cpp` — Welford mean/std and frame-0 read straight.
 - `h5-reader` — `QtFrame::sasa()`, inspector/time-series dock display as `Å²`.
-- `learn/bones/*` — Welford-accumulated as-is (`ga.sasa.Update(ca.atom_sasa, ...)`).
 
 Producer and all consumers agree: scalar non-negative area in Å², no sign,
 no scaling. **Coherent (expected).**
@@ -118,7 +117,6 @@ resultant. Buried atoms (`|normal_sum| ≤ near_zero_vector_norm_threshold`,
 - `_catalog.py:226` — `irreps="1e", tensor_rank=1, parity="odd"` (a polar vector — correct for a spatial direction), read as `VectorField` (N,3).
 - `_protein.py:1572` — `sasa_normal=get("sasa_normal")`, no transform.
 - `ui/MainWindow.cpp:1454`, `h5-reader QtAtomInspectorDock.cpp:265` — displayed via `vec3Str`/`AddVec3`, no sign flip.
-- `learn/bones` — three Welford channels x/y/z, accumulated as-is.
 
 Producer and consumers agree; no consumer negates or re-orients. The
 `parity="odd"` SDK tag is consistent with a polar direction vector.

@@ -33,8 +33,7 @@ Protected output names confirmed downstream: `_catalog.py` keys
 `hbond_shielding` / `hbond_scalars` (mechanism `hbond_kernel`); the atom
 fields `hbond_shielding_contribution`, `hbond_nearest_dist`, `hbond_inv_d3`,
 `hbond_count_within_3_5A`, `hbond_nearest_spherical`, `hbond_nearest_dir`,
-`hbond_is_donor/acceptor/backbone` consumed by `learn/bones/AnalysisWriter.cpp`
-and `GromacsProtein*`. None of these is proposed for renaming.
+`hbond_is_donor/acceptor/backbone`. None of these is proposed for renaming.
 
 ## 2. Review-finding ledger
 
