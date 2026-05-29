@@ -100,6 +100,17 @@ void CalculatorConfig::InitDefaults() {
     add("eeq_cn_cutoff",                           25.0, "A",    "EEQ coordination number pair cutoff distance");
     add("eeq_charge_clamp",                         2.0, "e",    "EEQ per-atom charge magnitude clamp");
 
+    // Dynamics-observable TRs (KernelDynamics / Reorientational /
+    // DihedralAutocorrelation): autocorrelation lag count. Physical lag
+    // window = dynamics_n_lags x captured frame interval; the emitted
+    // lag_times_ps self-describes it, so finer sampling (e.g. 2 ps) simply
+    // wants a larger count for the same window.
+    add("dynamics_n_lags",                        120.0, "lags", "autocorrelation lag count for the dynamics-observable TRs");
+    // 15N relaxation reporting field (ReorientationalDynamics R1/R2/NOE).
+    // Genuinely varies per experiment (R1/R2/NOE are field-dependent), so it
+    // is a parameter, not a PhysicalConstants.h constant. 14.1 T = 600 MHz 1H.
+    add("relaxation_field_tesla",                  14.1, "T",    "magnetic field at which 15N R1/R2/NOE are reported");
+
     // Numerical noise floors — below these the value is treated as zero
     add("near_zero_vector_norm_threshold",     1e-10, "",    "near-zero vector norm threshold");
     add("coulomb_charge_noise_floor",          1e-15, "",    "Coulomb charge noise floor");

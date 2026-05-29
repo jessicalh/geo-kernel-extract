@@ -441,6 +441,17 @@ traj.ring_neighbourhood_trajectory_stats  | None — per-(atom,ring) geometric r
 traj.rmsd_tracking      RmsdTrackingGroup | None — backbone RMSD vs frame 0
 traj.apbs_efg           ApbsEfgTimeSeriesGroup | None — solvated EFG TS (T2-only)
 
+# Dynamics observables — kernel autocorrelation/spectrum + model-free layer
+traj.kernel_dynamics            KernelDynamicsGroup | None — per-atom ACF + Parzen power
+                                spectrum of the 13 shielding-kernel channels (the instrument)
+traj.kernel_coherence           KernelCoherenceGroup | None — zero-lag kernel×kernel Pearson matrix
+traj.reorientational_dynamics   ReorientationalDynamicsGroup | None — backbone P2 TCF, Henry-Szabo
+                                S2, area-method tau_e, global tau_m (+ tau_m_converged flag), and
+                                the 15N R1/R2/NOE + J(omega) relaxation layer on the N-H vectors
+traj.ired_order_parameters      IRedOrderParameterGroup | None — reference-free iRED S2 (amide N-H)
+traj.dihedral_autocorrelation   DihedralAutocorrelationGroup | None — circular ACF of phi/psi/chi
+                                + 1/e decorrelation times
+
 # AIMNet2 fleet trio
 traj.aimnet2_embedding                          256-dim per-atom (load_optional_large=True)
 traj.aimnet2_charge_response_gradient           Vec3 + scalar per frame

@@ -470,4 +470,54 @@ constexpr double KARPLUS_HA_HB_THETA = 0.0;  // Perez 2001 Table 2 footnote c.
         // the atomic dihedral matches the Table 2 consensus row directly.
 
 
+// ============================================================================
+// NMR relaxation constants (15N-1H dipolar + CSA)
+//
+// Consumed by ReorientationalDynamicsTrajectoryResult to turn Lipari-Szabo
+// model-free parameters (S^2, tau_e, global tau_m) into 15N R1/R2/NOE via the
+// standard dipolar + CSA rate equations:
+//   Lipari & Szabo, J. Am. Chem. Soc. 104, 4546-4559 (1982),
+//     DOI 10.1021/ja00381a009  (spectral-density / model-free form);
+//   Kay, Torchia & Bax, Biochemistry 28, 8972-8979 (1989),
+//     DOI 10.1021/bi00449a003  (the R1/R2/NOE rate expressions);
+//   Palmer, Chem. Rev. 104, 3623-3640 (2004), DOI 10.1021/cr030413t (review).
+//
+// Gyromagnetic ratios and hbar are universal CODATA 2018 values. r_NH and the
+// 15N CSA are cited fixed modelling choices (one effective bond length, one
+// uniform CSA) -- not calibration-tuned, so they live here, not in the TOML.
+// The reporting field B0 genuinely varies per experiment, so it is the one
+// relaxation parameter read from CalculatorConfig (relaxation_field_tesla),
+// NOT fixed here.
+// ============================================================================
+
+// Proton gyromagnetic ratio. CODATA 2018: gamma_p = 2.6752218744(11)e8.
+constexpr double GAMMA_H = 2.6752218744e8;          // rad s^-1 T^-1
+
+// 15N gyromagnetic ratio. NEGATIVE -- 15N has a negative magnetogyric ratio,
+// which is why the steady-state 15N{1H} NOE is < 1 (often negative). CODATA
+// 2018: gamma(15N) = -2.71261804(8)e7. The sign matters only in the NOE
+// prefactor gamma_H/gamma_N; everywhere else gamma_N enters squared.
+constexpr double GAMMA_N15 = -2.71261804e7;         // rad s^-1 T^-1
+
+// Reduced Planck constant. CODATA 2018 (exact since the 2019 SI redefinition
+// of h): hbar = 1.054571817e-34 J s.
+constexpr double REDUCED_PLANCK = 1.054571817e-34;  // J s
+
+// Effective N-H internuclear distance for dipolar relaxation. The
+// vibrationally-averaged 1.02 A (longer than a ~0.99 A crystallographic N-H)
+// is the standard relaxation value; Case, J. Biomol. NMR 15, 95-102 (1999).
+// The dipolar coupling scales as r^-3, so this is load-bearing; it is a fixed
+// modelling choice, not calibration-tuned.
+constexpr double NH_DIPOLAR_BOND_LENGTH_A = 1.02;   // Angstroms
+
+// 15N backbone-amide chemical shift anisotropy (axially-symmetric
+// Dsigma = sigma_par - sigma_perp). -172 ppm; Fushman, Tjandra & Cowburn,
+// J. Am. Chem. Soc. 120, 10947-10952 (1998). Stored in ppm; the rate
+// equations multiply by 1e-6 for the dimensionless anisotropy. A single
+// uniform CSA is a modelling choice (real CSA varies residue-to-residue); it
+// enters R1/R2 squared, so its sign is immaterial without the dipole-CSA
+// cross-correlation term (not computed in this v1).
+constexpr double N15_CSA_PPM = -172.0;              // ppm
+
+
 }  // namespace nmr

@@ -104,6 +104,10 @@ eeq_cn_steepness = 7.5
 eeq_cn_cutoff = 25.0
 eeq_charge_clamp = 2.0
 
+# 15N relaxation reporting field for ReorientationalDynamics R1/R2/NOE.
+# R1/R2/NOE are field-dependent, so this varies per experiment. 14.1 T = 600 MHz 1H.
+relaxation_field_tesla = 14.1
+
 # Numerical noise floors — below these the value is treated as zero
 near_zero_vector_norm_threshold = 1e-10
 coulomb_charge_noise_floor = 1e-15

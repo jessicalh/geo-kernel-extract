@@ -89,6 +89,11 @@
 #include "LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.h"
 #include "BsAnomalousAtomMarkerTrajectoryResult.h"
 #include "BsT0AutocorrelationTrajectoryResult.h"
+#include "KernelDynamicsTrajectoryResult.h"
+#include "KernelCoherenceTrajectoryResult.h"
+#include "ReorientationalDynamicsTrajectoryResult.h"
+#include "IRedOrderParameterTrajectoryResult.h"
+#include "DihedralAutocorrelationTrajectoryResult.h"
 #include "BondLengthStatsTrajectoryResult.h"
 #include "PositionsTimeSeriesTrajectoryResult.h"
 
@@ -231,6 +236,21 @@ RunConfiguration RunConfiguration::PerFrameExtractionSet() {
     // ── Biot–Savart-derived per-atom markers (read BsWelford, above) ──
     Produces<BsAnomalousAtomMarkerTrajectoryResult,
              BsT0AutocorrelationTrajectoryResult>(c);
+
+    // ── Dynamics observables ──
+    // The instrument: per-atom autocorrelation + power spectrum of every
+    // shielding kernel (KernelDynamics) and the zero-lag kernel-kernel
+    // coherence (KernelCoherence). The model-free layer: backbone
+    // reorientational S^2 / tau_e / TCF (Reorientational), reference-free
+    // iRED order parameters, and torsional circular ACF
+    // (DihedralAutocorrelation). None cross-reads another, so order here is
+    // free; KernelDynamics/Coherence depend on the classical kernel
+    // ConformationResults required above.
+    Produces<KernelDynamicsTrajectoryResult,
+             KernelCoherenceTrajectoryResult,
+             ReorientationalDynamicsTrajectoryResult,
+             IRedOrderParameterTrajectoryResult,
+             DihedralAutocorrelationTrajectoryResult>(c);
 
     // ── Geometry + energy bookkeeping ──
     Produces<BondLengthStatsTrajectoryResult,

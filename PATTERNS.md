@@ -683,7 +683,7 @@ root (`cd build && cmake .. && make -j$(nproc)`).
 - **The code** — src/ is the ground truth. The calculators demonstrate
   every pattern described here. Read one (e.g. McConnellResult.cpp)
   before writing another.
-- **learn/bones/** — historical design docs. Reference only.
+- Archived design notes are not part of the active reading order.
 
 ---
 
@@ -1059,9 +1059,36 @@ with bespoke per-test configs want named profiles. Same root —
 undifferentiated stuff at one level. Same fix — internal structure
 where structure exists.
 
-See `spec/plan/bones/welford-data-shape-design-2026-05-17.md` (bones)
-for the landed Welford expansion design rationale; the authoritative
-shape table is in OBJECT_MODEL.md.
+The authoritative Welford shape table is in OBJECT_MODEL.md; that table
+is the source to code against.
+
+### 26. Per-frame signal → ACF → power spectrum: TrajectorySpectral.h
+
+`TrajectorySpectral.h` is the shared engine for turning a per-frame scalar
+or unit-vector stream into a correlation function and its spectral partner —
+the trajectory-scope analog of `TrajectoryMoments.h` (Welford). Free
+functions + small accumulator structs, no class hierarchy:
+
+- `BiasedAcfAccumulator` — exact bounded-memory biased autocovariance C(k)
+  (per-lag cross-products + prefix/suffix tail sums; O(L) memory, no
+  full-history buffer), full-range-mean convention.
+- `ParzenPowerSpectrum` — one-sided Parzen-windowed PSD (≥ 0 by
+  construction; interior bins doubled).
+- `LegendreTcfAccumulator` — unbiased second-rank (P₂) orientational TCF for
+  a unit vector, C(0) = 1.
+- `CircularAcfAccumulator` — unbiased circular ACF C(k) = ⟨cos(θ(t+k)−θ(t))⟩
+  for an angle (branch-cut-safe; the naive ⟨θ(t)θ(0)⟩ is wrong across ±π).
+
+Three TRs consume it by cloning the relevant accumulator into their own
+per-(atom | vector | residue, channel) array — not by sharing an instance:
+`KernelDynamicsTrajectoryResult` (kernel ACF + spectrum),
+`ReorientationalDynamicsTrajectoryResult` (P₂ TCF → S²/τ_e + the
+Lipari-Szabo spectral density that feeds 15N R1/R2/NOE), and
+`DihedralAutocorrelationTrajectoryResult` (torsional circular ACF). The lag
+count is the one tuneable (`dynamics_n_lags`, CalculatorConfig); `dt` is
+derived from frame times, so the physical window and Nyquist auto-scale with
+stride. Duplication over chaining (pattern 17): each TR owns its
+accumulators; the engine carries only the math, unit-verified standalone.
 
 ---
 
@@ -1307,8 +1334,7 @@ per-frame `const ProteinConformation&` on `Compute` — the compiler
 blocks any attempt to mutate the instant-observation buffer. The
 legitimate TR write surface stays public: `MutableAtomAt(i)`,
 `AdoptDenseBuffer<T>`, per-atom events bag, and
-`traj.MutableSelections()`. Rationale and scope:
-`spec/plan/bones/TRAJECTORY_WRITE_SURFACE_2026-04-24.md`; discipline:
+`traj.MutableSelections()`. The discipline is captured in
 `feedback_object_model_scope_discipline` memory.
 
 ### 15. Trajectory::Run orchestrates; factories see a finalized Protein; handler reads

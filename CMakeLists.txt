@@ -712,6 +712,10 @@ add_library(nmr_shielding
     src/LarsenHBond2pHaBShieldingTimeSeriesTrajectoryResult.cpp
     src/BsAnomalousAtomMarkerTrajectoryResult.cpp
     src/BsT0AutocorrelationTrajectoryResult.cpp
+    src/KernelDynamicsTrajectoryResult.cpp
+    src/KernelCoherenceTrajectoryResult.cpp
+    src/IRedOrderParameterTrajectoryResult.cpp
+    src/ReorientationalDynamicsTrajectoryResult.cpp
     src/BondLengthStatsTrajectoryResult.cpp
     src/PositionsTimeSeriesTrajectoryResult.cpp
     src/ChiRotamerSelectionTrajectoryResult.cpp
@@ -734,6 +738,7 @@ add_library(nmr_shielding
     src/HydrationShellTimeSeriesTrajectoryResult.cpp
     src/HydrationShellWelfordTrajectoryResult.cpp
     src/DihedralTimeSeriesTrajectoryResult.cpp
+    src/DihedralAutocorrelationTrajectoryResult.cpp
     src/DihedralBinTransitionTrajectoryResult.cpp
     src/Dssp8TimeSeriesTrajectoryResult.cpp
     src/Dssp8TransitionTrajectoryResult.cpp
@@ -1191,6 +1196,7 @@ nmr_test(trajectory_scope_tests
         tests/test_bs_welford.cpp
         tests/test_dihedral_bin_transition.cpp
         tests/test_dihedral_time_series.cpp
+        tests/test_dynamics_observables.cpp
         tests/test_disp_shielding_time_series.cpp
         tests/test_dssp8_time_series.cpp
         tests/test_dssp8_transition.cpp

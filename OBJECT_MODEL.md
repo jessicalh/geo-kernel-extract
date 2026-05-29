@@ -17,7 +17,7 @@ HydrationShellResult, GromacsEnergyResult, and the extended DsspResult
 TrajectoryResult, Trajectory, Session, RunConfiguration, RecordBag,
 DenseBuffer) are documented below after the ConformationResult section.
 The old Gromacs* classes (GromacsProtein, GromacsProteinAtom,
-GromacsRunContext, AnalysisWriter) are in `learn/bones/` — their
+GromacsRunContext, AnalysisWriter) are retired history; their
 replacement landed as the trajectory-scope object model. Design
 working-notes and pending appendices (full TrajectoryResult catalog,
 H5 metadata schema) are in
@@ -35,7 +35,7 @@ separate IUPACAnnotation class.
 **Copy-and-modify pattern: SUPERSEDED.** The copy-and-modify sections in
 this document are design history. The pattern was originally proposed for
 pH scanning and re-protonation but was never needed for the actual use
-cases (A-D in spec/plan/bones/USE_CASES.md). The system creates one Protein per input
+cases. The system creates one Protein per input
 source with N conformations, each independently enriched. There is no
 protein copying. Do not implement copy-and-modify. The sections remain
 as design history documenting how the Protein/ProteinConformation
@@ -1833,8 +1833,8 @@ of one such decision — what was decided, on which model objects, with
 what value, for what physics reason. Created by calculators, deposited
 on the conformation, drawable in the viewer.
 
-See spec/plan/bones/GEOMETRY_CHOICE_BRIEF.md for the full design and per-calculator
-manifest. Prior CalculationArea type vocabulary is in learn/bones/.
+This is not part of the active producer contract yet; do not implement
+against archived planning notes.
 
 ---
 
@@ -2475,8 +2475,8 @@ The flow is: C++ geometric kernels → NPY features (via WriteFeatures)
 
 The calibrated values override literature defaults for ring current
 intensities, bond anisotropies, Buckingham coefficients, and other
-calculator-specific parameters. See spec/plan/bones/CALCULATOR_PARAMETER_API.md for
-the full parameter set (~64 parameters with equations and references).
+calculator-specific parameters. The active parameter surface is
+`data/calculator_params.toml` plus `CalculatorConfig`.
 
 Feature extraction is distributed: each ConformationResult writes its
 own NPY arrays via WriteFeatures(). ConformationResult::WriteAllFeatures()
@@ -2562,6 +2562,11 @@ for the pending rows is
 | ✓ | `RmsdTrackingTrajectoryResult` | positions only (no source ConformationResult); reads Residue.N/CA/C/O cached indices | AV (scalar (T,) double) | per-frame Kabsch-aligned backbone-RMSD (N/CA/C/O heavy atoms) vs trajectory frame 0, in `/trajectory/rmsd_tracking/`. First scalar AV (T,) TR in the codebase. Datasets: `rmsd` (T,) float64 Å + `atom_indices` (M,) int32 (alignment set provenance) + frame metadata. Frame 0 RMSD = 0 by construction (reference is self). Always-on source: source_attached_per_frame all 1. Cross-result-read WRITER side: TR11 exposes `LatestRmsd()` (canonical per-frame access) + `RmsdAtSampleIndex(k)` (positional access for downstream TRs that walk history). The earlier `RmsdAtFrame(frame_idx)` was removed 2026-05-21 — it conflated original TRR frame index with dense sample position and silently returned NaN at any stride > 1. TR11 of the 13-TR plan. SDK: `RmsdTrackingGroup`. |
 | ✓ | `RmsdSpikeSelectionTrajectoryResult` | `RmsdTrackingTrajectoryResult` (CROSS-RESULT READ on `LatestRmsd()`) | AV (SelectionBag emitter) | Per-frame RMSD-spike detector. Dual-OR threshold: (rmsd > 1.5 Å absolute) OR (\|rmsd - rolling_100_frame_mean\| > 0.5 Å local-delta); cooldown 100 frames after each spike. Local-Δ trigger gated on full 100-frame window per maths review; abs trigger engages at ≥ 10 frames observed. Project-decision parameters (per 13-TR plan, not literature; abs threshold revised 2.0 → 1.5 per science review). Emits `SelectionRecord` entries to `traj.MutableSelections()` under own kind; no private WriteH5Group (SelectionBag writer emits `/trajectory/selections/<kind>/` with metadata_json per record). Records carry `rmsd_A`, `rolling_mean_A`, `local_delta_A`, `window_frames`, `abs_threshold_A`, `local_threshold_A`, `trigger` in metadata. TR12 of the 13-TR plan. |
 | ✓ | `DftPoseCoordinatorTrajectoryResult` | `RmsdSpikeSelectionTrajectoryResult` + `ChiRotamerSelectionTrajectoryResult` (CROSS-RESULT READ on SelectionBag at Finalize) | FO (SelectionBag reducer) | Cross-TR SelectionBag aggregator. At Finalize, walks the run-scope SelectionBag for both upstream emitter kinds, dedupes records by `(residue_index, frame_idx // 50)` ns-bucket (≈ 1 ns at 20 ps stride), pushes the reduced set back under own kind. `residue_index = -1` for whole-protein events (RmsdSpike) preserved as a separate dimension from per-residue events (ChiRotamer). First record per (residue_index, ns_bucket) cell wins. Metadata preserved + augmented with `upstream_kind` + `ns_bucket`. TR13 of the 13-TR plan; canonical SelectionBag REDUCER worked example. |
+| ✓ | `KernelDynamicsTrajectoryResult` | BiotSavart + HaighMallion + McConnell + RingSusceptibility + PiQuadrupole + Dispersion + ApbsField (T0 and \|T2\| of each kernel) | FO | per-atom autocorrelation + Parzen power spectrum across 13 shielding-kernel channels in `/trajectory/kernel_dynamics/`: `acf (N,C,L)` (rho), `power_spectrum (N,C,F)` (one-sided PSD ≥ 0), reductions `decay_time_ps`/`peak_freq_per_ps`/`spectral_centroid_per_ps (N,C)`, `channel_names`/`channel_units (C,)`, lag + frequency axes. Biased full-range-mean ACF via `TrajectorySpectral.h` (exact O(L) streaming); constant signal → 0 curves + NaN reductions. The observability instrument. SDK: `KernelDynamicsGroup`. |
+| ✓ | `KernelCoherenceTrajectoryResult` | same 8 kernel sources | FO | per-atom zero-lag channel×channel Pearson matrix in `/trajectory/kernel_coherence/`: `correlation_matrix (N,C,C)` (diagonal 1; a constant channel's row/col is NaN) + `channel_names`/`channel_units`. The relationships lens; lagged cross-correlation deferred. SDK: `KernelCoherenceGroup`. |
+| ✓ | `ReorientationalDynamicsTrajectoryResult` | positions + Residue N/H/CA/HA/C/O cache (no source ConformationResult) | FO | backbone bond-vector model-free in `/trajectory/reorientational_dynamics/` (V vectors; `vector_kind` 1=NH/2=CaHa/3=CO): internal + lab-frame P₂ TCF `bond_vector_autocorrelation[_lab] (V,L)`, Henry-Szabo `order_parameter_S2 (V,)`, area-method `lipari_szabo_tau_e (V,)`, `bond_orientation_tensor (V,3,3)`, plus global `tau_m_ps` + `tau_m_converged` + `trajectory_length_over_tau_m` attrs. Per-frame Kabsch superposition onto frame 0 removes overall tumbling. **¹⁵N relaxation layer (NH rows; NaN for CaHa/CO):** `spectral_density_j (V,5)` (Lipari–Szabo J at [0, ωN, ωH−ωN, ωH, ωH+ωN], seconds), `relaxation_R1`/`relaxation_R2 (V,)` s⁻¹, `relaxation_NOE (V,)` — Kay-Torchia-Bax 1989 dipolar+CSA, at `relaxation_field_tesla` (CalculatorConfig, 14.1 T default); constants cited in `PhysicalConstants.h`; rates inherit `tau_m_converged` (computed-and-flagged, never silently trusted). Sidechain/methyl/aromatic vectors + dipole-CSA cross-correlation deferred. SDK: `ReorientationalDynamicsGroup`. |
+| ✓ | `IRedOrderParameterTrajectoryResult` | positions + Residue N/H cache | FO | reference-free iRED order parameters for the amide N-H set in `/trajectory/ired_order_parameters/` (Prompers-Brüschweiler 2002): `s2_ired (M,)` = projection onto the 5 largest (overall-tumbling) eigenmodes of `M_ij = <P2(u_i·u_j)>`, `eigenvalues (M,)` descending, `separability_gap` (λ5/λ6) attr, `residue_index`/`n_atom`/`h_atom (M,)`. Online M×M covariance + symmetric eigensolve at Finalize. Reference-free cross-check to the superposition S². SDK: `IRedOrderParameterGroup`. |
+| ✓ | `DihedralAutocorrelationTrajectoryResult` | positions + Residue.chi cache + Protein backbone bond graph | FO | per-residue circular autocorrelation of phi/psi/chi in `/trajectory/dihedral_autocorrelation/`: `phi_acf`/`psi_acf (R,L)`, `chi_acf (R,4,L)`, 1/e `*_corr_time_ps`, `*_defined` masks, `residue_index_per_atom (N,)`. Torsional decorrelation timescale; complements `DihedralBinTransition` (transition counts). Power spectrum + rotamer-survival ACF deferred. SDK: `DihedralAutocorrelationGroup`. |
 
 **JCouplingTimeSeriesTrajectoryResult canonical state (2026-05-20):**
 
@@ -2804,9 +2809,8 @@ cross-TR reads and test assertions.
 
 **Finalized rollup fields** — `WelfordMoments` substructs grouped into
 per-Welford state substructs on `TrajectoryAtom`, one writer (TR) per
-substruct. Post-Phase-2b expansion shape (see
-`spec/plan/bones/welford-data-shape-design-2026-05-17.md` (bones) and PATTERNS Lesson
-25 for the design rationale):
+substruct. Post-Phase-2b expansion shape (authoritative table below;
+see PATTERNS Lesson 25 for the design rationale):
 
 | Substruct field | Channels | Writer                           |
 |-----------------|----------|----------------------------------|

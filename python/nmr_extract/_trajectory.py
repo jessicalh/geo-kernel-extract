@@ -2927,6 +2927,271 @@ class WelfordAccess:
     hbond_count: Optional[HBondCountWelfordGroup] = None
 
 
+def _decode_str_array(arr) -> np.ndarray:
+    """Decode an HDF5 variable-length string dataset (h5py returns bytes)
+    to a numpy object array of str."""
+    return np.array(
+        [c.decode("utf-8", errors="replace") if isinstance(c, (bytes, bytearray))
+         else str(c) for c in arr],
+        dtype=object)
+
+
+# ─── Dynamics observables (2026-05-29) ─────────────────────────────────
+# The instrument (KernelDynamics + KernelCoherence) and the model-free
+# layer (Reorientational + iRED + DihedralAutocorrelation). Read-only
+# wrappers; the C++ producer computes, these just surface the arrays.
+
+
+@dataclass(frozen=True)
+class KernelDynamicsGroup:
+    """Per-atom autocorrelation + power spectrum of the geometric shielding
+    kernels, from /trajectory/kernel_dynamics/. acf(k) is the memory curve
+    (rho in [-1,1]); power_spectrum(f) the oscillation frequencies (Parzen
+    PSD, >= 0); the three reductions are captions on those curves. Constant
+    signals -> acf/spectrum 0 and reductions NaN (test isfinite)."""
+    acf: np.ndarray                       # (N, C, L) float64
+    power_spectrum: np.ndarray            # (N, C, F) float64
+    decay_time_ps: np.ndarray             # (N, C)
+    peak_freq_per_ps: np.ndarray          # (N, C)
+    spectral_centroid_per_ps: np.ndarray  # (N, C)
+    channel_names: np.ndarray             # (C,) str
+    channel_units: np.ndarray             # (C,) str
+    lag_frames: np.ndarray                # (L,)
+    lag_times_ps: np.ndarray              # (L,)
+    frequencies_per_ps: np.ndarray        # (F,)
+    sample_interval_ps: float
+    n_frames: int
+    estimator: str
+    window: str
+    spectrum_units: str
+    spectrum_sidedness: str
+
+
+def _load_kernel_dynamics(f) -> Optional[KernelDynamicsGroup]:
+    path = "/trajectory/kernel_dynamics"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(n: str) -> str:
+        return str(_decode_attr(g.attrs.get(n, "")))
+    return KernelDynamicsGroup(
+        acf=g["acf"][:],
+        power_spectrum=g["power_spectrum"][:],
+        decay_time_ps=g["decay_time_ps"][:],
+        peak_freq_per_ps=g["peak_freq_per_ps"][:],
+        spectral_centroid_per_ps=g["spectral_centroid_per_ps"][:],
+        channel_names=_decode_str_array(g["channel_names"][:]),
+        channel_units=_decode_str_array(g["channel_units"][:]),
+        lag_frames=g["lag_frames"][:],
+        lag_times_ps=g["lag_times_ps"][:],
+        frequencies_per_ps=g["frequencies_per_ps"][:],
+        sample_interval_ps=float(g.attrs["sample_interval_ps"]),
+        n_frames=int(g.attrs["n_frames"]),
+        estimator=_attr("estimator"),
+        window=_attr("window"),
+        spectrum_units=_attr("spectrum_units"),
+        spectrum_sidedness=_attr("spectrum_sidedness"),
+    )
+
+
+@dataclass(frozen=True)
+class KernelCoherenceGroup:
+    """Per-atom zero-lag correlation matrix between the kernel channels,
+    from /trajectory/kernel_coherence/ -- "which kernels move together at
+    this atom." Diagonal 1.0; a constant channel's row/column is NaN."""
+    correlation_matrix: np.ndarray        # (N, C, C) float64
+    channel_names: np.ndarray             # (C,) str
+    channel_units: np.ndarray             # (C,) str
+    n_frames: int
+    statistic: str
+    lagged_cross_correlation: str         # "deferred"
+
+
+def _load_kernel_coherence(f) -> Optional[KernelCoherenceGroup]:
+    path = "/trajectory/kernel_coherence"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(n: str) -> str:
+        return str(_decode_attr(g.attrs.get(n, "")))
+    return KernelCoherenceGroup(
+        correlation_matrix=g["correlation_matrix"][:],
+        channel_names=_decode_str_array(g["channel_names"][:]),
+        channel_units=_decode_str_array(g["channel_units"][:]),
+        n_frames=int(g.attrs["n_frames"]),
+        statistic=_attr("statistic"),
+        lagged_cross_correlation=_attr("lagged_cross_correlation"),
+    )
+
+
+@dataclass(frozen=True)
+class ReorientationalDynamicsGroup:
+    """Backbone bond-vector model-free order parameters from
+    /trajectory/reorientational_dynamics/. Per vector (V rows; vector_kind
+    1=NH, 2=CaHa, 3=CO): the internal (tumbling-removed) and lab-frame P2
+    TCFs, the Henry-Szabo S^2, the area-method tau_e, and the orientation
+    tensor. tau_m_ps is a single global estimate -- read tau_m_converged /
+    trajectory_length_over_tau_m before trusting it (false on short runs)."""
+    bond_vector_autocorrelation: np.ndarray      # (V, L) internal C_I(k)
+    bond_vector_autocorrelation_lab: np.ndarray  # (V, L)
+    order_parameter_S2: np.ndarray               # (V,)
+    lipari_szabo_tau_e: np.ndarray               # (V,) ps
+    bond_orientation_tensor: np.ndarray          # (V, 3, 3)
+    vector_kind: np.ndarray                      # (V,) uint8: 1=NH,2=CaHa,3=CO
+    owning_atom: np.ndarray                      # (V,) int32
+    tail_atom: np.ndarray                        # (V,) int32
+    head_atom: np.ndarray                        # (V,) int32
+    residue_index: np.ndarray                    # (V,) int32
+    lag_frames: np.ndarray                       # (L,) uint64
+    lag_times_ps: np.ndarray                     # (L,)
+    sample_interval_ps: float
+    n_frames: int
+    tau_m_ps: float
+    tau_m_converged: bool
+    trajectory_length_over_tau_m: float
+    tau_m_provenance: str
+    # 15N relaxation layer (NH rows finite; CaHa/CO rows NaN). R1/R2/NOE
+    # inherit tau_m_converged -- when False, the rates are computed but not
+    # reliable. None on a group written before the relaxation layer existed.
+    spectral_density_j: Optional[np.ndarray]               # (V, 5) J at [0,wN,wH-wN,wH,wH+wN], seconds
+    relaxation_R1: Optional[np.ndarray]                    # (V,) s^-1
+    relaxation_R2: Optional[np.ndarray]                    # (V,) s^-1
+    relaxation_NOE: Optional[np.ndarray]                   # (V,) dimensionless
+    relaxation_larmor_freqs_rad_per_s: Optional[np.ndarray]  # (5,) rad/s
+    relaxation_field_tesla: float
+    relaxation_proton_larmor_MHz: float
+    relaxation_nh_bond_length_A: float
+    relaxation_n15_csa_ppm: float
+
+
+def _load_reorientational_dynamics(f) -> Optional[ReorientationalDynamicsGroup]:
+    path = "/trajectory/reorientational_dynamics"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(n: str) -> str:
+        return str(_decode_attr(g.attrs.get(n, "")))
+    return ReorientationalDynamicsGroup(
+        bond_vector_autocorrelation=g["bond_vector_autocorrelation"][:],
+        bond_vector_autocorrelation_lab=g["bond_vector_autocorrelation_lab"][:],
+        order_parameter_S2=g["order_parameter_S2"][:],
+        lipari_szabo_tau_e=g["lipari_szabo_tau_e"][:],
+        bond_orientation_tensor=g["bond_orientation_tensor"][:],
+        vector_kind=g["vector_kind"][:],
+        owning_atom=g["owning_atom"][:],
+        tail_atom=g["tail_atom"][:],
+        head_atom=g["head_atom"][:],
+        residue_index=g["residue_index"][:],
+        lag_frames=g["lag_frames"][:],
+        lag_times_ps=g["lag_times_ps"][:],
+        sample_interval_ps=float(g.attrs["sample_interval_ps"]),
+        n_frames=int(g.attrs["n_frames"]),
+        tau_m_ps=float(g.attrs["tau_m_ps"]),
+        tau_m_converged=bool(g.attrs["tau_m_converged"]),
+        trajectory_length_over_tau_m=float(g.attrs["trajectory_length_over_tau_m"]),
+        tau_m_provenance=_attr("tau_m_provenance"),
+        spectral_density_j=(g["spectral_density_j"][:]
+                            if "spectral_density_j" in g else None),
+        relaxation_R1=g["relaxation_R1"][:] if "relaxation_R1" in g else None,
+        relaxation_R2=g["relaxation_R2"][:] if "relaxation_R2" in g else None,
+        relaxation_NOE=g["relaxation_NOE"][:] if "relaxation_NOE" in g else None,
+        relaxation_larmor_freqs_rad_per_s=(
+            g["relaxation_larmor_freqs_rad_per_s"][:]
+            if "relaxation_larmor_freqs_rad_per_s" in g else None),
+        relaxation_field_tesla=float(
+            g.attrs.get("relaxation_field_tesla", float("nan"))),
+        relaxation_proton_larmor_MHz=float(
+            g.attrs.get("relaxation_proton_larmor_MHz", float("nan"))),
+        relaxation_nh_bond_length_A=float(
+            g.attrs.get("relaxation_nh_bond_length_A", float("nan"))),
+        relaxation_n15_csa_ppm=float(
+            g.attrs.get("relaxation_n15_csa_ppm", float("nan"))),
+    )
+
+
+@dataclass(frozen=True)
+class IRedOrderParameterGroup:
+    """Reference-free iRED order parameters for the amide N-H set, from
+    /trajectory/ired_order_parameters/ (Prompers-Bruschweiler 2002). S^2 is
+    the projection onto the 5 overall-tumbling eigenmodes; separability_gap
+    = lambda5/lambda6 (large -> clean overall/internal split; +inf in the
+    clean rank-5 limit; NaN if n_vectors <= 5)."""
+    s2_ired: np.ndarray            # (M,)
+    eigenvalues: np.ndarray        # (M,) descending
+    residue_index: np.ndarray      # (M,)
+    n_atom: np.ndarray             # (M,) int32
+    h_atom: np.ndarray             # (M,) int32
+    n_frames: int
+    separability_gap: float
+    n_tumbling_modes: int
+
+
+def _load_ired_order_parameters(f) -> Optional[IRedOrderParameterGroup]:
+    path = "/trajectory/ired_order_parameters"
+    if path not in f:
+        return None
+    g = f[path]
+    return IRedOrderParameterGroup(
+        s2_ired=g["s2_ired"][:],
+        eigenvalues=g["eigenvalues"][:],
+        residue_index=g["residue_index"][:],
+        n_atom=g["n_atom"][:],
+        h_atom=g["h_atom"][:],
+        n_frames=int(g.attrs["n_frames"]),
+        separability_gap=float(g.attrs["separability_gap"]),
+        n_tumbling_modes=int(g.attrs["n_tumbling_modes"]),
+    )
+
+
+@dataclass(frozen=True)
+class DihedralAutocorrelationGroup:
+    """Per-residue circular autocorrelation of phi/psi/chi torsions, from
+    /trajectory/dihedral_autocorrelation/ -- the torsional decorrelation
+    timescale. *_corr_time_ps is the 1/e time; *_defined masks flag
+    structurally-defined angles (else NaN curves)."""
+    phi_acf: np.ndarray            # (R, L)
+    psi_acf: np.ndarray            # (R, L)
+    chi_acf: np.ndarray            # (R, 4, L)
+    phi_corr_time_ps: np.ndarray   # (R,)
+    psi_corr_time_ps: np.ndarray   # (R,)
+    chi_corr_time_ps: np.ndarray   # (R, 4)
+    phi_defined: np.ndarray        # (R,) uint8
+    psi_defined: np.ndarray        # (R,) uint8
+    chi_defined: np.ndarray        # (R, 4) uint8
+    residue_index_per_atom: np.ndarray  # (N,) int32
+    lag_frames: np.ndarray         # (L,) uint64
+    lag_times_ps: np.ndarray       # (L,)
+    sample_interval_ps: float
+    n_frames: int
+    estimator: str
+
+
+def _load_dihedral_autocorrelation(f) -> Optional[DihedralAutocorrelationGroup]:
+    path = "/trajectory/dihedral_autocorrelation"
+    if path not in f:
+        return None
+    g = f[path]
+    def _attr(n: str) -> str:
+        return str(_decode_attr(g.attrs.get(n, "")))
+    return DihedralAutocorrelationGroup(
+        phi_acf=g["phi_acf"][:],
+        psi_acf=g["psi_acf"][:],
+        chi_acf=g["chi_acf"][:],
+        phi_corr_time_ps=g["phi_corr_time_ps"][:],
+        psi_corr_time_ps=g["psi_corr_time_ps"][:],
+        chi_corr_time_ps=g["chi_corr_time_ps"][:],
+        phi_defined=g["phi_defined"][:],
+        psi_defined=g["psi_defined"][:],
+        chi_defined=g["chi_defined"][:],
+        residue_index_per_atom=g["residue_index_per_atom"][:],
+        lag_frames=g["lag_frames"][:],
+        lag_times_ps=g["lag_times_ps"][:],
+        sample_interval_ps=float(g.attrs["sample_interval_ps"]),
+        n_frames=int(g.attrs["n_frames"]),
+        estimator=_attr("estimator"),
+    )
+
+
 # ─── TrajectoryData and load_trajectory ─────────────────────────────
 
 
@@ -3073,6 +3338,15 @@ class TrajectoryData:
     # TR12 RmsdSpikeSelection reads from this TR's rmsd[t]; TR13
     # DftPoseCoordinator reads from TR12's SelectionBag at Finalize.
     rmsd_tracking: Optional["RmsdTrackingGroup"] = None
+
+    # Dynamics observables (2026-05-29): the instrument (kernel ACF +
+    # power spectrum, kernel coherence) and the model-free layer
+    # (reorientational S^2/tau_e/TCF, iRED, dihedral autocorrelation).
+    kernel_dynamics: Optional["KernelDynamicsGroup"] = None
+    kernel_coherence: Optional["KernelCoherenceGroup"] = None
+    reorientational_dynamics: Optional["ReorientationalDynamicsGroup"] = None
+    ired_order_parameters: Optional["IRedOrderParameterGroup"] = None
+    dihedral_autocorrelation: Optional["DihedralAutocorrelationGroup"] = None
 
     # Run-scope SelectionBag records, keyed by emitter kind
     # (C++ mangled type name). Per record: frame_idx, time_ps, reason,
@@ -3260,6 +3534,11 @@ def load_trajectory(path: str | Path,
         ring_neighbourhood_trajectory_stats = (
             _load_ring_neighbourhood_trajectory_stats(f))
         rmsd_tracking = _load_rmsd_tracking(f)
+        kernel_dynamics = _load_kernel_dynamics(f)
+        kernel_coherence = _load_kernel_coherence(f)
+        reorientational_dynamics = _load_reorientational_dynamics(f)
+        ired_order_parameters = _load_ired_order_parameters(f)
+        dihedral_autocorrelation = _load_dihedral_autocorrelation(f)
         selections = _load_selections(f)
 
     return TrajectoryData(
@@ -3292,5 +3571,10 @@ def load_trajectory(path: str | Path,
         mopac_vs_ff14sb_reconciliation=mopac_vs_ff14sb_reconciliation,
         ring_neighbourhood_trajectory_stats=ring_neighbourhood_trajectory_stats,
         rmsd_tracking=rmsd_tracking,
+        kernel_dynamics=kernel_dynamics,
+        kernel_coherence=kernel_coherence,
+        reorientational_dynamics=reorientational_dynamics,
+        ired_order_parameters=ired_order_parameters,
+        dihedral_autocorrelation=dihedral_autocorrelation,
         selections=selections,
     )
