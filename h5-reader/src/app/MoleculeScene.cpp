@@ -46,18 +46,15 @@ unsigned short VtkBondOrderFor(model::BondOrder o) {
         case BondOrder::Double:   return 2;
         case BondOrder::Triple:   return 3;
         case BondOrder::Aromatic: return 2;   // display as double
-        case BondOrder::Peptide:  return 1;   // display as single
-        case BondOrder::Unknown:  return 1;
+        case BondOrder::Peptide:  // display as single
+        case BondOrder::Unknown:
+            return 1;
     }
     return 1;
 }
 
 bool SameRevealBinding(const model::SignalBinding& a, const model::SignalBinding& b) {
-    return a.key == b.key
-        && a.anchorKind == b.anchorKind
-        && a.atom == b.atom
-        && a.residue == b.residue
-        && a.atomTuple == b.atomTuple;
+    return a == b;
 }
 }  // namespace
 
@@ -142,6 +139,10 @@ void MoleculeScene::Build(const model::QtProtein& protein,
     protein_      = &protein;
     conformation_ = &conformation;
     currentFrame_ = -1;
+    if (cameraPlaneLock_) {
+        cameraPlaneLock_.reset();
+        emit cameraPlaneLockChanged(false);
+    }
 
     molecule_ = vtkSmartPointer<vtkMolecule>::New();
 
@@ -260,6 +261,160 @@ model::Vec3 MoleculeScene::ComputeCentroid(size_t tIndex) const {
     return sum / static_cast<double>(N);
 }
 
+std::optional<math::PlaneFrame> MoleculeScene::computePlaneFrame(
+    const std::vector<std::size_t>& atoms,
+    std::size_t frame) const {
+    if (!protein_ || !conformation_ || atoms.size() != 3)
+        return std::nullopt;
+    if (frame >= conformation_->frameCount())
+        return std::nullopt;
+    for (std::size_t atom : atoms) {
+        if (atom >= protein_->atomCount())
+            return std::nullopt;
+    }
+    return math::computePlaneFrame({
+        conformation_->atomPosition(frame, atoms[0]),
+        conformation_->atomPosition(frame, atoms[1]),
+        conformation_->atomPosition(frame, atoms[2]),
+    });
+}
+
+bool MoleculeScene::lockCameraToSelectionPlane(const std::vector<std::size_t>& atoms) {
+    ASSERT_THREAD(this);
+    if (!renderer_ || !conformation_ || atoms.size() != 3) {
+        clearCameraPlaneLock();
+        return false;
+    }
+
+    const std::size_t frame = currentFrame_ >= 0 ? static_cast<std::size_t>(currentFrame_) : 0;
+    const auto basis = computePlaneFrame(atoms, frame);
+    auto* camera = renderer_->GetActiveCamera();
+    if (!basis || !camera) {
+        clearCameraPlaneLock();
+        return false;
+    }
+
+    double posRaw[3];
+    double upRaw[3];
+    double directionRaw[3];
+    camera->GetPosition(posRaw);
+    camera->GetViewUp(upRaw);
+    camera->GetDirectionOfProjection(directionRaw);
+    const model::Vec3 position(posRaw[0], posRaw[1], posRaw[2]);
+    model::Vec3 viewUp(upRaw[0], upRaw[1], upRaw[2]);
+    model::Vec3 viewDirection(directionRaw[0], directionRaw[1], directionRaw[2]);
+    if (viewDirection.norm() < 1e-6)
+        viewDirection = basis->origin - position;
+    if (viewDirection.norm() < 1e-6)
+        viewDirection = basis->z;
+    viewDirection.normalize();
+
+    CameraPlaneLock lock;
+    lock.atoms = atoms;
+    lock.normalSign = viewDirection.dot(basis->z) < 0.0 ? -1.0 : 1.0;
+
+    const model::Vec3 lockedNormal = basis->z * lock.normalSign;
+    viewUp -= viewUp.dot(lockedNormal) * lockedNormal;
+    if (viewUp.norm() < 1e-6)
+        viewUp = basis->y;
+    viewUp.normalize();
+
+    lock.localViewUp = model::Vec3(viewUp.dot(basis->x),
+                                   viewUp.dot(basis->y),
+                                   0.0);
+    if (lock.localViewUp.norm() < 1e-6)
+        lock.localViewUp = model::Vec3(0.0, 1.0, 0.0);
+    lock.distance = std::max(1.0, (position - basis->origin).norm());
+    cameraPlaneLock_ = std::move(lock);
+
+    if (!applyCameraPlaneLock(frame)) {
+        clearCameraPlaneLock();
+        return false;
+    }
+
+    renderer_->ResetCameraClippingRange();
+    if (renderWindow_)
+        renderWindow_->Render();
+
+    qCInfo(cScene).noquote() << "camera plane lock enabled | atoms="
+                              << atoms[0] << atoms[1] << atoms[2];
+    emit cameraPlaneLockChanged(true);
+    return true;
+}
+
+void MoleculeScene::clearCameraPlaneLock() {
+    ASSERT_THREAD(this);
+    if (!cameraPlaneLock_)
+        return;
+    cameraPlaneLock_.reset();
+    qCInfo(cScene).noquote() << "camera plane lock disabled";
+    emit cameraPlaneLockChanged(false);
+}
+
+bool MoleculeScene::isCameraPlaneLocked() const {
+    return cameraPlaneLock_.has_value();
+}
+
+std::vector<std::size_t> MoleculeScene::cameraPlaneLockAtoms() const {
+    return cameraPlaneLock_ ? cameraPlaneLock_->atoms : std::vector<std::size_t>{};
+}
+
+bool MoleculeScene::applyCameraPlaneLock(std::size_t frame) {
+    if (!cameraPlaneLock_ || !renderer_)
+        return false;
+
+    const auto basis = computePlaneFrame(cameraPlaneLock_->atoms, frame);
+    auto* camera = renderer_->GetActiveCamera();
+    if (!basis || !camera)
+        return false;
+
+    auto vectorToWorld = [&basis](const model::Vec3& localVector) {
+        return basis->x * localVector.x()
+               + basis->y * localVector.y()
+               + basis->z * localVector.z();
+    };
+
+    // Per-frame normal-sign continuity guard. The basis is rebuilt each
+    // frame from the natural cross product (b-a)×(c-a); that direction
+    // can flip sign across a near-degenerate configuration (ring flip,
+    // third atom crossing the line through the first two). Without the
+    // guard the camera would teleport to the other side of the plane.
+    // Compare the candidate view direction against the previous frame's
+    // direction and, if they disagree, flip the stored normalSign so
+    // subsequent frames stay continuous.
+    model::Vec3 viewDirection = basis->z * (cameraPlaneLock_->normalSign < 0.0 ? -1.0 : 1.0);
+    if (viewDirection.norm() < 1e-6)
+        return false;
+    viewDirection.normalize();
+
+    if (cameraPlaneLock_->lastDirection
+        && viewDirection.dot(*cameraPlaneLock_->lastDirection) < 0.0) {
+        cameraPlaneLock_->normalSign *= -1.0;
+        viewDirection = -viewDirection;
+    }
+    cameraPlaneLock_->lastDirection = viewDirection;
+
+    model::Vec3 viewUp = vectorToWorld(cameraPlaneLock_->localViewUp);
+    viewUp -= viewUp.dot(viewDirection) * viewDirection;
+    if (viewUp.norm() < 1e-6) {
+        viewUp = basis->y - basis->y.dot(viewDirection) * viewDirection;
+    }
+    if (viewUp.norm() < 1e-6) {
+        viewUp = basis->x - basis->x.dot(viewDirection) * viewDirection;
+    }
+    if (viewUp.norm() < 1e-6)
+        return false;
+    viewUp.normalize();
+
+    const double distance = std::max(1.0, cameraPlaneLock_->distance);
+    const model::Vec3 position = basis->origin - viewDirection * distance;
+    camera->SetFocalPoint(basis->origin.x(), basis->origin.y(), basis->origin.z());
+    camera->SetPosition(position.x(), position.y(), position.z());
+    camera->SetViewUp(viewUp.x(), viewUp.y(), viewUp.z());
+    camera->OrthogonalizeViewUp();
+    return true;
+}
+
 void MoleculeScene::setFrame(int t) {
     ASSERT_THREAD(this);
     if (!molecule_ || !protein_ || !conformation_) return;
@@ -305,13 +460,20 @@ void MoleculeScene::setFrame(int t) {
     model::Vec3 centroid = model::Vec3::Zero();
     if (N > 0) centroid = sum / static_cast<double>(N);
 
+    bool planeLockApplied = false;
+    if (cameraPlaneLock_) {
+        planeLockApplied = applyCameraPlaneLock(st);
+        if (!planeLockApplied) {
+            qCWarning(cScene).noquote()
+                << "camera plane lock dropped: selected atoms no longer define a stable plane";
+            clearCameraPlaneLock();
+        }
+    }
+
     // Camera-follow: translate focal point and camera position by the
-    // delta between this frame's centroid and the previous one.
-    // Preserves view direction and distance — the molecule stays
-    // centred as it diffuses through the MD box, and rotation / internal
-    // motion remain visible. A future toolbar toggle can disable this
-    // for users who want to see absolute MD-box position.
-    if (haveLastCentroid_) {
+    // delta between this frame's centroid and the previous one unless
+    // the explicit three-atom plane lock owns the camera this frame.
+    if (!planeLockApplied && haveLastCentroid_) {
         const model::Vec3 delta = centroid - lastCentroid_;
         if (delta.norm() > 0.0) {
             auto* camera = renderer_->GetActiveCamera();
@@ -488,14 +650,14 @@ void MoleculeScene::focusCameraOnReveal(const model::SignalBinding& binding,
     const model::Vec3 oldPos(oldPosRaw[0], oldPosRaw[1], oldPosRaw[2]);
     const double distance = std::max(12.0, (oldPos - oldFp).norm());
 
-    const bool canLookDownDihedral =
-        binding.anchorKind == model::SignalAnchorKind::AtomTuple && binding.atomTuple.size() >= 4
-        && binding.atomTuple[1] < protein_->atomCount()
-        && binding.atomTuple[2] < protein_->atomCount();
+    const auto* tuple = std::get_if<model::AtomTupleAnchor>(&binding.anchor);
+    const bool canLookDownDihedral = tuple && tuple->atoms.size() >= 4
+                                      && tuple->atoms[1] < protein_->atomCount()
+                                      && tuple->atoms[2] < protein_->atomCount();
 
     if (canLookDownDihedral) {
-        const model::Vec3 b = atomPosition(binding.atomTuple[1]);
-        const model::Vec3 c = atomPosition(binding.atomTuple[2]);
+        const model::Vec3 b = atomPosition(tuple->atoms[1]);
+        const model::Vec3 c = atomPosition(tuple->atoms[2]);
         model::Vec3 axis = c - b;
         if (axis.norm() > 1e-9) {
             axis.normalize();

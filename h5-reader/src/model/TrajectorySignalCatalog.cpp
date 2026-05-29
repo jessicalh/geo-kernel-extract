@@ -1,5 +1,6 @@
 #include "TrajectorySignalCatalog.h"
 
+#include <QSet>
 #include <QStringList>
 
 namespace h5reader::model {
@@ -202,6 +203,92 @@ QStringList eventStaticModes() {
     };
 }
 
+bool hasImplementedTemporalSampler(SignalSourceKind sourceKind, const QString& storagePath)
+{
+    if (storagePath.isEmpty())
+        return false;
+
+    switch (sourceKind) {
+    case SignalSourceKind::DenseH5Trajectory: {
+        static const QSet<QString> kDensePaths = {
+            QStringLiteral("/trajectory/positions"),
+            QStringLiteral("/trajectory/bs_shielding_time_series"),
+            QStringLiteral("/trajectory/hm_shielding_time_series"),
+            QStringLiteral("/trajectory/mc_shielding_time_series"),
+            QStringLiteral("/trajectory/piquad_shielding_time_series"),
+            QStringLiteral("/trajectory/ringchi_shielding_time_series"),
+            QStringLiteral("/trajectory/disp_shielding_time_series"),
+            QStringLiteral("/trajectory/hbond_shielding_time_series"),
+            QStringLiteral("/trajectory/mopac_coulomb_shielding_time_series"),
+            QStringLiteral("/trajectory/mopac_mc_shielding_time_series"),
+            QStringLiteral("/trajectory/tripeptide_bb_shielding_time_series"),
+            QStringLiteral("/trajectory/tripeptide_neighbor_shielding_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_1pHB_shielding_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_1pHaB_shielding_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_2pHB_shielding_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_2pHaB_shielding_time_series"),
+            QStringLiteral("/trajectory/sasa_time_series"),
+            QStringLiteral("/trajectory/aimnet2_charge_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_count_time_series"),
+            QStringLiteral("/trajectory/larsen_hbond_water_term_time_series"),
+            QStringLiteral("/trajectory/bonded_energy_time_series"),
+            QStringLiteral("/trajectory/mopac_vs_ff14sb_reconciliation"),
+            QStringLiteral("/trajectory/water_field_time_series"),
+            QStringLiteral("/trajectory/hydration_shell_time_series"),
+            QStringLiteral("/trajectory/hydration_geometry_time_series"),
+            QStringLiteral("/trajectory/apbs_efield_time_series"),
+            QStringLiteral("/trajectory/apbs_efg_time_series"),
+            QStringLiteral("/trajectory/aimnet2_embedding_time_series"),
+            QStringLiteral("/trajectory/aimnet2_charge_response_gradient_time_series"),
+            QStringLiteral("/trajectory/tripeptide_bb_residual_vec_time_series"),
+            QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_prev_time_series"),
+            QStringLiteral("/trajectory/tripeptide_neighbor_residual_vec_next_time_series"),
+            QStringLiteral("/trajectory/tripeptide_bb_method_tag_time_series"),
+            QStringLiteral("/trajectory/dihedral_time_series"),
+            QStringLiteral("/trajectory/dssp8_time_series"),
+            QStringLiteral("/trajectory/j_coupling_time_series"),
+            QStringLiteral("/trajectory/ring_pucker_time_series"),
+            QStringLiteral("/trajectory/ring_neighbourhood_trajectory_stats"),
+            QStringLiteral("/trajectory/gromacs_energy_time_series"),
+            QStringLiteral("/trajectory/rmsd_tracking"),
+            QStringLiteral("/trajectory/bond_length_stats"),
+            QStringLiteral("/trajectory/bs_welford"),
+            QStringLiteral("/trajectory/hm_welford"),
+            QStringLiteral("/trajectory/mc_welford"),
+            QStringLiteral("/trajectory/sasa_welford"),
+            QStringLiteral("/trajectory/eeq_welford"),
+            QStringLiteral("/trajectory/hbond_count_welford"),
+            QStringLiteral("/trajectory/mopac_charge_welford"),
+            QStringLiteral("/trajectory/mopac_bond_order_welford"),
+            QStringLiteral("/trajectory/water_field_welford"),
+            QStringLiteral("/trajectory/aimnet2_charge_response_gradient_welford"),
+            QStringLiteral("/trajectory/hydration_shell_welford"),
+            QStringLiteral("/trajectory/hydration_geometry_welford"),
+            QStringLiteral("/trajectory/bs_t0_autocorrelation"),
+            QStringLiteral("/trajectory/dssp8_transition"),
+            QStringLiteral("/trajectory/dihedral_bin_transition"),
+        };
+        return kDensePaths.contains(storagePath);
+    }
+    case SignalSourceKind::FrameNpySnapshot:
+        return true;
+    case SignalSourceKind::OrcaDftFrame:
+        return storagePath.startsWith(QStringLiteral("orca_"));
+    case SignalSourceKind::Topology:
+        return storagePath == QStringLiteral("bond_length");
+    case SignalSourceKind::DerivedGeometry:
+        return storagePath == QStringLiteral("distance")
+               || storagePath == QStringLiteral("angle")
+               || storagePath == QStringLiteral("dihedral")
+               || storagePath == QStringLiteral("atom_displacement");
+    case SignalSourceKind::SelectionEvents:
+        return storagePath == QStringLiteral("/trajectory/selections")
+               || storagePath == QStringLiteral("selection_timeline")
+               || storagePath == QStringLiteral("selection_counts");
+    }
+    return false;
+}
+
 SignalDescriptor makeDescriptor(const char* id,
                                 const char* conceptKey,
                                 SignalSourceKind sourceKind,
@@ -246,6 +333,16 @@ SignalDescriptor makeDescriptor(const char* id,
                                       && valueShape != SignalValueShape::Embedding;
     descriptor.samplingStatus = samplingStatus;
     descriptor.samplingGapReason = samplingGapReason;
+    if (descriptor.samplingStatus == SampleStatus::Gap
+        && descriptor.samplingGapReason == GapReason::Pending) {
+        if (!descriptor.temporal) {
+            descriptor.samplingStatus = SampleStatus::NotAvailable;
+            descriptor.samplingGapReason = GapReason::NotApplicable;
+        } else if (hasImplementedTemporalSampler(descriptor.sourceKind, descriptor.storagePath)) {
+            descriptor.samplingStatus = SampleStatus::Valid;
+            descriptor.samplingGapReason = GapReason::None;
+        }
+    }
     descriptor.channels = channels;
     descriptor.tags = {
         descriptor.importSet,
@@ -782,7 +879,8 @@ bool TrajectorySignalCatalog::canBind(const DisplaySignalBinding& binding) const
 
 bool TrajectorySignalCatalog::canSample(const DisplaySignalBinding& binding) const {
     const SignalDescriptor* descriptor = findDescriptor(binding.descriptorId);
-    return descriptor && canBind(binding) && descriptor->samplingStatus == SampleStatus::Valid;
+    return descriptor && descriptor->temporal && binding.displayModeId.startsWith(QStringLiteral("strip."))
+        && canBind(binding) && descriptor->samplingStatus == SampleStatus::Valid;
 }
 
 QVector<SignalDescriptor> TrajectorySignalCatalog::BuildDescriptorCatalog() {

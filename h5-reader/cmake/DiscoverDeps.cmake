@@ -33,7 +33,29 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
     OpenGLWidgets
     Network
     Charts
+    HttpServer
 )
+
+# Qt6::Test is required for the model unit-test binary. Mark it OPTIONAL so
+# a developer Qt without qt6-base-tests configures (warns + skips tests
+# instead of failing the whole build).
+find_package(Qt6 6.4 QUIET OPTIONAL_COMPONENTS Test)
+if(Qt6Test_FOUND)
+    message(STATUS "h5reader: Qt6::Test available — model unit tests will build")
+else()
+    message(WARNING
+        "h5reader: Qt6::Test NOT found — model unit tests will be skipped. "
+        "Install qt6-base-dev (apt) or ensure the Qt Pro install includes the Test module.")
+endif()
+
+# Python3 interpreter for the pytest-driven REST smoke. Optional: build
+# configures without it, but the h5reader_rest_smoke ctest entry is skipped.
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    message(STATUS "h5reader: Python3 ${Python3_VERSION} found at ${Python3_EXECUTABLE} — REST smoke tests will be registered")
+else()
+    message(STATUS "h5reader: Python3 not found — REST smoke tests will be skipped")
+endif()
 
 find_package(VTK 9 REQUIRED COMPONENTS
     IOChemistry

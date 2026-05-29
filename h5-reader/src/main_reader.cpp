@@ -39,6 +39,7 @@
 #include <QThread>
 #include <QTimer>
 
+
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <vtkSMPTools.h>
@@ -154,46 +155,24 @@ int main(int argc, char* argv[]) {
                               QStringLiteral("A run directory (trajectory or single-pose) "
                                              "or a trajectory.h5 file."),
                               QStringLiteral("<run_path>"));
-    const QCommandLineOption dashboardSmokeOption(
-        QStringLiteral("dashboard-path-smoke"),
-        QStringLiteral("Run the in-app dashboard signal/controller smoke path, then exit."));
-    const QCommandLineOption dashboardStripSmokeOption(
-        QStringLiteral("dashboard-strip-smoke"),
-        QStringLiteral("Alias for --dashboard-path-smoke."));
-    const QCommandLineOption dashboardSmokeFramesOption(
-        QStringLiteral("dashboard-smoke-frames"),
-        QStringLiteral("Number of frames in the --dashboard-path-smoke evaluation window."),
-        QStringLiteral("frames"),
-        QStringLiteral("10"));
-    const QCommandLineOption dashboardSmokeWindowStartOption(
-        QStringLiteral("dashboard-smoke-window-start"),
-        QStringLiteral("Zero-based first frame of the --dashboard-path-smoke evaluation window."),
-        QStringLiteral("frame"),
-        QStringLiteral("0"));
-    const QCommandLineOption dashboardRequireFrameSnapshotsOption(
-        QStringLiteral("dashboard-require-frame-snapshots"),
-        QStringLiteral("Fail --dashboard-path-smoke if any frame in the evaluation window lacks a frame-local NPY snapshot."));
-    cli.addOption(dashboardSmokeOption);
-    cli.addOption(dashboardStripSmokeOption);
-    cli.addOption(dashboardSmokeFramesOption);
-    cli.addOption(dashboardSmokeWindowStartOption);
-    cli.addOption(dashboardRequireFrameSnapshotsOption);
+    const QCommandLineOption restOption(
+        QStringLiteral("rest"),
+        QStringLiteral("Start embedded HTTP test surface on 127.0.0.1:<port>; "
+                       "port 0 = kernel-pick (printed as H5READER_REST_PORT=NNNNN on stderr). "
+                       "Window stays open until the process is signalled. "
+                       "Replaces the retired --dashboard-path-smoke and --camera-plane-lock-smoke runners; "
+                       "see h5-reader/tests/rest/ for the pytest suite that drives this surface."),
+        QStringLiteral("port"));
+    cli.addOption(restOption);
     cli.process(app);
 
-    bool framesOk = false;
-    const int dashboardSmokeFrames = cli.value(dashboardSmokeFramesOption).toInt(&framesOk);
-    bool windowStartOk = false;
-    const int dashboardSmokeWindowStart = cli.value(dashboardSmokeWindowStartOption).toInt(&windowStartOk);
-    const bool runDashboardSmoke = cli.isSet(dashboardSmokeOption) || cli.isSet(dashboardStripSmokeOption);
-    const bool requireFrameSnapshots = cli.isSet(dashboardRequireFrameSnapshotsOption);
-    if (runDashboardSmoke && (!framesOk || dashboardSmokeFrames <= 0)) {
+    const bool runRest = cli.isSet(restOption);
+    bool restPortOk = false;
+    const quint16 restPort = static_cast<quint16>(
+        runRest ? cli.value(restOption).toUInt(&restPortOk) : 0u);
+    if (runRest && !restPortOk) {
         qCCritical(cLifecycle).noquote()
-            << "--dashboard-smoke-frames must be a positive integer";
-        return 1;
-    }
-    if (runDashboardSmoke && (!windowStartOk || dashboardSmokeWindowStart < 0)) {
-        qCCritical(cLifecycle).noquote()
-            << "--dashboard-smoke-window-start must be a non-negative integer";
+            << "--rest <port> must be a non-negative integer (0 = kernel-pick)";
         return 1;
     }
 
@@ -203,7 +182,7 @@ int main(int argc, char* argv[]) {
             << "No run path given. Usage: h5reader <run-dir | trajectory.h5>";
         return 1;
     }
-    const QString runPath = args.first();
+    const QString& runPath = args.first();
     if (!QFileInfo::exists(runPath)) {
         qCCritical(cLifecycle).noquote() << "Run path not found:" << runPath;
         return 2;
@@ -226,17 +205,16 @@ int main(int argc, char* argv[]) {
     QObject::connect(&app, &QCoreApplication::aboutToQuit, window, &h5reader::app::ReaderMainWindow::shutdown);
 
     // 9. Deferred show — event loop must be running before first render.
-    if (runDashboardSmoke) {
-        QTimer::singleShot(0, window, [window,
-                                       dashboardSmokeWindowStart,
-                                       dashboardSmokeFrames,
-                                       requireFrameSnapshots]() {
+    if (runRest) {
+        QTimer::singleShot(0, window, [window, restPort]() {
             window->show();
-            qCInfo(cLifecycle).noquote() << "window shown for dashboard path smoke";
-            const bool ok = window->runDashboardPathSmoke(dashboardSmokeWindowStart,
-                                                          dashboardSmokeFrames,
-                                                          requireFrameSnapshots);
-            QCoreApplication::exit(ok ? 0 : 4);
+            qCInfo(cLifecycle).noquote() << "window shown for REST surface on port" << restPort;
+            const quint16 bound = window->startRestServer(restPort);
+            if (bound == 0) {
+                qCCritical(cLifecycle).noquote()
+                    << "REST server failed to bind; exiting";
+                QCoreApplication::exit(6);
+            }
         });
     } else {
         QTimer::singleShot(0, window, [window]() {

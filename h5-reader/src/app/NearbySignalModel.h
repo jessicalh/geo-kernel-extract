@@ -1,7 +1,7 @@
 // NearbySignalModel -- focus-neighbourhood candidates for dashboard strips.
 //
-// This is discovery state, not atom selection. It answers "what atoms/residues
-// near the focused atom could be bound to a strip?" without mutating the
+// This is discovery state, not atom selection. It answers "what nearby
+// topology targets could be bound to a strip?" without mutating the
 // interactive AtomSelection model.
 
 #pragma once
@@ -26,12 +26,21 @@ class NearbySignalModel final : public QAbstractTableModel {
     Q_OBJECT
 
 public:
-    enum class CandidateKind { Atom, Residue };
+    enum class CandidateKind {
+        Atom,
+        Residue,
+        Bond,
+        Ring,
+        AromaticRing,
+        SaturatedRing,
+        RingMembership,
+    };
 
     struct Candidate {
         CandidateKind kind = CandidateKind::Atom;
-        std::optional<std::size_t> atom;
-        std::optional<std::size_t> residue;
+        model::SignalAnchor anchor = model::NoneAnchor{};
+        std::optional<std::size_t> residueContext;
+        std::optional<std::size_t> absoluteRing;
         double distanceAngstrom = 0.0;
         QString label;
     };
@@ -40,6 +49,9 @@ public:
         KindRole = Qt::UserRole + 1,
         AtomIndexRole,
         ResidueIndexRole,
+        BondIndexRole,
+        RingIndexRole,
+        RingMembershipIndexRole,
         DistanceRole,
         AnchorKindRole,
     };
@@ -65,6 +77,9 @@ public:
 private:
     QString residueLabel(std::size_t residueIdx) const;
     QString atomLabel(std::size_t atomIdx) const;
+    QString bondLabel(std::size_t bondIdx) const;
+    QString ringLabel(std::size_t ringIdx) const;
+    QString ringMembershipLabel(std::size_t membershipIdx) const;
     void rebuild();
 
     const model::QtProtein* protein_ = nullptr;

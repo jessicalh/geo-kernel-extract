@@ -1,9 +1,10 @@
 // StripStackWidget -- custom QPainter surface for stacked trajectory strips.
 //
 // Data ownership stays outside the widget. Each track points at a
-// model::ChannelBuffer owned by StripChartDock. This widget is only the
-// renderer and gesture surface: visible range, selected range, and playback
-// frame requests all go through TimeViewportController.
+// model::ChannelBuffer owned by DashboardDisplayController and handed through
+// DashboardStripDock. This widget is only the renderer and gesture surface:
+// visible range, selected range, and playback frame requests all go through
+// TimeViewportController.
 
 #pragma once
 
@@ -69,12 +70,6 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
 
 private:
-    struct Range {
-        double min = 0.0;
-        double max = 1.0;
-        bool valid = false;
-    };
-
     QRectF trackRect(int index) const;
     QRectF plotRect(const QRectF& trackRect) const;
     QRectF revealRect(const QRectF& trackRect) const;
@@ -82,10 +77,7 @@ private:
     void updateMinimumHeight();
     bool timePlotContains(const QPoint& pos) const;
     bool revealAt(const QPoint& pos, model::SignalBinding* binding) const;
-    Range visibleRange(const model::ChannelBuffer& buffer) const;
     int frameAt(const QPoint& pos) const;
-    double xForFrame(int frame, const QRectF& plot) const;
-    double yForValue(double value, const Range& range, const QRectF& plot) const;
     QString tooltipText(int frame) const;
 
     QVector<Track> tracks_;

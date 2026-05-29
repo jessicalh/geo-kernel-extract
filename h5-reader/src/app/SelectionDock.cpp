@@ -6,8 +6,10 @@
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
+#include <QFont>
 #include <QLabel>
 #include <QListView>
+#include <QSizePolicy>
 #include <QStringList>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -19,22 +21,38 @@ SelectionDock::SelectionDock(QWidget* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("SelectionDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    setMinimumWidth(48);
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    QFont compactFont = font();
+    if (compactFont.pointSize() > 8)
+        compactFont.setPointSize(compactFont.pointSize() - 1);
+    else if (compactFont.pixelSize() > 10)
+        compactFont.setPixelSize(compactFont.pixelSize() - 1);
+    setFont(compactFont);
 
     auto* container = new QWidget(this);
+    container->setMinimumWidth(0);
+    container->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     auto* vbox      = new QVBoxLayout(container);
     vbox->setContentsMargins(4, 4, 4, 4);
     vbox->setSpacing(4);
 
     header_ = new QLabel(QStringLiteral("No atoms selected"), container);
+    header_->setMinimumWidth(0);
+    header_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     header_->setStyleSheet(QStringLiteral("font-weight: bold;"));
     vbox->addWidget(header_);
 
     detail_ = new QLabel(container);
+    detail_->setMinimumWidth(0);
+    detail_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     detail_->setWordWrap(true);
     detail_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     vbox->addWidget(detail_);
 
     list_ = new QListView(container);
+    list_->setMinimumWidth(0);
+    list_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     // Display-only in increment 1 — picking happens in the 3-D view, not the
     // panel. A later increment turns row clicks into focus changes.
     list_->setSelectionMode(QAbstractItemView::NoSelection);

@@ -12,12 +12,16 @@
 
 #include <QAbstractItemModel>
 #include <QCheckBox>
+#include <QFont>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QTabBar>
 #include <QToolButton>
@@ -32,10 +36,20 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("DashboardStripDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    setMinimumHeight(64);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+    QFont compactFont = font();
+    if (compactFont.pointSize() > 8)
+        compactFont.setPointSize(compactFont.pointSize() - 1);
+    else if (compactFont.pixelSize() > 10)
+        compactFont.setPixelSize(compactFont.pixelSize() - 1);
+    setFont(compactFont);
 
     controller_ = new DashboardDisplayController(this);
 
     auto* container = new QWidget(this);
+    container->setMinimumHeight(0);
+    container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto* layout = new QVBoxLayout(container);
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(4);
@@ -79,8 +93,15 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     top->addWidget(metricButton_);
     layout->addLayout(top);
 
-    stackWidget_ = new StripStackWidget(container);
-    layout->addWidget(stackWidget_, 1);
+    auto* scroll = new QScrollArea(container);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setMinimumHeight(48);
+    scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    stackWidget_ = new StripStackWidget(scroll);
+    scroll->setWidget(stackWidget_);
+    layout->addWidget(scroll, 1);
 
     statusLabel_ = new QLabel(QStringLiteral("No active strip signals."), container);
     statusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);

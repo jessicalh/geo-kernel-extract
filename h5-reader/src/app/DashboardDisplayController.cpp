@@ -58,64 +58,40 @@ bool modeWantsChannel(const QString& mode, const model::ChannelDescriptor& chann
     return true;
 }
 
-model::SignalAnchorKind anchorKindForAxis(model::SignalAxis axis) {
-    switch (axis) {
-    case model::SignalAxis::Atom:
-        return model::SignalAnchorKind::Atom;
-    case model::SignalAxis::Residue:
-        return model::SignalAnchorKind::Residue;
-    case model::SignalAxis::AtomTuple:
-        return model::SignalAnchorKind::AtomTuple;
-    case model::SignalAxis::None:
-    case model::SignalAxis::Bond:
-    case model::SignalAxis::Ring:
-    case model::SignalAxis::AromaticRing:
-    case model::SignalAxis::SaturatedRing:
-    case model::SignalAxis::RingContributionPair:
-    case model::SignalAxis::RingMembership:
-    case model::SignalAxis::MutationMatchPair:
-    case model::SignalAxis::Protein:
-    case model::SignalAxis::System:
-    case model::SignalAxis::Event:
-        break;
-    }
-    return model::SignalAnchorKind::None;
-}
-
-model::SignalFamily familyForDescriptor(const model::SignalDescriptor& descriptor) {
-    if (descriptor.requiredAnchor == model::SignalAxis::Atom)
-        return model::SignalFamily::AtomTimeSeries;
-    if (descriptor.requiredAnchor == model::SignalAxis::Residue)
-        return model::SignalFamily::ResidueTimeSeries;
-    if (descriptor.requiredAnchor == model::SignalAxis::System
-        || descriptor.requiredAnchor == model::SignalAxis::Protein
-        || descriptor.requiredAnchor == model::SignalAxis::Event
-        || descriptor.requiredAnchor == model::SignalAxis::None) {
-        return model::SignalFamily::SystemTimeSeries;
-    }
-    return model::SignalFamily::SystemTimeSeries;
-}
-
 model::SignalBinding bindingFromAnchor(const model::SignalDescriptor& descriptor,
                                        const model::SignalAnchor& anchor,
                                        bool followsFocus) {
     model::SignalBinding binding;
-    binding.key = model::SignalKey{familyForDescriptor(descriptor), descriptor.conceptKey, QString()};
-    binding.anchorKind = anchorKindForAxis(descriptor.requiredAnchor);
+    binding.descriptorId = descriptor.id;
+    binding.conceptKey = descriptor.conceptKey;
+    binding.anchor = anchor;
     binding.followsFocus = followsFocus;
-
-    if (const auto* atom = std::get_if<model::AtomAnchor>(&anchor)) {
-        binding.anchorKind = model::SignalAnchorKind::Atom;
-        binding.atom = atom->atom;
-    } else if (const auto* residue = std::get_if<model::ResidueAnchor>(&anchor)) {
-        binding.anchorKind = model::SignalAnchorKind::Residue;
-        binding.residue = residue->residue;
-    } else if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&anchor)) {
-        binding.anchorKind = model::SignalAnchorKind::AtomTuple;
-        binding.atomTuple = tuple->atoms;
-    }
-
     return binding;
+}
+
+bool bindingHasRevealTarget(const model::SignalBinding& binding) {
+    switch (model::AxisForAnchor(binding.anchor)) {
+    case model::SignalAxis::Atom:
+    case model::SignalAxis::Residue:
+    case model::SignalAxis::Bond:
+    case model::SignalAxis::Ring:
+    case model::SignalAxis::AromaticRing:
+    case model::SignalAxis::SaturatedRing:
+    case model::SignalAxis::RingMembership:
+        return true;
+    case model::SignalAxis::AtomTuple:
+        if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&binding.anchor))
+            return !tuple->atoms.empty();
+        return false;
+    case model::SignalAxis::None:
+    case model::SignalAxis::RingContributionPair:
+    case model::SignalAxis::MutationMatchPair:
+    case model::SignalAxis::Protein:
+    case model::SignalAxis::System:
+    case model::SignalAxis::Event:
+        return false;
+    }
+    return false;
 }
 
 bool unitSpecPresent(const model::UnitSpec& units) {
@@ -172,10 +148,20 @@ std::optional<std::size_t> anchorRow(const model::SignalAnchor& anchor,
         return inRange(bond->bond);
     if (const auto* ring = std::get_if<model::RingAnchor>(&anchor))
         return inRange(ring->ring);
-    if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor))
+    if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        if (axis == model::SignalAxis::Ring && protein) {
+            const auto absolute = protein->topology().absoluteRingIndex(model::QtRingAxis::AromaticRing, ring->ring);
+            return absolute ? inRange(*absolute) : std::nullopt;
+        }
         return inRange(ring->ring);
-    if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor))
+    }
+    if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        if (axis == model::SignalAxis::Ring && protein) {
+            const auto absolute = protein->topology().absoluteRingIndex(model::QtRingAxis::SaturatedRing, ring->ring);
+            return absolute ? inRange(*absolute) : std::nullopt;
+        }
         return inRange(ring->ring);
+    }
     if (const auto* pair = std::get_if<model::RingContributionPairAnchor>(&anchor))
         return inRange(pair->pair);
     if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor))
@@ -397,6 +383,11 @@ SamplePlan frameNpyPlan(const model::SignalDescriptor& descriptor,
     return plan;
 }
 
+// The dense H5 router is deliberately explicit: it is the visible handoff from
+// catalog descriptors to concrete typed H5 buffers. Keep these storagePath cases
+// in step with TrajectorySignalCatalog and the dashboard smoke coverage; if this
+// grows further, the next move is a table of descriptor-path samplers, not hidden
+// reflection or ad hoc dynamic lookup.
 SamplePlan denseH5Plan(const model::SignalDescriptor& descriptor,
                        const model::ChannelDescriptor& channel,
                        const QString& displayModeId,
@@ -1180,7 +1171,7 @@ DashboardSmokeSummary DashboardDisplayController::smokeSummary() const {
 
 DashboardSmokeSummary DashboardDisplayController::smokeSummary(int firstFrame, int lastFrame) const {
     DashboardSmokeSummary summary;
-    summary.seriesCount = series_.size();
+    summary.seriesCount = static_cast<int>(series_.size());
     summary.seriesSparseness.reserve(series_.size());
 
     const int first = std::max(0, firstFrame);
@@ -1437,7 +1428,7 @@ void DashboardDisplayController::buildGenericTracks(const model::DashboardSignal
             active.sample = std::move(plan.sample);
             active.needsFrameSnapshot = plan.needsFrameSnapshot;
             active.needsDftFrame = plan.needsDftFrame;
-            active.hasBinding = reveal.anchorKind != model::SignalAnchorKind::None;
+            active.hasBinding = bindingHasRevealTarget(reveal);
             active.binding = reveal;
             series.push_back(std::move(active));
         }

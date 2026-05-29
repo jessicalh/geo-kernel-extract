@@ -60,6 +60,22 @@ const std::vector<int32_t>& QtTopology::bondIndicesForAtom(std::size_t atomIdx) 
     return atomIdx < bondsByAtom_.size() ? bondsByAtom_[atomIdx] : EmptyIndexVector();
 }
 
+std::optional<std::size_t> QtTopology::absoluteRingIndex(QtRingAxis axis, std::size_t index) const {
+    switch (axis) {
+    case QtRingAxis::Ring:
+        return index < rings_.size() ? std::optional<std::size_t>(index) : std::nullopt;
+    case QtRingAxis::AromaticRing:
+        return index < aromaticRingCount_ ? std::optional<std::size_t>(index) : std::nullopt;
+    case QtRingAxis::SaturatedRing: {
+        if (index >= saturatedRingCount_)
+            return std::nullopt;
+        const std::size_t absolute = aromaticRingCount_ + index;
+        return absolute < rings_.size() ? std::optional<std::size_t>(absolute) : std::nullopt;
+    }
+    }
+    return std::nullopt;
+}
+
 const std::vector<int32_t>& QtTopology::ringMembershipsForAtom(std::size_t atomIdx) const {
     return atomIdx < ringMembershipsByAtom_.size() ? ringMembershipsByAtom_[atomIdx] : EmptyIndexVector();
 }

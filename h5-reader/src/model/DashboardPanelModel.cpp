@@ -67,12 +67,12 @@ QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,
             continue;
         }
 
-        const int before = refs.size();
+        const int before = static_cast<int>(refs.size());
         for (const ChannelDescriptor& channel : descriptor.channels) {
             if (modeWantsChannel(mode, channel))
                 refs.push_back(DashboardDisplayRef{signalId, mode, channel.id});
         }
-        if (refs.size() == before) {
+        if (static_cast<int>(refs.size()) == before) {
             for (const ChannelDescriptor& channel : descriptor.channels)
                 refs.push_back(DashboardDisplayRef{signalId, mode, channel.id});
         }
@@ -88,7 +88,7 @@ DashboardPanelModel::DashboardPanelModel(QObject* parent)
 int DashboardPanelModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid())
         return 0;
-    return panels_.size();
+    return static_cast<int>(panels_.size());
 }
 
 QVariant DashboardPanelModel::data(const QModelIndex& index, int role) const {
@@ -197,7 +197,7 @@ QModelIndex DashboardPanelModel::indexForId(const QUuid& id) const {
 }
 
 QUuid DashboardPanelModel::addPanel(const QString& name) {
-    const int row = panels_.size();
+    const int row = static_cast<int>(panels_.size());
     DashboardPanel panel = makePanel(name, row + 1);
 
     beginInsertRows(QModelIndex(), row, row);
@@ -250,11 +250,21 @@ bool DashboardPanelModel::removePanelAt(int row) {
 }
 
 void DashboardPanelModel::clear() {
+    const QVector<DashboardPanel> removedPanels = panels_;
+
     beginResetModel();
     panels_.clear();
     activePanelId_ = {};
-    endResetModel();
     ensureOnePanel();
+    endResetModel();
+
+    for (const DashboardPanel& panel : removedPanels) {
+        for (const DashboardDisplayRef& ref : panel.displays)
+            emit displayRefRemoved(panel.id, ref);
+        if (!panel.displays.isEmpty())
+            emit displayRefsChanged(panel.id);
+        emit panelRemoved(panel.id, panel.displays);
+    }
     emit activePanelChanged(activePanelId_);
 }
 
@@ -315,7 +325,7 @@ bool DashboardPanelModel::removeDisplayRef(const QUuid& panelId, const Dashboard
     const int row = rowForId(panelId);
     if (row < 0)
         return false;
-    const int index = panels_[row].displays.indexOf(ref);
+    const int index = static_cast<int>(panels_[row].displays.indexOf(ref));
     if (index < 0)
         return false;
     panels_[row].displays.removeAt(index);
@@ -332,7 +342,7 @@ int DashboardPanelModel::removeDisplayRefsForSignal(const QUuid& signalId) {
     for (int row = 0; row < panels_.size(); ++row) {
         DashboardPanel& panel = panels_[row];
         bool rowChanged = false;
-        for (int i = panel.displays.size() - 1; i >= 0; --i) {
+        for (int i = static_cast<int>(panel.displays.size()) - 1; i >= 0; --i) {
             if (panel.displays.at(i).signalId != signalId)
                 continue;
             const DashboardDisplayRef ref = panel.displays.at(i);
@@ -357,7 +367,7 @@ int DashboardPanelModel::removeDisplayRefsForSignalMode(const QUuid& signalId, c
     for (int row = 0; row < panels_.size(); ++row) {
         DashboardPanel& panel = panels_[row];
         bool rowChanged = false;
-        for (int i = panel.displays.size() - 1; i >= 0; --i) {
+        for (int i = static_cast<int>(panel.displays.size()) - 1; i >= 0; --i) {
             const DashboardDisplayRef& candidate = panel.displays.at(i);
             if (candidate.signalId != signalId || candidate.displayModeId != mode)
                 continue;

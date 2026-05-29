@@ -47,6 +47,7 @@
 #include "../model/Conformation.h"
 #include "../model/QtProtein.h"
 #include "../model/SignalDictionary.h"
+#include "PlaneFrameMath.h"
 
 #include <QObject>
 #include <QPointer>
@@ -128,10 +129,37 @@ public slots:
     void revealBinding(const model::SignalBinding& binding);
     void clearReveal();
 
+    bool lockCameraToSelectionPlane(const std::vector<std::size_t>& atoms);
+    void clearCameraPlaneLock();
+    // Read-only inspectors for tests + the REST surface. Public-safe;
+    // implementation lives in MoleculeScene.cpp to keep the private
+    // CameraPlaneLock struct out of header consumers.
+    bool isCameraPlaneLocked() const;
+    std::vector<std::size_t> cameraPlaneLockAtoms() const;
+
+signals:
+    void cameraPlaneLockChanged(bool active);
+
 private:
+    // PlaneFrame lives in PlaneFrameMath.h so the math is unit-testable
+    // without a renderer; CameraPlaneLock carries the frame-to-frame
+    // continuity state (lastDirection) that the lock needs to keep the
+    // camera on the same side when the natural cross-product flips sign.
+    struct CameraPlaneLock {
+        std::vector<std::size_t> atoms;
+        model::Vec3 localViewUp = model::Vec3::Zero();
+        double normalSign = 1.0;
+        double distance = 0.0;
+        std::optional<model::Vec3> lastDirection;  // unit vector, world-space
+    };
+
     void focusCameraOnReveal(const model::SignalBinding& binding,
                              const std::vector<std::size_t>& atoms,
                              int frame);
+    std::optional<math::PlaneFrame> computePlaneFrame(
+        const std::vector<std::size_t>& atoms,
+        std::size_t frame) const;
+    bool applyCameraPlaneLock(std::size_t frame);
 
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
     vtkSmartPointer<vtkRenderer>                  renderer_;
@@ -163,6 +191,7 @@ private:
     // Keeps view direction and zoom stable while following translation.
     model::Vec3 lastCentroid_ = model::Vec3::Zero();
     bool        haveLastCentroid_ = false;
+    std::optional<CameraPlaneLock> cameraPlaneLock_;
 };
 
 }  // namespace h5reader::app

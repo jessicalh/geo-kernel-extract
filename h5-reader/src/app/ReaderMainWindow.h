@@ -56,9 +56,11 @@ public:
     explicit ReaderMainWindow(h5reader::io::QtLoadResult&& loaded, QWidget* parent = nullptr);
     ~ReaderMainWindow() override;
 
-    bool runDashboardPathSmoke(int firstFrame = 0,
-                               int frameCount = 10,
-                               bool requireFrameSnapshots = false);
+    // Start the embedded REST test surface bound to 127.0.0.1:<port>.
+    // Port 0 asks the kernel to pick a free port. Returns the actually-bound
+    // port, or 0 on failure. The bound port is also written to stderr as
+    // `H5READER_REST_PORT=NNNNN\n` for the pytest fixture to scrape.
+    quint16 startRestServer(quint16 port);
 
 public slots:
     // Called from aboutToQuit. Stops timers, cancels any workers, and
@@ -78,11 +80,13 @@ private slots:
     void onPlayPauseClicked();
     void onOpenDirectory();
     void onOpenSignalDisplays();
+    void onPlaneLockToggled(bool checked);
 
 private:
     void buildUi();
     void buildToolbar();
     void buildStatusBar();
+    void updatePlaneLockAction();
 
     // The loaded model. Owned by the window for its lifetime.
     std::unique_ptr<h5reader::io::QtLoadResult> loaded_;
@@ -96,15 +100,14 @@ private:
     QtPlaybackController* playback_ = nullptr;
     TimeViewportController* timeViewport_ = nullptr;
 
-    // Atom picker + inspector dock. Picker is an event filter on the
-    // VTK widget; inspector is a tabified QDockWidget on the right.
+    // Atom picker + Atom Info dock. Picker is an event filter on the
+    // VTK widget; Atom Info is tabified with the compact selection panel.
     class QtAtomPicker* picker_ = nullptr;
     class QtAtomInspectorDock* inspectorDock_ = nullptr;
-    class QtAtomTimeSeriesDock* timeSeriesDock_ = nullptr;
 
     // Selection model — the QAbstractListModel for the ≤4-atom group — plus
     // its QListView panel. The picker feeds the model; the model fans focus
-    // to the inspector/time-series and the set to the measurement overlay.
+    // to Atom Info and the set to the measurement overlay/dashboard context.
     model::AtomSelection* selection_ = nullptr;
     class SelectionDock* selectionDock_ = nullptr;
     class SignalDisplayDialog* signalDisplayDialog_ = nullptr;
@@ -124,6 +127,10 @@ private:
     // path). Window-owned (Qt parent); the dock holds a QPointer to it.
     model::DftShieldingStore* dftStore_ = nullptr;
 
+    // Optional REST test surface — constructed by startRestServer(), only
+    // when h5reader is launched with --rest <port>. Window-owned.
+    class RestServer* restServer_ = nullptr;
+
     // Toolbar controls.
     QPointer<QSlider> frameSlider_;
     QPointer<QSpinBox> fpsSpinner_;
@@ -133,6 +140,7 @@ private:
     QPointer<QAction> showButterflyAction_;
     QPointer<QAction> showBFieldAction_;
     QPointer<QAction> signalDisplaysAction_;
+    QPointer<QAction> planeLockAction_;
 
     // Status bar labels.
     QPointer<QLabel> proteinLabel_;

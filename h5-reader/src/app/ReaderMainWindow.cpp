@@ -3,7 +3,7 @@
 #include "MoleculeScene.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
-#include "QtAtomTimeSeriesDock.h"
+#include "RestServer.h"
 #include "QtBackboneRibbonOverlay.h"
 #include "QtBFieldStreamOverlay.h"
 #include "QtFieldGridOverlay.h"
@@ -36,11 +36,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QFileDialog>
+#include <QFont>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLoggingCategory>
 #include <QMenuBar>
 #include <QProcess>
+#include <QSet>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStringList>
@@ -53,8 +56,11 @@
 #include <QVTKOpenGLNativeWidget.h>
 
 #include <vtkRendererCollection.h>
+#include <vtkCamera.h>
 
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -62,7 +68,6 @@ namespace h5reader::app {
 
 namespace {
 Q_LOGGING_CATEGORY(cWindow, "h5reader.window")
-Q_LOGGING_CATEGORY(cDashboardSmoke, "h5reader.dashboard.smoke")
 
 // Locate the DFT campaign's jobs dir relative to the opened run path, by a
 // BOUNDED documented-convention check (not file discovery): the dataset root
@@ -103,96 +108,54 @@ QUuid addInitialGenericDashboardSignal(model::TrajectorySignalCatalog* catalog,
     return id;
 }
 
-bool isStripMode(const QString& mode) {
-    return mode.startsWith(QStringLiteral("strip."));
-}
-
-bool isSmokeStripMode(const QString& mode) {
-    return isStripMode(mode) && mode != QStringLiteral("strip.spectrum");
-}
-
-QStringList stripModesForDescriptor(const model::SignalDescriptor& descriptor) {
-    QStringList modes;
-    for (const QString& mode : model::AllDisplayModes(descriptor)) {
-        if (isStripMode(mode) && !modes.contains(mode))
-            modes.push_back(mode);
-    }
-    return modes;
-}
-
-QStringList smokeStripModesForDescriptor(const model::SignalDescriptor& descriptor) {
-    QStringList modes;
-    for (const QString& mode : stripModesForDescriptor(descriptor)) {
-        if (isSmokeStripMode(mode))
-            modes.push_back(mode);
-    }
-    return modes;
-}
-
-model::SignalAnchor defaultSmokeAnchor(model::SignalAxis axis, const model::QtProtein* protein) {
-    switch (axis) {
-    case model::SignalAxis::Atom:
-        return model::AtomAnchor{0};
-    case model::SignalAxis::Residue:
-        if (protein && protein->atomCount() > 0) {
-            const int residue = protein->atom(0).residueIndex;
-            if (residue >= 0)
-                return model::ResidueAnchor{static_cast<std::size_t>(residue)};
+// Owns the one intentional signal/panel cleanup loop for dashboard models:
+// removing a signal removes its display refs, and removing the last display
+// ref prunes the now-unreferenced signal.
+class DashboardSignalPanelCoordinator final : public QObject {
+public:
+    DashboardSignalPanelCoordinator(model::DashboardSignalModel* signalModel,
+                                    model::DashboardPanelModel* panelModel,
+                                    QObject* parent)
+        : QObject(parent)
+        , signals_(signalModel)
+        , panels_(panelModel)
+    {
+        if (signals_) {
+            ACONNECT(signals_.data(), &model::DashboardSignalModel::signalRemoved,
+                     this, [this](const QUuid& id) { onSignalRemoved(id); });
         }
-        return model::ResidueAnchor{0};
-    case model::SignalAxis::AtomTuple: {
-        std::vector<std::size_t> atoms;
-        const std::size_t n = protein ? std::min<std::size_t>(protein->atomCount(), model::AtomSelection::kMaxAtoms)
-                                      : 0;
-        atoms.reserve(n);
-        for (std::size_t i = 0; i < n; ++i)
-            atoms.push_back(i);
-        return model::AtomTupleAnchor{std::move(atoms)};
+        if (panels_) {
+            ACONNECT(panels_.data(), &model::DashboardPanelModel::displayRefRemoved,
+                     this, [this](const QUuid&, const model::DashboardDisplayRef& ref) {
+                         onDisplayRefRemoved(ref);
+                     });
+        }
     }
-    case model::SignalAxis::Bond:
-        return model::BondAnchor{0};
-    case model::SignalAxis::Ring:
-        return model::RingAnchor{0};
-    case model::SignalAxis::AromaticRing:
-        return model::AromaticRingAnchor{0};
-    case model::SignalAxis::SaturatedRing:
-        return model::SaturatedRingAnchor{0};
-    case model::SignalAxis::RingContributionPair:
-        return model::RingContributionPairAnchor{0};
-    case model::SignalAxis::RingMembership:
-        return model::RingMembershipAnchor{0};
-    case model::SignalAxis::MutationMatchPair:
-        return model::MutationMatchPairAnchor{0};
-    case model::SignalAxis::Protein:
-        return model::ProteinAnchor{};
-    case model::SignalAxis::System:
-        return model::SystemAnchor{};
-    case model::SignalAxis::Event:
-        return model::EventAnchor{};
-    case model::SignalAxis::None:
-        return model::NoneAnchor{};
+
+private:
+    void onSignalRemoved(const QUuid& id)
+    {
+        if (!panels_ || id.isNull())
+            return;
+        signalsBeingRemoved_.insert(id);
+        panels_->removeDisplayRefsForSignal(id);
+        signalsBeingRemoved_.remove(id);
     }
-    return model::NoneAnchor{};
-}
 
-std::vector<int> dashboardSmokeFrames(const model::Conformation* conformation,
-                                      int firstFrame,
-                                      int frameCount) {
-    std::vector<int> frames;
-    if (!conformation)
-        return frames;
+    void onDisplayRefRemoved(const model::DashboardDisplayRef& ref)
+    {
+        if (!signals_ || !panels_ || ref.signalId.isNull())
+            return;
+        if (signalsBeingRemoved_.contains(ref.signalId) || !signals_->signalById(ref.signalId))
+            return;
+        if (panels_->signalReferenceCount(ref.signalId) == 0)
+            signals_->removeSignal(ref.signalId);
+    }
 
-    const int totalFrames = static_cast<int>(conformation->frameCount());
-    if (totalFrames <= 0 || firstFrame < 0 || firstFrame >= totalFrames)
-        return frames;
-
-    const int availableFrames = totalFrames - firstFrame;
-    const int requestedFrames = std::clamp(frameCount > 0 ? frameCount : 10, 1, availableFrames);
-    frames.reserve(requestedFrames);
-    for (int frame = firstFrame; frame < firstFrame + requestedFrames; ++frame)
-        frames.push_back(frame);
-    return frames;
-}
+    QPointer<model::DashboardSignalModel> signals_;
+    QPointer<model::DashboardPanelModel> panels_;
+    QSet<QUuid> signalsBeingRemoved_;
+};
 }  // namespace
 
 ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
@@ -213,6 +176,14 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     scene_ = new MoleculeScene(renderWindow_, this);
     scene_->Build(*loaded_->protein, *loaded_->conformation);
     scene_->ResetCamera();
+    ACONNECT(scene_, &MoleculeScene::cameraPlaneLockChanged,
+             this, [this](bool active) {
+                 if (planeLockAction_ && planeLockAction_->isChecked() != active) {
+                     const QSignalBlocker blocker(planeLockAction_);
+                     planeLockAction_->setChecked(active);
+                 }
+                 updatePlaneLockAction();
+             });
 
     // Playback controller — frameChanged drives the scene, which drives
     // the render. Toolbar controls drive the playback.
@@ -253,8 +224,8 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     // Atom picker — event filter on the VTK widget. Emits
     // atomPicked(idx, modifiers) on double-click. It stays dumb: it does NOT
     // interpret the gesture. AtomSelection (below) is the sole consumer; it
-    // applies the plain/Shift policy and fans typed changes to the inspector,
-    // the time-series dock, and the measurement overlay. Pull the renderer
+    // applies the plain/Shift policy and fans typed changes to Atom Info,
+    // the dashboard context, and the measurement overlay. Pull the renderer
     // smart-ptr out of the render window so the picker holds the same
     // instance MoleculeScene installed.
     auto* firstRenderer = renderWindow_->GetRenderers()->GetFirstRenderer();
@@ -263,7 +234,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                                 loaded_->conformation.get(),
                                 playback_, this);
 
-    // Atom inspector dock — tabified on the right. Tracks the selection's
+    // Atom Info dock — tabified on the right. Tracks the selection's
     // FOCUS atom (one atom's full per-frame pile). Starts empty; fills in on
     // the first pick.
     inspectorDock_ = new QtAtomInspectorDock(this);
@@ -274,26 +245,14 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     ACONNECT(playback_,  &QtPlaybackController::frameChanged,
              inspectorDock_, &QtAtomInspectorDock::setFrame);
 
-    // Time-series dock — per-atom scalar-vs-frame line chart via Qt6 Charts.
-    // Also tracks the FOCUS atom. Tabified with the inspector.
-    timeSeriesDock_ = new QtAtomTimeSeriesDock(this);
-    timeSeriesDock_->setContext(loaded_->protein.get(),
-                                 loaded_->conformation.get());
-    addDockWidget(Qt::RightDockWidgetArea, timeSeriesDock_);
-    tabifyDockWidget(inspectorDock_, timeSeriesDock_);
-    inspectorDock_->raise();   // inspector on top by default
-
-    ACONNECT(playback_,  &QtPlaybackController::frameChanged,
-             timeSeriesDock_, &QtAtomTimeSeriesDock::setFrame);
-
     // ---- Selection model — the single source of selection truth ----------
     //
     // The picker reports a pick + its keyboard modifiers; AtomSelection
     // interprets the gesture (plain = replace the focus; Shift = toggle the
     // atom in the ≤4 ordered set) and is itself the QAbstractListModel the
     // SelectionDock view binds to. It fans typed changes out:
-    //   focusChanged → inspector + time-series retarget to the focus atom;
-    //   cleared      → those two clear;
+    //   focusChanged → Atom Info retargets to the focus atom;
+    //   cleared      → Atom Info clears;
     //   changed      → the measurement overlay rebuilds, and the scene
     //                  refreshes the current frame so the spheres reposition.
     selection_ = new model::AtomSelection(loaded_->protein.get(), this);
@@ -316,13 +275,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                                      {QStringLiteral("strip.per-class")},
                                      true,
                                      QStringLiteral("Generic NPY DSSP chi"));
-    ACONNECT(dashboardPanels_, &model::DashboardPanelModel::displayRefRemoved,
-             this, [this](const QUuid&, const model::DashboardDisplayRef& ref) {
-                 if (dashboardPanels_ && dashboardSignals_
-                     && dashboardPanels_->signalReferenceCount(ref.signalId) == 0) {
-                     dashboardSignals_->removeSignal(ref.signalId);
-                 }
-             });
+    new DashboardSignalPanelCoordinator(dashboardSignals_, dashboardPanels_, this);
 
     ACONNECT(picker_,    &QtAtomPicker::atomPicked,
              selection_, &model::AtomSelection::applyPick);
@@ -331,12 +284,8 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     ACONNECT(selection_, &model::AtomSelection::focusChanged,
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);
-    ACONNECT(selection_, &model::AtomSelection::focusChanged,
-             timeSeriesDock_, &QtAtomTimeSeriesDock::setPickedAtom);
     ACONNECT(selection_, &model::AtomSelection::cleared,
              inspectorDock_, &QtAtomInspectorDock::clearSelection);
-    ACONNECT(selection_, &model::AtomSelection::cleared,
-             timeSeriesDock_, &QtAtomTimeSeriesDock::clearSelection);
     const auto updateMetricAction = [this]() {
         if (signalDisplaysAction_)
             signalDisplaysAction_->setEnabled(selection_ && selection_->hasFocus());
@@ -346,6 +295,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     });
     ACONNECT(selection_, &model::AtomSelection::cleared, this, updateMetricAction);
     updateMetricAction();
+    updatePlaneLockAction();
 
     if (auto* meas = scene_->measurementOverlay()) {
         meas->setSelection(selection_);
@@ -354,12 +304,15 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     }
     ACONNECT(selection_, &model::AtomSelection::changed,
              this, [this]() {
+                 if (planeLockAction_ && planeLockAction_->isChecked())
+                     planeLockAction_->setChecked(false);
+                 updatePlaneLockAction();
                  if (scene_) scene_->refreshCurrentFrame();
              });
 
     // Selected-atoms panel — the QListView bound to the AtomSelection model
     // (slot colour swatch + residue:atom label + geometry kind). The model's
-    // first view; tabified with the inspector + time-series.
+    // first view; tabified with Atom Info.
     selectionDock_ = new SelectionDock(this);
     selectionDock_->setModel(selection_);
     addDockWidget(Qt::RightDockWidgetArea, selectionDock_);
@@ -374,9 +327,9 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setPanelModel(dashboardPanels_);
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
-    addDockWidget(Qt::RightDockWidgetArea, dashboardStripDock_);
-    tabifyDockWidget(inspectorDock_, dashboardStripDock_);
-    inspectorDock_->raise();
+    addDockWidget(Qt::BottomDockWidgetArea, dashboardStripDock_);
+    resizeDocks({dashboardStripDock_}, {300}, Qt::Vertical);
+    resizeDocks({inspectorDock_}, {320}, Qt::Horizontal);
 
     ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
              scene_,              &MoleculeScene::revealBinding);
@@ -445,270 +398,33 @@ ReaderMainWindow::~ReaderMainWindow() {
     }
 }
 
-bool ReaderMainWindow::runDashboardPathSmoke(int firstFrame,
-                                             int frameCount,
-                                             bool requireFrameSnapshots) {
+
+quint16 ReaderMainWindow::startRestServer(quint16 port) {
     ASSERT_THREAD(this);
-
-    if (!loaded_ || !loaded_->protein || !loaded_->conformation || !playback_
-        || !signalCatalog_ || !dashboardSignals_ || !dashboardPanels_ || !dashboardStripDock_) {
-        qCCritical(cDashboardSmoke).noquote()
-            << "dashboard path smoke cannot run: main window is not fully wired";
-        return false;
+    if (!loaded_ || !loaded_->protein || !loaded_->conformation) {
+        qCCritical(cWindow).noquote() << "REST start refused: loader result not wired";
+        return 0;
     }
-
-    playback_->pause();
-
-    const auto atomCount = loaded_->protein->atomCount();
-    if (selection_) {
-        selection_->clear();
-        if (atomCount > 0) {
-            selection_->applyPick(0, Qt::NoModifier);
-            const std::size_t selected = std::min<std::size_t>(atomCount, model::AtomSelection::kMaxAtoms);
-            for (std::size_t atom = 1; atom < selected; ++atom)
-                selection_->applyPick(atom, Qt::ShiftModifier);
-        }
+    if (restServer_) {
+        qCWarning(cWindow).noquote() << "REST server already running; ignoring re-start";
+        return 0;
     }
-
-    playback_->setFrame(0);
-    dashboardStripDock_->setFrame(0);
-
-    dashboardSignals_->clear();
-    dashboardPanels_->clear();
-
-    int stripDescriptorCount = 0;
-    int activatedDescriptorCount = 0;
-    int activatedStripDisplayModeCount = 0;
-    int advertisedStripDisplayModeCount = 0;
-    int advertisedSpectrumModeCount = 0;
-    int skippedSpectrumOnlyCount = 0;
-    int bindFailureCount = 0;
-    for (const model::SignalDescriptor& descriptor : signalCatalog_->descriptorList()) {
-        const QStringList stripModes = stripModesForDescriptor(descriptor);
-        if (stripModes.isEmpty())
-            continue;
-
-        ++stripDescriptorCount;
-        advertisedStripDisplayModeCount += stripModes.size();
-        for (const QString& mode : stripModes) {
-            if (mode == QStringLiteral("strip.spectrum"))
-                ++advertisedSpectrumModeCount;
-        }
-
-        const QStringList smokeModes = smokeStripModesForDescriptor(descriptor);
-        if (smokeModes.isEmpty()) {
-            ++skippedSpectrumOnlyCount;
-            continue;
-        }
-
-        const model::SignalAxis anchorAxis = descriptor.requiredAnchor != model::SignalAxis::None
-                                                 ? descriptor.requiredAnchor
-                                                 : descriptor.nativeAxis;
-        const QString label = descriptor.label.isEmpty() ? descriptor.id : descriptor.label;
-        const model::SignalAnchor anchor = defaultSmokeAnchor(anchorAxis, loaded_->protein.get());
-        QStringList acceptedModes;
-        for (const QString& mode : smokeModes) {
-            model::DisplaySignalBinding binding;
-            binding.sourceKind = descriptor.sourceKind;
-            binding.descriptorId = descriptor.id;
-            binding.conceptKey = descriptor.conceptKey;
-            binding.displayModeId = mode;
-            binding.anchor = anchor;
-            binding.followsFocus = false;
-            if (!signalCatalog_->canBind(binding)) {
-                ++bindFailureCount;
-                qCWarning(cDashboardSmoke).noquote()
-                    << "dashboard path smoke descriptor failed binding validation"
-                    << "| descriptor=" << descriptor.id
-                    << "| mode=" << mode
-                    << "| axis=" << model::ToString(anchorAxis);
-                continue;
-            }
-            acceptedModes.push_back(mode);
-        }
-        if (acceptedModes.isEmpty())
-            continue;
-
-        const QUuid signalId =
-            dashboardSignals_->addSignal(descriptor,
-                                         anchor,
-                                         QString(),
-                                         acceptedModes,
-                                         false,
-                                         QStringLiteral("[smoke %1] %2 | %3 | %4 | %5 mode%6")
-                                             .arg(activatedDescriptorCount + 1, 3, 10, QChar('0'))
-                                             .arg(label,
-                                                  model::ToString(descriptor.sourceKind),
-                                                  model::ToString(anchorAxis),
-                                                  QString::number(acceptedModes.size()),
-                                                  acceptedModes.size() == 1 ? QString() : QStringLiteral("s")));
-        dashboardPanels_->addDisplayRefs(dashboardPanels_->activePanelId(),
-                                         model::DisplayRefsForSignal(signalId, descriptor, acceptedModes));
-        ++activatedDescriptorCount;
-        activatedStripDisplayModeCount += acceptedModes.size();
+    restServer_ = new RestServer(this);
+    restServer_->setContext(scene_,
+                            selection_,
+                            dashboardSignals_,
+                            dashboardPanels_,
+                            signalCatalog_,
+                            playback_,
+                            loaded_.get(),
+                            this);
+    const quint16 bound = restServer_->listen(port);
+    if (bound == 0) {
+        qCCritical(cWindow).noquote() << "REST server failed to bind port" << port;
+        restServer_->deleteLater();
+        restServer_ = nullptr;
     }
-
-    const std::vector<int> framesToRun = dashboardSmokeFrames(loaded_->conformation.get(),
-                                                              firstFrame,
-                                                              frameCount);
-    const int smokeFirstFrame = framesToRun.empty() ? -1 : framesToRun.front();
-    const int smokeLastFrame = framesToRun.empty() ? -1 : framesToRun.back();
-    const long long expectedWindowFrames = static_cast<long long>(framesToRun.size());
-    const long long expectedBufferFrames = framesToRun.empty()
-                                               ? 0LL
-                                               : static_cast<long long>(smokeLastFrame) + 1;
-
-    qCInfo(cDashboardSmoke).noquote()
-        << "dashboard path smoke started"
-        << "| catalog_descriptors=" << signalCatalog_->descriptorList().size()
-        << "| strip_descriptors=" << stripDescriptorCount
-        << "| active_descriptors=" << activatedDescriptorCount
-        << "| active_strip_display_modes=" << activatedStripDisplayModeCount
-        << "| advertised_strip_display_modes=" << advertisedStripDisplayModeCount
-        << "| advertised_spectrum_modes=" << advertisedSpectrumModeCount
-        << "| skipped_spectrum_only=" << skippedSpectrumOnlyCount
-        << "| bind_failures=" << bindFailureCount
-        << "| active_signals=" << dashboardSignals_->rowCount()
-        << "| visited_frames=" << framesToRun.size()
-        << "| require_frame_snapshots=" << requireFrameSnapshots
-        << "| requested_first_frame=" << firstFrame
-        << "| requested_frames=" << frameCount
-        << "| window_first_frame=" << smokeFirstFrame
-        << "| window_last_frame=" << smokeLastFrame
-        << "| window_frames=" << expectedWindowFrames
-        << "| prefix_backfill_frames=" << std::max(0, smokeFirstFrame)
-        << "| buffer_frames=" << expectedBufferFrames;
-
-    int playbackFramesObserved = 0;
-    int playbackFramesExpected = 0;
-    const QMetaObject::Connection frameObserver =
-        QObject::connect(playback_, &QtPlaybackController::frameChanged, this,
-                         [&playbackFramesObserved](int) { ++playbackFramesObserved; });
-
-    int snapshotsResident = 0;
-    int snapshotsAbsent = 0;
-    for (int i = 0; i < static_cast<int>(framesToRun.size()); ++i) {
-        const int frame = framesToRun[static_cast<std::size_t>(i)];
-        loaded_->conformation->requestSnapshot(static_cast<std::size_t>(frame));
-        if (loaded_->conformation->snapshot(static_cast<std::size_t>(frame)))
-            ++snapshotsResident;
-        else
-            ++snapshotsAbsent;
-
-        if (playback_->currentFrame() == frame) {
-            dashboardStripDock_->setFrame(frame);
-        } else {
-            ++playbackFramesExpected;
-            playback_->setFrame(frame);
-        }
-    }
-    QObject::disconnect(frameObserver);
-
-    const DashboardSmokeSummary summary = dashboardStripDock_->smokeSummary(smokeFirstFrame, smokeLastFrame);
-    const int stripDisplaySinkCount = dashboardStripDock_->stripDisplaySinkCount();
-    const int spectrumDisplaySinkCount = dashboardStripDock_->spectrumDisplaySinkCount();
-    const long long expectedSamples = static_cast<long long>(summary.seriesCount) * expectedWindowFrames;
-
-    qCInfo(cDashboardSmoke).noquote()
-        << "dashboard path smoke summary"
-        << "| series=" << summary.seriesCount
-        << "| strip_display_sinks=" << stripDisplaySinkCount
-        << "| spectrum_display_sinks=" << spectrumDisplaySinkCount
-        << "| with_samples=" << summary.seriesWithSamples
-        << "| with_valid=" << summary.seriesWithValidSamples
-        << "| pending_only=" << summary.seriesPendingOnly
-        << "| dense_series=" << summary.denseSeries
-        << "| sparse_series=" << summary.sparseSeries
-        << "| all_gap_series=" << summary.allGapSeries
-        << "| frame_source_absent_series=" << summary.seriesWithFrameSourceAbsentGaps
-        << "| frame_npy_frame_source_absent_series=" << summary.frameNpySeriesWithFrameSourceAbsentGaps
-        << "| orca_dft_frame_source_absent_series=" << summary.orcaDftSeriesWithFrameSourceAbsentGaps
-        << "| source_absent_series=" << summary.seriesWithSourceAbsentGaps
-        << "| anchor_unavailable_series=" << summary.seriesWithAnchorUnavailableGaps
-        << "| max_gap_run=" << summary.maxLongestGapRun
-        << "| mismatched_buffers=" << summary.seriesWithMismatchedBuffers
-        << "| samples=" << summary.samples
-        << "| channel_values=" << summary.channelValues
-        << "| channel_validity=" << summary.channelValidity
-        << "| valid=" << summary.validSamples
-        << "| gaps=" << summary.gapSamples
-        << "| pending_gaps=" << summary.pendingGapSamples
-        << "| source_absent_gaps=" << summary.sourceAbsentGapSamples
-        << "| frame_source_absent_gaps=" << summary.frameSourceAbsentGapSamples
-        << "| frame_npy_frame_source_absent_gaps=" << summary.frameNpyFrameSourceAbsentGapSamples
-        << "| orca_dft_frame_source_absent_gaps=" << summary.orcaDftFrameSourceAbsentGapSamples
-        << "| anchor_unavailable_gaps=" << summary.anchorUnavailableGapSamples
-        << "| invalid=" << summary.invalidSamples
-        << "| snapshots_resident=" << snapshotsResident
-        << "| snapshots_absent=" << snapshotsAbsent
-        << "| playback_frame_changed=" << playbackFramesObserved
-        << "| expected_playback_frame_changed=" << playbackFramesExpected;
-
-    for (const DashboardSmokeSummary::SeriesSparseness& s : summary.seriesSparseness) {
-        if (s.samples == 0 || (s.gapSamples == 0 && s.invalidSamples == 0))
-            continue;
-        const QString channel = s.channelLabel.isEmpty() ? s.channelId : s.channelLabel;
-        const double validPct = s.samples > 0
-                                    ? 100.0 * static_cast<double>(s.validSamples) / static_cast<double>(s.samples)
-                                    : 0.0;
-        qCInfo(cDashboardSmoke).noquote()
-            << "dashboard signal coverage"
-            << "| label=" << s.signalLabel
-            << "| descriptor=" << s.descriptorId
-            << "| concept=" << s.conceptKey
-            << "| source=" << s.sourceKind
-            << "| storage=" << s.storagePath
-            << "| display=" << s.displayModeId
-            << "| channel=" << channel
-            << "| samples=" << s.samples
-            << "| valid=" << s.validSamples
-            << "| valid_pct=" << QString::number(validPct, 'f', 1)
-            << "| gaps=" << s.gapSamples
-            << "| invalid=" << s.invalidSamples
-            << "| first_valid=" << s.firstValidFrame
-            << "| last_valid=" << s.lastValidFrame
-            << "| longest_valid_run=" << s.longestValidRun
-            << "| longest_gap_run=" << s.longestGapRun
-            << "| pending=" << s.pendingGapSamples
-            << "| source_absent=" << s.sourceAbsentGapSamples
-            << "| frame_source_absent=" << s.frameSourceAbsentGapSamples
-            << "| source_mask_off=" << s.sourceMaskOffGapSamples
-            << "| anchor_unavailable=" << s.anchorUnavailableGapSamples
-            << "| not_applicable=" << s.notApplicableGapSamples
-            << "| nan=" << s.nanSentinelGapSamples
-            << "| malformed=" << s.malformedSourceGapSamples;
-    }
-
-    if (summary.validSamples == 0) {
-        qCWarning(cDashboardSmoke).noquote()
-            << "dashboard path smoke produced no valid samples; pending gaps are expected until source samplers are wired";
-    }
-
-    const bool frameSnapshotRequirementOk =
-        !requireFrameSnapshots || (snapshotsAbsent == 0 && summary.frameNpyFrameSourceAbsentGapSamples == 0);
-
-    const bool ok = stripDescriptorCount > 0
-                    && !framesToRun.empty()
-                    && activatedDescriptorCount > 0
-                    && bindFailureCount == 0
-                    && dashboardSignals_->rowCount() > 0
-                    && summary.seriesCount > 0
-                    && stripDisplaySinkCount == summary.seriesCount
-                    && spectrumDisplaySinkCount == 0
-                    && summary.seriesWithMismatchedBuffers == 0
-                    && summary.invalidSamples == 0
-                    && summary.samples == expectedSamples
-                    && summary.channelValues == expectedSamples
-                    && summary.channelValidity == expectedSamples
-                    && playbackFramesObserved == playbackFramesExpected
-                    && frameSnapshotRequirementOk;
-    if (!ok) {
-        qCCritical(cDashboardSmoke).noquote()
-            << "dashboard path smoke failed"
-            << "| expected_samples=" << expectedSamples
-            << "| frame_snapshot_requirement_ok=" << frameSnapshotRequirementOk;
-    }
-    return ok;
+    return bound;
 }
 
 void ReaderMainWindow::shutdown() {
@@ -754,6 +470,12 @@ void ReaderMainWindow::buildToolbar() {
     auto* tb = addToolBar(QStringLiteral("Playback"));
     tb->setObjectName(QStringLiteral("PlaybackToolbar"));
     tb->setMovable(false);
+    QFont toolbarFont = tb->font();
+    if (toolbarFont.pointSize() > 8)
+        toolbarFont.setPointSize(toolbarFont.pointSize() - 1);
+    else if (toolbarFont.pixelSize() > 10)
+        toolbarFont.setPixelSize(toolbarFont.pixelSize() - 1);
+    tb->setFont(toolbarFont);
 
     playAction_ = tb->addAction(
         style()->standardIcon(QStyle::SP_MediaPlay),
@@ -787,6 +509,14 @@ void ReaderMainWindow::buildToolbar() {
     signalDisplaysAction_->setToolTip(QStringLiteral("Select a nearby atom or residue and add a metric display."));
     ACONNECT(signalDisplaysAction_.data(), &QAction::triggered,
              this, &ReaderMainWindow::onOpenSignalDisplays);
+
+    planeLockAction_ = tb->addAction(QStringLiteral("Plane lock"));
+    planeLockAction_->setCheckable(true);
+    planeLockAction_->setEnabled(false);
+    planeLockAction_->setToolTip(QStringLiteral(
+        "Keep the view centred and oriented to the plane defined by exactly three selected atoms."));
+    ACONNECT(planeLockAction_.data(), &QAction::toggled,
+             this, &ReaderMainWindow::onPlaneLockToggled);
 
     tb->addSeparator();
 
@@ -901,6 +631,33 @@ void ReaderMainWindow::onFrameChanged(int t) {
         const QSignalBlocker block(frameSlider_);
         frameSlider_->setValue(t);
     }
+}
+
+void ReaderMainWindow::updatePlaneLockAction() {
+    if (!planeLockAction_)
+        return;
+    const bool canLock = scene_ && selection_ && selection_->count() == 3;
+    planeLockAction_->setEnabled(canLock);
+}
+
+void ReaderMainWindow::onPlaneLockToggled(bool checked) {
+    ASSERT_THREAD(this);
+    if (!scene_)
+        return;
+
+    if (!checked) {
+        scene_->clearCameraPlaneLock();
+        updatePlaneLockAction();
+        return;
+    }
+
+    if (!selection_ || selection_->count() != 3
+        || !scene_->lockCameraToSelectionPlane(selection_->atoms())) {
+        const QSignalBlocker blocker(planeLockAction_);
+        planeLockAction_->setChecked(false);
+        scene_->clearCameraPlaneLock();
+    }
+    updatePlaneLockAction();
 }
 
 void ReaderMainWindow::onPlayPauseClicked() {

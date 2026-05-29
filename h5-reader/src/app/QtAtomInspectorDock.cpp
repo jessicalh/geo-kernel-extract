@@ -36,8 +36,10 @@
 #include "../model/QtWaterFieldGroup.h"
 #include "../model/QtWaterPolarizationGroup.h"
 
+#include <QFont>
 #include <QHeaderView>
 #include <QLoggingCategory>
+#include <QSizePolicy>
 #include <QString>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -141,12 +143,22 @@ void AddOptBool(QTreeWidgetItem* p, const QString& name, const std::optional<boo
 
 }  // namespace
 
-QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringLiteral("Atom Inspector"), parent) {
+QtAtomInspectorDock::QtAtomInspectorDock(QWidget* parent) : QDockWidget(QStringLiteral("Atom Info"), parent) {
     CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("QtAtomInspectorDock"));
     setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+    setMinimumWidth(48);
+    setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+    QFont compactFont = font();
+    if (compactFont.pointSize() > 8)
+        compactFont.setPointSize(compactFont.pointSize() - 1);
+    else if (compactFont.pixelSize() > 10)
+        compactFont.setPixelSize(compactFont.pixelSize() - 1);
+    setFont(compactFont);
 
     tree_ = new QTreeWidget(this);
+    tree_->setMinimumWidth(0);
+    tree_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     tree_->setColumnCount(2);
     tree_->setHeaderLabels({QStringLiteral("Field"), QStringLiteral("Value")});
     tree_->setAlternatingRowColors(true);

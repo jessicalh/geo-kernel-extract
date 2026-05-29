@@ -213,7 +213,11 @@ SignalAxis AxisForAnchor(const SignalAnchor& anchor) {
 bool AnchorMatchesAxis(const SignalAnchor& anchor, SignalAxis axis) {
     if (axis == SignalAxis::None)
         return true;
-    return AxisForAnchor(anchor) == axis;
+    const SignalAxis anchorAxis = AxisForAnchor(anchor);
+    if (anchorAxis == axis)
+        return true;
+    return axis == SignalAxis::Ring
+           && (anchorAxis == SignalAxis::AromaticRing || anchorAxis == SignalAxis::SaturatedRing);
 }
 
 QString AnchorLabel(const SignalAnchor& anchor) {

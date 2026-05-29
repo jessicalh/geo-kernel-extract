@@ -27,9 +27,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace h5reader::model {
+
+enum class QtRingAxis : std::uint8_t {
+    Ring = 0,
+    AromaticRing,
+    SaturatedRing,
+};
 
 class QtTopology {
 public:
@@ -60,6 +67,7 @@ public:
     std::size_t ringCount() const { return rings_.size(); }
     std::size_t aromaticRingCount() const { return aromaticRingCount_; }
     std::size_t saturatedRingCount() const { return saturatedRingCount_; }
+    std::optional<std::size_t> absoluteRingIndex(QtRingAxis axis, std::size_t index) const;
     const QtRing& ringAt(std::size_t i) const { return *rings_[i]; }
     const QtRing* ringAtPtr(std::size_t i) const { return rings_[i].get(); }
 

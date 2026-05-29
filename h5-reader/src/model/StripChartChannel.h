@@ -21,8 +21,8 @@
 //   ChannelSource — how a buffer fills: a small functor returning ONE value for
 //     ONE frame (nullopt = no value at this frame → a gap). The geometry source
 //     wraps model::Measure over the selection; the DFT source queries the
-//     DftShieldingStore for the focus atom. The owner (StripChartDock) builds
-//     the functor because it holds the Conformation / selection / DFT store.
+//     DftShieldingStore for the focus atom. DashboardDisplayController builds
+//     the functor because it coordinates the Conformation / selection / DFT store.
 //
 // The presentation (Qt Charts now, a richer / VTK widget later) is FED these
 // buffers and renders the visible window — it does not own or transform them.

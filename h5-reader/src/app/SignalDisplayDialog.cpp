@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -46,7 +47,7 @@ namespace h5reader::app {
 
 namespace {
 
-enum class DisplayModeKind {
+enum class DisplayModeKind : std::uint8_t {
     Strip,
     Spectrum,
     Table,
@@ -160,7 +161,7 @@ bool modeMatchesKind(const QString& modeId, DisplayModeKind kind) {
 }
 
 QString modeForKind(const QStringList& modes, DisplayModeKind kind) {
-    const QString preferred = canonicalModeId(kind);
+    QString preferred = canonicalModeId(kind);
     if (modes.contains(preferred))
         return preferred;
     for (const QString& mode : modes) {
@@ -209,17 +210,37 @@ DescriptorRecord recordFromDescriptor(const model::SignalDescriptor& descriptor)
 }
 
 model::SignalAxis axisForCandidate(const NearbySignalModel::Candidate& candidate) {
-    return candidate.kind == NearbySignalModel::CandidateKind::Atom
-               ? model::SignalAxis::Atom
-               : model::SignalAxis::Residue;
+    switch (candidate.kind) {
+    case NearbySignalModel::CandidateKind::Atom:
+        return model::SignalAxis::Atom;
+    case NearbySignalModel::CandidateKind::Residue:
+        return model::SignalAxis::Residue;
+    case NearbySignalModel::CandidateKind::Bond:
+        return model::SignalAxis::Bond;
+    case NearbySignalModel::CandidateKind::Ring:
+        return model::SignalAxis::Ring;
+    case NearbySignalModel::CandidateKind::AromaticRing:
+        return model::SignalAxis::AromaticRing;
+    case NearbySignalModel::CandidateKind::SaturatedRing:
+        return model::SignalAxis::SaturatedRing;
+    case NearbySignalModel::CandidateKind::RingMembership:
+        return model::SignalAxis::RingMembership;
+    }
+    return model::SignalAxis::None;
 }
 
 model::SignalAnchor anchorForCandidate(const NearbySignalModel::Candidate& candidate) {
-    if (candidate.kind == NearbySignalModel::CandidateKind::Atom && candidate.atom)
-        return model::AtomAnchor{*candidate.atom};
-    if (candidate.kind == NearbySignalModel::CandidateKind::Residue && candidate.residue)
-        return model::ResidueAnchor{*candidate.residue};
-    return model::NoneAnchor{};
+    return candidate.anchor;
+}
+
+bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requiredAxis) {
+    if (selectedAxis == requiredAxis)
+        return true;
+    if (requiredAxis == model::SignalAxis::Ring) {
+        return selectedAxis == model::SignalAxis::AromaticRing
+            || selectedAxis == model::SignalAxis::SaturatedRing;
+    }
+    return false;
 }
 
 std::array<DisplayModeKind, 5> allModeKinds() {
@@ -254,7 +275,7 @@ void refillCombo(QComboBox* combo, const QString& allLabel, const QStringList& v
 
 class DescriptorTableModel final : public QAbstractTableModel {
 public:
-    enum Column {
+    enum Column : std::uint8_t {
         SourceColumn,
         AxisColumn,
         ShapeColumn,
@@ -264,7 +285,7 @@ public:
         ColumnCount,
     };
 
-    enum Role {
+    enum Role : std::uint16_t {
         DisplayModesRole = Qt::UserRole + 1,
         SearchTextRole,
         SourceRole,
@@ -281,7 +302,7 @@ public:
     }
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override {
-        return parent.isValid() ? 0 : records_.size();
+        return parent.isValid() ? 0 : static_cast<int>(records_.size());
     }
 
     int columnCount(const QModelIndex& parent = QModelIndex()) const override {
@@ -463,9 +484,13 @@ protected:
             return false;
         if (!shapeFilter_.isEmpty() && textForRole(DescriptorTableModel::ShapeRole) != shapeFilter_)
             return false;
-        if (requiredAnchorFilter_ >= 0
-            && model->data(index, DescriptorTableModel::RequiredAnchorAxisRole).toInt() != requiredAnchorFilter_) {
-            return false;
+        if (requiredAnchorFilter_ >= 0) {
+            const auto selectedAxis = static_cast<model::SignalAxis>(requiredAnchorFilter_);
+            const auto requiredAxis =
+                static_cast<model::SignalAxis>(
+                    model->data(index, DescriptorTableModel::RequiredAnchorAxisRole).toInt());
+            if (!anchorAxisCanSatisfy(selectedAxis, requiredAxis))
+                return false;
         }
         if (!modeKindFilter_.isEmpty()) {
             const QStringList modes = model->data(index, DescriptorTableModel::DisplayModesRole).toStringList();
@@ -1213,8 +1238,6 @@ void SignalDisplayDialog::onRemoveActive() {
     if (id.isNull())
         return;
     const bool removed = d_->activeModel->removeSignal(id);
-    if (d_->panelModel)
-        d_->panelModel->removeDisplayRefsForSignal(id);
     if (d_->statusLabel)
         d_->statusLabel->setText(removed ? QStringLiteral("Removed active signal.")
                                          : QStringLiteral("Could not remove active signal."));

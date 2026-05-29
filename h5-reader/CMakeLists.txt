@@ -97,7 +97,6 @@ qt_add_executable(h5reader
     src/model/SpectralAnalysis.h
     src/model/SpectralAnalysis.cpp
     src/model/SignalDictionary.h
-    src/model/SignalDictionary.cpp
     src/model/DashboardSignal.h
     src/model/DashboardSignal.cpp
     src/model/DashboardSignalModel.h
@@ -108,11 +107,6 @@ qt_add_executable(h5reader
     src/model/TrajectorySignalCatalog.cpp
     src/model/SignalTimeSeries.h
     src/model/SignalTimeSeries.cpp
-    src/model/StripCalculation.h
-    src/model/GeometryStrips.h
-    src/model/GeometryStrips.cpp
-    src/model/DftSigmaStrips.h
-    src/model/DftSigmaStrips.cpp
     src/model/StripChartChannel.h
     src/model/DftShielding.h
     src/model/SphericalDecomposition.h
@@ -185,16 +179,12 @@ qt_add_executable(h5reader
     src/app/DashboardDisplayController.cpp
     src/app/DashboardStripDock.h
     src/app/DashboardStripDock.cpp
-    src/app/SignalPickerDock.h
-    src/app/SignalPickerDock.cpp
     src/app/QtAtomInspectorDock.h
     src/app/QtAtomInspectorDock.cpp
-    src/app/QtAtomTimeSeriesDock.h
-    src/app/QtAtomTimeSeriesDock.cpp
     src/app/StripStackWidget.h
     src/app/StripStackWidget.cpp
-    src/app/StripChartDock.h
-    src/app/StripChartDock.cpp
+    src/app/RestServer.h
+    src/app/RestServer.cpp
 
     # Closed-form kernel evaluators
     src/calculators/QtPhysicalConstants.h
@@ -217,6 +207,7 @@ target_link_libraries(h5reader PRIVATE
     Qt6::OpenGLWidgets
     Qt6::Network
     Qt6::Charts
+    Qt6::HttpServer
     Eigen3::Eigen
     ${VTK_LIBRARIES}
     ${HDF5_C_LIBRARIES}
@@ -242,5 +233,74 @@ endif()
 target_compile_definitions(h5reader PRIVATE
     H5READER_VERSION="0.5.0-rewrite"
 )
+
+
+include(CTest)
+if(BUILD_TESTING AND Qt6Test_FOUND)
+    qt_add_executable(h5reader_model_tests
+        tests/dashboard_model_tests.cpp
+        src/model/DashboardSignal.h
+        src/model/DashboardSignal.cpp
+        src/model/DashboardSignalModel.h
+        src/model/DashboardSignalModel.cpp
+        src/model/DashboardPanelModel.h
+        src/model/DashboardPanelModel.cpp
+        src/model/QtRing.h
+        src/model/QtRing.cpp
+        src/model/QtTopology.h
+        src/model/QtTopology.cpp
+        src/model/SignalDictionary.h
+        src/model/TrajectorySignalCatalog.h
+        src/model/TrajectorySignalCatalog.cpp
+    )
+    target_include_directories(h5reader_model_tests PRIVATE src)
+    target_link_libraries(h5reader_model_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_model_tests COMMAND h5reader_model_tests)
+
+    # Pure-function plane geometry tests (PlaneFrameMath.h). Header-only
+    # math; no VTK / Qt widgets / I/O — links Qt6::Test + Eigen3 only.
+    qt_add_executable(h5reader_scene_math_tests
+        tests/scene_math_tests.cpp
+        src/app/PlaneFrameMath.h
+    )
+    target_include_directories(h5reader_scene_math_tests PRIVATE src)
+    target_link_libraries(h5reader_scene_math_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+endif()
+
+# REST end-to-end smoke: pytest drives the built h5reader binary via its
+# --rest <port> HTTP surface against a fixture trajectory. Replaces the
+# bespoke --dashboard-path-smoke / --camera-plane-lock-smoke CLI runners.
+# Requires Python3 + pytest + httpx + Pillow on PATH; H5READER_REST_FIXTURE
+# env var (or the default below) must point at a valid trajectory directory.
+if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+    set(H5READER_REST_FIXTURE_DEFAULT
+        "/shared/2026Thesis/shielding-calcsets/data/trajectories/1p9j-calibration-with-dft"
+        CACHE PATH "Default H5READER_REST_FIXTURE for the REST smoke test")
+    add_test(NAME h5reader_rest_smoke
+             COMMAND ${Python3_EXECUTABLE} -m pytest
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/rest -v --tb=short)
+    # We deliberately do NOT set QT_QPA_PLATFORM=offscreen here — VTK's
+    # QOpenGLWidget needs a real GL FBO, which the offscreen platform
+    # does not provide. The pytest fixture detects missing DISPLAY and
+    # wraps the binary in `xvfb-run -s "-screen 0 1280x720x24 +extension GLX"`
+    # with LIBGL_ALWAYS_SOFTWARE=1 (Mesa software path) for true headless
+    # runs. When DISPLAY is set (dev machine, ctest inherited env), the
+    # binary runs against the real display.
+    set_tests_properties(h5reader_rest_smoke PROPERTIES
+        ENVIRONMENT
+            "H5READER_BINARY=$<TARGET_FILE:h5reader>;H5READER_REST_FIXTURE=${H5READER_REST_FIXTURE_DEFAULT}"
+        LABELS "rest;e2e"
+        TIMEOUT 300
+    )
+endif()
 
 message(STATUS "h5reader: Qt ${Qt6_VERSION}, VTK ${VTK_VERSION}, HDF5 ${HDF5_VERSION}")

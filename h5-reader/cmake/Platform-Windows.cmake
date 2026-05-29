@@ -25,12 +25,11 @@ include_guard(GLOBAL)
 # Qt Pro install — prefer the newest 6.10.x we can find. Falls back
 # to 6.9.x / 6.8.x for older installer caches.
 if(NOT H5READER_QT_DIR)
-    foreach(_qt_ver IN ITEMS
-            6.10.3 6.10.2 6.10.1 6.10.0
-            6.9.3  6.9.2  6.9.1  6.9.0
-            6.8.0)
-        if(EXISTS "C:/Qt/${_qt_ver}/msvc2022_64")
-            set(H5READER_QT_DIR "C:/Qt/${_qt_ver}/msvc2022_64"
+    file(GLOB _qt_candidates LIST_DIRECTORIES true "C:/Qt/6.*/msvc2022_64")
+    list(SORT _qt_candidates COMPARE NATURAL ORDER DESCENDING)
+    foreach(_qt_dir IN LISTS _qt_candidates)
+        if(EXISTS "${_qt_dir}")
+            set(H5READER_QT_DIR "${_qt_dir}"
                 CACHE PATH "Qt installation root")
             message(STATUS
                 "Platform-Windows: auto-detected Qt at ${H5READER_QT_DIR}")
@@ -78,7 +77,7 @@ function(h5reader_apply_platform_target_settings target)
     set_target_properties(${target} PROPERTIES
         WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 
-    if(MSVC AND CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    if(MSVC)
         # MSVC RWDI defaults to /O2 /Ob1 /Zi with no /GL — so cl never
         # sees across TU boundaries, and the BS/HM kernel call chain
         # (RecomputeRingScalars → EvaluateShielding → JohnsonBoveyField
@@ -89,19 +88,19 @@ function(h5reader_apply_platform_target_settings target)
         # / link-time codegen lets cl inline the chain into the inner
         # loop and use the Eigen Vec3 specialisations end-to-end.
         #
-        # BuildType-Release.cmake already enables IPO for Release via
-        # CheckIPOSupported; we mirror that here, but only for the
-        # Windows RWDI path so Linux/macOS RWDI link times stay short.
+        # BuildType-Release.cmake already enables IPO for Release. Use
+        # the config-specific target property here so this works for both
+        # single-config Ninja and Visual Studio / Ninja Multi-Config.
         include(CheckIPOSupported)
         check_ipo_supported(RESULT _ipo_ok OUTPUT _ipo_err LANGUAGES CXX)
         if(_ipo_ok)
             set_target_properties(${target} PROPERTIES
-                INTERPROCEDURAL_OPTIMIZATION TRUE)
+                INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
             message(STATUS
-                "h5reader: Windows RWDI; LTO/IPO enabled (/GL + /LTCG)")
+                "h5reader: Windows RelWithDebInfo; LTO/IPO enabled (/GL + /LTCG)")
         else()
             message(STATUS
-                "h5reader: Windows RWDI; LTO/IPO unavailable (${_ipo_err})")
+                "h5reader: Windows RelWithDebInfo; LTO/IPO unavailable (${_ipo_err})")
         endif()
     endif()
 

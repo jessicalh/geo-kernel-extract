@@ -146,20 +146,67 @@ struct SignalDescriptor {
     QStringList tags;
 };
 
-struct NoneAnchor {};
-struct AtomAnchor { std::size_t atom = 0; };
-struct ResidueAnchor { std::size_t residue = 0; };
-struct AtomTupleAnchor { std::vector<std::size_t> atoms; };
-struct BondAnchor { std::size_t bond = 0; };
-struct RingAnchor { std::size_t ring = 0; };
-struct AromaticRingAnchor { std::size_t ring = 0; };
-struct SaturatedRingAnchor { std::size_t ring = 0; };
-struct RingContributionPairAnchor { std::size_t pair = 0; };
-struct RingMembershipAnchor { std::size_t membership = 0; };
-struct MutationMatchPairAnchor { std::size_t pair = 0; };
-struct ProteinAnchor {};
-struct SystemAnchor {};
-struct EventAnchor {};
+struct NoneAnchor {
+    friend bool operator==(const NoneAnchor&, const NoneAnchor&) { return true; }
+};
+struct AtomAnchor {
+    std::size_t atom = 0;
+    friend bool operator==(const AtomAnchor& a, const AtomAnchor& b) { return a.atom == b.atom; }
+};
+struct ResidueAnchor {
+    std::size_t residue = 0;
+    friend bool operator==(const ResidueAnchor& a, const ResidueAnchor& b) { return a.residue == b.residue; }
+};
+struct AtomTupleAnchor {
+    std::vector<std::size_t> atoms;
+    friend bool operator==(const AtomTupleAnchor& a, const AtomTupleAnchor& b) { return a.atoms == b.atoms; }
+};
+struct BondAnchor {
+    std::size_t bond = 0;
+    friend bool operator==(const BondAnchor& a, const BondAnchor& b) { return a.bond == b.bond; }
+};
+struct RingAnchor {
+    std::size_t ring = 0;
+    friend bool operator==(const RingAnchor& a, const RingAnchor& b) { return a.ring == b.ring; }
+};
+struct AromaticRingAnchor {
+    std::size_t ring = 0;
+    friend bool operator==(const AromaticRingAnchor& a, const AromaticRingAnchor& b) { return a.ring == b.ring; }
+};
+struct SaturatedRingAnchor {
+    std::size_t ring = 0;
+    friend bool operator==(const SaturatedRingAnchor& a, const SaturatedRingAnchor& b) { return a.ring == b.ring; }
+};
+struct RingContributionPairAnchor {
+    std::size_t pair = 0;
+    friend bool operator==(const RingContributionPairAnchor& a, const RingContributionPairAnchor& b)
+    {
+        return a.pair == b.pair;
+    }
+};
+struct RingMembershipAnchor {
+    std::size_t membership = 0;
+    friend bool operator==(const RingMembershipAnchor& a, const RingMembershipAnchor& b)
+    {
+        return a.membership == b.membership;
+    }
+};
+struct MutationMatchPairAnchor {
+    std::size_t pair = 0;
+    friend bool operator==(const MutationMatchPairAnchor& a, const MutationMatchPairAnchor& b)
+    {
+        return a.pair == b.pair;
+    }
+};
+struct ProteinAnchor {
+    friend bool operator==(const ProteinAnchor&, const ProteinAnchor&) { return true; }
+};
+struct SystemAnchor {
+    friend bool operator==(const SystemAnchor&, const SystemAnchor&) { return true; }
+};
+struct EventAnchor {
+    friend bool operator==(const EventAnchor&, const EventAnchor&) { return true; }
+};
 
 using SignalAnchor = std::variant<NoneAnchor,
                                   AtomAnchor,

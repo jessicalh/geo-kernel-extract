@@ -235,7 +235,7 @@ QUuid DashboardSignalModel::addSignal(const DashboardSignal& input) {
     if (rowForId(signal.id) >= 0)
         signal.id = QUuid::createUuid();
 
-    const int row = signals_.size();
+    const int row = static_cast<int>(signals_.size());
     beginInsertRows(QModelIndex(), row, row);
     signals_.push_back(signal);
     endInsertRows();
@@ -288,9 +288,17 @@ bool DashboardSignalModel::removeSignalAt(int row) {
 void DashboardSignalModel::clear() {
     if (signals_.isEmpty())
         return;
+    QVector<QUuid> removedIds;
+    removedIds.reserve(signals_.size());
+    for (const DashboardSignal& signal : signals_)
+        removedIds.push_back(signal.id);
+
     beginResetModel();
     signals_.clear();
     endResetModel();
+
+    for (const QUuid& id : removedIds)
+        emit signalRemoved(id);
 }
 
 bool DashboardSignalModel::updateSignal(const DashboardSignal& input) {
@@ -393,7 +401,7 @@ bool DashboardSignalModel::removeDisplayMode(const QUuid& id, const QString& dis
         return false;
 
     DashboardSignal& signal = signals_[row];
-    const int removed = signal.displayModeIds.removeAll(displayModeId.trimmed());
+    const int removed = static_cast<int>(signal.displayModeIds.removeAll(displayModeId.trimmed()));
     if (removed == 0)
         return false;
     if (signal.binding.displayModeId == displayModeId)

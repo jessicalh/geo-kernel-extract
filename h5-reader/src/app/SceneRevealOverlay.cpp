@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 namespace h5reader::app {
@@ -127,27 +128,63 @@ std::vector<std::size_t> SceneRevealOverlay::atomsForBinding(const model::Signal
         if (std::find(atoms.begin(), atoms.end(), atom) == atoms.end())
             atoms.push_back(atom);
     };
+    auto addBond = [&](std::size_t bondIndex) {
+        if (bondIndex >= protein_->bondCount())
+            return;
+        const auto& bond = protein_->bond(bondIndex);
+        if (bond.atomIndexA >= 0)
+            addAtom(static_cast<std::size_t>(bond.atomIndexA));
+        if (bond.atomIndexB >= 0)
+            addAtom(static_cast<std::size_t>(bond.atomIndexB));
+    };
+    auto addRing = [&](std::size_t ringIndex) {
+        if (ringIndex >= protein_->ringCount())
+            return;
+        const auto& ring = protein_->ring(ringIndex);
+        for (int32_t atom : ring.atomIndices) {
+            if (atom >= 0)
+                addAtom(static_cast<std::size_t>(atom));
+        }
+    };
+    auto addTypedRing = [&](model::QtRingAxis axis, std::size_t ringIndex) {
+        const auto absolute = protein_->topology().absoluteRingIndex(axis, ringIndex);
+        if (absolute)
+            addRing(*absolute);
+    };
+    auto addRingMembership = [&](std::size_t membershipIndex) {
+        if (membershipIndex >= protein_->ringMembershipCount())
+            return;
+        const auto& membership = protein_->topology().ringMembershipAt(membershipIndex);
+        if (membership.ringId >= 0)
+            addRing(static_cast<std::size_t>(membership.ringId));
+        if (membership.atomIndex >= 0)
+            addAtom(static_cast<std::size_t>(membership.atomIndex));
+    };
 
-    switch (binding.anchorKind) {
-        case model::SignalAnchorKind::Atom:
-            if (binding.atom)
-                addAtom(*binding.atom);
-            break;
-        case model::SignalAnchorKind::Residue:
-            if (binding.residue && *binding.residue < protein_->residueCount()) {
-                const auto& residue = protein_->residue(*binding.residue);
-                for (int32_t atom : residue.atomIndices) {
-                    if (atom >= 0)
-                        addAtom(static_cast<std::size_t>(atom));
-                }
+    const model::SignalAnchor& anchor = binding.anchor;
+    if (const auto* atom = std::get_if<model::AtomAnchor>(&anchor)) {
+        addAtom(atom->atom);
+    } else if (const auto* residueAnchor = std::get_if<model::ResidueAnchor>(&anchor)) {
+        if (residueAnchor->residue < protein_->residueCount()) {
+            const auto& residue = protein_->residue(residueAnchor->residue);
+            for (int32_t atom : residue.atomIndices) {
+                if (atom >= 0)
+                    addAtom(static_cast<std::size_t>(atom));
             }
-            break;
-        case model::SignalAnchorKind::AtomTuple:
-            for (std::size_t atom : binding.atomTuple)
-                addAtom(atom);
-            break;
-        case model::SignalAnchorKind::None:
-            break;
+        }
+    } else if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&anchor)) {
+        for (std::size_t atom : tuple->atoms)
+            addAtom(atom);
+    } else if (const auto* bond = std::get_if<model::BondAnchor>(&anchor)) {
+        addBond(bond->bond);
+    } else if (const auto* ring = std::get_if<model::RingAnchor>(&anchor)) {
+        addRing(ring->ring);
+    } else if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        addTypedRing(model::QtRingAxis::AromaticRing, ring->ring);
+    } else if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        addTypedRing(model::QtRingAxis::SaturatedRing, ring->ring);
+    } else if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor)) {
+        addRingMembership(membership->membership);
     }
     return atoms;
 }
@@ -157,10 +194,51 @@ void SceneRevealOverlay::reveal(const model::SignalBinding& binding, int frame)
     ASSERT_THREAD(this);
     activeAtoms_ = atomsForBinding(binding);
     lineAtoms_.clear();
-    if (binding.anchorKind == model::SignalAnchorKind::AtomTuple) {
-        for (std::size_t atom : binding.atomTuple) {
+    auto setLineFromBond = [this](std::size_t bondIndex) {
+        if (!protein_ || bondIndex >= protein_->bondCount())
+            return;
+        const auto& bond = protein_->bond(bondIndex);
+        if (bond.atomIndexA >= 0)
+            lineAtoms_.push_back(static_cast<std::size_t>(bond.atomIndexA));
+        if (bond.atomIndexB >= 0)
+            lineAtoms_.push_back(static_cast<std::size_t>(bond.atomIndexB));
+    };
+    auto setLineFromRing = [this](std::size_t ringIndex) {
+        if (!protein_ || ringIndex >= protein_->ringCount())
+            return;
+        const auto& ring = protein_->ring(ringIndex);
+        for (int32_t atom : ring.atomIndices) {
+            if (atom >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(atom));
+        }
+        if (lineAtoms_.size() > 2)
+            lineAtoms_.push_back(lineAtoms_.front());
+    };
+    const model::SignalAnchor& anchor = binding.anchor;
+    if (const auto* tuple = std::get_if<model::AtomTupleAnchor>(&anchor)) {
+        for (std::size_t atom : tuple->atoms) {
             if (protein_ && atom < protein_->atomCount())
                 lineAtoms_.push_back(atom);
+        }
+    } else if (const auto* bond = std::get_if<model::BondAnchor>(&anchor)) {
+        setLineFromBond(bond->bond);
+    } else if (const auto* ring = std::get_if<model::RingAnchor>(&anchor)) {
+        setLineFromRing(ring->ring);
+    } else if (const auto* ring = std::get_if<model::AromaticRingAnchor>(&anchor)) {
+        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::AromaticRing, ring->ring)
+                                       : std::nullopt;
+        if (absolute)
+            setLineFromRing(*absolute);
+    } else if (const auto* ring = std::get_if<model::SaturatedRingAnchor>(&anchor)) {
+        const auto absolute = protein_ ? protein_->topology().absoluteRingIndex(model::QtRingAxis::SaturatedRing, ring->ring)
+                                       : std::nullopt;
+        if (absolute)
+            setLineFromRing(*absolute);
+    } else if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor)) {
+        if (protein_ && membership->membership < protein_->ringMembershipCount()) {
+            const auto& row = protein_->topology().ringMembershipAt(membership->membership);
+            if (row.ringId >= 0)
+                setLineFromRing(static_cast<std::size_t>(row.ringId));
         }
     }
     if (activeAtoms_.empty()) {
