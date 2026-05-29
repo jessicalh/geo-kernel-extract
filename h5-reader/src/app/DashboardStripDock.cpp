@@ -201,6 +201,11 @@ void DashboardStripDock::setDftStore(model::DftShieldingStore* store) {
     controller_->setDftStore(store);
 }
 
+void DashboardStripDock::setSceneOverlay(SceneRevealOverlay* overlay) {
+    ASSERT_THREAD(this);
+    controller_->setSceneOverlay(overlay);
+}
+
 void DashboardStripDock::setTimeViewport(TimeViewportController* viewport) {
     ASSERT_THREAD(this);
     if (timeViewport_)

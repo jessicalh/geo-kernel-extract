@@ -17,6 +17,7 @@
 
 #include <QBuffer>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QHttpServer>
 #include <QHttpServerRequest>
 #include <QHttpServerResponse>
@@ -27,6 +28,7 @@
 #include <QLoggingCategory>
 #include <QPixmap>
 #include <QString>
+#include <QTimer>
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
@@ -95,6 +97,10 @@ QJsonObject anchorToJson(const model::SignalAnchor& anchor) {
         out["kind"] = "atom_tuple"; out["atoms"] = atoms;
     } else if (const auto* b = std::get_if<BondAnchor>(&anchor)) {
         out["kind"] = "bond"; out["bond"] = static_cast<qint64>(b->bond);
+    } else if (const auto* v = std::get_if<BondVectorAnchor>(&anchor)) {
+        out["kind"] = "bond_vector";
+        out["residue"] = static_cast<qint64>(v->residue);
+        out["kind_id"] = static_cast<qint64>(v->kind);
     } else if (const auto* r = std::get_if<RingAnchor>(&anchor)) {
         out["kind"] = "ring"; out["ring"] = static_cast<qint64>(r->ring);
     } else if (const auto* r = std::get_if<AromaticRingAnchor>(&anchor)) {
@@ -443,6 +449,22 @@ void RestServer::registerRoutes() {
             });
         }
         return jsonResponse(out);
+    });
+
+    // ---- shutdown -------------------------------------------------------
+
+    // POST /shutdown — graceful exit so the operator (or a test
+    // harness) doesn't need pkill. Returns 204 immediately, then
+    // posts a deferred quit() to the event loop so the response can
+    // flush first. Async-fire vs synchronous quit() matters because
+    // QHttpServer holds the request handler frame; calling quit()
+    // synchronously would tear down before the response bytes ship.
+    server_->route(QStringLiteral("/shutdown"), Method::Post,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        qCInfo(cRest).noquote() << "REST /shutdown — quitting on next event loop tick";
+        QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        return QHttpServerResponse(SC::NoContent);
     });
 
     // ---- screenshot -----------------------------------------------------

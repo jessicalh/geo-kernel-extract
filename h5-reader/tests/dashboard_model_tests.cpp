@@ -100,6 +100,12 @@ private slots:
     void testAnchorEquality();
     void testAnchorMatchesAxis_data();
     void testAnchorMatchesAxis();
+    // Direct test of the axis-pair widening helper that both the
+    // controller's AnchorMatchesAxis and the picker dialog's
+    // anchorAxisCanSatisfy share. Lockstep contract; if the two ever
+    // diverge again the dialog-side picker gap returns.
+    void testAxisCanSatisfy_data();
+    void testAxisCanSatisfy();
 
     // ---- ring axis normalisation ----------------------------------------
 
@@ -217,6 +223,40 @@ void DashboardModelTests::testAnchorMatchesAxis() {
     QFETCH(bool, expected);
     const auto axis = static_cast<SignalAxis>(axisInt);
     QCOMPARE(AnchorMatchesAxis(anchor, axis), expected);
+}
+
+void DashboardModelTests::testAxisCanSatisfy_data() {
+    QTest::addColumn<int>("selectedInt");
+    QTest::addColumn<int>("requiredInt");
+    QTest::addColumn<bool>("expected");
+
+    // None on the required side is always permissive (filter-off case).
+    QTest::newRow("none-required-accepts-any-atom") << int(SignalAxis::Atom) << int(SignalAxis::None) << true;
+
+    // Identity matches.
+    QTest::newRow("atom-atom") << int(SignalAxis::Atom) << int(SignalAxis::Atom) << true;
+    QTest::newRow("bondvec-bondvec") << int(SignalAxis::BondVector) << int(SignalAxis::BondVector) << true;
+
+    // Ring widening (existing).
+    QTest::newRow("aromatic-satisfies-ring") << int(SignalAxis::AromaticRing) << int(SignalAxis::Ring) << true;
+    QTest::newRow("saturated-satisfies-ring") << int(SignalAxis::SaturatedRing) << int(SignalAxis::Ring) << true;
+
+    // BondVector widening (the dialog-side gap that Codex NOW-3 caught).
+    QTest::newRow("residue-satisfies-bondvec") << int(SignalAxis::Residue) << int(SignalAxis::BondVector) << true;
+
+    // Negative cases — neither widening flips the other direction.
+    QTest::newRow("ring-no-aromatic") << int(SignalAxis::Ring) << int(SignalAxis::AromaticRing) << false;
+    QTest::newRow("bondvec-no-residue") << int(SignalAxis::BondVector) << int(SignalAxis::Residue) << false;
+    QTest::newRow("atom-no-bondvec") << int(SignalAxis::Atom) << int(SignalAxis::BondVector) << false;
+}
+
+void DashboardModelTests::testAxisCanSatisfy() {
+    QFETCH(int, selectedInt);
+    QFETCH(int, requiredInt);
+    QFETCH(bool, expected);
+    QCOMPARE(AxisCanSatisfy(static_cast<SignalAxis>(selectedInt),
+                            static_cast<SignalAxis>(requiredInt)),
+             expected);
 }
 
 // ---- ring axis normalisation --------------------------------------------
@@ -499,6 +539,18 @@ void DashboardModelTests::testCatalog_reorientDescriptorsPresent() {
         QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
         QVERIFY(d->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
     }
+    // L-3a: Mat3 orientation-tensor descriptor (ellipsoid glyph in
+    // the 3-D scene). Carries static.tensor as its primary mode.
+    const SignalDescriptor* tensor = catalog.findDescriptor(QStringLiteral("h5:reorient_orientation_tensor"));
+    QVERIFY(tensor != nullptr);
+    QCOMPARE(tensor->valueShape, SignalValueShape::Mat3PerRow);
+    QVERIFY(tensor->staticModes.contains(QStringLiteral("static.tensor")));
+    // L-3b: FixedFreqBlock J(ω) descriptor (5 KTB Larmor combinations,
+    // NH only). Carries static.fixed_freq for the dedicated panel.
+    const SignalDescriptor* j = catalog.findDescriptor(QStringLiteral("h5:reorient_spectral_density"));
+    QVERIFY(j != nullptr);
+    QCOMPARE(j->valueShape, SignalValueShape::FixedFreqBlock);
+    QVERIFY(j->staticModes.contains(QStringLiteral("static.fixed_freq")));
 }
 
 void DashboardModelTests::testCatalog_dihedralAutocorrDescriptorsPresent() {
@@ -515,6 +567,22 @@ void DashboardModelTests::testCatalog_dihedralAutocorrDescriptorsPresent() {
         QVERIFY2(d != nullptr, id);
         QCOMPARE(d->valueShape, SignalValueShape::CurveOverLag);
     }
+    // L-2a chi composite descriptors — PerClassBlock scalar + CurveOverLag
+    // with 4 chi channels (chi0..chi3). Per-channel dispatch lives in the
+    // controller's panel builders.
+    const SignalDescriptor* chiScalar = catalog.findDescriptor(QStringLiteral("h5:dihedral_chi_corr_time"));
+    QVERIFY(chiScalar != nullptr);
+    QCOMPARE(chiScalar->valueShape, SignalValueShape::PerClassBlock);
+    QCOMPARE(chiScalar->storagePath, QStringLiteral("/trajectory/dihedral_autocorrelation"));
+    QCOMPARE(chiScalar->channels.size(), 4);
+    QCOMPARE(chiScalar->channels.first().id, QStringLiteral("chi0"));
+    QVERIFY(chiScalar->staticModes.contains(QStringLiteral("static.bar.sequence")));
+
+    const SignalDescriptor* chiAcf = catalog.findDescriptor(QStringLiteral("h5:dihedral_chi_acf"));
+    QVERIFY(chiAcf != nullptr);
+    QCOMPARE(chiAcf->valueShape, SignalValueShape::CurveOverLag);
+    QCOMPARE(chiAcf->channels.size(), 4);
+    QVERIFY(chiAcf->staticModes.contains(QStringLiteral("static.curve.lag.animated")));
 }
 
 void DashboardModelTests::testCatalog_kernelCoherenceDescriptorPresent() {

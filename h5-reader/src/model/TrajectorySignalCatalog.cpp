@@ -684,12 +684,74 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
     addDihedralCurve("h5:dihedral_phi_acf", "dihedral.phi_acf", "phi torsional ACF");
     addDihedralCurve("h5:dihedral_psi_acf", "dihedral.psi_acf", "psi torsional ACF");
 
+    // Chi[0..3] composite descriptors (L-2a, 2026-05-29). Option B per
+    // user choice — one PerClassBlock scalar + one CurveOverLag curve,
+    // each fanned across 4 chi channels. Matches the existing
+    // kernel_dynamics composite shape; per-channel dispatch lives in
+    // the controller's denseH5Plan branch + panel builders.
+    QVector<ChannelDescriptor> chiChannels;
+    for (int k = 0; k < 4; ++k) {
+        const QString id = QStringLiteral("chi%1").arg(k);
+        const QString label = QStringLiteral("Chi %1").arg(k);
+        chiChannels.push_back(channel(id.toLatin1().constData(),
+                                      label.toLatin1().constData(),
+                                      SignalValueShape::Scalar, none));
+    }
+    add(descriptors,
+        makeDescriptor("h5:dihedral_chi_corr_time",
+                       "dihedral.chi_corr_time",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "dihedral_autocorrelation",
+                       "chi[0..3] torsional decorrelation times (ps)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::Residue,
+                       SignalAxis::Residue,
+                       SignalValueShape::PerClassBlock,
+                       unit(UnitDimension::Time, "ps", "ps"),
+                       {},
+                       {QStringLiteral("static.bar.sequence"),
+                        QStringLiteral("static.table")},
+                       chiChannels,
+                       "/trajectory/dihedral_autocorrelation",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+    add(descriptors,
+        makeDescriptor("h5:dihedral_chi_acf",
+                       "dihedral.chi_acf",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "dihedral_autocorrelation",
+                       "chi[0..3] torsional ACF over lag",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::Residue,
+                       SignalAxis::Residue,
+                       SignalValueShape::CurveOverLag,
+                       none,
+                       {},
+                       {QStringLiteral("static.curve.lag.animated")},
+                       chiChannels,
+                       "/trajectory/dihedral_autocorrelation",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+
     // ── Bond-vector axis (Reorientational dynamics / Lipari-Szabo) ──
-    // Seven descriptors all keyed to /trajectory/reorientational_dynamics.
-    // Scalars use SequenceBarPanel via static.bar.sequence. The two TCFs
-    // use LagDecayPanel via static.curve.lag.animated. Orientation tensor
-    // and J(ω) FixedFreqBlock land as static.table for v1 (tensor glyph
-    // + J-vs-freq line plot are end-of-plan polish items).
+    // Nine descriptors all keyed to /trajectory/reorientational_dynamics:
+    // - Five scalars (s2, tau_e, r1, r2, noe) via static.bar.sequence
+    //   (SequenceBarPanel). Auto-compose into one panel when 2+ are
+    //   active in the same dashboard panel (L-4 builder).
+    // - Two TCF curves (body / lab frame) via static.curve.lag.animated
+    //   (LagDecayPanel).
+    // - Orientation tensor (Mat3 per vector) via static.tensor — the
+    //   3-D ellipsoid glyph (L-3a math + revealTensor API; the trigger
+    //   gesture is intentionally deferred per the planning conversation
+    //   2026-05-29, so the glyph does not auto-fire on signal addition).
+    // - Spectral density J(ω) at 5 KTB Larmor frequencies via
+    //   static.fixed_freq (FixedFreqPanel, L-3b).
     auto addReorientScalar = [&](const char* id, const char* conceptKey,
                                   const char* label, const UnitSpec& units) {
         add(descriptors,
@@ -747,6 +809,59 @@ void addDenseH5(QVector<SignalDescriptor>& descriptors) {
                      "Reorientational TCF (body frame)");
     addReorientCurve("h5:reorient_acf_lab",      "reorient.acf_lab",
                      "Reorientational TCF (lab frame)");
+
+    // L-3a (2026-05-29): per-vector Mat3 orientation tensor. The Mat3
+    // payload feeds an ellipsoid glyph in the 3-D scene via
+    // SceneRevealOverlay::revealTensor. static.table is kept as a
+    // fallback so the user can inspect the raw 9 components even when
+    // the glyph is disabled.
+    add(descriptors,
+        makeDescriptor("h5:reorient_orientation_tensor",
+                       "reorient.orientation_tensor",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "reorientational_dynamics",
+                       "Bond-frame orientation tensor ⟨u⊗u⟩ (Mat3 per vector)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::BondVector,
+                       SignalAxis::BondVector,
+                       SignalValueShape::Mat3PerRow,
+                       none,
+                       {},
+                       {QStringLiteral("static.tensor"),
+                        QStringLiteral("static.table")},
+                       scalarChannels(none),
+                       "/trajectory/reorientational_dynamics",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
+
+    // L-3b (2026-05-29): per-vector J(ω) sampled at the 5 KTB Larmor
+    // frequencies (FixedFreqBlock shape). Rendered via FixedFreqPanel
+    // (static.fixed_freq mode). NH-only — Cα-Hα and C=O rows carry
+    // NaN per the producer; the panel filters those out at paint time.
+    add(descriptors,
+        makeDescriptor("h5:reorient_spectral_density",
+                       "reorient.spectral_density",
+                       SignalSourceKind::DenseH5Trajectory,
+                       "TrajectoryH5",
+                       "reorientational_dynamics",
+                       "Spectral density J(ω) at 5 KTB Larmor combinations (NH only)",
+                       SourceResidency::StartupLoaded,
+                       SignalAxis::BondVector,
+                       SignalAxis::BondVector,
+                       SignalValueShape::FixedFreqBlock,
+                       unit(UnitDimension::Time, "s", "s"),
+                       {},
+                       {QStringLiteral("static.fixed_freq"),
+                        QStringLiteral("static.table")},
+                       scalarChannels(unit(UnitDimension::Time, "s", "s")),
+                       "/trajectory/reorientational_dynamics",
+                       true,
+                       false,
+                       SampleStatus::Valid,
+                       GapReason::None));
 
     // ── Bond-vector axis (Lipari-Szabo / iRED) ──────────────────────
     // IRed S² is per-N-H-vector. Displayed as a per-residue sequence

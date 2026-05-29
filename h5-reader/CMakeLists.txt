@@ -191,6 +191,9 @@ qt_add_executable(h5reader
     src/app/LagDecayPanel.cpp
     src/app/ChordCouplingPanel.h
     src/app/ChordCouplingPanel.cpp
+    src/app/FixedFreqPanel.h
+    src/app/FixedFreqPanel.cpp
+    src/app/TensorGlyphMath.h
     src/app/StripStackWidget.h
     src/app/StripStackWidget.cpp
     src/app/RestServer.h

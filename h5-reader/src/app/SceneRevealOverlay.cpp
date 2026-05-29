@@ -5,6 +5,7 @@
 #include "../io/QtTrajectoryH5.h"
 #include "../model/QtBondVectorBuffers.h"
 #include "../model/TrajectoryConformation.h"
+#include "TensorGlyphMath.h"
 
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
@@ -24,6 +25,47 @@ constexpr double kLineWidth = 3.0;
 constexpr double kLineOpacity = 0.92;
 constexpr double kRevealRgb[3] = {0.0, 0.72, 0.78};
 constexpr double kLineRgb[3] = {0.78, 1.0, 0.96};
+// Distinct hue from the sphere/line highlights so the ellipsoid reads
+// as "the orientation tensor" rather than another sphere. Soft amber.
+constexpr double kTensorRgb[3] = {0.95, 0.74, 0.32};
+constexpr double kTensorOpacity = 0.40;
+// Scale factor on the eigendecomposition radii — orientation tensors
+// have eigenvalues that sum to 1 (PSD trace-normalised), so sqrt
+// values land near ~0.3-0.7. A 2.0× scale gives an ellipsoid roughly
+// the size of a backbone bond — same visual budget as the highlight
+// spheres.
+constexpr double kTensorScale = 2.0;
+
+// Resolve a (residue, kind) bond-vector anchor to its {tail, head}
+// atom pair by walking the TR identity tables that own it. iRED is
+// checked first (NH-only), then Reorient (NH + Cα-Hα + C=O). Returns
+// nullopt when no TR knows the (residue, kind) tuple.
+//
+// Centralises the lookup so both `atomsForBinding` (atom-sphere
+// highlights) and `reveal` (line endpoints) consume one source of
+// truth — when a third BondVector-keyed TR lands, both call sites
+// pick it up by extending this helper, not by editing both branches.
+std::optional<std::pair<std::int32_t, std::int32_t>>
+lookupBondVector(const h5reader::io::QtTrajectoryH5* h5,
+                 std::size_t residue,
+                 std::uint8_t kind) {
+    if (!h5)
+        return std::nullopt;
+    auto fromTable = [&](const h5reader::model::QtBondVectorTable* table)
+        -> std::optional<std::pair<std::int32_t, std::int32_t>> {
+        if (!table || table->n_vectors == 0)
+            return std::nullopt;
+        const auto row = table->rowFor(residue, kind);
+        if (!row)
+            return std::nullopt;
+        return std::make_pair(table->tail_atom[*row], table->head_atom[*row]);
+    };
+    const auto* ired = h5->iredOrderParameters();
+    if (auto pair = fromTable(ired ? &ired->identity : nullptr))
+        return pair;
+    const auto* rd = h5->reorientationalDynamics();
+    return fromTable(rd ? &rd->identity : nullptr);
+}
 }  // namespace
 
 SceneRevealOverlay::SceneRevealOverlay(vtkSmartPointer<vtkRenderer> renderer,
@@ -45,6 +87,8 @@ SceneRevealOverlay::~SceneRevealOverlay()
     }
     if (lineActor_)
         renderer_->RemoveActor(lineActor_);
+    if (tensorActor_)
+        renderer_->RemoveActor(tensorActor_);
 }
 
 void SceneRevealOverlay::Build(const model::QtProtein& protein,
@@ -90,6 +134,39 @@ void SceneRevealOverlay::Build(const model::QtProtein& protein,
     lineActor_->SetVisibility(0);
     lineActor_->PickableOff();
     renderer_->AddActor(lineActor_);
+
+    // L-3a (2026-05-29): tensor glyph pipeline. vtkSphereSource → per-
+    // frame vtkTransform (scale = eigendecomposition radii; rotation =
+    // eigenvector frame) → vtkTransformPolyDataFilter → mapper →
+    // actor. Mat3 update happens in applyTensorFrame; we set up the
+    // pipeline once here so per-frame ticks are cheap.
+    if (tensorActor_) {
+        renderer_->RemoveActor(tensorActor_);
+        tensorActor_ = nullptr;
+    }
+    tensorSphere_ = vtkSmartPointer<vtkSphereSource>::New();
+    tensorSphere_->SetRadius(1.0);
+    tensorSphere_->SetPhiResolution(24);
+    tensorSphere_->SetThetaResolution(24);
+
+    tensorTransform_ = vtkSmartPointer<vtkTransform>::New();
+    tensorTransform_->Identity();
+
+    tensorFilter_ = vtkSmartPointer<vtkTransformPolyDataFilter>::New();
+    tensorFilter_->SetInputConnection(tensorSphere_->GetOutputPort());
+    tensorFilter_->SetTransform(tensorTransform_);
+
+    auto tensorMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    tensorMapper->SetInputConnection(tensorFilter_->GetOutputPort());
+
+    tensorActor_ = vtkSmartPointer<vtkActor>::New();
+    tensorActor_->SetMapper(tensorMapper);
+    tensorActor_->GetProperty()->SetColor(kTensorRgb[0], kTensorRgb[1], kTensorRgb[2]);
+    tensorActor_->GetProperty()->SetOpacity(kTensorOpacity);
+    tensorActor_->SetVisibility(0);
+    tensorActor_->PickableOff();
+    renderer_->AddActor(tensorActor_);
+    tensorActive_ = false;
 }
 
 void SceneRevealOverlay::ensureSphereCount(std::size_t count)
@@ -189,26 +266,14 @@ std::vector<std::size_t> SceneRevealOverlay::atomsForBinding(const model::Signal
     } else if (const auto* membership = std::get_if<model::RingMembershipAnchor>(&anchor)) {
         addRingMembership(membership->membership);
     } else if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
-        // Resolve (residue, kind) via the bond-vector identity tables
-        // each TR owns. Walks iRED first (N-H only), then Reorient
-        // (N-H + Cα-Hα + C=O). Returns the {tail, head} atom pair so
-        // the existing addAtom path lights up both endpoints.
         const auto* trajectory = conformation_ ? conformation_->asTrajectory() : nullptr;
-        const auto* h5 = trajectory ? trajectory->h5() : nullptr;
-        auto lookup = [&](const model::QtBondVectorTable* table) -> bool {
-            if (!table || table->n_vectors == 0) return false;
-            const auto row = table->rowFor(vec->residue, vec->kind);
-            if (!row) return false;
-            if (table->tail_atom[*row] >= 0)
-                addAtom(static_cast<std::size_t>(table->tail_atom[*row]));
-            if (table->head_atom[*row] >= 0)
-                addAtom(static_cast<std::size_t>(table->head_atom[*row]));
-            return true;
-        };
-        const model::QtIRedOrderParameters* ired = h5 ? h5->iredOrderParameters() : nullptr;
-        const model::QtReorientationalDynamics* rd = h5 ? h5->reorientationalDynamics() : nullptr;
-        if (!lookup(ired ? &ired->identity : nullptr))
-            lookup(rd ? &rd->identity : nullptr);
+        if (const auto pair = lookupBondVector(trajectory ? trajectory->h5() : nullptr,
+                                               vec->residue, vec->kind)) {
+            if (pair->first >= 0)
+                addAtom(static_cast<std::size_t>(pair->first));
+            if (pair->second >= 0)
+                addAtom(static_cast<std::size_t>(pair->second));
+        }
     }
     return atoms;
 }
@@ -265,26 +330,17 @@ void SceneRevealOverlay::reveal(const model::SignalBinding& binding, int frame)
                 setLineFromRing(static_cast<std::size_t>(row.ringId));
         }
     } else if (const auto* vec = std::get_if<model::BondVectorAnchor>(&anchor)) {
-        // Bond-vector reveal: connect the {tail, head} pair with the
-        // same dashed line used for explicit bond reveals. Walks iRED
-        // first, then Reorient. Atom-sphere highlights are populated
-        // through atomsForBinding() above.
+        // Reuse the same helper that atomsForBinding uses, so the
+        // sphere highlights and the line endpoints always agree on
+        // which row the (residue, kind) anchor resolves to.
         const auto* trajectory = conformation_ ? conformation_->asTrajectory() : nullptr;
-        const auto* h5 = trajectory ? trajectory->h5() : nullptr;
-        auto lookupLine = [&](const model::QtBondVectorTable* table) -> bool {
-            if (!table || table->n_vectors == 0) return false;
-            const auto row = table->rowFor(vec->residue, vec->kind);
-            if (!row) return false;
-            if (table->tail_atom[*row] >= 0)
-                lineAtoms_.push_back(static_cast<std::size_t>(table->tail_atom[*row]));
-            if (table->head_atom[*row] >= 0)
-                lineAtoms_.push_back(static_cast<std::size_t>(table->head_atom[*row]));
-            return true;
-        };
-        const model::QtIRedOrderParameters* ired = h5 ? h5->iredOrderParameters() : nullptr;
-        const model::QtReorientationalDynamics* rd = h5 ? h5->reorientationalDynamics() : nullptr;
-        if (!lookupLine(ired ? &ired->identity : nullptr))
-            lookupLine(rd ? &rd->identity : nullptr);
+        if (const auto pair = lookupBondVector(trajectory ? trajectory->h5() : nullptr,
+                                               vec->residue, vec->kind)) {
+            if (pair->first >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(pair->first));
+            if (pair->second >= 0)
+                lineAtoms_.push_back(static_cast<std::size_t>(pair->second));
+        }
     }
     if (activeAtoms_.empty()) {
         clear();
@@ -314,6 +370,79 @@ void SceneRevealOverlay::setFrame(int t)
     ASSERT_THREAD(this);
     lastFrame_ = t;
     applyFrame(t);
+    applyTensorFrame(t);
+}
+
+void SceneRevealOverlay::revealTensor(std::size_t tailAtom,
+                                      std::size_t headAtom,
+                                      const std::array<double, 9>& tensor,
+                                      int frame)
+{
+    ASSERT_THREAD(this);
+    if (!protein_ || tailAtom >= protein_->atomCount() || headAtom >= protein_->atomCount()) {
+        clearTensor();
+        return;
+    }
+    tensorTail_ = tailAtom;
+    tensorHead_ = headAtom;
+    tensorData_ = tensor;
+    tensorActive_ = true;
+    applyTensorFrame(frame);
+}
+
+void SceneRevealOverlay::clearTensor()
+{
+    ASSERT_THREAD(this);
+    tensorActive_ = false;
+    if (tensorActor_)
+        tensorActor_->SetVisibility(0);
+}
+
+void SceneRevealOverlay::applyTensorFrame(int t)
+{
+    if (!tensorActor_ || !tensorTransform_)
+        return;
+    if (!tensorActive_ || !protein_ || !conformation_) {
+        tensorActor_->SetVisibility(0);
+        return;
+    }
+    if (t < 0 || static_cast<std::size_t>(t) >= conformation_->frameCount()) {
+        tensorActor_->SetVisibility(0);
+        return;
+    }
+    // Body→lab transform per frame. The bond_orientation_tensor is
+    // accumulated in the body frame (producer-side: trajectory rigidly
+    // aligned to frame 0). The eigenvectors decomposeSymmetric3x3
+    // returns are body-frame; writing them into the VTK world
+    // transform unchanged would produce a glyph whose orientation is
+    // wrong once the molecule rotates relative to frame 0 (Codex
+    // NOW-4, 2026-05-29). composeEllipsoidTransform takes the current
+    // lab-frame bond direction and rotates the body-frame
+    // eigenvectors to align the primary axis with the current bond,
+    // approximating the per-frame body→lab rotation without needing
+    // the full Kabsch matrix.
+    const model::Vec3 tail =
+        conformation_->atomPosition(static_cast<std::size_t>(t), tensorTail_);
+    const model::Vec3 head =
+        conformation_->atomPosition(static_cast<std::size_t>(t), tensorHead_);
+    const model::Vec3 mid = (tail + head) * 0.5;
+    const model::Vec3 bondVec = head - tail;
+    if (bondVec.norm() < 1e-9) {
+        tensorActor_->SetVisibility(0);
+        return;
+    }
+    const model::Vec3 bondDir = bondVec.normalized();
+
+    const auto eig = math::decomposeSymmetric3x3(tensorData_);
+    const auto M = math::composeEllipsoidTransform(eig, bondDir, mid, kTensorScale);
+
+    vtkNew<vtkMatrix4x4> vtkM;
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+            vtkM->SetElement(r, c, M[r * 4 + c]);
+    tensorTransform_->SetMatrix(vtkM);
+    tensorTransform_->Modified();
+    tensorActor_->SetVisibility(1);
 }
 
 void SceneRevealOverlay::applyFrame(int t)

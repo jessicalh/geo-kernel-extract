@@ -223,21 +223,24 @@ SignalAxis AxisForAnchor(const SignalAnchor& anchor) {
         anchor);
 }
 
-bool AnchorMatchesAxis(const SignalAnchor& anchor, SignalAxis axis) {
-    if (axis == SignalAxis::None)
+bool AxisCanSatisfy(SignalAxis selectedAxis, SignalAxis requiredAxis) {
+    if (requiredAxis == SignalAxis::None)
         return true;
-    const SignalAxis anchorAxis = AxisForAnchor(anchor);
-    if (anchorAxis == axis)
+    if (selectedAxis == requiredAxis)
         return true;
-    if (axis == SignalAxis::Ring
-        && (anchorAxis == SignalAxis::AromaticRing || anchorAxis == SignalAxis::SaturatedRing))
+    if (requiredAxis == SignalAxis::Ring
+        && (selectedAxis == SignalAxis::AromaticRing || selectedAxis == SignalAxis::SaturatedRing))
         return true;
     // Residue-grouping ergonomic: a BondVector descriptor accepts a parent
     // Residue anchor (picking a residue surfaces its bond vectors as a
     // sub-list, analogous to how Ring axis accepts Aromatic/Saturated).
-    if (axis == SignalAxis::BondVector && anchorAxis == SignalAxis::Residue)
+    if (requiredAxis == SignalAxis::BondVector && selectedAxis == SignalAxis::Residue)
         return true;
     return false;
+}
+
+bool AnchorMatchesAxis(const SignalAnchor& anchor, SignalAxis axis) {
+    return AxisCanSatisfy(AxisForAnchor(anchor), axis);
 }
 
 QString AnchorLabel(const SignalAnchor& anchor) {

@@ -333,6 +333,12 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     ACONNECT(dashboardStripDock_, &DashboardStripDock::revealRequested,
              scene_,              &MoleculeScene::revealBinding);
+    // L-3a (2026-05-29): expose the scene's reveal overlay to the
+    // dashboard controller so static.tensor mode on Reorient
+    // orientation_tensor signals fires an ellipsoid glyph in the
+    // 3-D view.
+    if (scene_ && scene_->revealOverlay())
+        dashboardStripDock_->setSceneOverlay(scene_->revealOverlay());
     ACONNECT(dashboardStripDock_, &DashboardStripDock::metricPickerRequested,
              this,                &ReaderMainWindow::onOpenSignalDisplays);
     ACONNECT(playback_,           &QtPlaybackController::frameChanged,

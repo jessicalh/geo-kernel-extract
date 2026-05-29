@@ -58,6 +58,33 @@ void WarnGroupAbsent(const char* /*group_path*/) {
     // every load for the 30+ TRs not present in any given run).
 }
 
+// Qt + HighFive exception boundary. Per Qt rules, exceptions must
+// never escape back into the event-loop-managed caller — the
+// QtTrajectoryH5 constructor runs from QtProteinLoader, which runs
+// from the loader worker thread. Each Read* function calls this
+// helper from its catch handlers so a single malformed TR group
+// degrades to a logged warning + nullptr buffer (the existing
+// "absent, not faked" semantics) instead of unwinding the whole
+// load. `noexcept` because the handler itself must not throw — if
+// WarnShapeMismatch ever did, the whole std::terminate would fire.
+void LogReadException(const char* group_path, const char* kind, const std::exception& e) noexcept {
+    try {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("%1: %2").arg(QString::fromLatin1(kind),
+                                         QString::fromUtf8(e.what())));
+    } catch (...) {
+        // Truly defensive; never reachable in practice.
+    }
+}
+
+void LogReadException(const char* group_path, const char* kind) noexcept {
+    try {
+        WarnShapeMismatch(group_path,
+            QStringLiteral("%1: unknown exception").arg(QString::fromLatin1(kind)));
+    } catch (...) {
+    }
+}
+
 // ── Generic readers ────────────────────────────────────────────────
 
 template <typename T>
@@ -701,6 +728,7 @@ void ReadHydrationWelford(HighFive::File& file,
 void ReadIRedOrderParameters(HighFive::File& file,
                              const char* group_path,
                              std::unique_ptr<QtIRedOrderParameters>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -768,12 +796,23 @@ void ReadIRedOrderParameters(HighFive::File& file,
     TryReadAttributeQ(grp, "vector_set", buf->vector_set);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadKernelCoherence(HighFive::File& file,
                          const char* group_path,
                          std::size_t n_atoms,
                          std::unique_ptr<QtKernelCoherence>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -813,11 +852,22 @@ void ReadKernelCoherence(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->matrix.result_name);
 
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadDihedralAutocorrelation(HighFive::File& file,
                                  const char* group_path,
                                  std::unique_ptr<QtDihedralAutocorrelation>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -885,15 +935,54 @@ void ReadDihedralAutocorrelation(HighFive::File& file,
     fill_scalar("phi_corr_time_ps", "phi_defined", buf->phi_corr_time);
     fill_scalar("psi_corr_time_ps", "psi_defined", buf->psi_corr_time);
 
+    // Chi[0..3] composite payload — L-2a (2026-05-29). Producer emits
+    // chi_acf (R, 4, L) + chi_corr_time_ps (R, 4) + chi_defined (R, 4).
+    // Gracefully absent on older runs that predate the chi expansion;
+    // we just leave the chi_* vectors empty in that case.
+    if (grp.exist("chi_acf") && grp.exist("chi_corr_time_ps")) {
+        const auto chi_dims = grp.getDataSet("chi_acf").getDimensions();
+        if (chi_dims.size() == 3 && chi_dims[0] == R && chi_dims[1] == 4 && chi_dims[2] == L) {
+            ReadFlat<double>(grp.getDataSet("chi_acf"), buf->chi_acf, R * 4 * L);
+            buf->chi_acf_axis = buf->phi_acf.axis_values;  // shared lag grid
+            const auto ct_dims = grp.getDataSet("chi_corr_time_ps").getDimensions();
+            if (ct_dims.size() == 2 && ct_dims[0] == R && ct_dims[1] == 4) {
+                ReadFlat<double>(grp.getDataSet("chi_corr_time_ps"), buf->chi_corr_time, R * 4);
+            } else {
+                WarnShapeMismatch(group_path,
+                    QStringLiteral("chi_corr_time_ps shape != (R=%1, 4)").arg(R));
+            }
+            if (grp.exist("chi_defined")) {
+                const auto d_dims = grp.getDataSet("chi_defined").getDimensions();
+                if (d_dims.size() == 2 && d_dims[0] == R && d_dims[1] == 4) {
+                    ReadFlat<uint8_t>(grp.getDataSet("chi_defined"), buf->chi_defined, R * 4);
+                }
+            }
+        } else {
+            WarnShapeMismatch(group_path,
+                QStringLiteral("chi_acf shape != (R=%1, 4, L=%2)").arg(R).arg(L));
+        }
+    }
+
     if (grp.hasAttribute("sample_interval_ps"))
         grp.getAttribute("sample_interval_ps").read(buf->sample_interval_ps);
 
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadReorientationalDynamics(HighFive::File& file,
                                  const char* group_path,
                                  std::unique_ptr<QtReorientationalDynamics>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1026,12 +1115,23 @@ void ReadReorientationalDynamics(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->result_name);
 
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadKernelDynamics(HighFive::File& file,
                         const char* group_path,
                         std::size_t n_atoms,
                         std::unique_ptr<QtKernelDynamics>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1139,6 +1239,16 @@ void ReadKernelDynamics(HighFive::File& file,
     fill_scalar("spectral_centroid_per_ps", buf->spectral_centroid_per_ps, "1/ps");
 
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadAutocorrelation(HighFive::File& file,

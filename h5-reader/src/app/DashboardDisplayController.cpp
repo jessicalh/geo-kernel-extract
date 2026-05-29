@@ -17,8 +17,10 @@
 #include "../model/TrajectoryConformation.h"
 #include "../model/TrajectorySignalCatalog.h"
 #include "ChordCouplingPanel.h"
+#include "FixedFreqPanel.h"
 #include "LagDecayPanel.h"
 #include "PowerSpectrumPanel.h"
+#include "SceneRevealOverlay.h"
 #include "SequenceBarPanel.h"
 
 #include <QAbstractItemModel>
@@ -55,7 +57,8 @@ bool isPanelMode(const QString& mode) {
     return mode == QStringLiteral("static.bar.sequence")
         || mode == QStringLiteral("static.spectrum.power")
         || mode == QStringLiteral("static.curve.lag.animated")
-        || mode == QStringLiteral("static.chord.coupling");
+        || mode == QStringLiteral("static.chord.coupling")
+        || mode == QStringLiteral("static.fixed_freq");
 }
 
 QString canonicalModeChannel(const QString& mode) {
@@ -1216,8 +1219,17 @@ void DashboardDisplayController::setPanelModel(model::DashboardPanelModel* panel
     if (panelModel_) {
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::activePanelChanged,
                  this, [this](const QUuid&) { refreshPanelVisibility(); });
+        // Codex NOW-1 (2026-05-29): displayRefsChanged must trigger a
+        // full rebuild() rather than the lightweight
+        // refreshPanelVisibility(). The dialog adds a static panel
+        // signal in two steps — addSignal() (sync, fires the
+        // controller's signalAdded handler before any refs exist) +
+        // addDisplayRef() (fires displayRefsChanged after). The
+        // earlier rebuild on signalAdded sees no refs and filters the
+        // panel out; without a rebuild here the panel never appears
+        // until some unrelated event triggers another rebuild.
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::displayRefsChanged,
-                 this, [this](const QUuid&) { refreshPanelVisibility(); });
+                 this, [this](const QUuid&) { rebuild(); });
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelAdded,
                  this, [this](const QUuid&) { refreshPanelVisibility(); });
         ACONNECT(panelModel_.data(), &model::DashboardPanelModel::panelRemoved,
@@ -1249,6 +1261,16 @@ void DashboardDisplayController::setSelection(model::AtomSelection* selection) {
 void DashboardDisplayController::setDftStore(model::DftShieldingStore* store) {
     ASSERT_THREAD(this);
     dftStore_ = store;
+    rebuild();
+}
+
+void DashboardDisplayController::setSceneOverlay(SceneRevealOverlay* overlay) {
+    ASSERT_THREAD(this);
+    // If the overlay is being detached, clear any tensor reveal we
+    // pushed to the previous one so it doesn't linger after rebuild.
+    if (sceneOverlay_ && sceneOverlay_ != overlay)
+        sceneOverlay_->clearTensor();
+    sceneOverlay_ = overlay;
     rebuild();
 }
 
@@ -1462,6 +1484,53 @@ void DashboardDisplayController::rebuild() {
     std::vector<std::unique_ptr<AbstractStripPanel>> nextPanels;
     activeStripSignalCount_ = 0;
 
+    // L-4 (2026-05-29): auto-compose. Pre-scan for Reorient scalar
+    // signals with static.bar.sequence mode in the active panel.
+    // If 2+ are present, they collapse into ONE composite panel
+    // (built post-loop) instead of one panel per signal. Absorbed
+    // signals get added to `absorbedSignals` so the per-signal
+    // dispatch below skips their static.bar.sequence mode (other
+    // modes on the same signal still emit normally).
+    QSet<QUuid> absorbedSignals;
+    QVector<model::DashboardSignal> reorientCompositeGroup;
+    if (catalog_ && activeModel_) {
+        QVector<model::DashboardSignal> candidates;
+        const auto reorientScalarConcepts = QSet<QString>{
+            QStringLiteral("reorient.s2"),
+            QStringLiteral("reorient.tau_e"),
+            QStringLiteral("reorient.r1"),
+            QStringLiteral("reorient.r2"),
+            QStringLiteral("reorient.noe"),
+        };
+        for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
+            if (!signal.enabled) continue;
+            const model::SignalDescriptor* d =
+                catalog_->findDescriptor(signal.binding.descriptorId);
+            if (!d) continue;
+            if (d->storagePath != QStringLiteral("/trajectory/reorientational_dynamics"))
+                continue;
+            if (!reorientScalarConcepts.contains(d->conceptKey))
+                continue;
+            if (!signal.displayModeIds.contains(QStringLiteral("static.bar.sequence")))
+                continue;
+            if (panelModel_) {
+                const model::DashboardPanel* activePanel = panelModel_->activePanel();
+                if (!activePanel) continue;
+                const model::DashboardDisplayRef ref{
+                    signal.id,
+                    QStringLiteral("static.bar.sequence"),
+                    QStringLiteral("panel")};
+                if (!activePanel->displays.contains(ref)) continue;
+            }
+            candidates.push_back(signal);
+        }
+        if (candidates.size() >= 2) {
+            reorientCompositeGroup = candidates;
+            for (const auto& s : candidates)
+                absorbedSignals.insert(s.id);
+        }
+    }
+
     if (catalog_ && activeModel_) {
         for (const model::DashboardSignal& signal : activeModel_->activeSignals()) {
             if (!signal.enabled)
@@ -1510,27 +1579,64 @@ void DashboardDisplayController::rebuild() {
                         nextPanels.push_back(std::move(panel));
                 } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
                            && mode == QStringLiteral("static.bar.sequence")) {
-                    if (auto panel = buildReorientSequenceBarPanel(signal, *descriptor))
-                        nextPanels.push_back(std::move(panel));
+                    // L-4: skip if this signal is part of an
+                    // auto-composed Reorient group (the composite
+                    // panel is built post-loop below). Other modes
+                    // on the same signal still emit normally.
+                    if (!absorbedSignals.contains(signal.id)) {
+                        if (auto panel = buildReorientSequenceBarPanel(signal, *descriptor))
+                            nextPanels.push_back(std::move(panel));
+                    }
                 } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
                            && mode == QStringLiteral("static.curve.lag.animated")) {
                     if (auto panel = buildReorientLagDecayPanel(signal, *descriptor))
                         nextPanels.push_back(std::move(panel));
                 } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
                            && mode == QStringLiteral("static.bar.sequence")) {
+                    // Covers dihedral.phi/psi_corr_time AND
+                    // dihedral.chi_corr_time (L-2a) via conceptKey
+                    // dispatch inside the builder.
                     if (auto panel = buildDihedralSequenceBarPanel(signal, *descriptor))
                         nextPanels.push_back(std::move(panel));
                 } else if (path == QStringLiteral("/trajectory/dihedral_autocorrelation")
                            && mode == QStringLiteral("static.curve.lag.animated")) {
+                    // Covers dihedral.phi/psi_acf AND dihedral.chi_acf
+                    // (L-2a) — the 4-channel chi variant fans into a
+                    // single multi-curve LagDecayPanel.
                     if (auto panel = buildDihedralLagDecayPanel(signal, *descriptor))
                         nextPanels.push_back(std::move(panel));
                 } else if (path == QStringLiteral("/trajectory/kernel_coherence")
                            && mode == QStringLiteral("static.chord.coupling")) {
                     if (auto panel = buildKernelCoherenceChordPanel(signal, *descriptor))
                         nextPanels.push_back(std::move(panel));
+                } else if (path == QStringLiteral("/trajectory/reorientational_dynamics")
+                           && mode == QStringLiteral("static.fixed_freq")) {
+                    // L-3b (2026-05-29): J(ω) at 5 KTB Larmor combinations.
+                    if (auto panel = buildReorientFixedFreqPanel(signal, *descriptor))
+                        nextPanels.push_back(std::move(panel));
                 }
                 // Future per-phase branches land here.
             }
+
+            // L-3a tensor-glyph trigger INTENTIONALLY OMITTED here
+            // (decision 2026-05-29 mid-session, per user request).
+            // The earlier draft auto-fired sceneOverlay_->revealTensor
+            // for the first active Reorient orientation_tensor signal
+            // in the active panel. That was the wrong scope: the user
+            // explicitly chose "no UI yet, defer trigger to follow-up"
+            // because auto-fire on signal addition is too eager — the
+            // ellipsoid should appear only on an explicit user
+            // gesture (a Reveal button, context menu, or panel
+            // interaction) that does not yet exist. The follow-up
+            // session designs and lands that gesture.
+            //
+            // The supporting infrastructure stays in place:
+            //   - revealTensor / clearTensor on SceneRevealOverlay
+            //   - setSceneOverlay on the controller + dock wiring
+            //   - TensorGlyphMath + h5:reorient_orientation_tensor
+            //     catalog descriptor
+            // When the follow-up adds the gesture, the trigger code
+            // lives here and calls sceneOverlay_->revealTensor(...).
 
             // Temporal-strip path: existing ChannelBuffer pipeline.
             if (hasStripMode(signal.displayModeIds)) {
@@ -1543,9 +1649,24 @@ void DashboardDisplayController::rebuild() {
     for (int i = 0; i < next.size(); ++i)
         next[i].color = colorForIndex(i);
 
+    // L-4 (2026-05-29): build the auto-compose Reorient composite
+    // AFTER the per-signal loop has built all the other panels.
+    // The composite folds the 2+ absorbed scalar signals into one
+    // SequenceBarPanel with overlays.
+    if (!reorientCompositeGroup.isEmpty()) {
+        if (auto panel = buildReorientCompositeBarPanel(reorientCompositeGroup))
+            nextPanels.push_back(std::move(panel));
+    }
+
+    activeOwnedPanelCount_ = static_cast<int>(nextPanels.size());
     series_ = std::move(next);
     ownedPanels_ = std::move(nextPanels);
     extendToFrame(frame_);
+
+    // L-3a: tensor-glyph trigger intentionally not wired here yet —
+    // see the comment block above in the per-signal loop. The
+    // sceneOverlay_ pointer + revealTensor / clearTensor API exist
+    // and are reachable; the call site is the deferred follow-up.
 
     updateStatusText();
     emit stripTracksChanged();
@@ -1736,6 +1857,135 @@ DashboardDisplayController::buildReorientSequenceBarPanel(
         yMax);
 }
 
+namespace {
+
+// Same conceptKey → (scalar buffer pointer, unit, y-bounds) lookup
+// used by buildReorientSequenceBarPanel, factored out so the
+// composite builder can call it per signal without duplicating the
+// switch. Returns std::nullopt for unknown conceptKeys.
+struct ReorientScalarPick {
+    const model::QtPerBondVectorScalar* scalar = nullptr;
+    QString unit;
+    std::optional<double> yMin;
+    std::optional<double> yMax;
+};
+
+std::optional<ReorientScalarPick> reorientScalarFor(
+        const QString& conceptKey,
+        const model::QtReorientationalDynamics& rd) {
+    ReorientScalarPick p;
+    if (conceptKey == QStringLiteral("reorient.s2"))   { p.scalar = &rd.s2;    p.unit = QStringLiteral("dimensionless"); p.yMin = 0.0; p.yMax = 1.0; }
+    else if (conceptKey == QStringLiteral("reorient.tau_e")) { p.scalar = &rd.tau_e; p.unit = QStringLiteral("ps"); }
+    else if (conceptKey == QStringLiteral("reorient.r1"))    { p.scalar = &rd.r1;    p.unit = QStringLiteral("s⁻¹"); }
+    else if (conceptKey == QStringLiteral("reorient.r2"))    { p.scalar = &rd.r2;    p.unit = QStringLiteral("s⁻¹"); }
+    else if (conceptKey == QStringLiteral("reorient.noe"))   { p.scalar = &rd.noe;   p.unit = QStringLiteral("dimensionless"); p.yMin = -1.0; p.yMax = 1.0; }
+    if (!p.scalar) return std::nullopt;
+    return p;
+}
+
+std::vector<SequenceBarRow> reorientScalarRows(
+        const model::QtReorientationalDynamics& rd,
+        const model::QtPerBondVectorScalar& scalar) {
+    std::vector<SequenceBarRow> rows;
+    rows.reserve(rd.identity.n_vectors);
+    for (std::size_t i = 0; i < rd.identity.n_vectors; ++i) {
+        SequenceBarRow row;
+        row.residue_index = rd.identity.residue_index[i];
+        row.value = scalar.at(i);
+        row.kind = rd.identity.kind[i];
+        if (!std::isfinite(row.value)) continue;
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+QColor compositeOverlayColor(std::size_t index) {
+    // Distinct overlay colours, chosen for legibility against the
+    // amber primary used by buildReorientSequenceBarPanel.
+    static const QColor palette[] = {
+        QColor( 74, 184, 220),  // cyan
+        QColor(143, 100, 220),  // violet
+        QColor(245,  90, 130),  // pink
+        QColor(110, 200, 110),  // green
+    };
+    return palette[index % (sizeof(palette) / sizeof(palette[0]))];
+}
+
+}  // namespace
+
+std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildReorientCompositeBarPanel(
+        const QVector<model::DashboardSignal>& group) const {
+    if (group.size() < 2 || !conformation_ || !catalog_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* rd = h5->reorientationalDynamics();
+    if (!rd || rd->identity.n_vectors == 0) return nullptr;
+
+    // Primary: first signal in the group. Resolve its
+    // descriptor → scalar + units + y-bounds.
+    const model::DashboardSignal& primarySignal = group[0];
+    const model::SignalDescriptor* primaryDescriptor =
+        catalog_->findDescriptor(primarySignal.binding.descriptorId);
+    if (!primaryDescriptor) return nullptr;
+    const auto primaryPick = reorientScalarFor(primaryDescriptor->conceptKey, *rd);
+    if (!primaryPick) return nullptr;
+    auto primaryRows = reorientScalarRows(*rd, *primaryPick->scalar);
+    if (primaryRows.empty()) return nullptr;
+
+    SequenceBarPanel::BindingForRow bindingForRow =
+        [primaryRows, descriptorId = primaryDescriptor->id](std::size_t row) -> model::SignalBinding {
+        model::SignalBinding b;
+        b.descriptorId = descriptorId;
+        if (row < primaryRows.size()) {
+            model::BondVectorAnchor anchor;
+            anchor.residue = static_cast<std::size_t>(primaryRows[row].residue_index);
+            anchor.kind = primaryRows[row].kind;
+            b.anchor = anchor;
+        }
+        return b;
+    };
+
+    // Composite label: list all conceptKeys in the group, primary
+    // first. Helps the user understand which signals collapsed
+    // into this panel.
+    QStringList allLabels;
+    allLabels.push_back(primaryDescriptor->label);
+    for (int i = 1; i < group.size(); ++i) {
+        if (auto* d = catalog_->findDescriptor(group[i].binding.descriptorId))
+            allLabels.push_back(d->label);
+    }
+    const QString panelLabel = QStringLiteral("Reorient composite: %1")
+                                   .arg(allLabels.join(QStringLiteral(" + ")));
+
+    auto panel = std::make_unique<SequenceBarPanel>(
+        panelLabel,
+        primaryPick->unit,
+        std::move(primaryRows),
+        std::move(bindingForRow),
+        QColor(255, 175, 76),  // amber — same as single-signal Reorient
+        primaryPick->yMin,
+        primaryPick->yMax);
+
+    // Add overlays for the remaining group members.
+    for (int i = 1; i < group.size(); ++i) {
+        const model::DashboardSignal& s = group[i];
+        const model::SignalDescriptor* d =
+            catalog_->findDescriptor(s.binding.descriptorId);
+        if (!d) continue;
+        const auto pick = reorientScalarFor(d->conceptKey, *rd);
+        if (!pick) continue;
+        auto rows = reorientScalarRows(*rd, *pick->scalar);
+        if (rows.empty()) continue;
+        panel->addOverlay(std::move(rows),
+                          compositeOverlayColor(static_cast<std::size_t>(i - 1)),
+                          d->label,
+                          pick->unit);
+    }
+    return panel;
+}
+
 std::unique_ptr<AbstractStripPanel>
 DashboardDisplayController::buildReorientLagDecayPanel(
         const model::DashboardSignal& signal,
@@ -1826,17 +2076,35 @@ DashboardDisplayController::buildDihedralSequenceBarPanel(
     const model::QtPerResidueScalar* scalar = nullptr;
     if (conceptKey == QStringLiteral("dihedral.phi_corr_time"))      scalar = &da->phi_corr_time;
     else if (conceptKey == QStringLiteral("dihedral.psi_corr_time")) scalar = &da->psi_corr_time;
-    if (!scalar) return nullptr;
 
     std::vector<SequenceBarRow> rows;
-    rows.reserve(scalar->n_residues);
-    for (std::size_t i = 0; i < scalar->n_residues; ++i) {
-        if (!scalar->isDefined(i)) continue;
-        SequenceBarRow row;
-        row.residue_index = static_cast<std::int32_t>(i);
-        row.value = scalar->at(i);
-        if (!std::isfinite(row.value)) continue;
-        rows.push_back(row);
+    if (scalar) {
+        rows.reserve(scalar->n_residues);
+        for (std::size_t i = 0; i < scalar->n_residues; ++i) {
+            if (!scalar->isDefined(i)) continue;
+            SequenceBarRow row;
+            row.residue_index = static_cast<std::int32_t>(i);
+            row.value = scalar->at(i);
+            if (!std::isfinite(row.value)) continue;
+            rows.push_back(row);
+        }
+    } else if (conceptKey == QStringLiteral("dihedral.chi_corr_time")) {
+        // L-2a (2026-05-29): chi composite fanned across 4 sub-slots
+        // (kinds 4..7) per residue. Residues with fewer than 4 chi
+        // torsions just emit fewer rows (chi_defined gates emission).
+        rows.reserve(da->n_residues * 4);
+        for (std::size_t r = 0; r < da->n_residues; ++r) {
+            for (std::size_t k = 0; k < 4; ++k) {
+                if (!da->chiIsDefined(r, k)) continue;
+                const double v = da->chiCorrTimeAt(r, k);
+                if (!std::isfinite(v)) continue;
+                SequenceBarRow row;
+                row.residue_index = static_cast<std::int32_t>(r);
+                row.value = v;
+                row.kind = static_cast<std::uint8_t>(4 + k);  // chi0=4, chi3=7
+                rows.push_back(row);
+            }
+        }
     }
     if (rows.empty()) return nullptr;
 
@@ -1860,6 +2128,51 @@ DashboardDisplayController::buildDihedralSequenceBarPanel(
 }
 
 std::unique_ptr<AbstractStripPanel>
+DashboardDisplayController::buildReorientFixedFreqPanel(
+        const model::DashboardSignal& signal,
+        const model::SignalDescriptor& descriptor) const {
+    if (!conformation_) return nullptr;
+    const auto* trajectory = conformation_->asTrajectory();
+    const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+    if (!h5) return nullptr;
+    const auto* rd = h5->reorientationalDynamics();
+    if (!rd) return nullptr;
+    const auto& src = rd->spectral_density_J;
+    if (src.n_vectors == 0 || src.n_freqs == 0) return nullptr;
+
+    // Resolve anchor → row (direct BondVectorAnchor or Residue widening).
+    std::optional<std::size_t> row;
+    if (const auto* vec = std::get_if<model::BondVectorAnchor>(&signal.binding.anchor))
+        row = rd->identity.rowFor(vec->residue, vec->kind);
+    else if (const auto* res = std::get_if<model::ResidueAnchor>(&signal.binding.anchor))
+        row = rd->identity.rowFor(res->residue, /*wildcard=*/0);
+    if (!row || *row >= src.n_vectors) return nullptr;
+
+    // Slice the producer-owned (V, n_freqs) buffer down to a one-row
+    // copy the panel owns. Keeps lifetime local to the panel — same
+    // ownership model as the LagDecayPanel single-row clone path.
+    auto view = std::make_unique<model::QtPerBondVectorFixedFreqBlock>();
+    view->n_vectors = 1;
+    view->n_freqs   = src.n_freqs;
+    view->data.assign(src.n_freqs, 0.0);
+    for (std::size_t i = 0; i < src.n_freqs; ++i)
+        view->data[i] = src.at(*row, i);
+    view->freq_values = src.freq_values;
+    view->units = src.units;
+    view->result_name = src.result_name;
+
+    model::SignalBinding reveal;
+    reveal.descriptorId = descriptor.id;
+    reveal.anchor = signal.binding.anchor;
+
+    return std::make_unique<FixedFreqPanel>(
+        signal.label.isEmpty() ? descriptor.label : signal.label,
+        std::move(view),
+        /*row=*/0,
+        std::move(reveal));
+}
+
+std::unique_ptr<AbstractStripPanel>
 DashboardDisplayController::buildDihedralLagDecayPanel(
         const model::DashboardSignal& signal,
         const model::SignalDescriptor& descriptor) const {
@@ -1876,20 +2189,42 @@ DashboardDisplayController::buildDihedralLagDecayPanel(
     const model::QtPerResidueCurve* curve = nullptr;
     if (descriptor.conceptKey == QStringLiteral("dihedral.phi_acf"))      curve = &da->phi_acf;
     else if (descriptor.conceptKey == QStringLiteral("dihedral.psi_acf")) curve = &da->psi_acf;
-    if (!curve || curve->n_samples < 2) return nullptr;
 
     auto view = std::make_unique<model::QtPerAtomChannelCurve>();
     view->n_atoms = 1;
-    view->n_channels = 1;
-    view->n_samples = curve->n_samples;
-    view->data.assign(curve->n_samples, 0.0);
-    for (std::size_t s = 0; s < curve->n_samples; ++s)
-        view->data[s] = curve->at(res->residue, s);
-    view->axis_values = curve->axis_values;
-    view->axis_unit = curve->axis_unit;
     view->axis_label = QStringLiteral("lag");
-    view->units = curve->units;
-    view->channel_names = QStringList{descriptor.conceptKey};
+
+    if (curve && curve->n_samples >= 2) {
+        view->n_channels = 1;
+        view->n_samples = curve->n_samples;
+        view->data.assign(curve->n_samples, 0.0);
+        for (std::size_t s = 0; s < curve->n_samples; ++s)
+            view->data[s] = curve->at(res->residue, s);
+        view->axis_values = curve->axis_values;
+        view->axis_unit = curve->axis_unit;
+        view->units = curve->units;
+        view->channel_names = QStringList{descriptor.conceptKey};
+    } else if (descriptor.conceptKey == QStringLiteral("dihedral.chi_acf")
+               && da->n_lags >= 2 && !da->chi_acf.empty()) {
+        // L-2a (2026-05-29): pack 4 chi curves as 4 channels — LagDecayPanel
+        // already iterates n_channels and draws one polyline per channel.
+        view->n_channels = 4;
+        view->n_samples = da->n_lags;
+        view->data.assign(4 * da->n_lags, 0.0);
+        for (std::size_t k = 0; k < 4; ++k) {
+            for (std::size_t s = 0; s < da->n_lags; ++s)
+                view->data[k * da->n_lags + s] = da->chiAcfAt(res->residue, k, s);
+        }
+        view->axis_values = da->chi_acf_axis;
+        view->axis_unit = QStringLiteral("ps");
+        view->units = QStringLiteral("dimensionless");
+        view->channel_names = QStringList{QStringLiteral("chi0"),
+                                          QStringLiteral("chi1"),
+                                          QStringLiteral("chi2"),
+                                          QStringLiteral("chi3")};
+    } else {
+        return nullptr;
+    }
 
     model::SignalBinding reveal;
     reveal.descriptorId = descriptor.id;
@@ -1911,16 +2246,33 @@ void DashboardDisplayController::refreshPanelVisibility() {
 void DashboardDisplayController::updateStatusText() {
     if (!catalog_ || !activeModel_) {
         statusText_ = QStringLiteral("Dashboard signal model is not connected.");
-    } else if (activeStripSignalCount_ == 0) {
-        statusText_ = QStringLiteral("No active strip display modes.");
-    } else {
-        const int displayedSeries = activePanelSeriesCount();
-        statusText_ = QStringLiteral("%1 displayed signal time series from %2 active strip signal%3.")
-                          .arg(displayedSeries)
-                          .arg(activeStripSignalCount_)
-                          .arg(activeStripSignalCount_ == 1 ? QString() : QStringLiteral("s"));
-        statusText_ += QStringLiteral(" Unimplemented sources append explicit pending gaps.");
+        return;
     }
+    if (activeStripSignalCount_ == 0 && activeOwnedPanelCount_ == 0) {
+        statusText_ = QStringLiteral("No active strip or panel display modes.");
+        return;
+    }
+    const int displayedSeries = activePanelSeriesCount();
+    QString text;
+    if (activeStripSignalCount_ > 0) {
+        text = QStringLiteral("%1 displayed signal time series from %2 active strip signal%3")
+                   .arg(displayedSeries)
+                   .arg(activeStripSignalCount_)
+                   .arg(activeStripSignalCount_ == 1 ? QString() : QStringLiteral("s"));
+    }
+    if (activeOwnedPanelCount_ > 0) {
+        const QString panelClause = QStringLiteral("%1 panel signal%2")
+                                        .arg(activeOwnedPanelCount_)
+                                        .arg(activeOwnedPanelCount_ == 1 ? QString() : QStringLiteral("s"));
+        text = text.isEmpty()
+                   ? panelClause + QStringLiteral(".")
+                   : text + QStringLiteral(" + ") + panelClause + QStringLiteral(".");
+    } else {
+        text += QStringLiteral(".");
+    }
+    if (activeStripSignalCount_ > 0)
+        text += QStringLiteral(" Unimplemented sources append explicit pending gaps.");
+    statusText_ = text;
 }
 
 void DashboardDisplayController::buildGenericTracks(const model::DashboardSignal& signal,

@@ -67,9 +67,15 @@ public:
 
     void setTimeViewport(TimeViewportController* viewport);
     void setCurrentFrame(int frame);
-    int trackCount() const { return tracks_.size(); }
-    int spectrumTrackCount() const { return spectrumTracks_.size(); }
-    int ownedPanelCount() const { return static_cast<int>(ownedPanels_.size()); }
+    // Backwards-compatible per-section counts after L-2b unified the
+    // storage into a single panels_ vector. trackCount() returns the
+    // number of temporal panels (front of panels_), spectrumTrackCount()
+    // the middle, ownedPanelCount() the trailing.
+    int trackCount() const { return static_cast<int>(n_temporal_); }
+    int spectrumTrackCount() const { return static_cast<int>(n_spectrum_); }
+    int ownedPanelCount() const {
+        return static_cast<int>(panels_.size() - n_temporal_ - n_spectrum_);
+    }
 
 signals:
     void revealRequested(const model::SignalBinding& binding);
@@ -94,9 +100,18 @@ private:
     int frameAt(const QPoint& pos) const;
     QString tooltipText(int frame) const;
 
-    QVector<Track> tracks_;
-    QVector<SpectrumTrack> spectrumTracks_;
-    std::vector<std::unique_ptr<AbstractStripPanel>> ownedPanels_;
+    // L-2b (2026-05-29): one ordered panels_ vector replaces the prior
+    // tracks_ / spectrumTracks_ / ownedPanels_ three-bucket storage.
+    // Layout: indices [0..n_temporal_) hold TemporalStripPanel instances,
+    // [n_temporal_..n_temporal_+n_spectrum_) hold SpectrumStripPanel,
+    // the trailing section holds caller-provided owned panels. Each
+    // setter rebuilds only its section, preserving the others' order.
+    // TemporalStripPanel + SpectrumStripPanel now own their Track /
+    // SpectrumTrack by value (was const-ref) so the panel survives a
+    // setTracks() reallocation.
+    std::vector<std::unique_ptr<AbstractStripPanel>> panels_;
+    std::size_t n_temporal_ = 0;
+    std::size_t n_spectrum_ = 0;
     QPointer<TimeViewportController> viewport_;
     int currentFrame_ = 0;
     bool hasHover_ = false;

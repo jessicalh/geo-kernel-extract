@@ -285,8 +285,36 @@ struct QtDihedralAutocorrelation {
     QtPerResidueCurve  psi_acf;        // (R, L)
     QtPerResidueScalar phi_corr_time;  // (R,) ps
     QtPerResidueScalar psi_corr_time;  // (R,) ps
+    // Chi[0..3] composite payload (Option B per 2026-05-29 planning).
+    // chi_acf flat layout: (residue, channel ∈ [0..3], sample). One
+    // PerClassBlock + 4-channel descriptor covers all four chi torsions
+    // rather than landing eight separate descriptors. The lag axis is
+    // shared with phi_acf / psi_acf — chi_acf_axis is a copy for
+    // accessor symmetry.
+    std::vector<double>  chi_acf;       // (R * 4 * L,) row-major
+    std::vector<double>  chi_acf_axis;  // (L,) ps; same content as phi_acf.axis_values
+    std::vector<double>  chi_corr_time; // (R * 4,) ps
+    std::vector<uint8_t> chi_defined;   // (R * 4,) 1=defined, 0=N/A
     double sample_interval_ps = 0.0;
     QString result_name;
+
+    double chiAcfAt(std::size_t residue, std::size_t chi, std::size_t sample) const {
+        if (residue >= n_residues || chi >= 4 || sample >= n_lags || chi_acf.empty())
+            return 0.0;
+        return chi_acf[(residue * 4 + chi) * n_lags + sample];
+    }
+    double chiCorrTimeAt(std::size_t residue, std::size_t chi) const {
+        if (residue >= n_residues || chi >= 4)
+            return 0.0;
+        const std::size_t idx = residue * 4 + chi;
+        return idx < chi_corr_time.size() ? chi_corr_time[idx] : 0.0;
+    }
+    bool chiIsDefined(std::size_t residue, std::size_t chi) const {
+        if (residue >= n_residues || chi >= 4)
+            return false;
+        const std::size_t idx = residue * 4 + chi;
+        return idx < chi_defined.size() ? (chi_defined[idx] != 0) : false;
+    }
 };
 
 

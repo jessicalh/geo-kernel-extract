@@ -60,6 +60,7 @@ enum class DisplayModeKind : std::uint8_t {
     BarSequence,   // SequenceBarPanel — iRED S², Reorient relaxation, Dihedral corr_time
     CurveLag,      // LagDecayPanel    — KernelDynamics ACF, Reorient TCFs, Dihedral ACF
     ChordCoupling, // ChordCouplingPanel — KernelCoherence Pearson matrix
+    FixedFreq,     // FixedFreqPanel    — Reorient J(ω) at 5 KTB Larmor combinations (L-3b)
 };
 
 struct ModeControl {
@@ -116,6 +117,8 @@ QString modeKindLabel(DisplayModeKind kind) {
         return QStringLiteral("Curve (lag)");
     case DisplayModeKind::ChordCoupling:
         return QStringLiteral("Chord (coupling)");
+    case DisplayModeKind::FixedFreq:
+        return QStringLiteral("Fixed-freq J(ω)");
     }
     return {};
 }
@@ -138,6 +141,8 @@ QString modeKindKey(DisplayModeKind kind) {
         return QStringLiteral("curveLag");
     case DisplayModeKind::ChordCoupling:
         return QStringLiteral("chordCoupling");
+    case DisplayModeKind::FixedFreq:
+        return QStringLiteral("fixedFreq");
     }
     return {};
 }
@@ -160,6 +165,8 @@ QString canonicalModeId(DisplayModeKind kind) {
         return QStringLiteral("static.curve.lag.animated");
     case DisplayModeKind::ChordCoupling:
         return QStringLiteral("static.chord.coupling");
+    case DisplayModeKind::FixedFreq:
+        return QStringLiteral("static.fixed_freq");
     }
     return {};
 }
@@ -187,6 +194,8 @@ bool modeMatchesKind(const QString& modeId, DisplayModeKind kind) {
         return lower == QStringLiteral("static.curve.lag.animated");
     case DisplayModeKind::ChordCoupling:
         return lower == QStringLiteral("static.chord.coupling");
+    case DisplayModeKind::FixedFreq:
+        return lower == QStringLiteral("static.fixed_freq");
     }
     return false;
 }
@@ -208,14 +217,17 @@ bool modeListContainsKind(const QStringList& modes, DisplayModeKind kind) {
 
 QString modeSummary(const QStringList& displayModes) {
     QStringList labels;
+    // modeSummary uses the same Table-last order as allModeKinds so
+    // the summary labels group concrete renderers before fallbacks.
     for (DisplayModeKind kind : {DisplayModeKind::Strip,
                                  DisplayModeKind::Spectrum,
-                                 DisplayModeKind::Table,
-                                 DisplayModeKind::ColorMap,
                                  DisplayModeKind::TensorGlyph,
                                  DisplayModeKind::BarSequence,
                                  DisplayModeKind::CurveLag,
-                                 DisplayModeKind::ChordCoupling}) {
+                                 DisplayModeKind::ChordCoupling,
+                                 DisplayModeKind::FixedFreq,
+                                 DisplayModeKind::ColorMap,
+                                 DisplayModeKind::Table}) {
         if (modeListContainsKind(displayModes, kind))
             labels.push_back(modeKindLabel(kind));
     }
@@ -251,6 +263,8 @@ model::SignalAxis axisForCandidate(const NearbySignalModel::Candidate& candidate
         return model::SignalAxis::Residue;
     case NearbySignalModel::CandidateKind::Bond:
         return model::SignalAxis::Bond;
+    case NearbySignalModel::CandidateKind::BondVector:
+        return model::SignalAxis::BondVector;
     case NearbySignalModel::CandidateKind::Ring:
         return model::SignalAxis::Ring;
     case NearbySignalModel::CandidateKind::AromaticRing:
@@ -267,25 +281,33 @@ model::SignalAnchor anchorForCandidate(const NearbySignalModel::Candidate& candi
     return candidate.anchor;
 }
 
+// Delegates to model::AxisCanSatisfy so the dialog's widening rules
+// stay in lockstep with the controller-side AnchorMatchesAxis. Earlier
+// versions of this dialog kept a local copy that missed the
+// Residue → BondVector widening, so iRED / Reorient descriptors were
+// silently filtered out of the candidate table when a residue was the
+// active anchor (Codex NOW-3, 2026-05-29).
 bool anchorAxisCanSatisfy(model::SignalAxis selectedAxis, model::SignalAxis requiredAxis) {
-    if (selectedAxis == requiredAxis)
-        return true;
-    if (requiredAxis == model::SignalAxis::Ring) {
-        return selectedAxis == model::SignalAxis::AromaticRing
-            || selectedAxis == model::SignalAxis::SaturatedRing;
-    }
-    return false;
+    return model::AxisCanSatisfy(selectedAxis, requiredAxis);
 }
 
-std::array<DisplayModeKind, 8> allModeKinds() {
+std::array<DisplayModeKind, 9> allModeKinds() {
+    // Codex NOW-3 (2026-05-29) reorder: Table moves LAST so the
+    // dialog's default-checked-mode walk
+    // (onCandidateSelectionChanged) doesn't pick the table fallback
+    // ahead of a concrete renderer. Strip + Spectrum stay first
+    // because strip-capable descriptors should default to strip
+    // mode; the concrete static renderers come next; ColorMap +
+    // Table land last as the visualisation-of-last-resort fallbacks.
     return {DisplayModeKind::Strip,
             DisplayModeKind::Spectrum,
-            DisplayModeKind::Table,
-            DisplayModeKind::ColorMap,
             DisplayModeKind::TensorGlyph,
             DisplayModeKind::BarSequence,
             DisplayModeKind::CurveLag,
-            DisplayModeKind::ChordCoupling};
+            DisplayModeKind::ChordCoupling,
+            DisplayModeKind::FixedFreq,
+            DisplayModeKind::ColorMap,
+            DisplayModeKind::Table};
 }
 
 void configureTable(QTableView* view) {
@@ -540,7 +562,11 @@ protected:
                     || (modeKindFilter_ == QStringLiteral("tensorGlyph") && modeMatchesKind(mode, DisplayModeKind::TensorGlyph))
                     || (modeKindFilter_ == QStringLiteral("barSequence") && modeMatchesKind(mode, DisplayModeKind::BarSequence))
                     || (modeKindFilter_ == QStringLiteral("curveLag") && modeMatchesKind(mode, DisplayModeKind::CurveLag))
-                    || (modeKindFilter_ == QStringLiteral("chordCoupling") && modeMatchesKind(mode, DisplayModeKind::ChordCoupling))) {
+                    || (modeKindFilter_ == QStringLiteral("chordCoupling") && modeMatchesKind(mode, DisplayModeKind::ChordCoupling))
+                    // Codex NOW-3 (2026-05-29): fixedFreq filter arm
+                    // was missing; the combo entry existed but the
+                    // filter dropped instead of matching.
+                    || (modeKindFilter_ == QStringLiteral("fixedFreq") && modeMatchesKind(mode, DisplayModeKind::FixedFreq))) {
                     matched = true;
                     break;
                 }

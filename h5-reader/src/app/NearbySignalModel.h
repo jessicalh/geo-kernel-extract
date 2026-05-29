@@ -30,6 +30,11 @@ public:
         Atom,
         Residue,
         Bond,
+        // Per-bond-vector candidate, populated by walking the iRED +
+        // ReorientationalDynamics identity tables on the active
+        // trajectory. Carries a BondVectorAnchor{residue, kind} —
+        // (residue, kind=1) for N-H, kind=2 for Cα-Hα, kind=3 for C=O.
+        BondVector,
         Ring,
         AromaticRing,
         SaturatedRing,

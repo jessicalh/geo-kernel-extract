@@ -28,6 +28,8 @@ class TrajectorySignalCatalog;
 
 namespace h5reader::app {
 
+class SceneRevealOverlay;
+
 struct DashboardSmokeSummary {
     struct SeriesSparseness {
         QString signalLabel;
@@ -105,6 +107,12 @@ public:
     void setPanelModel(model::DashboardPanelModel* panelModel);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
+    // L-3a (2026-05-29): the scene overlay receives tensor-glyph
+    // reveals when the user activates an h5:reorient_orientation_tensor
+    // signal with static.tensor mode. Optional — when null, the
+    // controller silently skips the tensor dispatch in rebuild()
+    // (the descriptor still works for static.table inspection).
+    void setSceneOverlay(SceneRevealOverlay* overlay);
 
     QVector<StripTrack> stripTracks() const;
 
@@ -177,6 +185,18 @@ private:
     std::unique_ptr<AbstractStripPanel>
         buildKernelCoherenceChordPanel(const model::DashboardSignal& signal,
                                         const model::SignalDescriptor& descriptor) const;
+    std::unique_ptr<AbstractStripPanel>
+        buildReorientFixedFreqPanel(const model::DashboardSignal& signal,
+                                     const model::SignalDescriptor& descriptor) const;
+    // L-4 (2026-05-29): auto-compose. When 2+ Reorient scalar signals
+    // (s2/tau_e/r1/r2/noe) are active with static.bar.sequence mode
+    // in the same panel, the per-signal loop is skipped for them and
+    // this builder folds the group into ONE SequenceBarPanel with
+    // the first signal as the primary series + the rest as overlays.
+    // Twin-y kicks in automatically when overlay units differ from
+    // the primary.
+    std::unique_ptr<AbstractStripPanel>
+        buildReorientCompositeBarPanel(const QVector<model::DashboardSignal>& group) const;
     QVector<model::ChannelDescriptor> channelsForMode(const model::SignalDescriptor& descriptor,
                                                       const QString& displayModeId) const;
     model::SignalAnchor resolvedAnchorForSignal(const model::DashboardSignal& signal,
@@ -201,16 +221,23 @@ private:
     QPointer<model::DashboardPanelModel> panelModel_;
     QPointer<model::AtomSelection> selection_;
     QPointer<model::DftShieldingStore> dftStore_;
+    QPointer<SceneRevealOverlay> sceneOverlay_;
 
     QVector<ActiveSeries> series_;
 
     // Owned panels for static-display signals (built during rebuild(),
     // moved out via takeOwnedPanels()).
-    mutable std::vector<std::unique_ptr<AbstractStripPanel>> ownedPanels_;
+    std::vector<std::unique_ptr<AbstractStripPanel>> ownedPanels_;
 
     QString statusText_ = QStringLiteral("No active strip signals.");
     int frame_ = 0;
     int activeStripSignalCount_ = 0;
+    // Number of static-display panels (SequenceBarPanel,
+    // PowerSpectrumPanel, etc.) built in the most recent rebuild().
+    // Tracked separately from the strip count so updateStatusText() can
+    // honestly report iRED / Reorient / etc. as "M panel signal(s)"
+    // when no temporal strips are active.
+    int activeOwnedPanelCount_ = 0;
 };
 
 }  // namespace h5reader::app

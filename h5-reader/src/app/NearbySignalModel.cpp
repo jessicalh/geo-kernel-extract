@@ -2,16 +2,21 @@
 
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
+#include "../io/QtTrajectoryH5.h"
 #include "../model/Conformation.h"
 #include "../model/QtAtom.h"
+#include "../model/QtBondVectorBuffers.h"
 #include "../model/QtProtein.h"
 #include "../model/QtResidue.h"
+#include "../model/TrajectoryConformation.h"
 
 #include <QBrush>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <set>
 #include <utility>
 #include <variant>
 
@@ -33,6 +38,8 @@ QString kindLabel(NearbySignalModel::CandidateKind kind) {
         return QStringLiteral("residue");
     case NearbySignalModel::CandidateKind::Bond:
         return QStringLiteral("bond");
+    case NearbySignalModel::CandidateKind::BondVector:
+        return QStringLiteral("bond vector");
     case NearbySignalModel::CandidateKind::Ring:
         return QStringLiteral("ring");
     case NearbySignalModel::CandidateKind::AromaticRing:
@@ -49,6 +56,9 @@ int kindSortRank(NearbySignalModel::CandidateKind kind) {
     switch (kind) {
     case NearbySignalModel::CandidateKind::Residue:
         return 0;
+    // Bond vectors sit alongside atoms (both are residue
+    // substructures). Same rank — distance + label tiebreak.
+    case NearbySignalModel::CandidateKind::BondVector:
     case NearbySignalModel::CandidateKind::Atom:
         return 1;
     case NearbySignalModel::CandidateKind::Bond:
@@ -61,6 +71,15 @@ int kindSortRank(NearbySignalModel::CandidateKind kind) {
         return 4;
     }
     return 9;
+}
+
+QString bondVectorKindSuffix(std::uint8_t kind) {
+    switch (kind) {
+    case 1: return QStringLiteral(" N-H");
+    case 2: return QString::fromUtf8(" Cα-Hα");
+    case 3: return QStringLiteral(" C=O");
+    default: return QStringLiteral(" vector");
+    }
 }
 }  // namespace
 
@@ -156,6 +175,8 @@ QVariant NearbySignalModel::data(const QModelIndex& index, int role) const {
             return static_cast<int>(model::SignalAnchorKind::Residue);
         case CandidateKind::Bond:
             return static_cast<int>(model::SignalAnchorKind::Bond);
+        case CandidateKind::BondVector:
+            return static_cast<int>(model::SignalAnchorKind::BondVector);
         case CandidateKind::Ring:
             return static_cast<int>(model::SignalAnchorKind::Ring);
         case CandidateKind::AromaticRing:
@@ -409,6 +430,64 @@ void NearbySignalModel::rebuild() {
                 d,
                 ringMembershipLabel(membershipIdx),
             });
+        }
+
+        // Bond-vector candidates from the iRED + Reorient identity tables.
+        // Each table has its own row set (iRED is N-H only; Reorient is
+        // N-H + Cα-Hα + C=O); the picker emits one candidate per
+        // (residue, kind), distance = min over the row's tail/head atoms,
+        // and dedups across the two tables since BondVectorAnchor is
+        // semantic (residue, kind), not a per-table row index. Without
+        // this enumeration the dialog has no way to surface a specific
+        // bond-vector pick — and the controller-side wildcard would only
+        // ever return row 0.
+        const model::TrajectoryConformation* trajectory = conformation_->asTrajectory();
+        const auto* h5 = trajectory ? trajectory->h5() : nullptr;
+        if (h5) {
+            std::set<std::pair<std::size_t, std::uint8_t>> seenVectors;
+            auto walkTable = [&](const model::QtBondVectorTable* table) {
+                if (!table || table->n_vectors == 0)
+                    return;
+                for (std::size_t i = 0; i < table->n_vectors; ++i) {
+                    if (i >= table->residue_index.size()
+                        || i >= table->kind.size()
+                        || i >= table->tail_atom.size()
+                        || i >= table->head_atom.size())
+                        break;
+                    if (table->residue_index[i] < 0)
+                        continue;
+                    const auto residueIdx = static_cast<std::size_t>(table->residue_index[i]);
+                    const auto kind = table->kind[i];
+                    const auto key = std::make_pair(residueIdx, kind);
+                    if (seenVectors.count(key))
+                        continue;
+
+                    double d = std::numeric_limits<double>::infinity();
+                    if (table->tail_atom[i] >= 0
+                        && static_cast<std::size_t>(table->tail_atom[i]) < atomDistances.size())
+                        d = std::min(d, atomDistances[static_cast<std::size_t>(table->tail_atom[i])]);
+                    if (table->head_atom[i] >= 0
+                        && static_cast<std::size_t>(table->head_atom[i]) < atomDistances.size())
+                        d = std::min(d, atomDistances[static_cast<std::size_t>(table->head_atom[i])]);
+                    if (!std::isfinite(d) || d > radiusAngstrom_)
+                        continue;
+
+                    seenVectors.insert(key);
+                    const QString label = residueLabel(residueIdx) + bondVectorKindSuffix(kind);
+                    next.push_back(Candidate{
+                        CandidateKind::BondVector,
+                        model::BondVectorAnchor{residueIdx, kind},
+                        residueIdx,
+                        std::nullopt,
+                        d,
+                        label,
+                    });
+                }
+            };
+            const model::QtIRedOrderParameters* ired = h5->iredOrderParameters();
+            const model::QtReorientationalDynamics* rd = h5->reorientationalDynamics();
+            walkTable(ired ? &ired->identity : nullptr);
+            walkTable(rd ? &rd->identity : nullptr);
         }
 
         std::sort(next.begin(), next.end(), [](const Candidate& a, const Candidate& b) {

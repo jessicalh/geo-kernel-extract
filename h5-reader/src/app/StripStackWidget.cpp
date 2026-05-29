@@ -59,8 +59,8 @@ ValueRange visibleTemporalRange(const model::ChannelBuffer& buffer, const TimeSc
 
 class TemporalStripPanel final : public AbstractStripPanel {
 public:
-    explicit TemporalStripPanel(const StripStackWidget::Track& track)
-        : track_(track)
+    explicit TemporalStripPanel(StripStackWidget::Track track)
+        : track_(std::move(track))
     {}
 
     bool hasRevealBinding() const override { return track_.hasBinding; }
@@ -279,13 +279,16 @@ private:
         p.restore();
     }
 
-    const StripStackWidget::Track& track_;
+    // L-2b (2026-05-29): owned by value; was const-ref. The panel
+    // outlives the QVector<Track> the controller built it from, so a
+    // setTracks() reallocation can't dangle the reference.
+    StripStackWidget::Track track_;
 };
 
 class SpectrumStripPanel final : public AbstractStripPanel {
 public:
-    explicit SpectrumStripPanel(const StripStackWidget::SpectrumTrack& track)
-        : track_(track)
+    explicit SpectrumStripPanel(StripStackWidget::SpectrumTrack track)
+        : track_(std::move(track))
     {}
 
     bool hasRevealBinding() const override { return track_.hasBinding; }
@@ -379,7 +382,8 @@ private:
         }
     }
 
-    const StripStackWidget::SpectrumTrack& track_;
+    // L-2b: same lifetime fix as TemporalStripPanel — owned by value.
+    StripStackWidget::SpectrumTrack track_;
 };
 
 }  // namespace
@@ -397,7 +401,17 @@ StripStackWidget::StripStackWidget(QWidget* parent)
 void StripStackWidget::setTracks(QVector<Track> tracks)
 {
     ASSERT_THREAD(this);
-    tracks_ = std::move(tracks);
+    // Replace the [0..n_temporal_) section only; keep the spectrum and
+    // owned tails intact in their existing order.
+    std::vector<std::unique_ptr<AbstractStripPanel>> next;
+    const std::size_t newCount = static_cast<std::size_t>(tracks.size());
+    next.reserve(newCount + (panels_.size() - n_temporal_));
+    for (Track& t : tracks)
+        next.push_back(std::make_unique<TemporalStripPanel>(std::move(t)));
+    for (std::size_t i = n_temporal_; i < panels_.size(); ++i)
+        next.push_back(std::move(panels_[i]));
+    panels_ = std::move(next);
+    n_temporal_ = newCount;
     updateMinimumHeight();
     updateGeometry();
     update();
@@ -406,7 +420,19 @@ void StripStackWidget::setTracks(QVector<Track> tracks)
 void StripStackWidget::setSpectrumTracks(QVector<SpectrumTrack> tracks)
 {
     ASSERT_THREAD(this);
-    spectrumTracks_ = std::move(tracks);
+    // Replace the [n_temporal_..n_temporal_+n_spectrum_) section only.
+    std::vector<std::unique_ptr<AbstractStripPanel>> next;
+    const std::size_t newCount = static_cast<std::size_t>(tracks.size());
+    const std::size_t ownedStart = n_temporal_ + n_spectrum_;
+    next.reserve(n_temporal_ + newCount + (panels_.size() - ownedStart));
+    for (std::size_t i = 0; i < n_temporal_; ++i)
+        next.push_back(std::move(panels_[i]));
+    for (SpectrumTrack& t : tracks)
+        next.push_back(std::make_unique<SpectrumStripPanel>(std::move(t)));
+    for (std::size_t i = ownedStart; i < panels_.size(); ++i)
+        next.push_back(std::move(panels_[i]));
+    panels_ = std::move(next);
+    n_spectrum_ = newCount;
     updateMinimumHeight();
     updateGeometry();
     update();
@@ -415,7 +441,15 @@ void StripStackWidget::setSpectrumTracks(QVector<SpectrumTrack> tracks)
 void StripStackWidget::setOwnedPanels(std::vector<std::unique_ptr<AbstractStripPanel>> panels)
 {
     ASSERT_THREAD(this);
-    ownedPanels_ = std::move(panels);
+    // Replace the trailing section; preserve temporal + spectrum heads.
+    std::vector<std::unique_ptr<AbstractStripPanel>> next;
+    const std::size_t headSize = n_temporal_ + n_spectrum_;
+    next.reserve(headSize + panels.size());
+    for (std::size_t i = 0; i < headSize && i < panels_.size(); ++i)
+        next.push_back(std::move(panels_[i]));
+    for (auto& p : panels)
+        next.push_back(std::move(p));
+    panels_ = std::move(next);
     updateMinimumHeight();
     updateGeometry();
     update();
@@ -466,7 +500,7 @@ QRectF StripStackWidget::revealRect(const QRectF& r) const
 
 int StripStackWidget::panelCount() const
 {
-    return static_cast<int>(tracks_.size() + spectrumTracks_.size() + ownedPanels_.size());
+    return static_cast<int>(panels_.size());
 }
 
 void StripStackWidget::updateMinimumHeight()
@@ -477,10 +511,14 @@ void StripStackWidget::updateMinimumHeight()
 
 bool StripStackWidget::timePlotContains(const QPoint& pos) const
 {
+    // Time-axis drag/select gestures only apply to temporal panels.
+    // n_temporal_ tracks the front section of panels_ that hold
+    // TemporalStripPanel instances.
     const StackGeometry stack{size(), panelCount()};
-    for (int i = 0; i < tracks_.size(); ++i) {
-        const TemporalStripPanel panel(tracks_[i]);
-        if (panel.plotContains(panelGeometryForIndex(stack, i), pos))
+    for (std::size_t i = 0; i < n_temporal_ && i < panels_.size(); ++i) {
+        const PanelGeometry geom =
+            panelGeometryForIndex(stack, static_cast<int>(i), panels_[i]->preferredAspect());
+        if (panels_[i]->plotContains(geom, pos))
             return true;
     }
     return false;
@@ -489,31 +527,12 @@ bool StripStackWidget::timePlotContains(const QPoint& pos) const
 bool StripStackWidget::revealAt(const QPoint& pos, model::SignalBinding* binding) const
 {
     const StackGeometry stack{size(), panelCount()};
-    for (int i = 0; i < tracks_.size(); ++i) {
-        const TemporalStripPanel panel(tracks_[i]);
-        if (panel.revealContains(panelGeometryForIndex(stack, i), pos)) {
+    for (std::size_t i = 0; i < panels_.size(); ++i) {
+        const PanelGeometry geom =
+            panelGeometryForIndex(stack, static_cast<int>(i), panels_[i]->preferredAspect());
+        if (panels_[i]->revealContains(geom, pos)) {
             if (binding)
-                *binding = panel.revealBinding();
-            return true;
-        }
-    }
-    for (int i = 0; i < spectrumTracks_.size(); ++i) {
-        const SpectrumStripPanel panel(spectrumTracks_[i]);
-        const int panelIndex = static_cast<int>(tracks_.size()) + i;
-        if (panel.revealContains(panelGeometryForIndex(stack, panelIndex), pos)) {
-            if (binding)
-                *binding = panel.revealBinding();
-            return true;
-        }
-    }
-    const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
-    for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
-        const auto& panel = *ownedPanels_[i];
-        const PanelGeometry geometry =
-            panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
-        if (panel.revealContains(geometry, pos)) {
-            if (binding)
-                *binding = panel.revealBinding();
+                *binding = panels_[i]->revealBinding();
             return true;
         }
     }
@@ -530,11 +549,13 @@ int StripStackWidget::frameAt(const QPoint& pos) const
 
 QString StripStackWidget::tooltipText(int frame) const
 {
+    // Temporal tooltip composer — only temporal panels contribute a
+    // per-frame value line. Other panel types return an empty string
+    // from tooltipLine() so they're filtered naturally; restricting the
+    // walk to [0..n_temporal_) makes the intent explicit.
     QString text = QStringLiteral("<b>frame %1</b><br/>").arg(frame + 1);
-    for (const auto& tr : tracks_) {
-        const TemporalStripPanel panel(tr);
-        text += panel.tooltipLine(frame);
-    }
+    for (std::size_t i = 0; i < n_temporal_ && i < panels_.size(); ++i)
+        text += panels_[i]->tooltipLine(frame);
     return text;
 }
 
@@ -544,7 +565,7 @@ void StripStackWidget::paintEvent(QPaintEvent*)
     p.setRenderHint(QPainter::Antialiasing, true);
     p.fillRect(rect(), kStripCanvas);
 
-    if (tracks_.empty() && spectrumTracks_.empty() && ownedPanels_.empty()) {
+    if (panels_.empty()) {
         p.setFont(uiFont(13));
         p.setPen(kStripTextMuted);
         p.drawText(rect(), Qt::AlignCenter, QStringLiteral("Select atoms to start a trajectory strip"));
@@ -561,23 +582,14 @@ void StripStackWidget::paintEvent(QPaintEvent*)
     };
     const StackGeometry stack{size(), panelCount()};
 
-    for (int i = 0; i < tracks_.size(); ++i) {
-        const TemporalStripPanel panel(tracks_[i]);
-        panel.paint(p, panelGeometryForIndex(stack, i), context);
-    }
-
-    for (int i = 0; i < spectrumTracks_.size(); ++i) {
-        const SpectrumStripPanel panel(spectrumTracks_[i]);
-        const int panelIndex = static_cast<int>(tracks_.size()) + i;
-        panel.paint(p, panelGeometryForIndex(stack, panelIndex), context);
-    }
-
-    const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
-    for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
-        const auto& panel = *ownedPanels_[i];
-        const PanelGeometry geometry =
-            panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
-        panel.paint(p, geometry, context);
+    // Unified single loop — panels_ holds temporal, spectrum, and
+    // owned in that order. Each panel's preferredAspect() lets the
+    // geometry helper letterbox aspect-locked panels (chord) within
+    // their assigned rect.
+    for (std::size_t i = 0; i < panels_.size(); ++i) {
+        const PanelGeometry geom =
+            panelGeometryForIndex(stack, static_cast<int>(i), panels_[i]->preferredAspect());
+        panels_[i]->paint(p, geom, context);
     }
 }
 
@@ -590,18 +602,19 @@ void StripStackWidget::mousePressEvent(QMouseEvent* event)
             event->accept();
             return;
         }
-        // Forward to owned panels for in-plot click handling
-        // (chord arc click, sequence-bar click, etc.). Temporal
-        // panels do NOT use this path — their drag-select-range
-        // gesture is handled below via timePlotContains.
+        // Forward to non-temporal panels (spectrum, sequence-bar,
+        // chord, etc.) for in-plot click handling. Temporal panels'
+        // default mousePressInPlot is a no-op and they own the
+        // drag-select-range gesture below via timePlotContains, so
+        // restricting the forward loop to the spectrum+owned section
+        // keeps the two interaction models from racing.
         const StackGeometry stack{size(), panelCount()};
-        const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
-        for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
-            auto& panel = *ownedPanels_[i];
-            const PanelGeometry geometry =
-                panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
-            if (geometry.plot.contains(event->pos())) {
-                if (auto pressBinding = panel.mousePressInPlot(event, geometry); pressBinding) {
+        for (std::size_t i = n_temporal_; i < panels_.size(); ++i) {
+            auto& panel = *panels_[i];
+            const PanelGeometry geom =
+                panelGeometryForIndex(stack, static_cast<int>(i), panel.preferredAspect());
+            if (geom.plot.contains(event->pos())) {
+                if (auto pressBinding = panel.mousePressInPlot(event, geom); pressBinding) {
                     emit revealRequested(*pressBinding);
                     event->accept();
                     return;
@@ -636,15 +649,14 @@ void StripStackWidget::mouseMoveEvent(QMouseEvent* event)
         QToolTip::showText(event->globalPosition().toPoint(), QStringLiteral("Reveal in 3-D scene"), this);
     } else {
         unsetCursor();
-        // Forward to owned panels for in-plot hover handling.
+        // Forward to non-temporal panels for in-plot hover handling.
         const StackGeometry stack{size(), panelCount()};
-        const int ownedBaseIndex = static_cast<int>(tracks_.size() + spectrumTracks_.size());
-        for (std::size_t i = 0; i < ownedPanels_.size(); ++i) {
-            auto& panel = *ownedPanels_[i];
-            const PanelGeometry geometry =
-                panelGeometryForIndex(stack, ownedBaseIndex + static_cast<int>(i), panel.preferredAspect());
-            if (geometry.plot.contains(event->pos()))
-                panel.mouseMoveInPlot(event, geometry);
+        for (std::size_t i = n_temporal_; i < panels_.size(); ++i) {
+            auto& panel = *panels_[i];
+            const PanelGeometry geom =
+                panelGeometryForIndex(stack, static_cast<int>(i), panel.preferredAspect());
+            if (geom.plot.contains(event->pos()))
+                panel.mouseMoveInPlot(event, geom);
         }
     }
     if (selecting_ && viewport_) {
@@ -656,7 +668,7 @@ void StripStackWidget::mouseMoveEvent(QMouseEvent* event)
         } else if (dragSelecting_) {
             viewport_->setSelectedRange(selectionAnchor_, frame);
         }
-    } else if (!overReveal && !tracks_.empty() && timePlotContains(event->pos())) {
+    } else if (!overReveal && n_temporal_ > 0 && timePlotContains(event->pos())) {
         QToolTip::showText(event->globalPosition().toPoint(), tooltipText(frame), this);
     } else if (!overReveal) {
         QToolTip::hideText();

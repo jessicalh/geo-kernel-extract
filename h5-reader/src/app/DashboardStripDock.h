@@ -24,6 +24,7 @@ class TrajectorySignalCatalog;
 namespace h5reader::app {
 
 class DashboardDisplayController;
+class SceneRevealOverlay;
 struct DashboardSmokeSummary;
 class StripStackWidget;
 class TimeViewportController;
@@ -40,6 +41,11 @@ public:
     void setPanelModel(model::DashboardPanelModel* panelModel);
     void setSelection(model::AtomSelection* selection);
     void setDftStore(model::DftShieldingStore* store);
+    // L-3a (2026-05-29): forwards to the controller so it can fire
+    // tensor-glyph reveals on the scene overlay when the user
+    // activates a Reorient orientation_tensor signal with
+    // static.tensor mode.
+    void setSceneOverlay(SceneRevealOverlay* overlay);
     void setTimeViewport(TimeViewportController* viewport);
     DashboardSmokeSummary smokeSummary() const;
     DashboardSmokeSummary smokeSummary(int firstFrame, int lastFrame) const;

@@ -297,6 +297,13 @@ QString ToString(GapReason reason);
 QString ToString(UnitDimension dimension);
 
 SignalAxis AxisForAnchor(const SignalAnchor& anchor);
+// True when an anchor whose axis is `selectedAxis` can satisfy a
+// descriptor that requires `requiredAxis`. Encodes the widening rules
+// (Aromatic/Saturated → Ring, Residue → BondVector). Used by both the
+// controller-side anchor variant check (AnchorMatchesAxis below) and
+// the picker dialog's filter (SignalDisplayDialog), so the two stay
+// in step.
+bool AxisCanSatisfy(SignalAxis selectedAxis, SignalAxis requiredAxis);
 bool AnchorMatchesAxis(const SignalAnchor& anchor, SignalAxis axis);
 QString AnchorLabel(const SignalAnchor& anchor);
 QStringList AllDisplayModes(const SignalDescriptor& descriptor);

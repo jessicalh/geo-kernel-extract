@@ -52,11 +52,23 @@ QString DashboardDisplayRef::stableKey() const {
 
 // Panel-mode predicate kept in step with isPanelMode in
 // DashboardDisplayController.cpp — both lists must stay aligned.
+// Codex NOW-2 (2026-05-29) caught the prior version omitting the
+// L-3 modes (static.fixed_freq + static.tensor), which prevented the
+// dialog from creating the refs the controller's active-panel filter
+// needed. Adding either mode here requires the matching arm in
+// DashboardDisplayController.cpp:isPanelMode + a per-mode dispatch
+// in rebuild().
 static bool isPanelDisplayMode(const QString& mode) {
     return mode == QStringLiteral("static.bar.sequence")
         || mode == QStringLiteral("static.spectrum.power")
         || mode == QStringLiteral("static.curve.lag.animated")
-        || mode == QStringLiteral("static.chord.coupling");
+        || mode == QStringLiteral("static.chord.coupling")
+        || mode == QStringLiteral("static.fixed_freq")
+        // static.tensor is a scene-overlay mode, not a strip widget
+        // panel — but it still needs a "panel" ref so the dialog +
+        // controller agree on which signal owns the scene glyph
+        // when (the deferred) trigger gesture wires up.
+        || mode == QStringLiteral("static.tensor");
 }
 
 QVector<DashboardDisplayRef> DisplayRefsForSignal(const QUuid& signalId,

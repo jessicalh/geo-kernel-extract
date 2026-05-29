@@ -68,6 +68,33 @@ public:
 
     QString tooltipLine(int frame) const override;
 
+    // L-4 (2026-05-29): multi-channel overlay (auto-compose). One
+    // SequenceBarPanel can carry a primary series plus N overlays.
+    // The auto-compose path in DashboardDisplayController bundles
+    // multiple Reorient scalar signals (s2/tau_e/r1/r2/noe) with the
+    // same `static.bar.sequence` mode into ONE panel — the primary
+    // owns the left y-axis; each overlay paints with its own colour,
+    // sub-slotted across the residue tick, and (if units differ from
+    // primary) renders y-axis labels on the right margin scaled to
+    // the overlay's own value range. Overlay rows respect the same
+    // kindOffsetFraction sub-slot machinery as the primary.
+    struct OverlaySeries {
+        std::vector<SequenceBarRow> rows;
+        QColor color;
+        QString label;
+        QString unit;
+        // Computed once at addOverlay time so paint() doesn't re-walk
+        // the rows. nullopt → empty rows, the overlay still occupies
+        // a slot but draws nothing.
+        std::optional<double> valueMin;
+        std::optional<double> valueMax;
+    };
+    void addOverlay(std::vector<SequenceBarRow> rows,
+                    QColor color,
+                    QString label,
+                    QString unit);
+    std::size_t overlayCount() const { return overlays_.size(); }
+
 private:
     std::optional<std::size_t> rowAtX(double x, const QRectF& plot) const;
 
@@ -80,6 +107,7 @@ private:
     std::optional<double> yMax_;
     std::int32_t residueMin_ = 0;
     std::int32_t residueMax_ = 0;
+    std::vector<OverlaySeries> overlays_;
 };
 
 }  // namespace h5reader::app
