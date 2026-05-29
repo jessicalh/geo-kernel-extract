@@ -72,9 +72,8 @@
 // frame_type discriminator: both neighbor and AAA rows are typically
 // gaussian_standard_orientation (OPBE). If the flanking residue is
 // SER, the neighbor-row query returns an ASA row with
-// frame_type=orca_input_orientation. Δσ then mixes OPBE (AAA) and
-// PBE (ASA) — method caveat applies; see
-// spec/plan/bones/session_2026-05-10_calculator_queue_and_data_backend.md.
+// frame_type=orca_input_orientation. Delta sigma then mixes OPBE (AAA)
+// and PBE (ASA) — method caveat applies.
 //
 
 #include "ConformationResult.h"

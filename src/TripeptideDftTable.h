@@ -15,8 +15,7 @@
 //   orca_input_orientation        : PBE/6-31G(d,p) GIAO CPCM(water)
 //                                    project SER regen, 6,259 rows
 // The frame_type is preserved so downstream calibration can route OPBE
-// and PBE rows separately. See
-// spec/plan/bones/session_2026-05-10_calculator_queue_and_data_backend.md.
+// and PBE rows separately.
 //
 // Extension over the gotham reference (TripeptideAssembler/Database):
 // chi3 + chi4 columns are queried for the K/R (chi3 + chi4 set) and

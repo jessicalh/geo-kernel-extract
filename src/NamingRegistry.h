@@ -11,8 +11,7 @@
 // preserved as published (each tagged with a NamingSource enum value
 // identifying its scientific or project source); the choice between
 // sources happens explicitly in rule predicates and Resolve(), not by
-// editing rules to play nice. See
-// spec/plan/bones/naming-applicator-architecture-sketch-2026-05-06.md.
+// editing rules to play nice.
 //
 // Every tool in the pipeline has its own naming universe:
 //   PDB/Standard: HIS, CYS, H (backbone amide)

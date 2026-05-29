@@ -61,7 +61,7 @@ LegacyAmberTopology::SemanticAt(size_t atom_index) const {
             "FATAL: LegacyAmberTopology::SemanticAt: atom_semantic not populated. "
             "Caller must gate on HasAtomSemantic() — stub fixtures (atoms with "
             "empty pdb_atom_name) leave the substrate empty. See "
-            "spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5.\n");
+            "LegacyAmberTopology composition contract.\n");
         std::abort();
     }
     if (atom_index >= atom_semantic_.size()) {
@@ -125,8 +125,7 @@ LegacyAmberTopology::AtomWithRole(size_t residue_index,
 // ============================================================================
 // ComposeAtomSemantic
 //
-// Per spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5. The
-// composition rule:
+// Composition rule:
 //
 //   1. Parse the (canonical) atom name + its heavy-atom parent's name
 //      ONCE per atom via ParseAtomName (lifted into
@@ -282,9 +281,8 @@ ComposeAtomSemantic(const std::vector<std::unique_ptr<Atom>>& atoms,
             "non-standard residues; composition cannot proceed without a "
             "default row leaking to downstream calculators. The load path "
             "is unsupported for non-standard residues; refuse before "
-            "substrate composition. See spec/plan/bones/topology-encoding-"
-            "dependencies-2026-05-05.md §H.5 (fail-loud discipline) and "
-            "codex-review Finding 4.\n",
+            "substrate composition. See LegacyAmberTopology fail-loud "
+            "discipline and codex-review Finding 4.\n",
             ri,
             res.sequence_number,
             res.chain_id.c_str(),

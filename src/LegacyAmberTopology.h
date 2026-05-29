@@ -264,8 +264,7 @@ private:
 // each residue, computing typed mechanical identity from the canonical
 // atom name + heavy-atom parent's canonical name (via the lifted
 // parser in src/generated/LegacyAmberSemanticTables.h), and looking up
-// the substrate row via LookupBy / LookupCap / ApplyCapDelta per
-// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.5.
+// the substrate row via LookupBy / LookupCap / ApplyCapDelta.
 //
 // Stub-fixture guard: if no atom in any residue carries a non-empty
 // atom name (calculator-physics tests with raw element-and-position

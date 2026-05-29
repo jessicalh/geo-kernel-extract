@@ -18,9 +18,8 @@
 //   CCapAla            -- 10 atoms, canonical ALA (C-terminal flanking)
 //   NME (methylamide)  -- 6 atoms, no carbonyl-O, has amide H
 //
-// Perception algorithm (full design in
-// spec/plan/bones/larsen-residue-design-2026-05-11.md). Names die at
-// canonical construction; runtime identity is the typed
+// Perception algorithm: names die at canonical construction; runtime
+// identity is the typed
 // AtomMechanicalIdentity stamped by the generated topology table.
 // (The bond-graph + WL approach was prototyped in
 // scripts/perceive_larsen_tripeptide.py — a diagnostic tool, not a
@@ -44,9 +43,7 @@
 // field empty. Downstream calculators decline records without a
 // perceived LarsenTripeptide.
 //
-// See spec/plan/bones/larsen-residue-design-2026-05-11.md for the full
-// design rationale (supersedes the retired typed-tripeptide-topology
-// design from 2026-05-10).
+// This implementation and its tests are the active contract.
 //
 
 #include "SemanticEnums.h"

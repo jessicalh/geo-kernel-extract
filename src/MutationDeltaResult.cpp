@@ -41,9 +41,8 @@ std::vector<std::type_index> MutationDeltaResult::Dependencies() const {
 // against the LegacyAmber substrate. The replaced matcher silently
 // rebound across mutation sites, variant differences, and rotamer
 // flips — fine for mechanical-swap PDB mutants where coordinates are
-// pinned, indefensible as soon as coordinates drift. See the design
-// pass at spec/plan/bones/category-info-projection-implementation-plan-2026-05-08.md
-// §8 (MutationDeltaResult matchup rewrite).
+// pinned, indefensible as soon as coordinates drift. The current matchup
+// rewrite uses CategoryInfo identity rather than position-only matching.
 //
 // Within a residue, atoms with collision-equal identity tuples (methyl
 // HB1/HB2/HB3 etc.) bind by consume-in-order: each mut atom is taken
@@ -566,9 +565,7 @@ std::unique_ptr<MutationDeltaResult> MutationDeltaResult::Compute(
 
     // Spatial-NN sanity check on rejections — confirms mechanical-swap
     // structural integrity without the binding criterion depending on
-    // it. See methodology paragraph in the spec/plan/bones/category-info-
-    // projection-implementation-plan-2026-05-08.md slice for the
-    // intended thesis prose.
+    // it. This is the intended methodology for thesis prose.
     OperationLog::Info(LogAtomMapping, "MutationDeltaResult::Compute",
         "rejection_spatial_nn"
         " within_0.5A=" + std::to_string(reject_within_0_5) +

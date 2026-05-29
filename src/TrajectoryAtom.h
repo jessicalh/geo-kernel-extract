@@ -311,7 +311,7 @@ struct HydrationGeometryWelfordState {
 };
 
 
-// AIMNet2 polarisability gradient: per-atom Welford accumulator for
+// AIMNet2 charge-response gradient: per-atom Welford accumulator for
 // (∂L/∂r_i) where L = Σ_j q_j² (AIMNet2 Hirshfeld charges, e²).
 // Vector emits per-component Welford on a Vec3 (x, y, z, units e²/Å);
 // scalar is the L2 norm of the vector. No delta variants in this

@@ -17,7 +17,7 @@
 // emitted into the companion .cpp. Companion:
 // src/generated/LegacyAmberSemanticTables.cpp (generator output).
 //
-// Per spec/plan/bones/topology-encoding-dependencies-2026-05-05.md §H.
+// Runtime lookup uses typed AtomMechanicalIdentity, not atom_local_idx.
 //
 
 #include <cctype>

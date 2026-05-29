@@ -393,9 +393,9 @@ public:
     SphericalTensor aimnet2_EFG_aromatic_spherical;
     SphericalTensor aimnet2_shielding_contribution;
 
-    // Charge-polarisation gradient via autograd (AIMNet2ChargeResponseGradientResult).
+    // Charge-response gradient via autograd (AIMNet2ChargeResponseGradientResult).
     // Vector is dL/d(r_i) where L = sum_j q_j^2 over non-sentinel atoms;
-    // scalar is its L2 norm. Charge-weighted per-atom polarisability.
+    // scalar is its L2 norm.
     Vec3 aimnet2_charge_response_gradient_vector = Vec3::Zero();
     double aimnet2_charge_response_gradient_scalar = 0.0;
 

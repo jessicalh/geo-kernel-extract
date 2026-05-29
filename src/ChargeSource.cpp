@@ -260,8 +260,8 @@ std::vector<AtomChargeRadius> ParamFileChargeSource::LoadCharges(
 }
 
 
-// GmxTprChargeSource::LoadCharges retired 2026-05-04 to
-// tests/bones/src/GmxTprChargeSource_excerpt.cpp.
+// GmxTprChargeSource::LoadCharges retired 2026-05-04 with the CHARMM TPR
+// charge path. The active producer uses AMBER prmtop/ff14SB charge sources.
 
 
 // ============================================================================

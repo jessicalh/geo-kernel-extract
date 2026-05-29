@@ -14,7 +14,7 @@
 // (`StampChainIdentitiesViaTable`), and slot dispatch happens by
 // typed BackboneRole/Locant enum — never by name comparison.
 //
-// Design doc: spec/plan/bones/larsen-residue-design-2026-05-11.md.
+// This implementation and its tests are the active contract.
 
 #include "LarsenResidue.h"
 

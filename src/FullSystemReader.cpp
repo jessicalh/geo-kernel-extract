@@ -55,9 +55,8 @@ FullSystemReader::~FullSystemReader() = default;
 // ── TPR LOADING BOUNDARY helpers ────────────────────────────────
 // Translation from GROMACS types to our typed objects. These operate
 // on GROMACS t_atoms — valid only during the TPR parse, never at
-// runtime. (Parallel implementations originally lived in
-// GromacsEnsembleLoader.cpp; that loader was retired 2026-05-04 to
-// tests/bones/src/.)
+// runtime. Retired CHARMM-era loader implementations are archival only;
+// this file is the active TPR translation boundary.
 
 static Element ElementFromAtomicNumber(int an) {
     switch (an) {
@@ -648,9 +647,7 @@ bool FullSystemReader::MakeProteinWhole(
 // ── BuildProtein ────────────────────────────────────────────────
 //
 // Build a Protein + ChargeSource from the stored TPR parse.
-// (Original BuildProteinFromTpr lived in GromacsEnsembleLoader.cpp,
-// retired 2026-05-04 to tests/bones/src/. This version uses the
-// gmx_mtop_t already parsed by ReadTopology().)
+// This version uses the gmx_mtop_t already parsed by ReadTopology().
 // TPR LOADING BOUNDARY: translates GROMACS residue naming to typed objects.
 
 // Resolve a residue's typed type + variant_index from either the readback

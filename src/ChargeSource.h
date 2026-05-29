@@ -13,9 +13,8 @@
 //   AmberPreparedChargeSource  — runtime tleap-generated AMBER prmtop
 //   PreloadedChargeSource      — caller-supplied per-atom values
 //
-// GmxTprChargeSource (CHARMM36m via `gmx dump`) was retired 2026-05-04
-// to tests/bones/src/GmxTprChargeSource_excerpt.{h,cpp} as part of the
-// CHARMM-retired-AMBER-only Phase 1 cleanup.
+// GmxTprChargeSource (CHARMM36m via `gmx dump`) was retired 2026-05-04.
+// It is not part of the active producer build or test contract.
 //
 // The typed ChargeAssignmentResult::Compute path takes a ChargeSource;
 // the string overload is a convenience wrapper for the flat table.

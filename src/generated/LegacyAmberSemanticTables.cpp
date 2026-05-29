@@ -10,10 +10,8 @@
 // DiastereotopicIndex + BackboneRole). Atom positions in the
 // arrays are NOT used as runtime keys; the LookupBy / LookupCap
 // functions emitted at the bottom of this file own the lookup.
-// See section H of
-// `spec/plan/bones/topology-encoding-dependencies-2026-05-05.md` for
-// the architectural rationale (typed identity instead of
-// atom_local_idx; cap atoms partitioned out of per-residue tables).
+// Typed identity is used instead of atom_local_idx; cap atoms are
+// partitioned out of per-residue tables.
 //
 // String barrier: this file contains only typed-enum
 // identifiers (compile-time names) and atom-id comments.
@@ -648,7 +646,7 @@ constexpr std::array<AtomSemanticTable, 20> kTyrAtoms_TYM = {{
 }};
 
 // === Terminal-state cap tables ===
-// Per spec/plan/bones/topology-residue-reference-2026-05-05.md Section 4.
+// Cap chemistry is residue-independent.
 // Cap atoms (OXT, HXT, H1, H2, H3) are residue-independent; one
 // table per terminal state covers all 20 standard residues.
 
@@ -707,8 +705,7 @@ constexpr std::array<AtomSemanticTable, 4> kCapCtermProtonated = {{
 // THIS IS THE CANONICAL RUNTIME LOOKUP. atom_local_idx is NOT used
 // (index spaces don't align across CCD, AmberAminoAcidVariantTable,
 // and other producers; typed structural matching gives unambiguous
-// lookup that survives any reordering of either side). Per §H.2 of
-// spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.
+// lookup that survives any reordering of either side).
 namespace detail {
     constexpr const AtomSemanticTable*
     LookupInArray(const AtomSemanticTable* base, std::size_t n,
@@ -917,7 +914,7 @@ LookupBy(nmr::AminoAcid residue, std::uint8_t variant_idx,
 // (H1, H2, H3, OXT, HXT) carry BackboneRole::None and only match
 // via the cap-table lookup.
 //
-// Per §H.4 + §H.5 of spec/plan/bones/topology-encoding-dependencies-2026-05-05.md.
+// Cap overlay rules live in LegacyAmberTopology composition.
 const AtomSemanticTable*
 LookupCap(nmr::TerminalState state,
           const AtomMechanicalIdentity& identity) {
