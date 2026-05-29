@@ -167,6 +167,13 @@ molprobity_runs/
 references-text/
 references-images/
 
+# Literature corpus + metadata. Docs-private, kept on disk only pending the
+# private-docs-repo split; not release inputs for nmr-extract or h5-reader.
+# Untracked from git 2026-05-29 (the small runtime/test dependency that used
+# to live here is now data/bmrb_atom_nom.tbl).
+references/
+references-meta/
+
 # PDB Chemical Component Dictionary — reference data, freely
 # re-fetchable from wwPDB. ~376 MB uncompressed; see
 # data/ccd/README.md for fetch command.
