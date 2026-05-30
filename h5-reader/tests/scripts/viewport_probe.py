@@ -604,28 +604,39 @@ def main() -> int:
         write_csv(mode_atom, args.out_dir / "mode_atom.csv")
         t5 = time.monotonic()
 
-        # Experiment 6: CameraMode::Dihedral on the same atoms (need 4
-        # — if only 3 are supplied, skip rather than fabricate). The
-        # marker (focus atom) should remain near the central axis as
-        # the dihedral rotates.
-        mode_dihedral = None
-        t6 = t5
-        if len(args.atoms) >= 4:
-            dh_atoms = args.atoms[:4]
-            mode_dihedral = run_drift_experiment(
-                args.base, args.atoms,
-                plane_lock=False, transform_kind="identity",
-                camera_mode="dihedral",
-                camera_mode_kwargs={
-                    "a": dh_atoms[0], "b": dh_atoms[1],
-                    "c": dh_atoms[2], "d": dh_atoms[3],
-                },
-                frames=sampled, hue=hue,
-                out_dir=args.out_dir / "mode_dihedral",
-                keep_pngs=not args.no_pngs,
-            )
-            write_csv(mode_dihedral, args.out_dir / "mode_dihedral.csv")
-            t6 = time.monotonic()
+        # Experiment 6: CameraMode::Dihedral on a hard-coded mid-protein
+        # backbone psi dihedral. For the 1P9J fixture, residue 27 (LEU,
+        # index 26 zero-based) has backbone atom indices N=395, CA=397,
+        # C=412, and the next residue's N=414 (residue 28, ASP).
+        # Psi(27) = N(27)-CA(27)-C(27)-N(28) = (395, 397, 412, 414) —
+        # a well-conditioned mid-protein dihedral that should sit
+        # sub-pixel-stable under the new explicit sign-continuity guard
+        # (Codex finding #1).
+        #
+        # The harness selection still tracks the user-supplied
+        # args.atoms for marker colouring; only the camera mode's
+        # dihedral atoms come from this hard-coded tuple. The selection
+        # focus atom remains atoms[-1] from the CLI.
+        #
+        # If a different fixture is used, update DIHEDRAL_TUPLE to a
+        # mid-protein psi or phi dihedral on that fixture (verify via
+        # atoms_category_info.npy: pick a non-terminal residue's
+        # backbone N/CA/C and the adjacent residue's N).
+        DIHEDRAL_TUPLE = (395, 397, 412, 414)  # 1P9J residue 27 psi
+        mode_dihedral = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False, transform_kind="identity",
+            camera_mode="dihedral",
+            camera_mode_kwargs={
+                "a": DIHEDRAL_TUPLE[0], "b": DIHEDRAL_TUPLE[1],
+                "c": DIHEDRAL_TUPLE[2], "d": DIHEDRAL_TUPLE[3],
+            },
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "mode_dihedral",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(mode_dihedral, args.out_dir / "mode_dihedral.csv")
+        t6 = time.monotonic()
 
         # Experiment 7: CameraMode::Subset on backbone — equivalent to
         # today's transform_only's Kabsch but applied to the camera
@@ -712,14 +723,13 @@ def main() -> int:
             "transform_only":             round(t3 - t2, 3),
             "transform_plus_lock":        round(t4 - t3, 3),
             "mode_atom":                  round(t5 - t4, 3),
-            "mode_dihedral":              round(t6 - t5, 3) if mode_dihedral else None,
+            "mode_dihedral":              round(t6 - t5, 3),
             "mode_subset_backbone":       round(t7 - t6, 3),
             "focus_atom_local":           round(t8 - t7, 3),
             "focus_atom_global_compose":  round(t9 - t8, 3),
         },
+        "mode_dihedral": summarize(mode_dihedral),
     }
-    if mode_dihedral is not None:
-        summary["mode_dihedral"] = summarize(mode_dihedral)
     print(json.dumps(summary, indent=2))
 
     summary_path = args.out_dir / "summary.json"

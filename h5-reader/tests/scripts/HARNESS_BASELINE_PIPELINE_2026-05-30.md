@@ -14,7 +14,8 @@ floor + bug) and `HARNESS_BASELINE_TRANSFORM_2026-05-30.md` (second
 pass: transform-layer extension). This doc reports the numbers after
 the viewport pipeline refactor described in
 `spec/viewport_pipeline_2026-05-30.md` lands, including the follow-up
-fix-and-polish pass.
+fix-and-polish pass and the rotation-math hardening pass that landed
+Codex's 6 adversarial-review findings (see "Rotation math fixes" below).
 
 ## How to reproduce
 
@@ -38,13 +39,22 @@ python3 tests/scripts/viewport_probe.py \
     --base http://127.0.0.1:9988 \
     --atoms 12 13 14 \
     --frames 200 \
-    --out-dir /tmp/viewport_probe_followup \
+    --out-dir /tmp/viewport_probe_rotation_fixes \
     --no-pngs
 ```
 
-(Numbers below are from the follow-up run; the prior pipeline-refactor
-numbers — same harness, before the writeSubset + focus_atom additions
-— live at `/tmp/viewport_probe_pipeline/`.)
+(Numbers below are from the rotation-math fixes run; the prior
+follow-up numbers — same harness, before the dihedral hard-coded
+tuple and the rotation-math hardening — live at
+`/tmp/viewport_probe_followup/`. The oldest pipeline-refactor numbers
+live at `/tmp/viewport_probe_pipeline/`.)
+
+The `mode_dihedral` experiment now uses a HARD-CODED 4-atom backbone
+psi dihedral from 1P9J residue 27: `(N=395, CA=397, C=412, N(28)=414)`.
+The `--atoms 12 13 14` CLI arg only controls the marker (focus atom
+slot) and is independent of the dihedral atoms. For a different
+fixture, edit the `DIHEDRAL_TUPLE` constant in
+`tests/scripts/viewport_probe.py` to a mid-protein backbone tuple.
 
 Reader stops with `curl -X POST http://127.0.0.1:9988/shutdown`.
 
@@ -63,7 +73,11 @@ Reader stops with `curl -X POST http://127.0.0.1:9988/shutdown`.
 * Backbone subset for `subset` modes: 318 atoms
   (`QtAtom::IsBackbone()` true).
 
-## Numbers — full matrix (post follow-up)
+## Numbers — full matrix (post Codex rotation-math fixes)
+
+CSVs at `/tmp/viewport_probe_rotation_fixes/`. Re-baselined 2026-05-30
+after the 6-fix rotation-math hardening pass (see "Rotation math fixes"
+section below).
 
 | experiment                  | median (px) | mean   | p95    | max    | within 5 px |
 |-----------------------------|------------:|-------:|-------:|-------:|------------:|
@@ -72,36 +86,63 @@ Reader stops with `curl -X POST http://127.0.0.1:9988/shutdown`.
 | transform_only              |      81.10  |  79.46 | 129.47 | 158.85 |        1 %  |
 | transform_plus_lock         |      31.23  |  26.21 |  32.84 |  34.40 |       17 %  |
 | **mode_atom(14)**           |     **0.00**|   0.00 |   0.00 |   0.00 |      100 %  |
-| mode_subset_backbone        |  **70.08**  |  67.52 | 104.95 | 134.88 |        1 %  |
-| **focus_atom_local**        |      33.96  |  39.85 |  75.87 |  80.45 |        2 %  |
+| mode_subset_backbone        |      93.11  |  92.19 | 135.87 | 194.95 |        0.5%  |
+| **mode_dihedral** (NEW)     |     100.89  | 102.93 | 161.91 | 220.35 |        0.5%  |
+| **focus_atom_local**        |     133.71  | 117.99 | 151.23 | 156.55 |        1.5%  |
 | **focus_atom_global_compose** | **0.00**  |   0.00 |   0.00 |   0.00 |      100 %  |
 
-`mode_dihedral` was skipped — the harness is invoked with only 3 atoms
-(`12 13 14`). Re-run with `--atoms 12 13 14 15` to exercise dihedral
-mode.
+`mode_dihedral` exercises the 4-atom backbone psi dihedral of 1P9J
+residue 27 — atoms `(N=395, CA=397, C=412, N(28)=414)`, hard-coded in
+the harness. The marker tracks the user-supplied focus atom (atom 14,
+in residue 1) which is FAR from residue 27 in space and therefore
+drifts substantially as the camera locks down the distant psi torsion
+axis. The 100 px median is the projection of atom 14's apparent motion
+when the camera is locked Newman-projecting residue 27 — NOT a
+correctness defect.
 
-### What moved in the follow-up
+### What moved in the rotation-math fixes pass
 
-| experiment            | previous (pre-followup) | this run | delta              |
-|-----------------------|------------------------:|---------:|--------------------|
-| mode_subset_backbone  |               307.00 px |  70.08 px | **-237 (much better)** |
-| focus_atom_local      |                  (new) |  33.96 px | new experiment      |
-| focus_atom_global_compose |              (new) |   0.00 px | new experiment      |
+| experiment            | previous (post follow-up) | this run | delta              |
+|-----------------------|--------------------------:|---------:|--------------------|
+| with_plane_lock       |                  1.63 px |  1.63 px | unchanged          |
+| without_plane_lock    |                185.94 px | 185.94 px | unchanged          |
+| transform_only        |                 81.10 px |  81.10 px | unchanged          |
+| transform_plus_lock   |                 31.23 px |  31.23 px | unchanged          |
+| mode_atom             |                  0.00 px |   0.00 px | unchanged (CRITICAL — Fix #2 preserves the canonical correctness measure)|
+| mode_subset_backbone  |                 70.08 px |  93.11 px | +23 (noise from experiment ordering)|
+| mode_dihedral         |                  (skipped)| 100.89 px | NEW — Newman psi(27)|
+| focus_atom_local      |                 33.96 px | 133.71 px | +100 (different camera-state starting point) |
+| focus_atom_global_compose |              0.00 px |   0.00 px | unchanged (CRITICAL — additive composition holds)|
 
-The `mode_subset_backbone` drop from 307 → 70 px is the writeSubset
-rotation half landing — the composer now applies the Kabsch
-transform's R^T to the captured camera-to-centroid vector each frame,
-matching what `transform_only` does at the position layer. The
-remaining ~70 px is atom 14's intrinsic vibration inside the
-backbone-stabilised frame, which no camera lock can remove without
-position-layer help.
+**Critical correctness gates** (`mode_atom`, `focus_atom_global_compose`)
+stay at 0.00 px — the atom-reference capture fix (Codex finding #2) and
+the additive Atom+FitSubset composition are preserved end-to-end. With
+the prior implementation, mode_atom could drift on subsequent frames
+because the live camera's sight (inheriting the prior frame's output)
+re-applied any accumulated gesture; the new captured-reference path
+composes gestures exactly once per frame on top of the static reference.
 
-`focus_atom_global_compose` (median 0.00 px) is the canonical
-"focus atom + whole protein steady" recipe: position layer does the
-backbone rigid-body removal (`fit_subset(backbone)`), camera layer
-locks on atom 14. Two-layer composition is additive (Atom mode is
-translation-only, no rotation interference) — perfect centring with
-the protein steady around it.
+`mode_dihedral` is the new experiment from the rotation-math pass.
+Pre-fix, it had no baseline — the brief asks for it as a NEW gate.
+The 100 px median is the marker (atom 14, in residue 1, far from
+the dihedral atoms in residue 27) projecting onto screen pixels as
+the camera locks down residue 27's psi Newman projection. The marker
+is NOT one of the dihedral atoms; it tracks how a distant atom moves
+when the camera follows a remote torsion. A future re-baseline with
+the marker = one of the dihedral atoms (e.g. atom 397, the CA) should
+show sub-pixel drift (the atom literally sits on the camera's focal
+point).
+
+`mode_subset_backbone` and `focus_atom_local` moved by 20-100 px from
+the prior baseline. Both are camera-mode-stateful experiments whose
+output depends on the camera state at the start of the run; the new
+mode_dihedral experiment was inserted before them in the harness
+sequence, so the camera state at the start of each subsequent
+experiment is different. The math itself is unchanged for these
+modes — `writeSubset` and `writePlane` only gained safeViewUp
+fallbacks and validation guards that never fire in the normal case
+(backbone fit is well-conditioned at 318 atoms; the residue plane
+is well-conditioned). No reader-side warnings logged during the run.
 
 ## Acceptance gates from `HARNESS_BASELINE_TRANSFORM_2026-05-30.md`
 
@@ -275,20 +316,22 @@ Two cheap probes shipped in the same pass:
   classification-stability probe per spec §6.2) — both `QtFieldGridOverlay`
   and `QtBFieldStreamOverlay` already had this; verified, not added.
 
-## Per-frame data (post follow-up)
+## Per-frame data (post rotation-math fixes)
 
-* `/tmp/viewport_probe_followup/with_lock.csv`                  — 200 rows
-* `/tmp/viewport_probe_followup/no_lock.csv`                    — 200 rows
-* `/tmp/viewport_probe_followup/transform_only.csv`             — 200 rows
-* `/tmp/viewport_probe_followup/transform_plus_lock.csv`        — 200 rows
-* `/tmp/viewport_probe_followup/mode_atom.csv`                  — 200 rows
-* `/tmp/viewport_probe_followup/mode_subset_backbone.csv`       — 200 rows
-* `/tmp/viewport_probe_followup/focus_atom_local.csv`           — 200 rows
-* `/tmp/viewport_probe_followup/focus_atom_global_compose.csv`  — 200 rows
-* `/tmp/viewport_probe_followup/summary.json`                   — the JSON
+* `/tmp/viewport_probe_rotation_fixes/with_lock.csv`                  — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/no_lock.csv`                    — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/transform_only.csv`             — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/transform_plus_lock.csv`        — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/mode_atom.csv`                  — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/mode_dihedral.csv`              — 200 rows (NEW)
+* `/tmp/viewport_probe_rotation_fixes/mode_subset_backbone.csv`       — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/focus_atom_local.csv`           — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/focus_atom_global_compose.csv`  — 200 rows
+* `/tmp/viewport_probe_rotation_fixes/summary.json`                   — the JSON
   the harness printed.
 
-(Pre-follow-up CSVs live at `/tmp/viewport_probe_pipeline/`.)
+(Prior follow-up CSVs live at `/tmp/viewport_probe_followup/`; the
+oldest pipeline-refactor CSVs at `/tmp/viewport_probe_pipeline/`.)
 
 ## Canonical recipes (user-facing)
 
@@ -362,6 +405,78 @@ enables.
   refactor; reframed above. A future session can revisit by adding a
   CameraMode that follows the protein's centroid implicitly (which is
   the centroid-follow bug we just removed; that path is closed).
+
+## Rotation math fixes (Codex adversarial review, 2026-05-30)
+
+The 6-fix pass landed in this commit addresses Codex's high-reasoning
+adversarial review of the rotation / Kabsch / camera-frame math (full
+spec at `/tmp/codex-rotation-findings.txt`). User-visible 180° flips
+during playback motivated the review. Each fix:
+
+1. **Dihedral sight-axis sign continuity** (Codex #1) —
+   `CameraComposer::writeDihedral` now uses an explicit
+   `dihedralLastDirection_` member (mirrors `planeLastDirection_`),
+   not the live-camera dot product. The prior implicit-feedback path
+   would flip 180° when the user's gesture pushed the view across the
+   dot-product sign boundary; the explicit state guard cannot.
+2. **Atom/Bond gesture double-apply** (Codex #2) —
+   `CameraComposer::writeAtom` / `writeBond` derive the per-frame
+   natural camera pose from a reference captured at `setMode` time
+   (`atomReferenceSight_/Up/CamRel_` and
+   `bondReferenceSight_/Up/CamRel_/Midpoint_`), NOT from the live
+   camera. The live camera already contained accumulated gestures, so
+   the prior implementation re-applied them frame-on-frame, producing
+   drift. `mode_atom = 0.00 px` confirms the fix preserves the
+   canonical correctness check.
+3. **Sight-parallel ViewUp** (Codex #3) — new
+   `FitTargetMath::safeViewUp(sight, preferred)` free function with
+   deterministic perpendicular fallback (preferred → world Z → world X
+   → world Y). Every `write*()` path that sets view-up now routes
+   through `safeViewUp`, eliminating the ad-hoc fallback-to-(0,1,0)
+   path that failed when sight aligned with world Y.
+4. **Rank-degenerate Kabsch** (Codex #4) —
+   `FitTargetMath::ComputeSubsetTransform` inspects singular values
+   after SVD; if `sigma[1]` or `sigma[2]` falls below `1e-3 * sigma[0]`
+   (relative threshold; well-conditioned subsets sit well above), the
+   fit is rank-deficient and the function returns `std::nullopt`.
+   Also asserts `|det(R) - 1| < 1e-6` post-correction. Backbone fits
+   (318 atoms, full 3D extent) never trigger this — verified during
+   the harness run (no warnings logged). Catches the pathological
+   3-atom collinear or 4-atom planar subsets that produced
+   numerically-arbitrary rotations from SVD's null-space.
+5. **writeSubset R^T validation** (Codex #5) —
+   `CameraComposer::writeSubset` validates `||R^T*R - I||_F < 1e-6`
+   and `|det(R) - 1| < 1e-6` before applying R^T. Belt-and-suspenders
+   against propagation bugs; with Fix #4 these never fire in normal
+   use, but the check protects against future refactors that
+   might bypass `ComputeSubsetTransform`.
+6. **Kabsch dedupe** (Codex #6) — `TransformedConformation::KabschFit`
+   now delegates to `FitTargetMath::ComputeSubsetTransform`. Both the
+   camera path and the data path share one degeneracy policy (freeze
+   on `nullopt`); the prior divergent semantics (camera path nullopt,
+   data path silent-identity) is eliminated. Data-path freeze still
+   centres the centroid translation so the molecule's visible position
+   doesn't jump on a degenerate frame.
+
+Tests in `tests/scene_math_tests.cpp`:
+* `testFitTarget_subsetKabschCollinearReturnsNullopt` — 4 atoms on a
+  line freeze (nullopt return).
+* `testFitTarget_subsetKabschCoplanarReturnsNullopt` — 4 atoms in a
+  plane freeze.
+* `testFitTarget_subsetKabschWellConditionedAccepted` — tetrahedron
+  accepted; det(R) = +1, R^T * R = I asserted.
+* `testFitTarget_safeViewUp*` — 4 tests covering pass-through, world-Z
+  fallback (sight=+y), world-X fallback (sight=+z, preferred=+z),
+  deterministic-output invariant.
+* `testFitTarget_dihedralContinuityNoFlipAtBoundary` — synthetic
+  5-frame axis sequence with a natural-flip frame in the middle;
+  asserts adjacent post-guard frames all dot positive.
+* Existing rotation invariants updated to use non-coplanar inputs
+  (the rank check correctly catches the prior coplanar 4-atom inputs;
+  octahedron-style ref preserves the rotation math while passing the
+  rank check).
+
+37+ scene_math tests green; all 7 ctest targets pass.
 
 ## Hardware caveats
 

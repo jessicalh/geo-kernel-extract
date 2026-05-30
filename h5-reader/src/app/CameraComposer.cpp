@@ -65,6 +65,22 @@ void CameraComposer::setMode(CameraMode mode,
     planeLocalViewUp_  = model::Vec3::Zero();
     planeNormalSign_   = 1.0;
     planeLastDirection_.reset();
+    // Dihedral sign-continuity reset (Codex finding #1) — same lifecycle
+    // as planeLastDirection_; first write after setMode picks the natural
+    // axis direction, subsequent writes flip the sign only if the axis
+    // crosses through perpendicular to the stored reference.
+    dihedralLastDirection_.reset();
+    // Atom/Bond reference captures (Codex finding #2) — zero out so
+    // captureInitialState's per-mode arm sets the right values; without
+    // this reset, switching Atom -> Bond would inherit the Atom mode's
+    // captured sight as the bond's initial reference.
+    atomReferenceSight_    = model::Vec3::Zero();
+    atomReferenceUp_       = model::Vec3::Zero();
+    atomReferenceCamRel_   = model::Vec3::Zero();
+    bondReferenceSight_    = model::Vec3::Zero();
+    bondReferenceUp_       = model::Vec3::Zero();
+    bondReferenceCamRel_   = model::Vec3::Zero();
+    bondReferenceMidpoint_ = model::Vec3::Zero();
     subsetReference_.clear();
     subsetReferenceCamRel_   = model::Vec3::Zero();
     subsetReferenceUp_       = model::Vec3::Zero();
@@ -111,7 +127,55 @@ void CameraComposer::captureInitialState(std::size_t referenceFrame) {
     // hold the camera at the same zoom across the lock acquisition.
     distance_ = std::max(1.0, (pos - fp).norm());
 
-    if (mode_.kind == CameraMode::Kind::Plane && mode_.atoms.size() == 3) {
+    if (mode_.kind == CameraMode::Kind::Atom && mode_.atoms.size() == 1) {
+        // Atom mode reference capture (Codex finding #2). The prior
+        // implementation derived each frame's sight from the live camera
+        // — which already contained accumulated user gestures — so the
+        // gesture re-applied on top of itself frame after frame
+        // (visible drift even with no further input). Now we capture
+        // sight/up/cam-relative once here and writeAtom composes
+        // gestures on top of the captured pose exactly once per frame.
+        const std::size_t a = mode_.atoms[0];
+        if (a < protein_->atomCount()) {
+            const model::Vec3 atomPos =
+                conformation_->atomPosition(referenceFrame, a);
+            atomReferenceCamRel_ = pos - atomPos;
+            model::Vec3 sight = fp - pos;
+            if (sight.norm() > 1e-9) {
+                sight.normalize();
+                atomReferenceSight_ = sight;
+                // Use safeViewUp so the captured up is guaranteed
+                // perpendicular even when the live camera presents a
+                // degenerate up (Codex finding #3).
+                atomReferenceUp_ = math::safeViewUp(sight, up);
+            } else {
+                atomReferenceSight_ = model::Vec3(0.0, 0.0, -1.0);
+                atomReferenceUp_    = math::safeViewUp(atomReferenceSight_, up);
+            }
+        }
+    } else if (mode_.kind == CameraMode::Kind::Bond && mode_.atoms.size() == 2) {
+        // Bond mode reference capture (Codex finding #2). Mirror of the
+        // Atom arm above; the bond's anchor is the midpoint, so we
+        // cache that for the per-frame fallback alongside the
+        // sight/up/cam-relative triple.
+        const std::size_t a = mode_.atoms[0];
+        const std::size_t b = mode_.atoms[1];
+        if (a < protein_->atomCount() && b < protein_->atomCount()) {
+            const model::Vec3 pa = conformation_->atomPosition(referenceFrame, a);
+            const model::Vec3 pb = conformation_->atomPosition(referenceFrame, b);
+            bondReferenceMidpoint_ = 0.5 * (pa + pb);
+            bondReferenceCamRel_   = pos - bondReferenceMidpoint_;
+            model::Vec3 sight = fp - pos;
+            if (sight.norm() > 1e-9) {
+                sight.normalize();
+                bondReferenceSight_ = sight;
+                bondReferenceUp_    = math::safeViewUp(sight, up);
+            } else {
+                bondReferenceSight_ = model::Vec3(0.0, 0.0, -1.0);
+                bondReferenceUp_    = math::safeViewUp(bondReferenceSight_, up);
+            }
+        }
+    } else if (mode_.kind == CameraMode::Kind::Plane && mode_.atoms.size() == 3) {
         // Re-derive plane basis + plane-local viewUp + initial sign from
         // the captured camera state. Matches the original
         // lockCameraToSelectionPlane logic at MoleculeScene.cpp:282-343.
@@ -258,32 +322,17 @@ bool CameraComposer::writeAtom(std::size_t t) {
     auto anchor = math::ComputeAtomAnchor(arr);
     if (!anchor) return false;
 
-    auto* camera = renderer_->GetActiveCamera();
-    if (!camera) return false;
-    double posRaw[3];
-    double upRaw[3];
-    camera->GetPosition(posRaw);
-    camera->GetViewUp(upRaw);
-    const model::Vec3 pos(posRaw[0], posRaw[1], posRaw[2]);
-    const model::Vec3 up(upRaw[0], upRaw[1], upRaw[2]);
-
-    // Inherit the view direction from the current camera; the focal
-    // moves to the atom, the position is at the same distance along the
-    // same direction. This is the no-orientation-override default for
-    // Atom mode (per spec §2.3.3).
-    double fpRaw[3];
-    camera->GetFocalPoint(fpRaw);
-    const model::Vec3 oldFp(fpRaw[0], fpRaw[1], fpRaw[2]);
-    model::Vec3 viewDir = oldFp - pos;
-    if (viewDir.norm() < 1e-9)
-        viewDir = model::Vec3(0.0, 0.0, -1.0);
-    else
-        viewDir.normalize();
-
+    // Codex finding #2: derive the per-frame natural pose from the
+    // captured reference at lock acquisition, NOT from the live camera.
+    // The live camera already contains any composed user gestures from
+    // the previous frame; deriving sight from it would re-apply those
+    // gestures on top of themselves each tick, producing drift even
+    // with no further input. The captured reference gives the same
+    // natural pose every frame and writeCameraComposed applies the
+    // accumulated gesture delta on top exactly once.
     const model::Vec3 newFp  = anchor->focal;
-    const model::Vec3 newPos = newFp - viewDir * distance_;
-
-    writeCameraComposed(newFp, newPos, up);
+    const model::Vec3 newPos = newFp + atomReferenceCamRel_;
+    writeCameraComposed(newFp, newPos, atomReferenceUp_);
     return true;
 }
 
@@ -296,59 +345,62 @@ bool CameraComposer::writeBond(std::size_t t) {
     auto anchor = math::ComputeBondAnchor(arr);
     if (!anchor || !anchor->axis) return false;
 
-    auto* camera = renderer_->GetActiveCamera();
-    if (!camera) return false;
-    double posRaw[3];
-    double upRaw[3];
-    camera->GetPosition(posRaw);
-    camera->GetViewUp(upRaw);
-    const model::Vec3 pos(posRaw[0], posRaw[1], posRaw[2]);
-    model::Vec3 up(upRaw[0], upRaw[1], upRaw[2]);
-
-    // Default orientation for Bond: ViewUp parallel to the bond axis
-    // (sight perpendicular to the bond). Resolve to the natural pair via
-    // OrientationPolicy::Default; explicit Free leaves the gesture's up.
     const model::Vec3 bondAxis = *anchor->axis;
     const model::Vec3 fp       = anchor->focal;
 
+    // Codex finding #2: derive each frame's natural camera pose from
+    // the captured reference at lock acquisition, NOT from the live
+    // camera. The captured cam-relative offset rides on top of the
+    // current midpoint; writeCameraComposed applies the accumulated
+    // gesture delta on top exactly once. This kills the gesture
+    // double-apply drift the prior live-camera-inherits implementation
+    // had.
+    //
+    // Policy still drives the natural view-up:
+    //   Default / PerpendicularToBond — ViewUp = bondAxis (the bond is
+    //     vertical in screen space; sight is perpendicular to it). The
+    //     captured cam-relative offset already encodes a perpendicular
+    //     sight from the reference frame and we re-anchor at the
+    //     current midpoint each frame.
+    //   Free / DownAxis — use the captured reference up; sight is
+    //     inherited from the captured cam-relative offset (which the
+    //     user oriented when they acquired the lock).
     if (policy_.kind == OrientationPolicy::Kind::Default ||
         policy_.kind == OrientationPolicy::Kind::PerpendicularToBond) {
-        // View direction perpendicular to the bond axis; inherit horizontal
-        // direction from the current camera by projecting (oldFp - pos)
-        // perpendicular to the bond axis. ViewUp = bond axis (so the bond
-        // is vertical in screen space, perp to sight).
-        double fpRaw[3];
-        camera->GetFocalPoint(fpRaw);
-        const model::Vec3 oldFp(fpRaw[0], fpRaw[1], fpRaw[2]);
-        model::Vec3 sightCandidate = oldFp - pos;
-        const double along = sightCandidate.dot(bondAxis);
-        sightCandidate -= along * bondAxis;
+        // Build a sight that's perpendicular to the bond axis. Project the
+        // captured cam-relative direction perpendicular to the current
+        // frame's bond axis (the bond axis rotates frame-to-frame with
+        // the molecule; the captured sight may not be exactly perp to
+        // the new axis). If the projection collapses (captured cam-rel
+        // parallel to the new bond axis), pick any perpendicular via
+        // safeViewUp.
+        model::Vec3 sightCandidate = bondReferenceCamRel_
+            - bondReferenceCamRel_.dot(bondAxis) * bondAxis;
         if (sightCandidate.norm() < 1e-9) {
-            // Fallback: pick any vector perpendicular to bondAxis.
-            model::Vec3 ref(1.0, 0.0, 0.0);
-            if (std::abs(bondAxis.dot(ref)) > 0.99)
-                ref = model::Vec3(0.0, 1.0, 0.0);
-            sightCandidate = ref - ref.dot(bondAxis) * bondAxis;
+            sightCandidate = math::safeViewUp(bondAxis, bondReferenceCamRel_);
+        } else {
+            sightCandidate.normalize();
         }
-        sightCandidate.normalize();
 
-        const model::Vec3 newPos = fp - sightCandidate * distance_;
-        const model::Vec3 newUp  = bondAxis;
+        // Distance: use the captured cam-relative magnitude so the bond
+        // lock holds the captured zoom even after the bond axis rotates.
+        const double dist = std::max(1e-6, bondReferenceCamRel_.norm());
+        const model::Vec3 newPos = fp + sightCandidate * dist;
+        // ViewUp = bondAxis per the perp-to-bond convention. The bond
+        // is vertical in screen space; safeViewUp guards against the
+        // degenerate (axis parallel to sight) case that
+        // OrthogonalizeViewUp would otherwise have to handle.
+        const model::Vec3 newUp = math::safeViewUp(
+            /*sight=*/(fp - newPos).normalized(), bondAxis);
         writeCameraComposed(fp, newPos, newUp);
         return true;
     }
 
-    // Free / DownAxis variants: inherit the sight direction.
-    double fpRaw[3];
-    camera->GetFocalPoint(fpRaw);
-    const model::Vec3 oldFp(fpRaw[0], fpRaw[1], fpRaw[2]);
-    model::Vec3 sightDir = oldFp - pos;
-    if (sightDir.norm() < 1e-9)
-        sightDir = model::Vec3(0.0, 0.0, -1.0);
-    else
-        sightDir.normalize();
-    const model::Vec3 newPos = fp - sightDir * distance_;
-    writeCameraComposed(fp, newPos, up);
+    // Free / DownAxis: use the captured reference cam-relative offset
+    // and up. Camera follows the bond's midpoint at the captured offset
+    // (preserving distance + orientation captured at lock acquisition).
+    const model::Vec3 newPos = fp + bondReferenceCamRel_;
+    writeCameraComposed(fp, newPos, bondReferenceUp_);
     return true;
 }
 
@@ -364,11 +416,8 @@ bool CameraComposer::writeDihedral(std::size_t t) {
 
     auto* camera = renderer_->GetActiveCamera();
     if (!camera) return false;
-    double posRaw[3];
     double upRaw[3];
-    camera->GetPosition(posRaw);
     camera->GetViewUp(upRaw);
-    const model::Vec3 pos(posRaw[0], posRaw[1], posRaw[2]);
     const model::Vec3 oldUp(upRaw[0], upRaw[1], upRaw[2]);
 
     // Default policy for Dihedral: sight DOWN the (atoms[1], atoms[2])
@@ -393,51 +442,65 @@ bool CameraComposer::writeDihedral(std::size_t t) {
         axisVec = *anchor->axis;  // (c - b).normalized()
     }
 
-    // Sign continuity: keep sight direction on the same side as last frame.
+    // Codex finding #1: sign continuity for the sight axis is an
+    // EXPLICIT state guard (dihedralLastDirection_), not an implicit
+    // feedback loop through the live camera. The old code dotted axisVec
+    // against the camera's current view direction — which already
+    // contained both the prior frame's output AND any accumulated user
+    // gesture. That's a feedback loop: a user rotation that pushed the
+    // view across the dot-product sign boundary would flip the next
+    // frame's axis, producing a 180° camera teleport.
+    //
+    // Now the guard uses the POST-flip axis we wrote last frame
+    // (mirroring writePlane / planeLastDirection_). On the first write
+    // after setMode (dihedralLastDirection_ == nullopt), we use the
+    // natural axis direction and STORE it. Subsequent frames flip only
+    // if axisVec dots negative against the stored reference, then we
+    // update the reference with the new post-flip axis.
     model::Vec3 sightDir = axisVec;
-    // Inherit sign from the current camera's view direction so the first
-    // write doesn't flip — match dot-product against (oldFp - pos).
-    double oldFpRaw[3];
-    camera->GetFocalPoint(oldFpRaw);
-    const model::Vec3 oldFp(oldFpRaw[0], oldFpRaw[1], oldFpRaw[2]);
-    const model::Vec3 currentView = (oldFp - pos).norm() > 1e-9
-        ? (oldFp - pos).normalized()
-        : model::Vec3(0.0, 0.0, -1.0);
-    if (currentView.dot(sightDir) < 0.0)
+    if (dihedralLastDirection_
+        && sightDir.dot(*dihedralLastDirection_) < 0.0) {
         sightDir = -sightDir;
+    }
+    dihedralLastDirection_ = sightDir;
 
     const model::Vec3 fp = anchor->focal;
 
     // ViewUp: when the axis is overridden, the dihedral's natural viewUp
-    // was computed against the DEFAULT axis (c-b) and is wrong for the
-    // override. Recompute from the flanking dihedral atom (a) projected
-    // perpendicular to the override axis; fall back to the current up
-    // orthogonalised against the override axis. Without the override,
-    // use the dihedral's natural up.
+    // (computed against (c-b)) doesn't apply. Recompute from the flanking
+    // dihedral atom (a) projected perpendicular to the override axis;
+    // fall back via safeViewUp using the live camera's current up as
+    // the preferred direction. Without the override, prefer the
+    // anchor's natural up.
+    //
+    // Codex finding #3: every fallback now routes through safeViewUp,
+    // which is guaranteed perpendicular to sight even when the
+    // preferred candidate is parallel to sight (the old (0,1,0)
+    // fallback failed silently when sight aligned with world Y; VTK's
+    // OrthogonalizeViewUp can't recover from a sight-parallel up).
     model::Vec3 up;
     if (axisOverridden) {
         // Project (a - midpoint) perpendicular to the override axis to
         // get a stable up that follows the molecule's geometry rather
-        // than the gesture's last orientation.
+        // than the gesture's last orientation. If (a - midpoint) is
+        // parallel to the override axis, fall back via safeViewUp.
         const model::Vec3& aPos = positions[0];
         model::Vec3 candidate = aPos - fp;
         candidate -= candidate.dot(sightDir) * sightDir;
         if (candidate.norm() > 1e-9) {
             up = candidate.normalized();
-        } else if (auto orthog = math::OrthogonalizeViewUp(sightDir, oldUp)) {
-            up = *orthog;
         } else {
-            up = model::Vec3(0.0, 1.0, 0.0);
+            up = math::safeViewUp(sightDir, oldUp);
         }
     } else if (anchor->viewUp) {
         up = *anchor->viewUp;
-    } else if (auto orthog = math::OrthogonalizeViewUp(sightDir, oldUp)) {
-        up = *orthog;
     } else {
-        up = model::Vec3(0.0, 1.0, 0.0);
+        up = math::safeViewUp(sightDir, oldUp);
     }
-    if (auto orthog = math::OrthogonalizeViewUp(sightDir, up))
-        up = *orthog;
+    // Final guard: orthogonalise up against sight. safeViewUp guarantees
+    // a non-parallel result; this is belt-and-suspenders against any
+    // numerical drift between the projection above and the final write.
+    up = math::safeViewUp(sightDir, up);
 
     const model::Vec3 newPos = fp - sightDir * distance_;
     writeCameraComposed(fp, newPos, up);
@@ -486,16 +549,14 @@ bool CameraComposer::writePlane(std::size_t t) {
     auto vectorToWorld = [&basis](const model::Vec3& local) {
         return basis.x * local.x() + basis.y * local.y() + basis.z * local.z();
     };
-    model::Vec3 viewUp = vectorToWorld(planeLocalViewUp_);
-    viewUp -= viewUp.dot(viewDir) * viewDir;
-    if (viewUp.norm() < 1e-6) {
-        viewUp = basis.y - basis.y.dot(viewDir) * viewDir;
-    }
-    if (viewUp.norm() < 1e-6) {
-        viewUp = basis.x - basis.x.dot(viewDir) * viewDir;
-    }
-    if (viewUp.norm() < 1e-6) return false;
-    viewUp.normalize();
+    model::Vec3 viewUpCandidate = vectorToWorld(planeLocalViewUp_);
+    // Codex finding #3: route through safeViewUp so the fallback chain
+    // is deterministic and guaranteed-non-degenerate. The prior ad-hoc
+    // sequence (try plane Y, then plane X, then bail) failed silently
+    // when the plane axes themselves were parallel to sight (degenerate
+    // captured plane); safeViewUp's world-axis fallback chain always
+    // finds a perpendicular.
+    const model::Vec3 viewUp = math::safeViewUp(viewDir, viewUpCandidate);
 
     const model::Vec3 fp  = basis.origin;
     const model::Vec3 pos = fp - viewDir * distance_;
@@ -524,8 +585,44 @@ bool CameraComposer::writeSubset(std::size_t t) {
     // frame; rotating its relative pose by R^T moves it into the
     // current frame so the molecule appears stationary while the camera
     // follows its rotation.
+    //
+    // Codex finding #4 handles rank-deficient inputs inside
+    // ComputeSubsetTransform — nullopt return means the fit can't be
+    // trusted; freezing the frame (return false) keeps the camera at
+    // its last-good state.
     auto transform = math::ComputeSubsetTransform(current, ref);
-    if (!transform) return false;
+    if (!transform) {
+        qCWarning(cComposer).noquote()
+            << "writeSubset | frame=" << static_cast<qlonglong>(t)
+            << "| Kabsch returned nullopt (rank-deficient or det invalid); freezing";
+        return false;
+    }
+
+    // Codex finding #5: belt-and-suspenders validation before applying
+    // R^T. ComputeSubsetTransform's own guards should already guarantee
+    // R^T * R ~ I and det(R) = +1, but a defensive check at the use
+    // site catches propagation bugs (e.g. if a future refactor adds a
+    // post-processing step). If either guard fires we freeze the frame
+    // and log; with the upstream guards in place these should never
+    // fire in normal use.
+    constexpr double kOrthoTol = 1e-6;
+    constexpr double kDetTol   = 1e-6;
+    const model::Mat3 RtR_minus_I = transform->R.transpose() * transform->R
+                                     - model::Mat3::Identity();
+    if (RtR_minus_I.norm() > kOrthoTol) {
+        qCWarning(cComposer).noquote()
+            << "writeSubset | frame=" << static_cast<qlonglong>(t)
+            << "| R^T*R - I Frobenius norm=" << RtR_minus_I.norm()
+            << "exceeds" << kOrthoTol << "; freezing";
+        return false;
+    }
+    if (std::abs(transform->R.determinant() - 1.0) > kDetTol) {
+        qCWarning(cComposer).noquote()
+            << "writeSubset | frame=" << static_cast<qlonglong>(t)
+            << "| det(R)=" << transform->R.determinant()
+            << "not ~+1; freezing";
+        return false;
+    }
     const model::Mat3 Rinv = transform->R.transpose();
 
     // Subset centroid at current frame = mean(current). Focal lands
@@ -543,14 +640,14 @@ bool CameraComposer::writeSubset(std::size_t t) {
     // Orthogonalise the rotated up against the rotated sight; both came
     // from a single rigid rotation of orthogonal reference vectors, so
     // this is a guard against accumulated floating-point drift across
-    // many frames.
+    // many frames. safeViewUp (Codex finding #3) guarantees a non-
+    // degenerate result even if newUp drifts parallel to sight.
     model::Vec3 sight = newFp - newPos;
     if (sight.norm() < 1e-9) return false;
     sight.normalize();
-    const auto orthoUp = math::OrthogonalizeViewUp(sight, newUp);
-    if (!orthoUp) return false;
+    const model::Vec3 orthoUp = math::safeViewUp(sight, newUp);
 
-    writeCameraComposed(newFp, newPos, *orthoUp);
+    writeCameraComposed(newFp, newPos, orthoUp);
     return true;
 }
 

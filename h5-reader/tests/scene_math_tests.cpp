@@ -105,6 +105,28 @@ private slots:
     // output so we don't drag in vtkRenderer or QtProtein.
     void testFitTarget_subsetCameraFollowsRotation();
     void testFitTarget_subsetCameraIdentityIsIdentity();
+
+    // Codex finding #4 — rank-degenerate Kabsch must freeze
+    // (return nullopt) rather than ship a numerically-arbitrary rotation
+    // from SVD's null-space.
+    void testFitTarget_subsetKabschCollinearReturnsNullopt();
+    void testFitTarget_subsetKabschCoplanarReturnsNullopt();
+    void testFitTarget_subsetKabschWellConditionedAccepted();
+
+    // Codex finding #3 — safeViewUp guarantees non-degenerate output.
+    // Trivial cases pass through; pathological (parallel) inputs fall
+    // back deterministically.
+    void testFitTarget_safeViewUpPassThroughNonDegenerate();
+    void testFitTarget_safeViewUpDegenerateFallsBackToWorldZ();
+    void testFitTarget_safeViewUpSightAlongZFallsBackToWorldX();
+    void testFitTarget_safeViewUpDeterministic();
+
+    // Codex finding #1 — dihedral sight-axis sign continuity uses an
+    // EXPLICIT stored reference, not implicit feedback through the live
+    // camera. Verify that an input axis crossing through perpendicular
+    // to the stored reference produces a continuous post-flip output
+    // sequence (no 180° flip on the boundary frame).
+    void testFitTarget_dihedralContinuityNoFlipAtBoundary();
 };
 
 // ---- computePlaneFrame: canonical XY triangle ---------------------------
@@ -509,11 +531,18 @@ void SceneMathTests::testFitTarget_subsetKabschKnownRotation() {
     // current = reference rotated +90° about z (about origin). Kabsch
     // recovers R = rotation by -90° about z so that R * current ≈
     // reference.
+    //
+    // Reference is a non-coplanar tetrahedron-ish shape so the
+    // Codex-finding-#4 rank check (sigma[2] > tol) accepts it; a flat
+    // square in the XY plane would correctly be rejected as
+    // rank-deficient. The rotation math here is identical to the planar
+    // case — the +z atom just keeps sigma[2] well-defined.
     std::vector<model::Vec3> ref = {
         model::Vec3(1.0, 0.0, 0.0),
         model::Vec3(0.0, 1.0, 0.0),
         model::Vec3(-1.0, 0.0, 0.0),
         model::Vec3(0.0, -1.0, 0.0),
+        model::Vec3(0.0, 0.0, 1.0),   // out of XY plane → full rank
     };
     // Rotate ref by +90° about z to get current.
     std::vector<model::Vec3> cur;
@@ -575,10 +604,15 @@ void SceneMathTests::testFitTarget_subsetCameraIdentityIsIdentity() {
     // Camera captured at (0, 0, 10) looking at centroid (0, 0, 0),
     // up = (0, 1, 0). Rotated by R^T = I, the camera-relative vector
     // is unchanged.
+    //
+    // Non-coplanar tetrahedron-style ref so Codex finding #4's rank
+    // check accepts it; the rotation math is identical to a planar set
+    // but the +z atom keeps sigma[2] well-conditioned.
     std::vector<model::Vec3> ref = {
         model::Vec3(1.0, 0.0, 0.0),
         model::Vec3(0.0, 1.0, 0.0),
         model::Vec3(-1.0, 0.0, 0.0),
+        model::Vec3(0.0, 0.0, 1.0),
     };
     std::vector<model::Vec3> cur = ref;
     const auto t = math::ComputeSubsetTransform(cur, ref);
@@ -616,11 +650,18 @@ void SceneMathTests::testFitTarget_subsetCameraFollowsRotation() {
     // for an origin-centred subset) gives the new camera position
     // (0, 5, 0) — which is exactly where the camera "should" be to
     // see the rotated subset from the same relative angle.
+    // Non-coplanar ref (octahedron — square plus apices at +z and -z)
+    // so Codex finding #4's rank check accepts it. The +90°-about-z
+    // rotation preserves the centroid AT THE ORIGIN (symmetric apices
+    // cancel) and the math is identical to a planar square; the apices
+    // just keep sigma[2] non-zero.
     std::vector<model::Vec3> ref = {
         model::Vec3(1.0, 0.0, 0.0),
         model::Vec3(0.0, 1.0, 0.0),
         model::Vec3(-1.0, 0.0, 0.0),
         model::Vec3(0.0, -1.0, 0.0),
+        model::Vec3(0.0, 0.0, 1.0),
+        model::Vec3(0.0, 0.0, -1.0),
     };
     // Rotate ref +90° about z to make current.
     std::vector<model::Vec3> cur;
@@ -667,6 +708,168 @@ void SceneMathTests::testFitTarget_subsetCameraFollowsRotation() {
     QVERIFY(nearly(newSight.x(), 0.0, 1e-9));
     QVERIFY(nearly(newSight.y(), -1.0, 1e-9));
     QVERIFY(nearly(newSight.z(), 0.0, 1e-9));
+}
+
+// ---- Codex finding #4: rank-degenerate Kabsch -------------------------
+
+void SceneMathTests::testFitTarget_subsetKabschCollinearReturnsNullopt() {
+    // 4 atoms strictly on the x-axis — rank 1 (only one non-zero
+    // singular value). Rotation around the x-axis is underdetermined;
+    // the function must freeze (return nullopt) rather than ship a
+    // numerically-arbitrary rotation from SVD's null space.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(0.0, 0.0, 0.0),
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(2.0, 0.0, 0.0),
+        model::Vec3(3.0, 0.0, 0.0),
+    };
+    // Translate AND rotate slightly: even rotated, the line is rank-1,
+    // so the fit is still underdetermined about the line's axis.
+    std::vector<model::Vec3> cur;
+    cur.reserve(ref.size());
+    for (const auto& p : ref) {
+        // Translate by (10, 5, 2), rotate around z by a tiny angle so
+        // it's not strictly the same axis but still collinear.
+        const double theta = 0.0;  // pure translation; result is still 1D
+        const double x = std::cos(theta) * p.x() - std::sin(theta) * p.y();
+        const double y = std::sin(theta) * p.x() + std::cos(theta) * p.y();
+        cur.emplace_back(x + 10.0, y + 5.0, p.z() + 2.0);
+    }
+    QVERIFY(!math::ComputeSubsetTransform(cur, ref).has_value());
+}
+
+void SceneMathTests::testFitTarget_subsetKabschCoplanarReturnsNullopt() {
+    // 4 atoms in the XY plane — rank 2. Rotation about the plane
+    // normal is underdetermined; freeze.
+    std::vector<model::Vec3> ref = {
+        model::Vec3( 1.0,  0.0, 0.0),
+        model::Vec3( 0.0,  1.0, 0.0),
+        model::Vec3(-1.0,  0.0, 0.0),
+        model::Vec3( 0.0, -1.0, 0.0),
+    };
+    std::vector<model::Vec3> cur = ref;  // identity input is fine, but...
+    // ...rank is still 2 because all atoms have z=0. Identity input
+    // would otherwise produce R=I, T=0; the rank check catches it
+    // before the SVD does.
+    QVERIFY(!math::ComputeSubsetTransform(cur, ref).has_value());
+}
+
+void SceneMathTests::testFitTarget_subsetKabschWellConditionedAccepted() {
+    // 4 atoms forming a non-degenerate tetrahedron — rank 3, all
+    // singular values well above threshold. Fit accepted.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(0.0, 1.0, 0.0),
+        model::Vec3(0.0, 0.0, 1.0),
+        model::Vec3(-1.0, -1.0, -1.0),
+    };
+    std::vector<model::Vec3> cur = ref;
+    const auto t = math::ComputeSubsetTransform(cur, ref);
+    QVERIFY(t.has_value());
+    // Identity input -> R = I, det = +1, R^T*R = I.
+    QVERIFY(nearly(t->R.determinant(), 1.0, 1e-9));
+    const model::Mat3 RtR = t->R.transpose() * t->R;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            QVERIFY(nearly(RtR(i, j), (i == j) ? 1.0 : 0.0, 1e-9));
+}
+
+// ---- Codex finding #3: safeViewUp deterministic perpendicular fallback
+
+void SceneMathTests::testFitTarget_safeViewUpPassThroughNonDegenerate() {
+    // sight along +z; preferred along +y. Already perpendicular; the
+    // result should equal preferred (normalised).
+    const model::Vec3 sight(0.0, 0.0, 1.0);
+    const model::Vec3 preferred(0.0, 1.0, 0.0);
+    const model::Vec3 up = math::safeViewUp(sight, preferred);
+    QVERIFY(nearly(up.x(), 0.0, 1e-9));
+    QVERIFY(nearly(up.y(), 1.0, 1e-9));
+    QVERIFY(nearly(up.z(), 0.0, 1e-9));
+    QVERIFY(isUnitVector(up));
+    QVERIFY(isPerpendicular(up, sight));
+}
+
+void SceneMathTests::testFitTarget_safeViewUpDegenerateFallsBackToWorldZ() {
+    // sight along +y; preferred ALSO along +y (parallel). Old code
+    // would have returned (0, 1, 0) which is parallel to sight (bad).
+    // safeViewUp's fallback chain tries world Z first → (0, 0, 1).
+    const model::Vec3 sight(0.0, 1.0, 0.0);
+    const model::Vec3 preferred(0.0, 1.0, 0.0);
+    const model::Vec3 up = math::safeViewUp(sight, preferred);
+    QVERIFY(isUnitVector(up));
+    QVERIFY(isPerpendicular(up, sight, 1e-9));
+    // Specifically world Z because it's first in the fallback chain
+    // and is perpendicular to sight=+y.
+    QVERIFY(nearly(up.x(), 0.0, 1e-9));
+    QVERIFY(nearly(up.y(), 0.0, 1e-9));
+    QVERIFY(nearly(up.z(), 1.0, 1e-9));
+}
+
+void SceneMathTests::testFitTarget_safeViewUpSightAlongZFallsBackToWorldX() {
+    // sight along +z; preferred ALSO along +z. World Z fallback would
+    // also be parallel — skip to world X = (1, 0, 0).
+    const model::Vec3 sight(0.0, 0.0, 1.0);
+    const model::Vec3 preferred(0.0, 0.0, 1.0);
+    const model::Vec3 up = math::safeViewUp(sight, preferred);
+    QVERIFY(isUnitVector(up));
+    QVERIFY(isPerpendicular(up, sight, 1e-9));
+    // World X is the second fallback.
+    QVERIFY(nearly(up.x(), 1.0, 1e-9));
+    QVERIFY(nearly(up.y(), 0.0, 1e-9));
+    QVERIFY(nearly(up.z(), 0.0, 1e-9));
+}
+
+void SceneMathTests::testFitTarget_safeViewUpDeterministic() {
+    // Same inputs -> same output, every call. The deterministic
+    // contract is what lets future debuggers reproduce a camera state
+    // when chasing a regression.
+    const model::Vec3 sight(0.0, 1.0, 0.0);
+    const model::Vec3 preferred(0.0, 1.0, 0.0);
+    const model::Vec3 up1 = math::safeViewUp(sight, preferred);
+    const model::Vec3 up2 = math::safeViewUp(sight, preferred);
+    QVERIFY(nearly(up1.x(), up2.x(), 0.0));
+    QVERIFY(nearly(up1.y(), up2.y(), 0.0));
+    QVERIFY(nearly(up1.z(), up2.z(), 0.0));
+}
+
+// ---- Codex finding #1: dihedral sight-axis sign continuity ------------
+
+void SceneMathTests::testFitTarget_dihedralContinuityNoFlipAtBoundary() {
+    // Simulate the dihedralLastDirection_ guard math (lifted from
+    // CameraComposer::writeDihedral). The guard is: if the new axis
+    // dots negative against the stored reference, flip its sign; then
+    // update the reference. Without the guard, a 180° flip happens
+    // when the natural cross-product crosses through the perpendicular
+    // boundary.
+    //
+    // Scenario: a sequence of axes that drift through a configuration
+    // where the natural axis flips sign. The guard should produce a
+    // continuous post-flip sequence (each adjacent dot positive).
+    std::optional<model::Vec3> lastDir;
+    std::vector<model::Vec3> rawAxisSequence = {
+        model::Vec3( 0.0,  0.0,  1.0),       // first frame
+        model::Vec3( 0.1,  0.0,  0.99).normalized(),
+        model::Vec3( 0.5,  0.0,  0.87).normalized(),  // near perpendicular
+        model::Vec3(-0.5,  0.0, -0.87).normalized(),  // natural flip here
+        model::Vec3(-0.1,  0.0, -0.99).normalized(),
+    };
+    std::vector<model::Vec3> postGuard;
+    for (const auto& axis : rawAxisSequence) {
+        model::Vec3 sightDir = axis;
+        if (lastDir && sightDir.dot(*lastDir) < 0.0) {
+            sightDir = -sightDir;
+        }
+        lastDir = sightDir;
+        postGuard.push_back(sightDir);
+    }
+    // Adjacent frames must all dot positive — no 180° flips.
+    for (std::size_t i = 1; i < postGuard.size(); ++i) {
+        QVERIFY(postGuard[i].dot(postGuard[i - 1]) > 0.0);
+    }
+    // The "natural flip" frame (index 3) had its raw axis pointing
+    // OPPOSITE the prior frame's stored direction; the guard must have
+    // flipped its sign to maintain continuity.
+    QVERIFY(rawAxisSequence[3].dot(postGuard[3]) < 0.0);
 }
 
 QTEST_GUILESS_MAIN(SceneMathTests)

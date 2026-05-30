@@ -299,13 +299,23 @@ void MoleculeScene::ResetCamera() {
 void MoleculeScene::requestRender(RenderSource src) {
     ASSERT_THREAD(this);
     lastRenderSource_ = src;
-    if (renderPending_ || !vtkWidget_) return;
+    if (renderPending_ || !renderWindow_) return;
     renderPending_ = true;
     QPointer<MoleculeScene> self(this);
     QMetaObject::invokeMethod(this, [self]() {
-        if (!self) return;
+        if (!self || !self->renderWindow_) return;
         self->renderPending_ = false;
-        if (self->vtkWidget_) self->vtkWidget_->update();
+        // widget->update() alone only schedules a Qt paint; paint then blits
+        // the stale FBO because QVTKRenderWindowAdapter::paint() (lines 241-266)
+        // only calls iren->Render() when DoVTKRenderInPaintGL is true, and that
+        // flag is set by vtkRenderWindow::Render() → Frame() → adapter::frame().
+        // So we have to call into VTK to actually re-render the FBO; the adapter
+        // then schedules the widget paint that blits it.
+        if (auto* iren = self->renderWindow_->GetInteractor()) {
+            iren->Render();
+        } else {
+            self->renderWindow_->Render();
+        }
     }, Qt::QueuedConnection);
 }
 

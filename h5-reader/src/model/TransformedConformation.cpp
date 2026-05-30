@@ -5,10 +5,9 @@
 #include "QtAtom.h"
 #include "QtProtein.h"
 
+#include "../app/FitTargetMath.h"
 #include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
-
-#include <Eigen/SVD>
 
 #include <QLoggingCategory>
 
@@ -208,72 +207,49 @@ TransformedConformation::computeTransform(std::size_t frame) const {
     return out;
 }
 
-// Kabsch algorithm (W. Kabsch, Acta Cryst. A32, 922-923, 1976) — the
-// classical least-squares rigid-body fit. Output: R (3x3), T (3) such
-// that for each pair (current[i], reference[i]) the sum of squared
-// distances || R * current[i] + T - reference[i] ||^2 is minimised.
+// Kabsch fit — delegates to h5reader::math::ComputeSubsetTransform in
+// FitTargetMath.h. The free function is the canonical implementation
+// (Codex finding #6) and owns the degeneracy policy (rank-degenerate
+// → std::nullopt per Codex finding #4). Both the camera path
+// (CameraComposer::writeSubset) and the data path (this) now share one
+// failure semantics: if the fit is degenerate, freeze on identity
+// rotation with translation-only centroid alignment. This kills the
+// divergent failure modes the prior duplicate implementation had —
+// camera path nullopt, data path silent-identity-with-bad-T.
 //
-// Steps:
-//   1. centroid_c = mean(current), centroid_r = mean(reference)
-//   2. P = current - centroid_c, Q = reference - centroid_r (N x 3 each)
-//   3. H = P^T * Q (3 x 3 covariance)
-//   4. SVD: H = U * S * V^T
-//   5. d = sign(det(V * U^T))   -- determinant correction to avoid
-//                                  reflection
-//   6. R = V * diag(1, 1, d) * U^T
-//   7. T = centroid_r - R * centroid_c
-//
-// We use Eigen::JacobiSVD with FullU/V; Eigen's SVD ordering puts
-// singular values in descending order so U/V columns are already
-// sorted by importance. Both inputs are assumed to be the SAME atom
-// set in the SAME order at the SAME atom-count.
+// Freeze policy when degenerate: R = identity, T = (cr - cc). The atom
+// positions become "centred on the reference centroid but otherwise
+// unrotated" for that frame; visually this means the molecule continues
+// to display from its current orientation without a sudden re-orient
+// from a numerically-arbitrary SVD null-space basis. The next frame
+// reattempts the fit; if conditioning improves, the rotation
+// re-engages smoothly.
 TransformedConformation::Transform3D
 TransformedConformation::KabschFit(const std::vector<Vec3>& current,
                                     const std::vector<Vec3>& reference) {
-    Transform3D out;
-    const std::size_t n = current.size();
-    if (n != reference.size() || n < 3)
+    Transform3D out;  // identity by default
+    auto transform = h5reader::math::ComputeSubsetTransform(current, reference);
+    if (!transform) {
+        // Degenerate input (n < 3, rank-deficient, or det validation
+        // failed). Freeze rotation; if we have at least one matched pair,
+        // still align centroids so the camera/positions land on the
+        // expected anchor and the next frame can try again without a
+        // visible jump.
+        if (current.size() >= 1 && current.size() == reference.size()) {
+            Vec3 cc = Vec3::Zero();
+            Vec3 cr = Vec3::Zero();
+            for (std::size_t i = 0; i < current.size(); ++i) {
+                cc += current[i];
+                cr += reference[i];
+            }
+            cc /= static_cast<double>(current.size());
+            cr /= static_cast<double>(current.size());
+            out.T = cr - cc;  // R already identity
+        }
         return out;
-
-    // Centroids
-    Vec3 cc = Vec3::Zero();
-    Vec3 cr = Vec3::Zero();
-    for (std::size_t i = 0; i < n; ++i) {
-        cc += current[i];
-        cr += reference[i];
     }
-    cc /= static_cast<double>(n);
-    cr /= static_cast<double>(n);
-
-    // Centred coordinate matrices P, Q (3 x N — we use the columnar
-    // layout because Eigen's default storage order favours columns).
-    Eigen::MatrixXd P(3, n);
-    Eigen::MatrixXd Q(3, n);
-    for (std::size_t i = 0; i < n; ++i) {
-        P.col(static_cast<Eigen::Index>(i)) = current[i] - cc;
-        Q.col(static_cast<Eigen::Index>(i)) = reference[i] - cr;
-    }
-
-    // Covariance H = P * Q^T (3 x 3).
-    Eigen::Matrix3d H = P * Q.transpose();
-
-    // SVD with full U + V so we can compose R = V * diag(1, 1, d) * U^T.
-    Eigen::JacobiSVD<Eigen::Matrix3d> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
-    const Eigen::Matrix3d& U = svd.matrixU();
-    const Eigen::Matrix3d& V = svd.matrixV();
-
-    // Determinant correction: if det(V * U^T) < 0 we have a reflection
-    // (improper rotation); flip the sign on the last column of V to
-    // get a proper rotation. This is the canonical Kabsch fix-up.
-    Eigen::Matrix3d D = Eigen::Matrix3d::Identity();
-    const double d = (V * U.transpose()).determinant();
-    D(2, 2) = (d < 0.0) ? -1.0 : 1.0;
-
-    const Eigen::Matrix3d R = V * D * U.transpose();
-    const Eigen::Vector3d T = cr - R * cc;
-
-    out.R = R;
-    out.T = T;
+    out.R = transform->R;
+    out.T = transform->T;
     return out;
 }
 

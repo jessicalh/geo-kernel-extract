@@ -171,6 +171,41 @@ private:
     double      planeNormalSign_  = 1.0;
     std::optional<model::Vec3> planeLastDirection_;
 
+    // Dihedral mode: sign-continuity guard for the sight axis (Codex
+    // finding #1). Mirrors planeLastDirection_ exactly. Stored direction
+    // is the POST-flip axis used to write the camera last frame; the
+    // next frame's axis is sign-flipped if it dots negative against this
+    // reference, then this reference is updated. Reset to nullopt on
+    // setMode transitions into/out of Dihedral so the first write picks
+    // the natural axis direction.
+    std::optional<model::Vec3> dihedralLastDirection_;
+
+    // Atom mode: captured sight + up + cam-relative offset at lock
+    // acquisition (Codex finding #2). The prior implementation derived
+    // each frame's sight from the LIVE camera, which already contained
+    // the composed user gesture — leading to drift on subsequent
+    // setFrames because the gesture re-applied on top of itself. Now
+    // each frame's natural pose comes from the captured reference, and
+    // accumulated gestures compose exactly once per frame on top of it.
+    // Sight is the unit camera-to-focal direction (normalised
+    // (focal - position)) at lock acquisition; up is orthogonalised
+    // against sight. atomReferenceCamRel_ holds (position - atom_t0)
+    // so that each frame's camera position = atom_t + atomReferenceCamRel_
+    // (preserving the captured zoom and angle).
+    model::Vec3 atomReferenceSight_  = model::Vec3::Zero();
+    model::Vec3 atomReferenceUp_     = model::Vec3::Zero();
+    model::Vec3 atomReferenceCamRel_ = model::Vec3::Zero();
+
+    // Bond mode: matched-shape capture for the bond lock (Codex finding
+    // #2). bondReferenceMidpoint_ caches midpoint(a, b) at lock
+    // acquisition so each frame's camera position composes against the
+    // captured pose (camera = midpoint_t + bondReferenceCamRel_) rather
+    // than the live camera that already contains accumulated gestures.
+    model::Vec3 bondReferenceSight_   = model::Vec3::Zero();
+    model::Vec3 bondReferenceUp_      = model::Vec3::Zero();
+    model::Vec3 bondReferenceCamRel_  = model::Vec3::Zero();
+    model::Vec3 bondReferenceMidpoint_ = model::Vec3::Zero();
+
     // Subset mode: reference positions captured at setMode time
     // (subsetAtoms_[i] -> reference position). The composer Kabsch-fits
     // the current subset to these per frame; the captured camera state
