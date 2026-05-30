@@ -61,6 +61,7 @@ class QtTrajectoryH5Tests : public QObject {
 
 private slots:
     void optionalMalformedReaderDoesNotAbortLoad();
+    void missingPositionsIsHardLoadError();
 };
 
 void QtTrajectoryH5Tests::optionalMalformedReaderDoesNotAbortLoad() {
@@ -76,6 +77,25 @@ void QtTrajectoryH5Tests::optionalMalformedReaderDoesNotAbortLoad() {
     QCOMPARE(h5.frameCount(), std::size_t{2});
     QVERIFY(h5.positions() != nullptr);
     QVERIFY(h5.bsShielding() == nullptr);
+}
+
+void QtTrajectoryH5Tests::missingPositionsIsHardLoadError() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("trajectory.h5"));
+    writeMinimalTrajectory(path, /*includePositions=*/false);
+
+    try {
+        const QtTrajectoryH5 h5(path);
+        Q_UNUSED(h5);
+        QFAIL("QtTrajectoryH5 accepted a trajectory without /trajectory/positions");
+    } catch (const std::runtime_error& e) {
+        const QString message = QString::fromUtf8(e.what());
+        QVERIFY2(message.contains(QStringLiteral("/trajectory/positions")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("positions buffer is null")),
+                 qPrintable(message));
+    }
 }
 
 QTEST_GUILESS_MAIN(QtTrajectoryH5Tests)

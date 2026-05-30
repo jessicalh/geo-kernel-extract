@@ -85,6 +85,31 @@ void LogReadException(const char* group_path, const char* kind) noexcept {
     }
 }
 
+void ValidateRequiredPositions(const QtPositionsTimeSeries* positions,
+                               std::size_t expected_frames,
+                               std::size_t expected_atoms) {
+    if (!positions) {
+        throw std::runtime_error(
+            "QtTrajectoryH5: /trajectory/positions missing or malformed; positions buffer is null");
+    }
+    if (positions->n_frames != expected_frames) {
+        throw std::runtime_error(
+            QStringLiteral("QtTrajectoryH5: /trajectory/positions frame count mismatch: "
+                           "positions n_frames=%1, /trajectory/frames count=%2")
+                .arg(positions->n_frames)
+                .arg(expected_frames)
+                .toStdString());
+    }
+    if (positions->n_atoms != expected_atoms) {
+        throw std::runtime_error(
+            QStringLiteral("QtTrajectoryH5: /trajectory/positions atom count mismatch: "
+                           "positions n_atoms=%1, /atoms count=%2")
+                .arg(positions->n_atoms)
+                .arg(expected_atoms)
+                .toStdString());
+    }
+}
+
 // ── Generic readers ────────────────────────────────────────────────
 
 template <typename T>
@@ -2284,6 +2309,7 @@ QtTrajectoryH5::QtTrajectoryH5(const QString& h5_path) {
 
     // ── Positions (required for the animator) ────────────────────
     ReadPositionsTimeSeries(const_cast<File&>(file), "/trajectory/positions", n_atoms_, positions_);
+    ValidateRequiredPositions(positions_.get(), n_frames_, n_atoms_);
 
     // ── Shielding TS family ──────────────────────────────────────
     ReadShieldingTimeSeries(const_cast<File&>(file), "/trajectory/bs_shielding_time_series", n_atoms_, bs_shielding_);

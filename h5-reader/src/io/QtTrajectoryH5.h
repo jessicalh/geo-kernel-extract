@@ -74,8 +74,8 @@ public:
     const QString& configuration() const { return configuration_; }
 
     // ── Always-present TR (positions drives the animator) ─────────
-    // Returns nullptr if /trajectory/positions/ was absent — should
-    // not happen on a complete trajectory.h5 but check anyway.
+    // Construction throws if /trajectory/positions is absent or does
+    // not match the /atoms and /trajectory/frames dimensions.
     const h5reader::model::QtPositionsTimeSeries* positions() const { return positions_.get(); }
 
     // ── Shielding time-series family (13 TRs, all (N, T, 9)) ──────
