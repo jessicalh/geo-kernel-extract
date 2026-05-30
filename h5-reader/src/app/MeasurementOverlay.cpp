@@ -21,6 +21,24 @@ Q_LOGGING_CATEGORY(cMeas, "h5reader.overlay.measurement")
 constexpr double kSphereRadiusA = 0.85;
 constexpr double kOpacity       = 0.50;
 
+// User-mode marker palette — pastel-shifted Okabe-Ito (50% mix with white).
+// Local to the overlay because the dashboard dock's slot swatches keep the
+// saturated AtomSelection::SlotColorRgb values for on-screen legibility on
+// a UI panel; the 3-D scene wants the lighter, more translucent pastels
+// against the molecule. Hue order matches AtomSelection's slot order, so
+// slot 0 here pairs with the orange swatch in the dock, etc.
+//
+// Distinct by design from kInstrumentRgb below: bright, opaque, 1.5 Å
+// markers are the harness/debug preset (POST /selection/instrument and the
+// Instrument toolbar toggle); these pastel translucent ones are normal
+// user-facing selection display.
+constexpr double kPastelSlotRgb[4][3] = {
+    {0.951, 0.812, 0.500},  // slot 0 — pale peach   (orange + 50% white)
+    {0.669, 0.853, 0.957},  // slot 1 — pale sky     (sky blue + 50% white)
+    {0.500, 0.810, 0.726},  // slot 2 — pale mint    (bluish green + 50% white)
+    {0.900, 0.738, 0.828},  // slot 3 — pale rose    (reddish purple + 50% white)
+};
+
 // Connecting polyline: a neutral, near-white line that reads against any slot
 // colour without competing with the spheres. Width is in screen pixels.
 constexpr double kLineRgb[3]  = {0.92, 0.92, 0.92};
@@ -30,7 +48,9 @@ constexpr double kLineOpacity = 0.90;
 // Instrument mode — CPK-distinct marker palette. Chosen 2026-05-30 (memory
 // VIEWPORT_OBSERVATIONS_2026-05-30.md §5b): hues that fall outside every CPK
 // element colour so a hue threshold isolates the marker against any rendered
-// scene. RGB in 0..1.
+// scene. Bright + opaque + 1.5 Å so the harness blob detector finds it
+// reliably; kept distinct from kPastelSlotRgb so users can tell at a glance
+// when debug/harness mode is active. RGB in 0..1.
 constexpr double kInstrumentRgb[4][3] = {
     {1.000, 0.000, 1.000},  // slot 0 — pure magenta       (#FF00FF)
     {0.000, 1.000, 0.498},  // slot 1 — spring green       (#00FF7F)
@@ -91,10 +111,10 @@ void MeasurementOverlay::Build(const model::QtProtein& protein,
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputConnection(spheres_[s]->GetOutputPort());
 
-        const std::array<double, 3> c = model::AtomSelection::SlotColorRgb(s);
         actors_[s] = vtkSmartPointer<vtkActor>::New();
         actors_[s]->SetMapper(mapper);
-        actors_[s]->GetProperty()->SetColor(c[0], c[1], c[2]);
+        actors_[s]->GetProperty()->SetColor(
+            kPastelSlotRgb[s][0], kPastelSlotRgb[s][1], kPastelSlotRgb[s][2]);
         actors_[s]->GetProperty()->SetOpacity(kOpacity);
         actors_[s]->SetVisibility(0);
         renderer_->AddActor(actors_[s]);
@@ -192,8 +212,8 @@ void MeasurementOverlay::applyInstrumentModeToActors() {
             actors_[s]->GetProperty()->SetOpacity(kInstrumentOpacity);
             spheres_[s]->SetRadius(kInstrumentRadiusA);
         } else {
-            const std::array<double, 3> c = model::AtomSelection::SlotColorRgb(s);
-            actors_[s]->GetProperty()->SetColor(c[0], c[1], c[2]);
+            actors_[s]->GetProperty()->SetColor(
+                kPastelSlotRgb[s][0], kPastelSlotRgb[s][1], kPastelSlotRgb[s][2]);
             actors_[s]->GetProperty()->SetOpacity(kOpacity);
             spheres_[s]->SetRadius(kSphereRadiusA);
         }

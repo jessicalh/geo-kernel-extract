@@ -408,6 +408,20 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     inspectorDock_->raise();
     resizeDocks({inspectorDock_}, {360}, Qt::Horizontal);
 
+    // Allow the tabbed dock group to shrink to a thin tab-only reminder
+    // strip if the user drags the splitter in. By default each dock's
+    // contained widget reports a minimumSizeHint from its layout, which
+    // QDockWidget honours and prevents below. Override to (0, 0) on the
+    // dock AND its inner widget so the splitter's only constraint is the
+    // tab bar's own width.
+    for (QDockWidget* d : std::vector<QDockWidget*>{
+             inspectorDock_, selectionDock_, dashboardStripDock_}) {
+        if (!d) continue;
+        d->setMinimumSize(0, 0);
+        if (QWidget* inner = d->widget())
+            inner->setMinimumSize(0, 0);
+    }
+
     // Panel-toggle buttons — appended to the toolbar now that all three
     // docks exist. QDockWidget::toggleViewAction() is the standard Qt
     // primitive for two-way visibility binding; relabel the actions with
