@@ -287,6 +287,28 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         Eigen3::Eigen
     )
     add_test(NAME h5reader_scene_math_tests COMMAND h5reader_scene_math_tests)
+
+    qt_add_executable(h5reader_io_tests
+        tests/qttrajectoryh5_tests.cpp
+        src/io/QtTrajectoryH5.h
+        src/io/QtTrajectoryH5.cpp
+        src/model/QtSelectionBag.h
+        src/model/QtSelectionBag.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_io_tests PRIVATE
+        src
+        ${HIGHFIVE_INCLUDE_DIR}
+    )
+    target_link_libraries(h5reader_io_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+        ${HDF5_C_LIBRARIES}
+    )
+    h5reader_apply_platform_target_settings(h5reader_io_tests)
+    add_test(NAME h5reader_io_tests COMMAND h5reader_io_tests)
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its

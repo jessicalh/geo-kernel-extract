@@ -176,6 +176,7 @@ void ReadShieldingTimeSeries(HighFive::File& file,
                              const char* group_path,
                              std::size_t n_atoms,
                              std::unique_ptr<QtShieldingTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -205,6 +206,16 @@ void ReadShieldingTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "normalization", buf->normalization);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadScalarTimeSeries(HighFive::File& file,
@@ -212,6 +223,7 @@ void ReadScalarTimeSeries(HighFive::File& file,
                           const char* dataset_name,
                           std::size_t n_atoms,
                           std::unique_ptr<QtScalarTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -237,6 +249,16 @@ void ReadScalarTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadVec3TimeSeries(HighFive::File& file,
@@ -244,6 +266,7 @@ void ReadVec3TimeSeries(HighFive::File& file,
                         const char* dataset_name,
                         std::size_t n_atoms,
                         std::unique_ptr<QtVec3TimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -269,6 +292,16 @@ void ReadVec3TimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "irrep_layout", buf->irrep_layout);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadT2TimeSeries(HighFive::File& file,
@@ -276,6 +309,7 @@ void ReadT2TimeSeries(HighFive::File& file,
                       const char* dataset_name,
                       std::size_t n_atoms,
                       std::unique_ptr<QtT2TimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -301,6 +335,16 @@ void ReadT2TimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "irrep_layout", buf->irrep_layout);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadTagTimeSeries(HighFive::File& file,
@@ -308,6 +352,7 @@ void ReadTagTimeSeries(HighFive::File& file,
                        const char* dataset_name,
                        std::size_t n_atoms,
                        std::unique_ptr<QtTagTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -333,6 +378,16 @@ void ReadTagTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadEmbeddingTimeSeries(HighFive::File& file,
@@ -340,6 +395,7 @@ void ReadEmbeddingTimeSeries(HighFive::File& file,
                              const char* dataset_name,
                              std::size_t n_atoms,
                              std::unique_ptr<QtEmbeddingTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -365,12 +421,23 @@ void ReadEmbeddingTimeSeries(HighFive::File& file,
     TryReadFrameMeta(grp, buf->meta, buf->n_frames, group_path);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadPositionsTimeSeries(HighFive::File& file,
                              const char* group_path,
                              std::size_t n_atoms,
                              std::unique_ptr<QtPositionsTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -392,12 +459,23 @@ void ReadPositionsTimeSeries(HighFive::File& file,
     ReadFlat<double>(ds, buf->xyz, n_atoms * buf->n_frames * 3);
     TryReadFrameMeta(grp, buf->meta, buf->n_frames, group_path);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadChargeResponseGradientTimeSeries(HighFive::File& file,
                                           const char* group_path,
                                           std::size_t n_atoms,
                                           std::unique_ptr<QtAimnet2ChargeResponseGradientTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -426,6 +504,16 @@ void ReadChargeResponseGradientTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 // ── Welford readers ───────────────────────────────────────────────
@@ -551,6 +639,7 @@ void ReadShieldingWelford(HighFive::File& file,
                           const char* group_path,
                           std::size_t n_atoms,
                           std::unique_ptr<QtShieldingWelford>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -590,6 +679,16 @@ void ReadShieldingWelford(HighFive::File& file,
     buf->ddof = ddof_attr;
     TryReadAttribute(grp, "mean_dt_ps", buf->mean_dt_ps);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadScalarWelford(HighFive::File& file,
@@ -597,6 +696,7 @@ void ReadScalarWelford(HighFive::File& file,
                        const std::string& channel_name,
                        std::size_t n_atoms,
                        std::unique_ptr<QtScalarWelford>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -634,9 +734,20 @@ void ReadScalarWelford(HighFive::File& file,
     buf->ddof = ddof_attr;
     TryReadAttribute(grp, "mean_dt_ps", buf->mean_dt_ps);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadVec3Welford(HighFive::File& file, const char* group_path, std::size_t n_atoms, std::unique_ptr<QtVec3Welford>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -658,9 +769,20 @@ void ReadVec3Welford(HighFive::File& file, const char* group_path, std::size_t n
     TryReadAttribute(grp, "ddof", ddof_attr);
     buf->ddof = ddof_attr;
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadBondOrderWelford(HighFive::File& file, const char* group_path, std::unique_ptr<QtBondOrderWelford>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -690,12 +812,23 @@ void ReadBondOrderWelford(HighFive::File& file, const char* group_path, std::uni
     TryReadAttribute(grp, "ddof", ddof_attr);
     buf->ddof = ddof_attr;
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadHydrationWelford(HighFive::File& file,
                           const char* group_path,
                           std::size_t n_atoms,
                           std::unique_ptr<QtHydrationWelford>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -723,6 +856,16 @@ void ReadHydrationWelford(HighFive::File& file,
     TryReadAttribute(grp, "ddof", ddof_attr);
     buf->ddof = ddof_attr;
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadIRedOrderParameters(HighFive::File& file,
@@ -1255,6 +1398,7 @@ void ReadAutocorrelation(HighFive::File& file,
                          const char* group_path,
                          std::size_t n_atoms,
                          std::unique_ptr<QtAutocorrelation>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1279,6 +1423,16 @@ void ReadAutocorrelation(HighFive::File& file,
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 // ── Composite-shape TR readers ────────────────────────────────────
@@ -1287,6 +1441,7 @@ void ReadWaterFieldTimeSeries(HighFive::File& file,
                               const char* group_path,
                               std::size_t n_atoms,
                               std::unique_ptr<QtWaterFieldTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1323,12 +1478,23 @@ void ReadWaterFieldTimeSeries(HighFive::File& file,
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadHydrationShellTimeSeries(HighFive::File& file,
                                   const char* group_path,
                                   std::size_t n_atoms,
                                   std::unique_ptr<QtHydrationShellTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1362,12 +1528,23 @@ void ReadHydrationShellTimeSeries(HighFive::File& file,
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadHydrationGeometryTimeSeries(HighFive::File& file,
                                      const char* group_path,
                                      std::size_t n_atoms,
                                      std::unique_ptr<QtHydrationGeometryTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1405,9 +1582,20 @@ void ReadHydrationGeometryTimeSeries(HighFive::File& file,
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadRingPuckerTimeSeries(HighFive::File& file, const char* group_path, std::unique_ptr<QtRingPuckerTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1449,6 +1637,16 @@ void ReadRingPuckerTimeSeries(HighFive::File& file, const char* group_path, std:
         grp.getDataSet("source_attached_per_frame").read(buf->source_attached);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadJCouplingTimeSeries(HighFive::File& file,
@@ -1456,6 +1654,7 @@ void ReadJCouplingTimeSeries(HighFive::File& file,
                              std::size_t n_residues,
                              std::size_t n_atoms,
                              std::unique_ptr<QtJCouplingTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1501,6 +1700,16 @@ void ReadJCouplingTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "units", buf->units);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 // ── Special-shape TR readers ──────────────────────────────────────
@@ -1510,6 +1719,7 @@ void ReadDihedralTimeSeries(HighFive::File& file,
                             std::size_t n_residues,
                             std::size_t n_atoms,
                             std::unique_ptr<QtDihedralTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1555,6 +1765,16 @@ void ReadDihedralTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "angle_convention", buf->angle_convention);
     (void)n_atoms;  // chain_id_per_residue is intentionally not read
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadDssp8TimeSeries(HighFive::File& file,
@@ -1562,6 +1782,7 @@ void ReadDssp8TimeSeries(HighFive::File& file,
                          std::size_t n_residues,
                          std::size_t n_atoms,
                          std::unique_ptr<QtDssp8TimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1599,12 +1820,23 @@ void ReadDssp8TimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "ss8_legend", buf->ss8_legend);
     TryReadAttributeQ(grp, "hbond_threshold", buf->hbond_threshold);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadRingNeighbourhoodTimeSeries(HighFive::File& file,
                                      const char* group_path,
                                      std::size_t n_atoms,
                                      std::unique_ptr<QtRingNeighbourhoodTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1640,9 +1872,20 @@ void ReadRingNeighbourhoodTimeSeries(HighFive::File& file,
     TryReadAttributeQ(grp, "z_sign_convention", buf->z_sign_convention);
     TryReadAttributeQ(grp, "in_plane_angle_range", buf->in_plane_angle_range);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadBondLengthStats(HighFive::File& file, const char* group_path, std::unique_ptr<QtBondLengthStats>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1680,9 +1923,20 @@ void ReadBondLengthStats(HighFive::File& file, const char* group_path, std::uniq
     TryReadAttributeQ(grp, "units", buf->units);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadGromacsEnergyTimeSeries(HighFive::File& file, const char* group_path, std::unique_ptr<QtSystemEnergyTimeSeries>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1742,9 +1996,20 @@ void ReadGromacsEnergyTimeSeries(HighFive::File& file, const char* group_path, s
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     TryReadAttributeQ(grp, "tensor_layout", buf->tensor_layout);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadRmsdTracking(HighFive::File& file, const char* group_path, std::unique_ptr<QtRmsdTracking>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1771,12 +2036,23 @@ void ReadRmsdTracking(HighFive::File& file, const char* group_path, std::unique_
     TryReadAttributeQ(grp, "atom_selection", buf->atom_selection);
     TryReadAttributeQ(grp, "reference_frame_origin", buf->reference_frame_origin);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadDssp8Transitions(HighFive::File& file,
                           const char* group_path,
                           std::size_t n_residues,
                           std::unique_ptr<QtDssp8Transitions>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1792,12 +2068,23 @@ void ReadDssp8Transitions(HighFive::File& file,
         ReadFlat<uint32_t>(grp.getDataSet("ss8_transition_count"), buf->ss8_transition_count, n_residues);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 void ReadDihedralBinTransitions(HighFive::File& file,
                                 const char* group_path,
                                 std::size_t n_residues,
                                 std::unique_ptr<QtDihedralBinTransitions>& out) {
+    try {
     if (!file.exist(group_path)) {
         WarnGroupAbsent(group_path);
         return;
@@ -1819,6 +2106,16 @@ void ReadDihedralBinTransitions(HighFive::File& file,
         ReadFlat<uint8_t>(grp.getDataSet("chi_dominant_rotamer"), buf->chi_dominant_rotamer, n_residues * 4);
     TryReadAttributeQ(grp, "result_name", buf->result_name);
     out = std::move(buf);
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+        out.reset();
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+        out.reset();
+    } catch (...) {
+        LogReadException(group_path, "unknown");
+        out.reset();
+    }
 }
 
 // ── Selections reader ─────────────────────────────────────────────
@@ -1869,6 +2166,8 @@ void ParseSelectionMeta(QtSelectionEvent& ev) {
 }
 
 void ReadSelections(HighFive::File& file, QtSelectionBag& bag) {
+    constexpr const char* group_path = "/trajectory/selections";
+    try {
     if (!file.exist("/trajectory/selections"))
         return;
     auto sel_grp = file.getGroup("/trajectory/selections");
@@ -1905,6 +2204,13 @@ void ReadSelections(HighFive::File& file, QtSelectionBag& bag) {
             ParseSelectionMeta(ev);
             bag.push(std::move(ev));
         }
+    }
+    } catch (const HighFive::Exception& e) {
+        LogReadException(group_path, "HighFive", e);
+    } catch (const std::exception& e) {
+        LogReadException(group_path, "std::exception", e);
+    } catch (...) {
+        LogReadException(group_path, "unknown");
     }
 }
 
