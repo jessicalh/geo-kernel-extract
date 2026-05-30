@@ -6,10 +6,16 @@
 // widgets (atom inspector, time-series tab) in later commits without
 // restructuring the central layout.
 //
-// Shutdown protocol — see feedback_qt_discipline and the library
-// viewer's MainWindow::shutdown(). When QApplication is about to
-// quit, stop all timers, drop VTK references in order, and
-// renderWindow_->Finalize() BEFORE Qt destroys the GL context.
+// Shutdown protocol — see feedback_qt_discipline,
+// spec/viewport_pipeline_2026-05-30.md §4.4, and the library viewer's
+// MainWindow::shutdown(). When QApplication is about to quit, stop the
+// REST server synchronously, stop all timers, then detach the render
+// window from the widget. The explicit renderWindow_->Finalize() call
+// is gone — setRenderWindow(nullptr) makes the GL context current and
+// invokes Finalize through the QVTKRenderWindowAdapter's destructor in
+// the right order (QVTKRenderWindowAdapter.cxx:150-166). Calling
+// Finalize ourselves AFTER detach left the adapter holding a destroyed
+// render window for the brief moment between the two calls.
 
 #pragma once
 
@@ -87,8 +93,11 @@ public:
     h5reader::model::TransformedConformation* transformedConformation() const { return transformed_; }
 
 public slots:
-    // Called from aboutToQuit. Stops timers, cancels any workers, and
-    // finalises the VTK render window before Qt tears down the GL context.
+    // Called from aboutToQuit. Stops the REST server, stops timers, and
+    // detaches the render window from the widget so the
+    // QVTKRenderWindowAdapter's destructor calls Finalize in the right
+    // GL context (per QVTKRenderWindowAdapter.cxx:150-166). The class
+    // docstring above has the full reasoning.
     void shutdown();
 
 protected:

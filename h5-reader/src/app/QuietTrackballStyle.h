@@ -15,6 +15,14 @@
 // QVTKOpenGLNativeWidget (Stage X in the spec). The trackball still gets
 // called by VTK so the paint chain works, but does nothing on its own
 // initiative.
+//
+// OnChar is also overridden: vtkInteractorStyle::OnChar (VTK source
+// Rendering/Core/vtkInteractorStyle.cxx:819-830) interprets keyboard
+// shortcuts including 'r' which resets the camera AND issues a render
+// (rwi->Render). With this composer-owned pipeline, that bypasses the
+// CameraComposer's lock state. No-op the whole keypress handler;
+// keyboard shortcuts that belong on the camera live in the toolbar /
+// REST surface.
 
 #pragma once
 
@@ -35,6 +43,11 @@ public:
     void EnvironmentRotate() override {}
     void OnMouseWheelForward() override {}
     void OnMouseWheelBackward() override {}
+    // Keyboard input — base OnChar at vtkInteractorStyle.cxx:819-830
+    // resets camera on 'r', toggles wireframe on 'w', surface on 's',
+    // exits on 'e'/'q', and renders directly. All bypass the composer.
+    // No-op to keep the composer the sole source of camera mutations.
+    void OnChar() override {}
 
 protected:
     QuietTrackballStyle() = default;

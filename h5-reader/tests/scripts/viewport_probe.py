@@ -208,6 +208,20 @@ def get_camera_mode(base: str) -> dict:
     return _get(base, "/camera/mode").json()
 
 
+def set_camera_focus_atom(base: str, atom: int, kind: str = "plane") -> None:
+    """POST /camera/focus_atom — derive a typed CameraMode + policy from a
+    focus atom by reaching into its residue's typed backbone-atom-index
+    cache.
+
+    kind: "plane" | "dihedral" | "dihedral_phi" | "dihedral_psi"
+
+    Plane is the canonical "focus atom + local neighborhood coherent"
+    recipe — a 3-atom plane lock on the residue's N/CA/C backbone.
+    Median drift should sit at the plane-lock floor (≤5 px).
+    """
+    _post(base, "/camera/focus_atom", {"atom": int(atom), "kind": kind})
+
+
 def set_log_mask(base: str, mask: int) -> dict:
     """POST /log/mask — bitmask gate for the structured logger."""
     return _post(base, "/log/mask", {"mask": int(mask)}).json()
@@ -328,6 +342,8 @@ def run_drift_experiment(
     focus_only: bool = True,
     camera_mode: str | None = None,
     camera_mode_kwargs: dict | None = None,
+    focus_atom: int | None = None,
+    focus_atom_kind: str = "plane",
 ) -> list[FrameRecord]:
     """Configure the reader for the experiment, sweep frames, return
     per-frame records.
@@ -339,10 +355,13 @@ def run_drift_experiment(
       4. instrument mode ON with focus_only=True by default — only the
          focus-slot magenta sphere renders, eliminating the slot-1
          eclipses-slot-0 problem the prior no-lock baseline run hit
-      5. plane-lock ON or OFF per the experiment
-      6. (optional) camera_mode override (atom / bond / dihedral / subset)
-         — replaces plane_lock for typed-camera-mode experiments
-      7. for each frame: set_frame → screenshot → blob → record
+      5. one of (precedence top-down):
+           a. focus_atom is set → POST /camera/focus_atom (derives a
+              typed CameraMode from the focus atom's residue backbone)
+           b. camera_mode is set → POST /camera/mode (manual mode)
+           c. plane_lock True → POST /plane-lock/enable (legacy shim)
+           d. otherwise → clear all camera state
+      6. for each frame: set_frame → screenshot → blob → record
 
     The instrument-mode toggle is applied after bulkSet because the
     overlay applies CPK-distinct colours to whichever spheres are visible
@@ -350,6 +369,11 @@ def run_drift_experiment(
     user would follow (pick atoms, then enable instrument mode). The
     transform is applied before instrument mode so the first marker render
     is in the transformed coordinate frame.
+
+    focus_atom=N + focus_atom_kind="plane" exercises the
+    /camera/focus_atom endpoint: the helper looks up atom N's residue's
+    N/CA/C backbone atoms and applies them as a Plane camera mode.
+    Median drift should match the plane-lock floor.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -364,7 +388,9 @@ def run_drift_experiment(
     # the stabilised atom position. Default kind="identity" → no-op.
     set_transform(base, transform_kind, **(transform_kwargs or {}))
     set_instrument(base, True, focus_only=focus_only)
-    if camera_mode is not None:
+    if focus_atom is not None:
+        set_camera_focus_atom(base, focus_atom, focus_atom_kind)
+    elif camera_mode is not None:
         set_camera_mode(base, camera_mode, **(camera_mode_kwargs or {}))
     elif plane_lock:
         enable_plane_lock(base, atoms)
@@ -604,7 +630,9 @@ def main() -> int:
         # Experiment 7: CameraMode::Subset on backbone — equivalent to
         # today's transform_only's Kabsch but applied to the camera
         # instead of positions. One Kabsch, written to camera; no
-        # transform-vs-lock interference.
+        # transform-vs-lock interference. With the writeSubset rotation
+        # half implemented, this should match transform_only (~67 px) —
+        # before, centroid-only-follow produced ~307 px.
         mode_subset = run_drift_experiment(
             args.base, args.atoms,
             plane_lock=False, transform_kind="identity",
@@ -615,6 +643,44 @@ def main() -> int:
         )
         write_csv(mode_subset, args.out_dir / "mode_subset_backbone.csv")
         t7 = time.monotonic()
+
+        # Experiment 8: /camera/focus_atom on the focus atom with kind=plane.
+        # The helper derives a 3-atom plane lock from the focus atom's
+        # residue's N/CA/C backbone. Should produce median ≤5 px (matches
+        # with_plane_lock floor) — it IS a plane lock, with the atoms
+        # picked from chemistry-typed residue topology instead of typed
+        # by the harness.
+        focus_atom = args.atoms[-1]
+        focus_atom_local = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False, transform_kind="identity",
+            focus_atom=focus_atom, focus_atom_kind="plane",
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "focus_atom_local",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(focus_atom_local, args.out_dir / "focus_atom_local.csv")
+        t8 = time.monotonic()
+
+        # Experiment 9: the canonical two-step "focus atom + whole protein
+        # steady" recipe documented in HARNESS_BASELINE_PIPELINE_2026-05-30.
+        # Stage 1 stabilises positions via TransformedConformation::
+        # FitSubset(backbone); Stage 2 keeps the focal on the focus atom
+        # via CameraMode::Atom. The two layers compose additively (Atom
+        # is translation-only, no rotation interference). Should match
+        # transform_plus_lock (~30 px).
+        focus_atom_global = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False,
+            transform_kind="fit_subset",
+            transform_kwargs={"backbone_only": True, "reference_frame": 0},
+            camera_mode="atom", camera_mode_kwargs={"atom": focus_atom},
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "focus_atom_global_compose",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(focus_atom_global, args.out_dir / "focus_atom_global_compose.csv")
+        t9 = time.monotonic()
     finally:
         # Restore the reader to a clean state for any follow-up runs.
         set_instrument(args.base, False)
@@ -638,14 +704,18 @@ def main() -> int:
         "transform_plus_lock": summarize(transform_plus_lock),
         "mode_atom": summarize(mode_atom),
         "mode_subset_backbone": summarize(mode_subset),
+        "focus_atom_local": summarize(focus_atom_local),
+        "focus_atom_global_compose": summarize(focus_atom_global),
         "timing_s": {
-            "with_lock":            round(t1 - t0, 3),
-            "no_lock":              round(t2 - t1, 3),
-            "transform_only":       round(t3 - t2, 3),
-            "transform_plus_lock":  round(t4 - t3, 3),
-            "mode_atom":            round(t5 - t4, 3),
-            "mode_dihedral":        round(t6 - t5, 3) if mode_dihedral else None,
-            "mode_subset_backbone": round(t7 - t6, 3),
+            "with_lock":                  round(t1 - t0, 3),
+            "no_lock":                    round(t2 - t1, 3),
+            "transform_only":             round(t3 - t2, 3),
+            "transform_plus_lock":        round(t4 - t3, 3),
+            "mode_atom":                  round(t5 - t4, 3),
+            "mode_dihedral":              round(t6 - t5, 3) if mode_dihedral else None,
+            "mode_subset_backbone":       round(t7 - t6, 3),
+            "focus_atom_local":           round(t8 - t7, 3),
+            "focus_atom_global_compose":  round(t9 - t8, 3),
         },
     }
     if mode_dihedral is not None:

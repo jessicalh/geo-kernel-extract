@@ -207,6 +207,26 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                  }
                  updatePlaneLockAction();
              });
+    // Composer modeChanged covers REST-driven mode flips that bypass the
+    // cameraPlaneLockChanged path (POST /camera/mode that lands a Plane
+    // lock, POST /camera/focus_atom that derives one from a focus atom,
+    // POST /camera/clear that drops the Plane lock). Sync the toolbar
+    // action's checked state so the UI reflects the composer's truth.
+    if (scene_ && scene_->cameraComposer()) {
+        ACONNECT(scene_->cameraComposer(), &CameraComposer::modeChanged,
+                 this, [this]() {
+                     if (!scene_ || !scene_->cameraComposer()) return;
+                     const bool planeActive =
+                         scene_->cameraComposer()->mode().kind
+                         == CameraMode::Kind::Plane;
+                     if (planeLockAction_
+                         && planeLockAction_->isChecked() != planeActive) {
+                         const QSignalBlocker blocker(planeLockAction_);
+                         planeLockAction_->setChecked(planeActive);
+                     }
+                     updatePlaneLockAction();
+                 });
+    }
 
     // Playback controller — frameChanged drives the scene, which drives
     // the render. Toolbar controls drive the playback.
@@ -310,6 +330,17 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
              selection_, &model::AtomSelection::applyPick);
     ACONNECT(picker_, &QtAtomPicker::atomPicked,
              scene_,  &MoleculeScene::clearReveal);
+    // Tag the render scheduler so the EndEvent observer logs source=picker
+    // for the render that follows. selection_->applyPick triggers
+    // refreshCurrentFrame which itself calls requestRender(Timer);
+    // tagging Picker afterward overrides the source (requestRender is
+    // coalescing — lastRenderSource_ is last-writer-wins, the queued
+    // paint hasn't fired yet within this synchronous signal handling).
+    ACONNECT(picker_, &QtAtomPicker::atomPicked,
+             this,   [this](std::size_t, Qt::KeyboardModifiers) {
+                 if (scene_) scene_->requestRender(
+                     MoleculeScene::RenderSource::Picker);
+             });
 
     ACONNECT(selection_, &model::AtomSelection::focusChanged,
              inspectorDock_, &QtAtomInspectorDock::setPickedAtom);

@@ -158,6 +158,8 @@ qt_add_executable(h5reader
     src/app/FitTargetMath.h
     src/app/CameraComposer.h
     src/app/CameraComposer.cpp
+    src/app/CameraAnchorHelper.h
+    src/app/CameraAnchorHelper.cpp
     src/app/QuietTrackballStyle.h
     src/app/QuietTrackballStyle.cpp
     src/app/CameraInputFilter.h

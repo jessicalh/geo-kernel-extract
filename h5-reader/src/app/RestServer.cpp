@@ -1,5 +1,6 @@
 #include "RestServer.h"
 
+#include "CameraAnchorHelper.h"
 #include "CameraComposer.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
@@ -682,36 +683,74 @@ void RestServer::registerRoutes() {
             return atoms;
         };
 
+        // Round-trip note: GET /camera/mode returns {"mode","atoms",...}
+        // with atoms as an array. POST accepts the same shape for every
+        // mode that takes atoms, AND also accepts the human-friendly
+        // per-mode keys (atom / a / b / c / d) as alternatives. Either
+        // form is valid input; the array form lets a client GET → POST
+        // round-trip without rewriting the payload.
         CameraMode mode;
+        const auto atomsArray = readAtomArray();   // nullopt if "atoms" missing or invalid
         if (modeStr == QStringLiteral("free")) {
             mode = FreeMode();
         } else if (modeStr == QStringLiteral("atom")) {
-            const auto a = readAtomIdx(QStringLiteral("atom"));
+            std::optional<std::size_t> a;
+            if (atomsArray && atomsArray->size() == 1) {
+                a = atomsArray->at(0);
+            } else {
+                a = readAtomIdx(QStringLiteral("atom"));
+            }
             if (!a)
-                return errorResponse(QStringLiteral("atom mode needs valid {\"atom\": int}"), SC::BadRequest);
+                return errorResponse(QStringLiteral(
+                    "atom mode needs {\"atom\": int} or {\"atoms\": [int]}"), SC::BadRequest);
             mode = AtomMode(*a);
         } else if (modeStr == QStringLiteral("bond")) {
-            const auto a = readAtomIdx(QStringLiteral("a"));
-            const auto b = readAtomIdx(QStringLiteral("b"));
+            std::optional<std::size_t> a, b;
+            if (atomsArray && atomsArray->size() == 2) {
+                a = atomsArray->at(0);
+                b = atomsArray->at(1);
+            } else {
+                a = readAtomIdx(QStringLiteral("a"));
+                b = readAtomIdx(QStringLiteral("b"));
+            }
             if (!a || !b)
-                return errorResponse(QStringLiteral("bond mode needs {\"a\": int, \"b\": int}"), SC::BadRequest);
+                return errorResponse(QStringLiteral(
+                    "bond mode needs {\"a\": int, \"b\": int} or {\"atoms\": [a, b]}"),
+                    SC::BadRequest);
             mode = BondMode(*a, *b);
         } else if (modeStr == QStringLiteral("dihedral")) {
-            const auto a = readAtomIdx(QStringLiteral("a"));
-            const auto b = readAtomIdx(QStringLiteral("b"));
-            const auto c = readAtomIdx(QStringLiteral("c"));
-            const auto d = readAtomIdx(QStringLiteral("d"));
+            std::optional<std::size_t> a, b, c, d;
+            if (atomsArray && atomsArray->size() == 4) {
+                a = atomsArray->at(0);
+                b = atomsArray->at(1);
+                c = atomsArray->at(2);
+                d = atomsArray->at(3);
+            } else {
+                a = readAtomIdx(QStringLiteral("a"));
+                b = readAtomIdx(QStringLiteral("b"));
+                c = readAtomIdx(QStringLiteral("c"));
+                d = readAtomIdx(QStringLiteral("d"));
+            }
             if (!a || !b || !c || !d)
-                return errorResponse(QStringLiteral("dihedral needs {\"a\": int, \"b\": int, \"c\": int, \"d\": int}"),
-                                     SC::BadRequest);
+                return errorResponse(QStringLiteral(
+                    "dihedral needs {\"a\"..\"d\": int} or {\"atoms\": [a, b, c, d]}"),
+                    SC::BadRequest);
             mode = DihedralMode(*a, *b, *c, *d);
         } else if (modeStr == QStringLiteral("plane")) {
-            const auto a = readAtomIdx(QStringLiteral("a"));
-            const auto b = readAtomIdx(QStringLiteral("b"));
-            const auto c = readAtomIdx(QStringLiteral("c"));
+            std::optional<std::size_t> a, b, c;
+            if (atomsArray && atomsArray->size() == 3) {
+                a = atomsArray->at(0);
+                b = atomsArray->at(1);
+                c = atomsArray->at(2);
+            } else {
+                a = readAtomIdx(QStringLiteral("a"));
+                b = readAtomIdx(QStringLiteral("b"));
+                c = readAtomIdx(QStringLiteral("c"));
+            }
             if (!a || !b || !c)
-                return errorResponse(QStringLiteral("plane needs {\"a\": int, \"b\": int, \"c\": int}"),
-                                     SC::BadRequest);
+                return errorResponse(QStringLiteral(
+                    "plane needs {\"a\", \"b\", \"c\": int} or {\"atoms\": [a, b, c]}"),
+                    SC::BadRequest);
             mode = PlaneMode(*a, *b, *c);
         } else if (modeStr == QStringLiteral("subset")) {
             // Backbone-only shortcut mirrors the /transform endpoint.
@@ -724,11 +763,10 @@ void RestServer::registerRoutes() {
                     return errorResponse(QStringLiteral("backbone subset has <3 atoms"),
                                          SC::Conflict);
             } else {
-                auto parsed = readAtomArray();
-                if (!parsed)
+                if (!atomsArray)
                     return errorResponse(QStringLiteral("subset needs {\"atoms\": [...]} or backbone_only=true"),
                                          SC::BadRequest);
-                atoms = std::move(*parsed);
+                atoms = *atomsArray;
                 if (atoms.size() < 3)
                     return errorResponse(QStringLiteral("subset needs >=3 atoms"),
                                          SC::BadRequest);
@@ -782,6 +820,93 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("camera composer not wired"), SC::ServiceUnavailable);
         const std::size_t currentFrame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
         scene_->cameraComposer()->setMode(FreeMode(), DefaultPolicy(), currentFrame);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- camera focus atom convenience -----------------------------------
+    //
+    // POST /camera/focus_atom {"atom": int, "kind": "plane"|"dihedral_phi"
+    //                          |"dihedral_psi"}
+    //
+    // Derives a typed CameraMode + OrientationPolicy from a focus atom by
+    // reaching into its residue's backbone-atom-index cache (built at
+    // load time, no string scan). Plane = N/CA/C plane lock (the
+    // canonical "focus atom + local neighborhood coherent" recipe per
+    // HARNESS_BASELINE_PIPELINE doc); dihedral_phi/psi sight down the
+    // residue's phi or psi torsion (Newman-projection view).
+    //
+    // Failure shapes:
+    //   atom out of range            -> 400
+    //   atom has no residue          -> 422 (data shape issue)
+    //   residue missing N / CA / C   -> 422 (e.g. unusual terminal)
+    //   dihedral missing flanking    -> 422 (terminal residue)
+    server_->route(QStringLiteral("/camera/focus_atom"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->cameraComposer())
+            return errorResponse(QStringLiteral("camera composer not wired"),
+                                 SC::ServiceUnavailable);
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein)
+            return errorResponse(QStringLiteral("no protein loaded"),
+                                 SC::ServiceUnavailable);
+
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("atom") || !body.contains("kind"))
+            return errorResponse(QStringLiteral(
+                "body must be {\"atom\": int, \"kind\": str}"), SC::BadRequest);
+
+        const qint64 rawAtom = body.value("atom").toInteger(-1);
+        if (rawAtom < 0 || static_cast<std::size_t>(rawAtom) >= protein->atomCount())
+            return errorResponse(QStringLiteral("atom out of range"), SC::BadRequest);
+        const std::size_t atomIdx = static_cast<std::size_t>(rawAtom);
+
+        const QString kindStr = body.value("kind").toString().toLower();
+        FocusAnchorKind kind;
+        if (kindStr == QStringLiteral("plane")) {
+            kind = FocusAnchorKind::Plane;
+        } else if (kindStr == QStringLiteral("dihedral_phi")
+                   || kindStr == QStringLiteral("dihedral")) {
+            // "dihedral" alias defaults to phi — the more common torsion
+            // for inspecting local backbone behaviour.
+            kind = FocusAnchorKind::DihedralPhi;
+        } else if (kindStr == QStringLiteral("dihedral_psi")) {
+            kind = FocusAnchorKind::DihedralPsi;
+        } else {
+            return errorResponse(QStringLiteral(
+                "kind must be plane | dihedral | dihedral_phi | dihedral_psi"),
+                SC::BadRequest);
+        }
+
+        const auto result = DeriveFocusAnchor(*protein, atomIdx, kind);
+        switch (result.outcome) {
+            case FocusAnchorOutcome::Ok:
+                break;
+            case FocusAnchorOutcome::AtomIndexOutOfRange:
+                return errorResponse(QStringLiteral("atom out of range"),
+                                     SC::BadRequest);
+            case FocusAnchorOutcome::AtomHasNoResidue:
+                return errorResponse(QStringLiteral(
+                    "focus atom has no residue (residue_index < 0)"),
+                    SC::UnprocessableEntity);
+            case FocusAnchorOutcome::MissingBackboneAtoms:
+                return errorResponse(QStringLiteral(
+                    "focus atom's residue lacks N / CA / C backbone atoms"),
+                    SC::UnprocessableEntity);
+            case FocusAnchorOutcome::MissingDihedralNeighbor:
+                return errorResponse(QStringLiteral(
+                    "focus atom's residue has no flanking residue for the "
+                    "requested dihedral (terminal residue)"),
+                    SC::UnprocessableEntity);
+        }
+
+        const std::size_t currentFrame = playback_
+            ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
+        scene_->cameraComposer()->setMode(std::move(result.mode),
+                                            result.policy,
+                                            currentFrame);
         scene_->requestRender(MoleculeScene::RenderSource::Rest);
         return QHttpServerResponse(SC::NoContent);
     });

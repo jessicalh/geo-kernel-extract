@@ -9,6 +9,16 @@
 > structure (centroid-delta block, internal `CameraPlaneLock` struct,
 > single-layer renderer) that the refactor removed. Use the spec doc
 > as the current contract; this doc as the why-we-did-it record.
+>
+> **Follow-up landed:** the `writeSubset` rotation half + the
+> `POST /camera/focus_atom` convenience endpoint + small fixes from
+> the Codex + Opus evaluative passes (camera-mode round-trip,
+> QuietTrackballStyle::OnChar no-op, TransformedConformation CENSUS,
+> DownAxis policy viewUp recompute, Picker render-source wiring,
+> ReaderMainWindow.h docstring, pan scaling, writePlane policy
+> assert, modeChanged toolbar sync). Two canonical recipes for the
+> "focus atom + surroundings legible" goal are documented in
+> `tests/scripts/HARNESS_BASELINE_PIPELINE_2026-05-30.md`.
 
 Senior-engineer reading notes after a day with `h5-reader/src/app/`.
 Output of the first pass on the viewport refactor scope named in

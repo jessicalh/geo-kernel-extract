@@ -5,6 +5,7 @@
 #include "QtAtom.h"
 #include "QtProtein.h"
 
+#include "../diagnostics/ObjectCensus.h"
 #include "../diagnostics/ThreadGuard.h"
 
 #include <Eigen/SVD>
@@ -24,6 +25,7 @@ Q_LOGGING_CATEGORY(cXform, "h5reader.transform")
 TransformedConformation::TransformedConformation(Conformation* inner, QObject* parent)
     : Conformation(inner ? inner->protein() : nullptr),
       inner_(inner) {
+    CENSUS_REGISTER(this);
     setObjectName(QStringLiteral("TransformedConformation"));
     if (parent)
         setParent(parent);

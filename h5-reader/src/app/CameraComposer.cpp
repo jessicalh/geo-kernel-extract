@@ -66,6 +66,9 @@ void CameraComposer::setMode(CameraMode mode,
     planeNormalSign_   = 1.0;
     planeLastDirection_.reset();
     subsetReference_.clear();
+    subsetReferenceCamRel_   = model::Vec3::Zero();
+    subsetReferenceUp_       = model::Vec3::Zero();
+    subsetReferenceCentroid_ = model::Vec3::Zero();
 
     if (!validateAtomsForCurrentMode()) {
         qCWarning(cComposer).noquote() << "atoms out of range for mode" << NameFor(mode_.kind)
@@ -149,6 +152,33 @@ void CameraComposer::captureInitialState(std::size_t referenceFrame) {
         for (std::size_t a : mode_.atoms) {
             if (a >= protein_->atomCount()) continue;
             subsetReference_.push_back(conformation_->atomPosition(referenceFrame, a));
+        }
+        // Capture the camera's pose relative to the subset's centroid at
+        // lock acquisition. Each frame the Kabsch fit gives R such that
+        // R * current[i] + T ≈ reference[i]; rotating the captured
+        // camera-relative vector by R^T moves the camera into the
+        // current frame's body axes. This is the rotation half of
+        // writeSubset (subsetReferenceCamRel_ + subsetReferenceUp_ +
+        // subsetReferenceCentroid_ are the persistent reference state).
+        if (subsetReference_.size() >= 3) {
+            subsetReferenceCentroid_ = model::Vec3::Zero();
+            for (const auto& p : subsetReference_) subsetReferenceCentroid_ += p;
+            subsetReferenceCentroid_ /= static_cast<double>(subsetReference_.size());
+            subsetReferenceCamRel_ = pos - subsetReferenceCentroid_;
+            // Orthogonalise the captured up against the captured sight
+            // (camera-to-focal direction). Falls back to canonical up if
+            // the captured camera has no usable sight direction.
+            model::Vec3 sight = fp - pos;
+            if (sight.norm() > 1e-9) {
+                sight.normalize();
+                if (auto orthog = math::OrthogonalizeViewUp(sight, up))
+                    subsetReferenceUp_ = *orthog;
+                else
+                    subsetReferenceUp_ = model::Vec3(0.0, 1.0, 0.0);
+            } else {
+                subsetReferenceUp_ = up.norm() > 1e-9 ? up.normalized()
+                                                       : model::Vec3(0.0, 1.0, 0.0);
+            }
         }
     }
 }
@@ -343,8 +373,13 @@ bool CameraComposer::writeDihedral(std::size_t t) {
 
     // Default policy for Dihedral: sight DOWN the (atoms[1], atoms[2])
     // axis (Newman projection). DownAxis policy picks a different pair.
+    // The override changes the axis, which means the natural viewUp
+    // computed against the default axis no longer applies — viewUp must
+    // be recomputed perpendicular to the override axis.
     model::Vec3 axisVec;
-    if (policy_.kind == OrientationPolicy::Kind::DownAxis) {
+    const bool axisOverridden =
+        policy_.kind == OrientationPolicy::Kind::DownAxis;
+    if (axisOverridden) {
         const std::size_t a = policy_.axisAtoms[0];
         const std::size_t b = policy_.axisAtoms[1];
         if (a >= protein_->atomCount() || b >= protein_->atomCount())
@@ -373,16 +408,33 @@ bool CameraComposer::writeDihedral(std::size_t t) {
 
     const model::Vec3 fp = anchor->focal;
 
-    // ViewUp: prefer dihedral's natural up (from a-b leg projected perp
-    // to axis); fall back to current up orthogonalised against sight.
+    // ViewUp: when the axis is overridden, the dihedral's natural viewUp
+    // was computed against the DEFAULT axis (c-b) and is wrong for the
+    // override. Recompute from the flanking dihedral atom (a) projected
+    // perpendicular to the override axis; fall back to the current up
+    // orthogonalised against the override axis. Without the override,
+    // use the dihedral's natural up.
     model::Vec3 up;
-    if (anchor->viewUp) {
-        up = *anchor->viewUp;
-    } else {
-        if (auto orthog = math::OrthogonalizeViewUp(sightDir, oldUp))
+    if (axisOverridden) {
+        // Project (a - midpoint) perpendicular to the override axis to
+        // get a stable up that follows the molecule's geometry rather
+        // than the gesture's last orientation.
+        const model::Vec3& aPos = positions[0];
+        model::Vec3 candidate = aPos - fp;
+        candidate -= candidate.dot(sightDir) * sightDir;
+        if (candidate.norm() > 1e-9) {
+            up = candidate.normalized();
+        } else if (auto orthog = math::OrthogonalizeViewUp(sightDir, oldUp)) {
             up = *orthog;
-        else
+        } else {
             up = model::Vec3(0.0, 1.0, 0.0);
+        }
+    } else if (anchor->viewUp) {
+        up = *anchor->viewUp;
+    } else if (auto orthog = math::OrthogonalizeViewUp(sightDir, oldUp)) {
+        up = *orthog;
+    } else {
+        up = model::Vec3(0.0, 1.0, 0.0);
     }
     if (auto orthog = math::OrthogonalizeViewUp(sightDir, up))
         up = *orthog;
@@ -394,6 +446,18 @@ bool CameraComposer::writeDihedral(std::size_t t) {
 
 bool CameraComposer::writePlane(std::size_t t) {
     if (mode_.atoms.size() != 3) return false;
+    // Plane mode's only meaningful orientation policies are Default and
+    // PerpendicularToPlane — both reduce to "sight along the plane
+    // normal". Other policies don't apply (Free / PerpToBond / DownAxis
+    // would override the normal-sign continuity that's the whole point
+    // of writePlane). Reject loud rather than silently honour them.
+    if (policy_.kind != OrientationPolicy::Kind::Default
+        && policy_.kind != OrientationPolicy::Kind::PerpendicularToPlane) {
+        qCWarning(cComposer).noquote()
+            << "writePlane: policy" << NameFor(policy_.kind)
+            << "not applicable to plane mode; rejecting frame";
+        return false;
+    }
     const auto positions = readAtomPositions(t);
     if (positions.size() != 3) return false;
 
@@ -455,42 +519,38 @@ bool CameraComposer::writeSubset(std::size_t t) {
     current.resize(n);
 
     // Kabsch: R, T such that R * current[i] + T approximates ref[i].
+    // The body-to-current rotation is R^T (so that R^T * v_in_reference
+    // = v_in_current_frame). The camera was captured in the reference
+    // frame; rotating its relative pose by R^T moves it into the
+    // current frame so the molecule appears stationary while the camera
+    // follows its rotation.
     auto transform = math::ComputeSubsetTransform(current, ref);
     if (!transform) return false;
+    const model::Mat3 Rinv = transform->R.transpose();
 
-    // The camera should follow the stabilised local frame: the focal
-    // moves to the centroid of the current subset (so the visible
-    // protein stays centred); the view direction + viewUp are inherited
-    // from the user's current camera state (Free orientation default),
-    // rotated by the Kabsch transform's inverse so the camera "sees"
-    // the protein from the same relative angle each frame.
-    auto* camera = renderer_->GetActiveCamera();
-    double posRaw[3];
-    double upRaw[3];
-    double fpRaw[3];
-    camera->GetPosition(posRaw);
-    camera->GetViewUp(upRaw);
-    camera->GetFocalPoint(fpRaw);
-    const model::Vec3 pos(posRaw[0], posRaw[1], posRaw[2]);
-    const model::Vec3 up(upRaw[0], upRaw[1], upRaw[2]);
-    const model::Vec3 fp(fpRaw[0], fpRaw[1], fpRaw[2]);
-
-    // Subset centroid at current frame = mean(current). Move the focal
-    // there, keep the same relative camera-to-focal vector rotated to
-    // follow the molecule's orientation.
+    // Subset centroid at current frame = mean(current). Focal lands
+    // there; position and view-up are the captured reference state
+    // rotated by R^T into the molecule's current orientation.
     model::Vec3 currentCentroid = model::Vec3::Zero();
     for (const auto& p : current) currentCentroid += p;
     currentCentroid /= static_cast<double>(current.size());
 
-    // For Subset with no orientation override, simply translate the
-    // focal to the current subset centroid and the position by the same
-    // amount, preserving the gesture-driven sight direction. This is
-    // the centroid-follow done absolutely, not as a delta from frame
-    // to frame.
-    const model::Vec3 delta = currentCentroid - fp;
-    const model::Vec3 newFp  = currentCentroid;
-    const model::Vec3 newPos = pos + delta;
-    writeCameraComposed(newFp, newPos, up);
+    const model::Vec3 newCamRel = Rinv * subsetReferenceCamRel_;
+    const model::Vec3 newUp     = Rinv * subsetReferenceUp_;
+    const model::Vec3 newFp     = currentCentroid;
+    const model::Vec3 newPos    = currentCentroid + newCamRel;
+
+    // Orthogonalise the rotated up against the rotated sight; both came
+    // from a single rigid rotation of orthogonal reference vectors, so
+    // this is a guard against accumulated floating-point drift across
+    // many frames.
+    model::Vec3 sight = newFp - newPos;
+    if (sight.norm() < 1e-9) return false;
+    sight.normalize();
+    const auto orthoUp = math::OrthogonalizeViewUp(sight, newUp);
+    if (!orthoUp) return false;
+
+    writeCameraComposed(newFp, newPos, *orthoUp);
     return true;
 }
 
@@ -575,11 +635,16 @@ void CameraComposer::applyGesture(const CameraGesture& g) {
             accumRollRad_ += g.deltaRadians;
             break;
         case CameraGesture::Kind::Pan:
-            // Pan is screen-space pixel delta; convert to world-space
-            // using the camera's parallel scale (height of the viewport
-            // in world units). The right vector and the up vector are
-            // re-derived per call from the live camera, so accumulated
-            // gestures always pan relative to the current view.
+            // Pan is a screen-space pixel delta; convert to world-space
+            // by dividing the world-units-per-pixel implied by the
+            // current camera + viewport. For a perspective camera, the
+            // world height seen at the focal distance is
+            //     2 * distance * tan(view_angle/2)
+            // so one pixel = that height / viewport_height. For a
+            // parallel camera, ParallelScale already IS half the world
+            // height of the viewport in world units. Both cases derive
+            // from live camera + renderer state so pans scale correctly
+            // on proteins of any size.
             if (auto* camera = renderer_ ? renderer_->GetActiveCamera() : nullptr) {
                 double posRaw[3];
                 double fpRaw[3];
@@ -594,9 +659,23 @@ void CameraComposer::applyGesture(const CameraGesture& g) {
                 if (sight.norm() > 1e-9) sight.normalize();
                 model::Vec3 right = sight.cross(up);
                 if (right.norm() > 1e-9) right.normalize();
-                // Convert px deltas to world units via the camera height.
-                const double height = std::max(1.0, (pos - fp).norm()) * 0.001;
-                accumPan_ += -right * (g.dxScreenPx * height) + up * (g.dyScreenPx * height);
+
+                const int* sizePx = renderer_->GetSize();
+                const double viewportHeightPx =
+                    sizePx && sizePx[1] > 0 ? static_cast<double>(sizePx[1]) : 600.0;
+                double worldPerPx = 1.0;
+                if (camera->GetParallelProjection()) {
+                    // ParallelScale = half the world-height of the viewport.
+                    worldPerPx = (2.0 * camera->GetParallelScale()) / viewportHeightPx;
+                } else {
+                    const double distance = std::max(1e-6, (pos - fp).norm());
+                    const double halfAngleRad =
+                        camera->GetViewAngle() * 0.5 * M_PI / 180.0;
+                    const double worldHeight = 2.0 * distance * std::tan(halfAngleRad);
+                    worldPerPx = worldHeight / viewportHeightPx;
+                }
+                accumPan_ += -right * (g.dxScreenPx * worldPerPx)
+                              + up    * (g.dyScreenPx * worldPerPx);
             }
             break;
         case CameraGesture::Kind::Dolly:

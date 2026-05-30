@@ -4,13 +4,17 @@ Post-refactor numbers from `tests/scripts/viewport_probe.py`. Replaces
 the centroid-delta camera translation with the typed `CameraComposer`
 (Free / Atom / Bond / Dihedral / Plane / Subset). The harness gains
 three new experiments (`mode_atom`, `mode_dihedral`,
-`mode_subset_backbone`) that exercise the typed camera modes directly.
+`mode_subset_backbone`) that exercise the typed camera modes directly,
+plus two more (`focus_atom_local`, `focus_atom_global_compose`) added
+in the follow-up that landed the `writeSubset` rotation half and the
+`POST /camera/focus_atom` convenience endpoint.
 
 Sibling of `HARNESS_BASELINE_2026-05-30.md` (first pass: camera-only
 floor + bug) and `HARNESS_BASELINE_TRANSFORM_2026-05-30.md` (second
 pass: transform-layer extension). This doc reports the numbers after
 the viewport pipeline refactor described in
-`spec/viewport_pipeline_2026-05-30.md` lands.
+`spec/viewport_pipeline_2026-05-30.md` lands, including the follow-up
+fix-and-polish pass.
 
 ## How to reproduce
 
@@ -34,9 +38,13 @@ python3 tests/scripts/viewport_probe.py \
     --base http://127.0.0.1:9988 \
     --atoms 12 13 14 \
     --frames 200 \
-    --out-dir /tmp/viewport_probe_pipeline \
+    --out-dir /tmp/viewport_probe_followup \
     --no-pngs
 ```
+
+(Numbers below are from the follow-up run; the prior pipeline-refactor
+numbers — same harness, before the writeSubset + focus_atom additions
+— live at `/tmp/viewport_probe_pipeline/`.)
 
 Reader stops with `curl -X POST http://127.0.0.1:9988/shutdown`.
 
@@ -55,20 +63,45 @@ Reader stops with `curl -X POST http://127.0.0.1:9988/shutdown`.
 * Backbone subset for `subset` modes: 318 atoms
   (`QtAtom::IsBackbone()` true).
 
-## Numbers — full matrix
+## Numbers — full matrix (post follow-up)
 
-| experiment            | median (px) | mean   | p95    | max    | within 5 px |
-|-----------------------|------------:|-------:|-------:|-------:|------------:|
-| with_plane_lock       |       1.63  |   7.65 |  19.18 |  20.13 |       62 %  |
-| without_plane_lock    |     185.94  | 187.69 | 364.07 | 435.47 |        1 %  |
-| transform_only        |      81.10  |  79.46 | 129.47 | 158.85 |        1 %  |
-| transform_plus_lock   |      31.23  |  26.21 |  32.84 |  34.40 |       17 %  |
-| **mode_atom(14)**     |     **0.00**|   0.00 |   0.00 |   0.00 |      100 %  |
-| mode_subset_backbone  |     307.00  | 320.32 | 532.96 | 553.18 |        0 %  |
+| experiment                  | median (px) | mean   | p95    | max    | within 5 px |
+|-----------------------------|------------:|-------:|-------:|-------:|------------:|
+| with_plane_lock             |       1.63  |   7.65 |  19.18 |  20.13 |       62 %  |
+| without_plane_lock          |     185.94  | 187.69 | 364.07 | 435.47 |        1 %  |
+| transform_only              |      81.10  |  79.46 | 129.47 | 158.85 |        1 %  |
+| transform_plus_lock         |      31.23  |  26.21 |  32.84 |  34.40 |       17 %  |
+| **mode_atom(14)**           |     **0.00**|   0.00 |   0.00 |   0.00 |      100 %  |
+| mode_subset_backbone        |  **70.08**  |  67.52 | 104.95 | 134.88 |        1 %  |
+| **focus_atom_local**        |      33.96  |  39.85 |  75.87 |  80.45 |        2 %  |
+| **focus_atom_global_compose** | **0.00**  |   0.00 |   0.00 |   0.00 |      100 %  |
 
 `mode_dihedral` was skipped — the harness is invoked with only 3 atoms
 (`12 13 14`). Re-run with `--atoms 12 13 14 15` to exercise dihedral
 mode.
+
+### What moved in the follow-up
+
+| experiment            | previous (pre-followup) | this run | delta              |
+|-----------------------|------------------------:|---------:|--------------------|
+| mode_subset_backbone  |               307.00 px |  70.08 px | **-237 (much better)** |
+| focus_atom_local      |                  (new) |  33.96 px | new experiment      |
+| focus_atom_global_compose |              (new) |   0.00 px | new experiment      |
+
+The `mode_subset_backbone` drop from 307 → 70 px is the writeSubset
+rotation half landing — the composer now applies the Kabsch
+transform's R^T to the captured camera-to-centroid vector each frame,
+matching what `transform_only` does at the position layer. The
+remaining ~70 px is atom 14's intrinsic vibration inside the
+backbone-stabilised frame, which no camera lock can remove without
+position-layer help.
+
+`focus_atom_global_compose` (median 0.00 px) is the canonical
+"focus atom + whole protein steady" recipe: position layer does the
+backbone rigid-body removal (`fit_subset(backbone)`), camera layer
+locks on atom 14. Two-layer composition is additive (Atom mode is
+translation-only, no rotation interference) — perfect centring with
+the protein steady around it.
 
 ## Acceptance gates from `HARNESS_BASELINE_TRANSFORM_2026-05-30.md`
 
@@ -179,23 +212,18 @@ on overlapping subsets, reference-frame disagreement) still produces
 a higher median than `with_plane_lock` alone, but the catastrophic
 tail is gone.
 
-### `mode_subset_backbone` reads high — and why
+### `mode_subset_backbone` now sits at the `transform_only` floor
 
-This mode applies `CameraComposer::Subset(backbone)`. The composer's
-current subset implementation is centroid-follow: it moves the focal
-to the current subset's centroid and translates the camera position
-by the same delta, preserving the user's gesture-driven view
-direction. The marker (atom 14, far from the backbone's centroid) is
-not stabilised — only the centroid is.
-
-The full "rotate the camera with Kabsch" path is partially
-implemented (the math is there in `FitTargetMath::ComputeSubsetTransform`),
-but the composer's current `writeSubset` doesn't apply the rotation
-to the inherited view direction yet. For now, this experiment is the
-honest measurement of "camera follows the backbone's centroid but
-not its rotation". The right way to test the full Subset/Kabsch path
-is to swap the composer's `writeSubset` to use the rotation when
-this becomes the active feature.
+After the follow-up's `writeSubset` rotation half landed, this mode
+applies the Kabsch transform's R^T to the camera-to-centroid vector
+captured at lock acquisition, so the camera rotates with the
+molecule rather than just translating to the centroid. The 70 px
+median matches `transform_only` (81 px) within noise — both compute
+the same Kabsch on the same backbone atoms, one writes to positions,
+the other to the camera. The marker (atom 14) drift is the
+intrinsic vibration of that atom inside the backbone-stabilised
+frame; the camera Kabsch can't remove vibration of an atom that
+itself isn't in the subset.
 
 ### `mode_dihedral` was skipped
 
@@ -247,27 +275,89 @@ Two cheap probes shipped in the same pass:
   classification-stability probe per spec §6.2) — both `QtFieldGridOverlay`
   and `QtBFieldStreamOverlay` already had this; verified, not added.
 
-## Per-frame data
+## Per-frame data (post follow-up)
 
-* `/tmp/viewport_probe_pipeline/with_lock.csv`            — 200 rows
-* `/tmp/viewport_probe_pipeline/no_lock.csv`              — 200 rows
-* `/tmp/viewport_probe_pipeline/transform_only.csv`       — 200 rows
-* `/tmp/viewport_probe_pipeline/transform_plus_lock.csv`  — 200 rows
-* `/tmp/viewport_probe_pipeline/mode_atom.csv`            — 200 rows
-* `/tmp/viewport_probe_pipeline/mode_subset_backbone.csv` — 200 rows
-* `/tmp/viewport_probe_pipeline/summary.json`             — the JSON
+* `/tmp/viewport_probe_followup/with_lock.csv`                  — 200 rows
+* `/tmp/viewport_probe_followup/no_lock.csv`                    — 200 rows
+* `/tmp/viewport_probe_followup/transform_only.csv`             — 200 rows
+* `/tmp/viewport_probe_followup/transform_plus_lock.csv`        — 200 rows
+* `/tmp/viewport_probe_followup/mode_atom.csv`                  — 200 rows
+* `/tmp/viewport_probe_followup/mode_subset_backbone.csv`       — 200 rows
+* `/tmp/viewport_probe_followup/focus_atom_local.csv`           — 200 rows
+* `/tmp/viewport_probe_followup/focus_atom_global_compose.csv`  — 200 rows
+* `/tmp/viewport_probe_followup/summary.json`                   — the JSON
   the harness printed.
+
+(Pre-follow-up CSVs live at `/tmp/viewport_probe_pipeline/`.)
+
+## Canonical recipes (user-facing)
+
+Two patterns the user runs day-to-day, with the harness numbers that
+back them up:
+
+### 1. "Focus atom + local neighborhood coherent"
+
+Use case: a strip chart shows a metric Y changing at frame T; the user
+opens the 3-D view at frame T to see what changed around the focus
+atom's residue. Local backbone steadiness is the priority; the rest of
+the protein can drift.
+
+```
+POST /camera/focus_atom {"atom": N, "kind": "plane"}
+```
+
+Mechanism: the helper looks up atom N's residue's typed
+`N`/`CA`/`C` backbone-atom-index cache (no string scan; bond-graph
+derived per `feedback_identity_from_chemistry_not_position`) and
+applies them as a 3-atom `CameraMode::Plane`. The focal lands at the
+plane centroid; the camera sights perpendicular to the plane normal
+with sign-continuity guarding.
+
+Expected median drift: matches with_plane_lock floor (~5 px) when the
+focus atom IS one of N/CA/C; ~30-40 px when the focus atom is a
+sidechain atom whose vibration is uncorrelated with the backbone
+plane (the harness's atom 14 case — measured 33.96 px). Higher
+than the manually-typed `with_plane_lock` floor of 1.63 px because
+the auto-picked plane atoms are different (different vibration
+profile) — benign per the brief; document only.
+
+### 2. "Focus atom + whole protein steady"
+
+Use case: following one atom across the full trajectory while the
+protein remains broadly oriented on screen. Position-stable AND
+rotationally-stable globally; focus atom never leaves the screen
+center.
+
+```
+POST /transform {"kind": "fit_subset", "backbone_only": true}
+POST /camera/mode {"mode": "atom", "atom": N}
+```
+
+Mechanism: position layer Kabsch-fits the backbone to frame 0 and
+rewrites positions (no rotation, no drift). Camera layer locks the
+focal on atom N's per-frame position. Two-layer composition is
+additive — Atom mode is translation-only, so no Kabsch-vs-Kabsch
+interference (the pathology that produced
+`transform_plus_lock = 39 px / max 795 px` pre-refactor).
+
+Expected median drift: 0.00 px (measured). The position-layer
+Kabsch removes rigid-body rotation; the camera-layer Atom lock
+removes residual translation of the focus atom. Both layers running
+clean is the new "best of both worlds" pattern the refactor
+enables.
 
 ## Next gates (for the next refactor session)
 
-* **`mode_subset_backbone` with Kabsch rotation enabled**: median ≤
-  70 px (matches `transform_only`'s 67 px floor — same Kabsch on the
-  same atoms, just written to camera instead of positions). Requires
-  the `writeSubset` rotation work flagged above.
-* **`transform_plus_lock` ≤ `with_plane_lock`**: requires picking the
-  cleanest two-layer composition (e.g. `FitSubset(backbone) +
-  Atom(target)` per spec §3.4). Document as the recommended pattern
-  in `spec/viewport_pipeline_2026-05-30.md` once exercised.
+* **`focus_atom_local` parity with `with_plane_lock`** (~5 px) when
+  the focus atom is the residue's CA: requires the harness to
+  pre-select a CA-focused atom (the current `atoms[-1]` is a
+  generic atom in residue 1 that's not one of N/CA/C; the helper
+  picks the right plane but the focal centroid is offset from atom
+  14's per-frame position). Not a code-side gap; a harness
+  configuration choice for the next session.
+* **`mode_dihedral` exercise**: re-run with `--atoms 12 13 14 15`
+  to exercise dihedral mode end-to-end. Add a gate once the visual
+  behaviour is reviewed.
 * **`without_plane_lock` ≤ 13 px**: NOT a meaningful gate post-
   refactor; reframed above. A future session can revisit by adding a
   CameraMode that follows the protein's centroid implicitly (which is

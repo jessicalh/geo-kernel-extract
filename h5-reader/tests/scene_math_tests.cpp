@@ -96,6 +96,15 @@ private slots:
     void testFitTarget_subsetKabschKnownRotation();
     void testFitTarget_subsetKabschNlessThan3Nullopt();
     void testFitTarget_orthogonalizeViewUp();
+
+    // writeSubset's rotation half — verify that R^T applied to the
+    // captured camera-relative vector recovers the camera's pose in
+    // the rotated frame. This is the math the CameraComposer's
+    // writeSubset uses to keep the camera following the molecule's
+    // rotation; tested as a pure invariant on ComputeSubsetTransform's
+    // output so we don't drag in vtkRenderer or QtProtein.
+    void testFitTarget_subsetCameraFollowsRotation();
+    void testFitTarget_subsetCameraIdentityIsIdentity();
 };
 
 // ---- computePlaneFrame: canonical XY triangle ---------------------------
@@ -543,6 +552,121 @@ void SceneMathTests::testFitTarget_orthogonalizeViewUp() {
     // Parallel input returns nullopt.
     const model::Vec3 parallel(0.0, 0.0, 5.0);
     QVERIFY(!math::OrthogonalizeViewUp(viewDir, parallel).has_value());
+}
+
+// ---- writeSubset rotation half --------------------------------------------
+//
+// The Kabsch fit returns R, T such that R * current[i] + T approximates
+// reference[i]. The CameraComposer's writeSubset uses R^T as the
+// "body-to-current" rotation so that the camera, captured in the
+// reference frame, follows the molecule into its current orientation.
+//
+// Two invariants tested here:
+//   1. Identity input → R^T is identity, camera-relative vector
+//      unchanged.
+//   2. Rotated input → R^T applied to a captured camera-relative
+//      vector recovers a vector that, added to the current centroid,
+//      gives the same camera position relative to the rotated
+//      subset that the captured camera had relative to the reference
+//      subset.
+
+void SceneMathTests::testFitTarget_subsetCameraIdentityIsIdentity() {
+    // Reference and current both equal — Kabsch returns identity.
+    // Camera captured at (0, 0, 10) looking at centroid (0, 0, 0),
+    // up = (0, 1, 0). Rotated by R^T = I, the camera-relative vector
+    // is unchanged.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(0.0, 1.0, 0.0),
+        model::Vec3(-1.0, 0.0, 0.0),
+    };
+    std::vector<model::Vec3> cur = ref;
+    const auto t = math::ComputeSubsetTransform(cur, ref);
+    QVERIFY(t.has_value());
+
+    const model::Mat3 Rinv = t->R.transpose();
+    const model::Vec3 capturedCamRel(0.0, 0.0, 10.0);   // pos - centroid
+    const model::Vec3 capturedUp(0.0, 1.0, 0.0);
+
+    const model::Vec3 newCamRel = Rinv * capturedCamRel;
+    const model::Vec3 newUp     = Rinv * capturedUp;
+
+    QVERIFY(nearly(newCamRel.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newCamRel.y(), 0.0, 1e-9));
+    QVERIFY(nearly(newCamRel.z(), 10.0, 1e-9));
+    QVERIFY(nearly(newUp.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newUp.y(), 1.0, 1e-9));
+    QVERIFY(nearly(newUp.z(), 0.0, 1e-9));
+}
+
+void SceneMathTests::testFitTarget_subsetCameraFollowsRotation() {
+    // Reference subset on the XY plane, centroid at origin. Apply a
+    // known +90° rotation about z to every atom to get the current
+    // subset. The Kabsch fit returns R such that R * current + T = ref;
+    // that R is a -90° rotation about z (it rotates current back to
+    // ref). R^T is then a +90° rotation about z — which is exactly
+    // the rotation the molecule underwent.
+    //
+    // Captured camera at (5, 0, 0) looking at centroid (0, 0, 0) with
+    // up = (0, 0, 1). The captured camera-relative vector is (5, 0, 0)
+    // (camera was 5 units along +x from the centroid).
+    //
+    // Apply R^T (+90° about z): (5, 0, 0) -> (0, 5, 0). Adding to the
+    // current centroid (still 0,0,0 because the rotation preserves it
+    // for an origin-centred subset) gives the new camera position
+    // (0, 5, 0) — which is exactly where the camera "should" be to
+    // see the rotated subset from the same relative angle.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(0.0, 1.0, 0.0),
+        model::Vec3(-1.0, 0.0, 0.0),
+        model::Vec3(0.0, -1.0, 0.0),
+    };
+    // Rotate ref +90° about z to make current.
+    std::vector<model::Vec3> cur;
+    cur.reserve(ref.size());
+    for (const auto& p : ref) {
+        cur.emplace_back(-p.y(), p.x(), p.z());
+    }
+    const auto t = math::ComputeSubsetTransform(cur, ref);
+    QVERIFY(t.has_value());
+
+    const model::Mat3 Rinv = t->R.transpose();
+    const model::Vec3 capturedCamRel(5.0, 0.0, 0.0);    // along +x
+    const model::Vec3 capturedUp(0.0, 0.0, 1.0);
+
+    const model::Vec3 newCamRel = Rinv * capturedCamRel;
+    const model::Vec3 newUp     = Rinv * capturedUp;
+
+    // R^T applied to (5, 0, 0) — for a +90° rotation about z — gives
+    // (0, 5, 0): the captured-camera direction rotated by the same
+    // angle the subset rotated.
+    QVERIFY(nearly(newCamRel.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newCamRel.y(), 5.0, 1e-9));
+    QVERIFY(nearly(newCamRel.z(), 0.0, 1e-9));
+
+    // Up vector unchanged: rotation was about z, up was along z.
+    QVERIFY(nearly(newUp.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newUp.y(), 0.0, 1e-9));
+    QVERIFY(nearly(newUp.z(), 1.0, 1e-9));
+
+    // The new sight direction (focal - position) should be in the same
+    // body-relative direction (always pointing toward the subset
+    // centroid from the rotated camera position).
+    model::Vec3 newCentroid = model::Vec3::Zero();
+    for (const auto& p : cur) newCentroid += p;
+    newCentroid /= static_cast<double>(cur.size());
+    QVERIFY(nearly(newCentroid.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newCentroid.y(), 0.0, 1e-9));
+    QVERIFY(nearly(newCentroid.z(), 0.0, 1e-9));
+
+    const model::Vec3 newPos    = newCentroid + newCamRel;
+    const model::Vec3 newSight  = (newCentroid - newPos).normalized();
+    // Captured sight was (centroid - pos).normalized() = (-5,0,0)/5 = -x.
+    // R^T applied to -x is -y (the rotated equivalent).
+    QVERIFY(nearly(newSight.x(), 0.0, 1e-9));
+    QVERIFY(nearly(newSight.y(), -1.0, 1e-9));
+    QVERIFY(nearly(newSight.z(), 0.0, 1e-9));
 }
 
 QTEST_GUILESS_MAIN(SceneMathTests)

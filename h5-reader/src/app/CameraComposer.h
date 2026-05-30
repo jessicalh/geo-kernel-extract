@@ -172,8 +172,22 @@ private:
     std::optional<model::Vec3> planeLastDirection_;
 
     // Subset mode: reference positions captured at setMode time
-    // (subsetAtoms_[i] -> reference position).
+    // (subsetAtoms_[i] -> reference position). The composer Kabsch-fits
+    // the current subset to these per frame; the captured camera state
+    // below is rotated by R^T so the camera follows the molecule's frame.
     std::vector<model::Vec3> subsetReference_;
+    // Captured camera-to-centroid vector at lock acquisition; rotated by
+    // R^T each frame and added to the current centroid to place the
+    // camera at the same relative pose. Zero until captureInitialState
+    // populates it for Subset mode.
+    model::Vec3 subsetReferenceCamRel_  = model::Vec3::Zero();
+    // Captured ViewUp at lock acquisition (orthogonalised against the
+    // sight direction). Rotated by R^T each frame so the world-up of the
+    // captured view stays attached to the molecule.
+    model::Vec3 subsetReferenceUp_      = model::Vec3::Zero();
+    // Centroid of subsetReference_ at lock acquisition; cached so the
+    // per-frame translation is computed against the same anchor.
+    model::Vec3 subsetReferenceCentroid_ = model::Vec3::Zero();
 
     // Accumulated user gesture delta. The deltas are in the camera's
     // local frame at the time the gesture fired; we re-apply them on top
