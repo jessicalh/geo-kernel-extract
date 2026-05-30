@@ -182,6 +182,37 @@ def get_transform(base: str) -> dict:
     return _get(base, "/transform").json()
 
 
+def set_camera_mode(base: str, mode: str, **kwargs) -> None:
+    """POST /camera/mode — sets the CameraComposer mode.
+
+    mode: "free" | "atom" | "bond" | "dihedral" | "plane" | "subset"
+
+    kwargs are forwarded as JSON fields. Examples:
+      set_camera_mode(base, "atom", atom=14)
+      set_camera_mode(base, "bond", a=12, b=13)
+      set_camera_mode(base, "dihedral", a=12, b=13, c=14, d=15)
+      set_camera_mode(base, "plane", a=12, b=13, c=14)
+      set_camera_mode(base, "subset", backbone_only=True)
+      set_camera_mode(base, "subset", atoms=[12, 13, 14, 15, 16])
+    """
+    body: dict = {"mode": mode}
+    body.update(kwargs)
+    _post(base, "/camera/mode", body)
+
+
+def clear_camera_mode(base: str) -> None:
+    _post(base, "/camera/clear")
+
+
+def get_camera_mode(base: str) -> dict:
+    return _get(base, "/camera/mode").json()
+
+
+def set_log_mask(base: str, mask: int) -> dict:
+    """POST /log/mask — bitmask gate for the structured logger."""
+    return _post(base, "/log/mask", {"mask": int(mask)}).json()
+
+
 def set_frame(base: str, frame: int) -> None:
     _post(base, "/frame/set", {"frame": int(frame)})
 
@@ -295,6 +326,8 @@ def run_drift_experiment(
     out_dir: Path,
     keep_pngs: bool = True,
     focus_only: bool = True,
+    camera_mode: str | None = None,
+    camera_mode_kwargs: dict | None = None,
 ) -> list[FrameRecord]:
     """Configure the reader for the experiment, sweep frames, return
     per-frame records.
@@ -307,7 +340,9 @@ def run_drift_experiment(
          focus-slot magenta sphere renders, eliminating the slot-1
          eclipses-slot-0 problem the prior no-lock baseline run hit
       5. plane-lock ON or OFF per the experiment
-      6. for each frame: set_frame → screenshot → blob → record
+      6. (optional) camera_mode override (atom / bond / dihedral / subset)
+         — replaces plane_lock for typed-camera-mode experiments
+      7. for each frame: set_frame → screenshot → blob → record
 
     The instrument-mode toggle is applied after bulkSet because the
     overlay applies CPK-distinct colours to whichever spheres are visible
@@ -321,6 +356,7 @@ def run_drift_experiment(
     # Setup
     clear_selection(base)
     disable_plane_lock(base)  # known-clean start
+    clear_camera_mode(base)
     set_atoms(base, atoms)
     # Transform applies upstream of instrument-mode marker placement; the
     # wrapped Conformation re-emits position queries through the rigid-body
@@ -328,7 +364,9 @@ def run_drift_experiment(
     # the stabilised atom position. Default kind="identity" → no-op.
     set_transform(base, transform_kind, **(transform_kwargs or {}))
     set_instrument(base, True, focus_only=focus_only)
-    if plane_lock:
+    if camera_mode is not None:
+        set_camera_mode(base, camera_mode, **(camera_mode_kwargs or {}))
+    elif plane_lock:
         enable_plane_lock(base, atoms)
     else:
         disable_plane_lock(base)
@@ -523,10 +561,65 @@ def main() -> int:
         )
         write_csv(transform_plus_lock, args.out_dir / "transform_plus_lock.csv")
         t4 = time.monotonic()
+
+        # Experiment 5: CameraMode::Atom on the focus atom (atoms[-1]
+        # which the harness has been treating as the focus). Identity
+        # transform; the camera absolute-writes the focal to atoms[-1]
+        # every frame, so drift should be at the atom-vibration floor.
+        focus_atom = args.atoms[-1]
+        mode_atom = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False, transform_kind="identity",
+            camera_mode="atom", camera_mode_kwargs={"atom": focus_atom},
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "mode_atom",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(mode_atom, args.out_dir / "mode_atom.csv")
+        t5 = time.monotonic()
+
+        # Experiment 6: CameraMode::Dihedral on the same atoms (need 4
+        # — if only 3 are supplied, skip rather than fabricate). The
+        # marker (focus atom) should remain near the central axis as
+        # the dihedral rotates.
+        mode_dihedral = None
+        t6 = t5
+        if len(args.atoms) >= 4:
+            dh_atoms = args.atoms[:4]
+            mode_dihedral = run_drift_experiment(
+                args.base, args.atoms,
+                plane_lock=False, transform_kind="identity",
+                camera_mode="dihedral",
+                camera_mode_kwargs={
+                    "a": dh_atoms[0], "b": dh_atoms[1],
+                    "c": dh_atoms[2], "d": dh_atoms[3],
+                },
+                frames=sampled, hue=hue,
+                out_dir=args.out_dir / "mode_dihedral",
+                keep_pngs=not args.no_pngs,
+            )
+            write_csv(mode_dihedral, args.out_dir / "mode_dihedral.csv")
+            t6 = time.monotonic()
+
+        # Experiment 7: CameraMode::Subset on backbone — equivalent to
+        # today's transform_only's Kabsch but applied to the camera
+        # instead of positions. One Kabsch, written to camera; no
+        # transform-vs-lock interference.
+        mode_subset = run_drift_experiment(
+            args.base, args.atoms,
+            plane_lock=False, transform_kind="identity",
+            camera_mode="subset", camera_mode_kwargs={"backbone_only": True},
+            frames=sampled, hue=hue,
+            out_dir=args.out_dir / "mode_subset_backbone",
+            keep_pngs=not args.no_pngs,
+        )
+        write_csv(mode_subset, args.out_dir / "mode_subset_backbone.csv")
+        t7 = time.monotonic()
     finally:
         # Restore the reader to a clean state for any follow-up runs.
         set_instrument(args.base, False)
         disable_plane_lock(args.base)
+        clear_camera_mode(args.base)
         set_transform(args.base, "identity")
         clear_selection(args.base)
         set_docks_visible(args.base, True)
@@ -543,13 +636,20 @@ def main() -> int:
         "without_plane_lock": summarize(no_lock),
         "transform_only": summarize(transform_only),
         "transform_plus_lock": summarize(transform_plus_lock),
+        "mode_atom": summarize(mode_atom),
+        "mode_subset_backbone": summarize(mode_subset),
         "timing_s": {
-            "with_lock":           round(t1 - t0, 3),
-            "no_lock":             round(t2 - t1, 3),
-            "transform_only":      round(t3 - t2, 3),
-            "transform_plus_lock": round(t4 - t3, 3),
+            "with_lock":            round(t1 - t0, 3),
+            "no_lock":              round(t2 - t1, 3),
+            "transform_only":       round(t3 - t2, 3),
+            "transform_plus_lock":  round(t4 - t3, 3),
+            "mode_atom":            round(t5 - t4, 3),
+            "mode_dihedral":        round(t6 - t5, 3) if mode_dihedral else None,
+            "mode_subset_backbone": round(t7 - t6, 3),
         },
     }
+    if mode_dihedral is not None:
+        summary["mode_dihedral"] = summarize(mode_dihedral)
     print(json.dumps(summary, indent=2))
 
     summary_path = args.out_dir / "summary.json"

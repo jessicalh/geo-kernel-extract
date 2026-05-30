@@ -10,6 +10,7 @@
 // These are pure functions over h5reader::model::Vec3; no VTK, no Qt
 // widget code. The binary builds against Qt6::Test + Eigen3 only.
 
+#include "app/FitTargetMath.h"
 #include "app/PlaneFrameMath.h"
 #include "app/TensorGlyphMath.h"
 
@@ -18,6 +19,7 @@
 
 #include <array>
 #include <cmath>
+#include <vector>
 
 using namespace h5reader;
 
@@ -80,6 +82,20 @@ private slots:
     // primary axis ends up along +x in the world transform.
     void testTensorGlyph_composeAlignsPrimaryWithBondDir();
     void testTensorGlyph_composeAntiparallelHandled();
+
+    // FitTargetMath — per-mode fit anchors. Pure functions over Vec3;
+    // tested without a renderer or loaded conformation. Each function
+    // is one variant of CameraComposer::write's dispatch table.
+    void testFitTarget_atomAnchorReturnsPosition();
+    void testFitTarget_bondAnchorMidpointAndAxis();
+    void testFitTarget_bondAnchorZeroLengthReturnsNullopt();
+    void testFitTarget_dihedralAnchorTransPlanar();
+    void testFitTarget_dihedralAnchorZeroCentralBondReturnsNullopt();
+    void testFitTarget_planeAnchorWrapsComputePlaneFrame();
+    void testFitTarget_subsetKabschIdentity();
+    void testFitTarget_subsetKabschKnownRotation();
+    void testFitTarget_subsetKabschNlessThan3Nullopt();
+    void testFitTarget_orthogonalizeViewUp();
 };
 
 // ---- computePlaneFrame: canonical XY triangle ---------------------------
@@ -360,6 +376,173 @@ void SceneMathTests::testTensorGlyph_composeAntiparallelHandled() {
     QVERIFY(nearly(M[0 * 4 + 3], 0.0));
     QVERIFY(nearly(M[1 * 4 + 3], 0.0));
     QVERIFY(nearly(M[2 * 4 + 3], 0.0));
+}
+
+// ---- FitTargetMath: per-mode anchor functions --------------------------
+
+void SceneMathTests::testFitTarget_atomAnchorReturnsPosition() {
+    const std::array<model::Vec3, 1> positions{{model::Vec3(1.0, 2.0, 3.0)}};
+    const auto anchor = math::ComputeAtomAnchor(positions);
+    QVERIFY(anchor.has_value());
+    QVERIFY(nearly(anchor->focal.x(), 1.0));
+    QVERIFY(nearly(anchor->focal.y(), 2.0));
+    QVERIFY(nearly(anchor->focal.z(), 3.0));
+    QVERIFY(!anchor->axis.has_value());
+    QVERIFY(!anchor->frame.has_value());
+}
+
+void SceneMathTests::testFitTarget_bondAnchorMidpointAndAxis() {
+    // Bond along +x of length 2, atoms at (1,1,1) and (3,1,1).
+    // Expected: focal = (2,1,1); axis = (1,0,0).
+    const std::array<model::Vec3, 2> positions{{
+        model::Vec3(1.0, 1.0, 1.0),
+        model::Vec3(3.0, 1.0, 1.0),
+    }};
+    const auto anchor = math::ComputeBondAnchor(positions);
+    QVERIFY(anchor.has_value());
+    QVERIFY(nearly(anchor->focal.x(), 2.0));
+    QVERIFY(nearly(anchor->focal.y(), 1.0));
+    QVERIFY(nearly(anchor->focal.z(), 1.0));
+    QVERIFY(anchor->axis.has_value());
+    QVERIFY(nearly(anchor->axis->x(), 1.0));
+    QVERIFY(nearly(anchor->axis->y(), 0.0));
+    QVERIFY(nearly(anchor->axis->z(), 0.0));
+}
+
+void SceneMathTests::testFitTarget_bondAnchorZeroLengthReturnsNullopt() {
+    const std::array<model::Vec3, 2> positions{{
+        model::Vec3(1.0, 2.0, 3.0),
+        model::Vec3(1.0, 2.0, 3.0),
+    }};
+    QVERIFY(!math::ComputeBondAnchor(positions).has_value());
+}
+
+void SceneMathTests::testFitTarget_dihedralAnchorTransPlanar() {
+    // Canonical trans dihedral on the XY plane. (a) and (d) on opposite
+    // sides of the central (b->c) axis along +z. Axis = (c-b)/||(c-b)||
+    // = +z. viewUp = (a-b) projected perp to +z = (a-b) restricted to
+    // XY plane, then normalised. With a = (-1, 0, 0), b = (0, 0, 0),
+    // c = (0, 0, 1), d = (1, 0, 1), viewUp = -x (because (a-b)=(-1,0,0)).
+    const std::array<model::Vec3, 4> positions{{
+        model::Vec3(-1.0, 0.0, 0.0),
+        model::Vec3( 0.0, 0.0, 0.0),
+        model::Vec3( 0.0, 0.0, 1.0),
+        model::Vec3( 1.0, 0.0, 1.0),
+    }};
+    const auto anchor = math::ComputeDihedralAnchor(positions);
+    QVERIFY(anchor.has_value());
+    // Focal = midpoint of (b, c) = (0, 0, 0.5).
+    QVERIFY(nearly(anchor->focal.x(), 0.0));
+    QVERIFY(nearly(anchor->focal.y(), 0.0));
+    QVERIFY(nearly(anchor->focal.z(), 0.5));
+    // Axis = +z.
+    QVERIFY(anchor->axis.has_value());
+    QVERIFY(nearly(anchor->axis->x(), 0.0));
+    QVERIFY(nearly(anchor->axis->y(), 0.0));
+    QVERIFY(nearly(anchor->axis->z(), 1.0));
+    // viewUp = -x (normalised).
+    QVERIFY(anchor->viewUp.has_value());
+    QVERIFY(nearly(anchor->viewUp->x(), -1.0));
+    QVERIFY(nearly(anchor->viewUp->y(), 0.0));
+    QVERIFY(nearly(anchor->viewUp->z(), 0.0));
+}
+
+void SceneMathTests::testFitTarget_dihedralAnchorZeroCentralBondReturnsNullopt() {
+    // b == c → central axis is zero-length.
+    const std::array<model::Vec3, 4> positions{{
+        model::Vec3(1.0, 2.0, 3.0),
+        model::Vec3(0.0, 0.0, 0.0),
+        model::Vec3(0.0, 0.0, 0.0),
+        model::Vec3(4.0, 5.0, 6.0),
+    }};
+    QVERIFY(!math::ComputeDihedralAnchor(positions).has_value());
+}
+
+void SceneMathTests::testFitTarget_planeAnchorWrapsComputePlaneFrame() {
+    const std::array<model::Vec3, 3> positions{{
+        model::Vec3(0.0, 0.0, 0.0),
+        model::Vec3(2.0, 0.0, 0.0),
+        model::Vec3(0.0, 2.0, 0.0),
+    }};
+    const auto anchor = math::ComputePlaneAnchor(positions);
+    QVERIFY(anchor.has_value());
+    QVERIFY(anchor->axis.has_value());
+    QVERIFY(anchor->frame.has_value());
+    // Focal = centroid (2/3, 2/3, 0).
+    QVERIFY(nearly(anchor->focal.x(), 2.0 / 3.0));
+    QVERIFY(nearly(anchor->focal.y(), 2.0 / 3.0));
+    QVERIFY(nearly(anchor->focal.z(), 0.0));
+    // Axis = +z (plane normal).
+    QVERIFY(nearly(anchor->axis->z(), 1.0));
+}
+
+void SceneMathTests::testFitTarget_subsetKabschIdentity() {
+    // current == reference → R = I, T = 0.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(0.0, 0.0, 0.0),
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(0.0, 1.0, 0.0),
+        model::Vec3(0.0, 0.0, 1.0),
+    };
+    std::vector<model::Vec3> cur = ref;
+    const auto t = math::ComputeSubsetTransform(cur, ref);
+    QVERIFY(t.has_value());
+    // R == I, T == 0.
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            QVERIFY(nearly(t->R(i, j), (i == j) ? 1.0 : 0.0, 1e-9));
+        }
+        QVERIFY(nearly(t->T(i), 0.0, 1e-9));
+    }
+}
+
+void SceneMathTests::testFitTarget_subsetKabschKnownRotation() {
+    // current = reference rotated +90° about z (about origin). Kabsch
+    // recovers R = rotation by -90° about z so that R * current ≈
+    // reference.
+    std::vector<model::Vec3> ref = {
+        model::Vec3(1.0, 0.0, 0.0),
+        model::Vec3(0.0, 1.0, 0.0),
+        model::Vec3(-1.0, 0.0, 0.0),
+        model::Vec3(0.0, -1.0, 0.0),
+    };
+    // Rotate ref by +90° about z to get current.
+    std::vector<model::Vec3> cur;
+    cur.reserve(ref.size());
+    for (const auto& p : ref) {
+        cur.emplace_back(-p.y(), p.x(), p.z());
+    }
+    const auto t = math::ComputeSubsetTransform(cur, ref);
+    QVERIFY(t.has_value());
+    // R should rotate +90° about z (cur->ref means cur->ref = +90)
+    // Actually R * cur ≈ ref, where cur is ref rotated +90 about z, so
+    // R must rotate -90 about z, i.e. R = [[0, 1, 0], [-1, 0, 0],
+    // [0, 0, 1]].
+    QVERIFY(nearly(t->R(0, 0), 0.0, 1e-9));
+    QVERIFY(nearly(t->R(0, 1), 1.0, 1e-9));
+    QVERIFY(nearly(t->R(1, 0), -1.0, 1e-9));
+    QVERIFY(nearly(t->R(1, 1), 0.0, 1e-9));
+    QVERIFY(nearly(t->R(2, 2), 1.0, 1e-9));
+}
+
+void SceneMathTests::testFitTarget_subsetKabschNlessThan3Nullopt() {
+    std::vector<model::Vec3> ref = {model::Vec3(0, 0, 0), model::Vec3(1, 0, 0)};
+    std::vector<model::Vec3> cur = ref;
+    QVERIFY(!math::ComputeSubsetTransform(cur, ref).has_value());
+}
+
+void SceneMathTests::testFitTarget_orthogonalizeViewUp() {
+    // viewDir along +z; viewUp candidate (0.3, 0.4, 0.5) — orthogonal
+    // version drops the +z component, normalises (0.3, 0.4, 0).
+    const model::Vec3 viewDir(0.0, 0.0, 1.0);
+    const model::Vec3 candidate(0.3, 0.4, 0.5);
+    const auto orthog = math::OrthogonalizeViewUp(viewDir, candidate);
+    QVERIFY(orthog.has_value());
+    QVERIFY(nearly(orthog->z(), 0.0, 1e-9));
+    QVERIFY(nearly(orthog->norm(), 1.0, 1e-9));
+    // Parallel input returns nullopt.
+    const model::Vec3 parallel(0.0, 0.0, 5.0);
+    QVERIFY(!math::OrthogonalizeViewUp(viewDir, parallel).has_value());
 }
 
 QTEST_GUILESS_MAIN(SceneMathTests)

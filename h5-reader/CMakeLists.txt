@@ -153,6 +153,15 @@ qt_add_executable(h5reader
     src/app/QtPlaybackController.cpp
     src/app/TimeViewportController.h
     src/app/TimeViewportController.cpp
+    src/app/CameraMode.h
+    src/app/OrientationPolicy.h
+    src/app/FitTargetMath.h
+    src/app/CameraComposer.h
+    src/app/CameraComposer.cpp
+    src/app/QuietTrackballStyle.h
+    src/app/QuietTrackballStyle.cpp
+    src/app/CameraInputFilter.h
+    src/app/CameraInputFilter.cpp
     src/app/MoleculeScene.h
     src/app/MoleculeScene.cpp
     src/app/ReaderMainWindow.h
@@ -280,11 +289,13 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     add_test(NAME h5reader_model_tests COMMAND h5reader_model_tests)
 
-    # Pure-function plane geometry tests (PlaneFrameMath.h). Header-only
-    # math; no VTK / Qt widgets / I/O — links Qt6::Test + Eigen3 only.
+    # Pure-function plane geometry tests (PlaneFrameMath.h +
+    # FitTargetMath.h). Header-only math; no VTK / Qt widgets / I/O —
+    # links Qt6::Test + Eigen3 only.
     qt_add_executable(h5reader_scene_math_tests
         tests/scene_math_tests.cpp
         src/app/PlaneFrameMath.h
+        src/app/FitTargetMath.h
     )
     target_include_directories(h5reader_scene_math_tests PRIVATE src)
     target_link_libraries(h5reader_scene_math_tests PRIVATE

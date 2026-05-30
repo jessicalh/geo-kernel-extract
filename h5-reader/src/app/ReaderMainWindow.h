@@ -129,6 +129,13 @@ private:
     class QtAtomPicker* picker_ = nullptr;
     class QtAtomInspectorDock* inspectorDock_ = nullptr;
 
+    // Camera input filter — Qt eventFilter on the VTK widget, intercepts
+    // mouse + wheel before VTK's trackball. Routes gestures to the
+    // CameraComposer (per spec/viewport_pipeline_2026-05-30.md §4).
+    // Installed after the picker so Qt's filter chain runs THIS first;
+    // double-clicks fall through to the picker.
+    class CameraInputFilter* cameraInputFilter_ = nullptr;
+
     // Selection model — the QAbstractListModel for the ≤4-atom group — plus
     // its QListView panel. The picker feeds the model; the model fans focus
     // to Atom Info and the set to the measurement overlay/dashboard context.

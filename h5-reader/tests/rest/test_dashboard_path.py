@@ -29,28 +29,27 @@ def test_default_signal_listed(rest):
     assert all("display_modes" in s for s in signals)
 
 
-def test_frame_set_and_camera_moves(rest):
-    initial_camera = rest.client.get("/scene/camera").json()
-    initial_focal = initial_camera["focal"]
-
-    # Walk a handful of frames. The centroid-follow logic in
-    # MoleculeScene::setFrame translates the camera between frames; a
-    # plain frame stride should produce a non-zero focal-point delta on
-    # at least one of the steps.
-    saw_movement = False
+def test_frame_set_round_trip(rest):
+    """Frames round-trip through /frame/set and /frame/current; the
+    free-camera focal stays put (the centroid-delta follow logic was
+    retired per spec/viewport_pipeline_2026-05-30.md §1.4: per-frame
+    camera writes are owned by the typed CameraComposer, and Free mode
+    is a strict no-op so the user's view-state persists)."""
+    initial_focal = rest.client.get("/scene/camera").json()["focal"]
     for frame in (0, 100, 250, 500, 700):
         r = rest.client.post("/frame/set", json={"frame": frame})
         assert r.status_code == 204, r.text
         confirmed = rest.client.get("/frame/current").json()
         assert confirmed["frame"] == frame
-        camera = rest.client.get("/scene/camera").json()
-        delta = sum(
-            (camera["focal"][i] - initial_focal[i]) ** 2 for i in range(3)
+    # The free camera does not chase the protein — that path was the
+    # bug the new architecture removed. The focal MUST remain at its
+    # initial position across a free-camera frame walk.
+    final_focal = rest.client.get("/scene/camera").json()["focal"]
+    for i in range(3):
+        assert abs(final_focal[i] - initial_focal[i]) < 1e-6, (
+            f"free-camera focal moved between frame walks: "
+            f"{initial_focal} -> {final_focal}"
         )
-        if delta > 1e-6:
-            saw_movement = True
-            initial_focal = camera["focal"]
-    assert saw_movement, "camera focal point never moved across a 700-frame walk"
 
 
 def test_protein_atom_count_matches_loaded(rest):

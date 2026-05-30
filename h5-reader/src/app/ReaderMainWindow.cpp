@@ -1,5 +1,7 @@
 #include "ReaderMainWindow.h"
 
+#include "CameraComposer.h"
+#include "CameraInputFilter.h"
 #include "MoleculeScene.h"
 #include "QtAtomInspectorDock.h"
 #include "QtAtomPicker.h"
@@ -190,8 +192,11 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
 
     // Scene binds to the VTK widget's render window. The scene reads
     // positions through the wrapped conformation so transform mode
-    // changes are visible immediately.
-    scene_ = new MoleculeScene(renderWindow_, this);
+    // changes are visible immediately. The widget is passed in so the
+    // render scheduler (MoleculeScene::requestRender) can call
+    // vtkWidget_->update() — the only render verb in app code per
+    // spec/viewport_pipeline_2026-05-30.md §2.5.
+    scene_ = new MoleculeScene(vtkWidget_, renderWindow_, this);
     scene_->Build(*loaded_->protein, *transformed_);
     scene_->ResetCamera();
     ACONNECT(scene_, &MoleculeScene::cameraPlaneLockChanged,
@@ -251,6 +256,12 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
                                 loaded_->protein.get(),
                                 transformed_,
                                 playback_, this);
+
+    // Camera input filter — installed AFTER the picker so Qt's filter
+    // chain runs THIS first. Double-click events fall through to the
+    // picker (which still owns the dbl-click → atomPicked path).
+    cameraInputFilter_ = new CameraInputFilter(vtkWidget_, scene_,
+                                                 scene_->cameraComposer(), this);
 
     // Atom Info dock — tabified on the right. Tracks the selection's
     // FOCUS atom (one atom's full per-frame pile). Starts empty; fills in on
@@ -513,18 +524,39 @@ void ReaderMainWindow::shutdown() {
 
     qCInfo(cWindow).noquote() << "shutdown entered";
 
-    // 1. Stop every timer owned by us or our children. The generic
+    // Per spec/viewport_pipeline_2026-05-30.md §4.4:
+    //
+    // 1. Stop the REST server SYNCHRONOUSLY. The /shutdown endpoint
+    //    fires from a request handler; the server needs to drain
+    //    before timers stop so a follow-up request can't trigger a
+    //    race with timer teardown.
+    if (restServer_) {
+        // RestServer doesn't expose stopListening(); the QHttpServer
+        // owned by it tears down when the RestServer is deleted, but
+        // deleteLater on shutdown is enough for this path because
+        // aboutToQuit drains the event loop afterwards. We do hold a
+        // direct pointer; do a synchronous delete here.
+        delete restServer_;
+        restServer_ = nullptr;
+    }
+
+    // 2. Stop every timer owned by us or our children. The generic
     //    findChildren sweep catches QtPlaybackController's timer too.
     const auto timers = findChildren<QTimer*>();
     for (auto* timer : timers) {
         if (timer->isActive()) timer->stop();
     }
 
-    // 2. Finalise VTK before Qt destroys the GL context. Without this,
-    //    vtkSmartPointer destructors downstream touch dead OpenGL
-    //    resources and crash.
-    if (renderWindow_) {
-        renderWindow_->Finalize();
+    // 3. Detach the render window from the widget BEFORE dropping our
+    //    smart pointer. setRenderWindow(nullptr) makes the context
+    //    current and calls Finalize on the old render window via the
+    //    adapter's destructor (QVTKRenderWindowAdapter.cxx:150-166).
+    //    The explicit renderWindow_->Finalize() that used to live here
+    //    is gone — doing it AFTER detaching the widget left the adapter
+    //    holding a destroyed window for the brief moment between the
+    //    two calls.
+    if (vtkWidget_) {
+        vtkWidget_->setRenderWindow(static_cast<vtkGenericOpenGLRenderWindow*>(nullptr));
     }
 
     qCInfo(cWindow).noquote() << "shutdown done";

@@ -1,5 +1,6 @@
 #include "RestServer.h"
 
+#include "CameraComposer.h"
 #include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
@@ -7,6 +8,7 @@
 
 #include "../diagnostics/ConnectionAuditor.h"
 #include "../diagnostics/ObjectCensus.h"
+#include "../diagnostics/StructuredLogger.h"
 #include "../diagnostics/ThreadGuard.h"
 #include "../io/QtProteinLoader.h"
 #include "../model/AtomSelection.h"
@@ -604,6 +606,240 @@ void RestServer::registerRoutes() {
             return errorResponse(QStringLiteral("scene not wired"), SC::ServiceUnavailable);
         scene_->clearCameraPlaneLock();
         return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- camera mode (typed CameraMode + OrientationPolicy) ------------
+    //
+    // GET /camera/mode → {"mode": "free|atom|bond|dihedral|plane|subset",
+    //                     "atoms": [...], "policy": "..."}
+    //
+    // POST /camera/mode {"mode": "...", "atoms": [...], "orientation":
+    //                    {"kind": "default|free|perp_bond|down_axis|perp_plane",
+    //                     "axis_atoms": [a,b]}}
+    // POST /camera/clear  — equivalent to setMode(Free, Default).
+    //
+    // Per spec/viewport_pipeline_2026-05-30.md §I (REST surface). The
+    // typed CameraMode replaces ad-hoc camera-lock endpoints; the
+    // existing /plane-lock/* endpoints continue to work as shims.
+    server_->route(QStringLiteral("/camera/mode"), Method::Get,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->cameraComposer())
+            return errorResponse(QStringLiteral("camera composer not wired"), SC::ServiceUnavailable);
+        const auto* composer = scene_->cameraComposer();
+        QJsonArray atoms;
+        for (std::size_t a : composer->mode().atoms)
+            atoms.append(static_cast<qint64>(a));
+        QJsonObject policy{
+            {"kind", QString::fromLatin1(NameFor(composer->policy().kind))},
+            {"axis_atoms", QJsonArray{
+                static_cast<qint64>(composer->policy().axisAtoms[0]),
+                static_cast<qint64>(composer->policy().axisAtoms[1]),
+            }},
+        };
+        return jsonResponse(QJsonObject{
+            {"mode", QString::fromLatin1(NameFor(composer->mode().kind))},
+            {"atoms", atoms},
+            {"orientation", policy},
+        });
+    });
+
+    server_->route(QStringLiteral("/camera/mode"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->cameraComposer())
+            return errorResponse(QStringLiteral("camera composer not wired"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("mode"))
+            return errorResponse(
+                QStringLiteral("body must be {\"mode\": str, ...}"),
+                SC::BadRequest);
+        const QString modeStr = body.value("mode").toString().toLower();
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+        const std::size_t atomCount = protein->atomCount();
+
+        auto readAtomIdx = [&](const QString& key) -> std::optional<std::size_t> {
+            if (!body.contains(key)) return std::nullopt;
+            const qint64 raw = body.value(key).toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= atomCount)
+                return std::nullopt;
+            return static_cast<std::size_t>(raw);
+        };
+        auto readAtomArray = [&]() -> std::optional<std::vector<std::size_t>> {
+            if (!body.value("atoms").isArray()) return std::nullopt;
+            const QJsonArray arr = body.value("atoms").toArray();
+            std::vector<std::size_t> atoms;
+            atoms.reserve(static_cast<std::size_t>(arr.size()));
+            for (const QJsonValue& v : arr) {
+                const qint64 raw = v.toInteger(-1);
+                if (raw < 0 || static_cast<std::size_t>(raw) >= atomCount)
+                    return std::nullopt;
+                atoms.push_back(static_cast<std::size_t>(raw));
+            }
+            return atoms;
+        };
+
+        CameraMode mode;
+        if (modeStr == QStringLiteral("free")) {
+            mode = FreeMode();
+        } else if (modeStr == QStringLiteral("atom")) {
+            const auto a = readAtomIdx(QStringLiteral("atom"));
+            if (!a)
+                return errorResponse(QStringLiteral("atom mode needs valid {\"atom\": int}"), SC::BadRequest);
+            mode = AtomMode(*a);
+        } else if (modeStr == QStringLiteral("bond")) {
+            const auto a = readAtomIdx(QStringLiteral("a"));
+            const auto b = readAtomIdx(QStringLiteral("b"));
+            if (!a || !b)
+                return errorResponse(QStringLiteral("bond mode needs {\"a\": int, \"b\": int}"), SC::BadRequest);
+            mode = BondMode(*a, *b);
+        } else if (modeStr == QStringLiteral("dihedral")) {
+            const auto a = readAtomIdx(QStringLiteral("a"));
+            const auto b = readAtomIdx(QStringLiteral("b"));
+            const auto c = readAtomIdx(QStringLiteral("c"));
+            const auto d = readAtomIdx(QStringLiteral("d"));
+            if (!a || !b || !c || !d)
+                return errorResponse(QStringLiteral("dihedral needs {\"a\": int, \"b\": int, \"c\": int, \"d\": int}"),
+                                     SC::BadRequest);
+            mode = DihedralMode(*a, *b, *c, *d);
+        } else if (modeStr == QStringLiteral("plane")) {
+            const auto a = readAtomIdx(QStringLiteral("a"));
+            const auto b = readAtomIdx(QStringLiteral("b"));
+            const auto c = readAtomIdx(QStringLiteral("c"));
+            if (!a || !b || !c)
+                return errorResponse(QStringLiteral("plane needs {\"a\": int, \"b\": int, \"c\": int}"),
+                                     SC::BadRequest);
+            mode = PlaneMode(*a, *b, *c);
+        } else if (modeStr == QStringLiteral("subset")) {
+            // Backbone-only shortcut mirrors the /transform endpoint.
+            const bool backboneOnly = body.contains("backbone_only")
+                                      && body.value("backbone_only").toBool();
+            std::vector<std::size_t> atoms;
+            if (backboneOnly) {
+                atoms = model::TransformedConformation::BackboneSubset(*protein);
+                if (atoms.size() < 3)
+                    return errorResponse(QStringLiteral("backbone subset has <3 atoms"),
+                                         SC::Conflict);
+            } else {
+                auto parsed = readAtomArray();
+                if (!parsed)
+                    return errorResponse(QStringLiteral("subset needs {\"atoms\": [...]} or backbone_only=true"),
+                                         SC::BadRequest);
+                atoms = std::move(*parsed);
+                if (atoms.size() < 3)
+                    return errorResponse(QStringLiteral("subset needs >=3 atoms"),
+                                         SC::BadRequest);
+            }
+            mode = SubsetMode(std::move(atoms));
+        } else {
+            return errorResponse(QStringLiteral("unknown mode: %1").arg(modeStr), SC::BadRequest);
+        }
+
+        OrientationPolicy policy = DefaultPolicy();
+        if (body.contains("orientation") && body.value("orientation").isObject()) {
+            const QJsonObject po = body.value("orientation").toObject();
+            const QString kindStr = po.value("kind").toString().toLower();
+            if (kindStr == QStringLiteral("default")) {
+                policy = DefaultPolicy();
+            } else if (kindStr == QStringLiteral("free")) {
+                policy = FreePolicy();
+            } else if (kindStr == QStringLiteral("perp_bond")
+                       || kindStr == QStringLiteral("perpendiculartobond")) {
+                policy = PerpToBondPolicy();
+            } else if (kindStr == QStringLiteral("perp_plane")
+                       || kindStr == QStringLiteral("perpendiculartoplane")) {
+                policy = PerpToPlanePolicy();
+            } else if (kindStr == QStringLiteral("down_axis")
+                       || kindStr == QStringLiteral("downaxis")) {
+                if (!po.value("axis_atoms").isArray() || po.value("axis_atoms").toArray().size() != 2)
+                    return errorResponse(QStringLiteral("down_axis needs axis_atoms: [a, b]"), SC::BadRequest);
+                const QJsonArray arr = po.value("axis_atoms").toArray();
+                const qint64 a0 = arr.at(0).toInteger(-1);
+                const qint64 a1 = arr.at(1).toInteger(-1);
+                if (a0 < 0 || a1 < 0 || static_cast<std::size_t>(a0) >= atomCount
+                    || static_cast<std::size_t>(a1) >= atomCount)
+                    return errorResponse(QStringLiteral("down_axis axis_atoms out of range"), SC::BadRequest);
+                policy = DownAxisPolicy(static_cast<std::size_t>(a0), static_cast<std::size_t>(a1));
+            } else {
+                return errorResponse(QStringLiteral("unknown orientation kind: %1").arg(kindStr), SC::BadRequest);
+            }
+        }
+
+        const std::size_t currentFrame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
+        scene_->cameraComposer()->setMode(std::move(mode), policy, currentFrame);
+        // One render to surface the new camera state on this tick.
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    server_->route(QStringLiteral("/camera/clear"), Method::Post,
+                   [this](const QHttpServerRequest&) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->cameraComposer())
+            return errorResponse(QStringLiteral("camera composer not wired"), SC::ServiceUnavailable);
+        const std::size_t currentFrame = playback_ ? static_cast<std::size_t>(playback_->currentFrame()) : 0;
+        scene_->cameraComposer()->setMode(FreeMode(), DefaultPolicy(), currentFrame);
+        scene_->requestRender(MoleculeScene::RenderSource::Rest);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- log mask (bitmask gate for StructuredLogger) ------------------
+    //
+    // GET /log/mask → {"mask": int, "categories": ["FRAME", "CAMERA", ...]}
+    // POST /log/mask {"mask": int} OR {"categories": [...]}
+    //
+    // Per spec/viewport_pipeline_2026-05-30.md §H + implementation prompt
+    // §3 (bitmask logging instead of UDP throttling). RENDER (0x01) is
+    // off by default; flip it on when debugging the render scheduler.
+    server_->route(QStringLiteral("/log/mask"), Method::Get,
+                   [](const QHttpServerRequest&) {
+        const std::uint32_t mask = diagnostics::StructuredLogger::CategoryMask();
+        QJsonArray cats;
+        for (const QString& n : diagnostics::StructuredLogger::SymbolicNamesFromMask(mask))
+            cats.append(n);
+        return jsonResponse(QJsonObject{
+            {"mask", static_cast<qint64>(mask)},
+            {"categories", cats},
+        });
+    });
+
+    server_->route(QStringLiteral("/log/mask"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok)
+            return errorResponse(
+                QStringLiteral("body must be {\"mask\": int} or {\"categories\": [...]}"),
+                SC::BadRequest);
+        std::uint32_t mask = diagnostics::StructuredLogger::CategoryMask();
+        if (body.contains("mask")) {
+            const qint64 raw = body.value("mask").toInteger(-1);
+            if (raw < 0)
+                return errorResponse(QStringLiteral("mask must be a non-negative integer"),
+                                     SC::BadRequest);
+            mask = static_cast<std::uint32_t>(raw);
+        } else if (body.value("categories").isArray()) {
+            QStringList names;
+            for (const QJsonValue& v : body.value("categories").toArray())
+                names.append(v.toString());
+            mask = diagnostics::StructuredLogger::MaskFromSymbolicNames(names);
+        } else {
+            return errorResponse(
+                QStringLiteral("body must be {\"mask\": int} or {\"categories\": [...]}"),
+                SC::BadRequest);
+        }
+        diagnostics::StructuredLogger::SetCategoryMask(mask);
+        QJsonArray cats;
+        for (const QString& n : diagnostics::StructuredLogger::SymbolicNamesFromMask(mask))
+            cats.append(n);
+        return jsonResponse(QJsonObject{
+            {"mask", static_cast<qint64>(mask)},
+            {"categories", cats},
+        });
     });
 
     // ---- atom positions (per-frame, for tests that need plane math) -----
