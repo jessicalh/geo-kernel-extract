@@ -71,8 +71,21 @@ public slots:
     // Show / hide the whole overlay (a future "Measure" toolbar toggle).
     void setVisible(bool on);
 
+    // Instrument mode — a marker preset for the harness work. When on,
+    // sphere colours switch to a CPK-distinct fixed table (magenta, spring
+    // green, deep pink, vivid violet), opacity goes to 1.0, and radius to
+    // 1.5 Å. Designed so a Python harness can locate the marker via
+    // connected-component blob analysis on a snapshot PNG: the colours are
+    // outside every CPK element colour, so a hue threshold finds the marker
+    // without confusing it with the molecule. When off, restore Okabe-Ito
+    // colours + the default opacity/radius. No Render — the caller (REST
+    // handler today) issues scene_->requestRender() after, matching the
+    // setVisible() flow at ReaderMainWindow.cpp:591.
+    void setInstrumentMode(bool on);
+
 private:
     void applyFrame(int t);
+    void applyInstrumentModeToActors();
 
     vtkSmartPointer<vtkRenderer>                  renderer_;
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> renderWindow_;
@@ -91,8 +104,9 @@ private:
     const model::QtProtein*         protein_ = nullptr;
     QPointer<model::Conformation>   conformation_;
     QPointer<model::AtomSelection>  selection_;
-    bool visible_   = true;
-    int  lastFrame_ = 0;
+    bool visible_        = true;
+    int  lastFrame_      = 0;
+    bool instrumentMode_ = false;
 };
 
 }  // namespace h5reader::app

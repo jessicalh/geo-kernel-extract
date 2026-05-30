@@ -26,6 +26,19 @@ constexpr double kOpacity       = 0.50;
 constexpr double kLineRgb[3]  = {0.92, 0.92, 0.92};
 constexpr double kLineWidth   = 2.5;
 constexpr double kLineOpacity = 0.90;
+
+// Instrument mode — CPK-distinct marker palette. Chosen 2026-05-30 (memory
+// VIEWPORT_OBSERVATIONS_2026-05-30.md §5b): hues that fall outside every CPK
+// element colour so a hue threshold isolates the marker against any rendered
+// scene. RGB in 0..1.
+constexpr double kInstrumentRgb[4][3] = {
+    {1.000, 0.000, 1.000},  // slot 0 — pure magenta       (#FF00FF)
+    {0.000, 1.000, 0.498},  // slot 1 — spring green       (#00FF7F)
+    {1.000, 0.078, 0.576},  // slot 2 — deep pink          (#FF1493)
+    {0.616, 0.000, 1.000},  // slot 3 — vivid violet       (#9D00FF)
+};
+constexpr double kInstrumentOpacity = 1.0;
+constexpr double kInstrumentRadiusA = 1.5;
 }  // namespace
 
 MeasurementOverlay::MeasurementOverlay(
@@ -132,6 +145,43 @@ void MeasurementOverlay::setVisible(bool on) {
     ASSERT_THREAD(this);
     visible_ = on;
     applyFrame(lastFrame_);
+}
+
+void MeasurementOverlay::setInstrumentMode(bool on) {
+    ASSERT_THREAD(this);
+    if (instrumentMode_ == on)
+        return;
+    instrumentMode_ = on;
+    applyInstrumentModeToActors();
+    // Reposition the visible spheres so the new radius/colour shows at the
+    // current frame without waiting for the next setFrame. The caller (REST
+    // handler) follows with scene_->requestRender() to flush, matching the
+    // setVisible() flow at ReaderMainWindow.cpp:591.
+    applyFrame(lastFrame_);
+    qCInfo(cMeas).noquote() << "instrument mode" << (on ? "ON" : "OFF");
+}
+
+void MeasurementOverlay::applyInstrumentModeToActors() {
+    // Walks the four pre-built sphere actors and switches their colour,
+    // opacity, and radius wholesale. Reversible: when off, restore the
+    // build-time Okabe-Ito palette + kSphereRadiusA + kOpacity (hard-coded
+    // here rather than refactoring the anonymous-namespace constants — the
+    // refactor is later viewport-overlay-layer work).
+    for (std::size_t s = 0; s < kMaxSpheres; ++s) {
+        if (!spheres_[s] || !actors_[s])
+            continue;
+        if (instrumentMode_) {
+            actors_[s]->GetProperty()->SetColor(
+                kInstrumentRgb[s][0], kInstrumentRgb[s][1], kInstrumentRgb[s][2]);
+            actors_[s]->GetProperty()->SetOpacity(kInstrumentOpacity);
+            spheres_[s]->SetRadius(kInstrumentRadiusA);
+        } else {
+            const std::array<double, 3> c = model::AtomSelection::SlotColorRgb(s);
+            actors_[s]->GetProperty()->SetColor(c[0], c[1], c[2]);
+            actors_[s]->GetProperty()->SetOpacity(kOpacity);
+            spheres_[s]->SetRadius(kSphereRadiusA);
+        }
+    }
 }
 
 void MeasurementOverlay::applyFrame(int t) {

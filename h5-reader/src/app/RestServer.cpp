@@ -1,5 +1,6 @@
 #include "RestServer.h"
 
+#include "MeasurementOverlay.h"
 #include "MoleculeScene.h"
 #include "QtPlaybackController.h"
 
@@ -124,14 +125,31 @@ QJsonObject anchorToJson(const model::SignalAnchor& anchor) {
 }
 
 // Capture the current VTK render window into a PNG byte buffer.
-QByteArray captureScenePng(MoleculeScene* scene) {
+//
+// forceRender (default true, back-compat with prior calls):
+//   true  → leave vtkWindowToImageFilter's default ShouldRerenderOn — forces
+//           a fresh Render() before reading pixels, so the snapshot reflects
+//           the live scene state.
+//   false → call ShouldRerenderOff() before Update() — read whatever pixels
+//           are currently in the framebuffer. The right mode for the
+//           paint-cycle-inversion experiment (VIEWPORT_OBSERVATIONS §5b);
+//           lets the harness distinguish "the synchronous Render reached
+//           the back buffer" from "we read the post-render FBO".
+//
+// Thread: VTK render/read must happen on the GUI thread. ASSERT_THREAD against
+// the scene's affinity catches a future regression where a route handler
+// might be routed off the GUI thread by QHttpServer.
+QByteArray captureScenePng(MoleculeScene* scene, bool forceRender = true) {
     if (!scene || !scene->Renderer() || !scene->Renderer()->GetRenderWindow())
         return {};
+    ASSERT_THREAD(scene);
 
     auto w2i = vtkSmartPointer<vtkWindowToImageFilter>::New();
     w2i->SetInput(scene->Renderer()->GetRenderWindow());
     w2i->SetInputBufferTypeToRGB();
     w2i->ReadFrontBufferOff();
+    if (!forceRender)
+        w2i->ShouldRerenderOff();
     w2i->Update();
 
     auto writer = vtkSmartPointer<vtkPNGWriter>::New();
@@ -314,12 +332,78 @@ void RestServer::registerRoutes() {
         return QHttpServerResponse(SC::NoContent);
     });
 
+    server_->route(QStringLiteral("/selection/atoms"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!selection_)
+            return errorResponse(QStringLiteral("selection not wired"), SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.value("atoms").isArray())
+            return errorResponse(QStringLiteral("body must be {\"atoms\": [int, ...]}"),
+                                 SC::BadRequest);
+        const QJsonArray arr = body.value("atoms").toArray();
+        if (arr.size() > static_cast<int>(model::AtomSelection::kMaxAtoms))
+            return errorResponse(
+                QStringLiteral("atoms array exceeds kMaxAtoms=%1")
+                    .arg(model::AtomSelection::kMaxAtoms),
+                SC::BadRequest);
+        // Primary validation: bounds-check every index against the loaded
+        // protein up front so a partial bulkSet doesn't silently drop
+        // entries. Mirrors the existing /plane-lock/enable pattern.
+        const auto* protein = loaded_ ? loaded_->protein.get() : nullptr;
+        if (!protein)
+            return errorResponse(QStringLiteral("no protein loaded"), SC::ServiceUnavailable);
+        std::vector<std::size_t> atoms;
+        atoms.reserve(static_cast<std::size_t>(arr.size()));
+        for (const QJsonValue& v : arr) {
+            const qint64 raw = v.toInteger(-1);
+            if (raw < 0 || static_cast<std::size_t>(raw) >= protein->atomCount())
+                return errorResponse(
+                    QStringLiteral("atom index out of range: %1 (atomCount=%2)")
+                        .arg(raw).arg(protein->atomCount()),
+                    SC::BadRequest);
+            atoms.push_back(static_cast<std::size_t>(raw));
+        }
+        selection_->bulkSet(atoms);
+        return QHttpServerResponse(SC::NoContent);
+    });
+
     server_->route(QStringLiteral("/selection/clear"), Method::Post,
                    [this](const QHttpServerRequest&) {
         ASSERT_THREAD(this);
         if (!selection_)
             return errorResponse(QStringLiteral("selection not wired"), SC::ServiceUnavailable);
         selection_->clear();
+        return QHttpServerResponse(SC::NoContent);
+    });
+
+    // ---- selection / instrument preset (harness marker mode) -----------
+    //
+    // Switches the MeasurementOverlay's 4 sphere colours to a CPK-distinct
+    // table (magenta / spring green / deep pink / vivid violet) at opacity
+    // 1.0 and radius 1.5 Å. Designed so a Python harness can locate the
+    // marker via connected-component blob analysis on a snapshot PNG: the
+    // colours are outside every CPK element colour so a hue threshold isolates
+    // the marker against any rendered scene. Reversible: {"enabled": false}
+    // restores the Okabe-Ito palette + default opacity/radius.
+    server_->route(QStringLiteral("/selection/instrument"), Method::Post,
+                   [this](const QHttpServerRequest& req) {
+        ASSERT_THREAD(this);
+        if (!scene_ || !scene_->measurementOverlay())
+            return errorResponse(QStringLiteral("measurement overlay not wired"),
+                                 SC::ServiceUnavailable);
+        bool ok = false;
+        const QJsonObject body = parseJsonBody(req, &ok);
+        if (!ok || !body.contains("enabled") || !body.value("enabled").isBool())
+            return errorResponse(QStringLiteral("body must be {\"enabled\": bool}"),
+                                 SC::BadRequest);
+        const bool on = body.value("enabled").toBool();
+        scene_->measurementOverlay()->setInstrumentMode(on);
+        // The overlay does not Render itself (overlay contract,
+        // MoleculeScene.h §1-5); we flush via the scene the same way the
+        // ribbon/rings visibility toggles do at ReaderMainWindow.cpp:591.
+        scene_->requestRender();
         return QHttpServerResponse(SC::NoContent);
     });
 
@@ -477,11 +561,19 @@ void RestServer::registerRoutes() {
         const QString target = (ok && body.contains("target"))
                                    ? body.value("target").toString()
                                    : QStringLiteral("scene");
+        // force_render: default true (back-compat). false skips the
+        // vtkWindowToImageFilter::ShouldRerender step so the snapshot reads
+        // whatever pixels are currently in the framebuffer — the harness
+        // mode for the paint-cycle-inversion experiment (VIEWPORT
+        // OBSERVATIONS §5b). Only meaningful for target="scene".
+        const bool forceRender = (ok && body.contains("force_render") && body.value("force_render").isBool())
+                                     ? body.value("force_render").toBool()
+                                     : true;
         QByteArray png;
         if (target == QStringLiteral("window")) {
             png = captureWindowPng(mainWindow_.data());
         } else if (target == QStringLiteral("scene")) {
-            png = captureScenePng(scene_.data());
+            png = captureScenePng(scene_.data(), forceRender);
         } else {
             return errorResponse(QStringLiteral("target must be \"scene\" or \"window\""), SC::BadRequest);
         }

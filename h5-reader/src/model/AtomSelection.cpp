@@ -215,6 +215,53 @@ void AtomSelection::clear() {
     emit cleared();
 }
 
+void AtomSelection::bulkSet(const std::vector<std::size_t>& atoms) {
+    ASSERT_THREAD(this);
+
+    // Validate against the protein's atomCount and the geometric cap; drop
+    // out-of-range entries loudly rather than silently corrupting the set.
+    // The REST handler validates first; this is the belt+suspenders pass for
+    // any future caller.
+    std::vector<std::size_t> kept;
+    kept.reserve(std::min(atoms.size(), kMaxAtoms));
+    for (std::size_t atomIdx : atoms) {
+        if (kept.size() >= kMaxAtoms) {
+            qCWarning(cSel).noquote()
+                << "bulkSet truncated to" << kMaxAtoms << "atoms; ignored" << atomIdx;
+            break;
+        }
+        if (protein_ && atomIdx >= protein_->atomCount()) {
+            qCWarning(cSel).noquote()
+                << "bulkSet out of range:" << atomIdx
+                << ">= atomCount" << protein_->atomCount() << "— dropped";
+            continue;
+        }
+        kept.push_back(atomIdx);
+    }
+
+    // Reset model: the whole membership is being replaced wholesale. Per the
+    // QAbstractItemModel contract a beginResetModel/endResetModel pair is the
+    // right signal for full-content replacement and is the same shape
+    // applyPick() uses for the plain-pick branch (line 149).
+    beginResetModel();
+    atoms_ = std::move(kept);
+    if (atoms_.empty())
+        focus_.reset();
+    else
+        focus_ = atoms_.back();
+    endResetModel();
+
+    qCInfo(cSel).noquote()
+        << "bulkSet | n=" << atoms_.size()
+        << "| focus=" << (focus_.has_value() ? QString::number(*focus_) : QStringLiteral("none"));
+
+    emit changed();
+    if (atoms_.empty())
+        emit cleared();
+    else
+        emit focusChanged(*focus_);
+}
+
 // ----- Helpers --------------------------------------------------------------
 
 QString AtomSelection::rowLabel(std::size_t slot) const {

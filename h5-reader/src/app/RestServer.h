@@ -20,13 +20,16 @@
 //   POST   /frame/set                    → 204 (body: {"frame": int})
 //   GET    /selection                    → {"atoms": [...], "focus": int|null, "count": int}
 //   POST   /selection/pick               → 204 (body: {"atom": int, "modifiers": "none"|"shift"})
+//   POST   /selection/atoms              → 204 (body: {"atoms": [int, ...]})  bulk replace
 //   POST   /selection/clear              → 204
+//   POST   /selection/instrument         → 204 (body: {"enabled": bool})       marker preset
 //   GET    /plane-lock                   → {"active": bool, "atoms": [...]|null}
 //   POST   /plane-lock/enable            → 204 or 409 (body: {"atoms": [a,b,c]})
 //   POST   /plane-lock/disable           → 204
 //   GET    /scene/camera                 → {"focal":[x,y,z], "position":[x,y,z], "view_up":[x,y,z], "direction":[x,y,z]}
 //   GET    /dashboard/signals            → [{"id": uuid, "descriptor_id": ..., "modes": [...], "label": ...}, ...]
-//   POST   /screenshot                   → image/png (body: {"target":"scene"|"window"})
+//   POST   /screenshot                   → image/png (body: {"target":"scene"|"window",
+//                                                            "force_render": bool})
 
 #pragma once
 

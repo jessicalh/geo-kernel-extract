@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""Viewport probe — establish the marker-drift floor under plane lock
+and the bug magnitude without it.
+
+Drives experiments against a running reader started with
+``--rest <port>``. The reader is launched separately (e.g. by
+``HARNESS_BASELINE_2026-05-30.md``'s recipe); this script only talks
+to the REST surface.
+
+Strategy (per notes/VIEWPORT_OBSERVATIONS_2026-05-30.md §5b):
+
+* Pixel-perfect snapshot comparison is doomed for our renderer (FXAA,
+  imposter shaders, GPU driver edge noise). We use centroid-of-blob
+  analysis instead: ``POST /selection/instrument`` switches the
+  ``MeasurementOverlay`` spheres to a CPK-distinct fixed palette
+  (magenta / spring green / deep pink / vivid violet) at opacity 1.0
+  and radius 1.5 Å. The marker hue falls outside every CPK element
+  colour, so a hue threshold isolates the marker against the rendered
+  molecule. ``scipy.ndimage.label`` extracts the largest connected
+  component and ``scipy.ndimage.center_of_mass`` returns the sub-pixel
+  centroid.
+
+* Drift metric: per-frame centroid distance from the frame-0 centroid.
+  Mean, std, max, fraction-within-5px, fraction-within-10px.
+
+* Two experiments per run:
+
+    1. **with_lock** — plane lock enabled on the 3 atoms. The marker
+       (slot 0, magenta) tracks atom 0 of the selection. Drift here is
+       the atom-vibration floor: how much the locked-camera-stable
+       view of a thermal-vibrating atom moves on screen.
+
+    2. **no_lock** — plane lock disabled, same 3 atoms still in the
+       selection. Drift here is floor + the centroid-delta camera bug.
+       If (mean-no-lock) >> (mean-with-lock), the bug is measurable
+       and the next session's refactor has a baseline to beat.
+
+Outputs:
+
+* Per-frame PNG dumps to ``<out-dir>/with_lock/`` and
+  ``<out-dir>/no_lock/`` for visual review.
+* Per-frame CSV (frame, centroid_x, centroid_y, area, hash) to
+  ``<out-dir>/with_lock.csv`` and ``<out-dir>/no_lock.csv``.
+* Summary JSON to stdout.
+
+Usage:
+
+    python tests/scripts/viewport_probe.py \\
+        --base http://127.0.0.1:9988 \\
+        --atoms 12 13 14 \\
+        --frames 200 \\
+        --out-dir /tmp/viewport_probe_run1
+
+The reader binary is NOT launched by this script; start it separately
+with ``./h5reader --rest <port> <fixture-dir>``. The script verifies
+``/health`` before each experiment.
+
+Marker hue thresholds (slot 0, magenta) — derived empirically from
+a baseline snapshot on the 1P9J fixture with FXAA on:
+
+    H in [285°, 315°], S >= 0.6, V >= 0.6
+
+Adjust if the GPU/driver shifts the rendered hue (e.g. ANGLE on
+Windows desaturates differently from Mesa llvmpipe).
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import hashlib
+import io
+import json
+import sys
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Iterable
+
+import numpy as np
+import requests
+from PIL import Image
+from scipy import ndimage
+
+
+# ----------------------------------------------------------------------------
+# Marker hue presets — one entry per AtomSelection slot. The instrument-mode
+# palette is hard-coded in MeasurementOverlay.cpp (kInstrumentRgb); keep these
+# in sync with that table or the harness will not find the blob.
+# ----------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class MarkerHue:
+    name: str
+    hue_lo_deg: float
+    hue_hi_deg: float
+    sat_min: float = 0.6
+    val_min: float = 0.6
+
+
+MARKER_HUES: dict[int, MarkerHue] = {
+    0: MarkerHue("magenta",      hue_lo_deg=285.0, hue_hi_deg=315.0),
+    1: MarkerHue("spring green", hue_lo_deg=130.0, hue_hi_deg=170.0),
+    2: MarkerHue("deep pink",    hue_lo_deg=320.0, hue_hi_deg=350.0),
+    3: MarkerHue("vivid violet", hue_lo_deg=270.0, hue_hi_deg=285.0),
+}
+
+
+# ----------------------------------------------------------------------------
+# REST helpers — thin wrappers, no retry. The reader is a long-running test
+# fixture; if a call times out something is wrong and we want a hard failure.
+# ----------------------------------------------------------------------------
+
+def _post(base: str, path: str, body: dict | None = None, timeout: float = 10.0) -> requests.Response:
+    r = requests.post(f"{base}{path}", json=body or {}, timeout=timeout)
+    r.raise_for_status()
+    return r
+
+
+def _get(base: str, path: str, timeout: float = 5.0) -> requests.Response:
+    r = requests.get(f"{base}{path}", timeout=timeout)
+    r.raise_for_status()
+    return r
+
+
+def health_check(base: str) -> None:
+    r = _get(base, "/health")
+    j = r.json()
+    if not j.get("ok"):
+        raise RuntimeError(f"reader health check failed: {j}")
+
+
+def atom_count(base: str) -> int:
+    return int(_get(base, "/protein/atoms").json()["count"])
+
+
+def set_atoms(base: str, atoms: Iterable[int]) -> None:
+    _post(base, "/selection/atoms", {"atoms": list(atoms)})
+
+
+def clear_selection(base: str) -> None:
+    _post(base, "/selection/clear")
+
+
+def set_instrument(base: str, enabled: bool) -> None:
+    _post(base, "/selection/instrument", {"enabled": enabled})
+
+
+def enable_plane_lock(base: str, atoms: Iterable[int]) -> None:
+    _post(base, "/plane-lock/enable", {"atoms": list(atoms)})
+
+
+def disable_plane_lock(base: str) -> None:
+    _post(base, "/plane-lock/disable")
+
+
+def set_frame(base: str, frame: int) -> None:
+    _post(base, "/frame/set", {"frame": int(frame)})
+
+
+def frame_count(base: str) -> int:
+    return int(_get(base, "/frame/current").json()["count"])
+
+
+def screenshot(base: str, force_render: bool = True) -> bytes:
+    r = requests.post(
+        f"{base}/screenshot",
+        json={"target": "scene", "force_render": bool(force_render)},
+        timeout=15.0,
+    )
+    r.raise_for_status()
+    return r.content
+
+
+# ----------------------------------------------------------------------------
+# Blob detection — RGB → HSV → hue/sat/val threshold → largest connected
+# component → sub-pixel centroid via scipy.ndimage.center_of_mass.
+# ----------------------------------------------------------------------------
+
+def _rgb_to_hsv(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorised RGB→HSV, RGB in [0,1]. Returns (H deg, S, V) each in
+    the same (H, W) shape as the input's first two axes."""
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    maxc = np.maximum(np.maximum(r, g), b)
+    minc = np.minimum(np.minimum(r, g), b)
+    v = maxc
+    delta = maxc - minc
+    s = np.where(maxc > 0, delta / np.where(maxc == 0, 1.0, maxc), 0.0)
+    # avoid div-by-zero on perfectly grey pixels by guarding delta in the
+    # denominator; the np.select branch already masks those out.
+    safe_delta = np.where(delta == 0, 1.0, delta)
+    rc = (maxc - r) / safe_delta
+    gc = (maxc - g) / safe_delta
+    bc = (maxc - b) / safe_delta
+    h = np.select(
+        [maxc == r, maxc == g, maxc == b],
+        [bc - gc, 2.0 + rc - bc, 4.0 + gc - rc],
+        default=0.0,
+    )
+    h = (h / 6.0) % 1.0
+    return h * 360.0, s, v
+
+
+def find_marker_centroid(
+    png_bytes: bytes,
+    hue: MarkerHue,
+    min_area_px: int = 5,
+) -> tuple[float, float, int] | None:
+    """Returns (x, y, area_pixels) of the largest matching blob, or None.
+
+    Hue mask handles wrap-around: ``hue_hi_deg < hue_lo_deg`` is treated
+    as ``[lo, 360) ∪ [0, hi]``.
+
+    Sub-pixel accurate (``center_of_mass`` returns floats). Y-axis is
+    image-space (top-down); convert to GL-style if needed downstream.
+    """
+    img = np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB"),
+                     dtype=np.float32) / 255.0
+    h_deg, s, v = _rgb_to_hsv(img)
+    if hue.hue_hi_deg < hue.hue_lo_deg:
+        hue_mask = (h_deg >= hue.hue_lo_deg) | (h_deg <= hue.hue_hi_deg)
+    else:
+        hue_mask = (h_deg >= hue.hue_lo_deg) & (h_deg <= hue.hue_hi_deg)
+    mask = hue_mask & (s >= hue.sat_min) & (v >= hue.val_min)
+    if not mask.any():
+        return None
+    labels, n = ndimage.label(mask)
+    if n == 0:
+        return None
+    # Largest component
+    sizes = ndimage.sum(mask, labels, index=range(1, n + 1)).astype(np.int64)
+    largest = int(np.argmax(sizes)) + 1
+    area = int(sizes[largest - 1])
+    if area < min_area_px:
+        return None
+    cy, cx = ndimage.center_of_mass(mask, labels, largest)
+    return float(cx), float(cy), area
+
+
+# ----------------------------------------------------------------------------
+# Experiment driver — sweeps frames, captures, finds marker, accumulates
+# per-frame records. PNG dumps are kept for visual review.
+# ----------------------------------------------------------------------------
+
+@dataclass
+class FrameRecord:
+    frame: int
+    centroid_x: float | None
+    centroid_y: float | None
+    area_px: int | None
+    png_sha1: str
+
+
+def _png_sha1(b: bytes) -> str:
+    return hashlib.sha1(b).hexdigest()[:12]
+
+
+def run_drift_experiment(
+    base: str,
+    atoms: list[int],
+    *,
+    plane_lock: bool,
+    frames: list[int],
+    hue: MarkerHue,
+    out_dir: Path,
+    keep_pngs: bool = True,
+) -> list[FrameRecord]:
+    """Configure the reader for the experiment, sweep frames, return
+    per-frame records.
+
+    Setup order (matters):
+      1. clear selection
+      2. bulk-set the 3 atoms
+      3. instrument mode ON (so the marker IS magenta, not Okabe-Ito orange)
+      4. plane-lock ON or OFF per the experiment
+      5. for each frame: set_frame → screenshot → blob → record
+
+    The instrument-mode toggle is applied after bulkSet because the
+    overlay applies CPK-distinct colours to whichever spheres are visible
+    at that moment; doing it in this order matches the manual workflow a
+    user would follow (pick atoms, then enable instrument mode).
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup
+    clear_selection(base)
+    disable_plane_lock(base)  # known-clean start
+    set_atoms(base, atoms)
+    set_instrument(base, True)
+    if plane_lock:
+        enable_plane_lock(base, atoms)
+    else:
+        disable_plane_lock(base)
+
+    records: list[FrameRecord] = []
+    for f in frames:
+        set_frame(base, f)
+        png = screenshot(base, force_render=True)
+        result = find_marker_centroid(png, hue)
+        sha = _png_sha1(png)
+        if result is None:
+            records.append(FrameRecord(
+                frame=f, centroid_x=None, centroid_y=None,
+                area_px=None, png_sha1=sha,
+            ))
+        else:
+            cx, cy, area = result
+            records.append(FrameRecord(
+                frame=f, centroid_x=cx, centroid_y=cy,
+                area_px=area, png_sha1=sha,
+            ))
+        if keep_pngs:
+            (out_dir / f"frame_{f:05d}.png").write_bytes(png)
+
+    return records
+
+
+# ----------------------------------------------------------------------------
+# Summary statistics — drift relative to frame-0 centroid.
+# ----------------------------------------------------------------------------
+
+def summarize(records: list[FrameRecord]) -> dict:
+    n_total = len(records)
+    found = [r for r in records if r.centroid_x is not None]
+    n_found = len(found)
+    out: dict = {
+        "n_total": n_total,
+        "n_marker_found": n_found,
+        "n_marker_missing": n_total - n_found,
+    }
+    if n_found < 2:
+        # Need at least two valid points to compute a drift.
+        out["marker_drift"] = None
+        out["marker_area"] = None
+        return out
+
+    # Reference centroid = the first valid record's centroid (the "zero"
+    # against which we measure drift). All other valid records get a
+    # pixel-distance reading relative to that.
+    cx0 = found[0].centroid_x
+    cy0 = found[0].centroid_y
+    drifts = np.array([
+        float(np.hypot(r.centroid_x - cx0, r.centroid_y - cy0))
+        for r in found
+    ])
+    areas = np.array([r.area_px for r in found], dtype=np.float64)
+
+    out["reference_frame"] = found[0].frame
+    out["reference_centroid_px"] = {"x": cx0, "y": cy0}
+    out["marker_drift"] = {
+        "mean_px":     float(drifts.mean()),
+        "std_px":      float(drifts.std(ddof=0)),
+        "max_px":      float(drifts.max()),
+        "median_px":   float(np.median(drifts)),
+        "p95_px":      float(np.percentile(drifts, 95)),
+        "fraction_within_2px":  float((drifts <= 2.0).mean()),
+        "fraction_within_5px":  float((drifts <= 5.0).mean()),
+        "fraction_within_10px": float((drifts <= 10.0).mean()),
+    }
+    out["marker_area"] = {
+        "mean_px": float(areas.mean()),
+        "std_px":  float(areas.std(ddof=0)),
+        "min_px":  int(areas.min()),
+        "max_px":  int(areas.max()),
+    }
+    return out
+
+
+def write_csv(records: list[FrameRecord], path: Path) -> None:
+    with path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["frame", "centroid_x", "centroid_y", "area_px", "png_sha1"])
+        for r in records:
+            w.writerow([
+                r.frame,
+                "" if r.centroid_x is None else f"{r.centroid_x:.4f}",
+                "" if r.centroid_y is None else f"{r.centroid_y:.4f}",
+                "" if r.area_px    is None else r.area_px,
+                r.png_sha1,
+            ])
+
+
+# ----------------------------------------------------------------------------
+# Entry point
+# ----------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base", default="http://127.0.0.1:9988",
+                        help="REST base URL (default: %(default)s)")
+    parser.add_argument("--atoms", type=int, nargs=3, required=True,
+                        help="three atom indices defining the plane")
+    parser.add_argument("--frames", type=int, default=200,
+                        help="number of frames to sweep (default: %(default)s)")
+    parser.add_argument("--frame-stride", type=int, default=1,
+                        help="frame stride; the script samples 0, S, 2S, ... up to "
+                             "--frames frames (default: %(default)s)")
+    parser.add_argument("--slot", type=int, default=0, choices=sorted(MARKER_HUES),
+                        help="AtomSelection slot whose marker to track (default: 0)")
+    parser.add_argument("--out-dir", type=Path, required=True,
+                        help="directory for PNG dumps and CSVs")
+    parser.add_argument("--no-pngs", action="store_true",
+                        help="don't save per-frame PNGs (CSVs + summary only)")
+    args = parser.parse_args()
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    hue = MARKER_HUES[args.slot]
+
+    health_check(args.base)
+
+    n_atoms = atom_count(args.base)
+    for a in args.atoms:
+        if a < 0 or a >= n_atoms:
+            print(f"atom {a} out of range; protein has {n_atoms} atoms",
+                  file=sys.stderr)
+            return 2
+
+    n_frames_avail = frame_count(args.base)
+    sampled = list(range(0, n_frames_avail, args.frame_stride))[:args.frames]
+    if len(sampled) < 2:
+        print(f"not enough frames to compute drift (sampled {len(sampled)})",
+              file=sys.stderr)
+        return 2
+
+    t0 = time.monotonic()
+    floor = run_drift_experiment(
+        args.base, args.atoms,
+        plane_lock=True, frames=sampled, hue=hue,
+        out_dir=args.out_dir / "with_lock",
+        keep_pngs=not args.no_pngs,
+    )
+    write_csv(floor, args.out_dir / "with_lock.csv")
+    t1 = time.monotonic()
+
+    no_lock = run_drift_experiment(
+        args.base, args.atoms,
+        plane_lock=False, frames=sampled, hue=hue,
+        out_dir=args.out_dir / "no_lock",
+        keep_pngs=not args.no_pngs,
+    )
+    write_csv(no_lock, args.out_dir / "no_lock.csv")
+    t2 = time.monotonic()
+
+    # Restore the reader to a clean state for any follow-up runs.
+    set_instrument(args.base, False)
+    disable_plane_lock(args.base)
+    clear_selection(args.base)
+
+    summary = {
+        "atoms": list(args.atoms),
+        "slot_tracked": args.slot,
+        "marker": asdict(hue),
+        "frames_sampled": len(sampled),
+        "frame_stride": args.frame_stride,
+        "frames_available": n_frames_avail,
+        "atoms_total": n_atoms,
+        "with_plane_lock": summarize(floor),
+        "without_plane_lock": summarize(no_lock),
+        "timing_s": {
+            "with_lock": round(t1 - t0, 3),
+            "no_lock":   round(t2 - t1, 3),
+        },
+    }
+    print(json.dumps(summary, indent=2))
+
+    summary_path = args.out_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
