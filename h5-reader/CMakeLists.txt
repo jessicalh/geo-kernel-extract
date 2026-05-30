@@ -141,6 +141,10 @@ qt_add_executable(h5reader
     src/io/FrameNpyLoader.cpp
     src/io/OrcaShieldingParser.h
     src/io/OrcaShieldingParser.cpp
+    src/io/DftShieldingLoader.h
+    src/io/DftShieldingLoader.cpp
+    src/io/TrajectoryFrameMap.h
+    src/io/TrajectoryFrameMap.cpp
 
     # App layer — window, playback, scene, overlays.
     src/app/QtPlaybackController.h
@@ -349,6 +353,8 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
         src/model/DftShieldingStore.cpp
         src/model/SphericalDecomposition.h
         src/model/SphericalDecomposition.cpp
+        src/io/DftShieldingLoader.h
+        src/io/DftShieldingLoader.cpp
         src/model/QtProtein.h
         src/model/QtProtein.cpp
         src/model/QtRing.h
@@ -381,6 +387,51 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     vtk_module_autoinit(TARGETS h5reader_app_tests MODULES ${VTK_LIBRARIES})
     h5reader_apply_platform_target_settings(h5reader_app_tests)
     add_test(NAME h5reader_app_tests COMMAND h5reader_app_tests)
+
+    qt_add_executable(h5reader_dft_shielding_loader_tests
+        tests/dft_shielding_loader_tests.cpp
+        src/io/DftShieldingLoader.h
+        src/io/DftShieldingLoader.cpp
+        src/io/OrcaShieldingParser.h
+        src/io/OrcaShieldingParser.cpp
+        src/model/DftShielding.h
+        src/model/SphericalDecomposition.h
+        src/model/SphericalDecomposition.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_dft_shielding_loader_tests PRIVATE src)
+    target_link_libraries(h5reader_dft_shielding_loader_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+    )
+    h5reader_apply_platform_target_settings(h5reader_dft_shielding_loader_tests)
+    add_test(NAME h5reader_dft_shielding_loader_tests COMMAND h5reader_dft_shielding_loader_tests)
+
+    qt_add_executable(h5reader_trajectory_frame_map_tests
+        tests/trajectory_frame_map_tests.cpp
+        src/io/TrajectoryFrameMap.h
+        src/io/TrajectoryFrameMap.cpp
+        src/io/QtTrajectoryH5.h
+        src/io/QtTrajectoryH5.cpp
+        src/model/QtSelectionBag.h
+        src/model/QtSelectionBag.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+    )
+    target_include_directories(h5reader_trajectory_frame_map_tests PRIVATE
+        src
+        ${HIGHFIVE_INCLUDE_DIR}
+    )
+    target_link_libraries(h5reader_trajectory_frame_map_tests PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Eigen3::Eigen
+        ${HDF5_C_LIBRARIES}
+    )
+    h5reader_apply_platform_target_settings(h5reader_trajectory_frame_map_tests)
+    add_test(NAME h5reader_trajectory_frame_map_tests COMMAND h5reader_trajectory_frame_map_tests)
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its

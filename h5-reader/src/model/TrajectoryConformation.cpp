@@ -3,15 +3,13 @@
 #include "TrajectoryConformation.h"
 
 #include "../io/FrameNpyLoader.h"
+#include "../io/TrajectoryFrameMap.h"
 #include "QtConformationSnapshot.h"
 #include "QtProtein.h"
 
-#include <QDir>
 #include <QFileInfo>
 
 #include <algorithm>
-#include <cstdint>
-#include <unordered_map>
 
 namespace h5reader::model {
 
@@ -24,29 +22,8 @@ TrajectoryConformation::TrajectoryConformation(const QtProtein* protein,
     setObjectName(QStringLiteral("TrajectoryConformation"));
 
     // Index which H5 rows have a per-frame snapshot dir, so the UI can point at
-    // the nearest sampled frame when parked between emit-stride frames. Scan the
-    // frame_NNNNNN dirs once (O(emitted), not O(frames)) and map each
-    // original index back to its H5 row via frame_indices.
-    if (!perFrameNpysDir_.isEmpty()) {
-        const auto& fidx = h5_->frameIndices();
-        std::unordered_map<std::uint64_t, std::size_t> origToRow;
-        origToRow.reserve(fidx.size());
-        for (std::size_t row = 0; row < fidx.size(); ++row)
-            origToRow.emplace(fidx[row], row);
-        const QStringList dirs = QDir(perFrameNpysDir_)
-                                     .entryList(QStringList{QStringLiteral("frame_*")},
-                                                QDir::Dirs | QDir::NoDotAndDotDot);
-        for (const QString& d : dirs) {
-            bool ok = false;
-            const std::uint64_t orig = d.mid(6).toULongLong(&ok);  // skip the "frame_" prefix
-            if (!ok)
-                continue;
-            const auto it = origToRow.find(orig);
-            if (it != origToRow.end())
-                sampledRows_.push_back(it->second);
-        }
-        std::sort(sampledRows_.begin(), sampledRows_.end());
-    }
+    // the nearest sampled frame when parked between emit-stride frames.
+    sampledRows_ = h5reader::io::TrajectoryFrameMap::ScanSampledRows(perFrameNpysDir_, *h5_);
 }
 
 TrajectoryConformation::~TrajectoryConformation() = default;

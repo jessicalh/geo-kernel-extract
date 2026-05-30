@@ -13,6 +13,7 @@
 #include "Conformation.h"
 
 #include "../io/QtTrajectoryH5.h"
+#include "../io/TrajectoryFrameMap.h"
 #include "QtFrame.h"
 
 #include <QString>
@@ -45,8 +46,7 @@ public:
     // fallback if the row is out of range. This is the key the DFT job dirs and
     // per-frame npys are named by.
     std::size_t originalFrameIndex(std::size_t frame) const override {
-        const auto& idx = h5_->frameIndices();
-        return frame < idx.size() ? static_cast<std::size_t>(idx[frame]) : frame;
+        return h5reader::io::TrajectoryFrameMap::OriginalIndex(frame, *h5_);
     }
     Vec3 atomPosition(std::size_t frame, std::size_t atomIdx) const override;
     const TrajectoryConformation* asTrajectory() const override { return this; }
