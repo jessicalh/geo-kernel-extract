@@ -288,6 +288,10 @@ likelihood. Two cheap probes in place (duplicate-ResetCameraClippingRange
 removed; `mapper_->Modified()` added with diagnostic comment). Next
 time it recurs, follow the instrumentation playbook in that file.
 
+## Known limitations
+
+- REST POST `/chewer/runs` and other programmatic `setFrame` calls received while the user is mid-slider-drag defer until slider release; the slider-scrub deferral in `DashboardDisplayController::extendToFrame` covers both human and programmatic frame changes when `scrubActive_` is true. Acceptable for current usage; revisit if mixed human+REST workflows become common.
+
 ---
 
 ## Principles guiding this backlog

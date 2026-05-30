@@ -17,7 +17,10 @@ using h5reader::io::QtTrajectoryH5;
 
 namespace {
 
-void writeMinimalTrajectory(const QString& path, bool includePositions = true) {
+void writeMinimalTrajectory(const QString& path,
+                            bool includePositions = true,
+                            std::size_t positionAtomCount = 1,
+                            std::size_t positionFrameCount = 2) {
     HighFive::File file(path.toStdString(), HighFive::File::Overwrite);
     file.createAttribute("n_atoms", std::uint64_t{1});
     file.createAttribute("protein_id", std::string("unit"));
@@ -33,14 +36,21 @@ void writeMinimalTrajectory(const QString& path, bool includePositions = true) {
 
     if (includePositions) {
         auto positions = file.createGroup("/trajectory/positions");
-        const std::vector<double> xyz{
-            0.0, 0.0, 0.0,
-            1.0, 0.0, 0.0,
-        };
-        auto ds = positions.createDataSet<double>("xyz", HighFive::DataSpace({1, 2, 3}));
+        std::vector<double> xyz(positionAtomCount * positionFrameCount * 3, 0.0);
+        for (std::size_t frame = 0; frame < positionFrameCount; ++frame)
+            xyz[frame * 3] = static_cast<double>(frame);
+        auto ds = positions.createDataSet<double>(
+            "xyz",
+            HighFive::DataSpace({positionAtomCount, positionFrameCount, 3}));
         ds.write_raw(xyz.data());
-        positions.createDataSet("frame_times", std::vector<double>{0.0, 1.0});
-        positions.createDataSet("frame_indices", std::vector<std::uint64_t>{0, 1});
+        std::vector<double> frameTimes(positionFrameCount, 0.0);
+        std::vector<std::uint64_t> frameIndices(positionFrameCount, 0);
+        for (std::size_t frame = 0; frame < positionFrameCount; ++frame) {
+            frameTimes[frame] = static_cast<double>(frame);
+            frameIndices[frame] = static_cast<std::uint64_t>(frame);
+        }
+        positions.createDataSet("frame_times", frameTimes);
+        positions.createDataSet("frame_indices", frameIndices);
     }
 
 }
@@ -62,6 +72,8 @@ class QtTrajectoryH5Tests : public QObject {
 private slots:
     void optionalMalformedReaderDoesNotAbortLoad();
     void missingPositionsIsHardLoadError();
+    void positionsFrameCountMismatchIsHardLoadError();
+    void positionsAtomCountMismatchIsHardLoadError();
 };
 
 void QtTrajectoryH5Tests::optionalMalformedReaderDoesNotAbortLoad() {
@@ -94,6 +106,52 @@ void QtTrajectoryH5Tests::missingPositionsIsHardLoadError() {
         QVERIFY2(message.contains(QStringLiteral("/trajectory/positions")),
                  qPrintable(message));
         QVERIFY2(message.contains(QStringLiteral("positions buffer is null")),
+                 qPrintable(message));
+    }
+}
+
+void QtTrajectoryH5Tests::positionsFrameCountMismatchIsHardLoadError() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("trajectory.h5"));
+    writeMinimalTrajectory(path, /*includePositions=*/true, /*positionAtomCount=*/1, /*positionFrameCount=*/1);
+
+    try {
+        const QtTrajectoryH5 h5(path);
+        Q_UNUSED(h5);
+        QFAIL("QtTrajectoryH5 accepted positions with the wrong frame count");
+    } catch (const std::runtime_error& e) {
+        const QString message = QString::fromUtf8(e.what());
+        QVERIFY2(message.contains(QStringLiteral("/trajectory/positions")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("frame count mismatch")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("positions n_frames=1")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("/trajectory/frames count=2")),
+                 qPrintable(message));
+    }
+}
+
+void QtTrajectoryH5Tests::positionsAtomCountMismatchIsHardLoadError() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("trajectory.h5"));
+    writeMinimalTrajectory(path, /*includePositions=*/true, /*positionAtomCount=*/2, /*positionFrameCount=*/2);
+
+    try {
+        const QtTrajectoryH5 h5(path);
+        Q_UNUSED(h5);
+        QFAIL("QtTrajectoryH5 accepted positions with the wrong atom count");
+    } catch (const std::runtime_error& e) {
+        const QString message = QString::fromUtf8(e.what());
+        QVERIFY2(message.contains(QStringLiteral("/trajectory/positions")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("atom count mismatch")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("positions n_atoms=2")),
+                 qPrintable(message));
+        QVERIFY2(message.contains(QStringLiteral("/atoms count=1")),
                  qPrintable(message));
     }
 }

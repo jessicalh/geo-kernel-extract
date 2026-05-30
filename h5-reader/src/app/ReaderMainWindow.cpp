@@ -327,7 +327,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setPanelModel(dashboardPanels_);
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
-    dashboardController_ = dashboardStripDock_->findChild<DashboardDisplayController*>();
+    dashboardController_ = dashboardStripDock_->displayController();
     addDockWidget(Qt::BottomDockWidgetArea, dashboardStripDock_);
     resizeDocks({dashboardStripDock_}, {300}, Qt::Vertical);
     resizeDocks({inspectorDock_}, {320}, Qt::Horizontal);

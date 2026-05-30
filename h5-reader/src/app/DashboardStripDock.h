@@ -36,6 +36,7 @@ public:
     explicit DashboardStripDock(QWidget* parent = nullptr);
     ~DashboardStripDock() override = default;
 
+    DashboardDisplayController* displayController() const;
     void setContext(const model::QtProtein* protein, model::Conformation* conformation);
     void setSignalModels(model::TrajectorySignalCatalog* catalog, model::DashboardSignalModel* activeModel);
     void setPanelModel(model::DashboardPanelModel* panelModel);

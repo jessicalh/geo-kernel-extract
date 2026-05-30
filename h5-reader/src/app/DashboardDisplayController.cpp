@@ -49,6 +49,13 @@ bool hasStripMode(const QStringList& modes) {
     return std::any_of(modes.begin(), modes.end(), isStripMode);
 }
 
+struct ScopedScrubReleaseFlag {
+    bool& flag;
+
+    explicit ScopedScrubReleaseFlag(bool& f) : flag(f) { flag = true; }
+    ~ScopedScrubReleaseFlag() { flag = false; }
+};
+
 // Static-display modes that map to AbstractStripPanel subclasses
 // rendered via setOwnedPanels (NOT via the temporal-strip ChannelBuffer
 // path). Each new panel kind landing in Phases C-G appends its mode
@@ -1281,15 +1288,19 @@ void DashboardDisplayController::setFrame(int frame) {
     emit stripTracksChanged();
 }
 
+// Slider drags defer per-frame snapshot fetches so one valueChanged
+// cascade does not stack hundreds of synchronous NPY directory reads
+// on the GUI thread. extendToFrame() bails while scrubActive_ is true;
+// release runs one catch-up extendToFrame(frame_). See
+// h5-reader/notes/ROBUSTNESS_BACKLOG_2026-05-30.md item #3.
 void DashboardDisplayController::setScrubActive(bool active) {
     ASSERT_THREAD(this);
     if (scrubActive_ == active)
         return;
     scrubActive_ = active;
     if (!scrubActive_) {
-        scrubReleasePending_ = true;
+        const ScopedScrubReleaseFlag guard(scrubReleasePending_);
         extendToFrame(frame_);
-        scrubReleasePending_ = false;
         emit stripTracksChanged();
     }
 }

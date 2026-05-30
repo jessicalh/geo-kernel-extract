@@ -474,14 +474,14 @@ void ReadPositionsTimeSeries(HighFive::File& file,
     }
     auto ds = grp.getDataSet("xyz");
     const auto dims = ds.getDimensions();
-    if (dims.size() != 3 || dims[0] != n_atoms || dims[2] != 3) {
+    if (dims.size() != 3 || dims[2] != 3) {
         WarnShapeMismatch(group_path, QStringLiteral("xyz shape != [n_atoms=%1, T, 3]").arg(n_atoms));
         return;
     }
     auto buf = std::make_unique<QtPositionsTimeSeries>();
-    buf->n_atoms = n_atoms;
+    buf->n_atoms = dims[0];
     buf->n_frames = dims[1];
-    ReadFlat<double>(ds, buf->xyz, n_atoms * buf->n_frames * 3);
+    ReadFlat<double>(ds, buf->xyz, buf->n_atoms * buf->n_frames * 3);
     TryReadFrameMeta(grp, buf->meta, buf->n_frames, group_path);
     out = std::move(buf);
     } catch (const HighFive::Exception& e) {

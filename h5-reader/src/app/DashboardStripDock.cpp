@@ -143,6 +143,10 @@ DashboardStripDock::DashboardStripDock(QWidget* parent)
     });
 }
 
+DashboardDisplayController* DashboardStripDock::displayController() const {
+    return controller_;
+}
+
 void DashboardStripDock::setContext(const model::QtProtein* protein, model::Conformation* conformation) {
     ASSERT_THREAD(this);
     controller_->setContext(protein, conformation);
