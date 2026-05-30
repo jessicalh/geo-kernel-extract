@@ -1281,6 +1281,19 @@ void DashboardDisplayController::setFrame(int frame) {
     emit stripTracksChanged();
 }
 
+void DashboardDisplayController::setScrubActive(bool active) {
+    ASSERT_THREAD(this);
+    if (scrubActive_ == active)
+        return;
+    scrubActive_ = active;
+    if (!scrubActive_) {
+        scrubReleasePending_ = true;
+        extendToFrame(frame_);
+        scrubReleasePending_ = false;
+        emit stripTracksChanged();
+    }
+}
+
 QVector<DashboardDisplayController::StripTrack> DashboardDisplayController::stripTracks() const {
     QVector<StripTrack> out;
     out.reserve(series_.size());
@@ -2449,6 +2462,8 @@ int DashboardDisplayController::activePanelSeriesCount() const {
 void DashboardDisplayController::extendToFrame(int frame) {
     if (frame < 0)
         return;
+    if (scrubActive_)
+        return;
     const bool needsSnapshot = std::any_of(series_.begin(), series_.end(), [](const ActiveSeries& series) {
         return series.needsFrameSnapshot;
     });
@@ -2463,7 +2478,18 @@ void DashboardDisplayController::extendToFrame(int frame) {
         return std::max<long long>(0, start);
     }();
 
-    for (long long f = startFrame; f <= frame; ++f) {
+    long long firstFrameToSample = startFrame;
+    if (scrubReleasePending_ && firstFrameToSample < frame) {
+        for (long long f = firstFrameToSample; f < frame; ++f) {
+            for (ActiveSeries& series : series_) {
+                if (series.buffer.lastFrame() < f)
+                    series.buffer.append(model::FrameSignalSample::Gap(model::GapReason::Pending));
+            }
+        }
+        firstFrameToSample = frame;
+    }
+
+    for (long long f = firstFrameToSample; f <= frame; ++f) {
         const std::size_t sampleFrame = static_cast<std::size_t>(f);
         if (needsSnapshot && conformation_)
             conformation_->requestSnapshot(sampleFrame);

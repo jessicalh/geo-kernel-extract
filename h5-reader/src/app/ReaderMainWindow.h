@@ -43,6 +43,7 @@ namespace h5reader::app {
 
 class MoleculeScene;
 class QtPlaybackController;
+class DashboardDisplayController;
 class TimeViewportController;
 
 class ReaderMainWindow final : public QMainWindow {
@@ -121,6 +122,7 @@ private:
     // Unified strip dashboard. SignalDisplayDialog owns selection of active
     // signals/display modes; this dock renders strip-capable active signals.
     class DashboardStripDock* dashboardStripDock_ = nullptr;
+    QPointer<DashboardDisplayController> dashboardController_;
 
     // DFT shielding provider for the strip chart's shielding panel — constructed
     // only when the run has a dft/ campaign (located by convention from the run

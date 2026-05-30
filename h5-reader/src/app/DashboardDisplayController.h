@@ -129,6 +129,7 @@ public:
 
 public slots:
     void setFrame(int frame);
+    void setScrubActive(bool active);
     void rebuild();
 
 signals:
@@ -231,6 +232,8 @@ private:
 
     QString statusText_ = QStringLiteral("No active strip signals.");
     int frame_ = 0;
+    bool scrubActive_ = false;
+    bool scrubReleasePending_ = false;
     int activeStripSignalCount_ = 0;
     // Number of static-display panels (SequenceBarPanel,
     // PowerSpectrumPanel, etc.) built in the most recent rebuild().

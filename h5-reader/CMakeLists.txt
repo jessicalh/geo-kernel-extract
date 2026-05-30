@@ -309,6 +309,78 @@ if(BUILD_TESTING AND Qt6Test_FOUND)
     )
     h5reader_apply_platform_target_settings(h5reader_io_tests)
     add_test(NAME h5reader_io_tests COMMAND h5reader_io_tests)
+
+    qt_add_executable(h5reader_app_tests
+        tests/dashboard_controller_tests.cpp
+        src/app/DashboardDisplayController.h
+        src/app/DashboardDisplayController.cpp
+        src/app/AbstractStripPanel.h
+        src/app/AbstractStripPanel.cpp
+        src/app/SequenceBarPanel.h
+        src/app/SequenceBarPanel.cpp
+        src/app/PowerSpectrumPanel.h
+        src/app/PowerSpectrumPanel.cpp
+        src/app/LagDecayPanel.h
+        src/app/LagDecayPanel.cpp
+        src/app/ChordCouplingPanel.h
+        src/app/ChordCouplingPanel.cpp
+        src/app/FixedFreqPanel.h
+        src/app/FixedFreqPanel.cpp
+        src/app/SceneRevealOverlay.h
+        src/app/SceneRevealOverlay.cpp
+        src/model/Conformation.h
+        src/model/Conformation.cpp
+        src/model/ConformationGeometry.h
+        src/model/ConformationGeometry.cpp
+        src/model/DashboardSignal.h
+        src/model/DashboardSignal.cpp
+        src/model/DashboardSignalModel.h
+        src/model/DashboardSignalModel.cpp
+        src/model/DashboardPanelModel.h
+        src/model/DashboardPanelModel.cpp
+        src/model/AtomSelection.h
+        src/model/AtomSelection.cpp
+        src/model/TrajectorySignalCatalog.h
+        src/model/TrajectorySignalCatalog.cpp
+        src/model/SignalTimeSeries.h
+        src/model/SignalTimeSeries.cpp
+        src/model/DftShielding.h
+        src/model/DftShieldingStore.h
+        src/model/DftShieldingStore.cpp
+        src/model/SphericalDecomposition.h
+        src/model/SphericalDecomposition.cpp
+        src/model/QtProtein.h
+        src/model/QtProtein.cpp
+        src/model/QtRing.h
+        src/model/QtRing.cpp
+        src/model/QtTopology.h
+        src/model/QtTopology.cpp
+        src/model/QtAminoAcidType.h
+        src/model/QtAminoAcidType.cpp
+        src/model/QtResidueNames.h
+        src/model/QtResidueNames.cpp
+        src/io/OrcaShieldingParser.h
+        src/io/OrcaShieldingParser.cpp
+        src/diagnostics/ErrorBus.h
+        src/diagnostics/ErrorBus.cpp
+        src/diagnostics/ObjectCensus.h
+        src/diagnostics/ObjectCensus.cpp
+        src/diagnostics/Categories.cpp
+    )
+    target_include_directories(h5reader_app_tests PRIVATE
+        src
+        ${HIGHFIVE_INCLUDE_DIR}
+    )
+    target_link_libraries(h5reader_app_tests PRIVATE
+        Qt6::Core
+        Qt6::Widgets
+        Qt6::Test
+        Eigen3::Eigen
+        ${VTK_LIBRARIES}
+    )
+    vtk_module_autoinit(TARGETS h5reader_app_tests MODULES ${VTK_LIBRARIES})
+    h5reader_apply_platform_target_settings(h5reader_app_tests)
+    add_test(NAME h5reader_app_tests COMMAND h5reader_app_tests)
 endif()
 
 # REST end-to-end smoke: pytest drives the built h5reader binary via its

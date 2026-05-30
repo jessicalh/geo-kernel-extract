@@ -327,6 +327,7 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
     dashboardStripDock_->setPanelModel(dashboardPanels_);
     dashboardStripDock_->setSelection(selection_);
     dashboardStripDock_->setTimeViewport(timeViewport_);
+    dashboardController_ = dashboardStripDock_->findChild<DashboardDisplayController*>();
     addDockWidget(Qt::BottomDockWidgetArea, dashboardStripDock_);
     resizeDocks({dashboardStripDock_}, {300}, Qt::Vertical);
     resizeDocks({inspectorDock_}, {320}, Qt::Horizontal);
@@ -343,6 +344,18 @@ ReaderMainWindow::ReaderMainWindow(h5reader::io::QtLoadResult&& loaded,
              this,                &ReaderMainWindow::onOpenSignalDisplays);
     ACONNECT(playback_,           &QtPlaybackController::frameChanged,
              dashboardStripDock_, &DashboardStripDock::setFrame);
+    if (frameSlider_) {
+        ACONNECT(frameSlider_.data(), &QSlider::sliderPressed,
+                 this, [this]() {
+                     if (dashboardController_)
+                         dashboardController_->setScrubActive(true);
+                 });
+        ACONNECT(frameSlider_.data(), &QSlider::sliderReleased,
+                 this, [this]() {
+                     if (dashboardController_)
+                         dashboardController_->setScrubActive(false);
+                 });
+    }
 
     // DFT shielding campaign (optional): make the frame-local source available
     // to descriptor-family samplers. Its presence does not auto-pin a DFT strip.
